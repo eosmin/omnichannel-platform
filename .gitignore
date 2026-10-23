@@ -1,0 +1,14 @@
+# Environment and secrets (never commit; only .env.example files are allowed)
+.env
+.env.local
+.env.*.local
+nx-cloud.env
+secrets/
+!.env.example
+
+# Claude Code: per-machine files
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# code-review-graph: generated database
+.code-review-graph/
