@@ -1,0 +1,12 @@
+{
+  "name": "widget",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/widget/src",
+  "projectType": "application",
+  "tags": ["scope:widget", "type:app"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

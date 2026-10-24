@@ -42,6 +42,13 @@ Ruleset on `main` (created in Step 0.1): pull request required with **0 approval
 owner cannot approve their own PR, `MVP_TRIM_CHECKLIST.md` §7, D7), force pushes and deletion
 blocked, conversations resolved, branch up to date. Job names are the ones of `TDD_03 §4`.
 
+> **No ruleset (owner's decision, 2026-10-24).** The repository is private on a free GitHub plan, where
+> rulesets and branch protection return 403, and the owner chose not to pay for Pro nor to make the
+> repository public. Required checks therefore cannot be enforced by GitHub: `main` is protected by
+> process only (no direct commits, every change through a PR, the owner reviews and squash-merges only
+> when the jobs are green). Wherever this plan says "add X to the ruleset", read "check that X is green
+> before merging". If the plan changes (Pro, or a public repository), create the ruleset described above.
+
 | Step | CI work | Add to the ruleset as required |
 |---|---|---|
 | 0.1 | `ci.yml` with `lint-and-types` (Nx affected lint and type-check, and `format:check`); create the ruleset | `lint-and-types` |
@@ -117,18 +124,18 @@ No product functionality. This milestone exists so that everything after it
 is fast, safe and consistent.
 
 ### Step 0.1 — Nx workspace
-- [ ] Create the Nx workspace with pnpm (`packageManager` in `package.json`, Node `>=22`)
-- [ ] `.nvmrc` with the exact Node version from `TDD_01 §2.4` (`24.20.0`) — `engines` stays the
+- [x] Create the Nx workspace with pnpm (`packageManager` in `package.json`, Node `>=22`)
+- [x] `.nvmrc` with the exact Node version from `TDD_01 §2.4` (`24.20.0`) — `engines` stays the
       `>=22` range; `.nvmrc` pins what developers, CI and tooling actually run
-- [ ] Create apps: `api` (NestJS), `web` (Next.js), `worker` (NestJS), `widget` (Vite/vanilla TS) — `admin` is DEFERRED (Phase 2, Step 7.6)
-- [ ] Configure `tsconfig.base.json` with strict mode per `TDD_02 §11` (TypeScript 5.9)
-- [ ] Configure project tags (`scope:core-domain`, `scope:core`, …) and module boundaries per `TDD_14 §6`, `§9`
-- [ ] `nx.json` with `namedInputs` (`default`, `production` excluding test files and test config) and `targetDefaults` that make `lint`, `type-check`, `test`, `build` and `prisma generate` cacheable, with their inputs and outputs, as described in "Local gates and CI performance"
-- [ ] Root `package.json` scripts as in `TDD_14 §2` (`lint`, `lint:fix`, `type-check`, `format`, `format:check`, `test` and its variants), and a `lint`, `type-check` and `test` target in every `project.json` (the `build` target comes with the Dockerfiles in Step 0.5)
-- [ ] `.prettierrc` per `TDD_14 §6` and a `.prettierignore` that excludes `docs/` (the specifications are maintained by hand with wide tables), generated code, build output, `node_modules` and the lockfile, so that `format:check` covers code and configuration only
+- [x] Create apps: `api` (NestJS), `web` (Next.js), `worker` (NestJS), `widget` (Vite/vanilla TS) — `admin` is DEFERRED (Phase 2, Step 7.6)
+- [x] Configure `tsconfig.base.json` with strict mode per `TDD_02 §11` (TypeScript 5.9)
+- [x] Configure project tags (`scope:core-domain`, `scope:core`, …) and module boundaries per `TDD_14 §6`, `§9`
+- [x] `nx.json` with `namedInputs` (`default`, `production` excluding test files and test config) and `targetDefaults` that make `lint`, `type-check`, `test`, `build` and `prisma generate` cacheable, with their inputs and outputs, as described in "Local gates and CI performance"
+- [x] Root `package.json` scripts as in `TDD_14 §2` (`lint`, `lint:fix`, `type-check`, `format`, `format:check`, `test` and its variants), and a `lint`, `type-check` and `test` target in every `project.json` (the `build` target comes with the Dockerfiles in Step 0.5)
+- [x] `.prettierrc` per `TDD_14 §6` and a `.prettierignore` that excludes `docs/` (the specifications are maintained by hand with wide tables), generated code, build output, `node_modules` and the lockfile, so that `format:check` covers code and configuration only
 - [ ] `eslint.config.js` (flat), Prettier, `.env.example` files per `TDD_14 §6`, `§10`; include a `no-restricted-syntax` rule that forbids calling `$transaction` on the Prisma client (services use `PrismaService.transaction(fn)`, created in Step 0.4; the rule exempts `PrismaService` itself)
 - [ ] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`; it runs Nx affected `lint` and `type-check` and `pnpm format:check`; workflow-level `concurrency` that cancels superseded pull-request runs, least-privilege `permissions`, `timeout-minutes`, `fetch-depth: 0` with `nrwl/nx-set-shas`, the pnpm store cache, and the `.nx/cache` restored on pull requests and saved on `main`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
-- [ ] `.github/dependabot.yml` (weekly, grouped by ecosystem, as `TDD_03 §4` and `TDD_05 §7` already describe): `npm` for the pnpm workspace root and `github-actions` (it also moves the SHA pins and their version comments); the `docker` entries for the Dockerfiles and the compose file are added in Steps 0.2 and 0.5, when those files exist. Minor and patch updates are grouped, major updates come as separate PRs and are never merged without reading the changelog, because the stack's versions are pinned by the TDD and an upgrade re-fetches its documentation first (`CLAUDE.md`, deprecation discipline). `commit-message` prefixes `chore(deps)` (npm, docker) and `ci(deps)` (actions) so the commits satisfy commitlint, whose `deps` scope already exists; open-pull-requests limit 5
+- [x] `.github/dependabot.yml` (weekly, grouped by ecosystem, as `TDD_03 §4` and `TDD_05 §7` already describe): `npm` for the pnpm workspace root and `github-actions` (it also moves the SHA pins and their version comments); the `docker` entries for the Dockerfiles and the compose file are added in Steps 0.2 and 0.5, when those files exist. Minor and patch updates are grouped, major updates come as separate PRs and are never merged without reading the changelog, because the stack's versions are pinned by the TDD and an upgrade re-fetches its documentation first (`CLAUDE.md`, deprecation discipline). `commit-message` prefixes `chore(deps)` (npm, docker) and `ci(deps)` (actions) so the commits satisfy commitlint, whose `deps` scope already exists; open-pull-requests limit 5
 - [ ] Repository security settings, applied once with `gh api` and recorded in the README: enable Dependabot alerts and Dependabot security updates (free on private repositories). **Secret scanning and push protection are tried, not assumed:** for private repositories they belong to GitHub Secret Protection, a paid add-on, and on this account `security_and_analysis` reports nothing; verify when doing the step, enable them if the plan allows, and otherwise rely on gitleaks (pre-commit and `security-scan`, Step 0.6), which is the layer the plan depends on. Until Step 0.6 lands no secret exists in the repository, and nothing may be committed that looks like one
 
 **Files:** `nx.json`, `tsconfig.base.json`, `package.json`, `.nvmrc`, `eslint.config.js`, `.prettierrc`, `.prettierignore`, `apps/*/project.json`, `.github/dependabot.yml`
@@ -960,7 +967,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | Step | Name | Status | PR | Date |
 |---|---|---|---|---|
 | **Milestone 0: Foundation** | | | | |
-| 0.1 | Nx workspace | todo | | |
+| 0.1 | Nx workspace | in progress | #7 | 2026-10-24 |
 | 0.2 | Local infrastructure | todo | | |
 | 0.3 | Constants library (blocking dependency for everything) | todo | | |
 | 0.4 | Database schema | todo | | |

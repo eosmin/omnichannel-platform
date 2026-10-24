@@ -1,0 +1,56 @@
+{
+  "name": "@platform/source",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "nx run-many --target=test --all",
+    "test:watch": "nx run-many --target=test --all -- --watch",
+    "test:cov": "nx run-many --target=test --all -- --coverage",
+    "test:affected": "nx affected --target=test --base=origin/main",
+    "lint": "nx run-many --target=lint --all",
+    "lint:fix": "nx run-many --target=lint --all -- --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "type-check": "nx run-many --target=type-check --all"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@nestjs/testing": "12.0.1",
+    "@next/eslint-plugin-next": "16.3.4",
+    "@nx/eslint": "23.2.0",
+    "@nx/eslint-plugin": "23.2.0",
+    "@nx/jest": "23.2.0",
+    "@nx/js": "23.2.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.3",
+    "eslint": "10.9.1",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "eslint-plugin-import-x": "4.16.1",
+    "jest": "30.5.1",
+    "jest-environment-node": "30.5.1",
+    "nx": "23.2.0",
+    "prettier": "3.9.6",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "ts-jest": "29.4.12",
+    "ts-node": "10.9.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.69.0"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.0.1",
+    "@nestjs/core": "12.0.1",
+    "@nestjs/platform-express": "12.0.1",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  }
+}

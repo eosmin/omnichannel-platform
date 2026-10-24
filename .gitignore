@@ -12,3 +12,19 @@ secrets/
 
 # code-review-graph: generated database
 .code-review-graph/
+
+# Next.js
+.next
+out
+
+vite.config.*.timestamp*
+next-env.d.ts
+*.tsbuildinfo
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.nx/cache
+.nx/workspace-data
+.nx/polygraph
