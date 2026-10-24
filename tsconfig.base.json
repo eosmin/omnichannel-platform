@@ -18,7 +18,25 @@
     "sourceMap": true,
     "isolatedModules": true,
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "@platform/core/errors": ["libs/core/errors/index.ts"],
+      "@platform/core/domain": ["libs/core/domain/index.ts"],
+      "@platform/core/auth": ["libs/core/auth/index.ts"],
+      "@platform/core/notifications": ["libs/core/notifications/index.ts"],
+      "@platform/core/events": ["libs/core/events/index.ts"],
+      "@platform/core/realtime": ["libs/core/realtime/index.ts"],
+      "@platform/core/api": ["libs/core/api/index.ts"],
+      "@platform/core/storage": ["libs/core/storage/index.ts"],
+      "@platform/core/analytics": ["libs/core/analytics/index.ts"],
+      "@platform/core/cache": ["libs/core/cache/index.ts"],
+      "@platform/core/queues": ["libs/core/queues/index.ts"],
+      "@platform/core/audit": ["libs/core/audit/index.ts"],
+      "@platform/core/metrics": ["libs/core/metrics/index.ts"],
+      "@platform/core/compliance": ["libs/core/compliance/index.ts"],
+      "@platform/core/config": ["libs/core/config/index.ts"],
+      "@platform/plugins/sdk": ["libs/plugins/sdk/src/index.ts"],
+      "@platform/api-client": ["libs/api-client/src/index.ts"]
+    }
   },
   "exclude": ["node_modules", "tmp"]
 }
