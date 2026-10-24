@@ -156,25 +156,25 @@ Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a
 `platform-dev` bucket exists in SeaweedFS.
 
 ### Step 0.3 — Constants library (blocking dependency for everything)
-- [ ] `libs/core/platform/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
-- [ ] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
-- [ ] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
-- [ ] `libs/core/domain/errors/error-codes.ts` + `PlatformException`
-- [ ] `libs/core/domain/events/event-names.ts` + `event-payloads.ts`
-- [ ] `libs/core/platform/cache/cache-keys.ts` + `CacheTTL`
-- [ ] `libs/core/domain/auth/permissions.ts` + `RolePresets` (`libs/core/admin/staff-constants.ts` + `StaffRolePresets` DEFERRED)
-- [ ] `libs/core/domain/status-enums.ts` + i18n keys, colors, transitions, editable fields
-- [ ] `libs/core/domain/api/api-routes.ts` (`ApiRoutes`, `InfraRoutes`; `AdminRoutes` DEFERRED)
-- [ ] `libs/core/platform/queues/queue-names.ts` + `JobNames`; `schedules.ts` + `LockNames`
-- [ ] `libs/core/domain/realtime/realtime-events.ts` (complete `RealtimeEventMap`) + `room-names.ts`
-- [ ] `libs/core/domain/notifications/notification-constants.ts` (complete `NotificationDefaults`)
-- [ ] `libs/core/platform/audit/audit-actions.ts`, `libs/core/platform/metrics/metric-names.ts`
-- [ ] `libs/core/domain/analytics/analytics-constants.ts`, `libs/core/platform/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
-- [ ] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
-- [ ] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
-- [ ] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
-- [ ] The smaller constant sets of `TDD_02 §15` that nothing else owns (`TenantHeaders`, `ThrottlerNames`, `PresenceStatus`, `Locales` and the locale constants, `UploadLimits`, `AllowedContentTypes`, `StorageKeys` (S3) and `ImageVariants`, `WebhookHeaders`, `WebhookLimits`, `WebhookSources`, `ResendEventTypes`, `ConversationStatusReasons`, `BulkActions`, `BulkLimits`, `OrderPrintDocuments`, `DestructiveActionTiers`, `Shortcuts`, the export constants, the job payload types that use only built types and `DeadLetterJob`, and in `libs/api-client` `API_PREFIX` and the browser `StorageKeys`). **Owned by a later step, on purpose:** `EmailTemplates`, `EmailTemplate` and `SendEmailJob` (the email step), `ChannelCapability`, `ChannelEventTypes`, `PluginBridgeMessages`, `PLUGIN_SCOPES_KEY` and `ProcessChannelEventJob` (Step 2.5, the plugin SDK), `AuthenticatedRequest` (Step 0.5). `OrderCancellationReasons` is the factory seed of the per-store editable list `orders.cancellationReasons` (Step 4.9, `TDD_17 §4.14`); its six reasons are owner-approved.
-- [ ] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
+- [x] `libs/core/platform/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
+- [x] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
+- [x] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
+- [x] `libs/core/domain/errors/error-codes.ts` + `PlatformException`
+- [x] `libs/core/domain/events/event-names.ts` + `event-payloads.ts`
+- [x] `libs/core/platform/cache/cache-keys.ts` + `CacheTTL`
+- [x] `libs/core/domain/auth/permissions.ts` + `RolePresets` (`libs/core/admin/staff-constants.ts` + `StaffRolePresets` DEFERRED)
+- [x] `libs/core/domain/status-enums.ts` + i18n keys, colors, transitions, editable fields
+- [x] `libs/core/domain/api/api-routes.ts` (`ApiRoutes`, `InfraRoutes`; `AdminRoutes` DEFERRED)
+- [x] `libs/core/platform/queues/queue-names.ts` + `JobNames`; `schedules.ts` + `LockNames`
+- [x] `libs/core/domain/realtime/realtime-events.ts` (complete `RealtimeEventMap`) + `room-names.ts`
+- [x] `libs/core/domain/notifications/notification-constants.ts` (complete `NotificationDefaults`)
+- [x] `libs/core/platform/audit/audit-actions.ts`, `libs/core/platform/metrics/metric-names.ts`
+- [x] `libs/core/domain/analytics/analytics-constants.ts`, `libs/core/platform/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
+- [x] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
+- [x] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
+- [x] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
+- [x] The smaller constant sets of `TDD_02 §15` that nothing else owns (`TenantHeaders`, `ThrottlerNames`, `PresenceStatus`, `Locales` and the locale constants, `UploadLimits`, `AllowedContentTypes`, `StorageKeys` (S3) and `ImageVariants`, `WebhookHeaders`, `WebhookLimits`, `WebhookSources`, `ResendEventTypes`, `ConversationStatusReasons`, `BulkActions`, `BulkLimits`, `OrderPrintDocuments`, `DestructiveActionTiers`, `Shortcuts`, the export constants, the job payload types that use only built types and `DeadLetterJob`, and in `libs/api-client` `API_PREFIX` and the browser `StorageKeys`). **Owned by a later step, on purpose:** `EmailTemplates`, `EmailTemplate` and `SendEmailJob` (the email step), `ChannelCapability`, `ChannelEventTypes`, `PluginBridgeMessages`, `PLUGIN_SCOPES_KEY` and `ProcessChannelEventJob` (Step 2.5, the plugin SDK), `AuthenticatedRequest` (Step 0.5). `OrderCancellationReasons` is the factory seed of the per-store editable list `orders.cancellationReasons` (Step 4.9, `TDD_17 §4.14`); its six reasons are owner-approved.
+- [x] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
 
 **TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2; the inventory constants of `TDD_16 §3` and the shipping constants of `TDD_17 §3`)
 **Done when:** every constant file compiles and is exported from its barrel, and the
@@ -975,7 +975,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 0: Foundation** | | | | |
 | 0.1 | Nx workspace | done | #7, #8 | 2026-10-24 |
 | 0.2 | Local infrastructure | done | #16 | 2026-10-24 |
-| 0.3 | Constants library (blocking dependency for everything) | in progress | | 2026-10-24 |
+| 0.3 | Constants library (blocking dependency for everything) | done | #25 | 2026-10-24 |
 | 0.4 | Database schema | todo | | |
 | 0.5 | Observability | todo | | |
 | 0.6 | Tooling | todo | | |
