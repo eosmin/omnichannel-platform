@@ -123,6 +123,27 @@ broken steps.
 
 ---
 
+## Code review of a step
+
+The automated `/code-review` reports at most 10 findings per run, even when asked for more (two
+scoped runs returned exactly 10 each). A run that returns 10 has **not** run out of findings.
+
+- Review in small batches (one library, or at most 8 to 10 files), never the whole step at once.
+- Give each pass one lens: correctness, security (secrets, permissions, customer data), tests, or
+  configuration, CI and Docker.
+- **Fewer than 10 findings means the cap did not bind**: that batch is complete. Exactly 10 means
+  fix what was reported and run the same batch again, saying what was fixed, until it returns fewer.
+- Check every finding by running the code before changing anything. Some are false positives, and
+  a fix without a test that fails first proves nothing.
+- Read the riskiest code yourself (security, data, money, CI). The tool says where to look first,
+  not that the rest is fine.
+- The mechanical gates have no cap and run on every step: `tsc`, ESLint, the tests, Trivy and the
+  integration suites. Run them with `--skip-nx-cache`, because a cached success hides a failure.
+- At the end say which files were read in full, which were only run or tested, and how many files
+  were touched.
+
+---
+
 ## Quick reference: where things live
 
 | Need                                                    | File                                                |
