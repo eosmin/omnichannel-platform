@@ -42,6 +42,13 @@ Ruleset on `main` (created in Step 0.1): pull request required with **0 approval
 owner cannot approve their own PR, `MVP_TRIM_CHECKLIST.md` §7, D7), force pushes and deletion
 blocked, conversations resolved, branch up to date. Job names are the ones of `TDD_03 §4`.
 
+> **No ruleset (owner's decision, 2026-10-24).** The repository is private on a free GitHub plan, where
+> rulesets and branch protection return 403, and the owner chose not to pay for Pro nor to make the
+> repository public. Required checks therefore cannot be enforced by GitHub: `main` is protected by
+> process only (no direct commits, every change through a PR, the owner reviews and squash-merges only
+> when the jobs are green). Wherever this plan says "add X to the ruleset", read "check that X is green
+> before merging". If the plan changes (Pro, or a public repository), create the ruleset described above.
+
 | Step | CI work | Add to the ruleset as required |
 |---|---|---|
 | 0.1 | `ci.yml` with `lint-and-types` (Nx affected lint and type-check, and `format:check`); create the ruleset | `lint-and-types` |
