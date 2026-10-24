@@ -71,10 +71,11 @@ broken steps.
    error code, route, status and notification type comes from a constant in
    `libs/core/*` as defined in `TDD_02_Conventions.md`. If you need a new
    constant, add it to the appropriate file in `libs/core/*` — do not inline it.
-2. **Every tenant-scoped table query is filtered by `storeId`.** `storeId`
-   is read from `TenantGuard` request context (populated from the
-   `X-Store-Id` header), **never** from the request body or query string,
-   not even inside the guard.
+2. **Every tenant-scoped table query is filtered by `storeId`** (or by
+   `organizationId` for the organization-scoped inventory resources of
+   `TDD_16 §1`). The id is read from `TenantGuard` request context
+   (populated from the `X-Store-Id` header), **never** from the request body
+   or query string, not even inside the guard.
 3. **Every new tenant-scoped resource** gets a corresponding case added to
    `tests/security/tenant-isolation.spec.ts` in the same change that
    introduces the resource.
@@ -82,7 +83,10 @@ broken steps.
    `TDD_03_Deployment.md §5.4`.
 5. **Every new endpoint** has `AuthGuard` + `TenantGuard` + a
    `@RequirePermissions()` decorator, unless it is explicitly public
-   (auth endpoints, channel webhooks, health checks; the Stripe webhook joins in Phase 2).
+   (magic-link auth endpoints, invitation preview and accept, channel webhooks,
+   widget endpoints, carrier webhooks, health checks), or it is a plugin route under
+   `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead. The Stripe
+   webhook joins the public list in Phase 2.
 6. **No user-facing string is hardcoded in any language.** Always an i18n key.
 7. **Logger is Pino.** Never `console.log`, never Winston.
 8. **Package manager is `pnpm`.** Never `npm` or `yarn`.
@@ -90,7 +94,8 @@ broken steps.
 10. **AI features are suggest-only by default.** The only two that may act
     without a human approving the specific action are spam detection and the
     Scale-tier autonomous chatbot, exactly as bounded in `TDD_12_AI.md §1`
-    and `§13`. Do not widen that exception to any other feature.
+    and `§13`. Do not widen that exception to any other feature. The v1.2 MVP
+    builds no AI feature at all.
 11. **Anything marked MATURE or "Phase 2"** in the TDD is out of scope unless
     `IMPLEMENTATION_PLAN.md` explicitly includes it in the current milestone.
 12. **When the TDD is ambiguous or silent on something, stop and ask.**
@@ -122,6 +127,8 @@ broken steps.
 | Error code                                              | `libs/core/errors/error-codes.ts`                   |
 | API route constant                                      | `libs/core/api/api-routes.ts`                       |
 | Status enum                                             | `libs/core/domain/status-enums.ts`                  |
+| Shipping constant (carrier ids, capabilities, label formats) | `libs/core/domain/shipping-constants.ts`       |
+| Store preference and its factory default                | `libs/core/config/store-preferences.ts`             |
 | Queue/job name                                          | `libs/core/queues/queue-names.ts`                   |
 | Realtime event                                          | `libs/core/realtime/realtime-events.ts`             |
 | Notification type                                       | `libs/core/notifications/notification-constants.ts` |
