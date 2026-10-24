@@ -44,9 +44,9 @@ blocked, conversations resolved, branch up to date. Job names are the ones of `T
 
 | Step | CI work | Add to the ruleset as required |
 |---|---|---|
-| 0.1 | `ci.yml` with `lint-and-types` (Nx affected lint and type-check); create the ruleset | `lint-and-types` |
+| 0.1 | `ci.yml` with `lint-and-types` (Nx affected lint and type-check, and `format:check`); create the ruleset | `lint-and-types` |
 | 0.4 | `integration-tests` job born with Postgres and Redis services: `prisma migrate deploy` on an empty database and `check-rollbacks` | `integration-tests` |
-| 0.5 | Dockerfiles for `api` and `worker`; `security-scan` job born: build both images, Trivy (CRITICAL/HIGH fails; unfixed ignored) | `security-scan` |
+| 0.5 | Dockerfiles for `api` and `worker`; `security-scan` job born: build both images, Trivy (CRITICAL/HIGH fails; unfixed ignored); `nx affected --target=build` joins `lint-and-types` | `security-scan` |
 | 0.6 | add gitleaks to `security-scan`; add commitlint, `validate:translations` and `validate:deprecations` to `lint-and-types` | none new |
 | 1.1 | `unit-tests` job with Nx affected and coverage thresholds (only for paths that exist so far) | `unit-tests` |
 | 1.3 | `integration-tests` now runs the integration suites; `security-tests` job born with the tenant isolation suite | `security-tests` (no bypass) |
@@ -72,14 +72,19 @@ is fast, safe and consistent.
 - [ ] Create apps: `api` (NestJS), `web` (Next.js), `worker` (NestJS), `widget` (Vite/vanilla TS) — `admin` is DEFERRED (Phase 2, Step 7.6)
 - [ ] Configure `tsconfig.base.json` with strict mode per `TDD_02 §11` (TypeScript 5.9)
 - [ ] Configure project tags (`scope:core-domain`, `scope:core`, …) and module boundaries per `TDD_14 §6`, `§9`
+- [ ] Root `package.json` scripts as in `TDD_14 §2` (`lint`, `lint:fix`, `type-check`, `format`, `format:check`, `test` and its variants), and a `lint`, `type-check` and `test` target in every `project.json` (the `build` target comes with the Dockerfiles in Step 0.5)
+- [ ] `.prettierrc` per `TDD_14 §6` and a `.prettierignore` that excludes `docs/` (the specifications are maintained by hand with wide tables), generated code, build output, `node_modules` and the lockfile, so that `format:check` covers code and configuration only
 - [ ] `eslint.config.js` (flat), Prettier, `.env.example` files per `TDD_14 §6`, `§10`; include a `no-restricted-syntax` rule that forbids calling `$transaction` on the Prisma client (services use `PrismaService.transaction(fn)`, created in Step 0.4; the rule exempts `PrismaService` itself)
-- [ ] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
+- [ ] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`; it runs Nx affected `lint` and `type-check` and `pnpm format:check`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
+- [ ] `.github/dependabot.yml` (weekly, grouped by ecosystem, as `TDD_03 §4` and `TDD_05 §7` already describe): `npm` for the pnpm workspace root and `github-actions` (it also moves the SHA pins and their version comments); the `docker` entries for the Dockerfiles and the compose file are added in Steps 0.2 and 0.5, when those files exist. Minor and patch updates are grouped, major updates come as separate PRs and are never merged without reading the changelog, because the stack's versions are pinned by the TDD and an upgrade re-fetches its documentation first (`CLAUDE.md`, deprecation discipline). `commit-message` prefixes `chore(deps)` (npm, docker) and `ci(deps)` (actions) so the commits satisfy commitlint, whose `deps` scope already exists; open-pull-requests limit 5
+- [ ] Repository security settings, applied once with `gh api` and recorded in the README: enable Dependabot alerts and Dependabot security updates (free on private repositories). **Secret scanning and push protection are tried, not assumed:** for private repositories they belong to GitHub Secret Protection, a paid add-on, and on this account `security_and_analysis` reports nothing; verify when doing the step, enable them if the plan allows, and otherwise rely on gitleaks (pre-commit and `security-scan`, Step 0.6), which is the layer the plan depends on. Until Step 0.6 lands no secret exists in the repository, and nothing may be committed that looks like one
 
-**Files:** `nx.json`, `tsconfig.base.json`, `package.json`, `.nvmrc`, `eslint.config.js`, `apps/*/project.json`
-**TDD:** `TDD_01 §1`, `§2.4`, `TDD_14 §6`, `§9`
+**Files:** `nx.json`, `tsconfig.base.json`, `package.json`, `.nvmrc`, `eslint.config.js`, `.prettierrc`, `.prettierignore`, `apps/*/project.json`, `.github/dependabot.yml`
+**TDD:** `TDD_01 §1`, `§2.4`, `TDD_14 §2`, `§6`, `§9`, `TDD_03 §4`, `TDD_05 §7`
 **Done when:** `pnpm nx graph` renders, `pnpm lint` passes on the empty workspace, an
 import from `libs/core/config` inside `apps/web` fails lint, `cat .nvmrc` matches the
-Node version pinned in `TDD_01 §2.4`, and `lint-and-types` is green on GitHub for a PR.
+Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a badly formatted file, `lint-and-types` is green on GitHub for a PR, GitHub reads
+`dependabot.yml` without errors (Insights, Dependency graph, Dependabot) and Dependabot alerts are on.
 
 ### Step 0.2 — Local infrastructure
 - [ ] `docker-compose.yml` with Postgres 18.6, PgBouncer, Redis 8.10, MinIO (+ `minio-init`), Mailpit, ClamAV. PgBouncer authenticates every role through an `auth_user` + `auth_query` lookup (not a single fixed `DB_USER`), because from Step 0.4 the api and the worker connect as different roles; verify the exact settings of the pinned image with Context7
@@ -144,6 +149,7 @@ and `integration-tests` is green on GitHub.
 - [ ] Sentry instrumentation file
 - [ ] Dockerfiles for `api` and `worker` (multi-stage, pinned Node image from `TDD_01 §2.4`, non-root user)
 - [ ] CI: create the `security-scan` job: build both images and scan them with Trivy (CRITICAL/HIGH fails, unfixed ignored). Add `security-scan` as a required check
+- [ ] A `build` target in every `project.json` (`api`, `worker`, `web`, `widget`) and `nx affected --target=build` in `lint-and-types`, because a project that type-checks can still fail to compile and the `widget` has no Dockerfile that would build it
 
 **TDD:** `TDD_04 §1`, `§2`, `§3`, `§4`, `TDD_02 §7`
 **Done when:** `GET /health/ready` returns 200 and `GET /metrics` exposes metrics, both
@@ -151,7 +157,7 @@ and `integration-tests` is green on GitHub.
 both images build and pass Trivy, and `security-scan` is green on GitHub.
 
 ### Step 0.6 — Tooling
-- [ ] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`) and commit-msg hooks
+- [ ] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`) and commit-msg hooks; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
 - [ ] `scripts/validate-translations.ts`, `validate-deprecations.ts`, `check-isolation-coverage.ts`
 - [ ] CI: add gitleaks to `security-scan`, and commitlint, `validate:translations` and `validate:deprecations` to `lint-and-types`. The remaining jobs of `TDD_03 §4` are created by the steps listed in "CI rollout" (unit tests 1.1, security tests 1.3, e2e and Lighthouse 3.1)
 
