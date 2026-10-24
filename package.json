@@ -31,6 +31,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
     "eslint": "10.9.1",
+    "eslint-import-resolver-typescript": "4.4.5",
     "eslint-plugin-import-x": "4.16.1",
     "jest": "30.5.1",
     "jest-environment-node": "30.5.1",

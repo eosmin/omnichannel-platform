@@ -478,6 +478,7 @@ phase starts (YAGNI).
 | `typescript-eslint` | `8.69.0` |
 | `@nx/eslint-plugin` | `23.2.0` |
 | `eslint-plugin-import-x` | `4.16.1` |
+| `eslint-import-resolver-typescript` | `4.4.5` — import-x loads it by name; without it lint fails when `NODE_ENV=test` |
 | `prettier` | `3.9.6` |
 | `prettier-plugin-tailwindcss` | `0.8.1` |
 | `husky` | `9.1.7` |
