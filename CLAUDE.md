@@ -143,8 +143,8 @@ broken steps.
 | Metric name                                             | `libs/core/metrics/metric-names.ts`                 |
 | Staff role / permission (Phase 2, not built in the MVP) | `libs/core/admin/staff-constants.ts`                |
 | TanStack query key                                      | `libs/api-client/src/query-keys.ts`                 |
-| Env variable (api/worker)                               | `libs/core/config/env.ts` (add to Zod schema first) |
-| Env variable (web, `NEXT_PUBLIC_*`)                     | `apps/web/lib/env.ts` (add to Zod schema first)     |
+| Env variable (api/worker)                               | `libs/core/config/env-schema.ts` (add to the Zod schema, then to `.env.example`) |
+| Env variable (web, `NEXT_PUBLIC_*`)                     | `apps/web/lib/env-schema.ts` (add to the Zod schema, then to `apps/web/.env.example`) |
 
 ---
 

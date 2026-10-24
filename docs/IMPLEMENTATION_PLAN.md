@@ -156,24 +156,24 @@ Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a
 `platform-dev` bucket exists in SeaweedFS.
 
 ### Step 0.3 — Constants library (blocking dependency for everything)
-- [ ] `libs/core/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
-- [ ] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
-- [ ] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
-- [ ] `libs/core/errors/error-codes.ts` + `PlatformException`
-- [ ] `libs/core/events/event-names.ts` + `event-payloads.ts`
-- [ ] `libs/core/cache/cache-keys.ts` + `CacheTTL`
-- [ ] `libs/core/auth/permissions.ts` + `RolePresets` (`libs/core/admin/staff-constants.ts` + `StaffRolePresets` DEFERRED)
-- [ ] `libs/core/domain/status-enums.ts` + i18n keys, colors, transitions, editable fields
-- [ ] `libs/core/api/api-routes.ts` (`ApiRoutes`, `InfraRoutes`; `AdminRoutes` DEFERRED)
-- [ ] `libs/core/queues/queue-names.ts` + `JobNames`; `schedules.ts` + `LockNames`
-- [ ] `libs/core/realtime/realtime-events.ts` (complete `RealtimeEventMap`) + `room-names.ts`
-- [ ] `libs/core/notifications/notification-constants.ts` (complete `NotificationDefaults`)
-- [ ] `libs/core/audit/audit-actions.ts`, `libs/core/metrics/metric-names.ts`
-- [ ] `libs/core/analytics/analytics-constants.ts`, `libs/core/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
-- [ ] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
-- [ ] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
-- [ ] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
-- [ ] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
+- [x] `libs/core/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
+- [x] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
+- [x] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
+- [x] `libs/core/errors/error-codes.ts` + `PlatformException`
+- [x] `libs/core/events/event-names.ts` + `event-payloads.ts`
+- [x] `libs/core/cache/cache-keys.ts` + `CacheTTL`
+- [x] `libs/core/auth/permissions.ts` + `RolePresets` (`libs/core/admin/staff-constants.ts` + `StaffRolePresets` DEFERRED)
+- [x] `libs/core/domain/status-enums.ts` + i18n keys, colors, transitions, editable fields
+- [x] `libs/core/api/api-routes.ts` (`ApiRoutes`, `InfraRoutes`; `AdminRoutes` DEFERRED)
+- [x] `libs/core/queues/queue-names.ts` + `JobNames`; `schedules.ts` + `LockNames`
+- [x] `libs/core/realtime/realtime-events.ts` (complete `RealtimeEventMap`) + `room-names.ts`
+- [x] `libs/core/notifications/notification-constants.ts` (complete `NotificationDefaults`)
+- [x] `libs/core/audit/audit-actions.ts`, `libs/core/metrics/metric-names.ts`
+- [x] `libs/core/analytics/analytics-constants.ts`, `libs/core/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
+- [x] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
+- [x] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
+- [x] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
+- [x] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
 
 **TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2; the inventory constants of `TDD_16 §3` and the shipping constants of `TDD_17 §3`)
 **Done when:** every constant file compiles and is exported from its barrel, and the
@@ -185,7 +185,7 @@ Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a
 - [ ] `libs/core/database/prisma.config.ts` + root re-export
 - [ ] Initial migration
 - [ ] Raw SQL migration: extensions, generated `tsvector` columns, GIN/trigram indexes, partial indexes, partial uniques, CHECK constraints
-- [ ] **Database roles** (decision D16, `MVP_TRIM_CHECKLIST.md` §7): the raw SQL migration creates `platform_app` and `platform_worker` idempotently as `NOLOGIN` (the worker `BYPASSRLS`, neither a superuser), grants `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables and sequences and sets `ALTER DEFAULT PRIVILEGES` so tables created by later migrations are covered, then revokes `UPDATE` and `DELETE` on `audit_logs` from `platform_app` (`TDD_05 §9.3`; the worker keeps `DELETE` for the retention export). `scripts/set-db-role-passwords.ts` gives both roles `LOGIN` and their passwords from `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`; it runs after `migrate deploy` in `bootstrap.sh`, CI and the Railway release. Passwords are never in a migration
+- [ ] **Database roles** (decision D16, `MVP_TRIM_CHECKLIST.md` §7): the raw SQL migration creates `platform_app` and `platform_worker` idempotently as `NOLOGIN` (the worker `BYPASSRLS`, neither a superuser), grants `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables and sequences and sets `ALTER DEFAULT PRIVILEGES` so tables created by later migrations are covered, then revokes `UPDATE` and `DELETE` on `audit_logs` from `platform_app` (`TDD_05 §9.3`; the worker keeps `DELETE` for the retention export). `scripts/set-db-role-passwords.ts` gives both roles `LOGIN` and their passwords from `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`; it runs after `migrate deploy` in `bootstrap.sh`, CI and the Railway release. Passwords are never in a migration. The script validates them with its own Zod schema, and `scripts/validate-env-example.ts` imports that schema in place of its `TOOLING_KEYS` list (Step 0.3)
 - [ ] Connections: the api uses `DATABASE_URL` as `platform_app`, the worker as `platform_worker`, migrations, the owner bootstrap and the dev fixtures use `DIRECT_DATABASE_URL` (owner). RLS policies are NOT enabled yet: they arrive in Step 7.1, so until then both roles behave like a normal application user
 - [ ] Rollback scripts in `libs/core/database/rollbacks/` + `scripts/check-rollbacks.ts`
 - [ ] `PrismaService` with `@prisma/adapter-pg` and the read-replica extension. Shaped from the start so Step 7.1 only changes its internals: `client` is a getter that returns the current tenant transaction when one exists and the base client otherwise (the mechanism of `TDD_01 §3.2`, verified by the 2026-10-24 spike, so Step 7.1 only adds the interceptor and the policies), services never call `client.$transaction` directly but `PrismaService.transaction(fn)`, which joins the tenant transaction when there is one (a lint rule forbids the direct call), and the replica is reached through `PrismaService.replica()`, not `client.$replica()`. In the MVP there is no replica, so `replica()` returns the same database
@@ -973,7 +973,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 0: Foundation** | | | | |
 | 0.1 | Nx workspace | done | #7, #8 | 2026-10-24 |
 | 0.2 | Local infrastructure | done | #16 | 2026-10-24 |
-| 0.3 | Constants library (blocking dependency for everything) | todo | | |
+| 0.3 | Constants library (blocking dependency for everything) | done | #23 | 2026-10-24 |
 | 0.4 | Database schema | todo | | |
 | 0.5 | Observability | todo | | |
 | 0.6 | Tooling | todo | | |
