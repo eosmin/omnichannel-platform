@@ -38,3 +38,7 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
+    ignore:
+      # Image tags are pinned by the TDD (TDD_01 §2.4), like the npm packages: only majors open a PR
+      - dependency-name: '*'
+        update-types: [version-update:semver-minor, version-update:semver-patch]

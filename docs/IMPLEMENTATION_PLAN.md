@@ -962,6 +962,8 @@ How to keep it:
 2. When the step is complete, the last commit of its PR sets `done`, checks the step's task boxes, and fills in the PR
    number and the date (open the PR first to know its number, then add it as the last commit).
 3. One step, one branch, one independent PR from an up-to-date `main`; never stack PRs.
+   Never open a PR that only changes documentation: the row, the boxes and any doc fix travel inside the step's own PR,
+   or inside the next PR that carries a real change.
 4. Step 2.1 does not exist: it moved to Step 1.0. Step 8.3 is optional and is not needed to complete the MVP.
 
 The MVP is complete when every row that is not `deferred` and not optional is `done`: **48 steps**.
@@ -970,7 +972,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 |---|---|---|---|---|
 | **Milestone 0: Foundation** | | | | |
 | 0.1 | Nx workspace | done | #7, #8 | 2026-10-24 |
-| 0.2 | Local infrastructure | in progress | #16 | 2026-10-24 |
+| 0.2 | Local infrastructure | done | #16 | 2026-10-24 |
 | 0.3 | Constants library (blocking dependency for everything) | todo | | |
 | 0.4 | Database schema | todo | | |
 | 0.5 | Observability | todo | | |

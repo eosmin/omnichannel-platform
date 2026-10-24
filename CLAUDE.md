@@ -63,6 +63,11 @@ broken steps.
   etc.).
 - Push only that branch, then open a PR against `main`. No direct pushes to
   `main`, ever.
+- **No documentation-only PRs.** A PR must carry a real change (code,
+  configuration, CI). The step's progress row, its task boxes and any doc
+  fix go inside the step's own PR (`IMPLEMENTATION_PLAN.md` → "Progress
+  tracking"). A doc slip found after the merge waits for the next PR that
+  carries a real change; a red `main` is fixed by its own fix PR.
 
 ---
 
