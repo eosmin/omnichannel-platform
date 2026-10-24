@@ -36,16 +36,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
-
-      # Nx task cache: pull requests only restore it, pushes to main save it
-      - name: Restore Nx cache
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ github.sha }}
-          restore-keys: nx-${{ runner.os }}-
-
       - run: pnpm format:check
       - name: Lint and type-check (affected on pull requests, everything on main)
         run: |
@@ -54,10 +44,3 @@ jobs:
           else
             pnpm exec nx run-many --targets=lint,type-check --all --parallel=3
           fi
-
-      - name: Save Nx cache
-        if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ github.sha }}
