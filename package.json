@@ -20,7 +20,8 @@
     "type-check": "nx run-many --target=type-check --all",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
-    "infra:logs": "docker compose logs -f"
+    "infra:logs": "docker compose logs -f",
+    "validate:env": "tsx scripts/validate-env-example.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
