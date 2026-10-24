@@ -20,6 +20,10 @@ jobs:
   lint-and-types:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # nx-set-shas reads the last successful run of this workflow to find the base commit on main
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
