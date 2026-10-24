@@ -970,7 +970,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 |---|---|---|---|---|
 | **Milestone 0: Foundation** | | | | |
 | 0.1 | Nx workspace | done | #7, #8 | 2026-10-24 |
-| 0.2 | Local infrastructure | in progress | | 2026-10-24 |
+| 0.2 | Local infrastructure | in progress | #16 | 2026-10-24 |
 | 0.3 | Constants library (blocking dependency for everything) | todo | | |
 | 0.4 | Database schema | todo | | |
 | 0.5 | Observability | todo | | |
