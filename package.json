@@ -21,7 +21,11 @@
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f",
-    "validate:env": "tsx scripts/validate-env-example.ts"
+    "validate:env": "tsx scripts/validate-env-example.ts",
+    "db:migrate": "prisma migrate deploy && tsx scripts/set-db-role-passwords.ts",
+    "db:check-rollbacks": "tsx scripts/check-rollbacks.ts",
+    "db:seed": "prisma db seed",
+    "db:fixtures": "tsx --tsconfig libs/core/database/tsconfig.json libs/core/database/prisma/dev-fixtures.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
