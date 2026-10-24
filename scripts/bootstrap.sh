@@ -6,6 +6,7 @@ command -v node   >/dev/null || { echo "Node.js 22+ required"; exit 1; }
 command -v docker >/dev/null || { echo "Docker required"; exit 1; }
 corepack enable >/dev/null 2>&1 || true          # pnpm version comes from package.json "packageManager"
 
+command -v gitleaks >/dev/null || { echo "gitleaks required by the pre-commit hook: brew install gitleaks"; exit 1; }
 command -v pnpm   >/dev/null || { echo "pnpm required: run 'corepack enable' (it may need elevated permissions)"; exit 1; }
 
 node_major=$(node -v | sed 's/v\([0-9]*\).*/\1/')
