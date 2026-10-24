@@ -124,9 +124,19 @@ describe('the HTTP platform', () => {
     })
 
     it('refuses readiness when the database is down, and liveness stays up', async () => {
-      database.queryRaw.mockRejectedValue(new Error('connection refused'))
+      database.queryRaw.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.7:6432'))
       expect((await fetch(`${baseUrl}/health/ready`)).status).toBe(503)
       expect((await fetch(`${baseUrl}/health`)).status).toBe(200)
+    })
+
+    it('names the check that failed, in the error contract, without its message', async () => {
+      database.queryRaw.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.7:6432'))
+      const response = await fetch(`${baseUrl}/health/ready`)
+      const text = await response.text()
+      const body = JSON.parse(text) as ErrorBody
+      expect(body.error.metadata).toEqual({ checks: { database: 'down' } })
+      expect(body.correlationId).toMatch(/^[0-9a-f-]{36}$/)
+      expect(text).not.toContain('10.0.0.7')
     })
 
     it('refuses readiness when the database does not answer in time', async () => {

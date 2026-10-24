@@ -37,6 +37,23 @@ const CODE_BY_STATUS: Readonly<Record<number, ErrorCode>> = {
   429: ErrorCodes.RATE_LIMIT_EXCEEDED
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+// The status of each check of a failing probe, from the body Terminus raised: { database: 'down' }.
+// Only the status travels. The message of a failed check names hosts and ports of the platform, and
+// the probes answer on the public port of the service.
+export function checksOf(response: unknown): Record<string, string> {
+  if (!isRecord(response) || !isRecord(response['details'])) return {}
+  return Object.fromEntries(
+    Object.entries(response['details']).map(([name, check]) => [
+      name,
+      isRecord(check) && typeof check['status'] === 'string' ? check['status'] : 'unknown'
+    ])
+  )
+}
+
 export function codeForHttpStatus(status: number): ErrorCode {
   const known = CODE_BY_STATUS[status]
   if (known !== undefined) return known
@@ -86,13 +103,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // dependency is down, and that is their job, not an incident to page about.
     if (exception instanceof HttpException) {
       const status = exception.getStatus()
-      const serverFailure = status >= 500 && !INFRA_PATHS.has(request.path)
+      const probe = INFRA_PATHS.has(request.path)
+      const serverFailure = status >= 500 && !probe
       if (serverFailure) this.report(exception, request)
       this.send(response, status, {
         error: {
           code: codeForHttpStatus(status),
           message: serverFailure ? GENERIC_MESSAGE : exception.message,
-          metadata: {}
+          // A failing probe says which of its checks failed, so that whoever reads it knows where to look
+          metadata: probe ? { checks: checksOf(exception.getResponse()) } : {}
         },
         correlationId
       })
