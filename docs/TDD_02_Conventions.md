@@ -1,6 +1,8 @@
 # TDD 02 — Conventions & Type Safety
 
 > Part of the Omnichannel Commerce Platform TDD v1.1
+> **MVP v1.2:** this file describes the full product. Before implementing from it, read `MVP_TRIM_CHECKLIST.md`;
+> where the two disagree, the checklist wins.
 > **Read this document before writing any code.**
 
 ---

@@ -1,6 +1,8 @@
 # TDD 01 — Architecture
 
 > Part of the Omnichannel Commerce Platform TDD v1.1
+> **MVP v1.2:** this file describes the full product. Before implementing from it, read `MVP_TRIM_CHECKLIST.md`;
+> where the two disagree, the checklist wins.
 > Covers: tech stack detail, monorepo structure, multi-tenancy, full data model
 
 ---
@@ -614,7 +616,9 @@ async create(@CurrentStore() store: Store, @Body(new ZodValidationPipe(createCon
 Zod schemas for request bodies never declare `storeId` / `organizationId`; a body that
 carries one is stripped by `z.object()` before it reaches a service.
 
-**Layer 3 — PostgreSQL Row-Level Security (enabled in the PRODUCTION phase).**
+**Layer 3 — PostgreSQL Row-Level Security.** In the v1.2 MVP the roles are created in Step 0.4 and the policies enabled in Step 7.1 (see `MVP_TRIM_CHECKLIST.md`, D16).
+
+> **Illustrative only.** The `tenantRls` snippet below is wrong: the nested `client.$transaction` does not run `query(args)` on the transaction's connection, so `app.store_ids` would never reach the query. Do not copy it. Step 7.1 starts with a spike (Context7, Prisma 7 + PgBouncer transaction mode) to find the working mechanism, routed through `PrismaService.transaction(fn)`.
 
 RLS is defence in depth against a missed `where: { storeId }`. Because PgBouncer runs in
 transaction mode, the tenant variable is only meaningful **inside a transaction**, so the

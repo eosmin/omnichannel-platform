@@ -1,6 +1,8 @@
 # TDD 15 — Internal Admin Console
 
 > Part of the Omnichannel Commerce Platform TDD v1.1
+> **MVP v1.2:** this file describes the full product. Before implementing from it, read `MVP_TRIM_CHECKLIST.md`;
+> where the two disagree, the checklist wins.
 > Covers: staff-only backoffice, organization management, impersonation,
 > AI operations, plugin moderation, feature flags, audit log. Plan editor and
 > cross-tenant analytics are specified as Phase 2 / MATURE.

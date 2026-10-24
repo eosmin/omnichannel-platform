@@ -8,7 +8,7 @@
 
 | Version | Date | Summary |
 |---|---|---|
-| 1.2 | 2026-10-23 | **Single-owner MVP scope.** The SaaS layer (billing, plans, quotas, dunning, public signup, internal admin console, referrals, SaaS support, autonomous chatbot) is deferred to Phase 2. Multi-tenancy (Organization → Store → Membership, `storeId` isolation) is unchanged. Login is magic link only (no password, no Google); Bull Board is gated by an email allowlist. See "MVP scope" below. Only `INDEX.md`, `TDD_00_Overview.md` and `IMPLEMENTATION_PLAN.md` were edited, and `MVP_TRIM_CHECKLIST.md` was added; the other TDD files are unchanged and their deferred or superseded sections stay in place as the Phase 2 specification. |
+| 1.2 | 2026-10-24 | **Single-owner MVP scope.** The SaaS layer (billing, plans, quotas, dunning, public signup, internal admin console, referrals, SaaS support, autonomous chatbot) is deferred to Phase 2. Multi-tenancy (Organization → Store → Membership, `storeId` isolation) is unchanged. Login is magic link only (no password, no Google); Bull Board is gated by an email allowlist. See "MVP scope" below. The MVP also includes robust inventory (warehouses, transfers, counts: `TDD_16_Inventory.md`) and the runtime for integration plugins (the marketplace stays deferred). Only `INDEX.md`, `TDD_00_Overview.md` and `IMPLEMENTATION_PLAN.md` were edited, and `MVP_TRIM_CHECKLIST.md` and `TDD_16_Inventory.md` were added; the other TDD files are unchanged and their deferred or superseded sections stay in place as the Phase 2 specification. |
 | 1.1 | 2026-09-03 | Fixes from `AUDIT_TDD_v1.0.md`: Prisma schema mapped to `snake_case` and completed (identities per store, tokens, invitations, session families, idempotency, store settings, API keys, notification keys); Prisma 7 / ESLint 10 / Next 16 / Stripe Meters / Zod 4 idioms; TypeScript pinned to 5.9; inbound pipeline resolves the store from the recipient connection; tenant context via `X-Store-Id` header and `/s/:storeId` URLs; single source of plan limits (`PlanLimits` + `OrganizationOverride`); web widget and email specified as channel plugins; autonomous chatbot kept as an explicit, narrow exception; worker is a NestJS app; unified infra versions; complete dependency list. |
 | 1.0 | — | Initial specification. |
 
@@ -24,7 +24,8 @@ only the context needed for the current task instead of the entire specification
 1. `TDD_00_Overview.md` — What we are building and why
 2. `TDD_02_Conventions.md` — **Read before writing any code.** Constants, naming, type safety
 3. `IMPLEMENTATION_PLAN.md` — Exact build order, milestone by milestone
-4. Then load the specific TDD file for the module you are implementing
+4. `MVP_TRIM_CHECKLIST.md` — what the v1.2 MVP omits or changes in each TDD file (it wins over them)
+5. Then load the specific TDD file for the module you are implementing
 
 ---
 
@@ -49,6 +50,7 @@ only the context needed for the current task instead of the entire specification
 | `TDD_14_DX.md` | Local setup, tooling, linting, git workflow, Nx | Repo setup, CI |
 | `TDD_15_InternalAdmin.md` | Staff backoffice, org overrides, impersonation, plan editor, AI ops, cross-tenant BI | Internal admin console work |
 | `IMPLEMENTATION_PLAN.md` | Step-by-step build order with dependencies | **Always** |
+| `TDD_16_Inventory.md` | v1.2: warehouses, stock levels, movement ledger, reservations, transfers, physical counts | Inventory and order work (Milestone 4) |
 | `MVP_TRIM_CHECKLIST.md` | v1.2: per-file list of schema, constants, behavior and tests to omit or adjust for the single-owner MVP | **Always**, with `IMPLEMENTATION_PLAN.md` |
 | `AUDIT_TDD_v1.0.md` | Findings that produced v1.1 (historical record) | Only when a v1.1 change needs its rationale |
 
@@ -66,6 +68,10 @@ file-by-file edits live in `MVP_TRIM_CHECKLIST.md`.
 test suite, `TenantGuard` + `X-Store-Id`, invitations, roles and permissions, all five channel
 plugins, inbox, customers, orders, inventory, search, analytics, settings, security hardening,
 deployment, monitoring.
+
+**Added to the MVP after the first scoping (owner's decisions D10 and D11):** robust inventory
+(`TDD_16_Inventory.md`, Steps 4.1 to 4.7) and the runtime for integration plugins (Steps 5.6 and
+5.7; the marketplace stays deferred).
 
 **Deferred to Phase 2:**
 
@@ -99,10 +105,11 @@ deployment, monitoring.
 **Platform:** the MVP deploys on Railway; Google Cloud (`TDD_03`, `TDD_05 §1.1`, `TDD_04 §5`)
 is the SaaS-phase target. `MVP_TRIM_CHECKLIST.md` §3 lists what changes in those files.
 
-**Decisions:** `MVP_TRIM_CHECKLIST.md` §7 holds nine owner-approved decisions (magic-link
+**Decisions:** `MVP_TRIM_CHECKLIST.md` §7 holds sixteen owner-approved decisions (D1 to D16) (magic-link
 expiry, throttle values, the seed split, the production bootstrap, e2e login through Mailpit,
-Slack alerts, PR approvals, no welcome email, Railway). One item stays open: the Prometheus/Grafana
-stack for queue and tenant alerts on Railway (Step 7.4).
+Slack alerts, PR approvals, no welcome email, Railway, integration plugins, robust inventory, Row-Level Security (roles in Step 0.4, policies in Step 7.1),
+Grafana Cloud, the release flow, the configurable low-stock alert and Postgres 18 on Railway). Nothing is open for the owner; two checks happen when their steps start
+(Railway's release mechanism in Step 7.3, Grafana Cloud's limits in Step 7.4).
 
 **Reactivating Phase 2:** un-defer Milestone 6 first, then re-add the trimmed items above as
 additive migrations and decorators on endpoints that already exist.

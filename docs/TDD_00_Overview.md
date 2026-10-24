@@ -110,10 +110,10 @@ Use these terms consistently in code, comments, UI copy and commit messages.
 - Conversation lifecycle (open, pending, resolved, snoozed, archived, spam)
 - Customer profiles with cross-channel identity merging
 - Order creation and status management from within a conversation
-- Basic product catalog and inventory movements
+- Product catalog and robust inventory: warehouses that serve several stores, stock per warehouse, transfers and physical counts (`TDD_16_Inventory.md`)
 - Team management with roles and permissions
 - Multi-store switching
-- Plugin SDK and official channel plugins
+- Plugin SDK, official channel plugins and the runtime for private and third-party integration plugins (the marketplace is deferred)
 - Observability, security, backup
 
 ### Explicitly NOT in scope for first implementation

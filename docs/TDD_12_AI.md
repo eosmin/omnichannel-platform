@@ -1,6 +1,8 @@
 # TDD 12 — AI Features
 
 > Part of the Omnichannel Commerce Platform TDD v1.1
+> **MVP v1.2:** this file describes the full product. Before implementing from it, read `MVP_TRIM_CHECKLIST.md`;
+> where the two disagree, the checklist wins.
 > Covers: AI principles, service layer, suggested replies, tagging, sentiment, cost control, autonomous chatbot
 
 ---

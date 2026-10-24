@@ -72,7 +72,7 @@ is fast, safe and consistent.
 - [ ] Create apps: `api` (NestJS), `web` (Next.js), `worker` (NestJS), `widget` (Vite/vanilla TS) — `admin` is DEFERRED (Phase 2, Step 7.6)
 - [ ] Configure `tsconfig.base.json` with strict mode per `TDD_02 §11` (TypeScript 5.9)
 - [ ] Configure project tags (`scope:core-domain`, `scope:core`, …) and module boundaries per `TDD_14 §6`, `§9`
-- [ ] `eslint.config.js` (flat), Prettier, `.env.example` files per `TDD_14 §6`, `§10`
+- [ ] `eslint.config.js` (flat), Prettier, `.env.example` files per `TDD_14 §6`, `§10`; include a `no-restricted-syntax` rule that forbids calling `$transaction` on the Prisma client (services use `PrismaService.transaction(fn)`, created in Step 0.4; the rule exempts `PrismaService` itself)
 - [ ] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
 
 **Files:** `nx.json`, `tsconfig.base.json`, `package.json`, `.nvmrc`, `eslint.config.js`, `apps/*/project.json`
@@ -82,9 +82,9 @@ import from `libs/core/config` inside `apps/web` fails lint, `cat .nvmrc` matche
 Node version pinned in `TDD_01 §2.4`, and `lint-and-types` is green on GitHub for a PR.
 
 ### Step 0.2 — Local infrastructure
-- [ ] `docker-compose.yml` with Postgres 18.6, PgBouncer, Redis 8.10, MinIO (+ `minio-init`), Mailpit, ClamAV
+- [ ] `docker-compose.yml` with Postgres 18.6, PgBouncer, Redis 8.10, MinIO (+ `minio-init`), Mailpit, ClamAV. PgBouncer authenticates every role through an `auth_user` + `auth_query` lookup (not a single fixed `DB_USER`), because from Step 0.4 the api and the worker connect as different roles; verify the exact settings of the pinned image with Context7
 - [ ] `scripts/bootstrap.sh`
-- [ ] `.env.example` (api/worker) and `apps/web/.env.example` per `TDD_02 §9`, **MVP trim:** omit `GOOGLE_*`, `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `STAFF_*`
+- [ ] `.env.example` (api/worker) and `apps/web/.env.example` per `TDD_02 §9`, **MVP trim:** omit `GOOGLE_*`, `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `STAFF_*`. Document two `DATABASE_URL` examples (api as `platform_app`, worker as `platform_worker`) next to `DIRECT_DATABASE_URL` (owner), plus `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`, which only the role script of Step 0.4 reads (validated with its own Zod schema, never imported by the api or worker); `scripts/validate-env-example.ts` diffs `.env.example` against the api/worker schema plus that script's schema
 
 **TDD:** `TDD_03 §3.1`, `TDD_14 §1`, `§10`
 **Done when:** `docker compose up -d --wait` succeeds, every health check passes, and the
@@ -105,29 +105,31 @@ Node version pinned in `TDD_01 §2.4`, and `lint-and-types` is green on GitHub f
 - [ ] `libs/core/audit/audit-actions.ts`, `libs/core/metrics/metric-names.ts`
 - [ ] `libs/core/analytics/analytics-constants.ts`, `libs/core/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
 - [ ] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
+- [ ] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
 - [ ] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
 
-**TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2)
+**TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2; the inventory constants of `TDD_16 §3`)
 **Done when:** every constant file compiles and is exported from its barrel, and the
 `_AssertComplete` check in `realtime-events.ts` passes.
 **This step is non-negotiable.** Everything downstream imports from here.
 
 ### Step 0.4 — Database schema
-- [ ] `libs/core/database/prisma/schema.prisma` — full schema with `@@map`/`@map`, generator `prisma-client`
+- [ ] `libs/core/database/prisma/schema.prisma` — the full schema with `@@map`/`@map`, generator `prisma-client`, **without the inventory models of `TDD_16 §2`**, which arrive in Step 4.2 as an additive migration
 - [ ] `libs/core/database/prisma.config.ts` + root re-export
 - [ ] Initial migration
 - [ ] Raw SQL migration: extensions, generated `tsvector` columns, GIN/trigram indexes, partial indexes, partial uniques, CHECK constraints
+- [ ] **Database roles** (decision D16, `MVP_TRIM_CHECKLIST.md` §7): the raw SQL migration creates `platform_app` and `platform_worker` idempotently as `NOLOGIN` (the worker `BYPASSRLS`, neither a superuser), grants `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables and sequences and sets `ALTER DEFAULT PRIVILEGES` so tables created by later migrations are covered, then revokes `UPDATE` and `DELETE` on `audit_logs` from `platform_app` (`TDD_05 §9.3`; the worker keeps `DELETE` for the retention export). `scripts/set-db-role-passwords.ts` gives both roles `LOGIN` and their passwords from `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`; it runs after `migrate deploy` in `bootstrap.sh`, CI and the Railway release. Passwords are never in a migration
+- [ ] Connections: the api uses `DATABASE_URL` as `platform_app`, the worker as `platform_worker`, migrations, the owner bootstrap and the dev fixtures use `DIRECT_DATABASE_URL` (owner). RLS policies are NOT enabled yet: they arrive in Step 7.1, so until then both roles behave like a normal application user
 - [ ] Rollback scripts in `libs/core/database/rollbacks/` + `scripts/check-rollbacks.ts`
-- [ ] `PrismaService` with `@prisma/adapter-pg` and the read-replica extension
+- [ ] `PrismaService` with `@prisma/adapter-pg` and the read-replica extension. Shaped from the start so Step 7.1 only changes its internals: `client` is a getter (later it returns the request's tenant-scoped client when one exists), services never call `client.$transaction` directly but `PrismaService.transaction(fn)` (a lint rule forbids the direct call), and the replica is reached through `PrismaService.replica()`, not `client.$replica()`. In the MVP there is no replica, so `replica()` returns the same database
 - [ ] `libs/core/crypto` (AES-256-GCM helpers) and the seed
 - [ ] **MVP trim:** the schema has no `Subscription`, plan, `PlanLimits`, `OrganizationOverride`, `AiCreditBalance`, usage/billable-window, dunning, referral or staff/admin tables. They return later as additive migrations
 - [ ] **Owner bootstrap (closed signup):** idempotent and production-safe. Creates the system roles from `RolePresets`, the owner `User` (email from `SEED_OWNER_EMAIL`, marked verified, no password: users have none), the `Organization`, the first `Store` with `StoreSettings` and `RetentionSettings`, and the owner `Membership`. This replaces the password-based seed with test logins in `TDD_03 §5.5`: no `passwordHash`, no shared test password, no `faker`
 - [ ] **Dev fixtures script** (dev and CI only, never run in production): the fixture users without passwords, a second store, products, customers and conversations from `TDD_03 §5.5`. Split, names and env variables per `MVP_TRIM_CHECKLIST.md` §7, D3
+- [ ] CI: create the `integration-tests` job with Postgres and Redis service containers; it runs `prisma migrate deploy` on an empty database, the role-password script and `check-rollbacks`, and the application connects as `platform_app`. Add `integration-tests` as a required check
 
-- [ ] CI: create the `integration-tests` job with Postgres and Redis service containers; it runs `prisma migrate deploy` on an empty database and `check-rollbacks`. Add `integration-tests` as a required check
-
-**TDD:** `TDD_01 §2.3`, `§4`, `§5`, `TDD_03 §5`
-**Done when:** `pnpm prisma migrate deploy` succeeds against a fresh database, `prisma studio`
+**TDD:** `TDD_01 §2.3`, `§3.2`, `§4`, `§5`, `TDD_03 §5`, `TDD_05 §9.3`
+**Done when:** `pnpm prisma migrate deploy` succeeds against a fresh database, a connection as `platform_app` can read and write ordinary tables but is refused `UPDATE` and `DELETE` on `audit_logs`, a connection as `platform_worker` can delete from it, `prisma studio`
 shows every table with snake_case names, the seed runs twice without duplicates and the
 seeded owner exists with a working Membership, and
 `psql -c "\d conversations"` shows `search_vector` only on `messages`, `customers`, `products`,
@@ -162,28 +164,40 @@ exists so far is green on GitHub.
 
 The security foundation. Everything after this depends on it being correct.
 
+### Step 1.0 — Queues, workers and email
+Placed first in this milestone because Step 1.1 sends magic links through the email queue.
+- [ ] `libs/core/queues/queues.module.ts` — `@nestjs/bullmq`, seven queues plus DLQ (the `ai` queue is DEFERRED)
+- [ ] `apps/worker` NestJS bootstrap with health routes, graceful shutdown, `LeaderLockService`
+- [ ] Email worker + `ResendProvider` (+ Mailpit dev provider) + React Email template mechanism + server-side i18n
+- [ ] Resend webhook with transactional idempotency
+
+**TDD:** `TDD_07 §1`, `§4`, `§5`
+**Done when:** a `SEND_EMAIL` job enqueued from a test is delivered and visible in Mailpit, and
+killing the worker mid-job lets the job complete or retry without loss.
+
 ### Step 1.1 — Authentication
 - [ ] `apps/api/src/modules/auth/` — service, controller, JWT strategy. **MVP trim — magic link only:** no password, no Google/OAuth strategy (both DEFERRED)
 - [ ] Access token 15 min; refresh token 7 days, hashed, family-tracked, rotated with reuse detection
 - [ ] Magic link login via `VerificationToken` (single-use, short expiry, hashed at rest): request link and consume link (requesting again is the resend; there is no separate resend route). Consuming is a `POST` with the token in the body, never a `GET` with the token in the URL. It issues the access/refresh pair and marks the email verified. Requesting a link for an unknown email returns the same response as for a known one (no user enumeration). Expiry and throttle values per `MVP_TRIM_CHECKLIST.md` §7, D1, D2, held in constants
-- [ ] Rate limits per `TDD_05 §3.1` (Redis storage), applied to magic-link request, magic-link consume, signup and resend instead of the login/forgot-password endpoints named there
+- [ ] Rate limits per `TDD_05 §3.1` (Redis storage), applied to magic-link request, magic-link consume and invitation accept (`MVP_TRIM_CHECKLIST.md` §7, D2) instead of the login, signup, forgot-password and resend endpoints named there
 - [ ] `ApiRoutes.auth` and `AuditActions` carry the magic-link request/consume routes and events; the password login, `forgotPassword`, reset and `PASSWORD_*` entries from `TDD_02`/`TDD_05` are not created
+- [ ] `MAGIC_LINK` email template, sent through the `SEND_EMAIL` job of Step 1.0
+- [ ] Bull Board at `/admin/queues`, mounted only when `BULL_BOARD_ENABLED=true`; access requires a valid JWT whose `email` claim is in `BULL_BOARD_ADMIN_EMAILS` (empty allowlist = nobody). Applied as middleware, not through `@RequirePermissions()` or `TenantGuard`, because it is cross-tenant. It lives here because it needs this step's JWT strategy. Replay of a dead-lettered job = retry the **failed job in its original queue** from Bull Board (kept by `removeOnFail`); the dead-letter queue is a triage index (see `MVP_TRIM_CHECKLIST.md` §3)
 - [ ] **MVP trim — closed signup:** there is no public signup endpoint and no Organization, Subscription or `AiCreditBalance` created here. Users come from the seed (Step 0.4) or from invitation acceptance (Step 1.4, which needs the `Invitation` model). The session issuing code (access/refresh pair) is a reusable service so Step 1.4 can call it
-
 - [ ] CI: create the `unit-tests` job (Nx affected, coverage thresholds from `TDD_13 §9` only for paths that exist so far). Add `unit-tests` as a required check
 
-**TDD:** `TDD_01 §7`, `TDD_05 §3`, `TDD_07 §5.3`
+**TDD:** `TDD_01 §7`, `TDD_05 §3`, `TDD_07 §3`, `§5.3`
 **Done when:** the seeded owner can request a magic link (visible in Mailpit), consume it,
 and refresh; a magic link cannot be used twice or after expiry; a link requested for an
 unknown email returns the same response as for a known one; and refresh token reuse revokes
-the session family, and `unit-tests` is green on GitHub.
+the session family; `/admin/queues` returns 404 with the flag off, 401 without a token, 403 for an email outside the allowlist and 200 for one inside it; and `unit-tests` is green on GitHub.
 
 ### Step 1.2 — Tenancy
 - [ ] `TenantGuard` reading `X-Store-Id` (cached context: store, organization, membership; no subscription). `AccessLevelGuard` is DEFERRED with dunning
 - [ ] `@CurrentStore()`, `@CurrentUser()`, `@CurrentOrganization()` decorators
 - [ ] `PermissionGuard` + `@RequirePermissions()`
 - [ ] `AuditService` + `AuditInterceptor`
-- [ ] Role seeding with `RolePresets`
+- [ ] System roles come from the owner bootstrap of Step 0.4; `seedTestContext` reuses the same function
 
 **TDD:** `TDD_01 §3.2`, `TDD_02 §4`, `TDD_05 §9`
 **Done when:** the tenant isolation test suite passes for a first resource, a request with
@@ -192,7 +206,7 @@ store the user has no membership in is rejected.
 
 ### Step 1.3 — Tenant isolation test suite
 - [ ] `tests/security/tenant-isolation.spec.ts` — parameterized
-- [ ] `tests/helpers/` — `createTestApp`, `api()`, truncate, `seedTestContext`, token minting (user; staff DEFERRED)
+- [ ] `tests/helpers/` — `createTestApp`, `api()`, truncate, `seedTestContext`, token minting (user; staff DEFERRED). The app under test connects as `platform_app`, but the helpers that set up and inspect data (truncate, `seedTestContext`, builders, assertions that count rows) use a second client on `DIRECT_DATABASE_URL` (the owner), because `platform_app` cannot `TRUNCATE` and, from Step 7.1, cannot see other stores' rows
 - [ ] `tests/builders/` — entity builders
 - [ ] CI: `integration-tests` now runs the integration suites; create the `security-tests` job (Postgres, Redis, MinIO services) with the isolation suite. Add `security-tests` as a required check, with no bypass
 
@@ -222,18 +236,7 @@ never sent to `/onboarding`.
 
 ## Milestone 2 — Core messaging
 
-The product's reason to exist.
-
-### Step 2.1 — Queues and workers
-- [ ] `libs/core/queues/queues.module.ts` — `@nestjs/bullmq`, seven queues plus DLQ (the `ai` queue is DEFERRED)
-- [ ] `apps/worker` NestJS bootstrap with health routes, graceful shutdown, `LeaderLockService`
-- [ ] Email worker + `ResendProvider` (+ Mailpit dev provider) + React Email templates + server-side i18n
-- [ ] Bull Board at `/admin/queues`, mounted only when `BULL_BOARD_ENABLED=true`; access requires a valid JWT whose `email` claim is in `BULL_BOARD_ADMIN_EMAILS` (empty allowlist = nobody). Applied as middleware, not through `@RequirePermissions()` or `TenantGuard`, because it is cross-tenant. Replay of a dead-lettered job = retry the **failed job in its original queue** from Bull Board (kept by `removeOnFail`); the dead-letter queue is a triage index (see `MVP_TRIM_CHECKLIST.md` §3)
-- [ ] Resend webhook with transactional idempotency
-
-**TDD:** `TDD_07 §1`, `§3`, `§4`, `§5`
-**Done when:** a magic link email is visible in Mailpit; `/admin/queues` returns 404 with the flag off, 401 without a token, 403 for an email outside the allowlist and 200 for one inside it; and killing the worker
-mid-job lets the job complete or retry without loss.
+The product's reason to exist. (Queues, workers and email moved to Step 1.0, because the magic-link login of Step 1.1 sends its emails through them; this milestone therefore starts at 2.2.)
 
 ### Step 2.2 — Customers
 - [ ] Customers module with store-scoped `CustomerIdentity` resolution
@@ -369,33 +372,84 @@ while still persisting the notification, and an hourly digest email arrives in M
 
 ## Milestone 4 — Commerce
 
-### Step 4.1 — Products and inventory
-- [ ] Products + variants CRUD
-- [ ] Inventory movements with stock calculation and low-stock notification
+Inventory is robust from the first release (`TDD_16_Inventory.md`): warehouses that serve
+several stores, a movement ledger, reservations, transfers between warehouses and physical
+counts. Orders depend on it, so it is built first.
+
+### Step 4.1 — Products and variants
+- [ ] Products + variants CRUD (store-scoped; `trackInventory`; `lowStockThreshold` is optional, empty means no low-stock alert, `TDD_16 §4.4`)
 - [ ] Product search with sub-200ms autocomplete
 
 **TDD:** `TDD_01 §4`, `TDD_08 §5.4`
 **Done when:** autocomplete responds under 200ms p95 with 5k products and a `%` query
 returns nothing.
 
-### Step 4.2 — Orders
+### Step 4.2 — Warehouses and stock
+- [ ] `Warehouse`, `StoreWarehouse`, `InventoryLevel`, `OrderItemAllocation` models, the changes to `InventoryMovement` and `StoreSettings`, and the raw-SQL constraints and partial uniques of `TDD_16 §2` (with rollback)
+- [ ] Check that the inventory constants born in Step 0.3 cover `TDD_16 §3`; add what is missing
+- [ ] `InventoryService`: transactional, idempotent movements (row lock, `onHandAfter`/`reservedAfter`), reserve/release/issue/restock, manual adjustments with mandatory reason, low-stock alert, kardex
+- [ ] Warehouses CRUD and store links with priority (organization-scoped, `ORG_MANAGE_WAREHOUSES`)
+- [ ] Extend what earlier steps built: the owner bootstrap also creates a default warehouse linked to the first store (idempotent), the dev fixtures create warehouses and opening stock, `seedTestContext` creates warehouses and links, and product creation takes `StoreSettings.defaultLowStockThreshold`
+- [ ] `StoreSettings.allowNegativeStock` and `allowSplitFulfillment` (both default off) and `defaultLowStockThreshold` (empty by default), honored by the rules of `TDD_16 §4.10`, `§4.1` and `§4.4`, with their Settings → Inventory controls
+- [ ] `RECONCILE_INVENTORY` job and metric
+- [ ] Extend `scripts/check-isolation-coverage.ts` to organization-scoped models, and the lint rule that forbids writing `inventoryLevel` or `inventoryMovement` outside `libs/core/inventory`
+- [ ] Isolation cases for `Warehouse`, `StoreWarehouse`, `InventoryLevel`, `InventoryMovement`, `OrderItemAllocation` (`TDD_16 §8`)
+
+**TDD:** `TDD_16 §1`–`§6`, `§8`, `§9`
+**Done when:** two parallel reservations for the last unit leave exactly one success, a movement
+retried with the same idempotency key applies once, stock never goes negative while
+`allowNegativeStock` is off and orders are accepted beyond stock while it is on (a transfer
+dispatch is still refused), a forged level mismatch is reported by the reconciliation job, and
+the isolation suite covers the new resources.
+
+### Step 4.3 — Orders
 - [ ] Orders module with server-side totals in cents from catalog prices
 - [ ] Status state machine with `OrderStatusTransitions`, cancellation reason, proof of delivery
 - [ ] Field-level edit restrictions with `OrderEditableFields`
-- [ ] Inventory reservation on creation
+- [ ] Inventory through `InventoryService` only: allocate by warehouse priority on creation (one warehouse, or several when `allowSplitFulfillment` is on) into `OrderItemAllocation`, and issue on `SHIPPED`, release on cancel and optional restock on return, all per allocation (`TDD_16 §4.1`)
 - [ ] Transactional emails and system messages
 
-**TDD:** `TDD_02 §5`, `§13`, `TDD_09 §5`
-**Done when:** totals are never trusted from the client, and illegal transitions
-are rejected.
+**TDD:** `TDD_02 §5`, `§13`, `TDD_09 §5`, `TDD_16 §4.1`
+**Done when:** totals are never trusted from the client, illegal transitions are rejected, an
+order for stock that the linked warehouses cannot cover (one warehouse, or all together when split is on) is refused with `INSUFFICIENT_INVENTORY` unless the store allows negative stock, and
+every order lifecycle change produces the inventory effect of `TDD_16 §4.1`.
 
-### Step 4.3 — Order UI
-- [ ] Create-order side drawer with the chat visible, variants
-- [ ] Status change flows with proof upload
+### Step 4.4 — Order UI
+- [ ] Create-order side drawer with the chat visible, variants, and per-line allocations and available stock per warehouse (the agent can change them)
+- [ ] Status change flows with proof upload and the "restock" choice on returns
 - [ ] Print documents (PDF)
 
-**TDD:** `TDD_09 §5`
+**TDD:** `TDD_09 §5`, `TDD_16 §7`
 **Done when:** an agent creates an order without leaving the conversation.
+
+### Step 4.5 — Transfers between warehouses
+- [ ] `StockTransfer` and `StockTransferLine` with the draft, dispatch, receive (partial), close-with-shortage and cancel flows of `TDD_16 §4.5`
+- [ ] Line visibility limited to the caller's stores; store-link validation on both warehouses
+- [ ] Notifications and audit actions
+- [ ] Isolation cases for `StockTransfer` and its lines
+
+**TDD:** `TDD_16 §4.5`, `§6`, `§8`
+**Done when:** a transfer goes draft to dispatched to partially received to closed with a
+shortage and every step leaves the right movements; cancelling an in-transit transfer returns
+the stock to the source; a line for a store the caller does not belong to is not visible.
+
+### Step 4.6 — Physical counts
+- [ ] `StockCount` and `StockCountLine` with create, start (snapshot), count, submit, apply and cancel (`TDD_16 §4.6`)
+- [ ] Apply writes the variance, never "counted minus current"
+- [ ] Isolation cases for `StockCount` and its lines
+
+**TDD:** `TDD_16 §4.6`, `§6`, `§8`
+**Done when:** a count applied after sales happened during counting adjusts only by the
+counted variance and leaves the sales intact.
+
+### Step 4.7 — Inventory UI
+- [ ] Settings → Inventory (negative-stock and split-fulfillment toggles); store screens: stock by warehouse with low-stock filter, movements and kardex, adjustment dialog
+- [ ] Organization screens: warehouses with store links and priority, transfers, counts
+- [ ] Mobile-first receive and count screens
+
+**TDD:** `TDD_16 §7`, `TDD_09 §11`, `§16`
+**Done when:** the owner can run a full cycle from the UI on a phone: adjust stock, dispatch and
+receive a transfer, run and apply a count.
 
 ---
 
@@ -449,6 +503,36 @@ resolving to a private IP is rejected.
 **TDD:** `TDD_09 §14`
 **Done when:** a new user goes from signup to first connected channel without help.
 
+### Step 5.6 — Integration plugins (runtime)
+
+In the v1.2 MVP the platform runs third-party and private integration plugins (for example
+the owner's own POS or inventory app, or a Shopify connector later). The marketplace, its
+review queue and revenue sharing stay deferred (`TDD_10 §8`). Builds on Step 5.4 (webhook
+delivery, SSRF protection, key hashing) and Step 1.0 (queues).
+- [ ] **Private registration** instead of a marketplace: the owner registers a plugin by pasting its manifest in Settings → Plugins; it is validated by `pluginManifestSchema` and stored as a `Plugin` row (`status = approved`, `isOfficial = false`, `pricingModel = free`; `paid` and `plan_gated` are rejected) (`MVP_TRIM_CHECKLIST.md` §7, D10)
+- [ ] Manifest, scopes and scope-to-permission mapping (`PluginScopes`, `PluginScopePermissions`, including the inventory scopes of `TDD_16 §3`)
+- [ ] Install flow: consent screen, webhook-endpoint challenge with `assertPublicHttpsUrl`, `PluginInstallation` in `PENDING_SETUP`, scoped API key stored as prefix and sha256 hash only, one-time setup code (5 minutes, Redis) exchanged for the key, then `ACTIVE`
+- [ ] `PluginApiKeyGuard` on `/api/v1/plugin-api/*`: scope check, per-installation rate limit, bound to exactly one store; thin controllers over the same services for conversations, messages, customers, orders, products and inventory
+- [ ] Outbound plugin webhooks (`TRIGGER_PLUGIN_WEBHOOK`): signed, payload redacted to the granted scopes, same delivery log and auto-disable as tenant webhooks
+- [ ] Revocation with typed confirmation, final `plugin.revoked` webhook, audit
+- [ ] Settings → Plugins UI: register, list installations with their scopes, revoke (`SETTINGS_MANAGE_PLUGINS`)
+- [ ] Tests: a plugin key for store A cannot read store B, scope escalation is denied, the key never appears in logs or in any response after setup, webhook signature; `PluginInstallation` in the isolation suite
+- [ ] Registration by pasted JSON only (importing a manifest by URL is a later improvement, `MVP_TRIM_CHECKLIST.md` §6). Installed scopes are fixed at install: when a registered plugin's manifest later asks for more scopes, the existing installation keeps its old scopes until the owner approves the new ones in a new consent screen
+
+**TDD:** `TDD_10 §6`, `§9`, `TDD_05 §9`
+**Done when:** a sample plugin (a test fixture app) is registered and installed, calls the API
+inside its scopes and gets 403 outside them, receives a redacted signed webhook, and after
+revocation its key stops working immediately.
+
+### Step 5.7 — Plugin widgets
+- [ ] Sandboxed iframe widgets in the agent sidebar with the `MessageChannel` bridge, the per-store `frame-src` added by `proxy.ts`, and the short-lived widget session token sent only over the port
+- [ ] Widget settings in Settings → Plugins
+
+**TDD:** `TDD_10 §7`, `TDD_05 §6`
+**Done when:** a sample widget renders in the sidebar, never receives the API key, and every
+call it makes through the port is scope-checked server-side. This step is independent of 5.6's
+API and can be moved after the MVP launch if the schedule requires it.
+
 ---
 
 ## Milestone 6 — Monetization — DEFERRED (Phase 2)
@@ -500,12 +584,21 @@ skipped cron day catches up.
 ### Step 7.1 — Security hardening
 - [ ] Helmet on the API, CSP in Next with per-store plugin origins
 - [ ] Rate limiting: application (Redis), edge (Cloudflare rules)
-- [ ] Secrets as env-file secrets in Secret Manager
-- [ ] Security scanning gates in CI, weekly ZAP
+- [ ] **Row-Level Security** (`TDD_01 §3.2` layer 3; owner decision D16, `MVP_TRIM_CHECKLIST.md` §7):
+  - The roles `platform_app` (subject to RLS, used by `apps/api`) and `platform_worker` (`BYPASSRLS`, used by `apps/worker`, which also processes every inbound channel event) already exist since Step 0.4, and the services already connect with them; this step only turns the policies on
+  - `scripts/rls.sql`, generated from the schema, with `ENABLE` + `FORCE ROW LEVEL SECURITY` and one policy per table: tables with `store_id` use `app.store_ids`; the organization-scoped inventory tables (`warehouses`, `stock_transfers`, `stock_counts`) use `app.organization_ids`; `store_warehouses` uses its `store_id`; child tables (messages, order items, transfer and count lines, allocations, movements) follow their parent. The `audit_logs` grants already exist since Step 0.4
+  - Identity and bootstrap tables are NOT under RLS, because the guards read them before any tenant context exists: `users`, `sessions`, `verification_tokens`, `invitations`, `organizations`, `stores`, `memberships` and `roles`. They stay protected by code (user id or token) and by the isolation suite
+  - **Start with a spike, verified with Context7 against Prisma 7 and PgBouncer in transaction mode, before writing policies.** `TDD_01 §3.2` shows a `tenantRls` extension whose interactive-transaction snippet does not run the query on the transaction's connection, so treat that snippet as illustrative only. Choose between a request-scoped transaction and a per-operation `set_config` batch, make it work for interactive transactions with row locks (`TDD_16 §4.2`) and for raw SQL (`SearchService`), record the choice in `TDD_01 §3.2`, and only then continue
+  - The tenant-context mechanism sets `app.store_ids` and `app.organization_ids` with `set_config(..., true)` inside one transaction per tenant request (PgBouncer runs in transaction mode). `TenantGuard` fills them from the caller's memberships; plugin API requests set only the installation's store; widget requests set only the store of the site key's connection; requests with no context see no rows
+  - **API code that runs outside a tenant request fails loudly instead of returning empty results:** the WebSocket gateway, domain-event listeners fed by the events bridge (notifications, plugin webhooks), and the public endpoints must either run inside an explicit `TenantContext.run({ storeIds, organizationIds }, fn)` taken from the event payload or the verified credential, or hand the work to the worker. In the `api` process a query on a store-scoped table with no context throws in dev, test and CI
+  - **Pre-context lookups** (widget site key to store, plugin API key hash to installation, tenant API key hash to store, an inbound mailbox to its connection) use small `SECURITY DEFINER` SQL functions that `platform_app` may call and that return only the store id; the Resend inbound-email mapping resolves in the worker. A globally unique value that belongs to another store (a `ChannelConnection` `(pluginId, connectionId)`) is detected from the unique violation, never by reading the other store's row
+  - Add the policies for the Step 4.2 to 4.6 tables here; the isolation suite and the integration, security and e2e CI jobs run as `platform_app` from this step on, and a test proves that a query without `storeId` still returns nothing from another store
+- [ ] Secrets as Railway variables (no Secret Manager in the MVP), rotated with the procedure of `TDD_05 §1.1` adapted to Railway
+- [ ] Weekly ZAP baseline against staging (the other scanning gates exist since Steps 0.5 and 0.6)
 - [ ] Full internal pentest checklist executed (skip password, staff and billing items; magic-link token reuse and prediction do apply)
 
-**TDD:** `TDD_05` in full
-**Done when:** securityheaders.com grade A and the pentest checklist is clean.
+**TDD:** `TDD_05` in full, `TDD_01 §3.2`, `TDD_16 §8`
+**Done when:** securityheaders.com grade A, the pentest checklist is clean, and the whole isolation suite passes as `platform_app` with RLS forced, including a deliberately unfiltered query that returns zero rows from another store.
 
 ### Step 7.2 — Compliance
 - [ ] DSR flow with verification tokens: access, portability, erasure, manual review
@@ -519,18 +612,19 @@ tax-retention legal hold on orders, and the day-25 alert fires in a test.
 ### Step 7.3 — Deployment
 - [ ] **MVP platform: Railway** (`MVP_TRIM_CHECKLIST.md` §7, D9). The Dockerfiles for api, worker and web already exist (Steps 0.5 and 3.1); this step adds PgBouncer and ClamAV as Docker services in the same Railway project (`admin` image and service DEFERRED). Google Cloud (Cloud Run, Cloud Build, Cloud SQL, Memorystore, Secret Manager) is the Phase 2 target
 - [ ] Railway project with staging and production environments; Postgres and Redis as Railway services; the worker always running (one instance minimum); secrets as Railway variables; private networking between services
-- [ ] Migrations run before each production release as a pre-deploy or one-off command; verify the exact Railway mechanism with Context7 when building this step, and fix `TDD_03 §4`'s release flow (tag plus manual approval) accordingly
-- [ ] Postgres backups: volume backups and PITR enabled from day one (`railway postgres pitr`), plus periodic `pg_dump` copies stored outside Railway. Check that Railway offers the Postgres version pinned in `TDD_01 §2.4` (18.6); if not, fix that table first and say why in the commit
+- [ ] Release flow (`MVP_TRIM_CHECKLIST.md` §7, D13): merges to `main` deploy to staging automatically; production deploys only from a version tag with manual approval, as `TDD_03 §4` says. Migrations run before each deploy. Verify with Context7 how Railway deploys from a tag, how to require approval and how to run migrations before a deploy, and write that into `TDD_03 §4`
+- [ ] Postgres on Railway's official image, pinned by **major** tag (`:18`; Railway supports 14 to 18 and does not support minor tags such as 18.6; PITR also requires the official image), so production runs Postgres 18 at whatever minor Railway publishes while local development keeps `postgres:18.6-alpine`; record this in `TDD_01 §2.4`. Backups: volume backups and PITR enabled from day one (`railway postgres pitr`), plus periodic `pg_dump` copies stored outside Railway
 - [ ] Media stays on AWS S3 (versioning and replication per `TDD_03 §7.3`; only `S3_*` and `AWS_*` variables change). Railway buckets lack versioning and lifecycle rules
 - [ ] Backup restore drill executed and documented (PITR restore into a new sibling service)
-- [ ] Owner bootstrap runs once as a one-off Railway command after the first migration, so the first login is possible with closed signup; it never creates fixtures (`MVP_TRIM_CHECKLIST.md` §7, D4)
+- [ ] Role passwords: `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD` are Railway variables, the api and worker services each get their own `DATABASE_URL` (as `platform_app` and `platform_worker`, through PgBouncer), and `scripts/set-db-role-passwords.ts` runs after every migration in the release flow
+- [ ] Owner bootstrap (owner, organization, first store and its default warehouse) runs once as a one-off Railway command after the first migration, so the first login is possible with closed signup; it never creates fixtures (`MVP_TRIM_CHECKLIST.md` §7, D4)
 
 **TDD:** `TDD_03 §1`, `§3`, `§7` (rewritten for Railway per `MVP_TRIM_CHECKLIST.md` §3)
 **Done when:** a restore drill completes within the 4-hour RTO target and a job enqueued
 in production is processed by the worker within 10 seconds.
 
 ### Step 7.4 — Monitoring
-- [ ] Sentry for errors, an external uptime check on `/health/ready`, and Railway's own service metrics. Google Managed Prometheus does not exist on Railway: the `/metrics` endpoint stays, but a Prometheus/Grafana stack (for example Grafana Cloud) is an **OPEN** item that gates the queue-depth, dead-letter and `TenantViolation` alerts of `TDD_04 §6`; decide before building this step
+- [ ] Sentry for errors, an external uptime check on `/health/ready` and Railway's own service metrics, plus **Grafana Cloud** (free plan, `MVP_TRIM_CHECKLIST.md` §7, D12): a Grafana agent runs as a Docker service in the Railway project, scrapes `/metrics`, and the alert rules of `TDD_04 §6` (queue depth, dead letter, `TenantViolation`, error rate, latency) load there. Verify the free plan's limits with its documentation when building this step
 - [ ] Alerts go to one Slack channel with push notifications on the owner's phone (`MVP_TRIM_CHECKLIST.md` §7, D6); no PagerDuty; no AI alert or dashboard panels
 - [ ] Status page on separate infrastructure
 - [ ] Runbooks written in `docs/runbooks/` (no `ai-kill-switch.md`)
@@ -550,7 +644,7 @@ sends a Slack message that reaches the owner's phone with a runbook link.
 **Done when:** every threshold passes at 200 concurrent users.
 
 ### Step 7.6 — Internal admin console (core) — DEFERRED (Phase 2)
-> Out of scope for the v1.2 MVP. Bull Board itself is built in Step 2.1 behind an email
+> Out of scope for the v1.2 MVP. Bull Board itself is built in Step 1.1 behind an email
 > allowlist, so it is not part of this deferral.
 
 - [ ] Staff OIDC login, `StaffAuthGuard`, `StaffPermissionGuard`, `apps/admin` scaffold
@@ -649,7 +743,7 @@ M0 Foundation
       │                   ├─> M6 Monetization (DEFERRED, Phase 2)
       │                   └─> M7 Production readiness
       │                        └─> M8 Enhancements (only 8.3 in MVP)
-      └─> (M2 step 2.1 Queues can start in parallel with 1.4)
+      └─> (inside M1, Step 1.0 Queues and email runs first: the magic link of 1.1 needs it)
 ```
 
 **Critical path:** 0.3 constants → 0.4 schema → 1.2 tenancy → 2.6 inbound
@@ -684,11 +778,11 @@ Copy this checklist into the project tracker.
 
 ```
 Milestone 0  Foundation              [ ] 0.1  [ ] 0.2  [ ] 0.3  [ ] 0.4  [ ] 0.5  [ ] 0.6
-Milestone 1  Auth and tenancy        [ ] 1.1  [ ] 1.2  [ ] 1.3  [ ] 1.4
-Milestone 2  Core messaging          [ ] 2.1  [ ] 2.2  [ ] 2.3  [ ] 2.4  [ ] 2.5  [ ] 2.6  [ ] 2.7  [ ] 2.8
+Milestone 1  Auth and tenancy        [ ] 1.0  [ ] 1.1  [ ] 1.2  [ ] 1.3  [ ] 1.4
+Milestone 2  Core messaging          (2.1 moved to 1.0)  [ ] 2.2  [ ] 2.3  [ ] 2.4  [ ] 2.5  [ ] 2.6  [ ] 2.7  [ ] 2.8
 Milestone 3  Inbox interface         [ ] 3.1  [ ] 3.2  [ ] 3.3  [ ] 3.4  [ ] 3.5
-Milestone 4  Commerce                [ ] 4.1  [ ] 4.2  [ ] 4.3
-Milestone 5  Operations              [ ] 5.1  [ ] 5.2  [ ] 5.3  [ ] 5.4  (5.5 deferred)
+Milestone 4  Commerce                [ ] 4.1  [ ] 4.2  [ ] 4.3  [ ] 4.4  [ ] 4.5  [ ] 4.6  [ ] 4.7
+Milestone 5  Operations              [ ] 5.1  [ ] 5.2  [ ] 5.3  [ ] 5.4  (5.5 deferred)  [ ] 5.6  [ ] 5.7
 Milestone 6  Monetization            DEFERRED (Phase 2)
 Milestone 7  Production readiness    [ ] 7.1  [ ] 7.2  [ ] 7.3  [ ] 7.4  (7.5, 7.6 deferred)
 Milestone 8  Enhancements            [ ] 8.3  (8.1, 8.2, 8.4, 8.5 deferred)

@@ -1,6 +1,8 @@
 # TDD 09 — UX Specifications
 
 > Part of the Omnichannel Commerce Platform TDD v1.1
+> **MVP v1.2:** this file describes the full product. Before implementing from it, read `MVP_TRIM_CHECKLIST.md`;
+> where the two disagree, the checklist wins.
 > Covers: inbox, orders, customers, settings, shortcuts, i18n, mobile
 > Scope: the customer-facing app (`apps/web`) only. The internal staff
 > console (`apps/admin`) has its own UX notes in `TDD_15_InternalAdmin.md §1`
