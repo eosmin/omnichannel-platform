@@ -98,12 +98,13 @@ always pinned to SHAs):
 - **Affected only:** `actions/checkout` with `fetch-depth: 0` and `filter: tree:0`, then `nrwl/nx-set-shas`, then
   `nx affected`. A docs-only change finishes in seconds.
 - **Dependency cache:** `actions/setup-node` with `cache: pnpm`, and `pnpm install --frozen-lockfile --prefer-offline`.
-- **Nx task cache:** `lint`, `type-check`, `test`, `build` and `prisma generate` are cacheable in `nx.json`
-  (`targetDefaults` with `cache: true` and `namedInputs` where `production` excludes tests and config of tests), so a
-  task whose inputs did not change is replayed, not run. `.nx/cache` persists between runs with `actions/cache`:
-  **pull requests only restore** it and **pushes to `main` save it** (a cache entry is immutable, so a unique key
-  per run with `restore-keys` falls back to the nearest one; saving only from `main` avoids filling the repository's
-  cache quota, and pull requests can read the cache of `main`). A hosted remote cache (Nx Cloud) is a later option, not an MVP dependency.
+- **Nx task cache, locally only:** `lint`, `type-check`, `test`, `build` and `prisma generate` are cacheable in `nx.json`
+  (`targetDefaults` with `cache: true` and `namedInputs` where `production` excludes tests and config of tests), so on a
+  developer machine a task whose inputs did not change is replayed, not run. **CI does not persist this cache:** Nx 23
+  refuses local cache artifacts generated on another machine ("Unrecognized Cache Artifacts"; it is a cache-poisoning
+  safeguard), and every runner is a different machine, so restoring `.nx/cache` with `actions/cache` never produces a hit
+  (verified on Step 0.1). CI saves time with `nx affected` and the pnpm store cache. A hosted remote cache (Nx Cloud) is
+  the supported way to share task results between runs; it is a later option, not an MVP dependency.
 - **Docker:** `docker/build-push-action` with the GitHub cache backend (`cache-from` and `cache-to` of `type=gha`,
   one scope per image) in `security-scan`, and the Trivy vulnerability database cached.
 - **Playwright:** the browsers directory cached by Playwright version in `e2e-tests`; system dependencies installed on every run.
@@ -134,7 +135,7 @@ is fast, safe and consistent.
 - [x] Root `package.json` scripts as in `TDD_14 §2` (`lint`, `lint:fix`, `type-check`, `format`, `format:check`, `test` and its variants), and a `lint`, `type-check` and `test` target in every `project.json` (the `build` target comes with the Dockerfiles in Step 0.5)
 - [x] `.prettierrc` per `TDD_14 §6` and a `.prettierignore` that excludes `docs/` (the specifications are maintained by hand with wide tables), generated code, build output, `node_modules` and the lockfile, so that `format:check` covers code and configuration only
 - [x] `eslint.config.js` (flat) and Prettier per `TDD_14 §6` (the `.env.example` files are Step 0.2's); include a `no-restricted-syntax` rule that forbids calling `$transaction` on the Prisma client (services use `PrismaService.transaction(fn)`, created in Step 0.4; the rule exempts `PrismaService` itself)
-- [x] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`; it runs Nx affected `lint` and `type-check` and `pnpm format:check`; workflow-level `concurrency` that cancels superseded pull-request runs, least-privilege `permissions`, `timeout-minutes`, `fetch-depth: 0` with `nrwl/nx-set-shas`, the pnpm store cache, and the `.nx/cache` restored on pull requests and saved on `main`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
+- [x] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`; it runs Nx affected `lint` and `type-check` and `pnpm format:check`; workflow-level `concurrency` that cancels superseded pull-request runs, least-privilege `permissions`, `timeout-minutes`, `fetch-depth: 0` with `nrwl/nx-set-shas`, and the pnpm store cache), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
 - [x] `.github/dependabot.yml` (weekly, grouped by ecosystem, as `TDD_03 §4` and `TDD_05 §7` already describe): `npm` for the pnpm workspace root and `github-actions` (it also moves the SHA pins and their version comments); the `docker` entries for the Dockerfiles and the compose file are added in Steps 0.2 and 0.5, when those files exist. Minor and patch updates are grouped, major updates come as separate PRs and are never merged without reading the changelog, because the stack's versions are pinned by the TDD and an upgrade re-fetches its documentation first (`CLAUDE.md`, deprecation discipline). `commit-message` prefixes `chore(deps)` (npm, docker) and `ci(deps)` (actions) so the commits satisfy commitlint, whose `deps` scope already exists; open-pull-requests limit 5
 - [ ] Repository security settings, applied once with `gh api` and recorded in the README: enable Dependabot alerts and Dependabot security updates (free on private repositories). **Secret scanning and push protection are tried, not assumed:** for private repositories they belong to GitHub Secret Protection, a paid add-on, and on this account `security_and_analysis` reports nothing; verify when doing the step, enable them if the plan allows, and otherwise rely on gitleaks (pre-commit and `security-scan`, Step 0.6), which is the layer the plan depends on. Until Step 0.6 lands no secret exists in the repository, and nothing may be committed that looks like one
 
@@ -142,7 +143,7 @@ is fast, safe and consistent.
 **TDD:** `TDD_01 §1`, `§2.4`, `TDD_14 §2`, `§6`, `§9`, `TDD_03 §4`, `TDD_05 §7`
 **Done when:** `pnpm nx graph` renders, `pnpm lint` passes on the empty workspace, an
 import from `libs/core/config` inside `apps/web` fails lint, `cat .nvmrc` matches the
-Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a badly formatted file, a second CI run of an unchanged project replays its tasks from the cache, a new push cancels the previous pull-request run, `lint-and-types` is green on GitHub for a PR, GitHub reads
+Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a badly formatted file, a second local run of unchanged projects replays their tasks from the Nx cache, a new push cancels the previous pull-request run, `lint-and-types` is green on GitHub for a PR, GitHub reads
 `dependabot.yml` without errors (Insights, Dependency graph, Dependabot) and Dependabot alerts are on.
 
 ### Step 0.2 — Local infrastructure
