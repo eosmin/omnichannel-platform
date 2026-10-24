@@ -1,0 +1,38 @@
+{
+  "name": "core-database",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/core/database/src",
+  "projectType": "library",
+  "tags": ["scope:core", "type:lib"],
+  "targets": {
+    "prisma-generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "prisma generate",
+        "cwd": "{workspaceRoot}"
+      },
+      "outputs": ["{projectRoot}/generated"]
+    },
+    "lint": {
+      "dependsOn": ["prisma-generate"]
+    },
+    "type-check": {
+      "dependsOn": ["prisma-generate"]
+    },
+    "test": {
+      "dependsOn": ["prisma-generate"]
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["prisma-generate"],
+      "options": {
+        "command": "jest --config jest.integration.config.cts --runInBand",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+        }
+      }
+    }
+  }
+}

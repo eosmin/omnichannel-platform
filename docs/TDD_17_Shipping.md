@@ -680,7 +680,7 @@ export interface CarrierPlugin {
   `REQUIRES_LOCATION_IDS`, the carrier's location ids), the packages (count, weight, dimensions
   when set), `serviceCode`, `shippingPayer`, `cod: { amountCents, currency } | null` and the
   `labelFormat` wanted. It never carries credentials; those are in the `CarrierContext`.
-- **`CarrierEvent`** is `{ providerEventId?, status: ShipmentStatus | null, rawStatus, description?, occurredAt, guideNumber | providerShipmentId }`.
+- **`CarrierEvent`** is `{ providerEventId?, status: ShipmentStatus | null, rawStatus, rawReason?, description?, occurredAt, guideNumber | providerShipmentId }`.
   The plugin maps its own status codes to `ShipmentStatus` with its `statusCatalog()`; a status it cannot map comes back
   with `status: null`. The core then applies the connection's own mapping on top of it (§4.17): the owner's mapping wins over the plugin's, and only a code that neither knows is stored without effect (§4.9).
 - **Carriers have their own registry.** `PluginRegistry` of `TDD_10 §3` is typed to `ChannelPlugin` and `ChannelType`, so a
@@ -999,6 +999,13 @@ HIGH-tier when a shipment exists):
   The controller reads the raw body, loads the connection (without a tenant context, §4.12),
   validates the signature with the connection's `webhookSecret`, enqueues `PROCESS_CARRIER_EVENT`
   and answers `200` fast. A bad signature is `401`, never queued.
+  A carrier that signs nothing (C807) uses its own custom headers: the connection's `webhookSecret`
+  is shown once in Settings → Carriers with the URL, the owner pastes it as a header in the carrier's
+  portal, and `validateWebhookSignature` is a constant-time comparison of that header. A shared secret
+  proves less than a signature, so for such a carrier the job **confirms before applying** any event
+  that closes money or the order (`DELIVERED`, `RETURNED`): it calls `fetchStatus` (`FETCH_STATUS`)
+  and applies the event only if the carrier reports the same status; a mismatch is dropped and logged as
+  suspicious. Other events apply directly.
 - **Dedupe:** an event is applied once per `(shipmentId, providerEventId)` (the partial unique
   index); a provider that sends no event id is deduped on `(shipmentId, status, occurredAt)`.
 - **Order of arrival does not matter.** An event is applied only if the transition table allows
@@ -1348,6 +1355,14 @@ general to the most specific:
 
 - The `rawStatus` is normalized with `normalizeProviderStatusCode` (trim, lowercase, accents removed,
   inner whitespace collapsed), so "Entregado", "ENTREGADO " and "entregádo" are one code.
+- A carrier that sends a reason beside the status (C807: code `16` plus a reason `100` to `134`) puts
+  it in `rawReason`. The lookup tries the composite code `status:reason` (`16:115`) first and the plain
+  `status` (`16`) second, so the owner maps one reason without touching the others. The seed maps every
+  reason to `FAILED_ATTEMPT`; the owner changes a reason once (for example "customer refuses" to
+  `RETURNED`) and it applies to every shipment, past events included through the replay below. A
+  carrier flag that changes the meaning of a code (C807 `devolucion: true` on `15`) is a separate
+  composite code the plugin builds (`15:devolucion`), seeded to `RETURNED`; it is **pending the
+  carrier's confirmation** (question in §14).
 - A `CarrierStatusMapping` row for `(connection, code)` wins over the plugin's own `status`. Its
   `status` may be `null`: the owner chose to **ignore** the code on purpose, so it is stored in the
   history without effect and is not counted as unknown.
@@ -1617,7 +1632,12 @@ TDD was written (2026-10-24):
 |---|---|---|
 | `local` | Everything: no external API. | Nothing. |
 | `forza` (Forza Delivery Express) | Public Postman walkthrough "Forza Ecommerce Engine" (published 2020): REST over HTTPS `POST`, a request body of `CodApp` plus a base64 `PayLoad` (`Method` and `Params`) and a signature in the `LauValue` header; endpoints for the geography catalog (departments, municipalities, settlements, which is why `REQUIRES_LOCATION_IDS`), shipping rates (`GetShippingRates`), shipping labels (from a quote, from a shipment, list), and tracking by guide number or label id. The documentation says real-time tracking through **webhooks** can be provided on request. The public collection does **not** document cancelling a guide, pickups, return shipments, service codes, COD fields or the signature algorithm. | The full sandbox documentation and credentials from the Forza sales advisor: the signature algorithm, the guide-creation payload (service codes, payer, COD, packages), the label format and size, cancel and pickup endpoints (or their absence), the webhook registration and signature, rate limits, whether guide creation accepts a unique reference, and **the complete list of tracking statuses or event codes the carrier can send, with their meaning** (the adapter's `statusCatalog()`, §4.17). |
-| `c807` (C807 Express) | The owner reports that it offers webhooks and that its API covers guides, cancellation and pickups, and that **a guide is created inside a pickup request**: one call carries the pickup and an array of orders and returns the guides of all of them. The adapter is therefore *pickup-bound* (§4.1, §4.5). | The documentation and credentials from the C807 advisor, with the same list as above, including the complete list of tracking statuses. |
+| `c807` (C807 Express) | The official documentation (Google Sites "Xpress", read 2026-10-24): Bearer token from `GET /admin.php/sesion/get_token` with Basic Auth (the connection's username and password), valid 24 hours, an expired one answers a bare `401`; catalogs of departments, municipalities, document types and agencies; **a guide is created inside a request** (`POST /guia.php/api/set_registro`: pickup date, delivery type `NRML` or `PLUS`, optional `sede`, and an array of guides with `orden` = our reference, `tipo_servicio` `SER`, `CCE` (COD, with `monto_cce`) or `SEC` (shipping paid by the recipient), location ids, packages, documents to settle), so the adapter is *pickup-bound* (§4.1, §4.5); labels from `POST /guia.php/api/get_pdf` (PDF or ZPL, base64, by guides or by request); lookup by guide, order or request at `GET /guia.php/reporte/guias` (a range of one month at most); webhook configured by hand in the C807 portal (a URL and optional custom headers), **with no signature**. Status codes seen: `13` picked up, `15` arrived at destination (with `devolucion` and the proof of delivery images), `16` problems in the management (with a reason `100` to `134`). It exposes **no endpoint to cancel a guide, to cancel or modify a pickup, or to quote** (the price is fixed, the connection's `defaultShippingFeeCents`, §2). So the plugin declares `PICKUP_BOUND_GUIDES`, `COD`, `FETCH_STATUS`, `WEBHOOK_STATUS` and `REQUIRES_LOCATION_IDS`, and **not** `CANCEL_SHIPMENT`, `PICKUP_CANCEL`, `PICKUP_MODIFY` or `IDEMPOTENT_CREATE`; cancelling is done in the carrier's portal and then "Mark as voided" (§4.8). | The credentials from the C807 advisor, the complete list of tracking status codes (the owner believes there are no others than `13`, `15` and `16`; the unmapped list covers any that appears), and the meaning of `devolucion: true` on code `15` (see the question in §4.17). |
+
+**Question for the C807 advisor** (answers become mapping defaults, never code): when the status `15`
+(arrived at destination) carries `"devolucion": true`, does it mean the package went back to the
+sender instead of reaching the customer, and in which other cases does that field change? Are there
+status codes besides `13`, `15` and `16`? Can they send the complete list?
 
 Capabilities are declared from what the documentation confirms, never assumed: a capability that
 cannot be confirmed is left out, and the platform falls back to the manual path (for example

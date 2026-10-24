@@ -199,7 +199,7 @@ apps/web/
 | Choice | Version | Rationale |
 |--------|---------|-----------|
 | NestJS | `@nestjs/core@12.0.1`, `@nestjs/common@12.0.1`, `@nestjs/platform-express@12.0.1` | DI container, guards, interceptors and module system map cleanly to a modular monolith. Express adapter (not Fastify) — broader plugin/middleware compatibility. `NestFactory.create(AppModule, { rawBody: true })` because Stripe, Resend and Meta webhooks verify the raw body |
-| Prisma | `prisma@7.10.0` (CLI), `@prisma/client@7.10.0`, `@prisma/adapter-pg@7.10.0`, `pg@8.16.3`, `@prisma/extension-read-replicas@0.4.0` | Prisma 7 requires a driver adapter; connection string and migrations config live in `prisma.config.ts`. Generator is `prisma-client` with an explicit `output`. Read replica routing via the official extension |
+| Prisma | `prisma@7.10.1` (CLI), `@prisma/client@7.10.1`, `@prisma/adapter-pg@7.10.1`, `pg@8.16.3`, `@prisma/extension-read-replicas@0.5.0` | Prisma 7 requires a driver adapter; connection string and migrations config live in `prisma.config.ts`. Generator is `prisma-client` with an explicit `output`. Read replica routing via the official extension |
 | PostgreSQL | `18.6` (server) | Relational integrity, JSONB for flexible metadata, mature FTS, RLS support |
 | Redis | `8.10.1` (server), `ioredis@6.0.0` (client) | Cache, BullMQ backing store, Socket.io pub/sub, presence. `ioredis` chosen over the `redis` package — wider adoption with BullMQ/NestJS, richer cluster/sentinel support. **Every Redis client in the codebase is ioredis**, including the Socket.io adapter |
 | BullMQ | `bullmq@6.3.4`, `@nestjs/bullmq@11.0.3`, `@bull-board/api@9.6.1`, `@bull-board/nestjs@9.6.1`, `@bull-board/express@9.6.1` | Reliable job processing with retries, backoff, DLQ. Queues and workers are registered through `@nestjs/bullmq` (no module-level `new Queue()`). Bull Board is mounted via `@bull-board/nestjs` with the Express adapter, behind `StaffAuthGuard` (it is a staff tool, `TDD_15`) |
@@ -248,23 +248,24 @@ export default defineConfig({
     seed: 'tsx libs/core/database/prisma/seed.ts',
   },
   datasource: {
-    url: process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL,   // CLI only, bypasses PgBouncer
+    url: process.env.DIRECT_DATABASE_URL,   // CLI only, bypasses PgBouncer; DATABASE_URL is platform_app, which cannot run migrations
   },
 })
 ```
 
 ```typescript
-// libs/core/database/prisma.service.ts
+// libs/core/database/src/prisma.service.ts
 import { PrismaClient } from './generated/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { readReplicas } from '@prisma/extension-read-replicas'
 
 function createClient(): ExtendedPrismaClient {
-  const adapter = new PrismaPg({ connectionString: env.DATABASE_URL, max: 20 })
-  const base = new PrismaClient({ adapter })
-  return env.DATABASE_REPLICA_URL
-    ? base.$extends(readReplicas({ url: env.DATABASE_REPLICA_URL }))
-    : base.$extends(readReplicas({ url: env.DATABASE_URL }))   // Replica == primary in dev
+  const primary = new PrismaClient({ adapter: new PrismaPg({ connectionString: env.DATABASE_URL, max: 20 }) })
+  // With a driver adapter the extension takes client instances, not URLs
+  const replica = env.DATABASE_REPLICA_URL
+    ? new PrismaClient({ adapter: new PrismaPg({ connectionString: env.DATABASE_REPLICA_URL, max: 20 }) })
+    : primary                                            // Replica == primary in dev and in the MVP
+  return primary.$extends(readReplicas({ replicas: [replica] }))
 }
 
 @Injectable()
@@ -370,8 +371,8 @@ download path verify that prefix against the current store before touching the o
 | `nestjs-zod` | `5.0.1` |
 | `reflect-metadata` | `0.2.2` — peer of `@nestjs/common` |
 | `rxjs` | `7.8.2` — peer of `@nestjs/common` |
-| `prisma` (CLI), `@prisma/client`, `@prisma/adapter-pg` | `7.10.0` |
-| `@prisma/extension-read-replicas` | `0.4.0` |
+| `prisma` (CLI), `@prisma/client`, `@prisma/adapter-pg` | `7.10.1` |
+| `@prisma/extension-read-replicas` | `0.5.0` |
 | `pg` | `8.16.3` |
 | `ioredis` | `6.0.0` |
 | `bullmq` | `6.3.4` |
@@ -499,7 +500,7 @@ phase starts (YAGNI).
 - **`@bull-board/nestjs` + `@bull-board/express` adapter** — mounts as a Nest module so the dashboard route carries `StaffAuthGuard` + `StaffPermissionGuard` (`TDD_15` §2). It is a staff tool; tenant guards do not apply.
 - **`resend` only, no SendGrid/SES/Postmark fallback wired** — simplicity for Phase 1; the `EmailProvider` interface in `TDD_07_Queues.md` §5.1 still allows adding a provider later without touching callers. No other provider class exists in the codebase until it is needed.
 - **`@prometheus-io/client` instead of `prom-client`** — `prom-client` carries an npm deprecation notice pointing to this package.
-- **`prisma@7.10.0` with `@prisma/adapter-pg`** — Prisma 7 removed the Rust engine and client middleware; driver adapters and `$extends` are the supported path.
+- **`prisma@7.10.1` with `@prisma/adapter-pg`** — Prisma 7 removed the Rust engine and client middleware; driver adapters and `$extends` are the supported path.
 - **TypeScript 5.9, not 7** — `typescript-eslint@8` declares `typescript >=4.8.4 <6.1.0`; ts-jest and Nx executors have not certified 7.x. Revisit when all three do.
 - **`@storybook/addon-essentials` deliberately not installed** — its features shipped into Storybook core as of v9+.
 
@@ -640,7 +641,7 @@ transaction, **does not work**: the context never reaches the query and every re
 **The mechanism: one interactive transaction per unit of work, `set_config` as its first statement.**
 
 ```typescript
-// libs/core/database/prisma.service.ts (the tenant part)
+// libs/core/database/src/prisma.service.ts (the tenant part)
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 const tenantTx = new AsyncLocalStorage<{ tx: Tx; ctx: TenantContext }>()
 
@@ -724,9 +725,13 @@ backed by the enums in `TDD_02` §5. Generated `tsvector` columns and CHECK cons
 added by the raw SQL migration in §5 and are **not** declared here.
 
 ```prisma
+// The CJS output has no import.meta and bare imports, so the Jest suites (compiled as CJS) and the
+// ESM code run by tsx load the same generated client. The ESM output breaks under Jest.
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/client"
+  provider            = "prisma-client"
+  output              = "../generated/client"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
 }
 
 datasource db {

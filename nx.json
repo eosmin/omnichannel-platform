@@ -31,11 +31,14 @@
         "{workspaceRoot}/tsconfig.spec.json",
         "{workspaceRoot}/jest.preset.cjs"
       ],
-      "executor": "@nx/jest:jest",
+      "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "{projectRoot}/jest.config.cts",
-        "passWithNoTests": true
+        "command": "jest --passWithNoTests",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+        }
       }
     },
     "lint": {
