@@ -368,6 +368,8 @@ download path verify that prefix against the current store before touching the o
 | `@nestjs/terminus` | `11.0.0` |
 | `@nestjs/bullmq` | `11.0.3` |
 | `nestjs-zod` | `5.0.1` |
+| `reflect-metadata` | `0.2.2` — peer of `@nestjs/common` |
+| `rxjs` | `7.8.2` — peer of `@nestjs/common` |
 | `prisma` (CLI), `@prisma/client`, `@prisma/adapter-pg` | `7.10.0` |
 | `@prisma/extension-read-replicas` | `0.4.0` |
 | `pg` | `8.16.3` |
@@ -459,6 +461,9 @@ phase starts (YAGNI).
 | `ts-jest` | `29.4.12` |
 | `jest-mock-extended` | `4.0.0` |
 | `@nestjs/testing` | `12.0.1` |
+| `jest-environment-node` | `30.5.1` |
+| `@types/jest` | `30.0.0` |
+| `ts-node` | `10.9.1` — Jest loads `jest.config.cts` through it |
 | `@playwright/test` | `1.62.1` |
 | `supertest` | `7.2.2` |
 | `@types/supertest` | `7.2.1` |
@@ -479,6 +484,12 @@ phase starts (YAGNI).
 | `lint-staged` | `17.4.1` |
 | `@commitlint/cli`, `@commitlint/config-conventional` | `21.2.2` |
 | `tsx` | `4.20.5` |
+| `@eslint/js` | `10.0.1` |
+| `@next/eslint-plugin-next` | `16.3.4` |
+| `@nx/eslint`, `@nx/jest`, `@nx/js` | `23.2.0` |
+| `@types/node` | `24.19.2` |
+| `@types/react` | `19.2.18` |
+| `@types/react-dom` | `19.2.3` |
 | gitleaks (Go binary, not npm) | `v8.28.0` — installed via Homebrew/CI download, invoked as `gitleaks`, never through pnpm |
 
 **Explicit decisions behind the choices above (ADR-style, so nobody re-litigates these):**
