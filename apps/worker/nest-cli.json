@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/worker/src",
+  "entryFile": "main",
+  "compilerOptions": {
+    "builder": { "type": "rspack", "options": { "configPath": "apps/worker/rspack.config.cjs" } },
+    "tsConfigPath": "apps/worker/tsconfig.app.json",
+    "deleteOutDir": true
+  }
+}

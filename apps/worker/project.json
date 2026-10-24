@@ -7,6 +7,15 @@
   "targets": {
     "lint": {},
     "type-check": {},
-    "test": {}
-  }
+    "test": {},
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "nest build --config apps/worker/nest-cli.json",
+        "cwd": "{workspaceRoot}"
+      },
+      "outputs": ["{workspaceRoot}/dist/apps/worker"]
+    }
+  },
+  "implicitDependencies": ["workspace"]
 }

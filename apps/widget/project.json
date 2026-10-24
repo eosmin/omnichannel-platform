@@ -7,6 +7,14 @@
   "targets": {
     "lint": {},
     "type-check": {},
-    "test": {}
+    "test": {},
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.app.json",
+        "cwd": "{projectRoot}"
+      },
+      "outputs": ["{workspaceRoot}/dist/apps/widget"]
+    }
   }
 }

@@ -20,8 +20,8 @@
   "targetDefaults": {
     "build": {
       "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"]
+      "dependsOn": ["^build", "^prisma-generate"],
+      "inputs": ["production", "^production", "{workspaceRoot}/tools/rspack/**/*"]
     },
     "test": {
       "cache": true,
@@ -39,7 +39,8 @@
         "env": {
           "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
         }
-      }
+      },
+      "dependsOn": ["^prisma-generate"]
     },
     "lint": {
       "cache": true,
@@ -48,7 +49,8 @@
       "options": {
         "command": "eslint --max-warnings=0 .",
         "cwd": "{projectRoot}"
-      }
+      },
+      "dependsOn": ["^prisma-generate"]
     },
     "type-check": {
       "cache": true,
@@ -57,7 +59,8 @@
       "options": {
         "command": "tsc -p tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
-      }
+      },
+      "dependsOn": ["^prisma-generate"]
     },
     "prisma-generate": {
       "cache": true,

@@ -206,7 +206,7 @@ apps/web/
 | Event bus | `@nestjs/event-emitter@3.0.1` | In-process domain events (`@OnEvent`) |
 | Scheduling | `@nestjs/schedule@6.0.0` | `@Cron` schedulers — **registered only in `apps/worker`** |
 | Rate limiting | `@nestjs/throttler@6.4.0`, `@nest-lab/throttler-storage-redis@1.1.0` | Redis-backed so limits hold across instances |
-| Health | `@nestjs/terminus@11.0.0` | Liveness/readiness indicators |
+| Health | `@nestjs/terminus@12.1.0` | Liveness/readiness indicators. Terminus 11 does not declare Nest 12; 12 replaced the `HealthIndicator` base class with `HealthIndicatorService` |
 | Passport | `passport@0.7.0`, `passport-jwt@4.0.1`, `passport-google-oauth20@2.0.0`, `openid-client@6.6.2`, `@nestjs/passport@12.0.0`, `@nestjs/jwt@12.0.1` | JWT strategy for the tenant API, Google OAuth for customer login, generic OIDC (Google Workspace / Okta) for staff SSO |
 | Supporting `@nestjs/*` | `@nestjs/websockets@12.0.1`, `@nestjs/platform-socket.io@12.0.1`, `@nestjs/swagger@12.0.1`, `nestjs-zod@5.0.1` | WebSocket gateway, OpenAPI generated from the shared Zod schemas |
 | Socket.io | `socket.io@4.8.3`, `@socket.io/redis-adapter@8.3.0` | Multi-instance broadcast |
@@ -366,7 +366,7 @@ download path verify that prefix against the current store before touching the o
 | `@nestjs/schedule` | `6.0.0` |
 | `@nestjs/throttler` | `6.4.0` |
 | `@nest-lab/throttler-storage-redis` | `1.1.0` |
-| `@nestjs/terminus` | `11.0.0` |
+| `@nestjs/terminus` | `12.1.0` |
 | `@nestjs/bullmq` | `11.0.3` |
 | `nestjs-zod` | `5.0.1` |
 | `reflect-metadata` | `0.2.2` — peer of `@nestjs/common` |
@@ -442,8 +442,8 @@ phase starts (YAGNI).
 | `@prometheus-io/client` | `0.16.1` — `prom-client` is deprecated upstream in favor of this package |
 | `@willsoto/nestjs-prometheus` | `6.0.2` — pinned to a release that depends on `@prometheus-io/client`; if the installed release still requires `prom-client`, write a thin `MetricsModule` over `@prometheus-io/client` instead of adding `prom-client` back |
 | Grafana | `13.2.1` (service) |
-| `@sentry/node`, `@sentry/nestjs`, `@sentry/profiling-node` | `10.73.0` |
-| `@sentry/nextjs` | `10.73.0` |
+| `@sentry/nestjs` | `11.5.0` — the 10.x line does not declare Nest 12; `@sentry/node` comes with it. `@sentry/profiling-node` is not used: its native binary is loaded by path at run time and cannot be bundled (MVP_TRIM_CHECKLIST.md) |
+| `@sentry/nextjs` | `11.5.0` (installed with the web observability, Step 3.x) |
 
 **Third-party SDKs**
 
@@ -489,6 +489,10 @@ phase starts (YAGNI).
 | `@eslint/js` | `10.0.1` |
 | `@next/eslint-plugin-next` | `16.3.4` |
 | `@nx/eslint`, `@nx/jest`, `@nx/js` | `23.2.0` |
+| `@nestjs/cli` | `12.0.10` — builds `api` and `worker` with the Rspack builder, the default of Nest 12 for monorepos |
+| `@rspack/core` | `2.2.9` |
+| `webpack-node-externals`, `tsconfig-paths-webpack-plugin` | `3.0.0`, `4.2.0` — required by the Rspack builder of the Nest CLI |
+| `@types/express` | `5.0.6` |
 | `@types/node` | `24.19.2` |
 | `@types/react` | `19.2.18` |
 | `@types/react-dom` | `19.2.3` |

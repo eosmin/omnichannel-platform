@@ -39,7 +39,11 @@
       "@platform/api-client": ["libs/api-client/src/index.ts"],
       "@platform/core/i18n": ["libs/core/domain/i18n/index.ts"],
       "@platform/core/crypto": ["libs/core/crypto/src/index.ts"],
-      "@platform/core/database": ["libs/core/database/src/index.ts"]
+      "@platform/core/database": ["libs/core/database/src/index.ts"],
+      "@platform/core/logger": ["libs/core/logger/src/index.ts"],
+      "@platform/core/metrics-module": ["libs/core/metrics/src/index.ts"],
+      "@platform/core/http": ["libs/core/http/src/index.ts"],
+      "@platform/core/sentry": ["libs/core/http/src/instrument.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

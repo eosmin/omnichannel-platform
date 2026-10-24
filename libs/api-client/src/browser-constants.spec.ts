@@ -1,5 +1,6 @@
-import { API_PREFIX } from './api-prefix'
 import { StorageKeys } from './storage-keys'
+
+import { API_PREFIX } from './index'
 
 describe('browser constants', () => {
   it('prefixes the API once, without a trailing slash', () => {

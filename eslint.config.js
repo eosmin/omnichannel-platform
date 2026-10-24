@@ -135,6 +135,10 @@ export default defineConfig([
               onlyDependOnLibsWithTags: ['scope:core', 'scope:core-domain']
             },
             {
+              sourceTag: 'scope:tooling',
+              onlyDependOnLibsWithTags: ['scope:core', 'scope:core-domain']
+            },
+            {
               sourceTag: 'scope:core-domain',
               onlyDependOnLibsWithTags: ['scope:core-domain']
             }
@@ -152,12 +156,51 @@ export default defineConfig([
     rules: { ...nextPlugin.configs.recommended.rules }
   },
 
+  // The libraries that build the modules of the apps may import the validated env; everything else
+  // gets it through them. A block replaces the whole rule, so the deep-relative-import pattern is
+  // repeated.
+  {
+    files: ['libs/core/http/**/*.ts', 'libs/core/platform/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../../../*'],
+              message: 'Use a workspace alias instead of deep relative imports'
+            }
+          ]
+        }
+      ]
+    }
+  },
+
   // Two files reach other projects by path on purpose: the env validator cross-checks the schemas of
   // the api, the worker and an app against their .env.example files, and the root prisma.config.ts is
   // the re-export the Prisma CLI looks for, which loads it without the tsconfig aliases
   {
     files: ['scripts/validate-env-example.ts', 'prisma.config.ts'],
     rules: { '@nx/enforce-module-boundaries': 'off' }
+  },
+
+  // Plain JavaScript (the Rspack configs): no type information, and the CommonJS globals
+  {
+    files: ['**/*.cjs'],
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        process: 'readonly',
+        __dirname: 'readonly'
+      }
+    },
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      '@typescript-eslint/no-require-imports': 'off'
+    }
   },
 
   // Scripts and the seed are allowed to print; everything else uses Pino

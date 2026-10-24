@@ -204,15 +204,16 @@ seeded owner exists with a working Membership, and
 and `integration-tests` is green on GitHub.
 
 ### Step 0.5 — Observability
-- [ ] `libs/core/logger` — Pino with redaction and correlation ID, `AuthenticatedRequest` type
-- [ ] `libs/core/metrics` — `@prometheus-io/client` with `MetricNames`
-- [ ] `GlobalExceptionFilter`
-- [ ] Health controller: `/health` and `/health/ready`; global prefix `/api/v1` with the `InfraRoutes` exclusions
-- [ ] Sentry instrumentation file
-- [ ] Dockerfiles for `api` and `worker` (multi-stage, pinned Node image from `TDD_01 §2.4`, non-root user)
-- [ ] CI: create the `security-scan` job: build both images and scan them with Trivy (CRITICAL/HIGH fails, unfixed ignored). Add `security-scan` as a required check
-- [ ] In `security-scan`: `docker/build-push-action` with the GitHub cache backend (one scope per image) and the Trivy database cached
-- [ ] A `build` target in every `project.json` (`api`, `worker`, `web`, `widget`) and `nx affected --target=build` in `lint-and-types`, because a project that type-checks can still fail to compile and the `widget` has no Dockerfile that would build it
+- [x] `libs/core/logger` — Pino with redaction and correlation ID, `AuthenticatedRequest` type (`LoggerModule.forRoot`, `correlationIdMiddleware`)
+- [x] `libs/core/metrics` — a thin `MetricsModule` over `@prometheus-io/client` (alias `@platform/core/metrics-module`, the constants keep `@platform/core/metrics`): one provider per `MetricNames` entry from `MetricDefinitions`, `@InjectMetric`, HTTP request metrics and `GET /metrics`
+- [x] `GlobalExceptionFilter` (`libs/core/http`): the error contract for business errors, Nest's own exceptions and unexpected errors, reported to Sentry
+- [x] Health controller (`libs/core/http`): `/health` and `/health/ready`; global prefix `/api/v1` with the `InfraRoutes` exclusions and a not-found fallback that answers outside the prefix with the contract too. **Readiness checks only the database for now**: each indicator arrives with its client (Redis in Step 1.0, storage in Step 3.4), as `TDD_04 §4` lists them
+- [x] Sentry instrumentation (`initSentry`, called by each app's `instrument.ts`), without profiling
+- [x] `build` target in `api`, `worker` (Nest CLI with Rspack, one `nest-cli.json` per app and a shared `tools/rspack/nest-bundle.cjs`), `web` (`next build`) and `widget`, and `nx affected --target=build` in `lint-and-types`, because a project that type-checks can still fail to compile and the `widget` has no Dockerfile that would build it
+- [x] One Dockerfile for `api` and `worker` (`docker/node-service.Dockerfile`, `--build-arg APP=api|worker`): multi-stage, the pinned Node image from `TDD_01 §2.4` (build on Debian, run on Alpine), a non-root user, no `node_modules` (the dependencies are in the bundle) and no npm or corepack in the final image
+- [x] CI: create the `security-scan` job: build both images and scan them with Trivy (CRITICAL/HIGH fails, unfixed ignored). Add `security-scan` as a required check
+- [x] In `security-scan`: `docker/build-push-action` with the GitHub cache backend (one scope per image) and the Trivy database cached
+- [x] In `integration-tests`: build `api` and `worker`, start them against the CI database and check them with `scripts/smoke-http.ts` (probes, metrics, the error contract)
 
 **TDD:** `TDD_04 §1`, `§2`, `§3`, `§4`, `TDD_02 §7`
 **Done when:** `GET /health/ready` returns 200 and `GET /metrics` exposes metrics, both
@@ -237,7 +238,7 @@ The security foundation. Everything after this depends on it being correct.
 ### Step 1.0 — Queues, workers and email
 Placed first in this milestone because Step 1.1 sends magic links through the email queue.
 - [ ] `libs/core/queues/queues.module.ts` — `@nestjs/bullmq`, seven queues plus DLQ (the `ai` queue is DEFERRED)
-- [ ] `apps/worker` NestJS bootstrap with health routes, graceful shutdown, `LeaderLockService`
+- [ ] `apps/worker`: `LeaderLockService`; the bootstrap, the health routes and the graceful shutdown exist since Step 0.5. Readiness gains the Redis check (`RedisHealthIndicator`, `PING`, with the `ioredis` client of the cache and the queues) in the api and the worker, and in the worker also that at least one BullMQ worker is running (`TDD_04 §4`)
 - [ ] Email worker + `ResendProvider` (+ Mailpit dev provider) + React Email template mechanism + server-side i18n
 - [ ] Resend webhook with transactional idempotency
 
@@ -419,7 +420,7 @@ on a page with a strict CSP.
 **Done when:** the panel shows a unified view across channels.
 
 ### Step 3.4 — Media
-- [ ] Pre-signed upload with progress, purposes and key prefixes
+- [ ] Pre-signed upload with progress, purposes and key prefixes; `StorageHealthIndicator` (`HeadBucket`) joins `/health/ready` with the S3 client (`TDD_04 §4`)
 - [ ] Scan-then-process worker chain (ClamAV, sharp variants as keys)
 - [ ] Signed download with variants
 - [ ] Media gallery with lightbox, bulk ZIP export
@@ -785,7 +786,8 @@ skipped cron day catches up.
 tax-retention legal hold on orders, and the day-25 alert fires in a test.
 
 ### Step 7.3 — Deployment
-- [ ] **MVP platform: Railway** (`MVP_TRIM_CHECKLIST.md` §7, D9). The Dockerfiles for api, worker and web already exist (Steps 0.5 and 3.1); this step adds PgBouncer and ClamAV as Docker services in the same Railway project (`admin` image and service DEFERRED). Google Cloud (Cloud Run, Cloud Build, Cloud SQL, Memorystore, Secret Manager) is the Phase 2 target
+- [ ] **MVP platform: Railway** (`MVP_TRIM_CHECKLIST.md` §7, D9). The Dockerfiles for api and worker (`docker/node-service.Dockerfile`, Step 0.5) and web (Step 3.1) already exist; this step adds PgBouncer and ClamAV as Docker services in the same Railway project (`admin` image and service DEFERRED). Google Cloud (Cloud Run, Cloud Build, Cloud SQL, Memorystore, Secret Manager) is the Phase 2 target
+- [ ] **`/metrics` and the probes share the port of the service**, and a Railway public domain exposes every path of it: decide here how `/metrics` stays private (scrape over private networking and keep the public domain off the api, or a `METRICS_TOKEN` checked by the metrics controller) before the first deploy; `TDD_04 §2.2` assumes a network rule that Railway does not offer
 - [ ] Railway project with staging and production environments; Postgres and Redis as Railway services; the worker always running (one instance minimum); secrets as Railway variables; private networking between services
 - [ ] Release flow (`MVP_TRIM_CHECKLIST.md` §7, D13): merges to `main` deploy to staging automatically; production deploys only from a version tag with manual approval, as `TDD_03 §4` says. Migrations run before each deploy. Verify with Context7 how Railway deploys from a tag, how to require approval and how to run migrations before a deploy, and write that into `TDD_03 §4`
 - [ ] Postgres on Railway's official image, pinned by **major** tag (`:18`; Railway supports 14 to 18 and does not support minor tags such as 18.6; PITR also requires the official image), so production runs Postgres 18 at whatever minor Railway publishes while local development keeps `postgres:18.6-alpine`; record this in `TDD_01 §2.4`. Backups: volume backups and PITR enabled from day one (`railway postgres pitr`), plus periodic `pg_dump` copies stored outside Railway
@@ -978,7 +980,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 0.2 | Local infrastructure | done | #16 | 2026-10-24 |
 | 0.3 | Constants library (blocking dependency for everything) | done | #25 | 2026-10-24 |
 | 0.4 | Database schema | done | #27 | 2026-10-24 |
-| 0.5 | Observability | todo | | |
+| 0.5 | Observability | done | #28 | 2026-10-25 |
 | 0.6 | Tooling | todo | | |
 | **Milestone 1: Auth and tenancy** | | | | |
 | 1.0 | Queues, workers and email | todo | | |

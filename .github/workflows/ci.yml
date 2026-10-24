@@ -37,12 +37,13 @@ jobs:
       - run: pnpm install --frozen-lockfile --prefer-offline
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - run: pnpm format:check
-      - name: Lint and type-check (affected on pull requests, everything on main)
+      # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
+      - name: Lint, type-check and build (affected on pull requests, everything on main)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pnpm exec nx affected --targets=lint,type-check --parallel=3
+            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
           else
-            pnpm exec nx run-many --targets=lint,type-check --all --parallel=3
+            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
           fi
 
   # The suites that need a real database. The api connects as platform_app, never as the owner.
@@ -84,9 +85,93 @@ jobs:
         run: pnpm db:check-rollbacks
       - name: Integration suites
         run: pnpm exec nx run core-database:test-integration
+      - name: The api and the worker start and answer
+        run: |
+          pnpm exec nx run-many --target=build --projects=api,worker
+          # Each service connects with its own role, as it does where it is deployed
+          api_url=postgresql://platform_app:$DB_APP_PASSWORD@localhost:5432/platform_ci
+          worker_url=postgresql://platform_worker:$DB_WORKER_PASSWORD@localhost:5432/platform_ci
+          # The rest of the env is the one of .env.example
+          set -a; . ./.env.example; set +a
+          export NODE_ENV=test
+          touch api.log worker.log
+          trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+          DATABASE_URL=$api_url PORT=8081 node dist/apps/api/main.js > api.log 2>&1 &
+          DATABASE_URL=$worker_url APP_ROLE=worker PORT=8082 node dist/apps/worker/main.js > worker.log 2>&1 &
+          pnpm exec tsx scripts/smoke-http.ts http://localhost:8081
+          pnpm exec tsx scripts/smoke-http.ts http://localhost:8082
+      - name: Service logs
+        if: failure()
+        run: tail -n 40 api.log worker.log
       # Last, because it empties the database: the rollbacks must run cleanly, newest first
       - name: Rollbacks run
         run: |
           for file in $(ls libs/core/database/rollbacks/*.rollback.sql | sort -r); do
             psql "$DIRECT_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
           done
+
+  # Builds the image of each service and scans it. A critical or high vulnerability that has a fix
+  # fails the job; the ones nobody has fixed yet do not.
+  security-scan:
+    name: security-scan (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            port: 8080
+          - app: worker
+            port: 8081
+    # Only for the check that the image starts and answers
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: platform_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the ${{ matrix.app }} image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/node-service.Dockerfile
+          build-args: APP=${{ matrix.app }}
+          tags: platform-${{ matrix.app }}:ci
+          load: true
+          push: false
+          # One cache scope per image, so that the two builds do not evict each other
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+      # The scan reads the operating system and the base image: the dependencies are inside the
+      # bundle, where it cannot see them (Dependabot covers those). So also run the image, in the
+      # mode it has where it is deployed, which no other job does.
+      - name: The ${{ matrix.app }} image starts and answers
+        run: |
+          docker run -d --name service --network host --env-file .env.example \
+            -e NODE_ENV=production -e APP_ROLE=${{ matrix.app }} -e PORT=${{ matrix.port }} \
+            -e DATABASE_URL=postgresql://platform:ci_password@localhost:5432/platform_ci \
+            -e JWT_SECRET="$(openssl rand -hex 24)" \
+            -e CREDENTIALS_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+            platform-${{ matrix.app }}:ci
+          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused \
+            http://localhost:${{ matrix.port }}/health/ready
+      - name: Service log
+        if: failure()
+        run: docker logs service
+      # The action caches the vulnerability database between runs
+      - name: Scan the ${{ matrix.app }} image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: platform-${{ matrix.app }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'

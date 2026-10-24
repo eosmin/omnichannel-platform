@@ -493,6 +493,9 @@ export class HealthController {
 }
 ```
 
+> **v1.2 build order:** the three indicators arrive with their clients. Step 0.5 checks the database
+> only; Redis joins in Step 1.0 and storage in Step 3.4 (`IMPLEMENTATION_PLAN.md`).
+
 `apps/worker` exposes the same two routes through a minimal HTTP listener (Cloud Run needs
 a port); its readiness additionally checks that at least one BullMQ worker is running.
 

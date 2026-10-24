@@ -1,3 +1,4 @@
+import { API_PREFIX } from './api-prefix'
 import { ApiRoutes, InfraRoutes } from './api-routes'
 
 type RouteValue = string | ((...args: string[]) => string) | { [key: string]: RouteValue }
@@ -51,5 +52,15 @@ describe('ApiRoutes', () => {
   it('keeps the infrastructure routes outside the versioned groups', () => {
     expect(InfraRoutes.healthReady).toBe('/health/ready')
     expect(InfraRoutes.queues).toBe('/admin/queues')
+  })
+})
+
+describe('API_PREFIX', () => {
+  it('is the version prefix, with a leading slash and no trailing one', () => {
+    expect(API_PREFIX).toBe('/api/v1')
+  })
+
+  it('is not part of the infra routes, which are mounted outside of it', () => {
+    for (const path of Object.values(InfraRoutes)) expect(path.startsWith(API_PREFIX)).toBe(false)
   })
 })

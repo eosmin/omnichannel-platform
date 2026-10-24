@@ -10,7 +10,7 @@
       "cache": true,
       "inputs": ["default", "^production"],
       "options": {
-        "command": "eslint --max-warnings=0 scripts prisma.config.ts",
+        "command": "eslint --max-warnings=0 scripts tools prisma.config.ts",
         "cwd": "{workspaceRoot}"
       }
     },
