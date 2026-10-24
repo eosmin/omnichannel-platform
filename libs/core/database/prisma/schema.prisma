@@ -1,0 +1,1146 @@
+// The CJS output has no import.meta and bare imports, so the Jest suites (compiled as CJS) and the
+// ESM code run by tsx load the same generated client. The ESM output breaks under Jest.
+generator client {
+  provider            = "prisma-client"
+  output              = "../generated/client"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ORGANIZATIONS & TENANCY
+// ============================================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  stores              Store[]
+  memberships         Membership[]
+  invitations         Invitation[]
+  dataSubjectRequests DataSubjectRequest[]
+
+  @@map("organizations")
+}
+
+model Store {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String
+  slug           String
+  timezone       String   @default("America/El_Salvador")
+  currency       String   @default("USD")
+  defaultLocale  String   @default("es") @map("default_locale")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settings            StoreSettings?
+  businessHours       BusinessHours?
+  routingRules        RoutingRule[]
+  memberships         Membership[]
+  invitations         Invitation[]
+  roles               Role[]
+  conversations       Conversation[]
+  messages            Message[]
+  customers           Customer[]
+  customerIdentities  CustomerIdentity[]
+  customerMerges      CustomerMerge[]
+  orders              Order[]
+  products            Product[]
+  inventoryMovements  InventoryMovement[]
+  tags                Tag[]
+  snippets            Snippet[]
+  media               Media[]
+  channelConnections  ChannelConnection[]
+  pluginInstallations PluginInstallation[]
+  webhooks            Webhook[]
+  apiKeys             ApiKey[]
+  notifications       Notification[]
+  notificationPrefs   NotificationPreference[]
+  retentionSettings   RetentionSettings?
+  scheduledReports    ScheduledReport[]
+  analyticsEvents     AnalyticsEvent[]
+  metricsHourly       MetricHourly[]
+  metricsDaily        MetricDaily[]
+  consentRecords      ConsentRecord[]
+  exports             Export[]
+
+  @@unique([organizationId, slug])
+  @@map("stores")
+}
+
+// Per-store behaviour toggles (TDD_09 §3, §11). One row per store, created with the store.
+model StoreSettings {
+  storeId                    String   @id @map("store_id")
+  reopenWindowDays           Int      @default(7) @map("reopen_window_days")
+  autoArchiveAfterDays       Int      @default(30) @map("auto_archive_after_days")
+  resolveShowOptions         Boolean  @default(true) @map("resolve_show_options")
+  sendClosingMessage         Boolean  @default(false) @map("send_closing_message")
+  closingSnippetId           String?  @map("closing_snippet_id")
+  requestCsat                Boolean  @default(false) @map("request_csat")
+  agentLoadThreshold         Int      @default(8) @map("agent_load_threshold") // Team widget "above threshold"
+  // Safety & confirmations (TDD_09 §11.2): { confirmDeleteCustomer, confirmDisconnectChannel,
+  // confirmRemoveMember, applyToRoles: RoleName[], moderateRiskMode: 'dialog'|'undo'|'none' }
+  safety                     Json     @default("{}")
+  preferences                Json     @default("{}") // storePreferencesSchema (TDD_17 §4.14)
+  returnShippingPayer        String   @default("sender") @map("return_shipping_payer")
+  defaultCarrierConnectionId String?  @map("default_carrier_connection_id") // Plain column until Step 4.8
+  bulkLabelRetentionDays     Int      @default(7) @map("bulk_label_retention_days")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("store_settings")
+}
+
+model BusinessHours {
+  storeId              String   @id @map("store_id")
+  timezone             String
+  // { mon: [{ from: "09:00", to: "18:00" }], ..., sun: [] }
+  schedule             Json
+  awayMessageSnippetId String?  @map("away_message_snippet_id")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("business_hours")
+}
+
+// Assignment rules evaluated in priority order on every new inbound conversation
+// (TDD_10 §4 step "routing"). conditions/action shapes are Zod schemas in
+// libs/core/domain/schemas/routing-rule.schema.ts.
+model RoutingRule {
+  id         String   @id @default(uuid())
+  storeId    String   @map("store_id")
+  name       String
+  priority   Int
+  enabled    Boolean  @default(true)
+  // { channelTypes?: ChannelType[], tagIds?: string[], keywords?: string[], outsideBusinessHours?: boolean }
+  conditions Json
+  // { type: 'assign_user' | 'round_robin' | 'unassigned', userIds?: string[] }
+  action     Json
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, priority])
+  @@index([storeId, enabled])
+  @@map("routing_rules")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String
+  emailVerified Boolean  @default(false) @map("email_verified")
+  emailValid    Boolean  @default(true) @map("email_valid")
+  avatarMediaId String?  @map("avatar_media_id")
+  locale        String   @default("es")
+  timezone      String?
+  density       String   @default("comfortable") // UI preference
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  memberships             Membership[]
+  messages                Message[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  notificationSettings    UserNotificationSettings?
+  pushSubscriptions       PushSubscription[]
+  auditLogs               AuditLog[]
+  sessions                Session[]
+  verificationTokens      VerificationToken[]
+  invitationsSent         Invitation[]              @relation("InvitedBy")
+  invitationsAccepted     Invitation[]              @relation("AcceptedBy")
+  cookieConsents          CookieConsent[]
+
+  @@map("users")
+}
+
+// Refresh-token rotation with family tracking (§7). One row per issued refresh token;
+// a family is the chain started at login. Reuse of a consumed token revokes the family.
+model Session {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  familyId         String    @map("family_id")
+  refreshTokenHash String    @unique @map("refresh_token_hash") // sha256; the raw token is never stored
+  replacedById     String?   @unique @map("replaced_by_id")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  expiresAt        DateTime  @map("expires_at")
+  consumedAt       DateTime? @map("consumed_at")
+  revokedAt        DateTime? @map("revoked_at")
+  revokedReason    String?   @map("revoked_reason")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy Session? @relation("SessionRotation", fields: [replacedById], references: [id])
+  replaces   Session? @relation("SessionRotation")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Magic-link login and DSR verification (TDD_07 §5.3, TDD_05 §10.2).
+model VerificationToken {
+  id        String    @id @default(uuid())
+  type      String // VerificationTokenType
+  tokenHash String    @unique @map("token_hash")
+  userId    String?   @map("user_id")
+  subject   String? // Email or DSR id when there is no user
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
+// A pending invitation is NOT a Membership: the invitee may not have a User yet.
+// Membership rows are created only on acceptance (TDD_07 §5.3).
+model Invitation {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  storeId        String    @map("store_id")
+  email          String
+  roleId         String    @map("role_id")
+  tokenHash      String    @unique @map("token_hash")
+  status         String    @default("PENDING") // InvitationStatus
+  invitedById    String    @map("invited_by_id")
+  acceptedById   String?   @map("accepted_by_id")
+  expiresAt      DateTime  @map("expires_at")
+  acceptedAt     DateTime? @map("accepted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+  invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id])
+  acceptedBy   User?        @relation("AcceptedBy", fields: [acceptedById], references: [id])
+
+  @@unique([storeId, email, status]) // One PENDING invitation per email per store (partial index in §5)
+  @@index([storeId, status])
+  @@map("invitations")
+}
+
+model Membership {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  organizationId String    @map("organization_id")
+  storeId        String    @map("store_id")
+  roleId         String    @map("role_id")
+  status         String    @default("ACTIVE") // MembershipStatus
+  invitationId   String?   @map("invitation_id")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, storeId])
+  @@index([storeId, status])
+  @@index([userId])
+  @@index([organizationId, status])
+  @@map("memberships")
+}
+
+// System presets have storeId = null and isSystem = true. Uniqueness of system role
+// names is enforced by a partial unique index in §5 (NULLs are distinct in Postgres).
+model Role {
+  id          String   @id @default(uuid())
+  storeId     String?  @map("store_id")
+  name        String
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store       Store?       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  permissions Permission[]
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@index([storeId])
+  @@map("roles")
+}
+
+model Permission {
+  id     String @id @default(uuid())
+  name   String // Permission (TDD_02 §4)
+  roleId String @map("role_id")
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, name])
+  @@map("permissions")
+}
+
+// ============================================================
+// CUSTOMERS
+// ============================================================
+
+model Customer {
+  id              String    @id @default(uuid())
+  storeId         String    @map("store_id")
+  name            String?
+  email           String?
+  phone           String? // As displayed
+  phoneNormalized String?   @map("phone_normalized") // E.164 digits only, for search
+  locale          String? // Detected from channel/messages, for customer-facing copy
+  erasedAt        DateTime? @map("erased_at")
+  mergedIntoId    String?   @map("merged_into_id") // Set when absorbed by a merge (row kept 30 days for unmerge)
+  isCaution       Boolean   @default(false) @map("is_caution")
+  cautionReason   String?   @map("caution_reason")
+  cautionSetBy    String?   @map("caution_set_by")
+  cautionSetAt    DateTime? @map("caution_set_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  store         Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  identities    CustomerIdentity[]
+  conversations Conversation[]
+  orders        Order[]
+  addresses     Address[]
+  notes         CustomerNote[]
+  consents      ConsentRecord[]
+  tags          Tag[]              @relation("CustomerTags")
+  media         Media[]
+
+  @@index([storeId])
+  @@index([storeId, phoneNormalized])
+  @@index([storeId, email])
+  @@index([storeId, mergedIntoId])
+  @@map("customers")
+}
+
+// One row per (store, channel, handle). The SAME phone number in two stores is two
+// rows — customers are always store-scoped (TDD_10 §5.2).
+model CustomerIdentity {
+  id              String    @id @default(uuid())
+  storeId         String    @map("store_id")
+  customerId      String    @map("customer_id")
+  channelType     String    @map("channel_type") // ChannelType
+  channelIdentity String    @map("channel_identity") // phone (E.164), page-scoped id, visitor id, email
+  displayName     String?   @map("display_name") // Profile name as reported by the channel
+  channelMetadata Json?     @map("channel_metadata")
+  lastInboundAt   DateTime? @map("last_inbound_at") // Drives messaging windows (TDD_10 §4)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([storeId, channelType, channelIdentity])
+  @@index([customerId])
+  @@map("customer_identities")
+}
+
+model Address {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  label      String?
+  line1      String
+  line2      String?
+  city       String
+  state      String?
+  postalCode String?  @map("postal_code")
+  country    String   @default("SV")
+  isDefault  Boolean  @default(false) @map("is_default")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("addresses")
+}
+
+model CustomerNote {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  authorId   String   @map("author_id")
+  content    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, createdAt])
+  @@map("customer_notes")
+}
+
+// Snapshot that makes "Unmerge within 30 days" possible (TDD_09 §6.1).
+model CustomerMerge {
+  id           String    @id @default(uuid())
+  storeId      String    @map("store_id")
+  survivorId   String    @map("survivor_id")
+  absorbedId   String    @map("absorbed_id")
+  // { absorbed: Customer, identityIds, conversationIds, orderIds, addressIds, noteIds, tagIds, fieldChoices }
+  snapshot     Json
+  mergedById   String    @map("merged_by_id")
+  mergedAt     DateTime  @default(now()) @map("merged_at")
+  unmergeUntil DateTime  @map("unmerge_until")
+  unmergedAt   DateTime? @map("unmerged_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, survivorId])
+  @@index([unmergeUntil])
+  @@map("customer_merges")
+}
+
+// ============================================================
+// CONVERSATIONS & MESSAGES
+// ============================================================
+
+model Conversation {
+  id                  String    @id @default(uuid())
+  storeId             String    @map("store_id")
+  customerId          String    @map("customer_id")
+  customerIdentityId  String    @map("customer_identity_id") // Which handle the customer used
+  channelConnectionId String    @map("channel_connection_id") // Which of our accounts received it → outbound route
+  channelType         String    @map("channel_type") // ChannelType, denormalized for filters
+  status              String    @default("OPEN") // ConversationStatus
+  assignedTo          String?   @map("assigned_to")
+  unreadCount         Int       @default(0) @map("unread_count") // Inbound messages not yet read by an agent
+  lastReadAt          DateTime? @map("last_read_at")
+  lastReadBy          String?   @map("last_read_by")
+  lastMessageAt       DateTime? @map("last_message_at")
+  lastInboundAt       DateTime? @map("last_inbound_at")
+  lastOutboundAt      DateTime? @map("last_outbound_at")
+  firstResponseAt     DateTime? @map("first_response_at") // First agent reply, for analytics
+  resolvedAt          DateTime? @map("resolved_at")
+  resolutionReason    String?   @map("resolution_reason")
+  csatScore           Int?      @map("csat_score") // 1-5
+  csatComment         String?   @map("csat_comment")
+  archivedAt          DateTime? @map("archived_at")
+  snoozedUntil        DateTime? @map("snoozed_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  store             Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer          Customer          @relation(fields: [customerId], references: [id])
+  customerIdentity  CustomerIdentity  @relation(fields: [customerIdentityId], references: [id])
+  channelConnection ChannelConnection @relation(fields: [channelConnectionId], references: [id])
+  messages          Message[]
+  tags              Tag[]             @relation("ConversationTags")
+
+  @@index([storeId, status, assignedTo, lastMessageAt(sort: Desc)])
+  @@index([storeId, lastMessageAt(sort: Desc)])
+  @@index([storeId, channelType, status])
+  @@index([storeId, customerId])
+  @@index([customerIdentityId])
+  @@index([snoozedUntil])
+  @@index([status, resolvedAt]) // Auto-archive scheduler
+  @@map("conversations")
+}
+
+model Message {
+  id               String   @id @default(uuid())
+  storeId          String   @map("store_id") // Denormalized: RLS, exports, retention
+  conversationId   String   @map("conversation_id")
+  type             String // MessageType
+  content          String?
+  authorType       String   @map("author_type") // AuthorType
+  authorId         String?  @map("author_id") // User id for AGENT, null otherwise
+  channelMessageId String?  @map("channel_message_id") // Provider id; unique per conversation
+  idempotencyKey   String?  @map("idempotency_key") // Client-generated for outbound (TDD_06 §4)
+  replyToMessageId String?  @map("reply_to_message_id")
+  deliveryStatus   String?  @map("delivery_status") // DeliveryStatus, outbound only
+  deliveryError    String?  @map("delivery_error") // ErrorCode when FAILED
+  mentions         String[] @default([]) // User ids mentioned in an internal note
+  metadata         Json? // Channel-specific metadata
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User?        @relation(fields: [authorId], references: [id])
+  media        Media[]
+
+  @@unique([conversationId, channelMessageId])
+  @@unique([conversationId, idempotencyKey])
+  @@index([conversationId, createdAt])
+  @@index([storeId, createdAt])
+  @@map("messages")
+}
+
+model Tag {
+  id          String   @id @default(uuid())
+  storeId     String   @map("store_id")
+  name        String
+  color       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  conversations Conversation[] @relation("ConversationTags")
+  customers     Customer[]     @relation("CustomerTags")
+
+  @@unique([storeId, name])
+  @@map("tags")
+}
+
+model Snippet {
+  id        String   @id @default(uuid())
+  storeId   String   @map("store_id")
+  shortcut  String
+  title     String
+  content   String
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, shortcut])
+  @@map("snippets")
+}
+
+// ============================================================
+// ORDERS, PRODUCTS & INVENTORY
+// ============================================================
+
+model Order {
+  id                         String    @id @default(uuid())
+  storeId                    String    @map("store_id")
+  customerId                 String    @map("customer_id")
+  conversationId             String?   @map("conversation_id")
+  orderNumber                String    @map("order_number")
+  status                     String    @default("PENDING_CONFIRMATION") // OrderStatus
+  subtotalCents              Int       @map("subtotal_cents")
+  shippingCents              Int       @default(0) @map("shipping_cents")
+  discountCents              Int       @default(0) @map("discount_cents")
+  totalCents                 Int       @map("total_cents")
+  currency                   String    @default("USD")
+  paymentMethod              String    @map("payment_method") // PaymentMethod
+  paymentStatus              String    @default("PENDING") @map("payment_status") // PaymentStatus
+  shippingAddress            Json?     @map("shipping_address")
+  customerNotes              String?   @map("customer_notes")
+  internalNotes              String?   @map("internal_notes")
+  trackingNumber             String?   @map("tracking_number")
+  cancellationReason         String?   @map("cancellation_reason")
+  cancelledBy                String?   @map("cancelled_by")
+  proofOfDeliveryMediaId     String?   @map("proof_of_delivery_media_id")
+  confirmedAt                DateTime? @map("confirmed_at")
+  confirmedBy                String?   @map("confirmed_by")
+  confirmedVia               String?   @map("confirmed_via") // OrderConfirmationChannel
+  exchangeOfOrderId          String?   @map("exchange_of_order_id") // The order this one replaces
+  copiedFromOrderId          String?   @map("copied_from_order_id") // The order it was copied from
+  freeShipping               Boolean   @default(false) @map("free_shipping") // Derived and stored on save (TDD_17 §4.13)
+  discountReason             String?   @map("discount_reason")
+  priceApprovalStatus        String    @default("not_required") @map("price_approval_status") // PriceApprovalStatus
+  priceApprovalRequestedBy   String?   @map("price_approval_requested_by")
+  priceApprovedBy            String?   @map("price_approved_by")
+  priceApprovedAt            DateTime? @map("price_approved_at")
+  priceApprovedDiscountCents Int?      @map("price_approved_discount_cents")
+  priceApprovedShippingCents Int?      @map("price_approved_shipping_cents")
+  carrierConnectionId        String?   @map("carrier_connection_id") // Plain column until Step 4.8 adds the foreign key
+  createdBy                  String    @map("created_by")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  shippedAt                  DateTime? @map("shipped_at")
+  deliveredAt                DateTime? @map("delivered_at")
+  cancelledAt                DateTime? @map("cancelled_at")
+
+  store    Store       @relation(fields: [storeId], references: [id]) // No cascade: tax retention
+  customer Customer    @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
+  media    Media[]
+
+  @@unique([storeId, orderNumber])
+  @@index([storeId, status, createdAt(sort: Desc)])
+  @@index([storeId, customerId])
+  @@index([conversationId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                     String  @id @default(uuid())
+  orderId                String  @map("order_id")
+  productId              String  @map("product_id")
+  variantId              String? @map("variant_id")
+  productName            String  @map("product_name") // Denormalized snapshot at time of order
+  variantName            String? @map("variant_name")
+  quantity               Int
+  unitPriceCents         Int     @map("unit_price_cents") // Snapshot; never trusted from the client
+  originalUnitPriceCents Int?    @map("original_unit_price_cents") // Null unless the price was overridden
+  priceOverrideReason    String? @map("price_override_reason")
+  priceOverriddenBy      String? @map("price_overridden_by")
+  freeShipping           Boolean @default(false) @map("free_shipping") // Snapshot of Product.freeShipping at order time
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Product {
+  id                String   @id @default(uuid())
+  storeId           String   @map("store_id")
+  name              String
+  description       String?
+  priceCents        Int      @map("price_cents")
+  sku               String?
+  imageMediaId      String?  @map("image_media_id")
+  trackInventory    Boolean  @default(true) @map("track_inventory")
+  lowStockThreshold Int      @default(5) @map("low_stock_threshold")
+  active            Boolean  @default(true)
+  freeShipping      Boolean  @default(false) @map("free_shipping") // The price already includes shipping (TDD_17 §4.13)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  store      Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variants   ProductVariant[]
+  inventory  InventoryMovement[]
+  orderItems OrderItem[]
+  media      Media[]
+
+  @@unique([storeId, sku])
+  @@index([storeId, active])
+  @@map("products")
+}
+
+// "Size 42", "Red / L". A product without variants sells the product row itself.
+model ProductVariant {
+  id         String   @id @default(uuid())
+  productId  String   @map("product_id")
+  name       String // Display: "42", "Rojo / L"
+  sku        String?
+  priceCents Int?     @map("price_cents") // Null = inherits Product.priceCents
+  attributes Json // { size: "42", color: "red" }
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product    Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory  InventoryMovement[]
+  orderItems OrderItem[]
+
+  @@unique([productId, name])
+  @@index([productId, active])
+  @@map("product_variants")
+}
+
+model InventoryMovement {
+  id        String   @id @default(uuid())
+  storeId   String   @map("store_id")
+  productId String   @map("product_id")
+  variantId String?  @map("variant_id")
+  type      String // InventoryMovementType
+  quantity  Int
+  reference String? // Order id or manual adjustment note
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  store   Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([productId, variantId, type, createdAt(sort: Desc)])
+  @@map("inventory_movements")
+}
+
+// ============================================================
+// MEDIA
+// ============================================================
+
+model Media {
+  id          String    @id @default(uuid())
+  storeId     String?   @map("store_id") // Null only for user avatars
+  purpose     String // MediaPurpose: message | product | order | avatar | export
+  messageId   String?   @map("message_id")
+  customerId  String?   @map("customer_id") // Set for message media: gallery queries
+  productId   String?   @map("product_id")
+  orderId     String?   @map("order_id")
+  uploadedBy  String?   @map("uploaded_by") // User id; null for inbound channel media
+  key         String    @unique // S3 object key, built by storage-keys.ts
+  filename    String
+  contentType String    @map("content_type")
+  fileSize    Int       @map("file_size")
+  // { full: key, medium: key, thumb: key } — KEYS, signed at read time (TDD_07 §6.6)
+  variants    Json?
+  status      String    @default("pending") // MediaStatus
+  scanResult  Json?     @map("scan_result") // { viruses: string[] } when infected
+  processedAt DateTime? @map("processed_at")
+  scannedAt   DateTime? @map("scanned_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  store    Store?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message  Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  product  Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([storeId, createdAt])
+  @@index([storeId, customerId, createdAt(sort: Desc)])
+  @@index([messageId])
+  @@index([status, createdAt])
+  @@map("media")
+}
+
+// ============================================================
+// CHANNELS, PLUGINS & WEBHOOKS
+// ============================================================
+
+// One row per (store, plugin, account). connectionId is what the provider sends as the
+// RECIPIENT of an inbound webhook (WhatsApp phone_number_id, Facebook Page id, Instagram
+// business account id, widget site key, inbound mailbox address). It is unique per plugin
+// platform-wide — a phone number belongs to exactly one store — which is how the inbound
+// pipeline resolves the store (TDD_10 §4).
+model ChannelConnection {
+  id            String    @id @default(uuid())
+  storeId       String    @map("store_id")
+  pluginId      String    @map("plugin_id") // ChannelType / plugin id
+  connectionId  String    @map("connection_id")
+  displayName   String    @map("display_name") // "+503 2222-3333", "Mi Empresa (Page)"
+  status        String    @default("active") // ChannelConnectionStatus
+  credentials   Bytes // AES-256-GCM ciphertext (libs/core/crypto)
+  metadata      Json?
+  lastHealthyAt DateTime? @map("last_healthy_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([pluginId, connectionId])
+  @@index([storeId, status])
+  @@map("channel_connections")
+}
+
+// The marketplace catalog entry — one row per published plugin, independent of how many
+// stores installed it. Official channel plugins live in the code registry, not here; a row
+// exists only for a plugin the owner registers (isOfficial false, pricingModel 'free', status 'approved').
+model Plugin {
+  // The manifest's own declared id (TDD_10 §6.1, e.g. "telegram-connector", or "whatsapp"
+  // for an official channel) — not a generated uuid, so it matches PluginInstallation.pluginId
+  // and the in-memory registry key exactly.
+  id                          String   @id
+  name                        String
+  authorName                  String   @map("author_name")
+  authorEmail                 String   @map("author_email")
+  type                        String // 'channel' | 'integration'
+  isOfficial                  Boolean  @default(false) @map("is_official")
+  manifest                    Json // Full manifest JSON, TDD_10 §6.1
+  pricingModel                String   @map("pricing_model") // PluginPricingModels
+  priceCents                  Int?     @map("price_cents") // pricingModel = 'paid' only
+  platformRevenueSharePercent Int?     @default(20) @map("platform_revenue_share_percent")
+  status                      String   @default("submitted") // PluginStatus
+  reviewNotes                 String?  @map("review_notes")
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  installations PluginInstallation[]
+
+  @@index([status])
+  @@map("plugins")
+}
+
+model PluginInstallation {
+  id                 String    @id @default(uuid())
+  storeId            String    @map("store_id")
+  pluginId           String    @map("plugin_id")
+  scopes             String[] // PluginScope[]
+  status             String    @default("pending_setup") // PluginInstallationStatus
+  apiKeyPrefix       String    @map("api_key_prefix") // First 12 chars, shown in UI
+  apiKeyHash         String    @unique @map("api_key_hash") // sha256 of the full key
+  rateLimitPerMinute Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
+  config             Json?
+  installedBy        String    @map("installed_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  revokedAt          DateTime? @map("revoked_at")
+
+  store  Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plugin Plugin @relation(fields: [pluginId], references: [id], onDelete: Restrict)
+
+  @@unique([storeId, pluginId])
+  @@index([storeId, status])
+  @@map("plugin_installations")
+}
+
+// Tenant-created outbound webhooks (Settings → Webhooks).
+model Webhook {
+  id                  String    @id @default(uuid())
+  storeId             String    @map("store_id")
+  url                 String
+  events              String[] // EventName[]
+  secret              Bytes // Encrypted HMAC secret
+  status              String    @default("active") // WebhookStatus
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastFailureAt       DateTime? @map("last_failure_at")
+  createdBy           String    @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([storeId, status])
+  @@map("webhooks")
+}
+
+model WebhookDelivery {
+  id         String   @id @default(uuid())
+  webhookId  String   @map("webhook_id")
+  event      String
+  statusCode Int?     @map("status_code")
+  durationMs Int      @map("duration_ms")
+  success    Boolean
+  error      String?
+  attempt    Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt(sort: Desc)])
+  @@index([createdAt]) // 30-day cleanup
+  @@map("webhook_deliveries")
+}
+
+// Idempotency for inbound provider webhooks (Resend). Channel webhooks dedupe on
+// Message.channelMessageId instead.
+model ProcessedWebhookEvent {
+  source      String // 'resend'
+  eventId     String   @map("event_id")
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@id([source, eventId])
+  @@index([processedAt])
+  @@map("processed_webhook_events")
+}
+
+// Tenant API keys (Settings → API keys) for the public REST API. Distinct from plugin keys.
+model ApiKey {
+  id         String    @id @default(uuid())
+  storeId    String    @map("store_id")
+  name       String
+  keyPrefix  String    @map("key_prefix") // "pk_live_ab12…" shown in UI
+  keyHash    String    @unique @map("key_hash")
+  scopes     String[] // Permission[] subset
+  status     String    @default("active") // ApiKeyStatus
+  lastUsedAt DateTime? @map("last_used_at")
+  expiresAt  DateTime? @map("expires_at")
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, status])
+  @@map("api_keys")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+// Persisted as an i18n key + params (TDD_02 §12). Rendered at display time in the
+// recipient's locale; emails render server-side.
+model Notification {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  storeId      String    @map("store_id")
+  type         String // NotificationType
+  severity     String // NotificationSeverity
+  messageKey   String    @map("message_key") // e.g. "notifications.conversation.assigned"
+  params       Json      @default("{}") // { customerName, conversationId, … }
+  resourceType String?   @map("resource_type")
+  resourceId   String?   @map("resource_id")
+  actionPath   String?   @map("action_path") // App-relative path, built from AppPaths
+  readAt       DateTime? @map("read_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([storeId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id      String  @id @default(uuid())
+  userId  String  @map("user_id")
+  storeId String  @map("store_id")
+  type    String // NotificationType
+  inApp   Boolean @default(true) @map("in_app")
+  push    Boolean @default(true)
+  email   Boolean @default(false)
+  sound   Boolean @default(true)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId, type])
+  @@map("notification_preferences")
+}
+
+// User-level (not per store) notification behaviour: quiet hours, digest, cross-store.
+model UserNotificationSettings {
+  userId                   String    @id @map("user_id")
+  quietHoursEnabled        Boolean   @default(false) @map("quiet_hours_enabled")
+  quietHoursStart          Int       @default(22) @map("quiet_hours_start") // 0-23, in `timezone`
+  quietHoursEnd            Int       @default(7) @map("quiet_hours_end")
+  quietHoursFollowStore    Boolean   @default(false) @map("quiet_hours_follow_store")
+  timezone                 String    @default("America/El_Salvador")
+  digestFrequency          String    @default("hourly") @map("digest_frequency") // DigestFrequency
+  crossStoreEnabled        Boolean   @default(true) @map("cross_store_enabled")
+  crossStoreSupervisorOnly Boolean   @default(false) @map("cross_store_supervisor_only")
+  lastDigestSentAt         DateTime? @map("last_digest_sent_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_settings")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  lastUsed  DateTime @default(now()) @map("last_used")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+// ============================================================
+// ANALYTICS & EXPORTS
+// ============================================================
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  storeId   String   @map("store_id")
+  event     String // AnalyticsEventNames (TDD_11 §7.1)
+  data      Json
+  date      DateTime @db.Date
+  timestamp DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, event, date])
+  @@index([date])
+  @@map("analytics_events")
+}
+
+// dimension/dimensionId default to '' (never NULL) so the unique constraint works with upsert.
+model MetricHourly {
+  id          String   @id @default(uuid())
+  storeId     String   @map("store_id")
+  hour        DateTime
+  metric      String
+  dimension   String   @default("")
+  dimensionId String   @default("") @map("dimension_id")
+  value       Decimal  @db.Decimal(18, 4)
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, hour, metric, dimension, dimensionId])
+  @@index([storeId, metric, hour])
+  @@map("metrics_hourly")
+}
+
+model MetricDaily {
+  id          String   @id @default(uuid())
+  storeId     String   @map("store_id")
+  date        DateTime @db.Date
+  metric      String
+  dimension   String   @default("")
+  dimensionId String   @default("") @map("dimension_id")
+  value       Decimal  @db.Decimal(18, 4)
+  count       Int      @default(0)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, date, metric, dimension, dimensionId])
+  @@index([storeId, metric, date])
+  @@map("metrics_daily")
+}
+
+model ScheduledReport {
+  id         String    @id @default(uuid())
+  storeId    String    @map("store_id")
+  name       String
+  metrics    String[]
+  frequency  String // ReportFrequency
+  format     String // ReportFormats
+  recipients String[]
+  filters    Json?
+  timezone   String    @default("America/El_Salvador")
+  sendAtHour Int       @default(8) @map("send_at_hour")
+  enabled    Boolean   @default(true)
+  lastSentAt DateTime? @map("last_sent_at")
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([enabled, frequency])
+  @@map("scheduled_reports")
+}
+
+// Generated exports (CSV/Excel/ZIP/PDF) — the record behind ApiRoutes.exports and the
+// EXPORT_READY notification (TDD_07 §7).
+model Export {
+  id          String    @id @default(uuid())
+  storeId     String    @map("store_id")
+  requestedBy String    @map("requested_by")
+  type        String // ExportTypes (TDD_07 §1.3)
+  format      String
+  filters     Json?
+  status      String    @default("pending") // ExportStatus: pending | ready | failed | expired
+  key         String? // S3 key when ready
+  rowCount    Int?      @map("row_count")
+  error       String?
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("exports")
+}
+
+// ============================================================
+// COMPLIANCE & AUDIT
+// ============================================================
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  action         String // AuditActionType
+  // Null for system actions (workers, webhooks)
+  userId         String?  @map("user_id")
+  storeId        String?  @map("store_id")
+  // Org-level actions have no single store.
+  organizationId String?  @map("organization_id")
+  resourceType   String?  @map("resource_type")
+  resourceId     String?  @map("resource_id")
+  metadata       Json?
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  timestamp      DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp(sort: Desc)])
+  @@index([storeId, timestamp(sort: Desc)])
+  @@index([organizationId, timestamp(sort: Desc)])
+  @@index([action, timestamp(sort: Desc)])
+  @@index([timestamp]) // Cold export / purge
+  @@map("audit_logs")
+}
+
+model DataSubjectRequest {
+  id                     String    @id @default(uuid())
+  organizationId         String    @map("organization_id")
+  storeId                String?   @map("store_id")
+  type                   String // DsrType
+  status                 String    @default("pending_verification") // DsrStatus
+  subjectType            String    @map("subject_type") // 'customer' | 'user'
+  subjectId              String?   @map("subject_id")
+  subjectEmail           String?   @map("subject_email")
+  subjectPhone           String?   @map("subject_phone")
+  requestedBy            String?   @map("requested_by")
+  requestedAt            DateTime  @default(now()) @map("requested_at")
+  deadlineAt             DateTime  @map("deadline_at")
+  deadlineAlertSentAt    DateTime? @map("deadline_alert_sent_at")
+  verifiedAt             DateTime? @map("verified_at")
+  completedAt            DateTime? @map("completed_at")
+  resultKey              String?   @map("result_key")
+  resultExpiresAt        DateTime? @map("result_expires_at")
+  rejectionReason        String?   @map("rejection_reason")
+  retainedRecordsSummary Json?     @map("retained_records_summary") // What was kept and under which legal basis
+  notes                  String?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([deadlineAt, status])
+  @@index([subjectEmail])
+  @@map("data_subject_requests")
+}
+
+model ConsentRecord {
+  id         String    @id @default(uuid())
+  storeId    String    @map("store_id")
+  customerId String    @map("customer_id")
+  purpose    String
+  legalBasis String    @map("legal_basis") // LegalBases
+  granted    Boolean
+  grantedAt  DateTime? @map("granted_at")
+  revokedAt  DateTime? @map("revoked_at")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent")
+  source     String
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, purpose])
+  @@index([storeId, purpose, granted])
+  @@map("consent_records")
+}
+
+// Cookie consent for platform users and anonymous visitors (TDD_05 §10.5).
+model CookieConsent {
+  id            String   @id @default(uuid())
+  userId        String?  @map("user_id")
+  visitorId     String   @map("visitor_id")
+  categories    Json // { functional: true, analytics: false, marketing: false }
+  policyVersion String   @map("policy_version")
+  ipHash        String?  @map("ip_hash")
+  userAgent     String?  @map("user_agent")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([visitorId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("cookie_consents")
+}
+
+model RetentionSettings {
+  storeId          String   @id @map("store_id")
+  conversationDays Int      @default(730) @map("conversation_days")
+  mediaDays        Int      @default(365) @map("media_days")
+  analyticsDays    Int      @default(395) @map("analytics_days")
+  notificationDays Int      @default(90) @map("notification_days")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@map("retention_settings")
+}
