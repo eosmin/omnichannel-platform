@@ -35,6 +35,7 @@
     "@nx/eslint-plugin": "23.2.0",
     "@nx/jest": "23.2.0",
     "@nx/js": "23.2.0",
+    "@types/express": "5.0.6",
     "@types/jest": "30.0.0",
     "@types/node": "24.19.2",
     "@types/pg": "8.15.5",
