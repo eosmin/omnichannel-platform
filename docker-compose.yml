@@ -21,7 +21,7 @@ services:
       retries: 10
 
   pgbouncer:
-    image: edoburu/pgbouncer:v1.25.2-p0
+    image: edoburu/pgbouncer:v1.26.1-p0
     ports: ['6432:6432']
     environment:
       # The URL only tells the image which database to proxy and the auth_user password
