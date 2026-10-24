@@ -1,9 +1,9 @@
-import { NestFactory } from '@nestjs/core'
+import './instrument'
+
+import { runHttpApp } from '@platform/core/http'
 
 import { WorkerModule } from './worker.module'
 
-async function bootstrap(): Promise<void> {
-  await NestFactory.createApplicationContext(WorkerModule)
-}
-
-void bootstrap()
+// The worker listens too, only for /health, /health/ready and /metrics: the platform probes every
+// service over HTTP.
+void runHttpApp(WorkerModule)
