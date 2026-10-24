@@ -497,7 +497,7 @@ export const Schedules = {
   AUTO_ARCHIVE_RESOLVED:      '30 * * * *',       // Hourly
   DISPATCH_REPORTS:           '0 * * * *',        // Hourly, checks per-store send hour
   SEND_EMAIL_DIGEST_HOURLY:   '10 * * * *',
-  SEND_EMAIL_DIGEST_DAILY:    '10 8 * * *',       // 08:10 in each user's timezone (checked per user)
+  SEND_EMAIL_DIGEST_DAILY:    '10 * * * *',       // Every hour at :10; sends to the users whose local time is 08:10
   PROCESS_DUNNING:            '0 10 * * *',       // 10:00 UTC daily
   APPROVE_REFERRALS:          '0 5 * * *',        // 05:00 UTC daily
   PROCESS_PAYOUTS:            '0 6 1 * *',        // 06:00 UTC on the 1st

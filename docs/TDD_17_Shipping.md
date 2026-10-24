@@ -45,7 +45,7 @@ carrier; you connect a carrier when you need it and disconnect it when you do no
 
 | Resource | Scope column | Visible to |
 |---|---|---|
-| `CarrierConnection`, `CarrierService`, `GuideSequence` | `storeId` | members of the store |
+| `CarrierConnection`, `CarrierService`, `GuideSequence`, `CarrierStatusMapping`, `CarrierUnmappedStatus` | `storeId` | members of the store |
 | `Shipment`, `ShipmentEvent`, `PickupRequest`, `BulkLabelJob` | `storeId` | members of the store |
 | `OrderMessageTemplate` | `storeId` | members of the store |
 | `OrderReturn`, `OrderReturnLine` | `storeId` | members of the store |
@@ -79,6 +79,7 @@ model CarrierConnection {
   autoPickupTime        String?   @map("auto_pickup_time")                            // 'HH:mm' in the store timezone
   pickupReminderMinutes Int       @default(30) @map("pickup_reminder_minutes")
   pollIntervalMinutes   Int?      @map("poll_interval_minutes") // null = the plugin default; only for carriers polled instead of pushing
+  maxDeliveryAttempts   Int       @default(3) @map("max_delivery_attempts")   // how many delivery attempts the carrier makes before returning the package; shown to the customer as {{maxAttempts}} (§4.7)
   lastHealthyAt         DateTime? @map("last_healthy_at")
   lastError             String?   @map("last_error")
   createdAt             DateTime  @default(now()) @map("created_at")
@@ -136,6 +137,7 @@ model Shipment {
   codAmountCents      Int?      @map("cod_amount_cents")      // null = prepaid
   currency            String
   packageCount        Int       @default(1) @map("package_count")
+  failedAttempts      Int       @default(0) @map("failed_attempts")   // delivery attempts that failed (§4.9)
   weightGrams         Int?      @map("weight_grams")
   guideNumber         String?   @map("guide_number")          // the carrier's guide, or ours for 'local'
   providerShipmentId  String?   @map("provider_shipment_id")  // the carrier's internal id, when it has one
@@ -190,6 +192,46 @@ model ShipmentEvent {
 }
 // Raw SQL: CREATE UNIQUE INDEX shipment_events_provider_dedupe ON shipment_events (shipment_id, provider_event_id)
 //   WHERE provider_event_id IS NOT NULL;
+
+// The owner's map from a carrier's own status code to a ShipmentStatus (§4.17). Seeded from the
+// plugin's statusCatalog() when the connection is created, editable afterwards. CarrierConnection
+// gains the opposite relations of this model and of CarrierUnmappedStatus.
+model CarrierStatusMapping {
+  id           String   @id @default(uuid())
+  storeId      String   @map("store_id")
+  connectionId String   @map("connection_id")
+  providerCode String   @map("provider_code")              // normalized: normalizeProviderStatusCode
+  label        String?                                     // what the carrier calls it, for the screen
+  status       String?                                     // ShipmentStatus; null = ignore on purpose (no effect, not counted as unknown)
+  source       String   @default("default")                // CarrierStatusMappingSource: default | custom
+  updatedBy    String?  @map("updated_by")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  connection CarrierConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, providerCode])
+  @@map("carrier_status_mappings")
+}
+
+// A provider status code that arrived with no mapping and no plugin default (§4.17). One row per
+// connection and code, so the owner is told once and the screen lists what is waiting.
+model CarrierUnmappedStatus {
+  id                String    @id @default(uuid())
+  storeId           String    @map("store_id")
+  connectionId      String    @map("connection_id")
+  providerCode      String    @map("provider_code")        // normalized
+  sampleRawStatus   String    @map("sample_raw_status")    // the text as the carrier sent it
+  sampleDescription String?   @map("sample_description")
+  occurrences       Int       @default(1)
+  firstSeenAt       DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at")
+  resolvedAt        DateTime? @map("resolved_at")
+
+  connection CarrierConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, providerCode])
+  @@map("carrier_unmapped_statuses")
+}
 
 model PickupRequest {
   id               String    @id @default(uuid())
@@ -525,6 +567,7 @@ export const OrderMessageVariables = {          // the only placeholders a templ
   CUSTOMER_NAME: 'customerName', ORDER_NUMBER: 'orderNumber', ITEMS_LIST: 'itemsList', TOTAL: 'total',
   SHIPPING_ADDRESS: 'shippingAddress', CARRIER_NAME: 'carrierName', TRACKING_NUMBER: 'trackingNumber',
   TRACKING_URL: 'trackingUrl', STORE_NAME: 'storeName', COD_AMOUNT: 'codAmount',
+  ATTEMPT_NUMBER: 'attemptNumber', MAX_ATTEMPTS: 'maxAttempts',   // the shipment's failedAttempts and the connection's maxDeliveryAttempts (§4.7)
 } as const
 ```
 
@@ -535,12 +578,12 @@ Transition tables (same style as `OrderStatusTransitions`, enforced inside the o
   `PREPARING → SHIPPED | CANCELLED`, `SHIPPED → DELIVERED | RETURNED`, `DELIVERED → RETURNED`;
   `CANCELLED` and `RETURNED` terminal. `OrderEditableFields[PENDING_CONFIRMATION]` equals the
   `CONFIRMED` entry. `OrderStatusI18nKeys` and `OrderStatusColors` gain the new value.
-- **Shipment** (forward-only, §4.9): `CREATING → LABEL_CREATED | REQUIRES_REVIEW | FAILED`;
-  `REQUIRES_REVIEW → LABEL_CREATED | FAILED`; `LABEL_CREATED → PICKED_UP | IN_TRANSIT | CANCEL_PENDING`;
-  `PICKED_UP → IN_TRANSIT | OUT_FOR_DELIVERY | DELIVERED | FAILED_ATTEMPT | RETURNING`;
-  `IN_TRANSIT → OUT_FOR_DELIVERY | DELIVERED | FAILED_ATTEMPT | RETURNING`;
-  `OUT_FOR_DELIVERY → DELIVERED | FAILED_ATTEMPT | RETURNING`;
-  `FAILED_ATTEMPT → OUT_FOR_DELIVERY | DELIVERED | RETURNING`; `RETURNING → RETURNED`;
+- **Shipment** (forward-only, with forward jumps and repeated delivery attempts allowed, §4.9): `CREATING → LABEL_CREATED | REQUIRES_REVIEW | FAILED`;
+  `REQUIRES_REVIEW → LABEL_CREATED | FAILED`; `LABEL_CREATED → PICKED_UP | IN_TRANSIT | OUT_FOR_DELIVERY | DELIVERED | FAILED_ATTEMPT | RETURNING | CANCEL_PENDING` (a carrier may skip the intermediate events, so a later in-flight status is reachable from here);
+  `PICKED_UP → IN_TRANSIT | OUT_FOR_DELIVERY | DELIVERED | FAILED_ATTEMPT | RETURNING | RETURNED`;
+  `IN_TRANSIT → OUT_FOR_DELIVERY | DELIVERED | FAILED_ATTEMPT | RETURNING | RETURNED`;
+  `OUT_FOR_DELIVERY → DELIVERED | FAILED_ATTEMPT | RETURNING | RETURNED`;
+  `FAILED_ATTEMPT → FAILED_ATTEMPT | OUT_FOR_DELIVERY | DELIVERED | RETURNING | RETURNED` (a repeated attempt is a transition to itself: each one is counted in `failedAttempts` and notified; carriers usually allow up to three before returning the package); `RETURNING → RETURNED`;
   `CANCEL_PENDING → CANCELLED | CANCEL_FAILED`; `CANCEL_FAILED → CANCEL_PENDING | CANCELLED`
   (the last by the agent, "mark as voided"). `DELIVERED`, `RETURNED`, `CANCELLED`, `FAILED` terminal.
 - **Return:** `REQUESTED → APPROVED | REJECTED | CANCELLED`, `APPROVED → IN_TRANSIT | RECEIVED | CANCELLED`,
@@ -559,14 +602,14 @@ Other additions (each goes in its constants file, no inline strings):
 | `RolePresets` | Admin: all (spread). Supervisor: shipping view, manage and pickups, orders confirm and send messages, returns view and manage. Agent: shipping view and manage, orders confirm and send messages, returns view. Viewer: shipping view, returns view. The price, remittance, caution and preference permissions: Admin has all (spread); Supervisor: approve price, remittances view and manage, flag caution; Agent: flag caution; Viewer: remittances view |
 | `Events` | `SHIPMENT_CREATED`, `SHIPMENT_STATUS_CHANGED`, `SHIPMENT_CANCELLED`, `SHIPMENT_REQUIRES_REVIEW`, `PICKUP_REQUESTED`, `PICKUP_UPDATED`, `ORDER_CONFIRMED`, `RETURN_REQUESTED`, `RETURN_APPROVED`, `RETURN_RECEIVED`, `ORDER_MESSAGE_SENT`, `ORDER_MESSAGE_FAILED`, `ORDER_PRICE_OVERRIDDEN`, `ORDER_PRICE_APPROVAL_REQUESTED`, `ORDER_PRICE_APPROVED`, `ORDER_PRICE_REJECTED`, `REMITTANCE_CONFIRMED`, `REMITTANCE_VOIDED`, `CUSTOMER_CAUTION_CHANGED` |
 | `RealtimeEvents` | `BULK_LABELS_PROGRESS: { jobId, done, total, failed }`, `BULK_LABELS_DONE: { jobId, status, mergedMediaId }`, `SHIPMENT_UPDATED: { orderId, shipmentId, status }` |
-| `NotificationTypes` | `PICKUP_CUTOFF_APPROACHING` (to `SHIPPING_MANAGE_PICKUPS`; warning; in-app and push), `PICKUP_MANUAL_REQUIRED` (same recipients; in-app), `SHIPMENT_CANCEL_FAILED` (to `SHIPPING_MANAGE`; warning; in-app and push), `SHIPMENT_REQUIRES_REVIEW` (same), `SHIPMENT_FAILED_ATTEMPT` (to `SHIPPING_MANAGE`; info), `ORDER_MESSAGE_NOT_SENT` (to `ORDERS_SEND_MESSAGES`; warning), `BULK_LABELS_READY` (to the requester; info; in-app), `RETURN_AWAITING_RECEIPT` (to `RETURNS_MANAGE`; info). Each needs an entry in `NotificationDefaults`, which must stay complete. Also `ORDER_PRICE_APPROVAL_REQUESTED` (to `ORDERS_APPROVE_PRICE`; warning; in-app and push), `ORDER_PRICE_OVERRIDDEN` (same recipients; info; in-app; sent only when `orders.notifyOnPriceOverride` is on) and `REMITTANCE_OVERDUE` (to `REMITTANCES_MANAGE`; warning; in-app) |
+| `NotificationTypes` | `PICKUP_CUTOFF_APPROACHING` (to `SHIPPING_MANAGE_PICKUPS`; warning; in-app and push), `PICKUP_MANUAL_REQUIRED` (same recipients; warning; in-app and push), `SHIPMENT_CANCEL_FAILED` (to `SHIPPING_MANAGE`; warning; in-app, push and email: a guide that was not voided may still be charged), `SHIPMENT_REQUIRES_REVIEW` (same: the outcome is unknown and a second guide may exist), `SHIPMENT_FAILED_ATTEMPT` (to `SHIPPING_MANAGE`; info; in-app and push), `ORDER_MESSAGE_NOT_SENT` (to `ORDERS_SEND_MESSAGES`; warning; in-app and push), `BULK_LABELS_READY` (to the requester; info; in-app), `RETURN_AWAITING_RECEIPT` (to `RETURNS_MANAGE`; info). Each needs an entry in `NotificationDefaults`, which must stay complete. Also `ORDER_PRICE_APPROVAL_REQUESTED` (to `ORDERS_APPROVE_PRICE`; warning; in-app and push), `ORDER_PRICE_OVERRIDDEN` (same recipients; info; in-app; sent only when `orders.notifyOnPriceOverride` is on) and `REMITTANCE_OVERDUE` (to `REMITTANCES_MANAGE`; warning; in-app and email: money is owed). The channels follow the rule of `TDD_06 §6.1` |
 | `AuditActions` | `CARRIER_CONNECTED`, `CARRIER_UPDATED`, `CARRIER_DISCONNECTED`, `SHIPMENT_CREATED`, `SHIPMENT_CANCELLED`, `SHIPMENT_STATUS_SET_MANUALLY`, `PICKUP_REQUESTED`, `PICKUP_MODIFIED`, `PICKUP_CANCELLED`, `ORDER_CONFIRMED`, `ORDER_MESSAGE_SENT`, `ORDER_TEMPLATE_UPDATED`, `RETURN_CREATED`, `RETURN_APPROVED`, `RETURN_RECEIVED`, `RETURN_COMPLETED`, `BULK_LABELS_REQUESTED`, `ORDER_PRICE_OVERRIDDEN`, `ORDER_DISCOUNT_APPLIED`, `ORDER_PRICE_APPROVAL_REQUESTED`, `ORDER_PRICE_APPROVED`, `ORDER_PRICE_REJECTED`, `REMITTANCE_IMPORTED`, `REMITTANCE_CONFIRMED`, `REMITTANCE_VOIDED`, `RETURN_RECEIVED_BY_SCAN`, `CUSTOMER_CAUTION_SET`, `CUSTOMER_CAUTION_CLEARED`, `STORE_PREFERENCES_UPDATED` |
 | `ErrorCodes` | `SHIPPING_ORDER_NOT_CONFIRMED`, `SHIPPING_ACTIVE_SHIPMENT_EXISTS`, `SHIPPING_CARRIER_NOT_ACTIVE`, `SHIPPING_CARRIER_CAPABILITY_MISSING`, `SHIPPING_LOCATION_REQUIRED`, `SHIPPING_CARRIER_REJECTED`, `SHIPPING_CARRIER_UNAVAILABLE`, `SHIPPING_OUTCOME_UNKNOWN`, `SHIPPING_INVALID_STATUS_TRANSITION`, `SHIPPING_CANNOT_CANCEL_AFTER_PICKUP`, `PICKUP_CUTOFF_PASSED`, `ORDER_ALREADY_CONFIRMED`, `ORDER_MESSAGE_VARIABLE_UNKNOWN`, `ORDER_STATUS_DRIVEN_BY_SHIPMENT`, `RETURN_INVALID_STATUS_TRANSITION`, `RETURN_QUANTITY_EXCEEDS_DELIVERED`, `RETURN_ORDER_NOT_DELIVERED`, `ORDER_PRICE_OVERRIDE_FORBIDDEN`, `ORDER_PRICE_REASON_REQUIRED`, `ORDER_PRICE_APPROVAL_PENDING`, `ORDER_PRICE_SELF_APPROVAL`, `REMITTANCE_IMPORT_INVALID`, `REMITTANCE_ALREADY_CONFIRMED`, `REMITTANCE_INVALID_STATUS_TRANSITION`, `RECEPTION_SHIPMENT_NOT_FOUND`, `RECEPTION_ALREADY_RECEIVED`, `SHIPPING_FEE_OUT_OF_RANGE`, `SHIPPING_ORIGIN_MISSING` |
 | `QueueNames` / `JobNames` | no new queue. On `heavy-processing`: `CREATE_SHIPMENTS` (one batch), `BULK_LABELS_MERGE`, `CANCEL_SHIPMENT`, `POLL_SHIPMENT_STATUS`. On `notifications`: `EVALUATE_PICKUPS`, `SEND_ORDER_MESSAGE`. On `webhooks`: `PROCESS_CARRIER_EVENT` (the inbound carrier webhook, validated, then queued). Also on `notifications`: `CHECK_REMITTANCES` |
 | `Schedules` | `EVALUATE_PICKUPS: '* * * * *'` (every minute; the job decides which connections are due, §4.10), `POLL_SHIPMENT_STATUS: '*/10 * * * *'` (the job applies each connection's own interval), `CLEAN_BULK_LABELS: '30 3 * * *'`, `CHECK_REMITTANCES: '0 15 * * *'` (daily) |
 | `MetricNames` | `SHIPMENTS_CREATED_TOTAL`, `SHIPMENT_CARRIER_ERRORS_TOTAL` (labels: `carrier`, `code`), `SHIPMENT_UNKNOWN_STATUS_TOTAL`, `PICKUPS_REQUESTED_TOTAL`, `ORDER_MESSAGES_FAILED_TOTAL`; names follow the `platform_*_total` pattern of `TDD_04 §2` |
 | `ApiRoutes` | the `carriers`, `shipments`, `pickups`, `orderTemplates`, `returns` groups in §6 and the public `webhooks.carrier`, `remittances`, `returns.reception`, `customers.caution`, `settings.preferences` (§6) |
-| `AppPaths` | `store.shipments(storeId)`, `store.returns(storeId)`, `store.settings.carriers(storeId)`, `store.settings.orderTemplates(storeId)`, `store.pickups(storeId)`, `store.remittances(storeId)`, `store.returnsReception(storeId)`, `store.settings.preferences(storeId)` |
+| `AppPaths` | `store.shipments(storeId)`, `store.returns(storeId)`, `store.settings(storeId, 'carriers')`, `store.settings(storeId, 'order-templates')` (`settings` is one function with a section, as in `TDD_09 §12`), `store.pickups(storeId)`, `store.remittances(storeId)`, `store.returnsReception(storeId)`, `store.settings(storeId, 'preferences')` |
 | `QueryKeys` | `shipments.all`, `shipments.byOrder`, `carriers.all`, `pickups.all`, `returns.all`, `orderTemplates.all`, `remittances.all`, `returnReception.batch`, `preferences.store` |
 | `MediaPurpose` (`TDD_07 §6`) | `SHIPPING_LABEL: 'shipping_label'`, `BULK_LABELS: 'bulk_labels'`, `REMITTANCE_FILE: 'remittance_file'` |
 | `EmailTemplates` (`TDD_07 §5`) | add `ORDER_MESSAGE` (the generic order email of §4.7); remove `ORDER_CONFIRMATION`, `SHIPMENT_NOTIFICATION`, `ORDER_DELIVERED`, `ORDER_CANCELLED` (and their `JobNames`-side usages) |
@@ -574,6 +617,8 @@ Other additions (each goes in its constants file, no inline strings):
 | "Prisma column → enum" table (`TDD_02 §5`) | rows for every `String` column typed with an enum above |
 | `DestructiveActionTiers` (`TDD_09 §11.1`) | HIGH: "Cancel an order with an existing shipment" (already listed; now also voids the guide), "Disconnect a carrier with open shipments", "Mark a guide as voided by hand". MODERATE: "Request a pickup after the cutoff". HIGH also: "Void a confirmed remittance" |
 | `PluginScopes` (`TDD_10 §6.2`) | `SHIPMENTS_READ: 'shipments:read'` (grants `SHIPPING_VIEW`), `SHIPMENTS_WRITE: 'shipments:write'` (grants `SHIPPING_MANAGE`) |
+| Failed-attempt messages (§4.7, §4.14) | `FailedAttemptMessagePolicy` (`every_attempt`, `first_only`, `none`) in `libs/core/domain/order-constants.ts`; the preference `orders.failedAttemptMessages`; the variables `ATTEMPT_NUMBER` and `MAX_ATTEMPTS` |
+| Carrier status mapping (§4.17) | enum `CarrierStatusMappingSource`; `CarrierReportableStatuses`; `normalizeProviderStatusCode`; `JobNames.REPROCESS_CARRIER_EVENTS` (on `heavy-processing`); `NotificationTypes.CARRIER_STATUS_UNMAPPED` (to `SETTINGS_MANAGE_CARRIERS`; warning; in-app, push and email: shipment updates are being hidden); `AuditActions.CARRIER_STATUS_MAPPING_CHANGED`; `ApiRoutes.carriers.statusMappings`, `statusMappingByCode`, `unmappedStatuses`; `QueryKeys.carriers.statusMappings`, `unmappedStatuses` |
 
 ---
 
@@ -592,6 +637,7 @@ export interface CarrierPlugin {
   readonly capabilities: readonly CarrierCapabilityType[]
 
   serviceCatalog(): readonly CarrierServiceDescriptor[]   // { code, label, defaultForNextDay? } the carrier's own codes
+  statusCatalog(): readonly CarrierStatusDescriptor[]     // { code, label, defaultStatus: ShipmentStatus | null } the carrier's own status codes and what we assume they mean (§4.17)
 
   // Connection lifecycle: credentials are supplied by the core, encrypted at rest by the core
   connect(input: CarrierConnectInput): Promise<CarrierConnectResult>
@@ -635,8 +681,8 @@ export interface CarrierPlugin {
   when set), `serviceCode`, `shippingPayer`, `cod: { amountCents, currency } | null` and the
   `labelFormat` wanted. It never carries credentials; those are in the `CarrierContext`.
 - **`CarrierEvent`** is `{ providerEventId?, status: ShipmentStatus | null, rawStatus, description?, occurredAt, guideNumber | providerShipmentId }`.
-  The plugin maps its own status codes to `ShipmentStatus`; a status it cannot map comes back
-  with `status: null` and is stored but changes nothing (§4.9).
+  The plugin maps its own status codes to `ShipmentStatus` with its `statusCatalog()`; a status it cannot map comes back
+  with `status: null`. The core then applies the connection's own mapping on top of it (§4.17): the owner's mapping wins over the plugin's, and only a code that neither knows is stored without effect (§4.9).
 - **Carriers have their own registry.** `PluginRegistry` of `TDD_10 §3` is typed to `ChannelPlugin` and `ChannelType`, so a
   sibling `CarrierRegistry` (same module, same fail-fast `validateContract` idea, keyed by `CarrierId`) holds the carrier
   plugins and `PluginsModule` registers both.
@@ -862,10 +908,17 @@ the label is created (§4.9).
   created is the preference `orders.sendSummaryOnCreate` (§4.14, **on** by default), which pre-checks
   the "Send the order summary" checkbox of the create-order drawer; `autoSend` is refused by the
   Zod schema for `ORDER_SUMMARY`, so there is one source. An agent can also send or resend the summary by hand at any time.
+  **The failed-attempt message follows the same rule:** a carrier usually tries up to three times, and the
+  customer should not get three identical messages unless the owner wants them, so whether and how
+  often `ORDER_FAILED_ATTEMPT` goes out is the preference `orders.failedAttemptMessages` (§4.14):
+  `every_attempt` (the default), `first_only` or `none`. `autoSend` is refused by the Zod schema for
+  `ORDER_FAILED_ATTEMPT` too. The message is sent only when the shipment's `failedAttempts` allows it
+  (always with `every_attempt`, only the first failure with `first_only`, never with `none`); an agent can still send it
+  by hand at any time.
 - **Variables are an allowlist** (`OrderMessageVariables`). A template is plain text with
   `{{variable}}` placeholders; saving a template with an unknown variable is refused
   (`ORDER_MESSAGE_VARIABLE_UNKNOWN`). Rendering is string substitution, never code evaluation.
-  `itemsList` renders one line per item (`2 × Name (variant) — $10.00`), `total` and `codAmount`
+  `attemptNumber` renders the shipment's `failedAttempts` (the number of the attempt that has just failed in `ORDER_FAILED_ATTEMPT`) and `maxAttempts` the connection's `maxDeliveryAttempts`, so a template can say "attempt 2 of 3". `itemsList` renders one line per item (`2 × Name (variant) — $10.00`), `total` and `codAmount`
   are formatted in the order currency and the customer's locale, `shippingAddress` is the
   formatted address. The template body is the store locale's; when the customer's locale has no
   template the store default locale is used.
@@ -904,7 +957,7 @@ the label is created (§4.9).
   `idempotencyKey` on the message; a manual status change uses `(orderId, kind, status)`), so a repeated webhook sends nothing twice; a status the
   customer already received is never re-sent when events arrive out of order.
 - **Settings → Order messages** edits the templates with a variable picker, a live preview using a
-  sample order, the `autoSend` and `attachSummary` switches, and the link to a channel-approved
+  sample order, the `autoSend` switch (not shown for `ORDER_SUMMARY` or `ORDER_FAILED_ATTEMPT`, which follow the store preferences, §4.7) and the `attachSummary` switch, and the link to a channel-approved
   template (for WhatsApp: name, language, and which variable fills each placeholder).
 
 ### 4.8 Cancellation, voiding the guide and the refund of the guide
@@ -952,6 +1005,15 @@ HIGH-tier when a shipment exists):
   it from the shipment's current status; an older event that would move backwards is stored in
   `ShipmentEvent` (history) but does not change the status. `FAILED_ATTEMPT → OUT_FOR_DELIVERY`
   (a retry) is a valid forward step in the table.
+- **Repeated delivery attempts.** A carrier usually tries up to three times on consecutive days. A
+  second or third failure arrives as another `FAILED_ATTEMPT` event, possibly with no
+  `OUT_FOR_DELIVERY` in between: the table allows `FAILED_ATTEMPT → FAILED_ATTEMPT`, the dedupe
+  keeps a re-sent event from counting twice (a different day is a different event), `failedAttempts`
+  goes up by one and every failure fires `SHIPMENT_STATUS_CHANGED` and the `SHIPMENT_FAILED_ATTEMPT`
+  notification to the team, while the `ORDER_FAILED_ATTEMPT` message to the customer follows
+  `orders.failedAttemptMessages` (§4.7). If the next attempt succeeds, `DELIVERED` follows
+  from `FAILED_ATTEMPT` as a normal forward step. After the carrier's last attempt the package comes
+  back: `RETURNING`.
 - **Polling:** for connections whose plugin has `FETCH_STATUS` but no webhook (or whose webhook
   was not configured), `POLL_SHIPMENT_STATUS` calls `fetchStatus` in batches for shipments in an
   active state, each connection at its `pollIntervalMinutes` (the plugin's default when null,
@@ -970,8 +1032,9 @@ HIGH-tier when a shipment exists):
 | `RETURNING` / `RETURNED` | none; notification to decide a return (reason `DELIVERY_FAILED`, §4.11) | none |
 | `CANCELLED` | none (the order was already cancelled, §4.8) | none |
 
-- **An unmapped provider status** is stored (`status: null`, `rawStatus`), increments
-  `SHIPMENT_UNKNOWN_STATUS_TOTAL` and changes nothing; the owner sees it in the history.
+- **An unmapped provider status** (no connection mapping and no plugin default) is stored
+  (`status: null`, `rawStatus`), increments `SHIPMENT_UNKNOWN_STATUS_TOTAL`, changes nothing, and is
+  recorded once in `CarrierUnmappedStatus` with a notification so the owner can map it (§4.17).
 - **An event for a cancelled order** (a package that left although the guide was voided) raises
   `SHIPMENT_REQUIRES_REVIEW` instead of moving the order.
 - **Manual events** (`local` carrier, or an agent correcting a status) use the same table and
@@ -1158,12 +1221,21 @@ to add its key here.
 
 ```typescript
 // libs/core/config/store-preferences.ts: the only place factory defaults exist
+// A reason is either a factory one (labelKey: an i18n key) or one the store typed (label: its own text, store content, not a UI string)
+const cancellationReasonSchema = z.object({
+  id: z.string().min(1).max(40),
+  labelKey: z.string().optional(),
+  label: z.string().min(1).max(80).optional(),
+}).check((ctx) => { if (!ctx.value.labelKey === !ctx.value.label) ctx.issues.push({ code: 'custom', message: 'exactly one of labelKey and label', input: ctx.value }) })
+const defaultCancellationReasons = Object.entries(OrderCancellationReasons).map(([id, labelKey]) => ({ id, labelKey }))
 export const storePreferencesSchema = z.object({
   orders: z.object({
     confirmOnCreate: z.boolean().default(false),        // the create-order "Mark as confirmed" checkbox
     sendSummaryOnCreate: z.boolean().default(true),     // the create-order "Send the order summary" checkbox
     notifyOnPriceOverride: z.boolean().default(true),   // §4.13
     freeShippingRule: z.enum(['all_items', 'any_item']).default('all_items'),   // §4.13: when an order counts as free shipping
+    failedAttemptMessages: z.enum(['every_attempt', 'first_only', 'none']).default('every_attempt'),   // §4.7: how often the customer is told a delivery attempt failed (FailedAttemptMessagePolicy)
+    cancellationReasons: z.array(cancellationReasonSchema).default(defaultCancellationReasons),   // TDD_09 §5.3: the dropdown of reasons; the factory seed is OrderCancellationReasons
     discountLimitPercent: z.number().int().min(0).max(100).default(0),   // §4.13: the discount allowed without approval to a member lacking ORDERS_OVERRIDE_PRICE
   }).default({}),
   returns: z.object({
@@ -1178,6 +1250,9 @@ export type StorePreferences = z.infer<typeof storePreferencesSchema>
 
 - Stored in `StoreSettings.preferences` as JSON; a read parses it through the schema (missing keys
   take the default, unknown keys are dropped), so adding a preference never needs a data migration.
+- `Order.cancellationReason` (`TDD_01`) keeps a snapshot of the chosen entry (its `labelKey` or its
+  `label`, plus the free text if any), never the entry's `id`, so renaming or deleting a reason later
+  does not change old orders. The UI translates a value that is an i18n key and shows any other as typed.
 - Per store, edited in Settings → Preferences by members with `SETTINGS_MANAGE_PREFERENCES`, audited
   (`STORE_PREFERENCES_UPDATED`). There is no per-user override in this phase.
 - Settings that already exist elsewhere stay where they are (per carrier connection: payer, label
@@ -1256,6 +1331,61 @@ scanning is out of scope).
   customer is flagged, in the customer panel, a chip in the conversation header and in the orders list.
   A merge keeps the flag if either customer had it; an erasure clears the reason.
 
+### 4.17 Carrier status mapping (what the carrier says versus what the platform means)
+
+Our statuses are codes (`DELIVERED`) that the interface shows through i18n keys; a carrier uses its
+own words and codes ("Entregado", "ENT", "En ruta"). Three layers connect them, from the most
+general to the most specific:
+
+1. **The plugin's `statusCatalog()`**: the codes the carrier documents, each with a label and a
+   default `ShipmentStatus` (or `null` for an informational code with no effect). It is the plugin's
+   knowledge and ships with its fixtures.
+2. **The connection's `CarrierStatusMapping` rows**: seeded from the catalog when the connection is
+   created (`source = default`), one row per code, **editable by the owner** (`source = custom`).
+3. **The unmapped list** (`CarrierUnmappedStatus`): codes that arrived and match neither.
+
+**Resolution** inside `PROCESS_CARRIER_EVENT`, after the plugin returns its `CarrierEvent`:
+
+- The `rawStatus` is normalized with `normalizeProviderStatusCode` (trim, lowercase, accents removed,
+  inner whitespace collapsed), so "Entregado", "ENTREGADO " and "entregádo" are one code.
+- A `CarrierStatusMapping` row for `(connection, code)` wins over the plugin's own `status`. Its
+  `status` may be `null`: the owner chose to **ignore** the code on purpose, so it is stored in the
+  history without effect and is not counted as unknown.
+- With no row, the plugin's `status` is used when it is not `null`.
+- Otherwise the code is **unmapped**: the event is stored as before, `SHIPMENT_UNKNOWN_STATUS_TOTAL`
+  goes up, the `CarrierUnmappedStatus` row is created (or its `occurrences` and `lastSeenAt` updated)
+  and, on the **first** sighting only, `CARRIER_STATUS_UNMAPPED` notifies the members holding
+  `SETTINGS_MANAGE_CARRIERS`.
+
+**Mapping an unmapped code.** `PUT /carriers/:id/status-mappings/:code` creates or updates the row
+(`source = custom`), marks the unmapped record `resolvedAt` and enqueues `REPROCESS_CARRIER_EVENTS`
+(`heavy-processing`) for that connection and code. The job takes the stored events with
+`status = null` and that normalized code, **in `occurredAt` order**, and applies each one through the
+same path as a new event: the transition table, the dedupe, the order effects of §4.9. An event that
+no longer fits (a later one already moved the shipment past it) stays in the history with no
+effect, like any out-of-order event. A **replay sends no customer message and no push** (the
+shipment may have been delivered days ago); the in-app notifications and the history are written, and
+the agent can still send a message by hand from the order's Messages panel.
+
+**Rules.**
+
+- Only a status a carrier can report may be a target: `CarrierReportableStatuses` (label created,
+  picked up, in transit, out for delivery, failed attempt, delivered, returning, returned,
+  cancelled). The internal states (`CREATING`, `CANCEL_PENDING`, `CANCEL_FAILED`,
+  `REQUIRES_REVIEW`, `FAILED`) are driven by our own actions and are refused (`400`).
+- Editing an existing mapping changes **future** events only; statuses already applied are never
+  rewritten. `DELETE /carriers/:id/status-mappings/:code` restores the plugin default (`source = default`)
+  or, for a code not in the catalog, removes the row.
+- The `local` carrier has no provider codes: its statuses are set by hand (§4.2) and its catalog is empty.
+- Every change is audited (`CARRIER_STATUS_MAPPING_CHANGED`, with the code, the old and the new status).
+- Reading the mappings and the unmapped list needs `SHIPPING_VIEW`; changing them needs
+  `SETTINGS_MANAGE_CARRIERS`.
+
+**Screen** (Settings → Carriers → Status mapping, §7): a table of the carrier's codes with the label,
+our status (shown through its i18n key, in a selector with the reportable statuses and "Ignore") and
+the source; above it, the unmapped codes with how many times they arrived, the last time, a sample of
+the carrier's text and the number of shipments waiting, each with "Map to…".
+
 ---
 
 ## 5. Cache and events
@@ -1274,7 +1404,7 @@ All under `ApiRoutes`, with `AuthGuard`, `TenantGuard` and a permission decorato
 
 | Group | Routes | Permission |
 |---|---|---|
-| `carriers` | list; create connection (a plugin and its credentials); by id; update (service codes, defaults, pickup rules, label format); `POST …/test` (health check); disconnect; `GET …/locations` (location lookup); `GET /carriers/registry` (which official carriers exist and their capabilities) | view: `SHIPPING_VIEW`; write: `SETTINGS_MANAGE_CARRIERS` |
+| `carriers` | list; create connection (a plugin and its credentials); by id; update (service codes, defaults, pickup rules, label format); `POST …/test` (health check); disconnect; `GET …/locations` (location lookup); `GET /carriers/registry` (which official carriers exist and their capabilities); `GET …/status-mappings`, `PUT` and `DELETE …/status-mappings/:code`, `GET …/unmapped-statuses` (§4.17) | view: `SHIPPING_VIEW`; write: `SETTINGS_MANAGE_CARRIERS` |
 | `shipments` | list (filters: status, connection, order, date); by id; `POST /orders/:id/shipments` (create); `POST /shipments/bulk`; `GET /shipments/bulk/:jobId`; `GET /shipments/:id/label`; `POST /shipments/labels/merge`; `POST /shipments/:id/cancel`; `POST /shipments/:id/status` (manual event); `POST /shipments/:id/check` (ask the carrier); `POST /shipments/:id/mark-voided` | view: `SHIPPING_VIEW`; others: `SHIPPING_MANAGE` |
 | `pickups` | list; `POST /pickups` (request now, with the chosen shipments); `POST …/shipments` (add); `DELETE …/shipments/:shipmentId`; `POST …/confirm` (manual); `POST …/cancel`; `GET …/manifest` (printable list) | `SHIPPING_VIEW`; others: `SHIPPING_MANAGE_PICKUPS` |
 | `orders` additions | `POST /orders/:id/confirm`; `POST /orders/confirm-bulk`; `GET /orders/:id/copy` (a prefilled draft, nothing is written; `ORDERS_CREATE`); `POST /orders/:id/messages` (send a kind, `?preview=true` renders without sending) | `ORDERS_CONFIRM`; messages: `ORDERS_SEND_MESSAGES` |
@@ -1311,7 +1441,7 @@ Cursor pagination on every list (`TDD_08 §2.4`). Bulk endpoints accept at most 
   amount **read-only** with its reason, packages, weight, and the location selectors when the plugin
   needs them.
 - **Settings → Carriers:** connect a carrier (credentials form from the plugin), test, service
-  list (code and label editable, one default), default payer, **default shipping fee with the minimum and maximum accepted**, label format, pickup rules (days,
+  list (code and label editable, one default), **status mapping** (the carrier's codes against ours and the unmapped codes waiting for a decision, §4.17), default payer, **default shipping fee with the minimum and maximum accepted**, label format, **the delivery attempts the carrier makes before returning the package** (`maxDeliveryAttempts`, default 3), pickup rules (days,
   cutoff, auto-request time, reminder), poll interval, the webhook URL and secret to give the
   carrier. **Settings → Order messages:** templates (§4.7). **Settings → Returns:** the default
   return shipping payer.
@@ -1348,7 +1478,7 @@ Cursor pagination on every list (`TDD_08 §2.4`). Bulk endpoints accept at most 
 ## 8. Permissions, isolation and audit
 
 - Every new resource enters `tests/security/tenant-isolation.spec.ts` in the same change as the
-  resource: `CarrierConnection`, `CarrierService`, `Shipment`, `ShipmentEvent`, `PickupRequest`,
+  resource: `CarrierConnection`, `CarrierService`, `CarrierStatusMapping`, `CarrierUnmappedStatus`, `Shipment`, `ShipmentEvent`, `PickupRequest`,
   `BulkLabelJob`, `OrderMessageTemplate`, `OrderReturn`, `OrderReturnLine`, `ReturnReceptionBatch`, `ReturnReceptionItem`, `CodRemittance`, `CodRemittanceLine`, `RemittanceImportProfile` by `storeId`, and the
   public carrier webhook with a connection id from another store.
 - Every mutation is audited (§3), every state change goes through the owning service
@@ -1378,6 +1508,8 @@ Cursor pagination on every list (`TDD_08 §2.4`). Bulk endpoints accept at most 
   - create a shipment end to end; the unique index refuses a second active shipment for the same order and warehouse; two parallel creates end with one guide;
   - a timeout without `IDEMPOTENT_CREATE` ends in `REQUIRES_REVIEW` and never retries; with it the retry makes no second guide;
   - webhook: bad signature rejected, duplicate event applied once, an out-of-order event stored but not applied, an unmapped status stored without effect;
+  - repeated attempts: three `FAILED_ATTEMPT` events on three days count three, notify the team three times and then `DELIVERED` completes the shipment and the order; a re-sent failure counts once; the customer message follows `orders.failedAttemptMessages` (three messages with `every_attempt`, one with `first_only`, none with `none`), `{{attemptNumber}}` and `{{maxAttempts}}` render the counts, and `autoSend` is refused for `ORDER_FAILED_ATTEMPT`;
+  - status mapping: the connection's mapping wins over the plugin's default; a code is normalized (case, accents, spaces); an ignored code leaves no unknown count; the first unmapped sighting notifies once; mapping it replays the stored events in order, applies the order effects once, sends no customer message, and leaves an obsolete event in the history; editing a mapping never rewrites an applied status; an internal status is refused as a target; the mapping tables are tenant-isolated;
   - polling for a carrier without webhooks, and its stop at a terminal state;
   - order effects of every shipment status (§4.9) including the inventory `ISSUE` once, the COD payment completing, and no customer message sent twice;
   - cancel: order with no guide, with a `LABEL_CREATED` guide (void succeeds, void unsupported, void fails after retries), after pickup (refused), stock released once;
@@ -1484,8 +1616,8 @@ TDD was written (2026-10-24):
 | Carrier | Known | Needed before building the adapter |
 |---|---|---|
 | `local` | Everything: no external API. | Nothing. |
-| `forza` (Forza Delivery Express) | Public Postman walkthrough "Forza Ecommerce Engine" (published 2020): REST over HTTPS `POST`, a request body of `CodApp` plus a base64 `PayLoad` (`Method` and `Params`) and a signature in the `LauValue` header; endpoints for the geography catalog (departments, municipalities, settlements, which is why `REQUIRES_LOCATION_IDS`), shipping rates (`GetShippingRates`), shipping labels (from a quote, from a shipment, list), and tracking by guide number or label id. The documentation says real-time tracking through **webhooks** can be provided on request. The public collection does **not** document cancelling a guide, pickups, return shipments, service codes, COD fields or the signature algorithm. | The full sandbox documentation and credentials from the Forza sales advisor: the signature algorithm, the guide-creation payload (service codes, payer, COD, packages), the label format and size, cancel and pickup endpoints (or their absence), the webhook registration and signature, rate limits, and whether guide creation accepts a unique reference. |
-| `c807` (C807 Express) | The owner reports that it offers webhooks and that its API covers guides, cancellation and pickups, and that **a guide is created inside a pickup request**: one call carries the pickup and an array of orders and returns the guides of all of them. The adapter is therefore *pickup-bound* (§4.1, §4.5). | The documentation and credentials from the C807 advisor, with the same list as above. |
+| `forza` (Forza Delivery Express) | Public Postman walkthrough "Forza Ecommerce Engine" (published 2020): REST over HTTPS `POST`, a request body of `CodApp` plus a base64 `PayLoad` (`Method` and `Params`) and a signature in the `LauValue` header; endpoints for the geography catalog (departments, municipalities, settlements, which is why `REQUIRES_LOCATION_IDS`), shipping rates (`GetShippingRates`), shipping labels (from a quote, from a shipment, list), and tracking by guide number or label id. The documentation says real-time tracking through **webhooks** can be provided on request. The public collection does **not** document cancelling a guide, pickups, return shipments, service codes, COD fields or the signature algorithm. | The full sandbox documentation and credentials from the Forza sales advisor: the signature algorithm, the guide-creation payload (service codes, payer, COD, packages), the label format and size, cancel and pickup endpoints (or their absence), the webhook registration and signature, rate limits, whether guide creation accepts a unique reference, and **the complete list of tracking statuses or event codes the carrier can send, with their meaning** (the adapter's `statusCatalog()`, §4.17). |
+| `c807` (C807 Express) | The owner reports that it offers webhooks and that its API covers guides, cancellation and pickups, and that **a guide is created inside a pickup request**: one call carries the pickup and an array of orders and returns the guides of all of them. The adapter is therefore *pickup-bound* (§4.1, §4.5). | The documentation and credentials from the C807 advisor, with the same list as above, including the complete list of tracking statuses. |
 
 Capabilities are declared from what the documentation confirms, never assumed: a capability that
 cannot be confirmed is left out, and the platform falls back to the manual path (for example

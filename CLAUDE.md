@@ -127,24 +127,24 @@ broken steps.
 
 | Need                                                    | File                                                |
 | ------------------------------------------------------- | --------------------------------------------------- |
-| Event name                                              | `libs/core/events/event-names.ts`                   |
-| Cache key                                               | `libs/core/cache/cache-keys.ts`                     |
-| Permission                                              | `libs/core/auth/permissions.ts`                     |
-| Error code                                              | `libs/core/errors/error-codes.ts`                   |
-| API route constant                                      | `libs/core/api/api-routes.ts`                       |
+| Event name                                              | `libs/core/domain/events/event-names.ts`                   |
+| Cache key                                               | `libs/core/platform/cache/cache-keys.ts`                     |
+| Permission                                              | `libs/core/domain/auth/permissions.ts`                     |
+| Error code                                              | `libs/core/domain/errors/error-codes.ts`                   |
+| API route constant                                      | `libs/core/domain/api/api-routes.ts`                       |
 | Status enum                                             | `libs/core/domain/status-enums.ts`                  |
 | Shipping constant (carrier ids, capabilities, label formats) | `libs/core/domain/shipping-constants.ts`       |
-| Store preference and its factory default                | `libs/core/config/store-preferences.ts`             |
-| Queue/job name                                          | `libs/core/queues/queue-names.ts`                   |
-| Realtime event                                          | `libs/core/realtime/realtime-events.ts`             |
-| Notification type                                       | `libs/core/notifications/notification-constants.ts` |
-| Audit action                                            | `libs/core/audit/audit-actions.ts`                  |
-| Cron schedule                                           | `libs/core/queues/schedules.ts`                     |
-| Metric name                                             | `libs/core/metrics/metric-names.ts`                 |
+| Store preference and its factory default                | `libs/core/platform/config/store-preferences.ts`             |
+| Queue/job name                                          | `libs/core/platform/queues/queue-names.ts`                   |
+| Realtime event                                          | `libs/core/domain/realtime/realtime-events.ts`             |
+| Notification type                                       | `libs/core/domain/notifications/notification-constants.ts` |
+| Audit action                                            | `libs/core/platform/audit/audit-actions.ts`                  |
+| Cron schedule                                           | `libs/core/platform/queues/schedules.ts`                     |
+| Metric name                                             | `libs/core/platform/metrics/metric-names.ts`                 |
 | Staff role / permission (Phase 2, not built in the MVP) | `libs/core/admin/staff-constants.ts`                |
 | TanStack query key                                      | `libs/api-client/src/query-keys.ts`                 |
-| Env variable (api/worker)                               | `libs/core/config/env.ts` (add to Zod schema first) |
-| Env variable (web, `NEXT_PUBLIC_*`)                     | `apps/web/lib/env.ts` (add to Zod schema first)     |
+| Env variable (api/worker)                               | `libs/core/platform/config/env-schema.ts` (add to the Zod schema, then to `.env.example`) |
+| Env variable (web, `NEXT_PUBLIC_*`)                     | `apps/web/lib/env-schema.ts` (add to the Zod schema, then to `apps/web/.env.example`) |
 
 ---
 

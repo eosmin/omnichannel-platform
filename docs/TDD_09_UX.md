@@ -305,8 +305,9 @@ Marking CANCELLED:
   [x] Notify customer
 ```
 
-Reason presets are `OrderCancellationReasons` (`libs/core/domain/order-constants.ts`), each
-an i18n key.
+The dropdown lists the store's own reasons, the preference `orders.cancellationReasons`
+(`TDD_17 §4.14`), editable in Settings → Preferences without code. `OrderCancellationReasons`
+(`libs/core/domain/order-constants.ts`, each an i18n key) is only its factory seed.
 
 ### 5.4 Print
 
