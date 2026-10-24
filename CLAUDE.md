@@ -33,8 +33,8 @@ turn. Load only the specific `TDD_XX` file(s) referenced in the current
 
 ## How to work
 
-1. Find the first unchecked step in `IMPLEMENTATION_PLAN.md` (checkboxes are
-   `[ ]`). Work on milestones and steps strictly in order — later steps
+1. Find the first step whose status is not `done` in the "Progress tracking" table of
+   `IMPLEMENTATION_PLAN.md`. Work on milestones and steps strictly in order — later steps
    assume earlier ones exist.
 2. Before implementing a step, open the TDD file(s) referenced in its
    **TDD:** line and re-read that specific section.
@@ -42,7 +42,8 @@ turn. Load only the specific `TDD_XX` file(s) referenced in the current
 4. Verify the step's **Done when** criterion actually passes (run the
    command, run the test, check the behavior). Do not mark a step done on
    assumption.
-5. Check the box in `IMPLEMENTATION_PLAN.md` for that step.
+5. In `IMPLEMENTATION_PLAN.md`, check the step's task boxes and update its row in the
+   "Progress tracking" table (status, PR number, date), as the last commit of the step's PR.
 6. Propose a commit using the conventional commit format from
    `TDD_14_DX.md §7` (e.g. `feat(auth): add JWT refresh rotation`).
 7. Move to the next step.
@@ -113,7 +114,7 @@ broken steps.
 - [ ] Tenant isolation test added if the step introduces a tenant-scoped resource
 - [ ] The step's own "Done when" criterion verified, not assumed
 - [ ] The step's PR is green on GitHub with every CI job that exists at that point; if the step created a CI job, the plan says which check to add to the `main` ruleset
-- [ ] `IMPLEMENTATION_PLAN.md` checkbox updated
+- [ ] The step's task boxes are checked and its "Progress tracking" row is updated
 
 ---
 
@@ -144,9 +145,9 @@ broken steps.
 
 ## Current status
 
-Check `IMPLEMENTATION_PLAN.md` → "Progress tracking" section at the bottom
-for the checklist across the milestones (Milestone 6 and several steps are
-deferred in the v1.2 MVP). Start there every session.
+Check `IMPLEMENTATION_PLAN.md` → "Progress tracking" section at the bottom:
+a table with one row per step, its status and the PR that delivered it
+(Milestone 6 and several steps are deferred in the v1.2 MVP). Start there every session.
 
 <!-- code-review-graph MCP tools -->
 
