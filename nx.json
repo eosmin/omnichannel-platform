@@ -1,0 +1,61 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/**/*.spec.tsx",
+      "!{projectRoot}/**/*.stories.tsx",
+      "!{projectRoot}/tsconfig.spec.json",
+      "!{projectRoot}/jest.config.cts"
+    ],
+    "sharedGlobals": [
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/pnpm-lock.yaml",
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/eslint.config.js"
+    ]
+  },
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "{projectRoot}/jest.config.cts",
+        "passWithNoTests": true
+      }
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint --max-warnings=0 .",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "type-check": {
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "prisma-generate": {
+      "cache": true,
+      "inputs": ["{projectRoot}/prisma/**/*", "{projectRoot}/prisma.config.ts"]
+    }
+  },
+  "analytics": false
+}

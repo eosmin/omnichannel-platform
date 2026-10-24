@@ -1,0 +1,17 @@
+# Specifications and assistant instructions are maintained by hand with wide tables
+docs/
+CLAUDE.md
+.claude/
+.mcp.json
+
+# Generated code and build output
+dist/
+coverage/
+generated/
+.next/
+.nx/
+out-tsc/
+
+# Dependencies and lockfile
+node_modules/
+pnpm-lock.yaml
