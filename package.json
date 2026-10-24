@@ -28,6 +28,7 @@
     "db:fixtures": "tsx --tsconfig libs/core/database/tsconfig.json libs/core/database/prisma/dev-fixtures.ts"
   },
   "devDependencies": {
+    "@commitlint/cli": "21.2.2",
     "@eslint/js": "10.0.1",
     "@nestjs/cli": "12.0.10",
     "@nestjs/testing": "12.0.1",
