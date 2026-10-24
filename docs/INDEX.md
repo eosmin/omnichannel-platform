@@ -114,8 +114,8 @@ expiry, throttle values, the seed split, the production bootstrap, e2e login thr
 Slack alerts, PR approvals, no welcome email, Railway, integration plugins, robust inventory, Row-Level Security (roles in Step 0.4, policies in Step 7.1), shipping as carrier plugins,
 Grafana Cloud, the release flow, the configurable low-stock alert and Postgres 18 on Railway). No design decision is open; two checks happen when their steps start
 (Railway's release mechanism in Step 7.3, Grafana Cloud's limits in Step 7.4). One input is needed
-from the owner before Step 4.15: the API documentation and credentials of Forza and C807 Express,
-which their sales advisors provide (`TDD_17 §14`); everything before it builds with the `local` carrier
+from the owner before Step 4.15: the credentials of Forza and C807 Express and the Forza documentation, which their sales advisors provide
+(the C807 documentation was received on 2026-10-24) (`TDD_17 §14`); everything before it builds with the `local` carrier
 and a fake carrier.
 
 **Reactivating Phase 2:** un-defer Milestone 6 first, then re-add the trimmed items above as
