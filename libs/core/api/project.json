@@ -1,0 +1,12 @@
+{
+  "name": "core-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/core/api",
+  "projectType": "library",
+  "tags": ["scope:core-domain", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}
