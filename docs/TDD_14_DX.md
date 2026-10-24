@@ -32,8 +32,8 @@ echo "→ Creating local environment files"
 [ -f .env.local ] || cp .env.example .env.local
 [ -f apps/web/.env.local ] || cp apps/web/.env.example apps/web/.env.local
 
-echo "→ Starting infrastructure (postgres, pgbouncer, redis, minio, mailpit, clamav)"
-docker compose up -d --wait                      # minio-init creates the bucket (TDD_03 §3.1)
+echo "→ Starting infrastructure (postgres, pgbouncer, redis, seaweedfs, mailpit, clamav)"
+docker compose up -d --wait                      # SeaweedFS creates the bucket (TDD_03 §3.1)
 
 echo "→ Generating Prisma client"
 pnpm prisma generate
@@ -57,7 +57,7 @@ Setup complete.
   API docs        http://localhost:8080/docs
   Queue admin     http://localhost:8080/admin/queues   (staff login)
   Mail catcher    http://localhost:8025
-  MinIO console   http://localhost:9001   (minioadmin / minioadmin)
+  S3 (SeaweedFS)  http://localhost:8333   (dev_access_key / dev_secret_key)
 
   Logins:  admin@test.com · agent@test.com · viewer@test.com · multi-store@test.com  /  password123
 
@@ -849,12 +849,12 @@ GOOGLE_CLIENT_SECRET=
 # Encryption at rest (32 bytes hex) — generate with: openssl rand -hex 32
 CREDENTIALS_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 
-# Storage (MinIO locally)
+# Storage (SeaweedFS locally)
 AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
+AWS_ACCESS_KEY_ID=dev_access_key
+AWS_SECRET_ACCESS_KEY=dev_secret_key
 S3_BUCKET=platform-dev
-S3_ENDPOINT=http://localhost:9000
+S3_ENDPOINT=http://localhost:8333
 S3_FORCE_PATH_STYLE=true
 
 # Email (Mailpit locally; Resend in deployed environments)

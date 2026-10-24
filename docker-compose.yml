@@ -1,0 +1,98 @@
+name: platform
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    ports: ['5432:5432']
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: platform_dev
+      PGBOUNCER_AUTH_PASSWORD: dev_pgbouncer_password
+    volumes:
+      # Postgres 18 keeps its data in a versioned subdirectory, so the volume is mounted one level up
+      - postgres_data:/var/lib/postgresql
+      # Runs only when the volume is first created: after changing it, recreate the volume with `docker compose down -v`
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U platform -d platform_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    ports: ['6432:6432']
+    environment:
+      # The URL only tells the image which database to proxy and the auth_user password
+      DATABASE_URL: postgres://pgbouncer:dev_pgbouncer_password@postgres:5432/platform_dev
+      LISTEN_PORT: 6432
+      AUTH_TYPE: scram-sha-256
+      AUTH_USER: pgbouncer
+      AUTH_QUERY: SELECT uname, phash FROM pgbouncer.user_lookup($1)
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -p 6432']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8.10.1-alpine
+    ports: ['6379:6379']
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible storage. MinIO stopped publishing images in October 2025, so SeaweedFS stands in;
+  # it creates the bucket itself from S3_BUCKET.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    ports: ['8333:8333']
+    environment:
+      AWS_ACCESS_KEY_ID: dev_access_key
+      AWS_SECRET_ACCESS_KEY: dev_secret_key
+      S3_BUCKET: platform-dev
+    volumes:
+      - seaweedfs_data:/data
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8333/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.28
+    ports: ['1025:1025', '8025:8025']
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8025/readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  clamav:
+    image: clamav/clamav:1.5.4-debian
+    ports: ['3310:3310']
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
+volumes:
+  postgres_data:
+  redis_data:
+  seaweedfs_data:
+  clamav_data:

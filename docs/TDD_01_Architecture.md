@@ -291,7 +291,7 @@ Phase 2 (MATURE): split by purpose
 **Object storage:**
 ```
 Phase 1: AWS S3 (managed) — @aws-sdk/client-s3@3.1125.0, @aws-sdk/s3-request-presigner@3.1125.0
-         MinIO locally, same SDK (S3_ENDPOINT + S3_FORCE_PATH_STYLE=true)
+         SeaweedFS locally, same SDK (S3_ENDPOINT + S3_FORCE_PATH_STYLE=true)
 Phase 2: MinIO self-hosted, only if S3 cost becomes material
 
 Bucket layout (keys are built ONLY by libs/core/storage/storage-keys.ts):
@@ -415,10 +415,10 @@ download path verify that prefix against the current store before touching the o
 | Docker Compose | `5.5.0` |
 | PostgreSQL | `18.6` (`postgres:18.6-alpine`) |
 | Redis | `8.10.1` (`redis:8.10.1-alpine`) |
-| PgBouncer | `1.25` (`edoburu/pgbouncer:1.25.0`) |
-| MinIO | `minio/minio:RELEASE.2026-06-01T00-00-00Z` (local only; pin the tag current at setup) |
+| PgBouncer | `1.25` (`edoburu/pgbouncer:v1.25.2-p0`; the `1.25.0` tag does not exist, the image tags carry a `v` and a `-pN` suffix) |
+| SeaweedFS | `chrislusf/seaweedfs:4.48` (local and CI S3-compatible storage; MinIO stopped publishing images in October 2025, so its Docker Hub and Quay tags are gone) |
 | Mailpit | `axllent/mailpit:v1.28` (local mail catcher; MailHog is unmaintained) |
-| ClamAV | `clamav/clamav:1.5` |
+| ClamAV | `clamav/clamav:1.5.4-debian` (the plain `1.5` tag has no arm64 build) |
 | AWS S3 | managed service |
 
 **Infra — Phase 2 / MATURE (out of scope until `IMPLEMENTATION_PLAN.md` says otherwise)**

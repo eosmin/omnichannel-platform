@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "bootstrap": "bash scripts/bootstrap.sh",
     "test": "nx run-many --target=test --all",
     "test:watch": "nx run-many --target=test --all -- --watch",
     "test:cov": "nx run-many --target=test --all -- --coverage",
@@ -16,7 +17,10 @@
     "lint:fix": "nx run-many --target=lint --all -- --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
-    "type-check": "nx run-many --target=type-check --all"
+    "type-check": "nx run-many --target=type-check --all",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

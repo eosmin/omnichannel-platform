@@ -1,6 +1,6 @@
 # TDD — Omnichannel Commerce Platform
 
-> **Version:** 1.2
+> **Version:** 1.2.1
 > **Status:** Ready for Implementation
 > **Single source of truth for implementation.** Any change must be versioned here (v1.1, v1.2...).
 
@@ -8,6 +8,7 @@
 
 | Version | Date | Summary |
 |---|---|---|
+| 1.2.1 | 2026-10-24 | **Local S3 storage and image tags.** MinIO stopped publishing images (Docker Hub and Quay, October 2025; the repository is archived), so local development and CI use SeaweedFS `4.48` (owner's decision, Step 0.2). Tags that did not exist were corrected: PgBouncer `v1.25.2-p0`, ClamAV `1.5.4-debian` (the plain `1.5` has no arm64 build). Production storage is unaffected (AWS S3). The files that still say MinIO for local or CI use read SeaweedFS (`MVP_TRIM_CHECKLIST.md` §3). |
 | 1.2 | 2026-10-24 | **Single-owner MVP scope.** The SaaS layer (billing, plans, quotas, dunning, public signup, internal admin console, referrals, SaaS support, autonomous chatbot) is deferred to Phase 2. Multi-tenancy (Organization → Store → Membership, `storeId` isolation) is unchanged. Login is magic link only (no password, no Google); Bull Board is gated by an email allowlist. See "MVP scope" below. The MVP also includes robust inventory (warehouses, transfers, counts: `TDD_16_Inventory.md`) and the runtime for integration plugins (the marketplace stays deferred). Only `INDEX.md`, `TDD_00_Overview.md` and `IMPLEMENTATION_PLAN.md` were edited, and `MVP_TRIM_CHECKLIST.md` and `TDD_16_Inventory.md` were added; the other TDD files are unchanged and their deferred or superseded sections stay in place as the Phase 2 specification. |
 | 1.1 | 2026-09-03 | Fixes from `AUDIT_TDD_v1.0.md`: Prisma schema mapped to `snake_case` and completed (identities per store, tokens, invitations, session families, idempotency, store settings, API keys, notification keys); Prisma 7 / ESLint 10 / Next 16 / Stripe Meters / Zod 4 idioms; TypeScript pinned to 5.9; inbound pipeline resolves the store from the recipient connection; tenant context via `X-Store-Id` header and `/s/:storeId` URLs; single source of plan limits (`PlanLimits` + `OrganizationOverride`); web widget and email specified as channel plugins; autonomous chatbot kept as an explicit, narrow exception; worker is a NestJS app; unified infra versions; complete dependency list. |
 | 1.0 | — | Initial specification. |

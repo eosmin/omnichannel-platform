@@ -58,7 +58,7 @@ blocked, conversations resolved, branch up to date. Job names are the ones of `T
 | 1.1 | `unit-tests` job with Nx affected and coverage thresholds (only for paths that exist so far) | `unit-tests` |
 | 1.3 | `integration-tests` now runs the integration suites; `security-tests` job born with the tenant isolation suite | `security-tests` (no bypass) |
 | 2.5 | `integration-tests` also runs `pnpm test:contracts` | none new |
-| 3.1 | Dockerfile for `web` added to `security-scan`; `e2e-tests` job born with Postgres, Redis, MinIO and Mailpit (magic-link login); `lighthouse` job (PRs only) | `e2e-tests` (`lighthouse` stays optional, as in `TDD_14 §8`) |
+| 3.1 | Dockerfile for `web` added to `security-scan`; `e2e-tests` job born with Postgres, Redis, SeaweedFS and Mailpit (magic-link login); `lighthouse` job (PRs only) | `e2e-tests` (`lighthouse` stays optional, as in `TDD_14 §8`) |
 | 7.3 | Railway deployment config; nothing new in the ruleset | none new |
 
 From Step 0.1 on, a step is not done until **its PR is green on GitHub** with every job that
@@ -147,17 +147,18 @@ Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a
 `dependabot.yml` without errors (Insights, Dependency graph, Dependabot) and Dependabot alerts are on.
 
 ### Step 0.2 — Local infrastructure
-- [ ] `docker-compose.yml` with Postgres 18.6, PgBouncer, Redis 8.10, MinIO (+ `minio-init`), Mailpit, ClamAV. PgBouncer authenticates every role through an `auth_user` + `auth_query` lookup (not a single fixed `DB_USER`), because from Step 0.4 the api and the worker connect as different roles; verify the exact settings of the pinned image with Context7
-- [ ] `scripts/bootstrap.sh`
-- [ ] `.env.example` (api/worker) and `apps/web/.env.example` per `TDD_02 §9`, **MVP trim:** omit `GOOGLE_*`, `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `STAFF_*`. Document two `DATABASE_URL` examples (api as `platform_app`, worker as `platform_worker`) next to `DIRECT_DATABASE_URL` (owner), plus `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`, which only the role script of Step 0.4 reads (validated with its own Zod schema, never imported by the api or worker); `scripts/validate-env-example.ts` diffs `.env.example` against the api/worker schema plus that script's schema
+- [x] `docker-compose.yml` with Postgres 18.6, PgBouncer, Redis 8.10, SeaweedFS (S3-compatible; MinIO stopped publishing images, and the bucket is created by `S3_BUCKET`, so there is no init container), Mailpit, ClamAV. PgBouncer authenticates every role through an `auth_user` + `auth_query` lookup (not a single fixed `DB_USER`), because from Step 0.4 the api and the worker connect as different roles; verify the exact settings of the pinned image with Context7
+- [x] `scripts/bootstrap.sh`
+- [x] `.env.example` (api/worker) and `apps/web/.env.example` per `TDD_02 §9`, **MVP trim:** omit `GOOGLE_*`, `STRIPE_*`, `NEXT_PUBLIC_STRIPE_*`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `STAFF_*`. Document two `DATABASE_URL` examples (api as `platform_app`, worker as `platform_worker`) next to `DIRECT_DATABASE_URL` (owner), plus `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`, which only the role script of Step 0.4 reads (validated with its own Zod schema, never imported by the api or worker). Optional variables are commented out, because an empty value fails the Zod `url` and `email` validators; `scripts/validate-env-example.ts` moved to Step 0.3, where the schema it diffs against first exists
 
 **TDD:** `TDD_03 §3.1`, `TDD_14 §1`, `§10`
 **Done when:** `docker compose up -d --wait` succeeds, every health check passes, and the
-`platform-dev` bucket exists in MinIO.
+`platform-dev` bucket exists in SeaweedFS.
 
 ### Step 0.3 — Constants library (blocking dependency for everything)
 - [ ] `libs/core/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
 - [ ] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
+- [ ] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
 - [ ] `libs/core/errors/error-codes.ts` + `PlatformException`
 - [ ] `libs/core/events/event-names.ts` + `event-payloads.ts`
 - [ ] `libs/core/cache/cache-keys.ts` + `CacheTTL`
@@ -276,7 +277,7 @@ store the user has no membership in is rejected.
 - [ ] `tests/security/tenant-isolation.spec.ts` — parameterized
 - [ ] `tests/helpers/` — `createTestApp`, `api()`, truncate, `seedTestContext`, token minting (user; staff DEFERRED). The app under test connects as `platform_app`, but the helpers that set up and inspect data (truncate, `seedTestContext`, builders, assertions that count rows) use a second client on `DIRECT_DATABASE_URL` (the owner), because `platform_app` cannot `TRUNCATE` and, from Step 7.1, cannot see other stores' rows
 - [ ] `tests/builders/` — entity builders
-- [ ] CI: `integration-tests` now runs the integration suites; create the `security-tests` job (Postgres, Redis, MinIO services) with the isolation suite. Add `security-tests` as a required check, with no bypass
+- [ ] CI: `integration-tests` now runs the integration suites; create the `security-tests` job (Postgres, Redis, SeaweedFS services) with the isolation suite. Add `security-tests` as a required check, with no bypass
 
 **TDD:** `TDD_13 §3`, `§6`
 **Done when:** the suite runs in CI as the `security-tests` blocking gate, it is a required check
@@ -390,7 +391,7 @@ on a page with a strict CSP.
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys
 - [ ] Dockerfile for `web`, added to the `security-scan` build and Trivy scan
-- [ ] CI: create the `e2e-tests` job (Postgres, Redis, MinIO and Mailpit services; the Playwright browsers cached by version and the job skipped by a job-level `if` when the change cannot affect the web app; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
+- [ ] CI: create the `e2e-tests` job (Postgres, Redis, SeaweedFS and Mailpit services; the Playwright browsers cached by version and the job skipped by a job-level `if` when the change cannot affect the web app; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
 
 **TDD:** `TDD_01 §2.1`, `TDD_09 §12`, `§15`, `TDD_05 §6`
 **Done when:** magic link login works, `/invitations/[token]` handles the no-account, existing-account and mismatched-session cases, the UI renders in both locales with no hardcoded strings,
@@ -969,7 +970,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 |---|---|---|---|---|
 | **Milestone 0: Foundation** | | | | |
 | 0.1 | Nx workspace | done | #7, #8 | 2026-10-24 |
-| 0.2 | Local infrastructure | todo | | |
+| 0.2 | Local infrastructure | in progress | #16 | 2026-10-24 |
 | 0.3 | Constants library (blocking dependency for everything) | todo | | |
 | 0.4 | Database schema | todo | | |
 | 0.5 | Observability | todo | | |
