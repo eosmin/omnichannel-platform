@@ -2,17 +2,17 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    # The TDD pins every version (TDD_01 §2.4): an upgrade re-fetches its documentation and updates
-    # the table first, so a grouped minor/patch PR is a prompt to do that, not a PR to merge as is
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
-    groups:
-      npm-minor-and-patch:
-        update-types: [minor, patch]
     ignore:
+      # The TDD pins every version, so routine bumps are done on purpose: one area per PR, after
+      # reading the changelog and updating the table. Security alerts are unaffected by this
+      - dependency-name: '*'
+        update-types: [version-update:semver-minor, version-update:semver-patch]
+      # Majors still open a PR, except these two:
       # TypeScript stays on 5.9 until typescript-eslint, ts-jest and Nx certify the next major
       - dependency-name: typescript
         update-types: [version-update:semver-major]
