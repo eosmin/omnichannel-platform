@@ -153,7 +153,7 @@ export default defineConfig([
     files: [
       'apps/web/lib/env.ts',
       'apps/widget/src/env.ts',
-      'libs/core/config/env.ts',
+      'libs/core/platform/config/env.ts',
       'prisma.config.ts',
       'libs/core/database/prisma.config.ts'
     ],

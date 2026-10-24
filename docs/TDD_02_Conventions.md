@@ -343,8 +343,13 @@ export interface RealtimeEventMap {
   [RealtimeEvents.AUTH_ERROR]: { code: ErrorCode }
 }
 
-// Compile-time guard: fails if RealtimeEvents gains a key that RealtimeEventMap lacks.
-type _AssertComplete = Record<RealtimeEvent, unknown> extends RealtimeEventMap ? true : never
+// Compile-time guard in both directions: it resolves to `never`, and the assignment below stops
+// compiling, when RealtimeEvents gains a key RealtimeEventMap lacks or the other way around.
+// (v1.2.2: the earlier `Record<RealtimeEvent, unknown> extends RealtimeEventMap` always resolved to never.)
+type AssertRealtimeMapComplete = [RealtimeEvent] extends [keyof RealtimeEventMap]
+  ? [keyof RealtimeEventMap] extends [RealtimeEvent] ? true : never
+  : never
+export const realtimeEventMapIsComplete: AssertRealtimeMapComplete = true
 ```
 
 Room names live next to them in `libs/core/realtime/room-names.ts` (`TDD_06_Realtime.md` §1.4).
@@ -1495,7 +1500,7 @@ const envSchema = z.object({
   EMAIL_PROVIDER: z.enum(['resend']).default('resend'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
-  EMAIL_FROM: z.email().default('noreply@platform.local'),
+  EMAIL_FROM: senderAddress.default('noreply@platform.local'),   // A bare address or "Name <address>"; senderAddress is a z.string().refine() that accepts either form
   EMAIL_INBOUND_DOMAIN: z.string().optional(),          // e.g. inbound.platform.com, TDD_10 §5.5
 
   // Observability

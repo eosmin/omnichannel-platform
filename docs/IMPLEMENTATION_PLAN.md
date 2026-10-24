@@ -156,28 +156,29 @@ Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a
 `platform-dev` bucket exists in SeaweedFS.
 
 ### Step 0.3 — Constants library (blocking dependency for everything)
-- [ ] `libs/core/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
-- [ ] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
-- [ ] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
-- [ ] `libs/core/errors/error-codes.ts` + `PlatformException`
-- [ ] `libs/core/events/event-names.ts` + `event-payloads.ts`
-- [ ] `libs/core/cache/cache-keys.ts` + `CacheTTL`
-- [ ] `libs/core/auth/permissions.ts` + `RolePresets` (`libs/core/admin/staff-constants.ts` + `StaffRolePresets` DEFERRED)
-- [ ] `libs/core/domain/status-enums.ts` + i18n keys, colors, transitions, editable fields
-- [ ] `libs/core/api/api-routes.ts` (`ApiRoutes`, `InfraRoutes`; `AdminRoutes` DEFERRED)
-- [ ] `libs/core/queues/queue-names.ts` + `JobNames`; `schedules.ts` + `LockNames`
-- [ ] `libs/core/realtime/realtime-events.ts` (complete `RealtimeEventMap`) + `room-names.ts`
-- [ ] `libs/core/notifications/notification-constants.ts` (complete `NotificationDefaults`)
-- [ ] `libs/core/audit/audit-actions.ts`, `libs/core/metrics/metric-names.ts`
-- [ ] `libs/core/analytics/analytics-constants.ts`, `libs/core/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
-- [ ] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
-- [ ] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
-- [ ] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
-- [ ] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
+- [x] `libs/core/platform/config/env.ts` — Zod-validated environment (`z.stringbool`, `z.url`)
+- [x] `apps/web/lib/env.ts` — `NEXT_PUBLIC_*` schema
+- [x] `scripts/validate-env-example.ts` (moved from Step 0.2): diffs `.env.example` against the api/worker schema plus the role script's schema, and `apps/web/.env.example` against the web schema; commented-out optional variables count as present
+- [x] `libs/core/domain/errors/error-codes.ts` + `PlatformException`
+- [x] `libs/core/domain/events/event-names.ts` + `event-payloads.ts`
+- [x] `libs/core/platform/cache/cache-keys.ts` + `CacheTTL`
+- [x] `libs/core/domain/auth/permissions.ts` + `RolePresets` (`libs/core/admin/staff-constants.ts` + `StaffRolePresets` DEFERRED)
+- [x] `libs/core/domain/status-enums.ts` + i18n keys, colors, transitions, editable fields
+- [x] `libs/core/domain/api/api-routes.ts` (`ApiRoutes`, `InfraRoutes`; `AdminRoutes` DEFERRED)
+- [x] `libs/core/platform/queues/queue-names.ts` + `JobNames`; `schedules.ts` + `LockNames`
+- [x] `libs/core/domain/realtime/realtime-events.ts` (complete `RealtimeEventMap`) + `room-names.ts`
+- [x] `libs/core/domain/notifications/notification-constants.ts` (complete `NotificationDefaults`)
+- [x] `libs/core/platform/audit/audit-actions.ts`, `libs/core/platform/metrics/metric-names.ts`
+- [x] `libs/core/domain/analytics/analytics-constants.ts`, `libs/core/platform/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
+- [x] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
+- [x] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
+- [x] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
+- [x] The smaller constant sets of `TDD_02 §15` that nothing else owns (`TenantHeaders`, `ThrottlerNames`, `PresenceStatus`, `Locales` and the locale constants, `UploadLimits`, `AllowedContentTypes`, `StorageKeys` (S3) and `ImageVariants`, `WebhookHeaders`, `WebhookLimits`, `WebhookSources`, `ResendEventTypes`, `ConversationStatusReasons`, `BulkActions`, `BulkLimits`, `OrderPrintDocuments`, `DestructiveActionTiers`, `Shortcuts`, the export constants, the job payload types that use only built types and `DeadLetterJob`, and in `libs/api-client` `API_PREFIX` and the browser `StorageKeys`). **Owned by a later step, on purpose:** `EmailTemplates`, `EmailTemplate` and `SendEmailJob` (the email step), `ChannelCapability`, `ChannelEventTypes`, `PluginBridgeMessages`, `PLUGIN_SCOPES_KEY` and `ProcessChannelEventJob` (Step 2.5, the plugin SDK), `AuthenticatedRequest` (Step 0.5). `OrderCancellationReasons` is the factory seed of the per-store editable list `orders.cancellationReasons` (Step 4.9, `TDD_17 §4.14`); its six reasons are owner-approved.
+- [x] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
 
 **TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2; the inventory constants of `TDD_16 §3` and the shipping constants of `TDD_17 §3`)
 **Done when:** every constant file compiles and is exported from its barrel, and the
-`_AssertComplete` check in `realtime-events.ts` passes.
+`realtimeEventMapIsComplete` guard in `realtime-events.ts` compiles.
 **This step is non-negotiable.** Everything downstream imports from here.
 
 ### Step 0.4 — Database schema
@@ -185,7 +186,7 @@ Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a
 - [ ] `libs/core/database/prisma.config.ts` + root re-export
 - [ ] Initial migration
 - [ ] Raw SQL migration: extensions, generated `tsvector` columns, GIN/trigram indexes, partial indexes, partial uniques, CHECK constraints
-- [ ] **Database roles** (decision D16, `MVP_TRIM_CHECKLIST.md` §7): the raw SQL migration creates `platform_app` and `platform_worker` idempotently as `NOLOGIN` (the worker `BYPASSRLS`, neither a superuser), grants `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables and sequences and sets `ALTER DEFAULT PRIVILEGES` so tables created by later migrations are covered, then revokes `UPDATE` and `DELETE` on `audit_logs` from `platform_app` (`TDD_05 §9.3`; the worker keeps `DELETE` for the retention export). `scripts/set-db-role-passwords.ts` gives both roles `LOGIN` and their passwords from `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`; it runs after `migrate deploy` in `bootstrap.sh`, CI and the Railway release. Passwords are never in a migration
+- [ ] **Database roles** (decision D16, `MVP_TRIM_CHECKLIST.md` §7): the raw SQL migration creates `platform_app` and `platform_worker` idempotently as `NOLOGIN` (the worker `BYPASSRLS`, neither a superuser), grants `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables and sequences and sets `ALTER DEFAULT PRIVILEGES` so tables created by later migrations are covered, then revokes `UPDATE` and `DELETE` on `audit_logs` from `platform_app` (`TDD_05 §9.3`; the worker keeps `DELETE` for the retention export). `scripts/set-db-role-passwords.ts` gives both roles `LOGIN` and their passwords from `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`; it runs after `migrate deploy` in `bootstrap.sh`, CI and the Railway release. Passwords are never in a migration. The script validates them with its own Zod schema, and `scripts/validate-env-example.ts` imports that schema in place of its `TOOLING_KEYS` list (Step 0.3)
 - [ ] Connections: the api uses `DATABASE_URL` as `platform_app`, the worker as `platform_worker`, migrations, the owner bootstrap and the dev fixtures use `DIRECT_DATABASE_URL` (owner). RLS policies are NOT enabled yet: they arrive in Step 7.1, so until then both roles behave like a normal application user
 - [ ] Rollback scripts in `libs/core/database/rollbacks/` + `scripts/check-rollbacks.ts`
 - [ ] `PrismaService` with `@prisma/adapter-pg` and the read-replica extension. Shaped from the start so Step 7.1 only changes its internals: `client` is a getter that returns the current tenant transaction when one exists and the base client otherwise (the mechanism of `TDD_01 §3.2`, verified by the 2026-10-24 spike, so Step 7.1 only adds the interceptor and the policies), services never call `client.$transaction` directly but `PrismaService.transaction(fn)`, which joins the tenant transaction when there is one (a lint rule forbids the direct call), and the replica is reached through `PrismaService.replica()`, not `client.$replica()`. In the MVP there is no replica, so `replica()` returns the same database
@@ -386,7 +387,7 @@ on a page with a strict CSP.
 
 ### Step 3.1 — Frontend foundation
 - [ ] Next.js App Router structure with `/s/[storeId]`, `/org`, `/account`, `/invitations/[token]`, `proxy.ts`. A user with no membership is redirected to the "no access" screen, not `/onboarding` (DEFERRED)
-- [ ] shadcn/ui components, Lucide icons, Tailwind, CSP headers
+- [ ] shadcn/ui components, Lucide icons, Tailwind, CSP headers. Tailwind must scan `libs/core/domain` (`@source`), because `ConversationStatusColors` and `OrderStatusColors` hold class names that are otherwise purged
 - [ ] Auth flow with token refresh; `apiClient` setting `X-Store-Id`
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys
@@ -529,20 +530,21 @@ receive a transfer, run and apply a count.
 - [ ] The foreign key `Order.carrierConnectionId` and the enforcement of the carrier fee rules of `TDD_17 §4.13` (fee range, a fee needs a carrier, the check at guide time)
 - [ ] Connections: connect, test, edit and disconnect with encrypted credentials and webhook secret, the default shipping fee and its minimum and maximum per connection (also for `local`), `CarrierService` rows seeded from the plugin catalog, `GET /carriers/registry`, Settings → Carriers API (`SETTINGS_MANAGE_CARRIERS`)
 - [ ] `libs/carriers/local`: guide numbering (`GuideSequence`) and the label template (barcode, recipient, COD amount or "PAID"), rendered at the connection's label format
+- [ ] Status mapping (`TDD_17 §4.17`): the `CarrierStatusMapping` and `CarrierUnmappedStatus` models in the same migration, `statusCatalog()` in the `CarrierPlugin` contract (and an empty one for `local`), mappings seeded when a connection is created, the resolution in `PROCESS_CARRIER_EVENT` (the connection's mapping wins over the plugin's, normalized codes, ignore on purpose, the unmapped record and its single notification), the `REPROCESS_CARRIER_EVENTS` job (in order, same engine, no customer message on replay), and the status-mapping routes with their audit; repeated delivery attempts (`FAILED_ATTEMPT` to itself, `Shipment.failedAttempts`, `CarrierConnection.maxDeliveryAttempts`, the `attemptNumber` and `maxAttempts` template variables and the `orders.failedAttemptMessages` preference with its Zod rule that refuses `autoSend` for `ORDER_FAILED_ATTEMPT`)
 - [ ] Status flow: public `POST /webhooks/carriers/:connectionId` (raw body, signature, queue, `200` fast), `PROCESS_CARRIER_EVENT` with dedupe and out-of-order handling, `POLL_SHIPMENT_STATUS`, and the listener that applies the order effects of `TDD_17 §4.9` (`SHIPPED` with the inventory `ISSUE`, `DELIVERED`, COD payment completion, notifications)
 
-**TDD:** `TDD_17 §1`, `§2`, `§3`, `§4.1`, `§4.2`, `§4.4`, `§4.5`, `§4.9`, `§4.12`, `§4.13`, `TDD_10 §3`, `§9`, `TDD_16 §4.1`
+**TDD:** `TDD_17 §1`, `§2`, `§3`, `§4.1`, `§4.2`, `§4.4`, `§4.5`, `§4.9`, `§4.12`, `§4.13`, `§4.17`, `TDD_10 §3`, `§9`, `TDD_16 §4.1`
 **Done when:** with the fake carrier, an order creates exactly one shipment even under two parallel requests,
 an unknown outcome never creates a second guide, a duplicate or out-of-order webhook changes nothing,
 every shipment status produces the order effect of `TDD_17 §4.9`, and a `local` shipment gets a unique
-guide and a printable label; the contract suite runs in `integration-tests`.
+guide and a printable label; three failed attempts on three days count three and then a delivery completes the order; a code the plugin does not know is recorded once, and mapping it replays the stored events in order; the contract suite runs in `integration-tests`.
 
 ### Step 4.9 — Order confirmation and customer messages
 - [ ] `PENDING_CONFIRMATION` in the order state machine, with `confirmedAt`, `confirmedBy`, `confirmedVia`; "mark as confirmed" (single and bulk, `ORDERS_CONFIRM`); `ShippingService` refuses guides for unconfirmed orders
 - [ ] `OrderMessagesService`: the generic `ORDER_MESSAGE` email template for the fallback (replacing the four order emails), the "Notify customer" checkbox of manual status changes initialised from the matching template's `autoSend`, and templates per kind and locale with the variable allowlist, rendering by substitution, preview, `autoSend` (not for the order summary, which follows the store preference) and `attachSummary`, the order summary document, sending through the conversation's channel as an outbound `Message`
 - [ ] The messaging-window decision of `TDD_17 §4.7`: free text inside the window, the linked channel-approved template outside it (variables mapped in order), and free text always for a channel that declares no window, email fallback or the `ORDER_MESSAGE_NOT_SENT` notification otherwise; idempotent automatic sends per `(shipmentId, status, kind)`
 - [ ] Settings → Order messages API (`SETTINGS_MANAGE_ORDER_TEMPLATES`) with the link to an approved channel template; whether a message goes as free text or as a template comes only from the channel plugin's declared `messagingWindow` and `TEMPLATES` capability, never from its name
-- [ ] Store preferences (`TDD_17 §4.14`): `storePreferencesSchema` as the only place of factory defaults, `StoreSettings.preferences`, `GET` and `PUT /settings/preferences` (`SETTINGS_MANAGE_PREFERENCES`), the ESLint rule that forbids a hardcoded initial state on checkboxes and switches in `apps/web`; the summary is sent on creation according to `orders.sendSummaryOnCreate` (default on) and `autoSend` is refused for `ORDER_SUMMARY`
+- [ ] Store preferences (`TDD_17 §4.14`): `storePreferencesSchema` as the only place of factory defaults (including the editable `orders.cancellationReasons` list, seeded from `OrderCancellationReasons`), `StoreSettings.preferences`, `GET` and `PUT /settings/preferences` (`SETTINGS_MANAGE_PREFERENCES`), the ESLint rule that forbids a hardcoded initial state on checkboxes and switches in `apps/web`; the summary is sent on creation according to `orders.sendSummaryOnCreate` (default on) and `autoSend` is refused for `ORDER_SUMMARY`
 - [ ] Confirm at creation (`confirmOnCreate`, initial value from `orders.confirmOnCreate`, default false, `ORDERS_CONFIRM`) and `GET /orders/:id/copy` (a prefilled draft with warnings, current prices, `copiedFromOrderId`)
 
 **TDD:** `TDD_17 §4.3`, `§4.7`, `TDD_10 §2`, `§4`, `§5.1`, `TDD_09 §5`
@@ -601,10 +603,10 @@ statuses, and an invalid cell is reported instead of read as zero.
 - [ ] Orders page (built in Step 4.4): multi-select action bar (confirm, send summary, generate labels, print labels, request pickup), carrier, guide and shipment columns and filters, skipped-order reporting
 - [ ] Create-order drawer: the "Mark as confirmed" and "Send the order summary" checkboxes initialised from the store preferences, the price editing and discount-limit UI with approval state, the caution banner, and "Copy order" from the order detail and the customer's orders
 - [ ] Order detail: confirmation step, Shipping, Messages and Returns panels, the create-guide dialog (default connection, service and payer preselected, `SENDER` for a free-shipping order, COD amount read-only with its reason, location selectors when the carrier needs them, the pickup date and window for a pickup-bound carrier)
-- [ ] Settings → Carriers, Order messages, Returns and **Preferences**; separate desktop-first screens for Shipments, Pickups, Returns (with the reception scan screen) and Remittances (with the import mapper)
+- [ ] Settings → Carriers (with the **status mapping** tab: the carrier's codes against ours, the unmapped codes waiting for a decision and "Map to…", `TDD_17 §4.17`), Order messages, Returns and **Preferences**; separate desktop-first screens for Shipments, Pickups, Returns (with the reception scan screen) and Remittances (with the import mapper)
 - [ ] Controls shown only when the permission and the connection's capability exist
 
-**TDD:** `TDD_17 §7`, `TDD_09 §5`, `§11`
+**TDD:** `TDD_17 §4.17`, `§7`, `TDD_09 §5`, `§11`
 **Done when:** the owner can confirm an order, generate and print the labels of many orders at once, request a
 pickup, cancel a guide, process an exchange, receive a scanned batch of returns and import a remittance from the UI, against the fake carrier and with a `local`
 courier; the Playwright journey of `TDD_17 §9` passes.
@@ -613,11 +615,11 @@ courier; the Playwright journey of `TDD_17 §9` passes.
 **Starts when the owner has the API documentation and credentials of each carrier** (`TDD_17 §14` lists what to
 ask for); it is the only step of the plan that depends on an external input, so everything before it builds and
 ships with the `local` carrier and the fake carrier.
-- [ ] `libs/carriers/forza` and `libs/carriers/c807`: authentication and signing, guide creation with the service codes and COD and payer fields, the label, status mapping to `ShipmentStatus`, and exactly the capabilities the documentation confirms (cancel, pickup and its modification, return guide, webhook, polling, location lookup)
+- [ ] `libs/carriers/forza` and `libs/carriers/c807`: authentication and signing, guide creation with the service codes and COD and payer fields, the label, the `statusCatalog()` with every tracking status the documentation lists and its default `ShipmentStatus`, and exactly the capabilities the documentation confirms (cancel, pickup and its modification, return guide, webhook, polling, location lookup)
 - [ ] Recorded provider fixtures for the contract suite; the carrier's webhook registration documented in Settings → Carriers
-- [ ] A capability that cannot be confirmed is left out and the manual path covers it
+- [ ] A capability that cannot be confirmed is left out and the manual path covers it; a status the documentation does not explain is left out of the catalog on purpose, and the owner maps it from the unmapped list when it first appears
 
-**TDD:** `TDD_17 §4.1`, `§14`, `TDD_10 §9`
+**TDD:** `TDD_17 §4.1`, `§4.17`, `§14`, `TDD_10 §9`
 **Done when:** each adapter passes the carrier contract suite against its fixtures, and a real guide, its status
 changes and (where the documentation allows) its cancellation and pickup work against the carrier's
 sandbox.
@@ -973,7 +975,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 0: Foundation** | | | | |
 | 0.1 | Nx workspace | done | #7, #8 | 2026-10-24 |
 | 0.2 | Local infrastructure | done | #16 | 2026-10-24 |
-| 0.3 | Constants library (blocking dependency for everything) | todo | | |
+| 0.3 | Constants library (blocking dependency for everything) | done | #25 | 2026-10-24 |
 | 0.4 | Database schema | todo | | |
 | 0.5 | Observability | todo | | |
 | 0.6 | Tooling | todo | | |

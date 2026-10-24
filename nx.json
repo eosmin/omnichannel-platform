@@ -8,7 +8,6 @@
       "!{projectRoot}/**/*.spec.ts",
       "!{projectRoot}/**/*.spec.tsx",
       "!{projectRoot}/**/*.stories.tsx",
-      "!{projectRoot}/tsconfig.spec.json",
       "!{projectRoot}/jest.config.cts"
     ],
     "sharedGlobals": [
@@ -26,7 +25,12 @@
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"],
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/tsconfig.spec.json",
+        "{workspaceRoot}/jest.preset.cjs"
+      ],
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {

@@ -1,0 +1,12 @@
+{
+  "name": "core-platform",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/core/platform",
+  "projectType": "library",
+  "tags": ["scope:core", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

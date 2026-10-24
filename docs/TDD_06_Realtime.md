@@ -683,6 +683,12 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.IMPERSONATION_ENDED]:              { severity: NotificationSeverity.INFO,    channels: [IN_APP] },
 }
 
+// Channel rule (how a default is chosen; v1.2.2 adds it so every default can be audited):
+//   IN_APP  always.
+//   PUSH    someone must act soon, or it is time-sensitive (assignments, a cutoff, a customer not informed).
+//   EMAIL   money or a legal deadline is involved, or the person may be away from the app for a
+//           while (a channel down, a webhook disabled, a guide not voided, a remittance overdue).
+//   SOUND   inbox events only.
 // Realtime payload delivered to the browser (TDD_02 §2 RealtimeEventMap[NOTIFICATION])
 export interface NotificationRealtimePayload {
   id: string
@@ -862,7 +868,7 @@ schedulers drain it (`Schedules.SEND_EMAIL_DIGEST_HOURLY` / `_DAILY`, `TDD_07` �
 every user whose `digestFrequency` matches, the pending notifications since
 `lastDigestSentAt` are rendered into one `EmailTemplates.NOTIFICATION_DIGEST` email.
 `digestFrequency = IMMEDIATE` sends one email per notification from the queue processor
-directly; `OFF` drops the job.
+directly; `OFF` drops the job. The daily scheduler runs every hour and sends only to the users whose local time is then 08:10, so each user gets the digest at their own morning (`TDD_07` §4).
 
 ---
 
