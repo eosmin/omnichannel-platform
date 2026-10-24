@@ -1,3 +1,13 @@
 # What CI would fail on, for the projects the branch touches: seconds to a minute and a half, no
-# Docker. A change that only touches docs/ is not checked.
-pnpm validate:affected
+# Docker. A push that only touches docs/ is not checked.
+#
+# Git writes one line per pushed ref on stdin: <local ref> <local sha> <remote ref> <remote sha>.
+# The remote sha is all zeros for a branch that is not on the remote yet.
+zero=0000000000000000000000000000000000000000
+while read -r _local_ref _local_sha _remote_ref remote_sha; do
+  if [ "$remote_sha" = "$zero" ]; then
+    pnpm validate:affected || exit 1
+  else
+    pnpm validate:affected -- --since "$remote_sha" || exit 1
+  fi
+done

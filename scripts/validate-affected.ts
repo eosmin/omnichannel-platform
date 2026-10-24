@@ -1,8 +1,11 @@
 // What CI would fail on, for the projects that the branch touches (pre-push hook). No Docker, no
-// database. A branch that only changes docs/ is not checked.
-// Usage: tsx scripts/validate-affected.ts
+// database. A push that only changes docs/ is not checked.
+// Usage: tsx scripts/validate-affected.ts [--since <sha>]
+//   --since: the commit the remote branch is at, which the pre-push hook passes. What is pushed is
+//   then the commits after it, so a documentation commit on top of code that was already checked
+//   is not checked again.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { exit } from 'node:process'
+import { argv, exit } from 'node:process'
 
 import { isDocsOnly } from './lib/affected'
 
@@ -14,16 +17,26 @@ function exists(ref: string): boolean {
   return spawnSync('git', ['rev-parse', '--verify', '--quiet', ref]).status === 0
 }
 
+function changedSince(commit: string): string[] {
+  return git('diff', '--name-only', commit, 'HEAD').split('\n').filter(Boolean)
+}
+
 const baseRef = exists('origin/main') ? 'origin/main' : 'main'
 const base = git('merge-base', baseRef, 'HEAD')
-const changed = git('diff', '--name-only', base, 'HEAD').split('\n').filter(Boolean)
+const changed = changedSince(base)
 
 if (changed.length === 0) {
   console.log(`nothing changed since ${baseRef}: nothing to check`)
   exit(0)
 }
-if (isDocsOnly(changed)) {
-  console.log('only docs/ changed: nothing to check')
+
+// A remote commit this clone does not have (a branch rewritten elsewhere) cannot tell what is
+// pushed: then the whole branch is checked
+const sinceIndex = argv.indexOf('--since')
+const since = sinceIndex === -1 ? undefined : argv[sinceIndex + 1]
+const pushed = since !== undefined && exists(`${since}^{commit}`) ? changedSince(since) : changed
+if (isDocsOnly(pushed)) {
+  console.log('only docs/ changed in what is pushed: nothing to check')
   exit(0)
 }
 
