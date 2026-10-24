@@ -937,16 +937,94 @@ pipeline → 3.2 inbox. Everything else can be parallelized around it.
 
 ## Progress tracking
 
-Copy this checklist into the project tracker.
+One row per step. The checkboxes inside each step track its tasks; this table tracks the step itself, with the
+pull request that delivered it. **The step's own PR updates its row**, so the progress lives in the repository and
+moves with the code.
 
-```
-Milestone 0  Foundation              [ ] 0.1  [ ] 0.2  [ ] 0.3  [ ] 0.4  [ ] 0.5  [ ] 0.6
-Milestone 1  Auth and tenancy        [ ] 1.0  [ ] 1.1  [ ] 1.2  [ ] 1.3  [ ] 1.4
-Milestone 2  Core messaging          (2.1 moved to 1.0)  [ ] 2.2  [ ] 2.3  [ ] 2.4  [ ] 2.5  [ ] 2.6  [ ] 2.7  [ ] 2.8
-Milestone 3  Inbox interface         [ ] 3.1  [ ] 3.2  [ ] 3.3  [ ] 3.4  [ ] 3.5
-Milestone 4  Commerce                [ ] 4.1  [ ] 4.2  [ ] 4.3  [ ] 4.4  [ ] 4.5  [ ] 4.6  [ ] 4.7  [ ] 4.8  [ ] 4.9  [ ] 4.10  [ ] 4.11  [ ] 4.12  [ ] 4.13  [ ] 4.14  [ ] 4.15
-Milestone 5  Operations              [ ] 5.1  [ ] 5.2  [ ] 5.3  [ ] 5.4  (5.5 deferred)  [ ] 5.6  [ ] 5.7
-Milestone 6  Monetization            DEFERRED (Phase 2)
-Milestone 7  Production readiness    [ ] 7.1  [ ] 7.2  [ ] 7.3  [ ] 7.4  (7.5, 7.6 deferred)
-Milestone 8  Enhancements            [ ] 8.3  (8.1, 8.2, 8.4, 8.5 deferred)
-```
+| Status | Meaning |
+|---|---|
+| `todo` | not started |
+| `in progress` | a branch for the step exists and is not merged |
+| `done` | merged to `main` with every task checked and the "Done when" criterion verified |
+| `deferred (Phase 2)` | out of the v1.2 MVP, kept for later |
+
+How to keep it:
+1. When the work on a step starts, the first commit of its branch sets the row to `in progress`.
+2. When the step is complete, the last commit of its PR sets `done`, checks the step's task boxes, and fills in the PR
+   number and the date (open the PR first to know its number, then add it as the last commit).
+3. One step, one branch, one independent PR from an up-to-date `main`; never stack PRs.
+4. Step 2.1 does not exist: it moved to Step 1.0. Step 8.3 is optional and is not needed to complete the MVP.
+
+The MVP is complete when every row that is not `deferred` and not optional is `done`: **48 steps**.
+
+| Step | Name | Status | PR | Date |
+|---|---|---|---|---|
+| **Milestone 0: Foundation** | | | | |
+| 0.1 | Nx workspace | todo | | |
+| 0.2 | Local infrastructure | todo | | |
+| 0.3 | Constants library (blocking dependency for everything) | todo | | |
+| 0.4 | Database schema | todo | | |
+| 0.5 | Observability | todo | | |
+| 0.6 | Tooling | todo | | |
+| **Milestone 1: Auth and tenancy** | | | | |
+| 1.0 | Queues, workers and email | todo | | |
+| 1.1 | Authentication | todo | | |
+| 1.2 | Tenancy | todo | | |
+| 1.3 | Tenant isolation test suite | todo | | |
+| 1.4 | Organizations, stores, memberships | todo | | |
+| **Milestone 2: Core messaging** | | | | |
+| 2.2 | Customers | todo | | |
+| 2.3 | Conversations and messages | todo | | |
+| 2.4 | Realtime | todo | | |
+| 2.5 | Plugin SDK and registry | todo | | |
+| 2.6 | Inbound pipeline | todo | | |
+| 2.7 | WhatsApp plugin | todo | | |
+| 2.8 | Instagram, Messenger, web widget, email | todo | | |
+| **Milestone 3: Inbox interface** | | | | |
+| 3.1 | Frontend foundation | todo | | |
+| 3.2 | Inbox | todo | | |
+| 3.3 | Customer panel | todo | | |
+| 3.4 | Media | todo | | |
+| 3.5 | Notifications | todo | | |
+| **Milestone 4: Commerce** | | | | |
+| 4.1 | Products and variants | todo | | |
+| 4.2 | Warehouses and stock | todo | | |
+| 4.3 | Orders | todo | | |
+| 4.4 | Order UI | todo | | |
+| 4.5 | Transfers between warehouses | todo | | |
+| 4.6 | Physical counts | todo | | |
+| 4.7 | Inventory UI | todo | | |
+| 4.8 | Carrier SDK, shipment engine and the `local` carrier | todo | | |
+| 4.9 | Order confirmation and customer messages | todo | | |
+| 4.10 | Labels, bulk generation and cancellation | todo | | |
+| 4.11 | Pickups | todo | | |
+| 4.12 | Returns, exchanges and reception | todo | | |
+| 4.13 | COD remittances | todo | | |
+| 4.14 | Shipping UI | todo | | |
+| 4.15 | Forza and C807 adapters | todo | | |
+| **Milestone 5: Operations** | | | | |
+| 5.1 | Search | todo | | |
+| 5.2 | Analytics | todo | | |
+| 5.3 | Caching and performance | todo | | |
+| 5.4 | Settings | todo | | |
+| 5.5 | Onboarding | deferred (Phase 2) | | |
+| 5.6 | Integration plugins (runtime) | todo | | |
+| 5.7 | Plugin widgets | todo | | |
+| **Milestone 6: Monetization** (deferred) | | | | |
+| 6.1 | Usage metering | deferred (Phase 2) | | |
+| 6.2 | Stripe | deferred (Phase 2) | | |
+| 6.3 | Quotas and gating | deferred (Phase 2) | | |
+| 6.4 | Dunning | deferred (Phase 2) | | |
+| **Milestone 7: Production readiness** | | | | |
+| 7.1 | Security hardening | todo | | |
+| 7.2 | Compliance | todo | | |
+| 7.3 | Deployment | todo | | |
+| 7.4 | Monitoring | todo | | |
+| 7.5 | Load validation | deferred (Phase 2) | | |
+| 7.6 | Internal admin console (core) | deferred (Phase 2) | | |
+| **Milestone 8: Optional enhancements** | | | | |
+| 8.1 | AI assist | deferred (Phase 2) | | |
+| 8.2 | Autonomous chatbot (Scale) | deferred (Phase 2) | | |
+| 8.3 | PWA | todo (optional) | | |
+| 8.4 | Referral program | deferred (Phase 2) | | |
+| 8.5 | SaaS support | deferred (Phase 2) | | |
