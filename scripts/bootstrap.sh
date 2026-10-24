@@ -21,6 +21,10 @@ echo "→ Creating local environment files"
 echo "→ Starting infrastructure (postgres, pgbouncer, redis, seaweedfs, mailpit, clamav)"
 docker compose up -d --wait                      # SeaweedFS creates the S3 bucket itself
 
+echo "→ Migrating the database and loading the development fixtures"
+pnpm db:migrate                                  # prisma migrate deploy, then the two role passwords
+pnpm db:fixtures
+
 cat <<'DONE'
 
 Setup complete.

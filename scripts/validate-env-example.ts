@@ -3,19 +3,17 @@ import { fileURLToPath } from 'node:url'
 
 import type { ZodType } from 'zod'
 
-import { envSchema } from '../libs/core/platform/config/env-schema'
 import { webEnvSchema } from '../apps/web/lib/env-schema'
+import { envSchema } from '../libs/core/platform/config/env-schema'
+
+import { dbRoleEnvSchema } from './db-role-env'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 // Variables read by tooling, not by the api or the worker: DIRECT_DATABASE_URL by prisma.config.ts
-// and the two role passwords by the role script of Step 0.4. Step 0.4 replaces this list with the
-// keys of that script's own Zod schema. They are always required.
-const TOOLING_KEYS: readonly string[] = [
-  'DIRECT_DATABASE_URL',
-  'DB_APP_PASSWORD',
-  'DB_WORKER_PASSWORD'
-]
+// and the two role passwords by scripts/set-db-role-passwords.ts. They come from that script's own
+// schema and are always required.
+const TOOLING_KEYS: readonly string[] = Object.keys(dbRoleEnvSchema.shape)
 
 interface Declared {
   key: string
