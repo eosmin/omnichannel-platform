@@ -44,3 +44,49 @@ jobs:
           else
             pnpm exec nx run-many --targets=lint,type-check --all --parallel=3
           fi
+
+  # The suites that need a real database. The api connects as platform_app, never as the owner.
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: platform
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: platform_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U platform -d platform_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
+      DB_APP_PASSWORD: ci_app_password
+      DB_WORKER_PASSWORD: ci_worker_password
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Migrate an empty database and give the roles their passwords
+        run: pnpm db:migrate
+      - name: Every migration has a rollback
+        run: pnpm db:check-rollbacks
+      - name: Integration suites
+        run: pnpm exec nx run core-database:test-integration
+      # Last, because it empties the database: the rollbacks must run cleanly, newest first
+      - name: Rollbacks run
+        run: |
+          for file in $(ls libs/core/database/rollbacks/*.rollback.sql | sort -r); do
+            psql "$DIRECT_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
+          done
