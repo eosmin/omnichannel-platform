@@ -33,6 +33,7 @@
     "@nx/js": "23.2.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.19.2",
+    "@types/pg": "8.15.5",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
     "eslint": "10.9.1",
