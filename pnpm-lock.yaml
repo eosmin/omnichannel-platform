@@ -77,7 +77,7 @@ importers:
         version: 10.0.1(eslint@10.9.1(jiti@2.7.0)(supports-color@7.2.0))
       '@nestjs/cli':
         specifier: 12.0.10
-        version: 12.0.10(@rspack/core@2.2.9(@swc/helpers@0.5.23))(@swc/cli@0.8.1(@swc/core@1.15.47(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@7.2.0))(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@24.19.2)(prettier@3.9.6)
+        version: 12.0.10(@rspack/core@2.2.9(@swc/helpers@0.5.23))(@swc/cli@0.8.1(@swc/core@1.15.47(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@7.2.0))(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@24.19.2)(prettier@3.9.6)(webpack-node-externals@3.0.0)
       '@nestjs/testing':
         specifier: 12.0.1
         version: 12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.0.1)(@nestjs/platform-express@12.0.1)
@@ -159,6 +159,9 @@ importers:
       typescript-eslint:
         specifier: 8.69.0
         version: 8.69.0(eslint@10.9.1(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+      webpack-node-externals:
+        specifier: 3.0.0
+        version: 3.0.0
 
 packages:
 
@@ -6440,6 +6443,10 @@ packages:
   web-worker@1.5.0:
     resolution: {integrity: sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==}
 
+  webpack-node-externals@3.0.0:
+    resolution: {integrity: sha512-LnL6Z3GGDPht/AigwRh2dvL9PQPFQ8skEpVrWZXLWBYmqcaojHNN0onvHzie6rq7EWKrrBfPYqNEzTJgiwEQDQ==}
+    engines: {node: '>=6'}
+
   which-boxed-primitive@1.1.1:
     resolution: {integrity: sha512-TbX3mj8n0odCBFVlY8AxkqcHASw3L60jIuF8jFP78az3C2YhmGvqbHBpAjTRH2/xqYunrJ9g1jSyjCjpoWzIAA==}
     engines: {node: '>= 0.4'}
@@ -8270,7 +8277,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.4
     optional: true
 
-  '@nestjs/cli@12.0.10(@rspack/core@2.2.9(@swc/helpers@0.5.23))(@swc/cli@0.8.1(@swc/core@1.15.47(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@7.2.0))(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@24.19.2)(prettier@3.9.6)':
+  '@nestjs/cli@12.0.10(@rspack/core@2.2.9(@swc/helpers@0.5.23))(@swc/cli@0.8.1(@swc/core@1.15.47(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@7.2.0))(@swc/core@1.15.47(@swc/helpers@0.5.23))(@types/node@24.19.2)(prettier@3.9.6)(webpack-node-externals@3.0.0)':
     dependencies:
       '@angular-devkit/core': 22.2.3(chokidar@5.0.0)
       '@angular-devkit/schematics': 22.2.3(chokidar@5.0.0)
@@ -8291,6 +8298,7 @@ snapshots:
       '@rspack/core': 2.2.9(@swc/helpers@0.5.23)
       '@swc/cli': 0.8.1(@swc/core@1.15.47(@swc/helpers@0.5.23))(chokidar@5.0.0)(supports-color@7.2.0)
       '@swc/core': 1.15.47(@swc/helpers@0.5.23)
+      webpack-node-externals: 3.0.0
     transitivePeerDependencies:
       - '@types/node'
       - prettier
@@ -13766,6 +13774,8 @@ snapshots:
 
   web-worker@1.5.0:
     optional: true
+
+  webpack-node-externals@3.0.0: {}
 
   which-boxed-primitive@1.1.1:
     dependencies:

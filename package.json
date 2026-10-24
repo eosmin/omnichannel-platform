@@ -56,7 +56,8 @@
     "ts-node": "10.9.1",
     "tsx": "4.20.5",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.69.0"
+    "typescript-eslint": "8.69.0",
+    "webpack-node-externals": "3.0.0"
   },
   "dependencies": {
     "@nestjs/common": "12.0.1",
