@@ -243,8 +243,12 @@ services:
       POSTGRES_USER: platform
       POSTGRES_PASSWORD: dev_password
       POSTGRES_DB: platform_dev
+      PGBOUNCER_AUTH_PASSWORD: dev_pgbouncer_password
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18 keeps its data in a versioned subdirectory, so the volume is mounted one level up
+      - postgres_data:/var/lib/postgresql
+      # Creates the pgbouncer role and the SECURITY DEFINER user_lookup function (first start only)
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U platform -d platform_dev"]
       interval: 5s
@@ -252,21 +256,23 @@ services:
       retries: 10
 
   pgbouncer:
-    image: edoburu/pgbouncer:1.25.0
+    image: edoburu/pgbouncer:v1.25.2-p0
     ports: ["6432:6432"]
     environment:
-      DB_HOST: postgres
-      DB_USER: platform
-      DB_PASSWORD: dev_password
-      DB_NAME: platform_dev
+      # Only names the database and the auth_user password. Every other role (platform_app,
+      # platform_worker, the owner) is looked up with auth_query, so no fixed DB_USER
+      DATABASE_URL: postgres://pgbouncer:dev_pgbouncer_password@postgres:5432/platform_dev
+      LISTEN_PORT: 6432
+      AUTH_TYPE: scram-sha-256
+      AUTH_USER: pgbouncer
+      AUTH_QUERY: SELECT uname, phash FROM pgbouncer.user_lookup($1)
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 25
-      AUTH_TYPE: scram-sha-256
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U platform"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -275,37 +281,30 @@ services:
     image: redis:8.10.1-alpine
     ports: ["6379:6379"]
     command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio:RELEASE.2026-06-01T00-00-00Z
-    ports: ["9000:9000", "9001:9001"]
+  # S3-compatible storage. MinIO stopped publishing images in October 2025; SeaweedFS creates
+  # the bucket itself from S3_BUCKET.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    ports: ["8333:8333"]
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
+      AWS_ACCESS_KEY_ID: dev_access_key
+      AWS_SECRET_ACCESS_KEY: dev_secret_key
+      S3_BUCKET: platform-dev
     volumes:
-      - minio_data:/data
+      - seaweedfs_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8333/healthz"]
       interval: 5s
       timeout: 3s
       retries: 10
-
-  minio-init:
-    image: minio/mc:RELEASE.2026-06-01T00-00-00Z
-    depends_on:
-      minio: { condition: service_healthy }
-    entrypoint: >
-      /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin &&
-        mc mb --ignore-existing local/platform-dev &&
-        exit 0
-      "
 
   mailpit:
     image: axllent/mailpit:v1.28
@@ -317,7 +316,7 @@ services:
       retries: 10
 
   clamav:
-    image: clamav/clamav:1.5
+    image: clamav/clamav:1.5.4-debian
     ports: ["3310:3310"]
     volumes:
       - clamav_data:/var/lib/clamav
@@ -330,12 +329,12 @@ services:
 
 volumes:
   postgres_data:
-  minio_data:
+  redis_data:
+  seaweedfs_data:
   clamav_data:
 ```
 
-`docker compose up -d --wait` returns only when every healthcheck passes (`minio-init`
-exits 0 and is treated as complete). Local `DATABASE_URL` points at `pgbouncer:6432`
+`docker compose up -d --wait` returns only when every healthcheck passes (there is no init container: SeaweedFS creates the bucket). Local `DATABASE_URL` points at `pgbouncer:6432`
 exactly like production; `DIRECT_DATABASE_URL` points at `postgres:5432` for migrations.
 
 **Local endpoints:**
@@ -347,7 +346,7 @@ API docs         http://localhost:8080/docs
 Queue dashboard  http://localhost:8080/admin/queues   (staff login required)
 Email preview    http://localhost:3001          (pnpm email:dev)
 Mail catcher     http://localhost:8025
-MinIO console    http://localhost:9001
+S3 (SeaweedFS)   http://localhost:8333
 Prisma Studio    http://localhost:5555
 Storybook        http://localhost:6006
 ```
@@ -442,16 +441,19 @@ jobs:
         image: redis:8.10.1-alpine
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
         ports: ['6379:6379']
-      minio:
-        image: minio/minio:RELEASE.2026-06-01T00-00-00Z
-        env: { MINIO_ROOT_USER: minioadmin, MINIO_ROOT_PASSWORD: minioadmin }
-        options: --health-cmd "mc ready local" --health-interval 5s --health-retries 10
-        ports: ['9000:9000']
+      seaweedfs:
+        image: chrislusf/seaweedfs:4.48
+        env:
+          AWS_ACCESS_KEY_ID: dev_access_key
+          AWS_SECRET_ACCESS_KEY: dev_secret_key
+          S3_BUCKET: platform-dev
+        options: --health-cmd "wget -qO- http://127.0.0.1:8333/healthz" --health-interval 5s --health-retries 10
+        ports: ['8333:8333']
     env:
       DATABASE_URL: postgresql://platform:test@localhost:5432/platform_test
       DIRECT_DATABASE_URL: postgresql://platform:test@localhost:5432/platform_test
       REDIS_URL: redis://localhost:6379
-      S3_ENDPOINT: http://localhost:9000
+      S3_ENDPOINT: http://localhost:8333
       S3_FORCE_PATH_STYLE: "true"
     steps:
       - uses: actions/checkout@<sha> # v4.2.2
