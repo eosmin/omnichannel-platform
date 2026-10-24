@@ -304,11 +304,11 @@ Order lifecycle effects (`OrdersService` calls `InventoryService`; nothing else 
 
 | Order change | Inventory effect |
 |---|---|
-| created (`CONFIRMED`) | allocate, then `RESERVE` per allocation |
-| items edited while `CONFIRMED` | release the line's allocations and allocate again (rules 1 to 4) |
+| created (`PENDING_CONFIRMATION`, `TDD_17 §4.3`) | allocate, then `RESERVE` per allocation |
+| items edited while `PENDING_CONFIRMATION` or `CONFIRMED` | release the line's allocations and allocate again (rules 1 to 4) |
 | `SHIPPED` | `ISSUE` per allocation (stock leaves, the reservation is consumed) |
 | `CANCELLED` before `SHIPPED` | `RELEASE` per allocation |
-| `RETURNED` | optional `RETURN_IN` per allocation when the agent chooses "restock", into the same warehouse unless another is chosen |
+| `RETURNED` | for an order with no `OrderReturn`: optional `RETURN_IN` per allocation when the agent chooses "restock", into the same warehouse unless another is chosen. With an `OrderReturn`, the inventory effect is the one of `TDD_17 §4.11` |
 | `DELIVERED` | none |
 
 ### 4.2 Movements are transactional and idempotent

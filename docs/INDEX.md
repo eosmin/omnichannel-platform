@@ -51,6 +51,7 @@ only the context needed for the current task instead of the entire specification
 | `TDD_15_InternalAdmin.md` | Staff backoffice, org overrides, impersonation, plan editor, AI ops, cross-tenant BI | Internal admin console work |
 | `IMPLEMENTATION_PLAN.md` | Step-by-step build order with dependencies | **Always** |
 | `TDD_16_Inventory.md` | v1.2: warehouses, stock levels, movement ledger, reservations, transfers, physical counts | Inventory and order work (Milestone 4) |
+| `TDD_17_Shipping.md` | v1.2: carrier plugins, shipments, labels (single and bulk), pickups, order confirmation and copy, price control, store preferences, customer messages with templates, guide cancellation, returns and exchanges with scanner reception and a caution flag, COD remittances | Order, shipping and carrier work (Milestone 4) |
 | `MVP_TRIM_CHECKLIST.md` | v1.2: per-file list of schema, constants, behavior and tests to omit or adjust for the single-owner MVP | **Always**, with `IMPLEMENTATION_PLAN.md` |
 | `AUDIT_TDD_v1.0.md` | Findings that produced v1.1 (historical record) | Only when a v1.1 change needs its rationale |
 
@@ -69,9 +70,10 @@ test suite, `TenantGuard` + `X-Store-Id`, invitations, roles and permissions, al
 plugins, inbox, customers, orders, inventory, search, analytics, settings, security hardening,
 deployment, monitoring.
 
-**Added to the MVP after the first scoping (owner's decisions D10 and D11):** robust inventory
-(`TDD_16_Inventory.md`, Steps 4.1 to 4.7) and the runtime for integration plugins (Steps 5.6 and
-5.7; the marketplace stays deferred).
+**Added to the MVP after the first scoping (owner's decisions D10, D11 and D17):** robust inventory
+(`TDD_16_Inventory.md`, Steps 4.1 to 4.7), the runtime for integration plugins (Steps 5.6 and
+5.7; the marketplace stays deferred) and shipping through carrier plugins (`TDD_17_Shipping.md`,
+Steps 4.8 to 4.15).
 
 **Deferred to Phase 2:**
 
@@ -105,11 +107,14 @@ deployment, monitoring.
 **Platform:** the MVP deploys on Railway; Google Cloud (`TDD_03`, `TDD_05 §1.1`, `TDD_04 §5`)
 is the SaaS-phase target. `MVP_TRIM_CHECKLIST.md` §3 lists what changes in those files.
 
-**Decisions:** `MVP_TRIM_CHECKLIST.md` §7 holds sixteen owner-approved decisions (D1 to D16) (magic-link
+**Decisions:** `MVP_TRIM_CHECKLIST.md` §7 holds seventeen owner-approved decisions (D1 to D17) (magic-link
 expiry, throttle values, the seed split, the production bootstrap, e2e login through Mailpit,
-Slack alerts, PR approvals, no welcome email, Railway, integration plugins, robust inventory, Row-Level Security (roles in Step 0.4, policies in Step 7.1),
-Grafana Cloud, the release flow, the configurable low-stock alert and Postgres 18 on Railway). Nothing is open for the owner; two checks happen when their steps start
-(Railway's release mechanism in Step 7.3, Grafana Cloud's limits in Step 7.4).
+Slack alerts, PR approvals, no welcome email, Railway, integration plugins, robust inventory, Row-Level Security (roles in Step 0.4, policies in Step 7.1), shipping as carrier plugins,
+Grafana Cloud, the release flow, the configurable low-stock alert and Postgres 18 on Railway). No design decision is open; two checks happen when their steps start
+(Railway's release mechanism in Step 7.3, Grafana Cloud's limits in Step 7.4). One input is needed
+from the owner before Step 4.15: the API documentation and credentials of Forza and C807 Express,
+which their sales advisors provide (`TDD_17 §14`); everything before it builds with the `local` carrier
+and a fake carrier.
 
 **Reactivating Phase 2:** un-defer Milestone 6 first, then re-add the trimmed items above as
 additive migrations and decorators on endpoints that already exist.

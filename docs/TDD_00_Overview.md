@@ -111,6 +111,7 @@ Use these terms consistently in code, comments, UI copy and commit messages.
 - Customer profiles with cross-channel identity merging
 - Order creation and status management from within a conversation
 - Product catalog and robust inventory: warehouses that serve several stores, stock per warehouse, transfers and physical counts (`TDD_16_Inventory.md`)
+- Shipping through carrier plugins: guides and labels (single and bulk), pickups, status updates to the customer through templates, order confirmation, cancellation with guide void, returns and exchanges (`TDD_17_Shipping.md`)
 - Team management with roles and permissions
 - Multi-store switching
 - Plugin SDK, official channel plugins and the runtime for private and third-party integration plugins (the marketplace is deferred)

@@ -105,23 +105,24 @@ Node version pinned in `TDD_01 §2.4`, and `lint-and-types` is green on GitHub f
 - [ ] `libs/core/audit/audit-actions.ts`, `libs/core/metrics/metric-names.ts`
 - [ ] `libs/core/analytics/analytics-constants.ts`, `libs/core/compliance/compliance-constants.ts` (`billing`, `ai` and `referrals` constants DEFERRED)
 - [ ] `libs/api-client/src/query-keys.ts`, `app-paths.ts`
+- [ ] The shipping constants of `TDD_17 §3` (`PENDING_CONFIRMATION` and its transitions, `CASH_ON_DELIVERY`, the shipping, pickup, return and message enums and constants, permissions and role presets, events, realtime events, notification types, audit actions, error codes, jobs, schedules, metrics, routes, paths, query keys, `MediaPurpose` values, plugin scopes), in the same barrels
 - [ ] The inventory constants of `TDD_16 §3` (permissions and role presets, enums, events, notification types, audit actions, error codes, job, schedule, metric, routes, paths, query keys, plugin scopes), so that Step 0.3 stays the single place constants are born
 - [ ] **MVP trim:** omit every constant, error code, event, cache key, permission, queue, metric, audit action and realtime event that belongs to billing, plans/quotas, AI, referrals, SaaS support or staff admin. Add `SEED_OWNER_EMAIL`, `SEED_OWNER_NAME` (required only when running the seed) and `BULL_BOARD_ENABLED` (default `false`), `BULL_BOARD_ADMIN_EMAILS` (comma-separated, default empty) to the `env.ts` Zod schema (plus `SEED_ORGANIZATION_NAME` and `SEED_STORE_NAME`, `MVP_TRIM_CHECKLIST.md` §7, D3)
 
-**TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2; the inventory constants of `TDD_16 §3`)
+**TDD:** `TDD_02` in full, plus the constants sections of `TDD_05 §9.1`, `§10.1`, `TDD_06 §1.4`, `§6.1`, `TDD_07 §4`, `TDD_11 §7.1` (TDD_11 §1 billing constants are DEFERRED; trims per `MVP_TRIM_CHECKLIST.md` §1, §2; the inventory constants of `TDD_16 §3` and the shipping constants of `TDD_17 §3`)
 **Done when:** every constant file compiles and is exported from its barrel, and the
 `_AssertComplete` check in `realtime-events.ts` passes.
 **This step is non-negotiable.** Everything downstream imports from here.
 
 ### Step 0.4 — Database schema
-- [ ] `libs/core/database/prisma/schema.prisma` — the full schema with `@@map`/`@map`, generator `prisma-client`, **without the inventory models of `TDD_16 §2`**, which arrive in Step 4.2 as an additive migration
+- [ ] `libs/core/database/prisma/schema.prisma` — the full schema with `@@map`/`@map`, generator `prisma-client`, **without the inventory models of `TDD_16 §2`**, which arrive in Step 4.2 as an additive migration, and without the new shipping tables of `TDD_17 §2` (Step 4.8); the columns that `TDD_17 §2` adds to existing models (`Order.confirmedAt`, `confirmedBy`, `confirmedVia`, `exchangeOfOrderId`, `copiedFromOrderId`, `discountReason` and the price-approval columns, status default `PENDING_CONFIRMATION`; `StoreSettings.returnShippingPayer`, `defaultCarrierConnectionId`, `bulkLabelRetentionDays`, `preferences`; `OrderItem` override and `freeShipping` columns; `Order.freeShipping`; `Product.freeShipping`; `Order.carrierConnectionId` (a plain column until Step 4.8 adds the foreign key) and `priceApprovedShippingCents`; `Customer.isCaution`, `cautionReason`, `cautionSetBy`, `cautionSetAt`; `Shipment` COD columns; `CarrierConnection.remittanceDeductsFee`, `defaultShippingFeeCents`, `minShippingFeeCents`, `maxShippingFeeCents`) are in the initial schema
 - [ ] `libs/core/database/prisma.config.ts` + root re-export
 - [ ] Initial migration
 - [ ] Raw SQL migration: extensions, generated `tsvector` columns, GIN/trigram indexes, partial indexes, partial uniques, CHECK constraints
 - [ ] **Database roles** (decision D16, `MVP_TRIM_CHECKLIST.md` §7): the raw SQL migration creates `platform_app` and `platform_worker` idempotently as `NOLOGIN` (the worker `BYPASSRLS`, neither a superuser), grants `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables and sequences and sets `ALTER DEFAULT PRIVILEGES` so tables created by later migrations are covered, then revokes `UPDATE` and `DELETE` on `audit_logs` from `platform_app` (`TDD_05 §9.3`; the worker keeps `DELETE` for the retention export). `scripts/set-db-role-passwords.ts` gives both roles `LOGIN` and their passwords from `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD`; it runs after `migrate deploy` in `bootstrap.sh`, CI and the Railway release. Passwords are never in a migration
 - [ ] Connections: the api uses `DATABASE_URL` as `platform_app`, the worker as `platform_worker`, migrations, the owner bootstrap and the dev fixtures use `DIRECT_DATABASE_URL` (owner). RLS policies are NOT enabled yet: they arrive in Step 7.1, so until then both roles behave like a normal application user
 - [ ] Rollback scripts in `libs/core/database/rollbacks/` + `scripts/check-rollbacks.ts`
-- [ ] `PrismaService` with `@prisma/adapter-pg` and the read-replica extension. Shaped from the start so Step 7.1 only changes its internals: `client` is a getter (later it returns the request's tenant-scoped client when one exists), services never call `client.$transaction` directly but `PrismaService.transaction(fn)` (a lint rule forbids the direct call), and the replica is reached through `PrismaService.replica()`, not `client.$replica()`. In the MVP there is no replica, so `replica()` returns the same database
+- [ ] `PrismaService` with `@prisma/adapter-pg` and the read-replica extension. Shaped from the start so Step 7.1 only changes its internals: `client` is a getter that returns the current tenant transaction when one exists and the base client otherwise (the mechanism of `TDD_01 §3.2`, verified by the 2026-10-24 spike, so Step 7.1 only adds the interceptor and the policies), services never call `client.$transaction` directly but `PrismaService.transaction(fn)`, which joins the tenant transaction when there is one (a lint rule forbids the direct call), and the replica is reached through `PrismaService.replica()`, not `client.$replica()`. In the MVP there is no replica, so `replica()` returns the same database
 - [ ] `libs/core/crypto` (AES-256-GCM helpers) and the seed
 - [ ] **MVP trim:** the schema has no `Subscription`, plan, `PlanLimits`, `OrganizationOverride`, `AiCreditBalance`, usage/billable-window, dunning, referral or staff/admin tables. They return later as additive migrations
 - [ ] **Owner bootstrap (closed signup):** idempotent and production-safe. Creates the system roles from `RolePresets`, the owner `User` (email from `SEED_OWNER_EMAIL`, marked verified, no password: users have none), the `Organization`, the first `Store` with `StoreSettings` and `RetentionSettings`, and the owner `Membership`. This replaces the password-based seed with test logins in `TDD_03 §5.5`: no `passwordHash`, no shared test password, no `faker`
@@ -377,7 +378,7 @@ several stores, a movement ledger, reservations, transfers between warehouses an
 counts. Orders depend on it, so it is built first.
 
 ### Step 4.1 — Products and variants
-- [ ] Products + variants CRUD (store-scoped; `trackInventory`; `lowStockThreshold` is optional, empty means no low-stock alert, `TDD_16 §4.4`)
+- [ ] Products + variants CRUD (store-scoped; `freeShipping` flag, `TDD_17 §4.13`; `trackInventory`; `lowStockThreshold` is optional, empty means no low-stock alert, `TDD_16 §4.4`)
 - [ ] Product search with sub-200ms autocomplete
 
 **TDD:** `TDD_01 §4`, `TDD_08 §5.4`
@@ -404,10 +405,11 @@ the isolation suite covers the new resources.
 
 ### Step 4.3 — Orders
 - [ ] Orders module with server-side totals in cents from catalog prices
-- [ ] Status state machine with `OrderStatusTransitions`, cancellation reason, proof of delivery
+- [ ] Status state machine with `OrderStatusTransitions` (orders start in `PENDING_CONFIRMATION`, `TDD_17 §4.3`), cancellation reason, proof of delivery; `CASH_ON_DELIVERY` payment method; the `CONFIRMED → SHIPPED` transition of `TDD_17 §3`
+- [ ] Price control (`TDD_17 §4.13`): line prices locked unless `ORDERS_OVERRIDE_PRICE`; discounts limited by the store's `orders.discountLimitPercent` (0 by default) with a required reason; the shipping fee prefilled from the planned carrier and held to that carrier's minimum and maximum, with a free-shipping order (per `orders.freeShippingRule`, from `Product.freeShipping`) at fee 0 without approval; anything outside the limit or the range follows the approval flow (`PriceApprovalStatus`, `ORDERS_APPROVE_PRICE`, no self-approval, an order awaiting approval cannot be confirmed); audit; and the server refusing any price from the client. The carrier rules start to apply in Step 4.8, when connections exist
 - [ ] Field-level edit restrictions with `OrderEditableFields`
 - [ ] Inventory through `InventoryService` only: allocate by warehouse priority on creation (one warehouse, or several when `allowSplitFulfillment` is on) into `OrderItemAllocation`, and issue on `SHIPPED`, release on cancel and optional restock on return, all per allocation (`TDD_16 §4.1`)
-- [ ] Transactional emails and system messages
+- [ ] System messages in the thread (`ORDER_SUMMARY`); the customer messages and their email fallback are Step 4.9 (`TDD_17 §4.7`), which replaces the order emails and the unconditional enqueue of `TDD_01 §6`
 
 **TDD:** `TDD_02 §5`, `§13`, `TDD_09 §5`, `TDD_16 §4.1`
 **Done when:** totals are never trusted from the client, illegal transitions are rejected, an
@@ -416,11 +418,12 @@ every order lifecycle change produces the inventory effect of `TDD_16 §4.1`.
 
 ### Step 4.4 — Order UI
 - [ ] Create-order side drawer with the chat visible, variants, and per-line allocations and available stock per warehouse (the agent can change them)
-- [ ] Status change flows with proof upload and the "restock" choice on returns
+- [ ] Status change flows with proof upload and the "restock" choice on returns (only for an order with no `OrderReturn`; the shipping, confirmation and returns UI is Step 4.14)
 - [ ] Print documents (PDF)
+- [ ] **Orders page** (`/s/[storeId]/orders`): a full-page table with search by order number or customer, filters (status, payment status, date range, customer), cursor pagination (`TDD_08 §2.4`), sorting and filters kept in the URL, and row selection that Step 4.14 turns into the bulk action bar; **order detail page** (`/s/[storeId]/orders/[orderId]`) with lines, allocations, status flows and edits
 
-**TDD:** `TDD_09 §5`, `TDD_16 §7`
-**Done when:** an agent creates an order without leaving the conversation.
+**TDD:** `TDD_09 §5`, `§12`, `TDD_16 §7`, `TDD_08 §2.4`, `TDD_17 §7`
+**Done when:** an agent creates an order without leaving the conversation, and the orders page lists, filters, searches and opens orders of the store.
 
 ### Step 4.5 — Transfers between warehouses
 - [ ] `StockTransfer` and `StockTransferLine` with the draft, dispatch, receive (partial), close-with-shortage and cancel flows of `TDD_16 §4.5`
@@ -450,6 +453,106 @@ counted variance and leaves the sales intact.
 **TDD:** `TDD_16 §7`, `TDD_09 §11`, `§16`
 **Done when:** the owner can run a full cycle from the UI on a phone: adjust stock, dispatch and
 receive a transfer, run and apply a count.
+
+### Step 4.8 — Carrier SDK, shipment engine and the `local` carrier
+- [ ] `CarrierPlugin` in `libs/plugins/sdk` (capabilities, the three creation modes, params and results, typed errors), held by a `CarrierRegistry` beside the channel `PluginRegistry` of Step 2.5 with the same fail-fast capability check; the lint rule (`TDD_14 §6`) forbidding writes to `shipment.status`, `shipment.codStatus`, `pickupRequest.status`, `orderReturn.status`, `codRemittance.status` and `order.priceApprovalStatus` outside their services; `tests/contracts/carrier-plugin.contract.ts` and a **fake carrier** with switches for reject, timeout before and after the carrier acted, idempotent create, no cancel, no webhook and pickup-bound mode
+- [ ] The `TDD_17 §2` models and raw SQL as an additive migration (`CarrierConnection`, `CarrierService`, `GuideSequence`, `Shipment`, `ShipmentEvent`, `PickupRequest`, `BulkLabelJob`, `OrderMessageTemplate`, `OrderReturn`, `OrderReturnLine`); the reception tables arrive with Step 4.12 and the remittance tables with Step 4.13, each as an additive migration; every new table joins the isolation suite and `check-isolation-coverage` in the step that creates it
+- [ ] `libs/core/shipping` `ShippingService`: `createShipments` for the three creation modes (standalone: one call per guide; internal: the core makes the guide, for `local`; pickup-bound, where guides exist only inside a pickup: one call per batch that carries the pickup and returns every guide, with partial success and an unknown outcome sending the whole batch to review) and its single-guide form (validate, write first with a deterministic idempotency key, call, store the label as `Media` `SHIPPING_LABEL`, advisory lock per order, unknown outcome to `REQUIRES_REVIEW`), the forward-only shipment state machine and `ShipmentEvent` history, manual events, "check with the carrier"
+- [ ] The foreign key `Order.carrierConnectionId` and the enforcement of the carrier fee rules of `TDD_17 §4.13` (fee range, a fee needs a carrier, the check at guide time)
+- [ ] Connections: connect, test, edit and disconnect with encrypted credentials and webhook secret, the default shipping fee and its minimum and maximum per connection (also for `local`), `CarrierService` rows seeded from the plugin catalog, `GET /carriers/registry`, Settings → Carriers API (`SETTINGS_MANAGE_CARRIERS`)
+- [ ] `libs/carriers/local`: guide numbering (`GuideSequence`) and the label template (barcode, recipient, COD amount or "PAID"), rendered at the connection's label format
+- [ ] Status flow: public `POST /webhooks/carriers/:connectionId` (raw body, signature, queue, `200` fast), `PROCESS_CARRIER_EVENT` with dedupe and out-of-order handling, `POLL_SHIPMENT_STATUS`, and the listener that applies the order effects of `TDD_17 §4.9` (`SHIPPED` with the inventory `ISSUE`, `DELIVERED`, COD payment completion, notifications)
+
+**TDD:** `TDD_17 §1`, `§2`, `§3`, `§4.1`, `§4.2`, `§4.4`, `§4.5`, `§4.9`, `§4.12`, `§4.13`, `TDD_10 §3`, `§9`, `TDD_16 §4.1`
+**Done when:** with the fake carrier, an order creates exactly one shipment even under two parallel requests,
+an unknown outcome never creates a second guide, a duplicate or out-of-order webhook changes nothing,
+every shipment status produces the order effect of `TDD_17 §4.9`, and a `local` shipment gets a unique
+guide and a printable label; the contract suite runs in `integration-tests`.
+
+### Step 4.9 — Order confirmation and customer messages
+- [ ] `PENDING_CONFIRMATION` in the order state machine, with `confirmedAt`, `confirmedBy`, `confirmedVia`; "mark as confirmed" (single and bulk, `ORDERS_CONFIRM`); `ShippingService` refuses guides for unconfirmed orders
+- [ ] `OrderMessagesService`: the generic `ORDER_MESSAGE` email template for the fallback (replacing the four order emails), the "Notify customer" checkbox of manual status changes initialised from the matching template's `autoSend`, and templates per kind and locale with the variable allowlist, rendering by substitution, preview, `autoSend` (not for the order summary, which follows the store preference) and `attachSummary`, the order summary document, sending through the conversation's channel as an outbound `Message`
+- [ ] The messaging-window decision of `TDD_17 §4.7`: free text inside the window, the linked channel-approved template outside it (variables mapped in order), and free text always for a channel that declares no window, email fallback or the `ORDER_MESSAGE_NOT_SENT` notification otherwise; idempotent automatic sends per `(shipmentId, status, kind)`
+- [ ] Settings → Order messages API (`SETTINGS_MANAGE_ORDER_TEMPLATES`) with the link to an approved channel template; whether a message goes as free text or as a template comes only from the channel plugin's declared `messagingWindow` and `TEMPLATES` capability, never from its name
+- [ ] Store preferences (`TDD_17 §4.14`): `storePreferencesSchema` as the only place of factory defaults, `StoreSettings.preferences`, `GET` and `PUT /settings/preferences` (`SETTINGS_MANAGE_PREFERENCES`), the ESLint rule that forbids a hardcoded initial state on checkboxes and switches in `apps/web`; the summary is sent on creation according to `orders.sendSummaryOnCreate` (default on) and `autoSend` is refused for `ORDER_SUMMARY`
+- [ ] Confirm at creation (`confirmOnCreate`, initial value from `orders.confirmOnCreate`, default false, `ORDERS_CONFIRM`) and `GET /orders/:id/copy` (a prefilled draft with warnings, current prices, `copiedFromOrderId`)
+
+**TDD:** `TDD_17 §4.3`, `§4.7`, `TDD_10 §2`, `§4`, `§5.1`, `TDD_09 §5`
+**Done when:** a new order stays `PENDING_CONFIRMATION` unless created with the confirm checkbox, a guide for an unconfirmed order is refused, a copied order
+starts from a draft with current prices, a channel plugin that declares no window gets free text at any time, the
+summary goes as free text inside the window and as the approved template outside it, a missing template
+produces the fallback or the notification and never a silent drop, and a repeated carrier event sends
+nothing twice.
+
+### Step 4.10 — Labels, bulk generation and cancellation
+- [ ] Single and bulk guide creation: `POST /shipments/bulk` with `BulkLabelJob`, per-connection concurrency cap for standalone carriers and one call per batch (with the pickup date and window) for pickup-bound ones, skipped orders reported with the reason, `BULK_LABELS_PROGRESS` and `BULK_LABELS_DONE`, merge of the stored PDFs with `pdf-lib` in selection order into one `BULK_LABELS` file, `CLEAN_BULK_LABELS`
+- [ ] "Print labels" for orders that already have a shipment: merge the stored files with no carrier call; voided labels are never merged
+- [ ] Cancellation: the table of `TDD_17 §4.8` (no guide, `LABEL_CREATED`, after pickup refused, unknown outcome refused), `CANCEL_SHIPMENT` with retries, `refundStatus`, "mark as voided", release of stock, leaving the pickup, cancel-and-recreate when the address, items or payment method change after a guide exists (the new guide waits until the old one is `CANCELLED`)
+
+**TDD:** `TDD_17 §4.6`, `§4.8`, `TDD_09 §11`, `TDD_16 §4.1`
+**Done when:** with the fake carrier, a bulk run over a mixed selection produces one PDF with the successes in the
+selected order and a per-order report for the rest, reprinting calls the carrier zero times, and cancelling
+an order with a guide voids it (or leaves `CANCEL_PENDING` with a notification when the carrier cannot),
+releases the stock once and is refused after pickup.
+
+### Step 4.11 — Pickups
+- [ ] Per-connection pickup rules (days, cutoff, auto-request time, reminder) and `ShippingService.ensurePickup` with the advisory lock and the one-open-pickup-per-day rule for standalone carriers (a service rule, not a database index, because a pickup-bound carrier may need several per day)
+- [ ] Joining and modifying a pickup's package count where the carrier has `PICKUP_MODIFY`, waiting for the next day where it does not, `MANUAL_REQUIRED` with the printable manifest where there is no pickup API
+- [ ] `EVALUATE_PICKUPS` every minute (one job for all connections), the cutoff reminder, retries and `FAILED`; for pickup-bound carriers `autoPickup` generates guides and pickup together (off by default)
+
+**TDD:** `TDD_17 §4.10`, `TDD_07 §4`
+**Done when:** the scheduler creates one pickup per due connection, a later shipment joins it or waits as the
+capability dictates, the reminder fires once, a manual request racing the scheduler ends with one pickup,
+and a cancelled shipment lowers the count.
+
+### Step 4.12 — Returns, exchanges and reception
+- [ ] `ReturnsService` with the state machine of `TDD_17 §3`, quantity limits per order item, the return leg (return guide when the carrier has `RETURN_SHIPMENT`, manual otherwise), `StoreSettings.returnShippingPayer`
+- [ ] Exchange: the replacement order (`exchangeOfOrderId`, already `CONFIRMED`, the returned items' value applied as a system credit so the total is the price difference) through `OrdersService`
+- [ ] Return reception by scanner (`ReturnReceptionService`, `TDD_17 §4.16`): a persistent batch, lookup by guide number, per-item reason, condition, warehouse, note and caution toggle, `ReturnsService.receiveFromScan` per item in its own transaction, retry of failed items
+- [ ] Customer caution flag (`Customer.isCaution`, `CUSTOMERS_FLAG_CAUTION`): set and clear, shown in the create-order drawer, the customer panel, the conversation header and the orders list; merge and erasure behaviour
+- [ ] Inventory on receipt through `InventoryService`: `RETURN_IN` for resellable items, `RETURN_IN` then `ADJUSTMENT_OUT` (`DAMAGED`) for defective ones; the order becomes `RETURNED` only when received returns cover every unit; refund recorded by hand
+
+**TDD:** `TDD_17 §4.11`, `§4.16`, `TDD_16 §4.1`
+**Done when:** scanning a batch of guides receives each package with its own reason, condition and note, a failing item does not roll back the others, a flagged customer is shown at the next order, an exchange creates the replacement with the right stock and total, a defective item leaves net stock
+unchanged and a resellable one adds it back, a partial return keeps the order `DELIVERED`, and a return
+above the delivered quantity is refused.
+
+### Step 4.13 — COD remittances
+- [ ] `Shipment.codStatus` lifecycle (`NOT_DELIVERED`, `PENDING_REMITTANCE` on delivery with `codExpectedCents`, `VOID` on cancel or return) and `CarrierConnection.remittanceDeductsFee`
+- [ ] `RemittancesService`: draft from an import or by hand, matching with the outcomes of `TDD_17 §4.15`, confirm in one transaction under a lock per connection, void, the pending list with age and total owed
+- [ ] Deterministic import: CSV, TSV and pasted tables, `RemittanceImportProfile` with the column mapper, strict parsing with row errors, the file kept as `REMITTANCE_FILE` media (no AI, no formula evaluation)
+- [ ] `CHECK_REMITTANCES` daily job and `REMITTANCE_OVERDUE`, threshold from the store preferences
+
+**TDD:** `TDD_17 §4.15`, `TDD_07 §6`
+**Done when:** a delivered COD shipment becomes pending with the right expected amount (with and without the carrier fee
+deducted, and with the recipient paying), an import with a saved profile produces a draft whose lines carry every outcome, a
+confirm marks matches as remitted and differences as discrepancies, two overlapping confirms end with one, a void restores the
+statuses, and an invalid cell is reported instead of read as zero.
+
+### Step 4.14 — Shipping UI
+- [ ] Orders page (built in Step 4.4): multi-select action bar (confirm, send summary, generate labels, print labels, request pickup), carrier, guide and shipment columns and filters, skipped-order reporting
+- [ ] Create-order drawer: the "Mark as confirmed" and "Send the order summary" checkboxes initialised from the store preferences, the price editing and discount-limit UI with approval state, the caution banner, and "Copy order" from the order detail and the customer's orders
+- [ ] Order detail: confirmation step, Shipping, Messages and Returns panels, the create-guide dialog (default connection, service and payer preselected, `SENDER` for a free-shipping order, COD amount read-only with its reason, location selectors when the carrier needs them, the pickup date and window for a pickup-bound carrier)
+- [ ] Settings → Carriers, Order messages, Returns and **Preferences**; separate desktop-first screens for Shipments, Pickups, Returns (with the reception scan screen) and Remittances (with the import mapper)
+- [ ] Controls shown only when the permission and the connection's capability exist
+
+**TDD:** `TDD_17 §7`, `TDD_09 §5`, `§11`
+**Done when:** the owner can confirm an order, generate and print the labels of many orders at once, request a
+pickup, cancel a guide, process an exchange, receive a scanned batch of returns and import a remittance from the UI, against the fake carrier and with a `local`
+courier; the Playwright journey of `TDD_17 §9` passes.
+
+### Step 4.15 — Forza and C807 adapters
+**Starts when the owner has the API documentation and credentials of each carrier** (`TDD_17 §14` lists what to
+ask for); it is the only step of the plan that depends on an external input, so everything before it builds and
+ships with the `local` carrier and the fake carrier.
+- [ ] `libs/carriers/forza` and `libs/carriers/c807`: authentication and signing, guide creation with the service codes and COD and payer fields, the label, status mapping to `ShipmentStatus`, and exactly the capabilities the documentation confirms (cancel, pickup and its modification, return guide, webhook, polling, location lookup)
+- [ ] Recorded provider fixtures for the contract suite; the carrier's webhook registration documented in Settings → Carriers
+- [ ] A capability that cannot be confirmed is left out and the manual path covers it
+
+**TDD:** `TDD_17 §4.1`, `§14`, `TDD_10 §9`
+**Done when:** each adapter passes the carrier contract suite against its fixtures, and a real guide, its status
+changes and (where the documentation allows) its cancellation and pickup work against the carrier's
+sandbox.
 
 ---
 
@@ -515,6 +618,7 @@ delivery, SSRF protection, key hashing) and Step 1.0 (queues).
 - [ ] `PluginApiKeyGuard` on `/api/v1/plugin-api/*`: scope check, per-installation rate limit, bound to exactly one store; thin controllers over the same services for conversations, messages, customers, orders, products and inventory
 - [ ] Outbound plugin webhooks (`TRIGGER_PLUGIN_WEBHOOK`): signed, payload redacted to the granted scopes, same delivery log and auto-disable as tenant webhooks
 - [ ] Revocation with typed confirmation, final `plugin.revoked` webhook, audit
+- [ ] The shipment routes of `TDD_17 §4.1` under `PluginApiKeyGuard` (`shipments:read`, `shipments:write`), over the same `ShippingService` as the UI
 - [ ] Settings → Plugins UI: register, list installations with their scopes, revoke (`SETTINGS_MANAGE_PLUGINS`)
 - [ ] Tests: a plugin key for store A cannot read store B, scope escalation is denied, the key never appears in logs or in any response after setup, webhook signature; `PluginInstallation` in the isolation suite
 - [ ] Registration by pasted JSON only (importing a manifest by URL is a later improvement, `MVP_TRIM_CHECKLIST.md` §6). Installed scopes are fixed at install: when a registered plugin's manifest later asks for more scopes, the existing installation keeps its old scopes until the owner approves the new ones in a new consent screen
@@ -588,16 +692,16 @@ skipped cron day catches up.
   - The roles `platform_app` (subject to RLS, used by `apps/api`) and `platform_worker` (`BYPASSRLS`, used by `apps/worker`, which also processes every inbound channel event) already exist since Step 0.4, and the services already connect with them; this step only turns the policies on
   - `scripts/rls.sql`, generated from the schema, with `ENABLE` + `FORCE ROW LEVEL SECURITY` and one policy per table: tables with `store_id` use `app.store_ids`; the organization-scoped inventory tables (`warehouses`, `stock_transfers`, `stock_counts`) use `app.organization_ids`; `store_warehouses` uses its `store_id`; child tables (messages, order items, transfer and count lines, allocations, movements) follow their parent. The `audit_logs` grants already exist since Step 0.4
   - Identity and bootstrap tables are NOT under RLS, because the guards read them before any tenant context exists: `users`, `sessions`, `verification_tokens`, `invitations`, `organizations`, `stores`, `memberships` and `roles`. They stay protected by code (user id or token) and by the isolation suite
-  - **Start with a spike, verified with Context7 against Prisma 7 and PgBouncer in transaction mode, before writing policies.** `TDD_01 §3.2` shows a `tenantRls` extension whose interactive-transaction snippet does not run the query on the transaction's connection, so treat that snippet as illustrative only. Choose between a request-scoped transaction and a per-operation `set_config` batch, make it work for interactive transactions with row locks (`TDD_16 §4.2`) and for raw SQL (`SearchService`), record the choice in `TDD_01 §3.2`, and only then continue
-  - The tenant-context mechanism sets `app.store_ids` and `app.organization_ids` with `set_config(..., true)` inside one transaction per tenant request (PgBouncer runs in transaction mode). `TenantGuard` fills them from the caller's memberships; plugin API requests set only the installation's store; widget requests set only the store of the site key's connection; requests with no context see no rows
+  - **The mechanism is already chosen and was verified by a spike** (2026-10-24, `TDD_01 §3.2`): one interactive transaction per unit of work with `set_config(..., true)` as its first statement, kept in an `AsyncLocalStorage`, with `PrismaService.client` returning that transaction and `PrismaService.transaction(fn)` joining it. The per-operation extension was rejected because it breaks atomicity. This step implements it and re-runs the same checks as tests: atomic rollback, no cross-tenant leak under concurrency through PgBouncer, raw SQL (`SearchService`), parallel queries on one transaction, and row locks (`TDD_16 §4.2`)
+  - **Tenant interceptor:** after `TenantGuard`, a `TenantContextInterceptor` runs the whole handler inside `PrismaService.tenantTransaction(ctx, fn)`, which sets `app.store_ids` and `app.organization_ids` with `set_config(..., true)` (never the session-level form; a lint rule forbids `false`) and applies explicit `maxWait` and `timeout` limits. The `await` of every query stays inside the scope, and **no external I/O runs inside it** (carrier, channel, S3 and e-mail calls are queued and run in the worker). `TenantGuard` fills the context from the caller's memberships; plugin API requests set only the installation's store; widget requests set only the store of the site key's connection; requests with no context see no rows. Streaming endpoints and the WebSocket gateway use an explicit `TenantContext` instead of the interceptor
   - **API code that runs outside a tenant request fails loudly instead of returning empty results:** the WebSocket gateway, domain-event listeners fed by the events bridge (notifications, plugin webhooks), and the public endpoints must either run inside an explicit `TenantContext.run({ storeIds, organizationIds }, fn)` taken from the event payload or the verified credential, or hand the work to the worker. In the `api` process a query on a store-scoped table with no context throws in dev, test and CI
-  - **Pre-context lookups** (widget site key to store, plugin API key hash to installation, tenant API key hash to store, an inbound mailbox to its connection) use small `SECURITY DEFINER` SQL functions that `platform_app` may call and that return only the store id; the Resend inbound-email mapping resolves in the worker. A globally unique value that belongs to another store (a `ChannelConnection` `(pluginId, connectionId)`) is detected from the unique violation, never by reading the other store's row
-  - Add the policies for the Step 4.2 to 4.6 tables here; the isolation suite and the integration, security and e2e CI jobs run as `platform_app` from this step on, and a test proves that a query without `storeId` still returns nothing from another store
+  - **Pre-context lookups** (widget site key to store, plugin API key hash to installation, tenant API key hash to store, an inbound mailbox to its connection, a carrier webhook's connection id to its store) use small `SECURITY DEFINER` SQL functions that `platform_app` may call and that return only the store id; the Resend inbound-email mapping resolves in the worker. A globally unique value that belongs to another store (a `ChannelConnection` `(pluginId, connectionId)`) is detected from the unique violation, never by reading the other store's row
+  - Add the policies for the Step 4.2 to 4.12 tables here; the isolation suite and the integration, security and e2e CI jobs run as `platform_app` from this step on, and a test proves that a query without `storeId` still returns nothing from another store
 - [ ] Secrets as Railway variables (no Secret Manager in the MVP), rotated with the procedure of `TDD_05 §1.1` adapted to Railway
 - [ ] Weekly ZAP baseline against staging (the other scanning gates exist since Steps 0.5 and 0.6)
 - [ ] Full internal pentest checklist executed (skip password, staff and billing items; magic-link token reuse and prediction do apply)
 
-**TDD:** `TDD_05` in full, `TDD_01 §3.2`, `TDD_16 §8`
+**TDD:** `TDD_05` in full, `TDD_01 §3.2` (the verified mechanism), `TDD_16 §8`, `TDD_17 §4.12`
 **Done when:** securityheaders.com grade A, the pentest checklist is clean, and the whole isolation suite passes as `platform_app` with RLS forced, including a deliberately unfiltered query that returns zero rows from another store.
 
 ### Step 7.2 — Compliance
@@ -781,7 +885,7 @@ Milestone 0  Foundation              [ ] 0.1  [ ] 0.2  [ ] 0.3  [ ] 0.4  [ ] 0.5
 Milestone 1  Auth and tenancy        [ ] 1.0  [ ] 1.1  [ ] 1.2  [ ] 1.3  [ ] 1.4
 Milestone 2  Core messaging          (2.1 moved to 1.0)  [ ] 2.2  [ ] 2.3  [ ] 2.4  [ ] 2.5  [ ] 2.6  [ ] 2.7  [ ] 2.8
 Milestone 3  Inbox interface         [ ] 3.1  [ ] 3.2  [ ] 3.3  [ ] 3.4  [ ] 3.5
-Milestone 4  Commerce                [ ] 4.1  [ ] 4.2  [ ] 4.3  [ ] 4.4  [ ] 4.5  [ ] 4.6  [ ] 4.7
+Milestone 4  Commerce                [ ] 4.1  [ ] 4.2  [ ] 4.3  [ ] 4.4  [ ] 4.5  [ ] 4.6  [ ] 4.7  [ ] 4.8  [ ] 4.9  [ ] 4.10  [ ] 4.11  [ ] 4.12  [ ] 4.13  [ ] 4.14  [ ] 4.15
 Milestone 5  Operations              [ ] 5.1  [ ] 5.2  [ ] 5.3  [ ] 5.4  (5.5 deferred)  [ ] 5.6  [ ] 5.7
 Milestone 6  Monetization            DEFERRED (Phase 2)
 Milestone 7  Production readiness    [ ] 7.1  [ ] 7.2  [ ] 7.3  [ ] 7.4  (7.5, 7.6 deferred)

@@ -84,7 +84,7 @@ broken steps.
 5. **Every new endpoint** has `AuthGuard` + `TenantGuard` + a
    `@RequirePermissions()` decorator, unless it is explicitly public
    (magic-link auth endpoints, invitation preview and accept, channel webhooks,
-   widget endpoints, health checks), or it is a plugin route under
+   widget endpoints, carrier webhooks, health checks), or it is a plugin route under
    `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead. The Stripe
    webhook joins the public list in Phase 2.
 6. **No user-facing string is hardcoded in any language.** Always an i18n key.
@@ -127,6 +127,8 @@ broken steps.
 | Error code                                              | `libs/core/errors/error-codes.ts`                   |
 | API route constant                                      | `libs/core/api/api-routes.ts`                       |
 | Status enum                                             | `libs/core/domain/status-enums.ts`                  |
+| Shipping constant (carrier ids, capabilities, label formats) | `libs/core/domain/shipping-constants.ts`       |
+| Store preference and its factory default                | `libs/core/config/store-preferences.ts`             |
 | Queue/job name                                          | `libs/core/queues/queue-names.ts`                   |
 | Realtime event                                          | `libs/core/realtime/realtime-events.ts`             |
 | Notification type                                       | `libs/core/notifications/notification-constants.ts` |
