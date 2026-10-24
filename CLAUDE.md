@@ -71,6 +71,23 @@ broken steps.
 
 ---
 
+## Git hooks (Husky)
+
+Installed by `pnpm install` (the `prepare` script). Never skip them with `--no-verify`: CI runs the
+same checks and the merge waits for it.
+
+- `pre-commit`: `lint-staged` fixes and re-stages (ESLint, Prettier, `prisma format`), then `gitleaks`
+  checks what is staged. **`gitleaks` must be installed** (`brew install gitleaks`); without it the
+  commit is refused with a message that says so.
+- `commit-msg`: `commitlint`. Conventional Commits, a lowercase subject of at most 72 characters,
+  for example `feat(http): name the failed checks of a probe`. The title of a pull request follows
+  the same rules, because it becomes the squash commit on `main`.
+- `pre-push`: `pnpm validate:affected` (Nx affected `lint`, `type-check`, `test`, `format:check` and
+  the validators). A push that only changes `docs/` is not checked.
+- `pnpm validate:all` is the same on the whole repository.
+
+---
+
 ## Absolute rules (violating these requires stopping and asking first)
 
 1. **No magic strings, anywhere.** Every event name, cache key, permission,
