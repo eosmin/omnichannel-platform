@@ -1,0 +1,20 @@
+# Only what the build needs goes into the image build context
+.git
+.github
+.claude
+.vscode
+.nx
+node_modules
+**/node_modules
+dist
+**/.next
+coverage
+docs
+**/*.md
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+**/*.tsbuildinfo
+libs/core/database/generated
