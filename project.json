@@ -1,0 +1,30 @@
+{
+  "name": "workspace",
+  "$schema": "node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "scripts",
+  "projectType": "application",
+  "tags": ["scope:tooling"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "options": {
+        "command": "eslint --max-warnings=0 scripts prisma.config.ts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:noop"
+    }
+  }
+}

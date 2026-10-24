@@ -37,7 +37,9 @@
       "@platform/core/config/env": ["libs/core/platform/config/env.ts"],
       "@platform/plugins/sdk": ["libs/plugins/sdk/src/index.ts"],
       "@platform/api-client": ["libs/api-client/src/index.ts"],
-      "@platform/core/i18n": ["libs/core/domain/i18n/index.ts"]
+      "@platform/core/i18n": ["libs/core/domain/i18n/index.ts"],
+      "@platform/core/crypto": ["libs/core/crypto/src/index.ts"],
+      "@platform/core/database": ["libs/core/database/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

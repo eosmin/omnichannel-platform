@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { defineConfig } from 'eslint/config'
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
@@ -31,6 +33,14 @@ export default defineConfig([
 
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.cts', '**/*.mts'],
+    settings: {
+      // The @platform/* aliases live in tsconfig.base.json. Without an explicit path the resolver
+      // looks for a tsconfig.json from the directory ESLint runs in, so the result changed between
+      // the IDE (root) and Nx (the project): aliases were unresolved from the root.
+      'import-x/resolver': {
+        typescript: { project: path.join(import.meta.dirname, 'tsconfig.base.json') }
+      }
+    },
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -142,9 +152,22 @@ export default defineConfig([
     rules: { ...nextPlugin.configs.recommended.rules }
   },
 
+  // Two files reach other projects by path on purpose: the env validator cross-checks the schemas of
+  // the api, the worker and an app against their .env.example files, and the root prisma.config.ts is
+  // the re-export the Prisma CLI looks for, which loads it without the tsconfig aliases
+  {
+    files: ['scripts/validate-env-example.ts', 'prisma.config.ts'],
+    rules: { '@nx/enforce-module-boundaries': 'off' }
+  },
+
   // Scripts and the seed are allowed to print; everything else uses Pino
   {
-    files: ['scripts/**/*.ts', 'libs/core/database/prisma/seed.ts', 'tests/load/**/*.js'],
+    files: [
+      'scripts/**/*.ts',
+      'libs/core/database/prisma/seed.ts',
+      'libs/core/database/prisma/dev-fixtures.ts',
+      'tests/load/**/*.js'
+    ],
     rules: { 'no-console': 'off' }
   },
 
@@ -154,6 +177,9 @@ export default defineConfig([
       'apps/web/lib/env.ts',
       'apps/widget/src/env.ts',
       'libs/core/platform/config/env.ts',
+      'scripts/db-role-env.ts',
+      'libs/core/database/testing/connection-urls.ts',
+      'libs/core/database/prisma/seed-env.ts',
       'prisma.config.ts',
       'libs/core/database/prisma.config.ts'
     ],
@@ -162,9 +188,10 @@ export default defineConfig([
     }
   },
 
-  // PrismaService is the only place allowed to call $transaction
+  // PrismaService is the only place allowed to call $transaction, besides the development fixtures,
+  // which run as the owner with no tenant context and no PrismaService
   {
-    files: ['libs/core/database/src/prisma.service.ts'],
+    files: ['libs/core/database/src/prisma.service.ts', 'libs/core/database/src/dev-fixtures.ts'],
     rules: {
       'no-restricted-syntax': ['error', processEnvBan, conversationStatusBan]
     }
