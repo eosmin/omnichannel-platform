@@ -2,10 +2,10 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    # The TDD pins every version (TDD_01 §2.4): routine bumps are monthly, and an upgrade
-    # re-fetches its documentation and updates the table first. Security updates ignore this schedule
+    # The TDD pins every version (TDD_01 §2.4): an upgrade re-fetches its documentation and updates
+    # the table first, so a grouped minor/patch PR is a prompt to do that, not a PR to merge as is
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
@@ -23,7 +23,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 5
     commit-message:
       prefix: ci(deps)
