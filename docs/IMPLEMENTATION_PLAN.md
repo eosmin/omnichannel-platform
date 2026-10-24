@@ -58,6 +58,57 @@ From Step 0.1 on, a step is not done until **its PR is green on GitHub** with ev
 exists at that point. Thresholds, services and secrets (for example `SNYK_TOKEN`) are added
 to a job when that job is created.
 
+### Local gates and CI performance
+
+**What runs where.** Local gates are a convenience that catches problems in seconds; CI is the authority
+and cannot be skipped (`--no-verify` is forbidden by `CLAUDE.md`, and the ruleset blocks the merge anyway).
+Nothing heavy runs at commit time, so committing often stays cheap.
+
+| Moment | What runs | Budget |
+|---|---|---|
+| Editor | ESLint and Prettier on save (optional, not enforced) | instant |
+| `pre-commit` | `lint-staged` (ESLint `--fix` with `--max-warnings=0`, Prettier, `prisma format`) which fixes and re-stages instead of rejecting; `gitleaks` on the staged files; the translations and rollbacks validators only when such files are staged | under 10 s |
+| `commit-msg` | `commitlint`, showing the exact rule that failed | under 1 s |
+| `pre-push` | `pnpm validate:affected`: Nx affected `lint`, `type-check` and `test`, `format:check`, `validate:deprecations`, `validate:isolation`, translations and rollbacks; no Docker needed; skipped when only `docs/` changed | 30 to 90 s |
+| Before opening a PR (manual) | `pnpm validate:ci`: the full local mirror of CI with the compose services up (integration, contracts, security tests) | minutes |
+| CI | every job of `TDD_03 §4`, required by the ruleset as they are born | 5 to 15 min |
+| After the merge | staging deploy from `main`, production from a version tag with manual approval (Step 7.3) | n/a |
+
+`TDD_14 §2` calls `validate:all` the pre-push check but defines no hook for it and runs the whole
+repository; this plan makes the hook real and affected-only (`validate:affected`), and keeps `validate:all`
+as the full local run. `gitleaks` is a local binary (`brew install gitleaks`): the hook fails with a message that
+says so, and the README lists it as a prerequisite. Husky is disabled in CI (`HUSKY=0`).
+
+**CI performance and cost.** The repository is private, and a free GitHub plan includes a limited number of
+CI minutes per month, so speed and cost are the same goal. Rules for `ci.yml` and every later workflow
+(versions of the actions are resolved through Context7 when the file is written and kept current by Dependabot,
+always pinned to SHAs):
+
+- **One run per branch:** workflow-level `concurrency` (`workflow` plus `ref`) with `cancel-in-progress: true` for
+  pull requests, so a new push cancels the superseded run. Never for `main` or tag runs, which must finish.
+- **Least privilege and a ceiling:** `permissions: contents: read` by default, widened per job (for example
+  `security-events: write` for the Trivy upload), and a `timeout-minutes` on every job.
+- **Affected only:** `actions/checkout` with `fetch-depth: 0` and `filter: tree:0`, then `nrwl/nx-set-shas`, then
+  `nx affected`. A docs-only change finishes in seconds.
+- **Dependency cache:** `actions/setup-node` with `cache: pnpm`, and `pnpm install --frozen-lockfile --prefer-offline`.
+- **Nx task cache:** `lint`, `type-check`, `test`, `build` and `prisma generate` are cacheable in `nx.json`
+  (`targetDefaults` with `cache: true` and `namedInputs` where `production` excludes tests and config of tests), so a
+  task whose inputs did not change is replayed, not run. `.nx/cache` persists between runs with `actions/cache`:
+  **pull requests only restore** it and **pushes to `main` save it** (a cache entry is immutable, so a unique key
+  per run with `restore-keys` falls back to the nearest one; saving only from `main` avoids filling the repository's
+  cache quota, and pull requests can read the cache of `main`). A hosted remote cache (Nx Cloud) is a later option, not an MVP dependency.
+- **Docker:** `docker/build-push-action` with the GitHub cache backend (`cache-from` and `cache-to` of `type=gha`,
+  one scope per image) in `security-scan`, and the Trivy vulnerability database cached.
+- **Playwright:** the browsers directory cached by Playwright version in `e2e-tests`; system dependencies installed on every run.
+- **Jobs in parallel:** no `needs` chain between the test jobs, so the wall time is the slowest job, and each job
+  that is not needed for a change is skipped with a **job-level `if`** (a `changes` job decides). A job skipped by
+  `if` reports success to a required check; a workflow-level `paths` filter would leave the check pending and
+  block the merge, so it is never used.
+- **Full run as a safety net:** pull requests run affected only; pushes to `main` and a nightly `schedule` run the
+  suites in full, to catch anything the project graph missed.
+- **Coverage upload** runs on pull requests (for the diff) and on `main`; the heavy jobs (`e2e-tests`, `lighthouse`,
+  image scans) run only when the changed projects can affect them.
+
 ---
 
 ## Milestone 0 — Foundation
@@ -72,10 +123,11 @@ is fast, safe and consistent.
 - [ ] Create apps: `api` (NestJS), `web` (Next.js), `worker` (NestJS), `widget` (Vite/vanilla TS) — `admin` is DEFERRED (Phase 2, Step 7.6)
 - [ ] Configure `tsconfig.base.json` with strict mode per `TDD_02 §11` (TypeScript 5.9)
 - [ ] Configure project tags (`scope:core-domain`, `scope:core`, …) and module boundaries per `TDD_14 §6`, `§9`
+- [ ] `nx.json` with `namedInputs` (`default`, `production` excluding test files and test config) and `targetDefaults` that make `lint`, `type-check`, `test`, `build` and `prisma generate` cacheable, with their inputs and outputs, as described in "Local gates and CI performance"
 - [ ] Root `package.json` scripts as in `TDD_14 §2` (`lint`, `lint:fix`, `type-check`, `format`, `format:check`, `test` and its variants), and a `lint`, `type-check` and `test` target in every `project.json` (the `build` target comes with the Dockerfiles in Step 0.5)
 - [ ] `.prettierrc` per `TDD_14 §6` and a `.prettierignore` that excludes `docs/` (the specifications are maintained by hand with wide tables), generated code, build output, `node_modules` and the lockfile, so that `format:check` covers code and configuration only
 - [ ] `eslint.config.js` (flat), Prettier, `.env.example` files per `TDD_14 §6`, `§10`; include a `no-restricted-syntax` rule that forbids calling `$transaction` on the Prisma client (services use `PrismaService.transaction(fn)`, created in Step 0.4; the rule exempts `PrismaService` itself)
-- [ ] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`; it runs Nx affected `lint` and `type-check` and `pnpm format:check`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
+- [ ] `.github/workflows/ci.yml` with the `lint-and-types` job (actions pinned to SHAs, Node and pnpm from `package.json`; it runs Nx affected `lint` and `type-check` and `pnpm format:check`; workflow-level `concurrency` that cancels superseded pull-request runs, least-privilege `permissions`, `timeout-minutes`, `fetch-depth: 0` with `nrwl/nx-set-shas`, the pnpm store cache, and the `.nx/cache` restored on pull requests and saved on `main`), and the `main` ruleset described in "CI rollout"; after the first run, add `lint-and-types` as a required check
 - [ ] `.github/dependabot.yml` (weekly, grouped by ecosystem, as `TDD_03 §4` and `TDD_05 §7` already describe): `npm` for the pnpm workspace root and `github-actions` (it also moves the SHA pins and their version comments); the `docker` entries for the Dockerfiles and the compose file are added in Steps 0.2 and 0.5, when those files exist. Minor and patch updates are grouped, major updates come as separate PRs and are never merged without reading the changelog, because the stack's versions are pinned by the TDD and an upgrade re-fetches its documentation first (`CLAUDE.md`, deprecation discipline). `commit-message` prefixes `chore(deps)` (npm, docker) and `ci(deps)` (actions) so the commits satisfy commitlint, whose `deps` scope already exists; open-pull-requests limit 5
 - [ ] Repository security settings, applied once with `gh api` and recorded in the README: enable Dependabot alerts and Dependabot security updates (free on private repositories). **Secret scanning and push protection are tried, not assumed:** for private repositories they belong to GitHub Secret Protection, a paid add-on, and on this account `security_and_analysis` reports nothing; verify when doing the step, enable them if the plan allows, and otherwise rely on gitleaks (pre-commit and `security-scan`, Step 0.6), which is the layer the plan depends on. Until Step 0.6 lands no secret exists in the repository, and nothing may be committed that looks like one
 
@@ -83,7 +135,7 @@ is fast, safe and consistent.
 **TDD:** `TDD_01 §1`, `§2.4`, `TDD_14 §2`, `§6`, `§9`, `TDD_03 §4`, `TDD_05 §7`
 **Done when:** `pnpm nx graph` renders, `pnpm lint` passes on the empty workspace, an
 import from `libs/core/config` inside `apps/web` fails lint, `cat .nvmrc` matches the
-Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a badly formatted file, `lint-and-types` is green on GitHub for a PR, GitHub reads
+Node version pinned in `TDD_01 §2.4`, `pnpm format:check` passes and fails on a badly formatted file, a second CI run of an unchanged project replays its tasks from the cache, a new push cancels the previous pull-request run, `lint-and-types` is green on GitHub for a PR, GitHub reads
 `dependabot.yml` without errors (Insights, Dependency graph, Dependabot) and Dependabot alerts are on.
 
 ### Step 0.2 — Local infrastructure
@@ -149,6 +201,7 @@ and `integration-tests` is green on GitHub.
 - [ ] Sentry instrumentation file
 - [ ] Dockerfiles for `api` and `worker` (multi-stage, pinned Node image from `TDD_01 §2.4`, non-root user)
 - [ ] CI: create the `security-scan` job: build both images and scan them with Trivy (CRITICAL/HIGH fails, unfixed ignored). Add `security-scan` as a required check
+- [ ] In `security-scan`: `docker/build-push-action` with the GitHub cache backend (one scope per image) and the Trivy database cached
 - [ ] A `build` target in every `project.json` (`api`, `worker`, `web`, `widget`) and `nx affected --target=build` in `lint-and-types`, because a project that type-checks can still fail to compile and the `widget` has no Dockerfile that would build it
 
 **TDD:** `TDD_04 §1`, `§2`, `§3`, `§4`, `TDD_02 §7`
@@ -157,12 +210,12 @@ and `integration-tests` is green on GitHub.
 both images build and pass Trivy, and `security-scan` is green on GitHub.
 
 ### Step 0.6 — Tooling
-- [ ] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`) and commit-msg hooks; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
-- [ ] `scripts/validate-translations.ts`, `validate-deprecations.ts`, `check-isolation-coverage.ts`
+- [ ] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`, failing with a clear message when `gitleaks` is not installed), commit-msg and **pre-push** hooks; the pre-push hook runs `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`, the validators) and is skipped when only `docs/` changed; `HUSKY=0` in CI; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
+- [ ] `scripts/validate-translations.ts`, `validate-deprecations.ts`, `check-isolation-coverage.ts`, and the `validate:affected` script (affected-only version of `validate:all`)
 - [ ] CI: add gitleaks to `security-scan`, and commitlint, `validate:translations` and `validate:deprecations` to `lint-and-types`. The remaining jobs of `TDD_03 §4` are created by the steps listed in "CI rollout" (unit tests 1.1, security tests 1.3, e2e and Lighthouse 3.1)
 
 **TDD:** `TDD_14 §6`, `§7`, `TDD_03 §4`
-**Done when:** a commit violating conventions is rejected locally and in CI, and every job that
+**Done when:** a commit violating conventions is rejected locally and in CI, a push with a failing affected test is stopped by the pre-push hook, a docs-only push is not slowed by it, and every job that
 exists so far is green on GitHub.
 
 ---
@@ -329,7 +382,7 @@ on a page with a strict CSP.
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys
 - [ ] Dockerfile for `web`, added to the `security-scan` build and Trivy scan
-- [ ] CI: create the `e2e-tests` job (Postgres, Redis, MinIO and Mailpit services; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
+- [ ] CI: create the `e2e-tests` job (Postgres, Redis, MinIO and Mailpit services; the Playwright browsers cached by version and the job skipped by a job-level `if` when the change cannot affect the web app; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
 
 **TDD:** `TDD_01 §2.1`, `TDD_09 §12`, `§15`, `TDD_05 §6`
 **Done when:** magic link login works, `/invitations/[token]` handles the no-account, existing-account and mismatched-session cases, the UI renders in both locales with no hardcoded strings,
@@ -872,7 +925,7 @@ pipeline → 3.2 inbox. Everything else can be parallelized around it.
    accept, auth magic-link endpoints, DSR verify, health). `AccessLevelGuard` joins this list in Phase 2.
 5. **`storeId` comes from `X-Store-Id` through `TenantGuard`** — never from a body or query.
 6. **No user-facing string is hardcoded.** i18n keys only — including persisted notifications.
-7. **`pnpm validate:all` must pass** before any commit; `pnpm validate:ci` before any PR.
+7. **The pre-push hook (`pnpm validate:affected`) must pass** before any push, `pnpm validate:ci` before any PR, and `pnpm validate:all` is the full local run; the hooks never replace CI.
 8. **When the TDD is ambiguous, stop and ask.** Do not invent a design.
 9. **Anything marked MATURE or Phase 2 is out of scope** unless this plan
    explicitly includes it.
