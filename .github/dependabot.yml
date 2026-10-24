@@ -2,21 +2,28 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    # The TDD pins every version (TDD_01 §2.4): routine bumps are monthly, and an upgrade
+    # re-fetches its documentation and updates the table first. Security updates ignore this schedule
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore(deps)
-    # Minor and patch updates arrive together; a major update is its own PR and is
-    # never merged without reading the changelog (the TDD pins every version)
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # TypeScript stays on 5.9 until typescript-eslint, ts-jest and Nx certify the next major
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # The runtime is Node 24, so the types follow the Node major
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     open-pull-requests-limit: 5
     commit-message:
       prefix: ci(deps)
