@@ -204,16 +204,16 @@ seeded owner exists with a working Membership, and
 and `integration-tests` is green on GitHub.
 
 ### Step 0.5 — Observability
-- [ ] `libs/core/logger` — Pino with redaction and correlation ID, `AuthenticatedRequest` type (`LoggerModule.forRoot`, `correlationIdMiddleware`)
-- [ ] `libs/core/metrics` — a thin `MetricsModule` over `@prometheus-io/client` (alias `@platform/core/metrics-module`, the constants keep `@platform/core/metrics`): one provider per `MetricNames` entry from `MetricDefinitions`, `@InjectMetric`, HTTP request metrics and `GET /metrics`
-- [ ] `GlobalExceptionFilter` (`libs/core/http`): the error contract for business errors, Nest's own exceptions and unexpected errors, reported to Sentry
-- [ ] Health controller (`libs/core/http`): `/health` and `/health/ready`; global prefix `/api/v1` with the `InfraRoutes` exclusions and a not-found fallback that answers outside the prefix with the contract too. **Readiness checks only the database for now**: each indicator arrives with its client (Redis in Step 1.0, storage in Step 3.4), as `TDD_04 §4` lists them
-- [ ] Sentry instrumentation (`initSentry`, called by each app's `instrument.ts`), without profiling
-- [ ] `build` target in `api`, `worker` (Nest CLI with Rspack, one `nest-cli.json` per app and a shared `tools/rspack/nest-bundle.cjs`), `web` (`next build`) and `widget`, and `nx affected --target=build` in `lint-and-types`, because a project that type-checks can still fail to compile and the `widget` has no Dockerfile that would build it
-- [ ] One Dockerfile for `api` and `worker` (`docker/node-service.Dockerfile`, `--build-arg APP=api|worker`): multi-stage, the pinned Node image from `TDD_01 §2.4` (build on Debian, run on Alpine), a non-root user, no `node_modules` (the dependencies are in the bundle) and no npm or corepack in the final image
-- [ ] CI: create the `security-scan` job: build both images and scan them with Trivy (CRITICAL/HIGH fails, unfixed ignored). Add `security-scan` as a required check
-- [ ] In `security-scan`: `docker/build-push-action` with the GitHub cache backend (one scope per image) and the Trivy database cached
-- [ ] In `integration-tests`: build `api` and `worker`, start them against the CI database and check them with `scripts/smoke-http.ts` (probes, metrics, the error contract)
+- [x] `libs/core/logger` — Pino with redaction and correlation ID, `AuthenticatedRequest` type (`LoggerModule.forRoot`, `correlationIdMiddleware`)
+- [x] `libs/core/metrics` — a thin `MetricsModule` over `@prometheus-io/client` (alias `@platform/core/metrics-module`, the constants keep `@platform/core/metrics`): one provider per `MetricNames` entry from `MetricDefinitions`, `@InjectMetric`, HTTP request metrics and `GET /metrics`
+- [x] `GlobalExceptionFilter` (`libs/core/http`): the error contract for business errors, Nest's own exceptions and unexpected errors, reported to Sentry
+- [x] Health controller (`libs/core/http`): `/health` and `/health/ready`; global prefix `/api/v1` with the `InfraRoutes` exclusions and a not-found fallback that answers outside the prefix with the contract too. **Readiness checks only the database for now**: each indicator arrives with its client (Redis in Step 1.0, storage in Step 3.4), as `TDD_04 §4` lists them
+- [x] Sentry instrumentation (`initSentry`, called by each app's `instrument.ts`), without profiling
+- [x] `build` target in `api`, `worker` (Nest CLI with Rspack, one `nest-cli.json` per app and a shared `tools/rspack/nest-bundle.cjs`), `web` (`next build`) and `widget`, and `nx affected --target=build` in `lint-and-types`, because a project that type-checks can still fail to compile and the `widget` has no Dockerfile that would build it
+- [x] One Dockerfile for `api` and `worker` (`docker/node-service.Dockerfile`, `--build-arg APP=api|worker`): multi-stage, the pinned Node image from `TDD_01 §2.4` (build on Debian, run on Alpine), a non-root user, no `node_modules` (the dependencies are in the bundle) and no npm or corepack in the final image
+- [x] CI: create the `security-scan` job: build both images and scan them with Trivy (CRITICAL/HIGH fails, unfixed ignored). Add `security-scan` as a required check
+- [x] In `security-scan`: `docker/build-push-action` with the GitHub cache backend (one scope per image) and the Trivy database cached
+- [x] In `integration-tests`: build `api` and `worker`, start them against the CI database and check them with `scripts/smoke-http.ts` (probes, metrics, the error contract)
 
 **TDD:** `TDD_04 §1`, `§2`, `§3`, `§4`, `TDD_02 §7`
 **Done when:** `GET /health/ready` returns 200 and `GET /metrics` exposes metrics, both
@@ -980,7 +980,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 0.2 | Local infrastructure | done | #16 | 2026-10-24 |
 | 0.3 | Constants library (blocking dependency for everything) | done | #25 | 2026-10-24 |
 | 0.4 | Database schema | done | #27 | 2026-10-24 |
-| 0.5 | Observability | todo | | |
+| 0.5 | Observability | done | #28 | 2026-10-25 |
 | 0.6 | Tooling | todo | | |
 | **Milestone 1: Auth and tenancy** | | | | |
 | 1.0 | Queues, workers and email | todo | | |
