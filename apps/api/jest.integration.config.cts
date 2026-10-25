@@ -3,6 +3,7 @@ module.exports = {
   preset: '../../jest.preset.cjs',
   testMatch: ['<rootDir>/**/*.integration.spec.ts'],
   testTimeout: 30_000,
+  setupFiles: ['<rootDir>/src/testing/load-example-env.ts'],
   // Auth and authorization is a critical path of TDD_13 section 9: 95%. Its services are proved by
   // these suites against the real database, so the gate is here, not in the unit tests. The Nest
   // modules only wire providers: the boot of the built api proves them.
