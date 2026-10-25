@@ -15,3 +15,9 @@ export const CurrentUser = createParamDecorator(
     return user
   }
 )
+
+// The user of an optional session (see OptionalSession): nobody when the request came without a token
+export const OptionalUser = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): AuthenticatedUser | undefined =>
+    context.switchToHttp().getRequest<AuthenticatedRequest>().user
+)

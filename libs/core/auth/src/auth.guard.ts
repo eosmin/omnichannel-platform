@@ -5,10 +5,11 @@ import { AuthGuard as PassportAuthGuard } from '@nestjs/passport'
 import type { AuthenticatedUser } from '@platform/core/auth'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 
-import { IS_PUBLIC_KEY } from './public.decorator'
+import { IS_PUBLIC_KEY, OPTIONAL_SESSION_KEY } from './public.decorator'
 
 const UNAUTHORIZED = 401
 const NO_TOKEN_MESSAGE = 'No auth token'
+const BEARER = /^Bearer\s+\S/i
 
 @Injectable()
 export class AuthGuard extends PassportAuthGuard('jwt') {
@@ -21,8 +22,21 @@ export class AuthGuard extends PassportAuthGuard('jwt') {
       context.getHandler(),
       context.getClass()
     ])
-    if (isPublic === true) return true
+    if (isPublic === true && !this.looksForASession(context)) return true
     return super.canActivate(context) as Promise<boolean>
+  }
+
+  // A public route that takes a session if one comes: only a bearer token is looked at, and then it
+  // has to be a good one
+  private looksForASession(context: ExecutionContext): boolean {
+    const optional = this.reflector.getAllAndOverride<boolean | undefined>(OPTIONAL_SESSION_KEY, [
+      context.getHandler(),
+      context.getClass()
+    ])
+    if (optional !== true) return false
+    const { headers } = context.switchToHttp().getRequest<{ headers: Record<string, unknown> }>()
+    const authorization = headers['authorization']
+    return typeof authorization === 'string' && BEARER.test(authorization)
   }
 
   // The error contract names the cause: no token, an expired one, or one that does not verify. The
