@@ -81,7 +81,13 @@ describe('deployed environments', () => {
 
   it('accept real secrets in production, sending through Resend', () => {
     expect(() =>
-      parseEnv({ ...validEnv, NODE_ENV: 'production', RESEND_API_KEY: 're_key' })
+      parseEnv({
+        ...validEnv,
+        NODE_ENV: 'production',
+        RESEND_API_KEY: 're_key',
+        FRONTEND_URL: 'https://app.example.com',
+        TRUST_PROXY_HOPS: '1'
+      })
     ).not.toThrow()
   })
 
@@ -158,5 +164,89 @@ describe('BULL_BOARD_ADMIN_EMAILS', () => {
 
   it('rejects an entry that is not an email', () => {
     expect(() => parseEnv({ ...validEnv, BULL_BOARD_ADMIN_EMAILS: 'not-an-email' })).toThrow()
+  })
+})
+
+describe('session lifetimes and the proxy', () => {
+  it('reads the token lifetimes in seconds, with the defaults of the TDD', () => {
+    const env = parseEnv(validEnv)
+    expect(env.JWT_EXPIRES_IN).toBe(900)
+    expect(env.REFRESH_TOKEN_EXPIRES_IN).toBe(604_800)
+    expect(
+      parseEnv({ ...validEnv, JWT_EXPIRES_IN: '5m', REFRESH_TOKEN_EXPIRES_IN: '1d' })
+    ).toMatchObject({
+      JWT_EXPIRES_IN: 300,
+      REFRESH_TOKEN_EXPIRES_IN: 86_400
+    })
+  })
+
+  it.each(['15', '1w', 'fifteen', '-5m'])('refuses the lifetime %j, naming the variable', value => {
+    expect(() => parseEnv({ ...validEnv, JWT_EXPIRES_IN: value })).toThrow(/JWT_EXPIRES_IN/)
+  })
+
+  it('trusts no proxy by default, and takes a number of hops', () => {
+    expect(parseEnv(validEnv).TRUST_PROXY_HOPS).toBe(0)
+    expect(parseEnv({ ...validEnv, TRUST_PROXY_HOPS: '1' }).TRUST_PROXY_HOPS).toBe(1)
+    expect(() => parseEnv({ ...validEnv, TRUST_PROXY_HOPS: '-1' })).toThrow(/TRUST_PROXY_HOPS/)
+    expect(() => parseEnv({ ...validEnv, TRUST_PROXY_HOPS: '2.5' })).toThrow(/TRUST_PROXY_HOPS/)
+    // Believing more proxies than exist lets a client choose its own address
+    expect(() => parseEnv({ ...validEnv, TRUST_PROXY_HOPS: '6' })).toThrow(/TRUST_PROXY_HOPS/)
+  })
+})
+
+describe('TRUST_PROXY_HOPS in a deployed environment', () => {
+  const deployed = {
+    ...validEnv,
+    RESEND_API_KEY: 're_key',
+    FRONTEND_URL: 'https://app.example.com'
+  }
+
+  it.each(['staging', 'production'])(
+    'must be set in %s, because forgetting it makes every client share the proxy address',
+    nodeEnv => {
+      expect(() => parseEnv({ ...deployed, NODE_ENV: nodeEnv })).toThrow(/TRUST_PROXY_HOPS/)
+    }
+  )
+
+  it.each(['0', '1'])('accepts %s once it is said, 0 included (no proxy in front)', hops => {
+    const env = parseEnv({ ...deployed, NODE_ENV: 'production', TRUST_PROXY_HOPS: hops })
+
+    expect(env.TRUST_PROXY_HOPS).toBe(Number(hops))
+  })
+
+  it('is not demanded outside a deployed environment', () => {
+    expect(() => parseEnv({ ...deployed, NODE_ENV: 'development' })).not.toThrow()
+  })
+
+  it('reports it by name, with what to put on Railway', () => {
+    expect(() => parseEnv({ ...deployed, NODE_ENV: 'production' })).toThrow(/Railway/)
+  })
+})
+
+describe('FRONTEND_URL in a deployed environment', () => {
+  const deployed = {
+    ...validEnv,
+    NODE_ENV: 'production',
+    RESEND_API_KEY: 're_key',
+    TRUST_PROXY_HOPS: '1'
+  }
+
+  it('keeps its laptop default outside a deployed environment', () => {
+    expect(parseEnv(validEnv).FRONTEND_URL).toBe('http://localhost:3000')
+  })
+
+  it.each([
+    ['the laptop default', undefined],
+    ['localhost', 'https://localhost:3000'],
+    ['a loopback address', 'https://127.0.0.1'],
+    ['plain http', 'http://app.example.com']
+  ])('refuses %s, because the magic links point there', (_name, value) => {
+    const source = value === undefined ? deployed : { ...deployed, FRONTEND_URL: value }
+
+    expect(() => parseEnv(source)).toThrow(/FRONTEND_URL/)
+  })
+
+  it('accepts the https address of the web app', () => {
+    expect(() => parseEnv({ ...deployed, FRONTEND_URL: 'https://app.example.com' })).not.toThrow()
   })
 })
