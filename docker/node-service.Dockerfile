@@ -11,7 +11,8 @@ ARG RUNTIME_IMAGE=node:24.20.0-alpine
 FROM ${BUILD_IMAGE} AS build
 # The Nx project to build: api or worker
 ARG APP
-ENV NX_DAEMON=false CI=true
+# HUSKY=0: there is no .git in the build context, and the hooks are for laptops
+ENV NX_DAEMON=false CI=true HUSKY=0
 WORKDIR /repo
 # pnpm comes from the packageManager field of package.json
 RUN corepack enable
