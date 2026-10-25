@@ -108,7 +108,7 @@ same checks and the merge waits for it.
 5. **Every new endpoint** has `AuthGuard` + `TenantGuard` + a
    `@RequirePermissions()` decorator, unless it is explicitly public
    (magic-link auth endpoints, invitation preview and accept, channel webhooks,
-   widget endpoints, carrier webhooks, health checks), or it is a plugin route under
+   widget endpoints, carrier webhooks, the Resend webhook, health checks), or it is a plugin route under
    `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead. The Stripe
    webhook joins the public list in Phase 2.
 6. **No user-facing string is hardcoded in any language.** Always an i18n key.

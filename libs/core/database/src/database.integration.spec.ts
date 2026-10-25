@@ -5,6 +5,7 @@ import pg from 'pg'
 
 import { RoleNames, RolePresets } from '@platform/core/auth'
 import { parseEncryptionKey } from '@platform/core/crypto'
+import { WebhookSources } from '@platform/core/domain'
 
 import { PrismaClient } from '../generated/client/client'
 import { connectionUrls } from '../testing/connection-urls'
@@ -12,6 +13,7 @@ import { connectionUrls } from '../testing/connection-urls'
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
 import { PrismaService } from './prisma.service'
+import { ProcessedWebhookEventsService } from './processed-webhook-events.service'
 
 const urls = connectionUrls()
 const runId = randomUUID().slice(0, 8)
@@ -189,6 +191,69 @@ describe('PrismaService', () => {
       })
     ).rejects.toThrow('abort')
     expect(await service.client.organization.count({ where: { slug } })).toBe(0)
+  })
+})
+
+describe('ProcessedWebhookEventsService', () => {
+  const prisma = new PrismaService({ databaseUrl: urls.app, poolSize: 8 })
+  const events = new ProcessedWebhookEventsService(prisma)
+  const eventId = (suffix: string): string => `it-${runId}-${suffix}`
+
+  beforeAll(() => prisma.onModuleInit())
+  afterAll(async () => {
+    await withClient(urls.owner, owner =>
+      owner.query('DELETE FROM processed_webhook_events WHERE event_id LIKE $1', [`it-${runId}-%`])
+    )
+    await prisma.onModuleDestroy()
+  })
+
+  it('runs the handler once and ignores the same event afterwards', async () => {
+    const handler = jest.fn(() => Promise.resolve())
+    const id = eventId('twice')
+
+    expect(await events.runOnce(WebhookSources.RESEND, id, 'email.opened', handler)).toBe(true)
+    expect(await events.runOnce(WebhookSources.RESEND, id, 'email.opened', handler)).toBe(false)
+
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('rolls the marker back when the handler throws, so the provider retry is processed', async () => {
+    const id = eventId('retry')
+    await expect(
+      events.runOnce(WebhookSources.RESEND, id, 'email.bounced', () =>
+        Promise.reject(new Error('redis down'))
+      )
+    ).rejects.toThrow('redis down')
+
+    const handler = jest.fn(() => Promise.resolve())
+    expect(await events.runOnce(WebhookSources.RESEND, id, 'email.bounced', handler)).toBe(true)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs the handler once when the same event arrives twice at the same time', async () => {
+    const handler = jest.fn(() => new Promise<void>(resolve => setTimeout(resolve, 100)))
+    const id = eventId('race')
+
+    const results = await Promise.all([
+      events.runOnce(WebhookSources.RESEND, id, 'email.opened', handler),
+      events.runOnce(WebhookSources.RESEND, id, 'email.opened', handler)
+    ])
+
+    expect(results.filter(ran => ran)).toHaveLength(1)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the same event id of two sources apart', async () => {
+    const handler = jest.fn(() => Promise.resolve())
+    const id = eventId('sources')
+    await withClient(urls.owner, owner =>
+      owner.query(
+        `INSERT INTO processed_webhook_events (source, event_id, type) VALUES ('other', $1, 't')`,
+        [id]
+      )
+    )
+
+    expect(await events.runOnce(WebhookSources.RESEND, id, 'email.opened', handler)).toBe(true)
   })
 })
 
