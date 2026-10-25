@@ -7,6 +7,14 @@ export const MAGIC_LINK_TTL_MINUTES = 15
 export const MAGIC_LINK_WEB_PATH = '/login/verify'
 export const MAGIC_LINK_FRAGMENT_KEY = 'token'
 
+// An invitation: 7 days to accept (Step 1.4). The link goes to the web page that previews it and
+// accepts it; the token is the last segment of the path.
+export const INVITATION_TTL_DAYS = 7
+export const INVITATION_WEB_PATH = '/invitations'
+// Inviting an address again replaces the invitation, but not before this long: it is also a way to
+// send an email, and one address must not be mail-bombed from a store
+export const INVITATION_RESEND_COOLDOWN_SECONDS = 60
+
 // Requests per window, per client (TDD_05 section 3.1; MVP_TRIM_CHECKLIST.md D2). The profiles are
 // ThrottlerNames; a named endpoint may use a stricter limit than its profile.
 export const ThrottleProfiles = {
@@ -17,6 +25,9 @@ export const ThrottleProfiles = {
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const
+
+// Accepting an invitation: the old signup profile of D2, 3 an hour per IP. It can create an account.
+export const InvitationAcceptThrottle = { limit: 3, ttlMs: 3_600_000 } as const
 
 // The claims of the access token. `email` is there for the Bull Board allowlist.
 export interface AccessTokenClaims {
