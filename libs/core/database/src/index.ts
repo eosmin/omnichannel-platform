@@ -1,4 +1,6 @@
+export { slugify } from './bootstrap-owner'
 export * from './database.module'
 export * from './prisma.service'
 export * from './processed-webhook-events.service'
 export * from './tenant-context'
+export * from './unique-violation'

@@ -82,4 +82,76 @@ describe('TemplateRenderer', () => {
       })
     ).rejects.toThrow()
   })
+
+  describe('the invitation', () => {
+    const invitation = {
+      url: 'https://app.example.com/invitations/abc123',
+      inviterName: 'Ana Pérez',
+      storeName: 'Tienda Escalón',
+      roleName: 'Agent',
+      expiresInDays: 7
+    }
+
+    it('renders the same text in English every time', async () => {
+      const email = await renderer.render(EmailTemplates.INVITATION, Locales.EN, invitation)
+      expect(email.subject).toBe('You have been invited to join a team')
+      expect(email.text).toMatchInlineSnapshot(`
+        "You are invited to join Tienda Escalón
+
+        Ana Pérez invited you to join Tienda Escalón as Agent. Nothing changes until you accept.
+
+        Review the invitation https://app.example.com/invitations/abc123
+
+        If the button does not work, copy this link into your browser:
+
+        https://app.example.com/invitations/abc123
+
+        ----------------------------------------
+
+        This invitation expires in 7 days.
+
+        If you were not expecting it, you can ignore this email."
+      `)
+    })
+
+    it('renders the same text in Spanish every time', async () => {
+      const email = await renderer.render(EmailTemplates.INVITATION, Locales.ES, invitation)
+      expect(email.subject).toBe('Te invitaron a unirte a un equipo')
+      expect(email.text).toMatchInlineSnapshot(`
+        "Te invitan a unirte a Tienda Escalón
+
+        Ana Pérez te invitó a unirte a Tienda Escalón como Agent. Nada cambia hasta que aceptes.
+
+        Revisar la invitación https://app.example.com/invitations/abc123
+
+        Si el botón no funciona, copia este enlace en tu navegador:
+
+        https://app.example.com/invitations/abc123
+
+        ----------------------------------------
+
+        Esta invitación caduca en 7 días.
+
+        Si no la esperabas, puedes ignorar este correo."
+      `)
+    })
+
+    it('shows the names as text and never as markup', async () => {
+      const email = await renderer.render(EmailTemplates.INVITATION, Locales.EN, {
+        ...invitation,
+        inviterName: '<img src=x onerror=alert(1)>'
+      })
+      expect(email.html).not.toContain('<img src=x')
+      expect(email.html).toContain('&lt;img src=x')
+    })
+
+    it('refuses a link that is not http or https', async () => {
+      await expect(
+        renderer.render(EmailTemplates.INVITATION, Locales.EN, {
+          ...invitation,
+          url: 'javascript:alert(1)'
+        })
+      ).rejects.toThrow()
+    })
+  })
 })

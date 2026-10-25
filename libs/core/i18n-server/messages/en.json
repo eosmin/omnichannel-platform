@@ -8,6 +8,15 @@
       "fallback": "If the button does not work, copy this link into your browser:",
       "expiry": "This link expires in {minutes} minutes.",
       "ignore": "If you did not ask for it, you can ignore this email."
+    },
+    "invitation": {
+      "subject": "You have been invited to join a team",
+      "heading": "You are invited to join {store}",
+      "body": "{inviter} invited you to join {store} as {role}. Nothing changes until you accept.",
+      "cta": "Review the invitation",
+      "fallback": "If the button does not work, copy this link into your browser:",
+      "expiry": "This invitation expires in {days} days.",
+      "ignore": "If you were not expecting it, you can ignore this email."
     }
   }
 }

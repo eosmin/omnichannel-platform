@@ -288,13 +288,13 @@ cannot be a required check), and `check-isolation-coverage` lists every `store_i
 **Every subsequent resource must be added to this suite.**
 
 ### Step 1.4 — Organizations, stores, memberships
-- [ ] Organization read/update and stores CRUD (`ApiRoutes.organizations.*`); there is no create-organization endpoint (the bootstrap creates it). `StoreSettings` and `RetentionSettings` are created with each store
-- [ ] `Invitation` flow with mandatory acceptance; `Membership` created on accept. Invitation token: hashed at rest, single-use, expiring, valid only for the invited email
-- [ ] `GET /invitations/:token` (public): preview only (store, role, inviter, invited email), no other data
-- [ ] Accept as `POST`, three cases: (a) **no account:** signup with the email fixed to the invited one, creating the `User` (email verified, since the link reached that inbox), the `Membership` and the session in one transaction; (b) **existing account:** requires a session for the invited email (magic link, then back to the invitation page), then creates the `Membership`; (c) **session for another email:** rejected with a mismatch error. Rate limits per Step 1.1
-- [ ] Web page `/invitations/[token]` (built in Step 3.1) handling the three cases, plus a "no access" screen for users with no membership (revoked invitation, removed from every store)
-- [ ] Team management endpoints, custom roles
-- [ ] **MVP trim:** no `EffectivePlanLimitsService` and no `QuotaGuard(SEATS|STORES)`; seats and stores are unlimited
+- [x] Organization read/update and stores CRUD (`ApiRoutes.organizations.*`); there is no create-organization endpoint (the bootstrap creates it). `StoreSettings` and `RetentionSettings` are created with each store
+- [x] `Invitation` flow with mandatory acceptance; `Membership` created on accept. Invitation token: hashed at rest, single-use, expiring, valid only for the invited email
+- [x] `GET /invitations/:token` (public): preview only (store, role, inviter, invited email), no other data
+- [x] Accept as `POST`, three cases: (a) **no account:** signup with the email fixed to the invited one, creating the `User` (email verified, since the link reached that inbox), the `Membership` and the session in one transaction; (b) **existing account:** requires a session for the invited email (magic link, then back to the invitation page), then creates the `Membership`; (c) **session for another email:** rejected with a mismatch error. Rate limits per Step 1.1
+- [x] Web page `/invitations/[token]` (built in Step 3.1) handling the three cases, plus a "no access" screen for users with no membership (revoked invitation, removed from every store). **Not in this step's PR:** Step 3.1 builds and verifies it (its "Done when" lists it); this step ships the API it calls
+- [x] Team management endpoints, custom roles
+- [x] **MVP trim:** no `EffectivePlanLimitsService` and no `QuotaGuard(SEATS|STORES)`; seats and stores are unlimited
 
 **TDD:** `TDD_01 §4`, `TDD_07 §5.3` (TDD_11 §1.1 effective plan limits is DEFERRED)
 **Done when:** the owner can create a store, invite a member by email (no account yet), and
@@ -315,6 +315,7 @@ The product's reason to exist. (Queues, workers and email moved to Step 1.0, bec
 - [ ] `findOrCreateByIdentity` (with `phoneNormalized`), link identity
 - [ ] Addresses, notes, customer tags
 - [ ] Merge with `CustomerMerge` snapshot and unmerge within 30 days
+- [ ] Every write of data of a store takes a shared lock on the store row (`FOR SHARE`), because deleting a store takes the exclusive one: a test writes and deletes at the same moment (`MVP_TRIM_CHECKLIST.md` §10 item 23)
 
 **TDD:** `TDD_01 §4`, `TDD_09 §6`
 **Done when:** two identities on different channels can be merged into one customer and
@@ -782,6 +783,7 @@ skipped cron day catches up.
 - [ ] DSR flow with verification tokens: access, portability, erasure, manual review
 - [ ] Consent records, cookie consent (`CookieConsent`)
 - [ ] Audit log viewer and export (tenant side)
+- [ ] Retention job that removes invitations expired for more than the retention window (`MVP_TRIM_CHECKLIST.md` §10 item 21)
 
 **TDD:** `TDD_05 §10`
 **Done when:** an erasure request completes correctly while respecting the
@@ -795,6 +797,7 @@ tax-retention legal hold on orders, and the day-25 alert fires in a test.
 - [ ] Postgres on Railway's official image, pinned by **major** tag (`:18`; Railway supports 14 to 18 and does not support minor tags such as 18.6; PITR also requires the official image), so production runs Postgres 18 at whatever minor Railway publishes while local development keeps `postgres:18.6-alpine`; record this in `TDD_01 §2.4`. Backups: volume backups and PITR enabled from day one (`railway postgres pitr`), plus periodic `pg_dump` copies stored outside Railway
 - [ ] Media stays on AWS S3 (versioning and replication per `TDD_03 §7.3`; only `S3_*` and `AWS_*` variables change). Railway buckets lack versioning and lifecycle rules
 - [ ] Backup restore drill executed and documented (PITR restore into a new sibling service)
+- [ ] Cursor pagination, with a hard page size, on the lists of members, roles, pending invitations and stores (`MVP_TRIM_CHECKLIST.md` §10 item 20)
 - [ ] Role passwords: `DB_APP_PASSWORD` and `DB_WORKER_PASSWORD` are Railway variables, the api and worker services each get their own `DATABASE_URL` (as `platform_app` and `platform_worker`, through PgBouncer), and `scripts/set-db-role-passwords.ts` runs after every migration in the release flow
 - [ ] Owner bootstrap (owner, organization, first store and its default warehouse) runs once as a one-off Railway command after the first migration, so the first login is possible with closed signup; it never creates fixtures (`MVP_TRIM_CHECKLIST.md` §7, D4)
 
@@ -988,7 +991,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.0 | Queues, workers and email | done | #34 | 2026-10-25 |
 | 1.1 | Authentication | done | #35 | 2026-10-25 |
 | 1.2 | Tenancy | done | #39 | 2026-10-25 |
-| 1.3 | Tenant isolation test suite | todo | | |
+| 1.3 | Tenant isolation test suite | done | #40 | 2026-10-26 |
 | 1.4 | Organizations, stores, memberships | todo | | |
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | todo | | |

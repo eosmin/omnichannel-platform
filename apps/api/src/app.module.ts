@@ -4,6 +4,9 @@ import { AuditModule } from '@platform/core/audit-module'
 import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http'
 
 import { AuthModule } from './modules/auth/auth.module'
+import { InvitationsModule } from './modules/invitations/invitations.module'
+import { OrganizationsModule } from './modules/organizations/organizations.module'
+import { TeamModule } from './modules/team/team.module'
 import { TenancyModule } from './modules/tenancy'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
 
@@ -16,6 +19,9 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     TenancyModule,
     BullBoardPlatformModule,
     AuthModule,
+    OrganizationsModule,
+    TeamModule,
+    InvitationsModule,
     WebhooksModule
   ]
 })

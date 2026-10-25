@@ -12,6 +12,7 @@ export const AuditAction = {
 
   // Tenancy
   ORGANIZATION_CREATED: 'organization.created',
+  ORGANIZATION_UPDATED: 'organization.updated',
   STORE_CREATED: 'store.created',
   STORE_UPDATED: 'store.updated',
   STORE_DELETED: 'store.deleted',
@@ -20,7 +21,9 @@ export const AuditAction = {
   MEMBER_JOINED: 'member.joined',
   MEMBER_REMOVED: 'member.removed',
   ROLE_CHANGED: 'member.role_changed',
+  ROLE_CREATED: 'role.created',
   ROLE_UPDATED: 'role.updated',
+  ROLE_DELETED: 'role.deleted',
   PERMISSION_DENIED: 'permission.denied',
   TENANT_ACCESS_DENIED: 'tenant.access_denied',
 

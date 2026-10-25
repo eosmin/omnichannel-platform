@@ -264,7 +264,8 @@ model Membership {
 }
 
 // System presets have storeId = null and isSystem = true. Uniqueness of system role
-// names is enforced by a partial unique index in §5 (NULLs are distinct in Postgres).
+// names is enforced by a partial unique index in §5 (NULLs are distinct in Postgres). A custom role's
+// name is unique per store, case-insensitively, by the partial index uq_roles_store_name (raw SQL, on lower(name)).
 model Role {
   id          String   @id @default(uuid())
   storeId     String?  @map("store_id")

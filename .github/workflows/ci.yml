@@ -169,10 +169,11 @@ jobs:
             psql "$DIRECT_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
           done
 
-  # The tenant isolation suite (TDD_13 section 6): the real app of the api, the real Postgres and
-  # Redis, the database role the api runs with. A failure here means a user could reach the data of
-  # a store they do not belong to. A job of its own so that it is seen on its own in a pull request;
-  # it needs no SeaweedFS until the first test of media (Step 3.4).
+  # The tenant isolation suite (TDD_13 section 6) and the endpoint specs of tests/api: the real app of
+  # the api, the real Postgres and Redis, the database role the api runs with. A failure in the
+  # isolation suite means a user could reach the data of a store they do not belong to. A job of its
+  # own so that it is seen on its own in a pull request; it needs no SeaweedFS until the first test
+  # of media (Step 3.4).
   security-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -207,7 +208,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --prefer-offline
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
-      - name: Tenant isolation suite
+      - name: Tenant isolation suite and endpoint specs
         run: pnpm test:security
 
   # Builds the image of each service and scans it. A critical or high vulnerability that has a fix

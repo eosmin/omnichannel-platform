@@ -5,6 +5,7 @@ import type { Locale } from '@platform/core/i18n'
 import { createTranslator, type Translator } from '@platform/core/i18n-server'
 import { type EmailTemplate, EmailTemplates } from '@platform/core/queues'
 
+import { Invitation, invitationSchema } from './invitation'
 import { MagicLink, magicLinkSchema } from './magic-link'
 
 // What the renderer needs from a template: its data schema (the job payload is data from outside the
@@ -37,5 +38,10 @@ export const templateRegistry: Record<EmailTemplate, RegisteredTemplate> = {
     namespace: 'email.magicLink',
     schema: magicLinkSchema,
     element: (props, locale, t) => MagicLink({ ...props, locale, t })
+  }),
+  [EmailTemplates.INVITATION]: define({
+    namespace: 'email.invitation',
+    schema: invitationSchema,
+    element: (props, locale, t) => Invitation({ ...props, locale, t })
   })
 }

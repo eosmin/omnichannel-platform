@@ -3,7 +3,13 @@ import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants'
 
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { CurrentMembership, CurrentOrganization, CurrentStore, routePathOf } from './decorators'
+import {
+  CurrentMembership,
+  CurrentOrganization,
+  CurrentPermissions,
+  CurrentStore,
+  routePathOf
+} from './decorators'
 
 // The factory of a param decorator, taken out of the metadata Nest keeps for it
 function factoryOf(
@@ -32,7 +38,8 @@ describe.each([
     CurrentMembership,
     'membership',
     { id: 'm', roleId: 'r', roleName: 'Admin' }
-  ]
+  ],
+  ['CurrentPermissions', CurrentPermissions, 'permissions', ['customers:view']]
 ] as const)('%s', (_name, decorator, field, value) => {
   const factory = factoryOf(decorator)
 

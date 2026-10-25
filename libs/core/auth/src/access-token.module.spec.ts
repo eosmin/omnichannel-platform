@@ -18,8 +18,8 @@ import { PlatformException } from '@platform/core/errors'
 
 import { AccessTokenModule } from './access-token.module'
 import { type AuthSettings } from './auth-settings'
-import { CurrentUser } from './current-user.decorator'
-import { Public } from './public.decorator'
+import { CurrentUser, OptionalUser } from './current-user.decorator'
+import { OptionalSession, Public } from './public.decorator'
 
 const settings: AuthSettings = {
   jwtSecret: 'a-secret-of-at-least-thirty-two-characters!',
@@ -52,6 +52,13 @@ class ProbeController {
   @Get('open')
   open(): { open: true } {
     return { open: true }
+  }
+
+  // Public, but a valid session is looked at when one is sent (the accept of an invitation)
+  @OptionalSession()
+  @Get('maybe')
+  maybe(@OptionalUser() user: AuthenticatedUser | undefined): { user: AuthenticatedUser | null } {
+    return { user: user ?? null }
   }
 
   // A route that reads the user but was marked public by mistake: nobody has put a user there
@@ -110,6 +117,38 @@ describe('the access tokens', () => {
 
   it('serves a @Public route without a token', async () => {
     expect(await call('/open')).toEqual({ status: 200, body: { open: true } })
+  })
+
+  describe('a route with an optional session', () => {
+    it('serves a request without a token as anonymous', async () => {
+      expect(await call('/maybe')).toEqual({ status: 200, body: { user: null } })
+    })
+
+    it('serves one with a valid token as that user', async () => {
+      const result = await call('/maybe', `Bearer ${jwt.sign(claims)}`)
+
+      expect(result).toEqual({
+        status: 200,
+        body: { user: { id: claims.sub, sessionFamilyId: claims.sid, email: claims.email } }
+      })
+    })
+
+    it('does not take a token that fails for no token: an expired one says so', async () => {
+      const expired = jwt.sign(claims, { expiresIn: -10 })
+
+      expect(await call('/maybe', `Bearer ${expired}`)).toEqual({
+        status: 401,
+        body: { code: 'AUTH_TOKEN_EXPIRED' }
+      })
+      expect(await call('/maybe', 'Bearer garbage')).toEqual({
+        status: 401,
+        body: { code: 'AUTH_TOKEN_INVALID' }
+      })
+    })
+
+    it('does not look at an authorization header that is not a bearer token', async () => {
+      expect(await call('/maybe', 'Basic abc')).toEqual({ status: 200, body: { user: null } })
+    })
   })
 
   it('refuses to hand over a user on a public route, instead of answering with nothing', async () => {

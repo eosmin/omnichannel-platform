@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common'
 
-import { RoleNames } from '@platform/core/auth'
+import { type RoleName, RoleNames } from '@platform/core/auth'
 import {
   ensureMembership,
   ensureStore,
@@ -31,6 +31,37 @@ export interface TestContext {
   viewerA: Actor
   adminA2: Actor
   adminB: Actor
+  // The system roles, by name
+  roleIds: Record<RoleName, string>
+}
+
+// One more member of a store, with a real token. Used by the specs that need a user a context does
+// not have (a manager with a custom role, a second Admin).
+export async function createActor(
+  owner: OwnerClient,
+  app: INestApplication,
+  input: {
+    prefix: string
+    name: string
+    organizationId: string
+    storeId: string
+    roleId: string
+  }
+): Promise<Actor> {
+  const email = `${input.prefix}-${input.name}@example.com`
+  const user = await ensureUser(owner, email, input.name)
+  await ensureMembership(owner, {
+    userId: user.id,
+    organizationId: input.organizationId,
+    storeId: input.storeId,
+    roleId: input.roleId
+  })
+  // A real access token, issued by the same service that logs people in
+  const { accessToken } = await app.get(SessionService, { strict: false }).issue({
+    id: user.id,
+    email
+  })
+  return { id: user.id, email, token: accessToken }
 }
 
 // The roles are the system roles of the owner bootstrap, with the permissions of RolePresets: the
@@ -41,7 +72,6 @@ export async function seedTestContext(
   prefix: string
 ): Promise<TestContext> {
   const roles = await ensureSystemRoles(owner)
-  const sessions = app.get(SessionService, { strict: false })
 
   const orgA = await owner.organization.create({
     data: { name: `${prefix}-a`, slug: `${prefix}-a` }
@@ -53,26 +83,27 @@ export async function seedTestContext(
   const storeA2 = await ensureStore(owner, orgA.id, `${prefix}-store-a2`)
   const storeB = await ensureStore(owner, orgB.id, `${prefix}-store-b`)
 
-  async function actor(
+  const actor = (
     name: string,
     organizationId: string,
     storeId: string,
     role: keyof typeof RoleNames
-  ): Promise<Actor> {
-    const email = `${prefix}-${name}@example.com`
-    const user = await ensureUser(owner, email, name)
-    await ensureMembership(owner, {
-      userId: user.id,
+  ): Promise<Actor> =>
+    createActor(owner, app, {
+      prefix,
+      name,
       organizationId,
       storeId,
       roleId: roles[RoleNames[role]].id
     })
-    // A real access token, issued by the same service that logs people in
-    const { accessToken } = await sessions.issue({ id: user.id, email })
-    return { id: user.id, email, token: accessToken }
-  }
 
   return {
+    roleIds: {
+      [RoleNames.ADMIN]: roles[RoleNames.ADMIN].id,
+      [RoleNames.SUPERVISOR]: roles[RoleNames.SUPERVISOR].id,
+      [RoleNames.AGENT]: roles[RoleNames.AGENT].id,
+      [RoleNames.VIEWER]: roles[RoleNames.VIEWER].id
+    },
     orgA,
     orgB,
     storeA,

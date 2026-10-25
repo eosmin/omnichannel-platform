@@ -15,7 +15,7 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
     reason: 'Written by the pipelines and read only through the analytics queries'
   },
   ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
-  AuditLog: { step: '1.4', reason: 'Read through the audit log viewer of the organization' },
+  AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   BusinessHours: { step: '2.3', reason: 'Read and changed from the settings of the store' },
   ChannelConnection: {
     step: '2.6',
@@ -29,9 +29,7 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
-  Invitation: { step: '1.4', reason: 'Created and accepted through the team endpoints' },
   Media: { step: '3.4', reason: 'Has no endpoint yet' },
-  Membership: { step: '1.4', reason: 'Managed through the team endpoints' },
   Message: { step: '2.3', reason: 'Has no endpoint yet' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
@@ -41,10 +39,9 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   PluginInstallation: { step: '5.6', reason: 'Managed from Settings' },
   Product: { step: '4.1', reason: 'Has no endpoint yet' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
-  Role: { step: '1.4', reason: 'Managed through the team endpoints' },
   RoutingRule: { step: '2.3', reason: 'Managed from the settings of the store' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Snippet: { step: '2.3', reason: 'Managed from the settings of the store' },
-  StoreSettings: { step: '1.4', reason: 'Read and changed through the store endpoints' },
+  StoreSettings: { step: '2.3', reason: 'Read and changed through the store settings endpoints' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }
