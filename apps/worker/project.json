@@ -15,6 +15,17 @@
         "cwd": "{workspaceRoot}"
       },
       "outputs": ["{workspaceRoot}/dist/apps/worker"]
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "jest --config jest.integration.config.cts --runInBand",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+        }
+      }
     }
   },
   "implicitDependencies": ["workspace"]

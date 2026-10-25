@@ -17,6 +17,14 @@ describe('findDeprecations', () => {
       ['utcToZonedTime(date, zone)', 'utcToZonedTime('],
       ["import { createClient } from 'redis'", "from 'redis'"],
       ["import client from 'prom-client'", 'prom-client'],
+      [
+        "import { Html } from '@react-email/components'",
+        '@react-email/components, @react-email/render'
+      ],
+      [
+        "import { render } from '@react-email/render'",
+        '@react-email/components, @react-email/render'
+      ],
       ['useQuery(key, fetchOrders)', 'useQuery(key, fn)'],
       ['ReactDOM.render(<App />, root)', 'ReactDOM.render('],
       ['ConversationStatusLabels[status]', 'ConversationStatusLabels'],

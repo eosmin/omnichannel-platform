@@ -57,3 +57,13 @@ export const MetricNames = {
 } as const
 
 export type MetricName = (typeof MetricNames)[keyof typeof MetricNames]
+
+// The `status` label of MetricNames.EMAILS_SENT: what happened to an email, from the worker that
+// sent it and from the Resend webhook that reports on it afterwards.
+export const EmailMetricStatus = {
+  SENT: 'sent',
+  FAILED: 'failed',
+  BOUNCED: 'bounced',
+  COMPLAINED: 'complained'
+} as const
+export type EmailMetricStatusType = (typeof EmailMetricStatus)[keyof typeof EmailMetricStatus]

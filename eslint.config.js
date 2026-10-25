@@ -222,6 +222,7 @@ export default defineConfig([
       'libs/core/platform/config/env.ts',
       'scripts/db-role-env.ts',
       'libs/core/database/testing/connection-urls.ts',
+      'apps/worker/src/testing/test-env.ts',
       'libs/core/database/prisma/seed-env.ts',
       'prisma.config.ts',
       'libs/core/database/prisma.config.ts'

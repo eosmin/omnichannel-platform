@@ -237,10 +237,10 @@ The security foundation. Everything after this depends on it being correct.
 
 ### Step 1.0 — Queues, workers and email
 Placed first in this milestone because Step 1.1 sends magic links through the email queue.
-- [ ] `libs/core/queues/queues.module.ts` — `@nestjs/bullmq`, seven queues plus DLQ (the `ai` queue is DEFERRED)
-- [ ] `apps/worker`: `LeaderLockService`; the bootstrap, the health routes and the graceful shutdown exist since Step 0.5. Readiness gains the Redis check (`RedisHealthIndicator`, `PING`, with the `ioredis` client of the cache and the queues) in the api and the worker, and in the worker also that at least one BullMQ worker is running (`TDD_04 §4`)
-- [ ] Email worker + `ResendProvider` (+ Mailpit dev provider) + React Email template mechanism + server-side i18n
-- [ ] Resend webhook with transactional idempotency
+- [x] `libs/core/queues/queues.module.ts` — `@nestjs/bullmq`, seven queues plus DLQ (the `ai` queue is DEFERRED)
+- [x] `apps/worker`: `LeaderLockService`; the bootstrap, the health routes and the graceful shutdown exist since Step 0.5. Readiness gains the Redis check (`RedisHealthIndicator`, `PING`, with the `ioredis` client of the cache and the queues) in the api and the worker, and in the worker also that at least one BullMQ worker is running (`TDD_04 §4`)
+- [x] Email worker + `ResendProvider` (+ Mailpit dev provider) + React Email template mechanism + server-side i18n. The mechanism ships with the `MAGIC_LINK` template, because it needs one to be tested; Step 1.1 only sends it
+- [x] Resend webhook with transactional idempotency. A bounce or complaint is logged (address hashed) and counted, not stored: the suppression list that replaces `markEmailInvalid` is a later step (`MVP_TRIM_CHECKLIST.md` → "Email build details (Step 1.0)")
 
 **TDD:** `TDD_07 §1`, `§4`, `§5`
 **Done when:** a `SEND_EMAIL` job enqueued from a test is delivered and visible in Mailpit, and
@@ -391,7 +391,7 @@ on a page with a strict CSP.
 - [ ] shadcn/ui components, Lucide icons, Tailwind, CSP headers. Tailwind must scan `libs/core/domain` (`@source`), because `ConversationStatusColors` and `OrderStatusColors` hold class names that are otherwise purged
 - [ ] Auth flow with token refresh; `apiClient` setting `X-Store-Id`
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
-- [ ] i18n with next-intl, `es` and `en`, generated enum keys
+- [ ] i18n with next-intl, `es` and `en`, generated enum keys. **Also merge the email messages:** Step 1.0 left the `email.*` namespace in `libs/core/i18n-server/messages/{en,es}.json` (a directory `apps/web/messages` cannot exist earlier, because `validate:translations` then demands every generated key). Move that namespace into `apps/web/messages/{en,es}.json`, point `libs/core/i18n-server/src/messages.ts` at those files, and delete `libs/core/i18n-server/messages/` and its README
 - [ ] Dockerfile for `web`, added to the `security-scan` build and Trivy scan
 - [ ] CI: create the `e2e-tests` job (Postgres, Redis, SeaweedFS and Mailpit services; the Playwright browsers cached by version and the job skipped by a job-level `if` when the change cannot affect the web app; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
 
@@ -983,7 +983,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 0.5 | Observability | done | #28 | 2026-10-25 |
 | 0.6 | Tooling | done | #33 | 2026-10-25 |
 | **Milestone 1: Auth and tenancy** | | | | |
-| 1.0 | Queues, workers and email | todo | | |
+| 1.0 | Queues, workers and email | done | #34 | 2026-10-25 |
 | 1.1 | Authentication | todo | | |
 | 1.2 | Tenancy | todo | | |
 | 1.3 | Tenant isolation test suite | todo | | |

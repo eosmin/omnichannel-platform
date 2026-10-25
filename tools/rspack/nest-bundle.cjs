@@ -14,6 +14,18 @@ function isInstalled(name) {
   return fs.existsSync(path.join(WORKSPACE_ROOT, 'node_modules', name, 'package.json'))
 }
 
+function withAutomaticJsxRuntime(loader) {
+  if (loader.loader !== 'builtin:swc-loader') return loader
+  const jsc = loader.options.jsc
+  return {
+    ...loader,
+    options: {
+      ...loader.options,
+      jsc: { ...jsc, transform: { ...jsc.transform, react: { runtime: 'automatic' } } }
+    }
+  }
+}
+
 // The Nest CLI keeps node_modules out of the bundle by default. The image has no node_modules (it
 // would drag in every dependency of the monorepo, Next.js and React included), so everything is
 // bundled in. The output is ESM, and the bundled CommonJS packages expect require('events') to
@@ -22,6 +34,16 @@ function isInstalled(name) {
 // Rspack configuration of an app built with `nest build`: pass the name of the app (dist/apps/<name>).
 module.exports = appName => (defaults, rspack) => ({
   output: { ...defaults.output, path: path.join(WORKSPACE_ROOT, 'dist', 'apps', appName) },
+  // The Nest CLI's SWC loader compiles JSX with the classic runtime (React.createElement) and ignores
+  // "jsx": "react-jsx" of the tsconfig, so the email templates (.tsx) die with "React is not defined"
+  // in the bundle while passing under ts-jest. Use the automatic runtime, as the tsconfig says.
+  module: {
+    ...defaults.module,
+    rules: defaults.module.rules.map(rule => ({
+      ...rule,
+      use: rule.use.map(loader => withAutomaticJsxRuntime(loader))
+    }))
+  },
   externals: [
     ({ request }, callback) => {
       if (request === undefined) return callback()

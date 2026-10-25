@@ -1,6 +1,7 @@
 import { type DynamicModule, Global, Module } from '@nestjs/common'
 
 import { PrismaService, type PrismaServiceOptions } from './prisma.service'
+import { ProcessedWebhookEventsService } from './processed-webhook-events.service'
 
 @Global()
 @Module({})
@@ -11,9 +12,10 @@ export class DatabaseModule {
     return {
       module: DatabaseModule,
       providers: [
-        { provide: PrismaService, useFactory: (): PrismaService => new PrismaService(options) }
+        { provide: PrismaService, useFactory: (): PrismaService => new PrismaService(options) },
+        ProcessedWebhookEventsService
       ],
-      exports: [PrismaService]
+      exports: [PrismaService, ProcessedWebhookEventsService]
     }
   }
 }

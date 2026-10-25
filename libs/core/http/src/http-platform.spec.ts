@@ -15,6 +15,7 @@ import { PrismaService } from '@platform/core/database'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
 import { MetricsModule } from '@platform/core/metrics-module'
+import { REDIS_CLIENT } from '@platform/core/redis'
 
 import { configureHttpApp } from './configure-http-app'
 import { HealthModule } from './health/health.module'
@@ -74,6 +75,16 @@ const database = { queryRaw: jest.fn<Promise<unknown>, []>() }
 })
 class FakeDatabaseModule {}
 
+// The Redis the readiness probe pings
+const redis = { ping: jest.fn<Promise<string>, []>() }
+
+@Global()
+@Module({
+  providers: [{ provide: REDIS_CLIENT, useValue: { ping: () => redis.ping() } }],
+  exports: [REDIS_CLIENT]
+})
+class FakeRedisModule {}
+
 interface ErrorBody {
   error: { code: string; message: string; metadata: Record<string, unknown> }
   correlationId: string
@@ -89,6 +100,7 @@ describe('the HTTP platform', () => {
         LoggerModule.forRoot({ level: 'fatal', pretty: false }),
         MetricsModule,
         FakeDatabaseModule,
+        FakeRedisModule,
         HttpErrorsModule,
         HealthModule
       ],
@@ -104,6 +116,7 @@ describe('the HTTP platform', () => {
 
   beforeEach(() => {
     database.queryRaw.mockReset().mockResolvedValue([{ '?column?': 1 }])
+    redis.ping.mockReset().mockResolvedValue('PONG')
     jest.mocked(Sentry.captureException).mockClear()
   })
 
@@ -134,9 +147,24 @@ describe('the HTTP platform', () => {
       const response = await fetch(`${baseUrl}/health/ready`)
       const text = await response.text()
       const body = JSON.parse(text) as ErrorBody
-      expect(body.error.metadata).toEqual({ checks: { database: 'down' } })
+      expect(body.error.metadata).toEqual({ checks: { database: 'down', redis: 'up' } })
       expect(body.correlationId).toMatch(/^[0-9a-f-]{36}$/)
       expect(text).not.toContain('10.0.0.7')
+    })
+
+    it('reports redis in readiness, and refuses when it is down', async () => {
+      expect(await (await fetch(`${baseUrl}/health/ready`)).json()).toMatchObject({
+        info: { redis: { status: 'up' } }
+      })
+      redis.ping.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.9:6379'))
+      const response = await fetch(`${baseUrl}/health/ready`)
+      const text = await response.text()
+      expect(response.status).toBe(503)
+      expect((JSON.parse(text) as ErrorBody).error.metadata).toEqual({
+        checks: { database: 'up', redis: 'down' }
+      })
+      expect(text).not.toContain('10.0.0.9')
+      expect((await fetch(`${baseUrl}/health`)).status).toBe(200)
     })
 
     it('refuses readiness when the database does not answer in time', async () => {

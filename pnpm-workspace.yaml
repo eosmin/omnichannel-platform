@@ -8,3 +8,4 @@ allowBuilds:
   esbuild: false
   '@prisma/engines': false
   prisma: false
+  msgpackr-extract: false
