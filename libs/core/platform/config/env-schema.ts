@@ -51,6 +51,9 @@ export const envSchema = z
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
+    // How long a login lasts at most, however often its refresh token is used (sliding refresh has
+    // no end of its own). Checked below: it cannot be shorter than one refresh token.
+    SESSION_MAX_AGE: duration('30d'),
     // Reverse proxies in front of the api whose X-Forwarded-For is trusted (0 = none, the laptop).
     // The rate limits are per client IP, so a wrong value makes every client look like the proxy:
     // a deployed environment must say it (checked below), and the laptop default is applied after.
@@ -117,6 +120,14 @@ export const envSchema = z
   .check(ctx => {
     const env = ctx.value
     const isDeployed = DEPLOYED_ENVIRONMENTS.includes(env.NODE_ENV)
+    if (env.SESSION_MAX_AGE < env.REFRESH_TOKEN_EXPIRES_IN) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'SESSION_MAX_AGE cannot be shorter than REFRESH_TOKEN_EXPIRES_IN',
+        path: ['SESSION_MAX_AGE'],
+        input: env.SESSION_MAX_AGE
+      })
+    }
     if (env.RESEND_API_KEY === undefined && (isDeployed || env.SMTP_URL === undefined)) {
       // One message, the one that applies: a laptop may use Mailpit, a deployed environment may not
       ctx.issues.push({
