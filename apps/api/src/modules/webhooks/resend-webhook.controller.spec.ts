@@ -7,6 +7,7 @@ import type { ResendWebhookVerifier } from '@platform/core/email'
 import { PlatformException } from '@platform/core/errors'
 import type { TrackAnalyticsJob } from '@platform/core/queues'
 
+import type { EmailValidityService } from './email-validity.service'
 import { ResendWebhookController } from './resend-webhook.controller'
 
 const STORE_ID = '0b5f3f0e-6c36-4a4f-9d16-5b1d1c2f7a10'
@@ -17,12 +18,14 @@ interface Harness {
   inc: jest.Mock
   warn: jest.Mock<void, [Record<string, unknown>, string]>
   runOnce: jest.Mock
+  markInvalid: jest.Mock
 }
 
 function build(verified: unknown, { duplicate = false } = {}): Harness {
   const add = jest.fn()
   const inc = jest.fn()
   const warn = jest.fn<void, [Record<string, unknown>, string]>()
+  const markInvalid = jest.fn()
   const runOnce = jest.fn(
     async (_source: string, _id: string, _type: string, handler: () => Promise<void>) => {
       if (duplicate) return false
@@ -39,11 +42,12 @@ function build(verified: unknown, { duplicate = false } = {}): Harness {
   const controller = new ResendWebhookController(
     verifier,
     { runOnce } as unknown as ProcessedWebhookEventsService,
+    { markInvalid } as unknown as EmailValidityService,
     { add } as unknown as Queue<TrackAnalyticsJob>,
     { inc } as unknown as Counter<string>,
     { warn, setContext: jest.fn() } as unknown as PinoLogger
   )
-  return { controller, add, inc, warn, runOnce }
+  return { controller, add, inc, warn, runOnce, markInvalid }
 }
 
 const request = { rawBody: Buffer.from('{}') } as never // Only rawBody is read, and it is passed through
@@ -124,6 +128,66 @@ describe('ResendWebhookController', () => {
     expect(warn.mock.calls[0]?.[0]).toMatchObject({
       type,
       emailHashes: [expect.stringMatching(/^[0-9a-f]{16}$/)]
+    })
+  })
+
+  describe('addresses the provider reports as dead', () => {
+    it.each([
+      ['a permanent bounce', 'email.bounced', { bounce: { type: 'Permanent' } }],
+      ['a permanent bounce in any case', 'email.bounced', { bounce: { type: 'PERMANENT' } }],
+      ['a complaint', 'email.complained', {}]
+    ])('marks the recipient invalid after %s', async (_name, type, extra) => {
+      const { controller, markInvalid } = build({
+        type,
+        data: { to: ['Person@Example.com'], ...extra }
+      })
+      await call(controller)
+      expect(markInvalid).toHaveBeenCalledWith(['Person@Example.com'])
+    })
+
+    it('marks nobody when the message had several recipients, because it does not say which one', async () => {
+      const { controller, markInvalid, warn } = build({
+        type: 'email.bounced',
+        data: { to: ['a@example.com', 'b@example.com'], bounce: { type: 'Permanent' } }
+      })
+      await call(controller)
+      expect(markInvalid).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ recipients: 2 }),
+        expect.stringContaining('several recipients')
+      )
+    })
+
+    it('fails the delivery when the database does, so that the provider sends it again', async () => {
+      const { controller, markInvalid } = build({
+        type: 'email.complained',
+        data: { to: ['a@example.com'] }
+      })
+      markInvalid.mockRejectedValueOnce(new Error('database down'))
+      await expect(call(controller)).rejects.toThrow('database down')
+    })
+
+    it.each([
+      ['a transient bounce', 'email.bounced', { bounce: { type: 'Transient' } }],
+      ['an undetermined bounce', 'email.bounced', { bounce: { type: 'Undetermined' } }],
+      ['a bounce that says nothing of its type', 'email.bounced', {}],
+      ['a failed send', 'email.failed', { bounce: { type: 'Permanent' } }]
+    ])('leaves the recipients valid after %s', async (_name, type, extra) => {
+      const { controller, markInvalid } = build({
+        type,
+        data: { to: ['person@example.com'], ...extra }
+      })
+      await call(controller)
+      expect(markInvalid).not.toHaveBeenCalled()
+    })
+
+    it('marks nothing when the event is a retry that was already processed', async () => {
+      const { controller, markInvalid } = build(
+        { type: 'email.complained', data: { to: ['person@example.com'] } },
+        { duplicate: true }
+      )
+      await call(controller)
+      expect(markInvalid).not.toHaveBeenCalled()
     })
   })
 

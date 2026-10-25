@@ -24,3 +24,7 @@ export const ResendEventTypes = {
   EMAIL_RECEIVED: 'email.received' // Inbound email channel, TDD_10 §5.5
 } as const
 export type ResendEventType = (typeof ResendEventTypes)[keyof typeof ResendEventTypes]
+
+// data.bounce.type of an email.bounced event. Only a permanent one (a hard bounce) says the address
+// cannot receive mail; a transient one (a full mailbox) can pass. Compared in lower case.
+export const ResendBounceTypes = { PERMANENT: 'permanent' } as const
