@@ -38,6 +38,11 @@ export const DEPRECATED_APIS: readonly DeprecatedApi[] = [
   },
   { name: 'prom-client', pattern: /prom-client/, replacement: '@prometheus-io/client' },
   {
+    name: '@react-email/components, @react-email/render',
+    pattern: /@react-email\/(components|render)\b/,
+    replacement: 'react-email (React Email 6 exports the components and render from one package)'
+  },
+  {
     name: 'useQuery(key, fn)',
     // The old form takes the key first: a literal, or a variable named key. A first argument that
     // is a call or an options object is the current form

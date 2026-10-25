@@ -202,9 +202,9 @@ apps/web/
 | Prisma | `prisma@7.10.1` (CLI), `@prisma/client@7.10.1`, `@prisma/adapter-pg@7.10.1`, `pg@8.16.3`, `@prisma/extension-read-replicas@0.5.0` | Prisma 7 requires a driver adapter; connection string and migrations config live in `prisma.config.ts`. Generator is `prisma-client` with an explicit `output`. Read replica routing via the official extension |
 | PostgreSQL | `18.6` (server) | Relational integrity, JSONB for flexible metadata, mature FTS, RLS support |
 | Redis | `8.10.1` (server), `ioredis@6.0.0` (client) | Cache, BullMQ backing store, Socket.io pub/sub, presence. `ioredis` chosen over the `redis` package — wider adoption with BullMQ/NestJS, richer cluster/sentinel support. **Every Redis client in the codebase is ioredis**, including the Socket.io adapter |
-| BullMQ | `bullmq@6.3.4`, `@nestjs/bullmq@11.0.3`, `@bull-board/api@9.6.1`, `@bull-board/nestjs@9.6.1`, `@bull-board/express@9.6.1` | Reliable job processing with retries, backoff, DLQ. Queues and workers are registered through `@nestjs/bullmq` (no module-level `new Queue()`). Bull Board is mounted via `@bull-board/nestjs` with the Express adapter, behind `StaffAuthGuard` (it is a staff tool, `TDD_15`) |
+| BullMQ | `bullmq@6.3.4`, `@nestjs/bullmq@12.0.0`, `@bull-board/api@9.6.1`, `@bull-board/nestjs@9.6.1`, `@bull-board/express@9.6.1` | Reliable job processing with retries, backoff, DLQ. Queues and workers are registered through `@nestjs/bullmq` (no module-level `new Queue()`). Bull Board is mounted via `@bull-board/nestjs` with the Express adapter, behind `StaffAuthGuard` (it is a staff tool, `TDD_15`) |
 | Event bus | `@nestjs/event-emitter@3.0.1` | In-process domain events (`@OnEvent`) |
-| Scheduling | `@nestjs/schedule@6.0.0` | `@Cron` schedulers — **registered only in `apps/worker`** |
+| Scheduling | `@nestjs/schedule@12.0.2` | `@Cron` schedulers — **registered only in `apps/worker`** |
 | Rate limiting | `@nestjs/throttler@6.4.0`, `@nest-lab/throttler-storage-redis@1.1.0` | Redis-backed so limits hold across instances |
 | Health | `@nestjs/terminus@12.1.0` | Liveness/readiness indicators. Terminus 11 does not declare Nest 12; 12 replaced the `HealthIndicator` base class with `HealthIndicatorService` |
 | Passport | `passport@0.7.0`, `passport-jwt@4.0.1`, `passport-google-oauth20@2.0.0`, `openid-client@6.6.2`, `@nestjs/passport@12.0.0`, `@nestjs/jwt@12.0.1` | JWT strategy for the tenant API, Google OAuth for customer login, generic OIDC (Google Workspace / Okta) for staff SSO |
@@ -216,7 +216,7 @@ apps/web/
 | Image processing | `sharp@0.35.4` | — |
 | Virus scanning | `clamscan@2.4.0` + `clamav/clamav` container | Inbound and uploaded files (`TDD_07` §6.5) |
 | HTTP client | `axios@1.20.0` | Outbound calls to Meta Graph API, tenant webhooks |
-| Email | `resend@6.25.0`, `@react-email/components@1.0.12`, `react-email@6.9.3` (template dev/preview) | Outbound + inbound (Resend Receiving for the email channel) |
+| Email | `resend@6.25.0`, `react-email@6.9.3` (components and `render`), `nodemailer@10.2.1` (dev-only Mailpit provider) | Outbound + inbound (Resend Receiving for the email channel) |
 | Push | `web-push@3.6.7` | VAPID web push |
 | Cache | `node-cache@5.1.2` | L1 in-memory cache |
 | Dates | `date-fns@4.1.0`, `date-fns-tz@3.2.0` | `toZonedTime`/`fromZonedTime` (v3 API) |
@@ -363,11 +363,11 @@ download path verify that prefix against the current store before touching the o
 | `@nestjs/websockets`, `@nestjs/platform-socket.io` | `12.0.1` |
 | `@nestjs/swagger` | `12.0.1` |
 | `@nestjs/event-emitter` | `3.0.1` |
-| `@nestjs/schedule` | `6.0.0` |
+| `@nestjs/schedule` | `12.0.2` |
 | `@nestjs/throttler` | `6.4.0` |
 | `@nest-lab/throttler-storage-redis` | `1.1.0` |
 | `@nestjs/terminus` | `12.1.0` |
-| `@nestjs/bullmq` | `11.0.3` |
+| `@nestjs/bullmq` | `12.0.0` |
 | `nestjs-zod` | `5.0.1` |
 | `reflect-metadata` | `0.2.2` — peer of `@nestjs/common` |
 | `rxjs` | `7.8.2` — peer of `@nestjs/common` |
@@ -405,8 +405,8 @@ download path verify that prefix against the current store before touching the o
 | Package | Version |
 |---|---|
 | `resend` | `6.25.0` |
-| `@react-email/components` | `1.0.12` |
-| `react-email` (template dev CLI) | `6.9.3` |
+| `react-email` (components and `render`; `@react-email/components` and `@react-email/render` are deprecated since React Email 6) | `6.9.3` |
+| `nodemailer` (the dev-only Mailpit provider, SMTP; ships its own types) | `10.2.1` |
 
 **Infra — Phase 1 (not npm packages; version = server/service)**
 

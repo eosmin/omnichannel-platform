@@ -717,7 +717,7 @@ export type EmailTemplate = typeof EmailTemplates[keyof typeof EmailTemplates]
 
 ```tsx
 // libs/core/email/templates/EmailVerification.tsx
-import { Html, Head, Body, Container, Section, Text, Button, Img, Hr } from '@react-email/components'
+import { Html, Head, Body, Container, Section, Text, Button, Img, Hr } from 'react-email'
 import { createTranslator } from '../../i18n'
 import { emailAssets } from '../email-assets'          // Absolute URLs from env (CDN), never literals
 import { main, container, heading, paragraph, buttonContainer, button, link, hr, footer } from './styles'
