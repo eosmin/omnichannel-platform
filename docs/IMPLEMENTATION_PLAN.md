@@ -987,7 +987,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 1: Auth and tenancy** | | | | |
 | 1.0 | Queues, workers and email | done | #34 | 2026-10-25 |
 | 1.1 | Authentication | done | #35 | 2026-10-25 |
-| 1.2 | Tenancy | todo | | |
+| 1.2 | Tenancy | done | #39 | 2026-10-25 |
 | 1.3 | Tenant isolation test suite | todo | | |
 | 1.4 | Organizations, stores, memberships | todo | | |
 | **Milestone 2: Core messaging** | | | | |
