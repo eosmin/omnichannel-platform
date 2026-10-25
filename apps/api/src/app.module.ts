@@ -1,9 +1,22 @@
 import { Module } from '@nestjs/common'
 
+import { AuditModule } from '@platform/core/audit-module'
 import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http'
 
 import { AuthModule } from './modules/auth/auth.module'
+import { TenancyModule } from './modules/tenancy'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
 
-@Module({ imports: [HttpPlatformModule, BullBoardPlatformModule, AuthModule, WebhooksModule] })
+// TenancyModule comes after HttpPlatformModule: the guards run in the order registered, and the rate
+// limit and the token check come first
+@Module({
+  imports: [
+    HttpPlatformModule,
+    AuditModule,
+    TenancyModule,
+    BullBoardPlatformModule,
+    AuthModule,
+    WebhooksModule
+  ]
+})
 export class AppModule {}
