@@ -1,0 +1,24 @@
+{
+  "name": "core-audit",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/core/audit/src",
+  "projectType": "library",
+  "tags": ["scope:core", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {},
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^prisma-generate"],
+      "options": {
+        "command": "jest --config jest.integration.config.cts --runInBand",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+        }
+      }
+    }
+  }
+}

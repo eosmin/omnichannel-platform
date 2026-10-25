@@ -33,6 +33,7 @@
       "@platform/core/cache": ["libs/core/platform/cache/index.ts"],
       "@platform/core/queues": ["libs/core/platform/queues/index.ts"],
       "@platform/core/audit": ["libs/core/platform/audit/index.ts"],
+      "@platform/core/audit-module": ["libs/core/audit/src/index.ts"],
       "@platform/core/metrics": ["libs/core/platform/metrics/index.ts"],
       "@platform/core/compliance": ["libs/core/platform/compliance/index.ts"],
       "@platform/core/config": ["libs/core/platform/config/index.ts"],
