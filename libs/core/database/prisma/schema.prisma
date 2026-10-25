@@ -178,6 +178,7 @@ model Session {
   userAgent        String?   @map("user_agent")
   ipAddress        String?   @map("ip_address")
   expiresAt        DateTime  @map("expires_at")
+  familyExpiresAt  DateTime  @map("family_expires_at") // The login ends here whatever the refreshes: the same value across the family
   consumedAt       DateTime? @map("consumed_at")
   revokedAt        DateTime? @map("revoked_at")
   revokedReason    String?   @map("revoked_reason")

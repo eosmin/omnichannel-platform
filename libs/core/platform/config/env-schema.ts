@@ -9,6 +9,7 @@ import { DURATION_PATTERN, durationToSeconds } from './duration'
 // a deployed environment, where they would protect the channel credentials with a public key.
 const PLACEHOLDER_JWT_SECRET_PREFIX = 'change-me'
 const PLACEHOLDER_ENCRYPTION_KEY = /^0{64}$/
+const MAX_SESSION_MAX_AGE_SECONDS = 365 * 86_400
 const DEPLOYED_ENVIRONMENTS: readonly string[] = ['staging', 'production']
 const LOCAL_HOSTNAMES: readonly string[] = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0']
 
@@ -51,6 +52,9 @@ export const envSchema = z
     // Written as "15m" or "7d", read by the code in seconds
     JWT_EXPIRES_IN: duration('15m'),
     REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
+    // How long a login lasts at most, however often its refresh token is used (sliding refresh has
+    // no end of its own). Checked below: it cannot be shorter than one refresh token.
+    SESSION_MAX_AGE: duration('30d'),
     // Reverse proxies in front of the api whose X-Forwarded-For is trusted (0 = none, the laptop).
     // The rate limits are per client IP, so a wrong value makes every client look like the proxy:
     // a deployed environment must say it (checked below), and the laptop default is applied after.
@@ -117,6 +121,24 @@ export const envSchema = z
   .check(ctx => {
     const env = ctx.value
     const isDeployed = DEPLOYED_ENVIRONMENTS.includes(env.NODE_ENV)
+    if (env.SESSION_MAX_AGE > MAX_SESSION_MAX_AGE_SECONDS) {
+      // Far enough to be no cap at all, and past a point where Date overflows into an invalid date,
+      // which would fail every login with an error nobody can read
+      ctx.issues.push({
+        code: 'custom',
+        message: 'SESSION_MAX_AGE cannot be longer than 365 days',
+        path: ['SESSION_MAX_AGE'],
+        input: env.SESSION_MAX_AGE
+      })
+    }
+    if (env.SESSION_MAX_AGE < env.REFRESH_TOKEN_EXPIRES_IN) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'SESSION_MAX_AGE cannot be shorter than REFRESH_TOKEN_EXPIRES_IN',
+        path: ['SESSION_MAX_AGE'],
+        input: env.SESSION_MAX_AGE
+      })
+    }
     if (env.RESEND_API_KEY === undefined && (isDeployed || env.SMTP_URL === undefined)) {
       // One message, the one that applies: a laptop may use Mailpit, a deployed environment may not
       ctx.issues.push({

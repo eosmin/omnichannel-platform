@@ -71,9 +71,13 @@ export class SessionService {
     context: SessionContext = {},
     tx?: PrismaTransaction
   ): Promise<IssuedSession> {
+    const familyExpiresAt = new Date(
+      Date.now() + this.settings.sessionMaxAgeSeconds * MS_PER_SECOND
+    )
     const { issued } = await this.createSession(
       user,
       randomUUID(),
+      familyExpiresAt,
       context,
       tx ?? this.prisma.client
     )
@@ -89,7 +93,12 @@ export class SessionService {
     // Unknown, or from a family that was revoked (logout, a reuse, the list of sessions)
     if (session === null || session.revokedAt !== null) throw invalidToken()
     if (session.consumedAt !== null) return this.reuseDetected(session.familyId, session.userId)
-    if (session.expiresAt.getTime() <= Date.now()) {
+    // The row expires with the cap too (createSession), but the cap is checked on its own: it is the
+    // end of the login, and a shortened cap in the data must hold even for rows that outlive it
+    if (
+      session.expiresAt.getTime() <= Date.now() ||
+      session.familyExpiresAt.getTime() <= Date.now()
+    ) {
       throw new PlatformException(
         ErrorCodes.AUTH_TOKEN_EXPIRED,
         'refresh token expired',
@@ -104,7 +113,13 @@ export class SessionService {
         data: { consumedAt: new Date() }
       })
       if (claim.count === 0) return null
-      const next = await this.createSession(session.user, session.familyId, context, tx)
+      const next = await this.createSession(
+        session.user,
+        session.familyId,
+        session.familyExpiresAt,
+        context,
+        tx
+      )
       await tx.session.update({
         where: { id: session.id },
         data: { replacedById: next.sessionId }
@@ -122,8 +137,16 @@ export class SessionService {
   }
 
   async listActive(userId: string, currentFamilyId: string): Promise<ActiveSession[]> {
+    const now = new Date()
     const rows = await this.prisma.client.session.findMany({
-      where: { userId, revokedAt: null, consumedAt: null, expiresAt: { gt: new Date() } },
+      // The end of the login too: a refresh past it is refused, so the login is not active
+      where: {
+        userId,
+        revokedAt: null,
+        consumedAt: null,
+        expiresAt: { gt: now },
+        familyExpiresAt: { gt: now }
+      },
       orderBy: { createdAt: 'desc' }
     })
     return rows.map(row => ({
@@ -173,11 +196,18 @@ export class SessionService {
   private async createSession(
     user: SessionUser,
     familyId: string,
+    familyExpiresAt: Date,
     context: SessionContext,
     db: Database
   ): Promise<{ issued: IssuedSession; sessionId: string }> {
     const refreshToken = generateToken()
-    const expiresAt = new Date(Date.now() + this.settings.refreshTtlSeconds * MS_PER_SECOND)
+    // A refresh token lasts its own time, but never past the end of the login it belongs to
+    const expiresAt = new Date(
+      Math.min(
+        Date.now() + this.settings.refreshTtlSeconds * MS_PER_SECOND,
+        familyExpiresAt.getTime()
+      )
+    )
     const row = await db.session.create({
       data: {
         userId: user.id,
@@ -185,7 +215,8 @@ export class SessionService {
         refreshTokenHash: hashToken(refreshToken),
         userAgent: context.userAgent?.slice(0, MAX_USER_AGENT_LENGTH),
         ipAddress: context.ipAddress,
-        expiresAt
+        expiresAt,
+        familyExpiresAt
       }
     })
     const claims: AccessTokenClaims = { sub: user.id, sid: familyId, email: user.email }
