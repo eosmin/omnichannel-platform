@@ -15,7 +15,7 @@ export class LoggerModule {
         // worker thread that loads the module by path, which a bundle cannot offer
         PinoLoggerModule.forRoot({
           pinoHttp: options.pretty
-            ? [buildPinoHttpOptions(options), pinoPretty({ colorize: true })]
+            ? [buildPinoHttpOptions(options), pinoPretty({ colorize: true, singleLine: true })]
             : buildPinoHttpOptions(options)
         })
       ],
