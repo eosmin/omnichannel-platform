@@ -87,6 +87,13 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      # The email suites send through it and read what arrived over its HTTP API
+      mailpit:
+        image: axllent/mailpit:v1.28
+        ports: ['1025:1025', '8025:8025']
+        options: >-
+          --health-cmd "wget -qO- http://127.0.0.1:8025/readyz"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
       DB_APP_PASSWORD: ci_app_password
@@ -104,7 +111,7 @@ jobs:
       - name: Every migration has a rollback
         run: pnpm validate:rollbacks
       - name: Integration suites
-        run: pnpm exec nx run core-database:test-integration
+        run: pnpm exec nx run-many --target=test-integration --projects=core-database,worker
       - name: The api and the worker start and answer
         run: |
           pnpm exec nx run-many --target=build --projects=api,worker
@@ -120,6 +127,8 @@ jobs:
           DATABASE_URL=$worker_url APP_ROLE=worker PORT=8082 node dist/apps/worker/main.js > worker.log 2>&1 &
           pnpm exec tsx scripts/smoke-http.ts http://localhost:8081
           pnpm exec tsx scripts/smoke-http.ts http://localhost:8082
+          # The templates render in the bundle too, not only under ts-jest
+          pnpm exec tsx scripts/smoke-email.ts
       - name: Service logs
         if: failure()
         run: tail -n 40 api.log worker.log
@@ -155,6 +164,12 @@ jobs:
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U platform -d platform_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:8.10.1-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,6 +212,7 @@ jobs:
             -e DATABASE_URL=postgresql://platform:ci_password@localhost:5432/platform_ci \
             -e JWT_SECRET="$(openssl rand -hex 24)" \
             -e CREDENTIALS_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+            -e RESEND_API_KEY=re_ci_placeholder \
             platform-${{ matrix.app }}:ci
           curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused \
             http://localhost:${{ matrix.port }}/health/ready
