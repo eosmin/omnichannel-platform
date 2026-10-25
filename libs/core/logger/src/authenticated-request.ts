@@ -7,8 +7,8 @@ import type { AuthenticatedUser, Permission } from '@platform/core/auth'
 export interface AuthenticatedRequest extends Request {
   correlationId: string
   user?: AuthenticatedUser
-  store?: { id: string }
+  store?: { id: string; organizationId: string; name: string }
   organization?: { id: string }
-  membership?: { id: string }
+  membership?: { id: string; roleId: string; roleName: string }
   permissions?: readonly Permission[]
 }

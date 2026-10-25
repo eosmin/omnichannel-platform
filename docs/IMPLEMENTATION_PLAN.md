@@ -265,11 +265,11 @@ unknown email returns the same response as for a known one; and refresh token re
 the session family; `/admin/queues` returns 404 with the flag off, 401 without a token, 403 for an email outside the allowlist and 200 for one inside it; and `unit-tests` is green on GitHub.
 
 ### Step 1.2 — Tenancy
-- [ ] `TenantGuard` reading `X-Store-Id` (cached context: store, organization, membership; no subscription). `AccessLevelGuard` is DEFERRED with dunning
-- [ ] `@CurrentStore()`, `@CurrentUser()`, `@CurrentOrganization()` decorators
-- [ ] `PermissionGuard` + `@RequirePermissions()`
-- [ ] `AuditService` + `AuditInterceptor`
-- [ ] System roles come from the owner bootstrap of Step 0.4; `seedTestContext` reuses the same function
+- [x] `TenantGuard` reading `X-Store-Id` (cached context: store, organization, membership; no subscription). Global and fail closed, with `@SkipTenant()` for the routes of a person; the cache is a `CacheService` of its own (`libs/core/redis`). `AccessLevelGuard` is DEFERRED with dunning
+- [x] `@CurrentStore()`, `@CurrentUser()`, `@CurrentOrganization()` decorators
+- [x] `PermissionGuard` + `@RequirePermissions()`
+- [x] `AuditService` + `AuditInterceptor` + `@Audit()` (`libs/core/audit`); the refusals of both guards are audited, with a budget per user
+- [x] System roles come from the owner bootstrap of Step 0.4; `seedTestContext` reuses the same function when it is created in Step 1.3 (the suites of this step seed with `apps/api/src/testing/tenant-fixtures.ts`)
 
 **TDD:** `TDD_01 §3.2`, `TDD_02 §4`, `TDD_05 §9`
 **Done when:** the tenant isolation test suite passes for a first resource, a request with
@@ -987,7 +987,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 1: Auth and tenancy** | | | | |
 | 1.0 | Queues, workers and email | done | #34 | 2026-10-25 |
 | 1.1 | Authentication | done | #35 | 2026-10-25 |
-| 1.2 | Tenancy | todo | | |
+| 1.2 | Tenancy | done | #39 | 2026-10-25 |
 | 1.3 | Tenant isolation test suite | todo | | |
 | 1.4 | Organizations, stores, memberships | todo | | |
 | **Milestone 2: Core messaging** | | | | |

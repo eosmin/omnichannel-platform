@@ -29,6 +29,12 @@ export const CacheKeys = {
     permissions: (userId: string, storeId: string) => `perms:${userId}:${storeId}`
   },
 
+  // How many refusals of one user were written to the audit log this minute (the budget that keeps a
+  // prober from filling the table)
+  audit: {
+    denialBudget: (userId: string, action: string) => `audit:denials:${userId}:${action}`
+  },
+
   presence: {
     store: (storeId: string) => `presence:store:${storeId}`, // SET of userIds
     sockets: (storeId: string, userId: string) =>

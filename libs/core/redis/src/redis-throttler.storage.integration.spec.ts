@@ -10,9 +10,15 @@ const SHORT_MS = 400 // A window or a block short enough to wait for
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 describe('RedisThrottlerStorage', () => {
-  const redis = new Redis(REDIS_URL)
-  const otherReplica = new Redis(REDIS_URL)
-  const storage = new RedisThrottlerStorage(redis)
+  // Opened in beforeAll: a run filtered with -t would otherwise leave them open (see cache.service.integration.spec.ts)
+  let redis: Redis
+  let otherReplica: Redis
+  let storage: RedisThrottlerStorage
+  beforeAll(() => {
+    redis = new Redis(REDIS_URL)
+    otherReplica = new Redis(REDIS_URL)
+    storage = new RedisThrottlerStorage(redis)
+  })
   const name = `it-${randomUUID().slice(0, 8)}`
   const keys: string[] = []
   const newKey = (): string => {

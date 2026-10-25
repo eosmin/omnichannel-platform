@@ -7,6 +7,7 @@ import { Queue } from 'bullmq'
 import type { Redis } from 'ioredis'
 import pg from 'pg'
 
+import { AuditModule } from '@platform/core/audit-module'
 import { MAGIC_LINK_EMAIL_THROTTLER } from '@platform/core/auth'
 import { AccessTokenModule, type AuthSettings } from '@platform/core/auth-module'
 import { CacheKeys } from '@platform/core/cache'
@@ -28,7 +29,10 @@ import { AccountService } from '../modules/auth/account.service'
 import { AuthController } from '../modules/auth/auth.controller'
 import { emailLimitKey, MagicLinkService } from '../modules/auth/magic-link.service'
 import { SessionService } from '../modules/auth/session.service'
+import { TenancyModule } from '../modules/tenancy'
 
+import { type TenantFixtures, tenantFixtures } from './tenant-fixtures'
+import { TenantProbeController } from './tenant-probe.controller'
 import { REDIS_URL } from './test-env'
 
 export const FRONTEND_URL = 'https://app.example.com'
@@ -58,6 +62,8 @@ export interface AuthTestApp {
   emailJobs(): Promise<SendEmailJob[]>
   // The queue the services write to, to look at the jobs themselves
   emailQueue: Queue
+  // Stores, roles and memberships for the tenancy suites
+  tenants: TenantFixtures
   // The per-address limit of the magic link lives in a Redis that every run shares: a test that
   // asks for one fixed address starts from a clean count
   forgetEmailLimit(email: string): Promise<void>
@@ -83,6 +89,9 @@ export async function startAuthTestApp(
       // Before the auth module, as in HttpPlatformModule: the guards run in the order registered
       ThrottlerPlatformModule,
       AccessTokenModule.forRoot(settings),
+      // After the token check, as in the app: who is the store, then what may the user do there
+      AuditModule,
+      TenancyModule,
       // Mounted like the app does when BULL_BOARD_ENABLED is on; absent otherwise
       ...(options.bullBoardAdmins === undefined
         ? []
@@ -93,7 +102,7 @@ export async function startAuthTestApp(
             })
           ])
     ],
-    controllers: [AuthController],
+    controllers: [AuthController, TenantProbeController],
     providers: [SessionService, MagicLinkService, AccountService]
   }).compile()
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true })
@@ -113,6 +122,7 @@ export async function startAuthTestApp(
     }
   }
 
+  const tenants = tenantFixtures(asOwner, runId)
   let counter = 0
   const queueHandle = new Queue(QueueNames.EMAIL, {
     connection: { url: REDIS_URL },
@@ -129,6 +139,7 @@ export async function startAuthTestApp(
     runId,
     asOwner,
     emailQueue: queueHandle,
+    tenants,
     forgetEmailLimit: async email => {
       const key = CacheKeys.rateLimit(MAGIC_LINK_EMAIL_THROTTLER, emailLimitKey(email))
       await app.get<Redis>(REDIS_CLIENT).del(key, `${key}:block`)
@@ -153,9 +164,15 @@ export async function startAuthTestApp(
       return jobs.map(job => job.data as SendEmailJob) // The queue was written by the code under test
     },
     cleanUp: async () => {
-      await asOwner(client =>
-        client.query('DELETE FROM users WHERE email LIKE $1', [`it-${runId}-%`])
-      )
+      await tenants.deleteAll()
+      await asOwner(async client => {
+        // The audit log keeps its rows for the users; the owner may clear them, the api never can
+        await client.query(
+          'DELETE FROM audit_logs WHERE user_id IN (SELECT id FROM users WHERE email LIKE $1)',
+          [`it-${runId}-%`]
+        )
+        await client.query('DELETE FROM users WHERE email LIKE $1', [`it-${runId}-%`])
+      })
       await queueHandle.obliterate({ force: true })
       await queueHandle.close()
       await app.close()

@@ -7,6 +7,8 @@ import { CurrentUser, Public } from '@platform/core/auth-module'
 import { NoStore, RateLimit, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
+import { SkipTenant } from '../tenancy'
+
 import { type AccountProfile, AccountService } from './account.service'
 import {
   type MagicLinkConsumeBody,
@@ -33,6 +35,8 @@ function contextOf(req: Request): SessionContext {
   return { userAgent: req.get('user-agent'), ipAddress: req.ip }
 }
 
+// Every route here belongs to a person (log in, refresh, the session, the account), none to a store
+@SkipTenant()
 @Controller()
 export class AuthController {
   constructor(
