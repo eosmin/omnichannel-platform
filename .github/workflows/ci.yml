@@ -56,13 +56,14 @@ jobs:
       - run: pnpm validate:translations
       - run: pnpm validate:env
       - run: pnpm validate:isolation
+      # test: the unit tests, until the `unit-tests` job of Step 1.1 takes them with their coverage
       # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
-      - name: Lint, type-check and build (affected on pull requests, everything on main)
+      - name: Lint, type-check, test and build (affected on pull requests, everything on main)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
+            pnpm exec nx affected --targets=lint,type-check,test,build --parallel=3
           else
-            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
+            pnpm exec nx run-many --targets=lint,type-check,test,build --all --parallel=3
           fi
 
   # The suites that need a real database. The api connects as platform_app, never as the owner.
