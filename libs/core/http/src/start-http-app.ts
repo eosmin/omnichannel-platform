@@ -1,5 +1,6 @@
 import { type NestApplicationOptions, type Type } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import * as Sentry from '@sentry/nestjs'
 
 import { env } from '@platform/core/config/env'
@@ -10,7 +11,12 @@ export async function startHttpApp(
   rootModule: Type<unknown>,
   options: Pick<NestApplicationOptions, 'rawBody'> = {}
 ): Promise<void> {
-  const app = await NestFactory.create(rootModule, { ...options, bufferLogs: true })
+  const app = await NestFactory.create<NestExpressApplication>(rootModule, {
+    ...options,
+    bufferLogs: true
+  })
+  // How many proxies in front of the api to believe about the client IP: the rate limits count per IP
+  app.set('trust proxy', env.TRUST_PROXY_HOPS)
   await configureHttpApp(app)
   app.enableShutdownHooks()
   await app.listen(env.PORT)

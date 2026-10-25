@@ -7,14 +7,17 @@ import { ErrorCodes, type ErrorResponse } from '@platform/core/errors'
 import { type AuthenticatedRequest, correlationIdMiddleware } from '@platform/core/logger'
 import { useHttpMetrics } from '@platform/core/metrics-module'
 
+import { apiSecurityHeaders } from './security-headers'
+
 interface Fallback {
   use: (handler: (req: AuthenticatedRequest, res: Response) => void) => void
 }
 
-// What every HTTP app of the platform shares, in the order it must run: the correlation id first,
-// so that the logs, the metrics and the error responses of a request all carry it.
+// What every HTTP app of the platform shares, in the order it must run: the security headers, then
+// the correlation id, so that the logs, the metrics and the error responses of a request all carry it.
 export async function configureHttpApp(app: INestApplication): Promise<void> {
   app.useLogger(app.get(Logger))
+  app.use(apiSecurityHeaders) // First, so that every answer has them: the 404 and the errors too
   app.use(correlationIdMiddleware)
   useHttpMetrics(app)
   // The leading slash matters: without it Nest 12 leaves its not-found handler out and an unknown

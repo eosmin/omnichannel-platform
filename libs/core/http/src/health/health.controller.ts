@@ -1,13 +1,18 @@
 import { Controller, Get, Inject, Optional } from '@nestjs/common'
 import { HealthCheck, HealthCheckService, type HealthCheckResult } from '@nestjs/terminus'
+import { SkipThrottle } from '@nestjs/throttler'
 
 import { InfraRoutes } from '@platform/core/api'
+import { Public } from '@platform/core/auth-module'
 
 import { PrismaHealthIndicator } from './prisma-health.indicator'
 import { READINESS_CHECKS, type ReadinessCheck } from './readiness-checks'
 import { RedisHealthIndicator } from './redis-health.indicator'
 
 // Outside the /api/v1 prefix so that probes and load balancers hit /health and /health/ready.
+// Public: a probe carries no token. Not rate limited: the platform probes every few seconds.
+@Public()
+@SkipThrottle()
 @Controller()
 export class HealthController {
   constructor(
