@@ -222,7 +222,9 @@ export default defineConfig([
       'libs/core/platform/config/env.ts',
       'scripts/db-role-env.ts',
       'libs/core/database/testing/connection-urls.ts',
+      'apps/api/src/testing/test-env.ts',
       'apps/worker/src/testing/test-env.ts',
+      'libs/core/redis/src/testing/test-env.ts',
       'libs/core/database/prisma/seed-env.ts',
       'prisma.config.ts',
       'libs/core/database/prisma.config.ts'
@@ -242,6 +244,6 @@ export default defineConfig([
   },
 
   {
-    ignores: ['**/dist/**', '**/generated/**', '**/.next/**', 'coverage/**', '.nx/**']
+    ignores: ['**/dist/**', '**/generated/**', '**/.next/**', '**/coverage/**', '.nx/**']
   }
 ])

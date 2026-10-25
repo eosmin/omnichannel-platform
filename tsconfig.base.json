@@ -45,6 +45,8 @@
       "@platform/core/logger": ["libs/core/logger/src/index.ts"],
       "@platform/core/metrics-module": ["libs/core/metrics/src/index.ts"],
       "@platform/core/http": ["libs/core/http/src/index.ts"],
+      "@platform/core/database-testing": ["libs/core/database/testing/connection-urls.ts"],
+      "@platform/core/auth-module": ["libs/core/auth/src/index.ts"],
       "@platform/core/redis": ["libs/core/redis/src/index.ts"],
       "@platform/core/queues-module": ["libs/core/queues/src/index.ts"],
       "@platform/core/i18n-server": ["libs/core/i18n-server/src/index.ts"],
