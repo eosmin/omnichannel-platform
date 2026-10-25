@@ -123,11 +123,11 @@ path alias.
 
 ## 2. Tech stack detail and rationale
 
-### 2.1 Frontend — Next.js 16.3 (App Router)
+### 2.1 Frontend — Next.js 16.4 (App Router)
 
 | Choice | Version | Rationale |
 |--------|---------|-----------|
-| App Router + RSC | `next@16.3.4` | Server Components reduce client bundle; inbox lists render server-side. Request interception uses the `proxy.ts` convention (Next 16 renamed `middleware.ts`). |
+| App Router + RSC | `next@16.4.3` | Server Components reduce client bundle; inbox lists render server-side. Request interception uses the `proxy.ts` convention (Next 16 renamed `middleware.ts`). |
 | Server Actions | — | Mutations without hand-written API glue for simple forms |
 | Streaming + Suspense | — | Inbox shell renders instantly, panels stream in |
 | React | `react@19.2.8`, `react-dom@19.2.8` | — |
@@ -334,7 +334,7 @@ download path verify that prefix against the current store before touching the o
 
 | Package | Version |
 |---|---|
-| `next` | `16.3.4` |
+| `next` | `16.4.3` |
 | `react` / `react-dom` | `19.2.8` |
 | `tailwindcss` | `4.3.3` |
 | `shadcn` (CLI) | `4.20.1` |
@@ -486,7 +486,7 @@ phase starts (YAGNI).
 | `@commitlint/cli`, `@commitlint/config-conventional` | `21.2.2` |
 | `tsx` | `4.20.5` |
 | `@eslint/js` | `10.0.1` |
-| `@next/eslint-plugin-next` | `16.3.4` |
+| `@next/eslint-plugin-next` | `16.4.3` |
 | `@nx/eslint`, `@nx/jest`, `@nx/js` | `23.2.0` |
 | `@nestjs/cli` | `12.0.10` — builds `api` and `worker` with the Rspack builder, the default of Nest 12 for monorepos |
 | `@rspack/core` | `2.2.9` |
