@@ -113,6 +113,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: "Requests that attempted to reach another tenant's data",
     labels: ['resource']
   },
+  [MetricNames.AUDIT_WRITE_FAILURES]: {
+    kind: 'counter',
+    help: 'Audit entries that could not be written (a failed write, or a full queue)',
+    labels: ['reason']
+  },
   [MetricNames.RATE_LIMIT_HITS]: {
     kind: 'counter',
     help: 'Requests refused by a rate limit',
