@@ -247,17 +247,18 @@ Placed first in this milestone because Step 1.1 sends magic links through the em
 killing the worker mid-job lets the job complete or retry without loss.
 
 ### Step 1.1 — Authentication
-- [ ] `apps/api/src/modules/auth/` — service, controller, JWT strategy. **MVP trim — magic link only:** no password, no Google/OAuth strategy (both DEFERRED)
-- [ ] Access token 15 min; refresh token 7 days, hashed, family-tracked, rotated with reuse detection
-- [ ] Magic link login via `VerificationToken` (single-use, short expiry, hashed at rest): request link and consume link (requesting again is the resend; there is no separate resend route). Consuming is a `POST` with the token in the body, never a `GET` with the token in the URL. It issues the access/refresh pair and marks the email verified. Requesting a link for an unknown email returns the same response as for a known one (no user enumeration). Expiry and throttle values per `MVP_TRIM_CHECKLIST.md` §7, D1, D2, held in constants
-- [ ] Rate limits per `TDD_05 §3.1` (Redis storage), applied to magic-link request, magic-link consume and invitation accept (`MVP_TRIM_CHECKLIST.md` §7, D2) instead of the login, signup, forgot-password and resend endpoints named there
-- [ ] `ApiRoutes.auth` and `AuditActions` carry the magic-link request/consume routes and events; the password login, `forgotPassword`, reset and `PASSWORD_*` entries from `TDD_02`/`TDD_05` are not created
-- [ ] `MAGIC_LINK` email template, sent through the `SEND_EMAIL` job of Step 1.0
-- [ ] Bull Board at `/admin/queues`, mounted only when `BULL_BOARD_ENABLED=true`; access requires a valid JWT whose `email` claim is in `BULL_BOARD_ADMIN_EMAILS` (empty allowlist = nobody). Applied as middleware, not through `@RequirePermissions()` or `TenantGuard`, because it is cross-tenant. It lives here because it needs this step's JWT strategy. Replay of a dead-lettered job = retry the **failed job in its original queue** from Bull Board (kept by `removeOnFail`); the dead-letter queue is a triage index (see `MVP_TRIM_CHECKLIST.md` §3)
-- [ ] **MVP trim — closed signup:** there is no public signup endpoint and no Organization, Subscription or `AiCreditBalance` created here. Users come from the seed (Step 0.4) or from invitation acceptance (Step 1.4, which needs the `Invitation` model). The session issuing code (access/refresh pair) is a reusable service so Step 1.4 can call it
-- [ ] CI: create the `unit-tests` job (Nx affected, coverage thresholds from `TDD_13 §9` only for paths that exist so far). Add `unit-tests` as a required check
+- [x] `apps/api/src/modules/auth/` — service, controller, JWT strategy. **MVP trim — magic link only:** no password, no Google/OAuth strategy (both DEFERRED)
+- [x] Access token 15 min; refresh token 7 days, hashed, family-tracked, rotated with reuse detection
+- [x] Magic link login via `VerificationToken` (single-use, short expiry, hashed at rest): request link and consume link (requesting again is the resend; there is no separate resend route). Consuming is a `POST` with the token in the body, never a `GET` with the token in the URL. It issues the access/refresh pair and marks the email verified. Requesting a link for an unknown email returns the same response as for a known one (no user enumeration). Expiry and throttle values per `MVP_TRIM_CHECKLIST.md` §7, D1, D2, held in constants
+- [x] Rate limits per `TDD_05 §3.1` (Redis storage), applied to magic-link request and magic-link consume (`MVP_TRIM_CHECKLIST.md` §7, D2; the invitation accept is limited when its endpoint exists, Step 1.4) instead of the login, signup, forgot-password and resend endpoints named there
+- [x] `ApiRoutes.auth` and `AuditActions` carry the magic-link request/consume routes and events; the password login, `forgotPassword`, reset and `PASSWORD_*` entries from `TDD_02`/`TDD_05` are not created
+- [x] `MAGIC_LINK` email template, sent through the `SEND_EMAIL` job of Step 1.0
+- [x] Bull Board at `/admin/queues`, mounted only when `BULL_BOARD_ENABLED=true`; access requires a valid JWT whose `email` claim is in `BULL_BOARD_ADMIN_EMAILS` (empty allowlist = nobody). Applied as middleware, not through `@RequirePermissions()` or `TenantGuard`, because it is cross-tenant. It lives here because it needs this step's JWT strategy. Replay of a dead-lettered job = retry the **failed job in its original queue** from Bull Board (kept by `removeOnFail`); the dead-letter queue is a triage index (see `MVP_TRIM_CHECKLIST.md` §3)
+- [x] **MVP trim — closed signup:** there is no public signup endpoint and no Organization, Subscription or `AiCreditBalance` created here. Users come from the seed (Step 0.4) or from invitation acceptance (Step 1.4, which needs the `Invitation` model). The session issuing code (access/refresh pair) is a reusable service so Step 1.4 can call it
+- [x] CI: create the `unit-tests` job (Nx affected, coverage thresholds from `TDD_13 §9` only for paths that exist so far). Adding `unit-tests` as a required check is not possible: the repository has no ruleset by the owner's decision (free plan), so the job is advisory
 
 **TDD:** `TDD_01 §7`, `TDD_05 §3`, `TDD_07 §3`, `§5.3`
+**Follow-ups found while building** (session lifetime cap, cleanup of sessions and tokens, `lower(email)` index, timing of the magic-link request, rate limit per store): `MVP_TRIM_CHECKLIST.md` §10. The decisions of this step that differ from the TDD: §3, "Auth build details (Step 1.1)".
 **Done when:** the seeded owner can request a magic link (visible in Mailpit), consume it,
 and refresh; a magic link cannot be used twice or after expiry; a link requested for an
 unknown email returns the same response as for a known one; and refresh token reuse revokes
@@ -662,6 +663,7 @@ sandbox.
 - [ ] Webhooks with resolve-time SSRF protection, delivery log, auto-disable
 - [ ] Tenant API keys (`ApiKeyGuard`)
 - [ ] Data retention configuration; retention, platform cleanup and audit cold-export schedulers. **MVP trim:** the effective window is `RetentionSettings` only (no `plan.historyRetentionDays`)
+  - The platform cleanup also deletes the `Session` rows past `expiresAt` (a consumed row stays until then, because reuse detection needs it) and the `VerificationToken` rows that are used or expired, in batches of 500 (`MVP_TRIM_CHECKLIST.md` §10, item 2)
 
 **TDD:** `TDD_09 §11`, `§13`, `TDD_05 §9.3`, `§10.4`, `TDD_07 §2`
 **Done when:** retention deletes expired data on schedule, and a webhook to a hostname
@@ -984,7 +986,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 0.6 | Tooling | done | #33 | 2026-10-25 |
 | **Milestone 1: Auth and tenancy** | | | | |
 | 1.0 | Queues, workers and email | done | #34 | 2026-10-25 |
-| 1.1 | Authentication | todo | | |
+| 1.1 | Authentication | done | #35 | 2026-10-25 |
 | 1.2 | Tenancy | todo | | |
 | 1.3 | Tenant isolation test suite | todo | | |
 | 1.4 | Organizations, stores, memberships | todo | | |

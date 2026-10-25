@@ -15,5 +15,6 @@ export const engagementDataSchema = z.object({
 
 export const failureDataSchema = z.object({
   to: z.array(z.string()).min(1),
+  bounce: z.object({ type: z.string() }).optional(), // Only on email.bounced
   tags: z.record(z.string(), z.string()).optional()
 })

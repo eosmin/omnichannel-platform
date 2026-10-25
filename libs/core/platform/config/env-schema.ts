@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { DURATION_PATTERN, durationToSeconds } from './duration'
+
 // Platform-level variables only. Channel credentials are per store and live encrypted in
 // ChannelConnection.credentials. Optional variables stay undefined when unset: an empty string
 // would fail the url and email validators, so .env.example comments them out.
@@ -8,6 +10,7 @@ import { z } from 'zod'
 const PLACEHOLDER_JWT_SECRET_PREFIX = 'change-me'
 const PLACEHOLDER_ENCRYPTION_KEY = /^0{64}$/
 const DEPLOYED_ENVIRONMENTS: readonly string[] = ['staging', 'production']
+const LOCAL_HOSTNAMES: readonly string[] = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0']
 
 // A bare address or "Name <address>", the form providers like Resend accept and customers see.
 const SENDER_WITH_NAME = /^([^<>"\r\n]{1,100}?)\s*<([^<>\s]+)>$/
@@ -16,6 +19,15 @@ const senderAddress = z.string().refine(value => {
   const address = SENDER_WITH_NAME.exec(trimmed)?.[2] ?? trimmed
   return z.email().safeParse(address).success
 }, 'must be an email address or "Name <email>"')
+
+const duration = (
+  fallback: string
+): z.ZodPipe<z.ZodDefault<z.ZodString>, z.ZodTransform<number, string>> =>
+  z
+    .string()
+    .regex(DURATION_PATTERN, 'use a number and s, m, h or d (for example 15m)')
+    .default(fallback)
+    .transform(durationToSeconds)
 
 export const envSchema = z
   .object({
@@ -36,8 +48,13 @@ export const envSchema = z
 
     // Auth: login is a magic link, so there are no passwords and no OAuth credentials
     JWT_SECRET: z.string().min(32),
-    JWT_EXPIRES_IN: z.string().default('15m'),
-    REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
+    // Written as "15m" or "7d", read by the code in seconds
+    JWT_EXPIRES_IN: duration('15m'),
+    REFRESH_TOKEN_EXPIRES_IN: duration('7d'),
+    // Reverse proxies in front of the api whose X-Forwarded-For is trusted (0 = none, the laptop).
+    // The rate limits are per client IP, so a wrong value makes every client look like the proxy:
+    // a deployed environment must say it (checked below), and the laptop default is applied after.
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).optional(),
 
     // Encryption at rest for ChannelConnection.credentials and ApiKey secrets (AES-256-GCM)
     CREDENTIALS_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/), // 32 bytes, hex
@@ -112,6 +129,27 @@ export const envSchema = z
       })
     }
     if (!isDeployed) return
+    if (env.TRUST_PROXY_HOPS === undefined) {
+      // Behind a proxy a missing value is not an error anywhere else: every client would share the
+      // address of the proxy, and a handful of logins a minute would lock everybody out
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'a deployed environment must say how many proxies are in front of it: TRUST_PROXY_HOPS (1 on Railway, 0 if the api is reached directly)',
+        path: ['TRUST_PROXY_HOPS'],
+        input: env.TRUST_PROXY_HOPS
+      })
+    }
+    const frontend = new URL(env.FRONTEND_URL)
+    if (frontend.protocol !== 'https:' || LOCAL_HOSTNAMES.includes(frontend.hostname)) {
+      // The magic links point there: a link to localhost, or over plain http, is a broken login at best
+      ctx.issues.push({
+        code: 'custom',
+        message: 'a deployed environment needs the public https address of the web app',
+        path: ['FRONTEND_URL'],
+        input: env.FRONTEND_URL
+      })
+    }
     if (env.JWT_SECRET.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)) {
       ctx.issues.push({
         code: 'custom',
@@ -130,12 +168,14 @@ export const envSchema = z
     }
   })
 
-export type Env = z.infer<typeof envSchema>
+// TRUST_PROXY_HOPS is optional in the schema (a deployed environment must set it, and the check
+// needs to know whether it was); the laptop default is applied here, after the checks
+export type Env = Omit<z.infer<typeof envSchema>, 'TRUST_PROXY_HOPS'> & { TRUST_PROXY_HOPS: number }
 
 export function parseEnv(source: Record<string, string | undefined>): Env {
   const result = envSchema.safeParse(source)
   if (!result.success) {
     throw new Error(`Invalid environment variables:\n${z.prettifyError(result.error)}`)
   }
-  return result.data
+  return { ...result.data, TRUST_PROXY_HOPS: result.data.TRUST_PROXY_HOPS ?? 0 }
 }

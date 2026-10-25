@@ -8,13 +8,15 @@ import { z } from 'zod'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
+import { Public } from '@platform/core/auth-module'
 import { ProcessedWebhookEventsService } from '@platform/core/database'
-import { ResendEventTypes, WebhookSources } from '@platform/core/domain'
+import { ResendBounceTypes, ResendEventTypes, WebhookSources } from '@platform/core/domain'
 import { ResendWebhookVerifier } from '@platform/core/email'
 import { EmailMetricStatus, MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import { JobNames, QueueNames, type TrackAnalyticsJob } from '@platform/core/queues'
 
+import { EmailValidityService } from './email-validity.service'
 import { hashEmail } from './hash-email'
 import {
   engagementDataSchema,
@@ -24,14 +26,17 @@ import {
 
 const UNKNOWN_TEMPLATE = 'unknown'
 
-// Public: the Svix signature of the body authenticates it (TDD_07 §5.4). Addresses that bounce are
-// only logged and counted for now: the suppression list that stops sending to them is a later,
-// global (not per store) table (MVP_TRIM_CHECKLIST.md, "Email build details (Step 1.0)").
+// Public: the Svix signature of the body authenticates it (TDD_07 §5.4). A hard bounce or a complaint
+// also marks the user with that address as invalid (User.emailValid), which stops the magic links to
+// it. Customers' addresses are only logged and counted for now: the suppression list for them is a
+// later, global (not per store) table (MVP_TRIM_CHECKLIST.md, "Email build details (Step 1.0)").
+@Public()
 @Controller()
 export class ResendWebhookController {
   constructor(
     private readonly verifier: ResendWebhookVerifier,
     private readonly processedEvents: ProcessedWebhookEventsService,
+    private readonly emailValidity: EmailValidityService,
     @InjectQueue(QueueNames.ANALYTICS) private readonly analyticsQueue: Queue<TrackAnalyticsJob>,
     @InjectMetric(MetricNames.EMAILS_SENT) private readonly emails: Counter<string>,
     private readonly logger: PinoLogger
@@ -66,7 +71,7 @@ export class ResendWebhookController {
       case ResendEventTypes.EMAIL_BOUNCED:
         return this.recordFailure(type, EmailMetricStatus.BOUNCED, data)
       case ResendEventTypes.EMAIL_FAILED:
-        return this.recordFailure(type, EmailMetricStatus.FAILED, data)
+        return this.recordFailure(type, EmailMetricStatus.FAILED, data) // A send that failed says nothing of the address
       case ResendEventTypes.EMAIL_COMPLAINED:
         return this.recordFailure(type, EmailMetricStatus.COMPLAINED, data)
       default:
@@ -100,18 +105,34 @@ export class ResendWebhookController {
     this.logger.warn({ type }, 'resend event with data we cannot read was acknowledged and skipped')
   }
 
-  private recordFailure(type: string, status: string, data: unknown): Promise<void> {
+  private async recordFailure(type: string, status: string, data: unknown): Promise<void> {
     const parsed = failureDataSchema.safeParse(data)
-    if (!parsed.success) {
-      this.logUnreadable(type)
-      return Promise.resolve()
-    }
+    if (!parsed.success) return this.logUnreadable(type)
     const event = parsed.data
     this.emails.inc({ template: event.tags?.['template'] ?? UNKNOWN_TEMPLATE, status })
     this.logger.warn(
       { type, emailHashes: event.to.map(hashEmail), template: event.tags?.['template'] },
       'email delivery problem reported by the provider'
     )
-    return Promise.resolve()
+    if (!this.addressIsDead(type, event.bounce?.type)) return
+    // The event lists every recipient of the message and does not say which one is dead. With one
+    // there is no doubt; with several, marking them all could lock out a user whose address is fine.
+    if (event.to.length === 1) {
+      await this.emailValidity.markInvalid(event.to)
+      return
+    }
+    this.logger.warn(
+      { type, recipients: event.to.length },
+      'dead address in a message with several recipients: which one is not known, none was marked'
+    )
+  }
+
+  // A hard bounce or a complaint: writing to that address again hurts the sender reputation
+  private addressIsDead(type: string, bounceType: string | undefined): boolean {
+    if (type === ResendEventTypes.EMAIL_COMPLAINED) return true
+    return (
+      type === ResendEventTypes.EMAIL_BOUNCED &&
+      bounceType?.toLowerCase() === ResendBounceTypes.PERMANENT
+    )
   }
 }

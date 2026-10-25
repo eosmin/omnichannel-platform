@@ -202,10 +202,10 @@ apps/web/
 | Prisma | `prisma@7.10.1` (CLI), `@prisma/client@7.10.1`, `@prisma/adapter-pg@7.10.1`, `pg@8.16.3`, `@prisma/extension-read-replicas@0.5.0` | Prisma 7 requires a driver adapter; connection string and migrations config live in `prisma.config.ts`. Generator is `prisma-client` with an explicit `output`. Read replica routing via the official extension |
 | PostgreSQL | `18.6` (server) | Relational integrity, JSONB for flexible metadata, mature FTS, RLS support |
 | Redis | `8.10.1` (server), `ioredis@6.0.0` (client) | Cache, BullMQ backing store, Socket.io pub/sub, presence. `ioredis` chosen over the `redis` package — wider adoption with BullMQ/NestJS, richer cluster/sentinel support. **Every Redis client in the codebase is ioredis**, including the Socket.io adapter |
-| BullMQ | `bullmq@6.3.4`, `@nestjs/bullmq@12.0.0`, `@bull-board/api@9.6.1`, `@bull-board/nestjs@9.6.1`, `@bull-board/express@9.6.1` | Reliable job processing with retries, backoff, DLQ. Queues and workers are registered through `@nestjs/bullmq` (no module-level `new Queue()`). Bull Board is mounted via `@bull-board/nestjs` with the Express adapter, behind `StaffAuthGuard` (it is a staff tool, `TDD_15`) |
+| BullMQ | `bullmq@6.3.4`, `@nestjs/bullmq@12.0.0`, `@bull-board/api@9.10.5`, `@bull-board/express@9.10.5`, `@bull-board/ui@9.10.5` | Reliable job processing with retries, backoff, DLQ. Queues and workers are registered through `@nestjs/bullmq` (no module-level `new Queue()`). Bull Board is mounted on Express by hand with `@bull-board/api` and the Express adapter (not `@bull-board/nestjs`, see `MVP_TRIM_CHECKLIST.md` §3 "Auth build details"), behind a JWT plus the `BULL_BOARD_ADMIN_EMAILS` allowlist in the MVP (`StaffAuthGuard` is Phase 2, `TDD_15`) |
 | Event bus | `@nestjs/event-emitter@3.0.1` | In-process domain events (`@OnEvent`) |
 | Scheduling | `@nestjs/schedule@12.0.2` | `@Cron` schedulers — **registered only in `apps/worker`** |
-| Rate limiting | `@nestjs/throttler@6.4.0`, `@nest-lab/throttler-storage-redis@1.1.0` | Redis-backed so limits hold across instances |
+| Rate limiting | `@nestjs/throttler@6.7.1` and a `ThrottlerStorage` of our own over ioredis | Redis-backed so limits hold across instances. `@nest-lab/throttler-storage-redis` declares no Nest 12, so the storage is ours (an atomic Lua script), as `MetricsModule` replaces `@willsoto/nestjs-prometheus` |
 | Health | `@nestjs/terminus@12.1.0` | Liveness/readiness indicators. Terminus 11 does not declare Nest 12; 12 replaced the `HealthIndicator` base class with `HealthIndicatorService` |
 | Passport | `passport@0.7.0`, `passport-jwt@4.0.1`, `passport-google-oauth20@2.0.0`, `openid-client@6.6.2`, `@nestjs/passport@12.0.0`, `@nestjs/jwt@12.0.1` | JWT strategy for the tenant API, Google OAuth for customer login, generic OIDC (Google Workspace / Okta) for staff SSO |
 | Supporting `@nestjs/*` | `@nestjs/websockets@12.0.1`, `@nestjs/platform-socket.io@12.0.1`, `@nestjs/swagger@12.0.1`, `nestjs-zod@5.0.1` | WebSocket gateway, OpenAPI generated from the shared Zod schemas |
@@ -364,11 +364,10 @@ download path verify that prefix against the current store before touching the o
 | `@nestjs/swagger` | `12.0.1` |
 | `@nestjs/event-emitter` | `3.0.1` |
 | `@nestjs/schedule` | `12.0.2` |
-| `@nestjs/throttler` | `6.4.0` |
-| `@nest-lab/throttler-storage-redis` | `1.1.0` |
+| `@nestjs/throttler` | `6.7.1` (the `6.4.0` line is replaced: it predates Nest 12) |
 | `@nestjs/terminus` | `12.1.0` |
 | `@nestjs/bullmq` | `12.0.0` |
-| `nestjs-zod` | `5.0.1` |
+| `nestjs-zod` | `5.0.1`, **not installed in Step 1.1**: it declares Nest up to 11. The validation pipe is our own `ZodValidationPipe`; decide again when OpenAPI generation is built (`TDD_14`) |
 | `reflect-metadata` | `0.2.2` — peer of `@nestjs/common` |
 | `rxjs` | `7.8.2` — peer of `@nestjs/common` |
 | `prisma` (CLI), `@prisma/client`, `@prisma/adapter-pg` | `7.10.1` |
@@ -376,7 +375,7 @@ download path verify that prefix against the current store before touching the o
 | `pg` | `8.16.3` |
 | `ioredis` | `6.0.0` |
 | `bullmq` | `6.3.4` |
-| `@bull-board/api`, `@bull-board/nestjs`, `@bull-board/express` | `9.6.1` |
+| `@bull-board/api`, `@bull-board/express`, `@bull-board/ui` | `9.10.5` (9.6.1 declares Nest up to 11 and BullMQ 5) |
 | `socket.io` | `4.8.3` |
 | `@socket.io/redis-adapter` | `8.3.0` |
 | `passport` | `0.7.0` |

@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*.ts", "jest.config.cts"],
+  "include": ["src/**/*.ts", "jest.config.cts", "jest.integration.config.cts"],
   "exclude": ["node_modules"]
 }
