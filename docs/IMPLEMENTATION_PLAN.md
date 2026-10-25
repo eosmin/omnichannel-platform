@@ -277,14 +277,14 @@ the session family; `/admin/queues` returns 404 with the flag off, 401 without a
 store the user has no membership in is rejected.
 
 ### Step 1.3 — Tenant isolation test suite
-- [ ] `tests/security/tenant-isolation.spec.ts` — parameterized
-- [ ] `tests/helpers/` — `createTestApp`, `api()`, truncate, `seedTestContext`, token minting (user; staff DEFERRED). The app under test connects as `platform_app`, but the helpers that set up and inspect data (truncate, `seedTestContext`, builders, assertions that count rows) use a second client on `DIRECT_DATABASE_URL` (the owner), because `platform_app` cannot `TRUNCATE` and, from Step 7.1, cannot see other stores' rows
-- [ ] `tests/builders/` — entity builders
-- [ ] CI: `integration-tests` now runs the integration suites; create the `security-tests` job (Postgres, Redis, SeaweedFS services) with the isolation suite. Add `security-tests` as a required check, with no bypass
+- [x] `tests/security/tenant-isolation.spec.ts` — parameterized
+- [x] `tests/helpers/` — `createTestApp` (the real `AppModule`), `api()`, the clean-up of what a run created (**no truncate**, see `MVP_TRIM_CHECKLIST.md` §3), `seedTestContext`, token minting (user; staff DEFERRED). The app under test connects as `platform_app`, but the helpers that set up and inspect data (`seedTestContext`, builders, the clean-up, assertions that count rows) use a second client on `DIRECT_DATABASE_URL` (the owner), because `platform_app` cannot write before any user exists and, from Step 7.1, cannot see other stores' rows
+- [x] `tests/builders/` — entity builders
+- [x] CI: `integration-tests` now runs the integration suites; create the `security-tests` job (Postgres and Redis; SeaweedFS joins with the first test of media, Step 3.4) with the isolation suite. Making it a required check with no bypass is not possible: the repository has no ruleset by the owner's decision, so the job is advisory
 
 **TDD:** `TDD_13 §3`, `§6`
-**Done when:** the suite runs in CI as the `security-tests` blocking gate, it is a required check
-on `main`, and `check-isolation-coverage` lists every `store_id` model.
+**Done when:** the suite runs in CI as the `security-tests` job (advisory: the repository has no ruleset, so it
+cannot be a required check), and `check-isolation-coverage` lists every `store_id` model.
 **Every subsequent resource must be added to this suite.**
 
 ### Step 1.4 — Organizations, stores, memberships
