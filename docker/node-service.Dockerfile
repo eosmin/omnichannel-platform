@@ -38,6 +38,10 @@ WORKDIR /app
 RUN echo '{"type":"module"}' > package.json
 ARG APP
 COPY --from=build --chown=node:node /repo/dist/apps/${APP}/ ./
+# The one thing found on disk at run time: Bull Board looks for the files of its page in
+# node_modules/@bull-board/ui (3 MB), starting from the working directory. Without them the api fails
+# to start when BULL_BOARD_ENABLED is on.
+COPY --from=build --chown=node:node /repo/node_modules/@bull-board/ui/ ./node_modules/@bull-board/ui/
 USER node
 EXPOSE 8080
 CMD ["node", "main.js"]
