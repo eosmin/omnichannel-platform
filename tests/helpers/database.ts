@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { Redis } from 'ioredis'
 
+import { AuditAction } from '@platform/core/audit'
 import {
   connectionUrls,
   createOwnerClient,
@@ -40,14 +41,24 @@ async function forgetCached(ids: string[]): Promise<void> {
 }
 
 export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void> {
-  const [users, stores] = await Promise.all([
+  const [users, stores, deleted] = await Promise.all([
     owner.user.findMany({ where: { email: { startsWith: prefix } }, select: { id: true } }),
     owner.store.findMany({
       where: { organization: { slug: { startsWith: prefix } } },
       select: { id: true }
+    }),
+    // A store the run deleted is gone, but the generation of its cache scope is not: the audit
+    // trail still has its id
+    owner.auditLog.findMany({
+      where: { action: AuditAction.STORE_DELETED, user: { email: { startsWith: prefix } } },
+      select: { resourceId: true }
     })
   ])
-  await forgetCached([...users, ...stores].map(row => row.id))
+  await forgetCached([
+    ...users.map(row => row.id),
+    ...stores.map(row => row.id),
+    ...deleted.flatMap(row => (row.resourceId === null ? [] : [row.resourceId]))
+  ])
   // The audit log keeps its rows for the users; the owner may clear them, the api never can
   await owner.auditLog.deleteMany({ where: { user: { email: { startsWith: prefix } } } })
   // Stores, memberships, roles and everything that hangs from an organization go with it (cascade)

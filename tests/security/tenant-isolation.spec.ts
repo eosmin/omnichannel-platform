@@ -1,11 +1,13 @@
 import type { INestApplication } from '@nestjs/common'
 
-import { TenantHeaders } from '@platform/core/auth'
+import { ApiRoutes } from '@platform/core/api'
+import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
+import { InvitationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { ProbeRoutes } from '../../apps/api/src/testing/tenant-probe.controller'
-import { createTag } from '../builders'
+import { createInvitation, createMember, createRole, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -25,6 +27,11 @@ import {
 // and change it). scripts/check-isolation-coverage.ts compares this list with the models of the
 // schema that carry a store_id and fails the build for a model that is neither here nor exempt,
 // with the reason and the step that will build it, in scripts/isolation-exemptions.ts.
+const prefix = newRunPrefix()
+// Set once the context exists: the role a member is moved to in the modification check
+let viewerRoleId = ''
+let agentRoleId = ''
+
 const resources: IsolationResource[] = [
   {
     name: 'tag',
@@ -39,6 +46,54 @@ const resources: IsolationResource[] = [
       body: name => ({ name }),
       storeOf: async (owner, id) =>
         (await owner.tag.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ?? null
+    }
+  },
+  {
+    name: 'membership',
+    create: (owner, { storeId }) => createMember(owner, { storeId, prefix }),
+    listPath: ApiRoutes.settings.members,
+    modify: {
+      path: ApiRoutes.settings.memberById,
+      get body() {
+        return { roleId: viewerRoleId }
+      }
+    },
+    untouched: async (owner, id) =>
+      (await owner.membership.findUnique({ where: { id }, select: { roleId: true } }))?.roleId !==
+      viewerRoleId
+  },
+  {
+    name: 'invitation',
+    create: (owner, { storeId }) => createInvitation(owner, { storeId, prefix }),
+    listPath: ApiRoutes.settings.invitations,
+    // An invitation is revoked, not edited
+    modify: { path: ApiRoutes.settings.invitationById, method: 'delete', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.invitation.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      InvitationStatus.PENDING,
+    creation: {
+      path: ApiRoutes.settings.members,
+      body: name => ({ email: `${prefix}-${name}@example.com`, roleId: agentRoleId }),
+      strict: true,
+      storeOf: async (owner, id) =>
+        (await owner.invitation.findUnique({ where: { id }, select: { storeId: true } }))
+          ?.storeId ?? null
+    }
+  },
+  {
+    name: 'role',
+    create: createRole,
+    listPath: ApiRoutes.settings.roles,
+    modify: { path: ApiRoutes.settings.roleById, body: { name: 'hacked-role' } },
+    untouched: async (owner, id) =>
+      (await owner.role.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked-role',
+    creation: {
+      path: ApiRoutes.settings.roles,
+      body: name => ({ name, permissions: [] }),
+      strict: true,
+      storeOf: async (owner, id) =>
+        (await owner.role.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ?? null
     }
   }
 ]
@@ -55,7 +110,6 @@ const SENTENCES: Record<IsolationCheck, string> = {
 }
 
 describe('Tenant isolation', () => {
-  const prefix = newRunPrefix()
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
@@ -65,6 +119,8 @@ describe('Tenant isolation', () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
+    viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
+    agentRoleId = ctx.roleIds[RoleNames.AGENT]
     scene = { app, owner, ctx }
   })
   afterAll(async () => {
