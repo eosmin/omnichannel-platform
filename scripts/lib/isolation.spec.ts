@@ -1,4 +1,10 @@
-import { checkIsolationCoverage, storeScopedModels, suiteResources } from './isolation'
+import {
+  checkExemptions,
+  checkIsolationCoverage,
+  planSteps,
+  storeScopedModels,
+  suiteResources
+} from './isolation'
 
 const schema = `
 model Store {
@@ -63,6 +69,17 @@ describe('suiteResources', () => {
     ]`
     expect(suiteResources(suite)).toEqual(['channelConnection', 'conversation'])
   })
+
+  it('does not take for a resource a body that happens to have a name', () => {
+    const suite = `const resources = [
+      {
+        name: 'tag',
+        create: createTag,
+        modify: { path: id => id, body: { name: 'hacked' } }
+      }
+    ]`
+    expect(suiteResources(suite)).toEqual(['tag'])
+  })
 })
 
 describe('checkIsolationCoverage', () => {
@@ -93,6 +110,14 @@ describe('checkIsolationCoverage', () => {
     expect(checkIsolationCoverage(['toString'], [], {}).uncovered).toEqual(['toString'])
   })
 
+  it('lists a model that is exempt and also has a case: the exemption is left over', () => {
+    expect(
+      checkIsolationCoverage(models, ['conversation', 'channelConnection', 'storeSettings'], {
+        StoreSettings: 'x'
+      }).stale
+    ).toEqual(['StoreSettings'])
+  })
+
   it('lists exemptions and resources that no longer match a model', () => {
     expect(
       checkIsolationCoverage(models, ['conversation', 'channelConnection', 'ghost'], {
@@ -100,5 +125,85 @@ describe('checkIsolationCoverage', () => {
         Removed: 'x'
       }).stale
     ).toEqual(['Removed', 'ghost'])
+  })
+})
+
+describe('planSteps', () => {
+  const plan = [
+    '## Progress tracking',
+    '| Step | Name | Status | PR | Date |',
+    '|---|---|---|---|---|',
+    '| **Milestone 1: Auth and tenancy** | | | | |',
+    '| 1.2 | Tenancy | done | #39 | 2026-10-25 |',
+    '| 1.3 | Tenant isolation test suite | todo | | |',
+    '| 5.5 | Onboarding | deferred (Phase 2) | | |',
+    '| 2.2 | Customers | todo | | |'
+  ].join('\n')
+
+  it('reads the status of each step of the progress table', () => {
+    expect(planSteps(plan)).toEqual(
+      new Map([
+        ['1.2', 'done'],
+        ['1.3', 'todo'],
+        ['5.5', 'deferred (Phase 2)'],
+        ['2.2', 'todo']
+      ])
+    )
+  })
+
+  it('reads only the progress section: a table of steps elsewhere in the plan is not a status', () => {
+    const withRuleset = [
+      '## CI',
+      '| 1.3 | `security-tests` job | none new |',
+      '| 9.9 | a step that only the ruleset table mentions | none new |',
+      plan
+    ].join('\n')
+
+    expect(planSteps(withRuleset).get('1.3')).toBe('todo')
+    expect(planSteps(withRuleset).has('9.9')).toBe(false)
+    expect(planSteps(withRuleset).size).toBe(4)
+  })
+
+  it('ignores the heading, the milestones and prose that mention a step', () => {
+    expect(planSteps('Step 1.2 is done\n| not a row |\n| --- | --- |').size).toBe(0)
+  })
+})
+
+describe('checkExemptions', () => {
+  const steps = new Map([
+    ['1.2', 'done'],
+    ['2.2', 'todo']
+  ])
+
+  it('accepts an exemption for a step that is still to do', () => {
+    expect(checkExemptions({ Customer: { reason: 'arrives later', step: '2.2' } }, steps)).toEqual({
+      invalid: [],
+      due: []
+    })
+  })
+
+  it('lists the model whose step is done: its case has to be in the suite now', () => {
+    expect(
+      checkExemptions(
+        {
+          Tag: { reason: 'was a probe', step: '1.2' },
+          Customer: { reason: 'arrives later', step: '2.2' }
+        },
+        steps
+      )
+    ).toEqual({ invalid: [], due: ['Tag'] })
+  })
+
+  it('refuses an exemption with no reason, or for a step the plan does not have', () => {
+    expect(
+      checkExemptions(
+        {
+          Blank: { reason: '   ', step: '2.2' },
+          Typo: { reason: 'arrives later', step: '9.9' },
+          Fine: { reason: 'arrives later', step: '2.2' }
+        },
+        steps
+      )
+    ).toEqual({ invalid: ['Blank', 'Typo'], due: [] })
   })
 })

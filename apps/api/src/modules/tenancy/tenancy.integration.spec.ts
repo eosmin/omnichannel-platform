@@ -9,6 +9,7 @@ import { REDIS_CLIENT } from '@platform/core/redis'
 
 import { type AuthTestApp, startAuthTestApp } from '../../testing/auth-test-app'
 import type { TestStore } from '../../testing/tenant-fixtures'
+import { ProbeRoutes } from '../../testing/tenant-probe.controller'
 
 import { TenantContextService } from './tenant-context.service'
 
@@ -121,7 +122,7 @@ describe('tenancy', () => {
         storeId: string
         organizationId: string
         membership: { id: string }
-      }>('GET', '/probe/context', { token: alice.token, store: storeA.storeId })
+      }>('GET', ProbeRoutes.context, { token: alice.token, store: storeA.storeId })
 
       expect(reply.status).toBe(200)
       expect(reply.body).toMatchObject({
@@ -134,7 +135,7 @@ describe('tenancy', () => {
     it('accepts the id in capitals, which is the same UUID', async () => {
       const alice = await userWith([{ store: storeA, role: adminRoleA }])
 
-      const reply = await call('GET', '/probe/context', {
+      const reply = await call('GET', ProbeRoutes.context, {
         token: alice.token,
         store: storeA.storeId.toUpperCase()
       })
@@ -145,7 +146,7 @@ describe('tenancy', () => {
     it('is required: a request with no header is refused with TENANT_HEADER_MISSING', async () => {
       const alice = await userWith([{ store: storeA, role: adminRoleA }])
 
-      const reply = await call('GET', '/probe/context', { token: alice.token })
+      const reply = await call('GET', ProbeRoutes.context, { token: alice.token })
 
       expect(reply.status).toBe(400)
       expect(codeOf(reply)).toBe('TENANT_HEADER_MISSING')
@@ -154,7 +155,7 @@ describe('tenancy', () => {
     it('is never taken from the body or the query: with only those, the request is refused', async () => {
       const alice = await userWith([{ store: storeA, role: adminRoleA }])
 
-      const reply = await call('POST', '/probe/write', {
+      const reply = await call('POST', ProbeRoutes.write, {
         token: alice.token,
         body: { storeId: storeA.storeId },
         query: `?storeId=${storeA.storeId}`
@@ -174,7 +175,7 @@ describe('tenancy', () => {
         storeId: string
         body: { storeId: string }
         query: { storeId: string }
-      }>('POST', '/probe/write', {
+      }>('POST', ProbeRoutes.write, {
         token: alice.token,
         store: storeA.storeId,
         body: { storeId: storeB.storeId },
@@ -197,7 +198,7 @@ describe('tenancy', () => {
       async (_name, value) => {
         const alice = await userWith([{ store: storeA, role: adminRoleA }])
 
-        const reply = await call('GET', '/probe/context', { token: alice.token, store: value })
+        const reply = await call('GET', ProbeRoutes.context, { token: alice.token, store: value })
 
         expect(reply.status).toBe(400)
         expect(codeOf(reply)).toBe('VALIDATION_FAILED')
@@ -208,7 +209,7 @@ describe('tenancy', () => {
     it('treats a header with only spaces as missing', async () => {
       const alice = await userWith([{ store: storeA, role: adminRoleA }])
 
-      const reply = await call('GET', '/probe/context', { token: alice.token, store: '   ' })
+      const reply = await call('GET', ProbeRoutes.context, { token: alice.token, store: '   ' })
 
       expect(codeOf(reply)).toBe('TENANT_HEADER_MISSING')
     })
@@ -218,7 +219,10 @@ describe('tenancy', () => {
     it('refuses a store the user is not a member of, with TENANT_ACCESS_DENIED', async () => {
       const bob = await userWith([{ store: storeB, role: viewerRoleB }])
 
-      const reply = await call('GET', '/probe/context', { token: bob.token, store: storeA.storeId })
+      const reply = await call('GET', ProbeRoutes.context, {
+        token: bob.token,
+        store: storeA.storeId
+      })
 
       expect(reply.status).toBe(403)
       expect(codeOf(reply)).toBe('TENANT_ACCESS_DENIED')
@@ -227,11 +231,14 @@ describe('tenancy', () => {
     it('answers the same for a store that does not exist as for one the user does not belong to', async () => {
       const bob = await userWith([{ store: storeB, role: viewerRoleB }])
 
-      const foreign = await call('GET', '/probe/context', {
+      const foreign = await call('GET', ProbeRoutes.context, {
         token: bob.token,
         store: storeA.storeId
       })
-      const missing = await call('GET', '/probe/context', { token: bob.token, store: randomUUID() })
+      const missing = await call('GET', ProbeRoutes.context, {
+        token: bob.token,
+        store: randomUUID()
+      })
 
       expect(missing.status).toBe(foreign.status)
       expect((missing.body as ErrorBody).error).toEqual((foreign.body as ErrorBody).error)
@@ -240,7 +247,7 @@ describe('tenancy', () => {
     it('refuses a user who has no store at all', async () => {
       const nobody = await userWith([])
 
-      const reply = await call('GET', '/probe/context', {
+      const reply = await call('GET', ProbeRoutes.context, {
         token: nobody.token,
         store: storeA.storeId
       })
@@ -253,13 +260,13 @@ describe('tenancy', () => {
       await test.tenants.addMember(user.id, storeA, adminRoleA, 'REVOKED')
       const token = (await test.sessions.issue(user)).accessToken
 
-      const reply = await call('GET', '/probe/context', { token, store: storeA.storeId })
+      const reply = await call('GET', ProbeRoutes.context, { token, store: storeA.storeId })
 
       expect(codeOf(reply)).toBe('TENANT_ACCESS_DENIED')
     })
 
     it('asks for a token before it looks at the store', async () => {
-      const reply = await call('GET', '/probe/context', { store: storeA.storeId })
+      const reply = await call('GET', ProbeRoutes.context, { store: storeA.storeId })
 
       expect(reply.status).toBe(401)
       expect(codeOf(reply)).toBe('AUTH_UNAUTHORIZED')
@@ -271,11 +278,11 @@ describe('tenancy', () => {
       const admin = await userWith([{ store: storeA, role: adminRoleA }])
       const viewer = await userWith([{ store: storeA, role: viewerRoleA }])
 
-      const allowed = await call('POST', '/probe/write', {
+      const allowed = await call('POST', ProbeRoutes.write, {
         token: admin.token,
         store: storeA.storeId
       })
-      const refused = await call('POST', '/probe/write', {
+      const refused = await call('POST', ProbeRoutes.write, {
         token: viewer.token,
         store: storeA.storeId
       })
@@ -294,8 +301,14 @@ describe('tenancy', () => {
         { store: storeB, role: viewerRoleB }
       ])
 
-      const inA = await call('POST', '/probe/write', { token: alice.token, store: storeA.storeId })
-      const inB = await call('POST', '/probe/write', { token: alice.token, store: storeB.storeId })
+      const inA = await call('POST', ProbeRoutes.write, {
+        token: alice.token,
+        store: storeA.storeId
+      })
+      const inB = await call('POST', ProbeRoutes.write, {
+        token: alice.token,
+        store: storeB.storeId
+      })
 
       expect([inA.status, inB.status]).toEqual([201, 403])
     })
@@ -303,7 +316,7 @@ describe('tenancy', () => {
     it('refuses a route in a store that declares no permission, instead of letting it through', async () => {
       const admin = await userWith([{ store: storeA, role: adminRoleA }])
 
-      const reply = await call('GET', '/probe/undeclared', {
+      const reply = await call('GET', ProbeRoutes.undeclared, {
         token: admin.token,
         store: storeA.storeId
       })
@@ -323,7 +336,7 @@ describe('tenancy', () => {
       )
       const user = await userWith([{ store, role }])
 
-      const reply = await call<{ permissions: string[] }>('GET', '/probe/context', {
+      const reply = await call<{ permissions: string[] }>('GET', ProbeRoutes.context, {
         token: user.token,
         store: store.storeId
       })
@@ -338,19 +351,19 @@ describe('tenancy', () => {
     it('lets a @SkipTenant route through for a logged-in user with no header', async () => {
       const nobody = await userWith([])
 
-      const reply = await call('GET', '/probe/person', { token: nobody.token })
+      const reply = await call('GET', ProbeRoutes.person, { token: nobody.token })
 
       expect(reply.status).toBe(200)
     })
 
     it('still asks a @SkipTenant route for a token', async () => {
-      const reply = await call('GET', '/probe/person')
+      const reply = await call('GET', ProbeRoutes.person)
 
       expect(reply.status).toBe(401)
     })
 
     it('lets a @Public route through with nothing', async () => {
-      const reply = await call('GET', '/probe/open')
+      const reply = await call('GET', ProbeRoutes.open)
 
       expect(reply.status).toBe(200)
     })
@@ -372,11 +385,11 @@ describe('tenancy', () => {
         { store: storeB, role: viewerRoleB }
       ])
 
-      const inA = await call<{ id: string }[]>('GET', '/probe/tags', {
+      const inA = await call<{ id: string }[]>('GET', ProbeRoutes.tags, {
         token: alice.token,
         store: storeA.storeId
       })
-      const inB = await call<{ id: string }[]>('GET', '/probe/tags', {
+      const inB = await call<{ id: string }[]>('GET', ProbeRoutes.tags, {
         token: alice.token,
         store: storeB.storeId
       })
@@ -388,15 +401,15 @@ describe('tenancy', () => {
     it('cannot read a tag of another store by its id: it looks like it does not exist', async () => {
       const alice = await userWith([{ store: storeA, role: viewerRoleA }])
 
-      const own = await call('GET', `/probe/tags/${tagA}`, {
+      const own = await call('GET', ProbeRoutes.tagById(tagA), {
         token: alice.token,
         store: storeA.storeId
       })
-      const foreign = await call('GET', `/probe/tags/${tagB}`, {
+      const foreign = await call('GET', ProbeRoutes.tagById(tagB), {
         token: alice.token,
         store: storeA.storeId
       })
-      const missing = await call('GET', `/probe/tags/${randomUUID()}`, {
+      const missing = await call('GET', ProbeRoutes.tagById(randomUUID()), {
         token: alice.token,
         store: storeA.storeId
       })
@@ -409,7 +422,7 @@ describe('tenancy', () => {
     it('cannot reach the store of the tag by naming it in the header either', async () => {
       const alice = await userWith([{ store: storeA, role: viewerRoleA }])
 
-      const reply = await call('GET', `/probe/tags/${tagB}`, {
+      const reply = await call('GET', ProbeRoutes.tagById(tagB), {
         token: alice.token,
         store: storeB.storeId
       })
@@ -422,19 +435,20 @@ describe('tenancy', () => {
     it('serves a membership from the cache, and drops it when told to', async () => {
       const user = await userWith([{ store: storeA, role: adminRoleA }])
       expect(
-        (await call('GET', '/probe/context', { token: user.token, store: storeA.storeId })).status
+        (await call('GET', ProbeRoutes.context, { token: user.token, store: storeA.storeId }))
+          .status
       ).toBe(200)
 
       // The membership is removed in the database and nobody tells the cache
       await test.tenants.removeMember(user.membershipIds[0] ?? '')
-      const stale = await call('GET', '/probe/context', {
+      const stale = await call('GET', ProbeRoutes.context, {
         token: user.token,
         store: storeA.storeId
       })
       expect(stale.status).toBe(200) // Proves there is a cache at all: the next steps would pass without one
 
       await contexts.invalidateUser(user.id, storeA.storeId)
-      const after = await call('GET', '/probe/context', {
+      const after = await call('GET', ProbeRoutes.context, {
         token: user.token,
         store: storeA.storeId
       })
@@ -446,16 +460,16 @@ describe('tenancy', () => {
         await userWith([{ store: storeA, role: adminRoleA }]),
         await userWith([{ store: storeA, role: adminRoleA }])
       ]
-      await call('GET', '/probe/context', { token: one.token, store: storeA.storeId })
-      await call('GET', '/probe/context', { token: two.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.context, { token: one.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.context, { token: two.token, store: storeA.storeId })
       await test.tenants.removeMember(one.membershipIds[0] ?? '')
       await test.tenants.removeMember(two.membershipIds[0] ?? '')
 
       await contexts.invalidateUser(one.id, storeA.storeId)
 
       const [first, second] = [
-        await call('GET', '/probe/context', { token: one.token, store: storeA.storeId }),
-        await call('GET', '/probe/context', { token: two.token, store: storeA.storeId })
+        await call('GET', ProbeRoutes.context, { token: one.token, store: storeA.storeId }),
+        await call('GET', ProbeRoutes.context, { token: two.token, store: storeA.storeId })
       ]
       expect([first.status, second.status]).toEqual([403, 200])
     })
@@ -464,16 +478,16 @@ describe('tenancy', () => {
       const store = await test.tenants.createStore()
       const role = await test.tenants.createRole(store.storeId, [Permissions.CUSTOMERS_VIEW])
       const [one, two] = [await userWith([{ store, role }]), await userWith([{ store, role }])]
-      await call('GET', '/probe/context', { token: one.token, store: store.storeId })
-      await call('GET', '/probe/context', { token: two.token, store: store.storeId })
+      await call('GET', ProbeRoutes.context, { token: one.token, store: store.storeId })
+      await call('GET', ProbeRoutes.context, { token: two.token, store: store.storeId })
 
       // The role loses its permission, and the store is invalidated
       await test.tenants.setPermissions(role, [])
       await contexts.invalidateStore(store.storeId)
 
       const replies = [
-        await call('GET', '/probe/context', { token: one.token, store: store.storeId }),
-        await call('GET', '/probe/context', { token: two.token, store: store.storeId })
+        await call('GET', ProbeRoutes.context, { token: one.token, store: store.storeId }),
+        await call('GET', ProbeRoutes.context, { token: two.token, store: store.storeId })
       ]
       expect(replies.map(reply => reply.status)).toEqual([403, 403])
       expect(replies.map(codeOf)).toEqual(['PERMISSION_DENIED', 'PERMISSION_DENIED'])
@@ -482,18 +496,18 @@ describe('tenancy', () => {
     it('caches "no access" too, and lets a new member in once it is invalidated', async () => {
       const user = await test.createUser()
       const token = (await test.sessions.issue(user)).accessToken
-      expect(codeOf(await call('GET', '/probe/context', { token, store: storeA.storeId }))).toBe(
+      expect(codeOf(await call('GET', ProbeRoutes.context, { token, store: storeA.storeId }))).toBe(
         'TENANT_ACCESS_DENIED'
       )
 
       await test.tenants.addMember(user.id, storeA, adminRoleA)
-      const stillDenied = await call('GET', '/probe/context', { token, store: storeA.storeId })
+      const stillDenied = await call('GET', ProbeRoutes.context, { token, store: storeA.storeId })
       expect(stillDenied.status).toBe(403) // The cached refusal: it is what makes probing cheap
 
       await contexts.invalidateUser(user.id, storeA.storeId)
-      expect((await call('GET', '/probe/context', { token, store: storeA.storeId })).status).toBe(
-        200
-      )
+      expect(
+        (await call('GET', ProbeRoutes.context, { token, store: storeA.storeId })).status
+      ).toBe(200)
     })
   })
 
@@ -501,7 +515,7 @@ describe('tenancy', () => {
     it('records a store the user was refused, with the id they asked for in the metadata and not in the store column', async () => {
       const bob = await userWith([{ store: storeB, role: viewerRoleB }])
 
-      await call('GET', '/probe/context', { token: bob.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.context, { token: bob.token, store: storeA.storeId })
 
       const rows = await auditRows(bob.id, 'tenant.access_denied')
       expect(rows).toHaveLength(1)
@@ -517,7 +531,7 @@ describe('tenancy', () => {
     it('records a missing permission with the store and what was missing', async () => {
       const viewer = await userWith([{ store: storeA, role: viewerRoleA }])
 
-      await call('POST', '/probe/write', { token: viewer.token, store: storeA.storeId })
+      await call('POST', ProbeRoutes.write, { token: viewer.token, store: storeA.storeId })
 
       const rows = await auditRows(viewer.id, 'permission.denied')
       expect(rows).toHaveLength(1)
@@ -529,7 +543,7 @@ describe('tenancy', () => {
       const bob = await userWith([{ store: storeB, role: viewerRoleB }])
 
       for (let i = 0; i < 14; i += 1) {
-        await call('GET', '/probe/context', { token: bob.token, store: randomUUID() })
+        await call('GET', ProbeRoutes.context, { token: bob.token, store: randomUUID() })
       }
 
       expect(await auditRows(bob.id, 'tenant.access_denied')).toHaveLength(10)
@@ -543,7 +557,7 @@ describe('tenancy', () => {
       await redis.set(key, '3')
       expect(await redis.ttl(key)).toBe(-1)
 
-      await call('GET', '/probe/context', { token: bob.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.context, { token: bob.token, store: storeA.storeId })
 
       expect(await redis.ttl(key)).toBeGreaterThan(0) // The minute has an end again
       expect(await auditRows(bob.id, 'tenant.access_denied')).toHaveLength(1)
@@ -552,7 +566,7 @@ describe('tenancy', () => {
     it('does not record the refusals of a request that was not a refusal', async () => {
       const alice = await userWith([{ store: storeA, role: adminRoleA }])
 
-      await call('GET', '/probe/context', { token: alice.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.context, { token: alice.token, store: storeA.storeId })
 
       expect(await auditRows(alice.id, 'tenant.access_denied')).toEqual([])
       expect(await auditRows(alice.id, 'permission.denied')).toEqual([])
@@ -562,7 +576,7 @@ describe('tenancy', () => {
       const alice = await userWith([{ store: storeA, role: viewerRoleA }])
       const id = randomUUID()
 
-      await call('GET', `/probe/audited/${id}`, { token: alice.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.audited(id), { token: alice.token, store: storeA.storeId })
 
       await test.app.get(AuditService).onModuleDestroy()
       const result = await test.asOwner(client =>
@@ -580,7 +594,7 @@ describe('tenancy', () => {
   describe('the metrics', () => {
     it('counts the refusals for a missing permission, one per permission', async () => {
       const viewer = await userWith([{ store: storeA, role: viewerRoleA }])
-      await call('POST', '/probe/write', { token: viewer.token, store: storeA.storeId })
+      await call('POST', ProbeRoutes.write, { token: viewer.token, store: storeA.storeId })
 
       const response = await fetch(`${test.url}/metrics`)
       const text = await response.text()
@@ -590,7 +604,7 @@ describe('tenancy', () => {
 
     it('counts the stores that were asked for without access as violations', async () => {
       const bob = await userWith([{ store: storeB, role: viewerRoleB }])
-      await call('GET', '/probe/context', { token: bob.token, store: storeA.storeId })
+      await call('GET', ProbeRoutes.context, { token: bob.token, store: storeA.storeId })
 
       const text = await (await fetch(`${test.url}/metrics`)).text()
 

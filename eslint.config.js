@@ -176,6 +176,13 @@ export default defineConfig([
     }
   },
 
+  // The suites of the whole system build the real app of the api and talk to it over HTTP, so they
+  // reach into it by path. Nothing depends on them.
+  {
+    files: ['tests/**/*.ts'],
+    rules: { '@nx/enforce-module-boundaries': 'off' }
+  },
+
   // Two files reach other projects by path on purpose: the env validator cross-checks the schemas of
   // the api, the worker and an app against their .env.example files, and the root prisma.config.ts is
   // the re-export the Prisma CLI looks for, which loads it without the tsconfig aliases
@@ -225,6 +232,7 @@ export default defineConfig([
       'apps/api/src/testing/test-env.ts',
       'apps/worker/src/testing/test-env.ts',
       'libs/core/redis/src/testing/test-env.ts',
+      'tests/helpers/env.ts',
       'libs/core/database/prisma/seed-env.ts',
       'prisma.config.ts',
       'libs/core/database/prisma.config.ts'
