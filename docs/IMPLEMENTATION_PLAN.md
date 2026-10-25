@@ -258,7 +258,7 @@ killing the worker mid-job lets the job complete or retry without loss.
 - [x] CI: create the `unit-tests` job (Nx affected, coverage thresholds from `TDD_13 §9` only for paths that exist so far). Adding `unit-tests` as a required check is not possible: the repository has no ruleset by the owner's decision (free plan), so the job is advisory
 
 **TDD:** `TDD_01 §7`, `TDD_05 §3`, `TDD_07 §3`, `§5.3`
-**Follow-ups found while building** (session lifetime cap, cleanup of sessions and tokens, `lower(email)` index, timing of the magic-link request, rate limit per store): `MVP_TRIM_CHECKLIST.md` §10. The decisions of this step that differ from the TDD: §3, "Auth build details (Step 1.1)".
+**Follow-ups found while building** (cleanup of sessions and tokens, `lower(email)` index, timing of the magic-link request, rate limit per store): `MVP_TRIM_CHECKLIST.md` §10. The decisions of this step that differ from the TDD: §3, "Auth build details (Step 1.1)".
 **Done when:** the seeded owner can request a magic link (visible in Mailpit), consume it,
 and refresh; a magic link cannot be used twice or after expiry; a link requested for an
 unknown email returns the same response as for a known one; and refresh token reuse revokes

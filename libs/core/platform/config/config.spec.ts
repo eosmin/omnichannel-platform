@@ -167,6 +167,35 @@ describe('BULL_BOARD_ADMIN_EMAILS', () => {
   })
 })
 
+describe('SESSION_MAX_AGE', () => {
+  it('is 30 days by default, read in seconds', () => {
+    expect(parseEnv(validEnv).SESSION_MAX_AGE).toBe(2_592_000)
+    expect(parseEnv({ ...validEnv, SESSION_MAX_AGE: '14d' }).SESSION_MAX_AGE).toBe(1_209_600)
+  })
+
+  it('cannot be shorter than one refresh token, or the cap would cut every login short', () => {
+    expect(() =>
+      parseEnv({ ...validEnv, REFRESH_TOKEN_EXPIRES_IN: '7d', SESSION_MAX_AGE: '3d' })
+    ).toThrow(/SESSION_MAX_AGE/)
+  })
+
+  it('may equal the refresh token: a login that never outlives one token', () => {
+    expect(() =>
+      parseEnv({ ...validEnv, REFRESH_TOKEN_EXPIRES_IN: '7d', SESSION_MAX_AGE: '7d' })
+    ).not.toThrow()
+  })
+
+  it.each(['30', 'month', '-1d'])('refuses %j, naming the variable', value => {
+    expect(() => parseEnv({ ...validEnv, SESSION_MAX_AGE: value })).toThrow(/SESSION_MAX_AGE/)
+  })
+
+  it('cannot be longer than a year: past that it is no cap, and the date overflows', () => {
+    expect(parseEnv({ ...validEnv, SESSION_MAX_AGE: '365d' }).SESSION_MAX_AGE).toBe(31_536_000)
+    expect(() => parseEnv({ ...validEnv, SESSION_MAX_AGE: '366d' })).toThrow(/365 days/)
+    expect(() => parseEnv({ ...validEnv, SESSION_MAX_AGE: '99999999d' })).toThrow(/SESSION_MAX_AGE/)
+  })
+})
+
 describe('session lifetimes and the proxy', () => {
   it('reads the token lifetimes in seconds, with the defaults of the TDD', () => {
     const env = parseEnv(validEnv)
