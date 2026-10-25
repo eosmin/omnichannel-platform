@@ -136,7 +136,7 @@ path alias.
 | Zustand | `zustand@5.0.15` | Global client state: session, current store, UI state (sidebar collapsed) |
 | TanStack Query | `@tanstack/react-query@5.102.8` | Server state: conversations, orders, customers. Invalidated by WebSocket events through `QueryKeys` (`TDD_02` §14) |
 | TanStack Virtual | `@tanstack/react-virtual@3.13.12` | Virtualized conversation list |
-| React Hook Form + Zod | `react-hook-form@7.87.0`, `zod@4.5.4` | Same Zod schemas shared with backend DTO validation |
+| React Hook Form + Zod | `react-hook-form@7.87.0`, `zod@4.6.7` | Same Zod schemas shared with backend DTO validation |
 | Socket.io-client | `socket.io-client@4.8.3` | Realtime, with Redis Adapter on the server for multi-instance |
 | next-intl | `next-intl@4.5.3` | i18n (`TDD_09` §15) |
 | cmdk | `cmdk@1.1.1` | Command palette |
@@ -344,7 +344,7 @@ download path verify that prefix against the current store before touching the o
 | `@tanstack/react-virtual` | `3.13.12` |
 | `react-hook-form` | `7.87.0` |
 | `@hookform/resolvers` | `5.2.2` |
-| `zod` | `4.5.4` |
+| `zod` | `4.6.7` |
 | `socket.io-client` | `4.8.3` |
 | `next-intl` | `4.5.3` |
 | `cmdk` | `1.1.1` |
