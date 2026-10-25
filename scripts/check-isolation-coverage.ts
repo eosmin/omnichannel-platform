@@ -4,10 +4,17 @@ import { existsSync, readFileSync } from 'node:fs'
 import { exit } from 'node:process'
 
 import { ISOLATION_EXEMPTIONS } from './isolation-exemptions'
-import { checkIsolationCoverage, storeScopedModels, suiteResources } from './lib/isolation'
+import {
+  checkExemptions,
+  checkIsolationCoverage,
+  planSteps,
+  storeScopedModels,
+  suiteResources
+} from './lib/isolation'
 
 const SCHEMA = 'libs/core/database/prisma/schema.prisma'
 const SUITE = 'tests/security/tenant-isolation.spec.ts'
+const PLAN = 'docs/IMPLEMENTATION_PLAN.md'
 
 const models = storeScopedModels(readFileSync(SCHEMA, 'utf8'))
 // No model at all means that the schema was not read as expected, not that nothing needs a case
@@ -15,22 +22,26 @@ if (models.length === 0) {
   console.error(`no model with a store_id found in ${SCHEMA}: the schema convention changed?`)
   exit(1)
 }
-const unjustified = Object.entries(ISOLATION_EXEMPTIONS)
-  .filter(([, reason]) => reason.trim() === '')
-  .map(([model]) => model)
-if (unjustified.length > 0) {
+const exemptionProblems = checkExemptions(
+  ISOLATION_EXEMPTIONS,
+  planSteps(readFileSync(PLAN, 'utf8'))
+)
+if (exemptionProblems.invalid.length > 0) {
   console.error(
-    `Exemptions with no reason (scripts/isolation-exemptions.ts):\n  ${unjustified.join('\n  ')}`
+    `Exemptions with no reason, or for a step the plan does not have (scripts/isolation-exemptions.ts):\n  ${exemptionProblems.invalid.join('\n  ')}`
   )
-  exit(1)
 }
-
-// The suite is built in Step 1.3. Until then this lists what it will have to cover.
-if (!existsSync(SUITE)) {
-  console.log(
-    `${SUITE} does not exist yet (Step 1.3). The suite must cover ${models.length} models:\n  ${models.join('\n  ')}`
+if (exemptionProblems.due.length > 0) {
+  console.error(
+    `Exempt until a step that is done: the resource exists, so add its case to ${SUITE} and remove the exemption:\n  ${exemptionProblems.due.join('\n  ')}`
   )
-  exit(0)
+}
+if (exemptionProblems.invalid.length > 0 || exemptionProblems.due.length > 0) exit(1)
+
+// The suite is a required file: without it nothing is being checked, which is not a pass
+if (!existsSync(SUITE)) {
+  console.error(`${SUITE} does not exist: the tenant isolation suite is a gate of the platform`)
+  exit(1)
 }
 
 const { uncovered, stale } = checkIsolationCoverage(
