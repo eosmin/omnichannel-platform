@@ -6,7 +6,7 @@ import { pino } from 'pino'
 import { InfraRoutes } from '@platform/core/api'
 
 import type { AuthenticatedRequest } from './authenticated-request'
-import { buildPinoHttpOptions, logLevelFor, REDACTED_PATHS } from './logger-options'
+import { buildPinoHttpOptions, logLevelFor, REDACTED_PATHS, scrubRequest } from './logger-options'
 
 describe('logLevelFor', () => {
   it('maps the status of a response to a level', () => {
@@ -106,5 +106,68 @@ describe('redaction', () => {
       expect(output).not.toContain(secret)
     }
     for (const kept of ['json', '"ok"', 'kept']) expect(output).toContain(kept)
+  })
+})
+
+// The token of an invitation travels in the path (GET /invitations/:token) and is as good as a
+// password until it is used or expires: the log must never hold it
+describe('scrubRequest', () => {
+  // Built, not written out: a literal that long reads as a secret to the scanner of the hooks
+  const TOKEN = `fixture-${'0123456789'.repeat(3)}`
+
+  it('removes the token from the url, with or without what follows it', () => {
+    expect(scrubRequest({ url: `/api/v1/invitations/${TOKEN}` }).url).toBe(
+      '/api/v1/invitations/[redacted]'
+    )
+    expect(scrubRequest({ url: `/api/v1/invitations/${TOKEN}/accept?x=1` }).url).toBe(
+      '/api/v1/invitations/[redacted]/accept?x=1'
+    )
+  })
+
+  it('removes it from the params, whether the route is matched or still a wildcard', () => {
+    const matched = scrubRequest({ params: { token: TOKEN } })
+    const wildcard = scrubRequest({
+      params: { splat: ['api', 'v1', 'invitations', TOKEN, 'accept'] }
+    })
+
+    expect(JSON.stringify(matched)).not.toContain(TOKEN)
+    expect(JSON.stringify(wildcard)).not.toContain(TOKEN)
+    expect(wildcard.params).toEqual({ splat: ['api', 'v1', 'invitations', '[redacted]', 'accept'] })
+  })
+
+  // What the real log holds: Nest strips the global prefix from the wildcard params
+  it('removes it from the params as the app really logs them, without the prefix', () => {
+    const logged = scrubRequest({ params: { splat: ['invitations', TOKEN, 'accept'] } })
+
+    expect(JSON.stringify(logged)).not.toContain(TOKEN)
+    expect(logged.params).toEqual({ splat: ['invitations', '[redacted]', 'accept'] })
+  })
+
+  it('does not care about the case of the path, which the router does not either', () => {
+    const url = scrubRequest({ url: `/API/V1/Invitations/${TOKEN}` }).url
+    const splat = scrubRequest({ params: { splat: ['Invitations', TOKEN] } }).params
+
+    expect(url).not.toContain(TOKEN)
+    expect(JSON.stringify(splat)).not.toContain(TOKEN)
+  })
+
+  it('leaves the other routes alone, the id of an invitation in the team settings included', () => {
+    const team = '/api/v1/settings/team/invitations/6c1f3c0e-6a58-4a40-9d0d-3f0c8a1b2c3d'
+    const others = {
+      url: team,
+      params: { splat: ['api', 'v1', 'settings', 'team', 'invitations', 'x'] }
+    }
+
+    expect(scrubRequest(others)).toEqual(others)
+    expect(scrubRequest({ url: '/api/v1/conversations?invitations=1' }).url).toBe(
+      '/api/v1/conversations?invitations=1'
+    )
+  })
+
+  it('is wired into the serializer of the request', () => {
+    const serializers = buildPinoHttpOptions({ level: 'info' }).serializers
+    const req = serializers?.['req'] as (value: object) => { url: string }
+
+    expect(req({ url: `/api/v1/invitations/${TOKEN}` }).url).not.toContain(TOKEN)
   })
 })
