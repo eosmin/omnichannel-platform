@@ -8,7 +8,8 @@ const validEnv: Record<string, string> = {
   CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),
   AWS_ACCESS_KEY_ID: 'key',
   AWS_SECRET_ACCESS_KEY: 'secret',
-  S3_BUCKET: 'platform-dev'
+  S3_BUCKET: 'platform-dev',
+  SMTP_URL: 'smtp://localhost:1025'
 }
 
 describe('parseEnv', () => {
@@ -78,8 +79,36 @@ describe('deployed environments', () => {
     )
   })
 
-  it('accept real secrets in production', () => {
-    expect(() => parseEnv({ ...validEnv, NODE_ENV: 'production' })).not.toThrow()
+  it('accept real secrets in production, sending through Resend', () => {
+    expect(() =>
+      parseEnv({ ...validEnv, NODE_ENV: 'production', RESEND_API_KEY: 're_key' })
+    ).not.toThrow()
+  })
+
+  it.each(['staging', 'production'])('refuse to send through SMTP in %s', nodeEnv => {
+    expect(() => parseEnv({ ...validEnv, NODE_ENV: nodeEnv })).toThrow(/RESEND_API_KEY/)
+  })
+
+  it('reports the missing key once, not once per rule', () => {
+    const none: Record<string, string> = { ...validEnv, NODE_ENV: 'production' }
+    delete none['SMTP_URL']
+    try {
+      parseEnv(none)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      expect(message.match(/RESEND_API_KEY/g)).toHaveLength(2) // The path of the issue and its text
+      return
+    }
+    throw new Error('parseEnv accepted a production env without a transport')
+  })
+})
+
+describe('email transport', () => {
+  it('needs Resend or SMTP, and says which variables to set', () => {
+    const none = { ...validEnv }
+    delete none.SMTP_URL
+    expect(() => parseEnv(none)).toThrow(/RESEND_API_KEY.*SMTP_URL/)
+    expect(() => parseEnv({ ...none, RESEND_API_KEY: 're_key' })).not.toThrow()
   })
 })
 

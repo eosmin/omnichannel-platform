@@ -1,16 +1,28 @@
 import type { AnalyticsEventName } from '@platform/core/analytics'
 import type { ChannelType, DigestFrequency } from '@platform/core/domain'
 import type { EventName } from '@platform/core/events'
+import type { Locale } from '@platform/core/i18n'
 
 import { AuditAction, type AuditActionType } from '../audit'
 
+import type { EmailTemplate } from './email-templates'
 import type { JobName, QueueName } from './queue-names'
 
 // Every payload is a plain, JSON-serializable object and carries correlationId when it originates
-// from a request (TDD_04 §1.3). The payloads of the channel-event and email jobs arrive with the
-// plugin SDK (Step 2.5) and the email templates, because they use types those steps create.
+// from a request (TDD_04 §1.3). The payload of the channel-event job arrives with the plugin SDK
+// (Step 2.5), because it uses a type that step creates.
 export interface BaseJob {
   correlationId?: string
+}
+
+// email: one job type, the template decides content and subject
+export interface SendEmailJob extends BaseJob {
+  template: EmailTemplate
+  to: string | string[]
+  locale: Locale
+  data: Record<string, unknown> // Validated against the template's schema when it is rendered
+  attachments?: { filename: string; contentBase64: string; contentType: string }[]
+  tags: { storeId?: string; template: EmailTemplate } // Echoed back by the Resend webhook (TDD_07 §5.4)
 }
 
 // webhooks

@@ -1,0 +1,13 @@
+{
+  "email": {
+    "magicLink": {
+      "subject": "Your sign-in link",
+      "heading": "Sign in to your account",
+      "body": "Use the button below to sign in. It works once.",
+      "cta": "Sign in",
+      "fallback": "If the button does not work, copy this link into your browser:",
+      "expiry": "This link expires in {minutes} minutes.",
+      "ignore": "If you did not ask for it, you can ignore this email."
+    }
+  }
+}

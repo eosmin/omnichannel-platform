@@ -17,6 +17,8 @@
     "declaration": true,
     "sourceMap": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
       "@platform/core/errors": ["libs/core/domain/errors/index.ts"],
@@ -43,6 +45,10 @@
       "@platform/core/logger": ["libs/core/logger/src/index.ts"],
       "@platform/core/metrics-module": ["libs/core/metrics/src/index.ts"],
       "@platform/core/http": ["libs/core/http/src/index.ts"],
+      "@platform/core/redis": ["libs/core/redis/src/index.ts"],
+      "@platform/core/queues-module": ["libs/core/queues/src/index.ts"],
+      "@platform/core/i18n-server": ["libs/core/i18n-server/src/index.ts"],
+      "@platform/core/email": ["libs/core/email/src/index.ts"],
       "@platform/core/sentry": ["libs/core/http/src/instrument.ts"]
     }
   },

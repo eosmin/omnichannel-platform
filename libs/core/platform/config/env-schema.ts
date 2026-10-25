@@ -51,9 +51,12 @@ export const envSchema = z
     S3_FORCE_PATH_STYLE: z.stringbool().default(false), // true for SeaweedFS
 
     // Email
-    EMAIL_PROVIDER: z.enum(['resend']).default('resend'),
-    RESEND_API_KEY: z.string().optional(),
-    RESEND_WEBHOOK_SECRET: z.string().optional(),
+    // Resend when RESEND_API_KEY is set, otherwise SMTP (Mailpit) when SMTP_URL is: the key wins, so
+    // moving to Resend is only setting it. Deployed environments need the key (see the check below).
+    // min(1): "RESEND_API_KEY=" in a file is a mistake, not a key, and must not count as set
+    RESEND_API_KEY: z.string().min(1).optional(),
+    SMTP_URL: z.url().optional(),
+    RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
     EMAIL_FROM: senderAddress.default('noreply@platform.local'),
     EMAIL_INBOUND_DOMAIN: z.string().optional(), // e.g. inbound.platform.com, TDD_10 §5.5
 
@@ -96,7 +99,19 @@ export const envSchema = z
   })
   .check(ctx => {
     const env = ctx.value
-    if (!DEPLOYED_ENVIRONMENTS.includes(env.NODE_ENV)) return
+    const isDeployed = DEPLOYED_ENVIRONMENTS.includes(env.NODE_ENV)
+    if (env.RESEND_API_KEY === undefined && (isDeployed || env.SMTP_URL === undefined)) {
+      // One message, the one that applies: a laptop may use Mailpit, a deployed environment may not
+      ctx.issues.push({
+        code: 'custom',
+        message: isDeployed
+          ? 'a deployed environment sends through Resend: RESEND_API_KEY is required'
+          : 'set RESEND_API_KEY, or SMTP_URL to send through Mailpit',
+        path: ['RESEND_API_KEY'],
+        input: env.RESEND_API_KEY
+      })
+    }
+    if (!isDeployed) return
     if (env.JWT_SECRET.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)) {
       ctx.issues.push({
         code: 'custom',
