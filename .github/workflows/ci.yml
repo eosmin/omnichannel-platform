@@ -56,14 +56,43 @@ jobs:
       - run: pnpm validate:translations
       - run: pnpm validate:env
       - run: pnpm validate:isolation
-      # test: the unit tests, until the `unit-tests` job of Step 1.1 takes them with their coverage
       # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
-      - name: Lint, type-check, test and build (affected on pull requests, everything on main)
+      - name: Lint, type-check and build (affected on pull requests, everything on main)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pnpm exec nx affected --targets=lint,type-check,test,build --parallel=3
+            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
           else
-            pnpm exec nx run-many --targets=lint,type-check,test,build --all --parallel=3
+            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
+          fi
+
+  # The unit tests with their coverage. The thresholds live in the jest.config of each project that
+  # has one (TDD_13 section 9, only for the paths that exist so far): `--coverage` is what makes jest
+  # enforce them.
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # nx-set-shas reads the last successful run of this workflow to find the base commit on main
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
+      - name: Unit tests with coverage (affected on pull requests, everything on main)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            pnpm exec nx affected --targets=test --parallel=3 --coverage
+          else
+            pnpm exec nx run-many --targets=test --all --parallel=3 --coverage
           fi
 
   # The suites that need a real database. The api connects as platform_app, never as the owner.
@@ -110,8 +139,9 @@ jobs:
         run: pnpm db:migrate
       - name: Every migration has a rollback
         run: pnpm validate:rollbacks
+      # The api suite also holds the 95% coverage gate of the auth module (apps/api/jest.integration.config.cts)
       - name: Integration suites
-        run: pnpm exec nx run-many --target=test-integration --projects=core-database,worker
+        run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,worker,api
       - name: The api and the worker start and answer
         run: |
           pnpm exec nx run-many --target=build --projects=api,worker
@@ -213,9 +243,18 @@ jobs:
             -e JWT_SECRET="$(openssl rand -hex 24)" \
             -e CREDENTIALS_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
             -e RESEND_API_KEY=re_ci_placeholder \
+            -e BULL_BOARD_ENABLED=true \
+            -e FRONTEND_URL=https://app.example.com \
+            -e TRUST_PROXY_HOPS=1 \
             platform-${{ matrix.app }}:ci
           curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused \
             http://localhost:${{ matrix.port }}/health/ready
+          # Bull Board needs files of node_modules that the image copies by hand: with the flag on,
+          # the api does not start without them, and it must answer 401 (not 404) without a token
+          if [ "${{ matrix.app }}" = "api" ]; then
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:${{ matrix.port }}/admin/queues)
+            test "$status" = "401" || { echo "Bull Board answered $status, expected 401"; exit 1; }
+          fi
       - name: Service log
         if: failure()
         run: docker logs service
