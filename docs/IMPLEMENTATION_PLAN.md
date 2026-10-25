@@ -221,9 +221,9 @@ and `integration-tests` is green on GitHub.
 both images build and pass Trivy, and `security-scan` is green on GitHub.
 
 ### Step 0.6 — Tooling
-- [ ] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`, failing with a clear message when `gitleaks` is not installed), commit-msg and **pre-push** hooks; the pre-push hook runs `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`, the validators) and is skipped when only `docs/` changed; `HUSKY=0` in CI; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
-- [ ] `scripts/validate-translations.ts`, `validate-deprecations.ts`, `check-isolation-coverage.ts`, and the `validate:affected` script (affected-only version of `validate:all`)
-- [ ] CI: add gitleaks to `security-scan`, and commitlint, `validate:translations` and `validate:deprecations` to `lint-and-types`. The remaining jobs of `TDD_03 §4` are created by the steps listed in "CI rollout" (unit tests 1.1, security tests 1.3, e2e and Lighthouse 3.1)
+- [x] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`, failing with a clear message when `gitleaks` is not installed), commit-msg and **pre-push** hooks; the pre-push hook runs `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`, the validators) and is skipped when only `docs/` changed; `HUSKY=0` in CI; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
+- [x] `scripts/validate-translations.ts`, `validate-deprecations.ts`, `check-isolation-coverage.ts`, and the `validate:affected` script (affected-only version of `validate:all`). Until their inputs exist they report and pass: translations until `apps/web/messages` exists (Step 3.1), isolation until `tests/security/tenant-isolation.spec.ts` exists (Step 1.3, which also writes the exemptions with their reasons). `validate:rollbacks` is `scripts/check-rollbacks.ts` under the name of `TDD_14 §2`, and `validate:ci` is defined when `test:contracts` and `test:security` exist
+- [x] CI: add gitleaks to `security-scan` (the pinned release, checked by checksum, over the whole history), and commitlint (the commits of the pull request and its title, except the title of a Dependabot pull request), `validate:translations`, `validate:deprecations`, `validate:env` and `validate:isolation` to `lint-and-types`. The remaining jobs of `TDD_03 §4` are created by the steps listed in "CI rollout" (unit tests 1.1, security tests 1.3, e2e and Lighthouse 3.1)
 
 **TDD:** `TDD_14 §6`, `§7`, `TDD_03 §4`
 **Done when:** a commit violating conventions is rejected locally and in CI, a push with a failing affected test is stopped by the pre-push hook, a docs-only push is not slowed by it, and every job that
@@ -981,7 +981,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 0.3 | Constants library (blocking dependency for everything) | done | #25 | 2026-10-24 |
 | 0.4 | Database schema | done | #27 | 2026-10-24 |
 | 0.5 | Observability | done | #28 | 2026-10-25 |
-| 0.6 | Tooling | todo | | |
+| 0.6 | Tooling | done | #33 | 2026-10-25 |
 | **Milestone 1: Auth and tenancy** | | | | |
 | 1.0 | Queues, workers and email | todo | | |
 | 1.1 | Authentication | todo | | |
