@@ -139,9 +139,9 @@ jobs:
         run: pnpm db:migrate
       - name: Every migration has a rollback
         run: pnpm validate:rollbacks
-      # The api suite also holds the 95% coverage gate of the auth module (apps/api/jest.integration.config.cts)
+      # The api suite holds the coverage gates of the auth (95%) and tenancy (100%) folders (apps/api/jest.integration.config.cts), core-redis and core-audit their own
       - name: Integration suites
-        run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,worker,api
+        run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,core-audit,worker,api
       - name: The api and the worker start and answer
         run: |
           pnpm exec nx run-many --target=build --projects=api,worker
