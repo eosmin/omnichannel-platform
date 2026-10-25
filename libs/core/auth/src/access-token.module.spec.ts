@@ -25,6 +25,7 @@ const settings: AuthSettings = {
   jwtSecret: 'a-secret-of-at-least-thirty-two-characters!',
   accessTtlSeconds: 900,
   refreshTtlSeconds: 604_800,
+  sessionMaxAgeSeconds: 2_592_000,
   frontendUrl: 'http://localhost:3000'
 }
 
