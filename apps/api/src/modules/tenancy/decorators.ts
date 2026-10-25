@@ -62,6 +62,16 @@ export const CurrentMembership = createParamDecorator(
   }
 )
 
+// What the member may do in the store of the request: for the rules that compare the caller with
+// someone else (nobody grants a permission they lack)
+export const CurrentPermissions = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): readonly Permission[] => {
+    const { permissions } = tenantRequest(context)
+    if (permissions === undefined) throw missingTenant()
+    return permissions
+  }
+)
+
 // A public route has no user, and a SkipTenant route has no store: neither guard has anything to do
 export function isTenantExempt(reflector: Reflector, context: ExecutionContext): boolean {
   const targets = [context.getHandler(), context.getClass()]
