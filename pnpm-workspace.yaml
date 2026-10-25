@@ -9,3 +9,8 @@ allowBuilds:
   '@prisma/engines': false
   prisma: false
   msgpackr-extract: false
+
+# @nestjs/platform-express 12.2.0 (the latest) still ships multer 2.4.0, and the denial of service
+# advisories of multer are fixed in 2.5.0. Remove this when Nest depends on multer 2.5 or later.
+overrides:
+  multer: 2.5.0

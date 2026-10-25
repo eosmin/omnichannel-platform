@@ -65,7 +65,7 @@ These are decisions, not suggestions. Every implementation choice must be consis
 ## 3. Tech stack summary
 
 ```
-Frontend    Next.js 16.3 (App Router) + React 19.2 + Tailwind 4.3 + shadcn/ui
+Frontend    Next.js 16.4 (App Router) + React 19.2 + Tailwind 4.3 + shadcn/ui
 Backend     NestJS 12 + Prisma 7.10 (pg driver adapter) + PostgreSQL 18.6 + Redis 8.10 (ioredis) + BullMQ 6.3
 Realtime    Socket.io 4.8 + Redis Adapter
 Deployment  Railway (v1.2 MVP) → Google Cloud Run (SaaS phase) → Kubernetes (migration path, MATURE)

@@ -123,11 +123,11 @@ path alias.
 
 ## 2. Tech stack detail and rationale
 
-### 2.1 Frontend — Next.js 16.3 (App Router)
+### 2.1 Frontend — Next.js 16.4 (App Router)
 
 | Choice | Version | Rationale |
 |--------|---------|-----------|
-| App Router + RSC | `next@16.3.4` | Server Components reduce client bundle; inbox lists render server-side. Request interception uses the `proxy.ts` convention (Next 16 renamed `middleware.ts`). |
+| App Router + RSC | `next@16.4.3` | Server Components reduce client bundle; inbox lists render server-side. Request interception uses the `proxy.ts` convention (Next 16 renamed `middleware.ts`). |
 | Server Actions | — | Mutations without hand-written API glue for simple forms |
 | Streaming + Suspense | — | Inbox shell renders instantly, panels stream in |
 | React | `react@19.2.8`, `react-dom@19.2.8` | — |
@@ -136,7 +136,7 @@ path alias.
 | Zustand | `zustand@5.0.15` | Global client state: session, current store, UI state (sidebar collapsed) |
 | TanStack Query | `@tanstack/react-query@5.102.8` | Server state: conversations, orders, customers. Invalidated by WebSocket events through `QueryKeys` (`TDD_02` §14) |
 | TanStack Virtual | `@tanstack/react-virtual@3.13.12` | Virtualized conversation list |
-| React Hook Form + Zod | `react-hook-form@7.87.0`, `zod@4.5.4` | Same Zod schemas shared with backend DTO validation |
+| React Hook Form + Zod | `react-hook-form@7.87.0`, `zod@4.6.7` | Same Zod schemas shared with backend DTO validation |
 | Socket.io-client | `socket.io-client@4.8.3` | Realtime, with Redis Adapter on the server for multi-instance |
 | next-intl | `next-intl@4.5.3` | i18n (`TDD_09` §15) |
 | cmdk | `cmdk@1.1.1` | Command palette |
@@ -334,7 +334,7 @@ download path verify that prefix against the current store before touching the o
 
 | Package | Version |
 |---|---|
-| `next` | `16.3.4` |
+| `next` | `16.4.3` |
 | `react` / `react-dom` | `19.2.8` |
 | `tailwindcss` | `4.3.3` |
 | `shadcn` (CLI) | `4.20.1` |
@@ -344,7 +344,7 @@ download path verify that prefix against the current store before touching the o
 | `@tanstack/react-virtual` | `3.13.12` |
 | `react-hook-form` | `7.87.0` |
 | `@hookform/resolvers` | `5.2.2` |
-| `zod` | `4.5.4` |
+| `zod` | `4.6.7` |
 | `socket.io-client` | `4.8.3` |
 | `next-intl` | `4.5.3` |
 | `cmdk` | `1.1.1` |
@@ -486,7 +486,7 @@ phase starts (YAGNI).
 | `@commitlint/cli`, `@commitlint/config-conventional` | `21.2.2` |
 | `tsx` | `4.20.5` |
 | `@eslint/js` | `10.0.1` |
-| `@next/eslint-plugin-next` | `16.3.4` |
+| `@next/eslint-plugin-next` | `16.4.3` |
 | `@nx/eslint`, `@nx/jest`, `@nx/js` | `23.2.0` |
 | `@nestjs/cli` | `12.0.10` — builds `api` and `worker` with the Rspack builder, the default of Nest 12 for monorepos |
 | `@rspack/core` | `2.2.9` |
