@@ -24,7 +24,14 @@
       }
     },
     "test": {
-      "executor": "nx:noop"
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "jest --config scripts/jest.config.cts",
+        "cwd": "{workspaceRoot}",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+        }
+      }
     }
   }
 }

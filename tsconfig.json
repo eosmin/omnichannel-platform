@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"],
+    "types": ["node", "jest"],
     "noEmit": true
   },
-  "include": ["scripts/**/*.ts", "prisma.config.ts"],
+  "include": ["scripts/**/*.ts", "scripts/jest.config.cts", "prisma.config.ts"],
   "exclude": ["node_modules"]
 }

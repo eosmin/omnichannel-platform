@@ -16,16 +16,22 @@
     "lint": "nx run-many --target=lint --all",
     "lint:fix": "nx run-many --target=lint --all -- --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,cjs,mjs,cts,json,md,yml,yaml}\"",
     "type-check": "nx run-many --target=type-check --all",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f",
     "validate:env": "tsx scripts/validate-env-example.ts",
     "db:migrate": "prisma migrate deploy && tsx scripts/set-db-role-passwords.ts",
-    "db:check-rollbacks": "tsx scripts/check-rollbacks.ts",
     "db:seed": "prisma db seed",
-    "db:fixtures": "tsx --tsconfig libs/core/database/tsconfig.json libs/core/database/prisma/dev-fixtures.ts"
+    "db:fixtures": "tsx --tsconfig libs/core/database/tsconfig.json libs/core/database/prisma/dev-fixtures.ts",
+    "prepare": "husky",
+    "validate:translations": "tsx scripts/validate-translations.ts",
+    "validate:deprecations": "tsx scripts/validate-deprecations.ts",
+    "validate:rollbacks": "tsx scripts/check-rollbacks.ts",
+    "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm test",
+    "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
@@ -86,5 +92,15 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "4.5.4"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{js,cjs,mjs,cts,mts,json,md,yml,yaml}": "prettier --write --ignore-unknown",
+    "libs/core/database/prisma/schema.prisma": "prisma format",
+    "apps/web/messages/*.json": "pnpm validate:translations",
+    "libs/core/database/prisma/migrations/**/migration.sql": "pnpm validate:rollbacks"
   }
 }
