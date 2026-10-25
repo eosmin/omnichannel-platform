@@ -15,6 +15,8 @@ permissions:
 
 env:
   NODE_ENV: test
+  # The Git hooks are for laptops: CI runs the same checks itself, as jobs
+  HUSKY: '0'
 
 jobs:
   lint-and-types:
@@ -37,13 +39,31 @@ jobs:
       - run: pnpm install --frozen-lockfile --prefer-offline
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - run: pnpm format:check
+      # The commits of the pull request and its title (it becomes the squash commit on main)
+      - name: Commit messages follow Conventional Commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA"
+      # Dependabot titles ("chore(deps-dev): bump <long name> from x to y") can pass 72 characters
+      - name: Pull request title follows Conventional Commits
+        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | pnpm exec commitlint
+      - run: pnpm validate:deprecations
+      - run: pnpm validate:translations
+      - run: pnpm validate:env
+      - run: pnpm validate:isolation
+      # test: the unit tests, until the `unit-tests` job of Step 1.1 takes them with their coverage
       # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
-      - name: Lint, type-check and build (affected on pull requests, everything on main)
+      - name: Lint, type-check, test and build (affected on pull requests, everything on main)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
+            pnpm exec nx affected --targets=lint,type-check,test,build --parallel=3
           else
-            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
+            pnpm exec nx run-many --targets=lint,type-check,test,build --all --parallel=3
           fi
 
   # The suites that need a real database. The api connects as platform_app, never as the owner.
@@ -82,7 +102,7 @@ jobs:
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
       - name: Every migration has a rollback
-        run: pnpm db:check-rollbacks
+        run: pnpm validate:rollbacks
       - name: Integration suites
         run: pnpm exec nx run core-database:test-integration
       - name: The api and the worker start and answer
@@ -138,6 +158,22 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # gitleaks reads the whole history. Every leg fetches it: in an expression, 0 is falsy, so
+          # `cond && 0 || 1` would always give 1
+          fetch-depth: 0
+      # A secret that was ever committed stays in the history, so the whole history is scanned, once
+      - name: Scan the history for secrets
+        if: matrix.app == 'api'
+        env:
+          GITLEAKS_VERSION: 8.28.0
+          GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+        run: |
+          curl --fail --silent --show-error --location --output gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --no-banner --redact --verbose
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build the ${{ matrix.app }} image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
