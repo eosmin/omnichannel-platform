@@ -4,6 +4,7 @@ import { env } from '@platform/core/config/env'
 import { DatabaseModule } from '@platform/core/database'
 import { LoggerModule } from '@platform/core/logger'
 import { MetricsModule } from '@platform/core/metrics-module'
+import { RedisModule } from '@platform/core/redis'
 
 import { HealthModule } from './health/health.module'
 import { HttpErrorsModule } from './http-errors.module'
@@ -16,6 +17,7 @@ import { HttpErrorsModule } from './http-errors.module'
     LoggerModule.forRoot({ level: env.LOG_LEVEL, pretty: env.NODE_ENV === 'development' }),
     MetricsModule,
     DatabaseModule.forRoot({ databaseUrl: env.DATABASE_URL, replicaUrl: env.DATABASE_REPLICA_URL }),
+    RedisModule.forRoot({ url: env.REDIS_URL }),
     HttpErrorsModule,
     HealthModule
   ]
