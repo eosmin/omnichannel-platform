@@ -248,6 +248,129 @@ describe('SessionService', () => {
     })
   })
 
+  describe('the end of a login', () => {
+    const UTC_NOW = `now() AT TIME ZONE 'UTC'` // The columns hold UTC without a zone
+
+    interface Row {
+      expires_at: Date
+      family_expires_at: Date
+      lifetime: number // Seconds from creation to the end of the family
+      family_end_ms: number // In UTC: pg would read the column as local time
+    }
+
+    async function rowsOf(userId: string): Promise<Row[]> {
+      const result = await test.asOwner(client =>
+        client.query<Row>(
+          `SELECT expires_at, family_expires_at,
+                  extract(epoch FROM (family_expires_at - created_at))::int AS lifetime,
+                  (extract(epoch FROM family_expires_at) * 1000)::float8 AS family_end_ms
+           FROM sessions WHERE user_id = $1 ORDER BY created_at`,
+          [userId]
+        )
+      )
+      return result.rows
+    }
+
+    it('is fixed when the login starts: the cap after SESSION_MAX_AGE', async () => {
+      const user = await test.createUser()
+
+      await test.sessions.issue(user)
+
+      const [row] = await rowsOf(user.id)
+      expect(Math.abs((row?.lifetime ?? 0) - settings.sessionMaxAgeSeconds)).toBeLessThan(5)
+    })
+
+    it('does not move when the token is refreshed: every row of the family has the same end', async () => {
+      const user = await test.createUser()
+      const first = await test.sessions.issue(user)
+      const second = await test.sessions.refresh(first.refreshToken)
+      await test.sessions.refresh(second.refreshToken)
+
+      const rows = await rowsOf(user.id)
+
+      expect(rows).toHaveLength(3)
+      const ends = new Set(rows.map(row => row.family_expires_at.getTime()))
+      expect(ends.size).toBe(1)
+    })
+
+    it('stops a refresh token at the end of the login, even if it would last longer', async () => {
+      const user = await test.createUser()
+      const first = await test.sessions.issue(user)
+      // The login has one day left, and a refresh token lasts seven
+      await test.asOwner(client =>
+        client.query(
+          `UPDATE sessions SET family_expires_at = ${UTC_NOW} + interval '1 day' WHERE user_id = $1`,
+          [user.id]
+        )
+      )
+
+      const second = await test.sessions.refresh(first.refreshToken)
+
+      const rows = await rowsOf(user.id)
+      const next = rows[1]
+      expect(next?.expires_at.getTime()).toBe(next?.family_expires_at.getTime())
+      expect(new Date(second.refreshExpiresAt).getTime()).toBe(next?.family_end_ms)
+      expect(new Date(second.refreshExpiresAt).getTime() - Date.now()).toBeLessThan(
+        86_400_000 + 5000
+      )
+    })
+
+    it('keeps the normal lifetime of the token while the login has more than that left', async () => {
+      const user = await test.createUser()
+      const first = await test.sessions.issue(user)
+
+      const second = await test.sessions.refresh(first.refreshToken)
+
+      const remaining = (new Date(second.refreshExpiresAt).getTime() - Date.now()) / 1000
+      expect(Math.abs(remaining - settings.refreshTtlSeconds)).toBeLessThan(5)
+    })
+
+    it('refuses a refresh after the end of the login, with the code of an expired token', async () => {
+      const user = await test.createUser()
+      const issued = await test.sessions.issue(user)
+      // The token itself still has days to live; the login does not
+      await test.asOwner(client =>
+        client.query(
+          `UPDATE sessions SET family_expires_at = ${UTC_NOW} - interval '1 second' WHERE user_id = $1`,
+          [user.id]
+        )
+      )
+
+      expect(await codeOf(test.sessions.refresh(issued.refreshToken))).toBe('AUTH_TOKEN_EXPIRED')
+      expect(await rowsOf(user.id)).toHaveLength(1) // No new token was issued
+    })
+
+    it('ends every refresh token of the family together, not only the newest', async () => {
+      const user = await test.createUser()
+      const first = await test.sessions.issue(user)
+      const second = await test.sessions.refresh(first.refreshToken)
+      await test.asOwner(client =>
+        client.query(
+          `UPDATE sessions SET family_expires_at = ${UTC_NOW} - interval '1 second' WHERE user_id = $1`,
+          [user.id]
+        )
+      )
+
+      expect(await codeOf(test.sessions.refresh(second.refreshToken))).toBe('AUTH_TOKEN_EXPIRED')
+    })
+
+    it('does not touch another login of the same user', async () => {
+      const user = await test.createUser()
+      const old = await test.sessions.issue(user)
+      const other = await test.sessions.issue(user)
+      const familyOf = (token: string): string => jwt.decode<{ sid: string }>(token).sid
+      await test.asOwner(client =>
+        client.query(
+          `UPDATE sessions SET family_expires_at = ${UTC_NOW} - interval '1 second' WHERE family_id = $1`,
+          [familyOf(old.accessToken)]
+        )
+      )
+
+      expect(await codeOf(test.sessions.refresh(old.refreshToken))).toBe('AUTH_TOKEN_EXPIRED')
+      await expect(test.sessions.refresh(other.refreshToken)).resolves.toBeDefined()
+    })
+  })
+
   describe('logout', () => {
     it('does not end the login of another user, even with its family id', async () => {
       const mine = await test.createUser()

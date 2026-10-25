@@ -4,6 +4,8 @@ export interface AuthSettings {
   jwtSecret: string
   accessTtlSeconds: number
   refreshTtlSeconds: number
+  // A login ends this long after it started, however often it is refreshed
+  sessionMaxAgeSeconds: number
   // The web app, where a magic link points
   frontendUrl: string
 }

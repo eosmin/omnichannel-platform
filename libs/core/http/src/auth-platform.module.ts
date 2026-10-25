@@ -10,6 +10,7 @@ import { env } from '@platform/core/config/env'
       jwtSecret: env.JWT_SECRET,
       accessTtlSeconds: env.JWT_EXPIRES_IN,
       refreshTtlSeconds: env.REFRESH_TOKEN_EXPIRES_IN,
+      sessionMaxAgeSeconds: env.SESSION_MAX_AGE,
       frontendUrl: env.FRONTEND_URL
     })
   ]
