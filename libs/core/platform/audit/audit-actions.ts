@@ -41,6 +41,7 @@ export const AuditAction = {
   CUSTOMER_DELETED: 'customer.deleted',
   CUSTOMER_MERGED: 'customer.merged',
   CUSTOMER_UNMERGED: 'customer.unmerged',
+  CUSTOMER_NOTE_DELETED: 'customer.note_deleted',
   CUSTOMER_CAUTION_SET: 'customer.caution_set',
   CUSTOMER_CAUTION_CLEARED: 'customer.caution_cleared',
   ORDER_CANCELLED: 'order.cancelled',
