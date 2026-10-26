@@ -4,15 +4,17 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission } from '@platform/core/auth'
 import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  resourceConflict,
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
 
 import type { CreateRoleBody, UpdateRoleBody } from './team.schemas'
-
-const HTTP_FORBIDDEN = 403
-const HTTP_NOT_FOUND = 404
-const HTTP_CONFLICT = 409
 
 export interface RoleView {
   id: string
@@ -134,12 +136,10 @@ export class RolesService {
         tx.invitation.count({ where: { roleId } })
       ])
       if (members + invitations > 0) {
-        throw new PlatformException(
-          ErrorCodes.RESOURCE_CONFLICT,
-          'a role that members or invitations hold cannot be deleted',
-          HTTP_CONFLICT,
-          { members, invitations }
-        )
+        throw resourceConflict('a role that members or invitations hold cannot be deleted', {
+          members,
+          invitations
+        })
       }
       await tx.role.delete({ where: { id: roleId } })
       return found
@@ -153,13 +153,9 @@ export class RolesService {
       where: { id: roleId, OR: [{ storeId }, { isSystem: true, storeId: null }] },
       select: ROLE_SELECT
     })
-    if (role === null) throw notFound('role')
+    if (role === null) throw resourceNotFound('role')
     if (role.isSystem) {
-      throw new PlatformException(
-        ErrorCodes.RESOURCE_CONFLICT,
-        'a system role cannot be changed or deleted',
-        HTTP_CONFLICT
-      )
+      throw resourceConflict('a system role cannot be changed or deleted')
     }
     return role
   }
@@ -198,7 +194,7 @@ export class RolesService {
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'a role cannot hold permissions the caller lacks',
-        HTTP_FORBIDDEN,
+        HttpStatusCodes.FORBIDDEN,
         { permissions: missing }
       )
     }
@@ -227,14 +223,10 @@ export class RolesService {
   }
 }
 
-function notFound(what: string): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, `${what} not found`, HTTP_NOT_FOUND)
-}
-
 function nameTaken(): PlatformException {
   return new PlatformException(
     ErrorCodes.RESOURCE_ALREADY_EXISTS,
     'a role with that name already exists',
-    HTTP_CONFLICT
+    HttpStatusCodes.CONFLICT
   )
 }

@@ -1,9 +1,8 @@
 import { type PipeTransform } from '@nestjs/common'
 import type { z } from 'zod'
 
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
-const BAD_REQUEST = 400
 // A body full of bad fields must not become a response just as big
 const MAX_ISSUES = 20
 
@@ -18,7 +17,7 @@ export class ZodValidationPipe<T extends z.ZodType> implements PipeTransform<unk
     throw new PlatformException(
       ErrorCodes.VALIDATION_FAILED,
       'request validation failed',
-      BAD_REQUEST,
+      HttpStatusCodes.BAD_REQUEST,
       {
         issues: result.error.issues.slice(0, MAX_ISSUES).map(issue => ({
           path: issue.path.join('.'),

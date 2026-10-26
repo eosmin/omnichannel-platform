@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
+import { resourceNotFound } from '@platform/core/errors'
 
 import { ensureDefaultAddress } from './address-default'
 import type { CreateAddressBody, UpdateAddressBody } from './customers.schemas'
-import { lockCustomerForWrite, notFound } from './customers.support'
+import { lockCustomerForWrite } from './customers.support'
 import { ADDRESS_SELECT, type AddressView } from './customers.views'
 
 // A customer has at most one default address. The customer row is locked while it is decided, so two
@@ -87,7 +88,7 @@ export class AddressesService {
       where: { id: addressId, customerId },
       select: { id: true }
     })
-    if (address === null) throw notFound('address')
+    if (address === null) throw resourceNotFound('address')
   }
 }
 

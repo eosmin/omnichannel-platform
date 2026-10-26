@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
@@ -28,9 +29,6 @@ import {
   OrganizationsService,
   type StoreView
 } from './organizations.service'
-
-const HTTP_CREATED = 201
-const HTTP_NO_CONTENT = 204
 
 // The organization is the one of the store in X-Store-Id (TenantGuard puts it on the request), and
 // the stores listed and changed are its stores: there is no way to name another organization.
@@ -69,7 +67,7 @@ export class OrganizationsController {
 
   @RequirePermissions(Permissions.ORG_MANAGE_STORES)
   @Post(ApiRoutes.organizations.stores)
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   createStore(
     @CurrentOrganization() organization: { id: string },
     @CurrentStore() store: { id: string },
@@ -108,7 +106,7 @@ export class OrganizationsController {
 
   @RequirePermissions(Permissions.ORG_MANAGE_STORES)
   @Delete(ApiRoutes.organizations.storeById(':id'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async deleteStore(
     @CurrentOrganization() organization: { id: string },
     @CurrentStore() store: { id: string },

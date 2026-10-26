@@ -12,11 +12,14 @@ import {
 import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
 import { generateToken, hashToken } from '@platform/core/crypto'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 
 const MS_PER_SECOND = 1000
-const UNAUTHORIZED = 401
-const NOT_FOUND = 404
 const MAX_USER_AGENT_LENGTH = 255
 
 export interface SessionUser {
@@ -102,7 +105,7 @@ export class SessionService {
       throw new PlatformException(
         ErrorCodes.AUTH_TOKEN_EXPIRED,
         'refresh token expired',
-        UNAUTHORIZED
+        HttpStatusCodes.UNAUTHORIZED
       )
     }
 
@@ -165,7 +168,7 @@ export class SessionService {
       SessionRevokedReasons.REVOKED_BY_USER
     )
     if (revoked === 0) {
-      throw new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, 'session not found', NOT_FOUND)
+      throw resourceNotFound('session')
     }
   }
 
@@ -178,7 +181,7 @@ export class SessionService {
     throw new PlatformException(
       ErrorCodes.AUTH_REFRESH_TOKEN_REUSED,
       'refresh token already used',
-      UNAUTHORIZED
+      HttpStatusCodes.UNAUTHORIZED
     )
   }
 
@@ -232,5 +235,9 @@ export class SessionService {
 }
 
 function invalidToken(): PlatformException {
-  return new PlatformException(ErrorCodes.AUTH_TOKEN_INVALID, 'invalid refresh token', UNAUTHORIZED)
+  return new PlatformException(
+    ErrorCodes.AUTH_TOKEN_INVALID,
+    'invalid refresh token',
+    HttpStatusCodes.UNAUTHORIZED
+  )
 }

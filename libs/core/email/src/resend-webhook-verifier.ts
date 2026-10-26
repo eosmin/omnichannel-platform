@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Resend, type WebhookEventPayload } from 'resend'
 
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { unauthorized } from '@platform/core/errors'
 
 export interface WebhookHeaders {
   id: string
@@ -24,18 +24,10 @@ export class ResendWebhookVerifier {
   verify(rawBody: Buffer | undefined, headers: Partial<WebhookHeaders>): WebhookEventPayload {
     const { id, timestamp, signature } = headers
     if (rawBody === undefined || this.secret === undefined) {
-      throw new PlatformException(
-        ErrorCodes.AUTH_UNAUTHORIZED,
-        'resend webhook not configured',
-        401
-      )
+      throw unauthorized('resend webhook not configured')
     }
     if (id === undefined || timestamp === undefined || signature === undefined) {
-      throw new PlatformException(
-        ErrorCodes.AUTH_UNAUTHORIZED,
-        'missing webhook signature headers',
-        401
-      )
+      throw unauthorized('missing webhook signature headers')
     }
     try {
       return this.resend.webhooks.verify({
@@ -50,11 +42,7 @@ export class ResendWebhookVerifier {
       this.logger.warn(
         `resend webhook refused: ${error instanceof Error ? error.message : 'unknown error'}`
       )
-      throw new PlatformException(
-        ErrorCodes.AUTH_UNAUTHORIZED,
-        'invalid resend webhook signature',
-        401
-      )
+      throw unauthorized('invalid resend webhook signature')
     }
   }
 }

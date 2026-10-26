@@ -396,6 +396,11 @@ export default defineConfig([
           message:
             'Change conversation status through ConversationsService.updateStatus',
         },
+        // The statuses and the usual answers come from libs/core/domain/errors: a number in
+        // PlatformException or HttpException, @HttpCode, res.status, res.sendStatus or res.writeHead,
+        // a constant HTTP_* of your own, or
+        // ErrorCodes.RESOURCE_NOT_FOUND / RESOURCE_CONFLICT / AUTH_UNAUTHORIZED by hand are refused
+        // (httpStatusBans in eslint.config.js). The specs are exempt: they say the number on purpose.
       ],
 
       'import-x/order': [

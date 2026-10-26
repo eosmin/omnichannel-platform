@@ -4,16 +4,12 @@ import { z } from 'zod'
 
 import { AuditAction } from '@platform/core/audit'
 import { TenantHeaders } from '@platform/core/auth'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException, unauthorized } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { AccessDenialAuditor } from './access-denial-auditor'
 import { isTenantExempt } from './decorators'
 import { TenantContextService } from './tenant-context.service'
-
-const BAD_REQUEST = 400
-const UNAUTHORIZED = 401
-const FORBIDDEN = 403
 
 // Global, after the AuthGuard. The store of a request is the one in X-Store-Id and nowhere else: a
 // storeId in the body or the query is never read, here or in a service. The user must be an active
@@ -36,11 +32,7 @@ export class TenantGuard implements CanActivate {
     const user = request.user
     // The AuthGuard runs first and puts the user there. Without one, fail closed.
     if (user === undefined) {
-      throw new PlatformException(
-        ErrorCodes.AUTH_UNAUTHORIZED,
-        'no authenticated user',
-        UNAUTHORIZED
-      )
+      throw unauthorized('no authenticated user')
     }
 
     const header = request.header(TenantHeaders.STORE_ID)
@@ -48,7 +40,7 @@ export class TenantGuard implements CanActivate {
       throw new PlatformException(
         ErrorCodes.TENANT_HEADER_MISSING,
         'X-Store-Id header is required',
-        BAD_REQUEST
+        HttpStatusCodes.BAD_REQUEST
       )
     }
     const parsed = z.uuid().safeParse(header)
@@ -57,7 +49,7 @@ export class TenantGuard implements CanActivate {
       throw new PlatformException(
         ErrorCodes.VALIDATION_FAILED,
         'X-Store-Id must be a UUID',
-        BAD_REQUEST,
+        HttpStatusCodes.BAD_REQUEST,
         { header: TenantHeaders.STORE_ID }
       )
     }
@@ -74,7 +66,7 @@ export class TenantGuard implements CanActivate {
       throw new PlatformException(
         ErrorCodes.TENANT_ACCESS_DENIED,
         'No access to this store',
-        FORBIDDEN
+        HttpStatusCodes.FORBIDDEN
       )
     }
 

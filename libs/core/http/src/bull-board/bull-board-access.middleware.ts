@@ -1,12 +1,15 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 
 import { toAuthenticatedUser } from '@platform/core/auth-module'
-import { ErrorCodes, type ErrorCode, type ErrorResponse } from '@platform/core/errors'
+import {
+  type ErrorCode,
+  ErrorCodes,
+  type ErrorResponse,
+  HttpStatusCodes
+} from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 const BEARER = /^Bearer (\S+)$/i
-const UNAUTHORIZED = 401
-const FORBIDDEN = 403
 
 export interface BullBoardAccessOptions {
   // Verifies the signature and the expiry, and returns the claims; throws if the token is no good
@@ -38,7 +41,13 @@ export function bullBoardAccess(options: BullBoardAccessOptions): RequestHandler
   return (req: Request, res: Response, next: NextFunction): void => {
     const token = BEARER.exec(req.get('authorization') ?? '')?.[1]
     if (token === undefined) {
-      return refuse(req, res, UNAUTHORIZED, ErrorCodes.AUTH_UNAUTHORIZED, 'no access token')
+      return refuse(
+        req,
+        res,
+        HttpStatusCodes.UNAUTHORIZED,
+        ErrorCodes.AUTH_UNAUTHORIZED,
+        'no access token'
+      )
     }
     options
       .verify(token)
@@ -48,7 +57,7 @@ export function bullBoardAccess(options: BullBoardAccessOptions): RequestHandler
           return refuse(
             req,
             res,
-            UNAUTHORIZED,
+            HttpStatusCodes.UNAUTHORIZED,
             ErrorCodes.AUTH_TOKEN_INVALID,
             'invalid access token'
           )
@@ -57,7 +66,7 @@ export function bullBoardAccess(options: BullBoardAccessOptions): RequestHandler
           return refuse(
             req,
             res,
-            FORBIDDEN,
+            HttpStatusCodes.FORBIDDEN,
             ErrorCodes.PERMISSION_DENIED,
             'not a queue administrator'
           )
@@ -69,7 +78,7 @@ export function bullBoardAccess(options: BullBoardAccessOptions): RequestHandler
         refuse(
           req,
           res,
-          UNAUTHORIZED,
+          HttpStatusCodes.UNAUTHORIZED,
           expired ? ErrorCodes.AUTH_TOKEN_EXPIRED : ErrorCodes.AUTH_TOKEN_INVALID,
           expired ? 'access token expired' : 'invalid access token'
         )

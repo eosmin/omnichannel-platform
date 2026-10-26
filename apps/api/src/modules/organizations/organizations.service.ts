@@ -11,7 +11,13 @@ import {
   slugify
 } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  resourceConflict,
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
 
@@ -20,10 +26,6 @@ import type {
   UpdateOrganizationBody,
   UpdateStoreBody
 } from './organizations.schemas'
-
-const HTTP_FORBIDDEN = 403
-const HTTP_NOT_FOUND = 404
-const HTTP_CONFLICT = 409
 
 export interface OrganizationView {
   id: string
@@ -92,7 +94,7 @@ export class OrganizationsService {
       where: { id: organizationId },
       select: { id: true, name: true, slug: true }
     })
-    if (organization === null) throw notFound('organization')
+    if (organization === null) throw resourceNotFound('organization')
     return organization
   }
 
@@ -133,7 +135,7 @@ export class OrganizationsService {
       where: { id: storeId, organizationId, ...managedBy(actor.userId) },
       select: STORE_FIELDS
     })
-    if (store === null) throw notFound('store')
+    if (store === null) throw resourceNotFound('store')
     return store
   }
 
@@ -151,7 +153,11 @@ export class OrganizationsService {
       select: { id: true, permissions: { select: { name: true } } }
     })
     if (admin === null) {
-      throw new PlatformException(ErrorCodes.INTERNAL_ERROR, 'the Admin role does not exist', 500)
+      throw new PlatformException(
+        ErrorCodes.INTERNAL_ERROR,
+        'the Admin role does not exist',
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
     }
     const missing = missingPermissions(
       held,
@@ -161,7 +167,7 @@ export class OrganizationsService {
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'a store is created only by someone who holds what its Admin holds',
-        HTTP_FORBIDDEN,
+        HttpStatusCodes.FORBIDDEN,
         { permissions: missing }
       )
     }
@@ -211,7 +217,7 @@ export class OrganizationsService {
       where: { id: storeId, organizationId, ...managedBy(actor.userId) },
       data: changes
     })
-    if (count === 0) throw notFound('store')
+    if (count === 0) throw resourceNotFound('store')
     // The name of the store is part of what the guards cache
     await this.tenants.invalidateStore(storeId)
     this.logStore(AuditAction.STORE_UPDATED, organizationId, storeId, actor, {
@@ -229,28 +235,19 @@ export class OrganizationsService {
         where: { id: storeId, organizationId, ...managedBy(actor.userId) },
         select: { id: true }
       })
-      if (target === null) throw notFound('store')
+      if (target === null) throw resourceNotFound('store')
       // Two deletes at once would each see the other store still there: the organization is locked
       // while its stores are counted
       await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${organizationId} FOR UPDATE`
       if ((await tx.store.count({ where: { organizationId } })) === 1) {
-        throw new PlatformException(
-          ErrorCodes.RESOURCE_CONFLICT,
-          'the last store of an organization cannot be deleted',
-          HTTP_CONFLICT
-        )
+        throw resourceConflict('the last store of an organization cannot be deleted')
       }
       // Waits for the writes of data of the store that are in flight; the ones that come later find no
       // store. The tables are looked at only after this, so a row written before it is seen.
       await lockStoreForDelete(tx, storeId)
       const holding = await storesTablesWithRows(tx, storeId)
       if (holding.length > 0) {
-        throw new PlatformException(
-          ErrorCodes.RESOURCE_CONFLICT,
-          'a store that holds data cannot be deleted',
-          HTTP_CONFLICT,
-          { tables: holding }
-        )
+        throw resourceConflict('a store that holds data cannot be deleted', { tables: holding })
       }
       await tx.store.deleteMany({ where: { id: storeId, organizationId } })
     })
@@ -290,16 +287,12 @@ export class OrganizationsService {
         throw new PlatformException(
           ErrorCodes.RESOURCE_ALREADY_EXISTS,
           'a store with that name already exists',
-          HTTP_CONFLICT
+          HttpStatusCodes.CONFLICT
         )
       }
       throw error
     }
   }
-}
-
-function notFound(what: string): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, `${what} not found`, HTTP_NOT_FOUND)
 }
 
 // Prisma takes undefined for "leave it", but the audit entry lists what was really changed

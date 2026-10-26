@@ -3,7 +3,7 @@ import type { Response } from 'express'
 import { Logger } from 'nestjs-pino'
 
 import { API_PREFIX, InfraRoutes } from '@platform/core/api'
-import { ErrorCodes, type ErrorResponse } from '@platform/core/errors'
+import { ErrorCodes, type ErrorResponse, HttpStatusCodes } from '@platform/core/errors'
 import { type AuthenticatedRequest, correlationIdMiddleware } from '@platform/core/logger'
 import { useHttpMetrics } from '@platform/core/metrics-module'
 
@@ -42,6 +42,6 @@ export async function configureHttpApp(app: INestApplication): Promise<void> {
       },
       correlationId: req.correlationId
     }
-    res.status(404).json(body)
+    res.status(HttpStatusCodes.NOT_FOUND).json(body)
   })
 }

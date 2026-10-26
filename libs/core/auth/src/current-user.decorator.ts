@@ -1,7 +1,7 @@
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common'
 
 import type { AuthenticatedUser } from '@platform/core/auth'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { unauthorized } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 // The user of the access token. A route that reads it is not @Public, so the guard has put it there;
@@ -10,7 +10,7 @@ export const CurrentUser = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AuthenticatedUser => {
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>()
     if (user === undefined) {
-      throw new PlatformException(ErrorCodes.AUTH_UNAUTHORIZED, 'no authenticated user', 401)
+      throw unauthorized('no authenticated user')
     }
     return user
   }

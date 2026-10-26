@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
 import type { LinkIdentityBody } from './customers.schemas'
-import { conflict, lockCustomerForWrite, notFound } from './customers.support'
+import { lockCustomerForWrite } from './customers.support'
 import { IDENTITY_SELECT, type IdentityView } from './customers.views'
 
 export interface LinkedIdentity {
@@ -70,12 +71,14 @@ export class IdentitiesService {
         where: { id: identityId, storeId, customerId },
         select: { id: true }
       })
-      if (identity === null) throw notFound('identity')
+      if (identity === null) throw resourceNotFound('identity')
       const conversations = await tx.conversation.count({
         where: { storeId, customerIdentityId: identityId }
       })
       if (conversations > 0) {
-        throw conflict('an identity with conversations cannot be unlinked', { conversations })
+        throw resourceConflict('an identity with conversations cannot be unlinked', {
+          conversations
+        })
       }
       await tx.customerIdentity.delete({ where: { id: identityId } })
     })
@@ -83,7 +86,7 @@ export class IdentitiesService {
 
   // "Merge instead" (TDD_09 §6): the answer says whose the handle is
   private taken(ownerId: string | null) {
-    return conflict('the handle already belongs to a customer of the store', {
+    return resourceConflict('the handle already belongs to a customer of the store', {
       customerId: ownerId
     })
   }

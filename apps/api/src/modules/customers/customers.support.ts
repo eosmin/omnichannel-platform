@@ -3,20 +3,7 @@ import {
   type PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
-
-export const HTTP_BAD_REQUEST = 400
-export const HTTP_FORBIDDEN = 403
-export const HTTP_NOT_FOUND = 404
-export const HTTP_CONFLICT = 409
-
-export function notFound(what: string): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, `${what} not found`, HTTP_NOT_FOUND)
-}
-
-export function conflict(message: string, details?: Record<string, unknown>): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_CONFLICT, message, HTTP_CONFLICT, details)
-}
+import { resourceNotFound } from '@platform/core/errors'
 
 // Postgres LIKE treats _ and % as wildcards, and Prisma's `contains` does not escape them: a search
 // for "a_c" would match "abc". The backslash is the escape character of LIKE.
@@ -38,7 +25,7 @@ export async function lockCustomerForWrite(
     SELECT id FROM customers
     WHERE id = ${customerId} AND store_id = ${storeId} AND merged_into_id IS NULL
     FOR UPDATE`
-  if (rows.length === 0) throw notFound('customer')
+  if (rows.length === 0) throw resourceNotFound('customer')
 }
 
 // What the services of the module run their reads on: the transaction of the request when there is

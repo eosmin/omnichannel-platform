@@ -5,13 +5,14 @@ import { AuditService } from '@platform/core/audit-module'
 import { type Permission, RoleNames } from '@platform/core/auth'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
-
-const HTTP_FORBIDDEN = 403
-const HTTP_NOT_FOUND = 404
-const HTTP_CONFLICT = 409
 
 export interface MemberView {
   id: string
@@ -83,7 +84,7 @@ export class MembersService {
         where: { id: roleId, OR: [{ storeId }, { isSystem: true, storeId: null }] },
         select: { id: true, name: true, isSystem: true, permissions: { select: { name: true } } }
       })
-      if (role === null) throw notFound('role')
+      if (role === null) throw resourceNotFound('role')
       if (role.id === member.role.id) return { changed: false as const, member }
 
       // Neither the role the member has nor the one they get may hold what the caller lacks
@@ -148,7 +149,7 @@ export class MembersService {
       where: { id: membershipId, storeId, ...ACTIVE },
       select: MEMBER_SELECT
     })
-    if (member === null) throw notFound('member')
+    if (member === null) throw resourceNotFound('member')
     return member
   }
 
@@ -158,7 +159,7 @@ export class MembersService {
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'a member cannot be given or taken a role that holds permissions the caller lacks',
-        HTTP_FORBIDDEN,
+        HttpStatusCodes.FORBIDDEN,
         { permissions: missing }
       )
     }
@@ -180,7 +181,7 @@ export class MembersService {
       throw new PlatformException(
         ErrorCodes.TENANT_CANNOT_REMOVE_LAST_ADMIN,
         'a store keeps at least one Admin',
-        HTTP_CONFLICT
+        HttpStatusCodes.CONFLICT
       )
     }
   }
@@ -208,8 +209,4 @@ export class MembersService {
 // The system Admin: a custom role that happens to be called Admin is not the one a store must keep
 function isAdminRole(role: { name: string; isSystem: boolean }): boolean {
   return role.isSystem && role.name === RoleNames.ADMIN
-}
-
-function notFound(what: string): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, `${what} not found`, HTTP_NOT_FOUND)
 }

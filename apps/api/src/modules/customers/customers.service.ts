@@ -9,7 +9,12 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import { ChannelType, CustomerLimits, LOCALE_TAG_PATTERN } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  resourceConflict,
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException
+} from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
 
@@ -18,13 +23,7 @@ import type {
   ListCustomersQuery,
   UpdateCustomerBody
 } from './customers.schemas'
-import {
-  cleanText,
-  conflict,
-  escapeLike,
-  HTTP_BAD_REQUEST,
-  lockCustomerForWrite
-} from './customers.support'
+import { cleanText, escapeLike, lockCustomerForWrite } from './customers.support'
 import {
   type CustomerDetail,
   customerDetail,
@@ -156,7 +155,7 @@ export class CustomersService {
         throw new PlatformException(
           ErrorCodes.VALIDATION_FAILED,
           'a customer needs a name, an e-mail address or a phone number',
-          HTTP_BAD_REQUEST
+          HttpStatusCodes.BAD_REQUEST
         )
       }
       await tx.customer.update({
@@ -193,16 +192,19 @@ export class CustomersService {
         }
       })
       if (undoable > 0) {
-        throw conflict('a customer cannot be deleted while a merge into it can still be undone', {
-          merges: undoable
-        })
+        throw resourceConflict(
+          'a customer cannot be deleted while a merge into it can still be undone',
+          {
+            merges: undoable
+          }
+        )
       }
       const [conversations, orders] = await Promise.all([
         tx.conversation.count({ where: { storeId, customerId } }),
         tx.order.count({ where: { storeId, customerId } })
       ])
       if (conversations > 0 || orders > 0) {
-        throw conflict('a customer with conversations or orders cannot be deleted', {
+        throw resourceConflict('a customer with conversations or orders cannot be deleted', {
           conversations,
           orders
         })
@@ -233,7 +235,7 @@ export class CustomersService {
       throw new PlatformException(
         ErrorCodes.VALIDATION_INVALID_INPUT,
         `not a valid ${input.channelType} handle`,
-        HTTP_BAD_REQUEST
+        HttpStatusCodes.BAD_REQUEST
       )
     }
     const key = {

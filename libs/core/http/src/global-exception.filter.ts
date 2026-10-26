@@ -1,10 +1,4 @@
-import {
-  type ArgumentsHost,
-  Catch,
-  type ExceptionFilter,
-  HttpException,
-  HttpStatus
-} from '@nestjs/common'
+import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import * as Sentry from '@sentry/nestjs'
 import type { Response } from 'express'
@@ -12,9 +6,10 @@ import { InjectPinoLogger, PinoLogger } from 'nestjs-pino'
 
 import { InfraRoutes } from '@platform/core/api'
 import {
-  ErrorCodes,
   type ErrorCode,
+  ErrorCodes,
   type ErrorResponse,
+  HttpStatusCodes,
   PlatformException
 } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -31,10 +26,10 @@ const INFRA_PATHS: ReadonlySet<string> = new Set([
 // The code of an error Nest raises itself (routing, pipes, throttler, body parser). Business errors
 // are PlatformException and carry their own code.
 const CODE_BY_STATUS: Readonly<Record<number, ErrorCode>> = {
-  401: ErrorCodes.AUTH_UNAUTHORIZED,
-  403: ErrorCodes.PERMISSION_DENIED,
-  404: ErrorCodes.RESOURCE_NOT_FOUND,
-  429: ErrorCodes.RATE_LIMIT_EXCEEDED
+  [HttpStatusCodes.UNAUTHORIZED]: ErrorCodes.AUTH_UNAUTHORIZED,
+  [HttpStatusCodes.FORBIDDEN]: ErrorCodes.PERMISSION_DENIED,
+  [HttpStatusCodes.NOT_FOUND]: ErrorCodes.RESOURCE_NOT_FOUND,
+  [HttpStatusCodes.TOO_MANY_REQUESTS]: ErrorCodes.RATE_LIMIT_EXCEEDED
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -120,7 +115,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     // Unexpected: the full report. The client only ever sees the generic message.
     this.report(exception, request)
-    this.send(response, HttpStatus.INTERNAL_SERVER_ERROR, {
+    this.send(response, HttpStatusCodes.INTERNAL_SERVER_ERROR, {
       error: { code: ErrorCodes.INTERNAL_ERROR, message: GENERIC_MESSAGE, metadata: {} },
       correlationId
     })

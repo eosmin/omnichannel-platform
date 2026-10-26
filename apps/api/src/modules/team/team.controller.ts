@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
@@ -29,9 +30,6 @@ import {
   updateRoleSchema
 } from './team.schemas'
 
-const HTTP_CREATED = 201
-const HTTP_NO_CONTENT = 204
-
 // The team of the store in X-Store-Id: its members and the roles they can hold
 @Controller()
 export class TeamController {
@@ -50,7 +48,7 @@ export class TeamController {
   // Inviting creates no member: the invitee is one once they accept (Step 1.4)
   @RequirePermissions(Permissions.TEAM_INVITE)
   @Post(ApiRoutes.settings.members)
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   inviteMember(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
@@ -69,7 +67,7 @@ export class TeamController {
 
   @RequirePermissions(Permissions.TEAM_INVITE)
   @Delete(ApiRoutes.settings.invitationById(':id'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async revokeInvitation(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
@@ -94,7 +92,7 @@ export class TeamController {
 
   @RequirePermissions(Permissions.TEAM_REMOVE)
   @Delete(ApiRoutes.settings.memberById(':id'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeMember(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
@@ -113,7 +111,7 @@ export class TeamController {
 
   @RequirePermissions(Permissions.TEAM_MANAGE_ROLES)
   @Post(ApiRoutes.settings.roles)
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   createRole(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
@@ -139,7 +137,7 @@ export class TeamController {
 
   @RequirePermissions(Permissions.TEAM_MANAGE_ROLES)
   @Delete(ApiRoutes.settings.roleById(':id'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async deleteRole(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { unauthorized } from '@platform/core/errors'
 
 export interface AccountProfile {
   id: string
@@ -32,7 +32,7 @@ export class AccountService {
       }
     })
     if (user === null) {
-      throw new PlatformException(ErrorCodes.AUTH_UNAUTHORIZED, 'account no longer exists', 401)
+      throw unauthorized('account no longer exists')
     }
     return user
   }

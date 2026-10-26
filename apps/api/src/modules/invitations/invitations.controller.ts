@@ -8,6 +8,7 @@ import {
   ThrottleProfiles
 } from '@platform/core/auth'
 import { OptionalSession, OptionalUser, Public } from '@platform/core/auth-module'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, RateLimit, ZodValidationPipe } from '@platform/core/http'
 
 import {
@@ -20,8 +21,6 @@ import {
   InvitationAcceptService,
   type InvitationPreview
 } from './invitations.service'
-
-const HTTP_OK = 200
 
 // The two routes of the link in the email. They have no store: the invitation says which one, and
 // the token in the path is the credential (the request logs scrub it, see libs/core/logger).
@@ -45,7 +44,7 @@ export class InvitationsController {
   @RateLimit(InvitationAcceptThrottle)
   @NoStore()
   @Post(ApiRoutes.invitations.accept(':token'))
-  @HttpCode(HTTP_OK)
+  @HttpCode(HttpStatusCodes.OK)
   accept(
     @Param('token', new ZodValidationPipe(invitationTokenSchema)) token: string,
     @Body(new ZodValidationPipe(acceptInvitationSchema)) body: AcceptInvitationBody,
