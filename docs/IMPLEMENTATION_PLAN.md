@@ -1007,7 +1007,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.4 | Organizations, stores, memberships | done | #41 | 2026-10-26 |
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | done | #42 | 2026-10-26 |
-| 2.3 | Conversations and messages | in progress | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages) | 2026-10-26 |
+| 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
 | 2.4 | Realtime | todo | | |
 | 2.5 | Plugin SDK and registry | todo | | |
 | 2.6 | Inbound pipeline | todo | | |
