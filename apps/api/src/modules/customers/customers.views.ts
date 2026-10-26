@@ -1,6 +1,7 @@
 import type { CursorPage } from '@platform/core/domain'
+import { resourceNotFound } from '@platform/core/errors'
 
-import { type Db, notFound } from './customers.support'
+import { type Db } from './customers.support'
 
 export interface TagView {
   id: string
@@ -132,6 +133,6 @@ export async function customerDetail(
       tags: { select: TAG_SELECT, orderBy: { name: 'asc' } }
     }
   })
-  if (row === null) throw notFound('customer')
+  if (row === null) throw resourceNotFound('customer')
   return row
 }

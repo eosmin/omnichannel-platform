@@ -1,12 +1,6 @@
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { resourceNotFound } from '@platform/core/errors'
 
 import type { PrismaTransaction } from './prisma.service'
-
-const HTTP_NOT_FOUND = 404
-
-function storeNotFound(): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, 'store not found', HTTP_NOT_FOUND)
-}
 
 // Every write of data that belongs to a store takes this lock first. Deleting a store takes the
 // exclusive lock on the same row, so a delete waits for the writes in flight and a write that comes
@@ -19,7 +13,7 @@ function storeNotFound(): PlatformException {
 export async function lockStoreForWrite(tx: PrismaTransaction, storeId: string): Promise<void> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM stores WHERE id = ${storeId} FOR KEY SHARE`
-  if (rows.length === 0) throw storeNotFound()
+  if (rows.length === 0) throw resourceNotFound('store')
 }
 
 // The delete side of the same lock: waits for every writer that holds the shared one. The rows that
@@ -29,5 +23,5 @@ export async function lockStoreForWrite(tx: PrismaTransaction, storeId: string):
 export async function lockStoreForDelete(tx: PrismaTransaction, storeId: string): Promise<void> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM stores WHERE id = ${storeId} FOR UPDATE`
-  if (rows.length === 0) throw storeNotFound()
+  if (rows.length === 0) throw resourceNotFound('store')
 }

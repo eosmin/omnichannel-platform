@@ -5,19 +5,19 @@ import { AuditService } from '@platform/core/audit-module'
 import { ComplianceConfig } from '@platform/core/compliance'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { MergeFieldSources } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  resourceConflict,
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
 
 import { ensureDefaultAddress } from './address-default'
 import type { MergeCustomersBody } from './customers.schemas'
-import {
-  conflict,
-  HTTP_BAD_REQUEST,
-  HTTP_CONFLICT,
-  lockCustomerForWrite,
-  notFound
-} from './customers.support'
+import { lockCustomerForWrite } from './customers.support'
 import { type CustomerDetail, customerDetail } from './customers.views'
 import {
   MERGED_FIELDS,
@@ -135,7 +135,7 @@ export class CustomerMergeService {
       throw new PlatformException(
         ErrorCodes.CUSTOMER_MERGE_SAME_ID,
         'a customer cannot be merged with itself',
-        HTTP_BAD_REQUEST
+        HttpStatusCodes.BAD_REQUEST
       )
     }
     const mergeId = await this.prisma.transaction(async tx => {
@@ -193,9 +193,9 @@ export class CustomerMergeService {
         where: { id: survivorId, storeId },
         select: { mergedIntoId: true }
       })
-      if (survivor === null) throw notFound('customer')
+      if (survivor === null) throw resourceNotFound('customer')
       if (survivor.mergedIntoId !== null) {
-        throw conflict('the customer was merged into another one: undo that merge first', {
+        throw resourceConflict('the customer was merged into another one: undo that merge first', {
           mergedIntoId: survivor.mergedIntoId
         })
       }
@@ -206,12 +206,12 @@ export class CustomerMergeService {
         where: { id: mergeId, storeId, survivorId, unmergedAt: null },
         select: { absorbedId: true, snapshot: true, unmergeUntil: true }
       })
-      if (merge === null) throw notFound('merge')
+      if (merge === null) throw resourceNotFound('merge')
       if (merge.unmergeUntil.getTime() < Date.now()) {
         throw new PlatformException(
           ErrorCodes.CUSTOMER_UNMERGE_WINDOW_EXPIRED,
           `the customers were merged more than ${ComplianceConfig.UNMERGE_WINDOW_DAYS} days ago`,
-          HTTP_CONFLICT
+          HttpStatusCodes.CONFLICT
         )
       }
       const stillThere = await tx.$queryRaw<{ id: string }[]>`
@@ -219,7 +219,7 @@ export class CustomerMergeService {
         WHERE id = ${merge.absorbedId} AND store_id = ${storeId} AND merged_into_id = ${survivorId}
         FOR UPDATE`
       if (stillThere.length === 0) {
-        throw conflict('the absorbed customer is no longer waiting to be restored')
+        throw resourceConflict('the absorbed customer is no longer waiting to be restored')
       }
       const snapshot = mergeSnapshotSchema.parse(merge.snapshot)
       await this.restore(tx, storeId, survivorId, merge.absorbedId, snapshot)

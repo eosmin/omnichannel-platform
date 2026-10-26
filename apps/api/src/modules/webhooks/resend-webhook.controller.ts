@@ -12,6 +12,7 @@ import { Public } from '@platform/core/auth-module'
 import { ProcessedWebhookEventsService } from '@platform/core/database'
 import { ResendBounceTypes, ResendEventTypes, WebhookSources } from '@platform/core/domain'
 import { ResendWebhookVerifier } from '@platform/core/email'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { EmailMetricStatus, MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import { JobNames, QueueNames, type TrackAnalyticsJob } from '@platform/core/queues'
@@ -46,7 +47,7 @@ export class ResendWebhookController {
   }
 
   @Post(ApiRoutes.webhooks.resend)
-  @HttpCode(200)
+  @HttpCode(HttpStatusCodes.OK)
   async handle(
     @Req() req: RawBodyRequest<Request>,
     @Headers('svix-id') id: string | undefined,

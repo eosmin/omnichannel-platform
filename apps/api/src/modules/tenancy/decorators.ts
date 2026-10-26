@@ -3,7 +3,7 @@ import type { Reflector } from '@nestjs/core'
 
 import type { Permission } from '@platform/core/auth'
 import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 export const SKIP_TENANT_KEY = 'skipTenant'
@@ -31,7 +31,7 @@ function missingTenant(): PlatformException {
   return new PlatformException(
     ErrorCodes.INTERNAL_ERROR,
     'the route reads the tenant but TenantGuard did not run for it',
-    500
+    HttpStatusCodes.INTERNAL_SERVER_ERROR
   )
 }
 

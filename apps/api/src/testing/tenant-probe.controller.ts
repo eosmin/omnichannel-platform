@@ -5,7 +5,7 @@ import { Audit } from '@platform/core/audit-module'
 import { Permissions } from '@platform/core/auth'
 import { Public } from '@platform/core/auth-module'
 import { PrismaService } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { resourceNotFound } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -80,7 +80,7 @@ export class TenantProbeController {
       select: { id: true, storeId: true }
     })
     if (tag === null) {
-      throw new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, 'tag not found', 404)
+      throw resourceNotFound('tag')
     }
     return tag
   }
@@ -110,7 +110,7 @@ export class TenantProbeController {
       data: { name: nameOf(body) }
     })
     if (changed.count === 0) {
-      throw new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, 'tag not found', 404)
+      throw resourceNotFound('tag')
     }
     return { id }
   }
@@ -126,7 +126,7 @@ export class TenantProbeController {
       select: { id: true, storeId: true }
     })
     if (tag === null) {
-      throw new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, 'tag not found', 404)
+      throw resourceNotFound('tag')
     }
     return tag
   }
@@ -157,7 +157,7 @@ export class TenantProbeController {
       select: { storeId: true }
     })
     if (tag.storeId !== store.id) {
-      throw new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, 'tag not found', 404)
+      throw resourceNotFound('tag')
     }
     return { id }
   }

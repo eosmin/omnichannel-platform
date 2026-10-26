@@ -4,12 +4,17 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
 
 import type { CreateNoteBody } from './customers.schemas'
-import { HTTP_FORBIDDEN, lockCustomerForWrite, notFound } from './customers.support'
+import { lockCustomerForWrite } from './customers.support'
 
 export interface NoteView {
   id: string
@@ -32,7 +37,7 @@ export class NotesService {
       where: { id: customerId, storeId, mergedIntoId: null },
       select: { id: true }
     })
-    if (customer === null) throw notFound('customer')
+    if (customer === null) throw resourceNotFound('customer')
     return this.prisma.client.customerNote.findMany({
       where: { customerId },
       select: NOTE_SELECT,
@@ -70,12 +75,12 @@ export class NotesService {
         where: { id: noteId, customerId },
         select: { id: true, authorId: true }
       })
-      if (note === null) throw notFound('note')
+      if (note === null) throw resourceNotFound('note')
       if (note.authorId !== actor.userId && !held.includes(Permissions.CUSTOMERS_DELETE)) {
         throw new PlatformException(
           ErrorCodes.PERMISSION_DENIED,
           'a note is deleted by its author or by who may delete customers',
-          HTTP_FORBIDDEN
+          HttpStatusCodes.FORBIDDEN
         )
       }
       await tx.customerNote.delete({ where: { id: noteId } })

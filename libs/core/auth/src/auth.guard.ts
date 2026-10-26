@@ -3,11 +3,10 @@ import { Reflector } from '@nestjs/core'
 import { AuthGuard as PassportAuthGuard } from '@nestjs/passport'
 
 import type { AuthenticatedUser } from '@platform/core/auth'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException, unauthorized } from '@platform/core/errors'
 
 import { IS_PUBLIC_KEY, OPTIONAL_SESSION_KEY } from './public.decorator'
 
-const UNAUTHORIZED = 401
 const NO_TOKEN_MESSAGE = 'No auth token'
 const BEARER = /^Bearer\s+\S/i
 
@@ -52,13 +51,17 @@ export class AuthGuard extends PassportAuthGuard('jwt') {
       throw new PlatformException(
         ErrorCodes.AUTH_TOKEN_EXPIRED,
         'access token expired',
-        UNAUTHORIZED
+        HttpStatusCodes.UNAUTHORIZED
       )
     }
     // passport-jwt reports a request with no bearer token as a plain Error with this message
     if (info instanceof Error && info.message === NO_TOKEN_MESSAGE) {
-      throw new PlatformException(ErrorCodes.AUTH_UNAUTHORIZED, 'no access token', UNAUTHORIZED)
+      throw unauthorized('no access token')
     }
-    throw new PlatformException(ErrorCodes.AUTH_TOKEN_INVALID, 'invalid access token', UNAUTHORIZED)
+    throw new PlatformException(
+      ErrorCodes.AUTH_TOKEN_INVALID,
+      'invalid access token',
+      HttpStatusCodes.UNAUTHORIZED
+    )
   }
 }

@@ -16,6 +16,7 @@ import type { Response } from 'express'
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
@@ -64,10 +65,6 @@ import type {
 import { IdentitiesService } from './identities.service'
 import { type NoteView, NotesService } from './notes.service'
 
-const HTTP_CREATED = 201
-const HTTP_OK = 200
-const HTTP_NO_CONTENT = 204
-
 const id = () => new ZodValidationPipe(idSchema)
 
 // The customers of the store in X-Store-Id
@@ -93,7 +90,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_CREATE)
   @Post(ApiRoutes.customers.list)
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   create(
     @CurrentStore() store: { id: string },
     @Body(new ZodValidationPipe(createCustomerSchema)) body: CreateCustomerBody
@@ -122,7 +119,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_DELETE)
   @Delete(ApiRoutes.customers.byId(':id'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async remove(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
@@ -134,7 +131,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Post(ApiRoutes.customers.identities(':id'))
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   async linkIdentity(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,
@@ -143,13 +140,13 @@ export class CustomersController {
   ): Promise<IdentityView> {
     const { identity, created } = await this.identities.link(store.id, customerId, body)
     // 201 for a new identity, 200 for the one the customer already had
-    if (!created) res.status(HTTP_OK)
+    if (!created) res.status(HttpStatusCodes.OK)
     return identity
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Delete(ApiRoutes.customers.identityById(':id', ':identityId'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async unlinkIdentity(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,
@@ -160,7 +157,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_MERGE)
   @Post(ApiRoutes.customers.merge(':id'))
-  @HttpCode(HTTP_OK)
+  @HttpCode(HttpStatusCodes.OK)
   merge(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
@@ -173,7 +170,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_MERGE)
   @Post(ApiRoutes.customers.unmerge(':id'))
-  @HttpCode(HTTP_OK)
+  @HttpCode(HttpStatusCodes.OK)
   unmerge(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
@@ -195,7 +192,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Post(ApiRoutes.customers.notes(':id'))
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   createNote(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
@@ -207,7 +204,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Delete(ApiRoutes.customers.noteById(':id', ':noteId'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeNote(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
@@ -221,7 +218,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Post(ApiRoutes.customers.addresses(':id'))
-  @HttpCode(HTTP_CREATED)
+  @HttpCode(HttpStatusCodes.CREATED)
   createAddress(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,
@@ -243,7 +240,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Delete(ApiRoutes.customers.addressById(':id', ':addressId'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeAddress(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,
@@ -254,7 +251,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Post(ApiRoutes.customers.tags(':id'))
-  @HttpCode(HTTP_OK)
+  @HttpCode(HttpStatusCodes.OK)
   attachTag(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,
@@ -265,7 +262,7 @@ export class CustomersController {
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
   @Delete(ApiRoutes.customers.tagById(':id', ':tagId'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async detachTag(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,

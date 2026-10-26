@@ -6,18 +6,17 @@ import type { AuthenticatedUser } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { InvitationStatus, MembershipStatus } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceConflict,
+  unauthorized
+} from '@platform/core/errors'
 
 import type { IssuedSession, SessionContext } from '../auth/session.service'
 import { SessionService } from '../auth/session.service'
 import { TenantContextService } from '../tenancy'
-
-const HTTP_BAD_REQUEST = 400
-const HTTP_UNAUTHORIZED = 401
-const HTTP_FORBIDDEN = 403
-const HTTP_NOT_FOUND = 404
-const HTTP_CONFLICT = 409
-const HTTP_GONE = 410
 
 export interface InvitationPreview {
   email: string
@@ -97,18 +96,15 @@ export class InvitationAcceptService {
           ? await this.accountOf(tx, invitation.email)
           : await this.accountOfSession(tx, session, invitation.email)
       if (session === undefined && account !== null) {
-        throw new PlatformException(
-          ErrorCodes.AUTH_UNAUTHORIZED,
-          'sign in with the invited address to accept',
-          HTTP_UNAUTHORIZED,
-          { reason: 'login_required' }
-        )
+        throw unauthorized('sign in with the invited address to accept', {
+          reason: 'login_required'
+        })
       }
       if (account === null && input.name === undefined) {
         throw new PlatformException(
           ErrorCodes.VALIDATION_FAILED,
           'a name is needed to create the account',
-          HTTP_BAD_REQUEST,
+          HttpStatusCodes.BAD_REQUEST,
           { issues: [{ path: 'name', code: 'invalid_type', message: 'Required' }] }
         )
       }
@@ -176,7 +172,7 @@ export class InvitationAcceptService {
       throw new PlatformException(
         ErrorCodes.TENANT_INVITATION_EXPIRED,
         'invitation expired',
-        HTTP_GONE
+        HttpStatusCodes.GONE
       )
     }
     return invitation
@@ -201,13 +197,13 @@ export class InvitationAcceptService {
       select: { id: true, email: true, name: true }
     })
     if (user === null) {
-      throw new PlatformException(ErrorCodes.AUTH_UNAUTHORIZED, 'account no longer exists', 401)
+      throw unauthorized('account no longer exists')
     }
     if (user.email.toLowerCase() !== invitedEmail) {
       throw new PlatformException(
         ErrorCodes.TENANT_INVITATION_EMAIL_MISMATCH,
         'the invitation is for another address',
-        HTTP_FORBIDDEN
+        HttpStatusCodes.FORBIDDEN
       )
     }
     return user
@@ -241,7 +237,7 @@ export class InvitationAcceptService {
       throw new PlatformException(
         ErrorCodes.TENANT_MEMBER_ALREADY_EXISTS,
         'already a member of the store',
-        HTTP_CONFLICT
+        HttpStatusCodes.CONFLICT
       )
     }
     await tx.membership.update({
@@ -263,11 +259,7 @@ export class InvitationAcceptService {
     } catch (error) {
       // The account was created between the lookup and the insert
       if (isUniqueViolation(error)) {
-        throw new PlatformException(
-          ErrorCodes.RESOURCE_CONFLICT,
-          'the account was created meanwhile: try again',
-          HTTP_CONFLICT
-        )
+        throw resourceConflict('the account was created meanwhile: try again')
       }
       throw error
     }
@@ -278,6 +270,6 @@ function invalid(): PlatformException {
   return new PlatformException(
     ErrorCodes.TENANT_INVITATION_INVALID,
     'invalid invitation',
-    HTTP_NOT_FOUND
+    HttpStatusCodes.NOT_FOUND
   )
 }

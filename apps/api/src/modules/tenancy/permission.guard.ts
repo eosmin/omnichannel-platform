@@ -5,16 +5,13 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import type { Permission } from '@platform/core/auth'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
 import { AccessDenialAuditor } from './access-denial-auditor'
 import { isTenantExempt, PERMISSIONS_KEY, routePathOf } from './decorators'
-
-const FORBIDDEN = 403
-const INTERNAL = 500
 
 // Global, after the TenantGuard. A route in a store has to say what it needs with
 // @RequirePermissions(...): one that says nothing is refused, so a handler added without thinking
@@ -40,7 +37,7 @@ export class PermissionGuard implements CanActivate {
       throw new PlatformException(
         ErrorCodes.INTERNAL_ERROR,
         'PermissionGuard ran before TenantGuard',
-        INTERNAL
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
       )
     }
 
@@ -56,7 +53,7 @@ export class PermissionGuard implements CanActivate {
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'this route declares no permission',
-        FORBIDDEN
+        HttpStatusCodes.FORBIDDEN
       )
     }
 
@@ -71,8 +68,13 @@ export class PermissionGuard implements CanActivate {
       ...(request.store === undefined ? {} : { storeId: request.store.id }),
       metadata: { missing }
     })
-    throw new PlatformException(ErrorCodes.PERMISSION_DENIED, 'Missing permission', FORBIDDEN, {
-      required: missing
-    })
+    throw new PlatformException(
+      ErrorCodes.PERMISSION_DENIED,
+      'Missing permission',
+      HttpStatusCodes.FORBIDDEN,
+      {
+        required: missing
+      }
+    )
   }
 }

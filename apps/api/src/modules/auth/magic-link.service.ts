@@ -15,15 +15,13 @@ import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
 import { generateToken, hashToken } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import { VerificationTokenType } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 
 import { type IssuedSession, type SessionContext, SessionService } from './session.service'
 
 const MS_PER_MINUTE = 60_000
-const UNAUTHORIZED = 401
-const TOO_MANY_REQUESTS = 429
 
 export interface ConsumedMagicLink {
   session: IssuedSession
@@ -105,7 +103,11 @@ export class MagicLinkService {
       throw invalidLink()
     }
     if (stored.expiresAt.getTime() <= Date.now()) {
-      throw new PlatformException(ErrorCodes.AUTH_TOKEN_EXPIRED, 'magic link expired', UNAUTHORIZED)
+      throw new PlatformException(
+        ErrorCodes.AUTH_TOKEN_EXPIRED,
+        'magic link expired',
+        HttpStatusCodes.UNAUTHORIZED
+      )
     }
     const { user } = stored
 
@@ -156,7 +158,7 @@ export class MagicLinkService {
       throw new PlatformException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'too many magic links requested for this address',
-        TOO_MANY_REQUESTS,
+        HttpStatusCodes.TOO_MANY_REQUESTS,
         { retryAfterSeconds: record.timeToBlockExpire }
       )
     }
@@ -185,5 +187,9 @@ function localeOrDefault(value: string): Locale {
 }
 
 function invalidLink(): PlatformException {
-  return new PlatformException(ErrorCodes.AUTH_TOKEN_INVALID, 'invalid magic link', UNAUTHORIZED)
+  return new PlatformException(
+    ErrorCodes.AUTH_TOKEN_INVALID,
+    'invalid magic link',
+    HttpStatusCodes.UNAUTHORIZED
+  )
 }

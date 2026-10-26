@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
+import { resourceNotFound } from '@platform/core/errors'
 
-import { lockCustomerForWrite, notFound } from './customers.support'
+import { lockCustomerForWrite } from './customers.support'
 import { TAG_SELECT, type TagView } from './customers.views'
 
 // The tags of a customer are the tags of the store (the same ones the conversations use). Creating
@@ -18,7 +19,7 @@ export class CustomerTagsService {
       await lockCustomerForWrite(tx, storeId, customerId)
       // A tag of another store is a tag that does not exist
       const tag = await tx.tag.findFirst({ where: { id: tagId, storeId }, select: { id: true } })
-      if (tag === null) throw notFound('tag')
+      if (tag === null) throw resourceNotFound('tag')
       const customer = await tx.customer.update({
         where: { id: customerId },
         data: { tags: { connect: { id: tagId } } },
@@ -32,7 +33,7 @@ export class CustomerTagsService {
     await this.prisma.transaction(async tx => {
       await lockCustomerForWrite(tx, storeId, customerId)
       const tag = await tx.tag.findFirst({ where: { id: tagId, storeId }, select: { id: true } })
-      if (tag === null) throw notFound('tag')
+      if (tag === null) throw resourceNotFound('tag')
       await tx.customer.update({
         where: { id: customerId },
         data: { tags: { disconnect: { id: tagId } } }

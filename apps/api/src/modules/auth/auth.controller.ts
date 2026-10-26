@@ -4,6 +4,7 @@ import type { Request } from 'express'
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, MagicLinkThrottle, ThrottleProfiles } from '@platform/core/auth'
 import { CurrentUser, Public } from '@platform/core/auth-module'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, RateLimit, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
@@ -27,10 +28,6 @@ import {
   SessionService
 } from './session.service'
 
-const HTTP_OK = 200
-const HTTP_ACCEPTED = 202
-const HTTP_NO_CONTENT = 204
-
 function contextOf(req: Request): SessionContext {
   return { userAgent: req.get('user-agent'), ipAddress: req.ip }
 }
@@ -49,7 +46,7 @@ export class AuthController {
   @Public()
   @RateLimit(MagicLinkThrottle)
   @Post(ApiRoutes.auth.magicLinkRequest)
-  @HttpCode(HTTP_ACCEPTED)
+  @HttpCode(HttpStatusCodes.ACCEPTED)
   async requestMagicLink(
     @Body(new ZodValidationPipe(magicLinkRequestSchema)) body: MagicLinkRequestBody,
     @Req() req: AuthenticatedRequest
@@ -62,7 +59,7 @@ export class AuthController {
   @RateLimit(MagicLinkThrottle)
   @NoStore()
   @Post(ApiRoutes.auth.magicLinkConsume)
-  @HttpCode(HTTP_OK)
+  @HttpCode(HttpStatusCodes.OK)
   consumeMagicLink(
     @Body(new ZodValidationPipe(magicLinkConsumeSchema)) body: MagicLinkConsumeBody,
     @Req() req: Request
@@ -75,7 +72,7 @@ export class AuthController {
   @RateLimit(ThrottleProfiles.PUBLIC)
   @NoStore()
   @Post(ApiRoutes.auth.refresh)
-  @HttpCode(HTTP_OK)
+  @HttpCode(HttpStatusCodes.OK)
   refresh(
     @Body(new ZodValidationPipe(refreshSchema)) body: RefreshBody,
     @Req() req: Request
@@ -84,7 +81,7 @@ export class AuthController {
   }
 
   @Post(ApiRoutes.auth.logout)
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async logout(@CurrentUser() user: AuthenticatedUser): Promise<void> {
     await this.sessions.logout(user.id, user.sessionFamilyId)
   }
@@ -102,7 +99,7 @@ export class AuthController {
   }
 
   @Delete(ApiRoutes.auth.sessionById(':id'))
-  @HttpCode(HTTP_NO_CONTENT)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
   async revokeSession(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', new ZodValidationPipe(sessionIdSchema)) id: string

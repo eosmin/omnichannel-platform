@@ -14,7 +14,13 @@ import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
 import { generateToken, hashToken } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { InvitationStatus, MembershipStatus } from '@platform/core/domain'
-import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  resourceConflict,
+  ErrorCodes,
+  HttpStatusCodes,
+  resourceNotFound,
+  PlatformException
+} from '@platform/core/errors'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
 import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 
@@ -23,10 +29,6 @@ import { type Actor, missingPermissions } from '../tenancy'
 
 const MS_PER_DAY = 86_400_000
 const MS_PER_SECOND = 1000
-const HTTP_TOO_MANY_REQUESTS = 429
-const HTTP_FORBIDDEN = 403
-const HTTP_NOT_FOUND = 404
-const HTTP_CONFLICT = 409
 
 export interface InvitationView {
   id: string
@@ -103,7 +105,7 @@ export class InvitationsService {
       },
       select: { id: true, name: true, permissions: { select: { name: true } } }
     })
-    if (role === null) throw notFound('role')
+    if (role === null) throw resourceNotFound('role')
     // Nobody invites into a role that can do what they cannot
     const missing = missingPermissions(
       held,
@@ -113,7 +115,7 @@ export class InvitationsService {
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'a member cannot be invited into a role that holds permissions the caller lacks',
-        HTTP_FORBIDDEN,
+        HttpStatusCodes.FORBIDDEN,
         { permissions: missing }
       )
     }
@@ -121,7 +123,7 @@ export class InvitationsService {
       throw new PlatformException(
         ErrorCodes.TENANT_MEMBER_ALREADY_EXISTS,
         'that address is already a member of the store',
-        HTTP_CONFLICT
+        HttpStatusCodes.CONFLICT
       )
     }
 
@@ -174,7 +176,7 @@ export class InvitationsService {
       where: { id: invitationId, storeId, status: InvitationStatus.PENDING },
       data: { status: InvitationStatus.REVOKED }
     })
-    if (count === 0) throw notFound('invitation')
+    if (count === 0) throw resourceNotFound('invitation')
     this.audit.log({
       action: AuditAction.INVITATION_REVOKED,
       actor: { userId: actor.userId },
@@ -201,7 +203,7 @@ export class InvitationsService {
       throw new PlatformException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'that address was invited a moment ago',
-        HTTP_TOO_MANY_REQUESTS,
+        HttpStatusCodes.TOO_MANY_REQUESTS,
         { retryAfterSeconds: INVITATION_RESEND_COOLDOWN_SECONDS }
       )
     }
@@ -236,11 +238,7 @@ export class InvitationsService {
     } catch (error) {
       // Two invitations for the same address at the same moment: the second one loses
       if (isUniqueViolation(error)) {
-        throw new PlatformException(
-          ErrorCodes.RESOURCE_CONFLICT,
-          'an invitation for that address is being created',
-          HTTP_CONFLICT
-        )
+        throw resourceConflict('an invitation for that address is being created')
       }
       throw error
     }
@@ -274,8 +272,4 @@ export class InvitationsService {
 
 function localeOrDefault(value: string): Locale {
   return SUPPORTED_LOCALES.find(locale => locale === value) ?? DEFAULT_LOCALE
-}
-
-function notFound(what: string): PlatformException {
-  return new PlatformException(ErrorCodes.RESOURCE_NOT_FOUND, `${what} not found`, HTTP_NOT_FOUND)
 }
