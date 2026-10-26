@@ -5,6 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import {
   isUniqueViolation,
+  lockStoreForDelete,
   PrismaService,
   type PrismaTransaction,
   slugify
@@ -239,6 +240,9 @@ export class OrganizationsService {
           HTTP_CONFLICT
         )
       }
+      // Waits for the writes of data of the store that are in flight; the ones that come later find no
+      // store. The tables are looked at only after this, so a row written before it is seen.
+      await lockStoreForDelete(tx, storeId)
       const holding = await storesTablesWithRows(tx, storeId)
       if (holding.length > 0) {
         throw new PlatformException(
