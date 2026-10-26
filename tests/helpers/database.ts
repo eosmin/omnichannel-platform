@@ -61,6 +61,11 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   ])
   // The audit log keeps its rows for the users; the owner may clear them, the api never can
   await owner.auditLog.deleteMany({ where: { user: { email: { startsWith: prefix } } } })
+  // An order is not deleted with its store (it is kept for the tax window), so the owner removes the
+  // ones of the run first
+  await owner.order.deleteMany({
+    where: { store: { organization: { slug: { startsWith: prefix } } } }
+  })
   // Stores, memberships, roles and everything that hangs from an organization go with it (cascade)
   await owner.organization.deleteMany({ where: { slug: { startsWith: prefix } } })
   await owner.user.deleteMany({ where: { email: { startsWith: prefix } } })

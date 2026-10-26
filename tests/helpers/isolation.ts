@@ -21,9 +21,11 @@ export interface IsolationResource {
   // A change a user could try to make to a row (a rename, a status)
   modify: {
     path: (id: string) => string
-    // PATCH unless the resource is changed by a DELETE (an invitation is revoked)
-    method?: 'patch' | 'delete'
-    body: Record<string, unknown>
+    // PATCH unless the resource is changed by a DELETE (an invitation is revoked) or by an action
+    // (a merge is undone with a POST)
+    method?: 'patch' | 'post' | 'delete'
+    // A body that names the row (an unmerge names the merge) is a function of its id
+    body: Record<string, unknown> | ((id: string) => Record<string, unknown>)
   }
   // true while the row is as it was created: after a refused change it must still be
   untouched: (owner: OwnerClient, id: string) => Promise<boolean>
@@ -33,6 +35,9 @@ export interface IsolationResource {
     path: string
     body: (name: string) => Record<string, unknown>
     storeOf: (owner: OwnerClient, id: string) => Promise<string | null>
+    // How many rows of the resource a store has: a body refused for naming another store must have
+    // left none in it. Required when the endpoint is strict.
+    countIn?: (owner: OwnerClient, storeId: string) => Promise<number>
     // The endpoint refuses a field it does not know (400) instead of ignoring it: the store in the
     // body is then refused, and the same body without it must land in the store of the header
     strict?: boolean
@@ -48,7 +53,21 @@ export interface IsolationScene {
 // The request that changes a row of the resource
 function change(agent: TestAgent, resource: IsolationResource, id: string) {
   const { path, method = 'patch', body } = resource.modify
-  return method === 'delete' ? agent.delete(path(id)) : agent.patch(path(id)).send(body)
+  if (method === 'delete') return agent.delete(path(id))
+  const payload = typeof body === 'function' ? body(id) : body
+  return method === 'post'
+    ? agent.post(path(id)).send(payload)
+    : agent.patch(path(id)).send(payload)
+}
+
+// A resource with no route to read it is reached by the route that changes it: whatever the answer
+// to the stranger, the row must be as it was
+async function expectUntouchedIfChangedToReach(
+  owner: OwnerClient,
+  resource: IsolationResource,
+  id: string
+): Promise<void> {
+  if (resource.readPath === undefined) expect(await resource.untouched(owner, id)).toBe(true)
 }
 
 // One request for a row of the resource, whichever way the api lets it be reached
@@ -77,6 +96,7 @@ export const isolationChecks = {
 
     expect(response.status).toBe(403)
     expect((response.body as ErrorBody).error?.code).toBe(ErrorCodes.TENANT_ACCESS_DENIED)
+    await expectUntouchedIfChangedToReach(owner, resource, row.id)
   },
 
   // The user names their own store and asks for the id of a row of store B. Only the service
@@ -92,6 +112,7 @@ export const isolationChecks = {
 
     expect(response.status).toBe(404)
     expect(JSON.stringify(response.body)).not.toContain(row.id)
+    await expectUntouchedIfChangedToReach(owner, resource, row.id)
   },
 
   // Two stores of one organization are as separate as two organizations
@@ -106,6 +127,7 @@ export const isolationChecks = {
 
     expect(fromOwnStore.status).toBe(404)
     expect(fromTheSibling.status).toBe(403) // The user is not a member of the sibling
+    await expectUntouchedIfChangedToReach(owner, resource, row.id)
   },
 
   async modification(
@@ -131,7 +153,9 @@ export const isolationChecks = {
     const response = await api(app, ctx.adminA, ctx.storeA).get(resource.listPath)
 
     expect(response.status).toBe(200)
-    const ids = (response.body as { id: string }[]).map(row => row.id)
+    // A list is a bare array or a page ({ data, nextCursor, hasMore }, TDD_08 §2.4)
+    const rows = response.body as { id: string }[] | { data: { id: string }[] }
+    const ids = (Array.isArray(rows) ? rows : rows.data).map(row => row.id)
     expect(ids).toContain(mine.id)
     expect(ids).not.toContain(theirs.id)
   },
@@ -140,8 +164,9 @@ export const isolationChecks = {
   // header (and a store in the body is never read), or the body is refused as a whole
   async creation({ app, owner, ctx }: IsolationScene, resource: IsolationResource): Promise<void> {
     if (resource.creation === undefined) return
-    const { path, body, storeOf, strict = false } = resource.creation
+    const { path, body, storeOf, countIn, strict = false } = resource.creation
     const agent = api(app, ctx.adminA, ctx.storeA)
+    const before = countIn === undefined ? null : await countIn(owner, ctx.storeB.id)
 
     const named = await agent
       .post(path)
@@ -149,6 +174,9 @@ export const isolationChecks = {
     if (strict) {
       expect(named.status).toBe(400)
       expect((named.body as ErrorBody).error?.code).toBe(ErrorCodes.VALIDATION_FAILED)
+      // Refused as a whole: nothing was written into the store the body named
+      expect(countIn).toBeDefined()
+      expect(await countIn?.(owner, ctx.storeB.id)).toBe(before)
     }
     const created = strict ? await agent.post(path).send(body('created-by-the-suite')) : named
 

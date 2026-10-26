@@ -7,7 +7,17 @@ import { InvitationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { ProbeRoutes } from '../../apps/api/src/testing/tenant-probe.controller'
-import { createInvitation, createMember, createRole, createTag } from '../builders'
+import {
+  createCustomer,
+  createCustomerIdentity,
+  createCustomerMerge,
+  createInvitation,
+  createMember,
+  createRole,
+  createTag,
+  customerOfIdentity,
+  survivorOfMerge
+} from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -33,6 +43,50 @@ let viewerRoleId = ''
 let agentRoleId = ''
 
 const resources: IsolationResource[] = [
+  {
+    name: 'customer',
+    create: createCustomer,
+    readPath: ApiRoutes.customers.byId,
+    listPath: ApiRoutes.customers.list,
+    modify: { path: ApiRoutes.customers.byId, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.customer.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.customers.list,
+      body: name => ({ name }),
+      strict: true,
+      countIn: (owner, storeId) => owner.customer.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.customer.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
+        null
+    }
+  },
+  {
+    name: 'customerIdentity',
+    create: createCustomerIdentity,
+    // An identity is reached through its customer: the route that removes it
+    modify: {
+      path: id => ApiRoutes.customers.identityById(customerOfIdentity.get(id) ?? '', id),
+      method: 'delete',
+      body: {}
+    },
+    untouched: async (owner, id) =>
+      (await owner.customerIdentity.findUnique({ where: { id }, select: { id: true } })) !== null
+  },
+  {
+    name: 'customerMerge',
+    create: createCustomerMerge,
+    // A merge is reached through the unmerge of its survivor
+    modify: {
+      path: id => ApiRoutes.customers.unmerge(survivorOfMerge.get(id) ?? ''),
+      method: 'post',
+      body: id => ({ mergeId: id })
+    },
+    untouched: async (owner, id) =>
+      (await owner.customerMerge.findUnique({ where: { id }, select: { unmergedAt: true } }))
+        ?.unmergedAt === null
+  },
   {
     name: 'tag',
     create: createTag,
@@ -75,6 +129,7 @@ const resources: IsolationResource[] = [
       path: ApiRoutes.settings.members,
       body: name => ({ email: `${prefix}-${name}@example.com`, roleId: agentRoleId }),
       strict: true,
+      countIn: (owner, storeId) => owner.invitation.count({ where: { storeId } }),
       storeOf: async (owner, id) =>
         (await owner.invitation.findUnique({ where: { id }, select: { storeId: true } }))
           ?.storeId ?? null
@@ -92,6 +147,7 @@ const resources: IsolationResource[] = [
       path: ApiRoutes.settings.roles,
       body: name => ({ name, permissions: [] }),
       strict: true,
+      countIn: (owner, storeId) => owner.role.count({ where: { storeId } }),
       storeOf: async (owner, id) =>
         (await owner.role.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ?? null
     }
