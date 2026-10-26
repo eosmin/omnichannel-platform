@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ConversationStatus, InvitationStatus } from '@platform/core/domain'
+import { ConversationStatus, InvitationStatus, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import {
@@ -13,7 +15,9 @@ import {
   createInvitation,
   createMember,
   createBusinessHours,
+  conversationOfMessage,
   createConversationOf,
+  createMessageOf,
   createRole,
   createSnippet,
   createTag,
@@ -44,6 +48,16 @@ const prefix = newRunPrefix()
 // Set once the context exists: the role a member is moved to in the modification check
 let viewerRoleId = ''
 let agentRoleId = ''
+// A conversation of store A, where the creation check writes its messages
+let conversationInA = ''
+// A row the suite changes must have been made by createMessageOf: otherwise the check would be
+// aimed at a conversation chosen at random and pass for the wrong reason
+const conversationOf = (messageId: string): string => {
+  const found = conversationOfMessage.get(messageId)
+  if (found === undefined)
+    throw new Error(`the message ${messageId} was not made by createMessageOf`)
+  return found
+}
 
 const resources: IsolationResource[] = [
   {
@@ -195,6 +209,45 @@ const resources: IsolationResource[] = [
       ConversationStatus.OPEN
   },
   {
+    name: 'message',
+    create: createMessageOf,
+    // A message is reached through its conversation: the thread that holds it, and the reply to it
+    // The check that asks for a message that exists nowhere gets a conversation that exists nowhere
+    readPath: id => ApiRoutes.conversations.messages(conversationOfMessage.get(id) ?? randomUUID()),
+    modify: {
+      path: () => ApiRoutes.messages.create,
+      method: 'post',
+      body: id => ({
+        type: MessageType.TEXT,
+        conversationId: conversationOf(id),
+        content: 'hacked',
+        idempotencyKey: randomUUID()
+      })
+    },
+    // Still the one message it was created with
+    untouched: async (owner, id) => {
+      const conversationId = conversationOfMessage.get(id)
+      return (
+        conversationId !== undefined &&
+        (await owner.message.count({ where: { conversationId } })) === 1
+      )
+    },
+    creation: {
+      path: ApiRoutes.messages.create,
+      body: name => ({
+        type: MessageType.TEXT,
+        conversationId: conversationInA,
+        content: name,
+        idempotencyKey: randomUUID()
+      }),
+      strict: true,
+      countIn: (owner, storeId) => owner.message.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.message.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
+        null
+    }
+  },
+  {
     name: 'membership',
     create: (owner, { storeId }) => createMember(owner, { storeId, prefix }),
     listPath: ApiRoutes.settings.members,
@@ -270,6 +323,7 @@ describe('Tenant isolation', () => {
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
+    conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
     scene = { app, owner, ctx }
   })
   afterAll(async () => {

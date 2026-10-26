@@ -324,19 +324,19 @@ unmerged; the same phone number exists as two customers in two stores.
 
 ### Step 2.3 — Conversations and messages
 - [x] Conversations module with the status state machine (`updateStatus`, reasons, actors) and read state; a conversation is created under `FOR KEY SHARE` on its customer (the same lock as the store's, owner's decision in Step 2.2), using the survivor if the customer was absorbed by a merge (`MVP_TRIM_CHECKLIST.md` §10 item 27)
-- [ ] Messages module with `idempotencyKey`, `mediaIds`, mentions, outbound delivery tracking
-- [ ] `MessagingWindowService`
+- [x] Messages module: `POST /messages` with `idempotencyKey`, the thread, internal notes with mentions; a reply is stored `queued` and nothing sends it until Step 2.6 (`mediaIds` moved to Step 3.4, `MVP_TRIM_CHECKLIST.md` "Messages build details")
+- [ ] `MessagingWindowService` (PR 4), and `MessagesService.create` calls it before it stores a reply: a closed window answers `CHANNEL_WINDOW_EXPIRED` (`TDD_10 §4`)
 - [x] Cursor pagination per `TDD_08 §2.4`, list view model per `TDD_09 §2` (with the counts of the filters, `countsOnly`)
 - [ ] Tags, snippets, routing rules, business hours, store settings endpoints (tags, snippets, business hours and inbox settings done in #45; routing rules in PR 4; conversations, read state, cursor and counts in #46)
 
-**TDD:** `TDD_08 §2.4`, `TDD_09 §2`, `§3`, `TDD_02 §5`
+**TDD:** `TDD_08 §2.4`, `TDD_09 §2`, `§3`, `§4`, `TDD_02 §5`, `TDD_06 §4`, `TDD_10 §4`, `TDD_11 §7.2`
 **Done when:** conversations list under 300ms p95 with 10k seeded rows, invalid status
 transitions are rejected, and `POST /messages` with a repeated `idempotencyKey` returns the
 existing message.
 
 ### Step 2.4 — Realtime
 - [ ] Socket.io gateway with the ioredis adapter, typed events, conversation rooms
-- [ ] Emit the `Events.CONVERSATION_*` of `ConversationsService` (created, status changed, assigned, read) that Step 2.3 leaves out for the same reason as the customer ones, and measure the counts of the inbox filters to decide whether `CacheKeys.conversation.counts` is worth its invalidation (`MVP_TRIM_CHECKLIST.md` item 31)
+- [ ] Emit the events of `MessagesService` for a stored reply and a note (the constant is chosen here: `Events.MESSAGE_SENT` is for a message the channel took, so a stored reply may need its own in `event-names.ts`) and `Events.MESSAGE_MENTION` for each mention, which Step 3.5 turns into `NotificationTypes.CONVERSATION_MENTIONED` and the `Events.CONVERSATION_*` of `ConversationsService` (created, status changed, assigned, read) that Step 2.3 leaves out for the same reason as the customer ones, and measure the counts of the inbox filters to decide whether `CacheKeys.conversation.counts` is worth its invalidation (`MVP_TRIM_CHECKLIST.md` item 31)
 - [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`; install `@nestjs/event-emitter` and emit the `Events.CUSTOMER_*` of `CustomersService` (created, updated, merged, unmerged, identity linked), which Step 2.2 leaves out because nothing listens to them yet
 - [ ] Per-socket presence with heartbeat and away detection
 - [ ] Client connection manager, `useRealtimeSync` with `QueryKeys`, offline queue with terminal-error handling
@@ -357,12 +357,13 @@ declares a capability it does not implement.
 
 ### Step 2.6 — Inbound pipeline
 - [ ] `ChannelWebhookController` (verify, normalize, enqueue) + `InboundProcessor`
-- [ ] `InboundMessageService`: connection → store resolution, identity, reopen/wake/create, dedupe, media job, routing, events (billing window DEFERRED)
+- [ ] `InboundMessageService`: connection → store resolution, identity, reopen/wake/create, dedupe, media job, routing, events (billing window DEFERRED). A message of the customer reopens a resolved, snoozed or archived conversation through `ConversationsService.applyStatus` (actor `'system'`) and keeps a spam one as spam (stored, no reopening); it moves `lastMessageAt` and raises `unreadCount` and `lastInboundAt`, and does not touch `lastOutboundAt` or `firstResponseAt` (those are the agent's, set by `recordReply`)
+- [ ] Outbound: the queue and job constants in `libs/core`, and a processor that takes a `queued` reply of `MessagesService`, calls the plugin's `sendMessage` and writes `sent` or `failed` (`deliveryError` holds an `ErrorCode`), with the provider's `delivered`/`read` status callbacks written by the inbound path; the channel limits of the text (WhatsApp 4096, Messenger 2000, Instagram 1000) are checked here, because `POST /messages` only caps at 4096
 - [ ] `ChannelConnection` management + `libs/core/crypto` encryption + health scheduler
 - [ ] **MVP trim:** no `UsageMeteringService`; inbound conversations are never metered or blocked
 
 **TDD:** `TDD_10 §4`, `§10`
-**Done when:** a simulated webhook addressed to store B's connection creates customer,
+**Done when:** a `queued` reply is sent through a test plugin and becomes `sent`, a simulated webhook addressed to store B's connection creates customer,
 conversation and message in store B only, a replayed webhook creates nothing, and the
 endpoint answers in under 300ms p99 while the worker does the work.
 
@@ -409,7 +410,7 @@ on a page with a strict CSP.
 - [ ] Virtualized conversation list from `ConversationListItem`
 - [ ] Filters: all, mine, unassigned, by status, by channel, by agent (AI-handled filter DEFERRED)
 - [ ] Message thread with realtime updates, read state
-- [ ] Composer with slash commands, attachments (media-first), messaging-window states
+- [ ] Composer with slash commands, messaging-window states; attachments (media-first) wait for `mediaIds` in Step 3.4, so the composer of this step sends text and notes
 - [ ] Keyboard shortcuts, bulk actions, and the server side Step 2.3 left out: `POST /conversations/bulk` (`BulkActions`, reassign included), `GET /conversations/export` (declared before `GET /conversations/:id`, which would otherwise take it for an id) and the mark-unread route (`TDD_09 §3.1`, `§10`)
 
 **TDD:** `TDD_09 §2`, `§3`, `§4`, `§9`, `§10`
@@ -428,14 +429,16 @@ on a page with a strict CSP.
 - [ ] Scan-then-process worker chain (ClamAV, sharp variants as keys)
 - [ ] Signed download with variants
 - [ ] Media gallery with lightbox, bulk ZIP export
+- [ ] `mediaIds` on `POST /messages` (the upload comes first, `TDD_09 §4`): the media is checked against the store and the conversation, and linked to the message in the same transaction
 - [ ] Customers CSV export (`GET /customers/export` creates an `Export { type: CUSTOMERS }` on the same queue, S3 key and download as the ZIP; `CUSTOMERS_EXPORT`; `MVP_TRIM_CHECKLIST.md` §10 item 25 for the columns and rules; register the route before `customers/:id`, or `export` is read as an id)
 
 **TDD:** `TDD_07 §6`, `§7`
 **Done when:** an image uploads, is scanned, generates variants, and is served through
-signed URLs; a `confirmUpload` with a foreign store prefix returns `FILE_KEY_OUT_OF_SCOPE`.
+signed URLs; a `confirmUpload` with a foreign store prefix returns `FILE_KEY_OUT_OF_SCOPE`; a message sent with `mediaIds` shows the attachment in the thread, and one naming media of another store is refused.
 
 ### Step 3.5 — Notifications
 - [ ] Notification service with `messageKey` + params, preference resolution, quiet hours from `UserNotificationSettings`
+- [ ] The mention notification (`NotificationTypes.CONVERSATION_MENTIONED`, from `Events.MESSAGE_MENTION`) goes only to who may open the conversation and read its notes; Step 2.3 already refuses a mention of anyone else, but a role may change after the note is written
 - [ ] Notification center UI rendering keys
 - [ ] Web Push with the Serwist service worker
 - [ ] Preferences settings page generated from `NotificationDefaults`; email digests
