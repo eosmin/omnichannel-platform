@@ -27,5 +27,10 @@ export async function createTestApp(): Promise<INestApplication> {
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true })
   app.set('trust proxy', 1) // As TRUST_PROXY_HOPS says in helpers/env.ts
   await configureHttpApp(app)
+  // Listening once, on the loopback only: supertest otherwise starts the server for each request and
+  // closes it when the first one ends, so requests that run at the same time (Promise.all) lose the
+  // server under their feet or reach whatever else got the port, which showed up as a request
+  // answered with another status than the app gave, or reset, once in a few hundred
+  await app.listen(0, '127.0.0.1')
   return app
 }
