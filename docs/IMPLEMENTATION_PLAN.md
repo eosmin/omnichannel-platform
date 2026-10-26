@@ -311,18 +311,19 @@ never sent to `/onboarding`.
 The product's reason to exist. (Queues, workers and email moved to Step 1.0, because the magic-link login of Step 1.1 sends its emails through them; this milestone therefore starts at 2.2.)
 
 ### Step 2.2 — Customers
-- [ ] Customers module with store-scoped `CustomerIdentity` resolution
-- [ ] `findOrCreateByIdentity` (with `phoneNormalized`), link identity
-- [ ] Addresses, notes, customer tags
-- [ ] Merge with `CustomerMerge` snapshot and unmerge within 30 days
-- [ ] Every write of data of a store takes a shared lock on the store row (`FOR SHARE`), because deleting a store takes the exclusive one: a test writes and deletes at the same moment (`MVP_TRIM_CHECKLIST.md` §10 item 23)
+- [x] Customers module with store-scoped `CustomerIdentity` resolution
+- [x] `findOrCreateByIdentity` (with `phoneNormalized`), link identity
+- [x] Addresses, notes, customer tags
+- [x] Merge with `CustomerMerge` snapshot and unmerge within 30 days
+- [x] Every write of data of a store takes a shared lock on the store row (`FOR KEY SHARE`, see the checklist), because deleting a store takes the exclusive one: a test writes and deletes at the same moment (`MVP_TRIM_CHECKLIST.md` §10 item 23)
+- Not in this step, and where each one goes (`MVP_TRIM_CHECKLIST.md` "Customers build details (Step 2.2)"): `/customers/:id/caution` Step 4.12; `/customers/:id/media` Step 3.4; `/search/customers` Step 5.1; `/customers/:id/timeline` and `/conversations` Step 3.3, `/customers/:id/orders` and the orders of the timeline Step 4.3 (new tasks there); `/customers/export` Step 3.4 (new task there; the columns and rules are decided, in §10 item 25)
 
 **TDD:** `TDD_01 §4`, `TDD_09 §6`
 **Done when:** two identities on different channels can be merged into one customer and
 unmerged; the same phone number exists as two customers in two stores.
 
 ### Step 2.3 — Conversations and messages
-- [ ] Conversations module with the status state machine (`updateStatus`, reasons, actors) and read state
+- [ ] Conversations module with the status state machine (`updateStatus`, reasons, actors) and read state; a conversation is created under `FOR SHARE` on its customer, using the survivor if the customer was absorbed by a merge (`MVP_TRIM_CHECKLIST.md` §10 item 27)
 - [ ] Messages module with `idempotencyKey`, `mediaIds`, mentions, outbound delivery tracking
 - [ ] `MessagingWindowService`
 - [ ] Cursor pagination per `TDD_08 §2.4`, list view model per `TDD_09 §2`
@@ -335,7 +336,7 @@ existing message.
 
 ### Step 2.4 — Realtime
 - [ ] Socket.io gateway with the ioredis adapter, typed events, conversation rooms
-- [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`
+- [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`; install `@nestjs/event-emitter` and emit the `Events.CUSTOMER_*` of `CustomersService` (created, updated, merged, unmerged, identity linked), which Step 2.2 leaves out because nothing listens to them yet
 - [ ] Per-socket presence with heartbeat and away detection
 - [ ] Client connection manager, `useRealtimeSync` with `QueryKeys`, offline queue with terminal-error handling
 
@@ -415,7 +416,7 @@ on a page with a strict CSP.
 
 ### Step 3.3 — Customer panel
 - [ ] Sidebar with identities, stats, tags, addresses
-- [ ] Profile drawer with activity timeline
+- [ ] Profile drawer with activity timeline, and the endpoints it reads: `GET /customers/:id/timeline` (conversations, notes, merges; orders join it in Step 4.3) and `/customers/:id/conversations` (`TDD_09 §6`; they need the conversations of Step 2.3)
 - [ ] Merge / unmerge flow, link identity
 
 **TDD:** `TDD_09 §6`
@@ -426,6 +427,7 @@ on a page with a strict CSP.
 - [ ] Scan-then-process worker chain (ClamAV, sharp variants as keys)
 - [ ] Signed download with variants
 - [ ] Media gallery with lightbox, bulk ZIP export
+- [ ] Customers CSV export (`GET /customers/export` creates an `Export { type: CUSTOMERS }` on the same queue, S3 key and download as the ZIP; `CUSTOMERS_EXPORT`; `MVP_TRIM_CHECKLIST.md` §10 item 25 for the columns and rules; register the route before `customers/:id`, or `export` is read as an id)
 
 **TDD:** `TDD_07 §6`, `§7`
 **Done when:** an image uploads, is scanned, generates variants, and is served through
@@ -476,7 +478,7 @@ dispatch is still refused), a forged level mismatch is reported by the reconcili
 the isolation suite covers the new resources.
 
 ### Step 4.3 — Orders
-- [ ] Orders module with server-side totals in cents from catalog prices
+- [ ] Orders module with server-side totals in cents from catalog prices; `GET /customers/:id/orders` and the orders in `GET /customers/:id/timeline` (`TDD_09 §6`, left out of Step 3.3 because they need orders); an order is created under `FOR SHARE` on its customer, using the survivor if the customer was absorbed (`MVP_TRIM_CHECKLIST.md` §10 item 27)
 - [ ] Status state machine with `OrderStatusTransitions` (orders start in `PENDING_CONFIRMATION`, `TDD_17 §4.3`), cancellation reason, proof of delivery; `CASH_ON_DELIVERY` payment method; the `CONFIRMED → SHIPPED` transition of `TDD_17 §3`
 - [ ] Price control (`TDD_17 §4.13`): line prices locked unless `ORDERS_OVERRIDE_PRICE`; discounts limited by the store's `orders.discountLimitPercent` (0 by default) with a required reason; the shipping fee prefilled from the planned carrier and held to that carrier's minimum and maximum, with a free-shipping order (per `orders.freeShippingRule`, from `Product.freeShipping`) at fee 0 without approval; anything outside the limit or the range follows the approval flow (`PriceApprovalStatus`, `ORDERS_APPROVE_PRICE`, no self-approval, an order awaiting approval cannot be confirmed); audit; and the server refusing any price from the client. The carrier rules start to apply in Step 4.8, when connections exist
 - [ ] Field-level edit restrictions with `OrderEditableFields`
@@ -664,6 +666,7 @@ sandbox.
 - [ ] Webhooks with resolve-time SSRF protection, delivery log, auto-disable
 - [ ] Tenant API keys (`ApiKeyGuard`)
 - [ ] Data retention configuration; retention, platform cleanup and audit cold-export schedulers. **MVP trim:** the effective window is `RetentionSettings` only (no `plan.historyRetentionDays`)
+  - The platform cleanup also hard-deletes the customers absorbed by a merge whose `unmergeUntil` has passed, together with their `CustomerMerge` row (`TDD_05 §10.4`; the audit log keeps `customer.merged`; `MVP_TRIM_CHECKLIST.md` §10 item 24)
   - The platform cleanup also deletes the `Session` rows past `expiresAt` (a consumed row stays until then, because reuse detection needs it) and the `VerificationToken` rows that are used or expired, in batches of 500 (`MVP_TRIM_CHECKLIST.md` §10, item 2)
 
 **TDD:** `TDD_09 §11`, `§13`, `TDD_05 §9.3`, `§10.4`, `TDD_07 §2`
@@ -992,7 +995,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.1 | Authentication | done | #35 | 2026-10-25 |
 | 1.2 | Tenancy | done | #39 | 2026-10-25 |
 | 1.3 | Tenant isolation test suite | done | #40 | 2026-10-26 |
-| 1.4 | Organizations, stores, memberships | todo | | |
+| 1.4 | Organizations, stores, memberships | done | #41 | 2026-10-26 |
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | todo | | |
 | 2.3 | Conversations and messages | todo | | |
