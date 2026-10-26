@@ -4,6 +4,7 @@ import { AuditModule } from '@platform/core/audit-module'
 import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http'
 
 import { AuthModule } from './modules/auth/auth.module'
+import { CustomersModule } from './modules/customers/customers.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { TeamModule } from './modules/team/team.module'
@@ -21,6 +22,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     AuthModule,
     OrganizationsModule,
     TeamModule,
+    CustomersModule,
     InvitationsModule,
     WebhooksModule
   ]
