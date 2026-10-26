@@ -170,6 +170,8 @@ scoped runs returned exactly 10 each). A run that returns 10 has **not** run out
 | Cache key                                               | `libs/core/platform/cache/cache-keys.ts`                     |
 | Permission                                              | `libs/core/domain/auth/permissions.ts`                     |
 | Error code                                              | `libs/core/domain/errors/error-codes.ts`                   |
+| HTTP status (`HttpStatusCodes`)                         | `libs/core/domain/errors/http-status-codes.ts`             |
+| Not found / conflict / unauthorized answer              | `libs/core/domain/errors/error-factories.ts` (`resourceNotFound`, `resourceConflict`, `unauthorized`)|
 | API route constant                                      | `libs/core/domain/api/api-routes.ts`                       |
 | Status enum                                             | `libs/core/domain/status-enums.ts`                  |
 | Shipping constant (carrier ids, capabilities, label formats) | `libs/core/domain/shipping-constants.ts`       |

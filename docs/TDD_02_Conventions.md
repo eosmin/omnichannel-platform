@@ -1028,7 +1028,7 @@ export class PlatformException extends Error {
   constructor(
     public readonly code: ErrorCode,
     message: string,                                  // English, for logs only
-    public readonly statusCode: number = 500,
+    public readonly statusCode: number = HttpStatusCodes.INTERNAL_SERVER_ERROR,
     public readonly metadata?: Record<string, unknown>
   ) {
     super(message)
