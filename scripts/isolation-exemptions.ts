@@ -31,10 +31,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   PluginInstallation: { step: '5.6', reason: 'Managed from Settings' },
   Product: { step: '4.1', reason: 'Has no endpoint yet' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
-  RoutingRule: {
-    step: '2.3',
-    reason: 'Managed from the settings of the store: PR 4 of Step 2.3 adds its case'
-  },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }

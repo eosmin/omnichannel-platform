@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { AuditService } from '@platform/core/audit-module'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { DEFAULT_TAG_COLOR, SettingsLimits } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
 
@@ -106,10 +106,29 @@ export class TagsService {
     const name = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await lockTag(tx, storeId, tagId, 'delete')
+      await this.requireNoRoutingRule(tx, storeId, tagId)
       const tag = await tx.tag.delete({ where: { id: tagId }, select: { name: true } })
       return tag.name
     })
     auditSettingsChange(this.audit, storeId, actor, 'tag', tagId, { change: 'deleted', name })
+  }
+
+  // A routing rule names tags in a Json column, with no foreign key to hold it: the rule that names a
+  // tag has to be changed first, or it would keep a condition that can never hold. Creating or
+  // changing a rule holds the tag shared (FOR KEY SHARE) until it commits, so the two take turns.
+  private async requireNoRoutingRule(
+    tx: PrismaTransaction,
+    storeId: string,
+    tagId: string
+  ): Promise<void> {
+    const rules = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM routing_rules
+      WHERE store_id = ${storeId} AND conditions -> 'tagIds' @> to_jsonb(${tagId}::text)`
+    if (rules.length > 0) {
+      throw resourceConflict('a routing rule names this tag: change the rule first', {
+        ruleIds: rules.map(rule => rule.id)
+      })
+    }
   }
 
   // Case-insensitive: "VIP" and "vip" in one list is a mistake waiting for who picks one. The index
