@@ -335,15 +335,17 @@ transitions are rejected, and `POST /messages` with a repeated `idempotencyKey` 
 existing message.
 
 ### Step 2.4 — Realtime
-- [ ] Socket.io gateway with the ioredis adapter, typed events, conversation rooms
-- [ ] Emit the events of `MessagesService` for a stored reply and a note (the constant is chosen here: `Events.MESSAGE_SENT` is for a message the channel took, so a stored reply may need its own in `event-names.ts`) and `Events.MESSAGE_MENTION` for each mention, which Step 3.5 turns into `NotificationTypes.CONVERSATION_MENTIONED` and the `Events.CONVERSATION_*` of `ConversationsService` (created, status changed, assigned, read) that Step 2.3 leaves out for the same reason as the customer ones, and measure the counts of the inbox filters to decide whether `CacheKeys.conversation.counts` is worth its invalidation (`MVP_TRIM_CHECKLIST.md` item 31)
-- [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`; install `@nestjs/event-emitter` and emit the `Events.CUSTOMER_*` of `CustomersService` (created, updated, merged, unmerged, identity linked), which Step 2.2 leaves out because nothing listens to them yet
+Two pull requests (owner, 2026-10-26): (1) domain events, (2) gateway, `RealtimeService` and presence. The browser side of the step (connection manager, `useRealtimeSync`, offline queue) moved to Step 3.1, where the web app gets its auth and `apiClient`: it cannot be built or shown working before that.
+- [x] Install `@nestjs/event-emitter` (12.0.1, the line of Nest 12; `TDD_01` said 3.0.1) and the `DomainEvents` service in `libs/core/event-bus`: a service announces with `publish(tx, event, payload)` and the event leaves after the transaction commits (`PrismaService.afterCommit`), never for one that rolls back, and a failing listener cannot fail the request
+- [x] Emit the `Events.CUSTOMER_*` of `CustomersService` (created, updated, merged, unmerged, identity linked), which Step 2.2 left out because nothing listened to them yet
+- [x] Emit from `MessagesService` `Events.MESSAGE_QUEUED` (new: `Events.MESSAGE_SENT` stays for a message the channel took) for a stored reply and `Events.MESSAGE_NOTE_ADDED` (new, without the text of the note) for a note, and `Events.MESSAGE_MENTION` for each mention, which Step 3.5 turns into `NotificationTypes.CONVERSATION_MENTIONED`; from `ConversationsService` the `Events.CONVERSATION_STATUS_CHANGED`, `CONVERSATION_ASSIGNED` (an unassignment is the same event with `assignedTo: null`) and `CONVERSATION_READ`. `CONVERSATION_CREATED` is emitted by Step 2.6, because its payload carries the first message and a conversation is born with it; the unassignment that removing a member does is not announced yet
+- [x] Counts of the inbox filters: not cached (`MVP_TRIM_CHECKLIST.md` item 31). Measured by `conversations-performance.spec.ts` over 10 000 conversations: under the 300 ms limit (about 17 ms by hand in Step 2.3). The realtime client refetches them debounced, so the cache would add an invalidation on every write for a query that costs that little
+- [ ] Socket.io gateway with the ioredis adapter, typed events, a store room and a user room; a conversation room is joined only for a conversation of that store that the user sees (the same visibility as the REST route)
+- [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`. What goes to the store room carries ids and no text (a user who cannot see a conversation must not read its preview, and a note is not for everyone)
 - [ ] Per-socket presence with heartbeat and away detection
-- [ ] Client connection manager, `useRealtimeSync` with `QueryKeys`, offline queue with terminal-error handling
 
 **TDD:** `TDD_06 §1`–`§5`
-**Done when:** two browser sessions see each other's messages instantly, closing one of two
-tabs keeps the user online, and a message composed offline sends on reconnect.
+**Done when:** two sockets of one store receive each other's events, a socket of store B receives nothing of store A and cannot join its conversations, and closing one of two sockets keeps the user online.
 
 ### Step 2.5 — Plugin SDK and registry
 - [ ] `libs/plugins/sdk` — `ChannelPlugin`, `ChannelEvent` (with `connectionId`), `ChannelContext`, types
@@ -399,12 +401,13 @@ on a page with a strict CSP.
 - [ ] shadcn/ui components, Lucide icons, Tailwind, CSP headers. Tailwind must scan `libs/core/domain` (`@source`), because `ConversationStatusColors` and `OrderStatusColors` hold class names that are otherwise purged
 - [ ] Auth flow with token refresh; `apiClient` setting `X-Store-Id`
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
+- [ ] The realtime client, moved from Step 2.4 (`TDD_06 §3`, `§4`): connection manager with a fresh token on every reconnect and the connection status in the header, `useRealtimeSync` that invalidates `QueryKeys` (debounced), and the offline queue with terminal-error handling and the `idempotencyKey` that `POST /messages` already honours. Join the conversation room of the open thread (`conversation.join`) and send the heartbeat every 30 seconds
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys. **Also merge the email messages:** Step 1.0 left the `email.*` namespace in `libs/core/i18n-server/messages/{en,es}.json` (a directory `apps/web/messages` cannot exist earlier, because `validate:translations` then demands every generated key). Move that namespace into `apps/web/messages/{en,es}.json`, point `libs/core/i18n-server/src/messages.ts` at those files, and delete `libs/core/i18n-server/messages/` and its README
 - [ ] Dockerfile for `web`, added to the `security-scan` build and Trivy scan
 - [ ] CI: create the `e2e-tests` job (Postgres, Redis, SeaweedFS and Mailpit services; the Playwright browsers cached by version and the job skipped by a job-level `if` when the change cannot affect the web app; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
 
 **TDD:** `TDD_01 §2.1`, `TDD_09 §12`, `§15`, `TDD_05 §6`
-**Done when:** magic link login works, `/invitations/[token]` handles the no-account, existing-account and mismatched-session cases, the UI renders in both locales with no hardcoded strings,
+**Done when:** a message composed offline sends on reconnect, two browser sessions see each other's messages instantly, magic link login works, `/invitations/[token]` handles the no-account, existing-account and mismatched-session cases, the UI renders in both locales with no hardcoded strings,
 `validate:translations` passes, securityheaders.com grades the web app A, and `e2e-tests` and
 `security-scan` are green on GitHub.
 
@@ -1008,7 +1011,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | done | #42 | 2026-10-26 |
 | 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
-| 2.4 | Realtime | todo | | |
+| 2.4 | Realtime | in progress | 1/2: domain events (this PR) | |
 | 2.5 | Plugin SDK and registry | todo | | |
 | 2.6 | Inbound pipeline | todo | | |
 | 2.7 | WhatsApp plugin | todo | | |

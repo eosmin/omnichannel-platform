@@ -15,6 +15,8 @@ import {
   HttpStatusCodes,
   PlatformException
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import type { Actor } from '../tenancy'
 
@@ -62,7 +64,8 @@ const PHONE_LIKE = /^(?=(?:\D*\d){3})[\d\s+().-]+$/
 export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: DomainEvents
   ) {}
 
   async list(storeId: string, query: ListCustomersQuery): Promise<CustomerPage> {
@@ -129,6 +132,7 @@ export class CustomersService {
         },
         select: { id: true }
       })
+      this.events.publish(tx, Events.CUSTOMER_CREATED, { storeId, customerId: created.id })
       return created.id
     })
     return this.get(storeId, id)
@@ -144,7 +148,7 @@ export class CustomersService {
       // A customer keeps a way to be named or reached, as when it was created
       const current = await tx.customer.findUniqueOrThrow({
         where: { id: customerId },
-        select: { name: true, email: true, phone: true }
+        select: { name: true, email: true, phone: true, locale: true }
       })
       const left = {
         name: body.name === undefined ? current.name : body.name,
@@ -172,6 +176,13 @@ export class CustomersService {
               })
         }
       })
+      // Writing what the customer already had changes nothing: nobody is told of it
+      const changed =
+        (body.name !== undefined && body.name !== current.name) ||
+        (body.email !== undefined && body.email !== current.email) ||
+        (body.locale !== undefined && body.locale !== current.locale) ||
+        (body.phone !== undefined && (body.phone?.display ?? null) !== current.phone)
+      if (changed) this.events.publish(tx, Events.CUSTOMER_UPDATED, { storeId, customerId })
     })
     return this.get(storeId, customerId)
   }
@@ -309,6 +320,16 @@ export class CustomersService {
         displayName: profile.displayName ?? null
       },
       select: { id: true }
+    })
+    this.events.publish(tx, Events.CUSTOMER_CREATED, {
+      storeId: key.storeId,
+      customerId: customer.id
+    })
+    this.events.publish(tx, Events.CUSTOMER_IDENTITY_LINKED, {
+      storeId: key.storeId,
+      customerId: customer.id,
+      identityId: identity.id,
+      channelType: key.channelType
     })
     return { customerId: customer.id, identityId: identity.id, created: true }
   }

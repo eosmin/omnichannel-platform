@@ -24,6 +24,9 @@ export const Events = {
   // Messages
   MESSAGE_RECEIVED: 'message.received',
   MESSAGE_SENT: 'message.sent',
+  // A reply an agent wrote, stored and waiting for its channel (MESSAGE_SENT is for one the channel took)
+  MESSAGE_QUEUED: 'message.queued',
+  MESSAGE_NOTE_ADDED: 'message.note_added',
   MESSAGE_DELIVERED: 'message.delivered',
   MESSAGE_READ: 'message.read',
   MESSAGE_FAILED: 'message.failed',

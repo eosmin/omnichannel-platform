@@ -192,6 +192,162 @@ describe('PrismaService', () => {
     ).rejects.toThrow('abort')
     expect(await service.client.organization.count({ where: { slug } })).toBe(0)
   })
+
+  describe('afterCommit', () => {
+    const slugOf = (suffix: string): string => `it-${runId}-hook-${suffix}`
+
+    it('runs the hook once the transaction is over, not while it runs', async () => {
+      const slug = slugOf('commit')
+      const seen: string[] = []
+
+      await service.transaction(async tx => {
+        await tx.organization.create({ data: { name: 'Hook', slug } })
+        service.afterCommit(tx, () => {
+          seen.push('hook')
+        })
+        expect(seen).toEqual([])
+      })
+
+      // The hook ran once the transaction was over: what it announces is stored
+      expect(seen).toEqual(['hook'])
+      expect(await service.client.organization.count({ where: { slug } })).toBe(1)
+    })
+
+    it('reads the change from another connection when the hook runs', async () => {
+      const slug = slugOf('visible')
+      let found = 0
+
+      await service.transaction(async tx => {
+        await tx.organization.create({ data: { name: 'Hook', slug } })
+        service.afterCommit(tx, () => {
+          void withClient(urls.owner, async owner => {
+            const { rows } = await owner.query('SELECT 1 FROM organizations WHERE slug = $1', [
+              slug
+            ])
+            found = rows.length
+          })
+        })
+      })
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      expect(found).toBe(1)
+    })
+
+    it('drops the hooks of a transaction that rolls back', async () => {
+      const hook = jest.fn()
+
+      await expect(
+        service.transaction(tx => {
+          service.afterCommit(tx, hook)
+          return Promise.reject(new Error('abort'))
+        })
+      ).rejects.toThrow('abort')
+
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('keeps the hooks in the order they were added', async () => {
+      const order: string[] = []
+
+      await service.transaction(tx => {
+        service.afterCommit(tx, () => order.push('one'))
+        service.afterCommit(tx, () => order.push('two'))
+        return Promise.resolve()
+      })
+
+      expect(order).toEqual(['one', 'two'])
+    })
+
+    it('waits for the commit of the tenant transaction that a nested one joins', async () => {
+      const order: string[] = []
+
+      await service.tenantTransaction({ storeIds: [], organizationIds: [] }, async () => {
+        await service.transaction(tx => {
+          service.afterCommit(tx, () => order.push('hook'))
+          return Promise.resolve()
+        })
+        // The inner transaction is over, the outer one is not: nothing was announced yet
+        order.push('inner done')
+      })
+
+      expect(order).toEqual(['inner done', 'hook'])
+    })
+
+    it('drops the hooks of a nested transaction when the tenant transaction rolls back', async () => {
+      const hook = jest.fn()
+
+      await expect(
+        service.tenantTransaction({ storeIds: [], organizationIds: [] }, async () => {
+          await service.transaction(tx => {
+            service.afterCommit(tx, hook)
+            return Promise.resolve()
+          })
+          throw new Error('abort')
+        })
+      ).rejects.toThrow('abort')
+
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('runs every hook even when one throws, and does not fail the committed transaction', async () => {
+      const order: string[] = []
+
+      await service.transaction(tx => {
+        service.afterCommit(tx, () => {
+          throw new Error('hook failed')
+        })
+        service.afterCommit(tx, () => order.push('second'))
+        return Promise.resolve()
+      })
+
+      expect(order).toEqual(['second'])
+    })
+
+    it('refuses a transaction that the service did not open, instead of announcing too early', async () => {
+      const hook = jest.fn()
+
+      // eslint-disable-next-line no-restricted-syntax -- a transaction the service did not open is the case under test
+      await service.client.$transaction(tx => {
+        expect(() => service.afterCommit(tx, hook)).toThrow('did not open')
+        return Promise.resolve()
+      })
+
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('drops a hook added after the transaction rolled back, and runs one added after the commit', async () => {
+      const late = jest.fn()
+      const afterRollback = jest.fn()
+      let rolledBack: Parameters<Parameters<typeof service.transaction>[0]>[0] | undefined
+      let committed: typeof rolledBack
+
+      await expect(
+        service.transaction(tx => {
+          rolledBack = tx
+          return Promise.reject(new Error('abort'))
+        })
+      ).rejects.toThrow('abort')
+      await service.transaction(tx => {
+        committed = tx
+        return Promise.resolve()
+      })
+      if (rolledBack === undefined || committed === undefined) throw new Error('no transaction')
+
+      service.afterCommit(rolledBack, afterRollback)
+      service.afterCommit(committed, late)
+
+      expect(afterRollback).not.toHaveBeenCalled()
+      expect(late).toHaveBeenCalledTimes(1)
+    })
+
+    it('runs the hook at once outside a transaction', () => {
+      const hook = jest.fn()
+
+      service.afterCommit(service.client, hook)
+
+      expect(hook).toHaveBeenCalledTimes(1)
+    })
+  })
 })
 
 describe('ProcessedWebhookEventsService', () => {

@@ -17,6 +17,8 @@ import {
   resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { type ActorRef, Events } from '@platform/core/events'
 
 import { encodeConversationCursor } from './conversation-cursor'
 import type { ListConversationsQuery } from './conversations.schemas'
@@ -73,6 +75,9 @@ export interface StatusOptions {
   resolutionReason?: string
   // Required to snooze: the moment the conversation comes back
   snoozedUntil?: Date
+  // For a change made by the system because of what a person did (a reply reopens the conversation):
+  // the person, for the event. It grants nothing: the permission to act was checked by the caller.
+  causedBy?: string
 }
 
 export interface NewConversation {
@@ -83,7 +88,10 @@ export interface NewConversation {
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: DomainEvents
+  ) {}
 
   // Called by the inbound pipeline (Step 2.6), not by a route: a conversation starts with a message
   // from a channel. The customer is locked FOR KEY SHARE and read again, because a merge may have
@@ -235,6 +243,15 @@ export class ConversationsService {
         ...fieldsOf(to, options)
       }
     })
+    this.events.publish(tx, Events.CONVERSATION_STATUS_CHANGED, {
+      storeId,
+      conversationId,
+      previousStatus: from,
+      status: to,
+      assignedTo: current.assignedTo,
+      changedBy:
+        options.causedBy === undefined ? actorRef(options.actor) : userRef(options.causedBy)
+    })
   }
 
   // Gives a conversation nobody has to someone, atomically: a person who took it a moment earlier
@@ -255,6 +272,17 @@ export class ConversationsService {
       },
       data: { assignedTo: userId }
     })
+    if (count === 1) {
+      this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
+        storeId,
+        conversationId,
+        assignedTo: userId,
+        previousAssignee: null,
+        assignedBy: actorRef('system'),
+        // The update above refuses a hidden conversation
+        visibility: { hidden: false, assignedTo: userId }
+      })
+    }
     return count === 1
   }
 
@@ -353,6 +381,14 @@ export class ConversationsService {
           where: { id: conversationId, storeId },
           data: { assignedTo: userId }
         })
+        this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
+          storeId,
+          conversationId,
+          assignedTo: userId,
+          previousAssignee: current.assignedTo,
+          assignedBy: actorRef(viewer),
+          visibility: { hidden: isHiddenStatus(current.status), assignedTo: userId }
+        })
       }
       // Read inside the lock, and without hiding it from the one who asked: handing a conversation
       // over takes it out of their sight, and the change they were allowed to make must not answer
@@ -368,10 +404,16 @@ export class ConversationsService {
     viewer: Viewer
   ): Promise<ConversationDetail> {
     return this.prisma.transaction(async tx => {
-      await lockConversationForWrite(tx, storeId, conversationId, viewer)
+      const current = await lockConversationForWrite(tx, storeId, conversationId, viewer)
       await tx.conversation.update({
         where: { id: conversationId, storeId },
         data: { unreadCount: 0, lastReadAt: new Date(), lastReadBy: viewer.userId }
+      })
+      this.events.publish(tx, Events.CONVERSATION_READ, {
+        storeId,
+        conversationId,
+        userId: viewer.userId,
+        visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo }
       })
       return this.detail(tx, storeId, conversationId, viewer, true)
     })
@@ -456,6 +498,14 @@ export class ConversationsService {
     })
     if (sees === 0) throw resourceNotFound('assignee')
   }
+}
+
+function userRef(userId: string): ActorRef {
+  return { type: 'user', id: userId }
+}
+
+function actorRef(actor: ConversationActor): ActorRef {
+  return actor === 'system' ? { type: 'system', id: null } : userRef(actor.userId)
 }
 
 // The fields that go with a status, besides the status itself. Only reopening clears anything: the

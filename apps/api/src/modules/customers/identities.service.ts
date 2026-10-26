@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import type { LinkIdentityBody } from './customers.schemas'
 import { lockCustomerForWrite } from './customers.support'
@@ -15,7 +17,10 @@ export interface LinkedIdentity {
 // The handles a customer writes from. A handle belongs to one customer of the store.
 @Injectable()
 export class IdentitiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: DomainEvents
+  ) {}
 
   // Linking a handle the customer already has answers with that identity (`created: false`), so a
   // retry after a timeout is harmless
@@ -49,6 +54,12 @@ export class IdentitiesService {
             displayName: body.displayName ?? null
           },
           select: IDENTITY_SELECT
+        })
+        this.events.publish(tx, Events.CUSTOMER_IDENTITY_LINKED, {
+          storeId,
+          customerId,
+          identityId: identity.id,
+          channelType: body.channelType
         })
         return { identity, created: true }
       })
