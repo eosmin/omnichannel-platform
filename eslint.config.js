@@ -23,6 +23,36 @@ const prismaTransactionBan = {
   message: 'Use PrismaService.transaction(fn) so the tenant context is set (TDD_01 §3.2)'
 }
 
+// The answers and statuses of the api are built by libs/core/domain/errors (HttpStatusCodes, and
+// resourceNotFound, resourceConflict, unauthorized): the usual second ways of writing them are
+// refused (a number in PlatformException, @HttpCode or res.status, a constant of your own, the three
+// codes by hand). Other forms (sendStatus, writeHead, HttpException) are caught in review
+const STATUS_NUMBER = '/^[1-5][0-9]{2}$/'
+const httpStatusBans = [
+  {
+    selector: `NewExpression[callee.name='PlatformException'] > Literal[raw=${STATUS_NUMBER}]`,
+    message: 'Name the status: HttpStatusCodes.NOT_FOUND, not 404'
+  },
+  {
+    selector: `CallExpression[callee.name='HttpCode'] > Literal[raw=${STATUS_NUMBER}]`,
+    message: 'Name the status: @HttpCode(HttpStatusCodes.CREATED), not 201'
+  },
+  {
+    selector: `CallExpression[callee.property.name='status'] > Literal[raw=${STATUS_NUMBER}]`,
+    message: 'Name the status: res.status(HttpStatusCodes.NOT_FOUND), not 404'
+  },
+  {
+    selector: `VariableDeclarator[id.name=/^(HTTP_)?(OK|CREATED|ACCEPTED|NO_CONTENT|BAD_REQUEST|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|CONFLICT|GONE|TOO_MANY_REQUESTS|INTERNAL|INTERNAL_SERVER_ERROR)$/] > Literal[raw=${STATUS_NUMBER}]`,
+    message: 'Use HttpStatusCodes from @platform/core/errors instead of a constant of your own'
+  },
+  {
+    selector:
+      "NewExpression[callee.name='PlatformException'] > MemberExpression[object.name='ErrorCodes'][property.name=/^(RESOURCE_NOT_FOUND|RESOURCE_CONFLICT|AUTH_UNAUTHORIZED)$/]",
+    message:
+      'Use resourceNotFound(), resourceConflict() or unauthorized() from @platform/core/errors'
+  }
+]
+
 export default defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -77,7 +107,13 @@ export default defineConfig([
           ]
         }
       ],
-      'no-restricted-syntax': ['error', processEnvBan, conversationStatusBan, prismaTransactionBan],
+      'no-restricted-syntax': [
+        'error',
+        processEnvBan,
+        conversationStatusBan,
+        prismaTransactionBan,
+        ...httpStatusBans
+      ],
 
       'import-x/order': [
         'error',
@@ -221,6 +257,14 @@ export default defineConfig([
     rules: { 'no-console': 'off' }
   },
 
+  // The specs say the number on purpose: they are what pins the statuses the code gives
+  {
+    files: ['**/*.spec.ts', 'tests/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', processEnvBan, conversationStatusBan, prismaTransactionBan]
+    }
+  },
+
   // The single files allowed to read process.env
   {
     files: [
@@ -238,7 +282,12 @@ export default defineConfig([
       'libs/core/database/prisma.config.ts'
     ],
     rules: {
-      'no-restricted-syntax': ['error', conversationStatusBan, prismaTransactionBan]
+      'no-restricted-syntax': [
+        'error',
+        conversationStatusBan,
+        prismaTransactionBan,
+        ...httpStatusBans
+      ]
     }
   },
 
@@ -247,7 +296,7 @@ export default defineConfig([
   {
     files: ['libs/core/database/src/prisma.service.ts', 'libs/core/database/src/dev-fixtures.ts'],
     rules: {
-      'no-restricted-syntax': ['error', processEnvBan, conversationStatusBan]
+      'no-restricted-syntax': ['error', processEnvBan, conversationStatusBan, ...httpStatusBans]
     }
   },
 
