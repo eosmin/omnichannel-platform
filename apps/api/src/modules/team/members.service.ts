@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, RoleNames } from '@platform/core/auth'
-import { PrismaService, type PrismaTransaction } from '@platform/core/database'
+import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -125,6 +125,7 @@ export class MembersService {
     held: readonly Permission[]
   ): Promise<void> {
     const member = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
       const found = await this.findActive(tx, storeId, membershipId)
       this.requireHolding(
         held,
@@ -134,6 +135,12 @@ export class MembersService {
       await tx.membership.update({
         where: { id: membershipId },
         data: { status: MembershipStatus.REVOKED, revokedAt: new Date() }
+      })
+      // Whoever leaves the team leaves their conversations unassigned: nobody is waiting for an
+      // answer from someone who can no longer give it
+      await tx.conversation.updateMany({
+        where: { storeId, assignedTo: found.userId },
+        data: { assignedTo: null }
       })
       return found
     })

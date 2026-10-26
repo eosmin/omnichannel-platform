@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { InvitationStatus } from '@platform/core/domain'
+import { ConversationStatus, InvitationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import {
@@ -13,6 +13,7 @@ import {
   createInvitation,
   createMember,
   createBusinessHours,
+  createConversationOf,
   createRole,
   createSnippet,
   createTag,
@@ -179,6 +180,19 @@ const resources: IsolationResource[] = [
           select: { reopenWindowDays: true }
         })
       )?.reopenWindowDays !== 99
+  },
+  {
+    name: 'conversation',
+    create: createConversationOf,
+    readPath: ApiRoutes.conversations.byId,
+    listPath: ApiRoutes.conversations.list,
+    modify: {
+      path: ApiRoutes.conversations.status,
+      body: { status: ConversationStatus.PENDING }
+    },
+    untouched: async (owner, id) =>
+      (await owner.conversation.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      ConversationStatus.OPEN
   },
   {
     name: 'membership',

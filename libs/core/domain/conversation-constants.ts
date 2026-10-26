@@ -1,3 +1,5 @@
+import { ConversationStatus } from './status-enums'
+
 // Why a conversation changed status; recorded by ConversationsService.updateStatus. Marking spam
 // stays a manual action in the v1.2 MVP, so there is no spam-detected reason.
 export const ConversationStatusReasons = {
@@ -28,4 +30,24 @@ export type BulkAction = (typeof BulkActions)[keyof typeof BulkActions]
 
 export const BulkLimits = {
   MAX_ITEMS: 500 // "Select all matching this filter" sends the filter; the server caps it here
+} as const
+
+// Spam and archived conversations are out of the inbox and out of every count (TDD_09 §3.1)
+export const ConversationHiddenStatuses = [
+  ConversationStatus.SPAM,
+  ConversationStatus.ARCHIVED
+] as const
+
+// The values of the `assigned` filter besides a user id
+export const ConversationAssignedFilters = {
+  ME: 'me',
+  UNASSIGNED: 'unassigned'
+} as const
+
+export const ConversationLimits = {
+  RESOLUTION_REASON_MAX_LENGTH: 500,
+  MAX_SNOOZE_DAYS: 365,
+  PREVIEW_MAX_LENGTH: 140,
+  // The tags of a conversation travel with every row of the list: the number is bounded
+  MAX_TAGS_PER_CONVERSATION: 20
 } as const

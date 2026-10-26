@@ -323,11 +323,11 @@ The product's reason to exist. (Queues, workers and email moved to Step 1.0, bec
 unmerged; the same phone number exists as two customers in two stores.
 
 ### Step 2.3 — Conversations and messages
-- [ ] Conversations module with the status state machine (`updateStatus`, reasons, actors) and read state; a conversation is created under `FOR SHARE` on its customer, using the survivor if the customer was absorbed by a merge (`MVP_TRIM_CHECKLIST.md` §10 item 27)
+- [x] Conversations module with the status state machine (`updateStatus`, reasons, actors) and read state; a conversation is created under `FOR KEY SHARE` on its customer (the same lock as the store's, owner's decision in Step 2.2), using the survivor if the customer was absorbed by a merge (`MVP_TRIM_CHECKLIST.md` §10 item 27)
 - [ ] Messages module with `idempotencyKey`, `mediaIds`, mentions, outbound delivery tracking
 - [ ] `MessagingWindowService`
-- [ ] Cursor pagination per `TDD_08 §2.4`, list view model per `TDD_09 §2`
-- [ ] Tags, snippets, routing rules, business hours, store settings endpoints (tags, snippets, business hours and inbox settings done in #45; routing rules in PR 4)
+- [x] Cursor pagination per `TDD_08 §2.4`, list view model per `TDD_09 §2` (with the counts of the filters, `countsOnly`)
+- [ ] Tags, snippets, routing rules, business hours, store settings endpoints (tags, snippets, business hours and inbox settings done in #45; routing rules in PR 4; conversations, read state, cursor and counts in #46)
 
 **TDD:** `TDD_08 §2.4`, `TDD_09 §2`, `§3`, `TDD_02 §5`
 **Done when:** conversations list under 300ms p95 with 10k seeded rows, invalid status
@@ -336,6 +336,7 @@ existing message.
 
 ### Step 2.4 — Realtime
 - [ ] Socket.io gateway with the ioredis adapter, typed events, conversation rooms
+- [ ] Emit the `Events.CONVERSATION_*` of `ConversationsService` (created, status changed, assigned, read) that Step 2.3 leaves out for the same reason as the customer ones, and measure the counts of the inbox filters to decide whether `CacheKeys.conversation.counts` is worth its invalidation (`MVP_TRIM_CHECKLIST.md` item 31)
 - [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`; install `@nestjs/event-emitter` and emit the `Events.CUSTOMER_*` of `CustomersService` (created, updated, merged, unmerged, identity linked), which Step 2.2 leaves out because nothing listens to them yet
 - [ ] Per-socket presence with heartbeat and away detection
 - [ ] Client connection manager, `useRealtimeSync` with `QueryKeys`, offline queue with terminal-error handling
@@ -409,7 +410,7 @@ on a page with a strict CSP.
 - [ ] Filters: all, mine, unassigned, by status, by channel, by agent (AI-handled filter DEFERRED)
 - [ ] Message thread with realtime updates, read state
 - [ ] Composer with slash commands, attachments (media-first), messaging-window states
-- [ ] Keyboard shortcuts, bulk actions
+- [ ] Keyboard shortcuts, bulk actions, and the server side Step 2.3 left out: `POST /conversations/bulk` (`BulkActions`, reassign included), `GET /conversations/export` (declared before `GET /conversations/:id`, which would otherwise take it for an id) and the mark-unread route (`TDD_09 §3.1`, `§10`)
 
 **TDD:** `TDD_09 §2`, `§3`, `§4`, `§9`, `§10`
 **Done when:** an agent can triage and reply entirely by keyboard.
@@ -998,7 +999,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.4 | Organizations, stores, memberships | done | #41 | 2026-10-26 |
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | done | #42 | 2026-10-26 |
-| 2.3 | Conversations and messages | in progress | #45 (1/4: tags, snippets, business hours, inbox settings) | 2026-10-26 |
+| 2.3 | Conversations and messages | in progress | #45 (1/4: settings), #46 (2/4: conversations) | 2026-10-27 |
 | 2.4 | Realtime | todo | | |
 | 2.5 | Plugin SDK and registry | todo | | |
 | 2.6 | Inbound pipeline | todo | | |

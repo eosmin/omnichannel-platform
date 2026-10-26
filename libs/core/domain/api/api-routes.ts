@@ -42,6 +42,7 @@ export const ApiRoutes = {
     status: (id: string) => `/conversations/${id}/status`,
     snooze: (id: string) => `/conversations/${id}/snooze`,
     tags: (id: string) => `/conversations/${id}/tags`,
+    tagById: (id: string, tagId: string) => `/conversations/${id}/tags/${tagId}`,
     read: (id: string) => `/conversations/${id}/read`,
     messagingWindow: (id: string) => `/conversations/${id}/messaging-window`,
     bulk: '/conversations/bulk',
