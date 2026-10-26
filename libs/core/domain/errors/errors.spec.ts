@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { STATUS_CODES } from 'node:http'
+import { resolve } from 'node:path'
 
 import { ErrorCodes } from './error-codes'
 import { resourceConflict, resourceNotFound, unauthorized } from './error-factories'
@@ -48,6 +50,19 @@ describe('HttpStatusCodes', () => {
 
   it.each(Object.entries(HttpStatusCodes))('%s is the status %i of that name', (name, code) => {
     expect(STATUS_CODES[code]).toBe(phraseOf(name))
+  })
+
+  // The lint rule that refuses a constant of your own names the statuses it looks for: a status added
+  // to HttpStatusCodes and not to that list would be written by hand again without eslint saying so
+  it('has every name in the "constant of your own" selector of eslint.config.js', () => {
+    const config = readFileSync(resolve(__dirname, '../../../../eslint.config.js'), 'utf8')
+    const listed = /VariableDeclarator\[id\.name=\/\^\(HTTP_\)\?\(([A-Z_|]+)\)\$\//.exec(
+      config
+    )?.[1]
+    const names = (listed ?? '').split('|')
+
+    expect(names.length).toBeGreaterThan(1)
+    expect(Object.keys(HttpStatusCodes).filter(name => !names.includes(name))).toEqual([])
   })
 
   it('gives each status one name', () => {

@@ -3,6 +3,10 @@
 // later, the web app and the widget, none of which should need Nest for a status. A status that is
 // not here yet is added here; eslint refuses the usual ways of writing a bare number instead (see
 // httpStatusBans in eslint.config.js).
+//
+// To ADD A STATUS: put it here with its standard number, and put its name in the "constant of your
+// own" selector of httpStatusBans in eslint.config.js. errors.spec.ts checks both (the name against
+// Node's reason phrase for the number, and that the name is in eslint.config.js).
 export const HttpStatusCodes = {
   OK: 200,
   CREATED: 201,

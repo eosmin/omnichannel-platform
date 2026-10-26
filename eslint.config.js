@@ -25,24 +25,34 @@ const prismaTransactionBan = {
 
 // The answers and statuses of the api are built by libs/core/domain/errors (HttpStatusCodes, and
 // resourceNotFound, resourceConflict, unauthorized): the usual second ways of writing them are
-// refused (a number in PlatformException, @HttpCode or res.status, a constant of your own, the three
-// codes by hand). Other forms (sendStatus, writeHead, HttpException) are caught in review
+// refused (a number in PlatformException or HttpException, @HttpCode, res.status, res.sendStatus or
+// res.writeHead; a constant of your own; the three codes by hand). A bare `{ status: 404 }` cannot be
+// told from any other object and is left to review.
+//
+// A NEW STATUS in HttpStatusCodes also goes in the names of the "constant of your own" selector
+// below (errors.spec.ts fails if it does not).
 const STATUS_NUMBER = '/^[1-5][0-9]{2}$/'
+const STATUS_ARGUMENT = `Literal[raw=${STATUS_NUMBER}]`
 const httpStatusBans = [
   {
-    selector: `NewExpression[callee.name='PlatformException'] > Literal[raw=${STATUS_NUMBER}]`,
+    selector: `NewExpression[callee.name=/^(PlatformException|HttpException)$/] > ${STATUS_ARGUMENT}`,
     message: 'Name the status: HttpStatusCodes.NOT_FOUND, not 404'
   },
   {
-    selector: `CallExpression[callee.name='HttpCode'] > Literal[raw=${STATUS_NUMBER}]`,
+    // The number may come wrapped: `404 as const`, `404 satisfies number`
+    selector: `NewExpression[callee.name=/^(PlatformException|HttpException)$/] > :matches(TSAsExpression, TSSatisfiesExpression) > ${STATUS_ARGUMENT}`,
+    message: 'Name the status: HttpStatusCodes.NOT_FOUND, not 404'
+  },
+  {
+    selector: `CallExpression[callee.name='HttpCode'] > ${STATUS_ARGUMENT}`,
     message: 'Name the status: @HttpCode(HttpStatusCodes.CREATED), not 201'
   },
   {
-    selector: `CallExpression[callee.property.name='status'] > Literal[raw=${STATUS_NUMBER}]`,
+    selector: `CallExpression[callee.property.name=/^(status|sendStatus|writeHead)$/] > ${STATUS_ARGUMENT}`,
     message: 'Name the status: res.status(HttpStatusCodes.NOT_FOUND), not 404'
   },
   {
-    selector: `VariableDeclarator[id.name=/^(HTTP_)?(OK|CREATED|ACCEPTED|NO_CONTENT|BAD_REQUEST|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|CONFLICT|GONE|TOO_MANY_REQUESTS|INTERNAL|INTERNAL_SERVER_ERROR)$/] > Literal[raw=${STATUS_NUMBER}]`,
+    selector: `VariableDeclarator[id.name=/^(HTTP_)?(OK|CREATED|ACCEPTED|NO_CONTENT|BAD_REQUEST|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|CONFLICT|GONE|TOO_MANY_REQUESTS|INTERNAL|INTERNAL_SERVER_ERROR)$/] > ${STATUS_ARGUMENT}`,
     message: 'Use HttpStatusCodes from @platform/core/errors instead of a constant of your own'
   },
   {
