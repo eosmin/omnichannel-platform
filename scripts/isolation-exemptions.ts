@@ -19,12 +19,14 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
     reason: 'Resolved by the inbound pipeline and managed from Settings'
   },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
-  Conversation: { step: '2.3', reason: 'Has no endpoint yet' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   Media: { step: '3.4', reason: 'Has no endpoint yet' },
-  Message: { step: '2.3', reason: 'Has no endpoint yet' },
+  Message: {
+    step: '2.3',
+    reason: 'Has no endpoint yet: PR 3 of Step 2.3 (messages) adds its case'
+  },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   Notification: { step: '3.5', reason: 'Has no endpoint yet' },
@@ -33,7 +35,10 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   PluginInstallation: { step: '5.6', reason: 'Managed from Settings' },
   Product: { step: '4.1', reason: 'Has no endpoint yet' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
-  RoutingRule: { step: '2.3', reason: 'Managed from the settings of the store' },
+  RoutingRule: {
+    step: '2.3',
+    reason: 'Managed from the settings of the store: PR 4 of Step 2.3 adds its case'
+  },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }
