@@ -1,4 +1,6 @@
 export * from './conversation'
 export * from './customer'
+export * from './snippet'
+export * from './store-settings'
 export * from './tag'
 export * from './team'

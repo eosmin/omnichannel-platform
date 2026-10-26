@@ -1,5 +1,5 @@
 import { getQueueToken } from '@nestjs/bullmq'
-import type { INestApplication } from '@nestjs/common'
+import type { INestApplication, Type } from '@nestjs/common'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { Test } from '@nestjs/testing'
 
@@ -13,12 +13,12 @@ import { CapturedEmails } from './email'
 
 // The app of the api as it runs, built from the same AppModule and configured by the same function
 // as main.ts: the same guards, pipes, filters, prefix and security headers. Two things differ: the
-// probe controller, the stand-in for the first tenant resources (see its file; the real ones replace
-// it as they arrive), and the email queue, which keeps what it is given instead of sending it.
-export async function createTestApp(): Promise<INestApplication> {
+// probe controller (the routes that prove the guards, see its file) plus the controllers a suite asks
+// for, and the email queue, which keeps what it is given instead of sending it.
+export async function createTestApp(extraControllers: Type[] = []): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
-    controllers: [TenantProbeController]
+    controllers: [TenantProbeController, ...extraControllers]
   })
     // The emails of a suite are read, not sent: see CapturedEmails
     .overrideProvider(getQueueToken(QueueNames.EMAIL))

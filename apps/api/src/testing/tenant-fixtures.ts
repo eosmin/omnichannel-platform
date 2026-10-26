@@ -24,7 +24,6 @@ export interface TenantFixtures {
   ): Promise<string>
   setPermissions(roleId: string, permissions: readonly Permission[]): Promise<void>
   removeMember(membershipId: string): Promise<void>
-  createTag(storeId: string): Promise<string>
   deleteAll(): Promise<void>
 }
 
@@ -109,17 +108,6 @@ export function tenantFixtures(asOwner: AsOwner, runId: string): TenantFixtures 
           [membershipId]
         )
       )
-    },
-
-    async createTag(storeId: string): Promise<string> {
-      const tagId = randomUUID()
-      await asOwner(client =>
-        client.query(
-          `INSERT INTO tags (id, store_id, name, color) VALUES ($1, $2, $3, '#000000')`,
-          [tagId, storeId, next()]
-        )
-      )
-      return tagId
     },
 
     deleteAll(): Promise<void> {

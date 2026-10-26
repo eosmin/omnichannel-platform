@@ -5,10 +5,8 @@ import type { IsolationExemption } from './lib/isolation'
 // check-isolation-coverage fails as soon as that step is `done` in the progress table of
 // docs/IMPLEMENTATION_PLAN.md and the model is still here, so the case is added when the resource
 // is built and not "later". The step that builds a resource deletes its line and adds its case to
-// tests/security/tenant-isolation.spec.ts (CLAUDE.md, rule 3).
-//
-// `Tag` is not here: it is covered through the test-only probe controller until its real endpoint
-// (Step 2.3) replaces it.
+// tests/security/tenant-isolation.spec.ts (CLAUDE.md, rule 3). A step that is delivered in several PRs
+// (2.3) removes the line of each model with the PR that builds its endpoint, not with the last one.
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
   AnalyticsEvent: {
     step: '5.2',
@@ -16,7 +14,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   },
   ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
-  BusinessHours: { step: '2.3', reason: 'Read and changed from the settings of the store' },
   ChannelConnection: {
     step: '2.6',
     reason: 'Resolved by the inbound pipeline and managed from Settings'
@@ -38,7 +35,5 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   RoutingRule: { step: '2.3', reason: 'Managed from the settings of the store' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
-  Snippet: { step: '2.3', reason: 'Managed from the settings of the store' },
-  StoreSettings: { step: '2.3', reason: 'Read and changed through the store settings endpoints' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }

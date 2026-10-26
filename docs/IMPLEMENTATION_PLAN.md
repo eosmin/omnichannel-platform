@@ -327,7 +327,7 @@ unmerged; the same phone number exists as two customers in two stores.
 - [ ] Messages module with `idempotencyKey`, `mediaIds`, mentions, outbound delivery tracking
 - [ ] `MessagingWindowService`
 - [ ] Cursor pagination per `TDD_08 §2.4`, list view model per `TDD_09 §2`
-- [ ] Tags, snippets, routing rules, business hours, store settings endpoints
+- [ ] Tags, snippets, routing rules, business hours, store settings endpoints (tags, snippets, business hours and inbox settings done in #45; routing rules in PR 4)
 
 **TDD:** `TDD_08 §2.4`, `TDD_09 §2`, `§3`, `TDD_02 §5`
 **Done when:** conversations list under 300ms p95 with 10k seeded rows, invalid status
@@ -998,7 +998,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.4 | Organizations, stores, memberships | done | #41 | 2026-10-26 |
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | done | #42 | 2026-10-26 |
-| 2.3 | Conversations and messages | todo | | |
+| 2.3 | Conversations and messages | in progress | #45 (1/4: tags, snippets, business hours, inbox settings) | 2026-10-26 |
 | 2.4 | Realtime | todo | | |
 | 2.5 | Plugin SDK and registry | todo | | |
 | 2.6 | Inbound pipeline | todo | | |

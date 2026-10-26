@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -23,9 +25,18 @@ export interface IsolationResource {
     path: (id: string) => string
     // PATCH unless the resource is changed by a DELETE (an invitation is revoked) or by an action
     // (a merge is undone with a POST)
-    method?: 'patch' | 'post' | 'delete'
+    method?: 'patch' | 'post' | 'put' | 'delete'
     // A body that names the row (an unmerge names the merge) is a function of its id
     body: Record<string, unknown> | ((id: string) => Record<string, unknown>)
+  }
+  // One row per store, reached through the store of the request and never by an id (the business
+  // hours, the settings): the checks about asking for the row of another store by its id do not
+  // apply, `create` returns the store as the id, and the check `ownRow` looks that the row the
+  // request gets is the one of its own store. `set` puts a marker in the row of a store, `markerIn`
+  // reads it from the answer.
+  own?: {
+    set: (owner: OwnerClient, storeId: string, marker: string) => Promise<void>
+    markerIn: (body: unknown) => string | null
   }
   // true while the row is as it was created: after a refused change it must still be
   untouched: (owner: OwnerClient, id: string) => Promise<boolean>
@@ -55,9 +66,9 @@ function change(agent: TestAgent, resource: IsolationResource, id: string) {
   const { path, method = 'patch', body } = resource.modify
   if (method === 'delete') return agent.delete(path(id))
   const payload = typeof body === 'function' ? body(id) : body
-  return method === 'post'
-    ? agent.post(path(id)).send(payload)
-    : agent.patch(path(id)).send(payload)
+  if (method === 'post') return agent.post(path(id)).send(payload)
+  if (method === 'put') return agent.put(path(id)).send(payload)
+  return agent.patch(path(id)).send(payload)
 }
 
 // A resource with no route to read it is reached by the route that changes it: whatever the answer
@@ -106,12 +117,18 @@ export const isolationChecks = {
     { app, owner, ctx }: IsolationScene,
     resource: IsolationResource
   ): Promise<void> {
+    if (resource.own !== undefined) return
     const row = await resource.create(owner, { storeId: ctx.storeB.id })
 
     const response = await reach(api(app, ctx.adminA, ctx.storeA), resource, row.id)
 
     expect(response.status).toBe(404)
     expect(JSON.stringify(response.body)).not.toContain(row.id)
+    // Not an existence oracle: the answer is the very one of an id that exists nowhere
+    if (resource.readPath !== undefined) {
+      const missing = await reach(api(app, ctx.adminA, ctx.storeA), resource, randomUUID())
+      expect((response.body as ErrorBody).error).toEqual((missing.body as ErrorBody).error)
+    }
     await expectUntouchedIfChangedToReach(owner, resource, row.id)
   },
 
@@ -120,6 +137,7 @@ export const isolationChecks = {
     { app, owner, ctx }: IsolationScene,
     resource: IsolationResource
   ): Promise<void> {
+    if (resource.own !== undefined) return
     const row = await resource.create(owner, { storeId: ctx.storeA2.id })
 
     const fromOwnStore = await reach(api(app, ctx.adminA, ctx.storeA), resource, row.id)
@@ -128,6 +146,27 @@ export const isolationChecks = {
     expect(fromOwnStore.status).toBe(404)
     expect(fromTheSibling.status).toBe(403) // The user is not a member of the sibling
     await expectUntouchedIfChangedToReach(owner, resource, row.id)
+  },
+
+  // A resource with one row per store: two stores each have a row with its own marker, and the
+  // request of a store gets the row of that store
+  async ownRow({ app, owner, ctx }: IsolationScene, resource: IsolationResource): Promise<void> {
+    const { own, readPath } = resource
+    if (own === undefined) return
+    // A one-row-per-store resource skips the checks by id: without a read route nothing reads it
+    expect(readPath).toBeDefined()
+    if (readPath === undefined) return
+    await resource.create(owner, { storeId: ctx.storeA.id })
+    await resource.create(owner, { storeId: ctx.storeB.id })
+    await own.set(owner, ctx.storeA.id, 'A')
+    await own.set(owner, ctx.storeB.id, 'B')
+
+    const fromA = await api(app, ctx.adminA, ctx.storeA).get(readPath(ctx.storeA.id))
+    const fromB = await api(app, ctx.adminB, ctx.storeB).get(readPath(ctx.storeB.id))
+
+    expect(fromA.status).toBe(200)
+    expect(own.markerIn(fromA.body)).toBe('A')
+    expect(own.markerIn(fromB.body)).toBe('B')
   },
 
   async modification(
@@ -139,7 +178,10 @@ export const isolationChecks = {
     const claiming = await change(api(app, ctx.adminA, ctx.storeA), resource, row.id)
     const naming = await change(api(app, ctx.adminA, ctx.storeB), resource, row.id)
 
-    expect(claiming.status).toBe(404)
+    // A resource with one row per store changes the row of the own store: it must have worked, or the
+    // untouched row below proves nothing
+    if (resource.own === undefined) expect(claiming.status).toBe(404)
+    else expect(claiming.status).toBe(200)
     expect(naming.status).toBe(403)
     // The refusal is not enough: the row must not have changed
     expect(await resource.untouched(owner, row.id)).toBe(true)
