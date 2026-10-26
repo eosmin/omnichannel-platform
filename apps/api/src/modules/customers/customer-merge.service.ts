@@ -12,6 +12,8 @@ import {
   resourceNotFound,
   PlatformException
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import type { Actor } from '../tenancy'
 
@@ -122,7 +124,8 @@ function mergedFields(
 export class CustomerMergeService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: DomainEvents
   ) {}
 
   async merge(
@@ -169,6 +172,11 @@ export class CustomerMergeService {
           unmergeUntil: new Date(Date.now() + ComplianceConfig.UNMERGE_WINDOW_DAYS * MS_PER_DAY)
         },
         select: { id: true }
+      })
+      this.events.publish(tx, Events.CUSTOMER_MERGED, {
+        storeId,
+        survivorId,
+        absorbedId: body.absorbedId
       })
       return merge.id
     })
@@ -225,6 +233,11 @@ export class CustomerMergeService {
       await this.restore(tx, storeId, survivorId, merge.absorbedId, snapshot)
       await tx.customer.update({ where: { id: merge.absorbedId }, data: { mergedIntoId: null } })
       await tx.customerMerge.update({ where: { id: mergeId }, data: { unmergedAt: new Date() } })
+      this.events.publish(tx, Events.CUSTOMER_UNMERGED, {
+        storeId,
+        survivorId,
+        absorbedId: merge.absorbedId
+      })
       return merge.absorbedId
     })
     this.log(AuditAction.CUSTOMER_UNMERGED, storeId, survivorId, actor, { absorbedId, mergeId })

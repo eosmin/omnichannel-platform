@@ -18,6 +18,8 @@ import {
   resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { type ConversationVisibility, Events } from '@platform/core/events'
 
 import {
   canSee,
@@ -47,7 +49,8 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
-    private readonly window: MessagingWindowService
+    private readonly window: MessagingWindowService,
+    private readonly events: DomainEvents
   ) {}
 
   // What the agent writes in a conversation. A reply to the customer is stored as queued: nothing
@@ -131,11 +134,56 @@ export class MessagesService {
             storeId,
             body.conversationId,
             ConversationStatus.OPEN,
-            { actor: 'system' }
+            { actor: 'system', causedBy: viewer.userId }
           )
         }
       }
+      // A note changes nothing in the conversation; a reply leaves it open (spam was refused above,
+      // and an archived one was reopened)
+      const visibility = {
+        hidden: isNote && isHiddenStatus(current.status),
+        assignedTo: current.assignedTo
+      }
+      this.announce(tx, storeId, viewer, row.id, now, body, mentions, visibility)
       return { message: messageView(row), created: true }
+    })
+  }
+
+  // What is announced is ids and dates, never the text: a reply is read through the api, which knows
+  // who may see the conversation, and a note is for who may read notes
+  private announce(
+    tx: PrismaTransaction,
+    storeId: string,
+    viewer: Viewer,
+    messageId: string,
+    createdAt: Date,
+    body: CreateMessageBody,
+    mentions: readonly string[],
+    visibility: ConversationVisibility
+  ): void {
+    const base = {
+      storeId,
+      conversationId: body.conversationId,
+      messageId,
+      authorId: viewer.userId
+    }
+    if (body.type === MessageType.INTERNAL_NOTE) {
+      this.events.publish(tx, Events.MESSAGE_NOTE_ADDED, {
+        ...base,
+        createdAt: createdAt.toISOString(),
+        visibility
+      })
+      for (const mentionedUserId of mentions) {
+        // Nobody is told of a mention of themselves
+        if (mentionedUserId === viewer.userId) continue
+        this.events.publish(tx, Events.MESSAGE_MENTION, { ...base, mentionedUserId })
+      }
+      return
+    }
+    this.events.publish(tx, Events.MESSAGE_QUEUED, {
+      ...base,
+      createdAt: createdAt.toISOString(),
+      visibility
     })
   }
 
