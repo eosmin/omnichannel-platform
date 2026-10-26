@@ -32,9 +32,24 @@ export const BulkLimits = {
   MAX_ITEMS: 500 // "Select all matching this filter" sends the filter; the server caps it here
 } as const
 
+export const MessageLimits = {
+  // The longest text WhatsApp takes in one message; the other channels take less or the same
+  CONTENT_MAX_LENGTH: 4096,
+  IDEMPOTENCY_KEY_MAX_LENGTH: 128,
+  MAX_MENTIONS: 10
+} as const
+
 // Spam and archived conversations are out of the inbox and out of every count (TDD_09 §3.1)
 export const ConversationHiddenStatuses = [
   ConversationStatus.SPAM,
+  ConversationStatus.ARCHIVED
+] as const
+
+// An answer of an agent to the customer brings these back to work: the customer is waiting for it
+// (spam is not in the list: it is marked as not spam before it is answered)
+export const ConversationReopenedByReply = [
+  ConversationStatus.RESOLVED,
+  ConversationStatus.SNOOZED,
   ConversationStatus.ARCHIVED
 ] as const
 

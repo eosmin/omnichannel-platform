@@ -23,10 +23,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   Media: { step: '3.4', reason: 'Has no endpoint yet' },
-  Message: {
-    step: '2.3',
-    reason: 'Has no endpoint yet: PR 3 of Step 2.3 (messages) adds its case'
-  },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   Notification: { step: '3.5', reason: 'Has no endpoint yet' },

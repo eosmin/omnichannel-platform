@@ -40,6 +40,19 @@ import {
 } from './conversations.views'
 
 const DAY_MS = 24 * 60 * 60 * 1000
+// A conversation is snoozed until a moment to come, within the limit
+function assertSnoozeWindow(until: Date): void {
+  const now = Date.now()
+  if (until.getTime() <= now) {
+    throw invalidInput('a conversation is snoozed until a moment to come')
+  }
+  if (until.getTime() > now + ConversationLimits.MAX_SNOOZE_DAYS * DAY_MS) {
+    throw invalidInput(
+      `a conversation is snoozed for at most ${ConversationLimits.MAX_SNOOZE_DAYS} days`
+    )
+  }
+}
+
 // A customer that was merged into another that was merged in turn: at most this many redirects
 // are followed, the chain is short on purpose
 const MAX_MERGE_HOPS = 5
@@ -171,39 +184,83 @@ export class ConversationsService {
   ): Promise<ConversationDetail> {
     const viewer = options.actor === 'system' ? undefined : options.actor
     return this.prisma.transaction(async tx => {
-      const current = await lockConversationForWrite(tx, storeId, conversationId, viewer)
-      const from = statusOf(current.status)
-      if (viewer !== undefined) {
-        requireAnyPermission(viewer.held, [STATUS_PERMISSIONS[to]])
-        // Archived and spam conversations never get here for who may not archive: they are not seen
-      }
-      if (to === ConversationStatus.RESOLVED && from === ConversationStatus.RESOLVED) {
-        throw new PlatformException(
-          ErrorCodes.CONVERSATION_ALREADY_RESOLVED,
-          'the conversation is already resolved',
-          HttpStatusCodes.CONFLICT
-        )
-      }
-      if (!ConversationStatusTransitions[from].includes(to)) {
-        throw new PlatformException(
-          ErrorCodes.CONVERSATION_INVALID_STATUS_TRANSITION,
-          `a ${from} conversation cannot become ${to}`,
-          HttpStatusCodes.CONFLICT,
-          { from, to }
-        )
-      }
-      if (to === ConversationStatus.SNOOZED && options.snoozedUntil === undefined) {
+      await this.applyStatus(tx, storeId, conversationId, to, options)
+      return this.detail(tx, storeId, conversationId, viewer, true)
+    })
+  }
+
+  // The change of status inside the transaction of the caller, for a write that has to change it
+  // together with something else (a reply reopens the conversation it answers). The row is locked
+  // again, which is two cheap statements when the caller holds the lock already.
+  async applyStatus(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    to: ConversationStatus,
+    options: StatusOptions
+  ): Promise<void> {
+    const viewer = options.actor === 'system' ? undefined : options.actor
+    const current = await lockConversationForWrite(tx, storeId, conversationId, viewer)
+    const from = statusOf(current.status)
+    if (viewer !== undefined) {
+      requireAnyPermission(viewer.held, [STATUS_PERMISSIONS[to]])
+      // Archived and spam conversations never get here for who may not archive: they are not seen
+    }
+    if (to === ConversationStatus.RESOLVED && from === ConversationStatus.RESOLVED) {
+      throw new PlatformException(
+        ErrorCodes.CONVERSATION_ALREADY_RESOLVED,
+        'the conversation is already resolved',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    if (!ConversationStatusTransitions[from].includes(to)) {
+      throw new PlatformException(
+        ErrorCodes.CONVERSATION_INVALID_STATUS_TRANSITION,
+        `a ${from} conversation cannot become ${to}`,
+        HttpStatusCodes.CONFLICT,
+        { from, to }
+      )
+    }
+    if (to === ConversationStatus.SNOOZED) {
+      if (options.snoozedUntil === undefined) {
         throw invalidInput('snoozing needs the moment the conversation comes back')
       }
-      await tx.conversation.update({
-        where: { id: conversationId },
-        data: {
-          // eslint-disable-next-line no-restricted-syntax -- the one place that writes the status
-          status: to,
-          ...fieldsOf(to, options)
-        }
-      })
-      return this.detail(tx, storeId, conversationId, viewer, true)
+      assertSnoozeWindow(options.snoozedUntil)
+    }
+    await tx.conversation.update({
+      where: { id: conversationId, storeId },
+      data: {
+        // eslint-disable-next-line no-restricted-syntax -- the one place that writes the status
+        status: to,
+        ...fieldsOf(to, options)
+      }
+    })
+  }
+
+  // What a reply of an agent leaves in the conversation: the newest message of the thread (for the
+  // list), the last answer, and the first answer once (TDD_11 section 7.2 reads it for the response
+  // time). The dates never move back: a message that arrives late from a channel is older than one
+  // written meanwhile.
+  async recordReply(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    at: Date
+  ): Promise<void> {
+    // Three conditional writes, each atomic by itself: the dates stay right even for a caller that
+    // does not hold the row lock
+    const where = { id: conversationId, storeId }
+    await tx.conversation.updateMany({
+      where: { ...where, OR: [{ lastMessageAt: null }, { lastMessageAt: { lt: at } }] },
+      data: { lastMessageAt: at }
+    })
+    await tx.conversation.updateMany({
+      where: { ...where, OR: [{ lastOutboundAt: null }, { lastOutboundAt: { lt: at } }] },
+      data: { lastOutboundAt: at }
+    })
+    await tx.conversation.updateMany({
+      where: { ...where, firstResponseAt: null },
+      data: { firstResponseAt: at }
     })
   }
 
@@ -213,15 +270,7 @@ export class ConversationsService {
     until: Date,
     viewer: Viewer
   ): Promise<ConversationDetail> {
-    const now = Date.now()
-    if (until.getTime() <= now) {
-      throw invalidInput('a conversation is snoozed until a moment to come')
-    }
-    if (until.getTime() > now + ConversationLimits.MAX_SNOOZE_DAYS * DAY_MS) {
-      throw invalidInput(
-        `a conversation is snoozed for at most ${ConversationLimits.MAX_SNOOZE_DAYS} days`
-      )
-    }
+    assertSnoozeWindow(until)
     return this.updateStatus(storeId, conversationId, ConversationStatus.SNOOZED, {
       actor: viewer,
       snoozedUntil: until
@@ -280,7 +329,7 @@ export class ConversationsService {
           )
         }
         await tx.conversation.update({
-          where: { id: conversationId },
+          where: { id: conversationId, storeId },
           data: { assignedTo: userId }
         })
       }
@@ -300,7 +349,7 @@ export class ConversationsService {
     return this.prisma.transaction(async tx => {
       await lockConversationForWrite(tx, storeId, conversationId, viewer)
       await tx.conversation.update({
-        where: { id: conversationId },
+        where: { id: conversationId, storeId },
         data: { unreadCount: 0, lastReadAt: new Date(), lastReadBy: viewer.userId }
       })
       return this.detail(tx, storeId, conversationId, viewer, true)

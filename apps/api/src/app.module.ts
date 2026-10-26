@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module'
 import { ConversationsModule } from './modules/conversations/conversations.module'
 import { CustomersModule } from './modules/customers/customers.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
+import { MessagesModule } from './modules/messages/messages.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { SettingsModule } from './modules/settings/settings.module'
 import { TeamModule } from './modules/team/team.module'
@@ -26,6 +27,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     TeamModule,
     CustomersModule,
     ConversationsModule,
+    MessagesModule,
     SettingsModule,
     InvitationsModule,
     WebhooksModule

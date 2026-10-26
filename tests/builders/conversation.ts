@@ -104,9 +104,29 @@ export async function createMessage(
       conversationId: input.conversationId,
       type: input.type ?? MessageType.TEXT,
       content: input.content ?? 'hello',
-      authorType: input.authorType ?? AuthorType.CUSTOMER,
+      // A note is written by the team: the api never makes one with another author
+      authorType:
+        input.authorType ??
+        (input.type === MessageType.INTERNAL_NOTE ? AuthorType.AGENT : AuthorType.CUSTOMER),
       ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt })
     },
     select: { id: true }
   })
+}
+
+// Remembers the conversation of each message: the routes that reach a message name its conversation
+export const conversationOfMessage = new Map<string, string>()
+
+// A message in a conversation of its own, for the suites that need only the row
+export async function createMessageOf(
+  owner: OwnerClient,
+  input: { storeId: string }
+): Promise<{ id: string }> {
+  const conversation = await createConversationOf(owner, { storeId: input.storeId })
+  const message = await createMessage(owner, {
+    storeId: input.storeId,
+    conversationId: conversation.id
+  })
+  conversationOfMessage.set(message.id, conversation.id)
+  return message
 }

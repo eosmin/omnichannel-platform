@@ -34,7 +34,7 @@ export class ConversationTagsService {
         SELECT id FROM tags WHERE id = ${tagId} AND store_id = ${storeId} FOR KEY SHARE`
       if (tags.length === 0) throw resourceNotFound('tag')
       const held = await tx.conversation.findUniqueOrThrow({
-        where: { id: conversationId },
+        where: { id: conversationId, storeId },
         select: { tags: { select: { id: true } } }
       })
       if (
@@ -47,7 +47,7 @@ export class ConversationTagsService {
         )
       }
       const row = await tx.conversation.update({
-        where: { id: conversationId },
+        where: { id: conversationId, storeId },
         data: { tags: { connect: { id: tagId } } },
         select: { tags: { select: TAG_SELECT, orderBy: { name: 'asc' } } }
       })
@@ -66,7 +66,7 @@ export class ConversationTagsService {
       const tag = await tx.tag.findFirst({ where: { id: tagId, storeId }, select: { id: true } })
       if (tag === null) throw resourceNotFound('tag')
       await tx.conversation.update({
-        where: { id: conversationId },
+        where: { id: conversationId, storeId },
         data: { tags: { disconnect: { id: tagId } } }
       })
     })
