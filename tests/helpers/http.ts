@@ -33,12 +33,32 @@ export interface TestAgent {
   delete: (path: string) => supertest.Test
 }
 
+// The last answers of the api to the current test, for tests/helpers/test-environment.cjs to print
+// when the test fails
+interface RecordedResponse {
+  method: string
+  path: string
+  status: number
+  code: string | undefined
+}
+const RECENT_LIMIT = 10
+function record(entry: RecordedResponse): void {
+  const store = globalThis as { __recentResponses?: RecordedResponse[] }
+  const recent = (store.__recentResponses ??= [])
+  recent.push(entry)
+  if (recent.length > RECENT_LIMIT) recent.shift()
+}
+
 function agent(app: INestApplication, headers: Record<string, string>): TestAgent {
   const server = app.getHttpServer() as Parameters<typeof supertest>[0] // Nest types it as any
   const send = (method: Method, path: string): supertest.Test => {
     let request = supertest(server)[method](`${API_PREFIX}${path}`)
     request = request.set('x-forwarded-for', freshAddress())
     for (const [name, value] of Object.entries(headers)) request = request.set(name, value)
+    request.once('response', (response: supertest.Response) => {
+      const body = response.body as { error?: { code?: string } } | undefined
+      record({ method, path, status: response.status, code: body?.error?.code })
+    })
     return request
   }
   return {
