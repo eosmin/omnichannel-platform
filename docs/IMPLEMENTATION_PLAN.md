@@ -997,7 +997,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.3 | Tenant isolation test suite | done | #40 | 2026-10-26 |
 | 1.4 | Organizations, stores, memberships | done | #41 | 2026-10-26 |
 | **Milestone 2: Core messaging** | | | | |
-| 2.2 | Customers | todo | | |
+| 2.2 | Customers | done | #42 | 2026-10-26 |
 | 2.3 | Conversations and messages | todo | | |
 | 2.4 | Realtime | todo | | |
 | 2.5 | Plugin SDK and registry | todo | | |
