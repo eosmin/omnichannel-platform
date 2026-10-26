@@ -1,4 +1,4 @@
-import { stateOf } from './messaging-window.service'
+import { stateOf } from './messaging-window.state'
 
 const HOUR_MS = 60 * 60 * 1000
 const now = new Date('2026-03-02T12:00:00Z')

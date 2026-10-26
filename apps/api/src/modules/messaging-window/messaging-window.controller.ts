@@ -9,7 +9,8 @@ import { ZodValidationPipe } from '@platform/core/http'
 import { viewerOf } from '../conversations'
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 
-import { type MessagingWindowState, MessagingWindowService } from './messaging-window.service'
+import { MessagingWindowService } from './messaging-window.service'
+import type { MessagingWindowState } from './messaging-window.state'
 
 @Controller()
 export class MessagingWindowController {
