@@ -6,15 +6,17 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import { InvitationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { ProbeRoutes } from '../../apps/api/src/testing/tenant-probe.controller'
 import {
   createCustomer,
   createCustomerIdentity,
   createCustomerMerge,
   createInvitation,
   createMember,
+  createBusinessHours,
   createRole,
+  createSnippet,
   createTag,
+  resetStoreSettings,
   customerOfIdentity,
   survivorOfMerge
 } from '../builders'
@@ -90,17 +92,93 @@ const resources: IsolationResource[] = [
   {
     name: 'tag',
     create: createTag,
-    readPath: ProbeRoutes.tagById,
-    listPath: ProbeRoutes.tags,
-    modify: { path: ProbeRoutes.tagById, body: { name: 'hacked' } },
+    readPath: ApiRoutes.settings.tagById,
+    listPath: ApiRoutes.settings.tags,
+    modify: { path: ApiRoutes.settings.tagById, body: { name: 'hacked' } },
     untouched: async (owner, id) =>
       (await owner.tag.findUnique({ where: { id }, select: { name: true } }))?.name !== 'hacked',
     creation: {
-      path: ProbeRoutes.tags,
+      path: ApiRoutes.settings.tags,
       body: name => ({ name }),
+      strict: true,
+      countIn: (owner, storeId) => owner.tag.count({ where: { storeId } }),
       storeOf: async (owner, id) =>
         (await owner.tag.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ?? null
     }
+  },
+  {
+    name: 'snippet',
+    create: createSnippet,
+    readPath: ApiRoutes.settings.snippetById,
+    listPath: ApiRoutes.settings.snippets,
+    modify: { path: ApiRoutes.settings.snippetById, body: { title: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.snippet.findUnique({ where: { id }, select: { title: true } }))?.title !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.settings.snippets,
+      body: name => ({ shortcut: name, title: name, content: name }),
+      strict: true,
+      countIn: (owner, storeId) => owner.snippet.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.snippet.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
+        null
+    }
+  },
+  // One row per store: the id is the store, and the route has none
+  {
+    name: 'businessHours',
+    create: createBusinessHours,
+    own: {
+      set: async (owner, storeId, marker) => {
+        await owner.businessHours.update({
+          where: { storeId },
+          data: { timezone: marker === 'A' ? 'America/Costa_Rica' : 'Asia/Tokyo' }
+        })
+      },
+      markerIn: body => {
+        const timezone = (body as { timezone?: string }).timezone
+        return timezone === 'America/Costa_Rica' ? 'A' : timezone === 'Asia/Tokyo' ? 'B' : null
+      }
+    },
+    readPath: () => ApiRoutes.settings.businessHours,
+    modify: {
+      path: () => ApiRoutes.settings.businessHours,
+      method: 'put',
+      body: {
+        timezone: 'UTC',
+        schedule: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
+        awayMessageSnippetId: null
+      }
+    },
+    untouched: async (owner, id) =>
+      (await owner.businessHours.findUnique({ where: { storeId: id }, select: { timezone: true } }))
+        ?.timezone !== 'UTC'
+  },
+  {
+    name: 'storeSettings',
+    create: resetStoreSettings,
+    own: {
+      set: async (owner, storeId, marker) => {
+        await owner.storeSettings.update({
+          where: { storeId },
+          data: { agentLoadThreshold: marker === 'A' ? 11 : 22 }
+        })
+      },
+      markerIn: body => {
+        const threshold = (body as { agentLoadThreshold?: number }).agentLoadThreshold
+        return threshold === 11 ? 'A' : threshold === 22 ? 'B' : null
+      }
+    },
+    readPath: () => ApiRoutes.settings.inbox,
+    modify: { path: () => ApiRoutes.settings.inbox, body: { reopenWindowDays: 99 } },
+    untouched: async (owner, id) =>
+      (
+        await owner.storeSettings.findUnique({
+          where: { storeId: id },
+          select: { reopenWindowDays: true }
+        })
+      )?.reopenWindowDays !== 99
   },
   {
     name: 'membership',
@@ -161,6 +239,7 @@ const SENTENCES: Record<IsolationCheck, string> = {
   claimingOwnStore: 'cannot be read by claiming the own store while asking for a row of another',
   siblingStore: 'cannot be read from a sibling store of the same organization',
   modification: 'cannot be changed across stores, and the row does not change',
+  ownRow: 'gets the row of its own store, whatever other stores hold',
   listing: 'lists only the rows of the store of the request',
   creation: 'is created in the store of the header, whatever store the body names'
 }
@@ -195,7 +274,7 @@ describe('Tenant isolation', () => {
 
   describe('the store of a request', () => {
     it('is required: a request with a token and no X-Store-Id is refused', async () => {
-      const response = await apiWithoutStore(app, ctx.adminA).get(ProbeRoutes.tags)
+      const response = await apiWithoutStore(app, ctx.adminA).get(ApiRoutes.settings.tags)
 
       expect(response.status).toBe(400)
       expect((response.body as { error: { code: string } }).error.code).toBe(
@@ -205,21 +284,21 @@ describe('Tenant isolation', () => {
 
     it('is never taken from the query: a storeId there does not stand in for the header', async () => {
       const response = await apiWithoutStore(app, ctx.adminA)
-        .get(ProbeRoutes.tags)
+        .get(ApiRoutes.settings.tags)
         .query({ storeId: ctx.storeA.id })
 
       expect(response.status).toBe(400)
     })
 
     it('is useless without a token', async () => {
-      const response = await anonymousApi(app).get(ProbeRoutes.tags)
+      const response = await anonymousApi(app).get(ApiRoutes.settings.tags)
 
       expect(response.status).toBe(401)
     })
 
     it('is not the one of another user: a token and the header of a store the user lacks', async () => {
       const response = await anonymousApi(app)
-        .get(ProbeRoutes.tags)
+        .get(ApiRoutes.settings.tags)
         .set('authorization', `Bearer ${ctx.adminB.token}`)
         .set(TenantHeaders.STORE_ID, ctx.storeA.id)
 

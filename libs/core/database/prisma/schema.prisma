@@ -494,6 +494,8 @@ model Tag {
   conversations Conversation[] @relation("ConversationTags")
   customers     Customer[]     @relation("CustomerTags")
 
+  // Also uq_tags_store_name_ci (store_id, lower(name)) in the raw SQL of 20261026140000: the name is
+  // unique whatever its case, which the schema cannot say
   @@unique([storeId, name])
   @@map("tags")
 }

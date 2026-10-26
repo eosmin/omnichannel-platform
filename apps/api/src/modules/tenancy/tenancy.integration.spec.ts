@@ -33,8 +33,6 @@ describe('tenancy', () => {
   let adminRoleA: string
   let viewerRoleA: string
   let viewerRoleB: string
-  let tagA: string
-  let tagB: string
 
   beforeAll(async () => {
     test = await startAuthTestApp()
@@ -47,8 +45,6 @@ describe('tenancy', () => {
     ])
     viewerRoleA = await test.tenants.createRole(storeA.storeId, [Permissions.CUSTOMERS_VIEW])
     viewerRoleB = await test.tenants.createRole(storeB.storeId, [Permissions.CUSTOMERS_VIEW])
-    tagA = await test.tenants.createTag(storeA.storeId)
-    tagB = await test.tenants.createTag(storeB.storeId)
   })
   afterAll(() => test.cleanUp())
 
@@ -375,59 +371,6 @@ describe('tenancy', () => {
       const sessions = await call('GET', '/auth/sessions', { token: nobody.token })
 
       expect([me.status, sessions.status]).toEqual([200, 200])
-    })
-  })
-
-  describe('isolation of a resource: the first one, tags', () => {
-    it('lists only the tags of the store of the request', async () => {
-      const alice = await userWith([
-        { store: storeA, role: viewerRoleA },
-        { store: storeB, role: viewerRoleB }
-      ])
-
-      const inA = await call<{ id: string }[]>('GET', ProbeRoutes.tags, {
-        token: alice.token,
-        store: storeA.storeId
-      })
-      const inB = await call<{ id: string }[]>('GET', ProbeRoutes.tags, {
-        token: alice.token,
-        store: storeB.storeId
-      })
-
-      expect(inA.body.map(tag => tag.id)).toEqual([tagA])
-      expect(inB.body.map(tag => tag.id)).toEqual([tagB])
-    })
-
-    it('cannot read a tag of another store by its id: it looks like it does not exist', async () => {
-      const alice = await userWith([{ store: storeA, role: viewerRoleA }])
-
-      const own = await call('GET', ProbeRoutes.tagById(tagA), {
-        token: alice.token,
-        store: storeA.storeId
-      })
-      const foreign = await call('GET', ProbeRoutes.tagById(tagB), {
-        token: alice.token,
-        store: storeA.storeId
-      })
-      const missing = await call('GET', ProbeRoutes.tagById(randomUUID()), {
-        token: alice.token,
-        store: storeA.storeId
-      })
-
-      expect(own.status).toBe(200)
-      expect(foreign.status).toBe(404)
-      expect((foreign.body as ErrorBody).error).toEqual((missing.body as ErrorBody).error)
-    })
-
-    it('cannot reach the store of the tag by naming it in the header either', async () => {
-      const alice = await userWith([{ store: storeA, role: viewerRoleA }])
-
-      const reply = await call('GET', ProbeRoutes.tagById(tagB), {
-        token: alice.token,
-        store: storeB.storeId
-      })
-
-      expect(reply.status).toBe(403)
     })
   })
 
