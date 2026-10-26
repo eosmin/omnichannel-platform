@@ -30,6 +30,7 @@ import {
   statusOf,
   type Viewer
 } from '../conversations'
+import { MessagingWindowService } from '../messaging-window'
 
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
@@ -45,7 +46,8 @@ export interface CreatedMessage {
 export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly conversations: ConversationsService
+    private readonly conversations: ConversationsService,
+    private readonly window: MessagingWindowService
   ) {}
 
   // What the agent writes in a conversation. A reply to the customer is stored as queued: nothing
@@ -88,6 +90,8 @@ export class MessagesService {
           { from, to: ConversationStatus.OPEN }
         )
       }
+      // Free text goes out only while the channel lets it; a note is the team's and has no window
+      if (!isNote) await this.window.requireOpen(tx, storeId, body.conversationId)
       if (body.replyToMessageId !== undefined) {
         await this.requireReplyTarget(
           tx,

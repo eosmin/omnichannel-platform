@@ -1,5 +1,6 @@
 export * from './conversation'
 export * from './customer'
+export * from './routing-rule'
 export * from './snippet'
 export * from './store-settings'
 export * from './tag'

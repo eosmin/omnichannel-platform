@@ -8,7 +8,9 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { CustomersModule } from './modules/customers/customers.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
 import { MessagesModule } from './modules/messages/messages.module'
+import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
+import { RoutingModule } from './modules/routing/routing.module'
 import { SettingsModule } from './modules/settings/settings.module'
 import { TeamModule } from './modules/team/team.module'
 import { TenancyModule } from './modules/tenancy'
@@ -28,6 +30,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     CustomersModule,
     ConversationsModule,
     MessagesModule,
+    MessagingWindowModule,
+    RoutingModule,
     SettingsModule,
     InvitationsModule,
     WebhooksModule

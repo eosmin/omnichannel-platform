@@ -286,6 +286,7 @@ export const ApiRoutes = {
     roles: '/settings/roles',
     roleById: (id: string) => `/settings/roles/${id}`,
     routing: '/settings/routing',
+    routingOrder: '/settings/routing/order', // PATCH, declared before routingRuleById
     routingRuleById: (id: string) => `/settings/routing/${id}`,
     businessHours: '/settings/business-hours',
     tags: '/settings/tags',

@@ -237,6 +237,27 @@ export class ConversationsService {
     })
   }
 
+  // Gives a conversation nobody has to someone, atomically: a person who took it a moment earlier
+  // keeps it, and one that was archived or marked as spam meanwhile is not given to someone who could
+  // not see it. For the routing of a new conversation, which must not take one back.
+  async assignIfFree(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    userId: string
+  ): Promise<boolean> {
+    const { count } = await tx.conversation.updateMany({
+      where: {
+        id: conversationId,
+        storeId,
+        assignedTo: null,
+        status: { notIn: [...ConversationHiddenStatuses] }
+      },
+      data: { assignedTo: userId }
+    })
+    return count === 1
+  }
+
   // What a reply of an agent leaves in the conversation: the newest message of the thread (for the
   // list), the last answer, and the first answer once (TDD_11 section 7.2 reads it for the response
   // time). The dates never move back: a message that arrives late from a channel is older than one

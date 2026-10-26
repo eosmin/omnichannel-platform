@@ -2,6 +2,8 @@ export * from './conversations.module'
 export * from './conversations.service'
 export {
   canSee,
+  channelOf,
+  type Db,
   enumValueOf,
   invalidInput,
   isHiddenStatus,

@@ -5,7 +5,12 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ConversationStatus, InvitationStatus, MessageType } from '@platform/core/domain'
+import {
+  ConversationStatus,
+  InvitationStatus,
+  MessageType,
+  RoutingActionTypes
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import {
@@ -19,6 +24,7 @@ import {
   createConversationOf,
   createMessageOf,
   createRole,
+  createRoutingRule,
   createSnippet,
   createTag,
   resetStoreSettings,
@@ -245,6 +251,25 @@ const resources: IsolationResource[] = [
       storeOf: async (owner, id) =>
         (await owner.message.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
         null
+    }
+  },
+  {
+    name: 'routingRule',
+    create: createRoutingRule,
+    readPath: ApiRoutes.settings.routingRuleById,
+    listPath: ApiRoutes.settings.routing,
+    modify: { path: ApiRoutes.settings.routingRuleById, body: { name: 'hacked-rule' } },
+    untouched: async (owner, id) =>
+      (await owner.routingRule.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked-rule',
+    creation: {
+      path: ApiRoutes.settings.routing,
+      body: name => ({ name, conditions: {}, action: { type: RoutingActionTypes.UNASSIGNED } }),
+      strict: true,
+      countIn: (owner, storeId) => owner.routingRule.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.routingRule.findUnique({ where: { id }, select: { storeId: true } }))
+          ?.storeId ?? null
     }
   },
   {

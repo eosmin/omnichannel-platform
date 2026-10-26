@@ -325,9 +325,9 @@ unmerged; the same phone number exists as two customers in two stores.
 ### Step 2.3 — Conversations and messages
 - [x] Conversations module with the status state machine (`updateStatus`, reasons, actors) and read state; a conversation is created under `FOR KEY SHARE` on its customer (the same lock as the store's, owner's decision in Step 2.2), using the survivor if the customer was absorbed by a merge (`MVP_TRIM_CHECKLIST.md` §10 item 27)
 - [x] Messages module: `POST /messages` with `idempotencyKey`, the thread, internal notes with mentions; a reply is stored `queued` and nothing sends it until Step 2.6 (`mediaIds` moved to Step 3.4, `MVP_TRIM_CHECKLIST.md` "Messages build details")
-- [ ] `MessagingWindowService` (PR 4), and `MessagesService.create` calls it before it stores a reply: a closed window answers `CHANNEL_WINDOW_EXPIRED` (`TDD_10 §4`)
+- [x] `MessagingWindowService` (`GET /conversations/:id/messaging-window`), and `MessagesService.create` calls it before it stores a reply: a closed window answers `CHANNEL_WINDOW_EXPIRED` (`TDD_10 §4`). Channels have no policy until Step 2.5 binds the registry (`MVP_TRIM_CHECKLIST.md` "Messaging window and routing build details")
 - [x] Cursor pagination per `TDD_08 §2.4`, list view model per `TDD_09 §2` (with the counts of the filters, `countsOnly`)
-- [ ] Tags, snippets, routing rules, business hours, store settings endpoints (tags, snippets, business hours and inbox settings done in #45; routing rules in PR 4; conversations, read state, cursor and counts in #46)
+- [x] Tags, snippets, routing rules, business hours, store settings endpoints (tags, snippets, business hours and inbox settings done in #45; conversations, read state, cursor and counts in #46; routing rules and `RoutingService.apply` in PR 4)
 
 **TDD:** `TDD_08 §2.4`, `TDD_09 §2`, `§3`, `§4`, `TDD_02 §5`, `TDD_06 §4`, `TDD_10 §4`, `TDD_11 §7.2`
 **Done when:** conversations list under 300ms p95 with 10k seeded rows, invalid status
@@ -347,17 +347,20 @@ tabs keeps the user online, and a message composed offline sends on reconnect.
 
 ### Step 2.5 — Plugin SDK and registry
 - [ ] `libs/plugins/sdk` — `ChannelPlugin`, `ChannelEvent` (with `connectionId`), `ChannelContext`, types
-- [ ] `libs/plugins/runtime` — registry with contract validation, `PluginsModule`
+- [ ] `libs/plugins/runtime` — registry with contract validation, `PluginsModule`, keyed by string ids (`TDD_10 §3`, §6.7.3: per process, refreshed through Redis `plugins:changed`, `list(storeId)`); bind `MESSAGING_WINDOW_POLICIES` (`apps/api/src/modules/messaging-window`) to `plugin.messagingWindow` and test it with a plugin of the suite (the policies of WhatsApp, Instagram and Messenger arrive with those plugins in Steps 2.7 and 2.8, each with its own)
+- [ ] Open channel ids (owner, 2026-10-26; `MVP_TRIM_CHECKLIST.md` "Open channel ids"): a channel is the id of a registered plugin, validated against the registry, and not a value of the closed enum `ChannelType`. `ChannelType` stays as an alias of the list of the official ids (`ChannelIds`, with `CHANNEL_ID_PATTERN`, `officialChannelSchema` and `registeredChannelSchema` of `TDD_10 §6.7.1`), and the code that takes a channel (the `channelType` columns, the filters of the list and of the routing conditions, `channelOf`, the labels and icons) takes a string that the registry vouches for; the texts to bring along are `TDD_01` (schema), `TDD_02` (constants), `TDD_03`, `TDD_07` (job types), `TDD_09` (filters), `TDD_11` (`AvailableChannels`, `ChannelGuard`), `TDD_13` and `TDD_14`. The label, the icon, the capabilities and the messaging window of a channel come from its plugin. `TDD_10 §3` and §10 are already written for string ids (`TDD_10 §6.7`)
 - [ ] `tests/contracts/channel-plugin.contract.ts` with per-plugin fixtures
 - [ ] CI: `integration-tests` also runs `pnpm test:contracts`
 
-**TDD:** `TDD_10 §2`, `§3`, `§9`
+**TDD:** `TDD_10 §2`, `§3`, `§6.7.1`, `§9`
 **Done when:** the contract suite exists, runs in `integration-tests`, and the registry rejects a plugin that
 declares a capability it does not implement.
 
 ### Step 2.6 — Inbound pipeline
+- [ ] First, move what the worker needs out of `apps/api/src/modules` into `libs/core/messaging` (an Nx library both apps import; the api keeps its controllers): `ConversationsService`, the identity part of `CustomersService`, `RoutingService`, `MessagingWindowService` and the messages writer. `TDD_10 §4` already puts `InboundMessageService` there, and the worker cannot import from `apps/api`; the isolation suite and the tests that import them move with them
+- [ ] System lines in the thread: `ConversationsService.applyStatus` writes a `MessageType.SYSTEM` message in the same transaction for each change of status that people care about (resolved, reopened, archived, marked as spam or not, snoozed and woken) and `assign` / `assignIfFree` one for each assignment, authored by `system`, with the event, the people and the dates in `metadata` and no text. They do not count as the last message of the list, do not move `lastMessageAt`, do not raise `unreadCount`, are left out of the exports of the customer's messages, and a bulk action writes one for each conversation. Step 3.2 only draws them
 - [ ] `ChannelWebhookController` (verify, normalize, enqueue) + `InboundProcessor`
-- [ ] `InboundMessageService`: connection → store resolution, identity, reopen/wake/create, dedupe, media job, routing, events (billing window DEFERRED). A message of the customer reopens a resolved, snoozed or archived conversation through `ConversationsService.applyStatus` (actor `'system'`) and keeps a spam one as spam (stored, no reopening); it moves `lastMessageAt` and raises `unreadCount` and `lastInboundAt`, and does not touch `lastOutboundAt` or `firstResponseAt` (those are the agent's, set by `recordReply`)
+- [ ] `InboundMessageService`: connection → store resolution, identity, reopen/wake/create, dedupe, media job, routing (`RoutingService.apply(storeId, conversationId, { text, receivedAt })`, for a conversation it creates and for one it reopens that has no assignee or whose assignee left; the channel and the customer are read from the conversation), `CustomerIdentity.lastInboundAt` (it opens the messaging window), events (billing window DEFERRED). A message of the customer continues the conversation that customer already has on that channel (owner, 2026-10-26: one continuous thread per customer and channel, like a chat, with the whole history in it): it wakes a snoozed one and reopens a resolved or an archived one through `ConversationsService.applyStatus` (actor `'system'`, reason `CUSTOMER_REPLIED`), the previous assignee keeping it. `StoreSettings.reopenWindowDays` changes with it: it becomes optional, `null` (the default) meaning a new conversation is never started and a number meaning one is started after that many quiet days; the migration with its rollback, the inbox settings API and the text of `TDD_09 §3.3` change in the first PR of this step, and a spam one stays spam (stored, no reopening); it moves `lastMessageAt` and raises `unreadCount` and `lastInboundAt`, and does not touch `lastOutboundAt` or `firstResponseAt` (those are the agent's, set by `recordReply`)
 - [ ] Outbound: the queue and job constants in `libs/core`, and a processor that takes a `queued` reply of `MessagesService`, calls the plugin's `sendMessage` and writes `sent` or `failed` (`deliveryError` holds an `ErrorCode`), with the provider's `delivered`/`read` status callbacks written by the inbound path; the channel limits of the text (WhatsApp 4096, Messenger 2000, Instagram 1000) are checked here, because `POST /messages` only caps at 4096
 - [ ] `ChannelConnection` management + `libs/core/crypto` encryption + health scheduler
 - [ ] **MVP trim:** no `UsageMeteringService`; inbound conversations are never metered or blocked
@@ -410,6 +413,7 @@ on a page with a strict CSP.
 - [ ] Virtualized conversation list from `ConversationListItem`
 - [ ] Filters: all, mine, unassigned, by status, by channel, by agent (AI-handled filter DEFERRED)
 - [ ] Message thread with realtime updates, read state
+- [ ] Draw the system lines of Step 2.6 in the thread as dividers, not bubbles, from i18n keys with the event, the people and the dates of their `metadata` ("Resolved on 3 March by Ana", "Reopened"), so that a conversation that is one continuous chat still shows its story
 - [ ] Composer with slash commands, messaging-window states; attachments (media-first) wait for `mediaIds` in Step 3.4, so the composer of this step sends text and notes
 - [ ] Keyboard shortcuts, bulk actions, and the server side Step 2.3 left out: `POST /conversations/bulk` (`BulkActions`, reassign included), `GET /conversations/export` (declared before `GET /conversations/:id`, which would otherwise take it for an id) and the mark-unread route (`TDD_09 §3.1`, `§10`)
 
@@ -695,6 +699,7 @@ the owner's own POS or inventory app, or a Shopify connector later). The marketp
 review queue and revenue sharing stay deferred (`TDD_10 §8`). Builds on Step 5.4 (webhook
 delivery, SSRF protection, key hashing) and Step 1.0 (queues).
 - [ ] **Private registration** instead of a marketplace: the owner registers a plugin by pasting its manifest in Settings → Plugins; it is validated by `pluginManifestSchema` and stored as a `Plugin` row (`status = approved`, `isOfficial = false`, `pricingModel = free`; `paid` and `plan_gated` are rejected) (`MVP_TRIM_CHECKLIST.md` §7, D10)
+- [ ] Channel plugins by manifest (`type: "channel"`), the whole of `TDD_10 §6.7`, so that a channel can be added without touching this code: the migration (`commandSecret`, `commandSecretPrevious`, `commandSecretRotatedAt`, `Plugin.manifest`, `Plugin.iconKey`, with rollback), the manifest `channel` block and its validator (ids against `ChannelIds` and the table, the capabilities, the window bounds), the icon fetched once and stored as a 128 px PNG, the registry refresh and `list(storeId)`, `RemoteChannelPlugin` (all its methods, §6.7.4), signed commands with the secret rotation, `PUT/DELETE /api/v1/plugin-api/channel/connections/:connectionId` and `POST /api/v1/plugin-api/channel/events` (scopes `channel:connections`, `channel:events`, the caps and the rate ceilings), the hooks that send `typing.send` (from the agent typing events of Step 2.4) and `message.markRead` (from the read state), inbound media by URL with pinned addresses, the health job per connection with its counter, and `tests/contracts/remote-channel.contract.ts` with the reference plugin
 - [ ] Manifest, scopes and scope-to-permission mapping (`PluginScopes`, `PluginScopePermissions`, including the inventory scopes of `TDD_16 §3`)
 - [ ] Install flow: consent screen, webhook-endpoint challenge with `assertPublicHttpsUrl`, `PluginInstallation` in `PENDING_SETUP`, scoped API key stored as prefix and sha256 hash only, one-time setup code (5 minutes, Redis) exchanged for the key, then `ACTIVE`
 - [ ] `PluginApiKeyGuard` on `/api/v1/plugin-api/*`: scope check, per-installation rate limit, bound to exactly one store; thin controllers over the same services for conversations, messages, customers, orders, products and inventory
@@ -708,7 +713,7 @@ delivery, SSRF protection, key hashing) and Step 1.0 (queues).
 **TDD:** `TDD_10 §6`, `§9`, `TDD_05 §9`
 **Done when:** a sample plugin (a test fixture app) is registered and installed, calls the API
 inside its scopes and gets 403 outside them, receives a redacted signed webhook, and after
-revocation its key stops working immediately.
+revocation its key stops working immediately; and a channel plugin of the suite (the reference plugin of `tests/contracts/remote-channel.contract.ts`) appears in the inbox with its own name and icon, a message it posts reaches the inbox, an agent's reply reaches it as a signed command and its status comes back, and a status event for a message of another channel is dropped.
 
 ### Step 5.7 — Plugin widgets
 - [ ] Sandboxed iframe widgets in the agent sidebar with the `MessageChannel` bridge, the per-store `frame-src` added by `proxy.ts`, and the short-lived widget session token sent only over the port
@@ -1002,7 +1007,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 1.4 | Organizations, stores, memberships | done | #41 | 2026-10-26 |
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | done | #42 | 2026-10-26 |
-| 2.3 | Conversations and messages | in progress | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages) | 2026-10-26 |
+| 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
 | 2.4 | Realtime | todo | | |
 | 2.5 | Plugin SDK and registry | todo | | |
 | 2.6 | Inbound pipeline | todo | | |

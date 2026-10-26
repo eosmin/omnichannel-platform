@@ -71,7 +71,7 @@ export type ChannelCapabilityType = typeof ChannelCapability[keyof typeof Channe
 // libs/plugins/sdk/src/channel-plugin.interface.ts
 export interface ChannelPlugin {
   // Identity
-  readonly id: ChannelType                 // 'whatsapp' — also the Plugin.id and ChannelConnection.pluginId
+  readonly id: string                      // 'whatsapp' — the id of a registered plugin (§6.7); the official ones are the ChannelType constants. Also the Plugin.id and ChannelConnection.pluginId
   readonly name: string                    // 'WhatsApp Business'
   readonly version: string                 // '1.0.0'
   readonly author: string
@@ -140,6 +140,7 @@ export interface ChannelEvent {
     timestamp: string                    // ISO 8601
   }
   status?: { externalId: string; error?: { code: string; message: string } }   // For delivery/read/failed events
+  messageId?: string                      // Message.id of a message the platform sent (§6.7.5): lets a remote plugin's status event find it
   timestamp: string
 }
 
@@ -205,7 +206,7 @@ and `httpClient` (axios instance with timeouts) — nothing else from `libs/core
 // libs/plugins/runtime/src/plugin-registry.ts
 @Injectable()
 export class PluginRegistry {
-  private readonly plugins = new Map<ChannelType, ChannelPlugin>()
+  private readonly plugins = new Map<string, ChannelPlugin>()   // keyed by plugin id: the official ids and those of remote plugins (§6.7)
 
   constructor(@InjectPinoLogger(PluginRegistry.name) private readonly logger: PinoLogger) {}
 
@@ -218,7 +219,7 @@ export class PluginRegistry {
     this.logger.info({ pluginId: plugin.id, version: plugin.version }, 'plugin registered')
   }
 
-  get(pluginId: ChannelType): ChannelPlugin {
+  get(pluginId: string): ChannelPlugin {
     const plugin = this.plugins.get(pluginId)
     if (!plugin) {
       throw new PlatformException(ErrorCodes.PLUGIN_NOT_FOUND, `Plugin ${pluginId} not found`, 404)
@@ -230,7 +231,7 @@ export class PluginRegistry {
     return [...this.plugins.values()]
   }
 
-  hasCapability(pluginId: ChannelType, capability: ChannelCapabilityType): boolean {
+  hasCapability(pluginId: string, capability: ChannelCapabilityType): boolean {
     return this.plugins.get(pluginId)?.capabilities.includes(capability) ?? false
   }
 
@@ -301,11 +302,12 @@ InboundProcessor (apps/worker, queue INBOUND)
   For each event:
   ├─ resolve ChannelConnection by (pluginId, event.connectionId)  → storeId   (cached)
   ├─ find or create Customer via CustomerIdentity (storeId, channelType, channelIdentity)
-  ├─ find open conversation / reopen within window / wake snoozed / create
+  ├─ continue the customer's conversation on this channel: wake it if snoozed, reopen it if resolved or archived;
+  │  create one only if there is none (or, when StoreSettings.reopenWindowDays is set, it has been quiet longer than that)
   ├─ create Message (unique on conversationId + channelMessageId — duplicates are no-ops)
   ├─ enqueue FETCH_INBOUND_MEDIA when the message carries media
   ├─ record BillableConversation (24h window, idempotent) — quota is checked here
-  ├─ apply routing rules (assignment) on a NEW conversation
+  ├─ apply routing rules (assignment) on a NEW conversation, and on a reopened one that has no assignee or whose assignee left
   ├─ emit CONVERSATION_CREATED (first message only) and MESSAGE_RECEIVED
   └─ if the conversation handler is AI → aiQueue.add(PROCESS_AUTONOMOUS_CHATBOT_TURN)
   ↓
@@ -327,7 +329,7 @@ export class ChannelWebhookController {
   // Meta requires a GET verification handshake; other providers may not
   @Get(ApiRoutes.webhooks.channel(':pluginId'))
   verifyWebhook(
-    @Param('pluginId', new ZodValidationPipe(channelTypeSchema)) pluginId: ChannelType,
+    @Param('pluginId', new ZodValidationPipe(registeredChannelSchema)) pluginId: string,   // an id the registry knows; a remote plugin has no webhook route here (§6.7)
     @Query() query: Record<string, string>,
   ): string {
     const challenge = this.registry.get(pluginId).verifyWebhook?.(query) ?? null
@@ -340,7 +342,7 @@ export class ChannelWebhookController {
   @Post(ApiRoutes.webhooks.channel(':pluginId'))
   @HttpCode(200)
   async handleWebhook(
-    @Param('pluginId', new ZodValidationPipe(channelTypeSchema)) pluginId: ChannelType,
+    @Param('pluginId', new ZodValidationPipe(registeredChannelSchema)) pluginId: string,   // an id the registry knows; a remote plugin has no webhook route here (§6.7)
     @Req() req: RawBodyRequest<Request>,
     @Headers() headers: Record<string, string>,
   ): Promise<{ received: true }> {
@@ -360,7 +362,7 @@ export class ChannelWebhookController {
     await this.inboundQueue.addBulk(events.map(event => ({
       name: JobNames.PROCESS_CHANNEL_EVENT,
       data: { pluginId, event, receivedAt },
-      opts: { jobId: inboundJobId(pluginId, event) },     // pluginId:type:externalId — provider retries collapse
+      opts: { jobId: inboundJobId(pluginId, event) },     // sha256(pluginId|connectionId|type|externalId), length-prefixed (§6.7.5) — provider retries collapse
     })))
 
     return { received: true }
@@ -394,7 +396,7 @@ export class InboundProcessor extends WorkerHost {
 // libs/core/messaging/inbound-message.service.ts  (used by the worker)
 @Injectable()
 export class InboundMessageService {
-  async handleMessageReceived(pluginId: ChannelType, event: ChannelEvent): Promise<void> {
+  async handleMessageReceived(pluginId: string, event: ChannelEvent): Promise<void> {
     if (!event.message) return
 
     // 1. Resolve which store owns the RECIPIENT of this event
@@ -413,8 +415,8 @@ export class InboundMessageService {
       profile: event.channelProfile,
     })
 
-    // 3. Find the conversation: open → same; resolved within reopen window → reopen;
-    //    snoozed → wake; otherwise create. Returns whether it was created.
+    // 3. Find the conversation: open → same; resolved or archived → reopen; snoozed → wake;
+    //    none (or quiet longer than reopenWindowDays, when set) → create. Returns whether it was created.
     const { conversation, created } = await this.conversations.findOrReopenOrCreate({
       storeId,
       customerId: customer.id,
@@ -783,7 +785,7 @@ the agent's message, quoted context) and sends from the connection address with
   "description": "Connect Telegram to your unified inbox",
   "author": { "name": "Acme Inc", "email": "support@acme.com", "url": "https://acme.com" },
   "type": "channel",
-  "icon": "https://cdn.acme.com/telegram.svg",
+  "icon": "https://cdn.acme.com/telegram.png",
   "pricing": { "model": "free" },
   "scopes": [
     "conversations:read",
@@ -791,9 +793,15 @@ the agent's message, quoted context) and sends from the connection address with
     "messages:read",
     "messages:write",
     "customers:read",
-    "webhooks:write"
+    "webhooks:write",
+    "channel:connections",
+    "channel:events"
   ],
-  "capabilities": ["text", "image", "buttons"],
+  "capabilities": ["text", "image", "reply_to", "delivery_receipts"],
+  "channel": {
+    "label": "Telegram",
+    "commandsUrl": "https://acme.com/platform/commands"
+  },
   "webhooks": {
     "endpoint": "https://acme.com/webhooks/platform",
     "events": ["conversation.created", "message.received"],
@@ -820,7 +828,7 @@ the agent's message, quoted context) and sends from the connection address with
 }
 ```
 
-`capabilities` values are `ChannelCapability` values; `webhooks.events` are `Events`
+`capabilities` values are `ChannelCapability` values (for a channel plugin, only those of §6.7.2; its `channel` block is §6.7.2 too); `webhooks.events` are `Events`
 values; the whole document is validated by `pluginManifestSchema` (Zod) on submission.
 
 ### 6.2 Scopes
@@ -838,6 +846,8 @@ export const PluginScopes = {
   PRODUCTS_READ: 'products:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
+  CHANNEL_CONNECTIONS: 'channel:connections',   // §6.7: register and remove the connections of a channel plugin
+  CHANNEL_EVENTS: 'channel:events',             // §6.7: report what customers write and what happened to what was sent
 } as const
 
 export type PluginScope = typeof PluginScopes[keyof typeof PluginScopes]
@@ -856,6 +866,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.PRODUCTS_READ]:       [Permissions.PRODUCTS_VIEW],
   [PluginScopes.WEBHOOKS_WRITE]:      [],
   [PluginScopes.ANALYTICS_READ]:      [Permissions.ANALYTICS_VIEW],
+  [PluginScopes.CHANNEL_CONNECTIONS]: [],   // grants no human permission: only the routes of §6.7, for the connections of the plugin itself
+  [PluginScopes.CHANNEL_EVENTS]:      [],
 }
 ```
 
@@ -981,6 +993,254 @@ Backend:
 ```
 
 ---
+
+### 6.7 Channel plugins by manifest (decided 2026-10-26)
+
+A channel can be added without changing the code of the platform. The plugin runs outside it, in
+its own service; the platform sees it through an adapter that implements `ChannelPlugin` (§2) by
+talking HTTP. Everything else (the inbound pipeline of §4, the outbound queue, the health
+scheduler, the messaging window, routing, realtime) treats it as it treats an official plugin. The
+channel is the id of the plugin: a string that the registry vouches for, not a value of a closed enum
+(`MVP_TRIM_CHECKLIST.md`, "Open channel ids").
+
+**Principles.** The platform owns the data; the plugin owns the provider. The credentials of the
+provider (a session, a token, a QR pairing) stay in the plugin and are never sent to the platform.
+The store is always the one of the API key, never one named in a payload. Every call in either
+direction is over HTTPS, authenticated, size-limited and rate-limited. A plugin that is slow, down
+or hostile can lose its own messages, never another store's data and never the platform's.
+
+#### 6.7.1 Names this section introduces
+
+| Name | Where | Meaning |
+| --- | --- | --- |
+| `ChannelIds` | `libs/core/domain` | The ids of the official plugins (`whatsapp`, `instagram`, `messenger`, `web_widget`, `email`) as constants. `ChannelType` is kept as an alias of this list for the code that is about official channels only. |
+| `CHANNEL_ID_PATTERN` | `libs/core/domain` | `^[a-z][a-z0-9_-]{2,31}$`: what an id must look like. |
+| `officialChannelSchema` | `libs/core/domain` | Zod: one of `ChannelIds`. For the public webhook route of §4, which exists only for official plugins. |
+| `registeredChannelSchema` | `libs/plugins/runtime` | Zod: a string that matches `CHANNEL_ID_PATTERN` **and** that the registry knows, for the routes that take a channel (filters, routing conditions, the connection routes of §10). |
+| `RemoteChannelPlugin` | `libs/plugins/runtime` | The adapter of this section. |
+| `OUTBOUND` | `QueueNames`, `TDD_07` | The queue of messages to send (Step 2.6), for official and remote plugins alike (§6.7.5). |
+
+#### 6.7.2 Manifest
+
+A manifest with `"type": "channel"` carries a `channel` block (validated by `pluginManifestSchema`):
+
+```json
+"icon": "https://acme.com/telegram.png",
+"channel": {
+  "label": "Telegram",
+  "commandsUrl": "https://acme.com/platform/commands",
+  "messagingWindow": { "hours": 24 }
+}
+```
+
+- `id` of the manifest is the channel id. It must match `CHANNEL_ID_PATTERN`, must not be one of
+  `ChannelIds` and must not be registered already. The validator checks the constants as well as the
+  `plugins` table, because the official plugins have no row there.
+- `label`: 1 to 40 characters, one line, shown as it is (a plugin does not translate its name).
+- `icon` is the top-level field of §6.1 (there is no second one inside `channel`). PNG, JPEG or SVG
+  of at most 64 KB, fetched once when the plugin is registered (`assertPublicHttpsUrl`, no redirects,
+  checked by its bytes and not by its extension). The platform **never serves the original**: it
+  decodes it and stores a 128 by 128 PNG (`sharp`; an SVG is rasterised, so no script or external
+  reference of it can ever run), under a platform-level key `plugin-icons/{pluginId}.png` kept in
+  `Plugin.iconKey`. The UI shows it as an `<img>` from a signed URL.
+- `commandsUrl`: HTTPS and public (`assertPublicHttpsUrl`, re-checked at every call).
+- `messagingWindow`: optional; absent means the channel has no window. `hours` is an integer from 1
+  to 720. `requiresTemplateWhenClosed` is not accepted (a remote plugin cannot send templates, so a
+  closed window means "cannot send"); the core fills it in as `false`.
+- `capabilities` may hold: `text`, `image`, `video`, `audio`, `document`, `reply_to`,
+  `delivery_receipts`, `read_receipts`, `typing_indicator`, `customer_typing`. What each one turns
+  on: `delivery_receipts` and `read_receipts` let the plugin report `message_delivered` and
+  `message_read` (and, with `read_receipts`, receive `message.markRead`); `typing_indicator` makes the
+  platform send `typing.send` when an agent types; `customer_typing` lets the plugin report
+  `customer_typing` events. A capability that is not on the list (`location`, `templates`, `buttons`,
+  `list_picker`, `reactions`, `messaging_window`) is rejected by the validator. An event of a
+  capability the plugin did not declare is refused (`400`); a command of one is never sent, and the
+  caller who asked for it (an agent who sends a media type the channel lacks) gets `409`
+  `CHANNEL_CAPABILITY_UNSUPPORTED`.
+- `scopes` must hold `channel:connections` and `channel:events` (§6.2). Other scopes are granted
+  only if the plugin asks and the owner consents, as for any plugin.
+- `limits.maxRequestsPerMinute` is the plugin's request, kept between 1 and 600 by the platform
+  (default 60) and stored as `PluginInstallation.rateLimitPerMinute`. Whatever it declares, an
+  installation is also held to 3000 events a minute.
+- `webhooks` is optional for a channel plugin. If present it works as in §6.5, with the scheme and
+  the secret of the webhooks, and has nothing to do with the commands below.
+
+#### 6.7.3 Installation, registry and secrets
+
+The installation of §6.3 plus a **command secret** (32 random bytes), generated with the API key,
+shown once in the setup handshake and stored encrypted in the new column
+`PluginInstallation.commandSecret` (`Bytes`, encrypted as `Webhook.secret` is). One installation
+belongs to one store and may hold up to 20 active connections. The migration of Step 5.6 adds
+`commandSecret`, `commandSecretPrevious` (`Bytes?`) with `commandSecretRotatedAt`, `Plugin.manifest`
+(the validated manifest, `Json`) and `Plugin.iconKey`, with their rollback.
+
+*Rotation.* Rotating the secret keeps the previous one valid for 10 minutes: for that time every
+command carries both signatures (§6.7.4), so what is already queued is not interrupted, and the
+plugin verifies against any it knows. Rotating the API key invalidates the old one at once.
+
+*Registry.* `PluginRegistry` is per process and holds the official plugins plus a
+`RemoteChannelPlugin` for each plugin that has at least one `ACTIVE` installation. The api and the
+worker both build it from `plugins` and `plugin_installations` at start, publish every change
+(install, revoke, suspend, a new manifest, a rotation) on the Redis channel `plugins:changed`, and
+re-read everything every 60 seconds in case a message was lost. `register` of an id that is a
+`RemoteChannelPlugin` replaces it (a new manifest), and `unregister(id)` removes it; an official id
+is never replaced. `registry.list()` takes the store: it returns the official plugins and the
+remote ones that this store has installed, never another store's private plugin. The adapter is
+the same object for all stores; what is per store (the command secret, the URL) it takes from the
+installation of `ctx.storeId`, read through a cache of 60 seconds that the same Redis channel clears.
+
+The owner links an account of the provider on the settings page of the plugin (`ui.settings` of the
+manifest, in the plugin's service: a QR to scan, a login). When that succeeds the plugin registers
+the connection (§6.7.5). The platform never sees what was entered there.
+
+#### 6.7.4 Platform to plugin: commands
+
+One endpoint, `POST commandsUrl`, `Content-Type: application/json`, a body of at most 256 KB:
+
+```json
+{ "command": "message.send", "storeId": "…", "connectionId": "…", "data": { … } }
+```
+
+Headers: `X-Platform-Command-Signature: t=<unix seconds>,v1=<hex>` where the hex is the HMAC-SHA256 of
+`"<t>.<raw body>"` with the command secret (while a rotation is open there are two `v1=` entries, one
+per secret), `X-Platform-Delivery: <uuid, one per attempt>`, and `Idempotency-Key` for a send. This
+header and this secret have nothing to do with the webhooks of §6.5 (those keep the scheme of
+`TDD_07 §2` and their own secret). The plugin must reject a signature that matches none of its
+secrets (constant-time compare) and a `t` more than 5 minutes from its clock, and must treat
+`Idempotency-Key` as a promise: the same key never sends twice, and it remembers keys for at least 24
+hours. The platform follows no redirects, waits at most 10 seconds and reads at most 64 KB of the
+answer (it aborts the rest).
+
+| `command` | `data` | Answer (HTTP 200 unless said) |
+| --- | --- | --- |
+| `message.send` | `messageId`, `channelIdentity`, `type` (`text`, `image`, `video`, `audio`, `document`), `content?`, `replyToExternalId?`, `media?: { url, contentType, filename }` | `{ "externalId": "…", "status": "sent", "sentAt"?: ISO 8601 }` |
+| `connection.health` | `{}` | `{ "healthy": true }` or `{ "healthy": false, "error": "…" }` |
+| `connection.disconnect` | `{}` | `{}`; sent when the owner disconnects it on the platform; best effort, never retried |
+| `typing.send` | `channelIdentity`, `state` (`start` or `stop`) | `{}`. Only with `typing_indicator`. Best effort: 3 seconds, never retried. The platform sends one `start` at most every 5 seconds per conversation and a `stop` when the agent stops, sends or leaves the conversation, so a plugin that needs it to expire sets its own timeout |
+| `message.markRead` | `channelIdentity`, `externalId` | `{}`. Only with `read_receipts`. Best effort: 3 seconds, never retried. Sent when an agent reads a message of the customer |
+
+`media.url` of an outbound message is a signed GET of the platform's storage that expires in 10
+minutes. A refusal is an HTTP 4xx or 5xx with
+`{ "error": { "code": "…", "message": "…", "retryable"?: true | false } }`, where `code` is one of
+`recipient_invalid`, `window_closed`, `not_connected`, `rate_limited`, `rejected`. The platform maps
+it: `window_closed` is `CHANNEL_WINDOW_EXPIRED`, `not_connected` is `CHANNEL_NOT_CONNECTED`, the rest
+`CHANNEL_MESSAGE_FAILED`; the message is stored `failed` with that code in `deliveryError`.
+
+*The adapter, method by method.* `sendMessage` and `sendMedia` are `message.send` (`sentAt` is the
+plugin's if it gives one, else the moment of the answer); `healthCheck` is `connection.health`
+(`checkedAt` is the platform's clock); `disconnect` is `connection.disconnect`;
+`sendTypingIndicator` is `typing.send` and `markAsRead` is `message.markRead`, present only when the
+capability is declared; `fetchMedia` is the fetch of §6.7.6. `connect` does not exist for a remote
+plugin: `POST /channels/:pluginId/connect` (§10) answers `409` with the `ui.settings` URL, because the
+connection is made in the plugin. `validateWebhookSignature` and `handleWebhook` are not used: there
+is no `/webhooks/channels/` route for a remote plugin (the route validates with
+`officialChannelSchema`, so its id is a `404` like any unknown one), and its events arrive at
+`POST /events`. The contract suite of §9 does not apply to the adapter; §6.7.9 is its suite.
+
+*Retries.* A send is a job of the `OUTBOUND` queue, whose policy is the same for every plugin: 5
+attempts, exponential backoff from 5 seconds. A network error, a timeout, an HTTP 429 or 5xx is tried
+again; any other answer is final. If the plugin says `retryable`, the flag wins over the status
+(`retryable: true` on a 4xx is tried again, `retryable: false` on a 5xx is not). After the last
+attempt the message is `failed`. **Sending again** is the agent's choice and reuses the same
+`Message`: it goes back to `queued` and is sent with `Idempotency-Key = <Message.id>.<n>`, where `n`
+counts the resends (the first send, and all its automatic attempts, use `<Message.id>`). If the
+first one had in fact gone out before the plugin answered, the customer gets it twice; the thread
+says it is a resend.
+
+#### 6.7.5 Plugin to platform: the API
+
+Base `/api/v1/plugin-api/channel`, `PluginApiKeyGuard` (§6.4), HTTPS only. The store and the
+plugin are those of the key. All the answers of the errors below use the codes that exist:
+`VALIDATION_FAILED`, `RESOURCE_CONFLICT`, `CHANNEL_CONNECTION_NOT_FOUND`, `PLUGIN_SCOPE_DENIED`.
+
+- `PUT /connections/:connectionId` (scope `channel:connections`), body
+  `{ "displayName": "…" (1 to 100), "metadata"?: {…} (at most 4 KB) }`. Creates or updates the
+  `ChannelConnection` of this plugin and store, with empty credentials (the column stays, its content
+  is empty). `connectionId` is the plugin's own identifier of the account: at most 128 characters of
+  `A-Za-z0-9._:+@-`. `201` when new, `200` when it existed, and a connection that was
+  `DISCONNECTED` in this store is reactivated (`200`). `409` `RESOURCE_CONFLICT` when that
+  `connectionId` of this plugin belongs to another store (an account is linked to one store at a
+  time, `@@unique([pluginId, connectionId])`; to move it the plugin uses a new `connectionId`) and
+  when the installation already has 20 active connections (the ones `DISCONNECTED` do not count).
+- `DELETE /connections/:connectionId` (same scope): sets it `DISCONNECTED`, keeping the row and its
+  conversations. `204`; `404` `CHANNEL_CONNECTION_NOT_FOUND` if it is not one of this installation's.
+- `POST /events` (scope `channel:events`), body `{ "events": ChannelEvent[] }`, one to 50 events and
+  at most 1 MB. Each event is the `ChannelEvent` of §2, so a remote plugin does what `handleWebhook`
+  does for an official one: it normalises. The types are those of `ChannelEventTypes`.
+  - Per-event caps: `channelIdentity` 128 characters, `channelProfile.displayName` 100,
+    `message.content` 4096, `message.metadata` 4 KB, `message.media.ref` 2048, one `media` per
+    message, `message.timestamp` and `timestamp` between 30 days ago and 5 minutes from now (outside
+    is a `400`). The platform uses `min(timestamp, receivedAt)` as the date of a message and of
+    `lastInboundAt`, so a clock that runs ahead cannot lengthen a window.
+  - `message_received` is a customer's message. `message_delivered`, `message_read` and
+    `message_failed` are about a message the platform sent: they carry its `messageId` (the
+    `data.messageId` of the `message.send`; the field `messageId?` is added to `ChannelEvent`) and/or
+    its `externalId`, and are applied **only** if that message belongs to a conversation of a
+    connection of this installation; any other is dropped and counted
+    (`PLUGIN_EVENT_REJECTED`), never applied to a message of another channel. `message_sent` confirms
+    a message the platform sent in the same way (it sets it `sent`); one the platform did not send
+    (an echo of what was typed in the provider's own app) is dropped and counted in this version.
+    `connection_error` marks the connection `ERROR`. `customer_typing` needs its capability, is not
+    queued (it goes to the realtime layer, at most one per conversation every 2 seconds) and nothing
+    of it is stored. `message_delivered` and `message_read` need their capabilities.
+  - The whole request is validated before anything is queued: one invalid event refuses it (`400`
+    `VALIDATION_FAILED` with the issue paths). An event whose `connectionId` is not an active
+    connection of this installation refuses it too (`404` `CHANNEL_CONNECTION_NOT_FOUND`, the same
+    answer as for one that does not exist). Otherwise `202 { "accepted": n }`, and each event is put
+    on the `INBOUND` queue with `jobId = sha256(installationId|connectionId|type|externalId)`
+    (hex, the parts length-prefixed, so a `:` or a `|` in an id cannot make two events look the
+    same); the connection is part of the id because two accounts can number their messages alike. The
+    job id is a best-effort guard while the job is in Redis; the unique index
+    `(conversationId, channelMessageId)` of `Message` is what makes a duplicate harmless afterwards.
+    From there it is the same as an official channel's event.
+
+The limit of `rateLimitPerMinute` (requests) and the ceiling of 3000 events a minute apply to all
+three calls together; past either the answer is `429` with `Retry-After`.
+
+#### 6.7.6 Media
+
+*In.* `message.media.ref` of a remote plugin is a public HTTPS URL, checked when the event arrives
+and again when `FETCH_INBOUND_MEDIA` runs. The fetch uses `assertPublicHttpsUrl` with the resolved
+addresses pinned in the agent's `lookup` (as `TDD_07 §2` does for webhooks, against DNS rebinding),
+follows **no** redirect (a 3xx is a failure), waits 30 seconds, and keeps to the size and type limits
+of `TDD_07 §6` for the media of a message. It carries `X-Platform-Command-Signature` (over an empty
+body) only if the host is the one of `commandsUrl`, so the plugin can keep its own URLs private and
+the signature is never sent to a third-party host. What is fetched goes through the same scan and
+processing as any media. A URL that fails leaves the message without its attachment, marked as
+failed to fetch, and never loses the message.
+
+*Out.* `media.url` of a send is a signed GET of the platform's storage, 10 minutes.
+
+#### 6.7.7 Health and revocation
+
+`CHECK_CHANNEL_HEALTH` (§10) enqueues one job per connection of a remote plugin (concurrency 10), so
+a slow plugin delays only its own checks and not the lock of the others. Each job calls
+`connection.health` through the adapter. A failure (unhealthy, error or timeout) adds to a counter
+kept in Redis (`CacheKeys.channel.healthFailures(connectionId)`, 1 hour); three in a row put the
+connection in `ERROR` (agents see the banner of the channel) and a healthy one clears the counter and
+puts it back to `ACTIVE`. An official plugin keeps the behaviour of §10. Revoking or suspending the
+installation (§6.6) invalidates the API key and the secrets at once, sets its connections
+`DISCONNECTED`, and what was queued for them fails with `CHANNEL_NOT_CONNECTED`.
+
+#### 6.7.8 What a remote plugin cannot do
+
+It cannot read or write a store other than its own, choose the store of an event, send a message on
+a connection that is not its own, change the state of a message of another channel, bypass the
+messaging window of its manifest, send templates, buttons, list pickers or reactions, or receive
+more of the platform's data than its scopes give (the payloads are redacted as in §6.5). Anything
+outside this section is outside this version.
+
+#### 6.7.9 Tests
+
+`tests/contracts/remote-channel.contract.ts` replaces the suite of §9 for a remote plugin. It holds a
+reference plugin (a small HTTP server of the suite that signs and verifies as §6.7.4 asks) and the
+checks of the adapter: signature, both secrets during a rotation and the replay window, the mapping of
+errors and `retryable`, retries and final failures, the idempotency key and the resend keys, health
+and its counter, the caps and the rate limits, an event for a connection of another store, a status
+event for a message of another channel, an invalid event, the lifecycle of a connection (new,
+reactivated, taken by another store, over the limit), a media URL that points to a private address or
+redirects, and the registry (a new manifest replaces, a revocation removes, the list per store). The
+same fixtures are what a plugin author runs against their service.
 
 ## 7. Plugin widgets
 
@@ -1114,7 +1374,7 @@ export const PluginPricingModels = {
 
 ## 9. Contract tests
 
-Every plugin, official or third-party, must pass the same contract suite. Fixtures are
+Every official plugin, and every in-process third-party plugin, must pass the same contract suite; a plugin that runs outside the platform (§6.7) passes the suite of §6.7.9 instead. Fixtures are
 **per plugin** (captured from the real provider, PII replaced) so the suite stays
 channel-agnostic.
 
@@ -1134,7 +1394,7 @@ export function testChannelPluginContract(createPlugin: () => ChannelPlugin, fix
     beforeEach(() => { plugin = createPlugin() })
 
     it('declares required identity fields', () => {
-      expect(Object.values(ChannelType)).toContain(plugin.id)
+      expect(plugin.id).toMatch(CHANNEL_ID_PATTERN)   // ^[a-z][a-z0-9_-]{2,31}$; an official plugin's id is also one of ChannelIds
       expect(plugin.version).toMatch(/^\d+\.\d+\.\d+$/)
       expect(plugin.capabilities.length).toBeGreaterThan(0)
     })
@@ -1203,6 +1463,8 @@ the change breaks every plugin.
 
 ## 10. Channel connection management
 
+> A remote channel plugin (§6.7) registers its connections itself (`PUT /plugin-api/channel/connections/:connectionId`); `POST /channels/:pluginId/connect` answers `409` with its `ui.settings` URL. Its health checks are one job per connection with a counter of three failures (§6.7.7).
+
 ```
 Settings → Channels → WhatsApp Business
 
@@ -1236,12 +1498,12 @@ async checkChannelHealth(): Promise<void> {
     })
 
     for (const connection of connections) {
-      const plugin = this.registry.get(connection.pluginId as ChannelType)
+      const plugin = this.registry.get(connection.pluginId)
       const ctx = await this.channels.contextFor(connection)               // Decrypts credentials for this call only
       const health = await plugin.healthCheck(ctx)
 
       if (!health.healthy && connection.status === ChannelConnectionStatus.ACTIVE) {
-        await this.channels.markConnectionError(connection.pluginId as ChannelType, connection.connectionId, { error: health.error })
+        await this.channels.markConnectionError(connection.pluginId, connection.connectionId, { error: health.error })
         // → status ERROR, CHANNEL_DISCONNECTED event → NotificationTypes.CHANNEL_DISCONNECTED (error severity) to admins
       } else if (health.healthy && connection.status === ChannelConnectionStatus.ERROR) {
         await this.channels.markHealthy(connection.id)                      // CHANNEL_HEALTH_RESTORED
