@@ -9,4 +9,11 @@ describe('PluginError', () => {
     expect(error.message).toBe('channel plugin failed: CHANNEL_CREDENTIALS_INVALID')
     expect(error.metadata).toBeUndefined()
   })
+
+  it('carries what the plugin says about trying again, and nothing when it says nothing', () => {
+    expect(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED).retryable).toBeUndefined()
+    expect(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }).retryable).toBe(
+      true
+    )
+  })
 })
