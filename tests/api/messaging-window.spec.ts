@@ -12,11 +12,11 @@ import {
   MessageType
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-
 import {
   MESSAGING_WINDOW_POLICIES,
   type MessagingWindowPolicySource
-} from '../../apps/api/src/modules/messaging-window'
+} from '@platform/core/messaging'
+
 import { createConversationOf } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'

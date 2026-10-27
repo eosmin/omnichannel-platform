@@ -4,22 +4,20 @@ import type { Response } from 'express'
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import type { CursorPage } from '@platform/core/domain'
+import { type CursorPage, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
-
-import { viewerOf } from '../conversations'
-import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
-
 import {
   type CreateMessageBody,
   createMessageSchema,
-  idSchema,
   type ListMessagesQuery,
-  listMessagesQuerySchema
-} from './messages.schemas'
-import { MessagesService } from './messages.service'
-import type { MessageView } from './messages.views'
+  listMessagesQuerySchema,
+  MessagesService,
+  type MessageView,
+  viewerOf
+} from '@platform/core/messaging'
+
+import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 
 // The messages of a conversation of the store in X-Store-Id. Seeing the conversation is required
 // by every route; what each message type needs on top of that (MESSAGES_SEND for a reply,
@@ -50,7 +48,7 @@ export class MessagesController {
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
-    @Param('id', new ZodValidationPipe(idSchema)) conversationId: string,
+    @Param('id', new ZodValidationPipe(uuidSchema)) conversationId: string,
     @Query(new ZodValidationPipe(listMessagesQuerySchema)) query: ListMessagesQuery
   ): Promise<CursorPage<MessageView>> {
     return this.messages.list(store.id, conversationId, query, viewerOf(user.id, held))

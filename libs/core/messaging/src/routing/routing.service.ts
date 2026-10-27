@@ -2,20 +2,24 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { Permissions } from '@platform/core/auth'
-import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import {
   ConversationStatus,
   isWithinSchedule,
   MembershipStatus,
   plainText,
   RoutingActionTypes,
-  RoutingLimits
+  RoutingLimits,
+  weekScheduleSchema
 } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
-import { ConversationsService } from '../conversations'
-import { weekScheduleSchema } from '../settings/settings.schemas'
-import { lockStoreScope } from '../settings/settings.support'
+import { ConversationsService } from '../conversations/conversations.service'
 
 import {
   actionSchema,

@@ -11,9 +11,8 @@ import {
   type MessageNoteAddedPayload,
   type MessageQueuedPayload
 } from '@platform/core/events'
+import { canSeeConversation, isHiddenStatus, viewerOf } from '@platform/core/messaging'
 import { RealtimeEvents } from '@platform/core/realtime'
-
-import { canSeeConversation, isHiddenStatus, viewerOf } from '../conversations'
 
 import { RealtimeService } from './realtime.service'
 import type { SocketData } from './realtime.types'

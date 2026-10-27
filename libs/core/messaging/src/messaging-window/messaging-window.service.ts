@@ -8,7 +8,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 
-import { canSee, type Db, type Viewer } from '../conversations'
+import { canSee, type Db, type Viewer } from '../conversations/conversations.support'
 
 import {
   MESSAGING_WINDOW_POLICIES,

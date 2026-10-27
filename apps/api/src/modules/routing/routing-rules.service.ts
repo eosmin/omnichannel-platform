@@ -3,7 +3,12 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { Permissions } from '@platform/core/auth'
-import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import { MembershipStatus, RoutingLimits } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -12,11 +17,6 @@ import {
   resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
-
-import { RegisteredChannels } from '../channel-registry'
-import { lockStoreScope } from '../settings/settings.support'
-import type { Actor } from '../tenancy'
-
 import {
   actionSchema,
   type CreateRuleBody,
@@ -25,7 +25,10 @@ import {
   type RoutingAction,
   type RoutingConditions,
   type UpdateRuleBody
-} from './routing.schemas'
+} from '@platform/core/messaging'
+
+import { RegisteredChannels } from '../channel-registry'
+import type { Actor } from '../tenancy'
 
 export interface RoutingRuleView {
   id: string

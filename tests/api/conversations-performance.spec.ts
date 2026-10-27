@@ -13,8 +13,8 @@ import {
   MessageType
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
+import { encodeConversationCursor } from '@platform/core/messaging'
 
-import { encodeConversationCursor } from '../../apps/api/src/modules/conversations/conversation-cursor'
 import { createChannelConnection } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'

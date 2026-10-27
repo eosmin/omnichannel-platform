@@ -4,8 +4,6 @@ import { MessageLimits, MessageType, PaginationLimits, uuidSchema } from '@platf
 
 import { messageCursorSchema } from './message-cursor'
 
-export const idSchema = uuidSchema
-
 // The text goes to the customer with its line breaks; only the ends are trimmed. The limit counts
 // characters, as the channels do, and not the UTF-16 units of the string (an emoji is two). Postgres
 // text cannot hold a NUL character: it is a 400 here and not a 500 there.

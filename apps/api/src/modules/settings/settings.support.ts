@@ -2,6 +2,7 @@ import { AuditAction } from '@platform/core/audit'
 import type { AuditService } from '@platform/core/audit-module'
 import {
   isUniqueViolation,
+  lockStoreScope,
   type PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
@@ -58,17 +59,6 @@ export async function uniqueTransaction<T>(
     if (isUniqueViolation(error)) throw taken
     throw error
   }
-}
-
-// One writer at a time per store and kind of thing. The store lock of the services is a shared one,
-// so it does not make two creators take turns; this one does, until the transaction ends.
-export async function lockStoreScope(
-  tx: PrismaTransaction,
-  storeId: string,
-  scope: string
-): Promise<void> {
-  await tx.$queryRaw`
-    SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`${storeId}:${scope}`}, 0))) AS lock`
 }
 
 // The lists of the settings are returned whole, so the number of rows is what bounds the answer. The

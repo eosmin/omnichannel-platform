@@ -14,12 +14,12 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { lockCustomerForWrite } from '@platform/core/messaging'
 
 import type { Actor } from '../tenancy'
 
 import { ensureDefaultAddress } from './address-default'
 import type { MergeCustomersBody } from './customers.schemas'
-import { lockCustomerForWrite } from './customers.support'
 import { type CustomerDetail, customerDetail } from './customers.views'
 import {
   MERGED_FIELDS,

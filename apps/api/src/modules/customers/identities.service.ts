@@ -4,11 +4,11 @@ import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { lockCustomerForWrite } from '@platform/core/messaging'
 
 import { RegisteredChannels } from '../channel-registry'
 
 import type { LinkIdentityBody } from './customers.schemas'
-import { lockCustomerForWrite } from './customers.support'
 import { IDENTITY_SELECT, type IdentityView } from './customers.views'
 
 export interface LinkedIdentity {

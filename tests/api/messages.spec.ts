@@ -15,8 +15,8 @@ import {
   PaginationLimits
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { ConversationsService } from '@platform/core/messaging'
 
-import { ConversationsService } from '../../apps/api/src/modules/conversations/conversations.service'
 import { createConversationOf, createMessage } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'

@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common'
 
 import { AuditService } from '@platform/core/audit-module'
-import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import { lockStoreForWrite, lockStoreScope, PrismaService } from '@platform/core/database'
+import { weekScheduleSchema } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
 
-import { type PutBusinessHoursBody, weekScheduleSchema } from './settings.schemas'
-import { auditSettingsChange, lockSnippet, lockStoreScope } from './settings.support'
+import type { PutBusinessHoursBody } from './settings.schemas'
+import { auditSettingsChange, lockSnippet } from './settings.support'
 
 export type BusinessHoursView = PutBusinessHoursBody
 

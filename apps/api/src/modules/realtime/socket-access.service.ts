@@ -8,10 +8,10 @@ import { toAuthenticatedUser } from '@platform/core/auth-module'
 import { CacheKeys } from '@platform/core/cache'
 import { PrismaService } from '@platform/core/database'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
+import { canSeeConversation, isHiddenStatus, viewerOf } from '@platform/core/messaging'
 import { SocketLimits } from '@platform/core/realtime'
 import { REDIS_CLIENT } from '@platform/core/redis'
 
-import { canSeeConversation, isHiddenStatus, viewerOf } from '../conversations'
 import { TenantContextService } from '../tenancy'
 
 import type { SocketData } from './realtime.types'
