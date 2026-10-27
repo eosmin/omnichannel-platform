@@ -11,6 +11,8 @@ const base: DefaultJobOptions = {
 // what the Bull Board retry works on; the dead-letter queue only indexes the exhausted ones.
 export const QueueJobOptions: Record<QueueName, DefaultJobOptions> = {
   [QueueNames.INBOUND]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
+  // 5 attempts from 5 seconds, the same for every plugin (TDD_10 §6.7.4)
+  [QueueNames.OUTBOUND]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 5000 } },
   [QueueNames.EMAIL]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.WEBHOOKS]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
   [QueueNames.NOTIFICATIONS]: { ...base, attempts: 5, backoff: { type: 'fixed', delay: 5000 } },

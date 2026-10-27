@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { CHANNEL_ID_PATTERN, ConversationStatus } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import {
   type BridgedEvent,
   BridgedEvents,
@@ -12,6 +13,12 @@ import {
 // In lower case, as the gateway names its rooms: 'ABC' and 'abc' are one id to the database
 const id = z.uuid().transform(value => value.toLowerCase())
 const visibility = z.object({ hidden: z.boolean(), assignedTo: id.nullable() })
+const status = z.object({
+  storeId: id,
+  conversationId: id,
+  messageId: id,
+  visibility
+})
 const actor = z.object({ type: z.enum(['user', 'system']), id: id.nullable() })
 
 // What may cross from the worker to the api, event by event. Parsing keeps only these fields: a
@@ -50,6 +57,10 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
     createdAt: z.string(),
     visibility
   }),
+  [Events.MESSAGE_SENT]: status,
+  [Events.MESSAGE_DELIVERED]: status,
+  [Events.MESSAGE_READ]: status,
+  [Events.MESSAGE_FAILED]: status.extend({ errorCode: z.enum(ErrorCodes) }),
   // The ids of a connection, no text: what the health check of the worker announces
   [Events.CHANNEL_DISCONNECTED]: z.object({
     storeId: id,

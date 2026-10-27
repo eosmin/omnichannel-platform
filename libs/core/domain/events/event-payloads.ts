@@ -1,3 +1,4 @@
+import type { ErrorCode } from '../errors/error-codes'
 import type { AuthorType, ChannelId, ConversationStatus, InventoryMovementType } from '../index'
 
 import type { Events } from './event-names'
@@ -97,6 +98,20 @@ export interface MessageQueuedPayload {
   visibility: ConversationVisibility
 }
 
+// What happened to a reply after it left the queue: the channel took it (sent), the customer's app
+// got it (delivered) or showed it (read). Ids only, like the rest.
+export interface MessageStatusPayload {
+  storeId: string
+  conversationId: string
+  messageId: string
+  visibility: ConversationVisibility
+}
+
+export interface MessageFailedPayload extends MessageStatusPayload {
+  // Always an ErrorCode: what the provider said stays out of the event, the logs and the row
+  errorCode: ErrorCode
+}
+
 // An internal note, by its ids: the people who hear of a conversation are not all allowed to read
 // notes (MESSAGES_INTERNAL_NOTE), so this is for who may
 export interface MessageNoteAddedPayload {
@@ -185,6 +200,10 @@ export interface DomainEventPayloads {
   [Events.CONVERSATION_ASSIGNED]: ConversationAssignedPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
   [Events.MESSAGE_QUEUED]: MessageQueuedPayload
+  [Events.MESSAGE_SENT]: MessageStatusPayload
+  [Events.MESSAGE_DELIVERED]: MessageStatusPayload
+  [Events.MESSAGE_READ]: MessageStatusPayload
+  [Events.MESSAGE_FAILED]: MessageFailedPayload
   [Events.MESSAGE_NOTE_ADDED]: MessageNoteAddedPayload
   [Events.MESSAGE_MENTION]: MessageMentionPayload
   [Events.CUSTOMER_CREATED]: CustomerCreatedPayload

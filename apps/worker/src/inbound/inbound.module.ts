@@ -9,6 +9,8 @@ import {
   RoutingService
 } from '@platform/core/messaging'
 
+import { ChannelReceipts } from '../outbound/channel-receipts.service'
+import { MessageStatusWriter } from '../outbound/message-status.writer'
 import { InboundProcessor } from '../processors/inbound.processor'
 import { ProcessorSupport } from '../processors/processor-support'
 
@@ -23,6 +25,8 @@ import { ProcessorSupport } from '../processors/processor-support'
     ConversationsService,
     RoutingService,
     InboundMessageService,
+    MessageStatusWriter,
+    ChannelReceipts,
     InboundProcessor
   ]
 })

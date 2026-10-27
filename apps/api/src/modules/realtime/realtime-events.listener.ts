@@ -8,8 +8,10 @@ import {
   type ConversationStatusChangedPayload,
   type ConversationVisibility,
   Events,
+  type MessageFailedPayload,
   type MessageNoteAddedPayload,
-  type MessageQueuedPayload
+  type MessageQueuedPayload,
+  type MessageStatusPayload
 } from '@platform/core/events'
 import { canSeeConversation, isHiddenStatus, viewerOf } from '@platform/core/messaging'
 import { RealtimeEvents } from '@platform/core/realtime'
@@ -33,6 +35,12 @@ const mayAny = (socket: SocketData, states: readonly ConversationVisibility[]): 
   const viewer = viewerOf(socket.userId, socket.held)
   return states.some(state => canSeeConversation(viewer, state))
 }
+
+// Who hears about a message: who may read messages and may see its conversation
+const mayHear =
+  (payload: { visibility: ConversationVisibility }) =>
+  (socket: SocketData): boolean =>
+    mayRead(socket) && mayAny(socket, [payload.visibility])
 
 // Domain events to what the browsers hear. What goes out is ids and dates, never text: the client
 // reads a message through the REST api, which applies who may see it. An event about a conversation
@@ -130,6 +138,55 @@ export class RealtimeEventsListener {
         clientMessageId: null
       },
       socket => mayRead(socket) && mayAny(socket, [payload.visibility])
+    )
+  }
+
+  // What happened to a reply after the queue: the client reads the message again for its state
+  @OnEvent(Events.MESSAGE_SENT)
+  onSent(payload: MessageStatusPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_SENT,
+      {
+        conversationId: payload.conversationId,
+        messageId: payload.messageId,
+        clientMessageId: null
+      },
+      mayHear(payload)
+    )
+  }
+
+  @OnEvent(Events.MESSAGE_DELIVERED)
+  onDelivered(payload: MessageStatusPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_DELIVERED,
+      { conversationId: payload.conversationId, messageId: payload.messageId },
+      mayHear(payload)
+    )
+  }
+
+  @OnEvent(Events.MESSAGE_READ)
+  onMessageRead(payload: MessageStatusPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_READ,
+      { conversationId: payload.conversationId, messageId: payload.messageId },
+      mayHear(payload)
+    )
+  }
+
+  @OnEvent(Events.MESSAGE_FAILED)
+  onFailed(payload: MessageFailedPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_FAILED,
+      {
+        conversationId: payload.conversationId,
+        messageId: payload.messageId,
+        errorCode: payload.errorCode
+      },
+      mayHear(payload)
     )
   }
 
