@@ -444,6 +444,7 @@ Changes to existing models:
   documents and the customer profile read it); with several shipments it stays `null` and the
   shipments list is the source. While an order has an active shipment, `trackingNumber` is **read-only** (it is
   derived, so `OrderEditableFields[SHIPPED]` offers it only for an order with no shipment).
+  `scheduledDeliveryDate` (the day the customer asked to receive the order, added to `TDD_01 §4` by the owner's decision D18) is the customer's request, not the carrier's promise: it never drives a shipment and no shipment writes it.
 - `StoreSettings` (`TDD_01 §4`): add `preferences Json @default("{}")` (validated by `storePreferencesSchema`, §4.14,
   the same pattern as the existing `safety` column), `returnShippingPayer String @default("sender")` (the default of
   `OrderReturn.shippingPayer`), `defaultCarrierConnectionId String?` (preselected when creating
@@ -563,11 +564,16 @@ export const OrderMessageKind = {
   RETURN_APPROVED: 'return_approved',
   EXCHANGE_SHIPPED: 'exchange_shipped',
 } as const
+export const RecipientPhones = {                // Order.recipientPhones (TDD_02 §13); a carrier adapter and the `local` label join them with LIST_SEPARATOR through formatPhoneList
+  MAX_COUNT: 3,
+  LIST_SEPARATOR: ' / ',
+} as const
 export const OrderMessageVariables = {          // the only placeholders a template may use (§4.7)
   CUSTOMER_NAME: 'customerName', ORDER_NUMBER: 'orderNumber', ITEMS_LIST: 'itemsList', TOTAL: 'total',
   SHIPPING_ADDRESS: 'shippingAddress', CARRIER_NAME: 'carrierName', TRACKING_NUMBER: 'trackingNumber',
   TRACKING_URL: 'trackingUrl', STORE_NAME: 'storeName', COD_AMOUNT: 'codAmount',
   ATTEMPT_NUMBER: 'attemptNumber', MAX_ATTEMPTS: 'maxAttempts',   // the shipment's failedAttempts and the connection's maxDeliveryAttempts (§4.7)
+  SCHEDULED_DELIVERY_DATE: 'scheduledDeliveryDate',               // the order's scheduledDeliveryDate; an order without one blocks the send (§4.7)
 } as const
 ```
 
@@ -603,8 +609,8 @@ Other additions (each goes in its constants file, no inline strings):
 | `Events` | `SHIPMENT_CREATED`, `SHIPMENT_STATUS_CHANGED`, `SHIPMENT_CANCELLED`, `SHIPMENT_REQUIRES_REVIEW`, `PICKUP_REQUESTED`, `PICKUP_UPDATED`, `ORDER_CONFIRMED`, `RETURN_REQUESTED`, `RETURN_APPROVED`, `RETURN_RECEIVED`, `ORDER_MESSAGE_SENT`, `ORDER_MESSAGE_FAILED`, `ORDER_PRICE_OVERRIDDEN`, `ORDER_PRICE_APPROVAL_REQUESTED`, `ORDER_PRICE_APPROVED`, `ORDER_PRICE_REJECTED`, `REMITTANCE_CONFIRMED`, `REMITTANCE_VOIDED`, `CUSTOMER_CAUTION_CHANGED` |
 | `RealtimeEvents` | `BULK_LABELS_PROGRESS: { jobId, done, total, failed }`, `BULK_LABELS_DONE: { jobId, status, mergedMediaId }`, `SHIPMENT_UPDATED: { orderId, shipmentId, status }` |
 | `NotificationTypes` | `PICKUP_CUTOFF_APPROACHING` (to `SHIPPING_MANAGE_PICKUPS`; warning; in-app and push), `PICKUP_MANUAL_REQUIRED` (same recipients; warning; in-app and push), `SHIPMENT_CANCEL_FAILED` (to `SHIPPING_MANAGE`; warning; in-app, push and email: a guide that was not voided may still be charged), `SHIPMENT_REQUIRES_REVIEW` (same: the outcome is unknown and a second guide may exist), `SHIPMENT_FAILED_ATTEMPT` (to `SHIPPING_MANAGE`; info; in-app and push), `ORDER_MESSAGE_NOT_SENT` (to `ORDERS_SEND_MESSAGES`; warning; in-app and push), `BULK_LABELS_READY` (to the requester; info; in-app), `RETURN_AWAITING_RECEIPT` (to `RETURNS_MANAGE`; info). Each needs an entry in `NotificationDefaults`, which must stay complete. Also `ORDER_PRICE_APPROVAL_REQUESTED` (to `ORDERS_APPROVE_PRICE`; warning; in-app and push), `ORDER_PRICE_OVERRIDDEN` (same recipients; info; in-app; sent only when `orders.notifyOnPriceOverride` is on) and `REMITTANCE_OVERDUE` (to `REMITTANCES_MANAGE`; warning; in-app and email: money is owed). The channels follow the rule of `TDD_06 §6.1` |
-| `AuditActions` | `CARRIER_CONNECTED`, `CARRIER_UPDATED`, `CARRIER_DISCONNECTED`, `SHIPMENT_CREATED`, `SHIPMENT_CANCELLED`, `SHIPMENT_STATUS_SET_MANUALLY`, `PICKUP_REQUESTED`, `PICKUP_MODIFIED`, `PICKUP_CANCELLED`, `ORDER_CONFIRMED`, `ORDER_MESSAGE_SENT`, `ORDER_TEMPLATE_UPDATED`, `RETURN_CREATED`, `RETURN_APPROVED`, `RETURN_RECEIVED`, `RETURN_COMPLETED`, `BULK_LABELS_REQUESTED`, `ORDER_PRICE_OVERRIDDEN`, `ORDER_DISCOUNT_APPLIED`, `ORDER_PRICE_APPROVAL_REQUESTED`, `ORDER_PRICE_APPROVED`, `ORDER_PRICE_REJECTED`, `REMITTANCE_IMPORTED`, `REMITTANCE_CONFIRMED`, `REMITTANCE_VOIDED`, `RETURN_RECEIVED_BY_SCAN`, `CUSTOMER_CAUTION_SET`, `CUSTOMER_CAUTION_CLEARED`, `STORE_PREFERENCES_UPDATED` |
-| `ErrorCodes` | `SHIPPING_ORDER_NOT_CONFIRMED`, `SHIPPING_ACTIVE_SHIPMENT_EXISTS`, `SHIPPING_CARRIER_NOT_ACTIVE`, `SHIPPING_CARRIER_CAPABILITY_MISSING`, `SHIPPING_LOCATION_REQUIRED`, `SHIPPING_CARRIER_REJECTED`, `SHIPPING_CARRIER_UNAVAILABLE`, `SHIPPING_OUTCOME_UNKNOWN`, `SHIPPING_INVALID_STATUS_TRANSITION`, `SHIPPING_CANNOT_CANCEL_AFTER_PICKUP`, `PICKUP_CUTOFF_PASSED`, `ORDER_ALREADY_CONFIRMED`, `ORDER_MESSAGE_VARIABLE_UNKNOWN`, `ORDER_STATUS_DRIVEN_BY_SHIPMENT`, `RETURN_INVALID_STATUS_TRANSITION`, `RETURN_QUANTITY_EXCEEDS_DELIVERED`, `RETURN_ORDER_NOT_DELIVERED`, `ORDER_PRICE_OVERRIDE_FORBIDDEN`, `ORDER_PRICE_REASON_REQUIRED`, `ORDER_PRICE_APPROVAL_PENDING`, `ORDER_PRICE_SELF_APPROVAL`, `REMITTANCE_IMPORT_INVALID`, `REMITTANCE_ALREADY_CONFIRMED`, `REMITTANCE_INVALID_STATUS_TRANSITION`, `RECEPTION_SHIPMENT_NOT_FOUND`, `RECEPTION_ALREADY_RECEIVED`, `SHIPPING_FEE_OUT_OF_RANGE`, `SHIPPING_ORIGIN_MISSING` |
+| `AuditActions` | `CARRIER_CONNECTED`, `CARRIER_UPDATED`, `CARRIER_DISCONNECTED`, `SHIPMENT_CREATED`, `SHIPMENT_CANCELLED`, `SHIPMENT_STATUS_SET_MANUALLY`, `PICKUP_REQUESTED`, `PICKUP_MODIFIED`, `PICKUP_CANCELLED`, `ORDER_CONFIRMED`, `ORDER_MESSAGE_SENT`, `ORDER_TEMPLATE_UPDATED`, `RETURN_CREATED`, `RETURN_APPROVED`, `RETURN_RECEIVED`, `RETURN_COMPLETED`, `BULK_LABELS_REQUESTED`, `ORDER_PRICE_OVERRIDDEN`, `ORDER_DISCOUNT_APPLIED`, `ORDER_PRICE_APPROVAL_REQUESTED`, `ORDER_PRICE_APPROVED`, `ORDER_PRICE_REJECTED`, `ORDER_SCHEDULE_CHANGED` (the scheduled delivery date set, changed or cleared, with the old and new value), `REMITTANCE_IMPORTED`, `REMITTANCE_CONFIRMED`, `REMITTANCE_VOIDED`, `RETURN_RECEIVED_BY_SCAN`, `CUSTOMER_CAUTION_SET`, `CUSTOMER_CAUTION_CLEARED`, `STORE_PREFERENCES_UPDATED` |
+| `ErrorCodes` | `SHIPPING_ORDER_NOT_CONFIRMED`, `SHIPPING_ACTIVE_SHIPMENT_EXISTS`, `SHIPPING_CARRIER_NOT_ACTIVE`, `SHIPPING_CARRIER_CAPABILITY_MISSING`, `SHIPPING_LOCATION_REQUIRED`, `SHIPPING_RECIPIENT_PHONE_MISSING`, `SHIPPING_CARRIER_REJECTED`, `SHIPPING_CARRIER_UNAVAILABLE`, `SHIPPING_OUTCOME_UNKNOWN`, `SHIPPING_INVALID_STATUS_TRANSITION`, `SHIPPING_CANNOT_CANCEL_AFTER_PICKUP`, `PICKUP_CUTOFF_PASSED`, `ORDER_ALREADY_CONFIRMED`, `ORDER_MESSAGE_VARIABLE_UNKNOWN`, `ORDER_STATUS_DRIVEN_BY_SHIPMENT`, `RETURN_INVALID_STATUS_TRANSITION`, `RETURN_QUANTITY_EXCEEDS_DELIVERED`, `RETURN_ORDER_NOT_DELIVERED`, `ORDER_PRICE_OVERRIDE_FORBIDDEN`, `ORDER_PRICE_REASON_REQUIRED`, `ORDER_PRICE_APPROVAL_PENDING`, `ORDER_PRICE_SELF_APPROVAL`, `REMITTANCE_IMPORT_INVALID`, `REMITTANCE_ALREADY_CONFIRMED`, `REMITTANCE_INVALID_STATUS_TRANSITION`, `RECEPTION_SHIPMENT_NOT_FOUND`, `RECEPTION_ALREADY_RECEIVED`, `SHIPPING_FEE_OUT_OF_RANGE`, `SHIPPING_ORIGIN_MISSING` |
 | `QueueNames` / `JobNames` | no new queue. On `heavy-processing`: `CREATE_SHIPMENTS` (one batch), `BULK_LABELS_MERGE`, `CANCEL_SHIPMENT`, `POLL_SHIPMENT_STATUS`. On `notifications`: `EVALUATE_PICKUPS`, `SEND_ORDER_MESSAGE`. On `webhooks`: `PROCESS_CARRIER_EVENT` (the inbound carrier webhook, validated, then queued). Also on `notifications`: `CHECK_REMITTANCES` |
 | `Schedules` | `EVALUATE_PICKUPS: '* * * * *'` (every minute; the job decides which connections are due, §4.10), `POLL_SHIPMENT_STATUS: '*/10 * * * *'` (the job applies each connection's own interval), `CLEAN_BULK_LABELS: '30 3 * * *'`, `CHECK_REMITTANCES: '0 15 * * *'` (daily) |
 | `MetricNames` | `SHIPMENTS_CREATED_TOTAL`, `SHIPMENT_CARRIER_ERRORS_TOTAL` (labels: `carrier`, `code`), `SHIPMENT_UNKNOWN_STATUS_TOTAL`, `PICKUPS_REQUESTED_TOTAL`, `ORDER_MESSAGES_FAILED_TOTAL`; names follow the `platform_*_total` pattern of `TDD_04 §2` |
@@ -676,7 +682,8 @@ export interface CarrierPlugin {
   difference from the user (§4.5).
 - **`CreateShipmentParams`** carries everything the core already knows and nothing the plugin must
   look up: the reference (order number), `idempotencyKey`, the sender (warehouse name, address,
-  phone), the recipient (name, phone, address and, when the plugin declares
+  phone), the recipient (name, `phones: string[]` read from `Order.recipientPhones` (national digits only, no country code, the first
+  is the main one), address and, when the plugin declares
   `REQUIRES_LOCATION_IDS`, the carrier's location ids), the packages (count, weight, dimensions
   when set), `serviceCode`, `shippingPayer`, `cod: { amountCents, currency } | null` and the
   `labelFormat` wanted. It never carries credentials; those are in the `CarrierContext`.
@@ -716,7 +723,7 @@ The owner only needs to attach *our* guide to them. This is a `CarrierConnection
   inserts the `Shipment`, so a rollback leaves a gap, never a duplicate; gaps are acceptable.
 - **The label** is rendered by the platform with `@react-pdf/renderer` (the renderer of
   `TDD_09 §5.4`) at the connection's `labelFormat`: guide number as a Code 128 barcode and as
-  text, order number, sender (warehouse), recipient name, phone and full address, package count,
+  text, order number, sender (warehouse), recipient name, phones (all of them, joined by `formatPhoneList`) and full address, package count,
   the **amount to collect in large type for COD orders** or "PAID" for prepaid ones, the service
   label and the customer notes. The result is stored as `Media` (`SHIPPING_LABEL`) and treated
   exactly like a carrier label from then on, so printing, bulk merge and reprint are one code path.
@@ -765,7 +772,7 @@ The owner only needs to attach *our* guide to them. This is a `CarrierConnection
   the action and the bulk selection reports skipped orders with the reason.
 - **Editing after the summary was sent:** items, shipping, discount, address and payment method
   remain editable in `PENDING_CONFIRMATION` and `CONFIRMED` (`OrderEditableFields`). Once a guide
-  exists, editing the **address, items or payment method** of the order shows a warning that the
+  exists, editing the **address, recipient phones, items or payment method** of the order shows a warning that the
   guide no longer matches, and offers "cancel the guide and create a new one" (§4.8); it never
   edits a guide silently.
 - **`PREPARING`** is the warehouse step ("packing"): set by hand, optional. A guide can be created
@@ -808,7 +815,7 @@ one; bulk generation and the `shipments:write` plugin scope call it too). Steps 
 shipment of a **standalone** carrier; the pickup-bound variant follows them:
 
 1. **Validate:** order status (§4.3); the connection is `ACTIVE` and its plugin declares
-   `CREATE_SHIPMENT` (standalone) or `PICKUP_BOUND_GUIDES` (or is the `local` carrier); the order has a shipping address; when the plugin declares
+   `CREATE_SHIPMENT` (standalone) or `PICKUP_BOUND_GUIDES` (or is the `local` carrier); the order has a shipping address and at least one recipient phone (`SHIPPING_RECIPIENT_PHONE_MISSING`); when the plugin declares
    `REQUIRES_LOCATION_IDS` the address carries the carrier's location ids
    (`SHIPPING_LOCATION_REQUIRED` otherwise, and the dialog shows the department, municipality and
    settlement selectors fed by `lookupLocations`, cached in Redis per connection); COD capability
@@ -921,7 +928,14 @@ the label is created (§4.9).
   `attemptNumber` renders the shipment's `failedAttempts` (the number of the attempt that has just failed in `ORDER_FAILED_ATTEMPT`) and `maxAttempts` the connection's `maxDeliveryAttempts`, so a template can say "attempt 2 of 3". `itemsList` renders one line per item (`2 × Name (variant) — $10.00`), `total` and `codAmount`
   are formatted in the order currency and the customer's locale, `shippingAddress` is the
   formatted address. The template body is the store locale's; when the customer's locale has no
-  template the store default locale is used.
+  template the store default locale is used. `scheduledDeliveryDate` renders the order's day as a
+  long date in the customer's locale ("martes 28 de octubre"). **An order without that date does not
+  get a message whose template uses the variable:** the send is refused as not sent, with the
+  reason `MISSING_VARIABLE` (a new constant, `OrderMessageNotSentReasons.MISSING_VARIABLE`, in `libs/core`) and the name of the
+  variable. Unlike the channel-window case below, it does **not** fall back to email, because the rendered email would carry the same hole: it goes straight to
+  `ORDER_MESSAGE_NOT_SENT`, the timeline entry "not sent, reason" and the manual "send" button, where the agent sets the date or picks another template.
+  This covers free text and channel-approved templates alike, so a message never reaches
+  the customer with an empty hole in it ("your order arrives on ."), which Meta would also reject.
 - **The order summary can carry an attachment:** with `attachSummary` on and a channel that
   declares `DOCUMENT`, the summary PDF (the `ORDER_SUMMARY` document of `TDD_09 §5.4`, now an
   `OrderPrintDocuments` value) is sent along. The text message always goes, so a channel without
@@ -987,7 +1001,7 @@ HIGH-tier when a shipment exists):
 - **The shipment leaves its pickup:** when the shipment belonged to a pickup, the package count
   of that pickup is reduced through `modifyPickup` (§4.10) when the carrier allows it, otherwise
   the pickup gets a note and the agent is told.
-- **Editing the order after a guide exists** (address, items, payment method) uses the same
+- **Editing the order after a guide exists** (address, recipient phones, items, payment method) uses the same
   cancel-and-recreate path (§4.3), so the old guide is voided and a new one is made; the order
   does not need to be cancelled for that.
 - **Customer message:** `ORDER_CANCELLED` per template (§4.7).
@@ -1632,7 +1646,7 @@ TDD was written (2026-10-24):
 |---|---|---|
 | `local` | Everything: no external API. | Nothing. |
 | `forza` (Forza Delivery Express) | Public Postman walkthrough "Forza Ecommerce Engine" (published 2020): REST over HTTPS `POST`, a request body of `CodApp` plus a base64 `PayLoad` (`Method` and `Params`) and a signature in the `LauValue` header; endpoints for the geography catalog (departments, municipalities, settlements, which is why `REQUIRES_LOCATION_IDS`), shipping rates (`GetShippingRates`), shipping labels (from a quote, from a shipment, list), and tracking by guide number or label id. The documentation says real-time tracking through **webhooks** can be provided on request. The public collection does **not** document cancelling a guide, pickups, return shipments, service codes, COD fields or the signature algorithm. | The full sandbox documentation and credentials from the Forza sales advisor: the signature algorithm, the guide-creation payload (service codes, payer, COD, packages), the label format and size, cancel and pickup endpoints (or their absence), the webhook registration and signature, rate limits, whether guide creation accepts a unique reference, and **the complete list of tracking statuses or event codes the carrier can send, with their meaning** (the adapter's `statusCatalog()`, §4.17). |
-| `c807` (C807 Express) | The official documentation (Google Sites "Xpress", read 2026-10-24): Bearer token from `GET /admin.php/sesion/get_token` with Basic Auth (the connection's username and password), valid 24 hours, an expired one answers a bare `401`; catalogs of departments, municipalities, document types and agencies; **a guide is created inside a request** (`POST /guia.php/api/set_registro`: pickup date, delivery type `NRML` or `PLUS`, optional `sede`, and an array of guides with `orden` = our reference, `tipo_servicio` `SER`, `CCE` (COD, with `monto_cce`) or `SEC` (shipping paid by the recipient), location ids, packages, documents to settle), so the adapter is *pickup-bound* (§4.1, §4.5); labels from `POST /guia.php/api/get_pdf` (PDF or ZPL, base64, by guides or by request); lookup by guide, order or request at `GET /guia.php/reporte/guias` (a range of one month at most); webhook configured by hand in the C807 portal (a URL and optional custom headers), **with no signature**. Status codes seen: `13` picked up, `15` arrived at destination (with `devolucion` and the proof of delivery images), `16` problems in the management (with a reason `100` to `134`). It exposes **no endpoint to cancel a guide, to cancel or modify a pickup, or to quote** (the price is fixed, the connection's `defaultShippingFeeCents`, §2). So the plugin declares `PICKUP_BOUND_GUIDES`, `COD`, `FETCH_STATUS`, `WEBHOOK_STATUS` and `REQUIRES_LOCATION_IDS`, and **not** `CANCEL_SHIPMENT`, `PICKUP_CANCEL`, `PICKUP_MODIFY` or `IDEMPOTENT_CREATE`; cancelling is done in the carrier's portal and then "Mark as voided" (§4.8). | The credentials from the C807 advisor, the complete list of tracking status codes (the owner believes there are no others than `13`, `15` and `16`; the unmapped list covers any that appears), and the meaning of `devolucion: true` on code `15` (see the question in §4.17). |
+| `c807` (C807 Express) | The official documentation (Google Sites "Xpress", read 2026-10-24): Bearer token from `GET /admin.php/sesion/get_token` with Basic Auth (the connection's username and password), valid 24 hours, an expired one answers a bare `401`; catalogs of departments, municipalities, document types and agencies; **a guide is created inside a request** (`POST /guia.php/api/set_registro`: pickup date, delivery type `NRML` or `PLUS`, optional `sede`, and an array of guides with `orden` = our reference, `tipo_servicio` `SER`, `CCE` (COD, with `monto_cce`) or `SEC` (shipping paid by the recipient), location ids, packages, documents to settle; the recipient's phone is a single field: when the order has several, the adapter sends them as national digits (no country code) joined by `" / "` (`n1 / n2 / n3`, `formatPhoneList` with `RecipientPhones.LIST_SEPARATOR`), and the field has no length limit, as the owner reports on 2026-10-27), so the adapter is *pickup-bound* (§4.1, §4.5); labels from `POST /guia.php/api/get_pdf` (PDF or ZPL, base64, by guides or by request); lookup by guide, order or request at `GET /guia.php/reporte/guias` (a range of one month at most); webhook configured by hand in the C807 portal (a URL and optional custom headers), **with no signature**. Status codes seen: `13` picked up, `15` arrived at destination (with `devolucion` and the proof of delivery images), `16` problems in the management (with a reason `100` to `134`). It exposes **no endpoint to cancel a guide, to cancel or modify a pickup, or to quote** (the price is fixed, the connection's `defaultShippingFeeCents`, §2). So the plugin declares `PICKUP_BOUND_GUIDES`, `COD`, `FETCH_STATUS`, `WEBHOOK_STATUS` and `REQUIRES_LOCATION_IDS`, and **not** `CANCEL_SHIPMENT`, `PICKUP_CANCEL`, `PICKUP_MODIFY` or `IDEMPOTENT_CREATE`; cancelling is done in the carrier's portal and then "Mark as voided" (§4.8). | The credentials from the C807 advisor, the complete list of tracking status codes (the owner believes there are no others than `13`, `15` and `16`; the unmapped list covers any that appears), and the meaning of `devolucion: true` on code `15` (see the question in §4.17). |
 
 **Question for the C807 advisor** (answers become mapping defaults, never code): when the status `15`
 (arrived at destination) carries `"devolucion": true`, does it mean the package went back to the

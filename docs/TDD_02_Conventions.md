@@ -840,16 +840,16 @@ export const ConversationStatusColors: Record<ConversationStatus, string> = {
 
 // Which order statuses allow which edits — encodes business rules once
 export const OrderEditableFields = {
-  [OrderStatus.CONFIRMED]: ['items', 'shipping', 'discount', 'address', 'paymentMethod', 'notes'],
-  [OrderStatus.PREPARING]: ['shipping', 'address', 'notes'],
-  [OrderStatus.SHIPPED]:   ['address', 'notes', 'trackingNumber'],
+  [OrderStatus.CONFIRMED]: ['items', 'shipping', 'discount', 'address', 'recipientPhones', 'paymentMethod', 'notes', 'scheduledDeliveryDate'],
+  [OrderStatus.PREPARING]: ['shipping', 'address', 'recipientPhones', 'notes', 'scheduledDeliveryDate'],
+  [OrderStatus.SHIPPED]:   ['address', 'recipientPhones', 'notes', 'trackingNumber', 'scheduledDeliveryDate'],
   [OrderStatus.DELIVERED]: ['notes'],
   [OrderStatus.CANCELLED]: [],
   [OrderStatus.RETURNED]:  ['notes'],
 } as const satisfies Record<OrderStatus, readonly OrderEditableField[]>
 
 export type OrderEditableField =
-  'items' | 'shipping' | 'discount' | 'address' | 'paymentMethod' | 'notes' | 'trackingNumber'
+  'items' | 'shipping' | 'discount' | 'address' | 'recipientPhones' | 'paymentMethod' | 'notes' | 'trackingNumber' | 'scheduledDeliveryDate'
 
 // Valid state transitions — prevents illegal jumps
 export const OrderStatusTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -1712,6 +1712,18 @@ frontend form validation. Zod 4 idioms: `z.uuid()`, `z.email()`, `z.url()`, `z.e
 // libs/core/domain/schemas/order.schema.ts
 import { z } from 'zod'
 import { PaymentMethod } from '../status-enums'
+import { RecipientPhones } from '../order-constants'
+
+// The recipient's phones, as the carriers receive them (C807 and Forza take national digits,
+// no country code): digits only. Spaces, '+' and dashes are stripped before validating, so
+// what is stored is what is sent. The first one is the main number; a duplicate (same
+// digits) is refused, not silently dropped. A number copied from Customer.phone (always
+// international) is reduced to its national number by the form and the backfill, not here.
+export const recipientPhonesSchema = z
+  .array(z.string().transform((value) => value.replace(/\D/g, '')).pipe(z.string().min(1)))
+  .min(1)
+  .max(RecipientPhones.MAX_COUNT)
+  .refine((phones) => new Set(phones).size === phones.length)
 
 export const createOrderSchema = z.object({
   customerId: z.uuid(),
@@ -1733,7 +1745,9 @@ export const createOrderSchema = z.object({
     postalCode: z.string().optional(),
     country: z.string().length(2).default('SV')
   }).optional(),
+  recipientPhones: recipientPhonesSchema,   // the form pre-fills it from Customer.phone, as its national number
   customerNotes: z.string().max(1000).optional(),
+  scheduledDeliveryDate: z.iso.date().nullable().default(null),   // 'YYYY-MM-DD', a calendar day in the store timezone; null = not scheduled; a past day is accepted
   sendConfirmationMessage: z.boolean().default(true)
 })
 
