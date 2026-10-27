@@ -263,6 +263,12 @@ roughly 50% width so the agent can re-read what the customer asked for.
 └─────────────────────────┴────────────────────────────────────┘
 ```
 
+The SHIPPING block also holds the recipient phones: a list of up to 3 numbers, pre-filled from
+`Customer.phone` without its country code (the customer's national number is the first entry), with add and remove buttons. Only digits
+are kept (spaces, `+` and dashes are stripped on blur), a repeated number is refused and at least
+one is required (`recipientPhonesSchema`, `TDD_02` §13). The guide is generated later from the order and
+never asks for them again (`TDD_17` §4.5).
+
 Variants come from `ProductVariant` (`TDD_01` §4); a product without variants has no
 selector. Prices are display-only: the server reads `Product`/`ProductVariant.priceCents`
 at creation (`createOrderSchema` carries no prices, `TDD_02` §13) and returns the computed
@@ -278,9 +284,9 @@ checkbox with an explanation).
 Editable fields depend on status, driven by `OrderEditableFields`.
 
 ```
-CONFIRMED  items, shipping, discount, address, payment method, notes
-PREPARING  shipping, address, notes
-SHIPPED    address, notes, tracking number
+CONFIRMED  items, shipping, discount, address, recipient phones, payment method, notes
+PREPARING  shipping, address, recipient phones, notes
+SHIPPED    address, recipient phones, notes, tracking number
 DELIVERED  notes
 CANCELLED  nothing
 RETURNED   notes

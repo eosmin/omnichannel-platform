@@ -1280,6 +1280,7 @@ model Order {
   paymentMethod          String    @map("payment_method")     // PaymentMethod
   paymentStatus          String    @default("PENDING") @map("payment_status")   // PaymentStatus
   shippingAddress        Json?     @map("shipping_address")
+  recipientPhones        String[]  @default([]) @map("recipient_phones")   // national digits only (no country code), 1 to 3, first is the main one; see TDD_02 §13
   customerNotes          String?   @map("customer_notes")
   internalNotes          String?   @map("internal_notes")
   trackingNumber         String?   @map("tracking_number")
