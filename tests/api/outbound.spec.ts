@@ -51,6 +51,7 @@ const CREATED = 201
 const INSTAGRAM_LIMIT = 1000
 const THREE_MINUTES_MS = 180_000
 const TWO_HOURS_MS = 7_200_000
+const SIX_MINUTES_MS = 360_000
 
 describe('Replies on their way to a channel', () => {
   const prefix = newRunPrefix()
@@ -59,8 +60,10 @@ describe('Replies on their way to a channel', () => {
   let ctx: TestContext
   let prisma: PrismaService
   let sender: OutboundSender
+  let writer: MessageStatusWriter
   let receipts: ChannelReceipts
   let sweep: OutboundRequeueScheduler
+  let outboundQueue: OutboundQueue
   let sent: SendMessageParams[] = []
   let heard: { event: string; payload: Record<string, unknown> }[] = []
   let sendMessage: (ctx: ChannelContext, params: SendMessageParams) => ReturnType<ChannelSend>
@@ -90,7 +93,7 @@ describe('Replies on their way to a channel', () => {
 
     const logger: PinoLogger = await app.resolve(PinoLogger)
     const events = app.get(DomainEvents, { strict: false })
-    const writer = new MessageStatusWriter(prisma, events)
+    writer = new MessageStatusWriter(prisma, events)
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
     const contexts = new ChannelContextFactory(cipher)
@@ -102,10 +105,11 @@ describe('Replies on their way to a channel', () => {
       new ChannelHealthService(prisma, contexts, events, logger),
       logger
     )
+    outboundQueue = new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never)
     sweep = new OutboundRequeueScheduler(
       undefined as never, // the lock is not what is tested
       prisma,
-      new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
+      outboundQueue,
       writer,
       logger
     )
@@ -225,7 +229,9 @@ describe('Replies on their way to a channel', () => {
       const reply = await queuedReply()
       sendMessage = () => Promise.reject(new Error('socket hang up'))
 
-      await expect(sender.send(job(reply), false)).rejects.toThrow('socket hang up')
+      await expect(sender.send(job(reply), false)).rejects.toThrow(
+        `sending a reply failed: ${ErrorCodes.CHANNEL_MESSAGE_FAILED}`
+      )
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
 
       await sender.send(job(reply), true)
@@ -254,7 +260,7 @@ describe('Replies on their way to a channel', () => {
       const retried = await queuedReply()
       sendMessage = () =>
         Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }))
-      await expect(sender.send(job(retried), false)).rejects.toBeInstanceOf(PluginError)
+      await expect(sender.send(job(retried), false)).rejects.toThrow('sending a reply failed')
       expect((await stored(retried.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
 
       const final = await queuedReply()
@@ -311,7 +317,7 @@ describe('Replies on their way to a channel', () => {
       const unknown = await queuedReply({ pluginId: 'not_registered' })
 
       await sender.send(job(disconnected), false)
-      await sender.send(job(unknown), false)
+      await sender.send(job(unknown), true)
 
       for (const reply of [disconnected, unknown]) {
         expect(await stored(reply.id)).toMatchObject({
@@ -320,6 +326,112 @@ describe('Replies on their way to a channel', () => {
         })
       }
       expect(sent).toHaveLength(0)
+    })
+
+    it('tries again when the plugin is not registered yet, and fails only on the last attempt', async () => {
+      const reply = await queuedReply({ pluginId: 'not_registered' })
+
+      await expect(sender.send(job(reply), false)).rejects.toThrow('not registered')
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
+
+      await sender.send(job(reply), true)
+      expect((await stored(reply.id)).deliveryError).toBe(ErrorCodes.CHANNEL_NOT_CONNECTED)
+    })
+
+    it('fails a reply whose connection or message holds a value the worker does not know, instead of leaving it queued', async () => {
+      const reply = await queuedReply()
+      await owner.channelConnection.updateMany({
+        where: { connectionId: reply.connectionId },
+        data: { status: 'from-a-newer-version' }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      })
+    })
+
+    it('rethrows for the retry an error that carries nothing the provider said', async () => {
+      const reply = await queuedReply()
+      sendMessage = () => Promise.reject(new Error('401 Bearer EAAB-secret-token'))
+
+      const error = (await sender
+        .send(job(reply), false)
+        .catch((caught: unknown) => caught)) as Error
+
+      expect(error).toBeInstanceOf(Error)
+      expect(`${error.name} ${error.message} ${error.stack ?? ''}`).not.toContain('EAAB-secret')
+    })
+
+    it('does not send again when the write after the provider took the message fails once', async () => {
+      const reply = await queuedReply()
+      jest.spyOn(writer, 'apply').mockRejectedValueOnce(new Error('connection reset'))
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(1)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
+    it('marks the reply sent without the id when the id is taken between the check and the write', async () => {
+      const reply = await queuedReply()
+      const taken = Object.assign(new Error('unique constraint'), { code: 'P2002' })
+      jest.spyOn(writer, 'apply').mockRejectedValueOnce(taken)
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(1)
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.SENT,
+        channelMessageId: null
+      })
+    })
+
+    it('does not store a provider id that another conversation of the connection already holds', async () => {
+      const first = await queuedReply()
+      const connection = await owner.message.findUniqueOrThrow({
+        where: { id: first.id },
+        select: { conversation: { select: { channelConnectionId: true } } }
+      })
+      const identity = await createCustomerIdentity(owner, {
+        storeId: first.storeId,
+        channelType: TEST_CHANNEL_ID
+      })
+      const other = await createConversation(owner, {
+        storeId: first.storeId,
+        customerId: identity.customerId,
+        customerIdentityId: identity.id,
+        channelType: TEST_CHANNEL_ID,
+        channelConnectionId: connection.conversation.channelConnectionId
+      })
+      const second = await owner.message.create({
+        data: {
+          storeId: first.storeId,
+          conversationId: other.id,
+          type: MessageType.TEXT,
+          content: 'elsewhere',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.QUEUED
+        },
+        select: { id: true }
+      })
+      sendMessage = (_ctx, params) => {
+        sent.push(params)
+        return Promise.resolve({
+          externalId: 'shared-id',
+          status: DeliveryStatus.SENT,
+          sentAt: new Date().toISOString()
+        })
+      }
+
+      await sender.send(job(first), false)
+      await sender.send({ storeId: first.storeId, messageId: second.id }, false)
+
+      // A receipt looks messages up by connection: an id that two of them held could not be told apart
+      expect((await stored(first.id)).channelMessageId).toBe('shared-id')
+      expect((await stored(second.id)).channelMessageId).toBeNull()
     })
 
     it('still sends over a connection in error: a health blip does not fail the replies', async () => {
@@ -498,6 +610,50 @@ describe('Replies on their way to a channel', () => {
       ).resolves.toBeUndefined()
     })
 
+    it('still waits for a reply that is in its retries: the wait is as long as the retries', async () => {
+      const retrying = await queuedReply({ createdAt: new Date(Date.now() - THREE_MINUTES_MS) })
+
+      await expect(
+        receipt(retrying, ChannelEventTypes.MESSAGE_DELIVERED, 'unknown')
+      ).rejects.toThrow('before the provider id')
+    })
+
+    it('applies a receipt to no message when two of the connection have that provider id', async () => {
+      const reply = await sentReply()
+      const first = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { conversation: { select: { channelConnectionId: true } } }
+      })
+      const identity = await createCustomerIdentity(owner, {
+        storeId: reply.storeId,
+        channelType: TEST_CHANNEL_ID
+      })
+      const other = await createConversation(owner, {
+        storeId: reply.storeId,
+        customerId: identity.customerId,
+        customerIdentityId: identity.id,
+        channelType: TEST_CHANNEL_ID,
+        channelConnectionId: first.conversation.channelConnectionId
+      })
+      const twin = await owner.message.create({
+        data: {
+          storeId: reply.storeId,
+          conversationId: other.id,
+          type: MessageType.TEXT,
+          content: 'twin',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: reply.externalId
+        },
+        select: { id: true }
+      })
+
+      await receipt(reply, ChannelEventTypes.MESSAGE_READ, reply.externalId, true)
+
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      expect((await stored(twin.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
     it('drops at once a receipt for an unknown message when nothing is waiting in that connection', async () => {
       const settled = await queuedReply({ deliveryStatus: DeliveryStatus.SENT })
 
@@ -507,7 +663,7 @@ describe('Replies on their way to a channel', () => {
     })
 
     it('does not wait for a reply that has been queued for long: it is the sweep that handles it', async () => {
-      const old = await queuedReply({ createdAt: new Date(Date.now() - THREE_MINUTES_MS) })
+      const old = await queuedReply({ createdAt: new Date(Date.now() - SIX_MINUTES_MS) })
 
       await expect(
         receipt(old, ChannelEventTypes.MESSAGE_DELIVERED, 'unknown')
@@ -610,6 +766,29 @@ describe('Replies on their way to a channel', () => {
   })
 
   describe('the sweep', () => {
+    it('goes on with the next reply when one cannot be queued, and counts what it did', async () => {
+      const oldest = await queuedReply({ createdAt: new Date(Date.now() - 20 * 60_000) })
+      const next = await queuedReply({ createdAt: new Date(Date.now() - 10 * 60_000) })
+      const forgotten = await queuedReply({ createdAt: new Date(Date.now() - TWO_HOURS_MS) })
+      const queue = queueOf(app, QueueNames.OUTBOUND)
+      queue.jobs.length = 0
+      const requeue = jest.spyOn(outboundQueue, 'requeue')
+      requeue.mockImplementation(async (item: { messageId: string }) => {
+        if (item.messageId === oldest.id) throw new Error('redis is down')
+        await outboundQueue.enqueue(item as never)
+      })
+
+      const result = await sweep.requeueStale()
+      requeue.mockRestore()
+
+      const queued = queue.jobs.map(item => (item.data as { messageId: string }).messageId)
+      expect(queued).toContain(next.id)
+      expect(queued).not.toContain(oldest.id)
+      expect((await stored(forgotten.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+      expect(result.requeued).toBeGreaterThanOrEqual(1)
+      expect(result.gaveUp).toBeGreaterThanOrEqual(1)
+    })
+
     it('queues again a reply that stayed queued, and leaves a recent one and a settled one alone', async () => {
       const old = new Date(Date.now() - THREE_MINUTES_MS)
       const stale = await queuedReply({ createdAt: old })

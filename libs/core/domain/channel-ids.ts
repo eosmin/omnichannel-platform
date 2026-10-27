@@ -78,5 +78,12 @@ export const OutboundLimits = {
   REQUEUE_BATCH: 100,
   // Past this a reply is not sent any more: the customer would get it hours late, out of its time and
   // probably out of the messaging window. It is marked failed so that the agent sees it and decides.
-  GIVE_UP_AFTER_MS: 3_600_000
+  GIVE_UP_AFTER_MS: 3_600_000,
+  // Once the provider has taken a reply, writing that down is tried this many times before the job
+  // is allowed to fail: a failure there would send the reply again
+  WRITE_ATTEMPTS: 3,
+  WRITE_RETRY_DELAY_MS: 100,
+  // A receipt that finds no message waits for the write of one that was queued this recently: as long
+  // as the five attempts of a send (20 s each) and their backoff (75 s) can take
+  RECEIPT_WAIT_MS: 300_000
 } as const

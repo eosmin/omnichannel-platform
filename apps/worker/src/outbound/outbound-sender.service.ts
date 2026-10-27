@@ -22,7 +22,7 @@ import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { PluginError } from '@platform/plugins/sdk'
 
-import { MessageStatusWriter } from './message-status.writer'
+import { MessageStatusWriter, type StatusChange } from './message-status.writer'
 
 // What a plugin answers is checked: it may be a third party's. The provider may report the message
 // as already delivered or read (an email, a widget), never as queued.
@@ -30,6 +30,18 @@ const resultSchema = z.object({
   externalId: z.string().min(1).max(255),
   status: z.enum([DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ])
 })
+
+// What the retry sees of a failed attempt: the code and the name of the error, never its text. The
+// error of a plugin or of the network can carry the token it was called with, and BullMQ logs what is
+// thrown and keeps it in Redis.
+class SendAttemptFailed extends Error {
+  constructor(code: ErrorCode, cause: unknown) {
+    super(`sending a reply failed: ${code} (${errorName(cause)})`)
+    this.name = 'SendAttemptFailed'
+  }
+}
+
+const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 // Why a send did not go out, and whether it is worth another try
 interface Refusal {
@@ -74,17 +86,25 @@ export class OutboundSender {
     if (message === null) return
 
     const { channelConnection: connection, channelType, customerIdentity } = message.conversation
+    const refusal = this.refusalBeforeSending(message, channelType, connection.status)
+    if (refusal !== null) {
+      await this.fail(storeId, messageId, refusal.code)
+      return
+    }
     const plugin = this.registry.find(connection.pluginId)
-    const refusal = this.refuseBeforeSending(message, channelType, connection.status)
-    if (refusal !== null || plugin === undefined) {
-      await this.fail(storeId, messageId, refusal?.code ?? ErrorCodes.CHANNEL_NOT_CONNECTED)
+    if (plugin === undefined) {
+      // A plugin that is not registered yet (a registry that is still filling) is not a connection
+      // that is gone: the retries come first, and only the last attempt gives up
+      if (!isLastAttempt) throw new Error('the plugin of the connection is not registered')
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_NOT_CONNECTED)
       return
     }
     const content = message.content ?? ''
+    // Outside the try below: a database error here is ours, not the provider's
+    const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
 
     let accepted: z.infer<typeof resultSchema>
     try {
-      const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
       const result = resultSchema.safeParse(
         await withTimeout(
           plugin.sendMessage(this.contexts.contextFor(connection), {
@@ -115,32 +135,65 @@ export class OutboundSender {
         },
         'sending a reply failed'
       )
-      if (refused.retryable && !isLastAttempt) throw error
+      // Not `error` itself: the retry machinery logs it whole and keeps its text in Redis
+      if (refused.retryable && !isLastAttempt) throw new SendAttemptFailed(refused.code, error)
       await this.fail(storeId, messageId, refused.code)
       return
     }
-    await this.recordAccepted(storeId, messageId, accepted)
+    await this.recordAccepted(storeId, messageId, connection.id, accepted)
   }
 
-  // The provider has the message: nothing here may make it be sent again. A provider id already
-  // used in the conversation (a plugin that repeats ids) is not worth a second send; the message is
-  // marked without it.
+  // The provider has the message: nothing here may make it be sent again. A write that fails is tried
+  // a few times before the job fails, because the job would send the reply a second time. A provider
+  // id already used on the connection (a plugin that repeats ids) is not worth a second send; the
+  // message is marked without it, because a receipt finds a message by connection and an id held by
+  // two could not be told apart. The check can lose a race with another writer: the unique index has
+  // the last word, and a violation is the same answer.
   private async recordAccepted(
     storeId: string,
     messageId: string,
+    connectionRowId: string,
     accepted: z.infer<typeof resultSchema>
   ): Promise<void> {
-    try {
-      await this.status.apply({
+    const taken = await this.prisma.client.message.count({
+      where: {
         storeId,
-        messageId,
-        to: accepted.status,
-        channelMessageId: accepted.externalId
-      })
+        channelMessageId: accepted.externalId,
+        id: { not: messageId },
+        conversation: { channelConnectionId: connectionRowId }
+      }
+    })
+    if (taken > 0) this.logger.warn({ messageId }, 'the provider id of a reply was already used')
+    const withoutId = { storeId, messageId, to: accepted.status }
+    let change: StatusChange =
+      taken > 0 ? withoutId : { ...withoutId, channelMessageId: accepted.externalId }
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.status.apply(change)
+        return
+      } catch (error) {
+        if (attempt >= OutboundLimits.WRITE_ATTEMPTS) throw error
+        if (isUniqueViolation(error)) change = withoutId
+        await delay(OutboundLimits.WRITE_RETRY_DELAY_MS * attempt)
+      }
+    }
+  }
+
+  // A value the worker does not know (a status or a type written by a newer version) cannot be sent
+  // and will not become one: it fails the message, and does not leave it queued for the sweep
+  private refusalBeforeSending(
+    message: { type: string; content: string | null },
+    channelType: string,
+    connectionStatus: string
+  ): Refusal | null {
+    try {
+      return this.refuseBeforeSending(message, channelType, connectionStatus)
     } catch (error) {
-      if (!isUniqueViolation(error)) throw error
-      this.logger.warn({ messageId }, 'the provider id of a reply was already used')
-      await this.status.apply({ storeId, messageId, to: accepted.status })
+      this.logger.error(
+        { errorName: errorName(error), channelType },
+        'a reply could not be checked'
+      )
+      return { code: ErrorCodes.CHANNEL_MESSAGE_FAILED, retryable: false }
     }
   }
 

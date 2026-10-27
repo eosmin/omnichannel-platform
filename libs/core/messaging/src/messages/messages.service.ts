@@ -59,8 +59,9 @@ export class MessagesService {
     this.logger.setContext(MessagesService.name)
   }
 
-  // What the agent writes in a conversation. A reply to the customer is stored as queued: nothing
-  // sends it until the commit is done: then the outbound queue takes it. Writing to the customer reopens a resolved,
+  // What the agent writes in a conversation. A reply to the customer is stored as queued and handed to
+  // the outbound queue once the transaction commits; if Redis is down at that moment it waits for the
+  // sweep of the worker, a couple of minutes at most. Writing to the customer reopens a resolved,
   // snoozed or archived conversation; an internal note changes nothing but the thread.
   async create(storeId: string, body: CreateMessageBody, viewer: Viewer): Promise<CreatedMessage> {
     const isNote = body.type === MessageType.INTERNAL_NOTE

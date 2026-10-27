@@ -26,11 +26,15 @@ export class OutboundQueue {
 
   // For a message that is still `queued` long after it was queued. A job that is waiting, delayed or
   // active is left alone (adding the same id again does nothing). One that failed for good without
-  // the message being marked (the database was down on its last attempt) is the case this exists for:
-  // BullMQ keeps it and would ignore a new one with its id, so it is removed first.
+  // the message being marked (the database was down on its last attempt) is the case this exists for,
+  // and a completed one that left the message queued is the same: BullMQ keeps both and would ignore
+  // a new job with their id, so they are removed first.
   async requeue(job: SendOutboundMessageJob): Promise<void> {
     const previous = await this.queue.getJob(outboundJobId(job.messageId))
-    if (previous !== undefined && (await previous.isFailed())) await previous.remove()
+    if (previous !== undefined) {
+      const state = await previous.getState()
+      if (state === 'failed' || state === 'completed') await previous.remove()
+    }
     await this.enqueue(job)
   }
 }
