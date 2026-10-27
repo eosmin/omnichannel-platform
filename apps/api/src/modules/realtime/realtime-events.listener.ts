@@ -126,24 +126,19 @@ export class RealtimeEventsListener {
     })
   }
 
-  // A reply that is stored and waits for its channel. The client tells it from the others by the id.
+  // A reply that is stored and waits for its channel, and one that the channel took, reach the browser
+  // as the same event: the client reads the message again for its state, whichever it is
   @OnEvent(Events.MESSAGE_QUEUED)
   onQueued(payload: MessageQueuedPayload): Promise<void> {
-    return this.realtime.toStoreWhere(
-      payload.storeId,
-      RealtimeEvents.MESSAGE_SENT,
-      {
-        conversationId: payload.conversationId,
-        messageId: payload.messageId,
-        clientMessageId: null
-      },
-      mayHear(payload)
-    )
+    return this.messageChanged(payload)
   }
 
-  // What happened to a reply after the queue: the client reads the message again for its state
   @OnEvent(Events.MESSAGE_SENT)
   onSent(payload: MessageStatusPayload): Promise<void> {
+    return this.messageChanged(payload)
+  }
+
+  private messageChanged(payload: MessageStatusPayload | MessageQueuedPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
       RealtimeEvents.MESSAGE_SENT,

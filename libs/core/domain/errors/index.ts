@@ -1,4 +1,5 @@
 export * from './error-codes'
 export * from './error-factories'
+export * from './error-name'
 export * from './http-status-codes'
 export * from './platform-exception'

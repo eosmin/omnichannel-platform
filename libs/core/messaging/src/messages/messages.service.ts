@@ -13,6 +13,7 @@ import {
   MessageType
 } from '@platform/core/domain'
 import {
+  errorName,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
@@ -85,6 +86,11 @@ export class MessagesService {
           const message = messageView(existing)
           if (message.authorId !== viewer.userId || message.type !== body.type) {
             throw resourceConflict('the idempotency key was used for another message')
+          }
+          // The first request may have committed and failed to queue the reply (Redis was down): the
+          // retry it provoked is the moment to try again, and the job id makes a second one harmless
+          if (message.deliveryStatus === DeliveryStatus.QUEUED) {
+            this.queueForChannel(tx, storeId, message.id)
           }
           return { message, created: false }
         }
@@ -163,7 +169,7 @@ export class MessagesService {
     this.prisma.afterCommit(tx, () => {
       this.outbound.enqueue({ storeId, messageId }).catch((error: unknown) => {
         this.logger.warn(
-          { messageId, errorName: error instanceof Error ? error.name : 'unknown' },
+          { messageId, errorName: errorName(error) },
           'the reply could not be queued; the sweep will'
         )
       })

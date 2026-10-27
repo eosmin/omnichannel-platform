@@ -48,6 +48,7 @@ import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
 
 const CREATED = 201
+const OK = 200
 const INSTAGRAM_LIMIT = 1000
 const THREE_MINUTES_MS = 180_000
 const TWO_HOURS_MS = 7_200_000
@@ -762,6 +763,67 @@ describe('Replies on their way to a channel', () => {
           opts: { jobId: `send-${created.id}` }
         }
       ])
+    })
+  })
+
+  describe('a retry of the same request', () => {
+    it('queues the reply again, with the same job id, so that a failed first enqueue is not left to the sweep', async () => {
+      const conversation = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.INSTAGRAM
+      })
+      await owner.customerIdentity.update({
+        where: { id: conversation.customerIdentityId },
+        data: { lastInboundAt: new Date() }
+      })
+      const queue = queueOf(app, QueueNames.OUTBOUND)
+      queue.jobs.length = 0
+      const body = {
+        conversationId: conversation.id,
+        type: MessageType.TEXT,
+        content: 'hi again',
+        idempotencyKey: randomUUID()
+      }
+
+      await api(app, ctx.agentA, ctx.storeA)
+        .post(ApiRoutes.messages.create)
+        .send(body)
+        .expect(CREATED)
+      await api(app, ctx.agentA, ctx.storeA).post(ApiRoutes.messages.create).send(body).expect(OK)
+
+      expect(queue.jobs.map(item => item.opts?.jobId)).toHaveLength(2)
+      expect(new Set(queue.jobs.map(item => item.opts?.jobId)).size).toBe(1)
+    })
+
+    it('does not queue a reply that has already left the queue', async () => {
+      const conversation = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.INSTAGRAM
+      })
+      await owner.customerIdentity.update({
+        where: { id: conversation.customerIdentityId },
+        data: { lastInboundAt: new Date() }
+      })
+      const body = {
+        conversationId: conversation.id,
+        type: MessageType.TEXT,
+        content: 'already out',
+        idempotencyKey: randomUUID()
+      }
+      const first = await api(app, ctx.agentA, ctx.storeA)
+        .post(ApiRoutes.messages.create)
+        .send(body)
+        .expect(CREATED)
+      await owner.message.update({
+        where: { id: (first.body as { id: string }).id },
+        data: { deliveryStatus: DeliveryStatus.SENT }
+      })
+      const queue = queueOf(app, QueueNames.OUTBOUND)
+      queue.jobs.length = 0
+
+      await api(app, ctx.agentA, ctx.storeA).post(ApiRoutes.messages.create).send(body).expect(OK)
+
+      expect(queue.jobs).toHaveLength(0)
     })
   })
 

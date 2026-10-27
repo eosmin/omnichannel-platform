@@ -54,7 +54,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
     conversationId: id,
     messageId: id,
     authorId: id,
-    createdAt: z.string(),
+    createdAt: z.iso.datetime(),
     visibility
   }),
   [Events.MESSAGE_SENT]: status,
@@ -78,7 +78,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
     conversationId: id,
     messageId: id,
     authorId: id,
-    createdAt: z.string(),
+    createdAt: z.iso.datetime(),
     visibility
   })
 }

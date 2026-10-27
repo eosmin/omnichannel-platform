@@ -8,6 +8,4 @@ export function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   return Promise.race([work, late]).finally(() => clearTimeout(timer))
 }
 
-export function errorName(error: unknown): string {
-  return error instanceof Error ? error.name : 'unknown'
-}
+export { errorName } from '@platform/core/errors'

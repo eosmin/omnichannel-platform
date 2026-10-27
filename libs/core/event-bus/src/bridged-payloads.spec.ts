@@ -74,6 +74,13 @@ describe('bridgedPayload', () => {
     }
   })
 
+  it('drops a payload whose date is not a date', () => {
+    for (const event of [Events.MESSAGE_QUEUED, Events.MESSAGE_NOTE_ADDED]) {
+      const payload = { ...(whole[event] as Record<string, unknown>), createdAt: 'last tuesday' }
+      expect(bridgedPayload(event, payload)).toBeNull()
+    }
+  })
+
   it('drops a payload of a bridged event with any one of its fields missing', () => {
     for (const event of BridgedEvents) {
       const fields = Object.keys(whole[event] as Record<string, unknown>)
