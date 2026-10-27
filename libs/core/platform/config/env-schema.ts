@@ -96,7 +96,11 @@ export const envSchema = z
     META_APP_ID: z.string().optional(),
     META_APP_SECRET: z.string().optional(), // Webhook HMAC + OAuth
     META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
-    META_GRAPH_API_VERSION: z.string().default('v23.0'),
+    // Goes into the url of every Graph call, so its shape is checked
+    META_GRAPH_API_VERSION: z
+      .string()
+      .regex(/^v\d+\.\d+$/)
+      .default('v23.0'),
 
     // Virus scanning
     CLAMAV_HOST: z.string().default('localhost'),

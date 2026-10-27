@@ -275,6 +275,24 @@ describe('FRONTEND_URL in a deployed environment', () => {
     expect(() => parseEnv(source)).toThrow(/FRONTEND_URL/)
   })
 
+  it('defaults the Graph API version and accepts any vNN.N', () => {
+    expect(parseEnv(validEnv).META_GRAPH_API_VERSION).toBe('v23.0')
+    for (const version of ['v23.0', 'v9.10', 'v100.0']) {
+      expect(
+        parseEnv({ ...validEnv, META_GRAPH_API_VERSION: version }).META_GRAPH_API_VERSION
+      ).toBe(version)
+    }
+  })
+
+  it.each(['23.0', 'v23', 'v23.0/../x', 'v23.0?a=b', 'v23.0\n'])(
+    'refuses %s as the Graph API version, because it goes into every url',
+    version => {
+      expect(() => parseEnv({ ...validEnv, META_GRAPH_API_VERSION: version })).toThrow(
+        /META_GRAPH_API_VERSION/
+      )
+    }
+  )
+
   it('accepts the https address of the web app', () => {
     expect(() => parseEnv({ ...deployed, FRONTEND_URL: 'https://app.example.com' })).not.toThrow()
   })
