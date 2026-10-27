@@ -28,7 +28,8 @@ const webhookSchema = z.object({
   )
 })
 
-function sign(rawBody: string): string {
+// The signature the test plugin accepts for a body
+export function signTestChannelBody(rawBody: string): string {
   return createHmac('sha256', SECRET).update(rawBody).digest('hex')
 }
 
@@ -74,7 +75,7 @@ export function buildChannelPlugin(overrides: Partial<ChannelPlugin> = {}): Chan
 
     validateWebhookSignature: (rawBody, headers) => {
       const given = Buffer.from(headers['x-signature'] ?? '')
-      const expected = Buffer.from(sign(rawBody))
+      const expected = Buffer.from(signTestChannelBody(rawBody))
       return given.length === expected.length && timingSafeEqual(given, expected)
     },
     handleWebhook: payload => {
@@ -128,7 +129,7 @@ const sendParams: SendMessageParams = {
 export const testChannelFixtures = {
   inboundWebhook: {
     rawBody: inboundRaw,
-    headers: { 'x-signature': sign(inboundRaw) },
+    headers: { 'x-signature': signTestChannelBody(inboundRaw) },
     body: inboundBody
   },
   emptyWebhook: { entries: [] },

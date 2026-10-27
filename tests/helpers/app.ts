@@ -29,7 +29,10 @@ export async function createTestApp(
     .overrideProvider(getQueueToken(QueueNames.EMAIL))
     .useValue(new CapturedEmails())
   const moduleRef = await override(builder).compile()
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true })
+  const app = moduleRef.createNestApplication<NestExpressApplication>({
+    bufferLogs: true,
+    rawBody: true // As main.ts: a webhook signature is checked over the exact bytes
+  })
   app.set('trust proxy', 1) // As TRUST_PROXY_HOPS says in helpers/env.ts
   useRealtime(app) // As main.ts does: before the app initializes
   await configureHttpApp(app)
