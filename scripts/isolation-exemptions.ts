@@ -14,10 +14,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   },
   ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
-  ChannelConnection: {
-    step: '2.6',
-    reason: 'Resolved by the inbound pipeline and managed from Settings'
-  },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },

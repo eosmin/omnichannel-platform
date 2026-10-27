@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { ConversationStatus } from '@platform/core/domain'
-import { BridgedEvents, Events } from '@platform/core/events'
+import { BridgedEvents, ChannelDisconnectedReasons, Events } from '@platform/core/events'
 
 import { bridgedPayload } from './bridged-payloads'
 
@@ -42,7 +42,18 @@ describe('bridgedPayload', () => {
     },
     [Events.CONVERSATION_READ]: read,
     [Events.MESSAGE_QUEUED]: message,
-    [Events.MESSAGE_NOTE_ADDED]: message
+    [Events.MESSAGE_NOTE_ADDED]: message,
+    [Events.CHANNEL_DISCONNECTED]: {
+      storeId: randomUUID(),
+      channelConnectionId: randomUUID(),
+      pluginId: 'whatsapp',
+      reason: ChannelDisconnectedReasons.ERROR
+    },
+    [Events.CHANNEL_HEALTH_RESTORED]: {
+      storeId: randomUUID(),
+      channelConnectionId: randomUUID(),
+      pluginId: 'whatsapp'
+    }
   }
 
   it('has a schema for every bridged event, which passes a whole payload as it is', () => {

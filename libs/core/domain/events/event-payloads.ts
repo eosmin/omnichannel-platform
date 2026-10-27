@@ -148,9 +148,37 @@ export interface CustomerIdentityLinkedPayload {
   channelType: ChannelId
 }
 
+export const ChannelDisconnectedReasons = { USER: 'user', ERROR: 'error' } as const
+export type ChannelDisconnectedReason =
+  (typeof ChannelDisconnectedReasons)[keyof typeof ChannelDisconnectedReasons]
+
+// The ids are those of the ChannelConnection row (not the provider's connection id)
+export interface ChannelConnectedPayload {
+  storeId: string
+  channelConnectionId: string
+  pluginId: ChannelId
+}
+
+export interface ChannelDisconnectedPayload {
+  storeId: string
+  channelConnectionId: string
+  pluginId: ChannelId
+  // An agent took it down, or its health check failed (the connection may come back by itself)
+  reason: ChannelDisconnectedReason
+}
+
+export interface ChannelHealthRestoredPayload {
+  storeId: string
+  channelConnectionId: string
+  pluginId: ChannelId
+}
+
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name
 // and checks the payload against this map
 export interface DomainEventPayloads {
+  [Events.CHANNEL_CONNECTED]: ChannelConnectedPayload
+  [Events.CHANNEL_DISCONNECTED]: ChannelDisconnectedPayload
+  [Events.CHANNEL_HEALTH_RESTORED]: ChannelHealthRestoredPayload
   [Events.CONVERSATION_CREATED]: ConversationCreatedPayload
   [Events.MESSAGE_RECEIVED]: MessageReceivedPayload
   [Events.CONVERSATION_STATUS_CHANGED]: ConversationStatusChangedPayload

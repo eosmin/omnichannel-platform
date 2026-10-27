@@ -42,6 +42,7 @@
       "@platform/plugins/runtime": ["libs/plugins/runtime/src/index.ts"],
       "@platform/api-client": ["libs/api-client/src/index.ts"],
       "@platform/core/i18n": ["libs/core/domain/i18n/index.ts"],
+      "@platform/channels/connections": ["libs/channels/connections/src/index.ts"],
       "@platform/core/crypto": ["libs/core/crypto/src/index.ts"],
       "@platform/core/database": ["libs/core/database/src/index.ts"],
       "@platform/core/event-bus": ["libs/core/event-bus/src/index.ts"],

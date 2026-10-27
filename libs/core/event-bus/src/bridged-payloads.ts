@@ -1,9 +1,10 @@
 import { z } from 'zod'
 
-import { ConversationStatus } from '@platform/core/domain'
+import { CHANNEL_ID_PATTERN, ConversationStatus } from '@platform/core/domain'
 import {
   type BridgedEvent,
   BridgedEvents,
+  ChannelDisconnectedReasons,
   type DomainEventPayloads,
   Events
 } from '@platform/core/events'
@@ -48,6 +49,18 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
     authorId: id,
     createdAt: z.string(),
     visibility
+  }),
+  // The ids of a connection, no text: what the health check of the worker announces
+  [Events.CHANNEL_DISCONNECTED]: z.object({
+    storeId: id,
+    channelConnectionId: id,
+    pluginId: z.string().regex(CHANNEL_ID_PATTERN),
+    reason: z.enum(ChannelDisconnectedReasons)
+  }),
+  [Events.CHANNEL_HEALTH_RESTORED]: z.object({
+    storeId: id,
+    channelConnectionId: id,
+    pluginId: z.string().regex(CHANNEL_ID_PATTERN)
   }),
   [Events.MESSAGE_NOTE_ADDED]: z.object({
     storeId: id,
