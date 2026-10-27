@@ -233,8 +233,9 @@ export class RealtimeService {
 The worker never holds a socket server. When a worker needs to broadcast (snooze wake,
 export ready) it emits the **domain event**; the API instances' listeners below translate
 it into realtime traffic. Domain events cross process boundaries through the
-`EVENTS_BRIDGE` Redis channel (`libs/core/events/events-bridge.ts`), which re-emits
-worker-originated events on every API instance.
+`EVENTS_BRIDGE_CHANNEL` Redis channel (`libs/core/event-bus/src/events-bridge.ts`), which passes the
+worker's events that are in `BridgedEvents` (each with a schema in `bridged-payloads.ts`) to the API
+instances; one of them takes each event (`MVP_TRIM_CHECKLIST.md`, "Realtime gateway build details").
 
 Wired to the domain event bus:
 

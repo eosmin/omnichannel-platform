@@ -35,10 +35,23 @@ export const CacheKeys = {
     denialBudget: (userId: string, action: string) => `audit:denials:${userId}:${action}`
   },
 
+  realtime: {
+    // How many handshakes of one user were tried this minute (the budget that keeps a loop from
+    // costing a database read each)
+    handshakes: (userId: string) => `realtime:handshakes:${userId}`,
+    // The same, for one address, counted before the token is looked at
+    addressHandshakes: (address: string) => `realtime:handshakes:address:${address}`
+  },
+
+  eventsBridge: {
+    // Set by the one api instance that takes an event of the bridge (every instance hears it)
+    taken: (eventId: string) => `events-bridge:taken:${eventId}`
+  },
+
   presence: {
     store: (storeId: string) => `presence:store:${storeId}`, // SET of userIds
     sockets: (storeId: string, userId: string) =>
-      `presence:store:${storeId}:user:${userId}:sockets`, // SET of socket ids
+      `presence:store:${storeId}:user:${userId}:sockets`, // ZSET of socket ids, scored by their last heartbeat (ms)
     lastActivity: (storeId: string, userId: string) =>
       `presence:store:${storeId}:user:${userId}:last_activity`
   },

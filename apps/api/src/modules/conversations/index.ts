@@ -2,6 +2,7 @@ export * from './conversations.module'
 export * from './conversations.service'
 export {
   canSee,
+  canSeeConversation,
   channelOf,
   type Db,
   enumValueOf,

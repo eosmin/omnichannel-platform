@@ -30,10 +30,13 @@ const duration = (
     .default(fallback)
     .transform(durationToSeconds)
 
+// The processes of the platform: the api holds the sockets, the worker runs the jobs
+export const AppRoles = { API: 'api', WORKER: 'worker' } as const
+
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
-    APP_ROLE: z.enum(['api', 'worker']).default('api'),
+    APP_ROLE: z.enum([AppRoles.API, AppRoles.WORKER]).default(AppRoles.API),
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
     API_URL: z.url(),
     FRONTEND_URL: z.url().default('http://localhost:3000'),

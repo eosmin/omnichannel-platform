@@ -108,7 +108,7 @@ same checks and the merge waits for it.
 5. **Every new endpoint** has `AuthGuard` + `TenantGuard` + a
    `@RequirePermissions()` decorator, unless it is explicitly public
    (magic-link auth endpoints, invitation preview and accept, channel webhooks,
-   widget endpoints, carrier webhooks, the Resend webhook, health checks), or it is a plugin route under
+   widget endpoints, carrier webhooks, the Resend webhook, health checks), or it is the agents' websocket gateway, which checks the token, the store and the permissions itself (`events.gateway.ts`), or it is a plugin route under
    `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead. The Stripe
    webhook joins the public list in Phase 2.
 6. **No user-facing string is hardcoded in any language.** Always an i18n key.
@@ -178,6 +178,8 @@ scoped runs returned exactly 10 each). A run that returns 10 has **not** run out
 | Store preference and its factory default                | `libs/core/platform/config/store-preferences.ts`             |
 | Queue/job name                                          | `libs/core/platform/queues/queue-names.ts`                   |
 | Realtime event                                          | `libs/core/domain/realtime/realtime-events.ts`             |
+| Socket limit, presence timing, room name                | `libs/core/domain/realtime/` (`socket-limits.ts`, `presence-timing.ts`, `room-names.ts`) |
+| Event the worker passes to the api, bridge channel      | `libs/core/domain/events/event-names.ts` (`BridgedEvents`, `EVENTS_BRIDGE_CHANNEL`) |
 | Notification type                                       | `libs/core/domain/notifications/notification-constants.ts` |
 | Audit action                                            | `libs/core/platform/audit/audit-actions.ts`                  |
 | Cron schedule                                           | `libs/core/platform/queues/schedules.ts`                     |
