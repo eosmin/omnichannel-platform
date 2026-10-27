@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import {
-  ChannelType,
+  channelIdSchema,
   plainText,
   RoutingActionTypes,
   RoutingLimits,
@@ -20,7 +20,7 @@ const lowerUuid = uuidSchema.transform(id => id.toLowerCase())
 // A rule with no condition matches every conversation, which is how a "catch-all" is written.
 export const conditionsSchema = z.strictObject({
   channelTypes: z
-    .array(z.enum(ChannelType))
+    .array(channelIdSchema)
     .min(1)
     .max(RoutingLimits.MAX_CHANNEL_TYPES)
     .refine(unique, { message: 'a channel is listed once' })

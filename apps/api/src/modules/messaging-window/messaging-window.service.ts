@@ -8,7 +8,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 
-import { canSee, channelOf, type Db, type Viewer } from '../conversations'
+import { canSee, type Db, type Viewer } from '../conversations'
 
 import {
   MESSAGING_WINDOW_POLICIES,
@@ -63,7 +63,7 @@ export class MessagingWindowService {
       }
     })
     if (row === null || !canSee(viewer, row)) throw resourceNotFound('conversation')
-    const policy = this.policies.policyFor(channelOf(row.channelType))
+    const policy = this.policies.policyFor(row.channelType)
     return stateOf(policy, row.customerIdentity.lastInboundAt, new Date())
   }
 }

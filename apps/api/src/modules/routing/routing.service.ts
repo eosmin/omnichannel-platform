@@ -215,7 +215,7 @@ async function matches(
 ): Promise<boolean> {
   if (
     conditions.channelTypes !== undefined &&
-    !conditions.channelTypes.some(channel => String(channel) === conversation.channelType)
+    !conditions.channelTypes.some(channel => channel === conversation.channelType)
   ) {
     return false
   }

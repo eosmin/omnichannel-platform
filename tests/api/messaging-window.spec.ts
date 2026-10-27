@@ -52,7 +52,7 @@ describe('The messaging window of a conversation', () => {
   let ctx: TestContext
   let source: MessagingWindowPolicySource
   let original: MessagingWindowPolicySource['policyFor']
-  let policies: Partial<Record<ChannelType, MessagingWindowPolicy>> = {}
+  let policies: Record<string, MessagingWindowPolicy> = {}
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -79,7 +79,7 @@ describe('The messaging window of a conversation', () => {
   // A conversation whose customer last wrote the given hours ago (null: never)
   const conversation = async (
     lastInboundHoursAgo: number | null,
-    extra: Partial<Parameters<typeof createConversationOf>[1]> & { channelType?: ChannelType } = {}
+    extra: Partial<Parameters<typeof createConversationOf>[1]> & { channelType?: string } = {}
   ) => {
     const made = await createConversationOf(owner, {
       storeId: ctx.storeA.id,

@@ -102,7 +102,7 @@ interface BaseJob { correlationId?: string }
 
 // inbound
 export interface ProcessChannelEventJob extends BaseJob {
-  pluginId: ChannelType
+  pluginId: ChannelId
   event: ChannelEvent                      // Normalized by the plugin (TDD_10 §2)
   receivedAt: string
 }
@@ -171,7 +171,7 @@ export interface ExportAuditLogsJob extends BaseJob { before: string }
 // heavy processing
 export interface ScanFileJob extends BaseJob { mediaId: string }
 export interface ProcessImageJob extends BaseJob { mediaId: string }
-export interface FetchInboundMediaJob extends BaseJob { messageId: string; storeId: string; pluginId: ChannelType; connectionId: string; mediaRef: string; contentType: string; filename: string | null }
+export interface FetchInboundMediaJob extends BaseJob { messageId: string; storeId: string; pluginId: ChannelId; connectionId: string; mediaRef: string; contentType: string; filename: string | null }
 export interface EnforceRetentionJob extends BaseJob { storeId: string }
 
 // ai

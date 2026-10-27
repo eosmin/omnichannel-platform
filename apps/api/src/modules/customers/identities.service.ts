@@ -5,6 +5,8 @@ import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 
+import { RegisteredChannels } from '../channel-registry'
+
 import type { LinkIdentityBody } from './customers.schemas'
 import { lockCustomerForWrite } from './customers.support'
 import { IDENTITY_SELECT, type IdentityView } from './customers.views'
@@ -19,7 +21,8 @@ export interface LinkedIdentity {
 export class IdentitiesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: DomainEvents
+    private readonly events: DomainEvents,
+    private readonly channels: RegisteredChannels
   ) {}
 
   // Linking a handle the customer already has answers with that identity (`created: false`), so a
@@ -45,6 +48,9 @@ export class IdentitiesService {
             created: false
           }
         }
+        // Only a new identity is checked: linking the handle the customer already has writes nothing,
+        // so it still answers when the plugin of that channel was removed
+        this.channels.require(storeId, [body.channelType])
         const identity = await tx.customerIdentity.create({
           data: {
             storeId,

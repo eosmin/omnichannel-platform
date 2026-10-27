@@ -76,14 +76,6 @@ export enum InvitationStatus {
   REVOKED = 'REVOKED'
 }
 
-export enum ChannelType {
-  WHATSAPP = 'whatsapp',
-  INSTAGRAM = 'instagram',
-  MESSENGER = 'messenger',
-  WEB_WIDGET = 'web_widget',
-  EMAIL = 'email'
-}
-
 export enum ChannelConnectionStatus {
   ACTIVE = 'active',
   ERROR = 'error',

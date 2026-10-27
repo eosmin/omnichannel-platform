@@ -1,4 +1,4 @@
-import type { AuthorType, ChannelType, ConversationStatus, InventoryMovementType } from '../index'
+import type { AuthorType, ChannelId, ConversationStatus, InventoryMovementType } from '../index'
 
 import type { Events } from './event-names'
 
@@ -17,7 +17,7 @@ export interface MessageReceivedPayload {
   conversationId: string
   messageId: string
   customerId: string
-  channelType: ChannelType
+  channelType: ChannelId
   authorType: AuthorType
   contentPreview: string | null // First 200 chars, for listeners that only need a glance
   receivedAt: string // ISO 8601
@@ -27,7 +27,7 @@ export interface ConversationCreatedPayload {
   storeId: string
   conversationId: string
   customerId: string
-  channelType: ChannelType
+  channelType: ChannelId
   firstMessageId: string // Emitted after the first message is persisted, never before
   firstMessageContent: string | null
 }
@@ -145,7 +145,7 @@ export interface CustomerIdentityLinkedPayload {
   storeId: string
   customerId: string
   identityId: string
-  channelType: ChannelType
+  channelType: ChannelId
 }
 
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name

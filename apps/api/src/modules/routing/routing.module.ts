@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 
+import { ChannelRegistryModule } from '../channel-registry'
 import { ConversationsModule } from '../conversations'
 import { TenancyModule } from '../tenancy'
 
@@ -10,7 +11,7 @@ import { RoutingService } from './routing.service'
 // Needs the database, audit and logger modules of the app. RoutingService is exported for the
 // inbound pipeline (Step 2.6).
 @Module({
-  imports: [TenancyModule, ConversationsModule],
+  imports: [ChannelRegistryModule, TenancyModule, ConversationsModule],
   controllers: [RoutingRulesController],
   providers: [RoutingRulesService, RoutingService],
   exports: [RoutingService]

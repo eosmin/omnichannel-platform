@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import {
-  ChannelType,
+  channelIdSchema,
   CustomerLimits,
   LOCALE_TAG_PATTERN,
   MergeableFields,
@@ -71,7 +71,7 @@ export const updateCustomerSchema = z
 
 export const linkIdentitySchema = z
   .strictObject({
-    channelType: z.enum(ChannelType),
+    channelType: channelIdSchema,
     channelIdentity: text().min(1).max(CustomerLimits.CHANNEL_IDENTITY_MAX_LENGTH),
     displayName: name.optional()
   })

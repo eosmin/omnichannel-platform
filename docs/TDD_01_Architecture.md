@@ -781,7 +781,7 @@ model Store {
   defaultLocale       String   @default("es") @map("default_locale")
   // Starter-tier only: which of the "choose one" social channels (Instagram
   // or Messenger) this store activated. Null on every other tier. TDD_11 §6.5.
-  activeSocialChannel String?  @map("active_social_channel")   // ChannelType
+  activeSocialChannel String?  @map("active_social_channel")   // ChannelId (a registered plugin)
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -866,7 +866,7 @@ model RoutingRule {
   name       String
   priority   Int
   enabled    Boolean  @default(true)
-  // { channelTypes?: ChannelType[], intents?: string[], tagIds?: string[], keywords?: string[], outsideBusinessHours?: boolean }
+  // { channelTypes?: ChannelId[], intents?: string[], tagIds?: string[], keywords?: string[], outsideBusinessHours?: boolean }
   conditions Json
   // { type: 'assign_user' | 'round_robin' | 'unassigned', userIds?: string[] }
   action     Json
@@ -1077,7 +1077,7 @@ model CustomerIdentity {
   id              String   @id @default(uuid())
   storeId         String   @map("store_id")
   customerId      String   @map("customer_id")
-  channelType     String   @map("channel_type")        // ChannelType
+  channelType     String   @map("channel_type")        // ChannelId (a registered plugin)
   channelIdentity String   @map("channel_identity")    // phone (E.164), page-scoped id, visitor id, email
   displayName     String?  @map("display_name")        // Profile name as reported by the channel
   channelMetadata Json?    @map("channel_metadata")
@@ -1155,7 +1155,7 @@ model Conversation {
   customerId          String    @map("customer_id")
   customerIdentityId  String    @map("customer_identity_id")   // Which handle the customer used
   channelConnectionId String    @map("channel_connection_id")  // Which of our accounts received it → outbound route
-  channelType         String    @map("channel_type")           // ChannelType, denormalized for filters
+  channelType         String    @map("channel_type")           // ChannelId, denormalized for filters
   status              String    @default("OPEN")               // ConversationStatus
   handler             String    @default("human")              // ConversationHandler (TDD_12 §13)
   assignedTo          String?   @map("assigned_to")
@@ -1440,7 +1440,7 @@ model Media {
 model ChannelConnection {
   id            String    @id @default(uuid())
   storeId       String    @map("store_id")
-  pluginId      String    @map("plugin_id")          // ChannelType / plugin id
+  pluginId      String    @map("plugin_id")          // plugin id (ChannelId)
   connectionId  String    @map("connection_id")
   displayName   String    @map("display_name")       // "+503 2222-3333", "Mi Empresa (Page)"
   status        String    @default("active")         // ChannelConnectionStatus

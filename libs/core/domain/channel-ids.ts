@@ -23,3 +23,12 @@ export const CHANNEL_ID_PATTERN = /^[a-z][a-z0-9_-]{2,31}$/
 
 // For the routes that exist only for official plugins (the public webhook of TDD_10 §4)
 export const officialChannelSchema = z.enum(ChannelIds)
+
+// The id of any channel: the id of a registered plugin. The registry says whether it is registered;
+// this is only its shape, for a schema that cannot reach the registry (the service checks it).
+export type ChannelId = string
+export const channelIdSchema = z.string().regex(CHANNEL_ID_PATTERN)
+
+// The official ids under their old name, for the code that is about official channels only
+export const ChannelType = ChannelIds
+export type ChannelType = OfficialChannelId

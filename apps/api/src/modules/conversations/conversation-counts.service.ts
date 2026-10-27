@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@platform/core/database'
 import { ConversationHiddenStatuses } from '@platform/core/domain'
 
-import { channelOf, statusOf, type Viewer, visibleTo } from './conversations.support'
+import { statusOf, type Viewer, visibleTo } from './conversations.support'
 import type { ConversationCounts } from './conversations.views'
 
 // The numbers beside the filters of the inbox (TDD_09 section 2): what the viewer may see, without
@@ -35,8 +35,7 @@ export class ConversationCountsService {
       all += count
       const status = statusOf(group.status)
       byStatus[status] = (byStatus[status] ?? 0) + count
-      const channel = channelOf(group.channelType)
-      byChannel[channel] = (byChannel[channel] ?? 0) + count
+      byChannel[group.channelType] = (byChannel[group.channelType] ?? 0) + count
       if (group.assignedTo === null) unassigned += count
       else perAgent.set(group.assignedTo, (perAgent.get(group.assignedTo) ?? 0) + count)
     }
