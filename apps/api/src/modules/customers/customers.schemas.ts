@@ -8,10 +8,9 @@ import {
   MergeFieldSources,
   PaginationLimits
 } from '@platform/core/domain'
+import { normalizeChannelIdentity, normalizePhone } from '@platform/core/messaging'
 
-import { normalizeChannelIdentity } from './identity'
 import { cursorSchema } from './list-cursor'
-import { normalizePhone } from './phone'
 
 export const idSchema = z.uuid()
 

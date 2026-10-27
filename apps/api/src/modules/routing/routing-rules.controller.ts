@@ -3,26 +3,26 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
-
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
-
-import { type RoutingRuleView, RoutingRulesService } from './routing-rules.service'
 import {
   type CreateRuleBody,
   createRuleSchema,
-  idSchema,
   type ReorderBody,
   reorderSchema,
   type UpdateRuleBody,
   updateRuleSchema
-} from './routing.schemas'
+} from '@platform/core/messaging'
+
+import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+
+import { type RoutingRuleView, RoutingRulesService } from './routing-rules.service'
 
 type Store = ResolvedTenant['store']
 
-const id = () => new ZodValidationPipe(idSchema)
+const id = () => new ZodValidationPipe(uuidSchema)
 
 // The routing rules of the store in X-Store-Id: who sees them is whoever opens the settings, who
 // changes them is whoever manages routing

@@ -3,13 +3,9 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } fr
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
-
-import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
-
-import { ConversationCountsService } from './conversation-counts.service'
-import { type ConversationTag, ConversationTagsService } from './conversation-tags.service'
 import {
   type AssignBody,
   assignSchema,
@@ -17,21 +13,23 @@ import {
   attachTagSchema,
   type ChangeStatusBody,
   changeStatusSchema,
-  idSchema,
+  type ConversationCounts,
+  type ConversationDetail,
+  type ConversationPage,
+  ConversationsService,
   type ListConversationsQuery,
   listConversationsQuerySchema,
   type SnoozeBody,
-  snoozeSchema
-} from './conversations.schemas'
-import { ConversationsService } from './conversations.service'
-import { viewerOf } from './conversations.support'
-import type {
-  ConversationCounts,
-  ConversationDetail,
-  ConversationPage
-} from './conversations.views'
+  snoozeSchema,
+  viewerOf
+} from '@platform/core/messaging'
 
-const id = () => new ZodValidationPipe(idSchema)
+import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+
+import { ConversationCountsService } from './conversation-counts.service'
+import { type ConversationTag, ConversationTagsService } from './conversation-tags.service'
+
+const id = () => new ZodValidationPipe(uuidSchema)
 
 // The conversations of the store in X-Store-Id. Every route also applies what the caller may see: an
 // agent without CONVERSATIONS_VIEW_ALL gets the conversations assigned to them and the ones nobody

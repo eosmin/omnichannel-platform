@@ -10,6 +10,7 @@ import {
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { CustomerIdentityService } from '@platform/core/messaging'
 
 import { CustomersService } from '../../apps/api/src/modules/customers/customers.service'
 import { createConversation, createCustomer, createCustomerIdentity } from '../builders'
@@ -198,7 +199,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
   it('makes a known handle wait for the delete too, since it renames the identity', async () => {
     const storeId = await createStore()
-    const service = app.get(CustomersService, { strict: false })
+    const service = app.get(CustomerIdentityService, { strict: false })
     await service.findOrCreateByIdentity({
       storeId,
       channelType: ChannelType.WHATSAPP,
@@ -234,7 +235,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
   it('returns the survivor for a handle that the real merge is moving at that moment', async () => {
     const storeId = ctx.storeA.id
-    const service = app.get(CustomersService, { strict: false })
+    const service = app.get(CustomerIdentityService, { strict: false })
     const survivor = await createCustomer(owner, { storeId })
     const absorbed = await createCustomer(owner, { storeId })
     const identity = await createCustomerIdentity(owner, {

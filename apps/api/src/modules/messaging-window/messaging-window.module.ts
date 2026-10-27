@@ -1,16 +1,16 @@
 import { Module } from '@nestjs/common'
 
+import {
+  MESSAGING_WINDOW_POLICIES,
+  type MessagingWindowPolicySource,
+  MessagingWindowService
+} from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
 import { ChannelRegistryModule } from '../channel-registry'
 import { TenancyModule } from '../tenancy'
 
 import { MessagingWindowController } from './messaging-window.controller'
-import {
-  MESSAGING_WINDOW_POLICIES,
-  type MessagingWindowPolicySource
-} from './messaging-window.policy'
-import { MessagingWindowService } from './messaging-window.service'
 
 // Needs the database module of the app. MessagingWindowService is exported for the messages module
 // and, later, for the outbound processor.

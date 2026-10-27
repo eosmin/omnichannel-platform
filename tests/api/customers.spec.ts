@@ -8,8 +8,8 @@ import { RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { CustomerIdentityService } from '@platform/core/messaging'
 
-import { CustomersService } from '../../apps/api/src/modules/customers/customers.service'
 import { createConversation, createCustomer, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
@@ -61,7 +61,7 @@ describe('The customers of a store', () => {
   })
 
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
-  const customers = () => app.get(CustomersService, { strict: false })
+  const identities = () => app.get(CustomerIdentityService, { strict: false })
 
   // The audit entry is written after the answer: wait for it instead of guessing a delay
   async function auditEntries(action: string, resourceId: string, expected = 1) {
@@ -395,7 +395,7 @@ describe('The customers of a store', () => {
 
   describe('findOrCreateByIdentity', () => {
     const resolve = (storeId: string, handle: string, displayName?: string) =>
-      customers().findOrCreateByIdentity({
+      identities().findOrCreateByIdentity({
         storeId,
         channelType: ChannelType.WHATSAPP,
         channelIdentity: handle,
@@ -459,20 +459,20 @@ describe('The customers of a store', () => {
     })
 
     it('does not trust the profile a channel sends', async () => {
-      const blank = await customers().findOrCreateByIdentity({
+      const blank = await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
         channelType: ChannelType.WHATSAPP,
         channelIdentity: '50370006666',
         profile: { displayName: '   ', locale: 'x$' }
       })
-      const long = await customers().findOrCreateByIdentity({
+      const long = await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
         channelType: ChannelType.WHATSAPP,
         channelIdentity: '50370007777',
         profile: { displayName: 'N'.repeat(10_000) }
       })
       // A later event without a usable name does not erase the one the identity has
-      await customers().findOrCreateByIdentity({
+      await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
         channelType: ChannelType.WHATSAPP,
         channelIdentity: '50370007777',
@@ -491,7 +491,7 @@ describe('The customers of a store', () => {
 
     it('copes with the characters Postgres cannot store and the pair of an emoji cut in two', async () => {
       const named = async (handle: string, displayName: string) => {
-        const resolved = await customers().findOrCreateByIdentity({
+        const resolved = await identities().findOrCreateByIdentity({
           storeId: ctx.storeA.id,
           channelType: ChannelType.WHATSAPP,
           channelIdentity: handle,
@@ -518,7 +518,7 @@ describe('The customers of a store', () => {
       expect(long).toHaveLength(255)
 
       await expect(
-        customers().findOrCreateByIdentity({
+        identities().findOrCreateByIdentity({
           storeId: ctx.storeA.id,
           channelType: ChannelType.EMAIL,
           channelIdentity: long

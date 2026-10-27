@@ -10,11 +10,11 @@ import {
   resourceNotFound,
   PlatformException
 } from '@platform/core/errors'
+import { lockCustomerForWrite } from '@platform/core/messaging'
 
 import type { Actor } from '../tenancy'
 
 import type { CreateNoteBody } from './customers.schemas'
-import { lockCustomerForWrite } from './customers.support'
 
 export interface NoteView {
   id: string

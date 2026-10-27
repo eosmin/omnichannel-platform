@@ -12,9 +12,8 @@ import {
   MessageType
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { encodeConversationCursor, ConversationsService } from '@platform/core/messaging'
 
-import { encodeConversationCursor } from '../../apps/api/src/modules/conversations/conversation-cursor'
-import { ConversationsService } from '../../apps/api/src/modules/conversations/conversations.service'
 import {
   createChannelConnection,
   createConversationOf,

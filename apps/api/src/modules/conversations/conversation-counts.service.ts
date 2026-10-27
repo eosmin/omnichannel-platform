@@ -2,9 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
 import { ConversationHiddenStatuses } from '@platform/core/domain'
-
-import { statusOf, type Viewer, visibleTo } from './conversations.support'
-import type { ConversationCounts } from './conversations.views'
+import { statusOf, type Viewer, visibleTo, type ConversationCounts } from '@platform/core/messaging'
 
 // The numbers beside the filters of the inbox (TDD_09 section 2): what the viewer may see, without
 // spam and archived. One grouped query over the index of the store; they are measured with the

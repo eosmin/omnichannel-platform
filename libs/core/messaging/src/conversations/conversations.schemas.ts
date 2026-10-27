@@ -11,8 +11,6 @@ import {
 
 import { conversationCursorSchema } from './conversation-cursor'
 
-export const idSchema = uuidSchema
-
 const assigned = z.union([
   z.literal(ConversationAssignedFilters.ME),
   z.literal(ConversationAssignedFilters.UNASSIGNED),

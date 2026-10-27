@@ -25,3 +25,14 @@ export async function lockStoreForDelete(tx: PrismaTransaction, storeId: string)
     SELECT id FROM stores WHERE id = ${storeId} FOR UPDATE`
   if (rows.length === 0) throw resourceNotFound('store')
 }
+
+// One writer at a time per store and kind of thing. The store lock of the services is a shared one,
+// so it does not make two creators take turns; this one does, until the transaction ends.
+export async function lockStoreScope(
+  tx: PrismaTransaction,
+  storeId: string,
+  scope: string
+): Promise<void> {
+  await tx.$queryRaw`
+    SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`${storeId}:${scope}`}, 0))) AS lock`
+}

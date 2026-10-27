@@ -5,12 +5,13 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { uuidSchema } from '@platform/core/domain'
 import { ZodValidationPipe } from '@platform/core/http'
+import {
+  MessagingWindowService,
+  type MessagingWindowState,
+  viewerOf
+} from '@platform/core/messaging'
 
-import { viewerOf } from '../conversations'
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
-
-import { MessagingWindowService } from './messaging-window.service'
-import type { MessagingWindowState } from './messaging-window.state'
 
 @Controller()
 export class MessagingWindowController {

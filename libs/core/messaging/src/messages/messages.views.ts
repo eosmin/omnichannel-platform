@@ -5,7 +5,7 @@ import {
   MessageType as MessageTypes
 } from '@platform/core/domain'
 
-import { enumValueOf } from '../conversations'
+import { enumValueOf } from '../conversations/conversations.support'
 
 // What the thread shows of a message. The metadata of the channel is not part of it.
 export interface MessageView {

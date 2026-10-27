@@ -1,7 +1,6 @@
 import type { CursorPage } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
-
-import { type Db } from './customers.support'
+import { type Db } from '@platform/core/messaging'
 
 export interface TagView {
   id: string

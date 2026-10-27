@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common'
 
 import { AuditService } from '@platform/core/audit-module'
-import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import { DEFAULT_TAG_COLOR, SettingsLimits } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
@@ -11,7 +16,6 @@ import type { CreateTagBody, UpdateTagBody } from './settings.schemas'
 import {
   alreadyExists,
   auditSettingsChange,
-  lockStoreScope,
   lockTag,
   requireRoom,
   uniqueTransaction

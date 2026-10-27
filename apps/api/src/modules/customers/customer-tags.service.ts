@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
+import { lockCustomerForWrite } from '@platform/core/messaging'
 
-import { lockCustomerForWrite } from './customers.support'
 import { TAG_SELECT, type TagView } from './customers.views'
 
 // The tags of a customer are the tags of the store (the same ones the conversations use). Creating

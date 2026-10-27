@@ -21,9 +21,9 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ConversationVisibility, Events } from '@platform/core/events'
 
+import { ConversationsService } from '../conversations/conversations.service'
 import {
   canSee,
-  ConversationsService,
   invalidInput,
   isHiddenStatus,
   type LockedConversation,
@@ -31,8 +31,8 @@ import {
   requireAnyPermission,
   statusOf,
   type Viewer
-} from '../conversations'
-import { MessagingWindowService } from '../messaging-window'
+} from '../conversations/conversations.support'
+import { MessagingWindowService } from '../messaging-window/messaging-window.service'
 
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'

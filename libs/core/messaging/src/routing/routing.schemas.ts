@@ -9,8 +9,6 @@ import {
   uuidSchema
 } from '@platform/core/domain'
 
-export const idSchema = uuidSchema
-
 const unique = (items: readonly unknown[]): boolean => new Set(items).size === items.length
 
 // An id has one spelling in the row: the same tag in capitals is the same tag

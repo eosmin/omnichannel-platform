@@ -3,12 +3,12 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ErrorCodes } from '@platform/core/errors'
-import { PluginRegistry } from '@platform/plugins/runtime'
-
 import {
   MESSAGING_WINDOW_POLICIES,
   type MessagingWindowPolicySource
-} from '../../apps/api/src/modules/messaging-window'
+} from '@platform/core/messaging'
+import { PluginRegistry } from '@platform/plugins/runtime'
+
 import {
   buildChannelPlugin,
   createConversationOf,

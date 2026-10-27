@@ -3,8 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@platform/core/database'
 import { ConversationLimits } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
-
-import { lockConversationForWrite, type Viewer } from './conversations.support'
+import { lockConversationForWrite, type Viewer } from '@platform/core/messaging'
 
 export interface ConversationTag {
   id: string
