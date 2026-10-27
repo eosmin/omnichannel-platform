@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { EmailPlatformModule, HttpPlatformModule, QueuesPlatformModule } from '@platform/core/http'
 
 import { WorkerReadinessModule } from './health/worker-readiness.module'
+import { InboundModule } from './inbound/inbound.module'
 import { EmailProcessor } from './processors/email.processor'
 import { ProcessorSupport } from './processors/processor-support'
 import { LeaderLockService } from './schedulers/leader-lock.service'
@@ -15,7 +16,8 @@ import { LeaderLockService } from './schedulers/leader-lock.service'
     QueuesPlatformModule,
     EmailPlatformModule,
     ScheduleModule.forRoot(),
-    WorkerReadinessModule
+    WorkerReadinessModule,
+    InboundModule
   ],
   providers: [ProcessorSupport, LeaderLockService, EmailProcessor]
 })

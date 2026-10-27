@@ -1,4 +1,4 @@
-import { ConversationStatus } from './status-enums'
+import { ConversationStatus, MessageType } from './status-enums'
 
 // Why a conversation changed status; recorded by ConversationsService.updateStatus. Marking spam
 // stays a manual action in the v1.2 MVP, so there is no spam-detected reason.
@@ -52,6 +52,34 @@ export const MessageLimits = {
   CONTENT_MAX_LENGTH: 4096,
   IDEMPOTENCY_KEY_MAX_LENGTH: 128,
   MAX_MENTIONS: 10
+} as const
+
+// What a channel plugin may say a customer sent. A plugin is not trusted with the types that only the
+// platform writes (SYSTEM lines, internal notes, cards).
+export const InboundMessageTypes = [
+  MessageType.TEXT,
+  MessageType.IMAGE,
+  MessageType.VIDEO,
+  MessageType.AUDIO,
+  MessageType.DOCUMENT,
+  MessageType.LOCATION
+] as const
+
+// Bounds on what a channel event may carry: it comes from a provider, or from a plugin that is not ours
+export const InboundLimits = {
+  MAX_EVENTS_PER_REQUEST: 100,
+  ID_MAX_LENGTH: 255,
+  CONTENT_MAX_LENGTH: 65_536,
+  MEDIA_REF_MAX_LENGTH: 2048,
+  FILENAME_MAX_LENGTH: 255,
+  CONTENT_TYPE_MAX_LENGTH: 127,
+  METADATA_MAX_BYTES: 8192,
+  // A message dated further ahead than this is dated now: a clock that is wrong must not pin a
+  // conversation to the top of the inbox
+  MAX_FUTURE_SKEW_MS: 5 * 60 * 1000,
+  // And one older than this is a unit mistake (seconds read as milliseconds is 1970), not a message
+  // that took a month to arrive
+  MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000
 } as const
 
 // Spam and archived conversations are out of the inbox and out of every count (TDD_09 §3.1)

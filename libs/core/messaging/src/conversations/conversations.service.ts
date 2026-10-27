@@ -7,6 +7,7 @@ import {
   ConversationHiddenStatuses,
   ConversationLimits,
   ConversationStatus,
+  type ConversationStatusReason,
   ConversationStatusTransitions,
   MembershipStatus,
   SystemMessageEvents
@@ -75,6 +76,8 @@ const STATUS_PERMISSIONS: Record<ConversationStatus, Permission> = {
 export interface StatusOptions {
   actor: ConversationActor
   resolutionReason?: string
+  // Why the system changed it (a customer wrote); it goes to the system line
+  reason?: ConversationStatusReason
   // Required to snooze: the moment the conversation comes back
   snoozedUntil?: Date
   // For a change made by the system because of what a person did (a reply reopens the conversation):
@@ -96,38 +99,42 @@ export class ConversationsService {
   ) {}
 
   // Called by the inbound pipeline (Step 2.6), not by a route: a conversation starts with a message
-  // from a channel. The customer is locked FOR KEY SHARE and read again, because a merge may have
-  // absorbed it a moment ago: the conversation goes to the survivor (MVP_TRIM_CHECKLIST item 27).
+  // from a channel.
   async create(storeId: string, input: NewConversation): Promise<ConversationDetail> {
-    const id = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const customerId = await this.survivorOf(tx, storeId, input.customerId)
-      const identity = await tx.customerIdentity.findFirst({
-        where: { id: input.customerIdentityId, storeId, customerId },
-        select: { id: true, channelType: true }
-      })
-      if (identity === null) throw resourceNotFound('customer identity')
-      const connection = await tx.channelConnection.findFirst({
-        where: { id: input.channelConnectionId, storeId },
-        select: { id: true, pluginId: true }
-      })
-      if (connection === null) throw resourceNotFound('channel connection')
-      if (connection.pluginId !== identity.channelType) {
-        throw resourceConflict('the identity and the connection are of different channels')
-      }
-      const created = await tx.conversation.create({
-        data: {
-          storeId,
-          customerId,
-          customerIdentityId: identity.id,
-          channelConnectionId: connection.id,
-          channelType: identity.channelType
-        },
-        select: { id: true }
-      })
-      return created.id
-    })
+    const id = await this.prisma.transaction(tx => this.createIn(tx, storeId, input))
     return this.get(storeId, id)
+  }
+
+  // The same inside the transaction of the caller, which holds the store lock already. The customer is
+  // locked FOR KEY SHARE and read again, because a merge may have absorbed it a moment ago: the
+  // conversation goes to the survivor (MVP_TRIM_CHECKLIST item 27).
+  async createIn(tx: PrismaTransaction, storeId: string, input: NewConversation): Promise<string> {
+    await lockStoreForWrite(tx, storeId)
+    const customerId = await this.survivorOf(tx, storeId, input.customerId)
+    const identity = await tx.customerIdentity.findFirst({
+      where: { id: input.customerIdentityId, storeId, customerId },
+      select: { id: true, channelType: true }
+    })
+    if (identity === null) throw resourceNotFound('customer identity')
+    const connection = await tx.channelConnection.findFirst({
+      where: { id: input.channelConnectionId, storeId },
+      select: { id: true, pluginId: true }
+    })
+    if (connection === null) throw resourceNotFound('channel connection')
+    if (connection.pluginId !== identity.channelType) {
+      throw resourceConflict('the identity and the connection are of different channels')
+    }
+    const created = await tx.conversation.create({
+      data: {
+        storeId,
+        customerId,
+        customerIdentityId: identity.id,
+        channelConnectionId: connection.id,
+        channelType: identity.channelType
+      },
+      select: { id: true }
+    })
+    return created.id
   }
 
   async list(
@@ -253,7 +260,7 @@ export class ConversationsService {
         causedBy: options.causedBy ?? null,
         from,
         to,
-        reason: options.resolutionReason ?? null,
+        reason: options.reason ?? options.resolutionReason ?? null,
         snoozedUntil: options.snoozedUntil?.toISOString() ?? null
       })
     }
@@ -330,6 +337,28 @@ export class ConversationsService {
       where: { ...where, firstResponseAt: null },
       data: { firstResponseAt: at }
     })
+  }
+
+  // What a message of the customer leaves in the conversation: it is the newest message of the thread
+  // (for the list), one more unread, and the last time the customer wrote. The dates never move back:
+  // a message that arrives late is older than one that came meanwhile. The first answer and the last
+  // outbound date are the agent's, set by recordReply.
+  async recordInbound(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    at: Date
+  ): Promise<void> {
+    const where = { id: conversationId, storeId }
+    await tx.conversation.updateMany({
+      where: { ...where, OR: [{ lastMessageAt: null }, { lastMessageAt: { lt: at } }] },
+      data: { lastMessageAt: at }
+    })
+    await tx.conversation.updateMany({
+      where: { ...where, OR: [{ lastInboundAt: null }, { lastInboundAt: { lt: at } }] },
+      data: { lastInboundAt: at }
+    })
+    await tx.conversation.updateMany({ where, data: { unreadCount: { increment: 1 } } })
   }
 
   snooze(

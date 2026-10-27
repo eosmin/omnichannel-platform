@@ -151,6 +151,8 @@ export interface CustomerIdentityLinkedPayload {
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name
 // and checks the payload against this map
 export interface DomainEventPayloads {
+  [Events.CONVERSATION_CREATED]: ConversationCreatedPayload
+  [Events.MESSAGE_RECEIVED]: MessageReceivedPayload
   [Events.CONVERSATION_STATUS_CHANGED]: ConversationStatusChangedPayload
   [Events.CONVERSATION_ASSIGNED]: ConversationAssignedPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
