@@ -32,3 +32,30 @@ export const channelIdSchema = z.string().regex(CHANNEL_ID_PATTERN)
 // The official ids under their old name, for the code that is about official channels only
 export const ChannelType = ChannelIds
 export type ChannelType = OfficialChannelId
+
+// The health check of the connections (TDD_10 §10): one call to the provider each, so it is bounded
+export const ChannelHealthLimits = {
+  CHECK_TIMEOUT_MS: 10_000,
+  // Connecting or disconnecting talks to the provider too, from a request that someone waits for
+  PROVIDER_TIMEOUT_MS: 15_000,
+  CONCURRENCY: 5,
+  // A round starts no new check after this, so that it ends before its lock does and before the next
+  // round; what it did not reach goes first in the next one
+  ROUND_BUDGET_MS: 200_000,
+  ERROR_MAX_LENGTH: 300
+} as const
+
+// What a connection may hold: the credentials and the metadata of a plugin are bounded in bytes, and
+// the ids it names in characters
+export const ChannelConnectionLimits = {
+  MAX_JSON_BYTES: 8192,
+  DISPLAY_NAME_MAX_LENGTH: 200
+} as const
+
+// What `ChannelConnection.lastError` holds when the platform, and not the provider, is the one that
+// says what went wrong. The settings page turns each into text in the language of the reader.
+export const ChannelHealthErrors = {
+  CHECK_FAILED: 'check_failed',
+  INVALID_REPORT: 'invalid_report',
+  UNSPECIFIED: 'unspecified'
+} as const

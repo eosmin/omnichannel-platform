@@ -17,6 +17,7 @@ import {
   createCustomer,
   createCustomerIdentity,
   createCustomerMerge,
+  createChannelConnection,
   createInvitation,
   createMember,
   createBusinessHours,
@@ -109,6 +110,17 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.customerMerge.findUnique({ where: { id }, select: { unmergedAt: true } }))
         ?.unmergedAt === null
+  },
+  {
+    name: 'channelConnection',
+    create: (owner, input) =>
+      createChannelConnection(owner, { storeId: input.storeId, channelType: 'test_channel' }),
+    readPath: ApiRoutes.channels.connectionById,
+    listPath: ApiRoutes.channels.connections,
+    modify: { path: ApiRoutes.channels.disconnect, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.channelConnection.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === 'active'
   },
   {
     name: 'tag',

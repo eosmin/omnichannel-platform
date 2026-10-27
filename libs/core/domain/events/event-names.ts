@@ -156,7 +156,9 @@ export const BridgedEvents = [
   Events.CONVERSATION_ASSIGNED,
   Events.CONVERSATION_READ,
   Events.MESSAGE_QUEUED,
-  Events.MESSAGE_NOTE_ADDED
+  Events.MESSAGE_NOTE_ADDED,
+  Events.CHANNEL_DISCONNECTED,
+  Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

@@ -1,0 +1,12 @@
+{
+  "name": "channels-connections",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/channels/connections/src",
+  "projectType": "library",
+  "tags": ["scope:channels", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}
