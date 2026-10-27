@@ -137,7 +137,7 @@ export class RealtimeEventsListener {
         messageId: payload.messageId,
         clientMessageId: null
       },
-      socket => mayRead(socket) && mayAny(socket, [payload.visibility])
+      mayHear(payload)
     )
   }
 

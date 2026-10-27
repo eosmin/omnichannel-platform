@@ -36,8 +36,10 @@ export class OutboundRequeueScheduler {
   async run(): Promise<void> {
     try {
       await this.locks.withLock(LockNames.REQUEUE_OUTBOUND, LOCK_SECONDS, async () => {
-        const queued = await this.requeueStale()
-        if (queued > 0) this.logger.warn({ queued }, 'replies queued again')
+        const { requeued, gaveUp } = await this.requeueStale()
+        if (requeued + gaveUp > 0) {
+          this.logger.warn({ requeued, gaveUp }, 'stale replies queued again or given up')
+        }
       })
     } catch (error) {
       // A cron that throws must not take the worker down; the next minute tries again
@@ -45,7 +47,7 @@ export class OutboundRequeueScheduler {
     }
   }
 
-  async requeueStale(now: Date = new Date()): Promise<number> {
+  async requeueStale(now: Date = new Date()): Promise<{ requeued: number; gaveUp: number }> {
     const stale = await this.prisma.client.message.findMany({
       where: {
         deliveryStatus: DeliveryStatus.QUEUED,
@@ -56,18 +58,30 @@ export class OutboundRequeueScheduler {
       take: OutboundLimits.REQUEUE_BATCH
     })
     const giveUpBefore = now.getTime() - OutboundLimits.GIVE_UP_AFTER_MS
+    const done = { requeued: 0, gaveUp: 0 }
     for (const { id, storeId, createdAt } of stale) {
-      if (createdAt.getTime() < giveUpBefore) {
-        await this.status.apply({
-          storeId,
-          messageId: id,
-          to: DeliveryStatus.FAILED,
-          errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED
-        })
-        continue
+      // One reply that cannot be handled must not stop the ones behind it: the batch is the oldest
+      // first, so the same one would block the sweep every minute
+      try {
+        if (createdAt.getTime() < giveUpBefore) {
+          await this.status.apply({
+            storeId,
+            messageId: id,
+            to: DeliveryStatus.FAILED,
+            errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED
+          })
+          done.gaveUp += 1
+        } else {
+          await this.outbound.requeue({ storeId, messageId: id })
+          done.requeued += 1
+        }
+      } catch (error) {
+        this.logger.error(
+          { messageId: id, errorName: errorName(error) },
+          'a stale reply was not handled'
+        )
       }
-      await this.outbound.requeue({ storeId, messageId: id })
     }
-    return stale.length
+    return done
   }
 }

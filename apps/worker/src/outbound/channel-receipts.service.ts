@@ -54,15 +54,26 @@ export class ChannelReceipts {
     const connection = await this.connections.resolve(pluginId, event.connectionId)
     const externalId = event.status?.externalId
     if (connection === null || externalId === undefined) return
-    const message = await this.prisma.client.message.findFirst({
+    // Two at most: a provider id is unique per conversation, not per connection, and a plugin that
+    // repeats ids must not make a receipt land on the first of them it happens to find
+    const found = await this.prisma.client.message.findMany({
       where: {
         storeId: connection.storeId,
         channelMessageId: externalId,
         authorType: AuthorType.AGENT,
         conversation: { channelConnectionId: connection.id }
       },
-      select: { id: true }
+      select: { id: true },
+      take: 2
     })
+    if (found.length > 1) {
+      this.logger.warn(
+        { pluginId },
+        'receipt for a provider id that two messages share: not applied'
+      )
+      return
+    }
+    const message = found[0] ?? null
     // A receipt for a message this platform did not send (it went out from the phone) or one it has
     // not finished writing: nothing to update
     if (message === null) {
@@ -91,7 +102,7 @@ export class ChannelReceipts {
         storeId: connection.storeId,
         deliveryStatus: DeliveryStatus.QUEUED,
         authorType: AuthorType.AGENT,
-        createdAt: { gt: new Date(Date.now() - OutboundLimits.REQUEUE_AFTER_MS) },
+        createdAt: { gt: new Date(Date.now() - OutboundLimits.RECEIPT_WAIT_MS) },
         conversation: { channelConnectionId: connection.id }
       }
     })
