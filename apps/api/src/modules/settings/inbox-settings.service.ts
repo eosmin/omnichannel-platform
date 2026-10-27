@@ -15,7 +15,7 @@ import type { UpdateInboxSettingsBody } from './settings.schemas'
 import { auditSettingsChange, lockSnippet } from './settings.support'
 
 export interface InboxSettingsView {
-  reopenWindowDays: number
+  reopenWindowDays: number | null
   autoArchiveAfterDays: number
   resolveShowOptions: boolean
   sendClosingMessage: boolean

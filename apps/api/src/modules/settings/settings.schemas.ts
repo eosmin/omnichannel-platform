@@ -84,7 +84,7 @@ const days = z.number().int().min(SettingsLimits.MIN_DAYS).max(SettingsLimits.MA
 
 export const updateInboxSettingsSchema = z
   .strictObject({
-    reopenWindowDays: days.optional(),
+    reopenWindowDays: days.nullable().optional(),
     autoArchiveAfterDays: days.optional(),
     resolveShowOptions: z.boolean().optional(),
     sendClosingMessage: z.boolean().optional(),

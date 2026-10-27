@@ -10,6 +10,21 @@ export const ConversationStatusReasons = {
 export type ConversationStatusReason =
   (typeof ConversationStatusReasons)[keyof typeof ConversationStatusReasons]
 
+// What a SYSTEM message of the thread says happened (its `metadata.event`); the thread draws it as a
+// divider, in the language of who reads it
+export const SystemMessageEvents = {
+  RESOLVED: 'resolved',
+  REOPENED: 'reopened',
+  ARCHIVED: 'archived',
+  MARKED_SPAM: 'marked_spam',
+  UNMARKED_SPAM: 'unmarked_spam',
+  SNOOZED: 'snoozed',
+  WOKEN: 'woken',
+  ASSIGNED: 'assigned',
+  UNASSIGNED: 'unassigned'
+} as const
+export type SystemMessageEvent = (typeof SystemMessageEvents)[keyof typeof SystemMessageEvents]
+
 // POST /conversations/bulk { action, conversationIds | filter, params } (TDD_09 §10). SET_STATUS
 // takes the status in params (open, pending or resolved); the others take their target the same way.
 export const BulkActions = {

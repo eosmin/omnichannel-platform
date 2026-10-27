@@ -8,7 +8,8 @@ import {
   ConversationLimits,
   ConversationStatus,
   ConversationStatusTransitions,
-  MembershipStatus
+  MembershipStatus,
+  SystemMessageEvents
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -40,6 +41,7 @@ import {
   LIST_SELECT,
   listItemsOf
 } from './conversations.views'
+import { systemEventFor, writeSystemLine } from './system-lines'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // A conversation is snoozed until a moment to come, within the limit
@@ -243,6 +245,18 @@ export class ConversationsService {
         ...fieldsOf(to, options)
       }
     })
+    const event = systemEventFor(from, to)
+    if (event !== null) {
+      await writeSystemLine(tx, storeId, conversationId, {
+        event,
+        actor: actorRef(options.actor),
+        causedBy: options.causedBy ?? null,
+        from,
+        to,
+        reason: options.resolutionReason ?? null,
+        snoozedUntil: options.snoozedUntil?.toISOString() ?? null
+      })
+    }
     this.events.publish(tx, Events.CONVERSATION_STATUS_CHANGED, {
       storeId,
       conversationId,
@@ -273,6 +287,11 @@ export class ConversationsService {
       data: { assignedTo: userId }
     })
     if (count === 1) {
+      await writeSystemLine(tx, storeId, conversationId, {
+        event: SystemMessageEvents.ASSIGNED,
+        actor: actorRef('system'),
+        assignedTo: userId
+      })
       this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
         storeId,
         conversationId,
@@ -380,6 +399,12 @@ export class ConversationsService {
         await tx.conversation.update({
           where: { id: conversationId, storeId },
           data: { assignedTo: userId }
+        })
+        await writeSystemLine(tx, storeId, conversationId, {
+          event: userId === null ? SystemMessageEvents.UNASSIGNED : SystemMessageEvents.ASSIGNED,
+          actor: actorRef(viewer),
+          assignedTo: userId,
+          previousAssignee: current.assignedTo
         })
         this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
           storeId,
