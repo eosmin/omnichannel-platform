@@ -1021,7 +1021,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.2 | Customers | done | #42 | 2026-10-26 |
 | 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
 | 2.4 | Realtime | done | #49 (1/2: domain events), #50 (2/2: gateway and presence) | 2026-10-27 |
-| 2.5 | Plugin SDK and registry | in progress | #52 (1/2: sdk, registries and contracts) | 2026-10-27 |
+| 2.5 | Plugin SDK and registry | done | #52 (1/2: sdk, registries and contracts), #53 (2/2: open channel ids and the window) | 2026-10-27 |
 | 2.6 | Inbound pipeline | todo | | |
 | 2.7 | WhatsApp plugin | todo | | |
 | 2.8 | Instagram, Messenger, web widget, email | todo | | |
