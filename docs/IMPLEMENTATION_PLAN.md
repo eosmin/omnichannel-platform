@@ -340,9 +340,9 @@ Two pull requests (owner, 2026-10-26): (1) domain events, (2) gateway, `Realtime
 - [x] Emit the `Events.CUSTOMER_*` of `CustomersService` (created, updated, merged, unmerged, identity linked), which Step 2.2 left out because nothing listened to them yet
 - [x] Emit from `MessagesService` `Events.MESSAGE_QUEUED` (new: `Events.MESSAGE_SENT` stays for a message the channel took) for a stored reply and `Events.MESSAGE_NOTE_ADDED` (new, without the text of the note) for a note, and `Events.MESSAGE_MENTION` for each mention, which Step 3.5 turns into `NotificationTypes.CONVERSATION_MENTIONED`; from `ConversationsService` the `Events.CONVERSATION_STATUS_CHANGED`, `CONVERSATION_ASSIGNED` (an unassignment is the same event with `assignedTo: null`) and `CONVERSATION_READ`. `CONVERSATION_CREATED` is emitted by Step 2.6, because its payload carries the first message and a conversation is born with it; the unassignment that removing a member does is not announced yet
 - [x] Counts of the inbox filters: not cached (`MVP_TRIM_CHECKLIST.md` item 31). Measured by `conversations-performance.spec.ts` over 10 000 conversations: under the 300 ms limit (about 17 ms by hand in Step 2.3). The realtime client refetches them debounced, so the cache would add an invalidation on every write for a query that costs that little
-- [ ] Socket.io gateway with the ioredis adapter, typed events, a store room and a user room; a conversation room is joined only for a conversation of that store that the user sees (the same visibility as the REST route)
-- [ ] `RealtimeService` + event listeners + `EVENTS_BRIDGE`. What goes to the store room carries ids and no text (a user who cannot see a conversation must not read its preview, and a note is not for everyone)
-- [ ] Per-socket presence with heartbeat and away detection
+- [x] Socket.io gateway with the ioredis adapter, typed events, a store room and a user room; a conversation room is joined only for a conversation of that store that the user sees (the same visibility as the REST route), and relays typing
+- [x] `RealtimeService` + event listeners + `EVENTS_BRIDGE`. What goes out carries ids and no text, and an event about a conversation reaches only the sockets whose user may see it (a note, only who may read notes)
+- [x] Per-socket presence with heartbeat and away detection
 
 **TDD:** `TDD_06 §1`–`§5`
 **Done when:** two sockets of one store receive each other's events, a socket of store B receives nothing of store A and cannot join its conversations, and closing one of two sockets keeps the user online.
@@ -401,7 +401,7 @@ on a page with a strict CSP.
 - [ ] shadcn/ui components, Lucide icons, Tailwind, CSP headers. Tailwind must scan `libs/core/domain` (`@source`), because `ConversationStatusColors` and `OrderStatusColors` hold class names that are otherwise purged
 - [ ] Auth flow with token refresh; `apiClient` setting `X-Store-Id`
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
-- [ ] The realtime client, moved from Step 2.4 (`TDD_06 §3`, `§4`): connection manager with a fresh token on every reconnect and the connection status in the header, `useRealtimeSync` that invalidates `QueryKeys` (debounced), and the offline queue with terminal-error handling and the `idempotencyKey` that `POST /messages` already honours. Join the conversation room of the open thread (`conversation.join`) and send the heartbeat every 30 seconds
+- [ ] The realtime client, moved from Step 2.4 (`TDD_06 §3`, `§4`): connection manager with a fresh token on every reconnect and the connection status in the header, `useRealtimeSync` that invalidates `QueryKeys` (debounced), and the offline queue with terminal-error handling and the `idempotencyKey` that `POST /messages` already honours. Join the conversation room of the open thread (`conversation.join`) and send the heartbeat every 30 seconds with `{ active: true }` when the user did something. Read the presence of the team (`PresenceService.getStorePresence`, built in Step 2.4 with no route yet) by adding its route with the team widget. A refused connection arrives as `connect_error` with the code in `error.data.code` (not as `auth.error`, which is only for a socket that was already connected); on `auth.error` or a server disconnect, reconnect with a fresh token
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys. **Also merge the email messages:** Step 1.0 left the `email.*` namespace in `libs/core/i18n-server/messages/{en,es}.json` (a directory `apps/web/messages` cannot exist earlier, because `validate:translations` then demands every generated key). Move that namespace into `apps/web/messages/{en,es}.json`, point `libs/core/i18n-server/src/messages.ts` at those files, and delete `libs/core/i18n-server/messages/` and its README
 - [ ] Dockerfile for `web`, added to the `security-scan` build and Trivy scan
 - [ ] CI: create the `e2e-tests` job (Postgres, Redis, SeaweedFS and Mailpit services; the Playwright browsers cached by version and the job skipped by a job-level `if` when the change cannot affect the web app; Playwright reads the magic link from Mailpit) and add it as a required check; create the `lighthouse` job for PRs (optional, not required)
@@ -806,6 +806,7 @@ tax-retention legal hold on orders, and the day-25 alert fires in a test.
 
 ### Step 7.3 — Deployment
 - [ ] **MVP platform: Railway** (`MVP_TRIM_CHECKLIST.md` §7, D9). The Dockerfiles for api and worker (`docker/node-service.Dockerfile`, Step 0.5) and web (Step 3.1) already exist; this step adds PgBouncer and ClamAV as Docker services in the same Railway project (`admin` image and service DEFERRED). Google Cloud (Cloud Run, Cloud Build, Cloud SQL, Memorystore, Secret Manager) is the Phase 2 target
+- [ ] **The websocket is public with the api** (`MVP_TRIM_CHECKLIST.md` §10 item 34): set `TRUST_PROXY_HOPS` to the proxies in front on Railway (the limit of handshakes by address reads the client from it), and add an edge rule that caps connections and handshakes per address (Cloudflare in front, `TDD_05 §3.3`, or the platform's own)
 - [ ] **`/metrics` and the probes share the port of the service**, and a Railway public domain exposes every path of it: decide here how `/metrics` stays private (scrape over private networking and keep the public domain off the api, or a `METRICS_TOKEN` checked by the metrics controller) before the first deploy; `TDD_04 §2.2` assumes a network rule that Railway does not offer
 - [ ] Railway project with staging and production environments; Postgres and Redis as Railway services; the worker always running (one instance minimum); secrets as Railway variables; private networking between services
 - [ ] Release flow (`MVP_TRIM_CHECKLIST.md` §7, D13): merges to `main` deploy to staging automatically; production deploys only from a version tag with manual approval, as `TDD_03 §4` says. Migrations run before each deploy. Verify with Context7 how Railway deploys from a tag, how to require approval and how to run migrations before a deploy, and write that into `TDD_03 §4`
@@ -1011,7 +1012,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 2: Core messaging** | | | | |
 | 2.2 | Customers | done | #42 | 2026-10-26 |
 | 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
-| 2.4 | Realtime | in progress | 1/2: domain events (this PR) | |
+| 2.4 | Realtime | done | #49 (1/2: domain events), #50 (2/2: gateway and presence) | 2026-10-27 |
 | 2.5 | Plugin SDK and registry | todo | | |
 | 2.6 | Inbound pipeline | todo | | |
 | 2.7 | WhatsApp plugin | todo | | |

@@ -5,15 +5,19 @@ import { PinoLogger } from 'nestjs-pino'
 import { PrismaService } from '@platform/core/database'
 import type { DomainEventPayloads } from '@platform/core/events'
 
+import { EventsBridge } from './events-bridge'
+
 // The one way a service announces that something happened. The event leaves after the transaction
 // that wrote it commits, never before: a listener that reacts to a change must find it in the
-// database, and a rolled-back change is announced to nobody.
+// database, and a rolled-back change is announced to nobody. In the worker it also leaves for the api
+// instances (EventsBridge), which hold the sockets.
 @Injectable()
 export class DomainEvents {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emitter: EventEmitter2,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly bridge: EventsBridge
   ) {
     this.logger.setContext(DomainEvents.name)
   }
@@ -32,6 +36,13 @@ export class DomainEvents {
         // Listeners start in order, now; one that returns a promise is not waited for, so what it
         // does after its first await can finish in any order and must not depend on another event
         this.emitter.emitAsync(event, payload).catch(failed)
+      } catch (error) {
+        failed(error)
+      }
+      // In the worker only (a no-op in the api): the api instances hear it through Redis, because
+      // the sockets are theirs. An event of the api reaches the browsers through the socket adapter.
+      try {
+        this.bridge.publish(event, payload)
       } catch (error) {
         failed(error)
       }

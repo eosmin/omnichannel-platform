@@ -23,6 +23,8 @@ export const RealtimeEvents = {
   MESSAGE_DELIVERED: 'message.delivered',
   MESSAGE_READ: 'message.read',
   MESSAGE_FAILED: 'message.failed',
+  // An internal note was written: ids only, sent to who may read notes
+  MESSAGE_NOTE_ADDED: 'message.note_added',
 
   TYPING_START: 'typing.start',
   TYPING_STOP: 'typing.stop',
@@ -97,6 +99,12 @@ export interface RealtimeEventMap {
     errorCode: ErrorCode
   }
 
+  [RealtimeEvents.MESSAGE_NOTE_ADDED]: {
+    conversationId: string
+    messageId: string
+    createdAt: string
+  }
+
   [RealtimeEvents.TYPING_START]: { conversationId: string; userId: string; userName: string }
   [RealtimeEvents.TYPING_STOP]: { conversationId: string; userId: string }
   [RealtimeEvents.CUSTOMER_TYPING]: { conversationId: string }
@@ -130,11 +138,43 @@ export interface RealtimeEventMap {
 
   [RealtimeEvents.NOTIFICATION]: NotificationRealtimePayload
 
-  [RealtimeEvents.HEARTBEAT]: Record<string, never>
+  // active: the user did something (typed, navigated) since the last one, so presence stays online
+  // instead of turning away. The socket alone only proves the tab is open.
+  [RealtimeEvents.HEARTBEAT]: { active?: boolean }
   [RealtimeEvents.JOIN_CONVERSATION]: { conversationId: string }
   [RealtimeEvents.LEAVE_CONVERSATION]: { conversationId: string }
 
   [RealtimeEvents.AUTH_ERROR]: { code: ErrorCode }
+}
+
+// What the server answers to JOIN_CONVERSATION. A conversation that does not exist, belongs to
+// another store or is not visible to the user answers the same way: the answer is no oracle.
+export interface JoinConversationResult {
+  joined: boolean
+}
+
+// The events a client may send. Typing is the one name that travels both ways: the client sends the
+// conversation alone, and the server adds who is typing when it relays the event.
+export interface ClientToServerEvents {
+  [RealtimeEvents.HEARTBEAT]: (body: RealtimeEventMap[typeof RealtimeEvents.HEARTBEAT]) => void
+  [RealtimeEvents.JOIN_CONVERSATION]: (
+    body: RealtimeEventMap[typeof RealtimeEvents.JOIN_CONVERSATION],
+    ack: (result: JoinConversationResult) => void
+  ) => void
+  [RealtimeEvents.LEAVE_CONVERSATION]: (
+    body: RealtimeEventMap[typeof RealtimeEvents.LEAVE_CONVERSATION]
+  ) => void
+  [RealtimeEvents.TYPING_START]: (body: { conversationId: string }) => void
+  [RealtimeEvents.TYPING_STOP]: (body: { conversationId: string }) => void
+}
+
+type ClientOnlyEvent =
+  | typeof RealtimeEvents.HEARTBEAT
+  | typeof RealtimeEvents.JOIN_CONVERSATION
+  | typeof RealtimeEvents.LEAVE_CONVERSATION
+
+export type ServerToClientEvents = {
+  [E in Exclude<RealtimeEvent, ClientOnlyEvent>]: (payload: RealtimeEventMap[E]) => void
 }
 
 // Compile-time guard in both directions: it resolves to `never`, and the assignment below stops

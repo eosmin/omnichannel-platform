@@ -11,6 +11,7 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
+import type { ConversationVisibility } from '@platform/core/events'
 
 // What the services of the module run their reads on: the transaction of the request when there is
 // one, the client otherwise
@@ -33,16 +34,24 @@ export function viewerOf(userId: string, held: readonly Permission[]): Viewer {
 // inbound pipeline, the schedulers), which is named on purpose so that it is never the default
 export type ConversationActor = Viewer | 'system'
 
-// A conversation is seen if it is the viewer's or nobody's (or the viewer sees all), and if it is not
-// one of the hidden ones (archived, spam) that only who may archive reads
+// A conversation is seen by who may see conversations at all (every route of them asks for it), if it
+// is the viewer's or nobody's (or the viewer sees all), and if it is not one of the hidden ones
+// (archived, spam) that only who may archive reads
+export function canSeeConversation(viewer: Viewer, state: ConversationVisibility): boolean {
+  if (!viewer.held.includes(Permissions.CONVERSATIONS_VIEW)) return false
+  if (state.hidden && !viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE)) return false
+  return viewer.canViewAll || state.assignedTo === null || state.assignedTo === viewer.userId
+}
+
 export function canSee(
   viewer: Viewer | undefined,
   row: { assignedTo: string | null; status: string }
 ): boolean {
   if (viewer === undefined) return true
-  if (isHiddenStatus(row.status) && !viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE))
-    return false
-  return viewer.canViewAll || row.assignedTo === null || row.assignedTo === viewer.userId
+  return canSeeConversation(viewer, {
+    hidden: isHiddenStatus(row.status),
+    assignedTo: row.assignedTo
+  })
 }
 
 // The same rule as a filter, for the queries that list or count

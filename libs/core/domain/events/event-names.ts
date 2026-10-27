@@ -139,4 +139,24 @@ export const Events = {
   DSR_COMPLETED: 'dsr.completed'
 } as const
 
+// How long the first api instance to take an event of the bridge holds it
+export const EVENTS_BRIDGE_CLAIM_SECONDS = 60
+
+// The Redis channel that carries the domain events of the worker to the api instances, which are the
+// only processes that hold sockets
+export const EVENTS_BRIDGE_CHANNEL = 'platform:events-bridge'
+
 export type EventName = (typeof Events)[keyof typeof Events]
+
+// The events the worker passes to the api instances, which turn them into what the browsers hear.
+// Only these leave the worker: an event whose payload carries text (MESSAGE_RECEIVED has a preview)
+// is not here, and joins when it has been cut down to ids.
+export const BridgedEvents = [
+  Events.CONVERSATION_STATUS_CHANGED,
+  Events.CONVERSATION_ASSIGNED,
+  Events.CONVERSATION_READ,
+  Events.MESSAGE_QUEUED,
+  Events.MESSAGE_NOTE_ADDED
+] as const satisfies readonly EventName[]
+
+export type BridgedEvent = (typeof BridgedEvents)[number]

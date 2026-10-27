@@ -7,9 +7,15 @@ import { env } from '@platform/core/config/env'
 
 import { configureHttpApp } from './configure-http-app'
 
+export interface HttpAppOptions extends Pick<NestApplicationOptions, 'rawBody'> {
+  // Runs once the app is created and before it is configured and started: for what has to be set
+  // before the modules initialize, like the adapter of the websockets
+  beforeInit?: (app: NestExpressApplication) => void
+}
+
 export async function startHttpApp(
   rootModule: Type<unknown>,
-  options: Pick<NestApplicationOptions, 'rawBody'> = {}
+  { beforeInit, ...options }: HttpAppOptions = {}
 ): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(rootModule, {
     ...options,
@@ -17,6 +23,7 @@ export async function startHttpApp(
   })
   // How many proxies in front of the api to believe about the client IP: the rate limits count per IP
   app.set('trust proxy', env.TRUST_PROXY_HOPS)
+  beforeInit?.(app)
   await configureHttpApp(app)
   app.enableShutdownHooks()
   await app.listen(env.PORT)
@@ -29,7 +36,7 @@ const FLUSH_TIMEOUT_MS = 2000
 // process with a failure code, instead of leaving an unhandled rejection.
 export async function runHttpApp(
   rootModule: Type<unknown>,
-  options: Pick<NestApplicationOptions, 'rawBody'> = {}
+  options: HttpAppOptions = {}
 ): Promise<void> {
   try {
     await startHttpApp(rootModule, options)
