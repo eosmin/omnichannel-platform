@@ -840,16 +840,16 @@ export const ConversationStatusColors: Record<ConversationStatus, string> = {
 
 // Which order statuses allow which edits — encodes business rules once
 export const OrderEditableFields = {
-  [OrderStatus.CONFIRMED]: ['items', 'shipping', 'discount', 'address', 'recipientPhones', 'paymentMethod', 'notes'],
-  [OrderStatus.PREPARING]: ['shipping', 'address', 'recipientPhones', 'notes'],
-  [OrderStatus.SHIPPED]:   ['address', 'recipientPhones', 'notes', 'trackingNumber'],
+  [OrderStatus.CONFIRMED]: ['items', 'shipping', 'discount', 'address', 'recipientPhones', 'paymentMethod', 'notes', 'scheduledDeliveryDate'],
+  [OrderStatus.PREPARING]: ['shipping', 'address', 'recipientPhones', 'notes', 'scheduledDeliveryDate'],
+  [OrderStatus.SHIPPED]:   ['address', 'recipientPhones', 'notes', 'trackingNumber', 'scheduledDeliveryDate'],
   [OrderStatus.DELIVERED]: ['notes'],
   [OrderStatus.CANCELLED]: [],
   [OrderStatus.RETURNED]:  ['notes'],
 } as const satisfies Record<OrderStatus, readonly OrderEditableField[]>
 
 export type OrderEditableField =
-  'items' | 'shipping' | 'discount' | 'address' | 'recipientPhones' | 'paymentMethod' | 'notes' | 'trackingNumber'
+  'items' | 'shipping' | 'discount' | 'address' | 'recipientPhones' | 'paymentMethod' | 'notes' | 'trackingNumber' | 'scheduledDeliveryDate'
 
 // Valid state transitions — prevents illegal jumps
 export const OrderStatusTransitions: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -1747,6 +1747,7 @@ export const createOrderSchema = z.object({
   }).optional(),
   recipientPhones: recipientPhonesSchema,   // the form pre-fills it from Customer.phone, as its national number
   customerNotes: z.string().max(1000).optional(),
+  scheduledDeliveryDate: z.iso.date().nullable().default(null),   // 'YYYY-MM-DD', a calendar day in the store timezone; null = not scheduled; a past day is accepted
   sendConfirmationMessage: z.boolean().default(true)
 })
 

@@ -1287,6 +1287,7 @@ model Order {
   cancellationReason     String?   @map("cancellation_reason")
   cancelledBy            String?   @map("cancelled_by")
   proofOfDeliveryMediaId String?   @map("proof_of_delivery_media_id")
+  scheduledDeliveryDate  DateTime? @map("scheduled_delivery_date") @db.Date   // the day the customer asked to receive it, a calendar day in the store timezone; null = not scheduled
   createdBy              String    @map("created_by")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
@@ -1301,6 +1302,7 @@ model Order {
 
   @@unique([storeId, orderNumber])
   @@index([storeId, status, createdAt(sort: Desc)])
+  @@index([storeId, scheduledDeliveryDate])
   @@index([storeId, customerId])
   @@index([conversationId])
   @@map("orders")
