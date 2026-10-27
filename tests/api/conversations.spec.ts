@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -9,7 +11,8 @@ import {
   ConversationAssignedFilters,
   ConversationStatus,
   MembershipStatus,
-  MessageType
+  MessageType,
+  SystemMessageEvents
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { encodeConversationCursor, ConversationsService } from '@platform/core/messaging'
@@ -633,6 +636,142 @@ describe('The conversations of a store', () => {
         ]).toEqual([null, null, null, null])
       }
     )
+  })
+
+  describe('the system lines of the thread', () => {
+    const linesOf = (conversationId: string) =>
+      owner.message.findMany({
+        where: { conversationId },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+      })
+
+    it('writes one for each change of status that people care about, with no text', async () => {
+      const conversation = await mk()
+      const status = (to: ConversationStatus, extra: object = {}) =>
+        asAgent()
+          .patch(ApiRoutes.conversations.status(conversation.id))
+          .send({ status: to, ...extra })
+
+      await status(ConversationStatus.PENDING)
+      await status(ConversationStatus.RESOLVED, { resolutionReason: 'answered' })
+      await status(ConversationStatus.OPEN)
+
+      const lines = await linesOf(conversation.id)
+      expect(lines.map(line => (line.metadata as { event: string }).event)).toEqual([
+        SystemMessageEvents.RESOLVED,
+        SystemMessageEvents.REOPENED
+      ])
+      expect(lines[0]).toMatchObject({
+        type: MessageType.SYSTEM,
+        authorType: AuthorType.SYSTEM,
+        authorId: null,
+        content: null
+      })
+      expect(lines[0]?.metadata).toMatchObject({
+        actor: { type: 'user', id: ctx.agentA.id },
+        from: ConversationStatus.PENDING,
+        to: ConversationStatus.RESOLVED,
+        reason: 'answered'
+      })
+    })
+
+    it('keeps the date of the snooze and the wake of a snoozed conversation', async () => {
+      const conversation = await mk()
+      const until = new Date(Date.now() + 3_600_000)
+      await asAgent()
+        .post(ApiRoutes.conversations.snooze(conversation.id))
+        .send({ until: until.toISOString() })
+      await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.OPEN })
+
+      const lines = await linesOf(conversation.id)
+      expect(lines.map(line => (line.metadata as { event: string }).event)).toEqual([
+        SystemMessageEvents.SNOOZED,
+        SystemMessageEvents.WOKEN
+      ])
+      expect(lines[0]?.metadata).toMatchObject({ snoozedUntil: until.toISOString() })
+    })
+
+    it('writes one for each assignment and release, and none when nothing changes', async () => {
+      const conversation = await mk()
+      const assign = (userId: string | null) =>
+        asAdmin().patch(ApiRoutes.conversations.assign(conversation.id)).send({ userId })
+
+      await assign(ctx.agentA.id)
+      await assign(ctx.agentA.id)
+      await assign(agent2.id)
+      await assign(null)
+
+      const lines = await linesOf(conversation.id)
+      expect(lines.map(line => line.metadata)).toMatchObject([
+        { event: SystemMessageEvents.ASSIGNED, assignedTo: ctx.agentA.id, previousAssignee: null },
+        {
+          event: SystemMessageEvents.ASSIGNED,
+          assignedTo: agent2.id,
+          previousAssignee: ctx.agentA.id
+        },
+        { event: SystemMessageEvents.UNASSIGNED, assignedTo: null, previousAssignee: agent2.id }
+      ])
+    })
+
+    it('is not the last message, moves no date and raises no unread count', async () => {
+      const lastMessageAt = minutesAgo(5)
+      const conversation = await mk({ lastMessageAt, unreadCount: 2 })
+      await asAdmin()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED })
+
+      const after = await row(conversation.id)
+      const list = await asAdmin().get(ApiRoutes.conversations.list)
+      const listed = (list.body as PageBody).data.find(item => item.id === conversation.id)
+      expect(after.lastMessageAt?.getTime()).toBe(lastMessageAt.getTime())
+      expect(after.unreadCount).toBe(2)
+      expect(listed?.lastMessage).toBeNull()
+    })
+
+    it('shows in the thread, with what it says happened', async () => {
+      const conversation = await mk()
+      await asAdmin()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED })
+
+      const thread = await asAdmin().get(ApiRoutes.conversations.messages(conversation.id))
+      const [line] = (thread.body as { data: { type: string; system: { event: string } | null }[] })
+        .data
+      expect(line).toMatchObject({
+        type: MessageType.SYSTEM,
+        system: { event: SystemMessageEvents.RESOLVED }
+      })
+    })
+
+    it('cannot be the message that a reply answers', async () => {
+      const conversation = await mk()
+      await asAdmin()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED })
+      const [line] = await linesOf(conversation.id)
+
+      const reply = await asAdmin().post(ApiRoutes.messages.create).send({
+        conversationId: conversation.id,
+        type: MessageType.TEXT,
+        content: 'hello',
+        idempotencyKey: randomUUID(),
+        replyToMessageId: line?.id
+      })
+
+      expect(reply.status).toBe(NOT_FOUND)
+    })
+
+    it('is not written when the change is refused', async () => {
+      const conversation = await mk({ status: ConversationStatus.SPAM })
+      const refused = await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED })
+
+      expect(refused.status).not.toBe(OK)
+      expect(await linesOf(conversation.id)).toEqual([])
+    })
   })
 
   describe('snoozing', () => {

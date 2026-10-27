@@ -114,7 +114,8 @@ function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationLi
 // The last message of each conversation of a page, in one query
 //
 // What the preview shows depends on who asks: without MESSAGES_VIEW there is no last message, and
-// without MESSAGES_INTERNAL_NOTE the last message is the last one that is not an internal note.
+// without MESSAGES_INTERNAL_NOTE the last message is the last one that is not an internal note. A
+// system line is never the last message: it is a divider of the thread, not something said.
 export async function listItemsOf(
   db: Db,
   storeId: string,
@@ -148,6 +149,7 @@ export async function listItemsOf(
       FROM messages
       WHERE store_id = ${storeId}
         AND conversation_id = page.id
+        AND type <> ${MessageTypes.SYSTEM}
         AND (${readsNotes} OR type <> ${MessageTypes.INTERNAL_NOTE})
       ORDER BY created_at DESC, id DESC
       LIMIT 1

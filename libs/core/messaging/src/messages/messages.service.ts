@@ -249,7 +249,10 @@ export class MessagesService {
         id: messageId,
         storeId,
         conversationId,
-        ...(isNote ? {} : { type: { not: MessageType.INTERNAL_NOTE } })
+        // A system line is a divider of the thread: nobody answers it
+        type: {
+          notIn: isNote ? [MessageType.SYSTEM] : [MessageType.SYSTEM, MessageType.INTERNAL_NOTE]
+        }
       }
     })
     if (target === 0) throw resourceNotFound('message')

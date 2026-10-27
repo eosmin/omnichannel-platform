@@ -450,7 +450,7 @@ describe('The settings of the inbox of a store', () => {
         .send({ reopenWindowDays: 14, requestCsat: true })
 
       expect(before.body).toEqual({
-        reopenWindowDays: 7,
+        reopenWindowDays: null,
         autoArchiveAfterDays: 30,
         resolveShowOptions: true,
         sendClosingMessage: false,
@@ -465,6 +465,16 @@ describe('The settings of the inbox of a store', () => {
       })
       const [entry] = await auditEntries(ctx.storeA2.id, 'store_settings')
       expect(entry?.metadata).toMatchObject({ fields: ['reopenWindowDays', 'requestCsat'] })
+    })
+
+    it('takes the window off again with null', async () => {
+      const set = await asAdmin().patch(ApiRoutes.settings.inbox).send({ reopenWindowDays: 3 })
+      const cleared = await asAdmin()
+        .patch(ApiRoutes.settings.inbox)
+        .send({ reopenWindowDays: null })
+
+      expect(set.body).toMatchObject({ reopenWindowDays: 3 })
+      expect(cleared.body).toMatchObject({ reopenWindowDays: null })
     })
 
     it.each([

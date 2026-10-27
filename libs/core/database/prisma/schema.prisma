@@ -80,7 +80,7 @@ model Store {
 // Per-store behaviour toggles (TDD_09 §3, §11). One row per store, created with the store.
 model StoreSettings {
   storeId                    String   @id @map("store_id")
-  reopenWindowDays           Int      @default(7) @map("reopen_window_days")
+  reopenWindowDays           Int?     @map("reopen_window_days") // null: a customer keeps one thread per channel for good (TDD_09 §3.3)
   autoArchiveAfterDays       Int      @default(30) @map("auto_archive_after_days")
   resolveShowOptions         Boolean  @default(true) @map("resolve_show_options")
   sendClosingMessage         Boolean  @default(false) @map("send_closing_message")

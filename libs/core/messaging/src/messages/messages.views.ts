@@ -6,8 +6,10 @@ import {
 } from '@platform/core/domain'
 
 import { enumValueOf } from '../conversations/conversations.support'
+import { type SystemLineMetadata, systemLineMetadataSchema } from '../conversations/system-lines'
 
-// What the thread shows of a message. The metadata of the channel is not part of it.
+// What the thread shows of a message. The metadata of the channel is not part of it; a system line
+// carries its own, which is what the thread draws it from.
 export interface MessageView {
   id: string
   conversationId: string
@@ -19,6 +21,7 @@ export interface MessageView {
   deliveryStatus: DeliveryStatus | null
   deliveryError: string | null
   mentions: string[]
+  system: SystemLineMetadata | null
   createdAt: Date
 }
 
@@ -33,6 +36,7 @@ export const MESSAGE_SELECT = {
   deliveryStatus: true,
   deliveryError: true,
   mentions: true,
+  metadata: true,
   createdAt: true
 } as const
 
@@ -47,14 +51,16 @@ interface MessageRow {
   deliveryStatus: string | null
   deliveryError: string | null
   mentions: string[]
+  metadata: unknown
   createdAt: Date
 }
 
 export function messageView(row: MessageRow): MessageView {
+  const type = enumValueOf(MessageTypes, row.type, 'message type')
   return {
     id: row.id,
     conversationId: row.conversationId,
-    type: enumValueOf(MessageTypes, row.type, 'message type'),
+    type,
     content: row.content,
     authorType: enumValueOf(AuthorTypes, row.authorType, 'message author'),
     authorId: row.authorId,
@@ -65,6 +71,8 @@ export function messageView(row: MessageRow): MessageView {
         : enumValueOf(DeliveryStatuses, row.deliveryStatus, 'delivery status'),
     deliveryError: row.deliveryError,
     mentions: row.mentions,
+    // The column is Json: a system line is parsed on the way out, like any other boundary
+    system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
     createdAt: row.createdAt
   }
 }

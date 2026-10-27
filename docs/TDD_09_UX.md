@@ -141,11 +141,15 @@ parsed by the inbound pipeline into `csatScore`/`csatComment` and feeds
 
 ### 3.3 Reopen
 
-- **Automatic:** customer replies within `StoreSettings.reopenWindowDays` (default 7).
-  Status returns to OPEN (`ConversationStatusReasons.CUSTOMER_REPLIED`), the previous
-  assignee keeps the conversation and is notified (`NotificationTypes.CONVERSATION_REOPENED`).
-  After the window, a new conversation is created. A message to a SNOOZED conversation
-  wakes it immediately.
+- **Automatic:** a customer's message continues the conversation that customer already has on
+  that channel (one continuous thread per customer and channel, like a chat). Status returns to
+  OPEN (`ConversationStatusReasons.CUSTOMER_REPLIED`), the previous assignee keeps the
+  conversation and is notified (`NotificationTypes.CONVERSATION_REOPENED`). A message to a
+  SNOOZED conversation wakes it immediately. A conversation marked as spam stays spam: the
+  message is stored and nothing reopens.
+- **`StoreSettings.reopenWindowDays`:** `null` (the default) means a new conversation is never
+  started for a customer who already has one on the channel. A number means that, after that
+  many quiet days, the next message starts a new conversation.
 - **Manual:** agent clicks Reopen, or simply starts typing a reply.
 
 ### 3.4 Snooze
