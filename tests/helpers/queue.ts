@@ -19,6 +19,11 @@ export class CapturedQueue {
     return Promise.resolve()
   }
 
+  // What the sweep asks of the real queue: nothing was ever queued for it to find
+  getJob(): Promise<undefined> {
+    return Promise.resolve(undefined)
+  }
+
   addBulk(jobs: CapturedJob[]): Promise<void> {
     this.jobs.push(...jobs)
     return Promise.resolve()

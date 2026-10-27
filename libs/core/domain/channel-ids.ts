@@ -59,3 +59,24 @@ export const ChannelHealthErrors = {
   INVALID_REPORT: 'invalid_report',
   UNSPECIFIED: 'unspecified'
 } as const
+
+// The most text one message may hold on each official channel (TDD_10 §5). `POST /messages` caps at
+// MessageLimits; the outbound processor checks the channel's own, which is the smaller. A channel
+// that is not here (a plugin of the owner's) is held only by MessageLimits.
+export const ChannelTextLimits: Readonly<Record<string, number>> = {
+  [ChannelIds.WHATSAPP]: 4096,
+  [ChannelIds.MESSENGER]: 2000,
+  [ChannelIds.INSTAGRAM]: 1000
+}
+
+// The send of a reply is one call to the provider, from a job: bounded like the other calls to it
+export const OutboundLimits = {
+  SEND_TIMEOUT_MS: 20_000,
+  // The sweep queues again a reply that has been `queued` this long: its job was never added, or it
+  // failed for good without the message being marked. Past the 75 seconds of the five attempts.
+  REQUEUE_AFTER_MS: 120_000,
+  REQUEUE_BATCH: 100,
+  // Past this a reply is not sent any more: the customer would get it hours late, out of its time and
+  // probably out of the messaging window. It is marked failed so that the agent sees it and decides.
+  GIVE_UP_AFTER_MS: 3_600_000
+} as const

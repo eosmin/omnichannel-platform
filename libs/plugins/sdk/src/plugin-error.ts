@@ -15,8 +15,14 @@ export type PluginErrorCode = Extract<
 // provider's error body can echo the token it was called with. The core decides the answer from
 // the code alone.
 export class PluginError extends PlatformException {
-  constructor(code: PluginErrorCode) {
+  // What the plugin says about trying again: true after a 429 or a 5xx of the provider, false when
+  // it will not change. It wins over any guess the core makes (TDD_10 §6.7.4); left out, the core
+  // does not try again.
+  readonly retryable: boolean | undefined
+
+  constructor(code: PluginErrorCode, options: { retryable?: boolean } = {}) {
     super(code, `channel plugin failed: ${code}`)
     this.name = 'PluginError'
+    this.retryable = options.retryable
   }
 }

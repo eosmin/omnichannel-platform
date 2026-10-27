@@ -11,6 +11,7 @@ import { useRealtime } from '../../apps/api/src/modules/realtime/use-realtime'
 import { TenantProbeController } from '../../apps/api/src/testing/tenant-probe.controller'
 
 import { CapturedEmails } from './email'
+import { CapturedQueue } from './queue'
 
 // The app of the api as it runs, built from the same AppModule and configured by the same function
 // as main.ts: the same guards, pipes, filters, prefix and security headers. Two things differ: the
@@ -28,6 +29,9 @@ export async function createTestApp(
     // The emails of a suite are read, not sent: see CapturedEmails
     .overrideProvider(getQueueToken(QueueNames.EMAIL))
     .useValue(new CapturedEmails())
+    // A reply is queued for the worker, and no suite wants one that would send it
+    .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+    .useValue(new CapturedQueue())
   const moduleRef = await override(builder).compile()
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bufferLogs: true,

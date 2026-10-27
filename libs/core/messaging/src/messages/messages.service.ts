@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
@@ -33,6 +34,7 @@ import {
   type Viewer
 } from '../conversations/conversations.support'
 import { MessagingWindowService } from '../messaging-window/messaging-window.service'
+import { OutboundQueue } from '../outbound/outbound-queue'
 
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
@@ -50,11 +52,15 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
     private readonly window: MessagingWindowService,
-    private readonly events: DomainEvents
-  ) {}
+    private readonly events: DomainEvents,
+    private readonly outbound: OutboundQueue,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(MessagesService.name)
+  }
 
   // What the agent writes in a conversation. A reply to the customer is stored as queued: nothing
-  // sends it until the channel plugins exist (Step 2.6). Writing to the customer reopens a resolved,
+  // sends it until the commit is done: then the outbound queue takes it. Writing to the customer reopens a resolved,
   // snoozed or archived conversation; an internal note changes nothing but the thread.
   async create(storeId: string, body: CreateMessageBody, viewer: Viewer): Promise<CreatedMessage> {
     const isNote = body.type === MessageType.INTERNAL_NOTE
@@ -145,7 +151,21 @@ export class MessagesService {
         assignedTo: current.assignedTo
       }
       this.announce(tx, storeId, viewer, row.id, now, body, mentions, visibility)
+      if (!isNote) this.queueForChannel(tx, storeId, row.id)
       return { message: messageView(row), created: true }
+    })
+  }
+
+  // Only after the commit: the worker reads the message by id and must find it. If Redis fails here
+  // the reply stays `queued` with no job, and the sweep of the worker queues it a minute later.
+  private queueForChannel(tx: PrismaTransaction, storeId: string, messageId: string): void {
+    this.prisma.afterCommit(tx, () => {
+      this.outbound.enqueue({ storeId, messageId }).catch((error: unknown) => {
+        this.logger.warn(
+          { messageId, errorName: error instanceof Error ? error.name : 'unknown' },
+          'the reply could not be queued; the sweep will'
+        )
+      })
     })
   }
 

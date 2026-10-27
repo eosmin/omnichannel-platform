@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { ConversationStatus } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import { BridgedEvents, ChannelDisconnectedReasons, Events } from '@platform/core/events'
 
 import { bridgedPayload } from './bridged-payloads'
@@ -20,6 +21,12 @@ describe('bridgedPayload', () => {
     messageId: randomUUID(),
     authorId: randomUUID(),
     createdAt: '2026-10-27T00:00:00.000Z',
+    visibility: { hidden: false, assignedTo: null }
+  }
+  const status = {
+    storeId: randomUUID(),
+    conversationId: randomUUID(),
+    messageId: randomUUID(),
     visibility: { hidden: false, assignedTo: null }
   }
   // A whole payload of each bridged event, as the services publish it
@@ -43,6 +50,10 @@ describe('bridgedPayload', () => {
     [Events.CONVERSATION_READ]: read,
     [Events.MESSAGE_QUEUED]: message,
     [Events.MESSAGE_NOTE_ADDED]: message,
+    [Events.MESSAGE_SENT]: status,
+    [Events.MESSAGE_DELIVERED]: status,
+    [Events.MESSAGE_READ]: status,
+    [Events.MESSAGE_FAILED]: { ...status, errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED },
     [Events.CHANNEL_DISCONNECTED]: {
       storeId: randomUUID(),
       channelConnectionId: randomUUID(),

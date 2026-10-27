@@ -1,4 +1,4 @@
-// Seven queues plus the dead-letter queue.
+// Eight queues plus the dead-letter queue.
 export const QueueNames = {
   EMAIL: 'email',
   WEBHOOKS: 'webhooks',
@@ -7,6 +7,7 @@ export const QueueNames = {
   EXPORTS: 'exports',
   HEAVY_PROCESSING: 'heavy-processing',
   INBOUND: 'inbound', // Channel webhook events, TDD_10 §4
+  OUTBOUND: 'outbound', // The replies of the team on their way to a channel, TDD_10 §6.7.4
   DEAD_LETTER: 'dead-letter'
 } as const
 
@@ -57,6 +58,9 @@ export const JobNames = {
 
   // inbound
   PROCESS_CHANNEL_EVENT: 'process-channel-event',
+
+  // outbound
+  SEND_OUTBOUND_MESSAGE: 'send-outbound-message',
 
   // dead letter
   EXHAUSTED: 'exhausted'

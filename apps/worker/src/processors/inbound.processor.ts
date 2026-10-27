@@ -9,6 +9,8 @@ import { QueueNames } from '@platform/core/queues'
 import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
+import { ChannelReceipts } from '../outbound/channel-receipts.service'
+
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
@@ -19,6 +21,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
   constructor(
     support: ProcessorSupport,
     private readonly inbound: InboundMessageService,
+    private readonly receipts: ChannelReceipts,
     private readonly logger: PinoLogger
   ) {
     super(QueueNames.INBOUND, support)
@@ -55,10 +58,22 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         }
         return
       }
+      case ChannelEventTypes.MESSAGE_DELIVERED:
+      case ChannelEventTypes.MESSAGE_READ:
+      case ChannelEventTypes.MESSAGE_FAILED:
+        await this.receipts.handleReceipt(
+          pluginId,
+          { ...event, type: event.type },
+          job.attemptsMade + 1 >= (job.opts.attempts ?? 1)
+        )
+        return
+      case ChannelEventTypes.CONNECTION_ERROR:
+        await this.receipts.handleConnectionError(pluginId, { ...event, type: event.type })
+        return
       default:
-        // Delivery receipts and failures come with the outbound processor, typing and connection
-        // errors with the connection management (Step 2.6, PR 4)
-        this.logger.debug({ pluginId, type: event.type }, 'channel event not handled yet')
+        // What the platform sends itself is not news, and the typing of the customer waits for the
+        // inbox (Step 3.x)
+        this.logger.debug({ pluginId, type: event.type }, 'channel event not handled')
     }
   }
 }

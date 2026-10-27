@@ -132,6 +132,11 @@ export interface FetchInboundMediaJob extends BaseJob {
   contentType: string
   filename: string | null
 }
+// outbound: the message is read again by id, so a retry sends what is stored now and not a copy
+export interface SendOutboundMessageJob extends BaseJob {
+  storeId: string
+  messageId: string
+}
 export interface EnforceRetentionJob extends BaseJob {
   storeId: string
 }
