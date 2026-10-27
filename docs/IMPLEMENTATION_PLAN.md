@@ -1023,7 +1023,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
 | 2.4 | Realtime | done | #49 (1/2: domain events), #50 (2/2: gateway and presence) | 2026-10-27 |
 | 2.5 | Plugin SDK and registry | done | #52 (1/2: sdk, registries and contracts), #53 (2/2: open channel ids and the window) | 2026-10-27 |
-| 2.6 | Inbound pipeline | todo | | |
+| 2.6 | Inbound pipeline | done | #54 (1/5: services to `libs/core/messaging`), #55 (2/5: system lines, `reopenWindowDays`), #56 (3/5: webhook and inbound processor), #57 (4/5: connections, encryption, health), #58 (5/5: outbound) | 2026-10-27 |
 | 2.7 | WhatsApp plugin | todo | | |
 | 2.8 | Instagram, Messenger, web widget, email | todo | | |
 | **Milestone 3: Inbox interface** | | | | |
