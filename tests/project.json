@@ -26,7 +26,7 @@
         "command": "jest --config jest.config.cts --runInBand",
         "cwd": "{projectRoot}",
         "env": {
-          "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
+          "NODE_OPTIONS": "--experimental-vm-modules --max-old-space-size=4096 --no-warnings=ExperimentalWarning"
         }
       }
     }
