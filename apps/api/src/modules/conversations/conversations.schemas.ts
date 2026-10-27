@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import {
-  ChannelType,
+  channelIdSchema,
   ConversationAssignedFilters,
   ConversationLimits,
   ConversationStatus,
@@ -33,7 +33,7 @@ export const listConversationsQuerySchema = z
       .default(PaginationLimits.DEFAULT),
     assigned: assigned.optional(),
     status: z.enum(ConversationStatus).optional(),
-    channelType: z.enum(ChannelType).optional(),
+    channelType: channelIdSchema.optional(),
     tagId: uuidSchema.optional(),
     countsOnly: flag.default(false)
   })

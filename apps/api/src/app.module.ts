@@ -4,6 +4,7 @@ import { AuditModule } from '@platform/core/audit-module'
 import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http'
 
 import { AuthModule } from './modules/auth/auth.module'
+import { ChannelRegistryModule } from './modules/channel-registry'
 import { ConversationsModule } from './modules/conversations/conversations.module'
 import { CustomersModule } from './modules/customers/customers.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
@@ -31,6 +32,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     CustomersModule,
     ConversationsModule,
     MessagesModule,
+    ChannelRegistryModule,
     MessagingWindowModule,
     RoutingModule,
     RealtimeModule,

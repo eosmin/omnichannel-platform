@@ -13,6 +13,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 
+import { RegisteredChannels } from '../channel-registry'
 import { lockStoreScope } from '../settings/settings.support'
 import type { Actor } from '../tenancy'
 
@@ -96,7 +97,8 @@ function invalidReferences(what: string, ids: readonly string[]): PlatformExcept
 export class RoutingRulesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly channels: RegisteredChannels
   ) {}
 
   async list(storeId: string): Promise<RoutingRuleView[]> {
@@ -132,6 +134,7 @@ export class RoutingRulesService {
           { limit: RoutingLimits.MAX_RULES_PER_STORE }
         )
       }
+      this.channels.require(storeId, body.conditions.channelTypes ?? [])
       await this.requireReferences(tx, storeId, body.conditions, body.action)
       return tx.routingRule.create({
         data: {
@@ -161,9 +164,17 @@ export class RoutingRulesService {
       await lockStoreScope(tx, storeId, SCOPE)
       const current = await tx.routingRule.findFirst({
         where: { id: ruleId, storeId },
-        select: { id: true }
+        select: { id: true, conditions: true }
       })
       if (current === null) throw resourceNotFound('routing rule')
+      // A rule may keep a channel whose plugin is gone (it matches nothing): only the ids it gains
+      // are checked, so that it can still be renamed, disabled or given other people
+      const stored = conditionsSchema.safeParse(current.conditions)
+      const kept = new Set(stored.success ? (stored.data.channelTypes ?? []) : [])
+      this.channels.require(
+        storeId,
+        (body.conditions?.channelTypes ?? []).filter(channel => !kept.has(channel))
+      )
       await this.requireReferences(tx, storeId, body.conditions, body.action)
       return tx.routingRule.update({
         where: { id: ruleId, storeId },

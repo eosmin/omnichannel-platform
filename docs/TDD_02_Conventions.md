@@ -195,7 +195,7 @@ export interface MessageReceivedPayload {
   conversationId: string
   messageId: string
   customerId: string
-  channelType: ChannelType
+  channelType: ChannelId
   authorType: AuthorType
   contentPreview: string | null     // First 200 chars, for listeners that only need a glance
   receivedAt: string                // ISO 8601
@@ -205,7 +205,7 @@ export interface ConversationCreatedPayload {
   storeId: string
   conversationId: string
   customerId: string
-  channelType: ChannelType
+  channelType: ChannelId
   firstMessageId: string            // Emitted after the first message is persisted, never before
   firstMessageContent: string | null
 }
@@ -311,7 +311,7 @@ export type RealtimeEvent = typeof RealtimeEvents[keyof typeof RealtimeEvents]
 // Typed payload map — every event in RealtimeEvents has an entry here. A missing
 // entry is a compile error in RealtimeService (TDD_06 §1.5), which is the point.
 export interface RealtimeEventMap {
-  [RealtimeEvents.CONVERSATION_CREATED]: { conversationId: string; customerId: string; channelType: ChannelType }
+  [RealtimeEvents.CONVERSATION_CREATED]: { conversationId: string; customerId: string; channelType: ChannelId }
   [RealtimeEvents.CONVERSATION_UPDATED]: { conversationId: string; status: ConversationStatus; assignedTo: string | null; lastMessageAt: string | null }
   [RealtimeEvents.CONVERSATION_ASSIGNED]: { conversationId: string; assignedTo: string | null; assignedBy: string | null }
   [RealtimeEvents.CONVERSATION_STATUS_CHANGED]: { conversationId: string; status: ConversationStatus; previousStatus: ConversationStatus }
@@ -704,13 +704,22 @@ export enum InvitationStatus {
   REVOKED = 'REVOKED',
 }
 
-export enum ChannelType {
-  WHATSAPP = 'whatsapp',
-  INSTAGRAM = 'instagram',
-  MESSENGER = 'messenger',
-  WEB_WIDGET = 'web_widget',
-  EMAIL = 'email',
-}
+// v1.2 (Step 2.5): a channel is the id of a registered plugin, a string (TDD_10 §6.7), not a value
+// of a closed enum. These are the ids of the official plugins; `ChannelType` is kept as their
+// old name for the code that is about official channels only. Shape: CHANNEL_ID_PATTERN.
+// libs/core/domain/channel-ids.ts
+export const ChannelIds = {
+  WHATSAPP: 'whatsapp',
+  INSTAGRAM: 'instagram',
+  MESSENGER: 'messenger',
+  WEB_WIDGET: 'web_widget',
+  EMAIL: 'email',
+} as const
+export type OfficialChannelId = (typeof ChannelIds)[keyof typeof ChannelIds]
+export type ChannelId = string // the id of any registered plugin
+export const CHANNEL_ID_PATTERN = /^[a-z][a-z0-9_-]{2,31}$/
+export const ChannelType = ChannelIds
+export type ChannelType = OfficialChannelId
 
 export enum ChannelConnectionStatus {
   ACTIVE = 'active',
@@ -886,7 +895,7 @@ what keeps cache invalidation, realtime and audit consistent.
 | `Order.status` / `paymentStatus` / `paymentMethod` | `OrderStatus` / `PaymentStatus` / `PaymentMethod` |
 | `Message.type` / `authorType` / `deliveryStatus` | `MessageType` / `AuthorType` / `DeliveryStatus` |
 | `Membership.status` / `Invitation.status` | `MembershipStatus` / `InvitationStatus` |
-| `CustomerIdentity.channelType` / `Conversation.channelType` / `ChannelConnection.pluginId` | `ChannelType` |
+| `CustomerIdentity.channelType` / `Conversation.channelType` / `ChannelConnection.pluginId` | `ChannelId` (the id of a registered plugin; the registry vouches for it, `ChannelIds` lists the official ones) |
 | `ChannelConnection.status` | `ChannelConnectionStatus` |
 | `InventoryMovement.type` | `InventoryMovementType` |
 | `Organization.accessLevel` | `AccessLevel` |

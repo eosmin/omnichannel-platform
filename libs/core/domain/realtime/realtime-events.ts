@@ -2,7 +2,7 @@ import type { ErrorCode } from '../errors'
 import type {
   AuthorType,
   BulkLabelJobStatus,
-  ChannelType,
+  ChannelId,
   ConversationStatus,
   OrderStatus,
   ShipmentStatus
@@ -59,7 +59,7 @@ export interface RealtimeEventMap {
   [RealtimeEvents.CONVERSATION_CREATED]: {
     conversationId: string
     customerId: string
-    channelType: ChannelType
+    channelType: ChannelId
   }
   [RealtimeEvents.CONVERSATION_UPDATED]: {
     conversationId: string

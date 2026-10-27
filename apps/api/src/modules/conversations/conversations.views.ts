@@ -1,7 +1,7 @@
 import { Permissions } from '@platform/core/auth'
 import type {
   AuthorType,
-  ChannelType,
+  ChannelId,
   ConversationStatus,
   CursorPage,
   MessageType
@@ -12,13 +12,13 @@ import {
   MessageType as MessageTypes
 } from '@platform/core/domain'
 
-import { channelOf, type Db, enumValueOf, statusOf, type Viewer } from './conversations.support'
+import { type Db, enumValueOf, statusOf, type Viewer } from './conversations.support'
 
 // TDD_09 section 2, without `handler` (no AI in the v1.2 MVP)
 export interface ConversationListItem {
   id: string
   status: ConversationStatus
-  channelType: ChannelType
+  channelType: ChannelId
   assignedTo: string | null
   unreadCount: number
   lastMessageAt: Date | null
@@ -49,7 +49,7 @@ export interface ConversationCounts {
   mine: number
   unassigned: number
   byStatus: Partial<Record<ConversationStatus, number>>
-  byChannel: Partial<Record<ChannelType, number>>
+  byChannel: Partial<Record<ChannelId, number>>
   byAgent: { userId: string; count: number }[]
 }
 
@@ -96,7 +96,7 @@ function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationLi
 
     status: statusOf(row.status),
 
-    channelType: channelOf(row.channelType),
+    channelType: row.channelType,
     assignedTo: row.assignedTo,
     unreadCount: row.unreadCount,
     lastMessageAt: row.lastMessageAt,

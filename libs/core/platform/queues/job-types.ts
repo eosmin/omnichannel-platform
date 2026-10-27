@@ -1,5 +1,5 @@
 import type { AnalyticsEventName } from '@platform/core/analytics'
-import type { ChannelType, DigestFrequency } from '@platform/core/domain'
+import type { ChannelId, DigestFrequency } from '@platform/core/domain'
 import type { EventName } from '@platform/core/events'
 import type { Locale } from '@platform/core/i18n'
 
@@ -126,7 +126,7 @@ export interface ProcessImageJob extends BaseJob {
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   storeId: string
-  pluginId: ChannelType
+  pluginId: ChannelId
   connectionId: string
   mediaRef: string
   contentType: string

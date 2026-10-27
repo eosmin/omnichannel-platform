@@ -4,7 +4,7 @@ import {
   type PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { ChannelType, ConversationHiddenStatuses, ConversationStatus } from '@platform/core/domain'
+import { ConversationHiddenStatuses, ConversationStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -119,9 +119,6 @@ export function enumValueOf<T extends string>(
 
 export const statusOf = (text: string): ConversationStatus =>
   enumValueOf(ConversationStatus, text, 'conversation status')
-
-export const channelOf = (text: string): ChannelType =>
-  enumValueOf(ChannelType, text, 'conversation channel')
 
 // Archived and spam: out of the inbox, read only by who may archive
 export function isHiddenStatus(text: string): boolean {

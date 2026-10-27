@@ -351,8 +351,8 @@ Two pull requests (owner, 2026-10-26): (1) domain events, (2) gateway, `Realtime
 Two pull requests (owner, 2026-10-27): (1) the SDK, the registries, the module and the contract suite; (2) the open channel ids and the binding of the messaging window (the checkpoints of PR 1 are checked below, the rest wait for PR 2). Build decisions: `MVP_TRIM_CHECKLIST.md` row "Plugin SDK build details (Step 2.5)".
 - [x] `libs/plugins/sdk` — `ChannelPlugin`, `ChannelEvent` (with `connectionId`), `ChannelContext`, types, `PluginError`, `createPluginLogger`, and (owner, 2026-10-27, `MVP_TRIM_CHECKLIST.md` §9) `CarrierPlugin` with its types and typed errors (the `httpClient` helper waits for Step 2.7, its first user)
 - [x] `libs/plugins/runtime` — `PluginRegistry` with contract validation, a `CarrierRegistry` beside it with the same fail-fast capability check, `PluginsModule.forRoot`, keyed by string ids (`TDD_10 §3`, §6.7.3: per process, `list(storeId)`; the Redis `plugins:changed` refresh and the 60 s re-read arrive with the remote plugins in Step 5.6) — PR 1
-- [ ] Bind `MESSAGING_WINDOW_POLICIES` (`apps/api/src/modules/messaging-window`) to `plugin.messagingWindow` and test it with a plugin of the suite (the policies of WhatsApp, Instagram and Messenger arrive with those plugins in Steps 2.7 and 2.8, each with its own)
-- [ ] Open channel ids (owner, 2026-10-26; `MVP_TRIM_CHECKLIST.md` "Open channel ids"): a channel is the id of a registered plugin, validated against the registry, and not a value of the closed enum `ChannelType`. `ChannelType` stays as an alias of the list of the official ids (`ChannelIds`, with `CHANNEL_ID_PATTERN`, `officialChannelSchema` and `registeredChannelSchema` of `TDD_10 §6.7.1`), and the code that takes a channel (the `channelType` columns, the filters of the list and of the routing conditions, `channelOf`, the labels and icons) takes a string that the registry vouches for; the texts to bring along are `TDD_01` (schema), `TDD_02` (constants), `TDD_03`, `TDD_07` (job types), `TDD_09` (filters), `TDD_11` (`AvailableChannels`, `ChannelGuard`), `TDD_13` and `TDD_14`. The label, the icon, the capabilities and the messaging window of a channel come from its plugin. `TDD_10 §3` and §10 are already written for string ids (`TDD_10 §6.7`)
+- [x] Bind `MESSAGING_WINDOW_POLICIES` (`apps/api/src/modules/messaging-window`) to `plugin.messagingWindow` and test it with a plugin of the suite (the policies of WhatsApp, Instagram and Messenger arrive with those plugins in Steps 2.7 and 2.8, each with its own)
+- [x] Open channel ids (owner, 2026-10-26; `MVP_TRIM_CHECKLIST.md` "Open channel ids"): a channel is the id of a registered plugin, validated against the registry, and not a value of the closed enum `ChannelType`. `ChannelType` stays as an alias of the list of the official ids (`ChannelIds`, with `CHANNEL_ID_PATTERN`, `officialChannelSchema` and `registeredChannelSchema` of `TDD_10 §6.7.1`), and the code that takes a channel (the `channelType` columns, the filters of the list and of the routing conditions, `channelOf`, the labels and icons) takes a string that the registry vouches for; the texts to bring along are `TDD_01` (schema), `TDD_02` (constants), `TDD_03`, `TDD_07` (job types), `TDD_09` (filters), `TDD_11` (`AvailableChannels`, `ChannelGuard`), `TDD_13` and `TDD_14`. The label, the icon, the capabilities and the messaging window of a channel come from its plugin. `TDD_10 §3` and §10 are already written for string ids (`TDD_10 §6.7`)
 - [x] `tests/contracts/channel-plugin.contract.ts` with per-plugin fixtures (PR 1; the carrier suite and the fake carrier are Step 4.8)
 - [x] CI: `integration-tests` also runs `pnpm test:contracts` (PR 1)
 
@@ -377,6 +377,7 @@ endpoint answers in under 300ms p99 while the worker does the work.
 ### Step 2.7 — WhatsApp plugin
 - [ ] `libs/channels/meta` shared client (signature, handshake, media download)
 - [ ] `libs/channels/whatsapp` — full implementation, templates, inbound media fetch
+- [ ] Add the plugin to `OFFICIAL_CHANNEL_PLUGINS` (`libs/plugins/runtime`) and run its contract suite with `{ official: true }` (`tests/contracts`)
 - [ ] 24-hour messaging window enforced by the core
 - [ ] Contract tests with captured fixtures
 
@@ -385,6 +386,7 @@ endpoint answers in under 300ms p99 while the worker does the work.
 an inbound image is stored, scanned and rendered.
 
 ### Step 2.8 — Instagram, Messenger, web widget, email
+- [ ] Add each plugin (`instagram`, `messenger`, `web_widget`, `email`) to `OFFICIAL_CHANNEL_PLUGINS`, each running its contract suite with `{ official: true }`
 - [ ] `MetaChannelPlugin` base class; Instagram and Messenger plugins with capability declarations
 - [ ] `libs/channels/web-widget` + `apps/widget` bundle + `/widget` public endpoints and socket namespace
 - [ ] `libs/channels/email` on Resend Receiving
@@ -1019,7 +1021,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.2 | Customers | done | #42 | 2026-10-26 |
 | 2.3 | Conversations and messages | done | #45 (1/4: settings), #46 (2/4: conversations), #47 (3/4: messages), #48 (4/4: window and routing) | 2026-10-26 |
 | 2.4 | Realtime | done | #49 (1/2: domain events), #50 (2/2: gateway and presence) | 2026-10-27 |
-| 2.5 | Plugin SDK and registry | in progress | #52 (1/2: sdk, registries and contracts) | 2026-10-27 |
+| 2.5 | Plugin SDK and registry | done | #52 (1/2: sdk, registries and contracts), #53 (2/2: open channel ids and the window) | 2026-10-27 |
 | 2.6 | Inbound pipeline | todo | | |
 | 2.7 | WhatsApp plugin | todo | | |
 | 2.8 | Instagram, Messenger, web widget, email | todo | | |

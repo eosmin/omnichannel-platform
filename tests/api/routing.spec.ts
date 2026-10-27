@@ -181,7 +181,8 @@ describe('The routing rules of a store', () => {
       ['no action', { action: undefined }],
       ['an unknown condition', { conditions: { intents: ['refund'] } }],
       ['an empty list of channels', { conditions: { channelTypes: [] } }],
-      ['a channel that does not exist', { conditions: { channelTypes: ['fax'] } }],
+      // A well-formed id nobody registered is a 400 of the registry (channel-registry.spec.ts)
+      ['a channel id that is not shaped like one', { conditions: { channelTypes: ['Fax!'] } }],
       ['a repeated channel', { conditions: { channelTypes: ['email', 'email'] } }],
       ['an empty list of keywords', { conditions: { keywords: [] } }],
       ['a blank keyword', { conditions: { keywords: [' '] } }],

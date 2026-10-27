@@ -3,7 +3,6 @@ export * from './conversations.service'
 export {
   canSee,
   canSeeConversation,
-  channelOf,
   type Db,
   enumValueOf,
   invalidInput,

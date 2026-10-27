@@ -8,7 +8,7 @@ import {
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { ChannelType, CustomerLimits, LOCALE_TAG_PATTERN } from '@platform/core/domain'
+import { type ChannelId, CustomerLimits, LOCALE_TAG_PATTERN } from '@platform/core/domain'
 import {
   resourceConflict,
   ErrorCodes,
@@ -44,7 +44,7 @@ export interface ChannelProfile {
 
 export interface FindOrCreateByIdentityInput {
   storeId: string
-  channelType: ChannelType
+  channelType: ChannelId
   channelIdentity: string
   profile?: ChannelProfile | undefined
 }
@@ -267,7 +267,7 @@ export class CustomersService {
 
   private async resolve(
     tx: PrismaTransaction,
-    key: { storeId: string; channelType: ChannelType; channelIdentity: string },
+    key: { storeId: string; channelType: ChannelId; channelIdentity: string },
     parsed: ParsedChannelIdentity,
     profile: ChannelProfile
   ): Promise<ResolvedIdentity> {

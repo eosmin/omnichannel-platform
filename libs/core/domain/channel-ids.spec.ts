@@ -1,20 +1,17 @@
 import {
   CHANNEL_ID_PATTERN,
+  channelIdSchema,
   ChannelIds,
+  ChannelType,
   isOfficialChannelId,
   officialChannelSchema
 } from './channel-ids'
-import { ChannelType } from './status-enums'
 
 describe('channel ids', () => {
   it('lists the five official channels', () => {
     expect(Object.values(ChannelIds).sort()).toEqual(
       ['email', 'instagram', 'messenger', 'web_widget', 'whatsapp'].sort()
     )
-  })
-
-  it('matches the values of the ChannelType enum that it replaces', () => {
-    expect(Object.values(ChannelIds).sort()).toEqual(Object.values(ChannelType).sort())
   })
 
   it('accepts every official id as a well-formed id', () => {
@@ -36,6 +33,15 @@ describe('channel ids', () => {
     expect(isOfficialChannelId('whatsapp')).toBe(true)
     expect(isOfficialChannelId('telegram')).toBe(false)
     expect(isOfficialChannelId(undefined)).toBe(false)
+  })
+
+  it('keeps ChannelType as the official ids', () => {
+    expect(ChannelType).toBe(ChannelIds)
+  })
+
+  it('channelIdSchema checks only the shape of an id', () => {
+    expect(channelIdSchema.safeParse('telegram').success).toBe(true)
+    expect(channelIdSchema.safeParse('Telegram!').success).toBe(false)
   })
 
   it('officialChannelSchema takes the official ids only', () => {

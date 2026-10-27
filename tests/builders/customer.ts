@@ -35,7 +35,7 @@ export const customerOfIdentity = new Map<string, string>()
 
 export async function createCustomerIdentity(
   owner: OwnerClient,
-  input: { storeId: string; customerId?: string; channelType?: ChannelType; handle?: string }
+  input: { storeId: string; customerId?: string; channelType?: string; handle?: string }
 ): Promise<{ id: string; customerId: string }> {
   const customerId = input.customerId ?? (await createCustomer(owner, input)).id
   const identity = await owner.customerIdentity.create({

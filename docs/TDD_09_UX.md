@@ -82,7 +82,7 @@ export interface ConversationListItem {
   id: string
   status: ConversationStatus
   handler: ConversationHandler
-  channelType: ChannelType
+  channelType: ChannelId
   assignedTo: string | null
   unreadCount: number
   lastMessageAt: string | null

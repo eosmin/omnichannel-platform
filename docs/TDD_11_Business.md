@@ -56,7 +56,7 @@ export const SupportTiers = {
 export type SupportTier = typeof SupportTiers[keyof typeof SupportTiers]
 
 // Which official channel plugins a tier unlocks. Enforced by ChannelGuard (§6.5) at
-// connect time. Channel ids ARE ChannelType values — one identifier set (TDD_02 §5).
+// connect time. Channel ids ARE plugin ids (ChannelId, TDD_02 §5); `ChannelType`/`ChannelIds` list the official ones. Phase 2: v1.2 made the channel an open id, so `Object.values(ChannelType)` below means the official ids and a plan must say how it treats a plugin the owner adds.
 // Third-party marketplace channels are separate: gated by maxChannels count and, if
 // plan_gated, by their own manifest.pricing.allowedTiers.
 export const AvailableChannels: Record<PlanTier, {

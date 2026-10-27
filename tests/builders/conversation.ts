@@ -14,7 +14,7 @@ export interface ConversationInput {
   storeId: string
   customerId: string
   customerIdentityId: string
-  channelType: ChannelType
+  channelType: string
   status?: ConversationStatus
   assignedTo?: string | null
   lastMessageAt?: Date | null
@@ -26,7 +26,7 @@ export interface ConversationInput {
 // A connection of a channel in a store, as the owner bootstrap of a real one would leave it
 export async function createChannelConnection(
   owner: OwnerClient,
-  input: { storeId: string; channelType: ChannelType }
+  input: { storeId: string; channelType: string }
 ): Promise<{ id: string }> {
   return owner.channelConnection.create({
     data: {
@@ -73,7 +73,7 @@ export async function createConversation(
 export async function createConversationOf(
   owner: OwnerClient,
   input: Omit<ConversationInput, 'customerId' | 'customerIdentityId' | 'channelType'> & {
-    channelType?: ChannelType
+    channelType?: string
   }
 ): Promise<{ id: string; customerId: string; customerIdentityId: string }> {
   const channelType = input.channelType ?? ChannelType.INSTAGRAM
