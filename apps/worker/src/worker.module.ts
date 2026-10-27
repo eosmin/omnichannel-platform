@@ -8,8 +8,10 @@ import { PluginsModule } from '@platform/plugins/runtime'
 
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
-import { OutboundModule } from './outbound/outbound.module'
+import { MessageStatusWriter } from './outbound/message-status.writer'
+import { OutboundSender } from './outbound/outbound-sender.service'
 import { EmailProcessor } from './processors/email.processor'
+import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
@@ -25,13 +27,15 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     PluginsModule.forRoot(),
     ScheduleModule.forRoot(),
     WorkerReadinessModule,
-    InboundModule,
-    OutboundModule
+    InboundModule
   ],
   providers: [
     ProcessorSupport,
     LeaderLockService,
     OutboundQueue,
+    MessageStatusWriter,
+    OutboundSender,
+    OutboundProcessor,
     EmailProcessor,
     ChannelHealthScheduler,
     OutboundRequeueScheduler
