@@ -12,6 +12,7 @@
     "test": "nx run-many --target=test --all",
     "test:watch": "nx run-many --target=test --all -- --watch",
     "test:cov": "nx run-many --target=test --all -- --coverage",
+    "test:contracts": "nx run tests:test-contracts --skip-nx-cache",
     "test:security": "nx run tests:test-security --skip-nx-cache",
     "test:affected": "nx affected --target=test --base=origin/main",
     "lint": "nx run-many --target=lint --all",
@@ -31,7 +32,7 @@
     "validate:deprecations": "tsx scripts/validate-deprecations.ts",
     "validate:rollbacks": "tsx scripts/check-rollbacks.ts",
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm test",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm test && pnpm test:contracts",
     "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {

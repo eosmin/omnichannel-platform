@@ -1,0 +1,12 @@
+{
+  "name": "plugins-runtime",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/plugins/runtime/src",
+  "projectType": "library",
+  "tags": ["scope:plugins", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

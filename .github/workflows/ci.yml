@@ -142,6 +142,9 @@ jobs:
       # The api suite holds the coverage gates of the auth (95%) and tenancy (100%) folders (apps/api/jest.integration.config.cts), core-redis and core-audit their own
       - name: Integration suites
         run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,core-audit,worker,api
+      # Pure code: every channel plugin passes the same suite (TDD_10 §9)
+      - name: Plugin contract suites
+        run: pnpm test:contracts
       - name: The api and the worker start and answer
         run: |
           pnpm exec nx run-many --target=build --projects=api,worker

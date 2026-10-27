@@ -75,7 +75,7 @@ export interface ChannelPlugin {
   readonly name: string                    // 'WhatsApp Business'
   readonly version: string                 // '1.0.0'
   readonly author: string
-  readonly type: 'channel'
+  readonly type: 'channel'                 // v1.2: the SDK also has type 'carrier' (CarrierPlugin, TDD_17 §4.1), held by its own CarrierRegistry
   readonly capabilities: readonly ChannelCapabilityType[]
 
   // Declared messaging-window policy, applied by the CORE (§4) — the plugin has no database
@@ -277,6 +277,8 @@ export class PluginsModule implements OnModuleInit {
   }
 }
 ```
+
+`PluginsModule.forRoot({ channels, carriers })` registers the classes it is given (default: the official lists, `OFFICIAL_CHANNEL_PLUGINS` and `OFFICIAL_CARRIER_PLUGINS`); `list` takes the store (`list(storeId)`) and a carrier registry sits beside this one (`MVP_TRIM_CHECKLIST.md`, "Plugin SDK build details").
 
 Both `apps/api` and `apps/worker` import `PluginsModule` (the worker sends outbound
 messages and fetches media).

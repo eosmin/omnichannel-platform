@@ -35,12 +35,25 @@ export const REDACTED_PATHS: readonly string[] = [
   'req.body.credentials',
   'req.body.credentials.*',
   'res.headers["set-cookie"]',
+  // The decrypted credentials of a connection have the keys of each provider, so the object goes
+  // whole: logged alone, inside a context, or inside a result
+  'credentials',
+  '*.credentials',
+  '*.*.credentials',
+  '*.*.*.credentials',
   '*.apiKey',
   '*.secret',
   '*.accessToken',
   '*.refreshToken',
   '*.password',
-  '*.authorization'
+  '*.authorization',
+  // The header of an error raised by an HTTP client carries the key of the call, a few levels down
+  '*.headers.Authorization',
+  '*.headers.authorization',
+  '*.*.headers.Authorization',
+  '*.*.headers.authorization',
+  '*.*.*.headers.Authorization',
+  '*.*.*.headers.authorization'
 ]
 
 // The token of an invitation is the credential of whoever holds the link, and it travels in the path

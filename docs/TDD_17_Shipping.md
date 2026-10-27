@@ -690,9 +690,9 @@ export interface CarrierPlugin {
 - **`CarrierEvent`** is `{ providerEventId?, status: ShipmentStatus | null, rawStatus, rawReason?, description?, occurredAt, guideNumber | providerShipmentId }`.
   The plugin maps its own status codes to `ShipmentStatus` with its `statusCatalog()`; a status it cannot map comes back
   with `status: null`. The core then applies the connection's own mapping on top of it (§4.17): the owner's mapping wins over the plugin's, and only a code that neither knows is stored without effect (§4.9).
-- **Carriers have their own registry.** `PluginRegistry` of `TDD_10 §3` is typed to `ChannelPlugin` and `ChannelType`, so a
+- **Carriers have their own registry.** `PluginRegistry` of `TDD_10 §3` is typed to `ChannelPlugin`, so a
   sibling `CarrierRegistry` (same module, same fail-fast `validateContract` idea, keyed by `CarrierId`) holds the carrier
-  plugins and `PluginsModule` registers both.
+  plugins and `PluginsModule` registers both. Both registries and the `CarrierPlugin` types are built in Step 2.5 (`MVP_TRIM_CHECKLIST.md` §9 and "Plugin SDK build details"); Step 4.8 refines the params and results.
 - **A plugin that declares a capability must implement the matching method**, and the registry
   fails fast at boot otherwise (`TDD_10 §3`). The same rule keeps the UI honest: a button exists
   only when the connection's plugin has the capability behind it (§7).

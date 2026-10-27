@@ -1,4 +1,5 @@
 export * from './business-hours'
+export * from './channel-ids'
 export * from './conversation-constants'
 export * from './customer-constants'
 export * from './inventory-constants'

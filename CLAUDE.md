@@ -82,8 +82,8 @@ same checks and the merge waits for it.
 - `commit-msg`: `commitlint`. Conventional Commits, a lowercase subject of at most 72 characters,
   for example `feat(http): name the failed checks of a probe`. The title of a pull request follows
   the same rules, because it becomes the squash commit on `main`.
-- `pre-push`: `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`
-  and the validators). It does not build, and it leaves to CI the suites that need a database and a
+- `pre-push`: `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`,
+  the validators and `pnpm test:contracts`). It does not build, and it leaves to CI the suites that need a database and a
   ref that is not the checked-out commit. A push that only changes `docs/` is not checked.
 - `pnpm validate:all` is the same on the whole repository.
 

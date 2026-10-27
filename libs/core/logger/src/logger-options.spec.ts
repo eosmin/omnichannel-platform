@@ -54,6 +54,31 @@ describe('buildPinoHttpOptions', () => {
 })
 
 describe('redaction', () => {
+  it('removes the decrypted credentials of a connection, whatever their keys', () => {
+    const output = logged({
+      credentials: { token: 'secret-1' },
+      ctx: { credentials: { token: 'secret-2', clientSecretX: 'secret-3' }, connectionId: 'kept' },
+      result: { credentials: { session: 'secret-4' } }
+    })
+    for (const secret of ['secret-1', 'secret-2', 'secret-3', 'secret-4']) {
+      expect(output).not.toContain(secret)
+    }
+    expect(output).toContain('kept')
+  })
+
+  it('removes credentials and authorization headers that sit deeper, as in a provider error', () => {
+    const output = logged({
+      connection: { ctx: { credentials: { token: 'deep-1' } } },
+      err: {
+        config: { headers: { Authorization: 'Bearer deep-2', authorization: 'Bearer deep-3' } }
+      },
+      error: { response: { config: { headers: { Authorization: 'Bearer deep-4' } } } }
+    })
+    for (const secret of ['deep-1', 'deep-2', 'deep-3', 'deep-4']) {
+      expect(output).not.toContain(secret)
+    }
+  })
+
   function logged(payload: object): string {
     let output = ''
     const stream = new Writable({

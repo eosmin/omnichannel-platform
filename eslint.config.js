@@ -144,6 +144,7 @@ export default defineConfig([
                 'scope:core',
                 'scope:core-domain',
                 'scope:plugins',
+                'scope:plugins-sdk',
                 'scope:channels'
               ]
             },
@@ -153,6 +154,7 @@ export default defineConfig([
                 'scope:core',
                 'scope:core-domain',
                 'scope:plugins',
+                'scope:plugins-sdk',
                 'scope:channels'
               ]
             },
@@ -170,10 +172,15 @@ export default defineConfig([
             },
             {
               sourceTag: 'scope:channels',
-              onlyDependOnLibsWithTags: ['scope:plugins', 'scope:core', 'scope:core-domain']
+              onlyDependOnLibsWithTags: ['scope:plugins-sdk', 'scope:core', 'scope:core-domain']
             },
             {
               sourceTag: 'scope:plugins',
+              onlyDependOnLibsWithTags: ['scope:plugins-sdk', 'scope:core-domain']
+            },
+            // The SDK is what a third-party plugin compiles against: it never reaches the runtime
+            {
+              sourceTag: 'scope:plugins-sdk',
               onlyDependOnLibsWithTags: ['scope:core-domain']
             },
             {
