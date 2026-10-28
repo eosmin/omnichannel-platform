@@ -21,6 +21,7 @@ import { ChannelWebhookController } from './channel-webhook.controller'
     TenancyModule
   ],
   controllers: [ChannelWebhookController, ChannelConnectionsController],
-  providers: [ChannelConnectionsService]
+  providers: [ChannelConnectionsService],
+  exports: [ChannelConnectionsService]
 })
 export class ChannelsModule {}

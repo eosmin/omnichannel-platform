@@ -13,7 +13,8 @@ import {
   ChannelHealthErrors,
   ChannelHealthLimits,
   DeliveryStatus,
-  OutboundLimits
+  OutboundLimits,
+  OfActiveInstallation
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { ChannelConnectionResolver } from '@platform/core/messaging'
@@ -121,7 +122,8 @@ export class ChannelReceipts {
       where: {
         id: resolved.id,
         storeId: resolved.storeId,
-        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] }
+        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+        ...OfActiveInstallation
       },
       select: CONNECTION_ROW_SELECT
     })

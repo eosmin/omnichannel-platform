@@ -26,6 +26,7 @@ import {
   createMessageOf,
   createRole,
   createRoutingRule,
+  ensurePluginInstallation,
   createSnippet,
   createTag,
   resetStoreSettings,
@@ -120,6 +121,16 @@ const resources: IsolationResource[] = [
     modify: { path: ApiRoutes.channels.disconnect, method: 'post', body: {} },
     untouched: async (owner, id) =>
       (await owner.channelConnection.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === 'active'
+  },
+  // Uninstalling is the one change a user can make; the installation is reached by its id
+  {
+    name: 'pluginInstallation',
+    create: (owner, input) =>
+      ensurePluginInstallation(owner, { storeId: input.storeId, pluginId: 'test_channel' }),
+    modify: { path: ApiRoutes.plugins.revoke, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.pluginInstallation.findUnique({ where: { id }, select: { status: true } }))
         ?.status === 'active'
   },
   {

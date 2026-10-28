@@ -9,6 +9,7 @@ import {
 } from '@platform/core/domain'
 
 import { createCustomerIdentity } from './customer'
+import { ensurePluginInstallation } from './plugin'
 
 export interface ConversationInput {
   storeId: string
@@ -28,10 +29,15 @@ export async function createChannelConnection(
   owner: OwnerClient,
   input: { storeId: string; channelType: string }
 ): Promise<{ id: string }> {
+  const installation = await ensurePluginInstallation(owner, {
+    storeId: input.storeId,
+    pluginId: input.channelType
+  })
   return owner.channelConnection.create({
     data: {
       storeId: input.storeId,
       pluginId: input.channelType,
+      installationId: installation.id,
       connectionId: `conn-${randomUUID()}`,
       displayName: 'test connection',
       credentials: Buffer.from('not a secret')

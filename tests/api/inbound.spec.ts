@@ -35,6 +35,7 @@ import {
   createConversation,
   createCustomerIdentity,
   createRoutingRule,
+  ensurePluginInstallation,
   signTestChannelBody,
   TEST_CHANNEL_ID
 } from '../builders'
@@ -93,10 +94,15 @@ describe('Messages that a channel delivers', () => {
 
   const connectionOf = async (storeId: string, status = 'active'): Promise<string> => {
     const connectionId = `${prefix}-conn-${(handle += 1)}`
+    const installation = await ensurePluginInstallation(owner, {
+      storeId,
+      pluginId: TEST_CHANNEL_ID
+    })
     await owner.channelConnection.create({
       data: {
         storeId,
         pluginId: TEST_CHANNEL_ID,
+        installationId: installation.id,
         connectionId,
         displayName: 'test connection',
         status,

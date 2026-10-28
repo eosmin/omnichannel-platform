@@ -123,6 +123,13 @@ export class PluginRegistry {
       .map(entry => entry.plugin)
   }
 
+  // The plugins that ship with the platform: what the catalogue writes at boot
+  listOfficial(): ChannelPlugin[] {
+    return [...this.entries.values()]
+      .filter(entry => isOfficialChannelId(entry.plugin.id))
+      .map(entry => entry.plugin)
+  }
+
   hasCapability(pluginId: string, capability: ChannelPlugin['capabilities'][number]): boolean {
     return this.entries.get(pluginId)?.capabilities.has(capability) ?? false
   }

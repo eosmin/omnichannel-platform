@@ -1,6 +1,7 @@
 export * from './channel-plugin'
 export * from './conversation'
 export * from './customer'
+export * from './plugin'
 export * from './routing-rule'
 export * from './snippet'
 export * from './store-settings'

@@ -709,30 +709,35 @@ model Media {
 // platform-wide — a phone number belongs to exactly one store — which is how the inbound
 // pipeline resolves the store (TDD_10 §4).
 model ChannelConnection {
-  id            String    @id @default(uuid())
-  storeId       String    @map("store_id")
-  pluginId      String    @map("plugin_id") // ChannelType / plugin id
-  connectionId  String    @map("connection_id")
-  displayName   String    @map("display_name") // "+503 2222-3333", "Mi Empresa (Page)"
-  status        String    @default("active") // ChannelConnectionStatus
-  credentials   Bytes // AES-256-GCM ciphertext (libs/core/crypto)
-  metadata      Json?
-  lastHealthyAt DateTime? @map("last_healthy_at")
-  lastError     String?   @map("last_error")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  storeId        String    @map("store_id")
+  pluginId       String    @map("plugin_id") // ChannelType / plugin id
+  connectionId   String    @map("connection_id")
+  displayName    String    @map("display_name") // "+503 2222-3333", "Mi Empresa (Page)"
+  status         String    @default("active") // ChannelConnectionStatus
+  credentials    Bytes // AES-256-GCM ciphertext (libs/core/crypto)
+  metadata       Json?
+  lastHealthyAt  DateTime? @map("last_healthy_at")
+  lastError      String?   @map("last_error")
+  // The installation of the plugin in this store (D19): a connection is the configuration of an
+  // installed plugin, and uninstalling it disconnects every one that hangs from it
+  installationId String    @map("installation_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store         Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  installation  PluginInstallation @relation(fields: [installationId], references: [id], onDelete: Restrict)
   conversations Conversation[]
 
   @@unique([pluginId, connectionId])
   @@index([storeId, status])
+  @@index([installationId])
   @@map("channel_connections")
 }
 
-// The marketplace catalog entry — one row per published plugin, independent of how many
-// stores installed it. Official channel plugins live in the code registry, not here; a row
-// exists only for a plugin the owner registers (isOfficial false, pricingModel 'free', status 'approved').
+// The catalog entry — one row per plugin, independent of how many stores installed it. The official
+// plugins are written here from the code registry at boot (isOfficial true); the owner registers
+// the private ones (isOfficial false, pricingModel 'free', status 'approved'). D19.
 model Plugin {
   // The manifest's own declared id (TDD_10 §6.1, e.g. "telegram-connector", or "whatsapp"
   // for an official channel) — not a generated uuid, so it matches PluginInstallation.pluginId
@@ -764,8 +769,10 @@ model PluginInstallation {
   pluginId           String    @map("plugin_id")
   scopes             String[] // PluginScope[]
   status             String    @default("pending_setup") // PluginInstallationStatus
-  apiKeyPrefix       String    @map("api_key_prefix") // First 12 chars, shown in UI
-  apiKeyHash         String    @unique @map("api_key_hash") // sha256 of the full key
+  // The scoped key of a plugin that calls the platform: null for an official channel, which runs
+  // inside it and has none
+  apiKeyPrefix       String?   @map("api_key_prefix") // First 12 chars, shown in UI
+  apiKeyHash         String?   @unique @map("api_key_hash") // sha256 of the full key
   rateLimitPerMinute Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
   config             Json?
   installedBy        String    @map("installed_by")
@@ -773,8 +780,9 @@ model PluginInstallation {
   updatedAt          DateTime  @updatedAt @map("updated_at")
   revokedAt          DateTime? @map("revoked_at")
 
-  store  Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  plugin Plugin @relation(fields: [pluginId], references: [id], onDelete: Restrict)
+  store              Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  plugin             Plugin              @relation(fields: [pluginId], references: [id], onDelete: Restrict)
+  channelConnections ChannelConnection[]
 
   @@unique([storeId, pluginId])
   @@index([storeId, status])

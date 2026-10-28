@@ -387,6 +387,18 @@ endpoint answers in under 300ms p99 while the worker does the work.
 an inbound image reaches the worker as a media reference that `fetchMedia` downloads. "Stored,
 scanned and rendered" moves to Step 3.4 (no storage or ClamAV exists before it).
 
+### Step 2.7b — Plugin catalog and installations
+Owner's decision D19 (`MVP_TRIM_CHECKLIST.md`, 2026-10-28), before Instagram and Messenger so that every channel is built on it.
+- [x] `Plugin` rows for the official plugins, written from `OFFICIAL_CHANNEL_PLUGINS` (and the carriers when they exist) at boot, idempotent, marked official, not removable; migration with its rollback script
+- [x] Install and uninstall per store (`PluginInstallation`); a channel connection hangs from its installation, and `POST /channels/:pluginId/connect` needs one
+- [x] Uninstall a channel: disconnect, revoke what the installation holds, delete the credentials at once, keep conversations, messages and customers
+- [x] Catalog endpoint: official and private plugins with their state for the store
+- [x] A case in `tests/security/tenant-isolation.spec.ts` for the installation of one store against another
+- [x] (model only here) The carriers of `TDD_17` follow it as **one plugin, `shipping`**: Steps 4.8 and 4.15 build the carriers (Forza, C807, `local`) as adapters inside it, with their connections over its installation, and the uninstall that warns when shipments are in transit or pickups are pending (D19 point 5)
+
+**TDD:** `TDD_10 §6.7`, `§7`; `MVP_TRIM_CHECKLIST.md` D19 (the TDD says "no `Plugin` rows" for the official ones; D19 wins)
+**Done when:** a store installs WhatsApp from the catalog, connects it, receives and sends, uninstalls it and the credentials are gone while the conversations remain; another store never sees the installation; a private plugin and an official one appear in the same catalog.
+
 ### Step 2.8 — Instagram, Messenger, web widget, email
 - [ ] Add each plugin (`instagram`, `messenger`, `web_widget`, `email`) to `OFFICIAL_CHANNEL_PLUGINS`, each running its contract suite with `{ official: true }`
 - [ ] `MetaChannelPlugin` base class; Instagram and Messenger plugins with capability declarations
@@ -558,6 +570,7 @@ receive a transfer, run and apply a count.
 - [ ] The `TDD_17 §2` models and raw SQL as an additive migration (`CarrierConnection`, `CarrierService`, `GuideSequence`, `Shipment`, `ShipmentEvent`, `PickupRequest`, `BulkLabelJob`, `OrderMessageTemplate`, `OrderReturn`, `OrderReturnLine`), with the `Shipment` COD columns and the `CarrierConnection` fee columns that `TDD_17 §2` lists; the reception tables arrive with Step 4.12 and the remittance tables with Step 4.13, each as an additive migration; every new table joins the isolation suite and `check-isolation-coverage` in the step that creates it
 - [ ] `libs/core/shipping` `ShippingService`: `createShipments` for the three creation modes (standalone: one call per guide; internal: the core makes the guide, for `local`; pickup-bound, where guides exist only inside a pickup: one call per batch that carries the pickup and returns every guide, with partial success and an unknown outcome sending the whole batch to review) and its single-guide form (validate, write first with a deterministic idempotency key, call, store the label as `Media` `SHIPPING_LABEL`, advisory lock per order, unknown outcome to `REQUIRES_REVIEW`), the forward-only shipment state machine and `ShipmentEvent` history, manual events, "check with the carrier"
 - [ ] The foreign key `Order.carrierConnectionId` and the enforcement of the carrier fee rules of `TDD_17 §4.13` (fee range, a fee needs a carrier, the check at guide time)
+- [ ] Carriers are adapters of the `shipping` plugin of Step 2.7b (D19): the connection hangs from its installation, the catalog shows one entry, and uninstalling it warns about open shipments and pickups
 - [ ] Connections: connect, test, edit and disconnect with encrypted credentials and webhook secret, the default shipping fee and its minimum and maximum per connection (also for `local`), `CarrierService` rows seeded from the plugin catalog, `GET /carriers/registry`, Settings → Carriers API (`SETTINGS_MANAGE_CARRIERS`)
 - [ ] `libs/carriers/local`: guide numbering (`GuideSequence`) and the label template (barcode, recipient, COD amount or "PAID"), rendered at the connection's label format
 - [ ] Status mapping (`TDD_17 §4.17`): the `CarrierStatusMapping` and `CarrierUnmappedStatus` models in the same migration, `statusCatalog()` in the `CarrierPlugin` contract (and an empty one for `local`), mappings seeded when a connection is created, the resolution in `PROCESS_CARRIER_EVENT` (the connection's mapping wins over the plugin's, normalized codes, ignore on purpose, the unmapped record and its single notification), the `REPROCESS_CARRIER_EVENTS` job (in order, same engine, no customer message on replay), and the status-mapping routes with their audit; repeated delivery attempts (`FAILED_ATTEMPT` to itself, `Shipment.failedAttempts`, `CarrierConnection.maxDeliveryAttempts`, the `attemptNumber` and `maxAttempts` template variables and the `orders.failedAttemptMessages` preference with its Zod rule that refuses `autoSend` for `ORDER_FAILED_ATTEMPT`)
@@ -1031,6 +1044,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.5 | Plugin SDK and registry | done | #52 (1/2: sdk, registries and contracts), #53 (2/2: open channel ids and the window) | 2026-10-27 |
 | 2.6 | Inbound pipeline | done | #54 (1/5: services to `libs/core/messaging`), #55 (2/5: system lines, `reopenWindowDays`), #56 (3/5: webhook and inbound processor), #57 (4/5: connections, encryption, health), #58 (5/5: outbound), #59 and #60 (code review fixes) | 2026-10-27 |
 | 2.7 | WhatsApp plugin | done | #61 (1/2: Meta client), #62 (2/2: WhatsApp plugin, real test with the Meta number) | 2026-10-28 |
+| 2.7b | Plugin catalog and installations | done | #63 | 2026-10-28 |
 | 2.8 | Instagram, Messenger, web widget, email | todo | | |
 | **Milestone 3: Inbox interface** | | | | |
 | 3.1 | Frontend foundation | todo | | |

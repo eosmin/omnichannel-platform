@@ -233,6 +233,18 @@ describe('PluginRegistry', () => {
     })
   })
 
+  describe('listOfficial', () => {
+    it('holds the plugins that ship with the platform and not the private or remote ones', () => {
+      const registry = build()
+      const whatsapp = channel({ id: 'whatsapp', name: 'WhatsApp' })
+      registry.register(whatsapp, { official: true })
+      registry.register(channel({ id: 'telegram' }))
+      registry.register(channel({ id: 'viber' }), { storeIds: ['store-a'] })
+
+      expect(registry.listOfficial()).toEqual([whatsapp])
+    })
+  })
+
   describe('unregister', () => {
     it('removes a plugin that is not official', () => {
       const registry = build()
