@@ -387,6 +387,18 @@ endpoint answers in under 300ms p99 while the worker does the work.
 an inbound image reaches the worker as a media reference that `fetchMedia` downloads. "Stored,
 scanned and rendered" moves to Step 3.4 (no storage or ClamAV exists before it).
 
+### Step 2.7b — Plugin catalog and installations
+Owner's decision D19 (`MVP_TRIM_CHECKLIST.md`, 2026-10-28), before Instagram and Messenger so that every channel is built on it.
+- [ ] `Plugin` rows for the official plugins, written from `OFFICIAL_CHANNEL_PLUGINS` (and the carriers when they exist) at boot, idempotent, marked official, not removable; migration with its rollback script
+- [ ] Install and uninstall per store (`PluginInstallation`); a channel connection hangs from its installation, and `POST /channels/:pluginId/connect` needs one
+- [ ] Uninstall a channel: disconnect, revoke what the installation holds, delete the credentials at once, keep conversations, messages and customers
+- [ ] Catalog endpoint: official and private plugins with their state for the store
+- [ ] A case in `tests/security/tenant-isolation.spec.ts` for the installation of one store against another
+- [ ] The carrier model of `TDD_17` follows it (Steps 4.8 and 4.15 build carrier connections over an installation)
+
+**TDD:** `TDD_10 §6.7`, `§7`; `MVP_TRIM_CHECKLIST.md` D19 (the TDD says "no `Plugin` rows" for the official ones; D19 wins)
+**Done when:** a store installs WhatsApp from the catalog, connects it, receives and sends, uninstalls it and the credentials are gone while the conversations remain; another store never sees the installation; a private plugin and an official one appear in the same catalog.
+
 ### Step 2.8 — Instagram, Messenger, web widget, email
 - [ ] Add each plugin (`instagram`, `messenger`, `web_widget`, `email`) to `OFFICIAL_CHANNEL_PLUGINS`, each running its contract suite with `{ official: true }`
 - [ ] `MetaChannelPlugin` base class; Instagram and Messenger plugins with capability declarations
@@ -1031,6 +1043,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.5 | Plugin SDK and registry | done | #52 (1/2: sdk, registries and contracts), #53 (2/2: open channel ids and the window) | 2026-10-27 |
 | 2.6 | Inbound pipeline | done | #54 (1/5: services to `libs/core/messaging`), #55 (2/5: system lines, `reopenWindowDays`), #56 (3/5: webhook and inbound processor), #57 (4/5: connections, encryption, health), #58 (5/5: outbound), #59 and #60 (code review fixes) | 2026-10-27 |
 | 2.7 | WhatsApp plugin | done | #61 (1/2: Meta client), #62 (2/2: WhatsApp plugin, real test with the Meta number) | 2026-10-28 |
+| 2.7b | Plugin catalog and installations | todo | | |
 | 2.8 | Instagram, Messenger, web widget, email | todo | | |
 | **Milestone 3: Inbox interface** | | | | |
 | 3.1 | Frontend foundation | todo | | |
