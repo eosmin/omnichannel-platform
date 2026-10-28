@@ -213,6 +213,7 @@ function isMetaMediaUrl(url: URL): boolean {
     url.username === '' &&
     url.password === '' &&
     (MetaGraph.MEDIA_TOKEN_HOSTS.some(host => host === url.hostname) ||
+      MetaGraph.MEDIA_CDN_HOSTS.some(host => host === url.hostname) ||
       MetaGraph.MEDIA_CDN_SUFFIXES.some(suffix => url.hostname.endsWith(suffix)))
   )
 }

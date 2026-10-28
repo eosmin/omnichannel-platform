@@ -105,6 +105,44 @@ describe('messagingToEvents', () => {
     })
   })
 
+  it('keeps the link of a shared reel beside its caption', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          text: 'mira este',
+          attachments: [
+            { type: 'ig_reel', payload: { url: 'https://www.instagram.com/reel/abc/' } }
+          ]
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({
+      content: 'mira este',
+      metadata: { attachmentType: 'ig_reel', attachmentUrl: 'https://www.instagram.com/reel/abc/' }
+    })
+  })
+
+  it('finds a shared link after a file that has none', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          attachments: [
+            { type: 'image' },
+            { type: 'ig_post', payload: { url: 'https://www.instagram.com/p/abc/' } }
+          ]
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({
+      content: '[ig_post]',
+      metadata: { attachmentUrl: 'https://www.instagram.com/p/abc/' }
+    })
+  })
+
   it('keeps a message with nothing readable as an unsupported marker', () => {
     const [event] = messagingToEvents(wrap(inbound({ mid: 'm1', is_unsupported: true })), OBJECT)
     expect(event?.message).toMatchObject({ content: '[unsupported]' })
@@ -257,6 +295,14 @@ describe('messagingToEvents', () => {
     it('takes the ad that comes beside the message', () => {
       const [event] = messagingToEvents(
         wrap(inbound({ mid: 'm1', text: 'hola' }, { referral })),
+        OBJECT
+      )
+      expect(event?.message?.origin?.kind).toBe(OriginKinds.AD)
+    })
+
+    it('reads the ad inside the message when the one beside it is empty', () => {
+      const [event] = messagingToEvents(
+        wrap(inbound({ mid: 'm1', text: 'hola', referral }, { referral: {} })),
         OBJECT
       )
       expect(event?.message?.origin?.kind).toBe(OriginKinds.AD)

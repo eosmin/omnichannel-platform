@@ -259,6 +259,16 @@ describe('MetaGraphClient', () => {
       ).resolves.toBeDefined()
     })
 
+    it('accepts the Messenger file host and no other host of fbsbx', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('x'))
+      await expect(
+        client.downloadMediaUrl('https://cdn.fbsbx.com/v/t59.3654-21/clip.mp4')
+      ).resolves.toBeDefined()
+      await expect(
+        client.downloadMediaUrl('https://apps.fbsbx.com/instagram_graph_api/x')
+      ).rejects.toBeInstanceOf(PluginError)
+    })
+
     it('uses plain bytes when the server declares no usable type', async () => {
       fetchMock.mockResolvedValueOnce(new Response('x', { headers: { 'content-type': 'nope' } }))
       expect((await client.downloadMediaUrl(CDN)).contentType).toBe(MetaGraph.FALLBACK_CONTENT_TYPE)

@@ -72,7 +72,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   constructor(protected readonly meta: MetaGraphClient) {}
 
   // Who the token belongs to, read from Meta with that token
-  protected abstract readAccount(token: string): Promise<MetaAccount>
+  protected abstract fetchAccount(token: string): Promise<MetaAccount>
 
   // Fields of every send that only one of the two APIs wants
   protected sendFields(): Record<string, unknown> {
@@ -82,6 +82,15 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // Where a reply to a message goes in the Send API
   protected replyFields(replyToExternalId: string | undefined): Record<string, unknown> {
     return replyToExternalId === undefined ? {} : { reply_to: { mid: replyToExternalId } }
+  }
+
+  // The id goes into the path of every call after this one: digits only, whoever the subclass is
+  private async readAccount(token: string): Promise<MetaAccount> {
+    const account = await this.fetchAccount(token)
+    if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(account.id)) {
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+    }
+    return account
   }
 
   async connect(input: ConnectInput): Promise<ConnectResult> {

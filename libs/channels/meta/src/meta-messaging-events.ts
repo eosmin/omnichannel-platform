@@ -95,13 +95,16 @@ function mediaOf(attachments: unknown[]): {
 // The attachment that is not a file (a shared post, a reel, a story mention): its type and, when
 // there is one, its link, so the team can open what the customer shared
 function sharedOf(attachments: unknown[]): { type: string; url?: string } | null {
+  let first: { type: string; url?: string } | null = null
   for (const item of attachments) {
     const attachment = metaAttachmentSchema.safeParse(item)
-    if (attachment.success) {
-      return { type: attachment.data.type, url: attachment.data.payload?.url }
-    }
+    if (!attachment.success) continue
+    const shared = { type: attachment.data.type, url: attachment.data.payload?.url }
+    // One with a link is the one the team can open; a file with none comes second
+    if (shared.url) return shared
+    first ??= shared
   }
-  return null
+  return first
 }
 
 // What a message says, in the shape the core stores. A message with neither text nor a file we can
@@ -122,9 +125,18 @@ function toReceivedMessage(
   const attachments = message.attachments ?? []
   const files = message.is_unsupported ? null : mediaOf(attachments)
   if (files) return { ...base, type: files.type, content: text, media: files.media }
-  if (text !== null) return { ...base, type: MessageType.TEXT, content: text }
-
   const shared = message.is_unsupported ? null : sharedOf(attachments)
+  // A shared post or reel with a caption keeps its link beside the text
+  if (text !== null) {
+    return {
+      ...base,
+      type: MessageType.TEXT,
+      content: text,
+      ...(shared?.url
+        ? { metadata: { attachmentType: shared.type, attachmentUrl: shared.url } }
+        : {})
+    }
+  }
   const providerType = shared && PROVIDER_TYPE.test(shared.type) ? shared.type : UNSUPPORTED_TYPE
   return {
     ...base,
@@ -168,6 +180,13 @@ function reactionEvent(
   }
 }
 
+// The ad can come beside the message or inside it; an empty object says nothing, so the next one is tried
+function firstReferral(
+  ...candidates: (Record<string, unknown> | undefined)[]
+): Record<string, unknown> | undefined {
+  return candidates.find(candidate => candidate !== undefined && Object.keys(candidate).length > 0)
+}
+
 function itemEvent(connectionId: string, item: MetaMessagingItem): ChannelEvent | null {
   const timestamp = new Date(item.timestamp).toISOString()
   const message = item.message
@@ -177,7 +196,7 @@ function itemEvent(connectionId: string, item: MetaMessagingItem): ChannelEvent 
     const received = toReceivedMessage(
       message,
       timestamp,
-      originOf(item.referral ?? message.referral)
+      originOf(firstReferral(item.referral, message.referral))
     )
     if (message.is_echo) {
       // The page wrote to the customer: the customer is the recipient

@@ -20,7 +20,10 @@ export const MetaGraph = {
   FALLBACK_CONTENT_TYPE: 'application/octet-stream',
   // CDNs a media url may point to. They are followed without the token. A media url outside both
   // lists is refused, so a forged answer cannot make the worker call an internal address.
-  MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com']
+  MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com'],
+  // Exact hosts of a CDN that need no token. Exact, like the one above: the other *.fbsbx.com hosts
+  // serve content of third parties. Messenger puts its voice clips and files here.
+  MEDIA_CDN_HOSTS: ['cdn.fbsbx.com']
 } as const
 
 // Statuses that say "not now" without being a 5xx: request timeout and too early

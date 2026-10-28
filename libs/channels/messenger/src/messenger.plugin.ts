@@ -3,8 +3,7 @@ import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
 import { ChannelIds, MessengerApi, MetaGraph, MetaMessaging } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
-import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
+import { ChannelCapability } from '@platform/plugins/sdk'
 
 const pageSchema = z.object({ id: z.string(), name: z.string().min(1) })
 
@@ -34,7 +33,7 @@ export class MessengerPlugin extends MetaChannelPlugin {
     return { messaging_type: MessengerApi.MESSAGING_TYPE_RESPONSE }
   }
 
-  protected async readAccount(token: string): Promise<MetaAccount> {
+  protected async fetchAccount(token: string): Promise<MetaAccount> {
     const page = await this.meta.get({
       origin: this.origin,
       path: ['me'],
@@ -42,10 +41,6 @@ export class MessengerPlugin extends MetaChannelPlugin {
       query: { fields: MessengerApi.PROFILE_FIELDS },
       schema: pageSchema
     })
-    // The id goes into a path: digits only
-    if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(page.id)) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
-    }
     return { id: page.id, displayName: page.name }
   }
 }

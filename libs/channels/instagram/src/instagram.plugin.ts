@@ -3,11 +3,11 @@ import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
 import { ChannelIds, InstagramApi, MetaGraph, MetaMessaging } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
-import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
+import { ChannelCapability } from '@platform/plugins/sdk'
 
-const idSchema = z.union([z.string(), z.number()]).transform(String)
-const profileSchema = z.object({ user_id: idSchema, username: z.string().min(1) })
+// A string: the id has 17 digits, more than a JSON number holds exactly, so a number would already
+// be a different id by the time it is read
+const profileSchema = z.object({ user_id: z.string(), username: z.string().min(1) })
 // Meta's reference shows the profile alone and, in its sample answer, inside a list
 const answerSchema = z.union([
   profileSchema,
@@ -35,7 +35,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
   // Meta's reference sends a file under `attachments`
   protected readonly attachmentKey = MetaMessaging.ATTACHMENTS_KEY
 
-  protected async readAccount(token: string): Promise<MetaAccount> {
+  protected async fetchAccount(token: string): Promise<MetaAccount> {
     const answer = await this.meta.get({
       origin: this.origin,
       path: ['me'],
@@ -44,10 +44,6 @@ export class InstagramPlugin extends MetaChannelPlugin {
       schema: answerSchema
     })
     const profile = 'data' in answer ? answer.data[0] : answer
-    // The id goes into a path: digits only
-    if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(profile.user_id)) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
-    }
     return { id: profile.user_id, displayName: profile.username }
   }
 }

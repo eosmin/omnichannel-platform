@@ -1,4 +1,4 @@
-import { type MetaGraphClient } from '@platform/channels/meta'
+import { MetaGraphClient } from '@platform/channels/meta'
 import { MetaGraph } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
@@ -106,6 +106,30 @@ describe('InstagramPlugin', () => {
         expect(post).not.toHaveBeenCalled()
       }
     )
+
+    it('refuses an id that arrives as a number: 17 digits do not fit one exactly', async () => {
+      // Through the real client, which is the one that checks what Meta answers
+      const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('{"user_id":17841400000000001,"username":"tienda"}', {
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+      const real = new InstagramPlugin(
+        new MetaGraphClient({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
+      )
+
+      await expect(real.connect({ storeId: 's', credentials })).rejects.toBeInstanceOf(PluginError)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      fetchMock.mockRestore()
+    })
+
+    it('checks the id of the account when the health is checked too', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ user_id: '../x', username: 'tienda' })
+      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
+    })
 
     it('refuses a subscription Meta did not make', async () => {
       const { plugin, get, post } = build()
