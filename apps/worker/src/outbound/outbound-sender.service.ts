@@ -21,9 +21,9 @@ import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { enumValueOf } from '@platform/core/messaging'
 import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import { PluginError } from '@platform/plugins/sdk'
 
 import { MessageStatusWriter, type StatusChange } from './message-status.writer'
+import { type Refusal, refusalOf, SendAttemptFailed } from './send-refusal'
 
 // What a plugin answers is checked: it may be a third party's. The provider may report the message
 // as already delivered or read (an email, a widget), never as queued.
@@ -32,23 +32,7 @@ const resultSchema = z.object({
   status: z.enum([DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ])
 })
 
-// What the retry sees of a failed attempt: the code and the name of the error, never its text. The
-// error of a plugin or of the network can carry the token it was called with, and BullMQ logs what is
-// thrown and keeps it in Redis.
-class SendAttemptFailed extends Error {
-  constructor(code: ErrorCode, cause: unknown) {
-    super(`sending a reply failed: ${code} (${errorName(cause)})`)
-    this.name = 'SendAttemptFailed'
-  }
-}
-
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
-
-// Why a send did not go out, and whether it is worth another try
-interface Refusal {
-  code: ErrorCode
-  retryable: boolean
-}
 
 // The worker half of a reply (TDD_10 §6.7.4): takes the stored message, asks its channel's plugin to
 // send it and writes the result. The job holds ids only; everything else is read now, so a retry
@@ -134,7 +118,7 @@ export class OutboundSender {
       }
       accepted = result.data
     } catch (error) {
-      const refused = this.refusalOf(error)
+      const refused = refusalOf(error)
       // The message of the error may hold a token: only its name is logged, and none of it is stored
       this.logger.warn(
         {
@@ -227,15 +211,6 @@ export class OutboundSender {
       return { code: ErrorCodes.CHANNEL_MESSAGE_FAILED, retryable: false }
     }
     return null
-  }
-
-  // A plugin says whether to try again (it wins over anything else); a network error or a timeout is
-  // tried again, and so is anything else that is not the plugin's word: it is ours or the network's
-  private refusalOf(error: unknown): Refusal {
-    if (error instanceof PluginError) {
-      return { code: error.code, retryable: error.retryable === true }
-    }
-    return { code: ErrorCodes.CHANNEL_MESSAGE_FAILED, retryable: true }
   }
 
   private async externalIdOf(storeId: string, messageId: string | null): Promise<string | null> {

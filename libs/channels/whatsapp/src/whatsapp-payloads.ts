@@ -16,6 +16,7 @@ import {
   type SendLocationParams,
   type SendMediaParams,
   type SendMessageParams,
+  type SendReactionParams,
   type SendTemplateParams
 } from '@platform/plugins/sdk'
 
@@ -206,5 +207,22 @@ export function readReceiptPayload(externalId: string): object {
     messaging_product: WhatsAppApi.MESSAGING_PRODUCT,
     status: WhatsAppApi.READ_STATUS,
     message_id: externalId
+  }
+}
+
+// An empty emoji takes the reaction back
+export function reactionPayload(params: SendReactionParams): object {
+  const { targetExternalId, emoji } = params
+  if (targetExternalId.trim() === '' || targetExternalId.length > InboundLimits.ID_MAX_LENGTH) {
+    refuse()
+  }
+  // The core checks the emoji too; a plugin does not trust its caller, as the other builders do not
+  if (emoji !== null && (emoji.trim() === '' || emoji.length > InboundLimits.EMOJI_MAX_LENGTH)) {
+    refuse()
+  }
+  return {
+    ...envelope(params.channelIdentity),
+    type: WhatsAppMessageTypes.REACTION,
+    reaction: { message_id: targetExternalId, emoji: emoji ?? '' }
   }
 }

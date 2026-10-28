@@ -14,6 +14,7 @@ import type {
   SendLocationParams,
   SendMediaParams,
   SendMessageParams,
+  SendReactionParams,
   SendTemplateParams,
   TypingParams
 } from './channel-types'
@@ -47,6 +48,7 @@ export interface ChannelPlugin {
   sendLocation?(ctx: ChannelContext, params: SendLocationParams): Promise<ChannelMessageResult>
   sendTypingIndicator?(ctx: ChannelContext, params: TypingParams): Promise<void>
   markAsRead?(ctx: ChannelContext, params: MarkReadParams): Promise<void>
+  sendReaction?(ctx: ChannelContext, params: SendReactionParams): Promise<void>
 
   // GET handshake (Meta hub.challenge); null rejects it
   verifyWebhook?(query: Record<string, string>): string | null

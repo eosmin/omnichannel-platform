@@ -52,7 +52,8 @@ export const ApiRoutes = {
   messages: {
     create: '/messages',
     byId: (id: string) => `/messages/${id}`,
-    markRead: (id: string) => `/messages/${id}/read`
+    markRead: (id: string) => `/messages/${id}/read`,
+    reaction: (id: string) => `/messages/${id}/reaction`
   },
 
   customers: {

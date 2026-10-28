@@ -5,6 +5,7 @@ import {
   buttonsPayload,
   locationPayload,
   mediaPayload,
+  reactionPayload,
   readReceiptPayload,
   templatePayload,
   textPayload
@@ -289,6 +290,44 @@ describe('whatsapp payloads', () => {
       messaging_product: 'whatsapp',
       status: 'read',
       message_id: 'wamid.1'
+    })
+  })
+
+  describe('reaction', () => {
+    it('reacts with an emoji', () => {
+      expect(
+        reactionPayload({
+          channelIdentity: '5215512345678',
+          targetExternalId: 'wamid.1',
+          emoji: '👍'
+        })
+      ).toMatchObject({
+        type: 'reaction',
+        to: '5215512345678',
+        reaction: { message_id: 'wamid.1', emoji: '👍' }
+      })
+    })
+
+    it('takes the reaction back with an empty emoji', () => {
+      expect(
+        reactionPayload({
+          channelIdentity: '5215512345678',
+          targetExternalId: 'wamid.1',
+          emoji: null
+        })
+      ).toMatchObject({ reaction: { message_id: 'wamid.1', emoji: '' } })
+    })
+
+    it.each(['', '   ', 'w'.repeat(300)])('refuses the target %j', targetExternalId => {
+      expect(() =>
+        reactionPayload({ channelIdentity: '5215512345678', targetExternalId, emoji: '👍' })
+      ).toThrow(PluginError)
+    })
+
+    it.each(['', '   ', 'x'.repeat(40)])('refuses the emoji %j', emoji => {
+      expect(() =>
+        reactionPayload({ channelIdentity: '5215512345678', targetExternalId: 'wamid.1', emoji })
+      ).toThrow(PluginError)
     })
   })
 })

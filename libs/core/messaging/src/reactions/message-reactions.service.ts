@@ -7,7 +7,13 @@ import {
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { AuthorType, type ReactionActor, ReactionActors, safeText } from '@platform/core/domain'
+import {
+  AuthorType,
+  DeliveryStatus,
+  type ReactionActor,
+  ReactionActors,
+  safeText
+} from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 
@@ -110,13 +116,18 @@ export class MessageReactionsService {
 
   // Puts the reaction of `reactor` on a message of the store, or takes it back with a null emoji, and
   // tells the team. The caller holds the store lock and has checked that the message may be reacted to.
+  // `delivery` is where the reaction stands toward the channel: the ones a channel reports are already
+  // there (sent); an agent's starts queued. Returns when it changed something (an emoji, or a refused one
+  // sent again), or null when it did not: a repeated webhook, or a repeated click on one that is waiting
+  // or was sent.
   async set(
     tx: PrismaTransaction,
     storeId: string,
     messageId: string,
     reactor: Reactor,
-    emoji: string | null
-  ): Promise<void> {
+    emoji: string | null,
+    delivery: DeliveryStatus = DeliveryStatus.SENT
+  ): Promise<Date | null> {
     // Before anything is written: the row carries the store of the caller, and nothing ties it to the
     // store of the message but this look
     const message = await tx.message.findFirst({
@@ -126,7 +137,9 @@ export class MessageReactionsService {
         conversation: { select: { status: true, assignedTo: true } }
       }
     })
-    if (message === null) return
+    if (message === null) return null
+    // Set here so that the caller can name this change (the job of an agent's reaction carries it)
+    const now = new Date()
     const clean = emoji === null ? '' : safeText(emoji)
     const key = keyOf(reactor)
     const where = { storeId, messageId, authorType: reactor.authorType, ...key }
@@ -134,18 +147,38 @@ export class MessageReactionsService {
     if (clean === '') {
       changed = (await tx.messageReaction.deleteMany({ where })).count > 0
     } else {
-      const existing = await tx.messageReaction.findFirst({ where, select: { emoji: true } })
-      changed = existing?.emoji !== clean
+      const existing = await tx.messageReaction.findFirst({
+        where,
+        select: { emoji: true, deliveryStatus: true }
+      })
+      // The same emoji is a change only to send again what the channel refused; a waiting or a sent one
+      // is left as it is, so that a repeated click never sends it twice
+      changed =
+        existing === null ||
+        existing.emoji !== clean ||
+        (existing.deliveryStatus === DeliveryStatus.FAILED.valueOf() &&
+          delivery !== DeliveryStatus.FAILED)
       if (existing === null) {
         await tx.messageReaction.create({
-          data: { storeId, messageId, authorType: reactor.authorType, emoji: clean, ...key }
+          data: {
+            storeId,
+            messageId,
+            authorType: reactor.authorType,
+            emoji: clean,
+            deliveryStatus: delivery,
+            updatedAt: now,
+            ...key
+          }
         })
       } else if (changed) {
-        await tx.messageReaction.updateMany({ where, data: { emoji: clean } })
+        await tx.messageReaction.updateMany({
+          where,
+          data: { emoji: clean, deliveryStatus: delivery, deliveryError: null, updatedAt: now }
+        })
       }
     }
     // A redelivered webhook or a repeated emoji changes nothing, and nobody needs to hear of it
-    if (!changed) return
+    if (!changed) return null
     this.events.publish(tx, Events.MESSAGE_REACTION, {
       storeId,
       conversationId: message.conversationId,
@@ -155,5 +188,6 @@ export class MessageReactionsService {
         assignedTo: message.conversation.assignedTo
       }
     })
+    return now
   }
 }

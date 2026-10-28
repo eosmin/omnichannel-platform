@@ -61,6 +61,7 @@ export const JobNames = {
 
   // outbound
   SEND_OUTBOUND_MESSAGE: 'send-outbound-message',
+  SEND_OUTBOUND_REACTION: 'send-outbound-reaction',
 
   // dead letter
   EXHAUSTED: 'exhausted'

@@ -47,7 +47,13 @@ const NOT_FOUND = 404
 interface ThreadBody {
   data: {
     id: string
-    reactions: { emoji: string; authorType: string; authorId: string | null }[]
+    reactions: {
+      emoji: string
+      authorType: string
+      authorId: string | null
+      deliveryStatus: string
+      deliveryError: string | null
+    }[]
   }[]
 }
 
@@ -573,8 +579,20 @@ describe('Echoes and reactions that a channel delivers', () => {
       expect(response.status).toBe(OK)
       const thread = response.body as ThreadBody
       expect(thread.data.find(item => item.id === messages[0]?.id)?.reactions).toEqual([
-        { emoji: '👍', authorType: AuthorType.CUSTOMER, authorId: identity.id },
-        { emoji: '🙏', authorType: AuthorType.EXTERNAL, authorId: null }
+        {
+          emoji: '👍',
+          authorType: AuthorType.CUSTOMER,
+          authorId: identity.id,
+          deliveryStatus: DeliveryStatus.SENT,
+          deliveryError: null
+        },
+        {
+          emoji: '🙏',
+          authorType: AuthorType.EXTERNAL,
+          authorId: null,
+          deliveryStatus: DeliveryStatus.SENT,
+          deliveryError: null
+        }
       ])
       const other = await api(app, ctx.adminB, ctx.storeB).get(
         ApiRoutes.conversations.messages(conversation.id)

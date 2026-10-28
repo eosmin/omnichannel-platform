@@ -24,7 +24,8 @@ const METHODS_BY_CAPABILITY = [
   [ChannelCapability.BUTTONS, 'sendButtons'],
   [ChannelCapability.LOCATION, 'sendLocation'],
   [ChannelCapability.TYPING_INDICATOR, 'sendTypingIndicator'],
-  [ChannelCapability.READ_RECEIPTS, 'markAsRead']
+  [ChannelCapability.READ_RECEIPTS, 'markAsRead'],
+  [ChannelCapability.REACTIONS, 'sendReaction']
 ] as const
 
 // What every channel plugin does, whatever it declares

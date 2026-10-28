@@ -10,6 +10,8 @@ import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
 import { MessageStatusWriter } from './outbound/message-status.writer'
 import { OutboundSender } from './outbound/outbound-sender.service'
+import { ReactionSender } from './outbound/reaction-sender.service'
+import { ReactionStatusWriter } from './outbound/reaction-status.writer'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
@@ -35,6 +37,8 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     OutboundQueue,
     MessageStatusWriter,
     OutboundSender,
+    ReactionStatusWriter,
+    ReactionSender,
     OutboundProcessor,
     EmailProcessor,
     ChannelHealthScheduler,
