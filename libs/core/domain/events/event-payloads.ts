@@ -205,6 +205,7 @@ export interface DomainEventPayloads {
   [Events.MESSAGE_READ]: MessageStatusPayload
   [Events.MESSAGE_FAILED]: MessageFailedPayload
   [Events.MESSAGE_NOTE_ADDED]: MessageNoteAddedPayload
+  [Events.MESSAGE_REACTION]: MessageStatusPayload
   [Events.MESSAGE_MENTION]: MessageMentionPayload
   [Events.CUSTOMER_CREATED]: CustomerCreatedPayload
   [Events.CUSTOMER_UPDATED]: CustomerUpdatedPayload

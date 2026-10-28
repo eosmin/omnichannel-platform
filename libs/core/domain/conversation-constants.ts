@@ -81,6 +81,14 @@ export const OriginMediaTypes = {
 } as const
 export type OriginMediaType = (typeof OriginMediaTypes)[keyof typeof OriginMediaTypes]
 
+// Who reacted, as a plugin can tell: the customer, or the owner from the provider's own app. An agent
+// of the platform reacts through the api, never through a channel event.
+export const ReactionActors = {
+  CUSTOMER: 'customer',
+  EXTERNAL: 'external'
+} as const
+export type ReactionActor = (typeof ReactionActors)[keyof typeof ReactionActors]
+
 export const InboundLimits = {
   MAX_EVENTS_PER_REQUEST: 100,
   ID_MAX_LENGTH: 255,
@@ -93,6 +101,8 @@ export const InboundLimits = {
   ORIGIN_BODY_MAX_LENGTH: 2000,
   FILENAME_MAX_LENGTH: 255,
   CONTENT_TYPE_MAX_LENGTH: 127,
+  // An emoji is a few code points (a flag, a family, a skin tone); the limit is in UTF-16 units
+  EMOJI_MAX_LENGTH: 32,
   METADATA_MAX_BYTES: 8192,
   // A message dated further ahead than this is dated now: a clock that is wrong must not pin a
   // conversation to the top of the inbox

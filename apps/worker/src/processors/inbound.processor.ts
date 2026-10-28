@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { CHANNEL_ID_PATTERN } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
-import { InboundMessageService } from '@platform/core/messaging'
+import { InboundMessageService, MessageReactionsService } from '@platform/core/messaging'
 import { QueueNames } from '@platform/core/queues'
 import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
@@ -21,6 +21,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
   constructor(
     support: ProcessorSupport,
     private readonly inbound: InboundMessageService,
+    private readonly reactions: MessageReactionsService,
     private readonly receipts: ChannelReceipts,
     private readonly logger: PinoLogger
   ) {
@@ -47,17 +48,32 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
             new Date(job.data.receivedAt)
           )
         } catch (error) {
-          // A handle that is not one on that channel will not become one
-          if (
-            error instanceof PlatformException &&
-            error.code === ErrorCodes.VALIDATION_INVALID_INPUT
-          ) {
-            throw new UnrecoverableError(error.message)
-          }
-          throw error
+          throw unrecoverableIfInvalid(error)
         }
         return
       }
+      case ChannelEventTypes.MESSAGE_ECHO: {
+        if (event.message === undefined) throw new UnrecoverableError('no message to echo')
+        try {
+          await this.inbound.handleMessageEcho(
+            pluginId,
+            { ...event, message: event.message },
+            job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+            new Date(job.data.receivedAt)
+          )
+        } catch (error) {
+          throw unrecoverableIfInvalid(error)
+        }
+        return
+      }
+      case ChannelEventTypes.MESSAGE_REACTION:
+        if (event.reaction === undefined) throw new UnrecoverableError('no reaction to apply')
+        await this.reactions.handleInbound(
+          pluginId,
+          { ...event, reaction: event.reaction },
+          job.attemptsMade + 1 >= (job.opts.attempts ?? 1)
+        )
+        return
       case ChannelEventTypes.MESSAGE_DELIVERED:
       case ChannelEventTypes.MESSAGE_READ:
       case ChannelEventTypes.MESSAGE_FAILED:
@@ -76,4 +92,11 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         this.logger.debug({ pluginId, type: event.type }, 'channel event not handled')
     }
   }
+}
+
+// A handle that is not one on that channel will not become one
+function unrecoverableIfInvalid(error: unknown): unknown {
+  return error instanceof PlatformException && error.code === ErrorCodes.VALIDATION_INVALID_INPUT
+    ? new UnrecoverableError(error.message)
+    : error
 }

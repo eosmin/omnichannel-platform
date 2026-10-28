@@ -4,9 +4,11 @@ import {
   httpUrl,
   InboundLimits,
   InboundMessageTypes,
+  isWholeEmoji,
   MessageType,
   OriginKinds,
-  OriginMediaTypes
+  OriginMediaTypes,
+  ReactionActors
 } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
@@ -65,6 +67,22 @@ const status = z.strictObject({
   error: z.strictObject({ code: text(64), message: text(500) }).optional()
 })
 
+const reaction = z.strictObject({
+  targetExternalId: id,
+  // An emoji is a short string; null takes the reaction back
+  emoji: z
+    .string()
+    .min(1)
+    .max(InboundLimits.EMOJI_MAX_LENGTH)
+    // Not blank, and nothing the database would refuse: a NUL, or half of an emoji
+    .refine(value => isWholeEmoji(value, InboundLimits.EMOJI_MAX_LENGTH), {
+      message: 'an emoji is visible and whole'
+    })
+    .nullable(),
+  from: z.enum(ReactionActors).optional(),
+  eventId: id.optional()
+})
+
 // What a channel plugin returns for an event, checked before anything uses it: the plugin may be a
 // third party's, and a provider's payload is not ours either. A field that is not here is refused.
 export const channelEventSchema = z
@@ -80,6 +98,7 @@ export const channelEventSchema = z
       })
       .optional(),
     message: message.optional(),
+    reaction: reaction.optional(),
     status: status.optional(),
     messageId: z.uuid().optional(),
     timestamp: z.iso.datetime({ offset: true })
@@ -109,11 +128,23 @@ export const channelEventSchema = z
         })
       }
     }
-    if (event.type === ChannelEventTypes.MESSAGE_RECEIVED && event.message === undefined) {
+    const needsMessage: readonly string[] = [
+      ChannelEventTypes.MESSAGE_RECEIVED,
+      ChannelEventTypes.MESSAGE_ECHO
+    ]
+    if (needsMessage.includes(event.type) && event.message === undefined) {
       context.addIssue({
         code: 'custom',
         path: ['message'],
-        message: 'a received event needs its message'
+        message: 'a received or echoed event needs its message'
+      })
+    }
+    const isReaction = event.type === ChannelEventTypes.MESSAGE_REACTION
+    if (isReaction !== (event.reaction !== undefined) || (isReaction && event.message)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['reaction'],
+        message: 'only a reaction event has a reaction, and it has no message'
       })
     }
     const needsStatus: readonly string[] = [

@@ -3,11 +3,16 @@ import type {
   MessageType,
   MessagingWindowPolicy,
   OriginKind,
-  OriginMediaType
+  OriginMediaType,
+  ReactionActor
 } from '@platform/core/domain'
 
 export const ChannelEventTypes = {
   MESSAGE_RECEIVED: 'message_received',
+  // A message written in the provider's own app (the owner's phone), which the provider echoes to us
+  MESSAGE_ECHO: 'message_echo',
+  // Someone reacted to a message, or took the reaction back
+  MESSAGE_REACTION: 'message_reaction',
   MESSAGE_SENT: 'message_sent',
   MESSAGE_DELIVERED: 'message_delivered',
   MESSAGE_READ: 'message_read',
@@ -62,6 +67,15 @@ export interface ChannelEvent {
     replyToExternalId?: string
     metadata?: Record<string, unknown>
     timestamp: string // ISO 8601
+  }
+  // For reaction events: the message reacted to, by its provider id. A null emoji takes the reaction back.
+  // `eventId` is the provider's id of the reaction itself, when it has one: a delivery sent twice has
+  // the same, two reactions in one second do not.
+  reaction?: {
+    targetExternalId: string
+    emoji: string | null
+    from?: ReactionActor
+    eventId?: string
   }
   // For delivery, read and failed events
   status?: { externalId: string; error?: { code: string; message: string } }

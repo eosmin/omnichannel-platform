@@ -27,6 +27,8 @@ export const Events = {
   // A reply an agent wrote, stored and waiting for its channel (MESSAGE_SENT is for one the channel took)
   MESSAGE_QUEUED: 'message.queued',
   MESSAGE_NOTE_ADDED: 'message.note_added',
+  // Someone reacted to a message, or took the reaction back (ids only, like MESSAGE_SENT)
+  MESSAGE_REACTION: 'message.reaction',
   MESSAGE_DELIVERED: 'message.delivered',
   MESSAGE_READ: 'message.read',
   MESSAGE_FAILED: 'message.failed',
@@ -161,6 +163,7 @@ export const BridgedEvents = [
   Events.MESSAGE_READ,
   Events.MESSAGE_FAILED,
   Events.MESSAGE_NOTE_ADDED,
+  Events.MESSAGE_REACTION,
   Events.CHANNEL_DISCONNECTED,
   Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]

@@ -151,6 +151,7 @@ export class WhatsAppPlugin implements ChannelPlugin {
     ChannelCapability.READ_RECEIPTS,
     ChannelCapability.DELIVERY_RECEIPTS,
     ChannelCapability.REPLY_TO,
+    ChannelCapability.REACTIONS,
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 

@@ -1,8 +1,11 @@
 import {
   InboundLimits,
+  isWholeEmoji,
   MessageType,
   OriginKinds,
   OriginMediaTypes,
+  type ReactionActor,
+  ReactionActors,
   WHATSAPP_USER_ID_PATTERN,
   WhatsAppInteractiveTypes,
   WhatsAppMediaFallback,
@@ -20,6 +23,7 @@ import {
   type WhatsAppReferral,
   type WhatsAppMessage,
   whatsAppContactSchema,
+  whatsAppEchoSchema,
   whatsAppMessageSchema,
   whatsAppReferralSchema,
   type WhatsAppStatus,
@@ -81,10 +85,14 @@ const MEDIA_TYPES: ReadonlyMap<string, MessageType> = new Map([
   [WhatsAppMessageTypes.STICKER, MessageType.IMAGE]
 ])
 
-// A reaction and a notice of the system are not something the customer wrote
-const NOT_MESSAGES: ReadonlySet<string> = new Set([
-  WhatsAppMessageTypes.REACTION,
-  WhatsAppMessageTypes.SYSTEM
+// A notice of the system is not something the customer wrote. A reaction has an event of its own and
+// never gets here.
+const NOT_MESSAGES: ReadonlySet<string> = new Set([WhatsAppMessageTypes.SYSTEM])
+
+// A deletion or an edit in the business app arrives as an echo of its own
+const NOT_ECHOED: ReadonlySet<string> = new Set([
+  WhatsAppMessageTypes.REVOKE,
+  WhatsAppMessageTypes.EDIT
 ])
 
 type ReceivedMessage = NonNullable<ChannelEvent['message']>
@@ -236,6 +244,33 @@ const STATUS_EVENTS: ReadonlyMap<string, ChannelEvent['type']> = new Map([
 const displayName = (name: string | undefined): string | undefined =>
   name ? cut(name, CHANNEL_PROFILE_NAME_MAX_LENGTH) : undefined
 
+// No emoji, or an empty one, takes the reaction back. One that is only blanks, or too long to be an
+// emoji, is not a reaction at all, and must not undo an earlier one.
+function reactionEvent(
+  connectionId: string,
+  identity: string,
+  message: WhatsAppMessage,
+  from?: ReactionActor
+): ChannelEvent | null {
+  const reaction = message.reaction
+  const targetExternalId = replyTarget(reaction?.message_id)
+  if (!reaction || !targetExternalId) return null
+  const emoji = reaction.emoji === undefined || reaction.emoji === '' ? null : reaction.emoji
+  if (emoji !== null && !isWholeEmoji(emoji, InboundLimits.EMOJI_MAX_LENGTH)) return null
+  return {
+    type: ChannelEventTypes.MESSAGE_REACTION,
+    connectionId,
+    channelIdentity: identity,
+    reaction: {
+      targetExternalId,
+      emoji,
+      ...(from ? { from } : {}),
+      ...(replyTarget(message.id) ? { eventId: message.id } : {})
+    },
+    timestamp: isoFromUnixSeconds(message.timestamp)
+  }
+}
+
 function messageEvents(value: WhatsAppChangeValue): ChannelEvent[] {
   const connectionId = value.metadata.phone_number_id
   const names = new Map<string, string | undefined>()
@@ -255,6 +290,11 @@ function messageEvents(value: WhatsAppChangeValue): ChannelEvent[] {
     // nobody to answer.
     const identity = [parsed.data.from, parsed.data.from_user_id].find(isIdentity)
     if (!identity) continue
+    if (parsed.data.type === WhatsAppMessageTypes.REACTION) {
+      const reaction = reactionEvent(connectionId, identity, parsed.data)
+      if (reaction) events.push(reaction)
+      continue
+    }
     const received = toReceivedMessage(parsed.data)
     if (!received) continue
     // While the phone still arrives, the user id beside it is the only way to join the customer's two
@@ -274,6 +314,34 @@ function messageEvents(value: WhatsAppChangeValue): ChannelEvent[] {
       connectionId,
       channelIdentity: identity,
       channelProfile: { displayName: displayName(names.get(identity)) },
+      message,
+      timestamp: message.timestamp
+    })
+  }
+  return events
+}
+
+// What the business wrote in its WhatsApp Business app, for a number in Coexistence. `to` is the
+// customer. A message that was deleted or edited there is not a new message: the core has no edit.
+function echoEvents(value: WhatsAppChangeValue): ChannelEvent[] {
+  const connectionId = value.metadata.phone_number_id
+  const events: ChannelEvent[] = []
+  for (const item of value.message_echoes ?? []) {
+    const parsed = whatsAppEchoSchema.safeParse(item)
+    if (!parsed.success || NOT_ECHOED.has(parsed.data.type)) continue
+    const identity = parsed.data.to?.replace(/^\+/, '')
+    if (!isIdentity(identity)) continue
+    if (parsed.data.type === WhatsAppMessageTypes.REACTION) {
+      const reaction = reactionEvent(connectionId, identity, parsed.data, ReactionActors.EXTERNAL)
+      if (reaction) events.push(reaction)
+      continue
+    }
+    const message = toReceivedMessage(parsed.data)
+    if (!message) continue
+    events.push({
+      type: ChannelEventTypes.MESSAGE_ECHO,
+      connectionId,
+      channelIdentity: identity,
       message,
       timestamp: message.timestamp
     })
@@ -320,9 +388,19 @@ export function webhookToEvents(payload: unknown): ChannelEvent[] {
   const events: ChannelEvent[] = []
   for (const entry of parsed.data.entry) {
     for (const change of parseEntryChanges(entry)) {
-      if (change.field !== WhatsAppWebhook.FIELD_MESSAGES) continue
+      if (
+        change.field !== WhatsAppWebhook.FIELD_MESSAGES &&
+        change.field !== WhatsAppWebhook.FIELD_MESSAGE_ECHOES
+      ) {
+        continue
+      }
       const value = parseChangeValue(change.value)
-      if (value) events.push(...messageEvents(value), ...statusEvents(value))
+      if (!value) continue
+      if (change.field === WhatsAppWebhook.FIELD_MESSAGES) {
+        events.push(...messageEvents(value), ...statusEvents(value))
+      } else {
+        events.push(...echoEvents(value))
+      }
     }
   }
   return events

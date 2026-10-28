@@ -7,6 +7,7 @@ import {
   ConversationsService,
   CustomerIdentityService,
   InboundMessageService,
+  MessageReactionsService,
   RoutingService
 } from '@platform/core/messaging'
 
@@ -26,6 +27,7 @@ import { ProcessorSupport } from '../processors/processor-support'
     ConversationsService,
     RoutingService,
     InboundMessageService,
+    MessageReactionsService,
     MessageStatusWriter,
     ChannelReceipts,
     InboundProcessor
