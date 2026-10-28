@@ -105,6 +105,21 @@ describe('PluginRegistry', () => {
     expect(registry.hasCapability('nobody', ChannelCapability.TEXT)).toBe(false)
   })
 
+  it('lists what a plugin declared, and nothing for one that is not registered', () => {
+    const registry = build()
+    registry.register(
+      channel({
+        capabilities: [ChannelCapability.READ_RECEIPTS, ChannelCapability.TEXT],
+        markAsRead: () => Promise.resolve()
+      })
+    )
+    expect(registry.capabilitiesOf('telegram')).toEqual([
+      ChannelCapability.READ_RECEIPTS,
+      ChannelCapability.TEXT
+    ])
+    expect(registry.capabilitiesOf('nobody')).toEqual([])
+  })
+
   it('rejects messaging_window without a policy', () => {
     const plugin = channel({ capabilities: [ChannelCapability.MESSAGING_WINDOW] })
     expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)

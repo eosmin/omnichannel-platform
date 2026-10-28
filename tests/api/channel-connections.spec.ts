@@ -35,6 +35,7 @@ interface ConnectionBody {
   displayName: string
   status: string
   lastError: string | null
+  capabilities: string[]
 }
 
 describe('The channel connections of a store', () => {
@@ -314,10 +315,21 @@ describe('The channel connections of a store', () => {
 
       const list = await asAdmin().get(ApiRoutes.channels.connections)
 
-      const ids = (list.body as ConnectionBody[]).map(item => item.pluginId)
+      const items = list.body as ConnectionBody[]
+      const ids = items.map(item => item.pluginId)
       expect(ids).toContain(mine.id)
       expect(ids).not.toContain(theirs.id)
       expect(JSON.stringify(list.body)).not.toContain('credentials')
+    })
+
+    it('says what each channel can do, so that the web app draws only that', async () => {
+      const { id, plugin } = register()
+      await connect(id)
+
+      const list = await asAdmin().get(ApiRoutes.channels.connections)
+
+      const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
+      expect(item?.capabilities.slice().sort()).toEqual([...plugin.capabilities].sort())
     })
   })
 

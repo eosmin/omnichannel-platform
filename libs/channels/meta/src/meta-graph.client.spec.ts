@@ -3,7 +3,7 @@ import type { Readable } from 'node:stream'
 
 import { z } from 'zod'
 
-import { MetaLimits } from '@platform/core/domain'
+import { MetaGraph, MetaLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
@@ -215,6 +215,64 @@ describe('MetaGraphClient', () => {
         code: ErrorCodes.CHANNEL_MESSAGE_FAILED,
         retryable: true
       })
+    })
+  })
+
+  describe('graph host', () => {
+    it('calls the host the request names', async () => {
+      fetchMock.mockResolvedValue(json({ id: '1' }))
+
+      await client.get({
+        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        path: ['me'],
+        token: TOKEN,
+        schema: z.object({ id: z.string() })
+      })
+
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://graph.instagram.com/v23.0/me')
+    })
+  })
+
+  describe('downloadMediaUrl', () => {
+    const CDN = 'https://scontent-iad3-1.xx.fbcdn.net/v/t1/file.jpg?sig=1'
+
+    it('streams a CDN file with no token and reads the type the server declares', async () => {
+      fetchMock.mockResolvedValueOnce(
+        new Response('abc', {
+          headers: { 'content-type': 'Image/JPEG; charset=binary', 'content-length': '3' }
+        })
+      )
+
+      const media = await client.downloadMediaUrl(CDN)
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(CDN)
+      expect(init.headers).not.toHaveProperty('authorization')
+      expect(media.contentType).toBe('image/jpeg')
+      expect((await read(media.stream)).toString()).toBe('abc')
+    })
+
+    it('accepts the Instagram CDN', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('x'))
+      await expect(
+        client.downloadMediaUrl('https://scontent.cdninstagram.com/v/file.jpg')
+      ).resolves.toBeDefined()
+    })
+
+    it('uses plain bytes when the server declares no usable type', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('x', { headers: { 'content-type': 'nope' } }))
+      expect((await client.downloadMediaUrl(CDN)).contentType).toBe(MetaGraph.FALLBACK_CONTENT_TYPE)
+    })
+
+    it.each([
+      ['plain http', 'http://scontent.fbcdn.net/x'],
+      ['a host that is not Meta', 'https://evil.example.com/x'],
+      ['a look-alike host', 'https://fbcdn.net.evil.example.com/x'],
+      ['an internal address', 'https://169.254.169.254/latest'],
+      ['text that is not a url', 'not a url']
+    ])('refuses %s without calling it', async (_name, url) => {
+      await expect(client.downloadMediaUrl(url)).rejects.toBeInstanceOf(PluginError)
+      expect(fetchMock).not.toHaveBeenCalled()
     })
   })
 

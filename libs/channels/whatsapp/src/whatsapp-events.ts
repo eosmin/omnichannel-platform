@@ -1,3 +1,4 @@
+import { cut, hasText, replyTarget, safeFilename } from '@platform/channels/meta'
 import {
   InboundLimits,
   isWholeEmoji,
@@ -35,21 +36,6 @@ const MILLISECONDS = 1000
 const CHANNEL_PROFILE_NAME_MAX_LENGTH = 200
 const STATUS_ERROR_MESSAGE_MAX_LENGTH = 500
 
-// The core refuses a whole event for one field that is too long, and Meta does not send it again, so
-// an optional field that does not fit is cut or left out instead of costing the customer's message
-// A file name is the customer's to choose. Whatever stores it later gets only the last segment, with no
-// control characters, quotes or leading dots: no path, no header injection.
-function safeFilename(name: string | undefined): string | null {
-  if (!name) return null
-  const base = name.split(/[\\/]/).pop() ?? ''
-  const clean = base
-    // eslint-disable-next-line no-control-regex -- the point is to remove them
-    .replace(/[\u0000-\u001f\u007f"]/g, '')
-    .replace(/^\.+/, '')
-    .trim()
-  return clean === '' ? null : cut(clean, InboundLimits.FILENAME_MAX_LENGTH)
-}
-
 // The phone, as the digits Meta writes, or the user id; anything else cannot be answered
 const PHONE = /^\d{5,15}$/
 const isIdentity = (id: string | undefined): id is string =>
@@ -57,17 +43,6 @@ const isIdentity = (id: string | undefined): id is string =>
 
 // The name of a type goes into the visible content: letters, digits and underscore only
 const PROVIDER_TYPE = /^[A-Za-z0-9_]{1,64}$/
-
-// At most `max` UTF-16 units, the way the core counts them, and never half of a character: an emoji
-// is two units, so a title of 255 of them is 510 and would cost the whole message if left as it came
-function cut(text: string, max: number): string {
-  let out = ''
-  for (const character of text) {
-    if (out.length + character.length > max) break
-    out += character
-  }
-  return out
-}
 
 const isoFromUnixSeconds = (seconds: string): string =>
   new Date(Number(seconds) * MILLISECONDS).toISOString()
@@ -147,12 +122,6 @@ function isMediaKind(type: string): type is MediaKind {
 // What a message says, in the shape the core stores. A type this plugin does not know is kept as a
 // text with no content and its WhatsApp type in the metadata, so the customer's message is never
 // lost and the interface decides how to show it.
-// The core refuses a text with nothing but blanks, so a blank one is marked like an unknown type
-const hasText = (text: string | undefined): boolean => text !== undefined && text.trim() !== ''
-
-const replyTarget = (id: string | undefined): string | undefined =>
-  id && id.length <= InboundLimits.ID_MAX_LENGTH ? id : undefined
-
 function toReceivedMessage(message: WhatsAppMessage): ReceivedMessage | null {
   const base = {
     externalId: message.id,

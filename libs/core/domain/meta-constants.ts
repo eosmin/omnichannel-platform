@@ -10,13 +10,17 @@ export const MetaWebhook = {
 } as const
 
 export const MetaGraph = {
+  // The two Graph hosts. Facebook's serves WhatsApp and Messenger; Instagram Login tokens only work on
+  // Instagram's. A call names one of these, never a url of its own.
   ORIGIN: 'https://graph.facebook.com',
+  INSTAGRAM_ORIGIN: 'https://graph.instagram.com',
   // The one host that wants the connection token to give a file. Exact on purpose: other
   // *.fbsbx.com hosts (apps.fbsbx.com) serve content of third parties.
   MEDIA_TOKEN_HOSTS: ['lookaside.fbsbx.com'],
+  FALLBACK_CONTENT_TYPE: 'application/octet-stream',
   // CDNs a media url may point to. They are followed without the token. A media url outside both
   // lists is refused, so a forged answer cannot make the worker call an internal address.
-  MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net']
+  MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com']
 } as const
 
 // Statuses that say "not now" without being a 5xx: request timeout and too early
@@ -47,4 +51,46 @@ export const MetaErrorCodes = {
   ],
   // Failure on Meta's side (131000 and 131016 are WhatsApp's): the work may or may not have been done
   TEMPORARY: [1, 2, 131000, 131016]
+} as const
+
+export type MetaGraphOrigin = typeof MetaGraph.ORIGIN | typeof MetaGraph.INSTAGRAM_ORIGIN
+
+// What Instagram and Messenger share on the wire (the Messenger Platform and the Instagram messaging
+// API are the same shape on two hosts)
+export const MetaMessaging = {
+  EDGE_MESSAGES: 'messages',
+  EDGE_SUBSCRIBED_APPS: 'subscribed_apps',
+  // `sender_action` of the Send API
+  ACTION_REACT: 'react',
+  ACTION_UNREACT: 'unreact',
+  // `reaction.action` of the webhook
+  REACTION_REACT: 'react',
+  REACTION_UNREACT: 'unreact',
+  RECIPIENT_ID_PATTERN: /^\d{1,32}$/,
+  // The largest time a Date can hold is 8.64e15; a message is never dated that far ahead
+  MAX_EPOCH_MS: 1e14,
+  // The key that holds a file in the Send API: Instagram's reference writes it in the plural
+  ATTACHMENT_KEY: 'attachment',
+  ATTACHMENTS_KEY: 'attachments',
+  ATTACHMENT_IMAGE: 'image',
+  ATTACHMENT_VIDEO: 'video',
+  ATTACHMENT_AUDIO: 'audio',
+  ATTACHMENT_FILE: 'file',
+  // `referral.source` of a Click-to-Message ad
+  REFERRAL_SOURCE_ADS: 'ADS'
+} as const
+
+// Instagram messaging with Instagram Login (https://developers.facebook.com/docs/instagram-platform)
+export const InstagramApi = {
+  WEBHOOK_OBJECT: 'instagram',
+  PROFILE_FIELDS: 'user_id,username',
+  SUBSCRIBED_FIELDS: 'messages,messaging_referrals,messaging_reactions'
+} as const
+
+// Messenger Platform, with the token of the Page
+export const MessengerApi = {
+  WEBHOOK_OBJECT: 'page',
+  PROFILE_FIELDS: 'id,name',
+  SUBSCRIBED_FIELDS: 'messages,message_echoes,message_reactions,messaging_referrals',
+  MESSAGING_TYPE_RESPONSE: 'RESPONSE'
 } as const
