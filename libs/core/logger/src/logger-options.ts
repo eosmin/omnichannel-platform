@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Options } from 'pino-http'
 
 import { API_PREFIX, InfraRoutes } from '@platform/core/api'
+import { isRecord, REDACTED, scrubQuery, scrubUrl } from '@platform/core/domain'
 
 import type { AuthenticatedRequest } from './authenticated-request'
 
@@ -56,27 +57,33 @@ export const REDACTED_PATHS: readonly string[] = [
   '*.*.*.headers.authorization'
 ]
 
-// The token of an invitation is the credential of whoever holds the link, and it travels in the path
-// of GET /invitations/:token. The first segment after the prefix is the only one that names a
-// secret; the id of an invitation in the team settings is not one and stays readable.
-const SECRET_PATH_PREFIX = `${API_PREFIX}/invitations/`.toLowerCase()
+// The segment that follows the invitations prefix is the secret one (see scrub-url.ts). A wildcard
+// param keeps the segments of the path with Nest's global prefix already taken off.
 const SECRET_SEGMENT = 'invitations'
 const VERSION_SEGMENT = API_PREFIX.split('/').at(-1) // 'v1'
-const REDACTED = '[redacted]'
 
 interface LoggedRequest {
   url?: string
   params?: Record<string, unknown>
+  query?: unknown
+  headers?: unknown
 }
 
-// Applied to the request after pino has serialized it (url, params, headers...): the path appears
-// twice, as the url and, before the route is matched, as the wildcard params
+// Applied to the request after pino has serialized it (url, query, params, headers...): the path
+// appears twice, as the url and, before the route is matched, as the wildcard params, and the query
+// string twice too, as the tail of the url and as the parsed query
 export function scrubRequest<T extends LoggedRequest>(request: T): T {
   const scrubbed: T = { ...request }
-  if (typeof request.url === 'string' && request.url.toLowerCase().startsWith(SECRET_PATH_PREFIX)) {
-    const rest = request.url.slice(SECRET_PATH_PREFIX.length)
-    const end = rest.search(/[/?#]/)
-    scrubbed.url = `${request.url.slice(0, SECRET_PATH_PREFIX.length)}${REDACTED}${end === -1 ? '' : rest.slice(end)}`
+  if (typeof request.url === 'string') scrubbed.url = scrubUrl(request.url)
+  if (isRecord(request.query)) scrubbed.query = scrubQuery(request.query)
+  // The page that called the api: its url can carry the same secrets
+  if (isRecord(request.headers)) {
+    scrubbed.headers = Object.fromEntries(
+      Object.entries(request.headers).map(([name, value]) => [
+        name,
+        name.toLowerCase() === 'referer' && typeof value === 'string' ? scrubUrl(value) : value
+      ])
+    )
   }
   if (request.params !== undefined) {
     scrubbed.params = Object.fromEntries(

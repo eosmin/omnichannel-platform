@@ -4,6 +4,7 @@ import { Writable } from 'node:stream'
 import { pino } from 'pino'
 
 import { InfraRoutes } from '@platform/core/api'
+import { REDACTED, SENSITIVE_QUERY_PARAMS } from '@platform/core/domain'
 
 import type { AuthenticatedRequest } from './authenticated-request'
 import { buildPinoHttpOptions, logLevelFor, REDACTED_PATHS, scrubRequest } from './logger-options'
@@ -136,6 +137,191 @@ describe('redaction', () => {
 
 // The token of an invitation travels in the path (GET /invitations/:token) and is as good as a
 // password until it is used or expires: the log must never hold it
+describe('scrubRequest, query string', () => {
+  const handshake = (secret: string): string =>
+    `/api/v1/webhooks/channels/whatsapp?hub.mode=subscribe&hub.challenge=1158201444&hub.verify_token=${secret}`
+
+  it('keeps the name of a sensitive param and drops its value, the rest stays readable', () => {
+    expect(scrubRequest({ url: handshake('s3cret') }).url).toBe(
+      `/api/v1/webhooks/channels/whatsapp?hub.mode=subscribe&hub.challenge=1158201444&hub.verify_token=${REDACTED}`
+    )
+  })
+
+  it.each(SENSITIVE_QUERY_PARAMS)('redacts %s', name => {
+    expect(scrubRequest({ url: `/api/v1/x?a=1&${name}=s3cret&b=2` }).url).toBe(
+      `/api/v1/x?a=1&${name}=${REDACTED}&b=2`
+    )
+  })
+
+  it('redacts every copy of a repeated param', () => {
+    expect(scrubRequest({ url: '/api/v1/x?token=a&ok=1&token=b' }).url).toBe(
+      `/api/v1/x?token=${REDACTED}&ok=1&token=${REDACTED}`
+    )
+  })
+
+  it('reads an encoded name and ignores the case', () => {
+    expect(
+      scrubRequest({ url: '/api/v1/x?hub%2Everify_token=s3cret&ACCESS_TOKEN=s3cret' }).url
+    ).toBe(`/api/v1/x?hub%2Everify_token=${REDACTED}&ACCESS_TOKEN=${REDACTED}`)
+  })
+
+  it('redacts an empty value and a name with no value as well as a full one', () => {
+    expect(scrubRequest({ url: '/api/v1/x?token=&code' }).url).toBe(
+      `/api/v1/x?token=${REDACTED}&code`
+    )
+  })
+
+  it('leaves a url without a query, or with harmless params, as it is', () => {
+    for (const url of [
+      '/api/v1/x',
+      '/api/v1/x?',
+      '/api/v1/x?page=2&limit=10',
+      '/api/v1/x?tokens=1'
+    ]) {
+      expect(scrubRequest({ url }).url).toBe(url)
+    }
+  })
+
+  it('redacts a sensitive pair after a #, which a tolerant parser could still read as a param', () => {
+    expect(scrubRequest({ url: '/api/v1/x?a=1#access_token=s3cret&top=1' }).url).toBe(
+      `/api/v1/x?a=1#access_token=${REDACTED}&top=1`
+    )
+    expect(scrubRequest({ url: '/api/v1/x?token=s3cret#top' }).url).toBe(
+      `/api/v1/x?token=${REDACTED}#top`
+    )
+    // The pairs of an OAuth redirect that comes back in the fragment
+    expect(scrubRequest({ url: '/cb#code=a&state=b&scope=read' }).url).toBe(
+      `/cb#code=${REDACTED}&state=${REDACTED}&scope=read`
+    )
+  })
+
+  it('reads a name with brackets or dots by every part of it', () => {
+    expect(
+      scrubRequest({
+        url: '/api/v1/x?token[]=a&token[0]=b&filter[token]=c&auth.access_token=d&ok[]=e'
+      }).url
+    ).toBe(
+      `/api/v1/x?token[]=${REDACTED}&token[0]=${REDACTED}&filter[token]=${REDACTED}&auth.access_token=${REDACTED}&ok[]=e`
+    )
+    expect(scrubRequest({ url: '/api/v1/x?token%5B%5D=a&filter%5Btoken%5D=b' }).url).toBe(
+      `/api/v1/x?token%5B%5D=${REDACTED}&filter%5Btoken%5D=${REDACTED}`
+    )
+  })
+
+  it('redacts the names that end like a secret, so a new param fails closed', () => {
+    const url =
+      '/api/v1/x?refresh_token=a&refreshToken=b&client_secret=c&idempotency_key=d&Password=e&sig=f&page=2'
+    expect(scrubRequest({ url }).url).toBe(
+      `/api/v1/x?refresh_token=${REDACTED}&refreshToken=${REDACTED}&client_secret=${REDACTED}&idempotency_key=${REDACTED}&Password=${REDACTED}&sig=${REDACTED}&page=2`
+    )
+  })
+
+  it('splits on ; as well, so a param cannot hide in the value of the one before', () => {
+    expect(scrubRequest({ url: '/api/v1/x?a=1;token=s3cret&b=2' }).url).toBe(
+      `/api/v1/x?a=1;token=${REDACTED}&b=2`
+    )
+  })
+
+  it('redacts the token of an invitation when slashes repeat, which the router takes as one', () => {
+    expect(scrubRequest({ url: '//api/v1/invitations/abc123' }).url).toBe(
+      `//api/v1/invitations/${REDACTED}`
+    )
+    expect(scrubRequest({ url: '/api//v1///invitations//abc123/accept' }).url).toBe(
+      `/api//v1///invitations//${REDACTED}/accept`
+    )
+  })
+
+  it('redacts the token of an invitation when the target is an absolute url', () => {
+    expect(scrubRequest({ url: 'http://host/api/v1/invitations/abc123?token=s3cret' }).url).toBe(
+      `http://host/api/v1/invitations/${REDACTED}?token=${REDACTED}`
+    )
+  })
+
+  it('does not break on a name that is not valid percent-encoding', () => {
+    expect(scrubRequest({ url: '/api/v1/x?%E0%A4%A=1&token=s3cret' }).url).toBe(
+      `/api/v1/x?%E0%A4%A=1&token=${REDACTED}`
+    )
+  })
+
+  it('redacts the parsed query that pino logs next to the url', () => {
+    const scrubbed = scrubRequest({
+      query: {
+        'hub.mode': 'subscribe',
+        'hub.verify_token': 's3cret',
+        Access_Token: ['a', 'b'],
+        page: '2'
+      }
+    })
+
+    expect(scrubbed.query).toEqual({
+      'hub.mode': 'subscribe',
+      'hub.verify_token': REDACTED,
+      Access_Token: REDACTED,
+      page: '2'
+    })
+  })
+
+  it('walks a query that nests, whatever the parser', () => {
+    const scrubbed = scrubRequest({
+      query: {
+        filter: { token: 's3cret', page: '2' },
+        hub: { verify_token: 's3cret' },
+        list: [{ code: 'x' }]
+      }
+    })
+
+    expect(JSON.stringify(scrubbed)).not.toContain('s3cret')
+    expect(scrubbed.query).toEqual({
+      filter: { token: REDACTED, page: '2' },
+      hub: { verify_token: REDACTED },
+      list: [{ code: REDACTED }]
+    })
+  })
+
+  it('does not break on a query that is not an object', () => {
+    expect(scrubRequest({ query: null as unknown as undefined }).query).toBeNull()
+    expect(scrubRequest({ query: 'x' as unknown as undefined }).query).toBe('x')
+  })
+
+  it('does not take an empty segment for a token', () => {
+    expect(scrubRequest({ url: '/api/v1/invitations/?status=open' }).url).toBe(
+      '/api/v1/invitations/?status=open'
+    )
+  })
+
+  it('catches the names that are written together or that nobody listed', () => {
+    const url =
+      '/api/v1/x?secretKey=a&accessKey=b&authorization=c&jwt=d&sessionId=e&pwd=f&monkey=ok'
+    expect(scrubRequest({ url }).url).toBe(
+      `/api/v1/x?secretKey=${REDACTED}&accessKey=${REDACTED}&authorization=${REDACTED}&jwt=${REDACTED}&sessionId=${REDACTED}&pwd=${REDACTED}&monkey=ok`
+    )
+  })
+
+  it('cleans the url of the page that called, which carries the same secrets', () => {
+    const scrubbed = scrubRequest({
+      headers: { Referer: 'https://app.example.com/cb?code=s3cret&page=2', host: 'api' }
+    })
+
+    expect(scrubbed.headers).toEqual({
+      Referer: `https://app.example.com/cb?code=${REDACTED}&page=2`,
+      host: 'api'
+    })
+  })
+
+  it('works together with the invitation token of the path', () => {
+    expect(scrubRequest({ url: '/api/v1/invitations/abc123?token=s3cret' }).url).toBe(
+      `/api/v1/invitations/${REDACTED}?token=${REDACTED}`
+    )
+  })
+
+  it('reaches the line that the serializer of the request writes', () => {
+    const serializers = buildPinoHttpOptions({ level: 'info' }).serializers
+    const req = serializers?.['req'] as (value: object) => { url: string }
+
+    expect(req({ url: handshake('s3cret') }).url).not.toContain('s3cret')
+  })
+})
+
 describe('scrubRequest', () => {
   // Built, not written out: a literal that long reads as a secret to the scanner of the hooks
   const TOKEN = `fixture-${'0123456789'.repeat(3)}`

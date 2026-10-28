@@ -5,6 +5,7 @@ import type { Response } from 'express'
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino'
 
 import { InfraRoutes } from '@platform/core/api'
+import { scrubUrl } from '@platform/core/domain'
 import {
   type ErrorCode,
   ErrorCodes,
@@ -124,7 +125,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   private report(exception: unknown, request: AuthenticatedRequest): void {
     Sentry.withScope(scope => {
       scope.setContext('request', {
-        url: request.url,
+        url: scrubUrl(request.url),
         method: request.method,
         correlationId: request.correlationId
       })
