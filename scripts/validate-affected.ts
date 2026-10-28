@@ -1,5 +1,5 @@
 // What CI would fail on, for the projects that the branch touches (pre-push hook). No Docker, no
-// database. A push that only changes docs/ is not checked.
+// database. A push that only changes docs/ is not checked, except for the validators that read the plan.
 // Usage: tsx scripts/validate-affected.ts [--since <sha>]
 //   --since: the commit the remote branch is at, which the pre-push hook passes. What is pushed is
 //   then the commits after it, so a documentation commit on top of code that was already checked
@@ -55,7 +55,12 @@ if (pushed.length === 0) {
   console.log('nothing new is pushed: nothing to check')
   exit(0)
 }
-if (isDocsOnly(pushed)) {
+// The plan is read by two validators (the isolation exemptions and the frontend map), so a push that
+// only edits it runs those two: a step renamed or deferred must not first break in CI
+const PLAN_FILE = 'docs/IMPLEMENTATION_PLAN.md'
+const PLAN_CHECKS = ['validate:isolation', 'validate:frontend']
+const docsOnly = isDocsOnly(pushed)
+if (docsOnly && !pushed.includes(PLAN_FILE)) {
   console.log('only docs/ changed in what is pushed: nothing to check')
   exit(0)
 }
@@ -78,11 +83,14 @@ const STEPS: { name: string; command: string[] }[] = [
   { name: 'validate:translations', command: ['validate:translations'] },
   { name: 'validate:rollbacks', command: ['validate:rollbacks'] },
   { name: 'validate:isolation', command: ['validate:isolation'] },
+  { name: 'validate:frontend', command: ['validate:frontend'] },
   // Pure code, a second to run: a contract that breaks is seen before the push and not in CI
   { name: 'test:contracts', command: ['test:contracts'] }
 ]
 
-for (const { name, command } of STEPS) {
+for (const { name, command } of docsOnly
+  ? STEPS.filter(({ name }) => PLAN_CHECKS.includes(name))
+  : STEPS) {
   console.log(`\n> ${name}`)
   const result = spawnSync('pnpm', command, { stdio: 'inherit' })
   if (result.error !== undefined) console.error(`could not run pnpm: ${result.error.message}`)

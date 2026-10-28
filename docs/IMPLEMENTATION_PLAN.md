@@ -412,6 +412,7 @@ Owner's decision D19 (`MVP_TRIM_CHECKLIST.md`, 2026-10-28), before Instagram and
 - [x] 7-day window after an ad (Instagram and Messenger; Meta, changelog of 2026-09-28: up to 7 days from the first message after a Click-to-Messenger or Click-to-Direct ad, 24 h from any other entry point): `CustomerIdentity.adWindowOpenedAt` (migration with rollback) set by `InboundMessageService` when that first message carries an ad `origin`; `MessagingWindowPolicy` gains `extendedHoursAfterAd` (168); `stateOf` takes the later of `lastInboundAt + hours` and `adWindowOpenedAt + extendedHoursAfterAd`. Meta says "up to", so a send refused for a closed window must map to `CHANNEL_WINDOW_EXPIRED`; the exact error code and subcode need a real ad (Step 7.3)
 - [ ] Contract tests for all four
 - [ ] **PR split (owner, 2026-10-28), six PRs, one per session:** 1a (merged, #65) = `media[]`, `origin` (`ConversationOrigin`), `adWindowOpenedAt` and WhatsApp adapted to them; 1b (built, in review) = `message_echo` and `message_reaction` with WhatsApp mapping both; 1b-2 = an agent reacts (endpoint, plugin send, isolation case; built, in review); 1c = `MetaChannelPlugin`, Instagram and Messenger; 1d = delete and edit a message (below); 2 = email; 3 = web widget
+- [ ] Channel capabilities to the browser (owner, 2026-10-28; built in PR 1c): the connection views (`GET /channels/connections` and `/:id`) return the `capabilities` that the plugin of each connection declares (`ChannelCapability` constants), so the web app decides which actions to draw (react, edit, delete, templates, typing) without knowing any channel by name; a remote plugin declares its own through its manifest. They are static per plugin: if a capability one day depends on the connection (a permission granted), the view widens then
 - [ ] **For a future third-party plugin that answers customers who come from an ad (owner, 2026-10-28; nothing of it is built now):** (1) the `origin` of the message travels in the `message.received` webhook to plugins (`TDD_10 §6.5`, not built yet: only the `TRIGGER_PLUGIN_WEBHOOK` queue name exists) together with `messageId` and `conversationId`; it is per message, not per conversation, because one conversation can receive several ads. (2) Scope: the origin goes in `messages:read` (owner decision), with `kind`, `sourceId`, `title`, `body` and `media`, which identify the ad; `clickId` and `sourceUrl` stay out of the payload until a plugin needs them, with a scope of their own. The step that builds `§6.5` carries this. (3) Note: `Events.MESSAGE_SENT` carries only `storeId`, `conversationId`, `messageId` and `visibility` (`MessageStatusPayload`), not `authorType` or `createdAt`, so a plugin cannot tell that a human took over after a given message. Enrich that payload in the step that builds `§6.5`; do not build it now
 - [ ] Phase 2, recorded so it is not lost: OAuth for the three Meta channels (WhatsApp Embedded Signup, Facebook Login for Business for Instagram and Messenger) in place of pasted tokens; it needs the platform to be a Tech Provider, business verification and App Review. The `HUMAN_AGENT` message tag (a human answers up to 7 days after the last customer message; never for bots or promotion; needs the "Human Agent" permission from App Review)
 
@@ -430,6 +431,7 @@ on a page with a strict CSP.
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
 - [ ] Read receipts to the channel (`MVP_TRIM_CHECKLIST.md`, "WhatsApp plugin build details", item 8): `POST /conversations/:id/read` must queue the `markAsRead` job of the channel, with the `sendReadReceipts` store preference (default `true`); the plugin side exists since Step 2.7 and nothing calls it yet
 - [ ] Tell a reply that waits for its channel from one the channel took: `MESSAGE_QUEUED` and `MESSAGE_SENT` both reach the browser as `message.sent`, with `clientMessageId` always `null`, so the client can only read the message again for its state (found in the review of Step 2.6). Before drawing ticks, give the queued one an event of its own (`message.queued`) and carry the `clientMessageId` of the request in `MessageQueuedPayload`, so that the optimistic bubble matches
+- [ ] **Relay the inbound events to the browser (server side; found by the second pass of the frontend alignment audit, owner, 2026-10-28):** the worker publishes `Events.MESSAGE_RECEIVED` and `Events.CONVERSATION_CREATED` and neither is in `BridgedEvents` nor forwarded by `RealtimeEventsListener`, so a message from a customer or a new conversation never reaches an open inbox (the comment of `BridgedEvents` says they join "when cut down to ids", and no step did it). Cut the payload of `message.received` to ids and the date (`RealtimeEventMap` still carries `contentPreview`, against the rule that nothing with text leaves the server; the client reads the message through the REST api), add both events to `BridgedEvents`, forward them with the same visibility rule as the rest (a conversation only to who may see it, `message.received` also needing `MESSAGES_VIEW`), and cover them in `tests/api` with two sockets. Decide in this task whether `conversation.updated` (declared, never emitted) is still needed, since `message.received`, `status_changed` and `assigned` already tell the list what moved, or remove it. Without this task the "Done when" below ("two browser sessions see each other's messages instantly") cannot pass for a customer's message
 - [ ] The realtime client, moved from Step 2.4 (`TDD_06 §3`, `§4`): connection manager with a fresh token on every reconnect and the connection status in the header, `useRealtimeSync` that invalidates `QueryKeys` (debounced), and the offline queue with terminal-error handling and the `idempotencyKey` that `POST /messages` already honours. Join the conversation room of the open thread (`conversation.join`) and send the heartbeat every 30 seconds with `{ active: true }` when the user did something. Read the presence of the team (`PresenceService.getStorePresence`, built in Step 2.4 with no route yet) by adding its route with the team widget. A refused connection arrives as `connect_error` with the code in `error.data.code` (not as `auth.error`, which is only for a socket that was already connected); on `auth.error` or a server disconnect, reconnect with a fresh token
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys. **Also merge the email messages:** Step 1.0 left the `email.*` namespace in `libs/core/i18n-server/messages/{en,es}.json` (a directory `apps/web/messages` cannot exist earlier, because `validate:translations` then demands every generated key). Move that namespace into `apps/web/messages/{en,es}.json`, point `libs/core/i18n-server/src/messages.ts` at those files, and delete `libs/core/i18n-server/messages/` and its README
 - [ ] Dockerfile for `web`, added to the `security-scan` build and Trivy scan
@@ -445,6 +447,7 @@ on a page with a strict CSP.
 - [ ] Typing and read state toward the channel, moved from Step 2.6 (`MVP_TRIM_CHECKLIST.md`, "Outbound build details"): the typing of the customer (`CUSTOMER_TYPING` events, which `InboundProcessor` ignores today) as `customer.typing` in the thread, and `sendTypingIndicator` / `markAsRead` called from the agent typing events and the read state, only for a plugin that declares the capability, best effort, never retried
 - [ ] Virtualized conversation list from `ConversationListItem`
 - [ ] Reactions in the thread (owner, 2026-10-28; the data is built in Step 2.8, PR 1b): the emoji sits in the corner of the message it was left on, as chips grouped with a count (👍 2), like WhatsApp; the detail of who reacted (`authorType` tells customer, agent or the owner of the provider's app; `authorId` is the user or the customer identity, null for the owner) shows on hover or tap. No line in the thread for a reaction. `message.reaction` carries only ids, so the client invalidates the thread; if a notice such as "Ana reacted" is wanted, widen that event first (`action`, `emoji`, `authorType`, `authorId`)
+- [ ] The actions of an agent on a message (owner, 2026-10-28; the server side is built in Step 2.8): react with an emoji picker and take it back (`PUT /messages/:id/reaction`), showing the reaction as waiting or failed with the reason until the channel answers; "send again" on a reply that failed (`message.failed`; the server needs a resend route, which Step 2.6 left to a later step: build it here); and, when PR 1d of Step 2.8 lands, edit and delete. Every action appears only if the channel of the conversation declares its capability (from the connection view) and the user holds the permission
 - [ ] Internal notes in the thread (owner, 2026-10-28; the data is built in Step 2.3, and the edit with its revisions in Step 2.8, PR 1d): a note is not on the left or the right like the messages of the customer and of the agents; it sits centered, as wide as its text up to about 70% of the thread, with a dashed amber border and a soft amber background from theme tokens, so it reads in light and dark. No icon and no label: the position and the color are the signal (owner). It shows the author and the time, "edited by" when a teammate changed it with a link to the revisions, and the `@` mentions highlighted; edit and delete appear on hover, according to the permissions; another agent's edit arrives in real time and a stale save shows the current text. In the composer, the note tab tints the field amber. This replaces "amber left border, Internal label" of `TDD_09 §4`
 - [ ] Filters: all, mine, unassigned, by status, by channel, by agent (AI-handled filter DEFERRED)
 - [ ] Message thread with realtime updates, read state
@@ -475,6 +478,7 @@ on a page with a strict CSP.
 - [ ] Media gallery with lightbox, bulk ZIP export
 - [ ] `mediaIds` on `POST /messages` (the upload comes first, `TDD_09 §4`): the media is checked against the store and the conversation, and linked to the message in the same transaction
 - [ ] A media message is one message with its text under it (owner, 2026-10-28): `POST /messages` with an image, video, audio or document `type`, `mediaIds` and `content` as the caption, in the same `idempotencyKey` and message, never a media message followed by a text one. The sender hands the caption to `sendMedia` (`SendMediaParams.caption`, which the WhatsApp plugin already sends within its limits: 1024 characters, none on audio); a channel that cannot carry a caption on a type is refused for good before the send, as WhatsApp does for audio. Inbound already works that way (WhatsApp stores the caption of the media as the `content` of the same message). `replyToMessageId` applies to a media message as it does to text. **Albums (decided 2026-10-28):** inbound, a channel that brings several attachments in one message (Instagram, Messenger) becomes one message with N media (`Media.messageId` is not unique, so the model needs no change), and WhatsApp keeps one message per media; outbound, the MVP sends one media per message with its caption. **Phase 2:** `mediaIds` with several entries, split by the core into consecutive sends when the channel takes one per send, the caption on the first, and a place for the `channelMessageId` of each part (`Message.channelMessageId` is one column today)
+- [ ] The exports center, server and interface (`exports.list`, `exports.byId`, `exports.download`; no earlier step builds these three routes, found by the second pass of the audit): every export of the store (media ZIP, customers CSV, conversations, analytics) with its state, progress and a signed download, and the realtime or notification when one is ready. Created here because this step builds the first export
 - [ ] Customers CSV export (`GET /customers/export` creates an `Export { type: CUSTOMERS }` on the same queue, S3 key and download as the ZIP; `CUSTOMERS_EXPORT`; `MVP_TRIM_CHECKLIST.md` §10 item 25 for the columns and rules; register the route before `customers/:id`, or `export` is read as an id)
 
 **TDD:** `TDD_07 §6`, `§7`
@@ -482,7 +486,7 @@ on a page with a strict CSP.
 signed URLs; a `confirmUpload` with a foreign store prefix returns `FILE_KEY_OUT_OF_SCOPE`; a message sent with `mediaIds` shows the attachment in the thread, and one naming media of another store is refused.
 
 ### Step 3.5 — Notifications
-- [ ] Notification service with `messageKey` + params, preference resolution, quiet hours from `UserNotificationSettings`
+- [ ] Notification service with `messageKey` + params, preference resolution, quiet hours from `UserNotificationSettings`, and its routes: `notifications.list`, `unreadCount`, `markRead`, `markAllRead`, `preferences` and `pushSubscription`
 - [ ] The mention notification (`NotificationTypes.CONVERSATION_MENTIONED`, from `Events.MESSAGE_MENTION`) goes only to who may open the conversation and read its notes; Step 2.3 already refuses a mention of anyone else, but a role may change after the note is written
 - [ ] Notification center UI rendering keys
 - [ ] Web Push with the Serwist service worker
@@ -491,6 +495,23 @@ signed URLs; a `confirmUpload` with a foreign store prefix returns `FILE_KEY_OUT
 **TDD:** `TDD_06 §6`–`§9`, `TDD_09 §16.3`
 **Done when:** assignment triggers in-app and push notifications, quiet hours suppress push
 while still persisting the notification, and an hourly digest email arrives in Mailpit.
+
+### Step 3.6 — Settings, account and organization
+Added by the frontend alignment audit (owner, 2026-10-28): the backend of these pages is built (Steps 1.1, 1.4, 2.3, 2.6, 2.7, 2.7b), and without them the inbox of this milestone cannot be used with a real channel, because nothing connects one. The pages that need later steps stay where they are (Settings → Inventory in 4.7; Carriers, Order messages, Returns and Preferences in 4.9 and 4.14; Plugins registration and widgets in 5.6 and 5.7; Webhooks, API keys, Data retention and Safety in 5.4).
+
+- [ ] The settings shell (`/s/[storeId]/settings/*`, `TDD_09 §13`, `§12`): navigation that shows only the pages the user holds permission for, and the same for the organization (`/org/*`) and the account (`/account/*`)
+- [ ] Store → General: name, timezone, currency, locale. `organizations.storeById` already updates the store; decide here whether `settings.store` (`/settings/store`, no handler) is needed for what it does not carry, or remove the constant. The same for `settings.team` (`/settings/team`, no handler), which only names the page when members, roles and invitations have their own routes
+- [ ] Store → Channels: the connections of the store with their status and health, connect (the form comes from what the plugin asks for, `channels.connect`), test, disconnect, and the list of templates with their status (`channels.templates`). Nothing in it is specific to one channel: it is drawn from the manifest of the plugin
+- [ ] Store → Plugins: the catalog of installable plugins (`plugins.available`), install and uninstall per store (D19). The registration of a remote plugin by manifest stays in Step 5.6
+- [ ] Store → Team: members (role, suspend, remove), custom roles with the permission matrix, and invitations (pending, resend, revoke); the invitation accept page is Step 3.1
+- [ ] Store → Routing: the rules in order (drag to reorder, `settings.routingOrder`) and the editor of a rule
+- [ ] Store → Business hours (with the away message snippet), Tags, Snippets, and Inbox behavior (`settings.inbox`: resolve flow, reopen window, auto-archive, load threshold)
+- [ ] Account → Profile, Preferences (`account.profile`, `account.preferences`; **the server routes are built here**, no earlier step does: read and update of the name, avatar, locale, timezone and density of the user) and Security: the active sessions with revoke (`auth.sessions`, `auth.sessionById`). Notifications is Step 3.5
+- [ ] Organization → Stores (create, rename, delete, `ORG_MANAGE_STORES`) and the organization profile (`organizations.current`); Billing, Usage and Referrals are Phase 2, and the audit log viewer is Step 7.2
+- [ ] Each page shows an action only when the user holds its permission, and the empty and error states of `TDD_09 §18`
+
+**TDD:** `TDD_09 §12`, `§13`, `§18`
+**Done when:** an owner connects a channel from Settings → Channels, invites an agent, creates a routing rule, and the agent sees the conversation in the inbox, all with no database access and no `curl`.
 
 ---
 
@@ -503,6 +524,7 @@ counts. Orders depend on it, so it is built first.
 ### Step 4.1 — Products and variants
 - [ ] Products + variants CRUD (store-scoped; `freeShipping` flag, `TDD_17 §4.13`; `trackInventory`; `lowStockThreshold` is optional, empty means no low-stock alert, `TDD_16 §4.4`)
 - [ ] Product search with sub-200ms autocomplete
+- [ ] **To design with the owner when this step starts (nothing is decided, and `TDD_09` has no product screen):** the catalog interface. The order drawer of Step 4.4 only picks variants, so someone has to create them: a products page (list, search, create and edit a product with its variants, images through Step 3.4, stock summary from Step 4.2). Decide its scope here, in this step, and add it as tasks before building
 
 **TDD:** `TDD_01 §4`, `TDD_08 §5.4`
 **Done when:** autocomplete responds under 200ms p95 with 5k products and a `%` query
@@ -547,6 +569,8 @@ every order lifecycle change produces the inventory effect of `TDD_16 §4.1`.
 - [ ] Status change flows with proof upload and the "restock" choice on returns (only for an order with no `OrderReturn`; the shipping, confirmation and returns UI is Step 4.14)
 - [ ] Print documents (PDF)
 - [ ] **Orders page** (`/s/[storeId]/orders`): a full-page table with search by order number or customer, filters (status, payment status, date range, customer, scheduled delivery date range with the "today" and "tomorrow" shortcuts of Step 4.3), a scheduled delivery column, cursor pagination (`TDD_08 §2.4`), sorting and filters kept in the URL, and row selection that Step 4.14 turns into the bulk action bar; **order detail page** (`/s/[storeId]/orders/[orderId]`) with lines, allocations, status flows and edits
+- [ ] Orders export (found by the frontend alignment audit, owner, 2026-10-28; `ApiRoutes.orders.export` and `ORDERS_EXPORT` exist and no step builds them): `GET /orders/export` creates an `Export { type: ORDERS }` on the same queue, S3 key and download as the customers CSV of Step 3.4 (register the route before `orders/:id`), with the button on the Orders page and the result in the exports center; columns and rules to decide in this step
+- [ ] Orders in the customer panel (Step 3.3 left them out because they need orders): the orders tab of the profile drawer from `GET /customers/:id/orders`, and the orders in the activity timeline
 
 **TDD:** `TDD_09 §5`, `§12`, `TDD_16 §7`, `TDD_08 §2.4`, `TDD_17 §7`
 **Done when:** an agent creates an order without leaving the conversation, and the orders page lists, filters, searches and opens orders of the store.
@@ -700,7 +724,7 @@ sandbox.
 - [ ] Rollup workers, hourly and daily (2-period recompute)
 - [ ] Metrics query service
 - [ ] Dashboard UI
-- [ ] Scheduled reports (PDF/CSV/Excel)
+- [ ] Scheduled reports (PDF/CSV/Excel), and `GET /analytics/export` (`analytics.export`) as an export of the exports center
 
 **TDD:** `TDD_11 §7`, `TDD_08 §6`
 **Done when:** the dashboard loads under 1s reading only rollup tables.
@@ -715,7 +739,7 @@ sandbox.
 **Done when:** cache hit rate exceeds 40% in a scripted run against seeded data (the k6 load suite of Step 7.5 is DEFERRED, so this uses a throwaway script).
 
 ### Step 5.4 — Settings
-- [ ] Settings pages per `TDD_09 §13`, **MVP trim:** no Billing, Referrals or AI features pages, and no `PlanFeatures` gating on custom roles
+- [ ] The settings pages of `TDD_09 §13` that Step 3.6 and the steps of Commerce do not build (Webhooks, API keys, Data retention, Safety and confirmations), **MVP trim:** no Billing, Referrals or AI features pages, and no `PlanFeatures` gating on custom roles
 - [ ] Safety and confirmations configuration, inbox behavior
 - [ ] Webhooks with resolve-time SSRF protection, delivery log, auto-disable
 - [ ] Tenant API keys (`ApiKeyGuard`)
@@ -752,7 +776,7 @@ delivery, SSRF protection, key hashing) and Step 1.0 (queues).
 - [ ] Outbound plugin webhooks (`TRIGGER_PLUGIN_WEBHOOK`): signed, payload redacted to the granted scopes, same delivery log and auto-disable as tenant webhooks
 - [ ] Revocation with typed confirmation, final `plugin.revoked` webhook, audit
 - [ ] The shipment routes of `TDD_17 §4.1` under `PluginApiKeyGuard` (`shipments:read`, `shipments:write`), over the same `ShippingService` as the UI
-- [ ] Settings → Plugins UI: register, list installations with their scopes, revoke (`SETTINGS_MANAGE_PLUGINS`)
+- [ ] Settings → Plugins UI: register, list installations with their scopes, revoke (`SETTINGS_MANAGE_PLUGINS`). `plugins.list`, `byId`, `enable`, `disable` and `config` have no handler and no task: build them here with their screens, or remove the constants if the install and uninstall of Step 2.7b made them redundant
 - [ ] Tests: a plugin key for store A cannot read store B, scope escalation is denied, the key never appears in logs or in any response after setup, webhook signature; `PluginInstallation` in the isolation suite
 - [ ] Registration by pasted JSON only (importing a manifest by URL is a later improvement, `MVP_TRIM_CHECKLIST.md` §6). Installed scopes are fixed at install: when a registered plugin's manifest later asks for more scopes, the existing installation keeps its old scopes until the owner approves the new ones in a new consent screen
 
@@ -1036,7 +1060,7 @@ How to keep it:
    or inside the next PR that carries a real change.
 4. Step 2.1 does not exist: it moved to Step 1.0. Step 8.3 is optional and is not needed to complete the MVP.
 
-The MVP is complete when every row that is not `deferred` and not optional is `done`: **48 steps**.
+The MVP is complete when every row that is not `deferred` and not optional is `done`: **49 steps**.
 
 | Step | Name | Status | PR | Date |
 |---|---|---|---|---|
@@ -1068,6 +1092,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 3.3 | Customer panel | todo | | |
 | 3.4 | Media | todo | | |
 | 3.5 | Notifications | todo | | |
+| 3.6 | Settings, account and organization | todo | | |
 | **Milestone 4: Commerce** | | | | |
 | 4.1 | Products and variants | todo | | |
 | 4.2 | Warehouses and stock | todo | | |

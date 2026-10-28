@@ -84,7 +84,7 @@ same checks and the merge waits for it.
   the same rules, because it becomes the squash commit on `main`.
 - `pre-push`: `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`,
   the validators and `pnpm test:contracts`). It does not build, and it leaves to CI the suites that need a database and a
-  ref that is not the checked-out commit. A push that only changes `docs/` is not checked.
+  ref that is not the checked-out commit. A push that only changes `docs/` is not checked, except that one which edits the plan runs `validate:isolation` and `validate:frontend`, which read it.
 - `pnpm validate:all` is the same on the whole repository.
 
 ---
@@ -135,6 +135,7 @@ same checks and the merge waits for it.
 - [ ] Unit tests written and passing for new business logic
 - [ ] Integration test added if the step touches an API endpoint
 - [ ] Tenant isolation test added if the step introduces a tenant-scoped resource
+- [ ] Every new route, realtime event or channel capability is mapped in `scripts/frontend-coverage-map.ts` to the step that draws it (or to a reason it has no interface); `pnpm validate:frontend` fails otherwise
 - [ ] The step's own "Done when" criterion verified, not assumed
 - [ ] The step's PR is green on GitHub with every CI job that exists at that point; if the step created a CI job, the plan says which check to add to the `main` ruleset
 - [ ] The step's task boxes are checked and its "Progress tracking" row is updated
@@ -186,6 +187,7 @@ scoped runs returned exactly 10 each). A run that returns 10 has **not** run out
 | Metric name                                             | `libs/core/platform/metrics/metric-names.ts`                 |
 | Staff role / permission (Phase 2, not built in the MVP) | `libs/core/admin/staff-constants.ts`                |
 | TanStack query key                                      | `libs/api-client/src/query-keys.ts`                 |
+| Which step draws a route, realtime event or channel capability | `scripts/frontend-coverage-map.ts`                  |
 | Env variable (api/worker)                               | `libs/core/platform/config/env-schema.ts` (add to the Zod schema, then to `.env.example`) |
 | Env variable (web, `NEXT_PUBLIC_*`)                     | `apps/web/lib/env-schema.ts` (add to the Zod schema, then to `apps/web/.env.example`) |
 

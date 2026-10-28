@@ -32,7 +32,8 @@
     "validate:deprecations": "tsx scripts/validate-deprecations.ts",
     "validate:rollbacks": "tsx scripts/check-rollbacks.ts",
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm test && pnpm test:contracts",
+    "validate:frontend": "tsx scripts/check-frontend-coverage.ts",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:frontend && pnpm test && pnpm test:contracts",
     "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {
