@@ -14,6 +14,13 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   },
   ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
+  ConversationOrigin: {
+    step: '3.2',
+    reason:
+      'Written by the inbound pipeline and read by the origin card of the thread. Until then ' +
+      'tests/api/inbound.spec.ts proves the write (the row lands in the store of the connection). ' +
+      'The case with the other store reading it through the api is added by Step 3.2'
+  },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },

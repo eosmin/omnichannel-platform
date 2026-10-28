@@ -19,6 +19,12 @@ export const WhatsAppWebhook = {
   FIELD_MESSAGES: 'messages'
 } as const
 
+// `referral.source_type`: what the customer tapped before writing
+export const WhatsAppReferralSourceTypes = {
+  AD: 'ad',
+  POST: 'post'
+} as const
+
 // The `type` of an inbound message and of an outbound one
 export const WhatsAppMessageTypes = {
   TEXT: 'text',

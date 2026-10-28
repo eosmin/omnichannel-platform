@@ -59,11 +59,16 @@ export class MessagingWindowService {
         channelType: true,
         status: true,
         assignedTo: true,
-        customerIdentity: { select: { lastInboundAt: true } }
+        customerIdentity: { select: { lastInboundAt: true, adWindowOpenedAt: true } }
       }
     })
     if (row === null || !canSee(viewer, row)) throw resourceNotFound('conversation')
     const policy = this.policies.policyFor(row.channelType)
-    return stateOf(policy, row.customerIdentity.lastInboundAt, new Date())
+    return stateOf(
+      policy,
+      row.customerIdentity.lastInboundAt,
+      new Date(),
+      row.customerIdentity.adWindowOpenedAt
+    )
   }
 }

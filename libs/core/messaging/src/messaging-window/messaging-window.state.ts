@@ -11,18 +11,28 @@ export interface MessagingWindowState {
   requiresTemplate: boolean
 }
 
-// A window opens when the customer writes and lasts `hours`; it is closed at the very moment it ends
+// When a window that opened at `from` ends. A message cannot come from the future: a clock that runs
+// ahead does not make the window longer.
+const endOf = (from: Date, hours: number, now: Date): number =>
+  Math.min(from.getTime(), now.getTime()) + hours * HOUR_MS
+
+// A window opens when the customer writes and lasts `hours`; after a click on an ad, a channel that
+// has `extendedHoursAfterAd` lets it last that long from the first message, and the later end wins.
+// It is closed at the very moment it ends.
 export function stateOf(
   policy: MessagingWindowPolicy | null,
   lastInboundAt: Date | null,
-  now: Date
+  now: Date,
+  adWindowOpenedAt: Date | null = null
 ): MessagingWindowState {
   if (policy === null) return { open: true, closesAt: null, requiresTemplate: false }
-  // A message cannot come from the future: a clock that runs ahead does not make the window longer
-  const closesAt =
-    lastInboundAt === null
-      ? null
-      : new Date(Math.min(lastInboundAt.getTime(), now.getTime()) + policy.hours * HOUR_MS)
+  const ends = [
+    ...(lastInboundAt === null ? [] : [endOf(lastInboundAt, policy.hours, now)]),
+    ...(adWindowOpenedAt === null || policy.extendedHoursAfterAd === undefined
+      ? []
+      : [endOf(adWindowOpenedAt, policy.extendedHoursAfterAd, now)])
+  ]
+  const closesAt = ends.length === 0 ? null : new Date(Math.max(...ends))
   const open = closesAt !== null && now.getTime() < closesAt.getTime()
   return { open, closesAt, requiresTemplate: !open && policy.requiresTemplateWhenClosed }
 }

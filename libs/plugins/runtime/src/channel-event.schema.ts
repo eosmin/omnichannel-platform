@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-import { InboundLimits, InboundMessageTypes, MessageType } from '@platform/core/domain'
+import {
+  httpUrl,
+  InboundLimits,
+  InboundMessageTypes,
+  MessageType,
+  OriginKinds,
+  OriginMediaTypes
+} from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 const id = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)
@@ -12,18 +19,42 @@ const metadata = z
     message: 'metadata is too large'
   })
 
+const media = z.strictObject({
+  ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH),
+  contentType: z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH),
+  filename: text(InboundLimits.FILENAME_MAX_LENGTH).nullable()
+})
+
+const url = httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH)
+
+const origin = z.strictObject({
+  kind: z.enum(OriginKinds),
+  sourceId: id.optional(),
+  sourceUrl: url.optional(),
+  title: text(InboundLimits.ORIGIN_TITLE_MAX_LENGTH).optional(),
+  body: text(InboundLimits.ORIGIN_BODY_MAX_LENGTH).optional(),
+  media: z
+    .strictObject({
+      type: z.enum(OriginMediaTypes),
+      ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
+      url: url.optional()
+    })
+    .refine(value => (value.ref === undefined) !== (value.url === undefined), {
+      message: 'an origin media is a reference or a url, one of them'
+    })
+    .optional(),
+  thumbnailUrl: url.optional(),
+  clickId: id.optional(),
+  referral: metadata.optional()
+})
+
 const message = z.strictObject({
   externalId: id,
   // A plugin says what the customer sent, not what only the platform writes (SYSTEM, INTERNAL_NOTE)
   type: z.enum(InboundMessageTypes),
   content: text(InboundLimits.CONTENT_MAX_LENGTH).nullable(),
-  media: z
-    .strictObject({
-      ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH),
-      contentType: z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH),
-      filename: text(InboundLimits.FILENAME_MAX_LENGTH).nullable()
-    })
-    .optional(),
+  media: z.array(media).min(1).max(InboundLimits.MAX_MEDIA_PER_MESSAGE).optional(),
+  origin: origin.optional(),
   replyToExternalId: id.optional(),
   metadata: metadata.optional(),
   timestamp: z.iso.datetime({ offset: true })

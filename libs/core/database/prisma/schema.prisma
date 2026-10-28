@@ -50,6 +50,7 @@ model Store {
   roles               Role[]
   conversations       Conversation[]
   messages            Message[]
+  conversationOrigins ConversationOrigin[]
   customers           Customer[]
   customerIdentities  CustomerIdentity[]
   customerMerges      CustomerMerge[]
@@ -336,15 +337,17 @@ model Customer {
 // One row per (store, channel, handle). The SAME phone number in two stores is two
 // rows — customers are always store-scoped (TDD_10 §5.2).
 model CustomerIdentity {
-  id              String    @id @default(uuid())
-  storeId         String    @map("store_id")
-  customerId      String    @map("customer_id")
-  channelType     String    @map("channel_type") // ChannelType
-  channelIdentity String    @map("channel_identity") // phone (E.164), page-scoped id, visitor id, email
-  displayName     String?   @map("display_name") // Profile name as reported by the channel
-  channelMetadata Json?     @map("channel_metadata")
-  lastInboundAt   DateTime? @map("last_inbound_at") // Drives messaging windows (TDD_10 §4)
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(uuid())
+  storeId          String    @map("store_id")
+  customerId       String    @map("customer_id")
+  channelType      String    @map("channel_type") // ChannelType
+  channelIdentity  String    @map("channel_identity") // phone (E.164), page-scoped id, visitor id, email
+  displayName      String?   @map("display_name") // Profile name as reported by the channel
+  channelMetadata  Json?     @map("channel_metadata")
+  lastInboundAt    DateTime? @map("last_inbound_at") // Drives messaging windows (TDD_10 §4)
+  // The first message after a click on an ad: the longer window of Instagram and Messenger counts from it
+  adWindowOpenedAt DateTime? @map("ad_window_opened_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
   customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -436,12 +439,13 @@ model Conversation {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  store             Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer          Customer          @relation(fields: [customerId], references: [id])
-  customerIdentity  CustomerIdentity  @relation(fields: [customerIdentityId], references: [id])
-  channelConnection ChannelConnection @relation(fields: [channelConnectionId], references: [id])
+  store             Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer          Customer             @relation(fields: [customerId], references: [id])
+  customerIdentity  CustomerIdentity     @relation(fields: [customerIdentityId], references: [id])
+  channelConnection ChannelConnection    @relation(fields: [channelConnectionId], references: [id])
   messages          Message[]
-  tags              Tag[]             @relation("ConversationTags")
+  origins           ConversationOrigin[]
+  tags              Tag[]                @relation("ConversationTags")
 
   @@index([storeId, status, assignedTo, lastMessageAt(sort: Desc)])
   @@index([storeId, lastMessageAt(sort: Desc)])
@@ -470,16 +474,48 @@ model Message {
   metadata         Json? // Channel-specific metadata
   createdAt        DateTime @default(now()) @map("created_at")
 
-  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author       User?        @relation(fields: [authorId], references: [id])
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User?               @relation(fields: [authorId], references: [id])
   media        Media[]
+  origin       ConversationOrigin?
 
   @@unique([conversationId, channelMessageId])
   @@unique([conversationId, idempotencyKey])
   @@index([conversationId, createdAt])
   @@index([storeId, createdAt])
   @@map("messages")
+}
+
+// Where a conversation came from (an ad, a post), read by the plugin from what its provider sent. One
+// conversation can come from several ads, so the origin hangs from the message that carried it; the
+// thread shows the latest and the first is the first contact.
+model ConversationOrigin {
+  id             String   @id @default(uuid())
+  storeId        String   @map("store_id")
+  conversationId String   @map("conversation_id")
+  messageId      String   @unique @map("message_id")
+  kind           String // OriginKind
+  sourceId       String?  @map("source_id")
+  sourceUrl      String?  @map("source_url")
+  title          String?
+  body           String?
+  mediaType      String?  @map("media_type") // OriginMediaType
+  mediaRef       String?  @map("media_ref") // Provider reference, fetched like any media
+  mediaUrl       String?  @map("media_url")
+  thumbnailUrl   String?  @map("thumbnail_url")
+  clickId        String?  @map("click_id")
+  // What the provider sent, untouched: the first real ad teaches what the columns missed
+  referral       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([storeId])
+  @@map("conversation_origins")
 }
 
 model Tag {

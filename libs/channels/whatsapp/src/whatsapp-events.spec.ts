@@ -65,17 +65,15 @@ describe('webhookToEvents', () => {
     expect(event?.message).toMatchObject({
       type: expected,
       content: 'cap',
-      media: { ref: '555', contentType: 'x/y', filename: 'f.bin' }
+      media: [{ ref: '555', contentType: 'x/y', filename: 'f.bin' }]
     })
   })
 
   it('falls back to a generic content type when Meta gives none', () => {
     const [event] = webhookToEvents(received({ type: 'audio', audio: { id: '5' } }))
-    expect(event?.message?.media).toEqual({
-      ref: '5',
-      contentType: 'application/octet-stream',
-      filename: null
-    })
+    expect(event?.message?.media).toEqual([
+      { ref: '5', contentType: 'application/octet-stream', filename: null }
+    ])
   })
 
   it('reads a location, with the coordinates as numbers', () => {
@@ -225,7 +223,7 @@ describe('webhookToEvents', () => {
     expect(event?.message).toMatchObject({
       type: MessageType.IMAGE,
       content: null,
-      media: { ref: '5', contentType: 'application/octet-stream', filename: null }
+      media: [{ ref: '5', contentType: 'application/octet-stream', filename: null }]
     })
   })
 
@@ -404,7 +402,7 @@ describe('webhookToEvents', () => {
     ['   ', null]
   ])('keeps only a safe file name: %j becomes %j', (filename, expected) => {
     const [event] = webhookToEvents(received({ type: 'document', document: { id: '5', filename } }))
-    expect(event?.message?.media?.filename).toBe(expected)
+    expect(event?.message?.media?.[0]?.filename).toBe(expected)
   })
 
   it('cuts the id of a button reply so that the event is not refused for its size', () => {
@@ -444,6 +442,121 @@ describe('webhookToEvents', () => {
       expect(
         webhookToEvents(received({ from: 'not a number', type: 'text', text: { body: 'x' } }))
       ).toEqual([])
+    })
+  })
+
+  describe('the origin of a message', () => {
+    const text = { type: 'text', text: { body: 'hola' } }
+    const originOf = (referral: unknown): unknown =>
+      webhookToEvents(received({ ...text, referral }))[0]?.message?.origin
+
+    it('reads the ad a customer tapped, and keeps the referral untouched', () => {
+      const referral = {
+        source_type: 'ad',
+        source_id: '120210987654321',
+        source_url: 'https://fb.me/ad',
+        headline: 'Zapatos -20%',
+        body: 'Envio gratis',
+        media_type: 'image',
+        image: { id: 'img-1', mime_type: 'image/jpeg' },
+        thumbnail_url: 'https://cdn.example/thumb.jpg',
+        ctwa_clid: 'click-1',
+        unknown_field: 'kept'
+      }
+      expect(originOf(referral)).toEqual({
+        kind: 'ad',
+        sourceId: '120210987654321',
+        sourceUrl: 'https://fb.me/ad',
+        title: 'Zapatos -20%',
+        body: 'Envio gratis',
+        media: { type: 'image', ref: 'img-1' },
+        thumbnailUrl: 'https://cdn.example/thumb.jpg',
+        clickId: 'click-1',
+        referral
+      })
+    })
+
+    it('reads the links of the creative as Meta documents them', () => {
+      expect(
+        originOf({ source_type: 'ad', media_type: 'image', image_url: 'https://cdn.example/a.jpg' })
+      ).toMatchObject({ media: { type: 'image', url: 'https://cdn.example/a.jpg' } })
+      expect(originOf({ source_type: 'ad', video_url: 'https://cdn.example/v.mp4' })).toMatchObject(
+        { media: { type: 'video', url: 'https://cdn.example/v.mp4' } }
+      )
+    })
+
+    it.each(['javascript:alert(1)', 'data:text/html,x', 'file:///etc/passwd'])(
+      'drops a link that is not http or https (%s)',
+      link => {
+        const origin = originOf({
+          source_type: 'ad',
+          source_url: link,
+          image_url: link,
+          thumbnail_url: link
+        })
+        expect(origin).not.toHaveProperty('sourceUrl')
+        expect(origin).not.toHaveProperty('thumbnailUrl')
+        expect(origin).not.toHaveProperty('media')
+      }
+    )
+
+    it('cuts a title as the core counts it, so that emoji do not cost the message', () => {
+      const [event] = webhookToEvents(
+        received({ ...text, referral: { source_type: 'ad', headline: '😀'.repeat(300) } })
+      )
+      const title = event?.message?.origin?.title ?? ''
+      expect(title.length).toBeLessThanOrEqual(255)
+      expect(title).toBe('😀'.repeat(127))
+    })
+
+    it('has no origin for an empty referral, and keeps an unknown one raw', () => {
+      expect(originOf({})).toBeUndefined()
+      expect(originOf({ something: 'new' })).toEqual({
+        kind: 'other',
+        referral: { something: 'new' }
+      })
+    })
+
+    it('reads a video and a post', () => {
+      expect(originOf({ source_type: 'post', video: { id: 'vid-1' } })).toMatchObject({
+        kind: 'post',
+        media: { type: 'video', ref: 'vid-1' }
+      })
+    })
+
+    it('keeps an origin that has only a link, and any type it does not know as other', () => {
+      expect(originOf({ source_url: 'https://fb.me/x', source_type: 'story' })).toMatchObject({
+        kind: 'other',
+        sourceUrl: 'https://fb.me/x'
+      })
+    })
+
+    it('leaves out the parts that do not fit, never the message', () => {
+      const [event] = webhookToEvents(
+        received({
+          ...text,
+          referral: {
+            source_type: 'ad',
+            source_url: 'not a url',
+            thumbnail_url: 42,
+            headline: 'h'.repeat(1000)
+          }
+        })
+      )
+      expect(event?.message?.content).toBe('hola')
+      expect(event?.message?.origin?.sourceUrl).toBeUndefined()
+      expect(event?.message?.origin?.thumbnailUrl).toBeUndefined()
+      expect(event?.message?.origin?.title).toHaveLength(255)
+    })
+
+    it('drops the raw referral when it is past the limit of a metadata object', () => {
+      const origin = originOf({ source_type: 'ad', big: 'x'.repeat(9000) })
+      expect(origin).toMatchObject({ kind: 'ad' })
+      expect(origin).not.toHaveProperty('referral')
+    })
+
+    it.each([undefined, null, 'ad', 7, []])('has no origin for a referral of %p', referral => {
+      expect(originOf(referral)).toBeUndefined()
     })
   })
 

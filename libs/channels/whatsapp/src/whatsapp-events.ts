@@ -1,22 +1,27 @@
 import {
   InboundLimits,
   MessageType,
+  OriginKinds,
+  OriginMediaTypes,
   WHATSAPP_USER_ID_PATTERN,
   WhatsAppInteractiveTypes,
   WhatsAppMediaFallback,
   WhatsAppMessageTypes,
+  WhatsAppReferralSourceTypes,
   WhatsAppStatuses,
   WhatsAppWebhook
 } from '@platform/core/domain'
-import { type ChannelEvent, ChannelEventTypes } from '@platform/plugins/sdk'
+import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
 
 import {
   parseChangeValue,
   parseEntryChanges,
   type WhatsAppChangeValue,
+  type WhatsAppReferral,
   type WhatsAppMessage,
   whatsAppContactSchema,
   whatsAppMessageSchema,
+  whatsAppReferralSchema,
   type WhatsAppStatus,
   whatsAppStatusSchema,
   whatsAppWebhookSchema
@@ -49,7 +54,16 @@ const isIdentity = (id: string | undefined): id is string =>
 // The name of a type goes into the visible content: letters, digits and underscore only
 const PROVIDER_TYPE = /^[A-Za-z0-9_]{1,64}$/
 
-const cut = (text: string, max: number): string => Array.from(text).slice(0, max).join('')
+// At most `max` UTF-16 units, the way the core counts them, and never half of a character: an emoji
+// is two units, so a title of 255 of them is 510 and would cost the whole message if left as it came
+function cut(text: string, max: number): string {
+  let out = ''
+  for (const character of text) {
+    if (out.length + character.length > max) break
+    out += character
+  }
+  return out
+}
 
 const isoFromUnixSeconds = (seconds: string): string =>
   new Date(Number(seconds) * MILLISECONDS).toISOString()
@@ -74,6 +88,49 @@ const NOT_MESSAGES: ReadonlySet<string> = new Set([
 ])
 
 type ReceivedMessage = NonNullable<ChannelEvent['message']>
+
+const REFERRAL_KINDS: ReadonlyMap<string, ChannelOrigin['kind']> = new Map([
+  [WhatsAppReferralSourceTypes.AD, OriginKinds.AD],
+  [WhatsAppReferralSourceTypes.POST, OriginKinds.POST]
+])
+
+// The creative of the ad: the link Meta sends, or the id of a media object that can be fetched
+function originMedia(referral: WhatsAppReferral): ChannelOrigin['media'] {
+  if (referral.image_url) return { type: OriginMediaTypes.IMAGE, url: referral.image_url }
+  if (referral.video_url) return { type: OriginMediaTypes.VIDEO, url: referral.video_url }
+  if (referral.image) return { type: OriginMediaTypes.IMAGE, ref: referral.image.id }
+  if (referral.video) return { type: OriginMediaTypes.VIDEO, ref: referral.video.id }
+  return undefined
+}
+
+// The ad or post the customer tapped. Nothing here can cost the message: a part that does not fit is
+// left out, and the raw referral is kept only while it fits the limit of a metadata object.
+function originOf(raw: Record<string, unknown> | undefined): ChannelOrigin | undefined {
+  // An empty referral says nothing, and a thing that is not an object is not one
+  if (raw === undefined || Object.keys(raw).length === 0) return undefined
+  const parsed = whatsAppReferralSchema.safeParse(raw)
+  if (!parsed.success) return undefined
+  const referral = parsed.data
+  const media = originMedia(referral)
+  const origin: ChannelOrigin = {
+    kind: REFERRAL_KINDS.get(referral.source_type ?? '') ?? OriginKinds.OTHER,
+    ...(referral.source_id ? { sourceId: referral.source_id } : {}),
+    ...(referral.source_url ? { sourceUrl: referral.source_url } : {}),
+    ...(hasText(referral.headline)
+      ? { title: cut(referral.headline ?? '', InboundLimits.ORIGIN_TITLE_MAX_LENGTH) }
+      : {}),
+    ...(hasText(referral.body)
+      ? { body: cut(referral.body ?? '', InboundLimits.ORIGIN_BODY_MAX_LENGTH) }
+      : {}),
+    ...(media ? { media } : {}),
+    ...(referral.thumbnail_url ? { thumbnailUrl: referral.thumbnail_url } : {}),
+    ...(referral.ctwa_clid ? { clickId: referral.ctwa_clid } : {}),
+    ...(Buffer.byteLength(JSON.stringify(raw)) <= InboundLimits.METADATA_MAX_BYTES
+      ? { referral: raw }
+      : {})
+  }
+  return origin
+}
 
 function isMediaKind(type: string): type is MediaKind {
   return MEDIA_TYPES.has(type)
@@ -104,14 +161,16 @@ function toReceivedMessage(message: WhatsAppMessage): ReceivedMessage | null {
         ...base,
         type: MEDIA_TYPES.get(message.type) ?? MessageType.DOCUMENT,
         content: hasText(media.caption) ? (media.caption ?? null) : null,
-        media: {
-          ref: media.id,
-          contentType:
-            media.mime_type && media.mime_type.length <= InboundLimits.CONTENT_TYPE_MAX_LENGTH
-              ? media.mime_type
-              : WhatsAppMediaFallback.CONTENT_TYPE,
-          filename: safeFilename(media.filename)
-        }
+        media: [
+          {
+            ref: media.id,
+            contentType:
+              media.mime_type && media.mime_type.length <= InboundLimits.CONTENT_TYPE_MAX_LENGTH
+                ? media.mime_type
+                : WhatsAppMediaFallback.CONTENT_TYPE,
+            filename: safeFilename(media.filename)
+          }
+        ]
       }
     }
   }
@@ -200,13 +259,16 @@ function messageEvents(value: WhatsAppChangeValue): ChannelEvent[] {
     if (!received) continue
     // While the phone still arrives, the user id beside it is the only way to join the customer's two
     // identities later, once the phone stops
-    const message =
-      parsed.data.from && parsed.data.from_user_id
+    const origin = originOf(parsed.data.referral)
+    const message = {
+      ...(parsed.data.from && parsed.data.from_user_id
         ? {
             ...received,
             metadata: { ...received.metadata, whatsappUserId: parsed.data.from_user_id }
           }
-        : received
+        : received),
+      ...(origin ? { origin } : {})
+    }
     events.push({
       type: ChannelEventTypes.MESSAGE_RECEIVED,
       connectionId,

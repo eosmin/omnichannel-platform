@@ -5,6 +5,24 @@ import { canonicalTimezone } from './timezone'
 
 export const uuidSchema = z.uuid()
 
+// Zod runs every check even when the format already failed, so a text that is no link is not this
+// check's to refuse (and `new URL` would throw on it)
+function hasNoCredentials(link: string): boolean {
+  if (!URL.canParse(link)) return true
+  const { username, password } = new URL(link)
+  return username === '' && password === ''
+}
+
+// A link that comes from outside (an ad's, a customer's) and may be drawn as a link or an image:
+// only http and https, never `javascript:` or `data:`, and no user or password in it. Being well
+// formed says nothing about where it points: whatever fetches it from a server (Step 3.4) must still
+// refuse private addresses itself.
+export const httpUrl = (maxLength: number): z.ZodURL =>
+  z
+    .url({ protocol: /^https?$/ })
+    .max(maxLength)
+    .refine(hasNoCredentials, { message: 'a link carries no credentials' })
+
 // Control characters (line breaks included) and the invisible format ones (zero-width space, bidi
 // overrides) make two names that look the same or draw a name backwards. The joiner U+200D stays: emoji
 // are built with it.

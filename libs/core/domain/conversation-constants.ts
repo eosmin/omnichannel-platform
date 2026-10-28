@@ -66,11 +66,31 @@ export const InboundMessageTypes = [
 ] as const
 
 // Bounds on what a channel event may carry: it comes from a provider, or from a plugin that is not ours
+// Where a conversation came from: an ad, a post, or something a provider does not name. Channel
+// agnostic; each plugin fills it from what its provider sends.
+export const OriginKinds = {
+  AD: 'ad',
+  POST: 'post',
+  OTHER: 'other'
+} as const
+export type OriginKind = (typeof OriginKinds)[keyof typeof OriginKinds]
+
+export const OriginMediaTypes = {
+  IMAGE: 'image',
+  VIDEO: 'video'
+} as const
+export type OriginMediaType = (typeof OriginMediaTypes)[keyof typeof OriginMediaTypes]
+
 export const InboundLimits = {
   MAX_EVENTS_PER_REQUEST: 100,
   ID_MAX_LENGTH: 255,
   CONTENT_MAX_LENGTH: 65_536,
   MEDIA_REF_MAX_LENGTH: 2048,
+  // Meta takes up to 30 images in one send, so a customer's message can bring as many
+  MAX_MEDIA_PER_MESSAGE: 30,
+  // The origin of a message (an ad it came from): texts a provider sends are cut to fit, not refused
+  ORIGIN_TITLE_MAX_LENGTH: 255,
+  ORIGIN_BODY_MAX_LENGTH: 2000,
   FILENAME_MAX_LENGTH: 255,
   CONTENT_TYPE_MAX_LENGTH: 127,
   METADATA_MAX_BYTES: 8192,
