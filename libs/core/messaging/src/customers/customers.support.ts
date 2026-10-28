@@ -3,6 +3,7 @@ import {
   type PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
+import { LONE_SURROGATE } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 // Postgres LIKE treats _ and % as wildcards, and Prisma's `contains` does not escape them: a search
@@ -31,9 +32,6 @@ export async function lockCustomerForWrite(
 // What the services of the module run their reads on: the transaction of the request when there is
 // one, the client otherwise
 export type Db = PrismaService['client']
-
-// Half of an emoji: a high surrogate with no low one after it, or a low one with no high one before
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
 
 // Text that a channel sends, made storable: Postgres text cannot hold a NUL character, and the
 // engine of Prisma rejects half of an emoji, which cutting by UTF-16 units can leave. It is cut by

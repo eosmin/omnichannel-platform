@@ -24,6 +24,24 @@ describe('channelEventSchema', () => {
     expect(channelEventSchema.safeParse(valid).success).toBe(true)
   })
 
+  it('takes an origin with every field, and one with only its kind', () => {
+    const full = {
+      kind: 'ad',
+      sourceId: '1',
+      sourceUrl: 'https://fb.me/ad',
+      title: 't',
+      body: 'b',
+      media: { type: 'video', url: 'https://cdn.example/v.jpg' },
+      thumbnailUrl: 'https://cdn.example/t.jpg',
+      clickId: 'c',
+      referral: { anything: ['goes', 1] }
+    }
+    expect(channelEventSchema.safeParse(withMessage({ origin: full })).success).toBe(true)
+    expect(channelEventSchema.safeParse(withMessage({ origin: { kind: 'other' } })).success).toBe(
+      true
+    )
+  })
+
   it.each([MessageType.SYSTEM, MessageType.INTERNAL_NOTE, MessageType.ORDER_SUMMARY])(
     'refuses a customer message of the type %s, which only the platform writes',
     type => {
@@ -38,7 +56,7 @@ describe('channelEventSchema', () => {
     ['a text message with no text', withMessage({ content: '  ' })],
     [
       'a text message that carries media',
-      withMessage({ media: { ref: 'r', contentType: 'image/png', filename: null } })
+      withMessage({ media: [{ ref: 'r', contentType: 'image/png', filename: null }] })
     ],
     ['an image with no media', withMessage({ type: MessageType.IMAGE, content: null })],
     ['an empty connection', { ...valid, connectionId: '' }],
@@ -54,11 +72,50 @@ describe('channelEventSchema', () => {
     [
       'a media ref past the limit',
       withMessage({
-        media: {
-          ref: 'x'.repeat(InboundLimits.MEDIA_REF_MAX_LENGTH + 1),
+        type: MessageType.IMAGE,
+        media: [
+          {
+            ref: 'x'.repeat(InboundLimits.MEDIA_REF_MAX_LENGTH + 1),
+            contentType: 'image/png',
+            filename: null
+          }
+        ]
+      })
+    ],
+    ['an origin of a kind it does not know', withMessage({ origin: { kind: 'story' } })],
+    [
+      'an origin media that is both a reference and a url',
+      withMessage({
+        origin: { kind: 'ad', media: { type: 'image', ref: 'r', url: 'https://x.example/a.jpg' } }
+      })
+    ],
+    [
+      'an origin with a url that is not one',
+      withMessage({ origin: { kind: 'ad', sourceUrl: 'not a url' } })
+    ],
+    [
+      'an origin media that is neither a reference nor a url',
+      withMessage({ origin: { kind: 'ad', media: { type: 'image' } } })
+    ],
+    [
+      'an origin link that is not http or https',
+      withMessage({ origin: { kind: 'ad', sourceUrl: 'javascript:alert(1)' } })
+    ],
+    [
+      'an origin link with a user and a password in it',
+      withMessage({ origin: { kind: 'ad', sourceUrl: 'https://user:pass@fb.me/ad' } })
+    ],
+    ['an origin with a field it does not know', withMessage({ origin: { kind: 'ad', adId: '1' } })],
+    ['an image with an empty list of media', withMessage({ type: MessageType.IMAGE, media: [] })],
+    [
+      'more media than a message can carry',
+      withMessage({
+        type: MessageType.IMAGE,
+        media: Array.from({ length: InboundLimits.MAX_MEDIA_PER_MESSAGE + 1 }, (_, index) => ({
+          ref: `r${index}`,
           contentType: 'image/png',
           filename: null
-        }
+        }))
       })
     ]
   ])('refuses %s', (_label, event) => {

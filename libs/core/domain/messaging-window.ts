@@ -5,4 +5,7 @@ export interface MessagingWindowPolicy {
   // WhatsApp lets an approved template through once the window is closed; Instagram and Messenger
   // do not let anything through
   requiresTemplateWhenClosed: boolean
+  // Instagram and Messenger: when the customer's first message follows a click on an ad, the window
+  // may last this many hours from that message ("up to": Meta does not promise it)
+  extendedHoursAfterAd?: number
 }

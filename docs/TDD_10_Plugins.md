@@ -1181,7 +1181,8 @@ plugin are those of the key. All the answers of the errors below use the codes t
     connection of this installation; any other is dropped and counted
     (`PLUGIN_EVENT_REJECTED`), never applied to a message of another channel. `message_sent` confirms
     a message the platform sent in the same way (it sets it `sent`); one the platform did not send
-    (an echo of what was typed in the provider's own app) is dropped and counted in this version.
+    (an echo of what was typed in the provider's own app) is a `message_echo` event, stored as an
+    outbound message of an external author (Step 2.8, `MVP_TRIM_CHECKLIST.md`).
     `connection_error` marks the connection `ERROR`. `customer_typing` needs its capability, is not
     queued (it goes to the realtime layer, at most one per conversation every 2 seconds) and nothing
     of it is stored. `message_delivered` and `message_read` need their capabilities.

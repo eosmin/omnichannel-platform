@@ -23,7 +23,7 @@ import {
   InboundOutcomes,
   RoutingService
 } from '@platform/core/messaging'
-import { JobNames, QueueNames } from '@platform/core/queues'
+import { type FetchInboundMediaJob, JobNames, QueueNames } from '@platform/core/queues'
 import {
   inboundJobId,
   PluginRegistry,
@@ -505,7 +505,7 @@ describe('Messages that a channel delivers', () => {
       heavy.jobs.length = 0
       const incoming = event(connectionId)
       incoming.message.type = MessageType.IMAGE
-      incoming.message.media = { ref: 'media-ref', contentType: 'image/png', filename: 'a.png' }
+      incoming.message.media = [{ ref: 'media-ref', contentType: 'image/png', filename: 'a.png' }]
 
       await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
       await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
@@ -513,6 +513,259 @@ describe('Messages that a channel delivers', () => {
       const ids = new Set(heavy.jobs.map(job => job.opts?.jobId))
       expect(heavy.jobs.every(job => job.name === JobNames.FETCH_INBOUND_MEDIA)).toBe(true)
       expect(ids.size).toBe(1)
+    })
+
+    it('sends every file of an album to be fetched, as the media of one message', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const heavy = queueOf(app, QueueNames.HEAVY_PROCESSING)
+      heavy.jobs.length = 0
+      const incoming = event(connectionId)
+      incoming.message.type = MessageType.IMAGE
+      incoming.message.media = [
+        { ref: 'first', contentType: 'image/png', filename: null },
+        { ref: 'second', contentType: 'image/jpeg', filename: null }
+      ]
+
+      await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+      await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+
+      // The captured queue keeps the data as unknown; these jobs are the ones the service just added
+      const fetches = heavy.jobs.map(job => job.data as FetchInboundMediaJob)
+      expect(new Set(heavy.jobs.map(job => job.opts?.jobId)).size).toBe(2)
+      expect(new Set(fetches.map(job => job.messageId)).size).toBe(1)
+      expect(fetches.map(job => job.mediaRef).sort()).toEqual([
+        'first',
+        'first',
+        'second',
+        'second'
+      ])
+    })
+
+    describe('the window of an ad', () => {
+      const identityOf = (from: string) =>
+        owner.customerIdentity.findFirstOrThrow({
+          where: { storeId: ctx.storeA.id, channelIdentity: from }
+        })
+      const fromAd = (
+        connectionId: string,
+        from: string,
+        at: string,
+        sourceId = 'ad-1'
+      ): InboundEvent => {
+        const incoming = event(connectionId, { from, at })
+        incoming.message.origin = { kind: 'ad', sourceId }
+        return incoming
+      }
+
+      it('is counted from the first message of an ad, and only for an ad', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370666001'
+        const at = new Date(Date.now() - 60_000).toISOString()
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, event(connectionId, { from }))
+        expect((await identityOf(from)).adWindowOpenedAt).toBeNull()
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, fromAd(connectionId, from, at))
+        expect((await identityOf(from)).adWindowOpenedAt?.toISOString()).toBe(at)
+      })
+
+      it('moves for a new click on the same ad, because every referral is a click', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370666003'
+        const first = new Date(Date.now() - 3_600_000).toISOString()
+        const again = new Date(Date.now() - 60_000).toISOString()
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, fromAd(connectionId, from, first))
+        await service.handleMessageReceived(TEST_CHANNEL_ID, fromAd(connectionId, from, again))
+
+        expect((await identityOf(from)).adWindowOpenedAt?.toISOString()).toBe(again)
+      })
+
+      it('moves forward with a newer ad and never back with an older message', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370666002'
+        const newer = new Date(Date.now() - 60_000).toISOString()
+        const older = new Date(Date.now() - 3_600_000).toISOString()
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, fromAd(connectionId, from, older))
+        await service.handleMessageReceived(
+          TEST_CHANNEL_ID,
+          fromAd(connectionId, from, newer, 'ad-2')
+        )
+        expect((await identityOf(from)).adWindowOpenedAt?.toISOString()).toBe(newer)
+
+        // Another ad that arrives late, dated before the newer one
+        const late = new Date(Date.now() - 7_200_000).toISOString()
+        await service.handleMessageReceived(
+          TEST_CHANNEL_ID,
+          fromAd(connectionId, from, late, 'ad-3')
+        )
+
+        expect((await identityOf(from)).adWindowOpenedAt?.toISOString()).toBe(newer)
+      })
+
+      it('opens the window for an ad that names neither an id nor a link', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370666004'
+        const incoming = event(connectionId, { from })
+        incoming.message.origin = { kind: 'ad', title: 'No id' }
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+
+        expect((await identityOf(from)).adWindowOpenedAt).not.toBeNull()
+      })
+    })
+
+    describe('the origin of a conversation', () => {
+      const withOrigin = (
+        connectionId: string,
+        from: string,
+        sourceId: string | undefined
+      ): InboundEvent => {
+        const incoming = event(connectionId, { from })
+        incoming.message.origin = {
+          kind: 'ad',
+          ...(sourceId === undefined ? {} : { sourceId }),
+          title: 'Zapatos',
+          media: { type: 'image', ref: 'ad-image' },
+          referral: { source_id: sourceId ?? null, extra: ['kept', 1] }
+        }
+        return incoming
+      }
+      const originsOf = (from: string) =>
+        owner.conversationOrigin.findMany({
+          where: {
+            storeId: ctx.storeA.id,
+            conversation: { customerIdentity: { channelIdentity: from } }
+          },
+          orderBy: { createdAt: 'asc' }
+        })
+
+      it('stores the ad of a message with the message and keeps the referral as it came', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555001'
+        const incoming = withOrigin(connectionId, from, 'ad-1')
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+
+        const [origin, ...rest] = await originsOf(from)
+        const message = await owner.message.findFirstOrThrow({
+          where: { storeId: ctx.storeA.id, channelMessageId: incoming.message.externalId }
+        })
+        expect(rest).toEqual([])
+        expect(origin).toMatchObject({
+          storeId: ctx.storeA.id,
+          conversationId: message.conversationId,
+          messageId: message.id,
+          kind: 'ad',
+          sourceId: 'ad-1',
+          title: 'Zapatos',
+          mediaType: 'image',
+          mediaRef: 'ad-image',
+          mediaUrl: null,
+          referral: { source_id: 'ad-1', extra: ['kept', 1] }
+        })
+        // Until the origin card has an endpoint (Step 3.2), what can be proved is the write: the row is
+        // in the store of the connection and the other store sees none of it
+        expect(
+          await owner.conversationOrigin.count({
+            where: { storeId: ctx.storeB.id, conversationId: message.conversationId }
+          })
+        ).toBe(0)
+      })
+
+      it('keeps one entry for the same ad in a row, and one more for another ad', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555002'
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, withOrigin(connectionId, from, 'ad-1'))
+        await service.handleMessageReceived(TEST_CHANNEL_ID, withOrigin(connectionId, from, 'ad-1'))
+        await service.handleMessageReceived(TEST_CHANNEL_ID, withOrigin(connectionId, from, 'ad-2'))
+        await service.handleMessageReceived(TEST_CHANNEL_ID, withOrigin(connectionId, from, 'ad-1'))
+
+        expect((await originsOf(from)).map(origin => origin.sourceId)).toEqual([
+          'ad-1',
+          'ad-2',
+          'ad-1'
+        ])
+      })
+
+      it('stores every origin that names no ad, and none for a message with no origin', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555003'
+
+        await service.handleMessageReceived(
+          TEST_CHANNEL_ID,
+          withOrigin(connectionId, from, undefined)
+        )
+        await service.handleMessageReceived(
+          TEST_CHANNEL_ID,
+          withOrigin(connectionId, from, undefined)
+        )
+        await service.handleMessageReceived(TEST_CHANNEL_ID, event(connectionId, { from }))
+
+        expect(await originsOf(from)).toHaveLength(2)
+      })
+
+      it('does not lose the message when a provider text carries a NUL character', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555005'
+        const incoming = withOrigin(connectionId, from, 'ad-nul')
+        incoming.message.origin = {
+          ...incoming.message.origin,
+          kind: 'ad',
+          title: 'Zap\u0000atos',
+          referral: { headline: 'a\u0000b' }
+        }
+
+        expect(await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)).toBe(
+          InboundOutcomes.STORED
+        )
+        expect((await originsOf(from))[0]?.title).toBe('Zapatos')
+      })
+
+      it('does not lose the message when a provider text has half of an emoji', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555007'
+        const incoming = withOrigin(connectionId, from, 'ad-half')
+        incoming.message.origin = {
+          kind: 'ad',
+          sourceId: 'ad-half',
+          title: 'Zap\ud83d',
+          referral: { headline: 'a\ud83d' }
+        }
+
+        expect(await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)).toBe(
+          InboundOutcomes.STORED
+        )
+        expect((await originsOf(from))[0]?.title).toBe('Zap\ufffd')
+      })
+
+      it('knows an ad by its link when one delivery has the id and another has not', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555008'
+        const url = 'https://fb.me/same-ad'
+        const first = event(connectionId, { from })
+        first.message.origin = { kind: 'ad', sourceId: 'ad-7', sourceUrl: url }
+        const second = event(connectionId, { from })
+        second.message.origin = { kind: 'ad', sourceUrl: url }
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, first)
+        await service.handleMessageReceived(TEST_CHANNEL_ID, second)
+
+        expect(await originsOf(from)).toHaveLength(1)
+      })
+
+      it('does not write the origin twice when the same message is delivered twice', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555004'
+        const incoming = withOrigin(connectionId, from, 'ad-9')
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+        await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+
+        expect(await originsOf(from)).toHaveLength(1)
+      })
     })
 
     it('never takes a message of the customer for the one of an agent', async () => {

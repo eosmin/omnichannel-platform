@@ -1,4 +1,10 @@
-import type { DeliveryStatus, MessageType, MessagingWindowPolicy } from '@platform/core/domain'
+import type {
+  DeliveryStatus,
+  MessageType,
+  MessagingWindowPolicy,
+  OriginKind,
+  OriginMediaType
+} from '@platform/core/domain'
 
 export const ChannelEventTypes = {
   MESSAGE_RECEIVED: 'message_received',
@@ -11,6 +17,30 @@ export const ChannelEventTypes = {
 } as const
 
 export type ChannelEventType = (typeof ChannelEventTypes)[keyof typeof ChannelEventTypes]
+
+// A file the customer attached. `ref` is whatever the plugin's `fetchMedia` needs to get it: a media
+// id (WhatsApp) or a url (Instagram, Messenger).
+export interface ChannelMedia {
+  ref: string
+  contentType: string
+  filename: string | null
+}
+
+// Where the message came from, when the customer arrived through an ad or a post. Every field is
+// optional because a provider sends what it has: sometimes only a link. The media is either a
+// provider reference (fetched with `fetchMedia`, like any media) or a url, never both. `referral`
+// is what the provider sent, untouched, so that the first real ad teaches what the fields missed.
+export interface ChannelOrigin {
+  kind: OriginKind
+  sourceId?: string
+  sourceUrl?: string
+  title?: string
+  body?: string
+  media?: { type: OriginMediaType; ref?: string; url?: string }
+  thumbnailUrl?: string
+  clickId?: string
+  referral?: Record<string, unknown>
+}
 
 export interface ChannelEvent {
   type: ChannelEventType
@@ -25,8 +55,10 @@ export interface ChannelEvent {
     externalId: string
     type: MessageType
     content: string | null
-    // Fetched later by the core
-    media?: { ref: string; contentType: string; filename: string | null }
+    // Fetched later by the core. One message can carry several (an album): the core stores them all
+    // on the same message.
+    media?: readonly ChannelMedia[]
+    origin?: ChannelOrigin
     replyToExternalId?: string
     metadata?: Record<string, unknown>
     timestamp: string // ISO 8601

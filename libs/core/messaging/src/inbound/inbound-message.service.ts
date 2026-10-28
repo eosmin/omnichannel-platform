@@ -14,6 +14,7 @@ import {
   ConversationLimits,
   ConversationStatus,
   MessageType,
+  OriginKinds,
   ConversationStatusReasons
 } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
@@ -28,6 +29,7 @@ import { CustomerIdentityService } from '../customers/customer-identity.service'
 import { insertInboundMessage } from '../messages/inbound-messages'
 import { RoutingService } from '../routing/routing.service'
 
+import { recordOrigin } from './conversation-origin'
 import { type InboundEvent, type InboundOutcome, InboundOutcomes } from './inbound-event'
 import { receivedTime } from './inbound-time'
 
@@ -98,20 +100,24 @@ export class InboundMessageService {
       )
     })
 
-    // The job id is the message: asked twice (a retry after a failure here) it is one job
-    if (event.message.media !== undefined) {
-      await this.heavyQueue.add(
-        JobNames.FETCH_INBOUND_MEDIA,
-        {
-          messageId: stored.messageId,
-          storeId,
-          pluginId,
-          connectionId: event.connectionId,
-          mediaRef: event.message.media.ref,
-          contentType: event.message.media.contentType,
-          filename: event.message.media.filename
-        },
-        { jobId: `fetch-media-${stored.messageId}` }
+    // One round trip for the whole album. The job id is the message and the place of the file in it:
+    // asked twice (a retry after a failure here) it is one job each.
+    const files = event.message.media ?? []
+    if (files.length > 0) {
+      await this.heavyQueue.addBulk(
+        files.map((media, index) => ({
+          name: JobNames.FETCH_INBOUND_MEDIA,
+          data: {
+            messageId: stored.messageId,
+            storeId,
+            pluginId,
+            connectionId: event.connectionId,
+            mediaRef: media.ref,
+            contentType: media.contentType,
+            filename: media.filename
+          },
+          opts: { jobId: `fetch-media-${stored.messageId}-${index}` }
+        }))
       )
     }
     if (stored.duplicate) return InboundOutcomes.DUPLICATE
@@ -178,6 +184,15 @@ export class InboundMessageService {
       message: event.message,
       createdAt: receivedAt
     })
+    if (event.message.origin !== undefined) {
+      await recordOrigin(tx, {
+        storeId,
+        conversationId: placement.conversationId,
+        messageId: message.id,
+        origin: event.message.origin,
+        createdAt: receivedAt
+      })
+    }
     await this.conversations.recordInbound(tx, storeId, placement.conversationId, receivedAt)
     // Opens the messaging window of the customer on this channel
     await tx.customerIdentity.updateMany({
@@ -188,6 +203,19 @@ export class InboundMessageService {
       },
       data: { lastInboundAt: receivedAt }
     })
+    // A referral comes only with the first message after a click, so every one of an ad is a click, the
+    // same ad again included: it opens the longer window of the channels that have one, counted from this
+    // message. It only moves forward.
+    if (event.message.origin?.kind === OriginKinds.AD) {
+      await tx.customerIdentity.updateMany({
+        where: {
+          id: identityId,
+          storeId,
+          OR: [{ adWindowOpenedAt: null }, { adWindowOpenedAt: { lt: receivedAt } }]
+        },
+        data: { adWindowOpenedAt: receivedAt }
+      })
+    }
 
     if (placement.created) {
       this.events.publish(tx, Events.CONVERSATION_CREATED, {

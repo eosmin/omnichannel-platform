@@ -1,9 +1,11 @@
 import { z } from 'zod'
 
-import { InboundLimits, WhatsAppWebhook } from '@platform/core/domain'
+import { httpUrl, InboundLimits, WhatsAppWebhook } from '@platform/core/domain'
 
 // Ids that become the externalId or the media reference: what the core would refuse is skipped here
-const messageId = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)
+const boundedId = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)
+const messageId = boundedId
+const mediaId = z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH)
 // A unix time in seconds, as text. Bounded so that the date it makes is always valid.
 const unixSeconds = z.string().regex(/^\d{1,12}$/)
 
@@ -20,12 +22,36 @@ const coordinate = (limit: number) =>
     .pipe(z.number().finite().min(-limit).max(limit))
 
 const mediaSchema = z.object({
-  id: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH),
+  id: mediaId,
   // Optional and odd is the same as absent: the customer's file matters more than its label
   mime_type: z.string().min(1).optional().catch(undefined),
   caption: z.string().optional().catch(undefined),
   filename: z.string().optional().catch(undefined)
 })
+
+const optionalText = z.string().optional().catch(undefined)
+const optionalUrl = httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined)
+
+// What a Click-to-WhatsApp ad or post sends with the first message. Every part is read alone and an
+// odd one is the same as an absent one: Meta sometimes sends only `source_url`, and the first real ad
+// may carry what this does not know (the raw referral is kept for that, `welcome_message` among it).
+// The creative comes as links (`image_url`, `video_url`) in Meta's current reference; a media object
+// with an id is also read, because an older description of the webhook had it.
+export const whatsAppReferralSchema = z.object({
+  source_type: optionalText,
+  source_id: boundedId.optional().catch(undefined),
+  source_url: optionalUrl,
+  headline: optionalText,
+  body: optionalText,
+  image_url: optionalUrl,
+  video_url: optionalUrl,
+  image: tolerant(z.object({ id: mediaId })),
+  video: tolerant(z.object({ id: mediaId })),
+  thumbnail_url: optionalUrl,
+  ctwa_clid: boundedId.optional().catch(undefined)
+})
+
+export type WhatsAppReferral = z.infer<typeof whatsAppReferralSchema>
 
 export const whatsAppMessageSchema = z.object({
   // The phone and the user id: today both arrive; a customer with a username brings only the user id
@@ -35,6 +61,7 @@ export const whatsAppMessageSchema = z.object({
   timestamp: unixSeconds,
   type: z.string().min(1),
   context: tolerant(z.object({ id: z.string().optional() })),
+  referral: tolerant(z.record(z.string(), z.unknown())),
   text: tolerant(z.object({ body: z.string() })),
   image: tolerant(mediaSchema),
   video: tolerant(mediaSchema),
