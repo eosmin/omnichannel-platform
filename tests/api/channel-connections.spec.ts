@@ -12,7 +12,7 @@ import { ErrorCodes } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
-import { buildChannelPlugin } from '../builders'
+import { buildChannelPlugin, ensurePluginInstallation } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -85,10 +85,14 @@ describe('The channel connections of a store', () => {
     registry.register(plugin)
     return { id, plugin, connectionId }
   }
-  const connect = (pluginId: string, agent = asAdmin) =>
-    agent()
+  // The plugin is installed in both stores first, as the catalog would do: connecting needs it
+  const connect = async (pluginId: string, agent = asAdmin) => {
+    await ensurePluginInstallation(owner, { storeId: ctx.storeA.id, pluginId })
+    await ensurePluginInstallation(owner, { storeId: ctx.storeB.id, pluginId })
+    return agent()
       .post(ApiRoutes.channels.connect(pluginId))
       .send({ credentials: { token: SECRET } })
+  }
 
   async function auditCount(action: string, resourceId: string, expected: number) {
     for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -444,10 +448,15 @@ describe('The channel connections of a store', () => {
     it('does not change a connection whose credentials cannot be opened: the fault is ours', async () => {
       const { id, plugin } = register()
       // Written by a builder with bytes that this key never sealed, as after a change of key
+      const installation = await ensurePluginInstallation(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: id
+      })
       const row = await owner.channelConnection.create({
         data: {
           storeId: ctx.storeA.id,
           pluginId: id,
+          installationId: installation.id,
           connectionId: `broken-${randomUUID()}`,
           displayName: 'broken',
           credentials: Buffer.from('not a sealed value')

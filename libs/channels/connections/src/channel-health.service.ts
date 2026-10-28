@@ -6,7 +6,8 @@ import { lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelHealthErrors,
-  ChannelHealthLimits
+  ChannelHealthLimits,
+  OfActiveInstallation
 } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
@@ -123,7 +124,8 @@ export class ChannelHealthService {
     // reconnected or disconnected meanwhile must be asked with what it has now, not with what it had
     const ids = await this.prisma.client.channelConnection.findMany({
       where: {
-        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] }
+        status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+        ...OfActiveInstallation
       },
       select: { id: true },
       orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }]
@@ -156,7 +158,8 @@ export class ChannelHealthService {
       const row = await this.prisma.client.channelConnection.findFirst({
         where: {
           id: connectionRowId,
-          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] }
+          status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
+          ...OfActiveInstallation
         },
         select: CONNECTION_ROW_SELECT
       })

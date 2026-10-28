@@ -1037,7 +1037,7 @@ A manifest with `"type": "channel"` carries a `channel` block (validated by `plu
 
 - `id` of the manifest is the channel id. It must match `CHANNEL_ID_PATTERN`, must not be one of
   `ChannelIds` and must not be registered already. The validator checks the constants as well as the
-  `plugins` table, because the official plugins have no row there.
+  `plugins` table: since D19 the official plugins have a row there too, written from the code at boot.
 - `label`: 1 to 40 characters, one line, shown as it is (a plugin does not translate its name).
 - `icon` is the top-level field of §6.1 (there is no second one inside `channel`). PNG, JPEG or SVG
   of at most 64 KB, fetched once when the plugin is registered (`assertPublicHttpsUrl`, no redirects,
@@ -1465,6 +1465,8 @@ the change breaks every plugin.
 
 ## 10. Channel connection management
 
+> Since D19 a channel is connected from the installation of its plugin: the store installs it from the catalog (`POST /plugins/install`), `POST /channels/:pluginId/connect` answers `409 PLUGIN_NOT_INSTALLED` without one, and uninstalling (`POST /plugins/:installationId/revoke`) disconnects every connection of the installation, deletes its credentials and keeps the conversations, messages and customers.
+>
 > A remote channel plugin (§6.7) registers its connections itself (`PUT /plugin-api/channel/connections/:connectionId`); `POST /channels/:pluginId/connect` answers `409` with its `ui.settings` URL. Its health checks are one job per connection with a counter of three failures (§6.7.7).
 
 ```

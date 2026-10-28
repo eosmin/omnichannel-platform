@@ -10,6 +10,7 @@ import {
   type ConversationStatusReason,
   ConversationStatusTransitions,
   MembershipStatus,
+  OfActiveInstallation,
   SystemMessageEvents
 } from '@platform/core/domain'
 import {
@@ -117,7 +118,7 @@ export class ConversationsService {
     })
     if (identity === null) throw resourceNotFound('customer identity')
     const connection = await tx.channelConnection.findFirst({
-      where: { id: input.channelConnectionId, storeId },
+      where: { id: input.channelConnectionId, storeId, ...OfActiveInstallation },
       select: { id: true, pluginId: true }
     })
     if (connection === null) throw resourceNotFound('channel connection')

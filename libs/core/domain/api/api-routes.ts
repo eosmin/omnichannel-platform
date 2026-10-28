@@ -260,7 +260,7 @@ export const ApiRoutes = {
     byId: (id: string) => `/plugins/${id}`,
     enable: (id: string) => `/plugins/${id}/enable`,
     disable: (id: string) => `/plugins/${id}/disable`,
-    revoke: (id: string) => `/plugins/${id}/revoke`,
+    revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     config: (id: string) => `/plugins/${id}/config`
   },
 

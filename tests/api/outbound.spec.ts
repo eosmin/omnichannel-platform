@@ -12,6 +12,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
   ChannelConnectionStatus,
+  PluginInstallationStatus,
   ChannelIds,
   DeliveryStatus,
   MessageType
@@ -327,6 +328,29 @@ describe('Replies on their way to a channel', () => {
         })
       }
       expect(sent).toHaveLength(0)
+    })
+
+    it('sends nothing through a connection whose installation was revoked', async () => {
+      const reply = await queuedReply()
+      await owner.pluginInstallation.updateMany({
+        where: { storeId: reply.storeId, pluginId: TEST_CHANNEL_ID },
+        data: { status: PluginInstallationStatus.REVOKED, revokedAt: new Date() }
+      })
+
+      try {
+        await sender.send(job(reply), false)
+
+        expect(await stored(reply.id)).toMatchObject({
+          deliveryStatus: DeliveryStatus.FAILED,
+          deliveryError: ErrorCodes.CHANNEL_NOT_CONNECTED
+        })
+        expect(sent).toHaveLength(0)
+      } finally {
+        await owner.pluginInstallation.updateMany({
+          where: { storeId: reply.storeId, pluginId: TEST_CHANNEL_ID },
+          data: { status: PluginInstallationStatus.ACTIVE, revokedAt: null }
+        })
+      }
     })
 
     it('tries again when the plugin is not registered yet, and fails only on the last attempt', async () => {

@@ -21,7 +21,10 @@ import {
 import {
   ChannelConnectionLimits,
   ChannelConnectionStatus,
-  ChannelHealthLimits
+  ChannelHealthLimits,
+  OfActiveInstallation,
+  PluginInstallationStatus,
+  PluginStatus
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -34,12 +37,18 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { enumValueOf } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import type { ChannelPlugin } from '@platform/plugins/sdk'
 
 import type { Actor } from '../tenancy'
 
-import { type ConnectChannelBody, connectResultSchema } from './channel-connections.schemas'
+import {
+  type ConnectChannelBody,
+  type ConnectResult,
+  connectResultSchema
+} from './channel-connections.schemas'
 
 type ConnectionWrite = Parameters<PrismaTransaction['channelConnection']['updateMany']>[0]['data']
+type InstallationReader = Pick<PrismaTransaction, '$queryRaw'>
 
 // What the settings page shows of a connection. The credentials are never part of it.
 export interface ChannelConnectionView {
@@ -129,6 +138,8 @@ export class ChannelConnectionsService {
   ): Promise<ChannelConnectionView> {
     if (!this.registry.isVisibleTo(pluginId, storeId)) throw resourceNotFound('channel')
     const plugin = this.registry.get(pluginId)
+    // Before the provider hears of it: connecting a plugin the store has not installed is refused
+    await this.installationOf(this.prisma.client, storeId, pluginId)
 
     let result
     let sealed
@@ -155,6 +166,10 @@ export class ChannelConnectionsService {
     const store = () =>
       this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
+        // Read again with the row locked: the uninstall changes that row, so it waits for this
+        // connection to commit and then disconnects it, and a connection is never added to an
+        // installation that was revoked a moment ago
+        const installationId = await this.installationOf(tx, storeId, pluginId)
         let existing = await tx.channelConnection.findUnique({
           where: { pluginId_connectionId: { pluginId, connectionId: result.connectionId } },
           select: { id: true, storeId: true, status: true, connectionId: true }
@@ -188,7 +203,8 @@ export class ChannelConnectionsService {
           credentials: sealed,
           metadata: result.metadata,
           lastError: null,
-          lastHealthyAt: new Date()
+          lastHealthyAt: new Date(),
+          installationId
         }
         const row =
           existing === null
@@ -206,13 +222,22 @@ export class ChannelConnectionsService {
       })
     let connection
     try {
-      connection = await store()
+      try {
+        connection = await store()
+      } catch (error) {
+        // The store lock is shared, so two connects of a new account can both find nothing: the
+        // unique index decides, and the second one runs again to find what the first wrote (and
+        // conflict, or update its own)
+        if (!isUniqueViolation(error)) throw error
+        connection = await store()
+      }
     } catch (error) {
-      // The store lock is shared, so two connects of a new account can both find nothing: the unique
-      // index decides, and the second one runs again to find what the first wrote (and conflict, or
-      // update its own)
-      if (!isUniqueViolation(error)) throw error
-      connection = await store()
+      // The plugin was uninstalled while the provider was answering: no row will ever hold this
+      // account, so nothing else would tell the provider to let it go
+      if (error instanceof PlatformException && error.code === ErrorCodes.PLUGIN_NOT_INSTALLED) {
+        await this.releaseAccount(plugin, storeId, pluginId, result, sealed)
+      }
+      throw error
     }
     this.audit.log({
       action: AuditAction.CHANNEL_CONNECTED,
@@ -225,6 +250,69 @@ export class ChannelConnectionsService {
       userAgent: actor.userAgent
     })
     return view(connection)
+  }
+
+  // Tells the provider to drop an account that was connected and could not be kept, if no row holds
+  // it. Whether the provider answers is not up to it: the request is refused either way.
+  private async releaseAccount(
+    plugin: ChannelPlugin,
+    storeId: string,
+    pluginId: string,
+    result: ConnectResult,
+    sealed: Uint8Array
+  ): Promise<void> {
+    try {
+      // An account that a row holds, of this store or of another, is not ours to release
+      const holder = await this.prisma.client.channelConnection.findUnique({
+        where: { pluginId_connectionId: { pluginId, connectionId: result.connectionId } },
+        select: { id: true }
+      })
+      if (holder !== null) return
+      await withTimeout(
+        plugin.disconnect(
+          this.contexts.contextFor({
+            id: result.connectionId,
+            storeId,
+            pluginId,
+            connectionId: result.connectionId,
+            status: ChannelConnectionStatus.ACTIVE,
+            credentials: sealed,
+            metadata: result.metadata
+          })
+        ),
+        ChannelHealthLimits.PROVIDER_TIMEOUT_MS
+      )
+    } catch (error) {
+      this.logger.warn(
+        { pluginId, storeId, errorName: errorName(error) },
+        'the provider did not release the account'
+      )
+    }
+  }
+
+  // The id of the active installation of the plugin in the store: the connection hangs from it (D19).
+  // A suspended plugin is refused too. FOR SHARE, not the KEY SHARE of the store lock, because the uninstall updates the status and
+  // that is the lock it conflicts with.
+  private async installationOf(
+    db: InstallationReader,
+    storeId: string,
+    pluginId: string
+  ): Promise<string> {
+    const [installation] = await db.$queryRaw<{ id: string }[]>`
+      SELECT i.id FROM plugin_installations i
+      JOIN plugins p ON p.id = i.plugin_id
+      WHERE i.store_id = ${storeId} AND i.plugin_id = ${pluginId}
+        AND i.status = ${PluginInstallationStatus.ACTIVE}
+        AND p.status = ${PluginStatus.APPROVED}
+      FOR SHARE OF i`
+    if (installation === undefined) {
+      throw new PlatformException(
+        ErrorCodes.PLUGIN_NOT_INSTALLED,
+        'the plugin is not installed in this store',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    return installation.id
   }
 
   // The same account of the same store again. The write names the account id it read: another store
@@ -252,6 +340,11 @@ export class ChannelConnectionsService {
     if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
       throw resourceConflict('the connection is disconnected')
     }
+    // A stranded connection (its installation was revoked) is not probed: it is only disconnected
+    const working = await this.prisma.client.channelConnection.count({
+      where: { id: connectionId, storeId, ...OfActiveInstallation }
+    })
+    if (working === 0) throw resourceConflict('the plugin is not installed in this store')
     const plugin = this.registry.find(row.pluginId)
     if (plugin === undefined) throw resourceNotFound('channel')
     const checkedAt = new Date()

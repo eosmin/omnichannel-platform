@@ -6,7 +6,12 @@ import {
   ChannelType,
   ConversationStatus,
   DeliveryStatus,
-  MessageType
+  MessageType,
+  OfficialPluginAuthor,
+  PluginCatalogTypes,
+  PluginInstallationStatus,
+  PluginPricingModels,
+  PluginStatus
 } from '@platform/core/domain'
 
 import type { PrismaClient } from '../generated/client/client'
@@ -76,6 +81,34 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
     roleId: roles[RoleNames.AGENT].id
   })
 
+  // The catalog row of WhatsApp, which the api rewrites at boot, and its installation in the store
+  await prisma.plugin.upsert({
+    where: { id: ChannelType.WHATSAPP },
+    create: {
+      id: ChannelType.WHATSAPP,
+      name: 'WhatsApp',
+      authorName: OfficialPluginAuthor.NAME,
+      authorEmail: OfficialPluginAuthor.EMAIL,
+      type: PluginCatalogTypes.CHANNEL,
+      isOfficial: true,
+      manifest: {},
+      pricingModel: PluginPricingModels.FREE,
+      status: PluginStatus.APPROVED
+    },
+    update: {}
+  })
+  const installation = await prisma.pluginInstallation.upsert({
+    where: { storeId_pluginId: { storeId: main.id, pluginId: ChannelType.WHATSAPP } },
+    create: {
+      storeId: main.id,
+      pluginId: ChannelType.WHATSAPP,
+      scopes: [],
+      status: PluginInstallationStatus.ACTIVE,
+      installedBy: admin.id
+    },
+    update: {}
+  })
+
   // Dummy credentials, encrypted like the real ones
   const connection = await prisma.channelConnection.upsert({
     where: {
@@ -87,6 +120,7 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
     create: {
       storeId: main.id,
       pluginId: ChannelType.WHATSAPP,
+      installationId: installation.id,
       connectionId: 'fixture-phone-number-id',
       displayName: '+503 2222-3333',
       status: ChannelConnectionStatus.ACTIVE,

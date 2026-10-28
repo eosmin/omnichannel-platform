@@ -12,6 +12,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
+import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
 import { RoutingModule } from './modules/routing/routing.module'
 import { SettingsModule } from './modules/settings/settings.module'
@@ -35,6 +36,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     MessagesModule,
     ChannelRegistryModule,
     ChannelsModule,
+    PluginsApiModule,
     MessagingWindowModule,
     RoutingModule,
     RealtimeModule,

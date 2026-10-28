@@ -14,7 +14,8 @@ import {
   ChannelTextLimits,
   DeliveryStatus,
   MessageType,
-  OutboundLimits
+  OutboundLimits,
+  isInstallationActive
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { enumValueOf } from '@platform/core/messaging'
@@ -77,7 +78,12 @@ export class OutboundSender {
           select: {
             channelType: true,
             customerIdentity: { select: { channelIdentity: true } },
-            channelConnection: { select: CONNECTION_ROW_SELECT }
+            channelConnection: {
+              select: {
+                ...CONNECTION_ROW_SELECT,
+                installation: { select: { status: true, plugin: { select: { status: true } } } }
+              }
+            }
           }
         }
       }
@@ -86,7 +92,11 @@ export class OutboundSender {
     if (message === null) return
 
     const { channelConnection: connection, channelType, customerIdentity } = message.conversation
-    const refusal = this.refusalBeforeSending(message, channelType, connection.status)
+    // A connection of an installation that is not active sends nothing, as a disconnected one
+    const connectionStatus = isInstallationActive(connection.installation)
+      ? connection.status
+      : ChannelConnectionStatus.DISCONNECTED
+    const refusal = this.refusalBeforeSending(message, channelType, connectionStatus)
     if (refusal !== null) {
       await this.fail(storeId, messageId, refusal.code)
       return

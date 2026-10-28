@@ -37,3 +37,4 @@ export const connectResultSchema = z.object({
   credentials: boundedJson(z.record(z.string(), z.unknown())),
   metadata: boundedJson(z.record(z.string(), z.json()))
 })
+export type ConnectResult = z.output<typeof connectResultSchema>
