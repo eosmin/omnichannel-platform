@@ -1,13 +1,7 @@
 import type { PrismaTransaction } from '@platform/core/database'
-import { LONE_SURROGATE } from '@platform/core/domain'
+import { safeText } from '@platform/core/domain'
 
 import type { InboundOrigin, JsonValue } from './inbound-event'
-
-// Postgres refuses a NUL in text and in jsonb, and a lone half of an emoji in jsonb. A provider's text
-// is not ours to refuse: an ad title with one must not cost the customer's message. The NULs go, a
-// lone surrogate becomes U+FFFD, and the rest is kept.
-const safeText = (text: string): string =>
-  text.replaceAll('\0', '').replace(LONE_SURROGATE, '\uFFFD')
 
 function safeJson(value: JsonValue): JsonValue {
   if (typeof value === 'string') return safeText(value)

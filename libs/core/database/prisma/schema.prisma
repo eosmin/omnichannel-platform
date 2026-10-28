@@ -51,6 +51,7 @@ model Store {
   conversations       Conversation[]
   messages            Message[]
   conversationOrigins ConversationOrigin[]
+  messageReactions    MessageReaction[]
   customers           Customer[]
   customerIdentities  CustomerIdentity[]
   customerMerges      CustomerMerge[]
@@ -154,6 +155,7 @@ model User {
 
   memberships             Membership[]
   messages                Message[]
+  messageReactions        MessageReaction[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   notificationSettings    UserNotificationSettings?
@@ -349,9 +351,10 @@ model CustomerIdentity {
   adWindowOpenedAt DateTime? @map("ad_window_opened_at")
   createdAt        DateTime  @default(now()) @map("created_at")
 
-  store         Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store         Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  reactions     MessageReaction[]
 
   @@unique([storeId, channelType, channelIdentity])
   @@index([customerId])
@@ -479,12 +482,42 @@ model Message {
   author       User?               @relation(fields: [authorId], references: [id])
   media        Media[]
   origin       ConversationOrigin?
+  reactions    MessageReaction[]
 
   @@unique([conversationId, channelMessageId])
   @@unique([conversationId, idempotencyKey])
   @@index([conversationId, createdAt])
   @@index([storeId, createdAt])
   @@map("messages")
+}
+
+// One emoji that one person left on a message. A person has at most one per message (a new emoji
+// replaces the old one, taking it back deletes the row): the customer by identity, an agent by user, and
+// the owner who reacts from the provider's own app, who is not a user of the platform, as one external
+// reactor per message. The unique index of the external reactor and the check that each author type
+// has its own id column live in the migration, which Prisma cannot express.
+model MessageReaction {
+  id                 String   @id @default(uuid())
+  storeId            String   @map("store_id")
+  messageId          String   @map("message_id")
+  authorType         String   @map("author_type") // AuthorType: customer, agent or external
+  customerIdentityId String?  @map("customer_identity_id")
+  userId             String?  @map("user_id")
+  emoji              String
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
+
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message          Message           @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  customerIdentity CustomerIdentity? @relation(fields: [customerIdentityId], references: [id], onDelete: Cascade)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, customerIdentityId])
+  @@unique([messageId, userId])
+  @@index([storeId])
+  @@index([customerIdentityId])
+  @@index([userId])
+  @@map("message_reactions")
 }
 
 // Where a conversation came from (an ad, a post), read by the plugin from what its provider sent. One

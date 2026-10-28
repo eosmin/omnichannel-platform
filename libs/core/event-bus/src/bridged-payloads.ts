@@ -60,6 +60,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
   [Events.MESSAGE_SENT]: status,
   [Events.MESSAGE_DELIVERED]: status,
   [Events.MESSAGE_READ]: status,
+  [Events.MESSAGE_REACTION]: status,
   [Events.MESSAGE_FAILED]: status.extend({ errorCode: z.enum(ErrorCodes) }),
   // The ids of a connection, no text: what the health check of the worker announces
   [Events.CHANNEL_DISCONNECTED]: z.object({

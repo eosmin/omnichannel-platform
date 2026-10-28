@@ -53,7 +53,9 @@ export enum MessageType {
 export enum AuthorType {
   CUSTOMER = 'customer',
   AGENT = 'agent',
-  SYSTEM = 'system'
+  SYSTEM = 'system',
+  // Written in the provider's own app (the owner's phone): the platform stores it but no one of the team sent it
+  EXTERNAL = 'external'
 }
 
 export enum DeliveryStatus {

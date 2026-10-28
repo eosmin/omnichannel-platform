@@ -116,10 +116,42 @@ describe('webhookToEvents', () => {
     })
   })
 
-  it('does not make a message of a reaction', () => {
+  it('turns a reaction into a reaction event, not into a message', () => {
     expect(
-      webhookToEvents(received({ type: 'reaction', reaction: { message_id: 'x', emoji: 'x' } }))
-    ).toEqual([])
+      webhookToEvents(
+        received({ type: 'reaction', reaction: { message_id: 'wamid.0', emoji: '👍' } })
+      )
+    ).toEqual([
+      {
+        type: ChannelEventTypes.MESSAGE_REACTION,
+        connectionId: PHONE,
+        channelIdentity: '15550001111',
+        reaction: { targetExternalId: 'wamid.0', emoji: '👍', eventId: 'wamid.1' },
+        timestamp: '2025-10-27T21:20:00.000Z'
+      }
+    ])
+  })
+
+  it.each([
+    ['an empty emoji', { message_id: 'wamid.0', emoji: '' }],
+    ['no emoji', { message_id: 'wamid.0' }]
+  ])('takes the reaction back with %s', (_name, reaction) => {
+    const [event] = webhookToEvents(received({ type: 'reaction', reaction }))
+    expect(event?.reaction).toMatchObject({ targetExternalId: 'wamid.0', emoji: null })
+  })
+
+  it.each([
+    ['no target', { emoji: '👍' }],
+    [
+      'a blank emoji, which must not undo an earlier reaction',
+      { message_id: 'wamid.0', emoji: '  ' }
+    ],
+    ['an emoji with a NUL in it', { message_id: 'wamid.0', emoji: '\u0000' }],
+    ['an emoji that is not text', { message_id: 'wamid.0', emoji: 5 }],
+    ['an emoji too long to be one', { message_id: 'wamid.0', emoji: 'x'.repeat(33) }],
+    ['a target too long to be an id', { message_id: 'w'.repeat(300), emoji: '👍' }]
+  ])('drops a reaction with %s', (_name, reaction) => {
+    expect(webhookToEvents(received({ type: 'reaction', reaction }))).toEqual([])
   })
 
   it.each([
@@ -227,8 +259,8 @@ describe('webhookToEvents', () => {
     })
   })
 
-  it.each(['system', 'reaction'])('does not make a customer message of a %s', type => {
-    expect(webhookToEvents(received({ type, [type]: {} }))).toEqual([])
+  it('does not make a customer message of a system notice', () => {
+    expect(webhookToEvents(received({ type: 'system', system: {} }))).toEqual([])
   })
 
   it.each([
@@ -570,5 +602,89 @@ describe('webhookToEvents', () => {
     { object: 'whatsapp_business_account' }
   ])('returns nothing for %p', payload => {
     expect(webhookToEvents(payload)).toEqual([])
+  })
+})
+
+describe('webhookToEvents, echoes of the WhatsApp Business app', () => {
+  const echoed = (message: object, field = 'smb_message_echoes'): object => ({
+    object: 'whatsapp_business_account',
+    entry: [
+      {
+        id: '1',
+        changes: [
+          {
+            field,
+            value: {
+              messaging_product: 'whatsapp',
+              metadata: { display_phone_number: '15550783881', phone_number_id: PHONE },
+              message_echoes: [
+                {
+                  from: '15550783881',
+                  to: '16505551234',
+                  id: 'wamid.echo',
+                  timestamp: '1761600000',
+                  ...message
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  })
+
+  it('turns a text of the business into an echo for the customer it was sent to', () => {
+    expect(webhookToEvents(echoed({ type: 'text', text: { body: 'from my phone' } }))).toEqual([
+      {
+        type: ChannelEventTypes.MESSAGE_ECHO,
+        connectionId: PHONE,
+        channelIdentity: '16505551234',
+        message: {
+          externalId: 'wamid.echo',
+          type: MessageType.TEXT,
+          content: 'from my phone',
+          timestamp: '2025-10-27T21:20:00.000Z'
+        },
+        timestamp: '2025-10-27T21:20:00.000Z'
+      }
+    ])
+  })
+
+  it('takes the customer with a plus sign, and an image with its file', () => {
+    const [event] = webhookToEvents(
+      echoed({ to: '+16505551234', type: 'image', image: { id: '77', mime_type: 'image/jpeg' } })
+    )
+    expect(event?.channelIdentity).toBe('16505551234')
+    expect(event?.message).toMatchObject({
+      type: MessageType.IMAGE,
+      media: [{ ref: '77', contentType: 'image/jpeg' }]
+    })
+  })
+
+  it.each(['revoke', 'edit'])('does not make a message of a %s in the business app', type => {
+    expect(webhookToEvents(echoed({ type, [type]: { original_message_id: 'x' } }))).toEqual([])
+  })
+
+  it('turns a reaction of the business into a reaction of the external author', () => {
+    const [event] = webhookToEvents(
+      echoed({ type: 'reaction', reaction: { message_id: 'wamid.0', emoji: '👍' } })
+    )
+    expect(event).toMatchObject({
+      type: ChannelEventTypes.MESSAGE_REACTION,
+      channelIdentity: '16505551234',
+      reaction: {
+        targetExternalId: 'wamid.0',
+        emoji: '👍',
+        from: 'external',
+        eventId: 'wamid.echo'
+      }
+    })
+  })
+
+  it('ignores an echo with no customer, and the echoes under another field', () => {
+    expect(webhookToEvents(echoed({ to: undefined, type: 'text', text: { body: 'x' } }))).toEqual(
+      []
+    )
+    expect(webhookToEvents(echoed({ type: 'text', text: { body: 'x' } }, 'messages'))).toEqual([])
   })
 })

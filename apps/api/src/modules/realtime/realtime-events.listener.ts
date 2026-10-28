@@ -171,6 +171,16 @@ export class RealtimeEventsListener {
     )
   }
 
+  @OnEvent(Events.MESSAGE_REACTION)
+  onMessageReaction(payload: MessageStatusPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_REACTION,
+      { conversationId: payload.conversationId, messageId: payload.messageId },
+      mayHear(payload)
+    )
+  }
+
   @OnEvent(Events.MESSAGE_FAILED)
   onFailed(payload: MessageFailedPayload): Promise<void> {
     return this.realtime.toStoreWhere(

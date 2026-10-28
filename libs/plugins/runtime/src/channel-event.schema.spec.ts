@@ -123,6 +123,57 @@ describe('channelEventSchema', () => {
   })
 })
 
+describe('channelEventSchema, echoes and reactions', () => {
+  const echo = { ...valid, type: ChannelEventTypes.MESSAGE_ECHO }
+  const reacted = {
+    type: ChannelEventTypes.MESSAGE_REACTION,
+    connectionId: 'c-1',
+    channelIdentity: '50370000000',
+    reaction: { targetExternalId: 'm-1', emoji: '👍' },
+    timestamp: '2026-10-27T10:00:00.000Z'
+  }
+
+  it('takes an echo with its message, and a reaction with its target', () => {
+    expect(channelEventSchema.safeParse(echo).success).toBe(true)
+    expect(channelEventSchema.safeParse(reacted).success).toBe(true)
+  })
+
+  it('takes a reaction that is taken back, and one from the owner', () => {
+    const back = { ...reacted, reaction: { targetExternalId: 'm-1', emoji: null } }
+    const owner = { ...reacted, reaction: { ...reacted.reaction, from: 'external' } }
+    expect(channelEventSchema.safeParse(back).success).toBe(true)
+    expect(channelEventSchema.safeParse(owner).success).toBe(true)
+  })
+
+  it.each([
+    ['an echo with no message', { ...echo, message: undefined }],
+    ['a reaction with no reaction', { ...reacted, reaction: undefined }],
+    [
+      'an empty emoji (null takes it back)',
+      { ...reacted, reaction: { targetExternalId: 'm-1', emoji: '' } }
+    ],
+    ['a blank emoji', { ...reacted, reaction: { targetExternalId: 'm-1', emoji: ' ' } }],
+    ['an emoji with a NUL', { ...reacted, reaction: { targetExternalId: 'm-1', emoji: '\u0000' } }],
+    ['half of an emoji', { ...reacted, reaction: { targetExternalId: 'm-1', emoji: '\ud83d' } }],
+    [
+      'an emoji that is too long',
+      {
+        ...reacted,
+        reaction: { targetExternalId: 'm-1', emoji: 'x'.repeat(InboundLimits.EMOJI_MAX_LENGTH + 1) }
+      }
+    ],
+    ['a reaction under a received event', { ...valid, reaction: reacted.reaction }],
+    ['a reaction event that also has a message', { ...reacted, message: valid.message }],
+    ['a reaction from an agent', { ...reacted, reaction: { ...reacted.reaction, from: 'agent' } }],
+    [
+      'a reaction with a field it does not know',
+      { ...reacted, reaction: { ...reacted.reaction, x: 1 } }
+    ]
+  ])('refuses %s', (_label, event) => {
+    expect(channelEventSchema.safeParse(event).success).toBe(false)
+  })
+})
+
 describe('inboundJobId', () => {
   const parse = (event: object) => channelEventSchema.parse(event)
 
@@ -137,6 +188,49 @@ describe('inboundJobId', () => {
     expect(inboundJobId('other_channel', parse(valid))).not.toBe(base)
     expect(inboundJobId('test_channel', parse({ ...valid, connectionId: 'c-2' }))).not.toBe(base)
     expect(inboundJobId('test_channel', parse(withMessage({ externalId: 'm-2' })))).not.toBe(base)
+  })
+
+  it('tells two reactions of one second apart by who, to what and with which emoji', () => {
+    const reaction = {
+      type: ChannelEventTypes.MESSAGE_REACTION,
+      connectionId: 'c-1',
+      channelIdentity: '50370000000',
+      reaction: { targetExternalId: 'm-1', emoji: '👍' },
+      timestamp: '2026-10-27T10:00:00.000Z'
+    }
+    const base = inboundJobId('test_channel', parse(reaction))
+    expect(inboundJobId('test_channel', parse(reaction))).toBe(base)
+    expect(
+      inboundJobId('test_channel', parse({ ...reaction, channelIdentity: '50371111111' }))
+    ).not.toBe(base)
+    expect(
+      inboundJobId(
+        'test_channel',
+        parse({ ...reaction, reaction: { targetExternalId: 'm-2', emoji: '👍' } })
+      )
+    ).not.toBe(base)
+    expect(
+      inboundJobId(
+        'test_channel',
+        parse({ ...reaction, reaction: { targetExternalId: 'm-1', emoji: null } })
+      )
+    ).not.toBe(base)
+  })
+
+  it('tells two reactions of one second apart by the id the provider gave each', () => {
+    const reaction = (eventId: string): object => ({
+      type: ChannelEventTypes.MESSAGE_REACTION,
+      connectionId: 'c-1',
+      channelIdentity: '50370000000',
+      reaction: { targetExternalId: 'm-1', emoji: '👍', eventId },
+      timestamp: '2026-10-27T10:00:00.000Z'
+    })
+    expect(inboundJobId('test_channel', parse(reaction('r-1')))).toBe(
+      inboundJobId('test_channel', parse(reaction('r-1')))
+    )
+    expect(inboundJobId('test_channel', parse(reaction('r-1')))).not.toBe(
+      inboundJobId('test_channel', parse(reaction('r-2')))
+    )
   })
 
   it('cannot be forged by moving a separator between two parts', () => {

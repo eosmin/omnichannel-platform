@@ -76,6 +76,9 @@ export const whatsAppMessageSchema = z.object({
       address: z.string().optional().catch(undefined)
     })
   ),
+  // The emoji is missing, or empty, when the customer takes the reaction back. One that is not text is
+  // not a removal: the reaction is dropped.
+  reaction: tolerant(z.object({ message_id: z.string(), emoji: z.string().optional() })),
   interactive: tolerant(
     z.object({
       type: z.string(),
@@ -87,6 +90,10 @@ export const whatsAppMessageSchema = z.object({
 })
 
 export type WhatsAppMessage = z.infer<typeof whatsAppMessageSchema>
+
+// What the business wrote in the WhatsApp Business app (Coexistence): the same message, with the
+// customer as `to`
+export const whatsAppEchoSchema = whatsAppMessageSchema.extend({ to: messageId.optional() })
 
 const errorSchema = z.object({
   code: z.union([z.number(), z.string()]).catch('unknown'),
@@ -117,7 +124,8 @@ const changeValueSchema = z.object({
   metadata: z.object({ phone_number_id: messageId }),
   contacts: z.array(z.unknown()).optional(),
   messages: z.array(z.unknown()).optional(),
-  statuses: z.array(z.unknown()).optional()
+  statuses: z.array(z.unknown()).optional(),
+  message_echoes: z.array(z.unknown()).optional()
 })
 
 // Entries and changes are read one by one, like messages: the envelope only says it is ours

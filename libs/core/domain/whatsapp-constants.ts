@@ -16,7 +16,9 @@ export const WhatsAppApi = {
 // `object` of a webhook, and the one field the plugin subscribes to
 export const WhatsAppWebhook = {
   OBJECT: 'whatsapp_business_account',
-  FIELD_MESSAGES: 'messages'
+  FIELD_MESSAGES: 'messages',
+  // Only for a number in Coexistence: what the business writes in the WhatsApp Business app
+  FIELD_MESSAGE_ECHOES: 'smb_message_echoes'
 } as const
 
 // `referral.source_type`: what the customer tapped before writing
@@ -39,6 +41,9 @@ export const WhatsAppMessageTypes = {
   REACTION: 'reaction',
   // Not a message of the customer: a number that changed, a group that was renamed
   SYSTEM: 'system',
+  // Only in an echo of the business app: it deleted or edited a message it had sent
+  REVOKE: 'revoke',
+  EDIT: 'edit',
   // Outbound only
   TEMPLATE: 'template'
 } as const

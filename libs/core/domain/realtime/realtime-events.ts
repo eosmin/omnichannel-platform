@@ -25,6 +25,7 @@ export const RealtimeEvents = {
   MESSAGE_FAILED: 'message.failed',
   // An internal note was written: ids only, sent to who may read notes
   MESSAGE_NOTE_ADDED: 'message.note_added',
+  MESSAGE_REACTION: 'message.reaction',
 
   TYPING_START: 'typing.start',
   TYPING_STOP: 'typing.stop',
@@ -93,6 +94,7 @@ export interface RealtimeEventMap {
   }
   [RealtimeEvents.MESSAGE_DELIVERED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_READ]: { conversationId: string; messageId: string }
+  [RealtimeEvents.MESSAGE_REACTION]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_FAILED]: {
     conversationId: string
     messageId: string

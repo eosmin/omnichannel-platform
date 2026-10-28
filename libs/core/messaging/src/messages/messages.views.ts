@@ -8,6 +8,14 @@ import {
 import { enumValueOf } from '../conversations/conversations.support'
 import { type SystemLineMetadata, systemLineMetadataSchema } from '../conversations/system-lines'
 
+// One person's emoji on a message. `authorId` is the user for an agent, the customer identity for the
+// customer, and null for the owner who reacted from the provider's own app.
+export interface ReactionView {
+  emoji: string
+  authorType: AuthorType
+  authorId: string | null
+}
+
 // What the thread shows of a message. The metadata of the channel is not part of it; a system line
 // carries its own, which is what the thread draws it from.
 export interface MessageView {
@@ -22,6 +30,7 @@ export interface MessageView {
   deliveryError: string | null
   mentions: string[]
   system: SystemLineMetadata | null
+  reactions: ReactionView[]
   createdAt: Date
 }
 
@@ -37,6 +46,10 @@ export const MESSAGE_SELECT = {
   deliveryError: true,
   mentions: true,
   metadata: true,
+  reactions: {
+    select: { emoji: true, authorType: true, customerIdentityId: true, userId: true },
+    orderBy: { createdAt: 'asc' }
+  },
   createdAt: true
 } as const
 
@@ -52,6 +65,12 @@ interface MessageRow {
   deliveryError: string | null
   mentions: string[]
   metadata: unknown
+  reactions: {
+    emoji: string
+    authorType: string
+    customerIdentityId: string | null
+    userId: string | null
+  }[]
   createdAt: Date
 }
 
@@ -73,6 +92,11 @@ export function messageView(row: MessageRow): MessageView {
     mentions: row.mentions,
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
+    reactions: row.reactions.map(reaction => ({
+      emoji: reaction.emoji,
+      authorType: enumValueOf(AuthorTypes, reaction.authorType, 'reaction author'),
+      authorId: reaction.userId ?? reaction.customerIdentityId
+    })),
     createdAt: row.createdAt
   }
 }

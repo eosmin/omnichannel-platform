@@ -12,8 +12,11 @@ import {
 import {
   AuthorType,
   ConversationLimits,
+  ConversationReopenedByReply,
   ConversationStatus,
+  DeliveryStatus,
   MessageType,
+  OutboundLimits,
   OriginKinds,
   ConversationStatusReasons
 } from '@platform/core/domain'
@@ -24,7 +27,7 @@ import { type FetchInboundMediaJob, JobNames, QueueNames } from '@platform/core/
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { ConversationsService } from '../conversations/conversations.service'
-import { statusOf } from '../conversations/conversations.support'
+import { isHiddenStatus, statusOf } from '../conversations/conversations.support'
 import { CustomerIdentityService } from '../customers/customer-identity.service'
 import { insertInboundMessage } from '../messages/inbound-messages'
 import { RoutingService } from '../routing/routing.service'
@@ -100,31 +103,207 @@ export class InboundMessageService {
       )
     })
 
-    // One round trip for the whole album. The job id is the message and the place of the file in it:
-    // asked twice (a retry after a failure here) it is one job each.
-    const files = event.message.media ?? []
-    if (files.length > 0) {
-      await this.heavyQueue.addBulk(
-        files.map((media, index) => ({
-          name: JobNames.FETCH_INBOUND_MEDIA,
-          data: {
-            messageId: stored.messageId,
-            storeId,
-            pluginId,
-            connectionId: event.connectionId,
-            mediaRef: media.ref,
-            contentType: media.contentType,
-            filename: media.filename
-          },
-          opts: { jobId: `fetch-media-${stored.messageId}-${index}` }
-        }))
-      )
-    }
+    await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     if (stored.duplicate) return InboundOutcomes.DUPLICATE
     if (stored.needsRouting) {
       await this.route(storeId, stored.conversationId, event, receivedAt)
     }
     return InboundOutcomes.STORED
+  }
+
+  // The owner wrote to the customer from the provider's own app and the provider echoes it to us. It is
+  // stored as a sent message of an external author, in the thread of that handle on that connection,
+  // and it leaves the rest alone: no messaging window (the customer did not write), no unread count, no
+  // routing. A resolved, snoozed or archived thread is reopened, as a reply of an agent does. A message the platform sent comes
+  // back the same way, and is found by its provider id.
+  async handleMessageEcho(
+    pluginId: string,
+    event: InboundEvent,
+    isLastAttempt: boolean,
+    now: Date = new Date()
+  ): Promise<InboundOutcome> {
+    const connection = await this.connections.resolve(pluginId, event.connectionId)
+    if (connection === null || !connection.active) {
+      this.logger.warn(
+        { pluginId, connectionId: event.connectionId },
+        'echo for an unknown connection'
+      )
+      return InboundOutcomes.UNKNOWN_CONNECTION
+    }
+    const { storeId } = connection
+    const { identityId } = await this.identities.findOrCreateByIdentity({
+      storeId,
+      channelType: pluginId,
+      channelIdentity: event.channelIdentity,
+      profile: event.channelProfile
+    })
+    const receivedAt = receivedTime(event.message.timestamp, now)
+    const stored = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      await lockStoreScope(tx, storeId, `inbound-${identityId}`)
+      return this.storeEcho(
+        tx,
+        { storeId, connectionRowId: connection.id, identityId },
+        event,
+        receivedAt,
+        isLastAttempt
+      )
+    })
+    // A message of the platform that comes back has its files already; the owner's is fetched, again
+    // after a failure here (the job id makes it one)
+    if (stored.fetchMedia) await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
+    return stored.duplicate ? InboundOutcomes.DUPLICATE : InboundOutcomes.STORED
+  }
+
+  private async storeEcho(
+    tx: PrismaTransaction,
+    where: { storeId: string; connectionRowId: string; identityId: string },
+    event: InboundEvent,
+    receivedAt: Date,
+    isLastAttempt: boolean
+  ): Promise<{ messageId: string; duplicate: boolean; fetchMedia: boolean }> {
+    const { storeId, connectionRowId, identityId } = where
+    const identity = await tx.customerIdentity.findFirst({
+      where: { id: identityId, storeId },
+      select: { customerId: true, channelType: true }
+    })
+    if (identity === null) throw resourceNotFound('customer identity')
+
+    const conversations = await tx.conversation.findMany({
+      where: { storeId, customerIdentityId: identityId, channelConnectionId: connectionRowId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, status: true }
+    })
+    // The provider echoes what the platform sent too: that message has its provider id by now, in
+    // whatever thread it went to
+    const known = await tx.message.findFirst({
+      where: {
+        conversationId: { in: conversations.map(conversation => conversation.id) },
+        channelMessageId: event.message.externalId
+      },
+      select: { id: true, authorType: true }
+    })
+    if (known !== null) {
+      return {
+        messageId: known.id,
+        duplicate: true,
+        // The files of the owner's own message, if a failed first try left some out
+        fetchMedia:
+          known.authorType === String(AuthorType.EXTERNAL) &&
+          (await tx.media.count({ where: { storeId, messageId: known.id } })) <
+            (event.message.media?.length ?? 0)
+      }
+    }
+    // A reply of this connection that was queued a moment ago has no provider id yet, and may be the
+    // one the echo is about: try again once it is written. The last attempt stores it as the owner's.
+    if (
+      !isLastAttempt &&
+      (await this.mayBeWaitingForItsId(
+        tx,
+        storeId,
+        conversations.map(item => item.id)
+      ))
+    ) {
+      throw new Error('the echo came before the provider id of our own message was written')
+    }
+
+    const latest = conversations[0]
+    const conversationId =
+      latest?.id ??
+      (await this.conversations.createIn(tx, storeId, {
+        customerId: identity.customerId,
+        customerIdentityId: identityId,
+        channelConnectionId: connectionRowId
+      }))
+    const message = await insertInboundMessage(tx, {
+      storeId,
+      conversationId,
+      message: event.message,
+      author: AuthorType.EXTERNAL,
+      createdAt: receivedAt
+    })
+    await this.conversations.recordMessageAt(tx, storeId, conversationId, receivedAt)
+    if (latest === undefined) {
+      // Not routed: the owner is already answering it from the phone
+      this.events.publish(tx, Events.CONVERSATION_CREATED, {
+        storeId,
+        conversationId,
+        customerId: identity.customerId,
+        channelType: identity.channelType,
+        firstMessageId: message.id,
+        firstMessageContent: event.message.content
+      })
+    }
+    // The owner is answering the customer, like an agent does: what a reply of an agent brings back to
+    // work comes back here too
+    if (
+      latest !== undefined &&
+      ConversationReopenedByReply.some(status => String(status) === latest.status)
+    ) {
+      await this.conversations.applyStatus(tx, storeId, conversationId, ConversationStatus.OPEN, {
+        actor: 'system'
+      })
+    }
+    const conversation = await tx.conversation.findFirst({
+      where: { id: conversationId, storeId },
+      select: { status: true, assignedTo: true }
+    })
+    if (conversation !== null) {
+      this.events.publish(tx, Events.MESSAGE_SENT, {
+        storeId,
+        conversationId,
+        messageId: message.id,
+        visibility: {
+          hidden: isHiddenStatus(conversation.status),
+          assignedTo: conversation.assignedTo
+        }
+      })
+    }
+    return { messageId: message.id, duplicate: false, fetchMedia: true }
+  }
+
+  private async mayBeWaitingForItsId(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationIds: string[]
+  ): Promise<boolean> {
+    const waiting = await tx.message.count({
+      where: {
+        storeId,
+        conversationId: { in: conversationIds },
+        deliveryStatus: DeliveryStatus.QUEUED,
+        authorType: AuthorType.AGENT,
+        createdAt: { gt: new Date(Date.now() - OutboundLimits.RECEIPT_WAIT_MS) }
+      }
+    })
+    return waiting > 0
+  }
+
+  // One round trip for the whole album. The job id is the message and the place of the file in it:
+  // asked twice (a retry after a failure here) it is one job each.
+  private async queueMediaFetches(
+    pluginId: string,
+    storeId: string,
+    event: InboundEvent,
+    messageId: string
+  ): Promise<void> {
+    const files = event.message.media ?? []
+    if (files.length === 0) return
+    await this.heavyQueue.addBulk(
+      files.map((media, index) => ({
+        name: JobNames.FETCH_INBOUND_MEDIA,
+        data: {
+          messageId,
+          storeId,
+          pluginId,
+          connectionId: event.connectionId,
+          mediaRef: media.ref,
+          contentType: media.contentType,
+          filename: media.filename
+        },
+        opts: { jobId: `fetch-media-${messageId}-${index}` }
+      }))
+    )
   }
 
   private async store(
@@ -182,6 +361,7 @@ export class InboundMessageService {
       storeId,
       conversationId: placement.conversationId,
       message: event.message,
+      author: AuthorType.CUSTOMER,
       createdAt: receivedAt
     })
     if (event.message.origin !== undefined) {

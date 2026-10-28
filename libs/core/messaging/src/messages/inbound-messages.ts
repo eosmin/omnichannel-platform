@@ -1,9 +1,10 @@
 import type { PrismaTransaction } from '@platform/core/database'
-import { AuthorType } from '@platform/core/domain'
+import { AuthorType, DeliveryStatus } from '@platform/core/domain'
 
 import type { InboundMessage } from '../inbound/inbound-event'
 
-// The message of a customer, as a channel delivered it. The unique index of (conversation, channel
+// The message of a customer, or the one the owner wrote in the provider's own app (it is already
+// sent), as a channel delivered it. The unique index of (conversation, channel
 // message id) is what makes a delivery that arrives twice harmless; the caller looks before it writes.
 export async function insertInboundMessage(
   tx: PrismaTransaction,
@@ -11,6 +12,7 @@ export async function insertInboundMessage(
     storeId: string
     conversationId: string
     message: InboundMessage
+    author: typeof AuthorType.CUSTOMER | typeof AuthorType.EXTERNAL
     createdAt: Date
   }
 ): Promise<{ id: string }> {
@@ -29,8 +31,9 @@ export async function insertInboundMessage(
       conversationId,
       type: message.type,
       content: message.content,
-      authorType: AuthorType.CUSTOMER,
+      authorType: input.author,
       authorId: null,
+      ...(input.author === AuthorType.EXTERNAL ? { deliveryStatus: DeliveryStatus.SENT } : {}),
       channelMessageId: message.externalId,
       replyToMessageId: replyTo?.id ?? null,
       ...(message.metadata === undefined ? {} : { metadata: message.metadata }),

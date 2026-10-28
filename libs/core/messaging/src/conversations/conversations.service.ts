@@ -326,10 +326,7 @@ export class ConversationsService {
     // Three conditional writes, each atomic by itself: the dates stay right even for a caller that
     // does not hold the row lock
     const where = { id: conversationId, storeId }
-    await tx.conversation.updateMany({
-      where: { ...where, OR: [{ lastMessageAt: null }, { lastMessageAt: { lt: at } }] },
-      data: { lastMessageAt: at }
-    })
+    await this.recordMessageAt(tx, storeId, conversationId, at)
     await tx.conversation.updateMany({
       where: { ...where, OR: [{ lastOutboundAt: null }, { lastOutboundAt: { lt: at } }] },
       data: { lastOutboundAt: at }
@@ -360,6 +357,24 @@ export class ConversationsService {
       data: { lastInboundAt: at }
     })
     await tx.conversation.updateMany({ where, data: { unreadCount: { increment: 1 } } })
+  }
+
+  // A message the customer did not write (the owner's, from the provider's app) moves the thread up the
+  // inbox, and nothing else: it is not unread, and it does not answer the customer's wait
+  async recordMessageAt(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    at: Date
+  ): Promise<void> {
+    await tx.conversation.updateMany({
+      where: {
+        id: conversationId,
+        storeId,
+        OR: [{ lastMessageAt: null }, { lastMessageAt: { lt: at } }]
+      },
+      data: { lastMessageAt: at }
+    })
   }
 
   snooze(
