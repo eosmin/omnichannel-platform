@@ -179,6 +179,15 @@ export interface MarkReadParams {
   externalId: string
 }
 
+// An agent's reaction to a message, by the provider id of the message. A null emoji takes it back. The
+// plugin refuses (a non-retryable PluginError) what its provider does not allow, such as a message of
+// ours or one older than the provider accepts.
+export interface SendReactionParams {
+  channelIdentity: string
+  targetExternalId: string
+  emoji: string | null
+}
+
 export interface FetchedMedia {
   stream: NodeJS.ReadableStream
   contentType: string

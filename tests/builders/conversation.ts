@@ -136,3 +136,39 @@ export async function createMessageOf(
   conversationOfMessage.set(message.id, conversation.id)
   return message
 }
+
+// The message each reaction is on: the route to react names the message, not the reaction
+export const messageOfReaction = new Map<string, string>()
+
+// An agent's reaction on a message of the customer that the channel knows by id, in a conversation of
+// its own. The agent is any member of the store.
+export async function createMessageReactionOf(
+  owner: OwnerClient,
+  input: { storeId: string; userId: string; emoji?: string }
+): Promise<{ id: string }> {
+  const conversation = await createConversationOf(owner, { storeId: input.storeId })
+  const message = await owner.message.create({
+    data: {
+      storeId: input.storeId,
+      conversationId: conversation.id,
+      type: MessageType.TEXT,
+      content: 'hello',
+      authorType: AuthorType.CUSTOMER,
+      channelMessageId: `wamid-${randomUUID()}`
+    },
+    select: { id: true }
+  })
+  const reaction = await owner.messageReaction.create({
+    data: {
+      storeId: input.storeId,
+      messageId: message.id,
+      authorType: AuthorType.AGENT,
+      userId: input.userId,
+      emoji: input.emoji ?? '👍'
+    },
+    select: { id: true }
+  })
+  conversationOfMessage.set(reaction.id, conversation.id)
+  messageOfReaction.set(reaction.id, message.id)
+  return reaction
+}

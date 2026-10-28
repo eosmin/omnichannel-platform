@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-import { MessageLimits, MessageType, PaginationLimits, uuidSchema } from '@platform/core/domain'
+import {
+  InboundLimits,
+  isWholeEmoji,
+  MessageLimits,
+  MessageType,
+  PaginationLimits,
+  uuidSchema
+} from '@platform/core/domain'
 
 import { messageCursorSchema } from './message-cursor'
 
@@ -57,5 +64,17 @@ export const listMessagesQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 
+// A null emoji takes the agent's reaction back
+export const reactToMessageSchema = z.strictObject({
+  emoji: z
+    .string()
+    .max(InboundLimits.EMOJI_MAX_LENGTH)
+    .refine(value => isWholeEmoji(value, InboundLimits.EMOJI_MAX_LENGTH), {
+      message: 'is not a whole emoji'
+    })
+    .nullable()
+})
+
+export type ReactToMessageBody = z.output<typeof reactToMessageSchema>
 export type CreateMessageBody = z.output<typeof createMessageSchema>
 export type ListMessagesQuery = z.output<typeof listMessagesQuerySchema>

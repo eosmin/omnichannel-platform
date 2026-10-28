@@ -137,6 +137,15 @@ export interface SendOutboundMessageJob extends BaseJob {
   storeId: string
   messageId: string
 }
+// outbound: the reaction of one agent to one message. The row is read again when the job runs (no row
+// is a reaction taken back); `version` is when the reaction was set, so that a job of an earlier
+// emoji can tell that a newer one is on its way and leaves it alone.
+export interface SendOutboundReactionJob extends BaseJob {
+  storeId: string
+  messageId: string
+  userId: string
+  version: number
+}
 export interface EnforceRetentionJob extends BaseJob {
   storeId: string
 }

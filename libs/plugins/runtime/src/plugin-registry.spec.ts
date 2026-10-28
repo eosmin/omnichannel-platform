@@ -72,7 +72,8 @@ describe('PluginRegistry', () => {
     [ChannelCapability.BUTTONS, ['sendButtons']],
     [ChannelCapability.LOCATION, ['sendLocation']],
     [ChannelCapability.TYPING_INDICATOR, ['sendTypingIndicator']],
-    [ChannelCapability.READ_RECEIPTS, ['markAsRead']]
+    [ChannelCapability.READ_RECEIPTS, ['markAsRead']],
+    [ChannelCapability.REACTIONS, ['sendReaction']]
   ] as Array<[ChannelCapabilityType, string[]]>)(
     'rejects a plugin that declares %s and implements none of %j',
     capability => {

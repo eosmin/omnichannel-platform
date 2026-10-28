@@ -7,6 +7,7 @@ import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   ConversationStatus,
+  DeliveryStatus,
   InvitationStatus,
   MessageType,
   RoutingActionTypes
@@ -24,6 +25,8 @@ import {
   conversationOfMessage,
   createConversationOf,
   createMessageOf,
+  createMessageReactionOf,
+  messageOfReaction,
   createRole,
   createRoutingRule,
   ensurePluginInstallation,
@@ -56,6 +59,8 @@ const prefix = newRunPrefix()
 // Set once the context exists: the role a member is moved to in the modification check
 let viewerRoleId = ''
 let agentRoleId = ''
+// A user for the reactions the suite writes as the owner
+let reactorId = ''
 // A conversation of store A, where the creation check writes its messages
 let conversationInA = ''
 // A row the suite changes must have been made by createMessageOf: otherwise the check would be
@@ -277,6 +282,26 @@ const resources: IsolationResource[] = [
     }
   },
   {
+    name: 'messageReaction',
+    create: (owner, { storeId }) => createMessageReactionOf(owner, { storeId, userId: reactorId }),
+    // Reactions are read inside the thread of their conversation; the one that is changed is reached
+    // through its message
+    readPath: id => ApiRoutes.conversations.messages(conversationOfMessage.get(id) ?? randomUUID()),
+    modify: {
+      path: id => ApiRoutes.messages.reaction(messageOfReaction.get(id) ?? randomUUID()),
+      method: 'put',
+      body: { emoji: '🔥' }
+    },
+    // Still the thumbs up it was created with, and not waiting to be sent
+    untouched: async (owner, id) => {
+      const row = await owner.messageReaction.findUnique({
+        where: { id },
+        select: { emoji: true, deliveryStatus: true }
+      })
+      return row?.emoji === '👍' && row.deliveryStatus === DeliveryStatus.SENT.valueOf()
+    }
+  },
+  {
     name: 'routingRule',
     create: createRoutingRule,
     readPath: ApiRoutes.settings.routingRuleById,
@@ -371,6 +396,7 @@ describe('Tenant isolation', () => {
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
+    reactorId = ctx.adminA.id
     conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
     scene = { app, owner, ctx }
   })

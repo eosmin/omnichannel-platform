@@ -14,6 +14,10 @@ export interface ReactionView {
   emoji: string
   authorType: AuthorType
   authorId: string | null
+  // Where an agent's reaction stands toward the channel; `failed` says the customer never saw it, with
+  // the code of ours in `deliveryError`. The ones the channel reported are `sent`.
+  deliveryStatus: DeliveryStatus
+  deliveryError: string | null
 }
 
 // What the thread shows of a message. The metadata of the channel is not part of it; a system line
@@ -47,7 +51,14 @@ export const MESSAGE_SELECT = {
   mentions: true,
   metadata: true,
   reactions: {
-    select: { emoji: true, authorType: true, customerIdentityId: true, userId: true },
+    select: {
+      emoji: true,
+      authorType: true,
+      customerIdentityId: true,
+      userId: true,
+      deliveryStatus: true,
+      deliveryError: true
+    },
     orderBy: { createdAt: 'asc' }
   },
   createdAt: true
@@ -70,6 +81,8 @@ interface MessageRow {
     authorType: string
     customerIdentityId: string | null
     userId: string | null
+    deliveryStatus: string
+    deliveryError: string | null
   }[]
   createdAt: Date
 }
@@ -95,7 +108,9 @@ export function messageView(row: MessageRow): MessageView {
     reactions: row.reactions.map(reaction => ({
       emoji: reaction.emoji,
       authorType: enumValueOf(AuthorTypes, reaction.authorType, 'reaction author'),
-      authorId: reaction.userId ?? reaction.customerIdentityId
+      authorId: reaction.userId ?? reaction.customerIdentityId,
+      deliveryStatus: enumValueOf(DeliveryStatuses, reaction.deliveryStatus, 'reaction delivery'),
+      deliveryError: reaction.deliveryError
     })),
     createdAt: row.createdAt
   }

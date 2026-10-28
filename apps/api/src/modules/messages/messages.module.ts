@@ -1,8 +1,15 @@
 import { Module } from '@nestjs/common'
 
 import { QueuesPlatformModule } from '@platform/core/http'
-import { MessagesService, OutboundQueue } from '@platform/core/messaging'
+import {
+  AgentReactionsService,
+  ChannelConnectionResolver,
+  MessageReactionsService,
+  MessagesService,
+  OutboundQueue
+} from '@platform/core/messaging'
 
+import { ChannelRegistryModule } from '../channel-registry'
 import { ConversationsModule } from '../conversations'
 import { MessagingWindowModule } from '../messaging-window'
 import { TenancyModule } from '../tenancy'
@@ -10,8 +17,20 @@ import { TenancyModule } from '../tenancy'
 import { MessagesController } from './messages.controller'
 
 @Module({
-  imports: [TenancyModule, ConversationsModule, MessagingWindowModule, QueuesPlatformModule],
+  imports: [
+    TenancyModule,
+    ConversationsModule,
+    MessagingWindowModule,
+    QueuesPlatformModule,
+    ChannelRegistryModule
+  ],
   controllers: [MessagesController],
-  providers: [MessagesService, OutboundQueue]
+  providers: [
+    MessagesService,
+    ChannelConnectionResolver,
+    MessageReactionsService,
+    AgentReactionsService,
+    OutboundQueue
+  ]
 })
 export class MessagesModule {}

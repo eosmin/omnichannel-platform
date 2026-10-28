@@ -26,14 +26,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   Media: { step: '3.4', reason: 'Has no endpoint yet' },
-  MessageReaction: {
-    step: '2.8',
-    reason:
-      'Written by the inbound pipeline and read inside the messages of a thread. Until then ' +
-      'tests/api/inbound-echo-reactions.spec.ts proves the write (the reaction lands in the store of ' +
-      'the connection, never in another store with the same provider id) and the read. The case with ' +
-      'the other store reaching it through the api is added with the endpoint that lets an agent react'
-  },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   Notification: { step: '3.5', reason: 'Has no endpoint yet' },

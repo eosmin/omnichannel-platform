@@ -29,6 +29,7 @@ import {
   type SendLocationParams,
   type SendMediaParams,
   type SendMessageParams,
+  type SendReactionParams,
   type SendTemplateParams
 } from '@platform/plugins/sdk'
 
@@ -38,6 +39,7 @@ import {
   buttonsPayload,
   locationPayload,
   mediaPayload,
+  reactionPayload,
   readReceiptPayload,
   templatePayload,
   textPayload
@@ -241,6 +243,19 @@ export class WhatsAppPlugin implements ChannelPlugin {
       body: readReceiptPayload(params.externalId),
       idempotent: true,
       schema: successSchema
+    })
+  }
+
+  async sendReaction(ctx: ChannelContext, params: SendReactionParams): Promise<void> {
+    // Meta answers with the id of a message that nobody reads again, and the same reaction twice is the
+    // same reaction: the call is safe to repeat
+    const credentials = parseWhatsAppCredentials(ctx.credentials)
+    await this.meta.post({
+      path: [credentials.phoneNumberId, WhatsAppApi.EDGE_MESSAGES],
+      token: credentials.accessToken,
+      body: reactionPayload(params),
+      idempotent: true,
+      schema: sentSchema
     })
   }
 

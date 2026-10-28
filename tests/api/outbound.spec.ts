@@ -33,6 +33,7 @@ import {
 import { ChannelReceipts } from '../../apps/worker/src/outbound/channel-receipts.service'
 import { MessageStatusWriter } from '../../apps/worker/src/outbound/message-status.writer'
 import { OutboundSender } from '../../apps/worker/src/outbound/outbound-sender.service'
+import { ReactionStatusWriter } from '../../apps/worker/src/outbound/reaction-status.writer'
 import { OutboundRequeueScheduler } from '../../apps/worker/src/schedulers/outbound-requeue.scheduler'
 import {
   buildChannelPlugin,
@@ -113,6 +114,7 @@ describe('Replies on their way to a channel', () => {
       prisma,
       outboundQueue,
       writer,
+      new ReactionStatusWriter(prisma, events),
       logger
     )
     app.get(EventEmitter2).onAny((event, payload) => {

@@ -504,6 +504,10 @@ model MessageReaction {
   customerIdentityId String?  @map("customer_identity_id")
   userId             String?  @map("user_id")
   emoji              String
+  // DeliveryStatus of an agent's reaction toward the channel: queued, sent or failed. The reactions the
+  // channel reports (customer, external) are already there, so they are sent.
+  deliveryStatus     String   @default("sent") @map("delivery_status")
+  deliveryError      String?  @map("delivery_error") // ErrorCode of a failed one
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at")
 
