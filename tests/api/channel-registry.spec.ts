@@ -274,7 +274,8 @@ describe('The channels that routes take', () => {
         hours: 24,
         requiresTemplateWhenClosed: false
       })
-      expect(source.policyFor('whatsapp')).toBeNull()
+      // WhatsApp is an official plugin now: its window is the one it declares
+      expect(source.policyFor('whatsapp')).toEqual({ hours: 24, requiresTemplateWhenClosed: true })
       expect(source.policyFor('telegram')).toBeNull()
     })
   })
