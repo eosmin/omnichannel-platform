@@ -102,4 +102,13 @@ describe('graphFailure', () => {
       )
     })
   })
+
+  it.each([132001, 132015, 132016])(
+    'says a template that cannot be sent (%i) is not approved, for good',
+    code => {
+      const error = graphFailure(400, { error: { code } })
+      expect(error.code).toBe(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED)
+      expect(error.retryable).toBe(false)
+    }
+  )
 })

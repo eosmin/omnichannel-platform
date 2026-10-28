@@ -12,6 +12,12 @@ const validEnv: Record<string, string> = {
   SMTP_URL: 'smtp://localhost:1025'
 }
 
+// What a deployed environment must also say, for the webhooks of Meta
+const metaApp = {
+  META_APP_SECRET: 's'.repeat(32),
+  META_WEBHOOK_VERIFY_TOKEN: 'v'.repeat(24)
+}
+
 describe('parseEnv', () => {
   it('accepts the required variables and applies the defaults', () => {
     const env = parseEnv(validEnv)
@@ -83,12 +89,47 @@ describe('deployed environments', () => {
     expect(() =>
       parseEnv({
         ...validEnv,
+        ...metaApp,
         NODE_ENV: 'production',
         RESEND_API_KEY: 're_key',
         FRONTEND_URL: 'https://app.example.com',
         TRUST_PROXY_HOPS: '1'
       })
     ).not.toThrow()
+  })
+
+  describe('the Meta app in a deployed environment', () => {
+    const deployed = {
+      ...validEnv,
+      NODE_ENV: 'production',
+      RESEND_API_KEY: 're_key',
+      FRONTEND_URL: 'https://app.example.com',
+      TRUST_PROXY_HOPS: '1'
+    }
+
+    it.each(['META_APP_SECRET', 'META_WEBHOOK_VERIFY_TOKEN'])(
+      'refuses to boot without %s, which would refuse every webhook in silence',
+      name => {
+        expect(() => parseEnv({ ...deployed, ...metaApp, [name]: undefined })).toThrow(
+          new RegExp(name)
+        )
+      }
+    )
+
+    it.each(['META_APP_SECRET', 'META_WEBHOOK_VERIFY_TOKEN'])('refuses a short %s', name => {
+      expect(() => parseEnv({ ...deployed, ...metaApp, [name]: 'short' })).toThrow(new RegExp(name))
+    })
+
+    it('refuses one value for both: a verify token that is also the signing key', () => {
+      const same = 's'.repeat(32)
+      expect(() =>
+        parseEnv({ ...deployed, META_APP_SECRET: same, META_WEBHOOK_VERIFY_TOKEN: same })
+      ).toThrow(/META_WEBHOOK_VERIFY_TOKEN/)
+    })
+
+    it('does not ask for them on a laptop', () => {
+      expect(() => parseEnv(validEnv)).not.toThrow()
+    })
   })
 
   it.each(['staging', 'production'])('refuse to send through SMTP in %s', nodeEnv => {
@@ -226,6 +267,7 @@ describe('session lifetimes and the proxy', () => {
 describe('TRUST_PROXY_HOPS in a deployed environment', () => {
   const deployed = {
     ...validEnv,
+    ...metaApp,
     RESEND_API_KEY: 're_key',
     FRONTEND_URL: 'https://app.example.com'
   }
@@ -255,6 +297,7 @@ describe('TRUST_PROXY_HOPS in a deployed environment', () => {
 describe('FRONTEND_URL in a deployed environment', () => {
   const deployed = {
     ...validEnv,
+    ...metaApp,
     NODE_ENV: 'production',
     RESEND_API_KEY: 're_key',
     TRUST_PROXY_HOPS: '1'

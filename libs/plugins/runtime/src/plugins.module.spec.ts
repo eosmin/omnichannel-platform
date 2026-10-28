@@ -2,6 +2,8 @@ import { Injectable, type Type } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { PinoLogger } from 'nestjs-pino'
 
+import { MetaAppConfig } from '@platform/channels/meta'
+import { ChannelIds } from '@platform/core/domain'
 import { ChannelCapability, type ChannelPlugin } from '@platform/plugins/sdk'
 
 import { CarrierRegistry } from './carrier-registry'
@@ -135,17 +137,65 @@ describe('PluginsModule', () => {
     }
   })
 
-  it('has no plugin by default until the official ones are built', async () => {
+  it('registers the official plugins by default, as official', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [PluginsModule.forRoot()]
     })
+      // The config reads the env of the app, which a unit spec does not have
+      .overrideProvider(MetaAppConfig)
+      .useValue({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
       .useMocker(token =>
         token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
       )
       .compile()
     await moduleRef.init()
 
-    expect(moduleRef.get(PluginRegistry).list('any-store')).toEqual([])
+    const ids = moduleRef
+      .get(PluginRegistry)
+      .list('any-store')
+      .map(plugin => plugin.id)
+    expect(ids).toEqual([ChannelIds.WHATSAPP])
     await moduleRef.close()
+  })
+
+  // The whole path the apps use: the env of the app, the module that reads it, the plugin that gets the
+  // client. Only the env itself is replaced.
+  it('gives the official plugin the app secret of the env, through the real Meta module', async () => {
+    jest.resetModules()
+    jest.doMock('@platform/core/config/env', () => ({
+      env: {
+        META_APP_SECRET: 'wiring-secret',
+        META_WEBHOOK_VERIFY_TOKEN: 'wiring-verify',
+        META_GRAPH_API_VERSION: 'v23.0'
+      }
+    }))
+    const { PluginsModule: Fresh } = await import('./plugins.module')
+    const { PluginRegistry: FreshRegistry } = await import('./plugin-registry')
+    // After resetModules the logger class is a new one, and the token must be the same class
+    const { PinoLogger: FreshLogger } = await import('nestjs-pino')
+    const moduleRef = await Test.createTestingModule({ imports: [Fresh.forRoot()] })
+      .useMocker(token =>
+        token === FreshLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
+      )
+      .compile()
+    await moduleRef.init()
+
+    const plugin = moduleRef.get(FreshRegistry).get(ChannelIds.WHATSAPP)
+    expect(
+      plugin.verifyWebhook?.({
+        'hub.mode': 'subscribe',
+        'hub.verify_token': 'wiring-verify',
+        'hub.challenge': '7'
+      })
+    ).toBe('7')
+    expect(
+      plugin.verifyWebhook?.({
+        'hub.mode': 'subscribe',
+        'hub.verify_token': 'other',
+        'hub.challenge': '7'
+      })
+    ).toBeNull()
+    await moduleRef.close()
+    jest.dontMock('@platform/core/config/env')
   })
 })

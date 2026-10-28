@@ -10,6 +10,8 @@ import { DURATION_PATTERN, durationToSeconds } from './duration'
 const PLACEHOLDER_JWT_SECRET_PREFIX = 'change-me'
 const PLACEHOLDER_ENCRYPTION_KEY = /^0{64}$/
 const MAX_SESSION_MAX_AGE_SECONDS = 365 * 86_400
+// The app secret Meta issues is 32 characters; the verify token is chosen by the owner
+const MIN_META_SECRET_LENGTH = 16
 const DEPLOYED_ENVIRONMENTS: readonly string[] = ['staging', 'production']
 const LOCAL_HOSTNAMES: readonly string[] = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0']
 
@@ -158,6 +160,30 @@ export const envSchema = z
       })
     }
     if (!isDeployed) return
+    // Without them the webhook of every Meta channel refuses everything and says nothing
+    for (const name of ['META_APP_SECRET', 'META_WEBHOOK_VERIFY_TOKEN'] as const) {
+      const value = env[name]
+      if (value === undefined || value.length < MIN_META_SECRET_LENGTH) {
+        ctx.issues.push({
+          code: 'custom',
+          message: `a deployed environment needs ${name} (at least ${MIN_META_SECRET_LENGTH} characters) to accept Meta webhooks`,
+          path: [name],
+          input: value
+        })
+      }
+    }
+    if (
+      env.META_APP_SECRET !== undefined &&
+      env.META_APP_SECRET === env.META_WEBHOOK_VERIFY_TOKEN
+    ) {
+      // The verify token is shown to Meta in a form; the app secret signs every webhook
+      ctx.issues.push({
+        code: 'custom',
+        message: 'META_WEBHOOK_VERIFY_TOKEN must not be the same value as META_APP_SECRET',
+        path: ['META_WEBHOOK_VERIFY_TOKEN'],
+        input: env.META_WEBHOOK_VERIFY_TOKEN
+      })
+    }
     if (env.TRUST_PROXY_HOPS === undefined) {
       // Behind a proxy a missing value is not an error anywhere else: every client would share the
       // address of the proxy, and a handful of logins a minute would lock everybody out

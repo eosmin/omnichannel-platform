@@ -171,12 +171,29 @@ export default defineConfig([
               onlyDependOnLibsWithTags: ['scope:core-domain']
             },
             {
-              sourceTag: 'scope:channels',
+              sourceTag: 'scope:channels-shared',
               onlyDependOnLibsWithTags: ['scope:plugins-sdk', 'scope:core', 'scope:core-domain']
             },
             {
+              sourceTag: 'scope:channels',
+              // A channel plugin is built over the shared client of its provider, which is the one lib
+              // tagged scope:channels-shared: two channel plugins never import each other
+              onlyDependOnLibsWithTags: [
+                'scope:plugins-sdk',
+                'scope:core',
+                'scope:core-domain',
+                'scope:channels-shared'
+              ]
+            },
+            {
               sourceTag: 'scope:plugins',
-              onlyDependOnLibsWithTags: ['scope:plugins-sdk', 'scope:core-domain']
+              // The runtime lists the official channel plugins, so it reaches their libraries
+              onlyDependOnLibsWithTags: [
+                'scope:plugins-sdk',
+                'scope:core-domain',
+                'scope:channels',
+                'scope:channels-shared'
+              ]
             },
             // The SDK is what a third-party plugin compiles against: it never reaches the runtime
             {

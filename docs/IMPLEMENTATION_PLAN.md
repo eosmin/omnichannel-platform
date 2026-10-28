@@ -375,15 +375,17 @@ conversation and message in store B only, a replayed webhook creates nothing, an
 endpoint answers in under 300ms p99 while the worker does the work.
 
 ### Step 2.7 — WhatsApp plugin
-- [ ] `libs/channels/meta` shared client (signature, handshake, media download)
-- [ ] `libs/channels/whatsapp` — full implementation, templates, inbound media fetch
-- [ ] Add the plugin to `OFFICIAL_CHANNEL_PLUGINS` (`libs/plugins/runtime`) and run its contract suite with `{ official: true }` (`tests/contracts`)
-- [ ] 24-hour messaging window enforced by the core
-- [ ] Contract tests with captured fixtures
+- [x] `libs/channels/meta` shared client (signature, handshake, media download)
+- [x] `libs/channels/whatsapp` — full implementation, templates, inbound media fetch
+- [x] Add the plugin to `OFFICIAL_CHANNEL_PLUGINS` (`libs/plugins/runtime`) and run its contract suite with `{ official: true }` (`tests/contracts`)
+- [x] 24-hour messaging window enforced by the core
+- [x] Contract tests with captured fixtures
+- [x] Real test against a WhatsApp test number (`MVP_TRIM_CHECKLIST.md`, "WhatsApp plugin build details", item 7): inbound text and image, outbound text with its ticks, media download and `markAsRead` confirmed; the error codes, templates and buttons stay unconfirmed
 
 **TDD:** `TDD_10 §5.1`
 **Done when:** real inbound and outbound messages work against a WhatsApp test number, and
-an inbound image is stored, scanned and rendered.
+an inbound image reaches the worker as a media reference that `fetchMedia` downloads. "Stored,
+scanned and rendered" moves to Step 3.4 (no storage or ClamAV exists before it).
 
 ### Step 2.8 — Instagram, Messenger, web widget, email
 - [ ] Add each plugin (`instagram`, `messenger`, `web_widget`, `email`) to `OFFICIAL_CHANNEL_PLUGINS`, each running its contract suite with `{ official: true }`
@@ -405,6 +407,7 @@ on a page with a strict CSP.
 - [ ] shadcn/ui components, Lucide icons, Tailwind, CSP headers. Tailwind must scan `libs/core/domain` (`@source`), because `ConversationStatusColors` and `OrderStatusColors` hold class names that are otherwise purged
 - [ ] Auth flow with token refresh; `apiClient` setting `X-Store-Id`
 - [ ] `libs/api-client` typed HTTP client, `QueryKeys`, `AppPaths`
+- [ ] Read receipts to the channel (`MVP_TRIM_CHECKLIST.md`, "WhatsApp plugin build details", item 8): `POST /conversations/:id/read` must queue the `markAsRead` job of the channel, with the `sendReadReceipts` store preference (default `true`); the plugin side exists since Step 2.7 and nothing calls it yet
 - [ ] Tell a reply that waits for its channel from one the channel took: `MESSAGE_QUEUED` and `MESSAGE_SENT` both reach the browser as `message.sent`, with `clientMessageId` always `null`, so the client can only read the message again for its state (found in the review of Step 2.6). Before drawing ticks, give the queued one an event of its own (`message.queued`) and carry the `clientMessageId` of the request in `MessageQueuedPayload`, so that the optimistic bubble matches
 - [ ] The realtime client, moved from Step 2.4 (`TDD_06 §3`, `§4`): connection manager with a fresh token on every reconnect and the connection status in the header, `useRealtimeSync` that invalidates `QueryKeys` (debounced), and the offline queue with terminal-error handling and the `idempotencyKey` that `POST /messages` already honours. Join the conversation room of the open thread (`conversation.join`) and send the heartbeat every 30 seconds with `{ active: true }` when the user did something. Read the presence of the team (`PresenceService.getStorePresence`, built in Step 2.4 with no route yet) by adding its route with the team widget. A refused connection arrives as `connect_error` with the code in `error.data.code` (not as `auth.error`, which is only for a socket that was already connected); on `auth.error` or a server disconnect, reconnect with a fresh token
 - [ ] i18n with next-intl, `es` and `en`, generated enum keys. **Also merge the email messages:** Step 1.0 left the `email.*` namespace in `libs/core/i18n-server/messages/{en,es}.json` (a directory `apps/web/messages` cannot exist earlier, because `validate:translations` then demands every generated key). Move that namespace into `apps/web/messages/{en,es}.json`, point `libs/core/i18n-server/src/messages.ts` at those files, and delete `libs/core/i18n-server/messages/` and its README
@@ -440,6 +443,8 @@ on a page with a strict CSP.
 ### Step 3.4 — Media
 - [ ] Pre-signed upload with progress, purposes and key prefixes; `StorageHealthIndicator` (`HeadBucket`) joins `/health/ready` with the S3 client (`TDD_04 §4`)
 - [ ] Scan-then-process worker chain (ClamAV, sharp variants as keys)
+- [ ] Sanitize the file name of an inbound media where the file is written and where `Content-Disposition` is built (`MVP_TRIM_CHECKLIST.md`, "WhatsApp plugin build details", item 12): the WhatsApp plugin already cuts it to a last path segment, but the name is the customer's and this step owns what is done with it
+- [ ] The `fetch-media` processor (moved from Step 2.7): `InboundMessageService` already queues `fetch-media-<message id>`; it calls `plugin.fetchMedia`, stores and scans the file, and must skip a message that already has its media
 - [ ] Signed download with variants
 - [ ] Media gallery with lightbox, bulk ZIP export
 - [ ] `mediaIds` on `POST /messages` (the upload comes first, `TDD_09 §4`): the media is checked against the store and the conversation, and linked to the message in the same transaction
@@ -1025,7 +1030,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.4 | Realtime | done | #49 (1/2: domain events), #50 (2/2: gateway and presence) | 2026-10-27 |
 | 2.5 | Plugin SDK and registry | done | #52 (1/2: sdk, registries and contracts), #53 (2/2: open channel ids and the window) | 2026-10-27 |
 | 2.6 | Inbound pipeline | done | #54 (1/5: services to `libs/core/messaging`), #55 (2/5: system lines, `reopenWindowDays`), #56 (3/5: webhook and inbound processor), #57 (4/5: connections, encryption, health), #58 (5/5: outbound), #59 and #60 (code review fixes) | 2026-10-27 |
-| 2.7 | WhatsApp plugin | todo | | |
+| 2.7 | WhatsApp plugin | done | #61 (1/2: Meta client), #62 (2/2: WhatsApp plugin, real test with the Meta number) | 2026-10-28 |
 | 2.8 | Instagram, Messenger, web widget, email | todo | | |
 | **Milestone 3: Inbox interface** | | | | |
 | 3.1 | Frontend foundation | todo | | |

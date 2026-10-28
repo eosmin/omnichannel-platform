@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { WhatsAppLimits } from './whatsapp-constants'
+
 // The ids of the official channel plugins. A channel is the id of a registered plugin (TDD_10 §6.7),
 // so this list is not the set of all channels: a plugin the owner adds brings an id of its own.
 export const ChannelIds = {
@@ -64,7 +66,7 @@ export const ChannelHealthErrors = {
 // MessageLimits; the outbound processor checks the channel's own, which is the smaller. A channel
 // that is not here (a plugin of the owner's) is held only by MessageLimits.
 export const ChannelTextLimits: Readonly<Record<string, number>> = {
-  [ChannelIds.WHATSAPP]: 4096,
+  [ChannelIds.WHATSAPP]: WhatsAppLimits.TEXT_MAX_LENGTH,
   [ChannelIds.MESSENGER]: 2000,
   [ChannelIds.INSTAGRAM]: 1000
 }

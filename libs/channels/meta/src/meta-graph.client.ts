@@ -36,6 +36,8 @@ export interface GraphRequest<T> {
   schema: z.ZodType<T>
   query?: Record<string, string>
   body?: unknown
+  // A POST that changes nothing the second time (a subscription, a read receipt) may be tried again
+  idempotent?: boolean
 }
 
 // The calls and checks the three Meta plugins share. The token is the connection's and arrives per
@@ -115,7 +117,7 @@ export class MetaGraphClient {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
     }
     const url = this.urlFor(request.path, request.query)
-    const safeToRepeat = method === 'GET'
+    const safeToRepeat = method === 'GET' || request.idempotent === true
     const response = await this.fetchOrFail(
       url,
       {
