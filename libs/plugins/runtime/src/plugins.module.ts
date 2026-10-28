@@ -4,17 +4,24 @@ import { PinoLogger } from 'nestjs-pino'
 import type { CarrierPlugin, ChannelPlugin } from '@platform/plugins/sdk'
 
 import { CarrierRegistry } from './carrier-registry'
-import { OFFICIAL_CARRIER_PLUGINS, OFFICIAL_CHANNEL_PLUGINS } from './official-plugins'
+import {
+  OFFICIAL_CARRIER_PLUGINS,
+  OFFICIAL_CHANNEL_PLUGINS,
+  OFFICIAL_PLUGIN_IMPORTS
+} from './official-plugins'
 import { PluginRegistry } from './plugin-registry'
 
 export interface PluginsModuleOptions {
   channels: readonly Type<ChannelPlugin>[]
   carriers: readonly Type<CarrierPlugin>[]
+  // Modules that provide what the plugins inject
+  imports?: readonly Type<unknown>[]
 }
 
 const OFFICIAL: PluginsModuleOptions = {
   channels: OFFICIAL_CHANNEL_PLUGINS,
-  carriers: OFFICIAL_CARRIER_PLUGINS
+  carriers: OFFICIAL_CARRIER_PLUGINS,
+  imports: OFFICIAL_PLUGIN_IMPORTS
 }
 
 // Plugins are Nest providers, so they can receive what they need. Both apps import it: the worker
@@ -53,6 +60,7 @@ export class PluginsModule {
     }
     return {
       module: PluginsModule,
+      imports: [...(options.imports ?? [])],
       providers: [channelRegistry, carrierRegistry, ...options.channels, ...options.carriers],
       exports: [PluginRegistry, CarrierRegistry]
     }

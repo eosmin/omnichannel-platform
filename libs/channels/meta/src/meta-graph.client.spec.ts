@@ -133,6 +133,18 @@ describe('MetaGraphClient', () => {
         await expect(client.post(request)).rejects.toMatchObject({ retryable: true })
       })
 
+      it('does try a post again that says it is safe to repeat', async () => {
+        fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+        await expect(client.post({ ...request, idempotent: true })).rejects.toMatchObject({
+          retryable: true
+        })
+
+        fetchMock.mockResolvedValueOnce(json({ error: { code: 1 } }, 500))
+        await expect(client.post({ ...request, idempotent: true })).rejects.toMatchObject({
+          retryable: true
+        })
+      })
+
       it('asks to try a read again, and not a send, when a 200 has no json in it', async () => {
         fetchMock.mockResolvedValue(new Response('<html>', { status: 200 }))
 

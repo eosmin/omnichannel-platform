@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { MetaErrorCodes, MetaTransientStatuses } from '@platform/core/domain'
+import { MetaErrorCodes, MetaTransientStatuses, WhatsAppErrorCodes } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
@@ -55,6 +55,13 @@ export function graphFailure(
     (code !== undefined && isOutageCode(code))
   ) {
     return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: safeToRepeat })
+  }
+  // The agent can act on this one: pick another template, or wait for the approval
+  if (code !== undefined && WhatsAppErrorCodes.TEMPLATE_UNAVAILABLE.some(known => known === code)) {
+    return new PluginError(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED, { retryable: false })
+  }
+  if (code !== undefined && WhatsAppErrorCodes.WINDOW_CLOSED.some(known => known === code)) {
+    return new PluginError(ErrorCodes.CHANNEL_WINDOW_EXPIRED, { retryable: false })
   }
   if (
     status === HttpStatusCodes.UNAUTHORIZED ||
