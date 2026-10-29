@@ -130,7 +130,7 @@ path alias.
 | Server Actions | — | Mutations without hand-written API glue for simple forms |
 | Streaming + Suspense | — | Inbox shell renders instantly, panels stream in |
 | React | `react@19.2.8`, `react-dom@19.2.8` | — |
-| Tailwind + shadcn/ui | `tailwindcss@4.3.3`, `shadcn@4.20.1` (CLI) | Copy-in components, no external dependency, Radix primitives are WCAG-accessible |
+| Tailwind + shadcn/ui | `tailwindcss@4.3.3`, `@tailwindcss/postcss@4.3.3`, `tw-animate-css@1.4.0`, `radix-ui@1.8.1`, `class-variance-authority@0.7.1`, `clsx@2.1.1`, `tailwind-merge@3.7.0`, `sonner@2.0.8` | Copy-in components in `components/ui/` written in the shadcn pattern, no component library as a dependency, Radix primitives are WCAG-accessible. The `shadcn` CLI (`4.20.1`) is **not installed**: `shadcn add` asks which component library to use and cannot run without a terminal, so the components are copied by hand (`MVP_TRIM_CHECKLIST.md`, "Frontend foundation build details") |
 | Lucide React | `lucide-react@1.39.0` | Consistent SVG icon set. **No emojis in product UI.** |
 | Zustand | `zustand@5.0.15` | Global client state: session, current store, UI state (sidebar collapsed) |
 | TanStack Query | `@tanstack/react-query@5.102.8` | Server state: conversations, orders, customers. Invalidated by WebSocket events through `QueryKeys` (`TDD_02` §14) |
@@ -336,7 +336,13 @@ download path verify that prefix against the current store before touching the o
 | `next` | `16.4.3` |
 | `react` / `react-dom` | `19.2.8` |
 | `tailwindcss` | `4.3.3` |
-| `shadcn` (CLI) | `4.20.1` |
+| `@tailwindcss/postcss` | `4.3.3` |
+| `tw-animate-css` | `1.4.0` |
+| `radix-ui` | `1.8.1` |
+| `class-variance-authority` | `0.7.1` |
+| `clsx` | `2.1.1` |
+| `tailwind-merge` | `3.7.0` |
+| `sonner` | `2.0.8` |
 | `lucide-react` | `1.39.0` |
 | `zustand` | `5.0.15` |
 | `@tanstack/react-query` | `5.102.8` |
