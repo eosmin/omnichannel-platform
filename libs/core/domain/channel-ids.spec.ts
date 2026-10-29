@@ -8,9 +8,9 @@ import {
 } from './channel-ids'
 
 describe('channel ids', () => {
-  it('lists the five official channels', () => {
+  it('lists the four official channels', () => {
     expect(Object.values(ChannelIds).sort()).toEqual(
-      ['email', 'instagram', 'messenger', 'web_widget', 'whatsapp'].sort()
+      ['instagram', 'messenger', 'web_widget', 'whatsapp'].sort()
     )
   })
 

@@ -84,7 +84,6 @@ export const envSchema = z
     SMTP_URL: z.url().optional(),
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
     EMAIL_FROM: senderAddress.default('noreply@platform.local'),
-    EMAIL_INBOUND_DOMAIN: z.string().optional(), // e.g. inbound.platform.com, TDD_10 §5.5
 
     // Observability
     SENTRY_DSN: z.url().optional(),

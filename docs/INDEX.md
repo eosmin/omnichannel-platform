@@ -68,7 +68,7 @@ are out of scope (rule 9 of `IMPLEMENTATION_PLAN.md`) until Phase 2 starts. The 
 file-by-file edits live in `MVP_TRIM_CHECKLIST.md`.
 
 **Kept unchanged:** Organization → Store → Membership, `storeId` isolation and the isolation
-test suite, `TenantGuard` + `X-Store-Id`, invitations, roles and permissions, all five channel
+test suite, `TenantGuard` + `X-Store-Id`, invitations, roles and permissions, all four channel
 plugins, inbox, customers, orders, inventory, search, analytics, settings, security hardening,
 deployment, monitoring.
 

@@ -432,7 +432,7 @@ describe('The routing rules of a store', () => {
     it('replaces the conditions as a whole, not field by field', async () => {
       const made = await createRoutingRule(owner, {
         storeId: storeId(),
-        conditions: { keywords: ['hola'], channelTypes: [ChannelType.EMAIL] }
+        conditions: { keywords: ['hola'], channelTypes: [ChannelType.WEB_WIDGET] }
       })
 
       const response = await asAdmin()
@@ -817,7 +817,7 @@ describe('The routing rules of a store', () => {
       const made = await arriving()
       await createRoutingRule(owner, {
         storeId: storeId(),
-        conditions: { channelTypes: [ChannelType.EMAIL] },
+        conditions: { channelTypes: [ChannelType.WEB_WIDGET] },
         action: assignTo(ana.id)
       })
 
@@ -889,10 +889,10 @@ describe('The routing rules of a store', () => {
         })
 
         const whatsapp = await apply(await arriving())
-        const email = await apply(await arriving({ channelType: ChannelType.EMAIL }))
+        const widget = await apply(await arriving({ channelType: ChannelType.WEB_WIDGET }))
 
         expect(whatsapp.ruleId).toBe(rule.id)
-        expect(email.ruleId).toBeNull()
+        expect(widget.ruleId).toBeNull()
       })
     })
 
@@ -1110,7 +1110,7 @@ describe('The routing rules of a store', () => {
 
       const right = await apply(await arriving(), { text: 'el precio?' })
       const wrongWords = await apply(await arriving(), { text: 'hola' })
-      const wrongChannel = await apply(await arriving({ channelType: ChannelType.EMAIL }), {
+      const wrongChannel = await apply(await arriving({ channelType: ChannelType.WEB_WIDGET }), {
         text: 'el precio?'
       })
 

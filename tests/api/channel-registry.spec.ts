@@ -238,7 +238,7 @@ describe('The channels that routes take', () => {
 
       const link = await asAdmin()
         .post(ApiRoutes.customers.identities(customer.id))
-        .send({ channelType: 'email', channelIdentity: 'ana@example.com' })
+        .send({ channelType: 'web_widget', channelIdentity: 'visitor-1234' })
 
       expect(link.status).toBe(CREATED)
     })

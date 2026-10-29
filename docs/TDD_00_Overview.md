@@ -94,8 +94,8 @@ Use these terms consistently in code, comments, UI copy and commit messages.
 | **CustomerIdentity** | A customer's handle on a specific channel (phone number, IG username, page-scoped ID). One Customer can have many. |
 | **Conversation** | A thread between a Store and a Customer. Has a lifecycle state. |
 | **Message** | A single entry in a conversation. Can be from customer, agent or system. |
-| **Channel** | A messaging surface (WhatsApp, Instagram, Messenger, web widget, email). Implemented as a plugin. |
-| **ChannelConnection** | A Store's link to one concrete account on a channel (a WhatsApp phone number, a Facebook Page, an Instagram business account, a widget site key, an inbound mailbox). Its `connectionId` is what the provider sends as the *recipient* of a webhook; it is how the core knows which Store an inbound message belongs to. |
+| **Channel** | A messaging surface (WhatsApp, Instagram, Messenger, web widget). Implemented as a plugin. |
+| **ChannelConnection** | A Store's link to one concrete account on a channel (a WhatsApp phone number, a Facebook Page, an Instagram business account, a widget site key). Its `connectionId` is what the provider sends as the *recipient* of a webhook; it is how the core knows which Store an inbound message belongs to. |
 | **Plugin** | An installable extension. Channels are plugins. Third-party integrations are plugins. |
 | **Billable conversation** (Phase 2; not built in the v1.2 MVP) | A conversation counted once per 24-hour window in which it received at least one inbound customer message. Windows are fixed UTC buckets starting at the conversation's first inbound message of that window (`TDD_11_Business.md` §2). The unit we charge for. |
 | **Agent** | A User with an operational role in a Store's inbox. |
@@ -106,7 +106,7 @@ Use these terms consistently in code, comments, UI copy and commit messages.
 ## 5. Scope boundaries
 
 ### In scope for first implementation
-- Unified inbox with WhatsApp, Instagram, Messenger, web widget and email (all five are channel plugins, `TDD_10_Plugins.md` §5)
+- Unified inbox with WhatsApp, Instagram, Messenger, web widget (all four are channel plugins, `TDD_10_Plugins.md` §5)
 - Conversation lifecycle (open, pending, resolved, snoozed, archived, spam)
 - Customer profiles with cross-channel identity merging
 - Order creation and status management from within a conversation
@@ -139,7 +139,7 @@ Anything marked **MATURE** in the documents is deliberately deferred.
 The implementation is considered complete when:
 
 - [ ] The seeded owner can log in, create a store and connect a first channel; an invitee opens the invitation link, accepts (creating their account when they have none) and gains access; signup without an invitation is rejected
-- [ ] Inbound messages from all five channels land in the unified inbox in real time
+- [ ] Inbound messages from all four channels land in the unified inbox in real time
 - [ ] An agent can reply, assign, tag, snooze and resolve conversations
 - [ ] An agent can create an order from a conversation without leaving the thread
 - [ ] Customer profiles unify identities across channels

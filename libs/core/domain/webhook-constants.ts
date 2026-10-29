@@ -20,8 +20,7 @@ export const ResendEventTypes = {
   EMAIL_CLICKED: 'email.clicked',
   EMAIL_BOUNCED: 'email.bounced',
   EMAIL_FAILED: 'email.failed',
-  EMAIL_COMPLAINED: 'email.complained',
-  EMAIL_RECEIVED: 'email.received' // Inbound email channel, TDD_10 §5.5
+  EMAIL_COMPLAINED: 'email.complained'
 } as const
 export type ResendEventType = (typeof ResendEventTypes)[keyof typeof ResendEventTypes]
 

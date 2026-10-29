@@ -66,9 +66,9 @@ export const AvailableChannels: Record<PlanTier, {
   chooseOneOf?: readonly ChannelType[]
 }> = {
   [PlanTiers.FREE]:    { included: [ChannelType.WEB_WIDGET] },
-  [PlanTiers.MICRO]:   { included: [ChannelType.WEB_WIDGET, ChannelType.EMAIL] },
+  [PlanTiers.MICRO]:   { included: [ChannelType.WEB_WIDGET] },
   [PlanTiers.STARTER]: {
-    included: [ChannelType.WEB_WIDGET, ChannelType.EMAIL],
+    included: [ChannelType.WEB_WIDGET],
     chooseOneOf: [ChannelType.INSTAGRAM, ChannelType.MESSENGER],
   },
   [PlanTiers.GROWTH]:     { included: Object.values(ChannelType) },
@@ -846,7 +846,7 @@ sourced from `GET /billing/plans` (which serializes `PlanLimits` and `AvailableC
 | Overage/conversation | — (hard cap) | $0.04 | $0.03 | $0.02 | $0.015 |
 | Stores | 1 | 1 | 1 | 3 | 10 |
 | Seats | 2 | 3 | 5 | 15 | 50 |
-| Channels | Web widget | + Email | + Instagram **or** Messenger | + both, + WhatsApp | + all, + marketplace |
+| Channels | Web widget | Web widget | + Instagram **or** Messenger | + both, + WhatsApp | + all, + marketplace |
 | History retention | 30d | 180d | 365d | 730d | 1095d |
 | Routing / webhooks / tags / snippets / API keys | — | — | ✓ | ✓ | ✓ |
 | Business hours, scheduled reports, custom roles | — | — | — | ✓ | ✓ |
@@ -1480,7 +1480,6 @@ export const SupportSLA: Record<SupportTier, { firstResponseHours: number; resol
 Organization: "Platform Internal"
   └─ Store: "Customer Support"
        ├─ WhatsApp Business    (support by WhatsApp)
-       ├─ Email channel        (support@platform.com — the email plugin, TDD_10 §5.5)
        └─ Web widget           (the in-app support chat is our own widget embedded in apps/web, TDD_10 §5.4)
 ```
 
@@ -1519,7 +1518,7 @@ Search: Algolia DocSearch
 
 Structure:
 ├─ Getting started
-├─ Channels (WhatsApp, Instagram, Messenger, Web widget, Email)
+├─ Channels (WhatsApp, Instagram, Messenger, Web widget)
 ├─ Inbox
 ├─ Orders
 ├─ Customers
@@ -1547,7 +1546,6 @@ Monitored components:
 ├─ Instagram integration
 ├─ Messenger integration
 ├─ Web widget             (bootstrap call)
-├─ Email channel          (synthetic inbound)
 ├─ Realtime (WebSocket)   (connect + echo)
 ├─ Background jobs        (queue depth threshold)
 └─ File uploads           (presigned URL generation)

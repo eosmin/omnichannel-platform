@@ -9,7 +9,7 @@
 
 ## 1. Core concept
 
-**WhatsApp, Instagram, Messenger, the web widget and email are plugins.** They are built
+**WhatsApp, Instagram, Messenger and the web widget are plugins.** They are built
 against the same public SDK that third-party developers will use. The messaging core knows
 nothing about any specific channel.
 
@@ -20,12 +20,12 @@ nothing about any specific channel.
 │  Knows nothing about WhatsApp or Instagram               │
 └────────────────────────┬─────────────────────────────────┘
                          │ ChannelPlugin interface
-   ┌──────────┬──────────┼──────────┬───────────┬──────────┐
-   │          │          │          │           │          │
-┌──▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼─────┐ ┌───▼───┐ ┌────▼──────┐
-│WhatsApp│ │Instagram│ │Messenger│ │Web widget│ │ Email │ │Third-party│
-│official│ │official │ │official │ │ official │ │official│ │(Telegram) │
-└────────┘ └─────────┘ └─────────┘ └──────────┘ └───────┘ └───────────┘
+   ┌──────────┬──────────┼──────────┬───────────┐
+   │          │          │          │           │
+┌──▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼─────┐ ┌───▼───────┐
+│WhatsApp│ │Instagram│ │Messenger│ │Web widget│ │Third-party│
+│official│ │official │ │official │ │ official │ │(Telegram) │
+└────────┘ └─────────┘ └─────────┘ └──────────┘ └───────────┘
 ```
 
 **Why this matters:** if the core needed changes to add a channel, the plugin
@@ -124,10 +124,10 @@ export type ChannelEventType = typeof ChannelEventTypes[keyof typeof ChannelEven
 export interface ChannelEvent {
   type: ChannelEventType
   // The RECIPIENT of the event — WhatsApp phone_number_id, Facebook Page id, Instagram
-  // business account id, widget site key, inbound mailbox. Resolves the store (§4).
+  // business account id, widget site key. Resolves the store (§4).
   connectionId: string
   // The customer's handle on this channel — phone (E.164 without '+'), page-scoped id,
-  // widget visitor id, email address.
+  // widget visitor id.
   channelIdentity: string
   channelProfile?: { displayName?: string; avatarUrl?: string; locale?: string }
   message?: {
@@ -158,7 +158,7 @@ export interface ConnectInput {
 
 export interface ConnectResult {
   connectionId: string
-  displayName: string                    // Shown in the UI: phone number, page name, site domain, mailbox
+  displayName: string                    // Shown in the UI: phone number, page name, site domain
   credentials: Record<string, unknown>   // What to persist (may differ from input: exchanged long-lived token)
   metadata: Record<string, unknown>
 }
@@ -266,7 +266,7 @@ export class PluginRegistry {
 ```typescript
 // libs/plugins/runtime/src/plugins.module.ts
 @Module({
-  providers: [PluginRegistry, WhatsAppPlugin, InstagramPlugin, MessengerPlugin, WebWidgetPlugin, EmailChannelPlugin],
+  providers: [PluginRegistry, WhatsAppPlugin, InstagramPlugin, MessengerPlugin, WebWidgetPlugin],
   exports: [PluginRegistry],
 })
 export class PluginsModule implements OnModuleInit {
@@ -738,8 +738,7 @@ all authenticated by the site key + visitor id and origin-checked:
 | `/widget` Socket.io namespace (`RoomNames.widgetVisitor`) | Outbound messages and agent typing pushed to the visitor |
 
 Outbound: `WebWidgetPlugin.sendMessage` emits `RealtimeEvents.MESSAGE_SENT` on the visitor's
-room and stores the message; if the visitor is offline the message waits in history and,
-when the visitor left an email, an `EmailTemplates.EMAIL_CHANNEL_REPLY` copy is sent.
+room and stores the message; if the visitor is offline the message waits in history.
 
 **Capabilities:** `TEXT`, `IMAGE`, `DOCUMENT`, `TYPING_INDICATOR`, `CUSTOMER_TYPING`,
 `READ_RECEIPTS`. No messaging window.
@@ -749,29 +748,6 @@ panel with store name and avatar, message list, composer with attachment, "we're
 banner from business hours, i18n from `Store.defaultLocale` (`es`/`en`), no inline
 styles/scripts (works under strict merchant CSPs). Every autonomous reply carries the
 "automated response" label (`TDD_12` §13.2).
-
-### 5.5 Email
-
-Email-to-conversation bridge on Resend Receiving.
-
-**Connection.** `connect({ mailbox })` provisions `{mailbox}@{EMAIL_INBOUND_DOMAIN}` (e.g.
-`ventas-acme@inbound.platform.com`); that address is the `connectionId`. Custom domains
-(`soporte@acme.com` with MX to Resend) are a Growth+ setting on the same connection.
-
-**Inbound.** Resend calls `ApiRoutes.webhooks.resend` with `email.received` (`TDD_07` §5.4).
-`EmailChannelPlugin.handleWebhook` turns it into a `ChannelEvent`:
-`connectionId` = the `to` address that matched a connection, `channelIdentity` = sender
-address, `message.externalId` = the RFC `Message-ID`, `content` = the text body with quoted
-history stripped (`email-reply-parser`), attachments as `media` refs fetched by
-`fetchMedia` through the Resend API. Threading uses `In-Reply-To`/`References` so a reply
-to an older thread lands in the right conversation; otherwise the normal reopen window
-applies.
-
-**Outbound.** `sendMessage` renders `EmailTemplates.EMAIL_CHANNEL_REPLY` (store branding,
-the agent's message, quoted context) and sends from the connection address with
-`In-Reply-To` set to the last inbound `Message-ID`; `Reply-To` is the connection address.
-
-**Capabilities:** `TEXT`, `IMAGE`, `DOCUMENT`, `REPLY_TO`. No messaging window, no typing.
 
 ---
 
@@ -1015,7 +991,7 @@ or hostile can lose its own messages, never another store's data and never the p
 
 | Name | Where | Meaning |
 | --- | --- | --- |
-| `ChannelIds` | `libs/core/domain` | The ids of the official plugins (`whatsapp`, `instagram`, `messenger`, `web_widget`, `email`) as constants. `ChannelType` is kept as an alias of this list for the code that is about official channels only. |
+| `ChannelIds` | `libs/core/domain` | The ids of the official plugins (`whatsapp`, `instagram`, `messenger`, `web_widget`) as constants. `ChannelType` is kept as an alias of this list for the code that is about official channels only. |
 | `CHANNEL_ID_PATTERN` | `libs/core/domain` | `^[a-z][a-z0-9_-]{2,31}$`: what an id must look like. |
 | `officialChannelSchema` | `libs/core/domain` | Zod: one of `ChannelIds`. For the public webhook route of §4, which exists only for official plugins. |
 | `registeredChannelSchema` | `libs/plugins/runtime` | Zod: a string that matches `CHANNEL_ID_PATTERN` **and** that the registry knows, for the routes that take a channel (filters, routing conditions, the connection routes of §10). |
@@ -1356,7 +1332,7 @@ export const PluginPricingModels = {
 - **`paid`** plugins are billed through the platform's Stripe Connect account
   so the store never shares payment details with the third-party developer.
   We hold a 20% platform fee on every charge, the same rate for all developers.
-- **`plan_gated`** is reserved for plugins **we** publish — it is how the five official
+- **`plan_gated`** is reserved for plugins **we** publish — it is how the four official
   channels are restricted by tier (`TDD_11` §6.5 `AvailableChannels` and `ChannelGuard`).
   A third-party submission with `plan_gated` is rejected by the manifest validator unless
   `Plugin.isOfficial`.

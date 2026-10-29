@@ -146,7 +146,7 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('has no window on a channel with no policy', async () => {
-      const made = await conversation(null, { channelType: ChannelType.EMAIL })
+      const made = await conversation(null, { channelType: ChannelType.WEB_WIDGET })
 
       const body = (await windowOf(made.id)).body as WindowBody
 
@@ -318,7 +318,7 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('stores the reply on a channel with no window, whenever the customer wrote', async () => {
-      const made = await conversation(null, { channelType: ChannelType.EMAIL })
+      const made = await conversation(null, { channelType: ChannelType.WEB_WIDGET })
 
       const response = await asAgent().post(ApiRoutes.messages.create).send(reply(made.id))
 

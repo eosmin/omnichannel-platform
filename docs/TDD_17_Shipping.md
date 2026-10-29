@@ -946,7 +946,7 @@ the label is created (§4.9).
   what the channel plugin **declares**, never by the plugin's name: the `messagingWindow` policy
   and the `TEMPLATES` capability of `ChannelPlugin` (`TDD_10 §2`), applied by the core before
   sending (`TDD_10 §4`). Three cases follow from the declaration:
-  - **No window** (`messagingWindow: null`: email, the web widget, or a future unofficial
+  - **No window** (`messagingWindow: null`: the web widget, or a future unofficial
     WhatsApp bridge such as one built on `whatsapp-web.js`): the rendered free text is always
     sent, a linked template is ignored and the template link is not even offered in the editor for
     that channel. Adding such a plugin needs no change here.

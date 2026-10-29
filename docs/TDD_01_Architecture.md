@@ -79,8 +79,7 @@ platform/
 │  │  ├─ whatsapp/
 │  │  ├─ instagram/
 │  │  ├─ messenger/
-│  │  ├─ web-widget/             # Server side of the widget channel
-│  │  └─ email/                  # Email-to-conversation bridge (Resend inbound)
+│  │  └─ web-widget/             # Server side of the widget channel
 │  │
 │  └─ api-client/                # Typed HTTP client + QueryKeys (web, admin, future mobile)
 │
@@ -216,7 +215,7 @@ apps/web/
 | Image processing | `sharp@0.35.4` | — |
 | Virus scanning | `clamscan@2.4.0` + `clamav/clamav` container | Inbound and uploaded files (`TDD_07` §6.5) |
 | HTTP client | `axios@1.20.0` | Outbound calls to Meta Graph API, tenant webhooks |
-| Email | `resend@6.25.0`, `react-email@6.9.3` (components and `render`), `nodemailer@10.2.1` (dev-only Mailpit provider) | Outbound + inbound (Resend Receiving for the email channel) |
+| Email | `resend@6.25.0`, `react-email@6.9.3` (components and `render`), `nodemailer@10.2.1` (dev-only Mailpit provider) | Outbound (account emails: magic link, invitations) and bounce events |
 | Push | `web-push@3.6.7` | VAPID web push |
 | Cache | `node-cache@5.1.2` | L1 in-memory cache |
 | Dates | `date-fns@4.1.0`, `date-fns-tz@3.2.0` | `toZonedTime`/`fromZonedTime` (v3 API) |
@@ -397,7 +396,6 @@ download path verify that prefix against the current store before touching the o
 | `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner` | `3.1125.0` |
 | `ipaddr.js` | `2.2.0` — SSRF address classification (`TDD_07` §2) |
 | `@node-rs/argon2` | `2.0.2` — password hashing (Argon2id) |
-| `email-reply-parser` | `2.0.0` — quoted-history stripping for the email channel (`TDD_10` §5.5) |
 
 **Email**
 
@@ -1078,7 +1076,7 @@ model CustomerIdentity {
   storeId         String   @map("store_id")
   customerId      String   @map("customer_id")
   channelType     String   @map("channel_type")        // ChannelId (a registered plugin)
-  channelIdentity String   @map("channel_identity")    // phone (E.164), page-scoped id, visitor id, email
+  channelIdentity String   @map("channel_identity")    // phone (E.164), page-scoped id, visitor id
   displayName     String?  @map("display_name")        // Profile name as reported by the channel
   channelMetadata Json?    @map("channel_metadata")
   lastInboundAt   DateTime? @map("last_inbound_at")    // Drives messaging windows (TDD_10 §4)
@@ -1434,7 +1432,7 @@ model Media {
 
 // One row per (store, plugin, account). connectionId is what the provider sends as the
 // RECIPIENT of an inbound webhook (WhatsApp phone_number_id, Facebook Page id, Instagram
-// business account id, widget site key, inbound mailbox address). It is unique per plugin
+// business account id, widget site key). It is unique per plugin
 // platform-wide — a phone number belongs to exactly one store — which is how the inbound
 // pipeline resolves the store (TDD_10 §4).
 model ChannelConnection {

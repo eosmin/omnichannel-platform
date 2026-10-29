@@ -115,8 +115,7 @@ export class CustomerIdentityService {
         name: profile.displayName ?? null,
         locale: profile.locale ?? null,
         phone: parsed.phone?.display ?? null,
-        phoneNormalized: parsed.phone?.digits ?? null,
-        email: parsed.email ?? null
+        phoneNormalized: parsed.phone?.digits ?? null
       },
       select: { id: true }
     })

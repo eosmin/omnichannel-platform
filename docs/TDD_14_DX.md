@@ -874,7 +874,6 @@ EMAIL_PROVIDER=resend
 RESEND_API_KEY=
 RESEND_WEBHOOK_SECRET=
 EMAIL_FROM=noreply@platform.local
-EMAIL_INBOUND_DOMAIN=inbound.platform.local
 
 # Observability
 SENTRY_DSN=
