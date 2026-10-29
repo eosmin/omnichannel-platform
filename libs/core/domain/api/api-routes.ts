@@ -53,7 +53,8 @@ export const ApiRoutes = {
     create: '/messages',
     byId: (id: string) => `/messages/${id}`,
     markRead: (id: string) => `/messages/${id}/read`,
-    reaction: (id: string) => `/messages/${id}/reaction`
+    reaction: (id: string) => `/messages/${id}/reaction`,
+    deletedContent: (id: string) => `/messages/${id}/deleted-content`
   },
 
   customers: {

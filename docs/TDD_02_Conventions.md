@@ -490,6 +490,7 @@ export const Permissions = {
   MESSAGES_SEND_TEMPLATE: 'messages:send_template',
   MESSAGES_INTERNAL_NOTE: 'messages:internal_note',
   MESSAGES_DELETE: 'messages:delete',
+  MESSAGES_VIEW_DELETED: 'messages:view_deleted', // Reads the kept text of a message the customer deleted (audited)
 
   // Customers
   CUSTOMERS_VIEW: 'customers:view',

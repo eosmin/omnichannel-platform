@@ -50,6 +50,8 @@ export const AuditAction = {
 
   // Orders (TDD_17 §3)
   ORDER_CONFIRMED: 'order.confirmed',
+  MESSAGE_DELETED: 'message.deleted',
+  MESSAGE_DELETED_CONTENT_VIEWED: 'message.deleted_content_viewed',
   ORDER_MESSAGE_SENT: 'order.message_sent',
   ORDER_TEMPLATE_UPDATED: 'order.template_updated',
   ORDER_PRICE_OVERRIDDEN: 'order.price_overridden',

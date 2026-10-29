@@ -13,6 +13,9 @@ export const ChannelEventTypes = {
   MESSAGE_ECHO: 'message_echo',
   // Someone reacted to a message, or took the reaction back
   MESSAGE_REACTION: 'message_reaction',
+  // A message was edited or deleted at the provider, by the customer or by the owner in the provider's app
+  MESSAGE_EDITED: 'message_edited',
+  MESSAGE_DELETED: 'message_deleted',
   MESSAGE_SENT: 'message_sent',
   MESSAGE_DELIVERED: 'message_delivered',
   MESSAGE_READ: 'message_read',
@@ -77,6 +80,12 @@ export interface ChannelEvent {
     from?: ReactionActor
     eventId?: string
   }
+  // For edit events: the message edited, by its provider id, with its whole new text. `eventId` is the
+  // provider's id of the edit itself, when it has one: a delivery sent twice has the same, two edits of
+  // the same message do not.
+  edit?: { targetExternalId: string; content: string; from?: ReactionActor; eventId?: string }
+  // For delete events: the message deleted, by its provider id
+  deletion?: { targetExternalId: string; from?: ReactionActor; eventId?: string }
   // For delivery, read and failed events
   status?: { externalId: string; error?: { code: string; message: string } }
   // Message.id of a message the platform sent: lets a remote plugin's status event find it
@@ -186,6 +195,22 @@ export interface SendReactionParams {
   channelIdentity: string
   targetExternalId: string
   emoji: string | null
+}
+
+// An agent's deletion of a message of ours, for everyone, by its provider id. The plugin refuses (a
+// non-retryable PluginError) what its provider does not allow, such as a message past its time limit.
+export interface DeleteMessageParams {
+  channelIdentity: string
+  targetExternalId: string
+}
+
+// An agent's edit of a message of ours, by its provider id, with the whole new text. The plugin refuses
+// (a non-retryable PluginError) what its provider does not allow, such as a media message or one past
+// its time limit.
+export interface EditMessageParams {
+  channelIdentity: string
+  targetExternalId: string
+  content: string
 }
 
 // What a channel keeps for a customer, as the plugin read it. Every field is optional because a

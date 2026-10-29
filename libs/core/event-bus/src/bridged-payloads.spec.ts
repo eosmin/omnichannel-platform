@@ -54,6 +54,8 @@ describe('bridgedPayload', () => {
     [Events.MESSAGE_DELIVERED]: status,
     [Events.MESSAGE_READ]: status,
     [Events.MESSAGE_REACTION]: status,
+    [Events.MESSAGE_EDITED]: { ...status, internal: false },
+    [Events.MESSAGE_DELETED]: { ...status, internal: true },
     [Events.MESSAGE_FAILED]: { ...status, errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED },
     [Events.CHANNEL_DISCONNECTED]: {
       storeId: randomUUID(),

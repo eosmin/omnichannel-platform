@@ -174,6 +174,54 @@ describe('channelEventSchema, echoes and reactions', () => {
   })
 })
 
+describe('channelEventSchema, edits and deletions', () => {
+  const base = {
+    connectionId: 'c-1',
+    channelIdentity: '50370000000',
+    timestamp: '2026-10-27T10:00:00.000Z'
+  }
+  const edited = {
+    ...base,
+    type: ChannelEventTypes.MESSAGE_EDITED,
+    edit: { targetExternalId: 'm-1', content: 'new text' }
+  }
+  const deleted = {
+    ...base,
+    type: ChannelEventTypes.MESSAGE_DELETED,
+    deletion: { targetExternalId: 'm-1' }
+  }
+
+  it('takes an edit with its target and text, and a deletion with its target', () => {
+    expect(channelEventSchema.safeParse(edited).success).toBe(true)
+    expect(channelEventSchema.safeParse(deleted).success).toBe(true)
+  })
+
+  it('takes an edit or a deletion made by the owner in the provider app', () => {
+    const owner = { from: 'external', eventId: 'e-1' }
+    expect(
+      channelEventSchema.safeParse({ ...edited, edit: { ...edited.edit, ...owner } }).success
+    ).toBe(true)
+    expect(
+      channelEventSchema.safeParse({ ...deleted, deletion: { ...deleted.deletion, ...owner } })
+        .success
+    ).toBe(true)
+  })
+
+  it.each([
+    ['an edit event with no edit', { ...edited, edit: undefined }],
+    ['a delete event with no deletion', { ...deleted, deletion: undefined }],
+    ['an edit under a received event', { ...valid, edit: edited.edit }],
+    ['a deletion under an edit event', { ...edited, deletion: deleted.deletion }],
+    ['an edit event that also has a message', { ...edited, message: valid.message }],
+    ['a delete event that also has a message', { ...deleted, message: valid.message }],
+    ['an edit with no text', { ...edited, edit: { targetExternalId: 'm-1' } }],
+    ['an edit from an agent', { ...edited, edit: { ...edited.edit, from: 'agent' } }],
+    ['an edit with a field it does not know', { ...edited, edit: { ...edited.edit, x: 1 } }]
+  ])('refuses %s', (_label, event) => {
+    expect(channelEventSchema.safeParse(event).success).toBe(false)
+  })
+})
+
 describe('inboundJobId', () => {
   const parse = (event: object) => channelEventSchema.parse(event)
 
@@ -215,6 +263,29 @@ describe('inboundJobId', () => {
         parse({ ...reaction, reaction: { targetExternalId: 'm-1', emoji: null } })
       )
     ).not.toBe(base)
+  })
+
+  it('tells two edits of one message apart, and an edit from a deletion', () => {
+    const base = { connectionId: 'c-1', channelIdentity: '50370000000' }
+    const edited = (content: string, eventId?: string): object => ({
+      ...base,
+      type: ChannelEventTypes.MESSAGE_EDITED,
+      edit: { targetExternalId: 'm-1', content, ...(eventId === undefined ? {} : { eventId }) },
+      timestamp: '2026-10-27T10:00:00.000Z'
+    })
+    const deleted = {
+      ...base,
+      type: ChannelEventTypes.MESSAGE_DELETED,
+      deletion: { targetExternalId: 'm-1' },
+      timestamp: '2026-10-27T10:00:00.000Z'
+    }
+    const first = inboundJobId('test_channel', parse(edited('one')))
+    expect(inboundJobId('test_channel', parse(edited('one')))).toBe(first)
+    expect(inboundJobId('test_channel', parse(edited('two')))).not.toBe(first)
+    expect(inboundJobId('test_channel', parse(edited('same', 'm-1:1')))).not.toBe(
+      inboundJobId('test_channel', parse(edited('same', 'm-1:2')))
+    )
+    expect(inboundJobId('test_channel', parse(deleted))).not.toBe(first)
   })
 
   it('tells two reactions of one second apart by the id the provider gave each', () => {

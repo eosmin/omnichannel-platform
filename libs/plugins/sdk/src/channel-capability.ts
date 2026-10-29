@@ -12,6 +12,8 @@ export const ChannelCapability = {
   READ_RECEIPTS: 'read_receipts',
   DELIVERY_RECEIPTS: 'delivery_receipts',
   REACTIONS: 'reactions',
+  DELETE_MESSAGE: 'delete_message',
+  EDIT_MESSAGE: 'edit_message',
   REPLY_TO: 'reply_to',
   MESSAGING_WINDOW: 'messaging_window',
   CUSTOMER_TYPING: 'customer_typing',

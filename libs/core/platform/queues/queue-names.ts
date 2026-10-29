@@ -66,6 +66,9 @@ export const JobNames = {
   // outbound
   SEND_OUTBOUND_MESSAGE: 'send-outbound-message',
   SEND_OUTBOUND_REACTION: 'send-outbound-reaction',
+  // An agent's edit or deletion of a message of ours, sent to the channel that supports it
+  SEND_OUTBOUND_EDIT: 'send-outbound-edit',
+  SEND_OUTBOUND_DELETE: 'send-outbound-delete',
 
   // dead letter
   EXHAUSTED: 'exhausted'

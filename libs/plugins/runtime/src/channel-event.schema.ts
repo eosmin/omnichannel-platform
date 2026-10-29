@@ -83,6 +83,19 @@ const reaction = z.strictObject({
   eventId: id.optional()
 })
 
+const edit = z.strictObject({
+  targetExternalId: id,
+  content: text(InboundLimits.CONTENT_MAX_LENGTH),
+  from: z.enum(ReactionActors).optional(),
+  eventId: id.optional()
+})
+
+const deletion = z.strictObject({
+  targetExternalId: id,
+  from: z.enum(ReactionActors).optional(),
+  eventId: id.optional()
+})
+
 // What a channel plugin returns for an event, checked before anything uses it: the plugin may be a
 // third party's, and a provider's payload is not ours either. A field that is not here is refused.
 export const channelEventSchema = z
@@ -99,6 +112,8 @@ export const channelEventSchema = z
       .optional(),
     message: message.optional(),
     reaction: reaction.optional(),
+    edit: edit.optional(),
+    deletion: deletion.optional(),
     status: status.optional(),
     messageId: z.uuid().optional(),
     timestamp: z.iso.datetime({ offset: true })
@@ -145,6 +160,22 @@ export const channelEventSchema = z
         code: 'custom',
         path: ['reaction'],
         message: 'only a reaction event has a reaction, and it has no message'
+      })
+    }
+    const isEdit = event.type === ChannelEventTypes.MESSAGE_EDITED
+    if (isEdit !== (event.edit !== undefined) || (isEdit && event.message)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['edit'],
+        message: 'only an edit event has an edit, and it has no message'
+      })
+    }
+    const isDeletion = event.type === ChannelEventTypes.MESSAGE_DELETED
+    if (isDeletion !== (event.deletion !== undefined) || (isDeletion && event.message)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['deletion'],
+        message: 'only a delete event has a deletion, and it has no message'
       })
     }
     const needsStatus: readonly string[] = [

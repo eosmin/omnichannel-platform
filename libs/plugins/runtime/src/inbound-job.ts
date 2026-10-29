@@ -17,22 +17,30 @@ export interface ProcessChannelEventJob {
 // alike. What makes a duplicate harmless afterwards is the unique index of Message.
 //
 // A reaction is told apart by the id the provider gave it; without one, by who reacted, to what, with
-// which emoji and when, so that two customers reacting in the same second are two jobs.
+// which emoji and when, so that two customers reacting in the same second are two jobs. An edit and a
+// deletion are told apart the same way: a second edit of a message is another job, not a repeat of the
+// first (a finished job keeps its id for a day).
 export function inboundJobId(pluginId: string, event: ValidChannelEvent): string {
   const reaction = event.reaction
+  const change = reaction ?? event.edit ?? event.deletion
   const externalId =
     event.message?.externalId ??
     event.status?.externalId ??
-    reaction?.targetExternalId ??
+    change?.targetExternalId ??
     event.timestamp
-  const reactionParts =
-    reaction === undefined
+  const changeParts =
+    change === undefined
       ? []
-      : reaction.eventId === undefined
-        ? [event.channelIdentity, reaction.from ?? '', reaction.emoji ?? '', event.timestamp]
-        : [reaction.eventId]
+      : change.eventId === undefined
+        ? [
+            event.channelIdentity,
+            change.from ?? '',
+            reaction === undefined ? (event.edit?.content ?? '') : (reaction.emoji ?? ''),
+            event.timestamp
+          ]
+        : [change.eventId]
   const hash = createHash('sha256')
-  for (const part of [pluginId, event.connectionId, event.type, externalId, ...reactionParts]) {
+  for (const part of [pluginId, event.connectionId, event.type, externalId, ...changeParts]) {
     hash.update(`${part.length}:${part}`)
   }
   return hash.digest('hex')

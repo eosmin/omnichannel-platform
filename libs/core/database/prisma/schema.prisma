@@ -52,6 +52,7 @@ model Store {
   messages            Message[]
   conversationOrigins ConversationOrigin[]
   messageReactions    MessageReaction[]
+  messageRevisions    MessageRevision[]
   customers           Customer[]
   customerIdentities  CustomerIdentity[]
   customerMerges      CustomerMerge[]
@@ -484,18 +485,63 @@ model Message {
   metadata         Json? // Channel-specific metadata
   createdAt        DateTime @default(now()) @map("created_at")
 
+  // Edits. `version` starts at 1 and grows with each edit of the text: an edit of a note carries the
+  // one it saw. `pendingContent` is the text of an edit of ours that the channel has not taken yet: the
+  // thread shows `content` until it does, and an edit the channel refuses never changes it.
+  version        Int       @default(1)
+  editedAt       DateTime? @map("edited_at")
+  editedByType   String?   @map("edited_by_type") // AuthorType
+  editedById     String?   @map("edited_by_id") // User id when an agent edited
+  pendingContent String?   @map("pending_content")
+  editStatus     String?   @map("edit_status") // DeliveryStatus of an edit toward the channel
+  editError      String?   @map("edit_error") // ErrorCode of a failed one
+
+  // Deletion. `deletedAt` is when the message stopped being shown; a deletion of ours that the channel
+  // has not taken yet is `deleteStatus` queued with no `deletedAt`. The text stays until
+  // `contentPurgedAt` (DeletedMessageRetention), read only with MESSAGES_VIEW_DELETED.
+  deletedAt         DateTime? @map("deleted_at")
+  deletedByType     String?   @map("deleted_by_type") // AuthorType
+  deletedById       String?   @map("deleted_by_id") // User id when an agent deleted
+  deleteStatus      String?   @map("delete_status") // DeliveryStatus of a deletion toward the channel
+  deleteError       String?   @map("delete_error") // ErrorCode of a failed one
+  // When the agent asked for the edit or the deletion that is queued; the sweep reads it to find a job that was lost
+  changeRequestedAt DateTime? @map("change_requested_at")
+  contentPurgedAt   DateTime? @map("content_purged_at")
+
   store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
   conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   author       User?               @relation(fields: [authorId], references: [id])
   media        Media[]
   origin       ConversationOrigin?
   reactions    MessageReaction[]
+  revisions    MessageRevision[]
 
   @@unique([conversationId, channelMessageId])
   @@unique([conversationId, idempotencyKey])
   @@index([conversationId, createdAt])
   @@index([storeId, createdAt])
+  @@index([deletedAt])
   @@map("messages")
+}
+
+// The text a message had before an edit, one row for each edit: who edited, when, and the text it
+// replaced. Kept with the message; the text goes with a purge of a deleted message.
+model MessageRevision {
+  id           String   @id @default(uuid())
+  storeId      String   @map("store_id")
+  messageId    String   @map("message_id")
+  version      Int // The version the text had
+  content      String?
+  editedByType String   @map("edited_by_type") // AuthorType
+  editedById   String?  @map("edited_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, version])
+  @@index([storeId])
+  @@map("message_revisions")
 }
 
 // One emoji that one person left on a message. A person has at most one per message (a new emoji

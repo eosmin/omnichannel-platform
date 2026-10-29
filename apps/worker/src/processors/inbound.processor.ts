@@ -4,7 +4,11 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { CHANNEL_ID_PATTERN } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
-import { InboundMessageService, MessageReactionsService } from '@platform/core/messaging'
+import {
+  InboundMessageChangesService,
+  InboundMessageService,
+  MessageReactionsService
+} from '@platform/core/messaging'
 import { QueueNames } from '@platform/core/queues'
 import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
@@ -23,6 +27,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
     support: ProcessorSupport,
     private readonly inbound: InboundMessageService,
     private readonly reactions: MessageReactionsService,
+    private readonly changes: InboundMessageChangesService,
     private readonly receipts: ChannelReceipts,
     private readonly profiles: ProfileRequester,
     private readonly logger: PinoLogger
@@ -74,6 +79,22 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         await this.reactions.handleInbound(
           pluginId,
           { ...event, reaction: event.reaction },
+          isLastAttempt(job)
+        )
+        return
+      case ChannelEventTypes.MESSAGE_EDITED:
+        if (event.edit === undefined) throw new UnrecoverableError('no edit to apply')
+        await this.changes.handleEdited(
+          pluginId,
+          { ...event, edit: event.edit },
+          isLastAttempt(job)
+        )
+        return
+      case ChannelEventTypes.MESSAGE_DELETED:
+        if (event.deletion === undefined) throw new UnrecoverableError('no deletion to apply')
+        await this.changes.handleDeleted(
+          pluginId,
+          { ...event, deletion: event.deletion },
           isLastAttempt(job)
         )
         return

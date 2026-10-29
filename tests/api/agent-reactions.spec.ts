@@ -21,6 +21,7 @@ import {
   type SendReactionParams
 } from '@platform/plugins/sdk'
 
+import { MessageChangeStatusWriter } from '../../apps/worker/src/outbound/message-change-status.writer'
 import { ReactionSender } from '../../apps/worker/src/outbound/reaction-sender.service'
 import { ReactionStatusWriter } from '../../apps/worker/src/outbound/reaction-status.writer'
 import { OutboundRequeueScheduler } from '../../apps/worker/src/schedulers/outbound-requeue.scheduler'
@@ -83,6 +84,7 @@ describe('An agent reacting to a message', () => {
       new OutboundQueue(queueOf(app, QueueNames.OUTBOUND) as never),
       undefined as never, // the replies are not what is tested
       new ReactionStatusWriter(prisma, events),
+      new MessageChangeStatusWriter(prisma, events),
       await app.resolve(PinoLogger)
     )
   })

@@ -26,6 +26,8 @@ const METHODS_BY_CAPABILITY = [
   [ChannelCapability.TYPING_INDICATOR, 'sendTypingIndicator'],
   [ChannelCapability.READ_RECEIPTS, 'markAsRead'],
   [ChannelCapability.REACTIONS, 'sendReaction'],
+  [ChannelCapability.DELETE_MESSAGE, 'deleteMessage'],
+  [ChannelCapability.EDIT_MESSAGE, 'editMessage'],
   [ChannelCapability.CUSTOMER_PROFILE, 'fetchProfile']
 ] as const
 

@@ -42,6 +42,7 @@ import { api } from '../helpers/http'
 
 const OK = 200
 const CREATED = 201
+const NO_CONTENT = 204
 const WAIT_MS = 4000
 const SETTLE_MS = 250
 const POLL_MS = 20
@@ -387,6 +388,46 @@ describe('The realtime gateway', () => {
         })
         .expect(CREATED)
       await until(() => viewer.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+    })
+
+    it('tells the edit and the deletion of a note only to who may read notes, with ids only', async () => {
+      const agent = await asA(ctx.agentA)
+      const viewer = await asA(ctx.viewerA)
+      const { id } = await mk()
+      const note = await asAdmin()
+        .post(ApiRoutes.messages.create)
+        .send({
+          type: MessageType.INTERNAL_NOTE,
+          conversationId: id,
+          content: 'First draft',
+          idempotencyKey: randomUUID()
+        })
+        .expect(CREATED)
+      const noteId = (note.body as { id: string }).id
+
+      await asAdmin()
+        .patch(ApiRoutes.messages.byId(noteId))
+        .send({ content: 'Second draft', version: 1 })
+        .expect(OK)
+      await asAdmin().delete(ApiRoutes.messages.byId(noteId)).expect(NO_CONTENT)
+      await until(
+        () =>
+          agent.of(RealtimeEvents.MESSAGE_EDITED).length === 1 &&
+          agent.of(RealtimeEvents.MESSAGE_DELETED).length === 1
+      )
+      await sleep(SETTLE_MS)
+
+      expect(agent.of(RealtimeEvents.MESSAGE_EDITED)[0]?.payload).toEqual({
+        conversationId: id,
+        messageId: noteId
+      })
+      expect(agent.of(RealtimeEvents.MESSAGE_DELETED)[0]?.payload).toEqual({
+        conversationId: id,
+        messageId: noteId
+      })
+      expect(viewer.of(RealtimeEvents.MESSAGE_EDITED)).toEqual([])
+      expect(viewer.of(RealtimeEvents.MESSAGE_DELETED)).toEqual([])
+      expect(JSON.stringify([agent.heard, viewer.heard])).not.toContain('draft')
     })
 
     it('tells an assigned conversation to its assignee and who sees all, not to the others', async () => {

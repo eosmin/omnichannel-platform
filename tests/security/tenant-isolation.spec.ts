@@ -26,7 +26,9 @@ import {
   createConversationOf,
   createMessageOf,
   createMessageReactionOf,
+  createMessageRevisionOf,
   messageOfReaction,
+  messageOfRevision,
   createRole,
   createRoutingRule,
   ensurePluginInstallation,
@@ -299,6 +301,37 @@ const resources: IsolationResource[] = [
         select: { emoji: true, deliveryStatus: true }
       })
       return row?.emoji === '👍' && row.deliveryStatus === DeliveryStatus.SENT.valueOf()
+    }
+  },
+  {
+    name: 'messageRevision',
+    create: (owner, { storeId }) => createMessageRevisionOf(owner, { storeId, userId: reactorId }),
+    // A revision has no route of its own: a stranger reaches one only through the edit of its note,
+    // and must neither change the note nor add a revision to it
+    modify: {
+      path: id => ApiRoutes.messages.byId(messageOfRevision.get(id) ?? randomUUID()),
+      method: 'patch',
+      body: { content: 'hacked', version: 2 }
+    },
+    untouched: async (owner, id) => {
+      const revision = await owner.messageRevision.findUnique({
+        where: { id },
+        select: { content: true, messageId: true }
+      })
+      if (revision === null) return false
+      const [note, revisions] = await Promise.all([
+        owner.message.findUnique({
+          where: { id: revision.messageId },
+          select: { content: true, version: true }
+        }),
+        owner.messageRevision.count({ where: { messageId: revision.messageId } })
+      ])
+      return (
+        revision.content === 'note v1' &&
+        note?.content === 'note v2' &&
+        note.version === 2 &&
+        revisions === 1
+      )
     }
   },
   {

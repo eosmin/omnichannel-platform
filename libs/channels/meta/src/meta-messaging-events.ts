@@ -6,13 +6,15 @@ import {
   MetaGraph,
   MetaMessaging,
   OriginKinds,
-  OriginMediaTypes
+  OriginMediaTypes,
+  ReactionActors
 } from '@platform/core/domain'
 import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
 
 import { cut, hasText, replyTarget } from './inbound-text'
 import {
   metaAttachmentSchema,
+  type MetaMessageEdit,
   type MetaMessage,
   type MetaMessagingItem,
   metaReferralSchema,
@@ -186,6 +188,47 @@ function reactionEvent(
   }
 }
 
+// A message taken back. The customer's is a deletion by the customer; the page's own, which the provider
+// echoes, is one by the owner in the provider's app. Anything that is neither is not ours.
+function deletionEvent(
+  connectionId: string,
+  item: MetaMessagingItem,
+  mid: string,
+  timestamp: string
+): ChannelEvent | null {
+  const byPage = item.sender.id === connectionId
+  if (!byPage && item.recipient.id !== connectionId) return null
+  if (item.sender.id === item.recipient.id) return null
+  return {
+    type: ChannelEventTypes.MESSAGE_DELETED,
+    connectionId,
+    channelIdentity: byPage ? item.recipient.id : item.sender.id,
+    deletion: { targetExternalId: mid, ...(byPage ? { from: ReactionActors.EXTERNAL } : {}) },
+    timestamp
+  }
+}
+
+// The customer edited a message: the whole new text, and the number of the edit to tell one from the next
+function editEvent(
+  connectionId: string,
+  item: MetaMessagingItem,
+  edit: MetaMessageEdit,
+  timestamp: string
+): ChannelEvent | null {
+  if (item.sender.id === item.recipient.id || !hasText(edit.text)) return null
+  return {
+    type: ChannelEventTypes.MESSAGE_EDITED,
+    connectionId,
+    channelIdentity: item.sender.id,
+    edit: {
+      targetExternalId: edit.mid,
+      content: edit.text,
+      ...(edit.num_edit === undefined ? {} : { eventId: `${edit.mid}:${edit.num_edit}` })
+    },
+    timestamp
+  }
+}
+
 // The ad can come beside the message or inside it; an empty object says nothing, so the next one is tried
 function firstReferral(
   ...candidates: (Record<string, unknown> | undefined)[]
@@ -197,8 +240,7 @@ function itemEvent(connectionId: string, item: MetaMessagingItem): ChannelEvent 
   const timestamp = new Date(item.timestamp).toISOString()
   const message = item.message
   if (message) {
-    // The customer took it back: there is nothing new to store
-    if (message.is_deleted) return null
+    if (message.is_deleted) return deletionEvent(connectionId, item, message.mid, timestamp)
     // The page wrote to the customer (the customer is the recipient), or the customer wrote to the
     // page: anything else is not ours, and is dropped before its attachments are read
     const isEcho = message.is_echo === true
@@ -225,6 +267,9 @@ function itemEvent(connectionId: string, item: MetaMessagingItem): ChannelEvent 
           message: received,
           timestamp
         }
+  }
+  if (item.message_edit && item.recipient.id === connectionId) {
+    return editEvent(connectionId, item, item.message_edit, timestamp)
   }
   // Only the customer's reactions: those of the account itself come back as the echo of our own sends,
   // and the core already holds them

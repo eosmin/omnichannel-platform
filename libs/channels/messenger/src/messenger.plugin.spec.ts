@@ -65,7 +65,8 @@ describe('MessengerPlugin', () => {
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         path: ['1090000000000001', 'subscribed_apps'],
         query: {
-          subscribed_fields: 'messages,message_echoes,message_reactions,messaging_referrals'
+          subscribed_fields:
+            'messages,message_echoes,message_reactions,message_edits,messaging_referrals'
         }
       })
       expect(result).toEqual({

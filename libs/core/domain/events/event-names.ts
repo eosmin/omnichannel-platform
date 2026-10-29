@@ -29,6 +29,9 @@ export const Events = {
   MESSAGE_NOTE_ADDED: 'message.note_added',
   // Someone reacted to a message, or took the reaction back (ids only, like MESSAGE_SENT)
   MESSAGE_REACTION: 'message.reaction',
+  // A message changed its text or was deleted, by an agent or at the provider (ids only, like MESSAGE_SENT)
+  MESSAGE_EDITED: 'message.edited',
+  MESSAGE_DELETED: 'message.deleted',
   MESSAGE_DELIVERED: 'message.delivered',
   MESSAGE_READ: 'message.read',
   MESSAGE_FAILED: 'message.failed',
@@ -164,6 +167,8 @@ export const BridgedEvents = [
   Events.MESSAGE_FAILED,
   Events.MESSAGE_NOTE_ADDED,
   Events.MESSAGE_REACTION,
+  Events.MESSAGE_EDITED,
+  Events.MESSAGE_DELETED,
   Events.CHANNEL_DISCONNECTED,
   Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]

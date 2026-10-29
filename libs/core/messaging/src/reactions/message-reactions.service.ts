@@ -1,12 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import {
-  lockStoreForWrite,
-  lockStoreScope,
-  PrismaService,
-  type PrismaTransaction
-} from '@platform/core/database'
+import { type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AuthorType,
   DeliveryStatus,
@@ -17,9 +12,8 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 
-import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { isHiddenStatus } from '../conversations/conversations.support'
-import { parseChannelIdentity } from '../customers/identity'
+import { InboundMessageTargets } from '../inbound/inbound-message-targets'
 
 // Who left a reaction: the customer by identity, an agent by user, the owner of the provider's own
 // app by neither (there is one of them per message)
@@ -52,7 +46,7 @@ const keyOf = (reactor: Reactor): Record<string, string | null> => ({
 export class MessageReactionsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly connections: ChannelConnectionResolver,
+    private readonly targets: InboundMessageTargets,
     private readonly events: DomainEvents,
     private readonly logger: PinoLogger
   ) {
@@ -71,45 +65,19 @@ export class MessageReactionsService {
     event: InboundReaction,
     isLastAttempt: boolean
   ): Promise<ReactionOutcome> {
-    const connection = await this.connections.resolve(pluginId, event.connectionId)
-    if (connection === null || !connection.active) return ReactionOutcomes.IGNORED
-    const { storeId } = connection
-    const parsed = parseChannelIdentity(pluginId, event.channelIdentity, { fromChannel: true })
-    if (parsed === null) return ReactionOutcomes.IGNORED
-    const identity = await this.prisma.client.customerIdentity.findFirst({
-      where: { storeId, channelType: pluginId, channelIdentity: parsed.identity },
-      select: { id: true }
-    })
-    if (identity === null) {
-      // The message of that customer may be being stored right now, and makes the identity
-      if (!isLastAttempt) throw new Error('the reaction came before the customer it is from')
-      return ReactionOutcomes.IGNORED
-    }
-
-    const applied = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      // Takes turns with the messages of the same handle: the reaction may follow its message closely
-      await lockStoreScope(tx, storeId, `inbound-${identity.id}`)
-      const target = await tx.message.findFirst({
-        where: {
-          storeId,
-          channelMessageId: event.reaction.targetExternalId,
-          conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
-        },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true }
-      })
-      if (target === null) {
-        if (!isLastAttempt) throw new Error('the reaction came before the message it points at')
-        return false
+    const applied = await this.targets.apply(
+      pluginId,
+      { ...event, targetExternalId: event.reaction.targetExternalId },
+      'reaction',
+      isLastAttempt,
+      async (tx, target) => {
+        const reactor: Reactor =
+          event.reaction.from === ReactionActors.EXTERNAL
+            ? { authorType: AuthorType.EXTERNAL }
+            : { authorType: AuthorType.CUSTOMER, customerIdentityId: target.customerIdentityId }
+        await this.set(tx, target.storeId, target.messageId, reactor, event.reaction.emoji)
       }
-      const reactor: Reactor =
-        event.reaction.from === ReactionActors.EXTERNAL
-          ? { authorType: AuthorType.EXTERNAL }
-          : { authorType: AuthorType.CUSTOMER, customerIdentityId: identity.id }
-      await this.set(tx, storeId, target.id, reactor, event.reaction.emoji)
-      return true
-    })
+    )
     if (!applied) this.logger.debug({ pluginId }, 'reaction for a message that is not here')
     return applied ? ReactionOutcomes.APPLIED : ReactionOutcomes.IGNORED
   }
