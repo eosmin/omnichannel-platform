@@ -3,6 +3,7 @@ import type { INestApplication, Type } from '@nestjs/common'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { Test, type TestingModuleBuilder } from '@nestjs/testing'
 
+import { EventsBridge } from '@platform/core/event-bus'
 import { configureHttpApp } from '@platform/core/http'
 import { QueueNames } from '@platform/core/queues'
 
@@ -45,5 +46,8 @@ export async function createTestApp(
   // server under their feet or reach whatever else got the port, which showed up as a request
   // answered with another status than the app gave, or reset, once in a few hundred
   await app.listen(0, '127.0.0.1')
+  // The bridge subscribes when its connection is ready, after the boot: an event published right
+  // after this returns would otherwise go to nobody
+  await app.get(EventsBridge, { strict: false }).subscribed
   return app
 }

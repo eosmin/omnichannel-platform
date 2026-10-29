@@ -32,6 +32,7 @@ import { SocketAccessService } from '../../apps/api/src/modules/realtime/socket-
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
 import { createConversationOf, createRole } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { assertNoOtherBridgeListener } from '../helpers/bridge-listeners'
 import {
   createActor as createActorRaw,
   seedTestContext,
@@ -121,6 +122,7 @@ describe('The realtime gateway', () => {
   const open: Socket[] = []
 
   beforeAll(async () => {
+    await assertNoOtherBridgeListener()
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
