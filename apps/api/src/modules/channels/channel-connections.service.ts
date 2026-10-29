@@ -100,9 +100,15 @@ export class ChannelConnectionsService {
   }
 
   private view(row: ConnectionRow): ChannelConnectionView {
+    // Field by field: whatever else a query selects must not reach the response
     return {
-      ...row,
+      id: row.id,
+      pluginId: row.pluginId,
+      displayName: row.displayName,
       status: enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status'),
+      lastHealthyAt: row.lastHealthyAt,
+      lastError: row.lastError,
+      createdAt: row.createdAt,
       capabilities: this.registry.capabilitiesOf(row.pluginId)
     }
   }

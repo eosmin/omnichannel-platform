@@ -124,6 +124,47 @@ describe('messagingToEvents', () => {
     })
   })
 
+  it('keeps the link of a shared post beside a file, and a type name that is plain', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          attachments: [
+            { type: 'image', payload: { url: CDN } },
+            { type: 'story_mention', payload: { url: 'https://www.instagram.com/stories/x/1/' } }
+          ]
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({
+      type: MessageType.IMAGE,
+      metadata: {
+        attachmentType: 'story_mention',
+        attachmentUrl: 'https://www.instagram.com/stories/x/1/'
+      }
+    })
+  })
+
+  it('does not put the type name of a sender into the metadata when it is not plain', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          text: 'hola',
+          attachments: [
+            { type: 'x'.repeat(9000), payload: { url: 'https://www.instagram.com/p/a/' } }
+          ]
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message?.metadata).toEqual({
+      attachmentType: 'unsupported',
+      attachmentUrl: 'https://www.instagram.com/p/a/'
+    })
+  })
+
   it('finds a shared link after a file that has none', () => {
     const [event] = messagingToEvents(
       wrap(
@@ -194,6 +235,20 @@ describe('messagingToEvents', () => {
           recipient: { id: CUSTOMER },
           timestamp: MS,
           message: { mid: 'm2', text: 'x', is_echo: true }
+        }),
+        OBJECT
+      )
+    ).toEqual([])
+  })
+
+  it('skips an echo of the account to itself', () => {
+    expect(
+      messagingToEvents(
+        wrap({
+          sender: { id: ACCOUNT },
+          recipient: { id: ACCOUNT },
+          timestamp: MS,
+          message: { mid: 'm3', text: 'x', is_echo: true }
         }),
         OBJECT
       )

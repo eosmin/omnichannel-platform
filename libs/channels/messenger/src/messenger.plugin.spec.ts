@@ -144,6 +144,18 @@ describe('MessengerPlugin', () => {
     })
   })
 
+  it('reports a healthy connection only for the Page the connection is', async () => {
+    const { plugin, get } = build()
+    get.mockResolvedValueOnce({ id: ctx.connectionId, name: 'Mi Tienda' })
+    await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+
+    get.mockResolvedValueOnce({ id: '999', name: 'Otra' })
+    await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
+      code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+      retryable: false
+    })
+  })
+
   it('reads the webhook of a Page only', async () => {
     const { plugin } = build()
     const body = (object: string): object => ({

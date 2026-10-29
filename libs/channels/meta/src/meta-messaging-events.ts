@@ -54,6 +54,7 @@ function originOf(raw: Record<string, unknown> | undefined): ChannelOrigin | und
   if (!parsed.success) return undefined
   const referral = parsed.data
   const context = referral.ads_context_data
+  const title = context?.ad_title
   const isAd = referral.source === MetaMessaging.REFERRAL_SOURCE_ADS || referral.ad_id !== undefined
   const media = originMedia(context?.photo_url, context?.video_url)
   // A link in `source` is the m.me or ig.me link that was tapped
@@ -62,9 +63,7 @@ function originOf(raw: Record<string, unknown> | undefined): ChannelOrigin | und
     kind: isAd ? OriginKinds.AD : OriginKinds.OTHER,
     ...(referral.ad_id ? { sourceId: referral.ad_id } : {}),
     ...(sourceUrl.success ? { sourceUrl: sourceUrl.data } : {}),
-    ...(hasText(context?.ad_title)
-      ? { title: cut(context?.ad_title ?? '', InboundLimits.ORIGIN_TITLE_MAX_LENGTH) }
-      : {}),
+    ...(hasText(title) ? { title: cut(title, InboundLimits.ORIGIN_TITLE_MAX_LENGTH) } : {}),
     ...(media ? { media } : {}),
     ...(Buffer.byteLength(JSON.stringify(raw)) <= InboundLimits.METADATA_MAX_BYTES
       ? { referral: raw }
@@ -72,17 +71,30 @@ function originOf(raw: Record<string, unknown> | undefined): ChannelOrigin | und
   }
 }
 
+interface ParsedAttachment {
+  type: string
+  url: string | undefined
+}
+
+// Each attachment is read once; one that does not have the shape is the same as one that is not there
+function parseAttachments(raw: unknown[]): ParsedAttachment[] {
+  return raw.flatMap(item => {
+    const attachment = metaAttachmentSchema.safeParse(item)
+    return attachment.success
+      ? [{ type: attachment.data.type, url: attachment.data.payload?.url }]
+      : []
+  })
+}
+
 // The files of a message, with the url Meta put in the webhook as the reference to fetch them
-function mediaOf(attachments: unknown[]): {
+function mediaOf(attachments: ParsedAttachment[]): {
   type: MessageType
   media: NonNullable<ReceivedMessage['media']>
 } | null {
   const media: NonNullable<ReceivedMessage['media']>[number][] = []
   let type: MessageType | undefined
-  for (const item of attachments) {
-    const attachment = metaAttachmentSchema.safeParse(item)
-    const kind = attachment.success ? MEDIA_ATTACHMENTS.get(attachment.data.type) : undefined
-    const url = attachment.success ? attachment.data.payload?.url : undefined
+  for (const { type: attachmentType, url } of attachments) {
+    const kind = MEDIA_ATTACHMENTS.get(attachmentType)
     if (!kind || !url) continue
     type ??= kind
     // Meta does not say the type of the file in the webhook: the fetch reads it from the file
@@ -94,12 +106,11 @@ function mediaOf(attachments: unknown[]): {
 
 // The attachment that is not a file (a shared post, a reel, a story mention): its type and, when
 // there is one, its link, so the team can open what the customer shared
-function sharedOf(attachments: unknown[]): { type: string; url?: string } | null {
-  let first: { type: string; url?: string } | null = null
-  for (const item of attachments) {
-    const attachment = metaAttachmentSchema.safeParse(item)
-    if (!attachment.success) continue
-    const shared = { type: attachment.data.type, url: attachment.data.payload?.url }
+function sharedOf(attachments: ParsedAttachment[]): ParsedAttachment | null {
+  let first: ParsedAttachment | null = null
+  for (const shared of attachments) {
+    // A file with a link is already read as media: it is not what the customer shared
+    if (shared.url && MEDIA_ATTACHMENTS.has(shared.type)) continue
     // One with a link is the one the team can open; a file with none comes second
     if (shared.url) return shared
     first ??= shared
@@ -121,23 +132,18 @@ function toReceivedMessage(
     timestamp,
     ...(origin ? { origin } : {})
   }
-  const text = hasText(message.text) ? (message.text ?? null) : null
-  const attachments = message.attachments ?? []
+  const text = hasText(message.text) ? message.text : null
+  const attachments = parseAttachments(message.attachments ?? [])
   const files = message.is_unsupported ? null : mediaOf(attachments)
-  if (files) return { ...base, type: files.type, content: text, media: files.media }
   const shared = message.is_unsupported ? null : sharedOf(attachments)
-  // A shared post or reel with a caption keeps its link beside the text
-  if (text !== null) {
-    return {
-      ...base,
-      type: MessageType.TEXT,
-      content: text,
-      ...(shared?.url
-        ? { metadata: { attachmentType: shared.type, attachmentUrl: shared.url } }
-        : {})
-    }
-  }
+  // The name of a type is the sender's, and it goes into the metadata and the content: only a plain one
   const providerType = shared && PROVIDER_TYPE.test(shared.type) ? shared.type : UNSUPPORTED_TYPE
+  // A shared post or reel keeps its link beside the text or the file, so the team can open it
+  const link = shared?.url
+    ? { metadata: { attachmentType: providerType, attachmentUrl: shared.url } }
+    : {}
+  if (files) return { ...base, type: files.type, content: text, media: files.media, ...link }
+  if (text !== null) return { ...base, type: MessageType.TEXT, content: text, ...link }
   return {
     ...base,
     type: MessageType.TEXT,
@@ -193,31 +199,32 @@ function itemEvent(connectionId: string, item: MetaMessagingItem): ChannelEvent 
   if (message) {
     // The customer took it back: there is nothing new to store
     if (message.is_deleted) return null
+    // The page wrote to the customer (the customer is the recipient), or the customer wrote to the
+    // page: anything else is not ours, and is dropped before its attachments are read
+    const isEcho = message.is_echo === true
+    if (isEcho ? item.sender.id !== connectionId : item.recipient.id !== connectionId) return null
+    // The customer is the other side: the account does not talk to itself
+    if (item.sender.id === item.recipient.id) return null
     const received = toReceivedMessage(
       message,
       timestamp,
       originOf(firstReferral(item.referral, message.referral))
     )
-    if (message.is_echo) {
-      // The page wrote to the customer: the customer is the recipient
-      if (item.sender.id !== connectionId) return null
-      return {
-        type: ChannelEventTypes.MESSAGE_ECHO,
-        connectionId,
-        channelIdentity: item.recipient.id,
-        message: received,
-        timestamp
-      }
-    }
-    // Only what reaches this account is a customer's message
-    if (item.recipient.id !== connectionId) return null
-    return {
-      type: ChannelEventTypes.MESSAGE_RECEIVED,
-      connectionId,
-      channelIdentity: item.sender.id,
-      message: received,
-      timestamp
-    }
+    return isEcho
+      ? {
+          type: ChannelEventTypes.MESSAGE_ECHO,
+          connectionId,
+          channelIdentity: item.recipient.id,
+          message: received,
+          timestamp
+        }
+      : {
+          type: ChannelEventTypes.MESSAGE_RECEIVED,
+          connectionId,
+          channelIdentity: item.sender.id,
+          message: received,
+          timestamp
+        }
   }
   // Only the customer's reactions: those of the account itself come back as the echo of our own sends,
   // and the core already holds them

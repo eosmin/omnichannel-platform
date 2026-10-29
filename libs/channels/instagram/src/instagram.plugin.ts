@@ -43,7 +43,8 @@ export class InstagramPlugin extends MetaChannelPlugin {
       query: { fields: InstagramApi.PROFILE_FIELDS },
       schema: answerSchema
     })
-    const profile = 'data' in answer ? answer.data[0] : answer
+    // The flat profile is the one with the id; a `data` key beside it must not take its place
+    const profile = 'user_id' in answer ? answer : answer.data[0]
     return { id: profile.user_id, displayName: profile.username }
   }
 }

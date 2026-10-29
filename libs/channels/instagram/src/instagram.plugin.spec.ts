@@ -107,6 +107,16 @@ describe('InstagramPlugin', () => {
       }
     )
 
+    it('reads the flat profile even when a data key comes beside it', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValue({ user_id: '777', username: 'tienda', data: [] })
+      post.mockResolvedValue({ success: true })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        connectionId: '777'
+      })
+    })
+
     it('refuses an id that arrives as a number: 17 digits do not fit one exactly', async () => {
       // Through the real client, which is the one that checks what Meta answers
       const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -156,8 +166,17 @@ describe('InstagramPlugin', () => {
 
   it('reports a healthy connection after reading the account', async () => {
     const { plugin, get } = build()
-    get.mockResolvedValue({ user_id: '1', username: 'tienda' })
+    get.mockResolvedValue({ user_id: ctx.connectionId, username: 'tienda' })
     await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+  })
+
+  it('does not call healthy a token that belongs to another account', async () => {
+    const { plugin, get } = build()
+    get.mockResolvedValue({ user_id: '999', username: 'otra' })
+    await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
+      code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+      retryable: false
+    })
   })
 
   describe('sends', () => {
@@ -215,6 +234,43 @@ describe('InstagramPlugin', () => {
       })
     })
 
+    it.each([
+      ['a voice note', 'audio/ogg'],
+      ['a pdf', 'application/pdf']
+    ])('refuses %s: the channel does not declare it', async (_name, contentType) => {
+      const { plugin, post } = build()
+
+      await expect(
+        plugin.sendMedia(ctx, {
+          channelIdentity: '99',
+          mediaUrl: 'https://files.example.com/a',
+          contentType,
+          filename: null,
+          ...key
+        })
+      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, retryable: false })
+      expect(post).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['plain http', 'http://files.example.com/a.png'],
+      ['credentials in the url', 'https://user:pw@files.example.com/a.png'],
+      ['text that is not a url', 'not a url']
+    ])('refuses a file at %s without calling Meta', async (_name, mediaUrl) => {
+      const { plugin, post } = build()
+
+      await expect(
+        plugin.sendMedia(ctx, {
+          channelIdentity: '99',
+          mediaUrl,
+          contentType: 'image/png',
+          filename: null,
+          ...key
+        })
+      ).rejects.toMatchObject({ retryable: false })
+      expect(post).not.toHaveBeenCalled()
+    })
+
     it('sends the caption as its own message after the file', async () => {
       const { plugin, post } = build()
       post
@@ -223,15 +279,15 @@ describe('InstagramPlugin', () => {
 
       const result = await plugin.sendMedia(ctx, {
         channelIdentity: '99',
-        mediaUrl: 'https://files.example.com/a.pdf',
-        contentType: 'application/pdf',
-        filename: 'a.pdf',
+        mediaUrl: 'https://files.example.com/a.png',
+        contentType: 'image/png',
+        filename: 'a.png',
         caption: 'tu factura',
         ...key
       })
 
       expect(post.mock.calls[0]?.[0].body).toMatchObject({
-        message: { attachments: { type: 'file' } }
+        message: { attachments: { type: 'image' } }
       })
       expect(post.mock.calls[1]?.[0].body).toMatchObject({ message: { text: 'tu factura' } })
       expect(result.externalId).toBe('mid.2')

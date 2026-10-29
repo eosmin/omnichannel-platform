@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { DeliveryStatus, type MetaGraphOrigin, MetaMessaging } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
+  ChannelCapability,
   type ChannelCapabilityType,
   type ChannelContext,
   type ChannelEvent,
@@ -126,7 +127,11 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // A failure is thrown, not reported: the health service reads a PluginError as the state of the
   // connection (a revoked token is not a Meta outage)
   async healthCheck(ctx: ChannelContext): Promise<ChannelHealth> {
-    await this.readAccount(parseMetaTokenCredentials(ctx.credentials).accessToken)
+    const account = await this.readAccount(parseMetaTokenCredentials(ctx.credentials).accessToken)
+    // A token of another account would read well and send under the wrong one
+    if (account.id !== ctx.connectionId) {
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+    }
     return { healthy: true, checkedAt: new Date().toISOString() }
   }
 
@@ -142,10 +147,19 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // the echoes has to know it. If the second call fails the file is already with the customer: it is
   // reported as failed for good, never as a retry that would send the file twice.
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
+    // Meta fetches the file itself, and only over https; a url with a user or a password would hand
+    // them to Meta. And a kind of file the channel does not declare is refused here, not left to Meta.
+    const kind = attachmentKind(params.contentType)
+    if (!this.capabilities.includes(kind.capability)) {
+      throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+    }
+    if (!isPlainHttpsUrl(params.mediaUrl)) {
+      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+    }
     const sent = await this.send(ctx, params.channelIdentity, {
       message: {
         [this.attachmentKey]: {
-          type: attachmentType(params.contentType),
+          type: kind.type,
           payload: { url: params.mediaUrl }
         }
       },
@@ -221,10 +235,26 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 }
 
-// The kind of file the Send API wants, from its content type; anything else goes as a file
-function attachmentType(contentType: string): string {
-  if (contentType.startsWith('image/')) return MetaMessaging.ATTACHMENT_IMAGE
-  if (contentType.startsWith('video/')) return MetaMessaging.ATTACHMENT_VIDEO
-  if (contentType.startsWith('audio/')) return MetaMessaging.ATTACHMENT_AUDIO
-  return MetaMessaging.ATTACHMENT_FILE
+// The kind of file the Send API wants, from its content type, and the capability that allows it;
+// anything else goes as a file
+function attachmentKind(contentType: string): { type: string; capability: ChannelCapabilityType } {
+  if (contentType.startsWith('image/')) {
+    return { type: MetaMessaging.ATTACHMENT_IMAGE, capability: ChannelCapability.IMAGE }
+  }
+  if (contentType.startsWith('video/')) {
+    return { type: MetaMessaging.ATTACHMENT_VIDEO, capability: ChannelCapability.VIDEO }
+  }
+  if (contentType.startsWith('audio/')) {
+    return { type: MetaMessaging.ATTACHMENT_AUDIO, capability: ChannelCapability.AUDIO }
+  }
+  return { type: MetaMessaging.ATTACHMENT_FILE, capability: ChannelCapability.DOCUMENT }
+}
+
+function isPlainHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.username === '' && url.password === ''
+  } catch {
+    return false
+  }
 }

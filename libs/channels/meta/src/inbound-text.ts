@@ -29,7 +29,7 @@ export function safeFilename(name: string | undefined): string | null {
 }
 
 // The core refuses a text with nothing but blanks
-export const hasText = (text: string | undefined): boolean =>
+export const hasText = (text: string | undefined): text is string =>
   text !== undefined && text.trim() !== ''
 
 // The id of the message a reply or a reaction points to, if the core would take it

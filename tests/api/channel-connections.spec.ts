@@ -328,8 +328,12 @@ describe('The channel connections of a store', () => {
 
       const list = await asAdmin().get(ApiRoutes.channels.connections)
 
+      const expected = [...new Set(plugin.capabilities)].sort()
       const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
-      expect(item?.capabilities.slice().sort()).toEqual([...plugin.capabilities].sort())
+      expect(item?.capabilities.slice().sort()).toEqual(expected)
+      // The same view comes from every route that returns a connection
+      const one = await asAdmin().get(ApiRoutes.channels.connectionById(item?.id ?? ''))
+      expect((one.body as ConnectionBody).capabilities.slice().sort()).toEqual(expected)
     })
   })
 
