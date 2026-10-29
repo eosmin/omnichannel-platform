@@ -6,7 +6,11 @@ import { PluginError } from '@platform/plugins/sdk'
 // error of a plugin or of the network can carry the token it was called with, and BullMQ logs what is
 // thrown and keeps it in Redis.
 export class SendAttemptFailed extends Error {
-  constructor(code: ErrorCode, cause: unknown, what: 'a reply' | 'a reaction' = 'a reply') {
+  constructor(
+    code: ErrorCode,
+    cause: unknown,
+    what: 'a reply' | 'a reaction' | 'an edit' | 'a deletion' = 'a reply'
+  ) {
     super(`sending ${what} failed: ${code} (${errorName(cause)})`)
     this.name = 'SendAttemptFailed'
   }

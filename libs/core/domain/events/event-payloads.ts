@@ -107,6 +107,11 @@ export interface MessageStatusPayload {
   visibility: ConversationVisibility
 }
 
+// A message edited or deleted. `internal` is a note: only who may read notes hears of it.
+export interface MessageChangedPayload extends MessageStatusPayload {
+  internal: boolean
+}
+
 export interface MessageFailedPayload extends MessageStatusPayload {
   // Always an ErrorCode: what the provider said stays out of the event, the logs and the row
   errorCode: ErrorCode
@@ -206,6 +211,8 @@ export interface DomainEventPayloads {
   [Events.MESSAGE_FAILED]: MessageFailedPayload
   [Events.MESSAGE_NOTE_ADDED]: MessageNoteAddedPayload
   [Events.MESSAGE_REACTION]: MessageStatusPayload
+  [Events.MESSAGE_EDITED]: MessageChangedPayload
+  [Events.MESSAGE_DELETED]: MessageChangedPayload
   [Events.MESSAGE_MENTION]: MessageMentionPayload
   [Events.CUSTOMER_CREATED]: CustomerCreatedPayload
   [Events.CUSTOMER_UPDATED]: CustomerUpdatedPayload

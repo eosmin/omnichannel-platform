@@ -153,6 +153,18 @@ export interface SendOutboundReactionJob extends BaseJob {
   userId: string
   version: number
 }
+// An agent's edit or deletion of a message of ours. `version` is the `version` of the message when the
+// agent asked: it only gives each request its own job id.
+export interface SendOutboundEditJob extends BaseJob {
+  storeId: string
+  messageId: string
+  version: number
+}
+export interface SendOutboundDeleteJob extends BaseJob {
+  storeId: string
+  messageId: string
+  version: number
+}
 export interface EnforceRetentionJob extends BaseJob {
   storeId: string
 }

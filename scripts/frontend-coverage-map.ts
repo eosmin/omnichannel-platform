@@ -32,13 +32,13 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'conversations.bulk': { step: '3.2' },
   'conversations.export': { step: '3.2' },
   'messages.create': { step: '3.2' },
-  'messages.byId': {
-    none: 'Has no handler on purpose: the thread lists the messages and none is read by id (Step 2.3)'
-  },
+  // PATCH edits a message, DELETE deletes it; none is read by id, the thread lists them
+  'messages.byId': { step: '3.2' },
   'messages.markRead': {
     none: 'Has no handler on purpose: a conversation is marked read as a whole, with conversations.read (Step 2.3)'
   },
   'messages.reaction': { step: '3.2' },
+  'messages.deletedContent': { step: '3.2' },
   'customers.list': { step: '3.3' },
   'customers.byId': { step: '3.3' },
   'customers.identities': { step: '3.3' },
@@ -252,6 +252,8 @@ export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   MESSAGE_FAILED: { step: '3.2' },
   MESSAGE_NOTE_ADDED: { step: '3.2' },
   MESSAGE_REACTION: { step: '3.2' },
+  MESSAGE_EDITED: { step: '3.2' },
+  MESSAGE_DELETED: { step: '3.2' },
   TYPING_START: { step: '3.2' },
   TYPING_STOP: { step: '3.2' },
   CUSTOMER_TYPING: { step: '3.2' },
@@ -289,6 +291,8 @@ export const CAPABILITY_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   READ_RECEIPTS: { step: '3.2' },
   DELIVERY_RECEIPTS: { step: '3.2' },
   REACTIONS: { step: '3.2' },
+  DELETE_MESSAGE: { step: '3.2' },
+  EDIT_MESSAGE: { step: '3.2' },
   REPLY_TO: { step: '3.2' },
   MESSAGING_WINDOW: { step: '3.2' },
   CUSTOMER_TYPING: { step: '3.2' },

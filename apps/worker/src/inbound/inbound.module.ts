@@ -7,7 +7,9 @@ import {
   ConversationsService,
   CustomerIdentityService,
   CustomerProfileService,
+  InboundMessageChangesService,
   InboundMessageService,
+  InboundMessageTargets,
   MessageReactionsService,
   RoutingService
 } from '@platform/core/messaging'
@@ -34,6 +36,8 @@ import { ProfileRequester } from './profile-requester.service'
     ConversationsService,
     RoutingService,
     InboundMessageService,
+    InboundMessageTargets,
+    InboundMessageChangesService,
     MessageReactionsService,
     MessageStatusWriter,
     ChannelReceipts,

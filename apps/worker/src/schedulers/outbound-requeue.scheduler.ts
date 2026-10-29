@@ -9,6 +9,7 @@ import { ErrorCodes } from '@platform/core/errors'
 import { OutboundQueue } from '@platform/core/messaging'
 import { LockNames, Schedules } from '@platform/core/queues'
 
+import { MessageChangeStatusWriter } from '../outbound/message-change-status.writer'
 import { MessageStatusWriter } from '../outbound/message-status.writer'
 import { ReactionStatusWriter } from '../outbound/reaction-status.writer'
 
@@ -30,6 +31,7 @@ export class OutboundRequeueScheduler {
     private readonly outbound: OutboundQueue,
     private readonly status: MessageStatusWriter,
     private readonly reactionStatus: ReactionStatusWriter,
+    private readonly changeStatus: MessageChangeStatusWriter,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(OutboundRequeueScheduler.name)
@@ -42,6 +44,7 @@ export class OutboundRequeueScheduler {
         // Each sweep has its own way out: one that fails does not hide the other
         await this.sweep('replies', () => this.requeueStale())
         await this.sweep('reactions', () => this.requeueStaleReactions())
+        await this.sweep('changes', () => this.requeueStaleChanges())
       })
     } catch (error) {
       // A cron that throws must not take the worker down; the next minute tries again
@@ -50,7 +53,7 @@ export class OutboundRequeueScheduler {
   }
 
   private async sweep(
-    what: 'replies' | 'reactions',
+    what: 'replies' | 'reactions' | 'changes',
     run: () => Promise<{ requeued: number; gaveUp: number }>
   ): Promise<void> {
     try {
@@ -144,6 +147,73 @@ export class OutboundRequeueScheduler {
         this.logger.error(
           { messageId, errorName: errorName(error) },
           'a stale reaction was not handled'
+        )
+      }
+    }
+    return done
+  }
+
+  // The edits and deletions of agents are swept the same way: the time of the request says when the job
+  // was lost, and one that waited more than an hour shows as failed and not as sending
+  async requeueStaleChanges(now: Date = new Date()): Promise<{ requeued: number; gaveUp: number }> {
+    const staleBefore = new Date(now.getTime() - OutboundLimits.REQUEUE_AFTER_MS)
+    const stale = await this.prisma.client.message.findMany({
+      where: {
+        changeRequestedAt: { lt: staleBefore },
+        OR: [
+          { editStatus: DeliveryStatus.QUEUED, pendingContent: { not: null } },
+          { deleteStatus: DeliveryStatus.QUEUED }
+        ]
+      },
+      select: {
+        id: true,
+        storeId: true,
+        version: true,
+        pendingContent: true,
+        editStatus: true,
+        deleteStatus: true,
+        changeRequestedAt: true
+      },
+      orderBy: [{ changeRequestedAt: 'asc' }, { id: 'asc' }],
+      take: OutboundLimits.REQUEUE_BATCH
+    })
+    const giveUpBefore = now.getTime() - OutboundLimits.GIVE_UP_AFTER_MS
+    const done = { requeued: 0, gaveUp: 0 }
+    for (const message of stale) {
+      const { id: messageId, storeId, version } = message
+      const gaveUp = (message.changeRequestedAt?.getTime() ?? 0) < giveUpBefore
+      try {
+        if (
+          message.editStatus === DeliveryStatus.QUEUED.valueOf() &&
+          message.pendingContent !== null
+        ) {
+          if (gaveUp) {
+            await this.changeStatus.settleEdit({
+              storeId,
+              messageId,
+              pendingContent: message.pendingContent,
+              errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED
+            })
+          } else {
+            await this.outbound.requeueEdit({ storeId, messageId, version })
+          }
+        }
+        if (message.deleteStatus === DeliveryStatus.QUEUED.valueOf()) {
+          if (gaveUp) {
+            await this.changeStatus.settleDeletion({
+              storeId,
+              messageId,
+              errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED
+            })
+          } else {
+            await this.outbound.requeueDelete({ storeId, messageId, version })
+          }
+        }
+        done[gaveUp ? 'gaveUp' : 'requeued'] += 1
+      } catch (error) {
+        this.logger.error(
+          { messageId, errorName: errorName(error) },
+          'a stale edit or deletion was not handled'
         )
       }
     }

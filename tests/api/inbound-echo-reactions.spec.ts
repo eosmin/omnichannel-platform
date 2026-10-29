@@ -21,6 +21,7 @@ import {
   InboundMessageService,
   type InboundEvent,
   InboundOutcomes,
+  InboundMessageTargets,
   MessageReactionsService,
   ReactionOutcomes,
   RoutingService
@@ -93,7 +94,7 @@ describe('Echoes and reactions that a channel delivers', () => {
     )
     reactions = new MessageReactionsService(
       prisma,
-      connections,
+      new InboundMessageTargets(prisma, connections),
       events,
       await app.resolve(PinoLogger)
     )

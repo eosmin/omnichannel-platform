@@ -56,6 +56,16 @@ export const metaMessageSchema = z.object({
 
 export type MetaMessage = z.infer<typeof metaMessageSchema>
 
+// The customer edited a message (Messenger `message_edits`). The shape is taken from Meta's reference
+// as read on 2026-10-29 and has not been seen in a real payload yet.
+export const metaMessageEditSchema = z.object({
+  mid: boundedId,
+  text: optionalText,
+  num_edit: tolerant(z.number().int().min(0))
+})
+
+export type MetaMessageEdit = z.infer<typeof metaMessageEditSchema>
+
 export const metaReactionSchema = z.object({
   action: z.string(),
   emoji: optionalText,
@@ -68,6 +78,7 @@ export const metaMessagingItemSchema = z.object({
   timestamp: epochMillis,
   message: tolerant(metaMessageSchema),
   reaction: tolerant(metaReactionSchema),
+  message_edit: tolerant(metaMessageEditSchema),
   referral: rawReferral
 })
 

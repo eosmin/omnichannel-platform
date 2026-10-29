@@ -145,7 +145,8 @@ export async function listItemsOf(
     FROM unnest(${rows.map(row => row.id)}::text[]) AS page(id)
     CROSS JOIN LATERAL (
       SELECT id, conversation_id, author_type, type,
-             left(content, ${ConversationLimits.PREVIEW_MAX_LENGTH}) AS preview, created_at
+             left(CASE WHEN deleted_at IS NULL THEN content END, ${ConversationLimits.PREVIEW_MAX_LENGTH}) AS preview,
+             created_at
       FROM messages
       WHERE store_id = ${storeId}
         AND conversation_id = page.id

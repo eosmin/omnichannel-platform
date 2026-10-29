@@ -172,3 +172,39 @@ export async function createMessageReactionOf(
   messageOfReaction.set(reaction.id, message.id)
   return reaction
 }
+
+// The message a revision belongs to, for the checks that reach a revision through its message
+export const messageOfRevision = new Map<string, string>()
+
+// A note edited once: it holds the second text, and its revision holds the first
+export async function createMessageRevisionOf(
+  owner: OwnerClient,
+  input: { storeId: string; userId: string }
+): Promise<{ id: string }> {
+  const conversation = await createConversationOf(owner, { storeId: input.storeId })
+  const note = await owner.message.create({
+    data: {
+      storeId: input.storeId,
+      conversationId: conversation.id,
+      type: MessageType.INTERNAL_NOTE,
+      content: 'note v2',
+      authorType: AuthorType.AGENT,
+      authorId: input.userId,
+      version: 2
+    },
+    select: { id: true }
+  })
+  const revision = await owner.messageRevision.create({
+    data: {
+      storeId: input.storeId,
+      messageId: note.id,
+      version: 1,
+      content: 'note v1',
+      editedByType: AuthorType.AGENT,
+      editedById: input.userId
+    },
+    select: { id: true }
+  })
+  messageOfRevision.set(revision.id, note.id)
+  return revision
+}

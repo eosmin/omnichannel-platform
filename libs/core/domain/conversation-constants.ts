@@ -81,13 +81,21 @@ export const OriginMediaTypes = {
 } as const
 export type OriginMediaType = (typeof OriginMediaTypes)[keyof typeof OriginMediaTypes]
 
-// Who reacted, as a plugin can tell: the customer, or the owner from the provider's own app. An agent
-// of the platform reacts through the api, never through a channel event.
+// Who acted on a message (reacted to it, edited it, deleted it), as a plugin can tell: the customer, or
+// the owner from the provider's own app. An agent of the platform acts through the api, never through
+// a channel event.
 export const ReactionActors = {
   CUSTOMER: 'customer',
   EXTERNAL: 'external'
 } as const
 export type ReactionActor = (typeof ReactionActors)[keyof typeof ReactionActors]
+
+// A deleted message keeps its text for this long, for disputes, and then a job purges it.
+// The same goes for the text of a revision. (Phase 2: a store preference.)
+export const DeletedMessageRetention = {
+  DAYS: 30,
+  PURGE_BATCH: 200
+} as const
 
 export const InboundLimits = {
   MAX_EVENTS_PER_REQUEST: 100,

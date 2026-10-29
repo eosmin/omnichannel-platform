@@ -255,16 +255,82 @@ describe('messagingToEvents', () => {
     ).toEqual([])
   })
 
-  it('skips a message that is not for the account and one the customer took back', () => {
+  it('skips a message that is not for the account', () => {
     expect(
       messagingToEvents(
-        wrap(
-          { ...inbound({ mid: 'm1', text: 'x' }), recipient: { id: '999' } },
-          inbound({ mid: 'm2', is_deleted: true })
-        ),
+        wrap({ ...inbound({ mid: 'm1', text: 'x' }), recipient: { id: '999' } }),
         OBJECT
       )
     ).toEqual([])
+  })
+
+  describe('deletions', () => {
+    it('maps a message the customer took back', () => {
+      const [event] = messagingToEvents(wrap(inbound({ mid: 'm2', is_deleted: true })), OBJECT)
+      expect(event).toEqual({
+        type: ChannelEventTypes.MESSAGE_DELETED,
+        connectionId: ACCOUNT,
+        channelIdentity: CUSTOMER,
+        deletion: { targetExternalId: 'm2' },
+        timestamp: new Date(MS).toISOString()
+      })
+    })
+
+    it('maps a message the owner took back in the provider app, as the owner', () => {
+      const [event] = messagingToEvents(
+        wrap({
+          sender: { id: ACCOUNT },
+          recipient: { id: CUSTOMER },
+          timestamp: MS,
+          message: { mid: 'm3', is_echo: true, is_deleted: true }
+        }),
+        OBJECT
+      )
+      expect(event?.type).toBe(ChannelEventTypes.MESSAGE_DELETED)
+      expect(event?.channelIdentity).toBe(CUSTOMER)
+      expect(event?.deletion).toEqual({ targetExternalId: 'm3', from: 'external' })
+    })
+
+    it('skips a deletion that is not between the account and a customer', () => {
+      expect(
+        messagingToEvents(
+          wrap({ ...inbound({ mid: 'm2', is_deleted: true }), recipient: { id: '999' } }),
+          OBJECT
+        )
+      ).toEqual([])
+    })
+  })
+
+  describe('edits', () => {
+    const edit = (body: object, extra: object = {}): object => ({
+      sender: { id: CUSTOMER },
+      recipient: { id: ACCOUNT },
+      timestamp: MS,
+      message_edit: body,
+      ...extra
+    })
+
+    it('maps the edit of a customer with its whole new text', () => {
+      const [event] = messagingToEvents(
+        wrap(edit({ mid: 'm1', text: 'new text', num_edit: 1 })),
+        OBJECT
+      )
+      expect(event).toEqual({
+        type: ChannelEventTypes.MESSAGE_EDITED,
+        connectionId: ACCOUNT,
+        channelIdentity: CUSTOMER,
+        edit: { targetExternalId: 'm1', content: 'new text', eventId: 'm1:1' },
+        timestamp: new Date(MS).toISOString()
+      })
+    })
+
+    it.each([
+      ['an edit with no text', edit({ mid: 'm1', num_edit: 1 })],
+      ['an edit with blank text', edit({ mid: 'm1', text: '  ' })],
+      ['an edit not for the account', edit({ mid: 'm1', text: 'x' }, { recipient: { id: '999' } })]
+    ])('skips %s', (_label, item) => {
+      expect(messagingToEvents(wrap(item), OBJECT)).toEqual([])
+    })
   })
 
   describe('reactions', () => {

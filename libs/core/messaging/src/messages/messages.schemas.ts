@@ -75,6 +75,15 @@ export const reactToMessageSchema = z.strictObject({
     .nullable()
 })
 
+// The whole new text. A note also carries the `version` it was read at: an edit of a note that someone
+// changed since is refused, so that nobody overwrites what they did not see. An edit of a message sent
+// to the customer needs none: it is the author's own.
+export const editMessageSchema = z.strictObject({
+  content,
+  version: z.number().int().min(1).optional()
+})
+
+export type EditMessageBody = z.output<typeof editMessageSchema>
 export type ReactToMessageBody = z.output<typeof reactToMessageSchema>
 export type CreateMessageBody = z.output<typeof createMessageSchema>
 export type ListMessagesQuery = z.output<typeof listMessagesQuerySchema>

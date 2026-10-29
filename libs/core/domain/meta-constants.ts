@@ -100,6 +100,6 @@ export const MessengerApi = {
   WEBHOOK_OBJECT: 'page',
   PROFILE_FIELDS: 'id,name',
   USER_PROFILE_FIELDS: 'first_name,last_name,profile_pic',
-  SUBSCRIBED_FIELDS: 'messages,message_echoes,message_reactions,messaging_referrals',
+  SUBSCRIBED_FIELDS: 'messages,message_echoes,message_reactions,message_edits,messaging_referrals',
   MESSAGING_TYPE_RESPONSE: 'RESPONSE'
 } as const

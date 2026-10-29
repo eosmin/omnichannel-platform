@@ -4,6 +4,8 @@ import { QueuesPlatformModule } from '@platform/core/http'
 import {
   AgentReactionsService,
   ChannelConnectionResolver,
+  InboundMessageTargets,
+  MessageChangesService,
   MessageReactionsService,
   MessagesService,
   OutboundQueue
@@ -28,8 +30,10 @@ import { MessagesController } from './messages.controller'
   providers: [
     MessagesService,
     ChannelConnectionResolver,
+    InboundMessageTargets,
     MessageReactionsService,
     AgentReactionsService,
+    MessageChangesService,
     OutboundQueue
   ]
 })

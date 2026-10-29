@@ -8,6 +8,7 @@ import {
   type ConversationStatusChangedPayload,
   type ConversationVisibility,
   Events,
+  type MessageChangedPayload,
   type MessageFailedPayload,
   type MessageNoteAddedPayload,
   type MessageQueuedPayload,
@@ -178,6 +179,31 @@ export class RealtimeEventsListener {
       RealtimeEvents.MESSAGE_REACTION,
       { conversationId: payload.conversationId, messageId: payload.messageId },
       mayHear(payload)
+    )
+  }
+
+  @OnEvent(Events.MESSAGE_EDITED)
+  onMessageEdited(payload: MessageChangedPayload): Promise<void> {
+    return this.toWhoMayRead(payload, RealtimeEvents.MESSAGE_EDITED)
+  }
+
+  @OnEvent(Events.MESSAGE_DELETED)
+  onMessageDeleted(payload: MessageChangedPayload): Promise<void> {
+    return this.toWhoMayRead(payload, RealtimeEvents.MESSAGE_DELETED)
+  }
+
+  // A note that changed is for who may read notes; any other message, for who hears of its conversation
+  private toWhoMayRead(
+    payload: MessageChangedPayload,
+    event: typeof RealtimeEvents.MESSAGE_EDITED | typeof RealtimeEvents.MESSAGE_DELETED
+  ): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      event,
+      { conversationId: payload.conversationId, messageId: payload.messageId },
+      socket =>
+        mayHear(payload)(socket) &&
+        (!payload.internal || socket.held.includes(Permissions.MESSAGES_INTERNAL_NOTE))
     )
   }
 
