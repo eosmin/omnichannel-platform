@@ -8,6 +8,7 @@ import { type AuthenticatedRequest, correlationIdMiddleware } from '@platform/co
 import { useHttpMetrics } from '@platform/core/metrics-module'
 
 import { apiSecurityHeaders } from './security-headers'
+import { webCors } from './web-cors.middleware'
 
 interface Fallback {
   use: (handler: (req: AuthenticatedRequest, res: Response) => void) => void
@@ -15,9 +16,15 @@ interface Fallback {
 
 // What every HTTP app of the platform shares, in the order it must run: the security headers, then
 // the correlation id, so that the logs, the metrics and the error responses of a request all carry it.
-export async function configureHttpApp(app: INestApplication): Promise<void> {
+// webOrigin is the one browser origin allowed to call the api (the web app); without it no browser
+// origin is.
+export async function configureHttpApp(
+  app: INestApplication,
+  { webOrigin }: { webOrigin?: string } = {}
+): Promise<void> {
   app.useLogger(app.get(Logger))
   app.use(apiSecurityHeaders) // First, so that every answer has them: the 404 and the errors too
+  if (webOrigin !== undefined) app.use(webCors(webOrigin))
   app.use(correlationIdMiddleware)
   useHttpMetrics(app)
   // The leading slash matters: without it Nest 12 leaves its not-found handler out and an unknown

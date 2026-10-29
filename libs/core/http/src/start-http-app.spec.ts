@@ -4,7 +4,9 @@ import * as Sentry from '@sentry/nestjs'
 import { runHttpApp } from './start-http-app'
 
 // start-http-app reads the validated env when it is imported; the real one needs a full environment
-jest.mock('@platform/core/config/env', () => ({ env: { PORT: 0, TRUST_PROXY_HOPS: 0 } }))
+jest.mock('@platform/core/config/env', () => ({
+  env: { PORT: 0, TRUST_PROXY_HOPS: 0, FRONTEND_URL: 'https://app.example.com' }
+}))
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), flush: jest.fn() }))
 
 // Nest aborts by itself when a provider cannot be built; a lifecycle hook that fails (the database

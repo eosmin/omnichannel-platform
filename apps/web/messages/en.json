@@ -7,7 +7,10 @@
     "confirm": "Confirm",
     "undo": "Undo",
     "backToStart": "Back to start",
-    "tryAgain": "Try again"
+    "tryAgain": "Try again",
+    "signOut": "Sign out",
+    "signingOut": "Signing out",
+    "loading": "Loading"
   },
   "confirm": {
     "typePhrase": "Type \"{phrase}\" to confirm",
@@ -142,9 +145,25 @@
     "WIDGET_ORIGIN_NOT_ALLOWED": "This site is not allowed to use the widget",
     "WIDGET_TOKEN_INVALID": "The widget session is not valid"
   },
+  "login": {
+    "title": "Sign in",
+    "body": "Enter your email and we send you a link. There is no password.",
+    "emailLabel": "Email",
+    "submit": "Send link",
+    "sending": "Sending",
+    "sentTitle": "Check your email",
+    "sentBody": "If {email} has an account, a sign-in link is on its way. It works once and expires soon.",
+    "useAnother": "Use another email"
+  },
+  "loginVerify": {
+    "verifying": "Signing you in",
+    "failedTitle": "This link did not work",
+    "requestNew": "Request a new link"
+  },
   "noAccess": {
     "title": "You have no access",
-    "body": "Your account does not belong to any store. Ask an administrator to invite you again."
+    "body": "You cannot open this page, or your account is not in any store. Ask an administrator for access.",
+    "checkAgain": "Check again"
   },
   "notFound": {
     "title": "Page not found",

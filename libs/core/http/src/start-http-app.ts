@@ -24,7 +24,8 @@ export async function startHttpApp(
   // How many proxies in front of the api to believe about the client IP: the rate limits count per IP
   app.set('trust proxy', env.TRUST_PROXY_HOPS)
   beforeInit?.(app)
-  await configureHttpApp(app)
+  // The worker shares this boot and gets the same CORS answer; no browser calls it, so it is unused there
+  await configureHttpApp(app, { webOrigin: new URL(env.FRONTEND_URL).origin })
   app.enableShutdownHooks()
   await app.listen(env.PORT)
 }
