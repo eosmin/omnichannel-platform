@@ -57,6 +57,10 @@ jobs:
       - run: pnpm validate:env
       - run: pnpm validate:isolation
       - run: pnpm validate:frontend
+      # The web build reads its public variables when it compiles (apps/web/lib/env-schema.ts). The
+      # example file holds valid local values, which is all a build that nobody deploys needs
+      - name: Public variables of the web build
+        run: cp apps/web/.env.example apps/web/.env.local
       # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
       - name: Lint, type-check and build (affected on pull requests, everything on main)
         run: |
