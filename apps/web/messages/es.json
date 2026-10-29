@@ -7,7 +7,10 @@
     "confirm": "Confirmar",
     "undo": "Deshacer",
     "backToStart": "Volver al inicio",
-    "tryAgain": "Intentar de nuevo"
+    "tryAgain": "Intentar de nuevo",
+    "signOut": "Cerrar sesión",
+    "signingOut": "Cerrando sesión",
+    "loading": "Cargando"
   },
   "confirm": {
     "typePhrase": "Escribe \"{phrase}\" para confirmar",
@@ -142,9 +145,25 @@
     "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el widget",
     "WIDGET_TOKEN_INVALID": "La sesión del widget no es válida"
   },
+  "login": {
+    "title": "Iniciar sesión",
+    "body": "Escribe tu correo y te enviamos un enlace. No hay contraseña.",
+    "emailLabel": "Correo",
+    "submit": "Enviar enlace",
+    "sending": "Enviando",
+    "sentTitle": "Revisa tu correo",
+    "sentBody": "Si {email} tiene una cuenta, un enlace de acceso va en camino. Funciona una sola vez y vence pronto.",
+    "useAnother": "Usar otro correo"
+  },
+  "loginVerify": {
+    "verifying": "Iniciando tu sesión",
+    "failedTitle": "Este enlace no funcionó",
+    "requestNew": "Pedir un enlace nuevo"
+  },
   "noAccess": {
     "title": "No tienes acceso",
-    "body": "Tu cuenta no pertenece a ninguna tienda. Pide a un administrador que te invite de nuevo."
+    "body": "No puedes abrir esta página, o tu cuenta no está en ninguna tienda. Pide acceso a un administrador.",
+    "checkAgain": "Revisar de nuevo"
   },
   "notFound": {
     "title": "Página no encontrada",

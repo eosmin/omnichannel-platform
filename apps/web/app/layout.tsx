@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getTranslations } from 'next-intl/server'
 import type { ReactNode } from 'react'
 
+import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
 import { Toaster } from '../components/ui/sonner'
 
@@ -23,7 +24,9 @@ export default async function RootLayout({
     <html lang={locale}>
       <body>
         <NextIntlClientProvider>
-          <DestructiveActionProvider>{children}</DestructiveActionProvider>
+          <AppProviders>
+            <DestructiveActionProvider>{children}</DestructiveActionProvider>
+          </AppProviders>
           <Toaster />
         </NextIntlClientProvider>
       </body>

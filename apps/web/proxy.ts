@@ -1,14 +1,25 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
-import { isDevelopment, webEnv } from './lib/env'
+import { AppPaths } from '@platform/api-client'
+
+import { isDevelopment, isProduction, webEnv } from './lib/env'
+import { refreshCookieName } from './lib/refresh-cookie'
+import { accessFor, RouteAccess } from './lib/route-access'
 import { buildContentSecurityPolicy } from './lib/security-headers'
 
 const CSP_HEADER = 'Content-Security-Policy'
 
 // Sets the Content-Security-Policy with a nonce for each request. Next reads the nonce from the
-// request header and puts it on its own scripts. Auth redirects and referral attribution join
-// this file with the auth flow (Step 3.1, C); today it has no session to read.
+// request header and puts it on its own scripts. It also sends who has no session to the login and
+// who has one away from it, by the presence of the cookie only: the api decides whether the session
+// is valid, and a dead cookie is cleared by the refresh that finds it dead.
 export function proxy(request: NextRequest): NextResponse {
+  const hasSession = request.cookies.has(refreshCookieName(isProduction))
+  const access = accessFor(request.nextUrl.pathname, hasSession)
+  if (access !== RouteAccess.ALLOW) {
+    const target = access === RouteAccess.TO_LOGIN ? AppPaths.login : '/'
+    return NextResponse.redirect(new URL(target, request.url))
+  }
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   const policy = buildContentSecurityPolicy({
     nonce,
