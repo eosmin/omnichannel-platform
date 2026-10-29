@@ -42,7 +42,7 @@ import {
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
-import { anonymousApi, apiWithoutStore } from '../helpers/http'
+import { anonymousApi, api, apiWithoutStore } from '../helpers/http'
 import {
   type IsolationCheck,
   isolationChecks,
@@ -489,6 +489,25 @@ describe('Tenant isolation', () => {
       expect((response.body as { error: { code: string } }).error.code).toBe(
         ErrorCodes.WIDGET_ORIGIN_NOT_ALLOWED
       )
+    })
+
+    it('is neither read nor changed through the settings of another store', async () => {
+      const connection = await owner.channelConnection.findFirstOrThrow({
+        where: { connectionId: siteKey('A') },
+        select: { id: true }
+      })
+
+      const read = await api(app, ctx.adminB, ctx.storeB).get(
+        ApiRoutes.channels.widgetEmbed(connection.id)
+      )
+      const write = await api(app, ctx.adminB, ctx.storeB)
+        .put(ApiRoutes.channels.widgetOrigins(connection.id))
+        .send({ siteOrigins: [SITE_B] })
+
+      expect(read.status).toBe(404)
+      expect(write.status).toBe(404)
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: connection.id } })
+      expect(row.metadata).toEqual({ allowedOrigins: [SITE_A] })
     })
 
     it('shows a visitor only the conversation they had with the store of the key', async () => {

@@ -5,12 +5,15 @@ import { ApiRoutes } from '@platform/core/api'
 
 import { ChannelRegistryModule } from '../channel-registry'
 import { ChannelsModule } from '../channels/channels.module'
+import { TenancyModule } from '../tenancy'
 
 import { WidgetAway } from './widget-away.service'
 import { WidgetCorsMiddleware } from './widget-cors.middleware'
 import { WidgetDeliveryListener } from './widget-delivery.listener'
 import { WidgetDelivery } from './widget-delivery.service'
 import { WidgetHistory } from './widget-history.service'
+import { WidgetSettingsController } from './widget-settings.controller'
+import { WidgetSettings } from './widget-settings.service'
 import { WidgetSites } from './widget-sites.service'
 import { WidgetTokens } from './widget-tokens.service'
 import { WidgetController } from './widget.controller'
@@ -20,10 +23,11 @@ import { WidgetGateway } from './widget.gateway'
 // and the namespace where the replies reach the visitor. It needs the global modules of the app: the
 // database and the event bus.
 @Module({
-  imports: [ChannelRegistryModule, ChannelsModule, WebWidgetPlatformModule],
-  controllers: [WidgetController],
+  imports: [ChannelRegistryModule, ChannelsModule, TenancyModule, WebWidgetPlatformModule],
+  controllers: [WidgetController, WidgetSettingsController],
   providers: [
     WidgetSites,
+    WidgetSettings,
     WidgetTokens,
     WidgetHistory,
     WidgetAway,

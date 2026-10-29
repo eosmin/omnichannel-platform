@@ -311,6 +311,7 @@ jobs:
             -e META_WEBHOOK_VERIFY_TOKEN="$(openssl rand -hex 16)" \
             -e BULL_BOARD_ENABLED=true \
             -e FRONTEND_URL=https://app.example.com \
+            -e WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js \
             -e TRUST_PROXY_HOPS=1 \
             platform-${{ matrix.app }}:ci
           curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused \

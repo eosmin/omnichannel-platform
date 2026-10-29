@@ -839,6 +839,7 @@ APP_ROLE=api
 PORT=8080
 API_URL=http://localhost:8080
 FRONTEND_URL=http://localhost:3000
+WIDGET_SCRIPT_URL=http://localhost:4173/widget.js
 ADMIN_URL=http://localhost:3100
 COMMIT_SHA=
 

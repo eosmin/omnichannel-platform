@@ -53,7 +53,7 @@ interface MessageBody {
 interface BootstrapBody {
   visitorToken: string
   expiresInSeconds: number
-  store: { name: string }
+  store: { name: string; locale: string }
   away: boolean
   messages: MessageBody[]
 }
@@ -166,6 +166,7 @@ describe('The web widget', () => {
       expect(body.visitorToken).toEqual(expect.any(String))
       expect(body.expiresInSeconds).toBe(3600)
       expect(body.store.name).toBe(`${prefix}-store-a`)
+      expect(body.store.locale).toBe('es')
       expect(body.away).toBe(false)
       expect(body.messages).toEqual([])
       expect(response.headers['access-control-allow-origin']).toBe(SITE)
@@ -647,6 +648,137 @@ describe('The web widget', () => {
       for (let tab = 0; tab < 5; tab += 1) await connectSocket(auth)
       await sleep(100) // The last one is in its room before the next is counted
       expect(await refusedWith(auth)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+    })
+  })
+
+  describe('the sites and the snippet of a widget', () => {
+    interface EmbedBody {
+      siteKey: string
+      allowedOrigins: string[]
+      snippet: string
+    }
+    const NEW_SITE = 'https://www.example.com'
+
+    // The id of the connection, which the owner's screens use, beside the site key
+    async function connectionOf(siteKey: string): Promise<string> {
+      const row = await owner.channelConnection.findFirstOrThrow({
+        where: { pluginId: ChannelIds.WEB_WIDGET, connectionId: siteKey },
+        select: { id: true }
+      })
+      return row.id
+    }
+
+    it('gives the snippet with the key, and the sites that may load it', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const id = await connectionOf(siteKey)
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.channels.widgetEmbed(id))
+        .expect(OK)
+
+      const body = response.body as EmbedBody
+      expect(body.siteKey).toBe(siteKey)
+      expect(body.allowedOrigins).toEqual([SITE])
+      expect(body.snippet).toContain(`data-site-key="${siteKey}"`)
+      expect(body.snippet).toContain('data-api-url="http://localhost:8080/api/v1"')
+      expect(body.snippet).toMatch(/^<script src="https?:\/\/[^"]+\.js" /)
+    })
+
+    it('changes the sites without changing the key, so a published snippet keeps working', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const id = await connectionOf(siteKey)
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [SITE, `${NEW_SITE}/`] })
+        .expect(OK)
+
+      expect((response.body as EmbedBody).siteKey).toBe(siteKey)
+      expect((response.body as EmbedBody).allowedOrigins).toEqual([SITE, NEW_SITE])
+      await bootstrap(siteKey, randomUUID(), NEW_SITE).expect(OK)
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id } })
+      expect(row.displayName).toBe('shop.example.com, www.example.com')
+      // A site that was taken out is refused from then on
+      await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [NEW_SITE] })
+        .expect(OK)
+      expect((await bootstrap(siteKey, randomUUID(), SITE)).status).toBe(FORBIDDEN)
+    })
+
+    it('names the entry that is not an origin by its position', async () => {
+      const id = await connectionOf(await connectWidget(ctx.adminA, ctx.storeA))
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [SITE, 'https://shop.example.com/page'] })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(JSON.stringify(response.body)).toContain('siteOrigins.1')
+    })
+
+    it('does not let a user without the right to edit settings change the sites', async () => {
+      const id = await connectionOf(await connectWidget(ctx.adminA, ctx.storeA))
+
+      const response = await api(app, ctx.viewerA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [SITE] })
+
+      expect(response.status).toBe(FORBIDDEN)
+    })
+
+    it('does not show or change the widget of another store', async () => {
+      const id = await connectionOf(await connectWidget(ctx.adminA, ctx.storeA))
+
+      await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.channels.widgetEmbed(id))
+        .expect(NOT_FOUND)
+      await api(app, ctx.adminB, ctx.storeB)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [OTHER_SITE] })
+        .expect(NOT_FOUND)
+    })
+
+    it('records in the audit log which sites there were and which there are', async () => {
+      const id = await connectionOf(await connectWidget(ctx.adminA, ctx.storeA))
+      await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [NEW_SITE] })
+        .expect(OK)
+
+      const where = { resourceId: id, action: 'channel.widget_origins_changed' }
+      // The entry is written after the answer, so it is waited for
+      const deadline = Date.now() + WAIT_MS
+      while ((await owner.auditLog.count({ where })) === 0 && Date.now() < deadline) {
+        await sleep(POLL_MS)
+      }
+      const entry = await owner.auditLog.findFirstOrThrow({ where })
+
+      expect(entry.metadata).toEqual({ before: [SITE], after: [NEW_SITE] })
+    })
+
+    it('keeps the name of the connection within its limit with many long sites', async () => {
+      const id = await connectionOf(await connectWidget(ctx.adminA, ctx.storeA))
+      const long = Array.from({ length: 20 }, (_, i) => `https://${'a'.repeat(60)}${i}.example.com`)
+
+      await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: long })
+        .expect(OK)
+
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id } })
+      expect(row.displayName.length).toBeLessThanOrEqual(200)
+    })
+
+    it('answers a conflict for a widget that was disconnected', async () => {
+      const id = await connectionOf(await connectWidget(ctx.adminA, ctx.storeA))
+      await api(app, ctx.adminA, ctx.storeA).post(ApiRoutes.channels.disconnect(id)).expect(OK)
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [SITE] })
+
+      expect(response.status).toBe(409)
     })
   })
 })

@@ -1478,6 +1478,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(8080),
   API_URL: z.url(),
   FRONTEND_URL: z.url().default('http://localhost:3000'),
+  WIDGET_SCRIPT_URL: z.url().default('http://localhost:4173/widget.js'), // https and public when deployed
   ADMIN_URL: z.url().optional(),
   COMMIT_SHA: z.string().optional(),
 

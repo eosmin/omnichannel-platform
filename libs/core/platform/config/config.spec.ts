@@ -93,6 +93,7 @@ describe('deployed environments', () => {
         NODE_ENV: 'production',
         RESEND_API_KEY: 're_key',
         FRONTEND_URL: 'https://app.example.com',
+        WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
         TRUST_PROXY_HOPS: '1'
       })
     ).not.toThrow()
@@ -104,6 +105,7 @@ describe('deployed environments', () => {
       NODE_ENV: 'production',
       RESEND_API_KEY: 're_key',
       FRONTEND_URL: 'https://app.example.com',
+      WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
       TRUST_PROXY_HOPS: '1'
     }
 
@@ -269,7 +271,8 @@ describe('TRUST_PROXY_HOPS in a deployed environment', () => {
     ...validEnv,
     ...metaApp,
     RESEND_API_KEY: 're_key',
-    FRONTEND_URL: 'https://app.example.com'
+    FRONTEND_URL: 'https://app.example.com',
+    WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js'
   }
 
   it.each(['staging', 'production'])(
@@ -318,6 +321,19 @@ describe('FRONTEND_URL in a deployed environment', () => {
     expect(() => parseEnv(source)).toThrow(/FRONTEND_URL/)
   })
 
+  it.each([
+    ['the laptop default', undefined],
+    ['localhost', 'https://localhost:4173/widget.js'],
+    ['plain http', 'http://cdn.example.com/widget.js']
+  ])('refuses %s for the widget script, because the snippets point there', (_name, value) => {
+    const source =
+      value === undefined
+        ? { ...deployed, FRONTEND_URL: 'https://app.example.com' }
+        : { ...deployed, FRONTEND_URL: 'https://app.example.com', WIDGET_SCRIPT_URL: value }
+
+    expect(() => parseEnv(source)).toThrow(/WIDGET_SCRIPT_URL/)
+  })
+
   it('defaults the Graph API version and accepts any vNN.N', () => {
     expect(parseEnv(validEnv).META_GRAPH_API_VERSION).toBe('v23.0')
     for (const version of ['v23.0', 'v9.10', 'v100.0']) {
@@ -337,6 +353,12 @@ describe('FRONTEND_URL in a deployed environment', () => {
   )
 
   it('accepts the https address of the web app', () => {
-    expect(() => parseEnv({ ...deployed, FRONTEND_URL: 'https://app.example.com' })).not.toThrow()
+    expect(() =>
+      parseEnv({
+        ...deployed,
+        FRONTEND_URL: 'https://app.example.com',
+        WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js'
+      })
+    ).not.toThrow()
   })
 })

@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing'
 import { PinoLogger } from 'nestjs-pino'
 
 import { MetaAppConfig } from '@platform/channels/meta'
-import { WidgetConfig, widgetTokenKey } from '@platform/channels/web-widget'
+import { WidgetConfig, WidgetEmbedConfig, widgetTokenKey } from '@platform/channels/web-widget'
 import { ChannelIds } from '@platform/core/domain'
 import { ChannelCapability, type ChannelPlugin } from '@platform/plugins/sdk'
 
@@ -147,6 +147,11 @@ describe('PluginsModule', () => {
       .useValue({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
       .overrideProvider(WidgetConfig)
       .useValue({ tokenKey: widgetTokenKey('s'.repeat(32)) })
+      .overrideProvider(WidgetEmbedConfig)
+      .useValue({
+        scriptUrl: 'https://cdn.example.com/widget.js',
+        apiUrl: 'https://api.example.com'
+      })
       .useMocker(token =>
         token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
       )
@@ -175,7 +180,9 @@ describe('PluginsModule', () => {
         META_APP_SECRET: 'wiring-secret',
         META_WEBHOOK_VERIFY_TOKEN: 'wiring-verify',
         META_GRAPH_API_VERSION: 'v23.0',
-        JWT_SECRET: 'j'.repeat(32)
+        JWT_SECRET: 'j'.repeat(32),
+        WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+        API_URL: 'https://api.example.com'
       }
     }))
     const { PluginsModule: Fresh } = await import('./plugins.module')

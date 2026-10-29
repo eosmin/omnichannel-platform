@@ -11,10 +11,19 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "tsc -p tsconfig.app.json",
+        "commands": ["vite build", "tsx ../../scripts/check-widget-size.ts"],
+        "parallel": false,
         "cwd": "{projectRoot}"
       },
       "outputs": ["{workspaceRoot}/dist/apps/widget"]
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "vite preview --outDir ../../dist/apps/widget --port 4173",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

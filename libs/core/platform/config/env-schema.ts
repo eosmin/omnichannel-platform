@@ -42,6 +42,8 @@ export const envSchema = z
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
     API_URL: z.url(),
     FRONTEND_URL: z.url().default('http://localhost:3000'),
+    // Where the built widget script is served from: the snippet of a store points at it
+    WIDGET_SCRIPT_URL: z.url().default('http://localhost:4173/widget.js'),
     COMMIT_SHA: z.string().optional(),
 
     // Database
@@ -202,6 +204,17 @@ export const envSchema = z
         message: 'a deployed environment needs the public https address of the web app',
         path: ['FRONTEND_URL'],
         input: env.FRONTEND_URL
+      })
+    }
+    const widgetScript = new URL(env.WIDGET_SCRIPT_URL)
+    if (widgetScript.protocol !== 'https:' || LOCAL_HOSTNAMES.includes(widgetScript.hostname)) {
+      // The snippet of every store points there: a script on localhost, or over plain http (blocked on
+      // an https site), is a widget that never loads
+      ctx.issues.push({
+        code: 'custom',
+        message: 'a deployed environment needs the public https address of the widget script',
+        path: ['WIDGET_SCRIPT_URL'],
+        input: env.WIDGET_SCRIPT_URL
       })
     }
     if (env.JWT_SECRET.startsWith(PLACEHOLDER_JWT_SECRET_PREFIX)) {

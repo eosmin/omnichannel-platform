@@ -1,15 +1,8 @@
 import { Injectable } from '@nestjs/common'
-import { z } from 'zod'
 
-import { isSiteKey } from '@platform/channels/web-widget'
+import { allowedOriginsOf, isSiteKey } from '@platform/channels/web-widget'
 import { PrismaService } from '@platform/core/database'
-import { ChannelConnectionStatus, ChannelIds, WidgetMetadataKeys } from '@platform/core/domain'
-
-// What the origins of a connection look like in its metadata; a connection whose metadata is not this
-// allows no site, which is the safe reading
-const metadataSchema = z.object({
-  [WidgetMetadataKeys.ALLOWED_ORIGINS]: z.array(z.string())
-})
+import { ChannelConnectionStatus, ChannelIds } from '@platform/core/domain'
 
 // A store's widget as the public routes see it
 export interface WidgetSite {
@@ -18,6 +11,8 @@ export interface WidgetSite {
   connectionId: string
   storeId: string
   storeName: string
+  // Store.defaultLocale, which the widget speaks unless the snippet names another
+  storeLocale: string
   allowedOrigins: readonly string[]
 }
 
@@ -37,17 +32,17 @@ export class WidgetSites {
         storeId: true,
         status: true,
         metadata: true,
-        store: { select: { name: true } }
+        store: { select: { name: true, defaultLocale: true } }
       }
     })
     if (row === null || row.status !== String(ChannelConnectionStatus.ACTIVE)) return null
-    const metadata = metadataSchema.safeParse(row.metadata)
     return {
       siteKey,
       connectionId: row.id,
       storeId: row.storeId,
       storeName: row.store.name,
-      allowedOrigins: metadata.success ? metadata.data[WidgetMetadataKeys.ALLOWED_ORIGINS] : []
+      storeLocale: row.store.defaultLocale,
+      allowedOrigins: allowedOriginsOf(row.metadata)
     }
   }
 }
