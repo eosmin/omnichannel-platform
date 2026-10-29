@@ -78,6 +78,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: 4.3.3
         version: 4.3.3
+      '@tanstack/react-query':
+        specifier: 5.105.0
+        version: 5.105.0(@types/react@19.2.18)(react@19.2.8)
       bullmq:
         specifier: 6.3.4
         version: 6.3.4(ioredis@6.0.0(supports-color@7.2.0))(pg@8.16.3)
@@ -4282,6 +4285,18 @@ packages:
 
   '@tailwindcss/postcss@4.3.3':
     resolution: {integrity: sha512-JTSZZGQi1AyKirbLN3azmjVzef92tcX7h+iSqPdaeStyFpGpDlKvvpxeOE8njhbUanbRwr3z8DyzhICWnMtQeg==}
+
+  '@tanstack/query-core@5.105.0':
+    resolution: {integrity: sha512-7p56vRmT/z4UJ6sctGIdl5WRUQyUv53IUpUwEKi2g97zMbO7zh8ZsCLffGAvCPBR4xD72e3VXsDyLwXHhoNTMQ==}
+
+  '@tanstack/react-query@5.105.0':
+    resolution: {integrity: sha512-y+hMuDERvgg6ay1da0V1a6ZC0ZONt7dELxSFkqRZuwm7p1TTZs0MoXrPlBRflIpRoYjvzQVYxycnLImpFLhWrw==}
+    peerDependencies:
+      '@types/react': ^18 || ^19
+      react: ^18 || ^19
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   '@tokenizer/inflate@0.4.1':
     resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
@@ -13037,6 +13052,15 @@ snapshots:
       '@tailwindcss/oxide': 4.3.3
       postcss: 8.5.32
       tailwindcss: 4.3.3
+
+  '@tanstack/query-core@5.105.0': {}
+
+  '@tanstack/react-query@5.105.0(@types/react@19.2.18)(react@19.2.8)':
+    dependencies:
+      '@tanstack/query-core': 5.105.0
+      react: 19.2.8
+    optionalDependencies:
+      '@types/react': 19.2.18
 
   '@tokenizer/inflate@0.4.1(supports-color@7.2.0)':
     dependencies:
