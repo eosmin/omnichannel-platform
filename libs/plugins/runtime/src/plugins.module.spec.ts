@@ -154,7 +154,7 @@ describe('PluginsModule', () => {
       .get(PluginRegistry)
       .list('any-store')
       .map(plugin => plugin.id)
-    expect(ids).toEqual([ChannelIds.WHATSAPP])
+    expect(ids).toEqual([ChannelIds.WHATSAPP, ChannelIds.INSTAGRAM, ChannelIds.MESSENGER])
     await moduleRef.close()
   })
 

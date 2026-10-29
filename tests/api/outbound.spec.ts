@@ -92,7 +92,10 @@ describe('Replies on their way to a channel', () => {
     const pluginOf = (id: string): ReturnType<typeof buildChannelPlugin> =>
       buildChannelPlugin({ id, sendMessage: (c, p) => sendMessage(c, p) })
     registry.register(pluginOf(TEST_CHANNEL_ID))
-    registry.register(pluginOf(ChannelIds.INSTAGRAM), { official: true })
+    // Instagram is an official plugin of the app now: its send is the only thing the suite replaces
+    jest
+      .spyOn(registry.get(ChannelIds.INSTAGRAM), 'sendMessage')
+      .mockImplementation((c, p) => sendMessage(c, p))
 
     const logger: PinoLogger = await app.resolve(PinoLogger)
     const events = app.get(DomainEvents, { strict: false })

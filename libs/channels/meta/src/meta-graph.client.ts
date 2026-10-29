@@ -3,7 +3,7 @@ import { Readable } from 'node:stream'
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { MetaGraph, MetaLimits, MetaWebhook } from '@platform/core/domain'
+import { MetaGraph, type MetaGraphOrigin, MetaLimits, MetaWebhook } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type FetchedMedia, PluginError } from '@platform/plugins/sdk'
 
@@ -38,6 +38,8 @@ export interface GraphRequest<T> {
   body?: unknown
   // A POST that changes nothing the second time (a subscription, a read receipt) may be tried again
   idempotent?: boolean
+  // Facebook's Graph unless said otherwise. Instagram Login tokens only work on Instagram's.
+  origin?: MetaGraphOrigin
 }
 
 // The calls and checks the three Meta plugins share. The token is the connection's and arrives per
@@ -72,17 +74,34 @@ export class MetaGraphClient {
   async downloadMedia(token: string, mediaId: string): Promise<FetchedMedia> {
     if (!MEDIA_ID.test(mediaId)) throw graphUnexpected()
     const info = await this.get({ path: [mediaId], token, schema: mediaInfoSchema })
-    const target = new URL(info.url)
-    if (!isMetaMediaUrl(target)) throw graphUnexpected()
-    if ((info.file_size ?? 0) > MetaLimits.MEDIA_MAX_BYTES) throw graphUnexpected()
+    // The type is the one Meta declared in its authenticated answer, not the one the file server sends
+    return this.downloadFile(info.url, token, info.file_size, info.mime_type)
+  }
 
-    const response = await this.fetchOrFail(info.url, {
+  // Messenger and Instagram put the url of the file in the webhook itself. It is a link of a Meta CDN
+  // that needs no token, so none is sent; the type is the one the file server declares, because Meta
+  // does not vouch for it here.
+  async downloadMediaUrl(url: string): Promise<FetchedMedia> {
+    return this.downloadFile(url, undefined, undefined, undefined)
+  }
+
+  private async downloadFile(
+    url: string,
+    token: string | undefined,
+    declaredSize: number | undefined,
+    declaredType: string | undefined
+  ): Promise<FetchedMedia> {
+    const target = parseUrl(url)
+    if (!target || !isMetaMediaUrl(target)) throw graphUnexpected()
+    if ((declaredSize ?? 0) > MetaLimits.MEDIA_MAX_BYTES) throw graphUnexpected()
+
+    const response = await this.fetchOrFail(url, {
       method: 'GET',
       headers: {
         // Uncompressed, so that content-length is the length of the file and a cut-off one shows
         'accept-encoding': 'identity',
         // The token goes only where it is needed
-        ...(MetaGraph.MEDIA_TOKEN_HOSTS.some(host => host === target.hostname)
+        ...(token && MetaGraph.MEDIA_TOKEN_HOSTS.some(host => host === target.hostname)
           ? { authorization: `Bearer ${token}` }
           : {})
       },
@@ -103,10 +122,9 @@ export class MetaGraphClient {
     }
 
     const source = Readable.fromWeb(response.body)
-    // The type is the one Meta declared in its authenticated answer, not the one the file server sends
     return {
       stream: limitBytes(source, MetaLimits.MEDIA_MAX_BYTES, length),
-      contentType: info.mime_type,
+      contentType: declaredType ?? mediaTypeOf(response.headers.get('content-type')),
       contentLength: length
     }
   }
@@ -116,7 +134,7 @@ export class MetaGraphClient {
     if (!HEADER_TOKEN.test(request.token)) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
     }
-    const url = this.urlFor(request.path, request.query)
+    const url = this.urlFor(request.origin ?? MetaGraph.ORIGIN, request.path, request.query)
     const safeToRepeat = method === 'GET' || request.idempotent === true
     const response = await this.fetchOrFail(
       url,
@@ -141,11 +159,15 @@ export class MetaGraphClient {
     return parsed.data
   }
 
-  private urlFor(path: readonly string[], query: Record<string, string> | undefined): string {
+  private urlFor(
+    origin: MetaGraphOrigin,
+    path: readonly string[],
+    query: Record<string, string> | undefined
+  ): string {
     if (path.length === 0 || !path.every(segment => PATH_SEGMENT.test(segment))) {
       throw graphUnexpected()
     }
-    const base = `${MetaGraph.ORIGIN}/${this.config.graphVersion}/${path.join('/')}`
+    const base = `${origin}/${this.config.graphVersion}/${path.join('/')}`
     return query ? `${base}?${new URLSearchParams(query).toString()}` : base
   }
 
@@ -170,6 +192,20 @@ export class MetaGraphClient {
   }
 }
 
+function parseUrl(value: string): URL | null {
+  try {
+    return new URL(value)
+  } catch {
+    return null
+  }
+}
+
+// `image/jpeg; charset=binary` is `image/jpeg`; a missing or odd type is plain bytes
+function mediaTypeOf(header: string | null): string {
+  const type = header?.split(';')[0]?.trim().toLowerCase() ?? ''
+  return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(type) ? type : MetaGraph.FALLBACK_CONTENT_TYPE
+}
+
 function isMetaMediaUrl(url: URL): boolean {
   return (
     url.protocol === 'https:' &&
@@ -177,6 +213,7 @@ function isMetaMediaUrl(url: URL): boolean {
     url.username === '' &&
     url.password === '' &&
     (MetaGraph.MEDIA_TOKEN_HOSTS.some(host => host === url.hostname) ||
+      MetaGraph.MEDIA_CDN_HOSTS.some(host => host === url.hostname) ||
       MetaGraph.MEDIA_CDN_SUFFIXES.some(suffix => url.hostname.endsWith(suffix)))
   )
 }

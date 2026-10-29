@@ -131,6 +131,12 @@ export class PluginRegistry {
       .map(entry => entry.plugin)
   }
 
+  // What the plugin declared when it was registered: the web app draws only the actions a channel can
+  // do. A plugin that is not registered declares nothing.
+  capabilitiesOf(pluginId: string): ChannelCapabilityType[] {
+    return [...(this.entries.get(pluginId)?.capabilities ?? [])]
+  }
+
   hasCapability(pluginId: string, capability: ChannelPlugin['capabilities'][number]): boolean {
     return this.entries.get(pluginId)?.capabilities.has(capability) ?? false
   }

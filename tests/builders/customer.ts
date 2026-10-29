@@ -35,7 +35,13 @@ export const customerOfIdentity = new Map<string, string>()
 
 export async function createCustomerIdentity(
   owner: OwnerClient,
-  input: { storeId: string; customerId?: string; channelType?: string; handle?: string }
+  input: {
+    storeId: string
+    customerId?: string
+    channelType?: string
+    handle?: string
+    lastInboundAt?: Date
+  }
 ): Promise<{ id: string; customerId: string }> {
   const customerId = input.customerId ?? (await createCustomer(owner, input)).id
   const identity = await owner.customerIdentity.create({
@@ -43,7 +49,10 @@ export async function createCustomerIdentity(
       storeId: input.storeId,
       customerId,
       channelType: input.channelType ?? ChannelType.INSTAGRAM,
-      channelIdentity: input.handle ?? `ig-${randomUUID().slice(0, 12)}`
+      channelIdentity: input.handle ?? `ig-${randomUUID().slice(0, 12)}`,
+      // A customer who has just written: the channels of the suite have a messaging window, and a
+      // conversation with no inbound message could not be answered
+      lastInboundAt: input.lastInboundAt ?? new Date()
     },
     select: { id: true }
   })

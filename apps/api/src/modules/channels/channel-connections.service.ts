@@ -37,7 +37,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { enumValueOf } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import type { ChannelPlugin } from '@platform/plugins/sdk'
+import type { ChannelCapabilityType, ChannelPlugin } from '@platform/plugins/sdk'
 
 import type { Actor } from '../tenancy'
 
@@ -59,6 +59,9 @@ export interface ChannelConnectionView {
   lastHealthyAt: Date | null
   lastError: string | null
   createdAt: Date
+  // What the channel can do (`ChannelCapability`), so that the web app decides which actions to draw
+  // without knowing any channel by name. Static per plugin.
+  capabilities: ChannelCapabilityType[]
 }
 
 export interface ChannelTestResult {
@@ -77,20 +80,7 @@ const VIEW_SELECT = {
   createdAt: true
 } as const
 
-function view(row: {
-  id: string
-  pluginId: string
-  displayName: string
-  status: string
-  lastHealthyAt: Date | null
-  lastError: string | null
-  createdAt: Date
-}): ChannelConnectionView {
-  return {
-    ...row,
-    status: enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
-  }
-}
+type ConnectionRow = Omit<ChannelConnectionView, 'status' | 'capabilities'> & { status: string }
 
 // The connections of the store of the request (TDD_10 §10). Every read and write is filtered by that
 // store; the plugin is the one of the registry, and what it returns is checked before it is kept.
@@ -109,13 +99,27 @@ export class ChannelConnectionsService {
     this.logger.setContext(ChannelConnectionsService.name)
   }
 
+  private view(row: ConnectionRow): ChannelConnectionView {
+    // Field by field: whatever else a query selects must not reach the response
+    return {
+      id: row.id,
+      pluginId: row.pluginId,
+      displayName: row.displayName,
+      status: enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status'),
+      lastHealthyAt: row.lastHealthyAt,
+      lastError: row.lastError,
+      createdAt: row.createdAt,
+      capabilities: this.registry.capabilitiesOf(row.pluginId)
+    }
+  }
+
   async list(storeId: string): Promise<ChannelConnectionView[]> {
     const rows = await this.prisma.client.channelConnection.findMany({
       where: { storeId },
       select: VIEW_SELECT,
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     })
-    return rows.map(view)
+    return rows.map(row => this.view(row))
   }
 
   async get(storeId: string, connectionId: string): Promise<ChannelConnectionView> {
@@ -124,7 +128,7 @@ export class ChannelConnectionsService {
       select: VIEW_SELECT
     })
     if (row === null) throw resourceNotFound('channel connection')
-    return view(row)
+    return this.view(row)
   }
 
   // The call to the provider happens before the transaction: it can be slow, and a row lock held
@@ -249,7 +253,7 @@ export class ChannelConnectionsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return view(connection)
+    return this.view(connection)
   }
 
   // Tells the provider to drop an account that was connected and could not be kept, if no row holds
@@ -424,7 +428,7 @@ export class ChannelConnectionsService {
         userAgent: actor.userAgent
       })
     }
-    return view(done.saved)
+    return this.view(done.saved)
   }
 
   private async rowOf(storeId: string, connectionId: string) {

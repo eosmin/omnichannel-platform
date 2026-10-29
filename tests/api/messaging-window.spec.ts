@@ -86,12 +86,11 @@ describe('The messaging window of a conversation', () => {
       channelType: ChannelType.WHATSAPP,
       ...extra
     })
-    if (lastInboundHoursAgo !== null) {
-      await owner.customerIdentity.update({
-        where: { id: made.customerIdentityId },
-        data: { lastInboundAt: hoursAgo(lastInboundHoursAgo) }
-      })
-    }
+    // The builder gives a customer who has just written: this suite sets the date itself, or none
+    await owner.customerIdentity.update({
+      where: { id: made.customerIdentityId },
+      data: { lastInboundAt: lastInboundHoursAgo === null ? null : hoursAgo(lastInboundHoursAgo) }
+    })
     return made
   }
   const windowOf = (id: string) => asAgent().get(ApiRoutes.conversations.messagingWindow(id))
