@@ -231,8 +231,20 @@ jobs:
         include:
           - app: api
             port: 8080
+            file: docker/node-service.Dockerfile
+            build-args: APP=api
           - app: worker
             port: 8081
+            file: docker/node-service.Dockerfile
+            build-args: APP=worker
+          # The three NEXT_PUBLIC_* are baked into the bundle, so the build needs them
+          - app: web
+            port: 3000
+            file: apps/web/Dockerfile
+            build-args: |
+              NEXT_PUBLIC_API_URL=https://api.example.com
+              NEXT_PUBLIC_WS_URL=https://api.example.com
+              NEXT_PUBLIC_WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js
     # Only for the check that the image starts and answers
     services:
       postgres:
@@ -274,8 +286,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: docker/node-service.Dockerfile
-          build-args: APP=${{ matrix.app }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build-args }}
           tags: platform-${{ matrix.app }}:ci
           load: true
           push: false
@@ -304,6 +316,7 @@ jobs:
           pnpm install --frozen-lockfile --prefer-offline
           pnpm db:migrate
       - name: The ${{ matrix.app }} image starts and answers
+        if: matrix.app != 'web'
         run: |
           docker run -d --name service --network host --env-file .env.example \
             -e NODE_ENV=production -e APP_ROLE=${{ matrix.app }} -e PORT=${{ matrix.port }} \
@@ -326,6 +339,14 @@ jobs:
             status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:${{ matrix.port }}/admin/queues)
             test "$status" = "401" || { echo "Bull Board answered $status, expected 401"; exit 1; }
           fi
+      # The web image needs no database: it must serve a page with the CSP its proxy builds
+      - name: The web image starts and answers
+        if: matrix.app == 'web'
+        run: |
+          docker run -d --name service --network host platform-web:ci
+          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused \
+            --dump-header "$RUNNER_TEMP/headers.txt" --output /dev/null http://localhost:3000/login
+          grep --ignore-case --quiet "^content-security-policy:.*script-src[^;]*'nonce-" "$RUNNER_TEMP/headers.txt"
       - name: Service log
         if: failure()
         run: docker logs service
