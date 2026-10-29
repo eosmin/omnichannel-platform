@@ -1,4 +1,12 @@
 {
+  "account": {
+    "profileTitle": "Perfil",
+    "name": "Nombre",
+    "email": "Correo",
+    "language": "Idioma",
+    "timezone": "Zona horaria",
+    "notSet": "Sin definir"
+  },
   "app": {
     "title": "Plataforma omnicanal"
   },
@@ -144,6 +152,19 @@
     "VALIDATION_URL_NOT_ALLOWED": "Esa dirección no está permitida",
     "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el widget",
     "WIDGET_TOKEN_INVALID": "La sesión del widget no es válida"
+  },
+  "invitation": {
+    "title": "Te invitaron",
+    "body": "{inviter} te invitó a unirte a {store} como {role}.",
+    "nameLabel": "Tu nombre",
+    "nameHint": "Solo hace falta si aún no tienes una cuenta.",
+    "nameRequired": "Escribe tu nombre para crear tu cuenta.",
+    "accept": "Aceptar invitación",
+    "accepting": "Aceptando",
+    "loginRequired": "Ya existe una cuenta para {email}. Inicia sesión con ese correo y abre este enlace de nuevo.",
+    "goToLogin": "Iniciar sesión",
+    "mismatchTitle": "Esta invitación es para otro correo",
+    "mismatchBody": "Iniciaste sesión como {current} y la invitación es para {invited}. Cierra la sesión y abre el enlace de nuevo."
   },
   "login": {
     "title": "Iniciar sesión",
@@ -371,5 +392,16 @@
         "WRONG_ITEM": "Artículo equivocado"
       }
     }
+  },
+  "org": {
+    "storesTitle": "Tiendas"
+  },
+  "shell": {
+    "switchStore": "Cambiar de tienda",
+    "selectStore": "Elige una tienda",
+    "stores": "Tiendas",
+    "manageStores": "Administrar tiendas",
+    "account": "Cuenta",
+    "accountMenu": "Menú de la cuenta"
   }
 }

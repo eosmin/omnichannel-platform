@@ -18,10 +18,17 @@ const UPSTREAM_TIMEOUT_MS = 10_000
 
 export const consumedLoginSchema = z.object({ session: issuedSessionSchema })
 
+export const acceptedInvitationUpstreamSchema = z.object({
+  store: z.object({ id: z.string(), name: z.string() }),
+  role: z.string(),
+  session: issuedSessionSchema.optional()
+})
+
 export const AuthUpstreamPaths = {
   consume: ApiRoutes.auth.magicLinkConsume,
   refresh: ApiRoutes.auth.refresh,
-  logout: ApiRoutes.auth.logout
+  logout: ApiRoutes.auth.logout,
+  acceptInvitation: (token: string) => ApiRoutes.invitations.accept(encodeURIComponent(token))
 } as const
 
 // The api counts its rate limits and shows the sessions by client, so it is told which client this

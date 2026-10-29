@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 
-import { consumeSession, endSession, refreshSession } from './session-handlers'
+import { acceptInvitation, consumeSession, endSession, refreshSession } from './session-handlers'
 
 jest.mock('../../lib/env', () => ({
   isProduction: false,
@@ -219,6 +219,57 @@ describe('endSession', () => {
       post('/auth/logout', { cookie: 'c', origin: 'https://evil.example.com' })
     )
     expect(response.status).toBe(403)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('acceptInvitation', () => {
+  const store = { id: 's1', name: 'Main' }
+
+  it('opens the session of a new account and keeps the refresh token in the cookie', async () => {
+    fetchMock.mockResolvedValue(
+      json(200, { store, role: 'Agent', session: issued, user: { id: 'u' } })
+    )
+    const response = await acceptInvitation(
+      post('/auth/accept', { body: { token: 'inv/1', name: 'Ana' } })
+    )
+    expect(await response.json()).toEqual({
+      store,
+      role: 'Agent',
+      accessToken: 'access-2',
+      expiresIn: 900
+    })
+    expect(response.cookies.get(COOKIE)?.value).toBe('refresh-2')
+    const { url, init } = lastApiCall()
+    expect(url).toBe('https://api.example.com/api/v1/invitations/inv%2F1/accept')
+    expect(init.body).toBe('{"name":"Ana"}')
+  })
+
+  it('forwards the access token of a person with a session and sets no cookie', async () => {
+    fetchMock.mockResolvedValue(json(200, { store, role: 'Agent' }))
+    const request = post('/auth/accept', { body: { token: 'inv' } })
+    request.headers.set('authorization', 'Bearer abc')
+    const response = await acceptInvitation(request)
+    expect(await response.json()).toEqual({ store, role: 'Agent' })
+    expect(response.cookies.get(COOKIE)).toBeUndefined()
+    expect(lastApiCall().init.headers).toMatchObject({ authorization: 'Bearer abc' })
+  })
+
+  it('passes a refusal through without touching the session cookie', async () => {
+    fetchMock.mockResolvedValue(json(401, apiError('AUTH_UNAUTHORIZED')))
+    const response = await acceptInvitation(
+      post('/auth/accept', { body: { token: 'inv' }, cookie: 'refresh-1' })
+    )
+    expect(response.status).toBe(401)
+    expect(response.cookies.get(COOKIE)).toBeUndefined()
+  })
+
+  it('refuses a request from another site, and a body with no token', async () => {
+    const other = await acceptInvitation(
+      post('/auth/accept', { body: { token: 't' }, origin: 'https://evil.example.com' })
+    )
+    const empty = await acceptInvitation(post('/auth/accept', { body: {} }))
+    expect([other.status, empty.status]).toEqual([403, 400])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

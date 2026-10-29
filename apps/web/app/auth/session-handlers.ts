@@ -7,6 +7,7 @@ import { isProduction } from '../../lib/env'
 import { refreshCookie, refreshCookieName } from '../../lib/refresh-cookie'
 import { isSameOrigin } from '../../lib/same-origin'
 import {
+  acceptedInvitationUpstreamSchema,
   AuthUpstreamPaths,
   callApi,
   clientHeaders,
@@ -17,6 +18,12 @@ import {
 
 const MAX_TOKEN_LENGTH = 200 // As the api: only keeps a hostile body from being forwarded
 const consumeBodySchema = z.object({ token: z.string().min(1).max(MAX_TOKEN_LENGTH) })
+const MAX_NAME_LENGTH = 100
+const acceptBodySchema = z.object({
+  token: z.string().min(1).max(MAX_TOKEN_LENGTH),
+  name: z.string().trim().min(1).max(MAX_NAME_LENGTH).optional()
+})
+const BEARER_PREFIX = 'Bearer '
 
 // Same shape as the api's errors, so that the client reads one contract
 function failure(status: number, code: string, message: string): NextResponse {
@@ -35,9 +42,9 @@ function clearCookie(response: NextResponse): NextResponse {
 
 // A session starts or continues: the refresh token goes into the cookie, the browser gets the
 // access token and nothing else
-function sessionResponse(issued: IssuedSession): NextResponse {
+function sessionResponse(issued: IssuedSession, extra: object = {}): NextResponse {
   const response = NextResponse.json(
-    { accessToken: issued.accessToken, expiresIn: issued.expiresIn },
+    { ...extra, accessToken: issued.accessToken, expiresIn: issued.expiresIn },
     { headers: { 'cache-control': 'no-store' } }
   )
   response.cookies.set(
@@ -159,4 +166,36 @@ export async function endSession(request: NextRequest): Promise<NextResponse> {
     refreshCookie(issued.refreshToken, new Date(issued.refreshExpiresAt), isProduction)
   )
   return failed
+}
+
+// Accepts an invitation. A person with a session sends their access token, which goes to the api as
+// it came; a person with no account gets one here, and the session the api opens for it is handled
+// like any other: the cookie is set and the browser gets the access token only.
+export async function acceptInvitation(request: NextRequest): Promise<NextResponse> {
+  const blocked = crossSite(request)
+  if (blocked !== null) return blocked
+  const body = acceptBodySchema.safeParse(await request.json().catch(() => null))
+  if (!body.success) {
+    return failure(
+      HttpStatusCodes.BAD_REQUEST,
+      ErrorCodes.VALIDATION_INVALID_INPUT,
+      'A token is required'
+    )
+  }
+  const authorization = request.headers.get('authorization')
+  const upstream = await callApi(AuthUpstreamPaths.acceptInvitation(body.data.token), {
+    body: body.data.name === undefined ? {} : { name: body.data.name },
+    accessToken: authorization?.startsWith(BEARER_PREFIX)
+      ? authorization.slice(BEARER_PREFIX.length)
+      : undefined,
+    client: clientHeaders(request)
+  }).catch(() => null)
+  if (upstream === null) return unreachable()
+  if (!upstream.ok) return refused(upstream, false)
+  const accepted = await readJson(upstream, acceptedInvitationUpstreamSchema)
+  if (accepted === null) return unreachable()
+  const { session, ...result } = accepted
+  return session === undefined
+    ? NextResponse.json(result, { headers: { 'cache-control': 'no-store' } })
+    : sessionResponse(session, result)
 }
