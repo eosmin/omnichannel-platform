@@ -9,3 +9,4 @@ export {
   ensureUser,
   slugify
 } from '../src/bootstrap-owner'
+export { loadDevFixtures } from '../src/dev-fixtures'

@@ -1,0 +1,56 @@
+import { z } from 'zod'
+
+import { type AccountProfile, accountProfileSchema } from '@platform/api-client'
+import { API_PREFIX, ApiRoutes } from '@platform/core/api'
+import { RoleNames, TenantHeaders } from '@platform/core/auth'
+
+import { FORWARDED_FOR, newClientIp } from './client-ip'
+import { API_URL } from './env'
+import { emptyMailboxOf, magicLinkTokenIn, nextEmailTo } from './mailbox'
+
+const consumeSchema = z.object({ session: z.object({ accessToken: z.string().min(1) }) })
+const rolesSchema = z.array(z.object({ id: z.string(), name: z.string() }))
+
+async function call(path: string, init: RequestInit = {}): Promise<unknown> {
+  const response = await fetch(`${API_URL}${API_PREFIX}${path}`, {
+    ...init,
+    headers: { 'content-type': 'application/json', [FORWARDED_FOR]: newClientIp(), ...init.headers }
+  })
+  if (!response.ok) throw new Error(`${init.method ?? 'GET'} ${path}: ${response.status}`)
+  return response.status === 204 ? null : response.json()
+}
+
+// What an administrator does through the api, for a test that needs a state the screens cannot yet
+// set up (the invitation form is a task of Step 3.2). It signs in the way a person does: by link.
+export async function signInByApi(email: string): Promise<string> {
+  await emptyMailboxOf(email)
+  await call(ApiRoutes.auth.magicLinkRequest, { method: 'POST', body: JSON.stringify({ email }) })
+  const token = magicLinkTokenIn(await nextEmailTo(email))
+  return consumeSchema.parse(
+    await call(ApiRoutes.auth.magicLinkConsume, { method: 'POST', body: JSON.stringify({ token }) })
+  ).session.accessToken
+}
+
+export async function profileOf(token: string): Promise<AccountProfile> {
+  return accountProfileSchema.parse(
+    await call(ApiRoutes.auth.me, { headers: { authorization: `Bearer ${token}` } })
+  )
+}
+
+// Invites an address to the first store of the signed-in administrator as an Agent
+export async function inviteAsAgent(adminToken: string, invited: string): Promise<void> {
+  const authorization = { authorization: `Bearer ${adminToken}` }
+  const profile = await profileOf(adminToken)
+  const store = profile.memberships[0]
+  if (store === undefined) throw new Error('the administrator belongs to no store')
+  const headers = { ...authorization, [TenantHeaders.STORE_ID]: store.storeId }
+  const roles = rolesSchema.parse(await call(ApiRoutes.settings.roles, { headers }))
+  const agent = roles.find(role => role.name === RoleNames.AGENT)
+  if (agent === undefined) throw new Error('the store has no Agent role')
+  await emptyMailboxOf(invited)
+  await call(ApiRoutes.settings.members, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ email: invited, roleId: agent.id })
+  })
+}
