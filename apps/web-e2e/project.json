@@ -1,0 +1,21 @@
+{
+  "name": "web-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/web-e2e",
+  "projectType": "application",
+  "tags": ["scope:tests"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["api:build", "worker:build", "web:build"],
+      "options": {
+        "command": "playwright test",
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "implicitDependencies": ["api", "worker", "web"]
+}

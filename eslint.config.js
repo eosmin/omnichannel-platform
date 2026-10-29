@@ -249,7 +249,7 @@ export default defineConfig([
   // The suites of the whole system build the real app of the api and talk to it over HTTP, so they
   // reach into it by path. Nothing depends on them.
   {
-    files: ['tests/**/*.ts'],
+    files: ['tests/**/*.ts', 'apps/web-e2e/**/*.ts'],
     rules: { '@nx/enforce-module-boundaries': 'off' }
   },
 
@@ -311,6 +311,7 @@ export default defineConfig([
       'apps/worker/src/testing/test-env.ts',
       'libs/core/redis/src/testing/test-env.ts',
       'tests/helpers/env.ts',
+      'apps/web-e2e/support/env.ts',
       'libs/core/database/prisma/seed-env.ts',
       'prisma.config.ts',
       'libs/core/database/prisma.config.ts'
