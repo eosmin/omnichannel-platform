@@ -396,6 +396,10 @@
   "org": {
     "storesTitle": "Stores"
   },
+  "realtime": {
+    "reconnecting": "Reconnecting...",
+    "disconnected": "No connection. New messages will not arrive, and what you write is saved and sent when the connection returns."
+  },
   "shell": {
     "switchStore": "Switch store",
     "selectStore": "Select a store",

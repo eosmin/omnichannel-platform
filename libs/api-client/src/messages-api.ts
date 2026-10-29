@@ -1,0 +1,28 @@
+import { ApiRoutes } from '@platform/core/api'
+import type { MessageType } from '@platform/core/domain'
+
+import type { ApiClient } from './api-client'
+import { type SentMessage, sentMessageSchema } from './api-schemas'
+
+// What POST /messages takes for the two kinds an agent writes. The key makes a retry return the
+// message that exists instead of creating another one (the api answers 200 instead of 201).
+export interface SendMessageInput {
+  type: MessageType.TEXT | MessageType.INTERNAL_NOTE
+  conversationId: string
+  content: string
+  idempotencyKey: string
+  mentions?: string[]
+}
+
+export function sendMessage(
+  client: ApiClient,
+  storeId: string,
+  input: SendMessageInput
+): Promise<SentMessage> {
+  return client.request(ApiRoutes.messages.create, {
+    method: 'POST',
+    body: input,
+    schema: sentMessageSchema,
+    storeId
+  })
+}

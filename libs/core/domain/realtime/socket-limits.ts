@@ -8,8 +8,11 @@ export const SocketLimits = {
   RECHECK_SECONDS,
   // A person has a few conversations open; a socket in more is a loop
   MAX_CONVERSATION_ROOMS: 20,
-  // Heartbeats closer than this are ignored: the client sends one every 30 s
+  // Heartbeats closer than this are ignored
   MIN_HEARTBEAT_GAP_SECONDS: 5,
+  // How often the client sends one: under the 60 s a socket stays online without it, so a lost one
+  // does not take the person offline
+  HEARTBEAT_INTERVAL_SECONDS: 30,
   // A user has a laptop, a phone and a few tabs
   MAX_SOCKETS_PER_USER: 10,
   // A message from a client is a few dozen bytes: anything bigger is not one

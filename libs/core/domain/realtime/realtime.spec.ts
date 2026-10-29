@@ -1,5 +1,7 @@
+import { PresenceTiming } from './presence-timing'
 import { RealtimeEvents, realtimeEventMapIsComplete } from './realtime-events'
 import { RealtimeNamespaces, RoomNames } from './room-names'
+import { SocketLimits } from './socket-limits'
 
 describe('RealtimeEvents', () => {
   it('keeps its payload map complete (checked at compile time)', () => {
@@ -26,5 +28,17 @@ describe('RoomNames', () => {
 
   it('keeps the agent and widget namespaces apart', () => {
     expect(RealtimeNamespaces.AGENTS).not.toBe(RealtimeNamespaces.WIDGET)
+  })
+})
+
+describe('the heartbeat of the client', () => {
+  it('is slower than the minimum gap the server accepts and faster than the time a socket stays online', () => {
+    expect(SocketLimits.HEARTBEAT_INTERVAL_SECONDS).toBeGreaterThan(
+      SocketLimits.MIN_HEARTBEAT_GAP_SECONDS
+    )
+    // Two beats fit in the life of a socket, so one lost beat does not take a person offline
+    expect(SocketLimits.HEARTBEAT_INTERVAL_SECONDS * 2).toBeLessThanOrEqual(
+      PresenceTiming.SOCKET_TTL_SECONDS
+    )
   })
 })

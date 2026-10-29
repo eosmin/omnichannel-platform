@@ -396,6 +396,10 @@
   "org": {
     "storesTitle": "Tiendas"
   },
+  "realtime": {
+    "reconnecting": "Reconectando...",
+    "disconnected": "Sin conexión. No llegarán mensajes nuevos, y lo que escribas se guarda y se envía al volver la conexión."
+  },
   "shell": {
     "switchStore": "Cambiar de tienda",
     "selectStore": "Elige una tienda",

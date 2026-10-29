@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { PresenceStatus } from '@platform/core/realtime'
+
 // What the api answers, parsed at the edge: the browser never trusts a body it has not checked.
 // The shapes mirror apps/api/src/modules/auth (AccountProfile, ConsumedMagicLink); a permission is
 // kept as a string so that a server newer than the page cannot make the whole profile fail to parse.
@@ -73,3 +75,20 @@ export const storeViewSchema = z.object({
   defaultLocale: z.string()
 })
 export type StoreView = z.output<typeof storeViewSchema>
+
+// The reply a send answers with. Only what the client acts on: a server newer than the page may add
+// fields, and the thread is read again through the REST api for the rest.
+export const sentMessageSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  deliveryStatus: z.string().nullable()
+})
+export type SentMessage = z.output<typeof sentMessageSchema>
+
+// A status this page does not know is shown as offline instead of failing the whole list
+export const userPresenceSchema = z.object({
+  userId: z.string(),
+  status: z.enum(PresenceStatus).catch(PresenceStatus.OFFLINE)
+})
+export const teamPresenceSchema = z.array(userPresenceSchema)
+export type UserPresenceView = z.output<typeof userPresenceSchema>
