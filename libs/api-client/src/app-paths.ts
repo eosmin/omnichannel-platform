@@ -26,6 +26,7 @@ export type StoreSettingsSection =
   (typeof StoreSettingsSections)[keyof typeof StoreSettingsSections]
 
 export const AppPaths = {
+  home: '/', // Has no content: it goes to the store used last, or to the login
   login: '/login',
   magicLink: '/login/verify', // The one page that POSTs the magic-link token
   noAccess: '/no-access', // A user with no membership: after a revocation or a removal

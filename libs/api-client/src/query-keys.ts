@@ -18,6 +18,7 @@ export const QueryKeys = {
     counts: (storeId: string) => ['conversations', storeId, 'counts'] as const
   },
   messages: {
+    all: (storeId: string) => ['messages', storeId] as const,
     thread: (storeId: string, conversationId: string) =>
       ['messages', storeId, conversationId] as const
   },
@@ -84,6 +85,9 @@ export const QueryKeys = {
   },
   preferences: {
     store: (storeId: string) => ['preferences', storeId] as const
+  },
+  presence: {
+    team: (storeId: string) => ['presence', storeId] as const
   },
 
   // The page of an invitation, read before the person has a session

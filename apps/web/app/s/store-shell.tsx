@@ -5,6 +5,7 @@ import { type ReactElement, type ReactNode, useEffect } from 'react'
 
 import { AppPaths } from '@platform/api-client'
 
+import { RealtimeProvider } from '../../components/providers/realtime-provider'
 import { StoreProvider } from '../../components/providers/store-context'
 import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
@@ -29,9 +30,11 @@ export function StoreShell({
         ) : (
           <StoreProvider membership={membership}>
             <Remember storeId={storeId} />
-            <AppFrame profile={profile} currentStoreId={storeId}>
-              {children}
-            </AppFrame>
+            <RealtimeProvider storeId={storeId} userId={profile.id}>
+              <AppFrame profile={profile} currentStoreId={storeId}>
+                {children}
+              </AppFrame>
+            </RealtimeProvider>
           </StoreProvider>
         )
       }}
