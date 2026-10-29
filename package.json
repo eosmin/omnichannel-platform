@@ -47,6 +47,7 @@
     "@nx/eslint-plugin": "23.2.0",
     "@nx/jest": "23.2.0",
     "@nx/js": "23.2.0",
+    "@playwright/test": "1.63.0",
     "@rspack/core": "2.2.9",
     "@types/express": "5.0.6",
     "@types/jest": "30.0.0",
