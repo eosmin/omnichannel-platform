@@ -86,5 +86,14 @@ export const QueryKeys = {
     store: (storeId: string) => ['preferences', storeId] as const
   },
 
+  // The page of an invitation, read before the person has a session
+  invitations: {
+    byToken: (token: string) => ['invitations', token] as const
+  },
+  // The stores of the organization of the store in storeId (the api reads it from X-Store-Id)
+  organizations: {
+    stores: (storeId: string) => ['organizations', storeId, 'stores'] as const
+  },
+
   session: ['session'] as const
 } as const

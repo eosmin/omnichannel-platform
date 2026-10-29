@@ -126,6 +126,49 @@ describe('createBrowserSession', () => {
     expect(browser.getAccessToken()).toBe('a1')
   })
 
+  it('sends the access token with an invitation and keeps the session of a new account', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(session('a1'))
+      .mockResolvedValueOnce(
+        json(200, {
+          store: { id: 's', name: 'S' },
+          role: 'Agent',
+          accessToken: 'a9',
+          expiresIn: 900
+        })
+      )
+    const browser = createBrowserSession({ fetchImpl, locks: undefined })
+    await browser.refresh()
+    const accepted = await browser.acceptInvitation('tok', 'Ana')
+    expect(accepted.store.id).toBe('s')
+    expect(browser.getAccessToken()).toBe('a9')
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      SessionRoutes.accept,
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer a1' }) as unknown,
+        body: '{"token":"tok","name":"Ana"}'
+      })
+    )
+  })
+
+  it('leaves the token alone when an accepted invitation brings no session', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(session('a1'))
+      .mockResolvedValueOnce(json(200, { store: { id: 's', name: 'S' }, role: 'Agent' }))
+    const browser = createBrowserSession({ fetchImpl, locks: undefined })
+    await browser.refresh()
+    await browser.acceptInvitation('tok')
+    expect(browser.getAccessToken()).toBe('a1')
+  })
+
+  it('throws the refusal of an invitation as it came', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(unauthorized())
+    const browser = createBrowserSession({ fetchImpl, locks: undefined })
+    await expect(browser.acceptInvitation('tok')).rejects.toMatchObject({ status: 401 })
+  })
+
   it('forgets the token after a logout that went through', async () => {
     const fetchImpl = jest
       .fn()
@@ -135,5 +178,27 @@ describe('createBrowserSession', () => {
     await browser.refresh()
     await browser.logout()
     expect(browser.getAccessToken()).toBeNull()
+  })
+
+  it('takes a new access token and tries an invitation again when the old one expired', async () => {
+    const expired = json(401, {
+      error: { code: 'AUTH_TOKEN_EXPIRED', message: 'x', metadata: {} },
+      correlationId: 'c'
+    })
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(session('a1'))
+      .mockResolvedValueOnce(expired)
+      .mockResolvedValueOnce(session('a2'))
+      .mockResolvedValueOnce(json(200, { store: { id: 's', name: 'S' }, role: 'Agent' }))
+    const browser = createBrowserSession({ fetchImpl, locks: undefined })
+    await browser.refresh()
+    await browser.acceptInvitation('tok')
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      SessionRoutes.accept,
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer a2' }) as unknown
+      })
+    )
   })
 })

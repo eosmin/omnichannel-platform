@@ -43,3 +43,33 @@ export const accessSessionSchema = z.object({
 export type AccessSession = z.output<typeof accessSessionSchema>
 
 export const acceptedSchema = z.object({ accepted: z.literal(true) })
+
+// The page of an invitation (GET /invitations/:token), public
+export const invitationPreviewSchema = z.object({
+  email: z.string(),
+  storeName: z.string(),
+  roleName: z.string(),
+  inviterName: z.string(),
+  expiresAt: z.string()
+})
+export type InvitationPreview = z.output<typeof invitationPreviewSchema>
+
+// What the Next server answers to an accepted invitation: the store, and a session only when the
+// accept created the account
+export const acceptedInvitationSchema = z.object({
+  store: z.object({ id: z.string(), name: z.string() }),
+  role: z.string(),
+  accessToken: z.string().min(1).optional(),
+  expiresIn: z.number().int().positive().optional()
+})
+export type AcceptedInvitation = z.output<typeof acceptedInvitationSchema>
+
+export const storeViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  timezone: z.string(),
+  currency: z.string(),
+  defaultLocale: z.string()
+})
+export type StoreView = z.output<typeof storeViewSchema>

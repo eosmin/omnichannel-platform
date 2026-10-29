@@ -1,7 +1,13 @@
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import { ApiError } from './api-error'
-import { type AccessSession, accessSessionSchema, errorResponseSchema } from './api-schemas'
+import {
+  type AcceptedInvitation,
+  acceptedInvitationSchema,
+  type AccessSession,
+  accessSessionSchema,
+  errorResponseSchema
+} from './api-schemas'
 import { REFRESH_LOCK_NAME, SessionRoutes } from './session-routes'
 
 export interface BrowserSession {
@@ -10,6 +16,9 @@ export interface BrowserSession {
   // valid session (no cookie, a revoked or expired family).
   refresh: () => Promise<string>
   consume: (token: string) => Promise<AccessSession>
+  // Accepts an invitation. With a session the access token goes along; for a new account the answer
+  // carries the session that the server just opened
+  acceptInvitation: (token: string, name?: string) => Promise<AcceptedInvitation>
   logout: () => Promise<void>
   // Called when a refresh finds that the session is gone; returns the way to stop listening
   onSessionLost: (listener: () => void) => () => void
@@ -37,12 +46,15 @@ export function createBrowserSession({
   let inflight: Promise<string> | null = null
   const listeners = new Set<() => void>()
 
-  const post = async (path: string, body?: unknown): Promise<Response> => {
+  const post = async (path: string, body?: unknown, bearer?: string): Promise<Response> => {
     try {
       return await fetchImpl(path, {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(bearer === undefined ? {} : { authorization: `Bearer ${bearer}` })
+        },
         body: body === undefined ? undefined : JSON.stringify(body)
       })
     } catch {
@@ -84,6 +96,20 @@ export function createBrowserSession({
       const session = accessSessionSchema.parse(await response.json())
       accessToken = session.accessToken
       return session
+    },
+    acceptInvitation: async (token, name) => {
+      const body = { token, ...(name === undefined ? {} : { name }) }
+      let response = await post(SessionRoutes.accept, body, accessToken ?? undefined)
+      if (!response.ok) {
+        const error = await readError(response)
+        // The access token may have expired while the page was open: one new one, one more try
+        if (accessToken === null || !error.is(ErrorCodes.AUTH_TOKEN_EXPIRED)) throw error
+        response = await post(SessionRoutes.accept, body, await rotateLocked())
+        if (!response.ok) throw await readError(response)
+      }
+      const accepted = acceptedInvitationSchema.parse(await response.json())
+      if (accepted.accessToken !== undefined) accessToken = accepted.accessToken
+      return accepted
     },
     logout: async () => {
       const response = await post(SessionRoutes.logout)
