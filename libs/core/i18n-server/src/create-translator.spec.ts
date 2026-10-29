@@ -34,4 +34,21 @@ describe('message files', () => {
         : [prefix]
     expect(keys(messagesFor(Locales.ES)).sort()).toEqual(keys(messagesFor(Locales.EN)).sort())
   })
+
+  // next-intl reads the same files as ICU, and createTranslator only fills {name}: a plural or a
+  // doubled apostrophe in an email message would show raw in the email
+  it('keeps the email messages free of ICU syntax that createTranslator does not read', () => {
+    const values = (node: unknown): string[] =>
+      typeof node === 'string'
+        ? [node]
+        : typeof node === 'object' && node !== null
+          ? Object.values(node).flatMap(values)
+          : []
+    for (const locale of [Locales.EN, Locales.ES]) {
+      for (const text of values(messagesFor(locale).email)) {
+        expect(text).not.toMatch(/\{\s*\w+\s*,/)
+        expect(text).not.toContain("'")
+      }
+    }
+  })
 })

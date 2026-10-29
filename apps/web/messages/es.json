@@ -1,0 +1,356 @@
+{
+  "app": {
+    "title": "Plataforma omnicanal"
+  },
+  "common": {
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "undo": "Deshacer",
+    "backToStart": "Volver al inicio",
+    "tryAgain": "Intentar de nuevo"
+  },
+  "confirm": {
+    "typePhrase": "Escribe \"{phrase}\" para confirmar",
+    "phraseLabel": "Frase de confirmación"
+  },
+  "conversations": {
+    "status": {
+      "OPEN": "Abierta",
+      "PENDING": "Pendiente",
+      "RESOLVED": "Resuelta",
+      "ARCHIVED": "Archivada",
+      "SNOOZED": "Pospuesta",
+      "SPAM": "Spam"
+    }
+  },
+  "email": {
+    "magicLink": {
+      "subject": "Tu enlace para iniciar sesión",
+      "heading": "Inicia sesión en tu cuenta",
+      "body": "Usa el botón de abajo para iniciar sesión. Funciona una sola vez.",
+      "cta": "Iniciar sesión",
+      "fallback": "Si el botón no funciona, copia este enlace en tu navegador:",
+      "expiry": "Este enlace caduca en {minutes} minutos.",
+      "ignore": "Si no lo solicitaste, puedes ignorar este correo."
+    },
+    "invitation": {
+      "subject": "Te invitaron a unirte a un equipo",
+      "heading": "Te invitan a unirte a {store}",
+      "body": "{inviter} te invitó a unirte a {store} como {role}. Nada cambia hasta que aceptes.",
+      "cta": "Revisar la invitación",
+      "fallback": "Si el botón no funciona, copia este enlace en tu navegador:",
+      "expiry": "Esta invitación caduca en {days} días.",
+      "ignore": "Si no la esperabas, puedes ignorar este correo."
+    }
+  },
+  "errorPage": {
+    "title": "Algo salió mal",
+    "body": "No se pudo mostrar la página. Inténtalo de nuevo; si sigue pasando, avisa a tu administrador."
+  },
+  "errors": {
+    "AUTH_EMAIL_ALREADY_EXISTS": "Este correo ya tiene una cuenta",
+    "AUTH_REFRESH_TOKEN_REUSED": "Cerramos tu sesión por seguridad. Inicia sesión de nuevo",
+    "AUTH_TOKEN_EXPIRED": "Tu sesión caducó. Inicia sesión de nuevo",
+    "AUTH_TOKEN_INVALID": "El enlace o la sesión no es válido",
+    "AUTH_UNAUTHORIZED": "Necesitas iniciar sesión",
+    "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite esa acción",
+    "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
+    "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
+    "CHANNEL_MESSAGE_FAILED": "El canal no aceptó el mensaje",
+    "CHANNEL_NOT_CONNECTED": "El canal no está conectado",
+    "CHANNEL_PROFILE_UNAVAILABLE": "El perfil del cliente no está disponible",
+    "CHANNEL_TEMPLATE_NOT_APPROVED": "La plantilla aún no está aprobada",
+    "CHANNEL_WEBHOOK_SIGNATURE_INVALID": "No se pudo verificar la notificación del canal",
+    "CHANNEL_WINDOW_EXPIRED": "La ventana de mensajería expiró",
+    "CONVERSATION_ALREADY_RESOLVED": "La conversación ya está resuelta",
+    "CONVERSATION_INVALID_STATUS_TRANSITION": "La conversación no puede pasar a ese estado",
+    "CUSTOMER_MERGE_SAME_ID": "Un cliente no se puede fusionar consigo mismo",
+    "CUSTOMER_UNMERGE_WINDOW_EXPIRED": "Pasó el tiempo para deshacer la fusión",
+    "DSR_ALREADY_COMPLETED": "La solicitud de datos ya está completada",
+    "DSR_VERIFICATION_INVALID": "La verificación de la solicitud de datos no es válida",
+    "EXTERNAL_SERVICE_ERROR": "Falló un servicio externo. Inténtalo más tarde",
+    "EXTERNAL_SERVICE_TIMEOUT": "Un servicio externo tardó demasiado. Inténtalo más tarde",
+    "FILE_INFECTED": "Se rechazó el archivo porque no es seguro",
+    "FILE_KEY_OUT_OF_SCOPE": "Ese archivo no pertenece a esta tienda",
+    "FILE_NOT_READY": "El archivo aún se está procesando",
+    "FILE_TOO_LARGE": "El archivo es demasiado grande",
+    "FILE_TYPE_NOT_ALLOWED": "No se permite este tipo de archivo",
+    "FILE_UPLOAD_FAILED": "No se pudo subir el archivo",
+    "INSUFFICIENT_INVENTORY": "No hay existencias suficientes",
+    "INTERNAL_ERROR": "Algo salió mal. Inténtalo de nuevo",
+    "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Indica por qué ajustas las existencias",
+    "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "El conteo no puede pasar a ese estado",
+    "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "El traslado no puede pasar a ese estado",
+    "INVENTORY_TRANSFER_SAME_WAREHOUSE": "El origen y el destino deben ser distintos",
+    "INVENTORY_WAREHOUSE_HAS_STOCK": "La bodega todavía tiene existencias",
+    "INVENTORY_WAREHOUSE_NOT_LINKED": "La bodega no está vinculada a esta tienda",
+    "ORDER_ALREADY_CONFIRMED": "El pedido ya está confirmado",
+    "ORDER_CANNOT_BE_CANCELLED": "El pedido ya no se puede cancelar",
+    "ORDER_FIELD_NOT_EDITABLE": "Ese campo no se puede editar en esta etapa",
+    "ORDER_INVALID_STATUS_TRANSITION": "El pedido no puede pasar a ese estado",
+    "ORDER_MESSAGE_VARIABLE_UNKNOWN": "El mensaje usa una variable que no existe",
+    "ORDER_PRICE_APPROVAL_PENDING": "El cambio de precio espera aprobación",
+    "ORDER_PRICE_OVERRIDE_FORBIDDEN": "No puedes cambiar el precio",
+    "ORDER_PRICE_REASON_REQUIRED": "Indica por qué cambias el precio",
+    "ORDER_PRICE_SELF_APPROVAL": "No puedes aprobar tu propio cambio de precio",
+    "ORDER_STATUS_DRIVEN_BY_SHIPMENT": "El envío decide el estado de este pedido",
+    "PERMISSION_DENIED": "No tienes permiso para esto",
+    "PICKUP_CUTOFF_PASSED": "Ya pasó la hora límite de recolección",
+    "PLUGIN_ALREADY_INSTALLED": "El plugin ya está instalado",
+    "PLUGIN_ALREADY_REGISTERED": "El plugin ya está registrado",
+    "PLUGIN_API_KEY_INVALID": "La llave del plugin no es válida",
+    "PLUGIN_CONTRACT_VIOLATION": "El plugin no cumplió su contrato",
+    "PLUGIN_INSTALLATION_FAILED": "No se pudo instalar el plugin",
+    "PLUGIN_NOT_FOUND": "El plugin no existe",
+    "PLUGIN_NOT_INSTALLED": "El plugin no está instalado",
+    "PLUGIN_SCOPE_DENIED": "El plugin no tiene acceso a eso",
+    "RATE_LIMIT_EXCEEDED": "Demasiados intentos. Espera un momento",
+    "RECEPTION_ALREADY_RECEIVED": "Ese paquete ya fue recibido",
+    "RECEPTION_SHIPMENT_NOT_FOUND": "Ningún envío coincide con ese código",
+    "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",
+    "REMITTANCE_IMPORT_INVALID": "El archivo de la remesa no es válido",
+    "REMITTANCE_INVALID_STATUS_TRANSITION": "La remesa no puede pasar a ese estado",
+    "RESOURCE_ALREADY_EXISTS": "Eso ya existe",
+    "RESOURCE_CONFLICT": "Alguien lo cambió al mismo tiempo. Recarga e inténtalo de nuevo",
+    "RESOURCE_NOT_FOUND": "No existe o no puedes abrirlo",
+    "RETURN_INVALID_STATUS_TRANSITION": "La devolución no puede pasar a ese estado",
+    "RETURN_ORDER_NOT_DELIVERED": "Solo un pedido entregado se puede devolver",
+    "RETURN_QUANTITY_EXCEEDS_DELIVERED": "No puedes devolver más de lo que se entregó",
+    "SHIPPING_ACTIVE_SHIPMENT_EXISTS": "El pedido ya tiene un envío activo",
+    "SHIPPING_CANNOT_CANCEL_AFTER_PICKUP": "El envío no se puede cancelar después de la recolección",
+    "SHIPPING_CARRIER_CAPABILITY_MISSING": "El transportista no admite esa acción",
+    "SHIPPING_CARRIER_NOT_ACTIVE": "El transportista no está activo",
+    "SHIPPING_CARRIER_REJECTED": "El transportista rechazó la solicitud",
+    "SHIPPING_CARRIER_UNAVAILABLE": "El transportista no está disponible. Inténtalo más tarde",
+    "SHIPPING_FEE_OUT_OF_RANGE": "El costo de envío está fuera de rango",
+    "SHIPPING_INVALID_STATUS_TRANSITION": "El envío no puede pasar a ese estado",
+    "SHIPPING_LOCATION_REQUIRED": "Elige una ubicación para la dirección",
+    "SHIPPING_ORDER_NOT_CONFIRMED": "Confirma el pedido antes de enviarlo",
+    "SHIPPING_ORIGIN_MISSING": "La tienda no tiene dirección de origen para envíos",
+    "SHIPPING_OUTCOME_UNKNOWN": "No sabemos si el transportista recibió el envío. Revisa antes de intentarlo de nuevo",
+    "TENANT_ACCESS_DENIED": "No tienes acceso a esta tienda",
+    "TENANT_CANNOT_REMOVE_LAST_ADMIN": "La tienda necesita al menos un administrador",
+    "TENANT_HEADER_MISSING": "Elige una tienda primero",
+    "TENANT_INVITATION_EMAIL_MISMATCH": "La invitación es para otro correo",
+    "TENANT_INVITATION_EXPIRED": "La invitación caducó",
+    "TENANT_INVITATION_INVALID": "La invitación no es válida",
+    "TENANT_MEMBER_ALREADY_EXISTS": "Esa persona ya está en el equipo",
+    "TENANT_NOT_FOUND": "La tienda no existe",
+    "VALIDATION_FAILED": "Algunos campos no son válidos",
+    "VALIDATION_INVALID_INPUT": "Revisa lo que escribiste",
+    "VALIDATION_URL_NOT_ALLOWED": "Esa dirección no está permitida",
+    "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el widget",
+    "WIDGET_TOKEN_INVALID": "La sesión del widget no es válida"
+  },
+  "noAccess": {
+    "title": "No tienes acceso",
+    "body": "Tu cuenta no pertenece a ninguna tienda. Pide a un administrador que te invite de nuevo."
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "body": "La dirección no existe o no puedes abrirla."
+  },
+  "notifications": {
+    "bulk_labels": {
+      "ready": {
+        "title": "Las guías están listas",
+        "body": "Ya puedes descargar las guías que pediste."
+      }
+    },
+    "carrier": {
+      "status_unmapped": {
+        "title": "Estado de transportista desconocido",
+        "body": "Un transportista envió un estado que la plataforma no conoce. Revisa el envío."
+      }
+    },
+    "channel": {
+      "disconnected": {
+        "title": "Se desconectó un canal",
+        "body": "El canal dejó de funcionar. Vuelve a conectarlo para seguir recibiendo mensajes."
+      }
+    },
+    "conversation": {
+      "assigned": {
+        "title": "Conversación asignada a ti",
+        "body": "Hay una conversación esperándote."
+      },
+      "mentioned": {
+        "title": "Te mencionaron en una nota",
+        "body": "Un compañero te mencionó en una nota interna."
+      },
+      "reopened": {
+        "title": "Conversación reabierta",
+        "body": "Un cliente escribió de nuevo en una conversación resuelta."
+      },
+      "snooze_expired": {
+        "title": "Terminó la pausa",
+        "body": "Una conversación pospuesta volvió a tu bandeja."
+      },
+      "unassigned_queue": {
+        "title": "Conversaciones sin responsable",
+        "body": "Hay conversaciones esperando que alguien las tome."
+      }
+    },
+    "count": {
+      "awaiting_apply": {
+        "title": "Conteo de inventario en espera",
+        "body": "Un conteo de inventario está completo y espera aplicarse."
+      }
+    },
+    "dsr": {
+      "deadline_approaching": {
+        "title": "Una solicitud de datos está por vencer",
+        "body": "Una solicitud de datos personales está cerca de su plazo."
+      },
+      "manual_review": {
+        "title": "Una solicitud de datos necesita revisión",
+        "body": "Una solicitud de datos personales necesita que una persona la revise."
+      }
+    },
+    "export": {
+      "ready": {
+        "title": "Exportación lista",
+        "body": "Ya puedes descargar tu exportación."
+      }
+    },
+    "inventory": {
+      "low": {
+        "title": "Existencias bajas",
+        "body": "A un producto se le están acabando las existencias."
+      }
+    },
+    "invitation": {
+      "accepted": {
+        "title": "Invitación aceptada",
+        "body": "Alguien aceptó tu invitación al equipo."
+      }
+    },
+    "member": {
+      "joined": {
+        "title": "Nuevo miembro del equipo",
+        "body": "Un nuevo miembro se unió a la tienda."
+      }
+    },
+    "message": {
+      "failed": {
+        "title": "No se entregó un mensaje",
+        "body": "El canal no aceptó un mensaje que enviaste."
+      },
+      "received": {
+        "title": "Mensaje nuevo",
+        "body": "Un cliente te escribió."
+      }
+    },
+    "order": {
+      "created": {
+        "title": "Pedido nuevo",
+        "body": "Se creó un pedido."
+      },
+      "message_not_sent": {
+        "title": "No se envió el mensaje del pedido",
+        "body": "No se pudo enviar al cliente el mensaje sobre un pedido."
+      },
+      "payment_failed": {
+        "title": "El pago falló",
+        "body": "Falló el pago de un pedido."
+      },
+      "price_approval_requested": {
+        "title": "Aprobación de precio solicitada",
+        "body": "Un agente te pidió aprobar un cambio de precio."
+      },
+      "price_overridden": {
+        "title": "Precio modificado",
+        "body": "Un agente cambió el precio de un artículo de un pedido."
+      },
+      "status_changed": {
+        "title": "Cambió el estado de un pedido",
+        "body": "Cambió el estado de un pedido."
+      }
+    },
+    "pickup": {
+      "cutoff_approaching": {
+        "title": "Se acerca la hora límite de recolección",
+        "body": "Solicita la recolección antes de la hora límite del transportista."
+      },
+      "manual_required": {
+        "title": "La recolección se pide a mano",
+        "body": "Este transportista no recibe recolecciones desde la plataforma. Pídela a mano."
+      }
+    },
+    "plugin": {
+      "error": {
+        "title": "Falló un plugin",
+        "body": "Un plugin devolvió un error. Revisa su configuración."
+      }
+    },
+    "remittance": {
+      "overdue": {
+        "title": "Remesa vencida",
+        "body": "Un transportista no remitió a tiempo los pagos contra entrega."
+      }
+    },
+    "return": {
+      "awaiting_receipt": {
+        "title": "Devolución por recibir",
+        "body": "Un paquete devuelto viene en camino y debe recibirse."
+      }
+    },
+    "shipment": {
+      "cancel_failed": {
+        "title": "No se canceló el envío",
+        "body": "El transportista no canceló el envío. Revísalo."
+      },
+      "failed_attempt": {
+        "title": "Intento de entrega fallido",
+        "body": "El transportista no pudo entregar un paquete."
+      },
+      "requires_review": {
+        "title": "Un envío necesita revisión",
+        "body": "Un envío está en un estado que una persona debe revisar."
+      }
+    },
+    "transfer": {
+      "dispatched": {
+        "title": "Traslado despachado",
+        "body": "Un traslado de existencias va en camino a tu bodega."
+      }
+    },
+    "webhook": {
+      "auto_disabled": {
+        "title": "Se desactivó un webhook",
+        "body": "Un webhook falló demasiadas veces y se desactivó."
+      }
+    }
+  },
+  "orders": {
+    "status": {
+      "PENDING_CONFIRMATION": "Pendiente de confirmación",
+      "CONFIRMED": "Confirmado",
+      "PREPARING": "Preparando",
+      "SHIPPED": "Enviado",
+      "DELIVERED": "Entregado",
+      "CANCELLED": "Cancelado",
+      "RETURNED": "Devuelto"
+    },
+    "cancellationReason": {
+      "customerRequest": "Lo pidió el cliente",
+      "outOfStock": "Sin existencias",
+      "paymentFailed": "El pago falló",
+      "undeliverableAddress": "No se puede entregar en la dirección",
+      "duplicate": "Pedido duplicado",
+      "other": "Otro"
+    },
+    "return": {
+      "reason": {
+        "CHANGED_MIND": "El cliente cambió de opinión",
+        "DAMAGED_IN_TRANSIT": "Dañado en el envío",
+        "DEFECTIVE": "Defectuoso",
+        "DELIVERY_FAILED": "La entrega falló",
+        "NOT_AS_DESCRIBED": "No es como se describió",
+        "OTHER": "Otro",
+        "REFUSED_BY_CUSTOMER": "Rechazado por el cliente",
+        "WRONG_ITEM": "Artículo equivocado"
+      }
+    }
+  }
+}

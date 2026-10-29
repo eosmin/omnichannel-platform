@@ -8,5 +8,8 @@
     "lint": {},
     "type-check": {},
     "test": {}
+  },
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "{workspaceRoot}/apps/web/messages/*.json", "sharedGlobals"]
   }
 }
