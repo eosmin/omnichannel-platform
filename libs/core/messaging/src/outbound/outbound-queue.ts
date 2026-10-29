@@ -8,7 +8,8 @@ import {
   type SendOutboundDeleteJob,
   type SendOutboundEditJob,
   type SendOutboundMessageJob,
-  type SendOutboundReactionJob
+  type SendOutboundReactionJob,
+  type SendOutboundReadReceiptJob
 } from '@platform/core/queues'
 
 // The job of a reply is the reply: asked twice (the sweep finds a message the api had already queued)
@@ -33,6 +34,12 @@ export function deleteJobId(job: SendOutboundDeleteJob): string {
   return `delete-${job.messageId}-${job.version}`
 }
 
+// One job for each message read up to: reading the same thread again changes nothing, and a newer
+// message of the customer is another job. Jobs are kept for a day, which is what dedupes a second read.
+export function readReceiptJobId(job: SendOutboundReadReceiptJob): string {
+  return `read-${job.conversationId}-${job.messageId}`
+}
+
 // The one place that puts a stored reply on its way to the channel, for the api (right after the
 // reply commits) and for the worker (the sweep of the replies that never got queued).
 @Injectable()
@@ -40,7 +47,11 @@ export class OutboundQueue {
   constructor(
     @InjectQueue(QueueNames.OUTBOUND)
     private readonly queue: Queue<
-      SendOutboundMessageJob | SendOutboundReactionJob | SendOutboundEditJob | SendOutboundDeleteJob
+      | SendOutboundMessageJob
+      | SendOutboundReactionJob
+      | SendOutboundEditJob
+      | SendOutboundDeleteJob
+      | SendOutboundReadReceiptJob
     >
   ) {}
 
@@ -62,6 +73,20 @@ export class OutboundQueue {
   async requeueReaction(job: SendOutboundReactionJob): Promise<void> {
     await this.removeFinished(reactionJobId(job))
     await this.enqueueReaction(job)
+  }
+
+  // Two tries and no more: a blue tick that comes late is worse than one that never comes. Nothing
+  // about it is stored in the database; a job that fails follows the usual failure handling of the
+  // queue. A failed job is removed first, because BullMQ keeps it and ignores a new job under its id,
+  // which would leave that message without its tick for good; a completed one is kept on purpose,
+  // since it is what makes a second read of the same thread one job.
+  async enqueueReadReceipt(job: SendOutboundReadReceiptJob): Promise<void> {
+    const previous = await this.queue.getJob(readReceiptJobId(job))
+    if (previous !== undefined && (await previous.getState()) === 'failed') await previous.remove()
+    await this.queue.add(JobNames.SEND_OUTBOUND_READ_RECEIPT, job, {
+      jobId: readReceiptJobId(job),
+      attempts: 2
+    })
   }
 
   async enqueueEdit(job: SendOutboundEditJob): Promise<void> {

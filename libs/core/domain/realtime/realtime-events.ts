@@ -13,12 +13,13 @@ import type { NotificationRealtimePayload } from '../notifications'
 export const RealtimeEvents = {
   // Server -> client
   CONVERSATION_CREATED: 'conversation.created',
-  CONVERSATION_UPDATED: 'conversation.updated',
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_STATUS_CHANGED: 'conversation.status_changed',
   CONVERSATION_READ: 'conversation.read',
 
   MESSAGE_RECEIVED: 'message.received',
+  // An agent's reply is stored and waits for its channel
+  MESSAGE_QUEUED: 'message.queued',
   MESSAGE_SENT: 'message.sent',
   MESSAGE_DELIVERED: 'message.delivered',
   MESSAGE_READ: 'message.read',
@@ -64,12 +65,6 @@ export interface RealtimeEventMap {
     customerId: string
     channelType: ChannelId
   }
-  [RealtimeEvents.CONVERSATION_UPDATED]: {
-    conversationId: string
-    status: ConversationStatus
-    assignedTo: string | null
-    lastMessageAt: string | null
-  }
   [RealtimeEvents.CONVERSATION_ASSIGNED]: {
     conversationId: string
     assignedTo: string | null
@@ -86,14 +81,14 @@ export interface RealtimeEventMap {
     conversationId: string
     messageId: string
     authorType: AuthorType
-    contentPreview: string | null
     createdAt: string
   }
-  [RealtimeEvents.MESSAGE_SENT]: {
+  [RealtimeEvents.MESSAGE_QUEUED]: {
     conversationId: string
     messageId: string
     clientMessageId: string | null
   }
+  [RealtimeEvents.MESSAGE_SENT]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_DELIVERED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_READ]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_REACTION]: { conversationId: string; messageId: string }

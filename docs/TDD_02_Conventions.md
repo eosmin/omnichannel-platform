@@ -15,18 +15,18 @@ Every event name, cache key, permission, error code, route, status, metric,
 notification type, job name, cron schedule, query key and configuration value lives
 in a typed constant in `libs/core/*` (or `libs/api-client/*` for frontend-only keys).
 
-Rationale: a typo in `'conversation.updated'` fails silently at runtime.
-A typo in `Events.CONVERSATON_UPDATED` fails at compile time.
+Rationale: a typo in `'conversation.assigned'` fails silently at runtime.
+A typo in `Events.CONVERSATON_ASSIGNED` fails at compile time.
 
 ```typescript
 // WRONG
-this.events.emit('conversation.updated', payload)
+this.events.emit('conversation.assigned', payload)
 await this.cache.get(`store:${storeId}:setings`)
 if (user.role === 'admin') { }
 await prisma.media.update({ data: { status: 'clean' } })
 
 // CORRECT
-this.events.emit(Events.CONVERSATION_UPDATED, payload)
+this.events.emit(Events.CONVERSATION_ASSIGNED, payload)
 await this.cache.get(CacheKeys.store.settings(storeId))
 if (hasPermission(Permissions.SETTINGS_EDIT)) { }
 await prisma.media.update({ data: { status: MediaStatus.CLEAN } })
@@ -55,7 +55,6 @@ export const Events = {
 
   // Conversations
   CONVERSATION_CREATED: 'conversation.created',
-  CONVERSATION_UPDATED: 'conversation.updated',
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_UNASSIGNED: 'conversation.unassigned',
   CONVERSATION_STATUS_CHANGED: 'conversation.status_changed',
@@ -70,6 +69,7 @@ export const Events = {
 
   // Messages
   MESSAGE_RECEIVED: 'message.received',
+  MESSAGE_QUEUED: 'message.queued',
   MESSAGE_SENT: 'message.sent',
   MESSAGE_DELIVERED: 'message.delivered',
   MESSAGE_READ: 'message.read',
@@ -199,6 +199,7 @@ export interface MessageReceivedPayload {
   authorType: AuthorType
   contentPreview: string | null     // First 200 chars, for listeners that only need a glance
   receivedAt: string                // ISO 8601
+  visibility: ConversationVisibility // Who may see the conversation; picks who hears it in the browser
 }
 
 export interface ConversationCreatedPayload {
@@ -208,6 +209,7 @@ export interface ConversationCreatedPayload {
   channelType: ChannelId
   firstMessageId: string            // Emitted after the first message is persisted, never before
   firstMessageContent: string | null
+  visibility: ConversationVisibility
 }
 
 export interface ConversationStatusChangedPayload {
@@ -273,7 +275,6 @@ Separate from domain events: these are what the browser subscribes to.
 export const RealtimeEvents = {
   // Server → client
   CONVERSATION_CREATED: 'conversation.created',
-  CONVERSATION_UPDATED: 'conversation.updated',
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_STATUS_CHANGED: 'conversation.status_changed',
   CONVERSATION_READ: 'conversation.read',
@@ -312,13 +313,13 @@ export type RealtimeEvent = typeof RealtimeEvents[keyof typeof RealtimeEvents]
 // entry is a compile error in RealtimeService (TDD_06 §1.5), which is the point.
 export interface RealtimeEventMap {
   [RealtimeEvents.CONVERSATION_CREATED]: { conversationId: string; customerId: string; channelType: ChannelId }
-  [RealtimeEvents.CONVERSATION_UPDATED]: { conversationId: string; status: ConversationStatus; assignedTo: string | null; lastMessageAt: string | null }
   [RealtimeEvents.CONVERSATION_ASSIGNED]: { conversationId: string; assignedTo: string | null; assignedBy: string | null }
   [RealtimeEvents.CONVERSATION_STATUS_CHANGED]: { conversationId: string; status: ConversationStatus; previousStatus: ConversationStatus }
   [RealtimeEvents.CONVERSATION_READ]: { conversationId: string; userId: string }
 
-  [RealtimeEvents.MESSAGE_RECEIVED]: { conversationId: string; messageId: string; authorType: AuthorType; contentPreview: string | null; createdAt: string }
-  [RealtimeEvents.MESSAGE_SENT]: { conversationId: string; messageId: string; clientMessageId: string | null }
+  [RealtimeEvents.MESSAGE_RECEIVED]: { conversationId: string; messageId: string; authorType: AuthorType; createdAt: string }
+  [RealtimeEvents.MESSAGE_QUEUED]: { conversationId: string; messageId: string; clientMessageId: string | null }
+  [RealtimeEvents.MESSAGE_SENT]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_DELIVERED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_READ]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_FAILED]: { conversationId: string; messageId: string; errorCode: ErrorCode }

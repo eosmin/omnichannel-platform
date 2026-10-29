@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { ConversationStatus } from '@platform/core/domain'
+import { AuthorType, ChannelIds, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { BridgedEvents, ChannelDisconnectedReasons, Events } from '@platform/core/events'
 
@@ -47,8 +47,26 @@ describe('bridgedPayload', () => {
       assignedBy: actor,
       visibility: { hidden: false, assignedTo: null }
     },
+    [Events.CONVERSATION_CREATED]: {
+      storeId: randomUUID(),
+      conversationId: randomUUID(),
+      customerId: randomUUID(),
+      channelType: ChannelIds.WHATSAPP,
+      firstMessageId: randomUUID(),
+      visibility: { hidden: false, assignedTo: null }
+    },
+    [Events.MESSAGE_RECEIVED]: {
+      storeId: randomUUID(),
+      conversationId: randomUUID(),
+      messageId: randomUUID(),
+      customerId: randomUUID(),
+      channelType: ChannelIds.WHATSAPP,
+      authorType: AuthorType.CUSTOMER,
+      receivedAt: '2026-10-27T00:00:00.000Z',
+      visibility: { hidden: false, assignedTo: null }
+    },
     [Events.CONVERSATION_READ]: read,
-    [Events.MESSAGE_QUEUED]: message,
+    [Events.MESSAGE_QUEUED]: { ...message, clientMessageId: 'key-1' },
     [Events.MESSAGE_NOTE_ADDED]: message,
     [Events.MESSAGE_SENT]: status,
     [Events.MESSAGE_DELIVERED]: status,
@@ -142,9 +160,20 @@ describe('bridgedPayload', () => {
   })
 
   it('knows no event that is not bridged, nor a property that every object has', () => {
-    expect(bridgedPayload(Events.MESSAGE_RECEIVED, read)).toBeNull()
+    expect(bridgedPayload(Events.ORDER_CREATED, read)).toBeNull()
     expect(bridgedPayload('constructor', read)).toBeNull()
     expect(bridgedPayload('toString', read)).toBeNull()
     expect(bridgedPayload('__proto__', read)).toBeNull()
+  })
+
+  it('drops a reply whose client key is not the shape a client may send', () => {
+    const queued = whole[Events.MESSAGE_QUEUED] as Record<string, unknown>
+    for (const clientMessageId of ['has space', 'a'.repeat(129), '']) {
+      expect(bridgedPayload(Events.MESSAGE_QUEUED, { ...queued, clientMessageId })).toBeNull()
+    }
+    expect(bridgedPayload(Events.MESSAGE_QUEUED, { ...queued, clientMessageId: null })).toEqual({
+      ...queued,
+      clientMessageId: null
+    })
   })
 })

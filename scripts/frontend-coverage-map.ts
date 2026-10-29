@@ -12,6 +12,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'auth.refresh': { step: '3.1' },
   'auth.me': { step: '3.1' },
   'auth.sessions': { step: '3.6' },
+  'presence.team': { step: '3.2' },
   'auth.sessionById': { step: '3.6' },
   'organizations.current': { step: '3.6' },
   'organizations.stores': { step: '3.6' },
@@ -246,11 +247,11 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
 
 export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   CONVERSATION_CREATED: { step: '3.2' },
-  CONVERSATION_UPDATED: { step: '3.2' },
   CONVERSATION_ASSIGNED: { step: '3.2' },
   CONVERSATION_STATUS_CHANGED: { step: '3.2' },
   CONVERSATION_READ: { step: '3.2' },
   MESSAGE_RECEIVED: { step: '3.2' },
+  MESSAGE_QUEUED: { step: '3.2' },
   MESSAGE_SENT: { step: '3.2' },
   MESSAGE_DELIVERED: { step: '3.2' },
   MESSAGE_READ: { step: '3.2' },

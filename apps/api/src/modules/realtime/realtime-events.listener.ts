@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter'
 
 import { Permissions } from '@platform/core/auth'
 import {
+  type BridgedPayloads,
   type ConversationAssignedPayload,
   type ConversationReadPayload,
   type ConversationStatusChangedPayload,
@@ -127,27 +128,59 @@ export class RealtimeEventsListener {
     })
   }
 
-  // A reply that is stored and waits for its channel, and one that the channel took, reach the browser
-  // as the same event: the client reads the message again for its state, whichever it is
+  // A conversation the customer started: who may see it hears it, as for any change of one
+  @OnEvent(Events.CONVERSATION_CREATED)
+  onCreated(payload: BridgedPayloads[typeof Events.CONVERSATION_CREATED]): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.CONVERSATION_CREATED,
+      {
+        conversationId: payload.conversationId,
+        customerId: payload.customerId,
+        channelType: payload.channelType
+      },
+      socket => mayAny(socket, [payload.visibility])
+    )
+  }
+
+  // A message of the customer: ids and the date, the text is read through the api
+  @OnEvent(Events.MESSAGE_RECEIVED)
+  onReceived(payload: BridgedPayloads[typeof Events.MESSAGE_RECEIVED]): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_RECEIVED,
+      {
+        conversationId: payload.conversationId,
+        messageId: payload.messageId,
+        authorType: payload.authorType,
+        createdAt: payload.receivedAt
+      },
+      mayHear(payload)
+    )
+  }
+
+  // A reply that waits for its channel carries the key of the client that wrote it, so that its
+  // optimistic bubble matches; the one the channel took has no client to match
   @OnEvent(Events.MESSAGE_QUEUED)
   onQueued(payload: MessageQueuedPayload): Promise<void> {
-    return this.messageChanged(payload)
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.MESSAGE_QUEUED,
+      {
+        conversationId: payload.conversationId,
+        messageId: payload.messageId,
+        clientMessageId: payload.clientMessageId
+      },
+      mayHear(payload)
+    )
   }
 
   @OnEvent(Events.MESSAGE_SENT)
   onSent(payload: MessageStatusPayload): Promise<void> {
-    return this.messageChanged(payload)
-  }
-
-  private messageChanged(payload: MessageStatusPayload | MessageQueuedPayload): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,
       RealtimeEvents.MESSAGE_SENT,
-      {
-        conversationId: payload.conversationId,
-        messageId: payload.messageId,
-        clientMessageId: null
-      },
+      { conversationId: payload.conversationId, messageId: payload.messageId },
       mayHear(payload)
     )
   }

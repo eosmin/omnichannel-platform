@@ -179,6 +179,10 @@ export class PresenceService {
       pipeline.get(CacheKeys.presence.lastActivity(storeId, userId))
     }
     const results = await pipeline.exec()
+    // A command that failed is not "no socket alive": the answer would drop people who are connected
+    for (const [error] of results ?? []) {
+      if (error !== null) throw error
+    }
 
     const now = Date.now()
     const present: UserPresence[] = []

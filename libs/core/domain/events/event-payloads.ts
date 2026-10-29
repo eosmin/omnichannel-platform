@@ -22,6 +22,7 @@ export interface MessageReceivedPayload {
   authorType: AuthorType
   contentPreview: string | null // First 200 chars, for listeners that only need a glance
   receivedAt: string // ISO 8601
+  visibility: ConversationVisibility
 }
 
 export interface ConversationCreatedPayload {
@@ -31,6 +32,7 @@ export interface ConversationCreatedPayload {
   channelType: ChannelId
   firstMessageId: string // Emitted after the first message is persisted, never before
   firstMessageContent: string | null
+  visibility: ConversationVisibility
 }
 
 export interface ConversationStatusChangedPayload {
@@ -94,6 +96,8 @@ export interface MessageQueuedPayload {
   conversationId: string
   messageId: string
   authorId: string
+  // The idempotency key the client sent: the optimistic bubble of that client matches by it
+  clientMessageId: string | null
   createdAt: string // ISO 8601
   visibility: ConversationVisibility
 }
@@ -219,4 +223,14 @@ export interface DomainEventPayloads {
   [Events.CUSTOMER_MERGED]: CustomerMergedPayload
   [Events.CUSTOMER_UNMERGED]: CustomerUnmergedPayload
   [Events.CUSTOMER_IDENTITY_LINKED]: CustomerIdentityLinkedPayload
+}
+
+// What crosses the bridge from the worker to the api instances: the same payloads with the text taken
+// out, because nothing with text leaves the server (the client reads it through the REST api)
+export type BridgedPayloads = Omit<
+  DomainEventPayloads,
+  typeof Events.MESSAGE_RECEIVED | typeof Events.CONVERSATION_CREATED
+> & {
+  [Events.MESSAGE_RECEIVED]: Omit<MessageReceivedPayload, 'contentPreview'>
+  [Events.CONVERSATION_CREATED]: Omit<ConversationCreatedPayload, 'firstMessageContent'>
 }

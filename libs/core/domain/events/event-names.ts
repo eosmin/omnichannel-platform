@@ -9,7 +9,6 @@ export const Events = {
 
   // Conversations
   CONVERSATION_CREATED: 'conversation.created',
-  CONVERSATION_UPDATED: 'conversation.updated',
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_UNASSIGNED: 'conversation.unassigned',
   CONVERSATION_STATUS_CHANGED: 'conversation.status_changed',
@@ -154,9 +153,11 @@ export const EVENTS_BRIDGE_CHANNEL = 'platform:events-bridge'
 export type EventName = (typeof Events)[keyof typeof Events]
 
 // The events the worker passes to the api instances, which turn them into what the browsers hear.
-// Only these leave the worker: an event whose payload carries text (MESSAGE_RECEIVED has a preview)
-// is not here, and joins when it has been cut down to ids.
+// Only these leave the worker, and each with the fields of its schema in bridged-payloads.ts: the
+// text of MESSAGE_RECEIVED and CONVERSATION_CREATED is left behind, nothing with text crosses.
 export const BridgedEvents = [
+  Events.CONVERSATION_CREATED,
+  Events.MESSAGE_RECEIVED,
   Events.CONVERSATION_STATUS_CHANGED,
   Events.CONVERSATION_ASSIGNED,
   Events.CONVERSATION_READ,

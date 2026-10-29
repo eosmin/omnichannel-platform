@@ -583,4 +583,51 @@ describe('Tenant isolation', () => {
       expect(response.status).toBe(403)
     })
   })
+
+  // GET /auth/me belongs to a person and takes no store: what it lists is decided by whose token it is
+  describe('the memberships of the account', () => {
+    it('are the ones of the caller: a user never reads the stores of another organization', async () => {
+      const response = await anonymousApi(app)
+        .get(ApiRoutes.auth.me)
+        .set('authorization', `Bearer ${ctx.adminA.token}`)
+
+      const stores = (response.body as { memberships: { storeId: string }[] }).memberships.map(
+        membership => membership.storeId
+      )
+      expect(response.status).toBe(200)
+      expect(stores).toContain(ctx.storeA.id)
+      expect(stores).not.toContain(ctx.storeB.id)
+    })
+
+    it('are the ones of the caller from the other side too', async () => {
+      const response = await anonymousApi(app)
+        .get(ApiRoutes.auth.me)
+        .set('authorization', `Bearer ${ctx.adminB.token}`)
+
+      const stores = (response.body as { memberships: { storeId: string }[] }).memberships.map(
+        membership => membership.storeId
+      )
+      expect(stores).toContain(ctx.storeB.id)
+      expect(stores).not.toContain(ctx.storeA.id)
+    })
+  })
+
+  // Who of the team is online comes from Redis, keyed by the store of the request
+  describe('the presence of the team', () => {
+    it('is answered for the store of the caller, with nobody of another store in it', async () => {
+      const response = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.presence.team)
+
+      expect(response.status).toBe(200)
+      expect(JSON.stringify(response.body)).not.toContain(ctx.adminB.id)
+    })
+
+    it('is refused for a store the user does not belong to', async () => {
+      const response = await anonymousApi(app)
+        .get(ApiRoutes.presence.team)
+        .set('authorization', `Bearer ${ctx.adminB.token}`)
+        .set(TenantHeaders.STORE_ID, ctx.storeA.id)
+
+      expect(response.status).toBe(403)
+    })
+  })
 })

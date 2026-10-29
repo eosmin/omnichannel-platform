@@ -124,3 +124,11 @@ export const statusOf = (text: string): ConversationStatus =>
 export function isHiddenStatus(text: string): boolean {
   return ConversationHiddenStatuses.some(hidden => String(hidden) === text)
 }
+
+// Who may see a conversation, from the row as it stands: it travels with the events that tell of it
+export function visibilityOf(row: {
+  status: string
+  assignedTo: string | null
+}): ConversationVisibility {
+  return { hidden: isHiddenStatus(row.status), assignedTo: row.assignedTo }
+}

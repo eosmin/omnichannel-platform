@@ -9,7 +9,7 @@ export class SendAttemptFailed extends Error {
   constructor(
     code: ErrorCode,
     cause: unknown,
-    what: 'a reply' | 'a reaction' | 'an edit' | 'a deletion' = 'a reply'
+    what: 'a reply' | 'a reaction' | 'an edit' | 'a deletion' | 'a read receipt' = 'a reply'
   ) {
     super(`sending ${what} failed: ${code} (${errorName(cause)})`)
     this.name = 'SendAttemptFailed'

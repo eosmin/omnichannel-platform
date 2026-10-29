@@ -1,12 +1,17 @@
 import { z } from 'zod'
 
-import { CHANNEL_ID_PATTERN, ConversationStatus } from '@platform/core/domain'
+import {
+  AuthorType,
+  CHANNEL_ID_PATTERN,
+  ConversationStatus,
+  idempotencyKeySchema
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   type BridgedEvent,
   BridgedEvents,
   ChannelDisconnectedReasons,
-  type DomainEventPayloads,
+  type BridgedPayloads,
   Events
 } from '@platform/core/events'
 
@@ -26,7 +31,7 @@ const actor = z.object({ type: z.enum(['user', 'system']), id: id.nullable() })
 // anyone else that does not fit is dropped before any listener reads it.
 // Typed against the payloads of the events: a field that changes there stops this from compiling,
 // instead of making every such event fail to parse at run time.
-const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown> } = {
+const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } = {
   [Events.CONVERSATION_STATUS_CHANGED]: z.object({
     storeId: id,
     conversationId: id,
@@ -43,6 +48,24 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
     assignedBy: actor,
     visibility
   }),
+  [Events.CONVERSATION_CREATED]: z.object({
+    storeId: id,
+    conversationId: id,
+    customerId: id,
+    channelType: z.string().regex(CHANNEL_ID_PATTERN),
+    firstMessageId: id,
+    visibility
+  }),
+  [Events.MESSAGE_RECEIVED]: z.object({
+    storeId: id,
+    conversationId: id,
+    messageId: id,
+    customerId: id,
+    channelType: z.string().regex(CHANNEL_ID_PATTERN),
+    authorType: z.enum(AuthorType),
+    receivedAt: z.iso.datetime(),
+    visibility
+  }),
   [Events.CONVERSATION_READ]: z.object({
     storeId: id,
     conversationId: id,
@@ -54,6 +77,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<DomainEventPayloads[E], unknown>
     conversationId: id,
     messageId: id,
     authorId: id,
+    clientMessageId: idempotencyKeySchema.nullable(),
     createdAt: z.iso.datetime(),
     visibility
   }),
