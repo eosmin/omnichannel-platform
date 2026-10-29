@@ -4,7 +4,8 @@
 export const SessionRoutes = {
   consume: '/auth/consume', // POST { token }: trades a magic-link token for a session
   refresh: '/auth/refresh', // POST: rotates the cookie, answers a new access token
-  logout: '/auth/logout' // POST: revokes the family and clears the cookie
+  logout: '/auth/logout', // POST: revokes the family and clears the cookie
+  accept: '/auth/accept' // POST { token, name? }: accepts an invitation; a new account gets its session here
 } as const
 
 // Held while the cookie rotates, so that two tabs never present the same refresh token (the api

@@ -1,4 +1,12 @@
 {
+  "account": {
+    "profileTitle": "Profile",
+    "name": "Name",
+    "email": "Email",
+    "language": "Language",
+    "timezone": "Time zone",
+    "notSet": "Not set"
+  },
   "app": {
     "title": "Omnichannel Platform"
   },
@@ -144,6 +152,19 @@
     "VALIDATION_URL_NOT_ALLOWED": "That address is not allowed",
     "WIDGET_ORIGIN_NOT_ALLOWED": "This site is not allowed to use the widget",
     "WIDGET_TOKEN_INVALID": "The widget session is not valid"
+  },
+  "invitation": {
+    "title": "You are invited",
+    "body": "{inviter} invited you to join {store} as {role}.",
+    "nameLabel": "Your name",
+    "nameHint": "Only needed if you do not have an account yet.",
+    "nameRequired": "Enter your name to create your account.",
+    "accept": "Accept invitation",
+    "accepting": "Accepting",
+    "loginRequired": "An account already exists for {email}. Sign in with that address, then open this link again.",
+    "goToLogin": "Sign in",
+    "mismatchTitle": "This invitation is for another address",
+    "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again."
   },
   "login": {
     "title": "Sign in",
@@ -371,5 +392,16 @@
         "WRONG_ITEM": "Wrong item"
       }
     }
+  },
+  "org": {
+    "storesTitle": "Stores"
+  },
+  "shell": {
+    "switchStore": "Switch store",
+    "selectStore": "Select a store",
+    "stores": "Stores",
+    "manageStores": "Manage stores",
+    "account": "Account",
+    "accountMenu": "Account menu"
   }
 }

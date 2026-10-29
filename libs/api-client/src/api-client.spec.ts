@@ -19,6 +19,11 @@ describe('QueryKeys', () => {
     expect(QueryKeys.conversations.byId('s1', 'c1')[0]).toBe(list)
   })
 
+  it('keys the invitation by its token and the organization stores by the store that asks', () => {
+    expect(QueryKeys.invitations.byToken('t1')).toEqual(['invitations', 't1'])
+    expect(QueryKeys.organizations.stores('s1')).toEqual(['organizations', 's1', 'stores'])
+  })
+
   it('has no billing keys', () => {
     expect(Object.keys(QueryKeys)).not.toContain('billing')
   })

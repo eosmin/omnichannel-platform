@@ -10,6 +10,7 @@ import {
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
+  RefusalReasons,
   resourceConflict,
   unauthorized
 } from '@platform/core/errors'
@@ -97,7 +98,7 @@ export class InvitationAcceptService {
           : await this.accountOfSession(tx, session, invitation.email)
       if (session === undefined && account !== null) {
         throw unauthorized('sign in with the invited address to accept', {
-          reason: 'login_required'
+          reason: RefusalReasons.LOGIN_REQUIRED
         })
       }
       if (account === null && input.name === undefined) {
