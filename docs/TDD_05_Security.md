@@ -302,7 +302,7 @@ SSL/TLS
 ```
 
 **Important:** exclude from bot challenges — they are legitimate automated traffic:
-- `/api/v1/webhooks/channels/*` (Meta, Resend inbound)
+- `/api/v1/webhooks/channels/*` (Meta)
 - `/api/v1/webhooks/stripe`, `/api/v1/webhooks/resend`
 - `/api/v1/widget/*` (visitor browsers on third-party sites; rate-limited instead)
 

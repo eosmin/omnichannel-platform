@@ -1512,7 +1512,6 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
   EMAIL_FROM: senderAddress.default('noreply@platform.local'),   // A bare address or "Name <address>"; senderAddress is a z.string().refine() that accepts either form
-  EMAIL_INBOUND_DOMAIN: z.string().optional(),          // e.g. inbound.platform.com, TDD_10 §5.5
 
   // Observability
   SENTRY_DSN: z.url().optional(),

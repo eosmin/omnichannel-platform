@@ -1,4 +1,3 @@
-import { InjectQueue } from '@nestjs/bullmq'
 import {
   Controller,
   Get,
@@ -11,14 +10,13 @@ import {
   Req
 } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
-import type { Queue } from 'bullmq'
 import type { Request } from 'express'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { ChannelWebhookThrottle } from '@platform/core/auth'
 import { Public } from '@platform/core/auth-module'
-import { CHANNEL_ID_PATTERN, InboundLimits } from '@platform/core/domain'
+import { CHANNEL_ID_PATTERN, ChannelIds } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -28,13 +26,9 @@ import {
 import { RateLimit } from '@platform/core/http'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
-import { JobNames, QueueNames } from '@platform/core/queues'
-import {
-  channelEventSchema,
-  inboundJobId,
-  PluginRegistry,
-  type ProcessChannelEventJob
-} from '@platform/plugins/runtime'
+import { PluginRegistry } from '@platform/plugins/runtime'
+
+import { InboundEventQueue } from './inbound-event-queue.service'
 
 // Only the strings of the headers: the plugin verifies a signature, not a list
 function stringHeaders(headers: Request['headers']): Record<string, string> {
@@ -54,7 +48,7 @@ function stringHeaders(headers: Request['headers']): Record<string, string> {
 export class ChannelWebhookController {
   constructor(
     private readonly registry: PluginRegistry,
-    @InjectQueue(QueueNames.INBOUND) private readonly inboundQueue: Queue<ProcessChannelEventJob>,
+    private readonly queue: InboundEventQueue,
     @InjectMetric(MetricNames.CHANNEL_WEBHOOK_RECEIVED) private readonly received: Counter<string>,
     @InjectMetric(MetricNames.CHANNEL_WEBHOOK_REJECTED) private readonly rejected: Counter<string>,
     private readonly logger: PinoLogger
@@ -101,29 +95,7 @@ export class ChannelWebhookController {
     }
     this.received.inc({ channel_type: pluginId })
 
-    const receivedAt = new Date().toISOString()
-    const jobs: { name: string; data: ProcessChannelEventJob; opts: { jobId: string } }[] = []
-    for (const candidate of await this.normalize(pluginId, plugin, req.body)) {
-      // What the plugin returns is not trusted: the signature said who sent the request, not that the
-      // plugin read it well. An event that does not fit is left out and said; the rest goes on, because
-      // refusing the request would make the provider send the good ones again for ever.
-      const parsed = channelEventSchema.safeParse(candidate)
-      if (!parsed.success) {
-        this.logger.warn(
-          { pluginId, issues: parsed.error.issues.map(issue => issue.path.join('.')) },
-          'event of a plugin left out: it does not fit its schema'
-        )
-        continue
-      }
-      jobs.push({
-        name: JobNames.PROCESS_CHANNEL_EVENT,
-        data: { pluginId, event: parsed.data, receivedAt },
-        opts: { jobId: inboundJobId(pluginId, parsed.data) }
-      })
-    }
-    for (let i = 0; i < jobs.length; i += InboundLimits.MAX_EVENTS_PER_REQUEST) {
-      await this.inboundQueue.addBulk(jobs.slice(i, i + InboundLimits.MAX_EVENTS_PER_REQUEST))
-    }
+    await this.queue.enqueue(pluginId, await this.normalize(pluginId, plugin, req.body))
     return { received: true }
   }
 
@@ -146,7 +118,12 @@ export class ChannelWebhookController {
 
   // The same answer for a channel that is not registered and for one that is malformed: nothing to learn
   private pluginOf(pluginId: string): ReturnType<PluginRegistry['get']> {
-    const plugin = CHANNEL_ID_PATTERN.test(pluginId) ? this.registry.find(pluginId) : undefined
+    // The widget has doors of its own, which check the site, its origins and the limits of a visitor;
+    // this one would let a token past all three
+    const plugin =
+      CHANNEL_ID_PATTERN.test(pluginId) && pluginId !== ChannelIds.WEB_WIDGET
+        ? this.registry.find(pluginId)
+        : undefined
     if (plugin === undefined) throw resourceNotFound('channel')
     return plugin
   }

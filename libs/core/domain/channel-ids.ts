@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { WhatsAppLimits } from './whatsapp-constants'
+import { WidgetLimits } from './widget-constants'
 
 // The ids of the official channel plugins. A channel is the id of a registered plugin (TDD_10 §6.7),
 // so this list is not the set of all channels: a plugin the owner adds brings an id of its own.
@@ -8,8 +9,7 @@ export const ChannelIds = {
   WHATSAPP: 'whatsapp',
   INSTAGRAM: 'instagram',
   MESSENGER: 'messenger',
-  WEB_WIDGET: 'web_widget',
-  EMAIL: 'email'
+  WEB_WIDGET: 'web_widget'
 } as const
 export type OfficialChannelId = (typeof ChannelIds)[keyof typeof ChannelIds]
 
@@ -68,7 +68,8 @@ export const ChannelHealthErrors = {
 export const ChannelTextLimits: Readonly<Record<string, number>> = {
   [ChannelIds.WHATSAPP]: WhatsAppLimits.TEXT_MAX_LENGTH,
   [ChannelIds.MESSENGER]: 2000,
-  [ChannelIds.INSTAGRAM]: 1000
+  [ChannelIds.INSTAGRAM]: 1000,
+  [ChannelIds.WEB_WIDGET]: WidgetLimits.CONTENT_MAX_LENGTH
 }
 
 // The send of a reply is one call to the provider, from a job: bounded like the other calls to it

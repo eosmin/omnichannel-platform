@@ -433,9 +433,6 @@ testChannelPluginContract(() => createInstagramPluginForTest(), instagramFixture
 
 // libs/channels/web-widget/src/web-widget.plugin.contract.spec.ts
 testChannelPluginContract(() => createWebWidgetPluginForTest(), webWidgetFixtures)
-
-// libs/channels/email/src/email.plugin.contract.spec.ts
-testChannelPluginContract(() => createEmailPluginForTest(), emailFixtures)
 ```
 
 Fixtures are captured from real provider payloads, with PII replaced. They run in the

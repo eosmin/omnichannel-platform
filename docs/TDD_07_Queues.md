@@ -711,7 +711,6 @@ export const EmailTemplates = {
   CHANNEL_DISCONNECTED: 'channel-disconnected',
   WEBHOOK_AUTO_DISABLED: 'webhook-auto-disabled',
   IMPERSONATION_STARTED: 'impersonation-started',
-  EMAIL_CHANNEL_REPLY: 'email-channel-reply',       // Outbound reply for the email channel (TDD_10 §5.5)
 } as const
 
 export type EmailTemplate = typeof EmailTemplates[keyof typeof EmailTemplates]
@@ -875,10 +874,6 @@ export class ResendWebhookController {
       case ResendEventTypes.EMAIL_COMPLAINED:
         this.logger.warn({ emailHash: hashEmail(event.data.to[0]) }, 'spam complaint received')
         break
-
-      case ResendEventTypes.EMAIL_RECEIVED:                    // Inbound email channel, TDD_10 §5.5
-        await this.inboundQueue.add(JobNames.PROCESS_CHANNEL_EVENT, this.emailChannel.toChannelEventJob(event))
-        break
     }
 
     return { received: true }
@@ -898,7 +893,7 @@ Before sending any production email:
 - [ ] SPF record configured
 - [ ] DKIM signing enabled and verified
 - [ ] DMARC policy published (start p=none, move to p=quarantine)
-- [ ] Dedicated sending subdomain (mail.platform.com) and inbound subdomain (inbound.platform.com, MX → Resend)
+- [ ] Dedicated sending subdomain (mail.platform.com)
 - [ ] Warm-up period respected for a new sending domain
 - [ ] Unsubscribe link in every non-transactional email
 - [ ] Plain-text alternative for every HTML email

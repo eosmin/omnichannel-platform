@@ -6,6 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  ChannelIds,
   ConversationStatus,
   DeliveryStatus,
   InvitationStatus,
@@ -445,6 +446,89 @@ describe('Tenant isolation', () => {
         await isolationChecks[check](scene, resource)
       })
     }
+  })
+
+  // TDD_13 section 6: the widget is public, so the key it carries is all that says which store it is
+  // talking to. The case was waiting for the step that builds it (Step 2.8)
+  describe('a widget site key', () => {
+    const SITE_A = 'https://shop-a.example'
+    const SITE_B = 'https://shop-b.example'
+    const siteKey = (letter: string): string => `pk_widget_${letter.repeat(24)}`
+    const widget = async (storeId: string, key: string, origin: string): Promise<void> => {
+      const installation = await ensurePluginInstallation(owner, {
+        storeId,
+        pluginId: ChannelIds.WEB_WIDGET
+      })
+      await owner.channelConnection.create({
+        data: {
+          storeId,
+          pluginId: ChannelIds.WEB_WIDGET,
+          installationId: installation.id,
+          connectionId: key,
+          displayName: origin,
+          credentials: Buffer.from('{}'),
+          metadata: { allowedOrigins: [origin] }
+        }
+      })
+    }
+    const bootstrap = (key: string, visitorId: string, origin: string) =>
+      anonymousApi(app)
+        .post(ApiRoutes.widget.bootstrap)
+        .set('origin', origin)
+        .send({ siteKey: key, visitorId })
+
+    beforeAll(async () => {
+      await widget(ctx.storeA.id, siteKey('A'), SITE_A)
+      await widget(ctx.storeB.id, siteKey('B'), SITE_B)
+    })
+
+    it('is not accepted from the site of another store', async () => {
+      const response = await bootstrap(siteKey('A'), randomUUID(), SITE_B)
+
+      expect(response.status).toBe(403)
+      expect((response.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.WIDGET_ORIGIN_NOT_ALLOWED
+      )
+    })
+
+    it('shows a visitor only the conversation they had with the store of the key', async () => {
+      const visitorId = randomUUID()
+      const identity = await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitorId
+      })
+      const connection = await owner.channelConnection.findFirstOrThrow({
+        where: { connectionId: siteKey('A') },
+        select: { id: true }
+      })
+      const conversation = await owner.conversation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          customerId: identity.customerId,
+          customerIdentityId: identity.id,
+          channelConnectionId: connection.id,
+          channelType: ChannelIds.WEB_WIDGET
+        },
+        select: { id: true }
+      })
+      await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.TEXT,
+          content: 'SecretOfStoreA',
+          authorType: 'customer'
+        }
+      })
+
+      const own = await bootstrap(siteKey('A'), visitorId, SITE_A)
+      const other = await bootstrap(siteKey('B'), visitorId, SITE_B)
+
+      expect(JSON.stringify(own.body)).toContain('SecretOfStoreA')
+      expect(other.status).toBe(200)
+      expect(JSON.stringify(other.body)).not.toContain('SecretOfStoreA')
+    })
   })
 
   describe('the store of a request', () => {

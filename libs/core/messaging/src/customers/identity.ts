@@ -1,5 +1,3 @@
-import { z } from 'zod'
-
 import { type ChannelId, ChannelIds, CustomerLimits } from '@platform/core/domain'
 
 import { normalizePhone, type NormalizedPhone } from './phone'
@@ -9,7 +7,6 @@ export interface ParsedChannelIdentity {
   identity: string
   // What the handle says about how to reach the person, read once with the handle
   phone?: NormalizedPhone
-  email?: string
 }
 
 export interface ChannelIdentitySource {
@@ -33,13 +30,6 @@ export function parseChannelIdentity(
     case ChannelIds.WHATSAPP: {
       const phone = normalizePhone(text, { fromChannel })
       return phone === null ? null : { identity: phone.digits, phone }
-    }
-    case ChannelIds.EMAIL: {
-      const address = text.toLowerCase()
-      return address.length <= CustomerLimits.EMAIL_MAX_LENGTH &&
-        z.email().safeParse(address).success
-        ? { identity: address, email: address }
-        : null
     }
     default:
       return { identity: text }

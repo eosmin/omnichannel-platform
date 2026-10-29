@@ -365,7 +365,7 @@ describe('The customers of a store', () => {
       const ana = await create({ name: 'Ana J' })
       const response = await asAdmin()
         .post(ApiRoutes.customers.identities(ana.id))
-        .send({ channelType: ChannelType.EMAIL, channelIdentity: 'not an address' })
+        .send({ channelType: ChannelType.WHATSAPP, channelIdentity: 'not a phone' })
 
       expect(response.status).toBe(BAD_REQUEST)
     })
@@ -510,20 +510,6 @@ describe('The customers of a store', () => {
       expect(emoji.name).toBe(`${'a'.repeat(119)}\u{1F600}`)
       expect(half.name).toBe('Bea')
       expect(emoji.locale).toBeNull()
-    })
-
-    it('refuses an e-mail handle longer than an e-mail address', async () => {
-      // A valid address of 255 characters: the only thing wrong with it is its length
-      const long = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(58)}.com`
-      expect(long).toHaveLength(255)
-
-      await expect(
-        identities().findOrCreateByIdentity({
-          storeId: ctx.storeA.id,
-          channelType: ChannelType.EMAIL,
-          channelIdentity: long
-        })
-      ).rejects.toMatchObject({ code: ErrorCodes.VALIDATION_INVALID_INPUT })
     })
 
     it('keeps the phone of the customer equal to the handle of its identity', async () => {

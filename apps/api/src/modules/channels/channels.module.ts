@@ -9,6 +9,7 @@ import { TenancyModule } from '../tenancy'
 import { ChannelConnectionsController } from './channel-connections.controller'
 import { ChannelConnectionsService } from './channel-connections.service'
 import { ChannelWebhookController } from './channel-webhook.controller'
+import { InboundEventQueue } from './inbound-event-queue.service'
 
 // The public door of the channels (the webhook) and their management from Settings. The registry
 // comes from the registry module, the inbound queue from the queues module and the cipher of the
@@ -21,7 +22,7 @@ import { ChannelWebhookController } from './channel-webhook.controller'
     TenancyModule
   ],
   controllers: [ChannelWebhookController, ChannelConnectionsController],
-  providers: [ChannelConnectionsService],
-  exports: [ChannelConnectionsService]
+  providers: [ChannelConnectionsService, InboundEventQueue],
+  exports: [ChannelConnectionsService, InboundEventQueue]
 })
 export class ChannelsModule {}

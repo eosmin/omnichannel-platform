@@ -81,8 +81,7 @@ describe('webhooks', () => {
       'email.clicked',
       'email.bounced',
       'email.failed',
-      'email.complained',
-      'email.received'
+      'email.complained'
     ])
   })
 })

@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing'
 import { PinoLogger } from 'nestjs-pino'
 
 import { MetaAppConfig } from '@platform/channels/meta'
+import { WidgetConfig, widgetTokenKey } from '@platform/channels/web-widget'
 import { ChannelIds } from '@platform/core/domain'
 import { ChannelCapability, type ChannelPlugin } from '@platform/plugins/sdk'
 
@@ -144,6 +145,8 @@ describe('PluginsModule', () => {
       // The config reads the env of the app, which a unit spec does not have
       .overrideProvider(MetaAppConfig)
       .useValue({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
+      .overrideProvider(WidgetConfig)
+      .useValue({ tokenKey: widgetTokenKey('s'.repeat(32)) })
       .useMocker(token =>
         token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
       )
@@ -154,7 +157,12 @@ describe('PluginsModule', () => {
       .get(PluginRegistry)
       .list('any-store')
       .map(plugin => plugin.id)
-    expect(ids).toEqual([ChannelIds.WHATSAPP, ChannelIds.INSTAGRAM, ChannelIds.MESSENGER])
+    expect(ids).toEqual([
+      ChannelIds.WHATSAPP,
+      ChannelIds.INSTAGRAM,
+      ChannelIds.MESSENGER,
+      ChannelIds.WEB_WIDGET
+    ])
     await moduleRef.close()
   })
 
@@ -166,7 +174,8 @@ describe('PluginsModule', () => {
       env: {
         META_APP_SECRET: 'wiring-secret',
         META_WEBHOOK_VERIFY_TOKEN: 'wiring-verify',
-        META_GRAPH_API_VERSION: 'v23.0'
+        META_GRAPH_API_VERSION: 'v23.0',
+        JWT_SECRET: 'j'.repeat(32)
       }
     }))
     const { PluginsModule: Fresh } = await import('./plugins.module')

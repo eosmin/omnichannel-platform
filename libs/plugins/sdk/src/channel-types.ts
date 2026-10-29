@@ -53,10 +53,10 @@ export interface ChannelOrigin {
 export interface ChannelEvent {
   type: ChannelEventType
   // The RECIPIENT of the event: WhatsApp phone_number_id, Facebook Page id, Instagram business
-  // account id, widget site key, inbound mailbox. It resolves the store.
+  // account id, widget site key. It resolves the store.
   connectionId: string
   // The customer's handle on this channel: phone (E.164 without '+'), page-scoped id, widget
-  // visitor id, email address
+  // visitor id
   channelIdentity: string
   channelProfile?: { displayName?: string; avatarUrl?: string; locale?: string }
   message?: {

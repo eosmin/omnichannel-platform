@@ -8,7 +8,7 @@
 ## What this project is
 
 Omnichannel Commerce Platform — a multi-tenant SaaS that unifies WhatsApp,
-Instagram, Messenger, a web widget and email into one inbox, with order
+Instagram, Messenger and a web widget into one inbox, with order
 management, customer management and a plugin system. Full specification
 lives in `docs/` (TDD v1.2). The v1.2 MVP serves a single owner and their own
 stores: billing, plans, public signup, the staff console, referrals and AI are

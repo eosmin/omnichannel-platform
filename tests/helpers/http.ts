@@ -16,7 +16,7 @@ export interface StoreRef {
   id: string
 }
 
-type Method = 'get' | 'post' | 'patch' | 'put' | 'delete'
+type Method = 'get' | 'post' | 'patch' | 'put' | 'delete' | 'options'
 
 // Each request comes from an address of its own, as it would from the many clients of the real api:
 // the rate limit is counted per address in a Redis that every run shares, and a suite that sent
@@ -31,6 +31,7 @@ export interface TestAgent {
   patch: (path: string) => supertest.Test
   put: (path: string) => supertest.Test
   delete: (path: string) => supertest.Test
+  options: (path: string) => supertest.Test
 }
 
 // The last answers of the api to the current test, for tests/helpers/test-environment.cjs to print
@@ -66,7 +67,8 @@ function agent(app: INestApplication, headers: Record<string, string>): TestAgen
     post: (path: string) => send('post', path),
     patch: (path: string) => send('patch', path),
     put: (path: string) => send('put', path),
-    delete: (path: string) => send('delete', path)
+    delete: (path: string) => send('delete', path),
+    options: (path: string) => send('options', path)
   }
 }
 

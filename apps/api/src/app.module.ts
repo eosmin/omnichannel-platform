@@ -19,6 +19,7 @@ import { SettingsModule } from './modules/settings/settings.module'
 import { TeamModule } from './modules/team/team.module'
 import { TenancyModule } from './modules/tenancy'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
+import { WidgetModule } from './modules/widget/widget.module'
 
 // TenancyModule comes after HttpPlatformModule: the guards run in the order registered, and the rate
 // limit and the token check come first
@@ -42,7 +43,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module'
     RealtimeModule,
     SettingsModule,
     InvitationsModule,
-    WebhooksModule
+    WebhooksModule,
+    WidgetModule
   ]
 })
 export class AppModule {}

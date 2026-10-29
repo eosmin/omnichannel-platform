@@ -1167,8 +1167,8 @@ opening the conversation sees which messages were AI-authored.
 
 - **Customer-facing.** The web widget renders an "Automated response" label
   (`t('ai.automatedResponse')` in the customer's locale) on messages with
-  `authorType = AI_AGENT`. Channels that cannot render UI (WhatsApp, Instagram, Messenger,
-  email) get a short translated prefix line in the message body
+  `authorType = AI_AGENT`. Channels that cannot render UI (WhatsApp, Instagram, Messenger)
+  get a short translated prefix line in the message body
   (`labelAsAutomated`, key `ai.automatedPrefix`).
 - **Agent-facing.** The inbox thread marks AI messages with the `Sparkles` icon and the
   conversation header shows, while `handler = AI`:
