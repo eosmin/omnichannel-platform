@@ -388,46 +388,33 @@ Widget routes (`ApiRoutes.widget.*`) are served with `Access-Control-Allow-Origi
 the store's registered site origins (`ChannelConnection.metadata.allowedOrigins`,
 `TDD_10` §5.4), never `*`.
 
-**Web app (`apps/web`) — CSP set in `next.config.ts` headers. This is where CSP matters:**
+**Web app (`apps/web`) — the CSP carries a nonce, so `proxy.ts` sets it on every request; the headers that never change are in `next.config.ts`. This is where CSP matters:**
 ```typescript
-// apps/web/next.config.ts (excerpt)
-const csp = [
+// apps/web/lib/security-headers.ts (excerpt; buildContentSecurityPolicy, called by proxy.ts)
+const directives = [
   "default-src 'self'",
-  "script-src 'self'",                                   // Next 16 emits nonce-based inline scripts; nonce added in proxy.ts
-  "style-src 'self' 'unsafe-inline'",                    // Tailwind 4 needs no inline styles; Radix/shadcn portals inject a few. Revisit with a nonce.
-  "img-src 'self' data: blob: https://*.s3.amazonaws.com https://*.amazonaws.com",
-  `connect-src 'self' ${webEnv.NEXT_PUBLIC_API_URL} ${webEnv.NEXT_PUBLIC_WS_URL} https://*.s3.amazonaws.com https://*.amazonaws.com https://*.sentry.io`,
+  `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,   // Next puts the nonce of the request on its own scripts
+  "style-src 'self' 'unsafe-inline'",                    // Tailwind 4 needs no inline styles; the Radix portals inject a few. Revisit with a nonce.
+  `img-src 'self' data: blob: ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`,   // https://*.fbcdn.net https://*.cdninstagram.com https://platform-lookaside.fbsbx.com: the avatars Meta hands over (untrusted, initials when they fail). The bucket host joins img-src, and media-src is added, with the attachments of Step 3.4
+  `connect-src 'self' <api origin> <websocket origin> [<Sentry dsn origin>]`,
   "font-src 'self'",
   "object-src 'none'",
-  "frame-src 'self' https://checkout.stripe.com https://billing.stripe.com",   // + plugin widget origins, appended per store at request time (TDD_10 §7)
+  "frame-src 'none'",                                    // The origins of the plugin widget iframes (TDD_10 §7) join it per store, in the step that builds them; Stripe is Phase 2
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "worker-src 'self'",                                   // Service worker
-  "manifest-src 'self'",
-].join('; ')
+  "manifest-src 'self'"
+]
 
-export default {
-  headers: async () => [{
-    source: '/(.*)',
-    headers: [
-      { key: 'Content-Security-Policy', value: csp },
-      { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
-      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-      { key: 'X-Content-Type-Options', value: 'nosniff' },
-      { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
-    ],
-  }],
-}
+// apps/web/next.config.ts: STATIC_SECURITY_HEADERS, on every path
+//   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+//   Referrer-Policy: strict-origin-when-cross-origin
+//   X-Content-Type-Options: nosniff
+//   Permissions-Policy: camera=(self), microphone=(), geolocation=()
 ```
 
-Plugin widget iframes need their origin in `frame-src`; `proxy.ts` appends the store's
-installed plugin widget origins to the header per request (`TDD_10` §7). Images from S3
-are always **signed URLs** on the bucket host, so `img-src` allows the bucket host only.
-
-**Widget script (`apps/widget`)** runs on merchants' sites and therefore has no CSP of its
-own; it must work under strict merchant CSPs, so it uses no inline scripts/styles and
-loads everything from `widget.platform.com`.
+`upgrade-insecure-requests` is left out on purpose: the end to end suite drives the production build over `http://localhost`, and HSTS already makes a browser use https on the deployed host. A page under a nonce is rendered per request, never statically (Next requires it); the app reads the locale cookie on every page anyway.
 
 Verify with https://securityheaders.com — target grade A on `app.platform.com`.
 
