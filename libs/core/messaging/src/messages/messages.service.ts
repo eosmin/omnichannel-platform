@@ -209,6 +209,7 @@ export class MessagesService {
     }
     this.events.publish(tx, Events.MESSAGE_QUEUED, {
       ...base,
+      clientMessageId: body.idempotencyKey ?? null,
       createdAt: createdAt.toISOString(),
       visibility
     })

@@ -165,6 +165,13 @@ export interface SendOutboundDeleteJob extends BaseJob {
   messageId: string
   version: number
 }
+// The agent read the conversation up to `messageId`, the latest message of the customer that has an id at
+// the channel. Nothing is stored about it: the job is best effort.
+export interface SendOutboundReadReceiptJob extends BaseJob {
+  storeId: string
+  conversationId: string
+  messageId: string
+}
 export interface EnforceRetentionJob extends BaseJob {
   storeId: string
 }

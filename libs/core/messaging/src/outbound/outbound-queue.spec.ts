@@ -1,8 +1,8 @@
 import { type Queue } from 'bullmq'
 
-import type { SendOutboundMessageJob } from '@platform/core/queues'
+import type { SendOutboundMessageJob, SendOutboundReadReceiptJob } from '@platform/core/queues'
 
-import { OutboundQueue, outboundJobId } from './outbound-queue'
+import { OutboundQueue, outboundJobId, readReceiptJobId } from './outbound-queue'
 
 const job: SendOutboundMessageJob = { storeId: 'store', messageId: 'message' }
 
@@ -55,4 +55,35 @@ describe('OutboundQueue.requeue', () => {
 
     expect(added).toHaveBeenCalledTimes(1)
   })
+})
+
+describe('OutboundQueue.enqueueReadReceipt', () => {
+  const receipt: SendOutboundReadReceiptJob = {
+    storeId: 'store',
+    conversationId: 'conversation',
+    messageId: 'message'
+  }
+
+  it('removes a failed job first, because BullMQ would ignore a new job under its id', async () => {
+    const { queue, removed, added } = queueWith('failed')
+
+    await new OutboundQueue(queue).enqueueReadReceipt(receipt)
+
+    expect(removed).toHaveBeenCalledTimes(1)
+    expect(added).toHaveBeenCalledWith(expect.any(String), receipt, {
+      jobId: readReceiptJobId(receipt),
+      attempts: 2
+    })
+  })
+
+  it.each(['completed', 'waiting', 'active'])(
+    'leaves a %s job alone: that message was already told about, or is being',
+    async state => {
+      const { queue, removed } = queueWith(state)
+
+      await new OutboundQueue(queue).enqueueReadReceipt(receipt)
+
+      expect(removed).not.toHaveBeenCalled()
+    }
+  )
 })

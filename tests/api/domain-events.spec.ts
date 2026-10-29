@@ -196,19 +196,24 @@ describe('The domain events of the services', () => {
 
       const messageId = (sent.body as { id: string }).id
       const queued = heardOf(Events.MESSAGE_QUEUED)
-      // Ids and dates only: no text, no idempotency key, and the reopened conversation is not hidden
+      // Ids and dates only: no text, and the reopened conversation is not hidden. The idempotency key
+      // travels as `clientMessageId`, so the client that wrote the reply can match its bubble
       expect(queued.map(item => item.payload)).toEqual([
         {
           storeId: ctx.storeA.id,
           conversationId: id,
           messageId,
           authorId: ctx.agentA.id,
+          clientMessageId: idempotencyKey,
           createdAt: anyDate,
           visibility: { hidden: false, assignedTo: null }
         }
       ])
       expect(JSON.stringify(heard)).not.toContain('On its way')
-      expect(JSON.stringify(heard)).not.toContain(idempotencyKey)
+      // The key is exposed by that one event, and by none of the others
+      expect(
+        JSON.stringify(heard.filter(item => item.event !== Events.MESSAGE_QUEUED))
+      ).not.toContain(idempotencyKey)
       expect(heardOf(Events.MESSAGE_NOTE_ADDED)).toEqual([])
       expect(heardOf(Events.CONVERSATION_STATUS_CHANGED).map(item => item.payload)).toEqual([
         {

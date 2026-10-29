@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto'
 
 import { ApiRoutes, API_PREFIX } from '@platform/core/api'
-import { MagicLinkThrottle } from '@platform/core/auth'
+import { MagicLinkThrottle, Permissions } from '@platform/core/auth'
 
 import { type AuthTestApp, startAuthTestApp } from '../../testing/auth-test-app'
 
@@ -434,8 +434,62 @@ describe('AuthController', () => {
       const reply = await call('GET', ApiRoutes.auth.me, { token: accessToken })
 
       expect(Object.keys(reply.body as object).sort()).toEqual(
-        ['density', 'email', 'emailVerified', 'id', 'locale', 'name', 'timezone'].sort()
+        [
+          'density',
+          'email',
+          'emailVerified',
+          'id',
+          'locale',
+          'memberships',
+          'name',
+          'timezone'
+        ].sort()
       )
+    })
+
+    it('lists the active stores of the user with their role and permissions', async () => {
+      const { user, accessToken } = await login()
+      const store = await test.tenants.createStore()
+      const roleId = await test.tenants.createRole(store.storeId, [
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.MESSAGES_VIEW
+      ])
+      await test.tenants.addMember(user.id, store, roleId)
+
+      const reply = await call<{ memberships: unknown[] }>('GET', ApiRoutes.auth.me, {
+        token: accessToken
+      })
+
+      expect(reply.body.memberships).toEqual([
+        {
+          storeId: store.storeId,
+          storeName: expect.any(String) as string,
+          role: expect.any(String) as string,
+          permissions: expect.arrayContaining([
+            Permissions.CONVERSATIONS_VIEW,
+            Permissions.MESSAGES_VIEW
+          ]) as string[]
+        }
+      ])
+    })
+
+    it('leaves out a revoked membership and the stores of other users', async () => {
+      const { user, accessToken } = await login()
+      const revoked = await test.tenants.createStore()
+      const others = await test.tenants.createStore()
+      const roleId = await test.tenants.createRole(revoked.storeId, [Permissions.MESSAGES_VIEW])
+      await test.tenants.addMember(user.id, revoked, roleId, 'REVOKED')
+      const stranger = await test.createUser()
+      const strangerRole = await test.tenants.createRole(others.storeId, [
+        Permissions.MESSAGES_VIEW
+      ])
+      await test.tenants.addMember(stranger.id, others, strangerRole)
+
+      const reply = await call<{ memberships: unknown[] }>('GET', ApiRoutes.auth.me, {
+        token: accessToken
+      })
+
+      expect(reply.body.memberships).toEqual([])
     })
   })
 })

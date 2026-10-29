@@ -69,6 +69,8 @@ export const JobNames = {
   // An agent's edit or deletion of a message of ours, sent to the channel that supports it
   SEND_OUTBOUND_EDIT: 'send-outbound-edit',
   SEND_OUTBOUND_DELETE: 'send-outbound-delete',
+  // The blue ticks: the customer's channel is told that an agent read up to a message
+  SEND_OUTBOUND_READ_RECEIPT: 'send-outbound-read-receipt',
 
   // dead letter
   EXHAUSTED: 'exhausted'

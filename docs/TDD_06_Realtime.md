@@ -250,7 +250,6 @@ export class RealtimeEventsListener {
       conversationId: payload.conversationId,
       messageId: payload.messageId,
       authorType: payload.authorType,
-      contentPreview: payload.contentPreview,
       createdAt: payload.receivedAt,
     })
   }
@@ -376,20 +375,15 @@ export function useRealtimeSync(storeId: string): void {
     const onMessageReceived = (payload: RealtimeEventMap[typeof RealtimeEvents.MESSAGE_RECEIVED]) => {
       invalidate([QueryKeys.conversations.all(storeId), QueryKeys.messages.thread(storeId, payload.conversationId)])
     }
-    const onConversationUpdated = (payload: RealtimeEventMap[typeof RealtimeEvents.CONVERSATION_UPDATED]) => {
-      invalidate([QueryKeys.conversations.all(storeId), QueryKeys.conversations.byId(storeId, payload.conversationId)])
-    }
     const onStatusChanged = (payload: RealtimeEventMap[typeof RealtimeEvents.CONVERSATION_STATUS_CHANGED]) => {
       invalidate([QueryKeys.conversations.all(storeId), QueryKeys.conversations.byId(storeId, payload.conversationId), QueryKeys.conversations.counts(storeId)])
     }
 
     socket.on(RealtimeEvents.MESSAGE_RECEIVED, onMessageReceived)
-    socket.on(RealtimeEvents.CONVERSATION_UPDATED, onConversationUpdated)
     socket.on(RealtimeEvents.CONVERSATION_STATUS_CHANGED, onStatusChanged)
 
     return () => {
       socket.off(RealtimeEvents.MESSAGE_RECEIVED, onMessageReceived)
-      socket.off(RealtimeEvents.CONVERSATION_UPDATED, onConversationUpdated)
       socket.off(RealtimeEvents.CONVERSATION_STATUS_CHANGED, onStatusChanged)
       invalidate.cancel()
     }

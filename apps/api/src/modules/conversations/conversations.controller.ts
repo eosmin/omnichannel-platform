@@ -19,6 +19,7 @@ import {
   ConversationsService,
   type ListConversationsQuery,
   listConversationsQuerySchema,
+  ReadReceipts,
   type SnoozeBody,
   snoozeSchema,
   viewerOf
@@ -39,7 +40,8 @@ export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly counts: ConversationCountsService,
-    private readonly tags: ConversationTagsService
+    private readonly tags: ConversationTagsService,
+    private readonly readReceipts: ReadReceipts
   ) {}
 
   // countsOnly=true answers the numbers beside the filters instead of a page
@@ -112,13 +114,22 @@ export class ConversationsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
   @Post(ApiRoutes.conversations.read(':id'))
   @HttpCode(HttpStatusCodes.OK)
-  read(
+  async read(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string
   ): Promise<ConversationDetail> {
-    return this.conversations.markRead(store.id, conversationId, viewerOf(user.id, held))
+    const detail = await this.conversations.markRead(
+      store.id,
+      conversationId,
+      viewerOf(user.id, held)
+    )
+    // After the read is stored and only for who could read it: the customer's channel is told too.
+    // Not awaited, so that a slow or unreachable Redis does not hold the answer; queueFor logs its own
+    // failures and never rejects.
+    void this.readReceipts.queueFor(store.id, conversationId)
+    return detail
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)

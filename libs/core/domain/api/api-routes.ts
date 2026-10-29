@@ -278,6 +278,12 @@ export const ApiRoutes = {
     widgetOrigins: (id: string) => `/channels/connections/${id}/widget/origins`
   },
 
+  // Who of the team is connected to the store of the request, read once when the inbox opens; the
+  // sockets keep it current after that
+  presence: {
+    team: '/presence'
+  },
+
   settings: {
     store: '/settings/store',
     inbox: '/settings/inbox',

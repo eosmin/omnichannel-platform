@@ -5,6 +5,7 @@ import { SocketLimits } from '@platform/core/realtime'
 import { TenancyModule } from '../tenancy'
 
 import { EventsGateway } from './events.gateway'
+import { PresenceController } from './presence.controller'
 import { PresenceService } from './presence.service'
 import { RealtimeEventsListener } from './realtime-events.listener'
 import { RealtimeService } from './realtime.service'
@@ -15,6 +16,7 @@ import { SocketAccessService } from './socket-access.service'
 // metrics, the database, the access tokens and the event bus.
 @Module({
   imports: [TenancyModule],
+  controllers: [PresenceController],
   providers: [
     EventsGateway,
     SocketAccessService,

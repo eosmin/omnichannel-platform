@@ -11,7 +11,7 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ensureMembership } from '@platform/core/database-testing'
-import { ConversationStatus, MessageType } from '@platform/core/domain'
+import { AuthorType, ChannelIds, ConversationStatus, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { EventsBridge } from '@platform/core/event-bus'
 import { Events, EVENTS_BRIDGE_CHANNEL } from '@platform/core/events'
@@ -44,6 +44,7 @@ import { api } from '../helpers/http'
 const OK = 200
 const CREATED = 201
 const NO_CONTENT = 204
+const FORBIDDEN = 403
 const WAIT_MS = 4000
 const SETTLE_MS = 250
 const POLL_MS = 20
@@ -311,6 +312,7 @@ describe('The realtime gateway', () => {
       const agent = await asA(ctx.agentA)
       const { id } = await mk()
       await until(() => onlineOf(admin, ctx.agentA.id).length === 1)
+      const idempotencyKey = randomUUID()
 
       const sent = await asAgent()
         .post(ApiRoutes.messages.create)
@@ -318,17 +320,17 @@ describe('The realtime gateway', () => {
           type: MessageType.TEXT,
           conversationId: id,
           content: 'A secret price',
-          idempotencyKey: randomUUID()
+          idempotencyKey
         })
         .expect(CREATED)
       const messageId = (sent.body as { id: string }).id
 
-      await until(() => admin.of(RealtimeEvents.MESSAGE_SENT).length === 1)
-      await until(() => agent.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+      await until(() => admin.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
+      await until(() => agent.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
       // Ids only: the text of a message travels through the api, which applies who may read it
-      const expected = { conversationId: id, messageId, clientMessageId: null }
-      expect(admin.of(RealtimeEvents.MESSAGE_SENT)[0]?.payload).toEqual(expected)
-      expect(agent.of(RealtimeEvents.MESSAGE_SENT)[0]?.payload).toEqual(expected)
+      const expected = { conversationId: id, messageId, clientMessageId: idempotencyKey }
+      expect(admin.of(RealtimeEvents.MESSAGE_QUEUED)[0]?.payload).toEqual(expected)
+      expect(agent.of(RealtimeEvents.MESSAGE_QUEUED)[0]?.payload).toEqual(expected)
       expect(JSON.stringify([admin.heard, agent.heard])).not.toContain('A secret price')
       expect(onlineOf(admin, ctx.agentA.id)[0]?.payload).toEqual({ userId: ctx.agentA.id })
     })
@@ -347,7 +349,7 @@ describe('The realtime gateway', () => {
           idempotencyKey: randomUUID()
         })
         .expect(CREATED)
-      await until(() => mine.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+      await until(() => mine.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
       await sleep(SETTLE_MS)
 
       expect(other.heard.filter(item => item.event !== RealtimeEvents.USER_ONLINE)).toEqual([])
@@ -389,7 +391,7 @@ describe('The realtime gateway', () => {
           idempotencyKey: randomUUID()
         })
         .expect(CREATED)
-      await until(() => viewer.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+      await until(() => viewer.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
     })
 
     it('tells the edit and the deletion of a note only to who may read notes, with ids only', async () => {
@@ -722,7 +724,7 @@ describe('The realtime gateway', () => {
         .patch(ApiRoutes.conversations.assign(id))
         .send({ userId: agent2.id })
         .expect(OK)
-      await until(() => agent.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+      await until(() => agent.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
       await sleep(SETTLE_MS)
 
       expect(probe.heard.filter(item => item.event !== RealtimeEvents.USER_ONLINE)).toEqual([])
@@ -1116,7 +1118,7 @@ describe('The realtime gateway', () => {
       const worker = workerBridge()
 
       try {
-        worker.publish(Events.MESSAGE_RECEIVED, {
+        worker.publish(Events.ORDER_CREATED, {
           storeId: ctx.storeA.id,
           contentPreview: 'A private message'
         })
@@ -1448,10 +1450,10 @@ describe('The realtime gateway', () => {
           idempotencyKey: randomUUID()
         })
         .expect(CREATED)
-      await until(() => watcher.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+      await until(() => watcher.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
       await sleep(SETTLE_MS)
 
-      expect(agent.of(RealtimeEvents.MESSAGE_SENT)).toEqual([])
+      expect(agent.of(RealtimeEvents.MESSAGE_QUEUED)).toEqual([])
     })
   })
 
@@ -1563,9 +1565,9 @@ describe('The realtime gateway', () => {
           idempotencyKey: randomUUID()
         })
         .expect(CREATED)
-      await until(() => remote.of(RealtimeEvents.MESSAGE_SENT).length === 1)
+      await until(() => remote.of(RealtimeEvents.MESSAGE_QUEUED).length === 1)
 
-      expect(remote.of(RealtimeEvents.MESSAGE_SENT)[0]?.payload).toEqual(
+      expect(remote.of(RealtimeEvents.MESSAGE_QUEUED)[0]?.payload).toEqual(
         expect.objectContaining({ conversationId: id })
       )
     })
@@ -1628,6 +1630,133 @@ describe('The realtime gateway', () => {
         conversationId: id,
         userId: ctx.agentA.id
       })
+    })
+
+    it('tells the inbox of a message and of a conversation that the worker received, with no text', async () => {
+      const agent = await asA(ctx.agentA)
+      const viewer = await asA(ctx.viewerA)
+      const other = await connect(ctx.adminB.token, ctx.storeB.id)
+      const { id } = await mk()
+      const messageId = randomUUID()
+      const customerId = randomUUID()
+      const worker = workerBridge()
+
+      worker.publish(Events.CONVERSATION_CREATED, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        customerId,
+        channelType: ChannelIds.WHATSAPP,
+        firstMessageId: messageId,
+        firstMessageContent: 'A private first message',
+        visibility: { hidden: false, assignedTo: null }
+      })
+      worker.publish(Events.MESSAGE_RECEIVED, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        messageId,
+        customerId,
+        channelType: ChannelIds.WHATSAPP,
+        authorType: AuthorType.CUSTOMER,
+        contentPreview: 'A private message',
+        receivedAt: '2026-10-29T12:00:00.000Z',
+        visibility: { hidden: false, assignedTo: null }
+      })
+
+      await until(
+        () =>
+          agent.of(RealtimeEvents.CONVERSATION_CREATED).length === 1 &&
+          agent.of(RealtimeEvents.MESSAGE_RECEIVED).length === 1 &&
+          viewer.of(RealtimeEvents.MESSAGE_RECEIVED).length === 1
+      )
+      await sleep(SETTLE_MS)
+
+      expect(agent.of(RealtimeEvents.CONVERSATION_CREATED)[0]?.payload).toEqual({
+        conversationId: id,
+        customerId,
+        channelType: ChannelIds.WHATSAPP
+      })
+      expect(agent.of(RealtimeEvents.MESSAGE_RECEIVED)[0]?.payload).toEqual({
+        conversationId: id,
+        messageId,
+        authorType: AuthorType.CUSTOMER,
+        createdAt: '2026-10-29T12:00:00.000Z'
+      })
+      expect(viewer.of(RealtimeEvents.MESSAGE_RECEIVED)[0]?.payload).toEqual(
+        agent.of(RealtimeEvents.MESSAGE_RECEIVED)[0]?.payload
+      )
+      expect(JSON.stringify([agent.heard, viewer.heard, other.heard])).not.toContain('A private')
+      expect(other.heard.filter(item => item.event !== RealtimeEvents.USER_ONLINE)).toEqual([])
+    })
+
+    it('tells a message of a conversation assigned to someone else only to who sees all of them', async () => {
+      const admin = await asA(ctx.adminA)
+      const agent = await asA(ctx.agentA)
+      const { id } = await mk()
+      const worker = workerBridge()
+
+      worker.publish(Events.MESSAGE_RECEIVED, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        messageId: randomUUID(),
+        customerId: randomUUID(),
+        channelType: ChannelIds.WHATSAPP,
+        authorType: AuthorType.CUSTOMER,
+        contentPreview: null,
+        receivedAt: '2026-10-29T12:00:00.000Z',
+        visibility: { hidden: false, assignedTo: ctx.adminA.id }
+      })
+
+      await until(() => admin.of(RealtimeEvents.MESSAGE_RECEIVED).length === 1)
+      await sleep(SETTLE_MS)
+
+      expect(agent.of(RealtimeEvents.MESSAGE_RECEIVED)).toEqual([])
+    })
+
+    it('drops a message received whose fields do not fit', async () => {
+      const agent = await asA(ctx.agentA)
+      const { id } = await mk()
+
+      await rawPublish(Events.MESSAGE_RECEIVED, { storeId: ctx.storeA.id, conversationId: id })
+      await sleep(SETTLE_MS)
+
+      expect(agent.of(RealtimeEvents.MESSAGE_RECEIVED)).toEqual([])
+    })
+  })
+
+  describe('the presence route', () => {
+    it('lists who of the team is connected to the store, and nobody of another store', async () => {
+      await asA(ctx.agentA)
+      await connect(ctx.adminB.token, ctx.storeB.id)
+
+      let mine: Awaited<ReturnType<ReturnType<typeof asAdmin>['get']>> | undefined
+      // The sockets are written to Redis as they connect: ask until the agent is there
+      await until(async () => {
+        mine = await asAdmin().get(ApiRoutes.presence.team).expect(OK)
+        return (mine.body as { userId: string }[]).some(item => item.userId === ctx.agentA.id)
+      })
+      const theirs = await api(app, ctx.adminB, ctx.storeB).get(ApiRoutes.presence.team).expect(OK)
+
+      expect(mine?.body).toContainEqual({ userId: ctx.agentA.id, status: PresenceStatus.ONLINE })
+      expect(JSON.stringify(mine?.body)).not.toContain(ctx.adminB.id)
+      expect(JSON.stringify(theirs.body)).not.toContain(ctx.agentA.id)
+    })
+
+    it('is refused to who may not see conversations', async () => {
+      const role = await createRole(owner, {
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.TEAM_VIEW]
+      })
+      const outsider = await createActor(owner, app, {
+        prefix,
+        name: 'noConversationsPresence',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: role.id
+      })
+
+      const response = await api(app, outsider, ctx.storeA).get(ApiRoutes.presence.team)
+
+      expect(response.status).toBe(FORBIDDEN)
     })
   })
 })

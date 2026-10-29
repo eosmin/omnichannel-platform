@@ -14,6 +14,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import {
   ChannelConnectionResolver,
   ConversationsService,
@@ -430,6 +431,55 @@ describe('Messages that a channel delivers', () => {
         })
         expect(conversation.status).toBe(ConversationStatus.SPAM)
         expect(await owner.message.count({ where: { conversationId } })).toBe(1)
+      })
+
+      // What the events say about who may see the conversation, as the stored row has it
+      const visibilityOfEvents = async (
+        name: string,
+        run: () => Promise<unknown>
+      ): Promise<unknown[]> => {
+        const spy = jest.spyOn(app.get(DomainEvents, { strict: false }), 'publish')
+        try {
+          await run()
+          return spy.mock.calls
+            .filter(([, event]) => event === name)
+            .map(([, , payload]) => (payload as { visibility: unknown }).visibility)
+        } finally {
+          spy.mockRestore()
+        }
+      }
+
+      it('tells the assignee and the status of the row in the event of the message', async () => {
+        const { connectionId, from } = await setup(ConversationStatus.RESOLVED, ctx.agentA.id)
+
+        const seen = await visibilityOfEvents(Events.MESSAGE_RECEIVED, () =>
+          service.handleMessageReceived(TEST_CHANNEL_ID, event(connectionId, { from }))
+        )
+
+        expect(seen).toEqual([{ hidden: false, assignedTo: ctx.agentA.id }])
+      })
+
+      it('tells that the conversation is hidden when it stays spam', async () => {
+        const { connectionId, from } = await setup(ConversationStatus.SPAM)
+
+        const seen = await visibilityOfEvents(Events.MESSAGE_RECEIVED, () =>
+          service.handleMessageReceived(TEST_CHANNEL_ID, event(connectionId, { from }))
+        )
+
+        expect(seen).toEqual([{ hidden: true, assignedTo: null }])
+      })
+
+      it('tells that a conversation it starts is visible to who sees the unassigned ones', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const run = () =>
+          service.handleMessageReceived(
+            TEST_CHANNEL_ID,
+            event(connectionId, { from: `50370${String((handle += 1)).padStart(6, '0')}` })
+          )
+
+        const seen = await visibilityOfEvents(Events.CONVERSATION_CREATED, run)
+
+        expect(seen).toEqual([{ hidden: false, assignedTo: null }])
       })
 
       it('starts a new conversation only after the quiet days that the store asked for', async () => {

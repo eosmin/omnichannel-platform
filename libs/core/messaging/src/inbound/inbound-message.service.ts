@@ -27,7 +27,7 @@ import { type FetchInboundMediaJob, JobNames, QueueNames } from '@platform/core/
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { ConversationsService } from '../conversations/conversations.service'
-import { isHiddenStatus, statusOf } from '../conversations/conversations.support'
+import { statusOf, visibilityOf } from '../conversations/conversations.support'
 import { CustomerIdentityService } from '../customers/customer-identity.service'
 import { insertInboundMessage } from '../messages/inbound-messages'
 import { RoutingService } from '../routing/routing.service'
@@ -231,7 +231,8 @@ export class InboundMessageService {
         customerId: identity.customerId,
         channelType: identity.channelType,
         firstMessageId: message.id,
-        firstMessageContent: event.message.content
+        firstMessageContent: event.message.content,
+        visibility: visibilityOf({ status: ConversationStatus.OPEN, assignedTo: null })
       })
     }
     // The owner is answering the customer, like an agent does: what a reply of an agent brings back to
@@ -253,10 +254,7 @@ export class InboundMessageService {
         storeId,
         conversationId,
         messageId: message.id,
-        visibility: {
-          hidden: isHiddenStatus(conversation.status),
-          assignedTo: conversation.assignedTo
-        }
+        visibility: visibilityOf(conversation)
       })
     }
     return { messageId: message.id, duplicate: false, fetchMedia: true }
@@ -397,6 +395,14 @@ export class InboundMessageService {
       })
     }
 
+    // The row as it is now, after the reopening and the count: the status and the assignee that the
+    // events carry are what decides who hears them
+    const visibility = visibilityOf(
+      await tx.conversation.findFirstOrThrow({
+        where: { id: placement.conversationId, storeId },
+        select: { status: true, assignedTo: true }
+      })
+    )
     if (placement.created) {
       this.events.publish(tx, Events.CONVERSATION_CREATED, {
         storeId,
@@ -404,7 +410,8 @@ export class InboundMessageService {
         customerId: identity.customerId,
         channelType: identity.channelType,
         firstMessageId: message.id,
-        firstMessageContent: event.message.content
+        firstMessageContent: event.message.content,
+        visibility
       })
     }
     this.events.publish(tx, Events.MESSAGE_RECEIVED, {
@@ -415,7 +422,8 @@ export class InboundMessageService {
       channelType: identity.channelType,
       authorType: AuthorType.CUSTOMER,
       contentPreview: preview(event.message.content),
-      receivedAt: receivedAt.toISOString()
+      receivedAt: receivedAt.toISOString(),
+      visibility
     })
     return {
       messageId: message.id,
