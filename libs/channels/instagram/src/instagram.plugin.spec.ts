@@ -44,6 +44,7 @@ describe('InstagramPlugin', () => {
         ChannelCapability.TEXT,
         ChannelCapability.REACTIONS,
         ChannelCapability.REPLY_TO,
+        ChannelCapability.CUSTOMER_PROFILE,
         ChannelCapability.MESSAGING_WINDOW
       ])
     )
@@ -176,6 +177,71 @@ describe('InstagramPlugin', () => {
     await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
       code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
       retryable: false
+    })
+  })
+
+  describe('fetchProfile', () => {
+    it('reads the name, username and photo of the person from the Instagram host', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({
+        name: ' Peter Chang ',
+        username: 'peter_chang_live',
+        profile_pic: 'https://fbcdn.example/p.jpg'
+      })
+
+      const profile = await plugin.fetchProfile(ctx, '17841400000000099')
+
+      expect(get.mock.calls[0]?.[0]).toMatchObject({
+        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        path: ['17841400000000099'],
+        token: 'IGAA-token',
+        query: { fields: 'name,username,profile_pic' }
+      })
+      expect(profile).toEqual({
+        name: 'Peter Chang',
+        username: 'peter_chang_live',
+        avatarUrl: 'https://fbcdn.example/p.jpg'
+      })
+    })
+
+    it('keeps what is there when the name is null', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ name: null, username: 'peter' })
+      expect(await plugin.fetchProfile(ctx, '17841400000000099')).toEqual({ username: 'peter' })
+    })
+
+    it('has no profile for an empty answer', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({})
+      expect(await plugin.fetchProfile(ctx, '17841400000000099')).toBeNull()
+    })
+
+    it('drops a photo that is not a plain https link', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ username: 'peter', profile_pic: 'http://fbcdn.example/p.jpg' })
+      expect(await plugin.fetchProfile(ctx, '17841400000000099')).toEqual({ username: 'peter' })
+    })
+
+    it('has no profile when the only thing Meta gave is a photo link it cannot keep', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ profile_pic: 'http://fbcdn.example/p.jpg' })
+      expect(await plugin.fetchProfile(ctx, '17841400000000099')).toBeNull()
+    })
+
+    it('has no profile when Meta says there is none, and raises any other failure', async () => {
+      const { plugin, get } = build()
+      get.mockRejectedValueOnce(new PluginError(ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE))
+      expect(await plugin.fetchProfile(ctx, '17841400000000099')).toBeNull()
+      get.mockRejectedValueOnce(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID))
+      await expect(plugin.fetchProfile(ctx, '17841400000000099')).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
+    })
+
+    it('does not put an id that is not digits into a path', async () => {
+      const { plugin, get } = build()
+      expect(await plugin.fetchProfile(ctx, '../me')).toBeNull()
+      expect(get).not.toHaveBeenCalled()
     })
   })
 

@@ -12,7 +12,7 @@ import {
 import { OutboundSender } from '../outbound/outbound-sender.service'
 import { ReactionSender } from '../outbound/reaction-sender.service'
 
-import { BaseProcessor } from './base.processor'
+import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 const jobSchema = z.object({ storeId: z.uuid(), messageId: z.uuid() })
@@ -46,13 +46,12 @@ export class OutboundProcessor extends BaseProcessor<
     const parsed = jobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success) throw new UnrecoverableError('the outbound job does not fit its schema')
-    const attempts = job.opts.attempts ?? 1
     await this.sender.send(
       {
         ...parsed.data,
         ...(job.data.correlationId === undefined ? {} : { correlationId: job.data.correlationId })
       },
-      job.attemptsMade + 1 >= attempts
+      isLastAttempt(job)
     )
   }
 
@@ -61,7 +60,6 @@ export class OutboundProcessor extends BaseProcessor<
   ): Promise<void> {
     const parsed = reactionJobSchema.safeParse(job.data)
     if (!parsed.success) throw new UnrecoverableError('the reaction job does not fit its schema')
-    const attempts = job.opts.attempts ?? 1
-    await this.reactions.send(parsed.data, job.attemptsMade + 1 >= attempts)
+    await this.reactions.send(parsed.data, isLastAttempt(job))
   }
 }

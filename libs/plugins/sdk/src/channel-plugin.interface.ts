@@ -1,6 +1,7 @@
 import type { ChannelCapabilityType } from './channel-capability'
 import type {
   ChannelContext,
+  ChannelCustomerProfile,
   ChannelEvent,
   ChannelHealth,
   ChannelMessageResult,
@@ -57,4 +58,13 @@ export interface ChannelPlugin {
   handleWebhook(payload: unknown): Promise<ChannelEvent[]>
   // Provider media needs the connection token
   fetchMedia?(ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia>
+  // Name, username and photo link of a customer, read with the connection token; null when the provider
+  // has no profile for that person. Required by CUSTOMER_PROFILE. The core calls it from a job, never
+  // from the webhook, and stores what it returns. Null is a final answer (nothing to read, now or on
+  // the next try); a PluginError is a failure, retried when it says `retryable`. The core cuts every
+  // field to its limit and keeps a photo link only if it is plain https, whatever the plugin sends.
+  fetchProfile?(
+    ctx: ChannelContext,
+    channelIdentity: string
+  ): Promise<ChannelCustomerProfile | null>
 }

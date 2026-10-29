@@ -22,6 +22,12 @@ describe('graphFailure', () => {
     }
   )
 
+  it('says there is no profile, for good, when Meta has none to show', () => {
+    const error = graphFailure(400, graphError(2018218))
+    expect(error.code).toBe(ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE)
+    expect(error.retryable).toBe(false)
+  })
+
   it.each([401, 403])('says the credentials are invalid for HTTP %i', status => {
     expect(graphFailure(status, null).code).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
   })

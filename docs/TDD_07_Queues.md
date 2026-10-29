@@ -11,7 +11,9 @@
 
 ### 1.1 Queue design
 
-Eight queues, separated by priority and failure characteristics.
+Nine queues, separated by priority and failure characteristics. The ninth, `customer-profiles`
+(Step 2.8, PR 1c-2), reads the name and photo of a customer from the channel with 5 at a time,
+3 attempts and exp 60s: a provider that answers slowly fills it and delays no message.
 A slow analytics job must never delay a password reset email, and an autonomous chatbot
 turn must never wait behind a virus scan.
 

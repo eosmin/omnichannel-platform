@@ -1,4 +1,4 @@
-// Eight queues plus the dead-letter queue.
+// Nine queues plus the dead-letter queue.
 export const QueueNames = {
   EMAIL: 'email',
   WEBHOOKS: 'webhooks',
@@ -8,6 +8,8 @@ export const QueueNames = {
   HEAVY_PROCESSING: 'heavy-processing',
   INBOUND: 'inbound', // Channel webhook events, TDD_10 §4
   OUTBOUND: 'outbound', // The replies of the team on their way to a channel, TDD_10 §6.7.4
+  // The name and photo of customers, read from the channel: a slow provider must not delay messages
+  CUSTOMER_PROFILES: 'customer-profiles',
   DEAD_LETTER: 'dead-letter'
 } as const
 
@@ -58,6 +60,8 @@ export const JobNames = {
 
   // inbound
   PROCESS_CHANNEL_EVENT: 'process-channel-event',
+  // The name and photo of a customer, read from the channel after the message is stored
+  FETCH_CUSTOMER_PROFILE: 'fetch-customer-profile',
 
   // outbound
   SEND_OUTBOUND_MESSAGE: 'send-outbound-message',

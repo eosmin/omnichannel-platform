@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { DeliveryStatus, type MetaGraphOrigin, MetaMessaging } from '@platform/core/domain'
+import {
+  DeliveryStatus,
+  isPlainHttpsUrl,
+  type MetaGraphOrigin,
+  MetaMessaging
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
   type ChannelContext,
+  type ChannelCustomerProfile,
   type ChannelEvent,
   type ChannelHealth,
   type ChannelMessageResult,
@@ -32,6 +38,14 @@ const AD_WINDOW_HOURS = 168
 const successSchema = z.object({ success: z.boolean() })
 // The Send API answers with the ids of the recipient and the message
 const sentSchema = z.object({ message_id: z.string().min(1) })
+// What the User Profile API of either host answers; a person who keeps it private gets an empty object
+const userProfileSchema = z.object({
+  name: z.string().nullish(),
+  first_name: z.string().nullish(),
+  last_name: z.string().nullish(),
+  username: z.string().nullish(),
+  profile_pic: z.string().nullish()
+})
 // A reaction is answered with the recipient only, and nobody reads it again
 const acknowledgedSchema = z.record(z.string(), z.unknown())
 
@@ -69,6 +83,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   protected abstract readonly subscribedFields: string
   // The key that holds the file of a media message in the Send API
   protected abstract readonly attachmentKey: string
+  // The `fields` of the User Profile API on this host
+  protected abstract readonly userProfileFields: string
 
   constructor(protected readonly meta: MetaGraphClient) {}
 
@@ -197,6 +213,48 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     })
   }
 
+  // The id goes into the path, so it must be digits. A person with no readable profile (blocked us, an
+  // account made with a phone number, a feature the app has not been approved for) is null, not an
+  // error: asking again would answer the same.
+  async fetchProfile(
+    ctx: ChannelContext,
+    channelIdentity: string
+  ): Promise<ChannelCustomerProfile | null> {
+    if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(channelIdentity)) return null
+    const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
+    try {
+      const raw = await this.meta.get({
+        origin: this.origin,
+        path: [channelIdentity],
+        token: accessToken,
+        query: { fields: this.userProfileFields },
+        schema: userProfileSchema
+      })
+      const name =
+        present(raw.name) ??
+        present(
+          [present(raw.first_name), present(raw.last_name)]
+            .filter((part): part is string => part !== undefined)
+            .join(' ')
+        )
+      const username = present(raw.username)
+      // A link that is not plain https is no photo: it must not keep an empty profile from being null
+      const link = present(raw.profile_pic)
+      const avatarUrl = link !== undefined && isPlainHttpsUrl(link) ? link : undefined
+      if (name === undefined && username === undefined && avatarUrl === undefined) return null
+      return {
+        ...(name === undefined ? {} : { name }),
+        ...(username === undefined ? {} : { username }),
+        ...(avatarUrl === undefined ? {} : { avatarUrl })
+      }
+    } catch (error) {
+      if (error instanceof PluginError && error.code === ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE) {
+        return null
+      }
+      throw error
+    }
+  }
+
   verifyWebhook(query: Record<string, string>): string | null {
     return this.meta.verifyHubChallenge(query)
   }
@@ -250,11 +308,7 @@ function attachmentKind(contentType: string): { type: string; capability: Channe
   return { type: MetaMessaging.ATTACHMENT_FILE, capability: ChannelCapability.DOCUMENT }
 }
 
-function isPlainHttpsUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'https:' && url.username === '' && url.password === ''
-  } catch {
-    return false
-  }
+function present(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }

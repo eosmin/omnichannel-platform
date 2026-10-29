@@ -26,6 +26,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
     ChannelCapability.VIDEO,
     ChannelCapability.REACTIONS,
     ChannelCapability.REPLY_TO,
+    ChannelCapability.CUSTOMER_PROFILE,
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
@@ -34,6 +35,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
   protected readonly subscribedFields = InstagramApi.SUBSCRIBED_FIELDS
   // Meta's reference sends a file under `attachments`
   protected readonly attachmentKey = MetaMessaging.ATTACHMENTS_KEY
+  protected readonly userProfileFields = InstagramApi.USER_PROFILE_FIELDS
 
   protected async fetchAccount(token: string): Promise<MetaAccount> {
     const answer = await this.meta.get({

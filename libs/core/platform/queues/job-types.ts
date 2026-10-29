@@ -132,6 +132,13 @@ export interface FetchInboundMediaJob extends BaseJob {
   contentType: string
   filename: string | null
 }
+// inbound: the profile of one customer identity, read again from the database when the job runs
+export interface FetchCustomerProfileJob extends BaseJob {
+  storeId: string
+  identityId: string
+  // The ChannelConnection row that delivered the message: the one whose token reads the profile
+  connectionRowId: string
+}
 // outbound: the message is read again by id, so a retry sends what is stored now and not a copy
 export interface SendOutboundMessageJob extends BaseJob {
   storeId: string

@@ -21,6 +21,7 @@ export class MessengerPlugin extends MetaChannelPlugin {
     ChannelCapability.DOCUMENT,
     ChannelCapability.REACTIONS,
     ChannelCapability.REPLY_TO,
+    ChannelCapability.CUSTOMER_PROFILE,
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
@@ -28,6 +29,7 @@ export class MessengerPlugin extends MetaChannelPlugin {
   protected readonly webhookObject = MessengerApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = MessengerApi.SUBSCRIBED_FIELDS
   protected readonly attachmentKey = MetaMessaging.ATTACHMENT_KEY
+  protected readonly userProfileFields = MessengerApi.USER_PROFILE_FIELDS
 
   protected override sendFields(): Record<string, unknown> {
     return { messaging_type: MessengerApi.MESSAGING_TYPE_RESPONSE }

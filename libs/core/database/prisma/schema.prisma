@@ -339,17 +339,24 @@ model Customer {
 // One row per (store, channel, handle). The SAME phone number in two stores is two
 // rows — customers are always store-scoped (TDD_10 §5.2).
 model CustomerIdentity {
-  id               String    @id @default(uuid())
-  storeId          String    @map("store_id")
-  customerId       String    @map("customer_id")
-  channelType      String    @map("channel_type") // ChannelType
-  channelIdentity  String    @map("channel_identity") // phone (E.164), page-scoped id, visitor id, email
-  displayName      String?   @map("display_name") // Profile name as reported by the channel
-  channelMetadata  Json?     @map("channel_metadata")
-  lastInboundAt    DateTime? @map("last_inbound_at") // Drives messaging windows (TDD_10 §4)
+  id                String    @id @default(uuid())
+  storeId           String    @map("store_id")
+  customerId        String    @map("customer_id")
+  channelType       String    @map("channel_type") // ChannelType
+  channelIdentity   String    @map("channel_identity") // phone (E.164), page-scoped id, visitor id, email
+  displayName       String?   @map("display_name") // Profile name as reported by the channel
+  channelMetadata   Json?     @map("channel_metadata")
+  lastInboundAt     DateTime? @map("last_inbound_at") // Drives messaging windows (TDD_10 §4)
   // The first message after a click on an ad: the longer window of Instagram and Messenger counts from it
-  adWindowOpenedAt DateTime? @map("ad_window_opened_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  adWindowOpenedAt  DateTime? @map("ad_window_opened_at")
+  // What the channel keeps for the person (Instagram, Messenger), read by a job after the first message
+  // and again once it is stale. The photo link expires and is not stored as a file yet.
+  username          String?   @map("username")
+  avatarUrl         String?   @map("avatar_url")
+  profileFetchedAt  DateTime? @map("profile_fetched_at") // Set on a try that settled, even without a profile
+  profileRetryAfter DateTime? @map("profile_retry_after") // After an outage that ate the attempts: not asked before this
+  profileFetchError String?   @map("profile_fetch_error") // An ErrorCode of ours; null when the last settled try read a profile
+  createdAt         DateTime  @default(now()) @map("created_at")
 
   store         Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
   customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)

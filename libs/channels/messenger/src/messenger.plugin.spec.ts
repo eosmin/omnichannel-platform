@@ -177,4 +177,45 @@ describe('MessengerPlugin', () => {
     await expect(plugin.handleWebhook(body('page'))).resolves.toHaveLength(1)
     await expect(plugin.handleWebhook(body('instagram'))).resolves.toEqual([])
   })
+
+  describe('fetchProfile', () => {
+    it('joins the first and last name and reads from the Facebook host', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({
+        first_name: 'Peter',
+        last_name: 'Chang',
+        profile_pic: 'https://fbcdn.example/p.jpg'
+      })
+
+      const profile = await plugin.fetchProfile(ctx, '3000000000000001')
+
+      expect(get.mock.calls[0]?.[0]).toMatchObject({
+        origin: MetaGraph.ORIGIN,
+        path: ['3000000000000001'],
+        token: 'EAAB-page-token',
+        query: { fields: 'first_name,last_name,profile_pic' }
+      })
+      expect(profile).toEqual({ name: 'Peter Chang', avatarUrl: 'https://fbcdn.example/p.jpg' })
+    })
+
+    it('has no profile when the app may not read it: Meta answers an empty object', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({})
+      expect(await plugin.fetchProfile(ctx, '3000000000000001')).toBeNull()
+    })
+
+    it('trims each part of the name before joining them', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ first_name: ' Peter ', last_name: ' Chang ' })
+      expect(await plugin.fetchProfile(ctx, '3000000000000001')).toEqual({ name: 'Peter Chang' })
+      get.mockResolvedValue({ first_name: ' ', last_name: 'Chang' })
+      expect(await plugin.fetchProfile(ctx, '3000000000000001')).toEqual({ name: 'Chang' })
+    })
+
+    it('keeps the one name Meta gave', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ first_name: 'Peter', last_name: '' })
+      expect(await plugin.fetchProfile(ctx, '3000000000000001')).toEqual({ name: 'Peter' })
+    })
+  })
 })
