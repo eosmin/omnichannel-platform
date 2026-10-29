@@ -190,6 +190,7 @@ scoped runs returned exactly 10 each). A run that returns 10 has **not** run out
 | Which step draws a route, realtime event or channel capability | `scripts/frontend-coverage-map.ts`                  |
 | Env variable (api/worker)                               | `libs/core/platform/config/env-schema.ts` (add to the Zod schema, then to `.env.example`) |
 | Env variable (web, `NEXT_PUBLIC_*`)                     | `apps/web/lib/env-schema.ts` (add to the Zod schema, then to `apps/web/.env.example`) |
+| New UI primitive (dialog, tabs, ...)                    | `apps/web/components/ui/`, copied by hand: the shadcn CLI is not installed (`apps/web/components/ui/README.md`) |
 
 ---
 

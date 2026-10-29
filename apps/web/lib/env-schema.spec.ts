@@ -19,6 +19,19 @@ describe('parseWebEnv', () => {
     )
   })
 
+  it('accepts a ws url for the websocket and refuses other schemes', () => {
+    expect(
+      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_WS_URL: 'wss://realtime.example.com' })
+        .NEXT_PUBLIC_WS_URL
+    ).toBe('wss://realtime.example.com')
+    expect(() =>
+      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_WS_URL: 'ftp://x.example.com' })
+    ).toThrow(/NEXT_PUBLIC_WS_URL/)
+    expect(() =>
+      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_API_URL: 'wss://api.example.com' })
+    ).toThrow(/NEXT_PUBLIC_API_URL/)
+  })
+
   it('exposes nothing that is not NEXT_PUBLIC_', () => {
     expect(Object.keys(parseWebEnv(validWebEnv)).every(key => key.startsWith('NEXT_PUBLIC_'))).toBe(
       true

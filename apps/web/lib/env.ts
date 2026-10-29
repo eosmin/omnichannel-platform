@@ -8,3 +8,5 @@ export const webEnv = parseWebEnv({
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: process.env.NEXT_PUBLIC_WIDGET_SCRIPT_URL
 })
+
+export const isDevelopment = process.env.NODE_ENV === 'development'

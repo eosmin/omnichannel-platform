@@ -6,3 +6,6 @@ export const StorageKeys = {
   PENDING_MESSAGES: 'platform_pending_messages' // The offline send queue (TDD_06 §4)
 } as const
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys]
+
+// The cookie that carries the language of the interface, so that the server renders in it
+export const LOCALE_COOKIE = 'platform_locale'

@@ -1,0 +1,356 @@
+{
+  "app": {
+    "title": "Omnichannel Platform"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "undo": "Undo",
+    "backToStart": "Back to start",
+    "tryAgain": "Try again"
+  },
+  "confirm": {
+    "typePhrase": "Type \"{phrase}\" to confirm",
+    "phraseLabel": "Confirmation phrase"
+  },
+  "conversations": {
+    "status": {
+      "OPEN": "Open",
+      "PENDING": "Pending",
+      "RESOLVED": "Resolved",
+      "ARCHIVED": "Archived",
+      "SNOOZED": "Snoozed",
+      "SPAM": "Spam"
+    }
+  },
+  "email": {
+    "magicLink": {
+      "subject": "Your sign-in link",
+      "heading": "Sign in to your account",
+      "body": "Use the button below to sign in. It works once.",
+      "cta": "Sign in",
+      "fallback": "If the button does not work, copy this link into your browser:",
+      "expiry": "This link expires in {minutes} minutes.",
+      "ignore": "If you did not ask for it, you can ignore this email."
+    },
+    "invitation": {
+      "subject": "You have been invited to join a team",
+      "heading": "You are invited to join {store}",
+      "body": "{inviter} invited you to join {store} as {role}. Nothing changes until you accept.",
+      "cta": "Review the invitation",
+      "fallback": "If the button does not work, copy this link into your browser:",
+      "expiry": "This invitation expires in {days} days.",
+      "ignore": "If you were not expecting it, you can ignore this email."
+    }
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "body": "The page could not be shown. Try again; if it keeps happening, tell your administrator."
+  },
+  "errors": {
+    "AUTH_EMAIL_ALREADY_EXISTS": "This email already has an account",
+    "AUTH_REFRESH_TOKEN_REUSED": "Your session was closed for security. Sign in again",
+    "AUTH_TOKEN_EXPIRED": "Your session expired. Sign in again",
+    "AUTH_TOKEN_INVALID": "The link or session is not valid",
+    "AUTH_UNAUTHORIZED": "You need to sign in",
+    "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that action",
+    "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
+    "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
+    "CHANNEL_MESSAGE_FAILED": "The channel did not accept the message",
+    "CHANNEL_NOT_CONNECTED": "The channel is not connected",
+    "CHANNEL_PROFILE_UNAVAILABLE": "The customer profile is not available",
+    "CHANNEL_TEMPLATE_NOT_APPROVED": "The template is not approved yet",
+    "CHANNEL_WEBHOOK_SIGNATURE_INVALID": "The channel notification could not be verified",
+    "CHANNEL_WINDOW_EXPIRED": "The messaging window expired",
+    "CONVERSATION_ALREADY_RESOLVED": "The conversation is already resolved",
+    "CONVERSATION_INVALID_STATUS_TRANSITION": "The conversation cannot change to that status",
+    "CUSTOMER_MERGE_SAME_ID": "A customer cannot be merged with itself",
+    "CUSTOMER_UNMERGE_WINDOW_EXPIRED": "The time to undo the merge is over",
+    "DSR_ALREADY_COMPLETED": "The data request is already completed",
+    "DSR_VERIFICATION_INVALID": "The verification of the data request is not valid",
+    "EXTERNAL_SERVICE_ERROR": "An external service failed. Try again later",
+    "EXTERNAL_SERVICE_TIMEOUT": "An external service took too long. Try again later",
+    "FILE_INFECTED": "The file was rejected because it is not safe",
+    "FILE_KEY_OUT_OF_SCOPE": "That file does not belong to this store",
+    "FILE_NOT_READY": "The file is still being processed",
+    "FILE_TOO_LARGE": "The file is too large",
+    "FILE_TYPE_NOT_ALLOWED": "This type of file is not allowed",
+    "FILE_UPLOAD_FAILED": "The file could not be uploaded",
+    "INSUFFICIENT_INVENTORY": "There is not enough stock",
+    "INTERNAL_ERROR": "Something went wrong. Try again",
+    "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Say why you are adjusting the stock",
+    "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "The stock count cannot change to that status",
+    "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "The transfer cannot change to that status",
+    "INVENTORY_TRANSFER_SAME_WAREHOUSE": "The origin and the destination must differ",
+    "INVENTORY_WAREHOUSE_HAS_STOCK": "The warehouse still has stock",
+    "INVENTORY_WAREHOUSE_NOT_LINKED": "The warehouse is not linked to this store",
+    "ORDER_ALREADY_CONFIRMED": "The order is already confirmed",
+    "ORDER_CANNOT_BE_CANCELLED": "The order can no longer be cancelled",
+    "ORDER_FIELD_NOT_EDITABLE": "That field cannot be edited at this stage",
+    "ORDER_INVALID_STATUS_TRANSITION": "The order cannot change to that status",
+    "ORDER_MESSAGE_VARIABLE_UNKNOWN": "The message uses a variable that does not exist",
+    "ORDER_PRICE_APPROVAL_PENDING": "The price change waits for approval",
+    "ORDER_PRICE_OVERRIDE_FORBIDDEN": "You cannot change the price",
+    "ORDER_PRICE_REASON_REQUIRED": "Say why you are changing the price",
+    "ORDER_PRICE_SELF_APPROVAL": "You cannot approve your own price change",
+    "ORDER_STATUS_DRIVEN_BY_SHIPMENT": "The shipment decides the status of this order",
+    "PERMISSION_DENIED": "You do not have permission for this",
+    "PICKUP_CUTOFF_PASSED": "The pickup cutoff has passed",
+    "PLUGIN_ALREADY_INSTALLED": "The plugin is already installed",
+    "PLUGIN_ALREADY_REGISTERED": "The plugin is already registered",
+    "PLUGIN_API_KEY_INVALID": "The plugin key is not valid",
+    "PLUGIN_CONTRACT_VIOLATION": "The plugin did not follow its contract",
+    "PLUGIN_INSTALLATION_FAILED": "The plugin could not be installed",
+    "PLUGIN_NOT_FOUND": "The plugin does not exist",
+    "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
+    "PLUGIN_SCOPE_DENIED": "The plugin has no access to that",
+    "RATE_LIMIT_EXCEEDED": "Too many attempts. Wait a moment",
+    "RECEPTION_ALREADY_RECEIVED": "That package was already received",
+    "RECEPTION_SHIPMENT_NOT_FOUND": "No shipment matches that code",
+    "REMITTANCE_ALREADY_CONFIRMED": "The remittance is already confirmed",
+    "REMITTANCE_IMPORT_INVALID": "The remittance file is not valid",
+    "REMITTANCE_INVALID_STATUS_TRANSITION": "The remittance cannot change to that status",
+    "RESOURCE_ALREADY_EXISTS": "That already exists",
+    "RESOURCE_CONFLICT": "Someone changed this at the same time. Reload and try again",
+    "RESOURCE_NOT_FOUND": "It does not exist or you cannot open it",
+    "RETURN_INVALID_STATUS_TRANSITION": "The return cannot change to that status",
+    "RETURN_ORDER_NOT_DELIVERED": "Only a delivered order can be returned",
+    "RETURN_QUANTITY_EXCEEDS_DELIVERED": "You cannot return more than was delivered",
+    "SHIPPING_ACTIVE_SHIPMENT_EXISTS": "The order already has an active shipment",
+    "SHIPPING_CANNOT_CANCEL_AFTER_PICKUP": "The shipment cannot be cancelled after pickup",
+    "SHIPPING_CARRIER_CAPABILITY_MISSING": "The carrier does not support that action",
+    "SHIPPING_CARRIER_NOT_ACTIVE": "The carrier is not active",
+    "SHIPPING_CARRIER_REJECTED": "The carrier rejected the request",
+    "SHIPPING_CARRIER_UNAVAILABLE": "The carrier is not available. Try again later",
+    "SHIPPING_FEE_OUT_OF_RANGE": "The shipping fee is out of range",
+    "SHIPPING_INVALID_STATUS_TRANSITION": "The shipment cannot change to that status",
+    "SHIPPING_LOCATION_REQUIRED": "Choose a location for the address",
+    "SHIPPING_ORDER_NOT_CONFIRMED": "Confirm the order before shipping it",
+    "SHIPPING_ORIGIN_MISSING": "The store has no origin address for shipments",
+    "SHIPPING_OUTCOME_UNKNOWN": "We do not know if the carrier took the shipment. Check before trying again",
+    "TENANT_ACCESS_DENIED": "You do not have access to this store",
+    "TENANT_CANNOT_REMOVE_LAST_ADMIN": "The store needs at least one administrator",
+    "TENANT_HEADER_MISSING": "Choose a store first",
+    "TENANT_INVITATION_EMAIL_MISMATCH": "The invitation is for another email",
+    "TENANT_INVITATION_EXPIRED": "The invitation expired",
+    "TENANT_INVITATION_INVALID": "The invitation is not valid",
+    "TENANT_MEMBER_ALREADY_EXISTS": "That person is already on the team",
+    "TENANT_NOT_FOUND": "The store does not exist",
+    "VALIDATION_FAILED": "Some fields are not valid",
+    "VALIDATION_INVALID_INPUT": "Check what you typed",
+    "VALIDATION_URL_NOT_ALLOWED": "That address is not allowed",
+    "WIDGET_ORIGIN_NOT_ALLOWED": "This site is not allowed to use the widget",
+    "WIDGET_TOKEN_INVALID": "The widget session is not valid"
+  },
+  "noAccess": {
+    "title": "You have no access",
+    "body": "Your account does not belong to any store. Ask an administrator to invite you again."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "The address does not exist or you cannot open it."
+  },
+  "notifications": {
+    "bulk_labels": {
+      "ready": {
+        "title": "Labels are ready",
+        "body": "The labels you asked for can be downloaded."
+      }
+    },
+    "carrier": {
+      "status_unmapped": {
+        "title": "Unknown carrier status",
+        "body": "A carrier sent a status the platform does not know. Review the shipment."
+      }
+    },
+    "channel": {
+      "disconnected": {
+        "title": "A channel was disconnected",
+        "body": "The channel stopped working. Connect it again to keep receiving messages."
+      }
+    },
+    "conversation": {
+      "assigned": {
+        "title": "Conversation assigned to you",
+        "body": "A conversation is waiting for you."
+      },
+      "mentioned": {
+        "title": "You were mentioned in a note",
+        "body": "A teammate mentioned you in an internal note."
+      },
+      "reopened": {
+        "title": "Conversation reopened",
+        "body": "A customer wrote again in a resolved conversation."
+      },
+      "snooze_expired": {
+        "title": "Snooze ended",
+        "body": "A snoozed conversation is back in your inbox."
+      },
+      "unassigned_queue": {
+        "title": "Conversations without an owner",
+        "body": "There are conversations waiting for someone to take them."
+      }
+    },
+    "count": {
+      "awaiting_apply": {
+        "title": "Stock count waiting",
+        "body": "A stock count is complete and waits to be applied."
+      }
+    },
+    "dsr": {
+      "deadline_approaching": {
+        "title": "A data request is about to expire",
+        "body": "A data subject request is close to its deadline."
+      },
+      "manual_review": {
+        "title": "A data request needs review",
+        "body": "A data subject request needs a person to review it."
+      }
+    },
+    "export": {
+      "ready": {
+        "title": "Export ready",
+        "body": "Your export can be downloaded."
+      }
+    },
+    "inventory": {
+      "low": {
+        "title": "Low stock",
+        "body": "A product is running out of stock."
+      }
+    },
+    "invitation": {
+      "accepted": {
+        "title": "Invitation accepted",
+        "body": "Someone accepted your invitation to the team."
+      }
+    },
+    "member": {
+      "joined": {
+        "title": "New team member",
+        "body": "A new member joined the store."
+      }
+    },
+    "message": {
+      "failed": {
+        "title": "A message was not delivered",
+        "body": "The channel did not accept a message you sent."
+      },
+      "received": {
+        "title": "New message",
+        "body": "A customer wrote to you."
+      }
+    },
+    "order": {
+      "created": {
+        "title": "New order",
+        "body": "An order was created."
+      },
+      "message_not_sent": {
+        "title": "Order message not sent",
+        "body": "The message about an order could not be sent to the customer."
+      },
+      "payment_failed": {
+        "title": "Payment failed",
+        "body": "The payment of an order failed."
+      },
+      "price_approval_requested": {
+        "title": "Price approval requested",
+        "body": "An agent asked you to approve a price change."
+      },
+      "price_overridden": {
+        "title": "Price changed",
+        "body": "An agent changed the price of an order item."
+      },
+      "status_changed": {
+        "title": "Order status changed",
+        "body": "The status of an order changed."
+      }
+    },
+    "pickup": {
+      "cutoff_approaching": {
+        "title": "Pickup cutoff is near",
+        "body": "Request the pickup before the carrier cutoff."
+      },
+      "manual_required": {
+        "title": "Pickup needs a manual request",
+        "body": "This carrier does not take pickups through the platform. Request it by hand."
+      }
+    },
+    "plugin": {
+      "error": {
+        "title": "A plugin failed",
+        "body": "A plugin returned an error. Review its settings."
+      }
+    },
+    "remittance": {
+      "overdue": {
+        "title": "Remittance overdue",
+        "body": "A carrier has not remitted cash on delivery payments on time."
+      }
+    },
+    "return": {
+      "awaiting_receipt": {
+        "title": "Return waiting to be received",
+        "body": "A returned package is on its way and must be received."
+      }
+    },
+    "shipment": {
+      "cancel_failed": {
+        "title": "The shipment was not cancelled",
+        "body": "The carrier did not cancel the shipment. Review it."
+      },
+      "failed_attempt": {
+        "title": "Delivery attempt failed",
+        "body": "The carrier could not deliver a package."
+      },
+      "requires_review": {
+        "title": "Shipment needs review",
+        "body": "A shipment is in a state that needs a person to check it."
+      }
+    },
+    "transfer": {
+      "dispatched": {
+        "title": "Transfer dispatched",
+        "body": "A stock transfer is on its way to your warehouse."
+      }
+    },
+    "webhook": {
+      "auto_disabled": {
+        "title": "A webhook was turned off",
+        "body": "A webhook failed too many times and was disabled."
+      }
+    }
+  },
+  "orders": {
+    "status": {
+      "PENDING_CONFIRMATION": "Pending confirmation",
+      "CONFIRMED": "Confirmed",
+      "PREPARING": "Preparing",
+      "SHIPPED": "Shipped",
+      "DELIVERED": "Delivered",
+      "CANCELLED": "Cancelled",
+      "RETURNED": "Returned"
+    },
+    "cancellationReason": {
+      "customerRequest": "The customer asked for it",
+      "outOfStock": "Out of stock",
+      "paymentFailed": "The payment failed",
+      "undeliverableAddress": "The address cannot be delivered to",
+      "duplicate": "Duplicate order",
+      "other": "Other"
+    },
+    "return": {
+      "reason": {
+        "CHANGED_MIND": "The customer changed their mind",
+        "DAMAGED_IN_TRANSIT": "Damaged in transit",
+        "DEFECTIVE": "Defective",
+        "DELIVERY_FAILED": "The delivery failed",
+        "NOT_AS_DESCRIBED": "Not as described",
+        "OTHER": "Other",
+        "REFUSED_BY_CUSTOMER": "Refused by the customer",
+        "WRONG_ITEM": "Wrong item"
+      }
+    }
+  }
+}

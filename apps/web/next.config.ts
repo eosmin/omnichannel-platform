@@ -1,5 +1,13 @@
 import type { NextConfig } from 'next'
+import createNextIntlPlugin from 'next-intl/plugin'
 
-const nextConfig: NextConfig = {}
+import { STATIC_SECURITY_HEADERS } from './lib/security-headers'
 
-export default nextConfig
+const nextConfig: NextConfig = {
+  // The Content-Security-Policy is set per request in proxy.ts, because it carries a nonce
+  headers: () => Promise.resolve([{ source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] }])
+}
+
+const withNextIntl = createNextIntlPlugin()
+
+export default withNextIntl(nextConfig)
