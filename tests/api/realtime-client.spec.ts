@@ -17,6 +17,7 @@ import {
   createConnectionStatusStore
 } from '../../apps/web/lib/realtime/connection-status'
 import { OfflineQueue } from '../../apps/web/lib/realtime/offline-queue'
+import { RealtimeClientTiming } from '../../apps/web/lib/realtime/realtime-config'
 import { createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { assertNoOtherBridgeListener } from '../helpers/bridge-listeners'
@@ -119,7 +120,8 @@ describe('The realtime client against the real api', () => {
       },
       send: (storeId, input) => sendMessage(client, storeId, input),
       newId: () => `queued-${prefix}-${++counter}`,
-      now: () => new Date()
+      now: () => new Date(),
+      autoSendWindowMs: RealtimeClientTiming.QUEUE_AUTO_SEND_WINDOW_MS
     })
     connection.onConnect(() => void queue.flush(actor.id))
     const browser = { connection, status, queue, client, network }

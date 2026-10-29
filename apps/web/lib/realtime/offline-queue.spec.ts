@@ -4,7 +4,7 @@ import { ApiError, type SendMessageInput, StorageKeys } from '@platform/api-clie
 import { MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { OfflineQueue } from './offline-queue'
+import { OfflineQueue, OfflineQueueErrors } from './offline-queue'
 
 function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> & { raw: () => string | null } {
   const data = new Map<string, string>()
@@ -15,16 +15,23 @@ function memoryStorage(): Pick<Storage, 'getItem' | 'setItem'> & { raw: () => st
   }
 }
 
+const WINDOW_MS = 10 * 60_000
+
 function setup(storage: Pick<Storage, 'getItem' | 'setItem'> = memoryStorage()) {
   let counter = 0
+  let current = new Date('2026-10-30T10:00:00.000Z')
   const send = jest.fn<Promise<unknown>, [string, SendMessageInput]>()
   const queue = new OfflineQueue({
     storage,
     send,
     newId: () => `id-${++counter}`,
-    now: () => new Date('2026-10-30T10:00:00.000Z')
+    now: () => current,
+    autoSendWindowMs: WINDOW_MS
   })
-  return { queue, send, storage }
+  const advance = (ms: number): void => {
+    current = new Date(current.getTime() + ms)
+  }
+  return { queue, send, storage, advance }
 }
 
 const draft = (overrides: Record<string, unknown> = {}) => ({
@@ -217,5 +224,83 @@ describe('OfflineQueue', () => {
     expect(queue.waiting('u1')).toHaveLength(1)
     await queue.flush('u1')
     expect(queue.waiting('u1')).toEqual([])
+  })
+
+  describe('a message that waited for its connection', () => {
+    it('is still sent on its own inside the window', async () => {
+      const { queue, send, advance } = setup()
+      send.mockResolvedValue({})
+      queue.enqueue(draft())
+      advance(WINDOW_MS)
+      await queue.flush('u1')
+      expect(send).toHaveBeenCalledTimes(1)
+    })
+
+    it('asks the agent, and is not sent, after the window', async () => {
+      const { queue, send, advance } = setup()
+      queue.enqueue(draft())
+      advance(WINDOW_MS + 1)
+
+      await queue.flush('u1')
+
+      expect(send).not.toHaveBeenCalled()
+      expect(queue.waiting('u1')).toEqual([])
+      expect(queue.failed('u1')).toMatchObject([{ lastError: OfflineQueueErrors.EXPIRED }])
+    })
+
+    it('does not hold back a fresh message that was written after it', async () => {
+      const { queue, send, advance } = setup()
+      send.mockResolvedValue({})
+      queue.enqueue(draft({ content: 'old' }))
+      advance(WINDOW_MS + 1)
+      queue.enqueue(draft({ content: 'fresh' }))
+
+      await queue.flush('u1')
+
+      expect(send.mock.calls.map(call => call[1].content)).toEqual(['fresh'])
+    })
+
+    it('goes out with its own id once the agent confirms it', async () => {
+      const { queue, send, advance } = setup()
+      send.mockResolvedValue({})
+      const pending = queue.enqueue(draft())
+      advance(WINDOW_MS + 1)
+      await queue.flush('u1')
+
+      expect(queue.resend(pending.id, 'u1')).toBe(true)
+      await queue.flush('u1')
+
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send.mock.calls[0]?.[1].idempotencyKey).toBe(pending.id)
+      expect(queue.failed('u1')).toEqual([])
+    })
+
+    it('gets a new window when it is confirmed', async () => {
+      const { queue, send, advance } = setup()
+      const pending = queue.enqueue(draft())
+      advance(WINDOW_MS + 1)
+      await queue.flush('u1')
+      queue.resend(pending.id, 'u1')
+      advance(WINDOW_MS + 1)
+
+      await queue.flush('u1')
+
+      expect(send).not.toHaveBeenCalled()
+      expect(queue.failed('u1')).toMatchObject([{ lastError: OfflineQueueErrors.EXPIRED }])
+    })
+
+    it('is not offered again when the api refused it, or to someone else', async () => {
+      const { queue, send, advance } = setup()
+      const refused = queue.enqueue(draft())
+      send.mockRejectedValueOnce(new ApiError(409, ErrorCodes.CHANNEL_WINDOW_EXPIRED, 'closed'))
+      await queue.flush('u1')
+      expect(queue.resend(refused.id, 'u1')).toBe(false)
+
+      const slow = queue.enqueue(draft())
+      advance(WINDOW_MS + 1)
+      await queue.flush('u1')
+      expect(queue.resend(slow.id, 'u2')).toBe(false)
+      expect(queue.resend('nope', 'u1')).toBe(false)
+    })
   })
 })

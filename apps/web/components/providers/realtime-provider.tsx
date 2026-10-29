@@ -17,6 +17,7 @@ import {
 import { createFlushScheduler } from '../../lib/realtime/flush-scheduler'
 import { startHeartbeat, trackActivity } from '../../lib/realtime/heartbeat'
 import { OfflineQueue } from '../../lib/realtime/offline-queue'
+import { RealtimeClientTiming } from '../../lib/realtime/realtime-config'
 import { type RealtimeContextValue, RealtimeContext } from '../../lib/realtime/realtime-context'
 import { attachRealtimeSync } from '../../lib/realtime/realtime-sync'
 
@@ -53,7 +54,8 @@ export function RealtimeProvider({
       storage: safeLocalStorage(),
       send: (queuedStoreId, input) => sendMessage(apiClient, queuedStoreId, input),
       newId: () => crypto.randomUUID(),
-      now: () => new Date()
+      now: () => new Date(),
+      autoSendWindowMs: RealtimeClientTiming.QUEUE_AUTO_SEND_WINDOW_MS
     })
     const activity = trackActivity(window)
 

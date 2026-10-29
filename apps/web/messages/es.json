@@ -398,7 +398,7 @@
   },
   "realtime": {
     "reconnecting": "Reconectando...",
-    "disconnected": "Sin conexión. No llegarán mensajes nuevos, y lo que escribas se guarda y se envía al volver la conexión."
+    "disconnected": "Sin conexión. No llegarán mensajes nuevos. Lo que escribas se guarda y se envía al volver la conexión; si tarda mucho, se te preguntará antes."
   },
   "shell": {
     "switchStore": "Cambiar de tienda",

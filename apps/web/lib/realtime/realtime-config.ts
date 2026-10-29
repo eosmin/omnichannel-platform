@@ -9,6 +9,10 @@ export const RealtimeClientTiming = {
   RED_BANNER_AFTER_FAILURES: 5,
   // A connection that holds this long has recovered: only then are the failed attempts forgotten
   STABLE_AFTER_MS: 10_000,
+  // How long a message written with no connection is still sent on its own once the connection is
+  // back. Later than this the conversation may have moved on (a teammate answered, the customer no
+  // longer needs it) and a reply to a customer cannot be taken back: the agent decides
+  QUEUE_AUTO_SEND_WINDOW_MS: 10 * 60_000,
   // When what is queued could not be sent although the socket is up: the wait before trying again
   // doubles up to the maximum
   QUEUE_RETRY_MS: 5000,

@@ -398,7 +398,7 @@
   },
   "realtime": {
     "reconnecting": "Reconnecting...",
-    "disconnected": "No connection. New messages will not arrive, and what you write is saved and sent when the connection returns."
+    "disconnected": "No connection. New messages will not arrive. What you write is kept and sent when the connection returns; after a long wait, you will be asked first."
   },
   "shell": {
     "switchStore": "Switch store",

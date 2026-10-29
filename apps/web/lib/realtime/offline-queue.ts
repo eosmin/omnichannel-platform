@@ -23,6 +23,12 @@ function isRefusal(error: unknown): error is ApiError {
   )
 }
 
+// What `lastError` holds when the queue itself, and not the api, stopped a message
+export const OfflineQueueErrors = {
+  // Waited longer than the window for its connection to come back: it asks the agent before it goes
+  EXPIRED: 'OFFLINE_QUEUE_EXPIRED'
+} as const
+
 const pendingMessageSchema = z.object({
   // Also the idempotencyKey of the request: a retry returns the message that exists
   id: z.string().min(1),
@@ -51,9 +57,12 @@ export interface OfflineQueueDeps {
   send: (storeId: string, input: SendMessageInput) => Promise<unknown>
   newId: () => string
   now: () => Date
+  // See RealtimeClientTiming.QUEUE_AUTO_SEND_WINDOW_MS
+  autoSendWindowMs: number
 }
 
-// Messages written while the connection is down. The storage is the source of truth and every
+// Messages written while the connection is down, sent on their own when it returns if that is soon
+// enough (a longer wait asks the agent first). The storage is the source of truth and every
 // change reads it first, because two tabs share it: a tab that wrote from a copy in memory would
 // erase what the other one queued. Read and write are not atomic across tabs, so a change that lands
 // between them in the other tab can still be lost: the window is a few microseconds, and closing it
@@ -99,10 +108,31 @@ export class OfflineQueue {
     this.write(this.read().filter(m => m.id !== id))
   }
 
+  // The agent confirms a message that waited too long: it gets a new window and goes out with the
+  // next pass. It keeps its id, so if it had in fact been sent the api answers with the existing one.
+  // A message that the api refused is not offered again: it would be refused again.
+  resend(id: string, userId: string): boolean {
+    const messages = this.read()
+    const target = messages.find(
+      m => m.id === id && m.userId === userId && m.lastError === OfflineQueueErrors.EXPIRED
+    )
+    if (target === undefined) return false
+    this.write(
+      messages.map(m =>
+        m.id === id ? { ...m, lastError: null, createdAt: this.deps.now().toISOString() } : m
+      )
+    )
+    return true
+  }
+
   private async run(userId: string): Promise<void> {
     for (const message of this.waiting(userId)) {
       // Another tab may have sent it, or the agent discarded it, since the pass began
       if (!this.waiting(userId).some(m => m.id === message.id)) continue
+      if (this.waitedTooLong(message)) {
+        this.markFailed(message.id, OfflineQueueErrors.EXPIRED)
+        continue
+      }
       try {
         await this.deps.send(message.storeId, {
           type: message.type,
@@ -126,6 +156,10 @@ export class OfflineQueue {
         return
       }
     }
+  }
+
+  private waitedTooLong(message: PendingMessage): boolean {
+    return this.deps.now().getTime() - Date.parse(message.createdAt) > this.deps.autoSendWindowMs
   }
 
   private markFailed(id: string, code: string): void {
