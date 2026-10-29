@@ -53,7 +53,10 @@ export const MetaErrorCodes = {
     131056
   ],
   // Failure on Meta's side (131000 and 131016 are WhatsApp's): the work may or may not have been done
-  TEMPORARY: [1, 2, 131000, 131016]
+  TEMPORARY: [1, 2, 131000, 131016],
+  // Messenger documents it: the person has no profile to read (an account made with a phone number).
+  // Instagram documents no such code; there a person who cannot be read answers an error or nothing.
+  NO_PROFILE: 2018218
 } as const
 
 export type MetaGraphOrigin = typeof MetaGraph.ORIGIN | typeof MetaGraph.INSTAGRAM_ORIGIN
@@ -87,6 +90,8 @@ export const MetaMessaging = {
 export const InstagramApi = {
   WEBHOOK_OBJECT: 'instagram',
   PROFILE_FIELDS: 'user_id,username',
+  // The customer behind a scoped id (User Profile API); `name` may come back null
+  USER_PROFILE_FIELDS: 'name,username,profile_pic',
   SUBSCRIBED_FIELDS: 'messages,messaging_referrals,messaging_reactions'
 } as const
 
@@ -94,6 +99,7 @@ export const InstagramApi = {
 export const MessengerApi = {
   WEBHOOK_OBJECT: 'page',
   PROFILE_FIELDS: 'id,name',
+  USER_PROFILE_FIELDS: 'first_name,last_name,profile_pic',
   SUBSCRIBED_FIELDS: 'messages,message_echoes,message_reactions,messaging_referrals',
   MESSAGING_TYPE_RESPONSE: 'RESPONSE'
 } as const

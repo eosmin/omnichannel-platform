@@ -14,7 +14,8 @@ export const ChannelCapability = {
   REACTIONS: 'reactions',
   REPLY_TO: 'reply_to',
   MESSAGING_WINDOW: 'messaging_window',
-  CUSTOMER_TYPING: 'customer_typing'
+  CUSTOMER_TYPING: 'customer_typing',
+  CUSTOMER_PROFILE: 'customer_profile'
 } as const
 
 export type ChannelCapabilityType = (typeof ChannelCapability)[keyof typeof ChannelCapability]

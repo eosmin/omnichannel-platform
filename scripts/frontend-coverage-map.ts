@@ -291,5 +291,6 @@ export const CAPABILITY_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   REACTIONS: { step: '3.2' },
   REPLY_TO: { step: '3.2' },
   MESSAGING_WINDOW: { step: '3.2' },
-  CUSTOMER_TYPING: { step: '3.2' }
+  CUSTOMER_TYPING: { step: '3.2' },
+  CUSTOMER_PROFILE: { step: '3.2' }
 }

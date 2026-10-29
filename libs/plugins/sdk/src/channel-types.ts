@@ -188,6 +188,15 @@ export interface SendReactionParams {
   emoji: string | null
 }
 
+// What a channel keeps for a customer, as the plugin read it. Every field is optional because a
+// provider shows what the person made public: Instagram may have no name, Messenger needs a feature
+// approved for the app. `avatarUrl` is a link that expires; the core does not store the photo yet.
+export interface ChannelCustomerProfile {
+  name?: string
+  username?: string
+  avatarUrl?: string
+}
+
 export interface FetchedMedia {
   stream: NodeJS.ReadableStream
   contentType: string

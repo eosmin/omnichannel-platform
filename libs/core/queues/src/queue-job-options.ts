@@ -1,5 +1,6 @@
 import type { DefaultJobOptions } from 'bullmq'
 
+import { CustomerProfileFetch } from '@platform/core/domain'
 import { QueueNames, type QueueName } from '@platform/core/queues'
 
 const base: DefaultJobOptions = {
@@ -13,6 +14,12 @@ export const QueueJobOptions: Record<QueueName, DefaultJobOptions> = {
   [QueueNames.INBOUND]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
   // 5 attempts from 5 seconds, the same for every plugin (TDD_10 §6.7.4)
   [QueueNames.OUTBOUND]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 5000 } },
+  // A refused read is final and an outage is asked again by the next message: three tries
+  [QueueNames.CUSTOMER_PROFILES]: {
+    ...base,
+    attempts: CustomerProfileFetch.ATTEMPTS,
+    backoff: { type: 'exponential', delay: CustomerProfileFetch.BACKOFF_MS }
+  },
   [QueueNames.EMAIL]: { ...base, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
   [QueueNames.WEBHOOKS]: { ...base, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
   [QueueNames.NOTIFICATIONS]: { ...base, attempts: 5, backoff: { type: 'fixed', delay: 5000 } },

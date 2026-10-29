@@ -8,6 +8,7 @@ export type PluginErrorCode = Extract<
   | typeof ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED
   | typeof ErrorCodes.CHANNEL_WINDOW_EXPIRED
   | typeof ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+  | typeof ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE
   | typeof ErrorCodes.CHANNEL_WEBHOOK_SIGNATURE_INVALID
 >
 

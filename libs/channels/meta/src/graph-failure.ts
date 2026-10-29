@@ -56,6 +56,10 @@ export function graphFailure(
   ) {
     return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: safeToRepeat })
   }
+  // Not a failure of the call: this person has no profile to read, and asking again changes nothing
+  if (code === MetaErrorCodes.NO_PROFILE) {
+    return new PluginError(ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE, { retryable: false })
+  }
   // The agent can act on this one: pick another template, or wait for the approval
   if (code !== undefined && WhatsAppErrorCodes.TEMPLATE_UNAVAILABLE.some(known => known === code)) {
     return new PluginError(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED, { retryable: false })

@@ -9,9 +9,10 @@ import { QueueNames } from '@platform/core/queues'
 import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
+import { ProfileRequester } from '../inbound/profile-requester.service'
 import { ChannelReceipts } from '../outbound/channel-receipts.service'
 
-import { BaseProcessor } from './base.processor'
+import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 // The worker half of TDD_10 §4: the controller of the api queued what the plugin normalized, and this
@@ -23,6 +24,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
     private readonly inbound: InboundMessageService,
     private readonly reactions: MessageReactionsService,
     private readonly receipts: ChannelReceipts,
+    private readonly profiles: ProfileRequester,
     private readonly logger: PinoLogger
   ) {
     super(QueueNames.INBOUND, support)
@@ -50,6 +52,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         } catch (error) {
           throw unrecoverableIfInvalid(error)
         }
+        await this.profiles.request(pluginId, event.connectionId, event.channelIdentity)
         return
       }
       case ChannelEventTypes.MESSAGE_ECHO: {
@@ -58,7 +61,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
           await this.inbound.handleMessageEcho(
             pluginId,
             { ...event, message: event.message },
-            job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+            isLastAttempt(job),
             new Date(job.data.receivedAt)
           )
         } catch (error) {
@@ -71,7 +74,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         await this.reactions.handleInbound(
           pluginId,
           { ...event, reaction: event.reaction },
-          job.attemptsMade + 1 >= (job.opts.attempts ?? 1)
+          isLastAttempt(job)
         )
         return
       case ChannelEventTypes.MESSAGE_DELIVERED:
@@ -80,7 +83,7 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         await this.receipts.handleReceipt(
           pluginId,
           { ...event, type: event.type },
-          job.attemptsMade + 1 >= (job.opts.attempts ?? 1)
+          isLastAttempt(job)
         )
         return
       case ChannelEventTypes.CONNECTION_ERROR:
