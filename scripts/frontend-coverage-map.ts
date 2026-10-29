@@ -30,7 +30,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'conversations.read': { step: '3.2' },
   'conversations.messagingWindow': { step: '3.2' },
   'conversations.bulk': { step: '3.2' },
-  'conversations.export': { step: '3.2' },
+  // An export of the exports center: Step 3.4 builds the queue, the key and the download it needs
+  'conversations.export': { step: '3.4' },
   'messages.create': { step: '3.2' },
   // PATCH edits a message, DELETE deletes it; none is read by id, the thread lists them
   'messages.byId': { step: '3.2' },
@@ -198,7 +199,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'settings.store': { step: '3.6' },
   'settings.inbox': { step: '3.6' },
   'settings.safety': { step: '5.4' },
-  'settings.preferences': { step: '4.14' },
+  // The sendReadReceipts switch is drawn in Step 3.6; the rest of the page (cancellation reasons) is Step 4.14
+  'settings.preferences': { step: '3.6' },
   'settings.team': { step: '3.6' },
   'settings.members': { step: '3.6' },
   'settings.memberById': { step: '3.6' },
@@ -238,7 +240,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   },
   'widget.bootstrap': { step: '2.8' },
   'widget.messages': { step: '2.8' },
-  'widget.upload': { step: '2.8' }
+  // Drawn by the widget bundle, which Step 3.4 extends with the upload (the route is built there too)
+  'widget.upload': { step: '3.4' }
 }
 
 export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {

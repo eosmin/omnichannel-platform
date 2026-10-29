@@ -38,6 +38,12 @@ const envelopeSchema = z.object({
 export class EventsBridge implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EventsBridge.name)
   private subscriber: Redis | null = null
+  private markSubscribed: () => void = () => undefined
+  // Settles when Redis has acknowledged the first subscription. Nothing in the boot waits for it
+  // (a Redis that is down must not stop the api); a test that publishes at once does.
+  readonly subscribed = new Promise<void>(resolve => {
+    this.markSubscribed = resolve
+  })
 
   constructor(
     @Inject(EVENTS_BRIDGE_OPTIONS) private readonly options: EventsBridgeOptions,
@@ -79,12 +85,15 @@ export class EventsBridge implements OnModuleInit, OnModuleDestroy {
     // On every connection, the first one and each one after Redis comes back. Not awaited: a Redis
     // that is down at boot costs the worker events, not the start of the api.
     subscriber.on('ready', () => {
-      subscriber.subscribe(EVENTS_BRIDGE_CHANNEL).catch((error: unknown) => {
-        this.logger.error(
-          'the bridge could not subscribe',
-          error instanceof Error ? error.stack : String(error)
-        )
-      })
+      subscriber
+        .subscribe(EVENTS_BRIDGE_CHANNEL)
+        .then(() => this.markSubscribed())
+        .catch((error: unknown) => {
+          this.logger.error(
+            'the bridge could not subscribe',
+            error instanceof Error ? error.stack : String(error)
+          )
+        })
     })
     subscriber.on('message', (_channel: string, message: string) => {
       this.hear(message).catch((error: unknown) => {
