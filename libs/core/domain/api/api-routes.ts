@@ -272,7 +272,10 @@ export const ApiRoutes = {
     connectionById: (id: string) => `/channels/connections/${id}`,
     test: (id: string) => `/channels/connections/${id}/test`,
     disconnect: (id: string) => `/channels/connections/${id}/disconnect`,
-    templates: (pluginId: string) => `/channels/${pluginId}/templates`
+    templates: (pluginId: string) => `/channels/${pluginId}/templates`,
+    // The web widget's own settings: the sites that may load it and the snippet to paste
+    widgetEmbed: (id: string) => `/channels/connections/${id}/widget`,
+    widgetOrigins: (id: string) => `/channels/connections/${id}/widget/origins`
   },
 
   settings: {

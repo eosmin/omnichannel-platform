@@ -4,6 +4,6 @@
     "lib": ["es2023", "dom"],
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*.ts", "jest.config.cts"],
+  "include": ["src/**/*.ts", "jest.config.cts", "vite.config.ts"],
   "exclude": ["node_modules"]
 }

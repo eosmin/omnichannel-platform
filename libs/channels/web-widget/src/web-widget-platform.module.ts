@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common'
 
-import { WidgetConfig } from './widget-config'
+import { WidgetConfig, WidgetEmbedConfig } from './widget-config'
 import { widgetTokenKey } from './widget-token'
 
 // Derives the key of the visitor tokens from the secret of the api, which a deployed environment
@@ -16,8 +16,15 @@ import { widgetTokenKey } from './widget-token'
         const { env } = await import('@platform/core/config/env')
         return { tokenKey: widgetTokenKey(env.JWT_SECRET) }
       }
+    },
+    {
+      provide: WidgetEmbedConfig,
+      useFactory: async (): Promise<WidgetEmbedConfig> => {
+        const { env } = await import('@platform/core/config/env')
+        return { scriptUrl: env.WIDGET_SCRIPT_URL, apiUrl: env.API_URL }
+      }
     }
   ],
-  exports: [WidgetConfig]
+  exports: [WidgetConfig, WidgetEmbedConfig]
 })
 export class WebWidgetPlatformModule {}

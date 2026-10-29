@@ -27,7 +27,7 @@ import {
 
 import { WidgetConfig } from './widget-config'
 import { widgetMessageSchema } from './widget-message'
-import { newSiteKey, siteOriginsSchema } from './widget-site'
+import { newSiteKey, originsLabel, siteOriginsSchema } from './widget-site'
 import { verifyVisitorToken } from './widget-token'
 
 const connectSchema = z.object({ siteOrigins: siteOriginsSchema })
@@ -62,7 +62,7 @@ export class WebWidgetPlugin implements ChannelPlugin {
     const origins = parsed.data.siteOrigins
     return Promise.resolve({
       connectionId: newSiteKey(),
-      displayName: origins.map(origin => new URL(origin).host).join(', '),
+      displayName: originsLabel(origins),
       credentials: {},
       metadata: { [WidgetMetadataKeys.ALLOWED_ORIGINS]: origins }
     })

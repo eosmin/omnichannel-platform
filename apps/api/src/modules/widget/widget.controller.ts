@@ -30,7 +30,7 @@ import { type WidgetBootstrapBody, widgetBootstrapSchema } from './widget.schema
 export interface WidgetBootstrapView {
   visitorToken: string
   expiresInSeconds: number
-  store: { name: string }
+  store: { name: string; locale: string }
   away: boolean
   messages: WidgetMessageView[]
 }
@@ -73,7 +73,7 @@ export class WidgetController {
     return {
       visitorToken: token,
       expiresInSeconds,
-      store: { name: site.storeName },
+      store: { name: site.storeName, locale: site.storeLocale },
       away,
       messages
     }

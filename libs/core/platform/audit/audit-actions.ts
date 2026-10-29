@@ -102,6 +102,7 @@ export const AuditAction = {
   PLUGIN_REVOKED: 'plugin.revoked',
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
+  WIDGET_ORIGINS_CHANGED: 'channel.widget_origins_changed',
   SETTINGS_CHANGED: 'settings.changed',
   ROUTING_RULE_CHANGED: 'routing_rule.changed',
   RETENTION_CHANGED: 'retention.changed',

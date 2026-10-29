@@ -16,7 +16,9 @@ export const WidgetLimits = {
   // How much of the conversation the bootstrap hands back
   HISTORY_MESSAGES: 50,
   // A visitor has a few tabs open
-  MAX_SOCKETS_PER_VISITOR: 5
+  MAX_SOCKETS_PER_VISITOR: 5,
+  // What the script a store pastes into its site may weigh once compressed (TDD_10 §5.4)
+  BUNDLE_MAX_GZIP_BYTES: 40 * 1024
 } as const
 
 // A visitor id is made by the widget script (a random UUID kept in the browser of the visitor)
@@ -51,3 +53,19 @@ export const WidgetThrottle = {
 // in `auth` of the handshake of the socket
 export const WIDGET_TOKEN_HEADER = 'x-widget-token'
 export const WIDGET_TOKEN_AUTH_KEY = 'token'
+
+// The state of a message the visitor wrote, as the widget shows it
+export const WidgetDeliveryStates = {
+  SENDING: 'sending',
+  SENT: 'sent',
+  FAILED: 'failed'
+} as const
+export type WidgetDeliveryState = (typeof WidgetDeliveryStates)[keyof typeof WidgetDeliveryStates]
+
+// What socket.io-client says about its own connection, which the widget reacts to
+export const SocketLifecycle = {
+  DISCONNECT: 'disconnect',
+  CONNECT_ERROR: 'connect_error',
+  // The reason of a disconnect that the server asked for: the library does not reconnect after it
+  SERVER_DISCONNECT: 'io server disconnect'
+} as const
