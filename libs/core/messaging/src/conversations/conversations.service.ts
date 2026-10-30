@@ -574,6 +574,7 @@ export class ConversationsService {
     if (item === undefined) throw resourceNotFound('conversation')
     return {
       ...item,
+      channelConnectionId: row.channelConnectionId,
       lastInboundAt: row.lastInboundAt,
       lastReadAt: row.lastReadAt,
       resolvedAt: row.resolvedAt,

@@ -45,6 +45,8 @@ export interface ConversationListItem {
 }
 
 export interface ConversationDetail extends ConversationListItem {
+  // The account of the channel that serves it: the templates of a plugin belong to the account
+  channelConnectionId: string
   lastInboundAt: Date | null
   lastReadAt: Date | null
   resolvedAt: Date | null
@@ -78,6 +80,7 @@ export const LIST_SELECT = {
 
 export const DETAIL_SELECT = {
   ...LIST_SELECT,
+  channelConnectionId: true,
   lastInboundAt: true,
   lastReadAt: true,
   resolvedAt: true,

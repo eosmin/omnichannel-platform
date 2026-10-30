@@ -26,7 +26,10 @@ export const QueryKeys = {
       ['messages', storeId, conversationId] as const,
     // Under the thread key: whatever makes the thread stale makes its origins stale too
     origins: (storeId: string, conversationId: string) =>
-      ['messages', storeId, conversationId, 'origins'] as const
+      ['messages', storeId, conversationId, 'origins'] as const,
+    // Also under the thread key: a message of the customer opens the window again
+    window: (storeId: string, conversationId: string) =>
+      ['messages', storeId, conversationId, 'window'] as const
   },
   customers: {
     all: (storeId: string) => ['customers', storeId] as const,
@@ -96,7 +99,9 @@ export const QueryKeys = {
     directory: (storeId: string) => ['members', storeId, 'directory'] as const
   },
   channels: {
-    directory: (storeId: string) => ['channels', storeId, 'directory'] as const
+    directory: (storeId: string) => ['channels', storeId, 'directory'] as const,
+    templates: (storeId: string, pluginId: string, connectionId: string) =>
+      ['channels', storeId, 'templates', pluginId, connectionId] as const
   },
   presence: {
     team: (storeId: string) => ['presence', storeId] as const

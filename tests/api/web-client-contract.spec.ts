@@ -1,14 +1,17 @@
 import type { INestApplication } from '@nestjs/common'
 
 import {
-  conversationListItemSchema,
+  conversationDetailSchema,
+  messagingWindowSchema,
   conversationOriginListSchema,
   messagePageSchema,
-  messageSchema
+  messageSchema,
+  type SendTemplateInput
 } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType, SystemMessageEvents } from '@platform/core/domain'
+import { createMessageSchema } from '@platform/core/messaging'
 
 import { createConversationOf, createConversationOriginOf } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -271,7 +274,33 @@ describe('What the web client parses of the inbox api', () => {
       const response = await asAdmin().get(ApiRoutes.conversations.byId(conversationId))
 
       expect(response.status).toBe(OK)
-      expect(conversationListItemSchema.safeParse(response.body).success).toBe(true)
+      const conversation = conversationDetailSchema.parse(response.body)
+      expect(conversation.channelConnectionId).toEqual(expect.any(String))
+    })
+  })
+
+  describe('the messaging window of the composer', () => {
+    it('is accepted by the schema of the client', async () => {
+      const response = await asAdmin().get(ApiRoutes.conversations.messagingWindow(conversationId))
+
+      expect(response.status).toBe(OK)
+      expect(messagingWindowSchema.safeParse(response.body).success).toBe(true)
+    })
+  })
+
+  describe('the template the dialog sends', () => {
+    it('is the body the api accepts, with nothing extra and nothing missing', () => {
+      // Typed as the client builds it: a field renamed on either side stops compiling or parsing
+      const body: SendTemplateInput = {
+        type: MessageType.TEMPLATE,
+        conversationId,
+        templateName: 'order_update',
+        language: 'es',
+        variables: ['Ana', '1042'],
+        idempotencyKey: crypto.randomUUID()
+      }
+
+      expect(createMessageSchema.safeParse(body).success).toBe(true)
     })
   })
 })
