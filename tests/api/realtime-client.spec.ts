@@ -166,7 +166,8 @@ describe('The realtime client against the real api', () => {
       'the message to arrive'
     )
 
-    expect(agent.queue.waiting(ctx.agentA.id)).toEqual([])
+    // The row exists before the answer reaches the queue, which drops the entry only then
+    await until(() => agent.queue.waiting(ctx.agentA.id).length === 0, 'the queue to empty')
     const [stored] = await messagesOf(conversationId)
     expect(stored).toMatchObject({
       content: 'written with no connection',
