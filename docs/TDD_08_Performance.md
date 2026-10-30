@@ -593,14 +593,20 @@ First Contentful Paint       < 1.5s
 Largest Contentful Paint     < 2.5s
 Time to Interactive          < 3.5s
 Cumulative Layout Shift      < 0.1
-Interaction to Next Paint    < 200ms
+Interaction to Next Paint    < 200ms    (field metric; CI measures Total Blocking Time < 200ms)
 
-Initial JS bundle            < 200 KB gzipped
-Per-route JS                 < 100 KB gzipped
+Initial JS bundle            < 200 KB gzipped   (CI holds a ceiling per page until Step 7.7)
+Per-route JS                 < 100 KB gzipped   (not measured in CI)
 ```
 
-Enforced in CI by the `lighthouse` job (`TDD_03` §4) with `lighthouserc.json` asserting
-these budgets on `/login` and `/s/{seed-store}/inbox`. A regression fails the build.
+Enforced in CI by the `lighthouse` job (`TDD_03` §4): the `lighthouse` module, driven from
+Playwright's Chromium so that the inbox can be measured signed in, asserts these budgets on
+`/login` and `/s/{seed-store}/inbox` (median of three cold runs; `apps/web-e2e/lighthouse/`).
+Total Blocking Time < 200 ms stands in for Interaction to Next Paint, which needs a person.
+The per-route JS budget is not measured: a lab run cannot tell the shared chunks from the route's
+own. A regression fails the job (pull requests only; it is not a required check). Until the bundle
+is split (Step 7.7) the initial script transfer is held at a ceiling per page above the 200 KB
+(`ScriptCeilingsKb` in `apps/web-e2e/lighthouse/budgets.ts`).
 
 ### 4.5 API latency budgets
 

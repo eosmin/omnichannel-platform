@@ -524,16 +524,27 @@ jobs:
         with: { args: --severity-threshold=high --all-projects }
 
   lighthouse:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    timeout-minutes: 20
+    services: { postgres: ..., redis: ..., mailpit: ... }   # as in e2e-tests
+    env: { DIRECT_DATABASE_URL: ..., DB_APP_PASSWORD: ..., DB_WORKER_PASSWORD: ... }   # as in e2e-tests
     steps:
       - uses: actions/checkout@<sha> # v4.2.2
-      - uses: pnpm/action-setup@<sha> # v4.1.0
-      - uses: actions/setup-node@<sha> # v4.4.0
-        with: { node-version-file: package.json, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm nx build web
-      - run: pnpm exec lhci autorun --config=lighthouserc.json   # Budgets from TDD_08 §4.4
+      # Node, pnpm, dependencies, migrated database, Chromium: shared with e2e-tests
+      - uses: ./.github/actions/web-stack
+      # Builds the app, starts the three services, signs in with a magic link and runs the
+      # `lighthouse` module over /login and the inbox; budgets from TDD_08 §4.4
+      - run: pnpm exec nx run web-e2e:lighthouse --skip-nx-cache
+      - uses: actions/upload-artifact@<sha>   # lighthouse-report, if: always()
+        if: always()
+        with:
+          name: lighthouse-report
+          path: |
+            apps/web-e2e/lighthouse-report
+            apps/web-e2e/lighthouse-results
+          retention-days: 7
 ```
 
 Weekly, not per PR: `zaproxy/action-baseline` against staging and Dependabot PRs
