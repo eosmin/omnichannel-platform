@@ -24,10 +24,12 @@ import { ChannelConnectionResolver, OutboundQueue } from '@platform/core/messagi
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
+  ChannelCapability,
   type ChannelContext,
   ChannelEventTypes,
   PluginError,
-  type SendMessageParams
+  type SendMessageParams,
+  type SendTemplateParams
 } from '@platform/plugins/sdk'
 
 import { ChannelReceipts } from '../../apps/worker/src/outbound/channel-receipts.service'
@@ -53,6 +55,7 @@ import { queueOf } from '../helpers/queue'
 const CREATED = 201
 const OK = 200
 const INSTAGRAM_LIMIT = 1000
+const TEMPLATE_CHANNEL_ID = 'template_channel'
 const THREE_MINUTES_MS = 180_000
 const TWO_HOURS_MS = 7_200_000
 const SIX_MINUTES_MS = 360_000
@@ -69,6 +72,7 @@ describe('Replies on their way to a channel', () => {
   let sweep: OutboundRequeueScheduler
   let outboundQueue: OutboundQueue
   let sent: SendMessageParams[] = []
+  let sentTemplates: SendTemplateParams[] = []
   let heard: { event: string; payload: Record<string, unknown> }[] = []
   let sendMessage: (ctx: ChannelContext, params: SendMessageParams) => ReturnType<ChannelSend>
   let externalCount = 0
@@ -93,6 +97,21 @@ describe('Replies on their way to a channel', () => {
     const pluginOf = (id: string): ReturnType<typeof buildChannelPlugin> =>
       buildChannelPlugin({ id, sendMessage: (c, p) => sendMessage(c, p) })
     registry.register(pluginOf(TEST_CHANNEL_ID))
+    registry.register(
+      buildChannelPlugin({
+        id: TEMPLATE_CHANNEL_ID,
+        capabilities: [ChannelCapability.TEXT, ChannelCapability.TEMPLATES],
+        sendTemplate: (_ctx, params) => {
+          sentTemplates.push(params)
+          return Promise.resolve({
+            externalId: `tpl-${params.idempotencyKey}`,
+            status: DeliveryStatus.SENT,
+            sentAt: new Date().toISOString()
+          })
+        },
+        listTemplates: () => Promise.resolve([])
+      })
+    )
     // Instagram is an official plugin of the app now: its send is the only thing the suite replaces
     jest
       .spyOn(registry.get(ChannelIds.INSTAGRAM), 'sendMessage')
@@ -133,6 +152,7 @@ describe('Replies on their way to a channel', () => {
   })
   beforeEach(() => {
     sent = []
+    sentTemplates = []
     heard = []
     sendMessage = accept
   })
@@ -147,6 +167,8 @@ describe('Replies on their way to a channel', () => {
       type?: MessageType
       deliveryStatus?: DeliveryStatus
       createdAt?: Date
+      resentAt?: Date
+      metadata?: { template: { name: string; language?: string; variables?: string[] } }
     } = {}
   ): Promise<{ id: string; storeId: string; connectionId: string; conversationId: string }> => {
     const storeId = over.storeId ?? ctx.storeA.id
@@ -174,7 +196,9 @@ describe('Replies on their way to a channel', () => {
         content: over.content ?? 'hello there',
         authorType: AuthorType.AGENT,
         deliveryStatus: over.deliveryStatus ?? DeliveryStatus.QUEUED,
-        ...(over.createdAt === undefined ? {} : { createdAt: over.createdAt })
+        ...(over.createdAt === undefined ? {} : { createdAt: over.createdAt }),
+        ...(over.resentAt === undefined ? {} : { resentAt: over.resentAt }),
+        ...(over.metadata === undefined ? {} : { metadata: over.metadata })
       },
       select: { id: true }
     })
@@ -484,6 +508,68 @@ describe('Replies on their way to a channel', () => {
         deliveryError: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
       })
       expect(sent).toHaveLength(0)
+    })
+
+    it('keys a reply sent again apart from its first attempt, for a provider that dedupes on the key', async () => {
+      const resentAt = new Date(Date.now() - 60_000)
+      const reply = await queuedReply({ resentAt })
+
+      await sender.send(job(reply), false)
+
+      expect(sent[0]?.idempotencyKey).toBe(`${reply.id}-${resentAt.getTime()}`)
+    })
+
+    it('sends a template by name, language and variables, not by its text', async () => {
+      const reply = await queuedReply({
+        pluginId: TEMPLATE_CHANNEL_ID,
+        type: MessageType.TEMPLATE,
+        content: 'Hello Ana, your order 42 is ready',
+        metadata: { template: { name: 'order_ready', language: 'es', variables: ['Ana', '42'] } }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(0)
+      expect(sentTemplates).toEqual([
+        {
+          channelIdentity: expect.any(String) as string,
+          templateName: 'order_ready',
+          language: 'es',
+          variables: ['Ana', '42'],
+          idempotencyKey: reply.id
+        }
+      ])
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
+    it('fails a template whose stored data is not a template, without calling the plugin', async () => {
+      const reply = await queuedReply({
+        pluginId: TEMPLATE_CHANNEL_ID,
+        type: MessageType.TEMPLATE,
+        metadata: { template: { name: '' } }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      })
+      expect(sentTemplates).toHaveLength(0)
+    })
+
+    it('fails a template for a plugin that cannot send one', async () => {
+      const reply = await queuedReply({
+        type: MessageType.TEMPLATE,
+        metadata: { template: { name: 'order_ready', language: 'es', variables: [] } }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+      })
     })
 
     it('fails, and does not send twice, when the plugin answers nonsense', async () => {
@@ -880,6 +966,26 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(forgotten.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
       expect(result.requeued).toBeGreaterThanOrEqual(1)
       expect(result.gaveUp).toBeGreaterThanOrEqual(1)
+    })
+
+    it('counts the age of a reply sent again from the moment it was asked for again', async () => {
+      const longAgo = new Date(Date.now() - TWO_HOURS_MS)
+      const justResent = await queuedReply({ createdAt: longAgo, resentAt: new Date() })
+      const resentAWhileAgo = await queuedReply({
+        createdAt: longAgo,
+        resentAt: new Date(Date.now() - THREE_MINUTES_MS)
+      })
+      const queue = queueOf(app, QueueNames.OUTBOUND)
+      queue.jobs.length = 0
+
+      await sweep.requeueStale()
+
+      const queued = queue.jobs.map(item => (item.data as { messageId: string }).messageId)
+      // Neither is given up for the age of its first attempt, and only the one that waited is queued
+      expect(queued).toContain(resentAWhileAgo.id)
+      expect(queued).not.toContain(justResent.id)
+      expect((await stored(justResent.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
+      expect((await stored(resentAWhileAgo.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
     })
 
     it('queues again a reply that stayed queued, and leaves a recent one and a settled one alone', async () => {
