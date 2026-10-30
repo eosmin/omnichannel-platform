@@ -55,9 +55,22 @@ broken steps.
 
 ## Git workflow (branch-first, never direct to main)
 
-- **Never commit or open a PR proactively.** Only when the user explicitly
-  asks, in that specific moment. Approving one commit/PR does not authorize
-  the next one.
+- **Standing authorization (owner, 2026-10-31):** when a step's "Done when" is verified, the
+  review of the step is done (see "Code review of a step") and the gates pass locally, commit, push
+  the branch and open the PR without asking. Nothing else is authorized: never `main`, never
+  `--no-verify`, never a force-push.
+- **Merge (owner, 2026-10-31), only once the `main` ruleset with the required checks exists** (see
+  `IMPLEMENTATION_PLAN.md` → "CI rollout and the `main` ruleset"): after opening the PR, run
+  `gh pr merge --auto --squash`. GitHub then merges by itself when every required check is green and
+  never before; the ruleset, not the assistant, is the gate. Never merge by hand, never bypass the
+  ruleset, never disable a check to get a merge. Until the ruleset exists, the owner squash-merges.
+  Do not start the next step until the PR is merged and `main` is pulled.
+- **One PR per step** (two only when a step is too big to review as one). The old split into many
+  sub-PRs is over: each PR costs a session, a review and a CI wait.
+- **No stacked branches.** Never branch from work that is not merged: a conflict in the first
+  propagates to every later one. Start the next step from an up-to-date `main` after the merge.
+- **A red job that has nothing to do with the change** (a flaky test) is rerun once. If it fails
+  again, record it in the PR description and fix it in its own PR; do not widen the current one.
 - **Never work directly against `main`.** Before any commit, create a
   feature branch first (naming per portfolio `CLAUDE.md`: `feat/`, `fix/`,
   etc.).
@@ -122,9 +135,12 @@ same checks and the merge waits for it.
     builds no AI feature at all.
 11. **Anything marked MATURE or "Phase 2"** in the TDD is out of scope unless
     `IMPLEMENTATION_PLAN.md` explicitly includes it in the current milestone.
-12. **When the TDD is ambiguous or silent on something, stop and ask.**
-    Do not invent a design decision that contradicts or extends the TDD
-    silently.
+12. **When the TDD is ambiguous or silent, decide; do not ask the owner.** The owner is not expected to judge technical choices, so the decision is made here and made well.
+    - **Priority, in this order:** security and data safety, then correctness, then maintainability, then the smallest scope, then speed. Speed and token cost never outrank the first three. Among options that are equally safe and correct, take the one that least extends the TDD.
+    - **No shortcuts to finish sooner.** Never skip, loosen or delete a test, check, threshold, budget or lint rule; never add `any`, an ignore or a mock that hides the behavior under test; never leave a placeholder or a TODO; never pick the weaker option because the right one is bigger.
+    - **When the right option is too big for the PR,** do the correct part and add a task to `IMPLEMENTATION_PLAN.md` in the same PR, naming the step that owns the rest. A deferral that is not written in the plan is a shortcut.
+    - **Write it down** in a "Decisions" section of the PR description: what was chosen, the best alternative that was rejected, why, and any debt created with where it is tracked.
+    - **Stop and ask only** when the choice contradicts an explicit statement of the TDD, cannot be undone (data, secrets, money, a real account) or acts outside the repository.
 
 ---
 
@@ -151,7 +167,14 @@ scoped runs returned exactly 10 each). A run that returns 10 has **not** run out
 - Give each pass one lens: correctness, security (secrets, permissions, customer data), tests, or
   configuration, CI and Docker.
 - **Fewer than 10 findings means the cap did not bind**: that batch is complete. Exactly 10 means
-  fix what was reported and run the same batch again, saying what was fixed, until it returns fewer.
+  the cap bound. Repeat the batch only for security, data and money code (auth, tenancy, permissions,
+  migrations, payments): fix what was reported and run it again until it returns fewer.
+- **Every other batch (CI, config, tests, docs, UI) gets one pass, never repeated.** The tool fills
+  its quota, so a second pass always finds more; most of it is hardening, not bugs. Fix what is a
+  real, verified defect. Anything else goes to a backlog note, not into the PR. Green CI, not the
+  finding count, decides that the PR is done.
+- Review with the `/code-review` skill itself, never with forked subagents told to "run the skill":
+  they inherit the author's context and do not verify.
 - Check every finding by running the code before changing anything. Some are false positives, and
   a fix without a test that fails first proves nothing.
 - Read the riskiest code yourself (security, data, money, CI). The tool says where to look first,

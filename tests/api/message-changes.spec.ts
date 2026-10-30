@@ -40,6 +40,7 @@ import {
   TEST_CHANNEL_ID
 } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -589,8 +590,9 @@ describe('An agent editing and deleting a message', () => {
       expect(refused.status).toBe(FORBIDDEN)
       expect(allowed.status).toBe(OK)
       expect(allowed.body).toEqual({ content: 'something I regret' })
-      const audited = await owner.auditLog.findMany({
-        where: { resourceId: id, action: 'message.deleted_content_viewed' }
+      const audited = await waitForAuditEntries(owner, {
+        resourceId: id,
+        action: 'message.deleted_content_viewed'
       })
       expect(audited).toHaveLength(1)
       expect(audited[0]?.userId).toBe(ctx.adminA.id)
