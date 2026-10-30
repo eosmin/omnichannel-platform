@@ -303,4 +303,39 @@ describe('OfflineQueue', () => {
       expect(queue.resend('nope', 'u1')).toBe(false)
     })
   })
+
+  describe('what a screen reads', () => {
+    it('gives the same array until something changes, and tells who listens when it does', () => {
+      const { queue } = setup()
+      const listener = jest.fn()
+      const stop = queue.subscribe(listener)
+      const before = queue.all()
+      expect(queue.all()).toBe(before)
+
+      const pending = queue.enqueue(draft())
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(queue.all()).not.toBe(before)
+      expect(queue.all()).toEqual([pending])
+
+      queue.discard(pending.id)
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(queue.all()).toEqual([])
+
+      stop()
+      queue.enqueue(draft())
+      expect(listener).toHaveBeenCalledTimes(2)
+    })
+
+    it('reads the storage again when another tab wrote to it', () => {
+      const storage = memoryStorage()
+      const { queue } = setup(storage)
+      const other = setup(storage).queue
+      expect(queue.all()).toEqual([])
+
+      other.enqueue(draft())
+      queue.changedElsewhere()
+
+      expect(queue.all()).toHaveLength(1)
+    })
+  })
 })

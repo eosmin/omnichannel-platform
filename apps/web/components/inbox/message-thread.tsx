@@ -15,6 +15,7 @@ import {
 import { errorCodeOf } from '../../lib/error-message'
 import { buildThreadItems, memberIdsOf } from '../../lib/inbox/thread-items'
 import { useAuthorLabel } from '../../lib/inbox/use-author-label'
+import { useComposerQueue } from '../../lib/inbox/use-composer-queue'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import {
   useChannelName,
@@ -29,6 +30,7 @@ import { Button } from '../ui/button'
 import { InboxState } from './inbox-state'
 import { MessageBubble, messageDomId } from './message-bubble'
 import { OriginCard } from './origin-card'
+import { PendingBubble } from './pending-bubble'
 
 // Closer to the end than this, a message that arrives keeps the thread at the end; farther, the
 // reader is left where they are
@@ -58,6 +60,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
     channelName
   )
   useMarkRead(conversationId, conversation.data?.unreadCount)
+  const { waiting } = useComposerQueue(storeId, conversationId)
 
   const items = useMemo(
     () => buildThreadItems(thread.data?.pages.map(page => page.data) ?? []),
@@ -119,6 +122,15 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
     }
     position.current = { firstId, lastId, height: element.scrollHeight, anchorTop: null }
   }, [scroller, firstId, lastId, wasAtEnd])
+
+  // What the agent just wrote is what they look at next, wherever the thread was scrolled to
+  const waitingCount = waiting.length
+  const previousWaiting = useRef(waitingCount)
+  useLayoutEffect(() => {
+    const grew = waitingCount > previousWaiting.current
+    previousWaiting.current = waitingCount
+    if (grew && scroller !== null) scroller.scrollTop = scroller.scrollHeight
+  }, [scroller, waitingCount])
 
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = thread
   const loadEarlier = useCallback((): void => {
@@ -248,7 +260,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
             ) : null}
           </div>
         ) : null}
-        {items.length === 0 ? (
+        {items.length === 0 && waiting.length === 0 ? (
           <InboxState icon={MessageSquare} title={t('empty.title')} body={t('empty.body')} />
         ) : (
           <ol aria-label={t('label')} className="flex flex-col p-3">
@@ -274,6 +286,11 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                 </li>
               )
             )}
+            {waiting.map(message => (
+              <li key={message.id} className="mt-1">
+                <PendingBubble message={message} />
+              </li>
+            ))}
           </ol>
         )}
       </div>

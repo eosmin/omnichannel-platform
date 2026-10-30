@@ -10,20 +10,24 @@ import {
 
 import {
   type ChannelDirectoryEntryView,
+  type ChannelTemplateView,
   type ConversationCountsView,
   type ConversationOriginView,
   type ConversationFilters,
-  type ConversationListItemView,
+  type ConversationDetailView,
   type ConversationPageView,
   fetchChannelDirectory,
+  fetchChannelTemplates,
   fetchConversation,
   fetchConversationCounts,
   fetchConversationOrigins,
   fetchConversationsPage,
   fetchMemberDirectory,
   fetchMessagesPage,
+  fetchMessagingWindow,
   type MemberDirectoryEntryView,
   type MessagePageView,
+  type MessagingWindowView,
   QueryKeys
 } from '@platform/api-client'
 
@@ -68,7 +72,7 @@ export function useChannelDirectory(storeId: string): UseQueryResult<ChannelDire
 export function useConversation(
   storeId: string,
   conversationId: string
-): UseQueryResult<ConversationListItemView> {
+): UseQueryResult<ConversationDetailView> {
   return useQuery({
     queryKey: QueryKeys.conversations.byId(storeId, conversationId),
     queryFn: ({ signal }) => fetchConversation(apiClient, storeId, conversationId, signal)
@@ -105,4 +109,27 @@ export function useOrigins(
 export function useChannelName(storeId: string, channelType: string): string {
   const channels = useChannelDirectory(storeId)
   return channels.data?.find(channel => channel.pluginId === channelType)?.pluginName ?? channelType
+}
+
+export function useMessagingWindow(
+  storeId: string,
+  conversationId: string
+): UseQueryResult<MessagingWindowView> {
+  return useQuery({
+    queryKey: QueryKeys.messages.window(storeId, conversationId),
+    queryFn: ({ signal }) => fetchMessagingWindow(apiClient, storeId, conversationId, signal)
+  })
+}
+
+// Read when the dialog of templates opens, not before: most conversations never need them
+export function useChannelTemplates(
+  storeId: string,
+  pluginId: string,
+  connectionId: string
+): UseQueryResult<ChannelTemplateView[]> {
+  return useQuery({
+    queryKey: QueryKeys.channels.templates(storeId, pluginId, connectionId),
+    queryFn: ({ signal }) =>
+      fetchChannelTemplates(apiClient, storeId, pluginId, connectionId, signal)
+  })
 }

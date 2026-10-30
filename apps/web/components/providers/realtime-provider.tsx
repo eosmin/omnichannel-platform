@@ -20,6 +20,7 @@ import { OfflineQueue } from '../../lib/realtime/offline-queue'
 import { RealtimeClientTiming } from '../../lib/realtime/realtime-config'
 import { type RealtimeContextValue, RealtimeContext } from '../../lib/realtime/realtime-context'
 import { attachRealtimeSync } from '../../lib/realtime/realtime-sync'
+import { sendThenRefresh } from '../../lib/realtime/send-then-refresh'
 
 // The access token in memory first; a fresh one when the api said it expired or there is none
 async function socketToken({ refresh }: { refresh: boolean }): Promise<string> {
@@ -52,7 +53,15 @@ export function RealtimeProvider({
     })
     const queue = new OfflineQueue({
       storage: safeLocalStorage(),
-      send: (queuedStoreId, input) => sendMessage(apiClient, queuedStoreId, input),
+      send: (queuedStoreId, input) =>
+        sendThenRefresh(
+          () => sendMessage(apiClient, queuedStoreId, input),
+          () =>
+            queryClient.invalidateQueries({
+              queryKey: QueryKeys.messages.thread(queuedStoreId, input.conversationId)
+            }),
+          RealtimeClientTiming.QUEUE_REFRESH_WAIT_MS
+        ),
       newId: () => crypto.randomUUID(),
       now: () => new Date(),
       autoSendWindowMs: RealtimeClientTiming.QUEUE_AUTO_SEND_WINDOW_MS
@@ -78,7 +87,7 @@ export function RealtimeProvider({
     // The refusal may have come before the subscription existed
     leaveIfSessionOver()
 
-    setValue({ connection, status, queue })
+    setValue({ connection, status, queue, flusher })
     return () => {
       setValue(null)
       stopWatching()
