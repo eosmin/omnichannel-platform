@@ -17,8 +17,12 @@ export async function withOwner<T>(run: (owner: OwnerClient) => Promise<T>): Pro
   }
 }
 
+// With a date of last message, so that it is among the newest: the list is ordered by it, and one
+// with none comes after the pages that a case reads
 export function newConversationIn(storeId: string): Promise<string> {
-  return withOwner(async owner => (await createConversationOf(owner, { storeId })).id)
+  return withOwner(
+    async owner => (await createConversationOf(owner, { storeId, lastMessageAt: new Date() })).id
+  )
 }
 
 export function messagesOf(

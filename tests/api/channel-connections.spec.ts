@@ -7,7 +7,11 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { CredentialCipher } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelConnectionStatus, ChannelHealthErrors } from '@platform/core/domain'
+import {
+  ChannelConnectionStatus,
+  ChannelHealthErrors,
+  PluginInstallationStatus
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
@@ -32,6 +36,7 @@ interface ErrorBody {
 interface ConnectionBody {
   id: string
   pluginId: string
+  pluginName?: string
   displayName: string
   status: string
   lastError: string | null
@@ -46,6 +51,8 @@ describe('The channel connections of a store', () => {
   let registry: PluginRegistry
   let counter = 0
   const disconnected: string[] = []
+  // The registry is the process's: what a case registers is taken out when the file ends
+  const registered: string[] = []
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -54,6 +61,7 @@ describe('The channel connections of a store', () => {
     registry = app.get(PluginRegistry, { strict: false })
   })
   afterAll(async () => {
+    for (const id of registered) registry.unregister(id)
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
@@ -84,6 +92,7 @@ describe('The channel connections of a store', () => {
       ...over
     })
     registry.register(plugin)
+    registered.push(id)
     return { id, plugin, connectionId }
   }
   // The plugin is installed in both stores first, as the catalog would do: connecting needs it
@@ -334,6 +343,99 @@ describe('The channel connections of a store', () => {
       // The same view comes from every route that returns a connection
       const one = await asAdmin().get(ApiRoutes.channels.connectionById(item?.id ?? ''))
       expect((one.body as ConnectionBody).capabilities.slice().sort()).toEqual(expected)
+    })
+  })
+
+  describe('the directory for an agent', () => {
+    it('names the channels of the store to who may not manage them, with no error text or date', async () => {
+      const { id, plugin } = register()
+      await connect(id)
+
+      const settings = await asAgent().get(ApiRoutes.channels.connections)
+      const list = await asAgent().get(ApiRoutes.channels.directory)
+
+      expect(settings.status).toBe(FORBIDDEN)
+      expect(list.status).toBe(OK)
+      const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
+      expect(Object.keys(item ?? {}).sort()).toEqual([
+        'capabilities',
+        'displayName',
+        'id',
+        'pluginId',
+        'pluginName',
+        'status'
+      ])
+      expect(item?.pluginName).toBe(plugin.name)
+      expect(item?.capabilities.slice().sort()).toEqual([...new Set(plugin.capabilities)].sort())
+    })
+
+    it('leaves out the connections of another store, and lists those of its own', async () => {
+      const mine = register()
+      const theirs = register()
+      await connect(mine.id)
+      await connect(theirs.id, asAdminB)
+
+      const list = await asAgent().get(ApiRoutes.channels.directory)
+
+      const ids = (list.body as ConnectionBody[]).map(item => item.pluginId)
+      expect(ids).toContain(mine.id)
+      expect(ids).not.toContain(theirs.id)
+    })
+
+    it('cleans and cuts the name a plugin gave itself, and falls back to its id', async () => {
+      const long = register({ name: `  \u202EWhats${'x'.repeat(80)}\u{1F600}  ` })
+      const blank = register({ name: '   ' })
+      // A plugin of the kind the registry lets in: nothing checks `name` when it registers, so the case
+      // forces the value the type forbids
+      const missing = register({ name: undefined as unknown as string })
+      const emoji = register({ name: `Shop \u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u2028x\u200Bx` })
+      await connect(long.id)
+      await connect(blank.id)
+      await connect(missing.id)
+      await connect(emoji.id)
+
+      const list = await asAgent().get(ApiRoutes.channels.directory)
+
+      const nameOf = (pluginId: string) =>
+        (list.body as ConnectionBody[]).find(item => item.pluginId === pluginId)?.pluginName
+      expect(list.status).toBe(OK)
+      expect(Array.from(nameOf(long.id) ?? '')).toHaveLength(60)
+      expect(nameOf(long.id)).toMatch(/^Whatsx+$/)
+      expect(nameOf(blank.id)).toBe(blank.id)
+      expect(nameOf(missing.id)).toBe(missing.id)
+      // The joiners of the emoji family stay; the separator and the zero width space become a space
+      expect(nameOf(emoji.id)).toBe('Shop \u{1F468}\u200D\u{1F469}\u200D\u{1F467} x x')
+    })
+
+    it('tells a channel that is down, and one whose installation is gone, without saying why', async () => {
+      const broken = register()
+      const orphan = register()
+      const brokenConnection = await connect(broken.id)
+      const orphanConnection = await connect(orphan.id)
+      await owner.channelConnection.update({
+        where: { id: (brokenConnection.body as ConnectionBody).id },
+        data: { status: ChannelConnectionStatus.ERROR, lastError: 'token expired: SECRET-DETAIL' }
+      })
+      await owner.pluginInstallation.updateMany({
+        where: { storeId: ctx.storeA.id, pluginId: orphan.id },
+        data: { status: PluginInstallationStatus.REVOKED }
+      })
+
+      const list = await asAgent().get(ApiRoutes.channels.directory)
+
+      const statusOf = (connection: { body: unknown }) =>
+        (list.body as ConnectionBody[]).find(
+          item => item.id === (connection.body as ConnectionBody).id
+        )?.status
+      expect(statusOf(brokenConnection)).toBe(ChannelConnectionStatus.ERROR)
+      expect(statusOf(orphanConnection)).toBe(ChannelConnectionStatus.ERROR)
+      expect(JSON.stringify(list.body)).not.toContain('SECRET-DETAIL')
+    })
+
+    it('is open to a viewer, who may see conversations', async () => {
+      const viewer = await api(app, ctx.viewerA, ctx.storeA).get(ApiRoutes.channels.directory)
+
+      expect(viewer.status).toBe(OK)
     })
   })
 

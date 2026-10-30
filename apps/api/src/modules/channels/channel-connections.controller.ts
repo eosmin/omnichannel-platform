@@ -14,6 +14,7 @@ import { type ConnectChannelBody, connectChannelSchema } from './channel-connect
 import {
   type ChannelConnectionView,
   ChannelConnectionsService,
+  type ChannelDirectoryEntry,
   type ChannelTestResult
 } from './channel-connections.service'
 
@@ -21,9 +22,9 @@ type Store = ResolvedTenant['store']
 
 const id = () => new ZodValidationPipe(uuidSchema)
 
-// The channels of the store in X-Store-Id (TDD_10 §10). Seeing them needs SETTINGS_VIEW and changing
-// them SETTINGS_EDIT: there is no permission of their own, and the plan gating of the TDD is omitted
-// in the v1.2 MVP.
+// The channels of the store in X-Store-Id (TDD_10 §10). Managing them needs SETTINGS_VIEW and
+// SETTINGS_EDIT: there is no permission of their own, and the plan gating of the TDD is omitted in the
+// v1.2 MVP. The one exception is `directory`, which any role that sees conversations may read.
 @Controller()
 export class ChannelConnectionsController {
   constructor(private readonly connections: ChannelConnectionsService) {}
@@ -32,6 +33,14 @@ export class ChannelConnectionsController {
   @Get(ApiRoutes.channels.connections)
   list(@CurrentStore() store: Store): Promise<ChannelConnectionView[]> {
     return this.connections.list(store.id)
+  }
+
+  // For every agent, unlike the list above, which needs SETTINGS_VIEW: it answers only what the
+  // inbox needs to name and draw a channel
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Get(ApiRoutes.channels.directory)
+  directory(@CurrentStore() store: Store): Promise<ChannelDirectoryEntry[]> {
+    return this.connections.directory(store.id)
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)

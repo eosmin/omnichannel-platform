@@ -22,6 +22,7 @@ import {
   ChannelConnectionLimits,
   ChannelConnectionStatus,
   ChannelHealthLimits,
+  isInstallationActive,
   OfActiveInstallation,
   PluginInstallationStatus,
   PluginStatus
@@ -64,11 +65,27 @@ export interface ChannelConnectionView {
   capabilities: ChannelCapabilityType[]
 }
 
+// What any agent may know of a connection: enough to name the channel in the inbox, to draw only the
+// actions it supports and to tell one that is down (`status`, public on purpose: an agent must know
+// that a reply cannot go out). `lastError` and the dates belong to who manages channels.
+export type ChannelDirectoryEntry = Pick<
+  ChannelConnectionView,
+  'id' | 'pluginId' | 'displayName' | 'status' | 'capabilities'
+> & {
+  // What the channel is called ("WhatsApp"), for the filter that groups the accounts of one plugin
+  pluginName: string
+}
+
 export interface ChannelTestResult {
   healthy: boolean
   checkedAt: Date
   error?: string
 }
+
+const CONNECTION_ORDER: ({ createdAt: 'asc' } | { id: 'asc' })[] = [
+  { createdAt: 'asc' },
+  { id: 'asc' }
+]
 
 const VIEW_SELECT = {
   id: true,
@@ -117,9 +134,52 @@ export class ChannelConnectionsService {
     const rows = await this.prisma.client.channelConnection.findMany({
       where: { storeId },
       select: VIEW_SELECT,
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+      orderBy: CONNECTION_ORDER
     })
     return rows.map(row => this.view(row))
+  }
+
+  // Its own select, not the full view cut down: whatever a column holds that only who manages channels
+  // may read (the error text, the dates) never leaves the database for this route. A connection whose
+  // installation is gone or whose plugin was suspended is inert (D19): it is told as `error`, because
+  // a reply cannot go out through it, whatever its own row says.
+  async directory(storeId: string): Promise<ChannelDirectoryEntry[]> {
+    const rows = await this.prisma.client.channelConnection.findMany({
+      where: { storeId },
+      select: {
+        id: true,
+        pluginId: true,
+        displayName: true,
+        status: true,
+        installation: { select: { status: true, plugin: { select: { status: true } } } }
+      },
+      orderBy: CONNECTION_ORDER
+    })
+    return rows.map(row => ({
+      id: row.id,
+      pluginId: row.pluginId,
+      pluginName: this.pluginNameOf(row.pluginId),
+      displayName: row.displayName,
+      status: isInstallationActive(row.installation)
+        ? enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
+        : ChannelConnectionStatus.ERROR,
+      capabilities: this.registry.capabilitiesOf(row.pluginId)
+    }))
+  }
+
+  // Nothing checks the name of a plugin when it registers, so it is not trusted to be a string. It goes
+  // through the same cleaning as any text from a provider, and a cut that leaves a joiner at the end
+  // (in the middle of an emoji family) loses it.
+  private pluginNameOf(pluginId: string): string {
+    const name: unknown = this.registry.find(pluginId)?.name
+    const clean =
+      typeof name === 'string'
+        ? providerText(name, ChannelConnectionLimits.PLUGIN_NAME_MAX_LENGTH).replace(
+            /[\u200C\u200D]+$/u,
+            ''
+          )
+        : ''
+    return clean === '' ? pluginId : clean
   }
 
   async get(storeId: string, connectionId: string): Promise<ChannelConnectionView> {

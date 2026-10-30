@@ -407,5 +407,73 @@
     "manageStores": "Manage stores",
     "account": "Account",
     "accountMenu": "Account menu"
+  },
+  "inbox": {
+    "listLabel": "Conversations",
+    "scope": {
+      "all": "All",
+      "mine": "Mine",
+      "unassigned": "Unassigned"
+    },
+    "statusFilter": "Status",
+    "allStatuses": "Any status",
+    "channelFilter": "Channel",
+    "allChannels": "All channels",
+    "agentFilter": "Agent",
+    "allAgents": "Any agent",
+    "withCount": "{label} ({count})",
+    "clearFilters": "Clear filters",
+    "customerOnChannel": "{channel} customer ····{digits}",
+    "youPrefix": "You: {text}",
+    "notePrefix": "Note: {text}",
+    "noMessages": "No messages yet",
+    "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
+    "snoozed": "Snoozed",
+    "messageType": {
+      "TEXT": "Message",
+      "IMAGE": "Image",
+      "VIDEO": "Video",
+      "AUDIO": "Audio",
+      "DOCUMENT": "Document",
+      "LOCATION": "Location",
+      "INTERNAL_NOTE": "Internal note",
+      "SYSTEM": "Event",
+      "PRODUCT_CARD": "Product",
+      "ORDER_SUMMARY": "Order",
+      "TEMPLATE": "Template",
+      "unknown": "Message"
+    },
+    "loadingList": "Loading conversations",
+    "loadingMore": "Loading more conversations",
+    "empty": {
+      "title": "No conversations yet",
+      "body": "Messages from your connected channels will appear here."
+    },
+    "noResults": {
+      "title": "No conversations match these filters",
+      "body": "Try other filters or clear them."
+    },
+    "error": {
+      "title": "The conversations could not be loaded"
+    },
+    "permissionDenied": {
+      "title": "You do not have access to this",
+      "body": "Ask an administrator to grant the required permission."
+    },
+    "select": {
+      "title": "Select a conversation",
+      "body": "Choose one from the list to read it."
+    },
+    "notFound": {
+      "title": "This conversation does not exist",
+      "body": "It may have been removed, or the link is wrong."
+    },
+    "backToList": "Back to the conversations",
+    "announce": {
+      "newMessage": "New message in a conversation",
+      "assignedToYou": "A conversation was assigned to you"
+    },
+    "scopeLabel": "Assigned to",
+    "otherAgent": "Another agent"
   }
 }
