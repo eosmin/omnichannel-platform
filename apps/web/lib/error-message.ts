@@ -8,7 +8,10 @@ const KNOWN_CODES: ReadonlySet<string> = new Set(Object.values(ErrorCodes))
 // not know yet (a server newer than the page), and anything that is not an api error, shows the
 // generic message.
 export function errorCodeOf(error: unknown): ErrorCode {
-  return error instanceof ApiError && KNOWN_CODES.has(error.code)
-    ? (error.code as ErrorCode) // Narrowed by the set above
-    : ErrorCodes.INTERNAL_ERROR
+  return error instanceof ApiError ? knownErrorCode(error.code) : ErrorCodes.INTERNAL_ERROR
+}
+
+// The same for a code that came as plain text (the reason a message was not delivered)
+export function knownErrorCode(code: string): ErrorCode {
+  return KNOWN_CODES.has(code) ? (code as ErrorCode) : ErrorCodes.INTERNAL_ERROR // Narrowed by the set
 }

@@ -54,3 +54,23 @@ export async function inviteAsAgent(adminToken: string, invited: string): Promis
     body: JSON.stringify({ email: invited, roleId: agent.id })
   })
 }
+
+// An internal note written by whoever holds the token, as a second session would write it: the
+// thread of another browser has to show it without a reload
+export async function writeNote(
+  token: string,
+  storeId: string,
+  conversationId: string,
+  content: string
+): Promise<void> {
+  await call(ApiRoutes.messages.create, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, [TenantHeaders.STORE_ID]: storeId },
+    body: JSON.stringify({
+      type: 'INTERNAL_NOTE',
+      conversationId,
+      content,
+      idempotencyKey: crypto.randomUUID()
+    })
+  })
+}

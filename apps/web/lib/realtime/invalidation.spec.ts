@@ -24,6 +24,12 @@ describe('queryKeysForEvent', () => {
     ).toEqual(expected)
   })
 
+  it('reaches the origins of the conversation through the key of its thread', () => {
+    const thread = QueryKeys.messages.thread('s1', 'c1')
+
+    expect(QueryKeys.messages.origins('s1', 'c1').slice(0, thread.length)).toEqual(thread)
+  })
+
   it('refreshes only the thread for the state of a message', () => {
     expect(
       queryKeysForEvent(RealtimeEvents.MESSAGE_DELIVERED, { conversationId: 'c1' }, 's1')

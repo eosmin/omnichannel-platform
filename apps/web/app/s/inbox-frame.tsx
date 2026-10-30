@@ -7,6 +7,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { ConversationHeader } from '../../components/inbox/conversation-header'
 import { ConversationList } from '../../components/inbox/conversation-list'
 import { InboxFilters } from '../../components/inbox/inbox-filters'
+import { MessageThread } from '../../components/inbox/message-thread'
 import { RealtimeAnnouncer } from '../../components/inbox/realtime-announcer'
 import { SelectConversation } from '../../components/inbox/select-conversation'
 import { useStore } from '../../components/providers/store-context'
@@ -21,8 +22,8 @@ import { cn } from '../../lib/utils'
 const NO_CHANNELS: never[] = []
 const NO_MEMBERS: never[] = []
 
-// The inbox is the list on the left and the conversation on the right (the customer panel of Step 3.3
-// joins as a third column). On a phone it is a stack of screens (TDD_09 §16.4): the list, and the
+// The inbox is the list on the left and the conversation on the right: its header and its thread (the
+// composer joins in Step 3.2, PR B3, and the customer panel of Step 3.3 as a third column). On a phone it is a stack of screens (TDD_09 §16.4): the list, and the
 // conversation when one is open; the address says which, so the back button of the browser works.
 // The page frame pads its content, hence the negative margin: the inbox uses the whole area.
 export function InboxFrame({ children }: { children: ReactNode }): ReactElement {
@@ -64,7 +65,10 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
         {conversationId === undefined ? (
           <SelectConversation />
         ) : (
-          <ConversationHeader conversationId={conversationId} />
+          <>
+            <ConversationHeader conversationId={conversationId} />
+            <MessageThread key={conversationId} conversationId={conversationId} />
+          </>
         )}
         {children}
       </section>

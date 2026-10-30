@@ -11,15 +11,19 @@ import {
 import {
   type ChannelDirectoryEntryView,
   type ConversationCountsView,
+  type ConversationOriginView,
   type ConversationFilters,
   type ConversationListItemView,
   type ConversationPageView,
   fetchChannelDirectory,
   fetchConversation,
   fetchConversationCounts,
+  fetchConversationOrigins,
   fetchConversationsPage,
   fetchMemberDirectory,
+  fetchMessagesPage,
   type MemberDirectoryEntryView,
+  type MessagePageView,
   QueryKeys
 } from '@platform/api-client'
 
@@ -69,4 +73,36 @@ export function useConversation(
     queryKey: QueryKeys.conversations.byId(storeId, conversationId),
     queryFn: ({ signal }) => fetchConversation(apiClient, storeId, conversationId, signal)
   })
+}
+
+// The thread is read page by page, newest first; a realtime event makes the whole key stale, which
+// refetches the pages that are loaded
+export function useThread(
+  storeId: string,
+  conversationId: string
+): UseInfiniteQueryResult<InfiniteData<MessagePageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: QueryKeys.messages.thread(storeId, conversationId),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchMessagesPage(apiClient, storeId, conversationId, pageParam, signal),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined)
+  })
+}
+
+export function useOrigins(
+  storeId: string,
+  conversationId: string
+): UseQueryResult<ConversationOriginView[]> {
+  return useQuery({
+    queryKey: QueryKeys.messages.origins(storeId, conversationId),
+    queryFn: ({ signal }) => fetchConversationOrigins(apiClient, storeId, conversationId, signal)
+  })
+}
+
+// The name of the channel of a conversation, from the plugin that serves it; its id until the
+// directory is read
+export function useChannelName(storeId: string, channelType: string): string {
+  const channels = useChannelDirectory(storeId)
+  return channels.data?.find(channel => channel.pluginId === channelType)?.pluginName ?? channelType
 }

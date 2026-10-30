@@ -11,7 +11,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { errorCodeOf } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
-import { useChannelDirectory, useConversation } from '../../lib/inbox/use-inbox-data'
+import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -27,7 +27,6 @@ export function ConversationHeader({ conversationId }: { conversationId: string 
   const { storeId } = useStore()
   const { search } = useInboxFilters()
   const conversation = useConversation(storeId, conversationId)
-  const channels = useChannelDirectory(storeId)
 
   const backLink = (
     <Link
@@ -87,20 +86,20 @@ export function ConversationHeader({ conversationId }: { conversationId: string 
   }
 
   const { customer, channelType } = conversation.data
-  const channelName =
-    channels.data?.find(channel => channel.pluginId === channelType)?.pluginName ?? channelType
-  return <LoadedHeader customer={customer} channelName={channelName} backLink={backLink} />
+  return <LoadedHeader customer={customer} channelType={channelType} backLink={backLink} />
 }
 
 function LoadedHeader({
   customer,
-  channelName,
+  channelType,
   backLink
 }: {
   customer: ConversationListItemView['customer']
-  channelName: string
+  channelType: string
   backLink: ReactElement
 }): ReactElement {
+  const { storeId } = useStore()
+  const channelName = useChannelName(storeId, channelType)
   const { label, name } = useCustomerName(customer, channelName)
   return (
     <header className="flex items-center gap-3 border-b p-3">

@@ -2,7 +2,12 @@ import { ApiRoutes } from '@platform/core/api'
 import type { MessageType } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
-import { type SentMessage, sentMessageSchema } from './api-schemas'
+import {
+  type MessagePageView,
+  messagePageSchema,
+  type SentMessage,
+  sentMessageSchema
+} from './api-schemas'
 
 // What POST /messages takes for the two kinds an agent writes. The key makes a retry return the
 // message that exists instead of creating another one (the api answers 200 instead of 201).
@@ -24,5 +29,21 @@ export function sendMessage(
     body: input,
     schema: sentMessageSchema,
     storeId
+  })
+}
+
+// One page of the thread, newest first; the cursor is the one the previous page gave
+export function fetchMessagesPage(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string,
+  cursor: string | null,
+  signal?: AbortSignal
+): Promise<MessagePageView> {
+  const query = cursor === null ? '' : `?${new URLSearchParams({ cursor }).toString()}`
+  return client.request(`${ApiRoutes.conversations.messages(conversationId)}${query}`, {
+    schema: messagePageSchema,
+    storeId,
+    signal
   })
 }
