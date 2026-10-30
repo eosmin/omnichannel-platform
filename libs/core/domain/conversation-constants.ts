@@ -145,5 +145,8 @@ export const ConversationLimits = {
   MAX_SNOOZE_DAYS: 365,
   PREVIEW_MAX_LENGTH: 140,
   // The tags of a conversation travel with every row of the list: the number is bounded
-  MAX_TAGS_PER_CONVERSATION: 20
+  MAX_TAGS_PER_CONVERSATION: 20,
+  // The origins of a conversation the thread reads at once, newest first: a customer who comes back
+  // from many ads has more, and the card shows the latest
+  MAX_ORIGINS_LISTED: 50
 } as const

@@ -135,6 +135,53 @@ describe('The team of a store', () => {
     })
   })
 
+  describe('the directory of members', () => {
+    interface DirectoryBody {
+      id: string
+      name: string
+      avatarMediaId: string | null
+      role: { id: string; name: string }
+    }
+
+    it('names the active members to an agent who may not see the team', async () => {
+      const response = await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.members.directory)
+
+      expect(response.status).toBe(200)
+      const ids = (response.body as DirectoryBody[]).map(row => row.id)
+      expect(ids).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
+      expect(ids).not.toContain(ctx.adminA2.id)
+      expect(ids).not.toContain(ctx.adminB.id)
+    })
+
+    it('carries only the id, name, avatar and role: never an email or a permission', async () => {
+      const response = await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.members.directory)
+
+      for (const row of response.body as DirectoryBody[]) {
+        expect(Object.keys(row).sort()).toEqual(['avatarMediaId', 'id', 'name', 'role'])
+        expect(Object.keys(row.role).sort()).toEqual(['id', 'name'])
+      }
+      expect(JSON.stringify(response.body)).not.toContain(ctx.agentA.email)
+    })
+
+    it('leaves out a member once removed', async () => {
+      const { membershipId, actor } = await member(ctx.roleIds[RoleNames.AGENT])
+      await asAdmin().delete(ApiRoutes.settings.memberById(membershipId))
+
+      const response = await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.members.directory)
+
+      expect((response.body as DirectoryBody[]).map(row => row.id)).not.toContain(actor.id)
+    })
+
+    it('is refused to a role that cannot see conversations', async () => {
+      const roleId = await roleWith(ctx.storeA.id, [Permissions.TEAM_VIEW])
+      const { actor } = await member(roleId)
+
+      const response = await api(app, actor, ctx.storeA).get(ApiRoutes.members.directory)
+
+      expect(response.status).toBe(403)
+    })
+  })
+
   describe('changing the role of a member', () => {
     it('gives the new role at once, not after the cache expires, and audits it', async () => {
       const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])

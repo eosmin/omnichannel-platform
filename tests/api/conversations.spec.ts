@@ -45,7 +45,13 @@ interface ItemBody {
   snoozedUntil: string | null
   resolvedAt: string | null
   resolutionReason: string | null
-  customer: { id: string; name: string | null; displayIdentity: string }
+  customer: {
+    id: string
+    name: string | null
+    displayIdentity: string
+    username: string | null
+    avatarUrl: string | null
+  }
   lastMessage: { id: string; contentPreview: string | null; authorType: string } | null
   tags: { id: string; name: string }[]
 }
@@ -300,6 +306,52 @@ describe('The conversations of a store', () => {
       expect(withMessage?.lastMessage?.authorType).toBe(AuthorType.AGENT)
       expect(withMessage?.lastMessage?.contentPreview).toHaveLength(140)
       expect(without?.customer.displayIdentity).toBeTruthy()
+    })
+
+    it('carries the username and photo the channel keeps for the customer, null until it does', async () => {
+      const target = expectedOrder[0] ?? ''
+      const conversation = await owner.conversation.findUniqueOrThrow({
+        where: { id: target },
+        select: { customerIdentityId: true }
+      })
+      const before = await admin.get(ApiRoutes.conversations.list).query({ limit: 100 })
+      expect(
+        (before.body as PageBody).data.find(item => item.id === target)?.customer
+      ).toMatchObject({
+        username: null,
+        avatarUrl: null
+      })
+
+      await owner.customerIdentity.update({
+        where: { id: conversation.customerIdentityId },
+        data: { username: 'ana.tienda', avatarUrl: 'https://cdn.example.com/ana.jpg' }
+      })
+      const after = await admin.get(ApiRoutes.conversations.list).query({ limit: 100 })
+
+      expect(
+        (after.body as PageBody).data.find(item => item.id === target)?.customer
+      ).toMatchObject({
+        username: 'ana.tienda',
+        avatarUrl: 'https://cdn.example.com/ana.jpg'
+      })
+    })
+
+    it('gives no photo when the stored link is not a plain http link', async () => {
+      const target = expectedOrder[1] ?? ''
+      const conversation = await owner.conversation.findUniqueOrThrow({
+        where: { id: target },
+        select: { customerIdentityId: true }
+      })
+      await owner.customerIdentity.update({
+        where: { id: conversation.customerIdentityId },
+        data: { avatarUrl: 'javascript:alert(1)' }
+      })
+
+      const response = await admin.get(ApiRoutes.conversations.list).query({ limit: 100 })
+
+      expect(
+        (response.body as PageBody).data.find(item => item.id === target)?.customer.avatarUrl
+      ).toBeNull()
     })
 
     it('lists spam and archived only to who may archive', async () => {

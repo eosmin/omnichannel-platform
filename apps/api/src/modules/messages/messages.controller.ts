@@ -31,6 +31,7 @@ import {
   listMessagesQuerySchema,
   MessageChangesService,
   MessagesService,
+  type RevisionView,
   type ReactToMessageBody,
   reactToMessageSchema,
   type MessageView,
@@ -131,6 +132,18 @@ export class MessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
   ): Promise<{ content: string | null }> {
     return this.changes.deletedContent(store.id, messageId, viewerOf(user.id, held))
+  }
+
+  // The earlier texts of an edited message, for the "edited by" link of a note
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @Get(ApiRoutes.messages.revisions(':id'))
+  revisions(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
+  ): Promise<RevisionView[]> {
+    return this.changes.revisions(store.id, messageId, viewerOf(user.id, held))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)

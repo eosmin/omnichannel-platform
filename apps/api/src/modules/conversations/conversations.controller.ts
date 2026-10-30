@@ -28,6 +28,7 @@ import {
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 
 import { ConversationCountsService } from './conversation-counts.service'
+import { ConversationOriginsService, type OriginView } from './conversation-origins.service'
 import { type ConversationTag, ConversationTagsService } from './conversation-tags.service'
 
 const id = () => new ZodValidationPipe(uuidSchema)
@@ -41,6 +42,7 @@ export class ConversationsController {
     private readonly conversations: ConversationsService,
     private readonly counts: ConversationCountsService,
     private readonly tags: ConversationTagsService,
+    private readonly origins: ConversationOriginsService,
     private readonly readReceipts: ReadReceipts
   ) {}
 
@@ -68,6 +70,18 @@ export class ConversationsController {
     @Param('id', id()) conversationId: string
   ): Promise<ConversationDetail> {
     return this.conversations.get(store.id, conversationId, viewerOf(user.id, held))
+  }
+
+  // The ads and posts the customer came from, for the card on top of the thread
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @Get(ApiRoutes.conversations.origins(':id'))
+  listOrigins(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', id()) conversationId: string
+  ): Promise<OriginView[]> {
+    return this.origins.list(store.id, conversationId, viewerOf(user.id, held))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
