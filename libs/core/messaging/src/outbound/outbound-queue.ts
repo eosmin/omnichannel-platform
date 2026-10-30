@@ -60,9 +60,11 @@ export class OutboundQueue {
     private readonly queue: Queue<OutboundQueueJob>
   ) {}
 
-  async enqueue(job: SendOutboundMessageJob): Promise<void> {
+  // `delayMs` is for the closing message of a resolution, which waits for the Undo
+  async enqueue(job: SendOutboundMessageJob, delayMs?: number): Promise<void> {
     await this.queue.add(JobNames.SEND_OUTBOUND_MESSAGE, job, {
-      jobId: outboundJobId(job.messageId)
+      jobId: outboundJobId(job.messageId),
+      ...(delayMs === undefined ? {} : { delay: delayMs })
     })
   }
 

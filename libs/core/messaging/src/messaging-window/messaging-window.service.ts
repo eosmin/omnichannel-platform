@@ -34,6 +34,12 @@ export class MessagingWindowService {
     return this.read(this.prisma.client, storeId, conversationId, viewer)
   }
 
+  // For a write that must not fail when the window is closed but leave the reply out (the closing
+  // message of a resolution), in the transaction of the caller
+  async isOpen(db: Db, storeId: string, conversationId: string): Promise<boolean> {
+    return (await this.read(db, storeId, conversationId)).open
+  }
+
   // Before a reply is stored: a closed window answers CHANNEL_WINDOW_EXPIRED, which the offline queue
   // of the client treats as final (TDD_06 §4). The reads run in the transaction of the caller.
   async requireOpen(db: Db, storeId: string, conversationId: string): Promise<void> {

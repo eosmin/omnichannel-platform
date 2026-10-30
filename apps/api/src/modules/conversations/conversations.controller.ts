@@ -27,6 +27,7 @@ import {
   attachTagSchema,
   type ChangeStatusBody,
   changeStatusSchema,
+  ConversationClosingService,
   type ConversationCounts,
   type ConversationDetail,
   type ConversationPage,
@@ -63,6 +64,7 @@ const id = () => new ZodValidationPipe(uuidSchema)
 export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
+    private readonly closing: ConversationClosingService,
     private readonly bulk: ConversationBulkService,
     private readonly counts: ConversationCountsService,
     private readonly tags: ConversationTagsService,
@@ -132,10 +134,14 @@ export class ConversationsController {
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(changeStatusSchema)) body: ChangeStatusBody
   ): Promise<ConversationDetail> {
-    return this.conversations.updateStatus(store.id, conversationId, body.status, {
+    const options = {
       actor: viewerOf(user.id, held),
       ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason })
-    })
+    }
+    if (body.closingSnippetId !== undefined) {
+      return this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
+    }
+    return this.conversations.updateStatus(store.id, conversationId, body.status, options)
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)

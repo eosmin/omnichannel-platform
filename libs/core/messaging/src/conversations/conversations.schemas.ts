@@ -73,13 +73,19 @@ export const changeStatusSchema = z
       .min(1)
       .max(ConversationLimits.RESOLUTION_REASON_MAX_LENGTH)
       .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
-      .optional()
+      .optional(),
+    // The saved reply sent to the customer once the Undo is over; the api reads its text
+    closingSnippetId: uuidSchema.optional()
   })
   .refine(
     body => body.resolutionReason === undefined || body.status === ConversationStatus.RESOLVED,
     {
       message: 'a resolution reason goes with resolving'
     }
+  )
+  .refine(
+    body => body.closingSnippetId === undefined || body.status === ConversationStatus.RESOLVED,
+    { message: 'a closing message goes with resolving' }
   )
 
 export const assignSchema = z.strictObject({ userId: uuidSchema.nullable() })

@@ -12,6 +12,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
   ChannelConnectionStatus,
+  ConversationStatus,
   PluginInstallationStatus,
   ChannelIds,
   DeliveryStatus,
@@ -20,7 +21,13 @@ import {
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { ChannelConnectionResolver, OutboundQueue } from '@platform/core/messaging'
+import {
+  ChannelConnectionResolver,
+  CLOSING_MESSAGE_METADATA,
+  ConversationsService,
+  MessagingWindowService,
+  OutboundQueue
+} from '@platform/core/messaging'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
@@ -123,7 +130,16 @@ describe('Replies on their way to a channel', () => {
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
     const contexts = new ChannelContextFactory(cipher)
-    sender = new OutboundSender(prisma, registry, contexts, writer, logger)
+    sender = new OutboundSender(
+      prisma,
+      registry,
+      contexts,
+      writer,
+      new ConversationsService(prisma, events),
+      app.get(MessagingWindowService, { strict: false }),
+      events,
+      logger
+    )
     receipts = new ChannelReceipts(
       prisma,
       new ChannelConnectionResolver(prisma),
@@ -169,11 +185,24 @@ describe('Replies on their way to a channel', () => {
       createdAt?: Date
       resentAt?: Date
       metadata?: { template: { name: string; language?: string; variables?: string[] } }
+      // The closing message of a resolution, in a conversation in this state
+      closing?: {
+        conversationStatus: ConversationStatus
+        resolvedAt: Date | null
+        // The last message of the customer, which the messaging window counts from
+        lastInboundAt?: Date
+      }
     } = {}
   ): Promise<{ id: string; storeId: string; connectionId: string; conversationId: string }> => {
     const storeId = over.storeId ?? ctx.storeA.id
     const pluginId = over.pluginId ?? TEST_CHANNEL_ID
-    const identity = await createCustomerIdentity(owner, { storeId, channelType: pluginId })
+    const identity = await createCustomerIdentity(owner, {
+      storeId,
+      channelType: pluginId,
+      ...(over.closing?.lastInboundAt === undefined
+        ? {}
+        : { lastInboundAt: over.closing.lastInboundAt })
+    })
     const connection = await createChannelConnection(owner, { storeId, channelType: pluginId })
     if (over.status !== undefined) {
       await owner.channelConnection.update({
@@ -186,7 +215,10 @@ describe('Replies on their way to a channel', () => {
       customerId: identity.customerId,
       customerIdentityId: identity.id,
       channelType: pluginId,
-      channelConnectionId: connection.id
+      channelConnectionId: connection.id,
+      ...(over.closing === undefined
+        ? {}
+        : { status: over.closing.conversationStatus, resolvedAt: over.closing.resolvedAt })
     })
     const message = await owner.message.create({
       data: {
@@ -198,7 +230,8 @@ describe('Replies on their way to a channel', () => {
         deliveryStatus: over.deliveryStatus ?? DeliveryStatus.QUEUED,
         ...(over.createdAt === undefined ? {} : { createdAt: over.createdAt }),
         ...(over.resentAt === undefined ? {} : { resentAt: over.resentAt }),
-        ...(over.metadata === undefined ? {} : { metadata: over.metadata })
+        ...(over.metadata === undefined ? {} : { metadata: over.metadata }),
+        ...(over.closing === undefined ? {} : { metadata: CLOSING_MESSAGE_METADATA })
       },
       select: { id: true }
     })
@@ -223,6 +256,81 @@ describe('Replies on their way to a channel', () => {
     messageId: reply.id
   })
   const eventsOf = (name: string) => heard.filter(item => item.event === name)
+
+  describe('the closing message of a resolution', () => {
+    const resolvedBefore = (createdAt: Date) => ({
+      conversationStatus: ConversationStatus.RESOLVED,
+      resolvedAt: new Date(createdAt.getTime() - 1_000)
+    })
+
+    it('is sent while the conversation is still resolved by the same resolution, and counts as the answer', async () => {
+      const createdAt = new Date()
+      const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(1)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      const conversation = await owner.conversation.findUniqueOrThrow({
+        where: { id: reply.conversationId },
+        select: { status: true, firstResponseAt: true }
+      })
+      expect(conversation.status).toBe(ConversationStatus.RESOLVED)
+      expect(conversation.firstResponseAt).toEqual(createdAt)
+    })
+
+    it('is deleted, never sent and never counted, when the Undo reopened the conversation', async () => {
+      const createdAt = new Date()
+      const reply = await queuedReply({
+        createdAt,
+        closing: { conversationStatus: ConversationStatus.OPEN, resolvedAt: null }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(0)
+      expect(await owner.message.count({ where: { id: reply.id } })).toBe(0)
+      expect(eventsOf(Events.MESSAGE_DELETED)).toHaveLength(1)
+      const conversation = await owner.conversation.findUniqueOrThrow({
+        where: { id: reply.conversationId },
+        select: { firstResponseAt: true }
+      })
+      expect(conversation.firstResponseAt).toBeNull()
+    })
+
+    it('is deleted when the messaging window closed during the wait', async () => {
+      const createdAt = new Date()
+      const reply = await queuedReply({
+        pluginId: ChannelIds.INSTAGRAM,
+        createdAt,
+        closing: {
+          ...resolvedBefore(createdAt),
+          lastInboundAt: new Date(Date.now() - 25 * 60 * 60 * 1000)
+        }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(0)
+      expect(await owner.message.count({ where: { id: reply.id } })).toBe(0)
+    })
+
+    it('is deleted when the conversation was resolved again since: that resolution has its own message', async () => {
+      const createdAt = new Date(Date.now() - 20_000)
+      const reply = await queuedReply({
+        createdAt,
+        closing: {
+          conversationStatus: ConversationStatus.RESOLVED,
+          resolvedAt: new Date(createdAt.getTime() + 15_000)
+        }
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(0)
+      expect(await owner.message.count({ where: { id: reply.id } })).toBe(0)
+    })
+  })
 
   describe('the processor', () => {
     it('sends a queued reply through its plugin and writes sent, with the message id as the key', async () => {

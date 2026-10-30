@@ -169,7 +169,10 @@ export const SnoozePresets = {
 
 // Resolving without the options dialog shows a toast that takes it back
 export const ResolveUndo = {
-  DURATION_MS: 10_000
+  DURATION_MS: 10_000,
+  // The closing message waits this much longer than the toast: an Undo clicked in the last second
+  // reaches the api after the toast is gone
+  CLOSING_GRACE_MS: 2_000
 } as const
 
 export const ConversationLimits = {

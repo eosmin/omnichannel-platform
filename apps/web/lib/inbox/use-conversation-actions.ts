@@ -7,20 +7,18 @@ import {
   assignConversation,
   changeConversationStatus,
   type ConversationDetailView,
-  fetchSnippets,
   QueryKeys,
-  sendMessage,
   snoozeConversation
 } from '@platform/api-client'
-import { ConversationStatus, MessageType } from '@platform/core/domain'
+import { ConversationStatus } from '@platform/core/domain'
 
 import { apiClient } from '../api'
 
 export interface ResolveInput {
   reason?: string
-  // The snippet sent to the customer before the conversation is resolved. The key is the agent's
-  // attempt, kept across retries so that one that follows a failed resolve does not send it twice.
-  closing?: { snippetId: string; idempotencyKey: string }
+  // The saved reply for the customer: the server sends it when the time to undo is over, if the
+  // conversation is still resolved
+  closingSnippetId?: string
 }
 
 export interface ConversationActions {
@@ -56,36 +54,12 @@ export function useConversationActions(
     mutationFn: (until: Date) => snoozeConversation(apiClient, storeId, conversationId, until),
     onSuccess: refresh
   })
-  // The closing message goes first and is waited for: an answer to a resolved conversation reopens
-  // it (ConversationReopenedByReply), so sent after, it would undo the resolve
   const resolve = useMutation({
-    mutationFn: async ({ reason, closing }: ResolveInput) => {
-      if (closing !== undefined) {
-        // Always read again: the customer must get the text as it is now, not as the list was cached
-        const snippets = await queryClient.fetchQuery({
-          queryKey: QueryKeys.snippets.all(storeId),
-          queryFn: ({ signal }) => fetchSnippets(apiClient, storeId, signal),
-          staleTime: 0
-        })
-        const snippet = snippets.find(item => item.id === closing.snippetId)
-        // A snippet deleted since the settings were read: there is no message to send
-        if (snippet !== undefined) {
-          await sendMessage(apiClient, storeId, {
-            type: MessageType.TEXT,
-            conversationId,
-            content: snippet.content,
-            idempotencyKey: closing.idempotencyKey
-          })
-        }
-      }
-      return changeConversationStatus(
-        apiClient,
-        storeId,
-        conversationId,
-        ConversationStatus.RESOLVED,
-        reason
-      )
-    },
+    mutationFn: ({ reason, closingSnippetId }: ResolveInput) =>
+      changeConversationStatus(apiClient, storeId, conversationId, ConversationStatus.RESOLVED, {
+        ...(reason === undefined ? {} : { resolutionReason: reason }),
+        ...(closingSnippetId === undefined ? {} : { closingSnippetId })
+      }),
     onSuccess: refresh
   })
   const reopen = useMutation({

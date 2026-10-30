@@ -6,7 +6,7 @@ import type { QueueName } from '@platform/core/queues'
 export interface CapturedJob {
   name: string
   data: unknown
-  opts?: { jobId?: string }
+  opts?: { jobId?: string; delay?: number }
 }
 
 // Stands in for a queue of the app: the suite reads what was queued, and nothing reaches the Redis of
@@ -14,7 +14,7 @@ export interface CapturedJob {
 export class CapturedQueue {
   readonly jobs: CapturedJob[] = []
 
-  add(name: string, data: unknown, opts?: { jobId?: string }): Promise<void> {
+  add(name: string, data: unknown, opts?: { jobId?: string; delay?: number }): Promise<void> {
     this.jobs.push(opts === undefined ? { name, data } : { name, data, opts })
     return Promise.resolve()
   }

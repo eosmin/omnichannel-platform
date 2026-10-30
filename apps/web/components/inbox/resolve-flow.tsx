@@ -33,23 +33,9 @@ export interface ResolveFlow {
   dialog: ReactElement
 }
 
-// The idempotency key of a send that may be tried again: the same for the same scope (here the saved
-// reply chosen), so that a retry after a failed resolve returns the message that went out instead of
-// sending it twice, and another one for another scope, because that is another message.
-function useAttemptKey(): { keyFor: (scope: string) => string; reset: () => void } {
-  const attempt = useRef<{ scope: string; key: string } | null>(null)
-  const keyFor = useCallback((scope: string): string => {
-    if (attempt.current?.scope !== scope) attempt.current = { scope, key: crypto.randomUUID() }
-    return attempt.current.key
-  }, [])
-  const reset = useCallback((): void => {
-    attempt.current = null
-  }, [])
-  return { keyFor, reset }
-}
-
 // Marking a conversation resolved, the way the store configured it: with the options dialog (closing message, reason) or at once, with a toast that takes it back for ten seconds. The
-// closing message is sent before the status changes and only when the messaging window is open.
+// closing message is chosen here and sent by the server after the Undo, and only when the messaging
+// window is open.
 export function useResolveFlow(conversationId: string): ResolveFlow {
   const t = useTranslations('inbox.resolve')
   const tAll = useTranslations()
@@ -59,8 +45,6 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   const windowQuery = useMessagingWindow(storeId, conversationId)
   const { resolve, reopen } = useConversationActions(storeId, conversationId)
   const [isDialogOpen, setDialogOpen] = useState(false)
-  // One attempt, one key: starting again after a failed resolve must not send the closing message twice
-  const attempt = useAttemptKey()
 
   // The closing message is a reply: it needs the window open and the permission to reply
   const canSendClosing = windowState.kind !== 'closed' && can(Permissions.MESSAGES_SEND)
@@ -85,18 +69,8 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
     // Promises, not the callbacks of mutate: those do not run if the agent moves to another
     // conversation before the answer, and the Undo must still appear
     resolve
-      .mutateAsync(
-        closingSnippetId === null
-          ? {}
-          : {
-              closing: {
-                snippetId: closingSnippetId,
-                idempotencyKey: attempt.keyFor(closingSnippetId)
-              }
-            }
-      )
+      .mutateAsync(closingSnippetId === null ? {} : { closingSnippetId })
       .then(() => {
-        attempt.reset()
         toast(t('resolved'), {
           duration: ResolveUndo.DURATION_MS,
           action: {
@@ -136,11 +110,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
               conversationId={conversationId}
               defaults={settings}
               canSendClosing={canSendClosing}
-              attempt={attempt}
-              onDone={() => {
-                attempt.reset()
-                setDialogOpen(false)
-              }}
+              onDone={() => setDialogOpen(false)}
             />
           ) : null}
         </DialogContent>
@@ -153,15 +123,11 @@ function ResolveForm({
   conversationId,
   defaults,
   canSendClosing,
-  attempt,
   onDone
 }: {
   conversationId: string
   defaults: { sendClosingMessage: boolean; closingSnippetId: string | null }
   canSendClosing: boolean
-  // Kept by the hook, not the form: the dialog closes and opens again after a failed resolve, and the
-  // closing message that already went out must not go twice
-  attempt: ReturnType<typeof useAttemptKey>
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('inbox.resolve')
@@ -186,9 +152,7 @@ function ResolveForm({
     resolve
       .mutateAsync({
         ...(trimmed === '' ? {} : { reason: trimmed }),
-        ...(sendsClosing
-          ? { closing: { snippetId: chosenId, idempotencyKey: attempt.keyFor(chosenId) } }
-          : {})
+        ...(sendsClosing ? { closingSnippetId: chosenId } : {})
       })
       .then(() => {
         toast.success(t('resolved'))

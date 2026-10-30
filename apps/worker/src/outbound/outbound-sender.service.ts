@@ -12,13 +12,23 @@ import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
   ChannelTextLimits,
+  ConversationStatus,
   DeliveryStatus,
   MessageType,
   OutboundLimits,
   isInstallationActive
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
-import { enumValueOf, templateMetadataSchema } from '@platform/core/messaging'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import {
+  ConversationsService,
+  enumValueOf,
+  isClosingMessage,
+  MessagingWindowService,
+  publishMessageChanged,
+  templateMetadataSchema
+} from '@platform/core/messaging'
 import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
@@ -44,6 +54,9 @@ export class OutboundSender {
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly status: MessageStatusWriter,
+    private readonly conversations: ConversationsService,
+    private readonly window: MessagingWindowService,
+    private readonly events: DomainEvents,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(OutboundSender.name)
@@ -60,8 +73,12 @@ export class OutboundSender {
         metadata: true,
         resentAt: true,
         replyToMessageId: true,
+        createdAt: true,
         conversation: {
           select: {
+            id: true,
+            status: true,
+            resolvedAt: true,
             channelType: true,
             customerIdentity: { select: { channelIdentity: true } },
             channelConnection: {
@@ -76,6 +93,8 @@ export class OutboundSender {
     })
     // Gone, or already sent or failed: a second job for the same message (the sweep) has nothing to do
     if (message === null) return
+    const isClosing = isClosingMessage(message.metadata)
+    if (isClosing && !(await this.discardUnlessStanding(storeId, messageId, message))) return
 
     const { channelConnection: connection, channelType, customerIdentity } = message.conversation
     // A connection of an installation that is not active sends nothing, as a disconnected one
@@ -160,6 +179,42 @@ export class OutboundSender {
       return
     }
     await this.recordAccepted(storeId, messageId, connection.id, accepted)
+    // Once, and only for a reply the provider took: a failed or retried attempt is no answer
+    if (isClosing) {
+      await this.prisma.transaction(tx =>
+        this.conversations.recordReply(tx, storeId, message.conversation.id, message.createdAt)
+      )
+    }
+  }
+
+  // The closing message of a resolution goes only while that resolution stands: an Undo, or a reply of
+  // the customer, reopened the conversation, and one resolved again since is another resolution with
+  // its own message. A message that does not go is deleted: it was never sent, so it leaves no trace
+  // (`failed` would show a red bubble, and a `queued` one would be requeued by the sweep).
+  private async discardUnlessStanding(
+    storeId: string,
+    messageId: string,
+    message: {
+      conversation: { id: string; status: string; resolvedAt: Date | null }
+      createdAt: Date
+    }
+  ): Promise<boolean> {
+    const { conversation } = message
+    // The window was open when the agent resolved; it may have closed during the wait, and free text
+    // sent after it would only come back as a red bubble
+    const stands =
+      conversation.status === String(ConversationStatus.RESOLVED) &&
+      conversation.resolvedAt !== null &&
+      conversation.resolvedAt <= message.createdAt &&
+      (await this.window.isOpen(this.prisma.client, storeId, conversation.id))
+    if (stands) return true
+    await this.prisma.transaction(async tx => {
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
+      await tx.message.deleteMany({
+        where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED }
+      })
+    })
+    return false
   }
 
   // The provider has the message: nothing here may make it be sent again. A write that fails is tried

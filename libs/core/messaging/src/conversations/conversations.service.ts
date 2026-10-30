@@ -217,8 +217,14 @@ export class ConversationsService {
     }
   }
 
-  async get(storeId: string, conversationId: string, viewer?: Viewer): Promise<ConversationDetail> {
-    return this.detail(this.prisma.client, storeId, conversationId, viewer)
+  async get(
+    storeId: string,
+    conversationId: string,
+    viewer?: Viewer,
+    // For the answer to a change the caller was allowed to make (see `detail`)
+    revealed = false
+  ): Promise<ConversationDetail> {
+    return this.detail(this.prisma.client, storeId, conversationId, viewer, revealed)
   }
 
   // Every status change of a conversation goes through here (TDD_02 section 5): the transition is

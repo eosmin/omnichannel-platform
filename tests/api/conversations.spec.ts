@@ -12,10 +12,12 @@ import {
   ConversationStatus,
   MembershipStatus,
   MessageType,
+  ResolveUndo,
   SystemMessageEvents
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { encodeConversationCursor, ConversationsService } from '@platform/core/messaging'
+import { QueueNames } from '@platform/core/queues'
 
 import {
   createChannelConnection,
@@ -24,6 +26,7 @@ import {
   createCustomerIdentity,
   createMessage,
   createRole,
+  createSnippet,
   createTag
 } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -31,6 +34,7 @@ import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
+import { queueOf } from '../helpers/queue'
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -112,6 +116,15 @@ describe('The conversations of a store', () => {
   const mk = (extra: Partial<Parameters<typeof createConversationOf>[1]> = {}) =>
     createConversationOf(owner, { storeId: ctx.storeA.id, ...extra })
   const row = (id: string) => owner.conversation.findUniqueOrThrow({ where: { id } })
+  // The messaging window counts from the last message of the customer's identity
+  const mkWithWindow = async (lastInboundAt: Date) => {
+    const conversation = await mk()
+    await owner.customerIdentity.update({
+      where: { id: conversation.customerIdentityId },
+      data: { lastInboundAt }
+    })
+    return conversation
+  }
 
   // The owner holds a lock in an open transaction, the request is sent, and the transaction is
   // committed only once Postgres says that a backend is blocked by it (`pg_blocking_pids` of the
@@ -594,6 +607,92 @@ describe('The conversations of a store', () => {
       expect(twice.status).toBe(CONFLICT)
       expect(codeOf(twice.body)).toBe(ErrorCodes.CONVERSATION_ALREADY_RESOLVED)
       expect((await row(spam.id)).status).toBe(ConversationStatus.SPAM)
+    })
+
+    it('resolves at once and hands the closing message to the queue for after the Undo time', async () => {
+      const conversation = await mkWithWindow(new Date())
+      const snippet = await createSnippet(owner, { storeId: ctx.storeA.id })
+
+      const resolved = await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED, closingSnippetId: snippet.id })
+
+      expect(resolved.status).toBe(OK)
+      expect((resolved.body as ItemBody).status).toBe(ConversationStatus.RESOLVED)
+      const messages = await owner.message.findMany({
+        where: { conversationId: conversation.id, type: MessageType.TEXT },
+        select: { id: true, content: true, deliveryStatus: true, createdAt: true }
+      })
+      expect(messages).toHaveLength(1)
+      expect(messages[0]).toMatchObject({ content: 'Hello!', deliveryStatus: 'queued' })
+      // Never older than the resolution it belongs to: the worker compares them
+      expect((await row(conversation.id)).resolvedAt?.getTime()).toBeLessThanOrEqual(
+        messages[0]?.createdAt.getTime() ?? 0
+      )
+      const queued = queueOf(app, QueueNames.OUTBOUND).jobs.find(
+        item => item.opts?.jobId === `send-${messages[0]?.id}`
+      )
+      expect(queued?.opts?.delay).toBe(ResolveUndo.DURATION_MS + ResolveUndo.CLOSING_GRACE_MS)
+      // Resolving again is the same conflict as without a message, and stores no second one
+      const twice = await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED, closingSnippetId: snippet.id })
+      expect(twice.status).toBe(CONFLICT)
+      expect(
+        await owner.message.count({
+          where: { conversationId: conversation.id, type: MessageType.TEXT }
+        })
+      ).toBe(1)
+    })
+
+    it('resolves without a message when the messaging window is closed', async () => {
+      const conversation = await mkWithWindow(minutesAgo(3 * 24 * 60))
+      const snippet = await createSnippet(owner, { storeId: ctx.storeA.id })
+
+      const resolved = await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED, closingSnippetId: snippet.id })
+
+      expect(resolved.status).toBe(OK)
+      expect((await row(conversation.id)).status).toBe(ConversationStatus.RESOLVED)
+      expect(
+        await owner.message.count({
+          where: { conversationId: conversation.id, type: MessageType.TEXT }
+        })
+      ).toBe(0)
+    })
+
+    it('resolves without a message when the saved reply is not one of the store', async () => {
+      const conversation = await mkWithWindow(new Date())
+      const foreign = await createSnippet(owner, { storeId: ctx.storeB.id })
+
+      const resolved = await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED, closingSnippetId: foreign.id })
+
+      expect(resolved.status).toBe(OK)
+      expect((await row(conversation.id)).status).toBe(ConversationStatus.RESOLVED)
+      expect(
+        await owner.message.count({
+          where: { conversationId: conversation.id, type: MessageType.TEXT }
+        })
+      ).toBe(0)
+    })
+
+    it('takes a closing message only with resolving, and refuses it to who may not reply', async () => {
+      const conversation = await mk()
+      const snippet = await createSnippet(owner, { storeId: ctx.storeA.id })
+
+      const pending = await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.PENDING, closingSnippetId: snippet.id })
+      const viewer = await asViewer()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED, closingSnippetId: snippet.id })
+
+      expect(pending.status).toBe(BAD_REQUEST)
+      expect(viewer.status).toBe(FORBIDDEN)
+      expect((await row(conversation.id)).status).toBe(ConversationStatus.OPEN)
     })
 
     it('does not snooze through the status route, and takes a reason only with resolving', async () => {
