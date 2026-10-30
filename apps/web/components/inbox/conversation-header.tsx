@@ -16,6 +16,7 @@ import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
+import { ConversationActions } from './conversation-actions'
 import { CustomerAvatar } from './customer-avatar'
 import { InboxState } from './inbox-state'
 
@@ -85,17 +86,29 @@ export function ConversationHeader({ conversationId }: { conversationId: string 
     )
   }
 
-  const { customer, channelType } = conversation.data
-  return <LoadedHeader customer={customer} channelType={channelType} backLink={backLink} />
+  const { customer, channelType, status } = conversation.data
+  return (
+    <LoadedHeader
+      conversationId={conversationId}
+      customer={customer}
+      channelType={channelType}
+      status={status}
+      backLink={backLink}
+    />
+  )
 }
 
 function LoadedHeader({
+  conversationId,
   customer,
   channelType,
+  status,
   backLink
 }: {
+  conversationId: string
   customer: ConversationListItemView['customer']
   channelType: string
+  status: string
   backLink: ReactElement
 }): ReactElement {
   const { storeId } = useStore()
@@ -108,6 +121,9 @@ function LoadedHeader({
       <div className="flex min-w-0 flex-col">
         <h1 className="truncate text-sm font-semibold">{name}</h1>
         <p className="text-muted-foreground truncate text-xs">{channelName}</p>
+      </div>
+      <div className="ml-auto shrink-0">
+        <ConversationActions conversationId={conversationId} status={status} />
       </div>
     </header>
   )

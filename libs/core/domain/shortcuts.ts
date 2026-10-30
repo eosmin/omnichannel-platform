@@ -34,3 +34,15 @@ export const Shortcuts = {
     GO_TO_CUSTOMERS: 'g c'
   }
 } as const
+
+// The commands of the composer, typed after a `/`. `/product` and `/order` join with
+// Step 4.4, which builds products and orders.
+export enum SlashCommand {
+  SNIPPET = 'snippet',
+  ASSIGN = 'assign',
+  SNOOZE = 'snooze',
+  RESOLVE = 'resolve'
+}
+
+export const SLASH_PREFIX = '/'
+export const MENTION_PREFIX = '@'

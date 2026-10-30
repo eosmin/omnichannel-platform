@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement, ReactNode } from 'react'
 
 import { Composer } from '../../components/inbox/composer'
+import { ConversationControls } from '../../components/inbox/conversation-controls'
 import { ConversationHeader } from '../../components/inbox/conversation-header'
 import { ConversationList } from '../../components/inbox/conversation-list'
 import { InboxFilters } from '../../components/inbox/inbox-filters'
@@ -67,9 +68,11 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
           <SelectConversation />
         ) : (
           <>
-            <ConversationHeader conversationId={conversationId} />
-            <MessageThread key={conversationId} conversationId={conversationId} />
-            <Composer key={conversationId} conversationId={conversationId} />
+            <ConversationControls key={conversationId} conversationId={conversationId}>
+              <ConversationHeader conversationId={conversationId} />
+              <MessageThread conversationId={conversationId} />
+              <Composer conversationId={conversationId} />
+            </ConversationControls>
           </>
         )}
         {children}

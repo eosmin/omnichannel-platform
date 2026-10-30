@@ -623,7 +623,56 @@
         "offline": "No hay conexión. La plantilla no se puede enviar hasta que vuelva.",
         "send": "Enviar plantilla",
         "sending": "Enviando"
+      },
+      "menu": {
+        "commands": {
+          "snippet": "Insertar una respuesta guardada",
+          "assign": "Asignar la conversación",
+          "snooze": "Ocultarla hasta más tarde",
+          "resolve": "Marcarla como resuelta"
+        },
+        "label": {
+          "commands": "Comandos",
+          "snippets": "Respuestas guardadas",
+          "members": "Compañeros",
+          "mentions": "Mencionar a un compañero"
+        },
+        "noMatches": "No hay coincidencias.",
+        "assigned": "Asignada a {name}.",
+        "announce": "{count, plural, one {# sugerencia} other {# sugerencias}}. Resaltada: {label}."
       }
+    },
+    "snooze": {
+      "title": "Posponer la conversación",
+      "description": "Sale de la bandeja y vuelve, abierta, a la hora que elijas. Si el cliente escribe antes, vuelve de inmediato.",
+      "presets": {
+        "laterToday": "Más tarde hoy",
+        "tomorrowMorning": "Mañana por la mañana",
+        "nextWeek": "La próxima semana"
+      },
+      "custom": "Elige fecha y hora",
+      "timezone": "Hora de la tienda ({timezone}).",
+      "confirm": "Posponer",
+      "snoozing": "Posponiendo",
+      "done": "Pospuesta hasta {time}."
+    },
+    "resolve": {
+      "title": "Resolver la conversación",
+      "description": "Elige qué pasa al resolverla.",
+      "resolved": "Conversación resuelta.",
+      "sendClosing": "Enviar un mensaje de cierre",
+      "windowClosed": "La ventana de mensajes expiró, así que no se puede enviar un mensaje de cierre.",
+      "noSnippets": "No hay respuestas guardadas para enviar.",
+      "snippet": "Respuesta guardada",
+      "reason": "Motivo (opcional)",
+      "confirm": "Resolver",
+      "resolving": "Resolviendo"
+    },
+    "actions": {
+      "snooze": "Posponer",
+      "resolve": "Resolver",
+      "reopen": "Reabrir",
+      "wakeUp": "Despertar"
     }
   }
 }

@@ -13,9 +13,7 @@ import { ConversationAssignedFilters, ConversationStatus } from '@platform/core/
 
 import { hasFilters } from '../../lib/inbox/inbox-filters'
 import { Button } from '../ui/button'
-
-const SELECT_CLASS =
-  'border-input bg-background h-9 w-full min-w-0 rounded-md border px-2 text-sm focus-visible:border-ring focus-visible:ring-ring/50 outline-none focus-visible:ring-[3px]'
+import { SELECT_CLASS } from '../ui/field-classes'
 
 const SCOPES = [
   { value: undefined, key: 'all' },

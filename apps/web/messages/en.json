@@ -623,7 +623,56 @@
         "offline": "There is no connection. A template cannot be sent until it comes back.",
         "send": "Send template",
         "sending": "Sending"
+      },
+      "menu": {
+        "commands": {
+          "snippet": "Insert a saved reply",
+          "assign": "Assign the conversation",
+          "snooze": "Hide it until later",
+          "resolve": "Mark it resolved"
+        },
+        "label": {
+          "commands": "Commands",
+          "snippets": "Saved replies",
+          "members": "Teammates",
+          "mentions": "Mention a teammate"
+        },
+        "noMatches": "Nothing matches.",
+        "assigned": "Assigned to {name}.",
+        "announce": "{count, plural, one {# suggestion} other {# suggestions}}. Highlighted: {label}."
       }
+    },
+    "snooze": {
+      "title": "Snooze the conversation",
+      "description": "It leaves the inbox and comes back, open, at the time you choose. If the customer writes before, it comes back at once.",
+      "presets": {
+        "laterToday": "Later today",
+        "tomorrowMorning": "Tomorrow morning",
+        "nextWeek": "Next week"
+      },
+      "custom": "Pick a date and time",
+      "timezone": "Time of the store ({timezone}).",
+      "confirm": "Snooze",
+      "snoozing": "Snoozing",
+      "done": "Snoozed until {time}."
+    },
+    "resolve": {
+      "title": "Resolve the conversation",
+      "description": "Choose what happens when you resolve it.",
+      "resolved": "Conversation resolved.",
+      "sendClosing": "Send a closing message",
+      "windowClosed": "The messaging window has expired, so no closing message can be sent.",
+      "noSnippets": "There are no saved replies to send.",
+      "snippet": "Saved reply",
+      "reason": "Reason (optional)",
+      "confirm": "Resolve",
+      "resolving": "Resolving"
+    },
+    "actions": {
+      "snooze": "Snooze",
+      "resolve": "Resolve",
+      "reopen": "Reopen",
+      "wakeUp": "Wake up"
     }
   }
 }

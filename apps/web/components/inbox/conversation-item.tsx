@@ -5,8 +5,9 @@ import { useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { AppPaths, type ConversationListItemView } from '@platform/api-client'
-import { ConversationStatus, ConversationStatusColors } from '@platform/core/domain'
+import { ConversationStatusColors } from '@platform/core/domain'
 
+import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { previewOf } from '../../lib/inbox/preview'
 import { relativeTime } from '../../lib/inbox/relative-time'
@@ -16,9 +17,6 @@ import { cn } from '../../lib/utils'
 import { CustomerAvatar } from './customer-avatar'
 
 export const CONVERSATION_ROW_HEIGHT_PX = 84
-
-const isStatus = (value: string): value is ConversationStatus =>
-  Object.values<string>(ConversationStatus).includes(value)
 
 export function ConversationItem({
   storeId,
@@ -53,7 +51,7 @@ export function ConversationItem({
 
   const when =
     item.lastMessageAt === null ? null : relativeTime(new Date(item.lastMessageAt), now, locale)
-  const status = isStatus(item.status) ? item.status : null
+  const status = conversationStatusOf(item.status)
   const isUnread = item.unreadCount > 0
 
   return (
