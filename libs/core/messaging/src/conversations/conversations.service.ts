@@ -24,7 +24,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
 
 import { encodeConversationCursor } from './conversation-cursor'
-import type { ListConversationsQuery } from './conversations.schemas'
+import type { ConversationFilter, ListConversationsQuery } from './conversations.schemas'
 import {
   canSee,
   type ConversationActor,
@@ -144,16 +144,9 @@ export class ConversationsService {
     viewer: Viewer
   ): Promise<ConversationPage> {
     const { cursor } = query
-    // The history of what was archived or marked as spam is for who may archive
-    if (query.status !== undefined && isHiddenStatus(query.status)) {
-      requireAnyPermission(viewer.held, [Permissions.CONVERSATIONS_ARCHIVE])
-    }
     const rows = await this.prisma.client.conversation.findMany({
       where: {
-        storeId,
-        status: query.status ?? { notIn: [...ConversationHiddenStatuses] },
-        ...(query.channelType === undefined ? {} : { channelType: query.channelType }),
-        ...(query.tagId === undefined ? {} : { tags: { some: { id: query.tagId } } }),
+        ...this.filterWhere(storeId, query, viewer),
         AND: [
           visibleTo(viewer),
           assignedFilter(query.assigned, viewer),
@@ -185,6 +178,42 @@ export class ConversationsService {
           ? encodeConversationCursor({ lastMessageAt: last.lastMessageAt, id: last.id })
           : null,
       hasMore
+    }
+  }
+
+  // The ids a bulk action reaches when it names a filter instead of ids ("select all 43 matching"):
+  // the same filters and the same view as the list, the newest first, at most `limit`.
+  async idsMatching(
+    storeId: string,
+    filter: ConversationFilter,
+    viewer: Viewer,
+    limit: number
+  ): Promise<string[]> {
+    const rows = await this.prisma.client.conversation.findMany({
+      where: {
+        ...this.filterWhere(storeId, filter, viewer),
+        AND: [visibleTo(viewer), assignedFilter(filter.assigned, viewer)]
+      },
+      select: { id: true },
+      take: limit,
+      orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
+    })
+    return rows.map(row => row.id)
+  }
+
+  // What the list and a bulk action by filter both select, so that "select all 43 matching" acts on
+  // the set the agent saw: the store, the status (the open ones when none is named), the channel and
+  // the tag. The visibility and the assignee are added by each caller.
+  private filterWhere(storeId: string, filter: ConversationFilter, viewer: Viewer) {
+    // The history of what was archived or marked as spam is for who may archive
+    if (filter.status !== undefined && isHiddenStatus(filter.status)) {
+      requireAnyPermission(viewer.held, [Permissions.CONVERSATIONS_ARCHIVE])
+    }
+    return {
+      storeId,
+      status: filter.status ?? { notIn: [...ConversationHiddenStatuses] },
+      ...(filter.channelType === undefined ? {} : { channelType: filter.channelType }),
+      ...(filter.tagId === undefined ? {} : { tags: { some: { id: filter.tagId } } })
     }
   }
 
@@ -278,12 +307,14 @@ export class ConversationsService {
 
   // Gives a conversation nobody has to someone, atomically: a person who took it a moment earlier
   // keeps it, and one that was archived or marked as spam meanwhile is not given to someone who could
-  // not see it. For the routing of a new conversation, which must not take one back.
+  // not see it. For the routing of a new conversation, which must not take one back, and for the
+  // round robin of a bulk action, whose actor is the person who asked.
   async assignIfFree(
     tx: PrismaTransaction,
     storeId: string,
     conversationId: string,
-    userId: string
+    userId: string,
+    actor: ConversationActor = 'system'
   ): Promise<boolean> {
     const { count } = await tx.conversation.updateMany({
       where: {
@@ -297,7 +328,7 @@ export class ConversationsService {
     if (count === 1) {
       await writeSystemLine(tx, storeId, conversationId, {
         event: SystemMessageEvents.ASSIGNED,
-        actor: actorRef('system'),
+        actor: actorRef(actor),
         assignedTo: userId
       })
       this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
@@ -305,7 +336,7 @@ export class ConversationsService {
         conversationId,
         assignedTo: userId,
         previousAssignee: null,
-        assignedBy: actorRef('system'),
+        assignedBy: actorRef(actor),
         // The update above refuses a hidden conversation
         visibility: { hidden: false, assignedTo: userId }
       })
@@ -489,6 +520,42 @@ export class ConversationsService {
     })
   }
 
+  // The inverse of opening the thread, from the menu or the keyboard: the conversation counts as unread
+  // again, which is how an agent keeps one to come back to. `lastReadAt` goes just before the last
+  // message of the customer, as TDD_09 §3.1 says. A conversation the customer never wrote in has
+  // nothing to mark.
+  async markUnread(
+    storeId: string,
+    conversationId: string,
+    viewer: Viewer
+  ): Promise<ConversationDetail> {
+    return this.prisma.transaction(async tx => {
+      const current = await lockConversationForWrite(tx, storeId, conversationId, viewer)
+      const { lastInboundAt, unreadCount } = await tx.conversation.findUniqueOrThrow({
+        where: { id: conversationId, storeId },
+        select: { lastInboundAt: true, unreadCount: true }
+      })
+      if (lastInboundAt === null) {
+        throw resourceConflict('the customer has not written in this conversation')
+      }
+      await tx.conversation.update({
+        where: { id: conversationId, storeId },
+        data: {
+          unreadCount: Math.max(unreadCount, 1),
+          lastReadAt: new Date(lastInboundAt.getTime() - 1),
+          lastReadBy: null
+        }
+      })
+      this.events.publish(tx, Events.CONVERSATION_UNREAD, {
+        storeId,
+        conversationId,
+        userId: viewer.userId,
+        visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo }
+      })
+      return this.detail(tx, storeId, conversationId, viewer, true)
+    })
+  }
+
   private async detail(
     db: PrismaService['client'],
     storeId: string,
@@ -597,7 +664,7 @@ function fieldsOf(to: ConversationStatus, options: StatusOptions) {
 }
 
 function assignedFilter(
-  assigned: ListConversationsQuery['assigned'],
+  assigned: ConversationFilter['assigned'],
   viewer: Viewer
 ): { assignedTo?: string | null } {
   if (assigned === undefined) return {}

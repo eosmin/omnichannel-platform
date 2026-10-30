@@ -17,9 +17,10 @@ import {
   RoutingLimits,
   weekScheduleSchema
 } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
 import { ConversationsService } from '../conversations/conversations.service'
+import { canSee, requireAnyPermission, type Viewer } from '../conversations/conversations.support'
 
 import {
   actionSchema,
@@ -118,6 +119,43 @@ export class RoutingService {
         return { ruleId: null, assignedTo: taken?.assignedTo ?? null }
       }
       return { ruleId: null, assignedTo: null }
+    })
+  }
+
+  // A bulk "round robin to team": a conversation nobody has goes to the least loaded of the people the
+  // agent named, under the same lock as the routing of new conversations so that the two never read
+  // the same loads together. One that someone holds is not taken from them.
+  async assignRoundRobin(
+    storeId: string,
+    conversationId: string,
+    userIds: readonly string[],
+    viewer: Viewer
+  ): Promise<string> {
+    requireAnyPermission(viewer.held, [Permissions.CONVERSATIONS_ASSIGN])
+    return this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      await lockStoreScope(tx, storeId, 'routing-assign')
+      const conversation = await tx.conversation.findFirst({
+        where: { id: conversationId, storeId },
+        select: { assignedTo: true, status: true }
+      })
+      if (conversation === null || !canSee(viewer, conversation)) {
+        throw resourceNotFound('conversation')
+      }
+      if (conversation.assignedTo !== null) {
+        throw resourceConflict('the conversation is assigned already', {
+          assignedTo: conversation.assignedTo
+        })
+      }
+      const userId = await this.chooseUser(tx, storeId, {
+        type: RoutingActionTypes.ROUND_ROBIN,
+        userIds: [...userIds]
+      })
+      if (userId === null) throw resourceNotFound('assignee')
+      if (!(await this.conversations.assignIfFree(tx, storeId, conversationId, userId, viewer))) {
+        throw resourceConflict('an archived or spam conversation is reopened before it is assigned')
+      }
+      return userId
     })
   }
 

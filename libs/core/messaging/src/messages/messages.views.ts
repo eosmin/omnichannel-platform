@@ -6,6 +6,7 @@ import {
   DeliveryStatus as DeliveryStatuses,
   httpUrl,
   InboundLimits,
+  MessageLimits,
   MessageType as MessageTypes
 } from '@platform/core/domain'
 
@@ -24,6 +25,55 @@ export interface ReactionView {
   deliveryError: string | null
 }
 
+// The message a reply answers, as the bubble quotes it: who wrote it, what kind it is and the start
+// of its text. A message that was deleted keeps no text here.
+export interface QuotedMessage {
+  id: string
+  type: MessageType
+  authorType: AuthorType
+  authorId: string | null
+  content: string | null
+  deleted: boolean
+}
+
+export const QUOTE_SELECT = {
+  id: true,
+  type: true,
+  authorType: true,
+  authorId: true,
+  content: true,
+  deletedAt: true
+} as const
+
+interface QuoteRow {
+  id: string
+  type: string
+  authorType: string
+  authorId: string | null
+  content: string | null
+  deletedAt: Date | null
+}
+
+export function quotedView(row: QuoteRow): QuotedMessage {
+  return {
+    id: row.id,
+    type: enumValueOf(MessageTypes, row.type, 'message type'),
+    authorType: enumValueOf(AuthorTypes, row.authorType, 'message author'),
+    authorId: row.authorId,
+    content: row.deletedAt === null ? previewOf(row.content) : null,
+    deleted: row.deletedAt !== null
+  }
+}
+
+// Counted in characters, as the limits of the channels are, not in UTF-16 units
+function previewOf(text: string | null): string | null {
+  if (text === null) return null
+  const characters = Array.from(text)
+  return characters.length <= MessageLimits.QUOTE_PREVIEW_MAX_LENGTH
+    ? text
+    : characters.slice(0, MessageLimits.QUOTE_PREVIEW_MAX_LENGTH).join('')
+}
+
 // The link of what the customer shared (a post, a reel, a story mention, a link preview), as the
 // channel sent it. The column is Json, so it is checked again on the way out: only a plain http(s)
 // link leaves, and anything else in the metadata is no link.
@@ -39,6 +89,9 @@ export interface MessageView {
   authorType: AuthorType
   authorId: string | null
   replyToMessageId: string | null
+  // Filled by the list of a thread, which joins it; null elsewhere and when the original is not in the
+  // thread or the reader may not see it
+  replyTo: QuotedMessage | null
   deliveryStatus: DeliveryStatus | null
   deliveryError: string | null
   mentions: string[]
@@ -140,7 +193,7 @@ interface MessageRow {
   createdAt: Date
 }
 
-export function messageView(row: MessageRow): MessageView {
+export function messageView(row: MessageRow, replyTo: QuotedMessage | null = null): MessageView {
   const type = enumValueOf(MessageTypes, row.type, 'message type')
   return {
     id: row.id,
@@ -151,6 +204,7 @@ export function messageView(row: MessageRow): MessageView {
     authorType: enumValueOf(AuthorTypes, row.authorType, 'message author'),
     authorId: row.authorId,
     replyToMessageId: row.replyToMessageId,
+    replyTo,
     deliveryStatus:
       row.deliveryStatus === null
         ? null

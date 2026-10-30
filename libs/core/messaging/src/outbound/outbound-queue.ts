@@ -13,7 +13,8 @@ import {
 } from '@platform/core/queues'
 
 // The job of a reply is the reply: asked twice (the sweep finds a message the api had already queued)
-// it is one job. A resend of the agent (a later step) takes the same message with another id.
+// it is one job. A resend of the agent queues the same message again with `requeue`, which removes
+// the finished job first.
 export function outboundJobId(messageId: string): string {
   return `send-${messageId}`
 }

@@ -8,6 +8,8 @@ import { TenancyModule } from '../tenancy'
 
 import { ChannelConnectionsController } from './channel-connections.controller'
 import { ChannelConnectionsService } from './channel-connections.service'
+import { ChannelTemplatesController } from './channel-templates.controller'
+import { ChannelTemplatesService } from './channel-templates.service'
 import { ChannelWebhookController } from './channel-webhook.controller'
 import { InboundEventQueue } from './inbound-event-queue.service'
 
@@ -21,8 +23,8 @@ import { InboundEventQueue } from './inbound-event-queue.service'
     ChannelConnectionsLibModule,
     TenancyModule
   ],
-  controllers: [ChannelWebhookController, ChannelConnectionsController],
-  providers: [ChannelConnectionsService, InboundEventQueue],
-  exports: [ChannelConnectionsService, InboundEventQueue]
+  controllers: [ChannelWebhookController, ChannelConnectionsController, ChannelTemplatesController],
+  providers: [ChannelConnectionsService, ChannelTemplatesService, InboundEventQueue],
+  exports: [ChannelConnectionsService, ChannelTemplatesService, InboundEventQueue]
 })
 export class ChannelsModule {}

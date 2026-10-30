@@ -6,6 +6,7 @@ import {
   idempotencyKeySchema,
   MessageLimits,
   MessageType,
+  MisleadingTextPattern,
   PaginationLimits,
   uuidSchema
 } from '@platform/core/domain'
@@ -36,6 +37,25 @@ const mentions = z
 
 // A reply to the customer must be sent once, so its key is required; a note reaches nobody outside
 // the team and its key only protects a retry
+// The variables of a template are the values of its numbered placeholders, in order. They go to the
+// customer, so they are text like any other: no NUL, no lone surrogate.
+const templateVariable = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MessageLimits.TEMPLATE_VARIABLE_MAX_LENGTH)
+  .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
+  .refine(value => !/\p{Surrogate}/u.test(value), { message: 'is not well-formed text' })
+  // Characters that reorder or hide text reach the customer as they are written
+  .refine(value => !MisleadingTextPattern.test(value), {
+    message: 'has characters that reorder or hide text'
+  })
+  // The provider refuses a parameter with a line break, a tab or four spaces in a row: better a 400
+  // now than a message that fails on its way
+  .refine(value => !/[\n\r\t]| {4}/.test(value), {
+    message: 'has a line break, a tab or four spaces in a row'
+  })
+
 export const createMessageSchema = z.discriminatedUnion('type', [
   z.strictObject({
     type: z.literal(MessageType.TEXT),
@@ -43,6 +63,15 @@ export const createMessageSchema = z.discriminatedUnion('type', [
     content,
     idempotencyKey: idempotencyKeySchema,
     replyToMessageId: uuidSchema.optional()
+  }),
+  // The only way to write to a customer whose messaging window is closed
+  z.strictObject({
+    type: z.literal(MessageType.TEMPLATE),
+    conversationId: uuidSchema,
+    templateName: z.string().trim().min(1).max(MessageLimits.TEMPLATE_NAME_MAX_LENGTH),
+    language: z.string().trim().min(1).max(MessageLimits.TEMPLATE_LANGUAGE_MAX_LENGTH),
+    variables: z.array(templateVariable).max(MessageLimits.TEMPLATE_MAX_VARIABLES).default([]),
+    idempotencyKey: idempotencyKeySchema
   }),
   z.strictObject({
     type: z.literal(MessageType.INTERNAL_NOTE),

@@ -67,22 +67,24 @@ export class OutboundRequeueScheduler {
   }
 
   async requeueStale(now: Date = new Date()): Promise<{ requeued: number; gaveUp: number }> {
+    const staleBefore = new Date(now.getTime() - OutboundLimits.REQUEUE_AFTER_MS)
     const stale = await this.prisma.client.message.findMany({
       where: {
         deliveryStatus: DeliveryStatus.QUEUED,
-        createdAt: { lt: new Date(now.getTime() - OutboundLimits.REQUEUE_AFTER_MS) }
+        // A reply sent again is as old as the moment it was asked for again, not as its first attempt
+        OR: [{ resentAt: null, createdAt: { lt: staleBefore } }, { resentAt: { lt: staleBefore } }]
       },
-      select: { id: true, storeId: true, createdAt: true },
+      select: { id: true, storeId: true, createdAt: true, resentAt: true },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: OutboundLimits.REQUEUE_BATCH
     })
     const giveUpBefore = now.getTime() - OutboundLimits.GIVE_UP_AFTER_MS
     const done = { requeued: 0, gaveUp: 0 }
-    for (const { id, storeId, createdAt } of stale) {
+    for (const { id, storeId, createdAt, resentAt } of stale) {
       // One reply that cannot be handled must not stop the ones behind it: the batch is the oldest
       // first, so the same one would block the sweep every minute
       try {
-        if (createdAt.getTime() < giveUpBefore) {
+        if ((resentAt ?? createdAt).getTime() < giveUpBefore) {
           await this.status.apply({
             storeId,
             messageId: id,

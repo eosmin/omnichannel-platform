@@ -18,7 +18,7 @@ import {
   isInstallationActive
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
-import { enumValueOf } from '@platform/core/messaging'
+import { enumValueOf, templateMetadataSchema } from '@platform/core/messaging'
 import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
@@ -57,6 +57,8 @@ export class OutboundSender {
       select: {
         type: true,
         content: true,
+        metadata: true,
+        resentAt: true,
         replyToMessageId: true,
         conversation: {
           select: {
@@ -94,6 +96,21 @@ export class OutboundSender {
       return
     }
     const content = message.content ?? ''
+    // The first attempt is keyed by the message; one the agent asked for again is another attempt, or a
+    // provider that dedupes on the key would answer with the result of the first
+    const idempotencyKey =
+      message.resentAt === null ? messageId : `${messageId}-${message.resentAt.getTime()}`
+    // A template is sent by name, language and variables; the stored text is only what the thread shows
+    const isTemplate = message.type === String(MessageType.TEMPLATE)
+    const template = isTemplate ? templateMetadataSchema.safeParse(message.metadata) : null
+    if (template !== null && !template.success) {
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_MESSAGE_FAILED)
+      return
+    }
+    if (isTemplate && plugin.sendTemplate === undefined) {
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+      return
+    }
     // Outside the try below: a database error here is ours, not the provider's
     const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
 
@@ -101,13 +118,21 @@ export class OutboundSender {
     try {
       const result = resultSchema.safeParse(
         await withTimeout(
-          plugin.sendMessage(this.contexts.contextFor(connection), {
-            channelIdentity: customerIdentity.channelIdentity,
-            content,
-            ...(replyToExternalId === null ? {} : { replyToExternalId }),
-            // The provider that supports it never sends one message twice
-            idempotencyKey: messageId
-          }),
+          template?.success === true && plugin.sendTemplate !== undefined
+            ? plugin.sendTemplate(this.contexts.contextFor(connection), {
+                channelIdentity: customerIdentity.channelIdentity,
+                templateName: template.data.template.name,
+                language: template.data.template.language,
+                variables: template.data.template.variables,
+                idempotencyKey
+              })
+            : plugin.sendMessage(this.contexts.contextFor(connection), {
+                channelIdentity: customerIdentity.channelIdentity,
+                content,
+                ...(replyToExternalId === null ? {} : { replyToExternalId }),
+                // The provider that supports it never sends one message twice
+                idempotencyKey
+              }),
           OutboundLimits.SEND_TIMEOUT_MS
         )
       )
@@ -202,7 +227,10 @@ export class OutboundSender {
     ) {
       return { code: ErrorCodes.CHANNEL_NOT_CONNECTED, retryable: false }
     }
-    if (enumValueOf(MessageType, message.type, 'message type') !== MessageType.TEXT) {
+    const type = enumValueOf(MessageType, message.type, 'message type')
+    // The text of a template is what the thread shows: the limits below are the ones of free text
+    if (type === MessageType.TEMPLATE) return null
+    if (type !== MessageType.TEXT) {
       return { code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, retryable: false }
     }
     const text = message.content ?? ''

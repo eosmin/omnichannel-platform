@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common'
 
 import { QueuesPlatformModule } from '@platform/core/http'
-import { ConversationsService, OutboundQueue, ReadReceipts } from '@platform/core/messaging'
+import {
+  ConversationsService,
+  OutboundQueue,
+  ReadReceipts,
+  RoutingService
+} from '@platform/core/messaging'
 
 import { TenancyModule } from '../tenancy'
 
+import { ConversationBulkService } from './conversation-bulk.service'
 import { ConversationCountsService } from './conversation-counts.service'
 import { ConversationOriginsService } from './conversation-origins.service'
 import { ConversationTagsService } from './conversation-tags.service'
@@ -17,11 +23,13 @@ import { ConversationsController } from './conversations.controller'
   controllers: [ConversationsController],
   providers: [
     ConversationsService,
+    ConversationBulkService,
     ConversationCountsService,
     ConversationTagsService,
     ConversationOriginsService,
     OutboundQueue,
-    ReadReceipts
+    ReadReceipts,
+    RoutingService
   ],
   exports: [ConversationsService]
 })
