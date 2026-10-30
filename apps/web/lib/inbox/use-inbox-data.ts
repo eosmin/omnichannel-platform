@@ -16,19 +16,23 @@ import {
   type ConversationFilters,
   type ConversationDetailView,
   type ConversationPageView,
+  type InboxBehaviorView,
   fetchChannelDirectory,
   fetchChannelTemplates,
   fetchConversation,
   fetchConversationCounts,
   fetchConversationOrigins,
   fetchConversationsPage,
+  fetchInboxBehavior,
+  fetchSnippets,
   fetchMemberDirectory,
   fetchMessagesPage,
   fetchMessagingWindow,
   type MemberDirectoryEntryView,
   type MessagePageView,
   type MessagingWindowView,
-  QueryKeys
+  QueryKeys,
+  type SnippetView
 } from '@platform/api-client'
 
 import { apiClient } from '../api'
@@ -131,5 +135,21 @@ export function useChannelTemplates(
     queryKey: QueryKeys.channels.templates(storeId, pluginId, connectionId),
     queryFn: ({ signal }) =>
       fetchChannelTemplates(apiClient, storeId, pluginId, connectionId, signal)
+  })
+}
+
+// Read when the composer opens a snippet menu or a resolve starts, not with the conversation
+export function useSnippets(storeId: string, isEnabled: boolean): UseQueryResult<SnippetView[]> {
+  return useQuery({
+    queryKey: QueryKeys.snippets.all(storeId),
+    queryFn: ({ signal }) => fetchSnippets(apiClient, storeId, signal),
+    enabled: isEnabled
+  })
+}
+
+export function useInboxBehavior(storeId: string): UseQueryResult<InboxBehaviorView> {
+  return useQuery({
+    queryKey: QueryKeys.inboxBehavior.store(storeId),
+    queryFn: ({ signal }) => fetchInboxBehavior(apiClient, storeId, signal)
   })
 }

@@ -2,18 +2,25 @@ import { ConversationStatus } from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
+  assignConversation,
+  changeConversationStatus,
   fetchChannelDirectory,
   fetchConversationCounts,
   fetchConversationOrigins,
   fetchConversationsPage,
-  markConversationRead
+  fetchInboxBehavior,
+  fetchSnippets,
+  markConversationRead,
+  snoozeConversation
 } from './conversations-api'
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 function setup(response: Response) {
-  const fetchImpl = jest.fn<Promise<Response>, [string, RequestInit]>().mockResolvedValue(response)
+  const fetchImpl = jest
+    .fn<Promise<Response>, [string, RequestInit]>()
+    .mockImplementation(() => Promise.resolve(response.clone()))
   const client = createApiClient({
     baseUrl: 'https://api.example.com',
     getAccessToken: () => 'token',
@@ -153,5 +160,91 @@ describe('markConversationRead', () => {
     expect(url).toBe('https://api.example.com/api/v1/conversations/c1/read')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toMatchObject({ 'x-store-id': 's1' })
+  })
+})
+
+// What the call number `n` sent as its JSON body
+function bodyOf(
+  fetchImpl: jest.Mock<Promise<Response>, [string, RequestInit]>,
+  n: number
+): unknown {
+  const body = fetchImpl.mock.calls[n]?.[1].body
+  return typeof body === 'string' ? JSON.parse(body) : undefined
+}
+
+const detail = { ...item, channelConnectionId: 'k1' }
+
+describe('fetchSnippets', () => {
+  it('reads the saved replies of the store', async () => {
+    const snippet = { id: 'n1', shortcut: 'gracias', title: 'Thanks', content: 'Thank you!' }
+    const { client, fetchImpl } = setup(json(200, [snippet]))
+
+    expect(await fetchSnippets(client, 's1')).toEqual([snippet])
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/settings/snippets')
+  })
+})
+
+describe('fetchInboxBehavior', () => {
+  it('reads how resolving behaves and ignores the rest of the settings', async () => {
+    const { client } = setup(
+      json(200, {
+        resolveShowOptions: false,
+        sendClosingMessage: true,
+        closingSnippetId: 'n1',
+        timezone: 'America/El_Salvador',
+        agentLoadThreshold: 8
+      })
+    )
+
+    expect(await fetchInboxBehavior(client, 's1')).toEqual({
+      resolveShowOptions: false,
+      sendClosingMessage: true,
+      closingSnippetId: 'n1',
+      timezone: 'America/El_Salvador'
+    })
+  })
+})
+
+describe('changeConversationStatus', () => {
+  it('patches the status, with the reason only when there is one', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+
+    await changeConversationStatus(client, 's1', 'c1', ConversationStatus.RESOLVED, 'Done')
+    await changeConversationStatus(client, 's1', 'c1', ConversationStatus.OPEN)
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/conversations/c1/status')
+    expect(init?.method).toBe('PATCH')
+    expect(bodyOf(fetchImpl, 0)).toEqual({ status: 'RESOLVED', resolutionReason: 'Done' })
+    expect(bodyOf(fetchImpl, 1)).toEqual({ status: 'OPEN' })
+  })
+})
+
+describe('snoozeConversation', () => {
+  it('posts the wake-up time as an ISO instant', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+
+    await snoozeConversation(client, 's1', 'c1', new Date('2026-10-31T12:00:00.000Z'))
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/conversations/c1/snooze')
+    expect(init?.method).toBe('POST')
+    expect(bodyOf(fetchImpl, 0)).toEqual({ until: '2026-10-31T12:00:00.000Z' })
+  })
+})
+
+describe('assignConversation', () => {
+  it('patches the assignee, and null takes the conversation away', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+
+    await assignConversation(client, 's1', 'c1', 'u2')
+    await assignConversation(client, 's1', 'c1', null)
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/conversations/c1/assign'
+    )
+    expect(bodyOf(fetchImpl, 0)).toEqual({ userId: 'u2' })
+    expect(bodyOf(fetchImpl, 1)).toEqual({ userId: null })
   })
 })

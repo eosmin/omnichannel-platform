@@ -442,6 +442,41 @@ describe('The settings of the inbox of a store', () => {
     })
   })
 
+  describe('the behavior of the inbox read by who works it', () => {
+    it('reads back what the settings of the store say', async () => {
+      const snippet = await newSnippet(`${prefix}-bye`)
+      await asAdmin()
+        .patch(ApiRoutes.settings.inbox)
+        .send({ resolveShowOptions: false, sendClosingMessage: true, closingSnippetId: snippet.id })
+
+      const response = await asAdmin().get(ApiRoutes.settings.inboxBehavior)
+      // The settings of this store go back to what the other cases expect
+      await asAdmin()
+        .patch(ApiRoutes.settings.inbox)
+        .send({ sendClosingMessage: false, closingSnippetId: null, resolveShowOptions: true })
+
+      expect(response.body).toMatchObject({
+        resolveShowOptions: false,
+        sendClosingMessage: true,
+        closingSnippetId: snippet.id
+      })
+    })
+
+    it('gives an agent how resolving behaves and the timezone, and nothing else of the settings', async () => {
+      const response = await asAgent().get(ApiRoutes.settings.inboxBehavior)
+
+      expect(response.status).toBe(OK)
+      expect(Object.keys(response.body as object).sort()).toEqual([
+        'closingSnippetId',
+        'resolveShowOptions',
+        'sendClosingMessage',
+        'timezone'
+      ])
+      const store = await owner.store.findUniqueOrThrow({ where: { id: ctx.storeA.id } })
+      expect((response.body as { timezone: string }).timezone).toBe(store.timezone)
+    })
+  })
+
   describe('the behavior of the inbox', () => {
     it('starts with the defaults of the store and changes only what the body says', async () => {
       const before = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.inbox)
@@ -667,6 +702,12 @@ describe('The settings of the inbox of a store', () => {
     })
 
     const as = (actor: { id: string; email: string; token: string }) => api(app, actor, ctx.storeA)
+
+    it('gives the behavior of the inbox to CONVERSATIONS_VIEW and not to SETTINGS_VIEW alone', async () => {
+      const response = await as(viewsSettings).get(ApiRoutes.settings.inboxBehavior)
+
+      expect(response.status).toBe(FORBIDDEN)
+    })
 
     it('reads business hours and the inbox with SETTINGS_VIEW alone, and writes them with SETTINGS_EDIT alone', async () => {
       const hours = {

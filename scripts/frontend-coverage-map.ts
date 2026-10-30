@@ -205,6 +205,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'channels.templates': { step: '3.2' },
   'settings.store': { step: '3.6' },
   'settings.inbox': { step: '3.6' },
+  'settings.inboxBehavior': { step: '3.2' },
   'settings.safety': { step: '5.4' },
   // The sendReadReceipts switch is drawn in Step 3.6; the rest of the page (cancellation reasons) is Step 4.14
   'settings.preferences': { step: '3.6' },

@@ -1,7 +1,13 @@
 import { type BrowserContext, type Locator, type Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
-import { AuthorType, DeliveryStatus, MessageType, SystemMessageEvents } from '@platform/core/domain'
+import {
+  AuthorType,
+  ConversationStatus,
+  DeliveryStatus,
+  MessageType,
+  SystemMessageEvents
+} from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { writeNote } from '../support/api'
@@ -9,9 +15,14 @@ import {
   addManyMessagesTo,
   addMessageTo,
   addOriginTo,
+  addSnippetTo,
+  mentionsOf,
   newConversationIn,
   messagesOf,
   newConversationWithUnread,
+  setResolveBehavior,
+  statusOf,
+  timelineOf,
   storeIdNamed,
   unreadCountOf
 } from '../support/database'
@@ -250,5 +261,110 @@ test.describe.serial('the thread of a conversation', () => {
     const note = threadOf(page).getByRole('listitem').filter({ hasText: 'for the team only' })
     await expect(note).toBeVisible()
     await expect(note.getByText(en.inbox.thread.internalNote)).toBeVisible()
+  })
+  test('inserts a saved reply from the slash menu, with the keyboard', async () => {
+    const shortcut = `hi-${Date.now()}`
+    await addSnippetTo(storeId, shortcut)
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const reply = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+
+    await reply.fill('/')
+    await expect(
+      page.getByRole('listbox', { name: en.inbox.composer.menu.label.commands })
+    ).toBeVisible()
+    await reply.fill(`/snippet ${shortcut}`)
+    await expect(page.getByRole('option', { name: new RegExp(`/${shortcut}`) })).toBeVisible()
+    await reply.press('Enter')
+
+    await expect(reply).toHaveValue('Hello!')
+    // Picking is not sending
+    expect(await messagesOf(conversationId)).toEqual([])
+  })
+
+  test('snoozes from the /snooze command with a preset', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const reply = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+
+    await reply.fill('/snooze')
+    await reply.press('Enter')
+    const dialog = page.getByRole('dialog', { name: en.inbox.snooze.title })
+    await dialog
+      .getByRole('button', { name: new RegExp(en.inbox.snooze.presets.tomorrowMorning) })
+      .click()
+
+    await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.SNOOZED)
+    await expect(page.getByRole('button', { name: en.inbox.actions.wakeUp })).toBeVisible()
+  })
+
+  test('resolves with the options dialog and reopens from the header', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await dialog.getByRole('textbox', { name: en.inbox.resolve.reason }).fill('Sorted out')
+    await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
+
+    await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
+    await page.getByRole('button', { name: en.inbox.actions.reopen }).click()
+    await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.OPEN)
+  })
+
+  test('resolves at once when the store asks for it, and Undo takes it back', async () => {
+    await setResolveBehavior(storeId, { showOptions: false, closingSnippetId: null })
+    try {
+      const conversationId = await newConversationIn(storeId)
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+      await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
+      await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
+      await page.getByRole('button', { name: en.common.undo }).click()
+
+      await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.OPEN)
+    } finally {
+      await setResolveBehavior(storeId, { showOptions: true, closingSnippetId: null })
+    }
+  })
+
+  test('sends the closing message before resolving, so that it does not reopen the conversation', async () => {
+    const snippetId = await addSnippetTo(storeId, `bye-${Date.now()}`)
+    await setResolveBehavior(storeId, { showOptions: false, closingSnippetId: snippetId })
+    try {
+      const conversationId = await newConversationIn(storeId)
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+      await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
+
+      await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
+      // In this order: the closing message, then the line of the system. Had the message come after
+      // the status change it would have reopened the conversation and a "reopened" line would follow.
+      await expect
+        .poll(async () => (await timelineOf(conversationId)).map(m => [m.type, m.content]))
+        .toEqual([
+          [MessageType.TEXT, 'Hello!'],
+          [MessageType.SYSTEM, null]
+        ])
+    } finally {
+      await setResolveBehavior(storeId, { showOptions: true, closingSnippetId: null })
+    }
+  })
+
+  test('mentions a teammate in a note and stores who was mentioned', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    await page.getByRole('tab', { name: en.inbox.composer.note }).click()
+    const noteBox = page.getByRole('textbox', { name: en.inbox.composer.noteLabel })
+
+    await noteBox.pressSequentially('please look @')
+    await expect(
+      page.getByRole('listbox', { name: en.inbox.composer.menu.label.mentions })
+    ).toBeVisible()
+    await noteBox.press('Enter')
+    await noteBox.pressSequentially('at this')
+    await noteBox.press('Enter')
+
+    await expect.poll(async () => (await mentionsOf(conversationId)).flat()).toHaveLength(1)
   })
 })

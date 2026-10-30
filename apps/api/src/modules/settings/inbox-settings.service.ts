@@ -24,6 +24,13 @@ export interface InboxSettingsView {
   agentLoadThreshold: number
 }
 
+// What the people who work the inbox read: how resolving behaves, and the timezone the presets of
+// a snooze are counted in. The rest of the settings needs SETTINGS_VIEW.
+export type InboxBehaviorView = Pick<
+  InboxSettingsView,
+  'resolveShowOptions' | 'sendClosingMessage' | 'closingSnippetId'
+> & { timezone: string }
+
 const INBOX_SELECT = {
   reopenWindowDays: true,
   autoArchiveAfterDays: true,
@@ -42,6 +49,20 @@ export class InboxSettingsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService
   ) {}
+
+  async behavior(storeId: string): Promise<InboxBehaviorView> {
+    const store = await this.prisma.client.store.findUnique({
+      where: { id: storeId },
+      select: {
+        timezone: true,
+        settings: {
+          select: { resolveShowOptions: true, sendClosingMessage: true, closingSnippetId: true }
+        }
+      }
+    })
+    if (store === null || store.settings === null) throw resourceNotFound('store settings')
+    return { ...store.settings, timezone: store.timezone }
+  }
 
   async get(storeId: string): Promise<InboxSettingsView> {
     const row = await this.prisma.client.storeSettings.findUnique({

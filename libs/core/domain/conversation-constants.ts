@@ -161,6 +161,17 @@ export const ConversationAssignedFilters = {
   UNASSIGNED: 'unassigned'
 } as const
 
+// The presets of the snooze menu; the hour is the wall clock of the store
+export const SnoozePresets = {
+  LATER_TODAY_HOURS: 3,
+  MORNING_HOUR: 9
+} as const
+
+// Resolving without the options dialog shows a toast that takes it back
+export const ResolveUndo = {
+  DURATION_MS: 10_000
+} as const
+
 export const ConversationLimits = {
   RESOLUTION_REASON_MAX_LENGTH: 500,
   MAX_SNOOZE_DAYS: 365,

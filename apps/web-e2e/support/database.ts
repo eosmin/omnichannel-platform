@@ -9,7 +9,7 @@ import {
 
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
-import { createConversationOf, createMessage } from '../../../tests/builders'
+import { createConversationOf, createMessage, createSnippet } from '../../../tests/builders'
 
 import { databaseUrls } from './env'
 
@@ -148,4 +148,59 @@ export async function storeIdNamed(name: string): Promise<string> {
   const store = await withOwner(owner => owner.store.findFirst({ where: { name } }))
   if (store === null) throw new Error(`no store named ${name}`)
   return store.id
+}
+
+// A saved reply with the greeting every case expects ("Hello!"), under a shortcut of its own
+export async function addSnippetTo(storeId: string, shortcut: string): Promise<string> {
+  return withOwner(async owner => (await createSnippet(owner, { storeId, shortcut })).id)
+}
+
+export function statusOf(conversationId: string): Promise<string | undefined> {
+  return withOwner(
+    async owner =>
+      (
+        await owner.conversation.findUnique({
+          where: { id: conversationId },
+          select: { status: true }
+        })
+      )?.status
+  )
+}
+
+// How resolving behaves in the store: with the options dialog or at once, and the closing message
+export async function setResolveBehavior(
+  storeId: string,
+  behavior: { showOptions: boolean; closingSnippetId: string | null }
+): Promise<void> {
+  await withOwner(owner =>
+    owner.storeSettings.update({
+      where: { storeId },
+      data: {
+        resolveShowOptions: behavior.showOptions,
+        sendClosingMessage: behavior.closingSnippetId !== null,
+        closingSnippetId: behavior.closingSnippetId
+      }
+    })
+  )
+}
+
+// The messages of a conversation in the order they were written: text and type
+export function timelineOf(
+  conversationId: string
+): Promise<{ content: string | null; type: string }[]> {
+  return withOwner(owner =>
+    owner.message.findMany({
+      where: { conversationId },
+      select: { content: true, type: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    })
+  )
+}
+
+export function mentionsOf(conversationId: string): Promise<string[][]> {
+  return withOwner(async owner =>
+    (await owner.message.findMany({ where: { conversationId }, select: { mentions: true } })).map(
+      row => row.mentions
+    )
+  )
 }

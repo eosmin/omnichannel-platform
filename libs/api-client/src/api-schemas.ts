@@ -161,6 +161,26 @@ export const memberDirectoryEntrySchema = z.object({
 export const memberDirectorySchema = z.array(memberDirectoryEntrySchema)
 export type MemberDirectoryEntryView = z.output<typeof memberDirectoryEntrySchema>
 
+// GET /settings/snippets: the saved replies of the store; readable by anyone who may see conversations
+export const snippetSchema = z.object({
+  id: z.string(),
+  shortcut: z.string(),
+  title: z.string(),
+  content: z.string()
+})
+export const snippetListSchema = z.array(snippetSchema)
+export type SnippetView = z.output<typeof snippetSchema>
+
+// GET /settings/inbox/behavior: how resolving behaves in this store (TDD_09 §3.2) and the timezone its
+// snooze presets are counted in
+export const inboxBehaviorSchema = z.object({
+  resolveShowOptions: z.boolean(),
+  sendClosingMessage: z.boolean(),
+  closingSnippetId: z.string().nullable(),
+  timezone: z.string()
+})
+export type InboxBehaviorView = z.output<typeof inboxBehaviorSchema>
+
 // GET /channels/directory: the accounts of the store and what each channel can do, so that the
 // inbox names a channel and draws only the actions it supports
 export const channelDirectoryEntrySchema = z.object({
