@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common'
 
 import { QueuesPlatformModule } from '@platform/core/http'
 import {
+  ConversationClosingService,
   ConversationsService,
   OutboundQueue,
   ReadReceipts,
   RoutingService
 } from '@platform/core/messaging'
 
+import { MessagingWindowModule } from '../messaging-window'
 import { TenancyModule } from '../tenancy'
 
 import { ConversationBulkService } from './conversation-bulk.service'
@@ -19,10 +21,11 @@ import { ConversationsController } from './conversations.controller'
 // Needs the database module of the app. ConversationsService is exported for the inbound pipeline
 // (Step 2.6), which creates the conversation of a message and changes its status.
 @Module({
-  imports: [TenancyModule, QueuesPlatformModule],
+  imports: [TenancyModule, QueuesPlatformModule, MessagingWindowModule],
   controllers: [ConversationsController],
   providers: [
     ConversationsService,
+    ConversationClosingService,
     ConversationBulkService,
     ConversationCountsService,
     ConversationTagsService,

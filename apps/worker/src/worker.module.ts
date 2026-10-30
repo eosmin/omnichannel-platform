@@ -3,8 +3,14 @@ import { ScheduleModule } from '@nestjs/schedule'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
 import { EmailPlatformModule, HttpPlatformModule, QueuesPlatformModule } from '@platform/core/http'
-import { OutboundQueue } from '@platform/core/messaging'
-import { PluginsModule } from '@platform/plugins/runtime'
+import {
+  ConversationsService,
+  MESSAGING_WINDOW_POLICIES,
+  type MessagingWindowPolicySource,
+  MessagingWindowService,
+  OutboundQueue
+} from '@platform/core/messaging'
+import { PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
@@ -40,6 +46,16 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     ProcessorSupport,
     LeaderLockService,
     OutboundQueue,
+    ConversationsService,
+    MessagingWindowService,
+    {
+      provide: MESSAGING_WINDOW_POLICIES,
+      // As in the api: the plugin owns its policy, and a channel with none has no window
+      useFactory: (registry: PluginRegistry): MessagingWindowPolicySource => ({
+        policyFor: channelId => registry.find(channelId)?.messagingWindow ?? null
+      }),
+      inject: [PluginRegistry]
+    },
     MessageStatusWriter,
     OutboundSender,
     ReactionStatusWriter,

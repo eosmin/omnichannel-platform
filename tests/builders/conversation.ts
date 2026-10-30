@@ -20,6 +20,7 @@ export interface ConversationInput {
   assignedTo?: string | null
   lastMessageAt?: Date | null
   unreadCount?: number
+  resolvedAt?: Date | null
   // Conversations that share a connection are cheaper to build in the thousands
   channelConnectionId?: string
 }
@@ -69,7 +70,8 @@ export async function createConversation(
       ...(input.status === undefined ? {} : { status: input.status }),
       ...(input.assignedTo === undefined ? {} : { assignedTo: input.assignedTo }),
       ...(input.lastMessageAt === undefined ? {} : { lastMessageAt: input.lastMessageAt }),
-      ...(input.unreadCount === undefined ? {} : { unreadCount: input.unreadCount })
+      ...(input.unreadCount === undefined ? {} : { unreadCount: input.unreadCount }),
+      ...(input.resolvedAt === undefined ? {} : { resolvedAt: input.resolvedAt })
     },
     select: { id: true }
   })
