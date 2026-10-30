@@ -23,7 +23,10 @@ export const QueryKeys = {
   messages: {
     all: (storeId: string) => ['messages', storeId] as const,
     thread: (storeId: string, conversationId: string) =>
-      ['messages', storeId, conversationId] as const
+      ['messages', storeId, conversationId] as const,
+    // Under the thread key: whatever makes the thread stale makes its origins stale too
+    origins: (storeId: string, conversationId: string) =>
+      ['messages', storeId, conversationId, 'origins'] as const
   },
   customers: {
     all: (storeId: string) => ['customers', storeId] as const,

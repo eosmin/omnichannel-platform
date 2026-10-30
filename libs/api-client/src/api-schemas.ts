@@ -166,3 +166,89 @@ export const channelDirectoryEntrySchema = z.object({
 })
 export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)
 export type ChannelDirectoryEntryView = z.output<typeof channelDirectoryEntrySchema>
+
+// GET /conversations/:id/messages: the thread, newest first. Like the list, a type, author or status
+// this page does not know is kept as the text it came as, and the bubble draws a neutral fallback.
+const reactionSchema = z.object({
+  emoji: z.string(),
+  authorType: z.string(),
+  authorId: z.string().nullable(),
+  deliveryStatus: z.string(),
+  deliveryError: z.string().nullable()
+})
+
+const quotedMessageSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  authorType: z.string(),
+  authorId: z.string().nullable(),
+  content: z.string().nullable(),
+  deleted: z.boolean()
+})
+
+// A system line has no text: the page writes it from the event, the people and the dates
+const systemLineSchema = z.object({
+  event: z.string(),
+  actor: z.object({ type: z.string(), id: z.string().nullable() }),
+  causedBy: z.string().nullable(),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  reason: z.string().nullable(),
+  snoozedUntil: z.string().nullable(),
+  assignedTo: z.string().nullable(),
+  previousAssignee: z.string().nullable()
+})
+
+export const messageSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  type: z.string(),
+  content: z.string().nullable(),
+  authorType: z.string(),
+  authorId: z.string().nullable(),
+  replyToMessageId: z.string().nullable(),
+  replyTo: quotedMessageSchema.nullable(),
+  deliveryStatus: z.string().nullable(),
+  deliveryError: z.string().nullable(),
+  system: systemLineSchema.nullable(),
+  // Untrusted: drawn as a link with its host visible, never fetched
+  attachmentUrl: z.string().nullable(),
+  reactions: z.array(reactionSchema),
+  editedAt: z.string().nullable(),
+  pendingEdit: z.boolean(),
+  editStatus: z.string().nullable(),
+  editError: z.string().nullable(),
+  deletedAt: z.string().nullable(),
+  deletedByType: z.string().nullable(),
+  deletedById: z.string().nullable(),
+  deleteStatus: z.string().nullable(),
+  deleteError: z.string().nullable(),
+  createdAt: z.string()
+})
+export type MessageView = z.output<typeof messageSchema>
+export type ReactionView = z.output<typeof reactionSchema>
+
+export const messagePageSchema = z.object({
+  data: z.array(messageSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type MessagePageView = z.output<typeof messagePageSchema>
+
+// GET /conversations/:id/origins: where the conversation came from, newest first. The links came from
+// an ad or a post: untrusted, drawn under the img-src of the CSP.
+export const conversationOriginSchema = z.object({
+  id: z.string(),
+  messageId: z.string(),
+  kind: z.string(),
+  sourceId: z.string().nullable(),
+  sourceUrl: z.string().nullable(),
+  title: z.string().nullable(),
+  body: z.string().nullable(),
+  mediaType: z.string().nullable(),
+  mediaUrl: z.string().nullable(),
+  thumbnailUrl: z.string().nullable(),
+  createdAt: z.string()
+})
+export const conversationOriginListSchema = z.array(conversationOriginSchema)
+export type ConversationOriginView = z.output<typeof conversationOriginSchema>

@@ -474,6 +474,118 @@
       "assignedToYou": "A conversation was assigned to you"
     },
     "scopeLabel": "Assigned to",
-    "otherAgent": "Another agent"
+    "otherAgent": "Another agent",
+    "thread": {
+      "label": "Conversation messages",
+      "loading": "Loading messages",
+      "loadEarlier": "Load earlier messages",
+      "loadingEarlier": "Loading earlier messages",
+      "empty": {
+        "title": "No messages yet",
+        "body": "The messages of this conversation will appear here."
+      },
+      "error": {
+        "title": "The messages could not be loaded"
+      },
+      "customer": "Customer",
+      "teamMember": "Team member",
+      "formerMember": "Former member",
+      "owner": "Owner (from the channel app)",
+      "automatic": "Automatic",
+      "internalNote": "Internal note",
+      "edited": "edited",
+      "editPending": "Edit waiting for the channel",
+      "editFailed": "The channel did not take the edit",
+      "deleting": "Deleting",
+      "deleteFailed": "The channel did not take the deletion",
+      "deletedByCustomer": "The customer deleted this message",
+      "deletedByAgent": "{name} deleted this message",
+      "deletedByOwner": "The owner deleted this message",
+      "deletedGeneric": "This message was deleted",
+      "ticks": {
+        "queued": "Sending",
+        "sent": "Sent",
+        "delivered": "Delivered",
+        "read": "Read",
+        "failed": "Not delivered"
+      },
+      "failedWithReason": "Not delivered: {reason}",
+      "mediaLabel": {
+        "IMAGE": "Image",
+        "VIDEO": "Video",
+        "AUDIO": "Audio",
+        "DOCUMENT": "Document"
+      },
+      "templateLabel": "Template message",
+      "neutral": {
+        "LOCATION": "The customer shared a location",
+        "PRODUCT_CARD": "A product was shared",
+        "ORDER_SUMMARY": "An order summary was shared",
+        "SYSTEM": "Event in the conversation",
+        "unknown": "A message this version cannot show"
+      },
+      "quote": {
+        "label": "In reply to {author}",
+        "deleted": "The original message was deleted",
+        "unavailable": "The original message is not in this conversation",
+        "type": {
+          "IMAGE": "Image",
+          "VIDEO": "Video",
+          "AUDIO": "Audio",
+          "DOCUMENT": "Document",
+          "LOCATION": "Location",
+          "PRODUCT_CARD": "Product",
+          "ORDER_SUMMARY": "Order",
+          "TEMPLATE": "Template",
+          "INTERNAL_NOTE": "Internal note",
+          "unknown": "Message"
+        }
+      },
+      "sharedLink": {
+        "label": "Link shared by the customer",
+        "open": "Open the link on {host}",
+        "expiresNote": "This link may stop working after a day"
+      },
+      "reactions": {
+        "group": "Reactions",
+        "chip": "{emoji} {count}",
+        "pending": "Waiting for the channel",
+        "failed": "Not delivered",
+        "hasProblem": "Some reactions were not delivered"
+      },
+      "origin": {
+        "kind": {
+          "ad": "an ad",
+          "post": "a post",
+          "other": "a link"
+        },
+        "earlier": "{count, plural, one {# earlier origin} other {# earlier origins}}",
+        "hideEarlier": "Hide earlier origins",
+        "open": "Open on {host}",
+        "label": "Where this conversation came from",
+        "firstContactFrom": "First contact · came from {kind}",
+        "cameFrom": "Came from {kind}"
+      },
+      "system": {
+        "resolved": "{actorKind, select, user {Resolved by {actor}} other {Resolved automatically}}",
+        "reopened": "{actorKind, select, user {Reopened by {actor}} other {Reopened because the customer replied}}",
+        "archived": "{actorKind, select, user {Archived by {actor}} other {Archived automatically}}",
+        "marked_spam": "{actorKind, select, user {Marked as spam by {actor}} other {Marked as spam automatically}}",
+        "unmarked_spam": "{actorKind, select, user {Unmarked as spam by {actor}} other {Unmarked as spam automatically}}",
+        "snoozed": "{actorKind, select, user {Snoozed by {actor}} other {Snoozed automatically}}",
+        "snoozedUntil": "until {until}",
+        "woken": "{actorKind, select, user {Woken by {actor}} other {Woken automatically}}",
+        "assigned": "{actorKind, select, user {{actor} assigned it to {assignee}} other {Assigned to {assignee}}}",
+        "unassigned": "{actorKind, select, user {{actor} left it unassigned} other {Left unassigned}}",
+        "unknown": "The conversation changed",
+        "reason": "Reason: {reason}",
+        "reasons": {
+          "snooze_expired": "the snooze ended",
+          "auto_archived": "it was inactive",
+          "customer_replied": "the customer replied"
+        }
+      },
+      "loadEarlierFailed": "The earlier messages could not be loaded"
+    }
   }
 }

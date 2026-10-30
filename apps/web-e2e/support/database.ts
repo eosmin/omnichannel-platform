@@ -1,8 +1,15 @@
 import { createOwnerClient, type OwnerClient } from '@platform/core/database-testing'
+import {
+  type AuthorType,
+  type DeliveryStatus,
+  type MessageType,
+  OriginKinds,
+  type SystemMessageEvent
+} from '@platform/core/domain'
 
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
-import { createConversationOf } from '../../../tests/builders'
+import { createConversationOf, createMessage } from '../../../tests/builders'
 
 import { databaseUrls } from './env'
 
@@ -23,6 +30,107 @@ export function newConversationIn(storeId: string): Promise<string> {
   return withOwner(
     async owner => (await createConversationOf(owner, { storeId, lastMessageAt: new Date() })).id
   )
+}
+
+// A conversation that has something to read, for the cases of the thread
+export function newConversationWithUnread(storeId: string, unreadCount: number): Promise<string> {
+  return withOwner(
+    async owner =>
+      (await createConversationOf(owner, { storeId, lastMessageAt: new Date(), unreadCount })).id
+  )
+}
+
+export function unreadCountOf(conversationId: string): Promise<number | undefined> {
+  return withOwner(
+    async owner =>
+      (
+        await owner.conversation.findUnique({
+          where: { id: conversationId },
+          select: { unreadCount: true }
+        })
+      )?.unreadCount
+  )
+}
+
+// A message of the customer, a reply with its delivery state, a note or a line of the system, with the
+// time given so that the thread keeps its order
+export function addMessageTo(
+  storeId: string,
+  conversationId: string,
+  input: {
+    content?: string
+    authorType?: AuthorType
+    type?: MessageType
+    createdAt: Date
+    deliveryStatus?: DeliveryStatus
+    system?: { event: SystemMessageEvent; actorType: 'user' | 'system' }
+    replyToMessageId?: string
+  }
+): Promise<{ id: string }> {
+  return withOwner(async owner => {
+    const { id } = await createMessage(owner, { storeId, conversationId, ...input })
+    const { deliveryStatus, system, replyToMessageId } = input
+    if (deliveryStatus !== undefined || system !== undefined || replyToMessageId !== undefined) {
+      await owner.message.update({
+        where: { id },
+        data: {
+          ...(deliveryStatus === undefined ? {} : { deliveryStatus }),
+          ...(replyToMessageId === undefined ? {} : { replyToMessageId }),
+          ...(system === undefined
+            ? {}
+            : {
+                metadata: {
+                  event: system.event,
+                  actor: { type: system.actorType, id: null },
+                  causedBy: null,
+                  from: null,
+                  to: null,
+                  reason: null,
+                  snoozedUntil: null,
+                  assignedTo: null,
+                  previousAssignee: null
+                }
+              })
+        }
+      })
+    }
+    return { id }
+  })
+}
+
+// Many messages in one go, one a minute apart and the last one a minute ago, for the cases that need
+// more than a page of the thread
+export function addManyMessagesTo(
+  storeId: string,
+  conversationId: string,
+  count: number
+): Promise<void> {
+  const MINUTE_MS = 60_000
+  return withOwner(async owner => {
+    await owner.message.createMany({
+      data: Array.from({ length: count }, (_, index) => ({
+        storeId,
+        conversationId,
+        type: 'TEXT',
+        content: `Message number ${index + 1}`,
+        authorType: index % 2 === 0 ? 'customer' : 'agent',
+        createdAt: new Date(Date.now() - (count - index) * MINUTE_MS)
+      }))
+    })
+  })
+}
+
+export function addOriginTo(
+  storeId: string,
+  conversationId: string,
+  messageId: string,
+  title: string
+): Promise<void> {
+  return withOwner(async owner => {
+    await owner.conversationOrigin.create({
+      data: { storeId, conversationId, messageId, kind: OriginKinds.AD, title }
+    })
+  })
 }
 
 export function messagesOf(

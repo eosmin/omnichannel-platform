@@ -1,11 +1,13 @@
 'use client'
 
-import { type ReactElement, useState } from 'react'
+import type { ReactElement } from 'react'
 
 import { cn } from '../../lib/utils'
 
+import { RemoteImage } from './remote-image'
+
 // The photo is a link that a plugin chose and that expires: when it fails to load, or there is none,
-// the initials show. `referrerPolicy` keeps the address of the inbox from reaching the CDN.
+// the initials show.
 export function CustomerAvatar({
   avatarUrl,
   initials,
@@ -15,8 +17,6 @@ export function CustomerAvatar({
   initials: string
   className?: string
 }): ReactElement {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  const showPhoto = avatarUrl !== null && failedUrl !== avatarUrl
   return (
     <span
       aria-hidden
@@ -25,19 +25,7 @@ export function CustomerAvatar({
         className
       )}
     >
-      {showPhoto ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a remote link of unknown size and host: next/image would need each host configured
-        <img
-          src={avatarUrl}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          className="size-full object-cover"
-          onError={() => setFailedUrl(avatarUrl)}
-        />
-      ) : (
-        initials
-      )}
+      <RemoteImage src={avatarUrl} className="size-full object-cover" fallback={initials} />
     </span>
   )
 }

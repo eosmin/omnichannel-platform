@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
@@ -5,6 +7,8 @@ import {
   type ChannelDirectoryEntryView,
   channelDirectorySchema,
   type ConversationCountsView,
+  type ConversationOriginView,
+  conversationOriginListSchema,
   type ConversationListItemView,
   conversationListItemSchema,
   conversationCountsSchema,
@@ -87,5 +91,33 @@ export function fetchChannelDirectory(
     schema: channelDirectorySchema,
     storeId,
     signal
+  })
+}
+
+// Where the conversation came from, newest first (the card on top of the thread)
+export function fetchConversationOrigins(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string,
+  signal?: AbortSignal
+): Promise<ConversationOriginView[]> {
+  return client.request(ApiRoutes.conversations.origins(conversationId), {
+    schema: conversationOriginListSchema,
+    storeId,
+    signal
+  })
+}
+
+// Marks the conversation read for the whole team; the answer is the detail, which this page reads
+// again through the list
+export async function markConversationRead(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string
+): Promise<void> {
+  await client.request(ApiRoutes.conversations.read(conversationId), {
+    method: 'POST',
+    schema: z.unknown(),
+    storeId
   })
 }

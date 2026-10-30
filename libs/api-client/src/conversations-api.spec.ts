@@ -4,7 +4,9 @@ import { createApiClient } from './api-client'
 import {
   fetchChannelDirectory,
   fetchConversationCounts,
-  fetchConversationsPage
+  fetchConversationOrigins,
+  fetchConversationsPage,
+  markConversationRead
 } from './conversations-api'
 
 const json = (status: number, body: unknown): Response =>
@@ -113,5 +115,43 @@ describe('fetchChannelDirectory', () => {
 
     expect(channels[0]?.displayName).toBe('Shop')
     expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/channels/directory')
+  })
+})
+
+describe('fetchConversationOrigins', () => {
+  it('reads the origins of the conversation, newest first', async () => {
+    const origin = {
+      id: 'o1',
+      messageId: 'm1',
+      kind: 'ad',
+      sourceId: null,
+      sourceUrl: 'https://example.com/ad',
+      title: 'Spring sale',
+      body: null,
+      mediaType: null,
+      mediaUrl: null,
+      thumbnailUrl: null,
+      createdAt: '2026-10-30T10:00:00.000Z'
+    }
+    const { client, fetchImpl } = setup(json(200, [origin]))
+
+    expect(await fetchConversationOrigins(client, 's1', 'c1')).toEqual([origin])
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/conversations/c1/origins'
+    )
+  })
+})
+
+describe('markConversationRead', () => {
+  it('posts to the read route of the conversation for the store', async () => {
+    const { client, fetchImpl } = setup(json(200, { id: 'c1' }))
+
+    await markConversationRead(client, 's1', 'c1')
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/conversations/c1/read')
+    expect(init?.method).toBe('POST')
+    expect(init?.headers).toMatchObject({ 'x-store-id': 's1' })
   })
 })

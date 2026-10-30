@@ -474,6 +474,118 @@
       "assignedToYou": "Se te asignó una conversación"
     },
     "scopeLabel": "Asignadas a",
-    "otherAgent": "Otro agente"
+    "otherAgent": "Otro agente",
+    "thread": {
+      "label": "Mensajes de la conversación",
+      "loading": "Cargando mensajes",
+      "loadEarlier": "Cargar mensajes anteriores",
+      "loadingEarlier": "Cargando mensajes anteriores",
+      "empty": {
+        "title": "Aún no hay mensajes",
+        "body": "Los mensajes de esta conversación aparecerán aquí."
+      },
+      "error": {
+        "title": "No se pudieron cargar los mensajes"
+      },
+      "customer": "Cliente",
+      "teamMember": "Miembro del equipo",
+      "formerMember": "Ex miembro",
+      "owner": "Dueño (desde la app del canal)",
+      "automatic": "Automático",
+      "internalNote": "Nota interna",
+      "edited": "editado",
+      "editPending": "Edición en espera del canal",
+      "editFailed": "El canal no aceptó la edición",
+      "deleting": "Eliminando",
+      "deleteFailed": "El canal no aceptó la eliminación",
+      "deletedByCustomer": "El cliente eliminó este mensaje",
+      "deletedByAgent": "{name} eliminó este mensaje",
+      "deletedByOwner": "El dueño eliminó este mensaje",
+      "deletedGeneric": "Este mensaje fue eliminado",
+      "ticks": {
+        "queued": "Enviando",
+        "sent": "Enviado",
+        "delivered": "Entregado",
+        "read": "Leído",
+        "failed": "No entregado"
+      },
+      "failedWithReason": "No entregado: {reason}",
+      "mediaLabel": {
+        "IMAGE": "Imagen",
+        "VIDEO": "Video",
+        "AUDIO": "Audio",
+        "DOCUMENT": "Documento"
+      },
+      "templateLabel": "Mensaje de plantilla",
+      "neutral": {
+        "LOCATION": "El cliente compartió una ubicación",
+        "PRODUCT_CARD": "Se compartió un producto",
+        "ORDER_SUMMARY": "Se compartió un resumen de pedido",
+        "SYSTEM": "Evento en la conversación",
+        "unknown": "Un mensaje que esta versión no puede mostrar"
+      },
+      "quote": {
+        "label": "En respuesta a {author}",
+        "deleted": "El mensaje original fue eliminado",
+        "unavailable": "El mensaje original no está en esta conversación",
+        "type": {
+          "IMAGE": "Imagen",
+          "VIDEO": "Video",
+          "AUDIO": "Audio",
+          "DOCUMENT": "Documento",
+          "LOCATION": "Ubicación",
+          "PRODUCT_CARD": "Producto",
+          "ORDER_SUMMARY": "Pedido",
+          "TEMPLATE": "Plantilla",
+          "INTERNAL_NOTE": "Nota interna",
+          "unknown": "Mensaje"
+        }
+      },
+      "sharedLink": {
+        "label": "Enlace compartido por el cliente",
+        "open": "Abrir el enlace en {host}",
+        "expiresNote": "Este enlace puede dejar de funcionar después de un día"
+      },
+      "reactions": {
+        "group": "Reacciones",
+        "chip": "{emoji} {count}",
+        "pending": "En espera del canal",
+        "failed": "No entregada",
+        "hasProblem": "Algunas reacciones no se entregaron"
+      },
+      "origin": {
+        "kind": {
+          "ad": "un anuncio",
+          "post": "una publicación",
+          "other": "un enlace"
+        },
+        "earlier": "{count, plural, one {# origen anterior} other {# orígenes anteriores}}",
+        "hideEarlier": "Ocultar orígenes anteriores",
+        "open": "Abrir en {host}",
+        "label": "De dónde llegó esta conversación",
+        "firstContactFrom": "Primer contacto · llegó desde {kind}",
+        "cameFrom": "Llegó desde {kind}"
+      },
+      "system": {
+        "resolved": "{actorKind, select, user {Resuelta por {actor}} other {Resuelta automáticamente}}",
+        "reopened": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta porque el cliente respondió}}",
+        "archived": "{actorKind, select, user {Archivada por {actor}} other {Archivada automáticamente}}",
+        "marked_spam": "{actorKind, select, user {Marcada como spam por {actor}} other {Marcada como spam automáticamente}}",
+        "unmarked_spam": "{actorKind, select, user {{actor} quitó la marca de spam} other {Se quitó la marca de spam automáticamente}}",
+        "snoozed": "{actorKind, select, user {Pospuesta por {actor}} other {Pospuesta automáticamente}}",
+        "snoozedUntil": "hasta {until}",
+        "woken": "{actorKind, select, user {Reactivada por {actor}} other {Reactivada automáticamente}}",
+        "assigned": "{actorKind, select, user {{actor} la asignó a {assignee}} other {Asignada a {assignee}}}",
+        "unassigned": "{actorKind, select, user {{actor} la dejó sin asignar} other {Quedó sin asignar}}",
+        "unknown": "La conversación cambió",
+        "reason": "Motivo: {reason}",
+        "reasons": {
+          "snooze_expired": "terminó la pausa",
+          "auto_archived": "estuvo inactiva",
+          "customer_replied": "el cliente respondió"
+        }
+      },
+      "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores"
+    }
   }
 }
