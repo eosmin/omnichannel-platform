@@ -2,6 +2,11 @@
 // key is the public id of the connection; the token a visitor gets from the bootstrap is the only
 // credential of everything else.
 export const WidgetLimits = {
+  // The least time between two typing signals the server takes from one visitor, in all their tabs
+  CUSTOMER_TYPING_GAP_MS: 2_000,
+  // The most typing signals the server takes from one site in a minute, whoever sends them
+  CUSTOMER_TYPING_SITE_PER_MINUTE: 600,
+  CUSTOMER_TYPING_SITE_WINDOW_MS: 60_000,
   SITE_KEY_PREFIX: 'pk_widget_',
   // Random bytes behind the prefix; the key is their base64url, 24 characters
   SITE_KEY_BYTES: 18,
@@ -40,7 +45,16 @@ export type WidgetAuthor = (typeof WidgetAuthors)[keyof typeof WidgetAuthors]
 // The events the visitor's socket receives (namespace `RealtimeNamespaces.WIDGET`). The payload is the
 // message itself: the room is the one visitor's, and what it carries was written for them.
 export const WidgetSocketEvents = {
-  MESSAGE: 'widget.message'
+  MESSAGE: 'widget.message',
+  // The team is typing a reply: `{ active }`, and the visitor's widget
+  // is to let it lapse by itself if no stop arrives (the bundle task of Step 3.2, PR B5)
+  AGENT_TYPING: 'widget.agent_typing'
+} as const
+
+// What the visitor's socket sends the server (the one thing the namespace listens to): the visitor is
+// typing, with no payload
+export const WidgetClientEvents = {
+  TYPING: 'widget.typing'
 } as const
 
 // Anyone on the internet can call these: per address, and far below the webhook limit

@@ -37,7 +37,7 @@ function build(): {
 }
 
 describe('InstagramPlugin', () => {
-  it('declares what it can do, with no buttons, templates or typing', () => {
+  it('declares what it can do, with no buttons or templates', () => {
     const { plugin } = build()
     expect(plugin.capabilities).toEqual(
       expect.arrayContaining([
@@ -45,6 +45,8 @@ describe('InstagramPlugin', () => {
         ChannelCapability.REACTIONS,
         ChannelCapability.REPLY_TO,
         ChannelCapability.CUSTOMER_PROFILE,
+        ChannelCapability.TYPING_INDICATOR,
+        ChannelCapability.READ_RECEIPTS,
         ChannelCapability.MESSAGING_WINDOW
       ])
     )
@@ -410,6 +412,53 @@ describe('InstagramPlugin', () => {
         sender_action: 'unreact',
         payload: { message_id: 'mid.1' }
       })
+    })
+  })
+
+  describe('sender actions', () => {
+    it('sends the typing indicator and the seen mark on the Instagram host, alone', async () => {
+      const { plugin, post } = build()
+      post.mockResolvedValue({ recipient_id: '99' })
+
+      await plugin.sendTypingIndicator(ctx, { channelIdentity: '99', active: true })
+      await plugin.markAsRead(ctx, { channelIdentity: '99', externalId: 'mid.1' })
+
+      expect(post.mock.calls[0]?.[0]).toMatchObject({
+        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        path: ['17841400000000001', 'messages'],
+        idempotent: true,
+        body: { recipient: { id: '99' }, sender_action: 'typing_on' }
+      })
+      expect(post.mock.calls[1]?.[0]).toMatchObject({
+        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        path: ['17841400000000001', 'messages'],
+        idempotent: true,
+        body: { recipient: { id: '99' }, sender_action: 'mark_seen' }
+      })
+    })
+
+    it('takes the typing indicator away with typing_off', async () => {
+      const { plugin, post } = build()
+      post.mockResolvedValue({ recipient_id: '99' })
+
+      await plugin.sendTypingIndicator(ctx, { channelIdentity: '99', active: false })
+
+      expect(post.mock.calls[0]?.[0].body).toEqual({
+        recipient: { id: '99' },
+        sender_action: 'typing_off'
+      })
+    })
+
+    it('lets the failure of Meta reach the caller, which decides what a failure is worth', async () => {
+      const { plugin, post } = build()
+      post.mockRejectedValue(new Error('meta refused'))
+
+      await expect(
+        plugin.sendTypingIndicator(ctx, { channelIdentity: '99', active: true })
+      ).rejects.toThrow('meta refused')
+      await expect(
+        plugin.markAsRead(ctx, { channelIdentity: '99', externalId: 'mid.1' })
+      ).rejects.toThrow('meta refused')
     })
   })
 

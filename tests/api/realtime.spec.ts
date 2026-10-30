@@ -25,6 +25,7 @@ import {
 } from '@platform/core/realtime'
 import { REDIS_CLIENT } from '@platform/core/redis'
 
+import { AgentTypingRelay } from '../../apps/api/src/modules/realtime/agent-typing-relay.service'
 import { PresenceService } from '../../apps/api/src/modules/realtime/presence.service'
 import { RealtimeService } from '../../apps/api/src/modules/realtime/realtime.service'
 import { REALTIME_TIMING } from '../../apps/api/src/modules/realtime/realtime.types'
@@ -591,6 +592,105 @@ describe('The realtime gateway', () => {
       ])
       // The socket that never joined sent one too, and nobody heard it
       expect(agent.of(RealtimeEvents.TYPING_START)).toEqual([])
+    })
+
+    it('hands the typing of a member to the channel relay, and nothing from a socket that is not in the room', async () => {
+      const agent = await asA(ctx.agentA)
+      const outsider = await asA(agent2)
+      const { id } = await mk()
+      await agent.join(id)
+      const relay = jest
+        .spyOn(app.get(AgentTypingRelay, { strict: false }), 'relay')
+        .mockResolvedValue(undefined)
+
+      try {
+        outsider.socket.emit(RealtimeEvents.TYPING_START, { conversationId: id })
+        outsider.socket.emit(RealtimeEvents.TYPING_STOP, { conversationId: id })
+        await sleep(SETTLE_MS)
+        expect(relay).not.toHaveBeenCalled()
+        agent.socket.emit(RealtimeEvents.TYPING_START, { conversationId: id })
+        await until(() => relay.mock.calls.length === 1)
+        agent.socket.emit(RealtimeEvents.TYPING_STOP, { conversationId: id })
+        await until(() => relay.mock.calls.length === 2)
+        agent.socket.emit(RealtimeEvents.TYPING_START, { conversationId: id })
+        await until(() => relay.mock.calls.length === 3)
+        agent.socket.emit(RealtimeEvents.LEAVE_CONVERSATION, { conversationId: id })
+        await until(() => relay.mock.calls.length === 4)
+        await sleep(SETTLE_MS)
+
+        expect(
+          relay.mock.calls.map(([store, conversation, active]) => [store, conversation, active])
+        ).toEqual([
+          [ctx.storeA.id, id, true],
+          [ctx.storeA.id, id, false],
+          [ctx.storeA.id, id, true],
+          [ctx.storeA.id, id, false]
+        ])
+        // What the relay asks before a start reaches a customer is answered from the database now
+        const mayStart = relay.mock.calls[0]?.[3]
+        expect(await mayStart?.()).toBe(true)
+        // and it says no once the conversation is someone else's
+        await owner.conversation.update({ where: { id }, data: { assignedTo: agent2.id } })
+        expect(await mayStart?.()).toBe(false)
+      } finally {
+        relay.mockRestore()
+      }
+    })
+
+    it('takes the typing of an agent away from the channel when their socket goes without a stop', async () => {
+      const agent = await asA(ctx.agentA)
+      const { id } = await mk()
+      await agent.join(id)
+      const relay = jest
+        .spyOn(app.get(AgentTypingRelay, { strict: false }), 'relay')
+        .mockResolvedValue(undefined)
+
+      try {
+        agent.socket.emit(RealtimeEvents.TYPING_START, { conversationId: id })
+        await until(() => relay.mock.calls.length === 1)
+        agent.socket.disconnect()
+        await until(() => relay.mock.calls.length === 2)
+
+        expect(relay.mock.calls.map(([, , active]) => active)).toEqual([true, false])
+      } finally {
+        relay.mockRestore()
+      }
+    })
+
+    it('relays no stop for a socket that disconnects without having typed', async () => {
+      const agent = await asA(ctx.agentA)
+      const { id } = await mk()
+      await agent.join(id)
+      const relay = jest
+        .spyOn(app.get(AgentTypingRelay, { strict: false }), 'relay')
+        .mockResolvedValue(undefined)
+
+      try {
+        agent.socket.disconnect()
+        await sleep(SETTLE_MS)
+
+        expect(relay).not.toHaveBeenCalled()
+      } finally {
+        relay.mockRestore()
+      }
+    })
+
+    it('tells the sockets in a conversation that the customer is typing, and no one else', async () => {
+      const admin = await asA(ctx.adminA)
+      const agent = await asA(ctx.agentA)
+      const { id } = await mk()
+      await admin.join(id)
+
+      await app
+        .get(EventEmitter2, { strict: false })
+        .emitAsync(Events.CUSTOMER_TYPING, { storeId: ctx.storeA.id, conversationId: id })
+      await until(() => admin.of(RealtimeEvents.CUSTOMER_TYPING).length === 1)
+      await sleep(SETTLE_MS)
+
+      expect(admin.of(RealtimeEvents.CUSTOMER_TYPING)).toEqual([
+        { event: RealtimeEvents.CUSTOMER_TYPING, payload: { conversationId: id } }
+      ])
+      expect(agent.of(RealtimeEvents.CUSTOMER_TYPING)).toEqual([])
     })
 
     it('allows a few conversations open at once and no more', async () => {

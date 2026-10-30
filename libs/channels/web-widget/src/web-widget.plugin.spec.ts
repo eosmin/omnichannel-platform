@@ -25,10 +25,18 @@ const ctx: ChannelContext = { storeId: 's', connectionId: siteKey, credentials: 
 const token = signVisitorToken(tokenKey, { siteKey, visitorId })
 
 describe('WebWidgetPlugin', () => {
-  it('declares text only, with no window', () => {
+  it('declares text and typing, with no window and no read receipts', () => {
     expect(plugin.id).toBe(ChannelIds.WEB_WIDGET)
-    expect(plugin.capabilities).toEqual([ChannelCapability.TEXT])
+    expect(plugin.capabilities).toEqual([
+      ChannelCapability.TEXT,
+      ChannelCapability.TYPING_INDICATOR,
+      ChannelCapability.CUSTOMER_TYPING
+    ])
     expect(plugin.messagingWindow).toBeNull()
+  })
+
+  it('has nothing to send for a typing indicator: the api shows it through the socket of the visitor', async () => {
+    await expect(plugin.sendTypingIndicator()).resolves.toBeUndefined()
   })
 
   describe('connect', () => {

@@ -11,17 +11,24 @@ import {
   AuthorType,
   ChannelConnectionStatus,
   ChannelIds,
+  ConversationStatus,
   DeliveryStatus,
   MessageType,
   WIDGET_TOKEN_AUTH_KEY,
+  WidgetClientEvents,
   WidgetSocketEvents
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { Events, type MessageStatusPayload } from '@platform/core/events'
+import {
+  type CustomerTypingPayload,
+  Events,
+  type MessageStatusPayload
+} from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
 import { RealtimeNamespaces } from '@platform/core/realtime'
 import { inboundJobId, type ProcessChannelEventJob } from '@platform/plugins/runtime'
 
+import { AgentTypingRelay } from '../../apps/api/src/modules/realtime/agent-typing-relay.service'
 import { createCustomerIdentity, ensurePluginInstallation } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -521,8 +528,12 @@ describe('The web widget', () => {
       return error?.data?.code
     }
 
-    // A reply of the team that the channel took, as the worker announces it
-    async function reply(siteKey: string, visitorId: string, content: string) {
+    // The conversation the store holds with a visitor
+    async function conversationFor(
+      siteKey: string,
+      visitorId: string,
+      status: ConversationStatus = ConversationStatus.OPEN
+    ): Promise<string> {
       const connection = await owner.channelConnection.findFirstOrThrow({
         where: { connectionId: siteKey },
         select: { id: true }
@@ -537,14 +548,21 @@ describe('The web widget', () => {
           customerId: identity.customerId,
           customerIdentityId: identity.id,
           channelConnectionId: connection.id,
-          channelType: ChannelIds.WEB_WIDGET
+          channelType: ChannelIds.WEB_WIDGET,
+          status
         },
         select: { id: true }
       })
+      return conversation.id
+    }
+
+    // A reply of the team that the channel took, as the worker announces it
+    async function reply(siteKey: string, visitorId: string, content: string) {
+      const conversationId = await conversationFor(siteKey, visitorId)
       const message = await owner.message.create({
         data: {
           storeId: ctx.storeA.id,
-          conversationId: conversation.id,
+          conversationId,
           type: MessageType.TEXT,
           content,
           authorType: AuthorType.AGENT,
@@ -554,7 +572,7 @@ describe('The web widget', () => {
       })
       const payload: MessageStatusPayload = {
         storeId: ctx.storeA.id,
-        conversationId: conversation.id,
+        conversationId,
         messageId: message.id,
         visibility: { hidden: false, assignedTo: null }
       }
@@ -586,6 +604,174 @@ describe('The web widget', () => {
       await sleep(100)
       expect(heard[0]).toMatchObject({ id, from: 'team', content: 'Sí, enviamos a Santa Ana' })
       expect(Object.keys(heard[0] ?? {}).sort()).toEqual(['content', 'createdAt', 'from', 'id'])
+      expect(overheard).toEqual([])
+    })
+
+    // What the agents are told that a customer types, collected until the test is over, whatever its result
+    const hearers: (() => void)[] = []
+    afterEach(() => {
+      hearers.splice(0).forEach(stop => stop())
+    })
+    const hearCustomerTyping = (): CustomerTypingPayload[] => {
+      const told: CustomerTypingPayload[] = []
+      const emitter = app.get(EventEmitter2, { strict: false })
+      const listener = (payload: CustomerTypingPayload): void => {
+        told.push(payload)
+      }
+      emitter.on(Events.CUSTOMER_TYPING, listener)
+      hearers.push(() => emitter.off(Events.CUSTOMER_TYPING, listener))
+      return told
+    }
+
+    // A visitor whose typing is known to be heard: the barrier of the tests that expect silence, since a
+    // signal handled after the ones sent before it proves those were handled too
+    const typingWitness = async (siteKey: string) => {
+      const visitor = await enter(siteKey)
+      await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitor.visitorId
+      })
+      const conversationId = await conversationFor(siteKey, visitor.visitorId)
+      const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+      return { conversationId, signal: () => socket.emit(WidgetClientEvents.TYPING) }
+    }
+
+    it('tells the agents when its visitor types, and not more often than the gap allows', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const visitor = await enter(siteKey)
+      await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitor.visitorId
+      })
+      await reply(siteKey, visitor.visitorId, 'Hola')
+      const told = hearCustomerTyping()
+      const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+
+      socket.emit(WidgetClientEvents.TYPING)
+      socket.emit(WidgetClientEvents.TYPING)
+      socket.emit(WidgetClientEvents.TYPING)
+      await until(() => told.length === 1)
+      await sleep(150)
+
+      expect(told).toHaveLength(1)
+      expect(told[0]?.storeId).toBe(ctx.storeA.id)
+    })
+
+    it('counts the tabs of one visitor as one, for the gap between two signals', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const visitor = await enter(siteKey)
+      await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitor.visitorId
+      })
+      await conversationFor(siteKey, visitor.visitorId)
+      const told = hearCustomerTyping()
+      const first = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+      const second = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+
+      first.emit(WidgetClientEvents.TYPING)
+      second.emit(WidgetClientEvents.TYPING)
+      await until(() => told.length === 1)
+      await sleep(200)
+
+      expect(told).toHaveLength(1)
+    })
+
+    it('keeps the signals of one visitor id apart on two sites', async () => {
+      const first = await connectWidget(ctx.adminA, ctx.storeA)
+      const second = await connectWidget(ctx.adminA, ctx.storeA)
+      const visitorId = randomUUID()
+      const onFirst = await enter(first, visitorId)
+      const onSecond = await enter(second, visitorId)
+      await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitorId
+      })
+      await conversationFor(first, visitorId)
+      await conversationFor(second, visitorId)
+      const told = hearCustomerTyping()
+      const socketOnFirst = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: onFirst.visitorToken })
+      const socketOnSecond = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: onSecond.visitorToken })
+
+      socketOnFirst.emit(WidgetClientEvents.TYPING)
+      socketOnSecond.emit(WidgetClientEvents.TYPING)
+
+      await until(() => told.length === 2)
+      expect(new Set(told.map(item => item.conversationId)).size).toBe(2)
+    })
+
+    it('says nothing about a conversation that is out of the inbox', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const visitor = await enter(siteKey)
+      await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitor.visitorId
+      })
+      await conversationFor(siteKey, visitor.visitorId, ConversationStatus.ARCHIVED)
+      const told = hearCustomerTyping()
+      const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+
+      const witness = await typingWitness(siteKey)
+
+      socket.emit(WidgetClientEvents.TYPING)
+      witness.signal()
+      await until(() => told.length >= 1)
+      await sleep(50)
+
+      expect(told.map(item => item.conversationId)).toEqual([witness.conversationId])
+    })
+
+    it('says nothing when a visitor with no conversation types', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const visitor = await enter(siteKey)
+      const told = hearCustomerTyping()
+      const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+
+      const witness = await typingWitness(siteKey)
+
+      socket.emit(WidgetClientEvents.TYPING)
+      witness.signal()
+      await until(() => told.length >= 1)
+      await sleep(50)
+
+      expect(told.map(item => item.conversationId)).toEqual([witness.conversationId])
+    })
+
+    it('shows its visitor that an agent is typing, and no other visitor', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const mine = await enter(siteKey)
+      const other = await enter(siteKey)
+      for (const visitor of [mine, other]) {
+        await createCustomerIdentity(owner, {
+          storeId: ctx.storeA.id,
+          channelType: ChannelIds.WEB_WIDGET,
+          handle: visitor.visitorId
+        })
+      }
+      const conversationId = await conversationFor(siteKey, mine.visitorId)
+      // The other visitor has a conversation of their own on the same site: it must not be the way in
+      await conversationFor(siteKey, other.visitorId)
+      const heard: { active: boolean }[] = []
+      const overheard: { active: boolean }[] = []
+      const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: mine.visitorToken })
+      const bystander = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: other.visitorToken })
+      socket.on(WidgetSocketEvents.AGENT_TYPING, (body: { active: boolean }) => heard.push(body))
+      bystander.on(WidgetSocketEvents.AGENT_TYPING, (body: { active: boolean }) =>
+        overheard.push(body)
+      )
+      const relay = app.get(AgentTypingRelay, { strict: false })
+
+      await relay.relay(ctx.storeA.id, conversationId, true)
+      await relay.relay(ctx.storeA.id, conversationId, false)
+
+      await until(() => heard.length === 2)
+      await sleep(100)
+      expect(heard).toEqual([{ active: true }, { active: false }])
       expect(overheard).toEqual([])
     })
 

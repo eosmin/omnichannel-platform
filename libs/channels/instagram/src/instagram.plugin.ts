@@ -27,6 +27,8 @@ export class InstagramPlugin extends MetaChannelPlugin {
     ChannelCapability.REACTIONS,
     ChannelCapability.REPLY_TO,
     ChannelCapability.CUSTOMER_PROFILE,
+    ChannelCapability.TYPING_INDICATOR,
+    ChannelCapability.READ_RECEIPTS,
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 

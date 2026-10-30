@@ -3,6 +3,8 @@ import {
   type OnGatewayConnection,
   type OnGatewayDisconnect,
   type OnGatewayInit,
+  ConnectedSocket,
+  SubscribeMessage,
   WebSocketGateway
 } from '@nestjs/websockets'
 import { PinoLogger } from 'nestjs-pino'
@@ -10,19 +12,25 @@ import type { Namespace, Socket } from 'socket.io'
 
 import { isAllowedOrigin } from '@platform/channels/web-widget'
 import { Public } from '@platform/core/auth-module'
-import { WIDGET_TOKEN_AUTH_KEY, WidgetLimits } from '@platform/core/domain'
+import { WIDGET_TOKEN_AUTH_KEY, WidgetClientEvents, WidgetLimits } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { RealtimeNamespaces, RoomNames, SocketLimits } from '@platform/core/realtime'
 
+import { WidgetCustomerTyping } from './widget-customer-typing.service'
 import { WidgetDelivery } from './widget-delivery.service'
 import { WidgetSites } from './widget-sites.service'
 import { WidgetTokens } from './widget-tokens.service'
+import { WidgetTypingThrottle } from './widget-typing-throttle'
 
 // What the client is told when it is refused; the reason is in `data.code`
 const REFUSED_MESSAGE = 'refused'
 
 interface VisitorSocketData {
   siteKey: string
+  // What the handshake found of the site, so that a typing signal does not look it up again. A site
+  // disconnected after the handshake is heard until the token ends (an hour at most).
+  storeId: string
+  connectionId: string
   visitorId: string
   expiresAt: number
 }
@@ -53,11 +61,13 @@ class Refused extends Error {
 })
 export class WidgetGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly expiries = new WeakMap<VisitorSocket, NodeJS.Timeout>()
+  private readonly typingThrottle = new WidgetTypingThrottle()
 
   constructor(
     private readonly tokens: WidgetTokens,
     private readonly sites: WidgetSites,
     private readonly delivery: WidgetDelivery,
+    private readonly typing: WidgetCustomerTyping,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(WidgetGateway.name)
@@ -102,6 +112,8 @@ export class WidgetGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     socket.handshake.query = {}
     socket.data = {
       siteKey: claims.siteKey,
+      storeId: site.storeId,
+      connectionId: site.connectionId,
       visitorId: claims.visitorId,
       expiresAt: claims.expiresAt
     }
@@ -115,6 +127,19 @@ export class WidgetGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       setTimeout(() => client.disconnect(true), Math.max(0, expiresAt - Date.now()))
     )
     await client.join(RoomNames.widgetVisitor(siteKey, visitorId))
+  }
+
+  // The one thing a visitor's socket may send, and it carries nothing: who is typing is the visitor of
+  // the socket. A signal past the limit of the visitor or of the site is dropped before the database.
+  @SubscribeMessage(WidgetClientEvents.TYPING)
+  async handleTyping(@ConnectedSocket() client: VisitorSocket): Promise<void> {
+    const { siteKey, storeId, connectionId, visitorId } = client.data
+    if (!this.typingThrottle.take(siteKey, visitorId)) return
+    try {
+      await this.typing.signal({ storeId, connectionId }, visitorId)
+    } catch (error) {
+      this.logger.warn({ err: error }, 'a visitor typing signal failed')
+    }
   }
 
   handleDisconnect(client: VisitorSocket): void {

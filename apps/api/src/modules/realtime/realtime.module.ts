@@ -1,9 +1,14 @@
 import { Module } from '@nestjs/common'
 
+import { QueuesPlatformModule } from '@platform/core/http'
+import { OutboundQueue } from '@platform/core/messaging'
 import { SocketLimits } from '@platform/core/realtime'
 
+import { ChannelRegistryModule } from '../channel-registry'
 import { TenancyModule } from '../tenancy'
+import { WidgetDeliveryModule } from '../widget/widget-delivery.module'
 
+import { AgentTypingRelay } from './agent-typing-relay.service'
 import { EventsGateway } from './events.gateway'
 import { PresenceController } from './presence.controller'
 import { PresenceService } from './presence.service'
@@ -15,7 +20,7 @@ import { SocketAccessService } from './socket-access.service'
 // The sockets of the agents and what they hear. It needs the global modules of the app: Redis,
 // metrics, the database, the access tokens and the event bus.
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, ChannelRegistryModule, QueuesPlatformModule, WidgetDeliveryModule],
   controllers: [PresenceController],
   providers: [
     EventsGateway,
@@ -23,6 +28,8 @@ import { SocketAccessService } from './socket-access.service'
     PresenceService,
     RealtimeService,
     RealtimeEventsListener,
+    AgentTypingRelay,
+    OutboundQueue,
     {
       provide: REALTIME_TIMING,
       useValue: {

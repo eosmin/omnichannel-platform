@@ -179,8 +179,10 @@ export interface SendLocationParams {
   idempotencyKey: string
 }
 
+// `active` false takes the indicator away, for a channel whose indicator does not expire by itself
 export interface TypingParams {
   channelIdentity: string
+  active: boolean
 }
 
 export interface MarkReadParams {

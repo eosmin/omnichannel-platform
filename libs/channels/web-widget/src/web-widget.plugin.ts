@@ -37,8 +37,8 @@ const connectSchema = z.object({ siteOrigins: siteOriginsSchema })
 // is what authenticates a message, where a provider's webhook has a signature. The plugin has no
 // provider to call: a reply is delivered to the visitor's socket by the api when it is sent.
 //
-// Text only for now: files wait for the storage of Step 3.4, and typing and read receipts for the
-// typing task of Step 3.2, so none of them is declared. There is no messaging window.
+// Text only for now: files wait for the storage of Step 3.4. Typing is declared in both directions;
+// the read receipts are not (see the plan, Step 3.2). There is no messaging window.
 @Injectable()
 export class WebWidgetPlugin implements ChannelPlugin {
   readonly id = ChannelIds.WEB_WIDGET
@@ -47,7 +47,11 @@ export class WebWidgetPlugin implements ChannelPlugin {
   readonly author = 'Platform Team'
   readonly type = PluginTypes.CHANNEL
   readonly messagingWindow = null
-  readonly capabilities = [ChannelCapability.TEXT] as const
+  readonly capabilities = [
+    ChannelCapability.TEXT,
+    ChannelCapability.TYPING_INDICATOR,
+    ChannelCapability.CUSTOMER_TYPING
+  ] as const
 
   constructor(private readonly config: WidgetConfig) {}
 
@@ -84,6 +88,12 @@ export class WebWidgetPlugin implements ChannelPlugin {
       status: DeliveryStatus.SENT,
       sentAt: new Date().toISOString()
     })
+  }
+
+  // Shown to the visitor by the api through their socket, where the plugin has no reach: the capability
+  // is declared so that the inbox knows the channel shows it, and the worker has nothing to send
+  sendTypingIndicator(): Promise<void> {
+    return Promise.resolve()
   }
 
   sendMedia(_ctx: ChannelContext, _params: SendMediaParams): Promise<ChannelMessageResult> {

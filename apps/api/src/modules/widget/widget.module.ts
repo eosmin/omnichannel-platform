@@ -9,8 +9,9 @@ import { TenancyModule } from '../tenancy'
 
 import { WidgetAway } from './widget-away.service'
 import { WidgetCorsMiddleware } from './widget-cors.middleware'
+import { WidgetCustomerTyping } from './widget-customer-typing.service'
 import { WidgetDeliveryListener } from './widget-delivery.listener'
-import { WidgetDelivery } from './widget-delivery.service'
+import { WidgetDeliveryModule } from './widget-delivery.module'
 import { WidgetHistory } from './widget-history.service'
 import { WidgetSettingsController } from './widget-settings.controller'
 import { WidgetSettings } from './widget-settings.service'
@@ -23,7 +24,13 @@ import { WidgetGateway } from './widget.gateway'
 // and the namespace where the replies reach the visitor. It needs the global modules of the app: the
 // database and the event bus.
 @Module({
-  imports: [ChannelRegistryModule, ChannelsModule, TenancyModule, WebWidgetPlatformModule],
+  imports: [
+    ChannelRegistryModule,
+    ChannelsModule,
+    TenancyModule,
+    WebWidgetPlatformModule,
+    WidgetDeliveryModule
+  ],
   controllers: [WidgetController, WidgetSettingsController],
   providers: [
     WidgetSites,
@@ -31,8 +38,8 @@ import { WidgetGateway } from './widget.gateway'
     WidgetTokens,
     WidgetHistory,
     WidgetAway,
-    WidgetDelivery,
     WidgetDeliveryListener,
+    WidgetCustomerTyping,
     WidgetGateway
   ]
 })

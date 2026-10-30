@@ -15,6 +15,7 @@ import { OutboundSender } from './outbound/outbound-sender.service'
 import { ReactionSender } from './outbound/reaction-sender.service'
 import { ReactionStatusWriter } from './outbound/reaction-status.writer'
 import { ReadReceiptSender } from './outbound/read-receipt-sender.service'
+import { TypingSender } from './outbound/typing-sender.service'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
@@ -46,6 +47,7 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     MessageChangeStatusWriter,
     MessageChangeSender,
     ReadReceiptSender,
+    TypingSender,
     OutboundProcessor,
     EmailProcessor,
     ChannelHealthScheduler,

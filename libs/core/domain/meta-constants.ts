@@ -69,6 +69,9 @@ export const MetaMessaging = {
   // `sender_action` of the Send API
   ACTION_REACT: 'react',
   ACTION_UNREACT: 'unreact',
+  ACTION_TYPING_ON: 'typing_on',
+  ACTION_TYPING_OFF: 'typing_off',
+  ACTION_MARK_SEEN: 'mark_seen',
   // `reaction.action` of the webhook
   REACTION_REACT: 'react',
   REACTION_UNREACT: 'unreact',

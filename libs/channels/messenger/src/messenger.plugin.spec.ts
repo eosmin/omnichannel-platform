@@ -145,6 +145,48 @@ describe('MessengerPlugin', () => {
     })
   })
 
+  describe('sender actions', () => {
+    it('shows and takes away the typing indicator, alone and safe to repeat', async () => {
+      const { plugin, post } = build()
+      post.mockResolvedValue({ recipient_id: '99' })
+
+      await plugin.sendTypingIndicator(ctx, { channelIdentity: '99', active: true })
+      await plugin.sendTypingIndicator(ctx, { channelIdentity: '99', active: false })
+
+      expect(post.mock.calls[0]?.[0]).toMatchObject({
+        path: ['1090000000000001', 'messages'],
+        idempotent: true,
+        body: { recipient: { id: '99' }, sender_action: 'typing_on' }
+      })
+      expect(post.mock.calls[1]?.[0].body).toEqual({
+        recipient: { id: '99' },
+        sender_action: 'typing_off'
+      })
+    })
+
+    it('marks the conversation as seen, whatever the message', async () => {
+      const { plugin, post } = build()
+      post.mockResolvedValue({ recipient_id: '99' })
+
+      await plugin.markAsRead(ctx, { channelIdentity: '99', externalId: 'm_1' })
+
+      expect(post.mock.calls[0]?.[0].body).toEqual({
+        recipient: { id: '99' },
+        sender_action: 'mark_seen'
+      })
+    })
+
+    it('declares both capabilities', () => {
+      const { plugin } = build()
+      expect(plugin.capabilities).toEqual(
+        expect.arrayContaining([
+          ChannelCapability.TYPING_INDICATOR,
+          ChannelCapability.READ_RECEIPTS
+        ])
+      )
+    })
+  })
+
   it('reports a healthy connection only for the Page the connection is', async () => {
     const { plugin, get } = build()
     get.mockResolvedValueOnce({ id: ctx.connectionId, name: 'Mi Tienda' })

@@ -111,8 +111,8 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         await this.receipts.handleConnectionError(pluginId, { ...event, type: event.type })
         return
       default:
-        // What the platform sends itself is not news, and the typing of the customer waits for the
-        // inbox (Step 3.x)
+        // What the platform sends itself is not news. Meta sends no typing of the customer, and the
+        // widget's reaches the api by its socket, so no channel event of this kind arrives here
         this.logger.debug({ pluginId, type: event.type }, 'channel event not handled')
     }
   }

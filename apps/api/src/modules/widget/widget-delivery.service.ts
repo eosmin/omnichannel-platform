@@ -18,6 +18,12 @@ export class WidgetDelivery {
     this.namespace = namespace
   }
 
+  typingToVisitor(siteKey: string, visitorId: string, active: boolean): void {
+    this.namespace
+      ?.to(RoomNames.widgetVisitor(siteKey, visitorId))
+      .emit(WidgetSocketEvents.AGENT_TYPING, { active })
+  }
+
   toVisitor(siteKey: string, visitorId: string, message: WidgetMessageView): void {
     this.namespace
       ?.to(RoomNames.widgetVisitor(siteKey, visitorId))
