@@ -18,6 +18,19 @@
         }
       },
       "outputs": ["{projectRoot}/.next"]
+    },
+    "build-e2e": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build", "^prisma-generate"],
+      "options": {
+        "command": "next build",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NODE_ENV": "production",
+          "E2E_HARNESS": "1"
+        }
+      },
+      "outputs": ["{projectRoot}/.next"]
     }
   }
 }
