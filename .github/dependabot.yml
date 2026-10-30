@@ -21,7 +21,8 @@ updates:
         update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
-    directory: /
+    # The composite actions hold pins of their own
+    directories: ['/', '/.github/actions/*']
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

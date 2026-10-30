@@ -809,7 +809,7 @@ export default {
 7. lighthouse                performance budgets (PRs)
 ```
 
-Nx Affected limits steps 1-2 to changed projects. Steps 3-7 always run in full.
+Nx Affected limits steps 1-2 to changed projects. Steps 3-6 always run in full, except that a change that cannot affect the web app skips `e2e-tests` and `lighthouse` (a `changes` job decides), and `lighthouse` runs on pull requests only.
 
 ---
 

@@ -15,6 +15,15 @@
         "command": "playwright test",
         "cwd": "{projectRoot}"
       }
+    },
+    "lighthouse": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["api:build", "worker:build", "web:build"],
+      "options": {
+        "command": "playwright test --config=playwright.lighthouse.config.ts",
+        "cwd": "{projectRoot}"
+      }
     }
   },
   "implicitDependencies": ["api", "worker", "web"]
