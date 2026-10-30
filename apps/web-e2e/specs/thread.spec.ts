@@ -10,6 +10,7 @@ import {
   addMessageTo,
   addOriginTo,
   newConversationIn,
+  messagesOf,
   newConversationWithUnread,
   storeIdNamed,
   unreadCountOf
@@ -224,5 +225,30 @@ test.describe.serial('the thread of a conversation', () => {
     await threadOf(page).getByRole('button', { name: /./ }).first().click()
 
     await expect(page.locator(`#message-${location.id}`)).toBeFocused()
+  })
+
+  test('sends a reply with Enter, keeps the line break of Shift+Enter, and writes a note from its own tab', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const reply = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+    await reply.fill('first line')
+    await reply.press('Shift+Enter')
+    await reply.pressSequentially('second line')
+    await reply.press('Enter')
+
+    await expect(reply).toHaveValue('')
+    await expect
+      .poll(async () => (await messagesOf(conversationId)).map(m => m.content))
+      .toEqual(['first line\nsecond line'])
+
+    await page.getByRole('tab', { name: en.inbox.composer.note }).click()
+    const noteBox = page.getByRole('textbox', { name: en.inbox.composer.noteLabel })
+    await noteBox.fill('for the team only')
+    await noteBox.press('Enter')
+
+    const note = threadOf(page).getByRole('listitem').filter({ hasText: 'for the team only' })
+    await expect(note).toBeVisible()
+    await expect(note.getByText(en.inbox.thread.internalNote)).toBeVisible()
   })
 })

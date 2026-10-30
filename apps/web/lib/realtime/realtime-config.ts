@@ -17,6 +17,8 @@ export const RealtimeClientTiming = {
   // doubles up to the maximum
   QUEUE_RETRY_MS: 5000,
   QUEUE_RETRY_MAX_MS: 60_000,
+  // How long the queue waits, after a send, for the thread to be read again before it drops the message
+  QUEUE_REFRESH_WAIT_MS: 3000,
   // Events that arrive within this window are answered with one refetch
   INVALIDATION_BATCH_MS: 150
 } as const

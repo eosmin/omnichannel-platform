@@ -71,6 +71,9 @@ export interface OfflineQueueDeps {
 export class OfflineQueue {
   private fallback: PendingMessage[] = []
   private flushing: Promise<void> | null = null
+  private readonly listeners = new Set<() => void>()
+  private revision = 0
+  private snapshot: { revision: number; messages: readonly PendingMessage[] } | null = null
 
   constructor(private readonly deps: OfflineQueueDeps) {}
 
@@ -94,6 +97,27 @@ export class OfflineQueue {
       this.flushing = null
     })
     return this.flushing
+  }
+
+  // For a screen that draws the queue: the same array until something changes, which is what
+  // useSyncExternalStore needs from a snapshot
+  all(): readonly PendingMessage[] {
+    if (this.snapshot?.revision !== this.revision) {
+      this.snapshot = { revision: this.revision, messages: this.read() }
+    }
+    return this.snapshot.messages
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  // Another tab wrote to the storage: what this one holds in its snapshot is out of date
+  changedElsewhere(): void {
+    this.changed()
   }
 
   waiting(userId: string): PendingMessage[] {
@@ -184,5 +208,11 @@ export class OfflineQueue {
     } catch {
       // Quota or blocked storage: the copy in memory keeps the queue for as long as the page lives
     }
+    this.changed()
+  }
+
+  private changed(): void {
+    this.revision += 1
+    this.listeners.forEach(listener => listener())
   }
 }

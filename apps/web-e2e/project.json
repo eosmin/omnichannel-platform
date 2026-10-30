@@ -10,7 +10,7 @@
     "e2e": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["api:build", "worker:build", "web:build-e2e"],
+      "dependsOn": ["api:build", "worker:build", "web:build"],
       "options": {
         "command": "playwright test",
         "cwd": "{projectRoot}"

@@ -586,6 +586,44 @@
         }
       },
       "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores"
+    },
+    "composer": {
+      "readOnly": "Puedes leer esta conversación pero no responderla.",
+      "modeLabel": "Tipo de mensaje",
+      "reply": "Respuesta",
+      "note": "Nota interna",
+      "replyLabel": "Responder al cliente",
+      "noteLabel": "Nota interna, el cliente no la ve",
+      "replyPlaceholder": "Escribe una respuesta",
+      "notePlaceholder": "Escribe una nota para tu equipo",
+      "send": "Enviar",
+      "window": {
+        "closing": "La ventana de mensajería se cierra en {hours} h {minutes} min",
+        "closedTemplate": "La ventana de mensajería expiró. Envía una plantilla aprobada para reabrir la conversación.",
+        "closedNothing": "La ventana de mensajería expiró. Este canal no permite enviar un mensaje hasta que el cliente escriba de nuevo.",
+        "chooseTemplate": "Elegir una plantilla",
+        "closedNoPermission": "La ventana de mensajería expiró. No tienes permiso para enviar plantillas; pídeselo a quien lo tenga.",
+        "draftKept": "Tu borrador se conserva y vuelve cuando la ventana se abra de nuevo."
+      },
+      "failed": {
+        "label": "Mensajes que no se enviaron",
+        "expired": "No se envió: esperó demasiado a que volviera la conexión. ¿Enviarlo ahora?",
+        "send": "Enviar ahora",
+        "edit": "Editar",
+        "discard": "Descartar"
+      },
+      "template": {
+        "title": "Enviar una plantilla",
+        "description": "Con la ventana de mensajería cerrada solo se pueden enviar plantillas aprobadas.",
+        "loading": "Cargando plantillas",
+        "none": "Esta cuenta no tiene plantillas aprobadas.",
+        "choose": "Plantilla",
+        "variable": "Valor para {number}",
+        "preview": "Vista previa",
+        "offline": "No hay conexión. La plantilla no se puede enviar hasta que vuelva.",
+        "send": "Enviar plantilla",
+        "sending": "Enviando"
+      }
     }
   }
 }

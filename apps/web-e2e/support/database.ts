@@ -149,9 +149,3 @@ export async function storeIdNamed(name: string): Promise<string> {
   if (store === null) throw new Error(`no store named ${name}`)
   return store.id
 }
-
-export async function userIdOf(email: string): Promise<string> {
-  const user = await withOwner(owner => owner.user.findUnique({ where: { email } }))
-  if (user === null) throw new Error(`no user with the address ${email}`)
-  return user.id
-}

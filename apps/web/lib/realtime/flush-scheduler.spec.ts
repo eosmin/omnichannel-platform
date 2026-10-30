@@ -52,7 +52,7 @@ describe('createFlushScheduler', () => {
     expect(flush).toHaveBeenCalledTimes(4)
   })
 
-  it('keeps one timer when it is triggered again while a pass is running', async () => {
+  it('answers a trigger made during a pass with one more pass, not with a second timer', async () => {
     let release: () => void = () => undefined
     const flush = jest.fn<Promise<void>, [string]>(
       () => new Promise<void>(resolve => (release = resolve))
@@ -67,7 +67,8 @@ describe('createFlushScheduler', () => {
     await jest.advanceTimersByTimeAsync(0)
     scheduler.stop()
     await jest.advanceTimersByTimeAsync(60_000)
-    expect(flush).toHaveBeenCalledTimes(1)
+    // The pass that follows the request, and no retry of the first one
+    expect(flush).toHaveBeenCalledTimes(2)
   })
 
   it('does nothing once stopped', async () => {
@@ -78,5 +79,43 @@ describe('createFlushScheduler', () => {
     await jest.advanceTimersByTimeAsync(60_000)
     scheduler.trigger()
     expect(flush).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs again at once when it is asked while a pass is in flight, without waiting for a retry', async () => {
+    let finishFirst: () => void = () => undefined
+    const flush = jest
+      .fn<Promise<void>, [string]>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>(resolve => {
+            finishFirst = resolve
+          })
+      )
+      .mockResolvedValue(undefined)
+    // A message written during the first pass is still waiting when it ends, then nothing is
+    const waiting = jest.fn().mockReturnValueOnce([1]).mockReturnValue([])
+    const scheduler = createFlushScheduler({ flush, waiting }, 'u1', { firstMs: 5000, maxMs: 5000 })
+
+    scheduler.trigger()
+    await jest.advanceTimersByTimeAsync(0)
+    scheduler.trigger()
+    finishFirst()
+    await jest.advanceTimersByTimeAsync(0)
+
+    expect(flush).toHaveBeenCalledTimes(2)
+  })
+
+  it('treats a pass that threw as one that left something waiting, and tries again', async () => {
+    const flush = jest
+      .fn<Promise<void>, [string]>()
+      .mockRejectedValueOnce(new Error('storage went away'))
+      .mockResolvedValue(undefined)
+    const waiting = jest.fn().mockReturnValueOnce([1]).mockReturnValue([])
+    const scheduler = createFlushScheduler({ flush, waiting }, 'u1', { firstMs: 1000, maxMs: 1000 })
+
+    scheduler.trigger()
+    await jest.advanceTimersByTimeAsync(1000)
+
+    expect(flush).toHaveBeenCalledTimes(2)
   })
 })

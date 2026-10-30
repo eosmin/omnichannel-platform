@@ -1,6 +1,15 @@
 import type { OfflineQueue } from './offline-queue'
 import { RealtimeClientTiming } from './realtime-config'
 
+// A queue that cannot be read has not been emptied: it counts as having something left
+function stillWaiting(queue: Pick<OfflineQueue, 'waiting'>, userId: string): number {
+  try {
+    return queue.waiting(userId).length
+  } catch {
+    return 1
+  }
+}
+
 export interface FlushScheduler {
   // Sends what is waiting now and, if some of it could not go, tries again later
   trigger: () => void
@@ -20,6 +29,9 @@ export function createFlushScheduler(
 ): FlushScheduler {
   let stopped = false
   let running = false
+  // Asked for while a pass was in flight: that pass took its list at the start and may not hold
+  // what was written since
+  let askedAgain = false
   let attempt = 0
   let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -29,17 +41,29 @@ export function createFlushScheduler(
   }
 
   const run = async (): Promise<void> => {
-    // A pass in flight schedules the next one itself: a second one would leave two timers
-    if (stopped || running) return
+    if (stopped) return
+    // A pass in flight schedules the next one itself (a second one would leave two timers), but a
+    // request that came during it is answered as soon as it ends
+    if (running) {
+      askedAgain = true
+      return
+    }
     running = true
+    askedAgain = false
     clear()
     try {
       await queue.flush(userId)
+    } catch {
+      // A pass that threw sent nothing it can vouch for: what is still waiting is tried again below
     } finally {
       running = false
     }
     if (stopped) return
-    if (queue.waiting(userId).length === 0) {
+    if (askedAgain) {
+      attempt = 0
+      return run()
+    }
+    if (stillWaiting(queue, userId) === 0) {
       attempt = 0
       return
     }

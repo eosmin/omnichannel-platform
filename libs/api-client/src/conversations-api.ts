@@ -6,16 +6,20 @@ import type { ApiClient } from './api-client'
 import {
   type ChannelDirectoryEntryView,
   channelDirectorySchema,
+  type ChannelTemplateView,
+  channelTemplateListSchema,
   type ConversationCountsView,
   type ConversationOriginView,
   conversationOriginListSchema,
-  type ConversationListItemView,
-  conversationListItemSchema,
+  type ConversationDetailView,
+  conversationDetailSchema,
   conversationCountsSchema,
   type ConversationPageView,
   conversationPageSchema,
   type MemberDirectoryEntryView,
-  memberDirectorySchema
+  memberDirectorySchema,
+  type MessagingWindowView,
+  messagingWindowSchema
 } from './api-schemas'
 import type { ConversationFilters } from './query-keys'
 
@@ -50,9 +54,9 @@ export function fetchConversation(
   storeId: string,
   conversationId: string,
   signal?: AbortSignal
-): Promise<ConversationListItemView> {
+): Promise<ConversationDetailView> {
   return client.request(ApiRoutes.conversations.byId(conversationId), {
-    schema: conversationListItemSchema,
+    schema: conversationDetailSchema,
     storeId,
     signal
   })
@@ -119,5 +123,34 @@ export async function markConversationRead(
     method: 'POST',
     schema: z.unknown(),
     storeId
+  })
+}
+
+export function fetchMessagingWindow(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string,
+  signal?: AbortSignal
+): Promise<MessagingWindowView> {
+  return client.request(ApiRoutes.conversations.messagingWindow(conversationId), {
+    schema: messagingWindowSchema,
+    storeId,
+    signal
+  })
+}
+
+// The templates of one account of a channel: they belong to the account, not to the plugin
+export function fetchChannelTemplates(
+  client: ApiClient,
+  storeId: string,
+  pluginId: string,
+  connectionId: string,
+  signal?: AbortSignal
+): Promise<ChannelTemplateView[]> {
+  const query = new URLSearchParams({ connectionId }).toString()
+  return client.request(`${ApiRoutes.channels.templates(pluginId)}?${query}`, {
+    schema: channelTemplateListSchema,
+    storeId,
+    signal
   })
 }

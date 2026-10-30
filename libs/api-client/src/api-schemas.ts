@@ -126,6 +126,13 @@ export const conversationListItemSchema = z.object({
 })
 export type ConversationListItemView = z.output<typeof conversationListItemSchema>
 
+// GET /conversations/:id: the row of the list plus the account of the channel that serves it, which
+// the templates of a plugin are asked for
+export const conversationDetailSchema = conversationListItemSchema.extend({
+  channelConnectionId: z.string()
+})
+export type ConversationDetailView = z.output<typeof conversationDetailSchema>
+
 export const conversationPageSchema = z.object({
   data: z.array(conversationListItemSchema),
   nextCursor: z.string().nullable(),
@@ -252,3 +259,23 @@ export const conversationOriginSchema = z.object({
 })
 export const conversationOriginListSchema = z.array(conversationOriginSchema)
 export type ConversationOriginView = z.output<typeof conversationOriginSchema>
+
+// GET /conversations/:id/messaging-window: whether free text may go to the customer now. `closesAt` is
+// null when the channel has no window, or when the customer never wrote.
+export const messagingWindowSchema = z.object({
+  open: z.boolean(),
+  closesAt: z.string().nullable(),
+  requiresTemplate: z.boolean()
+})
+export type MessagingWindowView = z.output<typeof messagingWindowSchema>
+
+// GET /channels/:pluginId/templates: a status this page does not know is kept as the text it came as
+// and is not selectable
+export const channelTemplateSchema = z.object({
+  name: z.string(),
+  language: z.string(),
+  status: z.string(),
+  body: z.string()
+})
+export const channelTemplateListSchema = z.array(channelTemplateSchema)
+export type ChannelTemplateView = z.output<typeof channelTemplateSchema>

@@ -586,6 +586,44 @@
         }
       },
       "loadEarlierFailed": "The earlier messages could not be loaded"
+    },
+    "composer": {
+      "readOnly": "You can read this conversation but not answer it.",
+      "modeLabel": "Type of message",
+      "reply": "Reply",
+      "note": "Internal note",
+      "replyLabel": "Reply to the customer",
+      "noteLabel": "Internal note, the customer does not see it",
+      "replyPlaceholder": "Write a reply",
+      "notePlaceholder": "Write a note for your team",
+      "send": "Send",
+      "window": {
+        "closing": "The messaging window closes in {hours}h {minutes}m",
+        "closedTemplate": "The messaging window has expired. Send an approved template to reopen the conversation.",
+        "closedNothing": "The messaging window has expired. This channel does not allow a message until the customer writes again.",
+        "chooseTemplate": "Choose a template",
+        "closedNoPermission": "The messaging window has expired. You do not have permission to send templates; ask someone who does.",
+        "draftKept": "Your draft is kept and comes back when the window opens again."
+      },
+      "failed": {
+        "label": "Messages that were not sent",
+        "expired": "Not sent: it waited too long for the connection. Send it now?",
+        "send": "Send now",
+        "edit": "Edit",
+        "discard": "Discard"
+      },
+      "template": {
+        "title": "Send a template",
+        "description": "Only approved templates can be sent when the messaging window is closed.",
+        "loading": "Loading templates",
+        "none": "This account has no approved templates.",
+        "choose": "Template",
+        "variable": "Value for {number}",
+        "preview": "Preview",
+        "offline": "There is no connection. A template cannot be sent until it comes back.",
+        "send": "Send template",
+        "sending": "Sending"
+      }
     }
   }
 }
