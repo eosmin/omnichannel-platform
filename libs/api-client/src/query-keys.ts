@@ -1,8 +1,11 @@
-import type { ConversationStatus } from '@platform/core/domain'
+import type { ChannelId, ConversationStatus } from '@platform/core/domain'
 
-// Fields grow with the conversation list endpoint (TDD_08 §2.4); the cursor is not part of a key.
+// What narrows the list (the filters of TDD_09 §2); the cursor is not part of a key. `assigned` is
+// `me`, `unassigned` or the id of a member (ConversationAssignedFilters).
 export interface ConversationFilters {
+  assigned?: string
   status?: ConversationStatus
+  channelType?: ChannelId
 }
 
 // TanStack Query keys are constants, built the same way as CacheKeys. Realtime invalidation
@@ -85,6 +88,12 @@ export const QueryKeys = {
   },
   preferences: {
     store: (storeId: string) => ['preferences', storeId] as const
+  },
+  members: {
+    directory: (storeId: string) => ['members', storeId, 'directory'] as const
+  },
+  channels: {
+    directory: (storeId: string) => ['channels', storeId, 'directory'] as const
   },
   presence: {
     team: (storeId: string) => ['presence', storeId] as const

@@ -51,7 +51,9 @@ export const ChannelHealthLimits = {
 // the ids it names in characters
 export const ChannelConnectionLimits = {
   MAX_JSON_BYTES: 8192,
-  DISPLAY_NAME_MAX_LENGTH: 200
+  DISPLAY_NAME_MAX_LENGTH: 200,
+  // The name of a plugin in the inbox: a third-party plugin chose it and nothing bounds it at registration
+  PLUGIN_NAME_MAX_LENGTH: 60
 } as const
 
 // What `ChannelConnection.lastError` holds when the platform, and not the provider, is the one that

@@ -652,6 +652,34 @@ describe('Tenant isolation', () => {
     })
   })
 
+  describe('the directory of channels', () => {
+    it('lists the connections of the store of the caller, with none of another store in it', async () => {
+      const connectionA = await createChannelConnection(owner, {
+        storeId: ctx.storeA.id,
+        channelType: 'test_channel'
+      })
+      const connectionB = await createChannelConnection(owner, {
+        storeId: ctx.storeB.id,
+        channelType: 'test_channel'
+      })
+
+      const response = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.channels.directory)
+
+      expect(response.status).toBe(200)
+      expect(JSON.stringify(response.body)).toContain(connectionA.id)
+      expect(JSON.stringify(response.body)).not.toContain(connectionB.id)
+    })
+
+    it('is refused for a store the user does not belong to', async () => {
+      const response = await anonymousApi(app)
+        .get(ApiRoutes.channels.directory)
+        .set('authorization', `Bearer ${ctx.adminB.token}`)
+        .set(TenantHeaders.STORE_ID, ctx.storeA.id)
+
+      expect(response.status).toBe(403)
+    })
+  })
+
   // Who of the team is online comes from Redis, keyed by the store of the request
   describe('the presence of the team', () => {
     it('is answered for the store of the caller, with nobody of another store in it', async () => {

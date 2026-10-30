@@ -272,6 +272,9 @@ export const ApiRoutes = {
 
   channels: {
     connections: '/channels/connections',
+    // The same accounts for anyone who may see conversations: the inbox names a channel and decides
+    // what to draw with it. It carries no error text, no date and no credential
+    directory: '/channels/directory',
     connect: (pluginId: string) => `/channels/${pluginId}/connect`,
     connectionById: (id: string) => `/channels/connections/${id}`,
     test: (id: string) => `/channels/connections/${id}/test`,

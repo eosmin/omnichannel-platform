@@ -407,5 +407,73 @@
     "manageStores": "Administrar tiendas",
     "account": "Cuenta",
     "accountMenu": "Menú de la cuenta"
+  },
+  "inbox": {
+    "listLabel": "Conversaciones",
+    "scope": {
+      "all": "Todas",
+      "mine": "Mías",
+      "unassigned": "Sin asignar"
+    },
+    "statusFilter": "Estado",
+    "allStatuses": "Cualquier estado",
+    "channelFilter": "Canal",
+    "allChannels": "Todos los canales",
+    "agentFilter": "Agente",
+    "allAgents": "Cualquier agente",
+    "withCount": "{label} ({count})",
+    "clearFilters": "Quitar filtros",
+    "customerOnChannel": "Cliente de {channel} ····{digits}",
+    "youPrefix": "Tú: {text}",
+    "notePrefix": "Nota: {text}",
+    "noMessages": "Aún no hay mensajes",
+    "unreadCount": "{count, plural, one {# mensaje sin leer} other {# mensajes sin leer}}",
+    "snoozed": "Pospuesta",
+    "messageType": {
+      "TEXT": "Mensaje",
+      "IMAGE": "Imagen",
+      "VIDEO": "Video",
+      "AUDIO": "Audio",
+      "DOCUMENT": "Documento",
+      "LOCATION": "Ubicación",
+      "INTERNAL_NOTE": "Nota interna",
+      "SYSTEM": "Evento",
+      "PRODUCT_CARD": "Producto",
+      "ORDER_SUMMARY": "Pedido",
+      "TEMPLATE": "Plantilla",
+      "unknown": "Mensaje"
+    },
+    "loadingList": "Cargando conversaciones",
+    "loadingMore": "Cargando más conversaciones",
+    "empty": {
+      "title": "Aún no hay conversaciones",
+      "body": "Los mensajes de tus canales conectados aparecerán aquí."
+    },
+    "noResults": {
+      "title": "Ninguna conversación coincide con estos filtros",
+      "body": "Prueba otros filtros o quítalos."
+    },
+    "error": {
+      "title": "No se pudieron cargar las conversaciones"
+    },
+    "permissionDenied": {
+      "title": "No tienes acceso a esto",
+      "body": "Pide a un administrador que te dé el permiso necesario."
+    },
+    "select": {
+      "title": "Selecciona una conversación",
+      "body": "Elige una de la lista para leerla."
+    },
+    "notFound": {
+      "title": "Esta conversación no existe",
+      "body": "Quizá se eliminó, o el enlace es incorrecto."
+    },
+    "backToList": "Volver a las conversaciones",
+    "announce": {
+      "newMessage": "Nuevo mensaje en una conversación",
+      "assignedToYou": "Se te asignó una conversación"
+    },
+    "scopeLabel": "Asignadas a",
+    "otherAgent": "Otro agente"
   }
 }

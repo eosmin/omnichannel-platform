@@ -92,3 +92,77 @@ export const userPresenceSchema = z.object({
 })
 export const teamPresenceSchema = z.array(userPresenceSchema)
 export type UserPresenceView = z.output<typeof userPresenceSchema>
+
+// A row of the conversation list (GET /conversations). A status, channel, author or message type
+// that this page does not know is kept as the text it came as: a server newer than the page must not
+// break the whole list, and the row draws a neutral fallback for it.
+export const conversationListItemSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  channelType: z.string(),
+  assignedTo: z.string().nullable(),
+  unreadCount: z.number().int(),
+  lastMessageAt: z.string().nullable(),
+  snoozedUntil: z.string().nullable(),
+  customer: z.object({
+    id: z.string(),
+    name: z.string().nullable(),
+    displayIdentity: z.string(),
+    username: z.string().nullable(),
+    // A link a plugin chose: untrusted, drawn under the img-src of the CSP and replaced by the
+    // initials when it fails
+    avatarUrl: z.string().nullable()
+  }),
+  lastMessage: z
+    .object({
+      id: z.string(),
+      authorType: z.string(),
+      type: z.string(),
+      contentPreview: z.string().nullable(),
+      createdAt: z.string()
+    })
+    .nullable(),
+  tags: z.array(z.object({ id: z.string(), name: z.string(), color: z.string() }))
+})
+export type ConversationListItemView = z.output<typeof conversationListItemSchema>
+
+export const conversationPageSchema = z.object({
+  data: z.array(conversationListItemSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type ConversationPageView = z.output<typeof conversationPageSchema>
+
+// The numbers beside the filters (GET /conversations?countsOnly=true)
+export const conversationCountsSchema = z.object({
+  all: z.number().int(),
+  mine: z.number().int(),
+  unassigned: z.number().int(),
+  byStatus: z.record(z.string(), z.number().int()),
+  byChannel: z.record(z.string(), z.number().int()),
+  byAgent: z.array(z.object({ userId: z.string(), count: z.number().int() }))
+})
+export type ConversationCountsView = z.output<typeof conversationCountsSchema>
+
+// GET /members: who the active members of the store are, for anyone who may see conversations
+export const memberDirectoryEntrySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  avatarMediaId: z.string().nullable(),
+  role: z.object({ id: z.string(), name: z.string() })
+})
+export const memberDirectorySchema = z.array(memberDirectoryEntrySchema)
+export type MemberDirectoryEntryView = z.output<typeof memberDirectoryEntrySchema>
+
+// GET /channels/directory: the accounts of the store and what each channel can do, so that the
+// inbox names a channel and draws only the actions it supports
+export const channelDirectoryEntrySchema = z.object({
+  id: z.string(),
+  pluginId: z.string(),
+  pluginName: z.string(),
+  displayName: z.string(),
+  status: z.string(),
+  capabilities: z.array(z.string())
+})
+export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)
+export type ChannelDirectoryEntryView = z.output<typeof channelDirectoryEntrySchema>

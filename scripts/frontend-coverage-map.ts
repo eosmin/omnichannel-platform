@@ -195,6 +195,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'plugins.revoke': { step: '3.6' },
   'plugins.config': { step: '5.6' },
   'channels.connections': { step: '3.6' },
+  'channels.directory': { step: '3.2' },
   'channels.connect': { step: '3.6' },
   'channels.connectionById': { step: '3.6' },
   'channels.test': { step: '3.6' },
