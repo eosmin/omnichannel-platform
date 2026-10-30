@@ -1133,7 +1133,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.8 | Instagram, Messenger, web widget | done | #65, #66, #67, #69, #70, #71, #72 (1a to 2a), #73 (2b: web widget bundle) | 2026-10-29 |
 | **Milestone 3: Inbox interface** | | | | |
 | 3.1 | Frontend foundation | done | #74, #75 (a: server base), #76 (b: structure), #78, #79 (c: auth and routes), #80 (d: realtime client), #81 (e1: image), #82 (e2a: e2e login), #83 (e2b: realtime cases; `lighthouse` moved to 3.2) | 2026-10-30 |
-| 3.2 | Inbox | in progress | #84 (a1: members, origins, revisions), #85 (a2: message and conversation actions), #86 (a3: typing and read state toward the channel), #87 (b1: list, filters and layout of the inbox), #88 (b2: the thread), #89 (b3a: the composer), #90 (b3b: slash commands, mentions, snooze and resolve), #91 (b3b-2: the closing message is sent by the server after the Undo) | |
+| 3.2 | Inbox | in progress | #84 (a1: members, origins, revisions), #85 (a2: message and conversation actions), #86 (a3: typing and read state toward the channel), #87 (b1: list, filters and layout of the inbox), #88 (b2: the thread), #89 (b3a: the composer), #90 (b3b: slash commands, mentions, snooze and resolve), #91 (b3b-2: the closing message is sent by the server after the Undo), #92 (b3c: the `lighthouse` job) | |
 | 3.3 | Customer panel | todo | | |
 | 3.4 | Media | todo | | |
 | 3.5 | Notifications | todo | | |
