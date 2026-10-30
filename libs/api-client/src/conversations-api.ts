@@ -193,11 +193,12 @@ export function changeConversationStatus(
   storeId: string,
   conversationId: string,
   status: SettableConversationStatus,
-  resolutionReason?: string
+  // With RESOLVED only. The closing message is sent by the server once the time to undo is over.
+  options: { resolutionReason?: string; closingSnippetId?: string } = {}
 ): Promise<ConversationDetailView> {
   return client.request(ApiRoutes.conversations.status(conversationId), {
     method: 'PATCH',
-    body: resolutionReason === undefined ? { status } : { status, resolutionReason },
+    body: { status, ...options },
     schema: conversationDetailSchema,
     storeId
   })

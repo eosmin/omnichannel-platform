@@ -6,6 +6,7 @@ import {
   ConversationStatus,
   DeliveryStatus,
   MessageType,
+  ResolveUndo,
   SystemMessageEvents
 } from '@platform/core/domain'
 
@@ -328,7 +329,7 @@ test.describe.serial('the thread of a conversation', () => {
     }
   })
 
-  test('sends the closing message before resolving, so that it does not reopen the conversation', async () => {
+  test('resolves at once and the server sends the closing message after the Undo time', async () => {
     const snippetId = await addSnippetTo(storeId, `bye-${Date.now()}`)
     await setResolveBehavior(storeId, { showOptions: false, closingSnippetId: snippetId })
     try {
@@ -338,14 +339,17 @@ test.describe.serial('the thread of a conversation', () => {
       await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
 
       await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
-      // In this order: the closing message, then the line of the system. Had the message come after
-      // the status change it would have reopened the conversation and a "reopened" line would follow.
+      // The line of the system comes first and the message follows, once the time to undo is over. A
+      // message sent as a reply would have reopened the conversation and a "reopened" line would follow.
       await expect
-        .poll(async () => (await timelineOf(conversationId)).map(m => [m.type, m.content]))
+        .poll(async () => (await timelineOf(conversationId)).map(m => [m.type, m.content]), {
+          timeout: ResolveUndo.DURATION_MS + ResolveUndo.CLOSING_GRACE_MS + 15_000
+        })
         .toEqual([
-          [MessageType.TEXT, 'Hello!'],
-          [MessageType.SYSTEM, null]
+          [MessageType.SYSTEM, null],
+          [MessageType.TEXT, 'Hello!']
         ])
+      expect(await statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
     } finally {
       await setResolveBehavior(storeId, { showOptions: true, closingSnippetId: null })
     }

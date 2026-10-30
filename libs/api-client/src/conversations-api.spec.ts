@@ -207,16 +207,23 @@ describe('fetchInboxBehavior', () => {
 })
 
 describe('changeConversationStatus', () => {
-  it('patches the status, with the reason only when there is one', async () => {
+  it('patches the status, with the reason and the closing message only when there are any', async () => {
     const { client, fetchImpl } = setup(json(200, detail))
 
-    await changeConversationStatus(client, 's1', 'c1', ConversationStatus.RESOLVED, 'Done')
+    await changeConversationStatus(client, 's1', 'c1', ConversationStatus.RESOLVED, {
+      resolutionReason: 'Done',
+      closingSnippetId: 'sn1'
+    })
     await changeConversationStatus(client, 's1', 'c1', ConversationStatus.OPEN)
 
     const [url, init] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe('https://api.example.com/api/v1/conversations/c1/status')
     expect(init?.method).toBe('PATCH')
-    expect(bodyOf(fetchImpl, 0)).toEqual({ status: 'RESOLVED', resolutionReason: 'Done' })
+    expect(bodyOf(fetchImpl, 0)).toEqual({
+      status: 'RESOLVED',
+      resolutionReason: 'Done',
+      closingSnippetId: 'sn1'
+    })
     expect(bodyOf(fetchImpl, 1)).toEqual({ status: 'OPEN' })
   })
 })
