@@ -23,6 +23,14 @@ export interface MemberView {
   joinedAt: Date
 }
 
+// What any agent of the store may know of a teammate: enough to name them, never how to reach them
+export interface MemberDirectoryEntry {
+  id: string
+  name: string
+  avatarMediaId: string | null
+  role: { id: string; name: string }
+}
+
 const ACTIVE = { status: MembershipStatus.ACTIVE, revokedAt: null } as const
 
 const MEMBER_SELECT = {
@@ -69,6 +77,24 @@ export class MembersService {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     })
     return rows.map(view)
+  }
+
+  async directory(storeId: string): Promise<MemberDirectoryEntry[]> {
+    const rows = await this.prisma.client.membership.findMany({
+      where: { storeId, ...ACTIVE },
+      select: {
+        userId: true,
+        user: { select: { name: true, avatarMediaId: true } },
+        role: { select: { id: true, name: true } }
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    })
+    return rows.map(row => ({
+      id: row.userId,
+      name: row.user.name,
+      avatarMediaId: row.user.avatarMediaId,
+      role: { id: row.role.id, name: row.role.name }
+    }))
   }
 
   async changeRole(

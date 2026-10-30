@@ -6,6 +6,7 @@ import { ConversationsService, OutboundQueue, ReadReceipts } from '@platform/cor
 import { TenancyModule } from '../tenancy'
 
 import { ConversationCountsService } from './conversation-counts.service'
+import { ConversationOriginsService } from './conversation-origins.service'
 import { ConversationTagsService } from './conversation-tags.service'
 import { ConversationsController } from './conversations.controller'
 
@@ -18,6 +19,7 @@ import { ConversationsController } from './conversations.controller'
     ConversationsService,
     ConversationCountsService,
     ConversationTagsService,
+    ConversationOriginsService,
     OutboundQueue,
     ReadReceipts
   ],

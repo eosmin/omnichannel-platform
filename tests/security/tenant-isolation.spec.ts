@@ -24,7 +24,9 @@ import {
   createMember,
   createBusinessHours,
   conversationOfMessage,
+  conversationOfOrigin,
   createConversationOf,
+  createConversationOriginOf,
   createMessageOf,
   createMessageReactionOf,
   createMessageRevisionOf,
@@ -305,10 +307,29 @@ const resources: IsolationResource[] = [
     }
   },
   {
+    name: 'conversationOrigin',
+    create: createConversationOriginOf,
+    // An origin is read through its conversation; the one thing a stranger could try to change is the
+    // conversation it hangs from
+    readPath: id => ApiRoutes.conversations.origins(conversationOfOrigin.get(id) ?? randomUUID()),
+    modify: {
+      path: id => ApiRoutes.conversations.status(conversationOfOrigin.get(id) ?? randomUUID()),
+      body: { status: ConversationStatus.PENDING }
+    },
+    untouched: async (owner, id) => {
+      const origin = await owner.conversationOrigin.findUnique({
+        where: { id },
+        select: { conversation: { select: { status: true } } }
+      })
+      return origin?.conversation.status === ConversationStatus.OPEN.valueOf()
+    }
+  },
+  {
     name: 'messageRevision',
     create: (owner, { storeId }) => createMessageRevisionOf(owner, { storeId, userId: reactorId }),
-    // A revision has no route of its own: a stranger reaches one only through the edit of its note,
-    // and must neither change the note nor add a revision to it
+    // The revisions of a note are read through the note; a stranger can also try to edit it, and must
+    // neither change the note nor add a revision to it
+    readPath: id => ApiRoutes.messages.revisions(messageOfRevision.get(id) ?? randomUUID()),
     modify: {
       path: id => ApiRoutes.messages.byId(messageOfRevision.get(id) ?? randomUUID()),
       method: 'patch',
@@ -609,6 +630,25 @@ describe('Tenant isolation', () => {
       )
       expect(stores).toContain(ctx.storeB.id)
       expect(stores).not.toContain(ctx.storeA.id)
+    })
+  })
+
+  describe('the directory of members', () => {
+    it('lists the members of the store of the caller, with nobody of another store in it', async () => {
+      const response = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.members.directory)
+
+      expect(response.status).toBe(200)
+      expect(JSON.stringify(response.body)).toContain(ctx.adminA.id)
+      expect(JSON.stringify(response.body)).not.toContain(ctx.adminB.id)
+    })
+
+    it('is refused for a store the user does not belong to', async () => {
+      const response = await anonymousApi(app)
+        .get(ApiRoutes.members.directory)
+        .set('authorization', `Bearer ${ctx.adminB.token}`)
+        .set(TenantHeaders.STORE_ID, ctx.storeA.id)
+
+      expect(response.status).toBe(403)
     })
   })
 

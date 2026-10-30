@@ -102,6 +102,7 @@ export async function createMessage(
     authorType?: AuthorType
     type?: MessageType
     createdAt?: Date
+    metadata?: Record<string, string>
   }
 ): Promise<{ id: string }> {
   return owner.message.create({
@@ -114,7 +115,8 @@ export async function createMessage(
       authorType:
         input.authorType ??
         (input.type === MessageType.INTERNAL_NOTE ? AuthorType.AGENT : AuthorType.CUSTOMER),
-      ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt })
+      ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata })
     },
     select: { id: true }
   })
@@ -207,4 +209,32 @@ export async function createMessageRevisionOf(
   })
   messageOfRevision.set(revision.id, note.id)
   return revision
+}
+
+// The conversation each origin hangs from: the route that reads an origin names its conversation
+export const conversationOfOrigin = new Map<string, string>()
+
+// An origin (the ad a customer came from) on a message of a conversation of its own
+export async function createConversationOriginOf(
+  owner: OwnerClient,
+  input: { storeId: string }
+): Promise<{ id: string }> {
+  const conversation = await createConversationOf(owner, { storeId: input.storeId })
+  const message = await createMessage(owner, {
+    storeId: input.storeId,
+    conversationId: conversation.id
+  })
+  const origin = await owner.conversationOrigin.create({
+    data: {
+      storeId: input.storeId,
+      conversationId: conversation.id,
+      messageId: message.id,
+      kind: 'ad',
+      sourceId: `ad-${randomUUID().slice(0, 8)}`,
+      title: 'Summer sale'
+    },
+    select: { id: true }
+  })
+  conversationOfOrigin.set(origin.id, conversation.id)
+  return origin
 }

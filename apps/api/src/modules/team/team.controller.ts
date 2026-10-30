@@ -16,7 +16,7 @@ import {
 } from '../tenancy'
 
 import { type InvitationView, InvitationsService } from './invitations.service'
-import { type MemberView, MembersService } from './members.service'
+import { type MemberDirectoryEntry, type MemberView, MembersService } from './members.service'
 import { type RoleView, RolesService } from './roles.service'
 import {
   type ChangeMemberRoleBody,
@@ -43,6 +43,13 @@ export class TeamController {
   @Get(ApiRoutes.settings.members)
   listMembers(@CurrentStore() store: { id: string }): Promise<MemberView[]> {
     return this.members.list(store.id)
+  }
+
+  // For every agent, unlike the list above, which needs TEAM_VIEW: it answers only who they are
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Get(ApiRoutes.members.directory)
+  directory(@CurrentStore() store: { id: string }): Promise<MemberDirectoryEntry[]> {
+    return this.members.directory(store.id)
   }
 
   // Inviting creates no member: the invitee is one once they accept (Step 1.4)

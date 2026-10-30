@@ -17,6 +17,7 @@ import { Events } from '@platform/core/events'
 
 import {
   canSee,
+  enumValueOf,
   invalidInput,
   lockConversationForWrite,
   requireAnyPermission,
@@ -28,6 +29,15 @@ import { OutboundQueue } from '../outbound/outbound-queue'
 
 import { lockMessageRow, publishMessageChanged } from './message-changed'
 import { addRevision } from './message-revisions'
+
+// One earlier text of a message and who changed it into the next one
+export interface RevisionView {
+  version: number
+  content: string | null
+  editedByType: AuthorType
+  editedById: string | null
+  createdAt: Date
+}
 
 // Asked of the channel of the conversation: the plugin registry lives above this library, so the api
 // hands the answer in
@@ -188,6 +198,48 @@ export class MessageChangesService {
       throw resourceNotFound('deleted message')
     }
     return { content: message.content }
+  }
+
+  // The texts a message had before each edit, newest first. A note's are for who may read notes. The
+  // text of a message that was deleted is not given here, whoever asks: it has one route, with its own
+  // permission and its audit (`deletedContent`).
+  async revisions(storeId: string, messageId: string, viewer: Viewer): Promise<RevisionView[]> {
+    const message = await this.prisma.client.message.findFirst({
+      where: { id: messageId, storeId },
+      select: {
+        type: true,
+        deletedAt: true,
+        conversation: { select: { status: true, assignedTo: true } }
+      }
+    })
+    // The same answer for a message that does not exist, one in a conversation the viewer may not see
+    // and a note the viewer may not read
+    if (
+      message === null ||
+      !canSee(viewer, message.conversation) ||
+      (message.type === MessageType.INTERNAL_NOTE.valueOf() &&
+        !viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE))
+    ) {
+      throw resourceNotFound('message')
+    }
+    const rows = await this.prisma.client.messageRevision.findMany({
+      where: { storeId, messageId },
+      select: {
+        version: true,
+        content: true,
+        editedByType: true,
+        editedById: true,
+        createdAt: true
+      },
+      orderBy: { version: 'desc' }
+    })
+    return rows.map(row => ({
+      version: row.version,
+      content: message.deletedAt === null ? row.content : null,
+      editedByType: enumValueOf(AuthorType, row.editedByType, 'revision editor'),
+      editedById: row.editedById,
+      createdAt: row.createdAt
+    }))
   }
 
   // The same answer as a conversation that is not seen: the id of a message must not tell that it exists

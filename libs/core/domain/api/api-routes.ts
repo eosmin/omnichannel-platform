@@ -45,6 +45,7 @@ export const ApiRoutes = {
     tagById: (id: string, tagId: string) => `/conversations/${id}/tags/${tagId}`,
     read: (id: string) => `/conversations/${id}/read`,
     messagingWindow: (id: string) => `/conversations/${id}/messaging-window`,
+    origins: (id: string) => `/conversations/${id}/origins`,
     bulk: '/conversations/bulk',
     export: '/conversations/export'
   },
@@ -54,7 +55,8 @@ export const ApiRoutes = {
     byId: (id: string) => `/messages/${id}`,
     markRead: (id: string) => `/messages/${id}/read`,
     reaction: (id: string) => `/messages/${id}/reaction`,
-    deletedContent: (id: string) => `/messages/${id}/deleted-content`
+    deletedContent: (id: string) => `/messages/${id}/deleted-content`,
+    revisions: (id: string) => `/messages/${id}/revisions`
   },
 
   customers: {
@@ -282,6 +284,12 @@ export const ApiRoutes = {
   // sockets keep it current after that
   presence: {
     team: '/presence'
+  },
+
+  // Who the active members of the store are, for anyone who may see conversations: the inbox names
+  // an assignee, a mention and the author of a note with it. It carries no email, status or permission
+  members: {
+    directory: '/members'
   },
 
   settings: {

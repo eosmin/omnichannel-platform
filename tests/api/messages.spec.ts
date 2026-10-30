@@ -37,6 +37,7 @@ interface MessageBody {
   replyToMessageId: string | null
   deliveryStatus: string | null
   mentions: string[]
+  attachmentUrl: string | null
   createdAt: string
 }
 interface ThreadBody {
@@ -109,6 +110,54 @@ describe('The messages of a conversation', () => {
     conversationId,
     content: 'Check the stock first',
     ...extra
+  })
+
+  describe('the link of something the customer shared', () => {
+    it('reaches the thread as its own field, and the rest of the metadata does not', async () => {
+      const conversation = await mk()
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        metadata: { attachmentType: 'ig_post', attachmentUrl: 'https://www.instagram.com/p/abc/' }
+      })
+      await createMessage(owner, { storeId: ctx.storeA.id, conversationId: conversation.id })
+
+      const response = await asAgent().get(ApiRoutes.conversations.messages(conversation.id))
+
+      expect(response.status).toBe(200)
+      const thread = (response.body as ThreadBody).data
+      expect(thread.map(item => item.attachmentUrl)).toEqual(
+        expect.arrayContaining([null, 'https://www.instagram.com/p/abc/'])
+      )
+      expect(JSON.stringify(response.body)).not.toContain('ig_post')
+    })
+
+    it('is null once the message was deleted: the link is content too', async () => {
+      const conversation = await mk()
+      const message = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        metadata: { attachmentUrl: 'https://www.instagram.com/p/abc/' }
+      })
+      await owner.message.update({ where: { id: message.id }, data: { deletedAt: new Date() } })
+
+      const response = await asAgent().get(ApiRoutes.conversations.messages(conversation.id))
+
+      expect((response.body as ThreadBody).data.map(item => item.attachmentUrl)).toEqual([null])
+    })
+
+    it('is null when the stored link is not a plain http link', async () => {
+      const conversation = await mk()
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        metadata: { attachmentUrl: 'javascript:alert(1)' }
+      })
+
+      const response = await asAgent().get(ApiRoutes.conversations.messages(conversation.id))
+
+      expect((response.body as ThreadBody).data.map(item => item.attachmentUrl)).toEqual([null])
+    })
   })
 
   describe('writing a reply', () => {

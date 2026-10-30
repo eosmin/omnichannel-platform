@@ -9,6 +9,8 @@ import type {
 import {
   AuthorType as AuthorTypes,
   ConversationLimits,
+  CustomerLimits,
+  httpUrl,
   MessageType as MessageTypes
 } from '@platform/core/domain'
 
@@ -23,7 +25,15 @@ export interface ConversationListItem {
   unreadCount: number
   lastMessageAt: Date | null
   snoozedUntil: Date | null
-  customer: { id: string; name: string | null; displayIdentity: string }
+  // `username` and `avatarUrl` are what the channel keeps for the person (capability CUSTOMER_PROFILE),
+  // null until a job reads them. The photo is a link a plugin chose and that expires: untrusted.
+  customer: {
+    id: string
+    name: string | null
+    displayIdentity: string
+    username: string | null
+    avatarUrl: string | null
+  }
   lastMessage: {
     id: string
     authorType: AuthorType
@@ -62,7 +72,7 @@ export const LIST_SELECT = {
   lastMessageAt: true,
   snoozedUntil: true,
   customer: { select: { id: true, name: true } },
-  customerIdentity: { select: { channelIdentity: true } },
+  customerIdentity: { select: { channelIdentity: true, username: true, avatarUrl: true } },
   tags: { select: { id: true, name: true, color: true }, orderBy: { name: 'asc' } }
 } as const
 
@@ -84,11 +94,15 @@ interface ListRow {
   lastMessageAt: Date | null
   snoozedUntil: Date | null
   customer: { id: string; name: string | null }
-  customerIdentity: { channelIdentity: string }
+  customerIdentity: { channelIdentity: string; username: string | null; avatarUrl: string | null }
   tags: { id: string; name: string; color: string }[]
 }
 
 type LastMessage = NonNullable<ConversationListItem['lastMessage']>
+
+// A plugin chose the photo link: only a plain http(s) link leaves, as with any link from outside
+const avatarLink = httpUrl(CustomerLimits.AVATAR_URL_MAX_LENGTH)
+const avatarUrlOf = (url: string | null): string | null => avatarLink.safeParse(url).data ?? null
 
 function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationListItem {
   return {
@@ -104,7 +118,9 @@ function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationLi
     customer: {
       id: row.customer.id,
       name: row.customer.name,
-      displayIdentity: row.customer.name ?? row.customerIdentity.channelIdentity
+      displayIdentity: row.customer.name ?? row.customerIdentity.channelIdentity,
+      username: row.customerIdentity.username,
+      avatarUrl: avatarUrlOf(row.customerIdentity.avatarUrl)
     },
     lastMessage,
     tags: row.tags

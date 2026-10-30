@@ -1,7 +1,11 @@
+import { z } from 'zod'
+
 import type { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 import {
   AuthorType as AuthorTypes,
   DeliveryStatus as DeliveryStatuses,
+  httpUrl,
+  InboundLimits,
   MessageType as MessageTypes
 } from '@platform/core/domain'
 
@@ -20,8 +24,13 @@ export interface ReactionView {
   deliveryError: string | null
 }
 
-// What the thread shows of a message. The metadata of the channel is not part of it; a system line
-// carries its own, which is what the thread draws it from.
+// The link of what the customer shared (a post, a reel, a story mention, a link preview), as the
+// channel sent it. The column is Json, so it is checked again on the way out: only a plain http(s)
+// link leaves, and anything else in the metadata is no link.
+const attachmentUrlSchema = z.object({ attachmentUrl: httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH) })
+
+// What the thread shows of a message. The metadata of the channel is not part of it, except the link
+// above; a system line carries its own, which is what the thread draws it from.
 export interface MessageView {
   id: string
   conversationId: string
@@ -34,6 +43,9 @@ export interface MessageView {
   deliveryError: string | null
   mentions: string[]
   system: SystemLineMetadata | null
+  // Untrusted: drawn as a link with its host visible and never fetched by the server. A story mention
+  // is a signed link that expires within about a day.
+  attachmentUrl: string | null
   reactions: ReactionView[]
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
@@ -147,6 +159,7 @@ export function messageView(row: MessageRow): MessageView {
     mentions: row.mentions,
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
+    attachmentUrl: attachmentUrlOf(row, type),
     reactions: row.reactions.map(reaction => ({
       emoji: reaction.emoji,
       authorType: enumValueOf(AuthorTypes, reaction.authorType, 'reaction author'),
@@ -168,6 +181,13 @@ export function messageView(row: MessageRow): MessageView {
     deleteError: row.deleteError,
     createdAt: row.createdAt
   }
+}
+
+// A deleted message keeps no content in the thread, and the link it shared is content. A system line
+// has its own metadata, which holds no link.
+function attachmentUrlOf(row: MessageRow, type: MessageType): string | null {
+  if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return null
+  return attachmentUrlSchema.safeParse(row.metadata).data?.attachmentUrl ?? null
 }
 
 const authorOrNull = (text: string | null, what: string): AuthorType | null =>
