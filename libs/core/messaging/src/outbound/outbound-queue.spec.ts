@@ -1,13 +1,23 @@
 import { type Queue } from 'bullmq'
 
-import type { SendOutboundMessageJob, SendOutboundReadReceiptJob } from '@platform/core/queues'
+import {
+  JobNames,
+  type SendOutboundMessageJob,
+  type SendOutboundReadReceiptJob,
+  type SendOutboundTypingJob
+} from '@platform/core/queues'
 
-import { OutboundQueue, outboundJobId, readReceiptJobId } from './outbound-queue'
+import {
+  OutboundQueue,
+  type OutboundQueueJob,
+  outboundJobId,
+  readReceiptJobId
+} from './outbound-queue'
 
 const job: SendOutboundMessageJob = { storeId: 'store', messageId: 'message' }
 
 function queueWith(state: string | null): {
-  queue: Queue<SendOutboundMessageJob>
+  queue: Queue<OutboundQueueJob>
   removed: jest.Mock
   added: jest.Mock
 } {
@@ -18,7 +28,7 @@ function queueWith(state: string | null): {
       .fn()
       .mockResolvedValue(state === null ? undefined : { getState: () => state, remove: removed }),
     add: added
-  } as unknown as Queue<SendOutboundMessageJob> // the two methods the class calls
+  } as unknown as Queue<OutboundQueueJob> // the two methods the class calls
   return { queue, removed, added }
 }
 
@@ -86,4 +96,26 @@ describe('OutboundQueue.enqueueReadReceipt', () => {
       expect(removed).not.toHaveBeenCalled()
     }
   )
+})
+
+describe('OutboundQueue.enqueueTyping', () => {
+  it('adds one attempt with no job id, so a start after a stop is never taken for a repeat', async () => {
+    const { queue, added, removed } = queueWith(null)
+    const typing: SendOutboundTypingJob = {
+      storeId: 'store',
+      conversationId: 'c1',
+      active: true,
+      at: 1
+    }
+
+    await new OutboundQueue(queue).enqueueTyping(typing)
+
+    expect(added).toHaveBeenCalledWith(JobNames.SEND_OUTBOUND_TYPING, typing, {
+      attempts: 1,
+      removeOnComplete: true,
+      removeOnFail: true
+    })
+    // Nothing is removed or reused: every start and stop is a job of its own
+    expect(removed).not.toHaveBeenCalled()
+  })
 })

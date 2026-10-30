@@ -197,8 +197,15 @@ export interface ChannelHealthRestoredPayload {
   pluginId: ChannelId
 }
 
+// Not in the map below: the event is emitted on the bus directly and never written down
+export interface CustomerTypingPayload {
+  storeId: string
+  conversationId: string
+}
+
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name
 // and checks the payload against this map
+
 export interface DomainEventPayloads {
   [Events.CHANNEL_CONNECTED]: ChannelConnectedPayload
   [Events.CHANNEL_DISCONNECTED]: ChannelDisconnectedPayload

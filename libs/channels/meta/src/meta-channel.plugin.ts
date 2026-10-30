@@ -21,10 +21,12 @@ import {
   type ConnectResult,
   type FetchedMedia,
   PluginError,
+  type MarkReadParams,
   PluginTypes,
   type SendMediaParams,
   type SendMessageParams,
-  type SendReactionParams
+  type SendReactionParams,
+  type TypingParams
 } from '@platform/plugins/sdk'
 
 import { MetaGraphClient } from './meta-graph.client'
@@ -213,6 +215,20 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     })
   }
 
+  // Meta shows `typing_on` for about twenty seconds and takes it away with `typing_off`
+  async sendTypingIndicator(ctx: ChannelContext, params: TypingParams): Promise<void> {
+    await this.senderAction(
+      ctx,
+      params.channelIdentity,
+      params.active ? MetaMessaging.ACTION_TYPING_ON : MetaMessaging.ACTION_TYPING_OFF
+    )
+  }
+
+  // `mark_seen` marks the whole conversation up to its latest message, so the message id is not used
+  async markAsRead(ctx: ChannelContext, params: MarkReadParams): Promise<void> {
+    await this.senderAction(ctx, params.channelIdentity, MetaMessaging.ACTION_MARK_SEEN)
+  }
+
   // The id goes into the path, so it must be digits. A person with no readable profile (blocked us, an
   // account made with a phone number, a feature the app has not been approved for) is null, not an
   // error: asking again would answer the same.
@@ -270,6 +286,24 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // The reference of a file is the url Meta put in the webhook, a link of its CDN
   async fetchMedia(_ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia> {
     return this.meta.downloadMediaUrl(mediaRef)
+  }
+
+  // A sender action goes alone: Meta refuses it together with the fields of a message. Repeating one
+  // changes nothing, so the call is safe to repeat.
+  private async senderAction(
+    ctx: ChannelContext,
+    recipientId: string,
+    action: string
+  ): Promise<void> {
+    const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
+    await this.meta.post({
+      origin: this.origin,
+      path: [ctx.connectionId, MetaMessaging.EDGE_MESSAGES],
+      token: accessToken,
+      body: { recipient: { id: recipientId }, sender_action: action },
+      idempotent: true,
+      schema: acknowledgedSchema
+    })
   }
 
   private async send(

@@ -9,8 +9,18 @@ import {
   type SendOutboundEditJob,
   type SendOutboundMessageJob,
   type SendOutboundReactionJob,
-  type SendOutboundReadReceiptJob
+  type SendOutboundReadReceiptJob,
+  type SendOutboundTypingJob
 } from '@platform/core/queues'
+
+// Every kind of job the outbound queue carries
+export type OutboundQueueJob =
+  | SendOutboundMessageJob
+  | SendOutboundReactionJob
+  | SendOutboundEditJob
+  | SendOutboundDeleteJob
+  | SendOutboundReadReceiptJob
+  | SendOutboundTypingJob
 
 // The job of a reply is the reply: asked twice (the sweep finds a message the api had already queued)
 // it is one job. A resend of the agent queues the same message again with `requeue`, which removes
@@ -47,13 +57,7 @@ export function readReceiptJobId(job: SendOutboundReadReceiptJob): string {
 export class OutboundQueue {
   constructor(
     @InjectQueue(QueueNames.OUTBOUND)
-    private readonly queue: Queue<
-      | SendOutboundMessageJob
-      | SendOutboundReactionJob
-      | SendOutboundEditJob
-      | SendOutboundDeleteJob
-      | SendOutboundReadReceiptJob
-    >
+    private readonly queue: Queue<OutboundQueueJob>
   ) {}
 
   async enqueue(job: SendOutboundMessageJob): Promise<void> {
@@ -87,6 +91,16 @@ export class OutboundQueue {
     await this.queue.add(JobNames.SEND_OUTBOUND_READ_RECEIPT, job, {
       jobId: readReceiptJobId(job),
       attempts: 2
+    })
+  }
+
+  // One attempt and no memory: a typing indicator that arrives late is worse than none. There is no job id
+  // on purpose: the relay already thins the repeats, and an id would swallow a start that follows a stop
+  async enqueueTyping(job: SendOutboundTypingJob): Promise<void> {
+    await this.queue.add(JobNames.SEND_OUTBOUND_TYPING, job, {
+      attempts: 1,
+      removeOnComplete: true,
+      removeOnFail: true
     })
   }
 

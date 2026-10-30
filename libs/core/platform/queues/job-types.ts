@@ -172,6 +172,15 @@ export interface SendOutboundReadReceiptJob extends BaseJob {
   conversationId: string
   messageId: string
 }
+// An agent started (`active`) or stopped typing in the conversation. Nothing is stored: the job is best
+// effort and never retried, since a typing indicator that arrives late shows the wrong thing.
+export interface SendOutboundTypingJob extends BaseJob {
+  storeId: string
+  conversationId: string
+  active: boolean
+  // When the agent did it (epoch ms): the worker drops a job that went stale or that a newer one overtook
+  at: number
+}
 export interface EnforceRetentionJob extends BaseJob {
   storeId: string
 }

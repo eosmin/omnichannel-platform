@@ -6,6 +6,7 @@ import {
   type BridgedPayloads,
   type ConversationAssignedPayload,
   type ConversationReadPayload,
+  type CustomerTypingPayload,
   type ConversationStatusChangedPayload,
   type ConversationVisibility,
   Events,
@@ -134,6 +135,14 @@ export class RealtimeEventsListener {
     this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_UNREAD, {
       conversationId: payload.conversationId,
       userId: payload.userId
+    })
+  }
+
+  // The room of a conversation holds only the sockets that were let in, so it is the audience
+  @OnEvent(Events.CUSTOMER_TYPING)
+  onCustomerTyping(payload: CustomerTypingPayload): void {
+    this.realtime.toConversation(payload.conversationId, RealtimeEvents.CUSTOMER_TYPING, {
+      conversationId: payload.conversationId
     })
   }
 

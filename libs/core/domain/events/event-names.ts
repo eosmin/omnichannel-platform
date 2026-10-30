@@ -21,6 +21,9 @@ export const Events = {
   CONVERSATION_READ: 'conversation.read',
   // An agent marked a conversation as unread again (api only: it never crosses the worker bridge)
   CONVERSATION_UNREAD: 'conversation.unread',
+  // The customer is typing (api only, and never written down: it is emitted on the bus directly, not
+  // through DomainEvents, since there is no transaction to wait for)
+  CUSTOMER_TYPING: 'customer.typing',
 
   // Messages
   MESSAGE_RECEIVED: 'message.received',

@@ -88,5 +88,16 @@ export const OutboundLimits = {
   WRITE_RETRY_DELAY_MS: 100,
   // A receipt that finds no message waits for the write of one that was queued this recently: as long
   // as the five attempts of a send (20 s each) and their backoff (75 s) can take
-  RECEIPT_WAIT_MS: 300_000
+  RECEIPT_WAIT_MS: 300_000,
+  // The typing indicator of an agent reaches the channel at most once in a slot (Meta shows `typing_on`
+  // for about twenty seconds)
+  TYPING_ON_SLOT_MS: 5_000,
+  // The least time between a stop and the next start that reaches the channel, so that a client that
+  // alternates the two cannot flicker the indicator of a customer
+  TYPING_MIN_GAP_MS: 1_000,
+  // How long the api remembers that it told a channel an agent is typing: a little more than Meta keeps
+  // the indicator on, so a stop always finds what it has to take away
+  TYPING_ACTIVE_MS: 30_000,
+  // A typing job that waited longer than this in the queue is dropped: it would show the wrong thing
+  TYPING_STALE_MS: 10_000
 } as const

@@ -28,6 +28,7 @@ import {
   SocketLimits
 } from '@platform/core/realtime'
 
+import { AgentTypingRelay } from './agent-typing-relay.service'
 import { PresenceService } from './presence.service'
 import { RealtimeService } from './realtime.service'
 import {
@@ -41,6 +42,8 @@ import { SocketAccessService, SocketRefused } from './socket-access.service'
 // What the client is told when its connection is refused; the reason is in `data.code`
 const REFUSED_MESSAGE = 'refused'
 const WINDOW_MS = SocketLimits.WINDOW_SECONDS * 1000
+// What the log says when the relay of a typing signal to the channel fails
+const TYPING_RELAY_LABEL = 'typing relay'
 const CONVERSATION_ROOM_PREFIX = RoomNames.conversation('')
 
 // Ids are compared in lower case everywhere (the database treats 'ABC' and 'abc' as one id), and so
@@ -100,6 +103,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     private readonly access: SocketAccessService,
     private readonly presence: PresenceService,
     private readonly realtime: RealtimeService,
+    private readonly channelTyping: AgentTypingRelay,
     @InjectMetric(MetricNames.WEBSOCKET_CONNECTIONS) private readonly connections: Gauge<string>,
     private readonly logger: PinoLogger,
     @Inject(REALTIME_TIMING) private readonly timing: RealtimeTiming,
@@ -277,6 +281,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       userId: client.data.userId,
       userName: client.data.userName
     })
+    void this.tolerate(TYPING_RELAY_LABEL, () =>
+      this.channelTyping.relay(client.data.storeId, room.conversationId, true, () =>
+        this.maySendNow(client, room.conversationId)
+      )
+    )
     // Typing is the clearest sign that someone is there. Repeats within the gap of a heartbeat only
     // relay: they cost nothing else.
     const now = Date.now()
@@ -300,6 +309,9 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       conversationId: room.conversationId,
       userId: client.data.userId
     })
+    void this.tolerate(TYPING_RELAY_LABEL, () =>
+      this.channelTyping.relay(client.data.storeId, room.conversationId, false)
+    )
   }
 
   @SubscribeMessage(RealtimeEvents.HEARTBEAT)
@@ -350,6 +362,20 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     // As an explicit stop: the others, not the sender. A socket that has gone is in no room any more.
     if (client.rooms.has(room)) client.to(room).emit(RealtimeEvents.TYPING_STOP, stop)
     else this.realtime.toConversation(conversationId, RealtimeEvents.TYPING_STOP, stop)
+    void this.tolerate(TYPING_RELAY_LABEL, () =>
+      this.channelTyping.relay(client.data.storeId, conversationId, false)
+    )
+  }
+
+  // What the agent may do this moment, for what reaches a real customer: the permissions the socket
+  // holds are up to the recheck interval old
+  private async maySendNow(client: PlatformSocket, conversationId: string): Promise<boolean> {
+    const fresh = await this.refresh(client)
+    return (
+      fresh !== null &&
+      fresh.held.includes(Permissions.MESSAGES_SEND) &&
+      (await this.access.mayJoin(fresh, conversationId))
+    )
   }
 
   // Checks the socket still has the right to be here and takes what it may do now. One that does not
