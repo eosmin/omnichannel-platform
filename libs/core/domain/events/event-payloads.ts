@@ -208,6 +208,7 @@ export interface DomainEventPayloads {
   [Events.CONVERSATION_STATUS_CHANGED]: ConversationStatusChangedPayload
   [Events.CONVERSATION_ASSIGNED]: ConversationAssignedPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
+  [Events.CONVERSATION_UNREAD]: ConversationReadPayload
   [Events.MESSAGE_QUEUED]: MessageQueuedPayload
   [Events.MESSAGE_SENT]: MessageStatusPayload
   [Events.MESSAGE_DELIVERED]: MessageStatusPayload

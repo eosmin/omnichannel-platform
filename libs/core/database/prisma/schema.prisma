@@ -469,21 +469,22 @@ model Conversation {
 }
 
 model Message {
-  id               String   @id @default(uuid())
-  storeId          String   @map("store_id") // Denormalized: RLS, exports, retention
-  conversationId   String   @map("conversation_id")
+  id               String    @id @default(uuid())
+  storeId          String    @map("store_id") // Denormalized: RLS, exports, retention
+  conversationId   String    @map("conversation_id")
   type             String // MessageType
   content          String?
-  authorType       String   @map("author_type") // AuthorType
-  authorId         String?  @map("author_id") // User id for AGENT, null otherwise
-  channelMessageId String?  @map("channel_message_id") // Provider id; unique per conversation
-  idempotencyKey   String?  @map("idempotency_key") // Client-generated for outbound (TDD_06 §4)
-  replyToMessageId String?  @map("reply_to_message_id")
-  deliveryStatus   String?  @map("delivery_status") // DeliveryStatus, outbound only
-  deliveryError    String?  @map("delivery_error") // ErrorCode when FAILED
-  mentions         String[] @default([]) // User ids mentioned in an internal note
+  authorType       String    @map("author_type") // AuthorType
+  authorId         String?   @map("author_id") // User id for AGENT, null otherwise
+  channelMessageId String?   @map("channel_message_id") // Provider id; unique per conversation
+  idempotencyKey   String?   @map("idempotency_key") // Client-generated for outbound (TDD_06 §4)
+  replyToMessageId String?   @map("reply_to_message_id")
+  deliveryStatus   String?   @map("delivery_status") // DeliveryStatus, outbound only
+  deliveryError    String?   @map("delivery_error") // ErrorCode when FAILED
+  resentAt         DateTime? @map("resent_at") // When an agent sent a failed reply again; the outbound sweep counts its age from here
+  mentions         String[]  @default([]) // User ids mentioned in an internal note
   metadata         Json? // Channel-specific metadata
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   // Edits. `version` starts at 1 and grows with each edit of the text: an edit of a note carries the
   // one it saw. `pendingContent` is the text of an edit of ours that the channel has not taken yet: the

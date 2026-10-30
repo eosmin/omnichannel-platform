@@ -12,6 +12,7 @@ import {
 } from '@platform/core/messaging'
 
 import { ChannelRegistryModule } from '../channel-registry'
+import { ChannelsModule } from '../channels/channels.module'
 import { ConversationsModule } from '../conversations'
 import { MessagingWindowModule } from '../messaging-window'
 import { TenancyModule } from '../tenancy'
@@ -24,7 +25,8 @@ import { MessagesController } from './messages.controller'
     ConversationsModule,
     MessagingWindowModule,
     QueuesPlatformModule,
-    ChannelRegistryModule
+    ChannelRegistryModule,
+    ChannelsModule
   ],
   controllers: [MessagesController],
   providers: [

@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req
+} from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
@@ -6,8 +17,11 @@ import { CurrentUser } from '@platform/core/auth-module'
 import { uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
+import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type AssignBody,
+  type BulkActionBody,
+  bulkActionSchema,
   assignSchema,
   type AttachTagBody,
   attachTagSchema,
@@ -25,11 +39,20 @@ import {
   viewerOf
 } from '@platform/core/messaging'
 
-import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+import {
+  actorOf,
+  CurrentPermissions,
+  CurrentStore,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
+import { type BulkResult, ConversationBulkService } from './conversation-bulk.service'
 import { ConversationCountsService } from './conversation-counts.service'
 import { ConversationOriginsService, type OriginView } from './conversation-origins.service'
 import { type ConversationTag, ConversationTagsService } from './conversation-tags.service'
+
+type Store = ResolvedTenant['store']
 
 const id = () => new ZodValidationPipe(uuidSchema)
 
@@ -40,6 +63,7 @@ const id = () => new ZodValidationPipe(uuidSchema)
 export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
+    private readonly bulk: ConversationBulkService,
     private readonly counts: ConversationCountsService,
     private readonly tags: ConversationTagsService,
     private readonly origins: ConversationOriginsService,
@@ -59,6 +83,21 @@ export class ConversationsController {
     return query.countsOnly
       ? this.counts.counts(store.id, viewer)
       : this.conversations.list(store.id, query, viewer)
+  }
+
+  // Declared before `:id` routes, or "bulk" would be read as an id. The answer says which
+  // conversations changed and which did not, with our error code for each.
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Post(ApiRoutes.conversations.bulk)
+  @HttpCode(HttpStatusCodes.OK)
+  runBulk(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Body(new ZodValidationPipe(bulkActionSchema)) body: BulkActionBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<BulkResult> {
+    return this.bulk.run(store.id, body, viewerOf(user.id, held), actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
@@ -144,6 +183,19 @@ export class ConversationsController {
     // failures and never rejects.
     void this.readReceipts.queueFor(store.id, conversationId)
     return detail
+  }
+
+  // Keeps a conversation to come back to: it counts as unread again, for the whole team
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @Post(ApiRoutes.conversations.unread(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  unread(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', id()) conversationId: string
+  ): Promise<ConversationDetail> {
+    return this.conversations.markUnread(store.id, conversationId, viewerOf(user.id, held))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)

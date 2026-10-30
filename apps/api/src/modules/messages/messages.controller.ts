@@ -18,7 +18,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Audit } from '@platform/core/audit-module'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { type CursorPage, uuidSchema } from '@platform/core/domain'
+import { type CursorPage, MessageType, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import {
@@ -31,6 +31,7 @@ import {
   listMessagesQuerySchema,
   MessageChangesService,
   MessagesService,
+  type RenderedTemplate,
   type RevisionView,
   type ReactToMessageBody,
   reactToMessageSchema,
@@ -40,6 +41,7 @@ import {
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
+import { ChannelTemplatesService } from '../channels/channel-templates.service'
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 
 // The messages of a conversation of the store in X-Store-Id. Seeing the conversation is required
@@ -51,6 +53,7 @@ export class MessagesController {
     private readonly messages: MessagesService,
     private readonly reactions: AgentReactionsService,
     private readonly changes: MessageChangesService,
+    private readonly templates: ChannelTemplatesService,
     private readonly registry: PluginRegistry
   ) {}
 
@@ -65,9 +68,36 @@ export class MessagesController {
     @Body(new ZodValidationPipe(createMessageSchema)) body: CreateMessageBody,
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageView> {
-    const { message, created } = await this.messages.create(store.id, body, viewerOf(user.id, held))
+    const viewer = viewerOf(user.id, held)
+    // The provider is asked before a template is stored, never inside its transaction. A repeated key is
+    // answered with the message it made before that, and the permission is checked first: the service
+    // checks it again, but not before the provider is called.
+    let rendered: RenderedTemplate | undefined
+    if (body.type === MessageType.TEMPLATE) {
+      const replayed = await this.messages.replayOf(store.id, body, viewer)
+      if (replayed !== null) {
+        res.status(HttpStatusCodes.OK)
+        return replayed
+      }
+      rendered = await this.templates.render(store.id, body, viewer)
+    }
+    const { message, created } = await this.messages.create(store.id, body, viewer, rendered)
     if (!created) res.status(HttpStatusCodes.OK)
     return message
+  }
+
+  // "Send again" on a reply that failed. The same message goes back to the channel, and the answer is
+  // the message as it stands (queued).
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Post(ApiRoutes.messages.resend(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  resend(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
+  ): Promise<MessageView> {
+    return this.messages.resend(store.id, messageId, viewerOf(user.id, held))
   }
 
   // The reaction of the caller to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. The

@@ -31,6 +31,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'conversations.tags': { step: '3.2' },
   'conversations.tagById': { step: '3.2' },
   'conversations.read': { step: '3.2' },
+  'conversations.unread': { step: '3.2' },
   'conversations.messagingWindow': { step: '3.2' },
   'conversations.bulk': { step: '3.2' },
   // An export of the exports center: Step 3.4 builds the queue, the key and the download it needs
@@ -42,6 +43,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
     none: 'Has no handler on purpose: a conversation is marked read as a whole, with conversations.read (Step 2.3)'
   },
   'messages.reaction': { step: '3.2' },
+  'messages.resend': { step: '3.2' },
   'messages.deletedContent': { step: '3.2' },
   'messages.revisions': { step: '3.2' },
   'customers.list': { step: '3.3' },
@@ -253,6 +255,7 @@ export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   CONVERSATION_ASSIGNED: { step: '3.2' },
   CONVERSATION_STATUS_CHANGED: { step: '3.2' },
   CONVERSATION_READ: { step: '3.2' },
+  CONVERSATION_UNREAD: { step: '3.2' },
   MESSAGE_RECEIVED: { step: '3.2' },
   MESSAGE_QUEUED: { step: '3.2' },
   MESSAGE_SENT: { step: '3.2' },

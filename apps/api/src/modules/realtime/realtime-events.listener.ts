@@ -128,6 +128,15 @@ export class RealtimeEventsListener {
     })
   }
 
+  // Marked unread by a user: the same audience as reading it, their own tabs
+  @OnEvent(Events.CONVERSATION_UNREAD)
+  onUnread(payload: ConversationReadPayload): void {
+    this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_UNREAD, {
+      conversationId: payload.conversationId,
+      userId: payload.userId
+    })
+  }
+
   // A conversation the customer started: who may see it hears it, as for any change of one
   @OnEvent(Events.CONVERSATION_CREATED)
   onCreated(payload: BridgedPayloads[typeof Events.CONVERSATION_CREATED]): Promise<void> {

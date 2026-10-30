@@ -1,11 +1,14 @@
 import { z } from 'zod'
 
 import {
+  BulkActions,
+  BulkLimits,
   channelIdSchema,
   ConversationAssignedFilters,
   ConversationLimits,
   ConversationStatus,
   PaginationLimits,
+  RoutingLimits,
   uuidSchema
 } from '@platform/core/domain'
 
@@ -19,6 +22,14 @@ const assigned = z.union([
 
 // A query string carries text: only the two words are a boolean
 const flag = z.enum(['true', 'false']).transform(value => value === 'true')
+
+// What narrows a list: the list takes it in the query string, a bulk action in the body
+export const conversationFilterSchema = z.strictObject({
+  assigned: assigned.optional(),
+  status: z.enum(ConversationStatus).optional(),
+  channelType: channelIdSchema.optional(),
+  tagId: uuidSchema.optional()
+})
 
 export const listConversationsQuerySchema = z
   .strictObject({
@@ -79,8 +90,80 @@ export const snoozeSchema = z.strictObject({
 
 export const attachTagSchema = z.strictObject({ tagId: uuidSchema })
 
+// The conversations a bulk action reaches: the ones named, or the ones that match a filter (capped at
+// BulkLimits.MAX_ITEMS by the server). Exactly one of the two.
+const bulkTarget = {
+  conversationIds: z
+    .array(uuidSchema.transform(id => id.toLowerCase()))
+    .min(1)
+    .max(BulkLimits.MAX_ITEMS)
+    .refine(ids => new Set(ids).size === ids.length, { message: 'a conversation is named once' })
+    .optional(),
+  // A filter that names nothing would reach every conversation the caller sees: a bulk action says
+  // at least one thing it selects by
+  filter: conversationFilterSchema
+    .refine(filter => Object.values(filter).some(value => value !== undefined), {
+      message: 'a filter names at least one field'
+    })
+    .optional()
+}
+
+// The actions that are built. SEND_TEMPLATE is Phase 2 and EXPORT_CSV waits for the exports center of
+// Step 3.4: neither is accepted here.
+export const bulkActionSchema = z
+  .discriminatedUnion('action', [
+    z.strictObject({ action: z.literal(BulkActions.ASSIGN_TO_ME), ...bulkTarget }),
+    z.strictObject({
+      action: z.literal(BulkActions.ASSIGN_TO_AGENT),
+      ...bulkTarget,
+      params: z.strictObject({ userId: uuidSchema })
+    }),
+    z.strictObject({
+      action: z.literal(BulkActions.ROUND_ROBIN_TO_TEAM),
+      ...bulkTarget,
+      params: z.strictObject({
+        userIds: z
+          .array(uuidSchema.transform(id => id.toLowerCase()))
+          .min(RoutingLimits.MIN_USERS_FOR_ROUND_ROBIN)
+          .max(RoutingLimits.MAX_USERS_PER_ACTION)
+          .refine(ids => new Set(ids).size === ids.length, { message: 'a person is listed once' })
+      })
+    }),
+    z.strictObject({ action: z.literal(BulkActions.UNASSIGN), ...bulkTarget }),
+    z.strictObject({
+      action: z.literal(BulkActions.SET_STATUS),
+      ...bulkTarget,
+      // Archiving is its own action and snoozing needs a moment; spam is a decision for one conversation
+      params: z.strictObject({
+        status: z.enum([
+          ConversationStatus.OPEN,
+          ConversationStatus.PENDING,
+          ConversationStatus.RESOLVED
+        ])
+      })
+    }),
+    z.strictObject({
+      action: z.literal(BulkActions.ADD_TAG),
+      ...bulkTarget,
+      params: z.strictObject({ tagId: uuidSchema })
+    }),
+    z.strictObject({
+      action: z.literal(BulkActions.REMOVE_TAG),
+      ...bulkTarget,
+      params: z.strictObject({ tagId: uuidSchema })
+    }),
+    z.strictObject({ action: z.literal(BulkActions.MARK_READ), ...bulkTarget }),
+    z.strictObject({ action: z.literal(BulkActions.MARK_UNREAD), ...bulkTarget }),
+    z.strictObject({ action: z.literal(BulkActions.ARCHIVE), ...bulkTarget })
+  ])
+  .refine(body => (body.conversationIds === undefined) !== (body.filter === undefined), {
+    message: 'name the conversations or a filter, not both and not neither'
+  })
+
 export type ListConversationsQuery = z.output<typeof listConversationsQuerySchema>
 export type ChangeStatusBody = z.output<typeof changeStatusSchema>
 export type AssignBody = z.output<typeof assignSchema>
 export type SnoozeBody = z.output<typeof snoozeSchema>
 export type AttachTagBody = z.output<typeof attachTagSchema>
+export type ConversationFilter = z.output<typeof conversationFilterSchema>
+export type BulkActionBody = z.output<typeof bulkActionSchema>

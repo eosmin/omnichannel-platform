@@ -16,6 +16,7 @@ export const RealtimeEvents = {
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_STATUS_CHANGED: 'conversation.status_changed',
   CONVERSATION_READ: 'conversation.read',
+  CONVERSATION_UNREAD: 'conversation.unread',
 
   MESSAGE_RECEIVED: 'message.received',
   // An agent's reply is stored and waits for its channel
@@ -76,6 +77,7 @@ export interface RealtimeEventMap {
     previousStatus: ConversationStatus
   }
   [RealtimeEvents.CONVERSATION_READ]: { conversationId: string; userId: string }
+  [RealtimeEvents.CONVERSATION_UNREAD]: { conversationId: string; userId: string }
 
   [RealtimeEvents.MESSAGE_RECEIVED]: {
     conversationId: string
