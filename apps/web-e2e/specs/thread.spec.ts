@@ -18,6 +18,10 @@ import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
+// An agent reads the thread, writes notes and resolves, so it is what the cases need. The magic link is
+// limited to 5 requests a minute for each address and the whole suite runs inside that minute: the
+// address of the administrator is already spent by the other specs.
+const AGENT = 'agent@test.com'
 const MINUTE_MS = 60_000
 // The first packet of a Socket.IO connection that the server accepted
 const SOCKET_IO_CONNECTED = '40'
@@ -44,7 +48,7 @@ test.describe.serial('the thread of a conversation', () => {
       const authorization = request.headers()['authorization']
       if (authorization?.startsWith('Bearer ')) token = authorization.slice('Bearer '.length)
     })
-    await signIn(page, 'admin@test.com')
+    await signIn(page, AGENT)
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.afterAll(async () => {
