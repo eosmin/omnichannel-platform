@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
+import type { ConversationStatus } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
@@ -16,10 +17,14 @@ import {
   conversationCountsSchema,
   type ConversationPageView,
   conversationPageSchema,
+  type InboxBehaviorView,
+  inboxBehaviorSchema,
   type MemberDirectoryEntryView,
   memberDirectorySchema,
   type MessagingWindowView,
-  messagingWindowSchema
+  messagingWindowSchema,
+  type SnippetView,
+  snippetListSchema
 } from './api-schemas'
 import type { ConversationFilters } from './query-keys'
 
@@ -152,5 +157,77 @@ export function fetchChannelTemplates(
     schema: channelTemplateListSchema,
     storeId,
     signal
+  })
+}
+
+export function fetchSnippets(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<SnippetView[]> {
+  return client.request(ApiRoutes.settings.snippets, {
+    schema: snippetListSchema,
+    storeId,
+    signal
+  })
+}
+
+export function fetchInboxBehavior(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<InboxBehaviorView> {
+  return client.request(ApiRoutes.settings.inboxBehavior, {
+    schema: inboxBehaviorSchema,
+    storeId,
+    signal
+  })
+}
+
+// The answer of each action below is the detail; the screens read the list and the thread again
+// What PATCH /status takes: a snooze has its own route, which needs the moment it ends
+export type SettableConversationStatus = Exclude<ConversationStatus, ConversationStatus.SNOOZED>
+
+export function changeConversationStatus(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string,
+  status: SettableConversationStatus,
+  resolutionReason?: string
+): Promise<ConversationDetailView> {
+  return client.request(ApiRoutes.conversations.status(conversationId), {
+    method: 'PATCH',
+    body: resolutionReason === undefined ? { status } : { status, resolutionReason },
+    schema: conversationDetailSchema,
+    storeId
+  })
+}
+
+export function snoozeConversation(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string,
+  until: Date
+): Promise<ConversationDetailView> {
+  return client.request(ApiRoutes.conversations.snooze(conversationId), {
+    method: 'POST',
+    body: { until: until.toISOString() },
+    schema: conversationDetailSchema,
+    storeId
+  })
+}
+
+// `userId` null takes the conversation away from whoever holds it
+export function assignConversation(
+  client: ApiClient,
+  storeId: string,
+  conversationId: string,
+  userId: string | null
+): Promise<ConversationDetailView> {
+  return client.request(ApiRoutes.conversations.assign(conversationId), {
+    method: 'PATCH',
+    body: { userId },
+    schema: conversationDetailSchema,
+    storeId
   })
 }

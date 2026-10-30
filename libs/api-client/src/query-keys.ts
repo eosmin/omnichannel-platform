@@ -103,6 +103,12 @@ export const QueryKeys = {
     templates: (storeId: string, pluginId: string, connectionId: string) =>
       ['channels', storeId, 'templates', pluginId, connectionId] as const
   },
+  snippets: {
+    all: (storeId: string) => ['snippets', storeId] as const
+  },
+  inboxBehavior: {
+    store: (storeId: string) => ['inbox-behavior', storeId] as const
+  },
   presence: {
     team: (storeId: string) => ['presence', storeId] as const
   },
