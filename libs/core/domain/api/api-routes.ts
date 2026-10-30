@@ -300,6 +300,8 @@ export const ApiRoutes = {
   settings: {
     store: '/settings/store',
     inbox: '/settings/inbox',
+    // Read-only, for who works the inbox: how resolving behaves and the timezone the snooze presets use
+    inboxBehavior: '/settings/inbox/behavior',
     safety: '/settings/safety',
     preferences: '/settings/preferences', // GET and PUT, parsed through storePreferencesSchema
     team: '/settings/team',

@@ -652,6 +652,51 @@ describe('Tenant isolation', () => {
     })
   })
 
+  describe('the behavior of the inbox', () => {
+    it('is the timezone and the settings of the store of the caller, never those of another', async () => {
+      const before = await owner.store.findMany({
+        where: { id: { in: [ctx.storeA.id, ctx.storeB.id] } },
+        select: { id: true, timezone: true }
+      })
+      const zoneA = 'Asia/Tokyo'
+      const zoneB = 'Europe/Madrid'
+      await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone: zoneA } })
+      await owner.store.update({ where: { id: ctx.storeB.id }, data: { timezone: zoneB } })
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { resolveShowOptions: false }
+      })
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeB.id },
+        data: { resolveShowOptions: true }
+      })
+      try {
+        const a = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.settings.inboxBehavior)
+        const b = await api(app, ctx.adminB, ctx.storeB).get(ApiRoutes.settings.inboxBehavior)
+
+        expect(a.body).toMatchObject({ timezone: zoneA, resolveShowOptions: false })
+        expect(b.body).toMatchObject({ timezone: zoneB, resolveShowOptions: true })
+      } finally {
+        for (const store of before) {
+          await owner.store.update({ where: { id: store.id }, data: { timezone: store.timezone } })
+        }
+        await owner.storeSettings.updateMany({
+          where: { storeId: { in: [ctx.storeA.id, ctx.storeB.id] } },
+          data: { resolveShowOptions: true }
+        })
+      }
+    })
+
+    it('is refused for a store the user does not belong to', async () => {
+      const response = await anonymousApi(app)
+        .get(ApiRoutes.settings.inboxBehavior)
+        .set('authorization', `Bearer ${ctx.adminB.token}`)
+        .set(TenantHeaders.STORE_ID, ctx.storeA.id)
+
+      expect(response.status).toBe(403)
+    })
+  })
+
   describe('the directory of channels', () => {
     it('lists the connections of the store of the caller, with none of another store in it', async () => {
       const connectionA = await createChannelConnection(owner, {

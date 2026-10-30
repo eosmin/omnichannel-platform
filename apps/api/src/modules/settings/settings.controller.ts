@@ -21,7 +21,11 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
 import { type BusinessHoursView, BusinessHoursService } from './business-hours.service'
-import { type InboxSettingsView, InboxSettingsService } from './inbox-settings.service'
+import {
+  type InboxBehaviorView,
+  type InboxSettingsView,
+  InboxSettingsService
+} from './inbox-settings.service'
 import {
   type CreateSnippetBody,
   createSnippetSchema,
@@ -170,6 +174,12 @@ export class SettingsController {
     @Req() req: AuthenticatedRequest
   ): Promise<BusinessHoursView> {
     return this.businessHours.put(store.id, body, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Get(ApiRoutes.settings.inboxBehavior)
+  getInboxBehavior(@CurrentStore() store: Store): Promise<InboxBehaviorView> {
+    return this.inbox.behavior(store.id)
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
