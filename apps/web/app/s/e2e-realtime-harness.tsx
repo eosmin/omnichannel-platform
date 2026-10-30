@@ -6,7 +6,7 @@ import { MessageType } from '@platform/core/domain'
 import { RealtimeEvents } from '@platform/core/realtime'
 
 import { useStore } from '../../components/providers/store-context'
-import { type HeardEvent } from '../../lib/realtime/e2e-harness'
+import { type E2eRealtimeApi, type HeardEvent } from '../../lib/realtime/e2e-harness'
 import { useRealtime } from '../../lib/realtime/realtime-context'
 import { useProfile } from '../../lib/use-profile'
 
@@ -28,7 +28,7 @@ export function E2eRealtimeHarness(): null {
       return () => connection.socket.off(event, listener)
     })
 
-    window.e2eRealtime = {
+    const harness: E2eRealtimeApi = {
       status: status.get,
       heard,
       // The transport closes and socket.io tries again, as it does when the network goes away
@@ -46,9 +46,11 @@ export function E2eRealtimeHarness(): null {
       },
       waiting: () => queue.waiting(userId).length
     }
+    window.e2eRealtime = harness
     return () => {
       stops.forEach(stop => stop())
-      delete window.e2eRealtime
+      // A newer run may have installed its own already
+      if (window.e2eRealtime === harness) delete window.e2eRealtime
     }
   }, [realtime, userId, storeId])
 

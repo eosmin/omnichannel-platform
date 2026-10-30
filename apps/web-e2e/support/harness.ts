@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 
 // Brings the `window.e2eRealtime` type of the web app into this program (it is erased at runtime)
-export type { E2eRealtimeHarness } from '../../web/lib/realtime/e2e-harness'
+export type { E2eRealtimeApi } from '../../web/lib/realtime/e2e-harness'
 export { ConnectionStatuses } from '../../web/lib/realtime/connection-status'
 
 export function harnessPath(storeId: string): string {
