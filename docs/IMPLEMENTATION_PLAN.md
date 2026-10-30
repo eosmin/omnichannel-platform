@@ -1114,7 +1114,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 2.7b | Plugin catalog and installations | done | #63 | 2026-10-28 |
 | 2.8 | Instagram, Messenger, web widget | done | #65, #66, #67, #69, #70, #71, #72 (1a to 2a), #73 (2b: web widget bundle) | 2026-10-29 |
 | **Milestone 3: Inbox interface** | | | | |
-| 3.1 | Frontend foundation | todo | | |
+| 3.1 | Frontend foundation | done | #74, #75 (a: server base), #76 (b: structure), #78, #79 (c: auth and routes), #80 (d: realtime client), #81 (e1: image), #82 (e2a: e2e login), #83 (e2b: realtime cases; `lighthouse` moved to 3.2) | 2026-10-30 |
 | 3.2 | Inbox | todo | | |
 | 3.3 | Customer panel | todo | | |
 | 3.4 | Media | todo | | |
