@@ -27,6 +27,8 @@ export type SystemMessageEvent = (typeof SystemMessageEvents)[keyof typeof Syste
 
 // POST /conversations/bulk { action, conversationIds | filter, params } (TDD_09 §10). SET_STATUS
 // takes the status in params (open, pending or resolved); the others take their target the same way.
+// SEND_TEMPLATE is Phase 2 (a template has variables and a window for each conversation, and no flow of
+// the MVP sends one in bulk); EXPORT_CSV has no behavior until the exports center of Step 3.4.
 export const BulkActions = {
   ASSIGN_TO_ME: 'assign_to_me',
   ASSIGN_TO_AGENT: 'assign_to_agent',
@@ -35,7 +37,6 @@ export const BulkActions = {
   SET_STATUS: 'set_status',
   ADD_TAG: 'add_tag',
   REMOVE_TAG: 'remove_tag',
-  SEND_TEMPLATE: 'send_template',
   MARK_READ: 'mark_read',
   MARK_UNREAD: 'mark_unread',
   ARCHIVE: 'archive',
@@ -47,11 +48,31 @@ export const BulkLimits = {
   MAX_ITEMS: 500 // "Select all matching this filter" sends the filter; the server caps it here
 } as const
 
+// Where a template stands with the provider: only an approved one can be sent
+export const TemplateStatuses = {
+  APPROVED: 'approved',
+  PENDING: 'pending',
+  REJECTED: 'rejected'
+} as const
+export type TemplateStatus = (typeof TemplateStatuses)[keyof typeof TemplateStatuses]
+
+// Characters that reorder or hide text (bidi controls, zero-width ones): they reach the customer as
+// they are written, so they are refused in what an agent types into a template and taken out of what
+// a provider says
+export const MisleadingTextPattern = /[\u200B\u200E\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/u
+
 export const MessageLimits = {
   // The longest text WhatsApp takes in one message; the other channels take less or the same
   CONTENT_MAX_LENGTH: 4096,
   IDEMPOTENCY_KEY_MAX_LENGTH: 128,
-  MAX_MENTIONS: 10
+  MAX_MENTIONS: 10,
+  // A template of WhatsApp: its name, its language code and the values of its numbered variables
+  TEMPLATE_NAME_MAX_LENGTH: 512,
+  TEMPLATE_LANGUAGE_MAX_LENGTH: 16,
+  // How much of the quoted message the bubble of a reply carries
+  QUOTE_PREVIEW_MAX_LENGTH: 200,
+  TEMPLATE_MAX_VARIABLES: 20,
+  TEMPLATE_VARIABLE_MAX_LENGTH: 1024
 } as const
 
 // What a channel plugin may say a customer sent. A plugin is not trusted with the types that only the

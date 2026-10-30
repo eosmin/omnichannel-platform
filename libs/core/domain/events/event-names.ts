@@ -19,6 +19,8 @@ export const Events = {
   CONVERSATION_ARCHIVED: 'conversation.archived',
   CONVERSATION_TAGGED: 'conversation.tagged',
   CONVERSATION_READ: 'conversation.read',
+  // An agent marked a conversation as unread again (api only: it never crosses the worker bridge)
+  CONVERSATION_UNREAD: 'conversation.unread',
 
   // Messages
   MESSAGE_RECEIVED: 'message.received',

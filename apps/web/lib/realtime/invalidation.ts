@@ -20,6 +20,7 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.CONVERSATION_ASSIGNED]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.CONVERSATION_STATUS_CHANGED]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.CONVERSATION_READ]: [Scopes.CONVERSATIONS],
+  [RealtimeEvents.CONVERSATION_UNREAD]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.MESSAGE_RECEIVED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   // A reply from another tab or device moves the conversation in the list and changes its preview
   [RealtimeEvents.MESSAGE_QUEUED]: [Scopes.CONVERSATIONS, Scopes.THREAD],

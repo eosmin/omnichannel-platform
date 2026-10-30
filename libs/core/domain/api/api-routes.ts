@@ -44,6 +44,7 @@ export const ApiRoutes = {
     tags: (id: string) => `/conversations/${id}/tags`,
     tagById: (id: string, tagId: string) => `/conversations/${id}/tags/${tagId}`,
     read: (id: string) => `/conversations/${id}/read`,
+    unread: (id: string) => `/conversations/${id}/unread`,
     messagingWindow: (id: string) => `/conversations/${id}/messaging-window`,
     origins: (id: string) => `/conversations/${id}/origins`,
     bulk: '/conversations/bulk',
@@ -54,6 +55,7 @@ export const ApiRoutes = {
     create: '/messages',
     byId: (id: string) => `/messages/${id}`,
     markRead: (id: string) => `/messages/${id}/read`,
+    resend: (id: string) => `/messages/${id}/resend`,
     reaction: (id: string) => `/messages/${id}/reaction`,
     deletedContent: (id: string) => `/messages/${id}/deleted-content`,
     revisions: (id: string) => `/messages/${id}/revisions`
