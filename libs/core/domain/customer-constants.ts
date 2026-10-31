@@ -18,7 +18,11 @@ export const CustomerTimelineTypes = {
 export type CustomerTimelineType =
   (typeof CustomerTimelineTypes)[keyof typeof CustomerTimelineTypes]
 
+export type MergeFieldSource = (typeof MergeFieldSources)[keyof typeof MergeFieldSources]
+
 export const MergeableFields = ['name', 'email', 'phone'] as const
+
+export type MergeableField = (typeof MergeableFields)[number]
 
 export const CustomerLimits = {
   NAME_MAX_LENGTH: 120,

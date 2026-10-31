@@ -49,7 +49,11 @@ export const QueryKeys = {
     timeline: (storeId: string, id: string, type: CustomerTimelineType | 'all') =>
       ['customers', storeId, id, 'timeline', type] as const,
     conversations: (storeId: string, id: string) =>
-      ['customers', storeId, id, 'conversations'] as const
+      ['customers', storeId, id, 'conversations'] as const,
+    // Outside the root of the customers on purpose: the merge makes every customer stale, and the
+    // preview of a merge that just ran must not be read again (the absorbed customer is gone)
+    mergePreview: (storeId: string, id: string, absorbedId: string) =>
+      ['customer-merge-preview', storeId, id, absorbedId] as const
   },
   orders: {
     all: (storeId: string) => ['orders', storeId] as const,

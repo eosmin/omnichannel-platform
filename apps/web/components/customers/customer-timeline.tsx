@@ -9,12 +9,26 @@ import { AppPaths, type CustomerTimelineEntryView } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 import { CustomerTimelineTypes } from '@platform/core/domain'
 
+import { canUnmerge } from '../../lib/customers/merge-form'
 import { groupByDay } from '../../lib/customers/timeline-days'
-import { useCustomerEdits, useCustomerTimeline } from '../../lib/customers/use-customer-data'
+import {
+  useCustomerEdits,
+  useCustomerMerges,
+  useCustomerTimeline
+} from '../../lib/customers/use-customer-data'
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
 import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '../ui/alert-dialog'
 import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 
@@ -112,27 +126,89 @@ function Entry({
   customerId: string
   onNavigate: () => void
 }): ReactElement {
-  const t = useTranslations('customers.timeline')
   switch (entry.type) {
     case 'conversation':
       return <ConversationEntry entry={entry} onNavigate={onNavigate} />
     case 'note':
       return <NoteEntry entry={entry} customerId={customerId} />
     case 'merge':
-      return (
-        <div className="flex flex-col gap-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <GitMerge aria-hidden className="size-4" />
-            {entry.unmergedAt === null ? t('merged') : t('unmerged')}
-          </p>
-          {entry.mergedByName === null ? null : (
-            <p className="text-muted-foreground text-xs">
-              {t('mergedBy', { name: entry.mergedByName })}
-            </p>
-          )}
-        </div>
-      )
+      return <MergeEntry entry={entry} customerId={customerId} />
   }
+}
+
+// A merge can be undone from its entry until its date (the api checks the same, and answers
+// CUSTOMER_UNMERGE_WINDOW_EXPIRED past it)
+function MergeEntry({
+  entry,
+  customerId
+}: {
+  entry: Extract<CustomerTimelineEntryView, { type: 'merge' }>
+  customerId: string
+}): ReactElement {
+  const t = useTranslations('customers.timeline')
+  const tAll = useTranslations()
+  const format = useFormatter()
+  const { storeId, can } = useStore()
+  const { unmerge } = useCustomerMerges(storeId, customerId)
+  const [isAsking, setAsking] = useState(false)
+  const mayUndo = can(Permissions.CUSTOMERS_MERGE) && canUnmerge(entry, new Date())
+  const until = new Date(entry.unmergeUntil)
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <GitMerge aria-hidden className="size-4" />
+        {entry.unmergedAt === null ? t('merged') : t('unmerged')}
+      </p>
+      {entry.mergedByName === null ? null : (
+        <p className="text-muted-foreground text-xs">
+          {t('mergedBy', { name: entry.mergedByName })}
+        </p>
+      )}
+      {mayUndo ? (
+        <>
+          <p className="text-muted-foreground text-xs">
+            {t('undoUntil', { date: format.dateTime(until, { dateStyle: 'medium' }) })}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="self-start"
+            onClick={() => {
+              unmerge.reset()
+              setAsking(true)
+            }}
+          >
+            {t('undoMerge')}
+          </Button>
+        </>
+      ) : null}
+      <AlertDialog
+        open={isAsking}
+        onOpenChange={open => (open || unmerge.isPending ? undefined : setAsking(false))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('undoTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('undoDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <MutationError error={unmerge.error} />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unmerge.isPending}>
+              {tAll('common.cancel')}
+            </AlertDialogCancel>
+            {/* A plain button, not AlertDialogAction: the dialog stays open while the request runs */}
+            <Button
+              type="button"
+              disabled={unmerge.isPending}
+              onClick={() => unmerge.mutate(entry.id, { onSuccess: () => setAsking(false) })}
+            >
+              {t('undoConfirm')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
 }
 
 // The activity of a customer, the newest first, grouped by day (TDD_09 §6). Orders join the filters
