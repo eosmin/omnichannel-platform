@@ -1,12 +1,14 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import type { ConversationStatus } from '@platform/core/domain'
+import type { BulkActions, ConversationStatus } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
   type TagView,
   tagListSchema,
+  type BulkResultView,
+  bulkResultSchema,
   type ChannelDirectoryEntryView,
   channelDirectorySchema,
   type ChannelTemplateView,
@@ -240,6 +242,48 @@ export function assignConversation(
     method: 'PATCH',
     body: { userId },
     schema: conversationDetailSchema,
+    storeId
+  })
+}
+
+type NoParamsBulkAction =
+  | typeof BulkActions.ASSIGN_TO_ME
+  | typeof BulkActions.UNASSIGN
+  | typeof BulkActions.MARK_READ
+  | typeof BulkActions.MARK_UNREAD
+  | typeof BulkActions.ARCHIVE
+
+// What a bulk action does: the ones that take no parameter, and each of the others with its own.
+// Snoozing, spam and the export are not here: the server does not take them in bulk.
+export type BulkOperation =
+  | { action: NoParamsBulkAction }
+  | { action: typeof BulkActions.ASSIGN_TO_AGENT; params: { userId: string } }
+  | { action: typeof BulkActions.ROUND_ROBIN_TO_TEAM; params: { userIds: string[] } }
+  | {
+      action: typeof BulkActions.SET_STATUS
+      params: {
+        status: ConversationStatus.OPEN | ConversationStatus.PENDING | ConversationStatus.RESOLVED
+      }
+    }
+  | {
+      action: typeof BulkActions.ADD_TAG | typeof BulkActions.REMOVE_TAG
+      params: { tagId: string }
+    }
+
+// The conversations it reaches: the ones named, or the ones that match a filter (the server caps both
+// at BulkLimits.MAX_ITEMS). A filter must name at least one field.
+export type BulkTarget = { conversationIds: string[] } | { filter: ConversationFilters }
+
+export function bulkConversations(
+  client: ApiClient,
+  storeId: string,
+  operation: BulkOperation,
+  target: BulkTarget
+): Promise<BulkResultView> {
+  return client.request(ApiRoutes.conversations.bulk, {
+    method: 'POST',
+    body: { ...operation, ...target },
+    schema: bulkResultSchema,
     storeId
   })
 }

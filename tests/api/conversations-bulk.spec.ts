@@ -13,6 +13,7 @@ import { Events } from '@platform/core/events'
 
 import { createConversationOf, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -295,19 +296,11 @@ describe('Marking unread and acting on many conversations', () => {
         userId: agent2.id
       }).expect(OK)
 
-      const find = () =>
-        owner.auditLog.findMany({
-          where: {
-            action: AuditAction.BULK_ACTION_EXECUTED,
-            userId: ctx.adminA.id,
-            metadata: { path: ['action'], equals: BulkActions.ASSIGN_TO_AGENT }
-          }
-        })
-      let entries = await find()
-      for (let attempt = 0; attempt < 50 && entries.length === 0; attempt += 1) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        entries = await find()
-      }
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.BULK_ACTION_EXECUTED,
+        userId: ctx.adminA.id,
+        metadata: { path: ['action'], equals: BulkActions.ASSIGN_TO_AGENT }
+      })
       expect(entries.at(-1)?.metadata).toMatchObject({ params: { userId: agent2.id } })
     })
 
@@ -502,19 +495,11 @@ describe('Marking unread and acting on many conversations', () => {
 
       await bulk(asAdmin, BulkActions.MARK_READ, ids(first, foreign)).expect(OK)
 
-      const find = () =>
-        owner.auditLog.findMany({
-          where: {
-            action: AuditAction.BULK_ACTION_EXECUTED,
-            userId: ctx.adminA.id,
-            metadata: { path: ['action'], equals: BulkActions.MARK_READ }
-          }
-        })
-      let entries = await find()
-      for (let attempt = 0; attempt < 50 && entries.length === 0; attempt += 1) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        entries = await find()
-      }
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.BULK_ACTION_EXECUTED,
+        userId: ctx.adminA.id,
+        metadata: { path: ['action'], equals: BulkActions.MARK_READ }
+      })
       expect(entries).toHaveLength(1)
       const entry = entries[0]
       expect(entry?.storeId).toBe(ctx.storeA.id)

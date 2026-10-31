@@ -20,6 +20,7 @@ import { ConversationsService, RoutingService } from '@platform/core/messaging'
 import { createConversationOf, createCustomer, createRoutingRule, createTag } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
@@ -103,17 +104,6 @@ describe('The routing rules of a store', () => {
   const create = (extra: Record<string, unknown> = {}) =>
     asAdmin().post(ApiRoutes.settings.routing).send(body(extra))
 
-  // The audit entry is written after the answer: wait for it instead of guessing a delay
-  async function auditEntries(resourceId: string, expected = 1) {
-    const where = { action: AuditAction.ROUTING_RULE_CHANGED, resourceId }
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const entries = await owner.auditLog.findMany({ where })
-      if (entries.length >= expected) return entries
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-    return owner.auditLog.findMany({ where })
-  }
-
   describe('creating one', () => {
     it('goes last, enabled, and is audited', async () => {
       const first = await create({ name: 'First' })
@@ -123,7 +113,10 @@ describe('The routing rules of a store', () => {
       expect((first.body as RuleBody).priority).toBe(1)
       expect((first.body as RuleBody).enabled).toBe(true)
       expect(second.body as RuleBody).toMatchObject({ priority: 2, enabled: false })
-      const entries = await auditEntries((first.body as RuleBody).id)
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ROUTING_RULE_CHANGED,
+        resourceId: (first.body as RuleBody).id
+      })
       expect(entries).toHaveLength(1)
       expect(entries[0]?.metadata).toMatchObject({
         change: 'created',
@@ -425,7 +418,10 @@ describe('The routing rules of a store', () => {
         conditions: { keywords: ['hola'] },
         action: { type: UNASSIGNED }
       })
-      const entries = await auditEntries(made.id)
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ROUTING_RULE_CHANGED,
+        resourceId: made.id
+      })
       expect(entries[0]?.metadata).toMatchObject({ change: 'updated', name: 'new' })
     })
 
@@ -498,7 +494,10 @@ describe('The routing rules of a store', () => {
 
       expect(response.status).toBe(NO_CONTENT)
       expect((await rulesOf()).map(rule => rule.id)).toEqual([keep.id])
-      const entries = await auditEntries(drop.id)
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ROUTING_RULE_CHANGED,
+        resourceId: drop.id
+      })
       expect(entries[0]?.metadata).toMatchObject({ change: 'deleted', name: 'drop' })
     })
 
@@ -541,7 +540,10 @@ describe('The routing rules of a store', () => {
         ['b', 3]
       ])
       expect((await rulesOf()).map(rule => rule.name)).toEqual(['c', 'a', 'b'])
-      const entries = await auditEntries(storeId())
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ROUTING_RULE_CHANGED,
+        resourceId: storeId()
+      })
       expect(entries.map(entry => entry.metadata)).toContainEqual({
         change: 'reordered',
         ruleIds: [c.id, a.id, b.id]

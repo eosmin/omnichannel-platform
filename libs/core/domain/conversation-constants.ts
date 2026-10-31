@@ -45,7 +45,10 @@ export const BulkActions = {
 export type BulkAction = (typeof BulkActions)[keyof typeof BulkActions]
 
 export const BulkLimits = {
-  MAX_ITEMS: 500 // "Select all matching this filter" sends the filter; the server caps it here
+  MAX_ITEMS: 500, // "Select all matching this filter" sends the filter; the server caps it here
+  // From this many conversations the interface asks before it acts, with a preview of what changes
+  // (TDD_09 §10); fewer and reversible, it acts at once and offers Undo
+  CONFIRM_FROM: 10
 } as const
 
 // Where a template stands with the provider: only an approved one can be sent

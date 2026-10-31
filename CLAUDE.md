@@ -139,6 +139,12 @@ same checks and the merge waits for it.
     - **Priority, in this order:** security and data safety, then correctness, then maintainability, then the smallest scope, then speed. Speed and token cost never outrank the first three. Among options that are equally safe and correct, take the one that least extends the TDD.
     - **No shortcuts to finish sooner.** Never skip, loosen or delete a test, check, threshold, budget or lint rule; never add `any`, an ignore or a mock that hides the behavior under test; never leave a placeholder or a TODO; never pick the weaker option because the right one is bigger.
     - **When the right option is too big for the PR,** do the correct part and add a task to `IMPLEMENTATION_PLAN.md` in the same PR, naming the step that owns the rest. A deferral that is not written in the plan is a shortcut.
+    - **Every debt is written where it will be found, in the same PR:** a deferral, a known limit, an accepted
+      trade-off, a review finding left unfixed on purpose, or a piece moved to another PR goes into
+      `IMPLEMENTATION_PLAN.md` (a task or a note in the step that owns it, with the step or PR that will
+      close it), not only in the PR description or the chat: the description does not outlive the merge.
+      Before opening a PR, list what was left out and check that each item has its line in the plan; a
+      finding rejected as a false positive needs no entry, a real one that is not fixed does.
     - **Write it down** in a "Decisions" section of the PR description: what was chosen, the best alternative that was rejected, why, and any debt created with where it is tracked.
     - **Stop and ask only** when the choice contradicts an explicit statement of the TDD, cannot be undone (data, secrets, money, a real account) or acts outside the repository.
 

@@ -9,6 +9,7 @@ import { ErrorCodes } from '@platform/core/errors'
 
 import { createRole, createSnippet, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -66,17 +67,6 @@ describe('The settings of the inbox of a store', () => {
   const asViewer = () => api(app, ctx.viewerA, ctx.storeA)
   const codeOf = (body: unknown) => (body as ErrorBody).error.code
 
-  // The audit entry is written after the answer: wait for it instead of guessing a delay
-  async function auditEntries(resourceId: string, resourceType: string, expected = 1) {
-    const where = { action: AuditAction.SETTINGS_CHANGED, resourceId, resourceType }
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const entries = await owner.auditLog.findMany({ where })
-      if (entries.length >= expected) return entries
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-    return owner.auditLog.findMany({ where })
-  }
-
   async function newTag(name: string): Promise<TagBody> {
     const response = await asAdmin().post(ApiRoutes.settings.tags).send({ name })
     expect(response.status).toBe(CREATED)
@@ -99,7 +89,11 @@ describe('The settings of the inbox of a store', () => {
       expect(tag.description).toBeNull()
       const row = await owner.tag.findUniqueOrThrow({ where: { id: tag.id } })
       expect(row.storeId).toBe(ctx.storeA.id)
-      const [entry] = await auditEntries(tag.id, 'tag')
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.SETTINGS_CHANGED,
+        resourceId: tag.id,
+        resourceType: 'tag'
+      })
       expect(entry?.storeId).toBe(ctx.storeA.id)
       expect(entry?.userId).toBe(ctx.adminA.id)
     })
@@ -498,7 +492,11 @@ describe('The settings of the inbox of a store', () => {
         requestCsat: true,
         autoArchiveAfterDays: 30
       })
-      const [entry] = await auditEntries(ctx.storeA2.id, 'store_settings')
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.SETTINGS_CHANGED,
+        resourceId: ctx.storeA2.id,
+        resourceType: 'store_settings'
+      })
       expect(entry?.metadata).toMatchObject({ fields: ['reopenWindowDays', 'requestCsat'] })
     })
 
@@ -946,7 +944,11 @@ describe('The settings of the inbox of a store', () => {
       await asAdmin().delete(ApiRoutes.settings.tagById(tag.id))
       const refused = await asAdmin().patch(ApiRoutes.settings.tagById(tag.id)).send({})
 
-      await auditEntries(tag.id, 'tag', 3)
+      await waitForAuditEntries(
+        owner,
+        { action: AuditAction.SETTINGS_CHANGED, resourceId: tag.id, resourceType: 'tag' },
+        3
+      )
       // The refused request would write its entry after the answer too: give it the time to show
       await new Promise(resolve => setTimeout(resolve, 500))
       const entries = await owner.auditLog.findMany({
@@ -975,8 +977,20 @@ describe('The settings of the inbox of a store', () => {
         .put(ApiRoutes.settings.businessHours)
         .send({ timezone: 'UTC', schedule: CLOSED_WEEK, awayMessageSnippetId: null })
 
-      const snippetEntries = await auditEntries(snippet.id, 'snippet', 2)
-      const hoursEntries = await auditEntries(ctx.storeA2.id, 'business_hours', hoursBefore + 1)
+      const snippetEntries = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.SETTINGS_CHANGED, resourceId: snippet.id, resourceType: 'snippet' },
+        2
+      )
+      const hoursEntries = await waitForAuditEntries(
+        owner,
+        {
+          action: AuditAction.SETTINGS_CHANGED,
+          resourceId: ctx.storeA2.id,
+          resourceType: 'business_hours'
+        },
+        hoursBefore + 1
+      )
 
       expect(snippetEntries).toHaveLength(2)
       expect(hoursEntries).toHaveLength(hoursBefore + 1)

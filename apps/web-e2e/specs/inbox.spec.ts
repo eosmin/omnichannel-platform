@@ -3,7 +3,12 @@ import { type BrowserContext, type Page } from '@playwright/test'
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { newConversationIn, newTaggedConversationIn, storeIdNamed } from '../support/database'
+import {
+  newConversationIn,
+  newTaggedConversationIn,
+  statusOf,
+  storeIdNamed
+} from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -83,6 +88,33 @@ test.describe.serial('the inbox list', () => {
     await page.getByRole('button', { name: en.inbox.clearFilters }).click()
     await expect(page).not.toHaveURL(/tagId=/)
     await expect(rowOf(page, storeId, untagged)).toBeVisible()
+  })
+
+  test('ticks two rows, resolves them together and takes the change back', async () => {
+    const first = await newConversationIn(storeId)
+    const second = await newConversationIn(storeId)
+
+    await page.goto(AppPaths.store.inbox(storeId))
+    // The checkbox is a sibling of the row's link, over the avatar
+    for (const id of [first, second]) {
+      await rowOf(page, storeId, id).locator('xpath=following-sibling::label//input').check()
+    }
+    const bar = page.getByRole('region', { name: en.inbox.bulk.label })
+    await expect(bar.getByRole('status')).toHaveText(/^2 selected/)
+
+    await bar.getByRole('button', { name: en.inbox.bulk.status.label }).click()
+    await page.getByRole('menuitem', { name: en.conversations.status.RESOLVED }).click()
+
+    await expect(page.getByText('2 conversations updated')).toBeVisible()
+    await expect.poll(() => statusOf(first)).toBe('RESOLVED')
+    await expect.poll(() => statusOf(second)).toBe('RESOLVED')
+    // The selection is gone once the action went through
+    await expect(bar).toBeHidden()
+
+    await page.getByRole('button', { name: en.inbox.bulk.result.undo }).click()
+    await expect(page.getByText(en.inbox.bulk.result.undone)).toBeVisible()
+    await expect.poll(() => statusOf(first)).toBe('OPEN')
+    await expect.poll(() => statusOf(second)).toBe('OPEN')
   })
 
   test('shows the list alone on a phone, and the conversation alone once one is open', async () => {

@@ -151,6 +151,16 @@ export const conversationCountsSchema = z.object({
 })
 export type ConversationCountsView = z.output<typeof conversationCountsSchema>
 
+// POST /conversations/bulk: each conversation is a change of its own, so the answer says which went
+// through and which did not, with our code for the reason. `truncated` is true when a filter matched
+// more conversations than BulkLimits.MAX_ITEMS allows.
+export const bulkResultSchema = z.object({
+  succeeded: z.array(z.string()),
+  failed: z.array(z.object({ id: z.string(), code: z.string() })),
+  truncated: z.boolean()
+})
+export type BulkResultView = z.output<typeof bulkResultSchema>
+
 // GET /members: who the active members of the store are, for anyone who may see conversations
 export const memberDirectoryEntrySchema = z.object({
   id: z.string(),
