@@ -1,6 +1,7 @@
 'use client'
 
 import { Ellipsis, Eye, History, Pencil, RotateCcw, SmilePlus, Trash2 } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
@@ -21,13 +22,28 @@ import {
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 
-import {
-  CustomReactionDialog,
-  DeleteMessageDialog,
-  DeletedContentDialog,
-  EditMessageDialog,
-  RevisionsDialog
-} from './message-action-dialogs'
+// The dialogs load when one is first opened: the inbox has a script budget
+// (apps/web-e2e/lighthouse/budgets.ts) and most messages are never edited or deleted
+const CustomReactionDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.CustomReactionDialog),
+  { ssr: false }
+)
+const DeleteMessageDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.DeleteMessageDialog),
+  { ssr: false }
+)
+const DeletedContentDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.DeletedContentDialog),
+  { ssr: false }
+)
+const EditMessageDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.EditMessageDialog),
+  { ssr: false }
+)
+const RevisionsDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.RevisionsDialog),
+  { ssr: false }
+)
 
 type OpenDialog = 'edit' | 'delete' | 'revisions' | 'deleted' | 'reaction' | null
 

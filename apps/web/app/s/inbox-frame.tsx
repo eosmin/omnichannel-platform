@@ -6,17 +6,12 @@ import { type ReactElement, type ReactNode, useState } from 'react'
 
 import { Shortcuts } from '@platform/core/domain'
 
-import { Composer } from '../../components/inbox/composer'
-import { ConversationControls } from '../../components/inbox/conversation-controls'
-import { ConversationHeader } from '../../components/inbox/conversation-header'
 import { ConversationList } from '../../components/inbox/conversation-list'
 import { InboxFilters } from '../../components/inbox/inbox-filters'
 import { InboxSidebar } from '../../components/inbox/inbox-sidebar'
-import { MessageThread } from '../../components/inbox/message-thread'
+import { ConversationPane, ShortcutHelp } from '../../components/inbox/lazy-dialogs'
 import { RealtimeAnnouncer } from '../../components/inbox/realtime-announcer'
 import { SelectConversation } from '../../components/inbox/select-conversation'
-import { ShortcutHelp } from '../../components/inbox/shortcut-help'
-import { TypingLine } from '../../components/inbox/typing-line'
 import { useStore } from '../../components/providers/store-context'
 import { ShortcutsProvider, useShortcut } from '../../components/shortcuts/shortcuts-provider'
 import { useGoToShortcuts } from '../../components/shortcuts/use-go-to'
@@ -27,6 +22,7 @@ import {
   useTags
 } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
+import { useMountedOnce } from '../../lib/use-mounted-once'
 import { cn } from '../../lib/utils'
 
 const NO_CHANNELS: never[] = []
@@ -56,6 +52,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
   const tags = useTags(storeId)
   const isOpen = conversationId !== undefined
   const [isHelpOpen, setHelpOpen] = useState(false)
+  const isHelpMounted = useMountedOnce(isHelpOpen)
   useShortcut(Shortcuts.list.SHOW_HELP, () => setHelpOpen(true))
   useGoToShortcuts(search)
 
@@ -89,20 +86,13 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
         {conversationId === undefined ? (
           <SelectConversation />
         ) : (
-          <>
-            <ConversationControls key={conversationId} conversationId={conversationId}>
-              <ConversationHeader conversationId={conversationId} />
-              <MessageThread conversationId={conversationId} />
-              <TypingLine conversationId={conversationId} />
-              <Composer conversationId={conversationId} />
-            </ConversationControls>
-          </>
+          <ConversationPane conversationId={conversationId} />
         )}
         {children}
       </section>
       <InboxSidebar />
       <RealtimeAnnouncer />
-      <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} />
+      {isHelpMounted ? <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} /> : null}
     </div>
   )
 }

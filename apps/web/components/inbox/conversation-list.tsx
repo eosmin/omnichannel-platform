@@ -32,6 +32,7 @@ import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
 import { useConversationPages } from '../../lib/inbox/use-inbox-data'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
@@ -39,10 +40,10 @@ import { Button } from '../ui/button'
 import { BulkBar } from './bulk-bar'
 import { CONVERSATION_ROW_HEIGHT_PX, ConversationItem } from './conversation-item'
 import { InboxState } from './inbox-state'
+import { SnoozeDialog } from './lazy-dialogs'
 import { RowCheckbox } from './row-checkbox'
 import { RowResolve } from './row-resolve'
 import { RowSnooze } from './row-snooze'
-import { SnoozeDialog } from './snooze-dialog'
 
 const OVERSCAN_ROWS = 6
 // A row far down is not drawn yet: the focus waits for the list to scroll to it
@@ -117,6 +118,7 @@ export function ConversationList({
   const runner = useBulkRunner()
   const nameOf = useCustomerNamer()
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null)
+  const isSnoozeMounted = useMountedOnce(snoozeFor !== null)
   const [resolveFor, setResolveFor] = useState<string | null>(null)
 
   const focusRow = useCallback((id: string, attemptsLeft = FOCUS_ATTEMPTS): void => {
@@ -344,11 +346,13 @@ export function ConversationList({
           </div>
         ) : null}
       </div>
-      <SnoozeDialog
-        open={snoozeFor !== null}
-        onOpenChange={open => (open ? undefined : setSnoozeFor(null))}
-        conversationId={snoozeFor ?? ''}
-      />
+      {isSnoozeMounted ? (
+        <SnoozeDialog
+          open={snoozeFor !== null}
+          onOpenChange={open => (open ? undefined : setSnoozeFor(null))}
+          conversationId={snoozeFor ?? ''}
+        />
+      ) : null}
       {resolveFor === null ? null : (
         <RowResolve
           key={resolveFor}

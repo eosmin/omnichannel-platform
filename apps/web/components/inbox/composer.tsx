@@ -38,6 +38,7 @@ import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
@@ -49,7 +50,7 @@ import { Textarea } from '../ui/textarea'
 import { CommandMenu } from './command-menu'
 import { useConversationControls } from './conversation-controls'
 import { type EditState, FailedMessages } from './failed-messages'
-import { TemplateDialog } from './template-dialog'
+import { TemplateDialog } from './lazy-dialogs'
 
 // What a keydown carries while an input method is composing
 const IME_KEY_CODE = 229
@@ -123,6 +124,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const [draft, setDraft] = useState('')
   const textarea = useRef<HTMLTextAreaElement>(null)
   const [isTemplateOpen, setTemplateOpen] = useState(false)
+  const isTemplateMounted = useMountedOnce(isTemplateOpen)
   const [caret, setCaret] = useState(0)
   const [activeIndex, setActiveIndex] = useState(0)
   // The text for which the menu was closed with Escape: it opens again when the text changes
@@ -370,13 +372,15 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               >
                 {t('window.chooseTemplate')}
               </Button>
-              <TemplateDialog
-                open={isTemplateOpen}
-                onOpenChange={setTemplateOpen}
-                conversationId={conversationId}
-                pluginId={pluginId}
-                connectionId={conversation.data.channelConnectionId}
-              />
+              {isTemplateMounted ? (
+                <TemplateDialog
+                  open={isTemplateOpen}
+                  onOpenChange={setTemplateOpen}
+                  conversationId={conversationId}
+                  pluginId={pluginId}
+                  connectionId={conversation.data.channelConnectionId}
+                />
+              ) : null}
             </>
           ) : null}
         </div>

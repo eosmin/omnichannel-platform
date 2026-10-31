@@ -343,3 +343,35 @@ export function mergedIntoOf(customerId: string): Promise<string | null | undefi
     return row === null ? undefined : row.mergedIntoId
   })
 }
+
+// A tag of the store, for the cases that put it on a customer
+export function newTagIn(storeId: string, name: string): Promise<string> {
+  return withOwner(async owner => (await createTag(owner, { storeId, name })).id)
+}
+
+// What the drawer saved for a customer, read from the database: the name, the tags, how many notes
+// and the addresses with their city
+export function savedProfileOf(customerId: string): Promise<{
+  name: string | null
+  tagNames: string[]
+  noteCount: number
+  cities: (string | null)[]
+}> {
+  return withOwner(async owner => {
+    const row = await owner.customer.findUniqueOrThrow({
+      where: { id: customerId },
+      select: {
+        name: true,
+        tags: { select: { name: true } },
+        addresses: { select: { city: true } },
+        _count: { select: { notes: true } }
+      }
+    })
+    return {
+      name: row.name,
+      tagNames: row.tags.map(tag => tag.name),
+      noteCount: row._count.notes,
+      cities: row.addresses.map(address => address.city)
+    }
+  })
+}
