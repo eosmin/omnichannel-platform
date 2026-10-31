@@ -257,7 +257,8 @@ test.describe.serial('the inbox list', () => {
       })
       .click()
     await page.reload()
-    await expect.poll(titles).toEqual([...before].reverse())
+    // Team status moved above the queue; the quick actions stay first
+    await expect.poll(titles).toEqual([before[0], before[2], before[1]])
 
     // Put back for the other cases
     await sidebar
