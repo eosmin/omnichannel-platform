@@ -165,3 +165,47 @@ export function summaryOf(result: BulkResultView): BulkSummary {
 export function targetCountOf(target: BulkTarget): number | null {
   return 'conversationIds' in target ? target.conversationIds.length : null
 }
+
+// The text that tells what a single-conversation action did, with the name of the customer after it
+// ("Resolved: Ana"); a key of `inbox.bulk.result.one`
+export type SingleResultKey =
+  | 'assignedToYou'
+  | 'assigned'
+  | 'unassigned'
+  | 'open'
+  | 'pending'
+  | 'resolved'
+  | 'tagAdded'
+  | 'tagRemoved'
+  | 'markedRead'
+  | 'markedUnread'
+  | 'archived'
+  | 'updated'
+
+export function singleResultKey(operation: BulkOperation): SingleResultKey {
+  switch (operation.action) {
+    case BulkActions.ASSIGN_TO_ME:
+      return 'assignedToYou'
+    case BulkActions.ASSIGN_TO_AGENT:
+    case BulkActions.ROUND_ROBIN_TO_TEAM:
+      return 'assigned'
+    case BulkActions.UNASSIGN:
+      return 'unassigned'
+    case BulkActions.SET_STATUS:
+      if (operation.params.status === ConversationStatus.OPEN) return 'open'
+      if (operation.params.status === ConversationStatus.PENDING) return 'pending'
+      return 'resolved'
+    case BulkActions.ADD_TAG:
+      return 'tagAdded'
+    case BulkActions.REMOVE_TAG:
+      return 'tagRemoved'
+    case BulkActions.MARK_READ:
+      return 'markedRead'
+    case BulkActions.MARK_UNREAD:
+      return 'markedUnread'
+    case BulkActions.ARCHIVE:
+      return 'archived'
+    default:
+      return 'updated'
+  }
+}

@@ -3,13 +3,14 @@
 import { ArrowLeft, SearchX, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { type ReactElement, useEffect, useRef } from 'react'
 
 import { ApiError, AppPaths, type ConversationListItemView } from '@platform/api-client'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
+import { isListHiddenByConversation } from '../../lib/inbox/layout'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
@@ -114,12 +115,20 @@ function LoadedHeader({
   const { storeId } = useStore()
   const channelName = useChannelName(storeId, channelType)
   const { label, name } = useCustomerName(customer, channelName)
+  // On a phone the list the agent tapped is gone and the focus with it: it goes to the heading of the
+  // conversation. On a desktop the list stays and keeps the focus.
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (isListHiddenByConversation()) heading.current?.focus()
+  }, [])
   return (
     <header className="flex items-center gap-3 border-b p-3">
       {backLink}
       <CustomerAvatar avatarUrl={customer.avatarUrl} initials={initialsOf(label)} />
       <div className="flex min-w-0 flex-col">
-        <h1 className="truncate text-sm font-semibold">{name}</h1>
+        <h1 ref={heading} tabIndex={-1} className="truncate text-sm font-semibold outline-none">
+          {name}
+        </h1>
         <p className="text-muted-foreground truncate text-xs">{channelName}</p>
       </div>
       <div className="ml-auto shrink-0">

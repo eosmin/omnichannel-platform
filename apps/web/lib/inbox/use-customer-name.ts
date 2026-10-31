@@ -19,3 +19,17 @@ export function useCustomerName(
       : label.text
   return { label, name }
 }
+
+// The same name for a customer who is not on screen as a row of its own (the toast of an action)
+export function useCustomerNamer(): (
+  customer: ConversationListItemView['customer'],
+  channelName: string
+) => string {
+  const t = useTranslations('inbox')
+  return (customer, channelName) => {
+    const label = customerLabelOf(customer)
+    return label.kind === 'identity'
+      ? t('customerOnChannel', { channel: channelName, digits: label.lastDigits })
+      : label.text
+  }
+}

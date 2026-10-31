@@ -711,7 +711,8 @@
       "snooze": "Posponer",
       "resolve": "Resolver",
       "reopen": "Reabrir",
-      "wakeUp": "Despertar"
+      "wakeUp": "Despertar",
+      "snoozeRow": "Posponer la conversación con {name}"
     },
     "bulk": {
       "label": "Acciones masivas",
@@ -797,7 +798,58 @@
         "truncated": "El filtro alcanzó más conversaciones de las que una acción cubre; ejecútala de nuevo para el resto.",
         "undo": "Deshacer",
         "undone": "El cambio se deshizo",
-        "undonePartly": "{count, plural, one {# conversación no se pudo} other {# conversaciones no se pudieron}} devolver a como estaban"
+        "undonePartly": "{count, plural, one {# conversación no se pudo} other {# conversaciones no se pudieron}} devolver a como estaban",
+        "one": {
+          "assignedToYou": "Asignada a ti: {name}",
+          "assigned": "Asignada: {name}",
+          "unassigned": "Sin asignar: {name}",
+          "open": "Reabierta: {name}",
+          "pending": "Marcada como pendiente: {name}",
+          "resolved": "Resuelta: {name}",
+          "tagAdded": "Etiqueta agregada: {name}",
+          "tagRemoved": "Etiqueta quitada: {name}",
+          "markedRead": "Marcada como leída: {name}",
+          "markedUnread": "Marcada como no leída: {name}",
+          "archived": "Archivada: {name}",
+          "updated": "Actualizada: {name}"
+        }
+      }
+    },
+    "shortcuts": {
+      "title": "Atajos de teclado",
+      "description": "Los atajos no funcionan mientras escribes en un campo, salvo Escape y el que envía.",
+      "then": "luego",
+      "groups": {
+        "list": "Lista de conversaciones",
+        "conversation": "Conversación abierta",
+        "global": "En cualquier parte de la bandeja"
+      },
+      "labels": {
+        "list": {
+          "NEXT_CONVERSATION": "Conversación siguiente",
+          "PREVIOUS_CONVERSATION": "Conversación anterior",
+          "OPEN_CONVERSATION": "Abrir la conversación enfocada",
+          "TOGGLE_SELECTION": "Seleccionar o quitar",
+          "SELECT_ALL_VISIBLE": "Seleccionar todas las cargadas",
+          "ASSIGN_TO_ME": "Asignármela",
+          "MARK_RESOLVED": "Marcar como resuelta",
+          "SHOW_HELP": "Mostrar esta ayuda"
+        },
+        "conversation": {
+          "CLOSE": "Cerrar la conversación",
+          "FOCUS_REPLY": "Escribir una respuesta",
+          "INTERNAL_NOTE": "Escribir una nota interna",
+          "ASSIGN_TO_ME": "Asignármela",
+          "ASSIGN_TO_OTHER": "Asignar a otra persona",
+          "ADD_TAG": "Agregar una etiqueta",
+          "MARK_PENDING": "Marcar como pendiente",
+          "MARK_RESOLVED": "Marcar como resuelta",
+          "SNOOZE": "Posponer"
+        },
+        "global": {
+          "SEND_MESSAGE": "Enviar el mensaje",
+          "GO_TO_INBOX": "Ir a la bandeja"
+        }
       }
     }
   }

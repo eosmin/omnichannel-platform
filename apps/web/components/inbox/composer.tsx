@@ -11,6 +11,7 @@ import {
   MessageLimits,
   MessageType,
   SLASH_PREFIX,
+  Shortcuts,
   SlashCommand
 } from '@platform/core/domain'
 
@@ -34,9 +35,12 @@ import {
 import { useWindowState } from '../../lib/inbox/use-window-state'
 import { hoursAndMinutes } from '../../lib/inbox/window-state'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
+import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
+import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
+import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 import { Textarea } from '../ui/textarea'
@@ -59,6 +63,45 @@ function allowedMode(chosen: Mode, mayReply: boolean, mayNote: boolean): Mode {
   if (chosen === MessageType.INTERNAL_NOTE && !mayNote) return MessageType.TEXT
   if (chosen === MessageType.TEXT && !mayReply) return MessageType.INTERNAL_NOTE
   return chosen
+}
+
+// The keys that go to the box: `r` to write to the customer, Shift+N to write a note, Cmd/Ctrl+Enter to
+// send from anywhere (Enter in the box already sends). Its own component because the composer returns
+// early, before it could register them.
+function ComposerShortcuts({
+  mayReply,
+  mayNote,
+  onMode,
+  onSend,
+  focus
+}: {
+  mayReply: boolean
+  mayNote: boolean
+  onMode: (mode: Mode) => void
+  onSend: () => void
+  focus: () => void
+}): null {
+  const keyboard = { priority: ShortcutPriority.OPEN_CONVERSATION }
+  // After the render: a box that was replaced (a closed window) is there again by then
+  const focusSoon = (): void => void requestAnimationFrame(focus)
+  useShortcut(
+    Shortcuts.conversation.FOCUS_REPLY,
+    () => {
+      onMode(MessageType.TEXT)
+      focusSoon()
+    },
+    { ...keyboard, enabled: mayReply }
+  )
+  useShortcut(
+    Shortcuts.conversation.INTERNAL_NOTE,
+    () => {
+      onMode(MessageType.INTERNAL_NOTE)
+      focusSoon()
+    },
+    { ...keyboard, enabled: mayNote }
+  )
+  useShortcut(Shortcuts.global.SEND_MESSAGE, onSend, keyboard)
+  return null
 }
 
 // Where the agent answers. Everything goes through the offline queue, online or not: the queue sends
@@ -253,6 +296,13 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
 
   return (
     <div className={cn('flex flex-col gap-2 border-t p-3', isNote && 'bg-note/40')}>
+      <ComposerShortcuts
+        mayReply={mayReply}
+        mayNote={mayNote}
+        onMode={setMode}
+        onSend={submit}
+        focus={() => textarea.current?.focus()}
+      />
       <FailedMessages
         messages={queue.failed}
         canEdit={canEdit}
@@ -357,6 +407,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
           <div className="flex items-end gap-2">
             <Textarea
               ref={textarea}
+              {...{ [SHORTCUT_FIELD_ATTRIBUTE]: '' }}
               value={draft}
               onChange={event => {
                 setText(event.target.value)

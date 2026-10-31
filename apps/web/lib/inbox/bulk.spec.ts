@@ -1,6 +1,7 @@
 import { BulkActions, ConversationStatus } from '@platform/core/domain'
 
 import {
+  singleResultKey,
   BulkConfirmations,
   BulkOutcomes,
   confirmationOf,
@@ -182,5 +183,27 @@ describe('targetCountOf', () => {
   it('counts the ids and does not know what a filter reaches', () => {
     expect(targetCountOf({ conversationIds: ['a', 'b'] })).toBe(2)
     expect(targetCountOf({ filter: { tagId: 't' } })).toBeNull()
+  })
+})
+
+describe('singleResultKey', () => {
+  it('names what each kind of action did', () => {
+    expect(singleResultKey({ action: BulkActions.ASSIGN_TO_ME })).toBe('assignedToYou')
+    expect(
+      singleResultKey({
+        action: BulkActions.SET_STATUS,
+        params: { status: ConversationStatus.RESOLVED }
+      })
+    ).toBe('resolved')
+    expect(
+      singleResultKey({
+        action: BulkActions.SET_STATUS,
+        params: { status: ConversationStatus.PENDING }
+      })
+    ).toBe('pending')
+    expect(singleResultKey({ action: BulkActions.ADD_TAG, params: { tagId: 't' } })).toBe(
+      'tagAdded'
+    )
+    expect(singleResultKey({ action: BulkActions.ARCHIVE })).toBe('archived')
   })
 })

@@ -17,16 +17,24 @@ import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
 import { errorCodeOf, knownErrorCode } from '../error-message'
 
-import { BulkOutcomes, type PreviousState, summaryOf, undoStepsOf } from './bulk'
+import { BulkOutcomes, type PreviousState, singleResultKey, summaryOf, undoStepsOf } from './bulk'
+
+// Actions in flight in the whole page: the bar, the list and the open conversation each have a runner,
+// and two actions started from the keyboard at once would overlap
+let inFlightCount = 0
 
 export interface BulkRunner {
   isPending: boolean
+  // Any runner of the page has an action going
+  isBusy: () => boolean
   // Runs the action and tells the agent what happened; resolves to the result, or null when the
   // request itself failed
   run: (
     operation: BulkOperation,
     target: BulkTarget,
-    previous: readonly PreviousState[]
+    previous: readonly PreviousState[],
+    // The customer, when the action is for one conversation: the toast then says who it changed
+    subject?: string
   ) => Promise<BulkResultView | null>
 }
 
@@ -84,8 +92,9 @@ export function useBulkRunner(): BulkRunner {
   )
 
   const run = useCallback<BulkRunner['run']>(
-    async (operation, target, previous) => {
+    async (operation, target, previous, subject) => {
       setPending(count => count + 1)
+      inFlightCount += 1
       let result: BulkResultView
       try {
         result = await bulkConversations(apiClient, storeId, operation, target)
@@ -94,6 +103,7 @@ export function useBulkRunner(): BulkRunner {
         return null
       } finally {
         setPending(count => count - 1)
+        inFlightCount -= 1
         void refresh()
       }
 
@@ -105,8 +115,13 @@ export function useBulkRunner(): BulkRunner {
         steps.length === 0 ? undefined : { label: t('undo'), onClick: () => void undo(steps) }
       const truncated = summary.truncated ? ` ${t('truncated')}` : ''
 
+      const isOne = 'conversationIds' in target && target.conversationIds.length === 1
       if (summary.outcome === BulkOutcomes.ALL_DONE) {
-        toast.success(`${t('allDone', { count: summary.succeeded })}${truncated}`, { action })
+        const text =
+          isOne && subject !== undefined
+            ? t(`one.${singleResultKey(operation)}`, { name: subject })
+            : t('allDone', { count: summary.succeeded })
+        toast.success(`${text}${truncated}`, { action })
       } else if (summary.outcome === BulkOutcomes.SOME_DONE) {
         toast.warning(
           `${t('someDone', { succeeded: summary.succeeded, failed: summary.failed, reasons: reasonsOf(summary) })}${truncated}`,
@@ -120,5 +135,5 @@ export function useBulkRunner(): BulkRunner {
     [storeId, t, tAll, refresh, undo, reasonsOf]
   )
 
-  return { isPending: pending > 0, run }
+  return { isPending: pending > 0, isBusy: () => inFlightCount > 0, run }
 }

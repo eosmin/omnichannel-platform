@@ -35,6 +35,66 @@ export const Shortcuts = {
   }
 } as const
 
+// How a binding is spelled in the table above, read by the handlers and the help sheet.
+export const ShortcutSyntax = {
+  SEQUENCE_SEPARATOR: ' ',
+  COMBINATION_SEPARATOR: '+',
+  SHIFT: 'Shift',
+  MOD: 'Mod'
+} as const
+
+// Keys that are only a modifier: pressing one alone is no binding and must not break a sequence.
+export const ModifierOnlyKeys = [
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
+  'AltGraph',
+  'CapsLock',
+  'Dead'
+] as const
+
+// Elements with these roles on top of the page own the keyboard: the shortcuts of the page wait.
+export const KeyboardOverlayRoles = ['dialog', 'alertdialog', 'menu'] as const
+
+// The second key of a sequence ("g i", "* a") must come within this time of the first.
+export const SHORTCUT_SEQUENCE_TIMEOUT_MS = 1000
+
+// Keys that do what `j` and `k` do in the list (TDD_09 §9 "j or ↓").
+export const ListKeyAliases = {
+  NEXT_CONVERSATION: 'ArrowDown',
+  PREVIOUS_CONVERSATION: 'ArrowUp'
+} as const
+
+// The bindings the screen handles today. The help sheet lists only these: search and the palette wait
+// for Step 5.1, the orders and customers jumps and `Shift+O`/`Shift+C` for the pages they open.
+export const AvailableShortcuts = {
+  list: [
+    'NEXT_CONVERSATION',
+    'PREVIOUS_CONVERSATION',
+    'OPEN_CONVERSATION',
+    'TOGGLE_SELECTION',
+    'SELECT_ALL_VISIBLE',
+    'ASSIGN_TO_ME',
+    'MARK_RESOLVED',
+    'SHOW_HELP'
+  ],
+  conversation: [
+    'CLOSE',
+    'FOCUS_REPLY',
+    'INTERNAL_NOTE',
+    'ASSIGN_TO_ME',
+    'ASSIGN_TO_OTHER',
+    'ADD_TAG',
+    'MARK_PENDING',
+    'MARK_RESOLVED',
+    'SNOOZE'
+  ],
+  global: ['SEND_MESSAGE', 'GO_TO_INBOX']
+} as const satisfies {
+  [Group in keyof typeof Shortcuts]: readonly (keyof (typeof Shortcuts)[Group])[]
+}
+
 // The commands of the composer, typed after a `/`. `/product` and `/order` join with
 // Step 4.4, which builds products and orders.
 export enum SlashCommand {

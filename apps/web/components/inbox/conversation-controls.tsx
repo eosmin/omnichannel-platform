@@ -9,6 +9,7 @@ import {
   useState
 } from 'react'
 
+import { ConversationShortcuts } from './conversation-shortcuts'
 import { type ResolveFlow, useResolveFlow } from './resolve-flow'
 import { SnoozeDialog } from './snooze-dialog'
 
@@ -39,6 +40,7 @@ export function ConversationControls({
   return (
     <ConversationControlsContext.Provider value={value}>
       {children}
+      <ConversationShortcuts conversationId={conversationId} />
       <SnoozeDialog
         open={isSnoozeOpen}
         onOpenChange={setSnoozeOpen}

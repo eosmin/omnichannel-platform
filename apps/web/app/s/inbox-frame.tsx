@@ -1,8 +1,11 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import type { ReactElement, ReactNode } from 'react'
+import { type ReactElement, type ReactNode, useState } from 'react'
+
+import { AppPaths } from '@platform/api-client'
+import { Shortcuts } from '@platform/core/domain'
 
 import { Composer } from '../../components/inbox/composer'
 import { ConversationControls } from '../../components/inbox/conversation-controls'
@@ -12,7 +15,9 @@ import { InboxFilters } from '../../components/inbox/inbox-filters'
 import { MessageThread } from '../../components/inbox/message-thread'
 import { RealtimeAnnouncer } from '../../components/inbox/realtime-announcer'
 import { SelectConversation } from '../../components/inbox/select-conversation'
+import { ShortcutHelp } from '../../components/inbox/shortcut-help'
 import { useStore } from '../../components/providers/store-context'
+import { ShortcutsProvider, useShortcut } from '../../components/shortcuts/shortcuts-provider'
 import {
   useChannelDirectory,
   useConversationCounts,
@@ -31,6 +36,14 @@ const NO_TAGS: never[] = []
 // conversation when one is open; the address says which, so the back button of the browser works.
 // The page frame pads its content, hence the negative margin: the inbox uses the whole area.
 export function InboxFrame({ children }: { children: ReactNode }): ReactElement {
+  return (
+    <ShortcutsProvider>
+      <InboxLayout>{children}</InboxLayout>
+    </ShortcutsProvider>
+  )
+}
+
+function InboxLayout({ children }: { children: ReactNode }): ReactElement {
   const t = useTranslations('inbox')
   const { storeId } = useStore()
   const { conversationId } = useParams<{ conversationId?: string }>()
@@ -40,6 +53,12 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
   const members = useMemberDirectory(storeId)
   const tags = useTags(storeId)
   const isOpen = conversationId !== undefined
+  const router = useRouter()
+  const [isHelpOpen, setHelpOpen] = useState(false)
+  useShortcut(Shortcuts.list.SHOW_HELP, () => setHelpOpen(true))
+  useShortcut(Shortcuts.global.GO_TO_INBOX, () =>
+    router.push(`${AppPaths.store.inbox(storeId)}${search}`)
+  )
 
   return (
     <div className="-m-4 flex h-[calc(100dvh-3.5rem)]">
@@ -82,6 +101,7 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
         {children}
       </section>
       <RealtimeAnnouncer />
+      <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} />
     </div>
   )
 }
