@@ -592,6 +592,10 @@
         }
       },
       "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores",
+      "typing": {
+        "customer": "El cliente está escribiendo",
+        "teammates": "{count, plural, one {{names} está escribiendo} other {{names} están escribiendo}}"
+      },
       "actions": {
         "react": "Reaccionar",
         "quickReactions": "Reacciones rápidas",
