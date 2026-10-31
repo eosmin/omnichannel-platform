@@ -26,7 +26,8 @@ export function IdentityLinkForm({
 }: {
   customerId: string
   onDone: () => void
-  onMergeInstead: (ownerId: string) => void
+  // Only for who may merge: without it the form says the handle is taken and stops there
+  onMergeInstead?: (ownerId: string) => void
 }): ReactElement {
   const t = useTranslations('customers.identity')
   const tAll = useTranslations()
@@ -80,9 +81,16 @@ export function IdentityLinkForm({
       ) : (
         <div role="alert" className="flex flex-col items-start gap-1 text-sm">
           <p className="text-destructive">{t('taken')}</p>
-          <Button type="button" size="sm" variant="outline" onClick={() => onMergeInstead(ownerId)}>
-            {t('mergeInstead')}
-          </Button>
+          {onMergeInstead === undefined ? null : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onMergeInstead(ownerId)}
+            >
+              {t('mergeInstead')}
+            </Button>
+          )}
         </div>
       )}
       <div className="flex gap-2">
