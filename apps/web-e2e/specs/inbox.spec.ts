@@ -15,8 +15,11 @@ import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 const FIRST_STORE = 'Main Store'
 const PHONE = { width: 390, height: 800 }
 
+// The row in the list: the unassigned queue of the sidebar links to the same conversation
 const rowOf = (page: Page, storeId: string, conversationId: string) =>
-  page.locator(`a[href^="${AppPaths.store.conversation(storeId, conversationId)}"]`)
+  page
+    .getByRole('list', { name: en.inbox.listLabel })
+    .locator(`a[href^="${AppPaths.store.conversation(storeId, conversationId)}"]`)
 
 // The conversation of the row that has the focus (null when the focus is elsewhere)
 const focusedRow = (page: Page) =>
@@ -209,6 +212,59 @@ test.describe.serial('the inbox list', () => {
     await expect(page).toHaveURL(new RegExp(`${AppPaths.store.inbox(storeId)}$`))
     // The focus goes back to the row of the conversation that was left
     await expect.poll(() => focusedRow(page)).toBe(conversationId)
+  })
+
+  test('shortcuts: e on a focused row asks the questions of the store before resolving', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    await rowOf(page, storeId, conversationId).focus()
+    await expect.poll(() => focusedRow(page)).toBe(conversationId)
+
+    await page.keyboard.press('e')
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await expect(dialog).toBeVisible()
+    // Nothing changed until the agent confirms
+    expect(await statusOf(conversationId)).toBe('OPEN')
+
+    await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
+    await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
+    await expect(dialog).toBeHidden()
+  })
+
+  test('the sidebar: takes a conversation from the queue and keeps the order of its widgets', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    const sidebar = page.getByRole('complementary', { name: en.inbox.sidebar.label })
+    const queued = sidebar.getByRole('listitem').filter({
+      has: page.locator(`a[href^="${AppPaths.store.conversation(storeId, conversationId)}"]`)
+    })
+    await expect(queued).toBeVisible()
+
+    await queued.getByRole('button', { name: /^Take the conversation with / }).click()
+    await expect(queued).toBeHidden()
+
+    const titles = () => sidebar.getByRole('heading', { level: 2 }).allTextContents()
+    const before = await titles()
+    expect(before).toEqual([
+      en.inbox.sidebar.widgets.unassignedQueue,
+      en.inbox.sidebar.widgets.teamStatus
+    ])
+
+    await sidebar
+      .getByRole('button', {
+        name: en.inbox.sidebar.moveUp.replace('{widget}', en.inbox.sidebar.widgets.teamStatus)
+      })
+      .click()
+    await page.reload()
+    await expect.poll(titles).toEqual([...before].reverse())
+
+    // Put back for the other cases
+    await sidebar
+      .getByRole('button', {
+        name: en.inbox.sidebar.moveDown.replace('{widget}', en.inbox.sidebar.widgets.teamStatus)
+      })
+      .click()
+    await expect.poll(titles).toEqual(before)
   })
 
   test('shows the list alone on a phone, and the conversation alone once one is open', async () => {

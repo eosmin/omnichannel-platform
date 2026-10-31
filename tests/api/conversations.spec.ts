@@ -71,6 +71,7 @@ interface CountsBody {
   byStatus: Record<string, number>
   byChannel: Record<string, number>
   byAgent: { userId: string; count: number }[]
+  activeByAgent: { userId: string; count: number }[]
 }
 
 const OK = 200
@@ -494,6 +495,22 @@ describe('The conversations of a store', () => {
         expect(total(counts.byChannel)).toBe(counts.all)
         expect(counts.unassigned + counts.byAgent.reduce((sum, item) => sum + item.count, 0)).toBe(
           counts.all
+        )
+      }
+      // `activeByAgent` is `byAgent` without the resolved ones
+      const assignedAndWorked = full.activeByAgent.reduce((sum, item) => sum + item.count, 0)
+      expect(assignedAndWorked).toBe(
+        await owner.conversation.count({
+          where: {
+            storeId: ctx.storeA2.id,
+            assignedTo: { not: null },
+            status: { in: [ConversationStatus.OPEN, ConversationStatus.PENDING] }
+          }
+        })
+      )
+      for (const item of full.activeByAgent) {
+        expect(item.count).toBeLessThanOrEqual(
+          full.byAgent.find(other => other.userId === item.userId)?.count ?? 0
         )
       }
       expect(narrow.unassigned).toBe(5)

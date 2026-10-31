@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { ConversationHiddenStatuses } from '@platform/core/domain'
+import { ConversationHiddenStatuses, ConversationStatus } from '@platform/core/domain'
 import { statusOf, type Viewer, visibleTo, type ConversationCounts } from '@platform/core/messaging'
 
 // The numbers beside the filters of the inbox (TDD_09 section 2): what the viewer may see, without
@@ -26,6 +26,8 @@ export class ConversationCountsService {
     const byStatus: ConversationCounts['byStatus'] = {}
     const byChannel: ConversationCounts['byChannel'] = {}
     const perAgent = new Map<string, number>()
+    // The load of an agent is what is open or pending; a snoozed conversation is set aside on purpose
+    const activePerAgent = new Map<string, number>()
     let all = 0
     let unassigned = 0
     for (const group of groups) {
@@ -36,12 +38,16 @@ export class ConversationCountsService {
       byChannel[group.channelType] = (byChannel[group.channelType] ?? 0) + count
       if (group.assignedTo === null) unassigned += count
       else perAgent.set(group.assignedTo, (perAgent.get(group.assignedTo) ?? 0) + count)
+      if (group.assignedTo === null) continue
+      if (status !== ConversationStatus.OPEN && status !== ConversationStatus.PENDING) continue
+      activePerAgent.set(group.assignedTo, (activePerAgent.get(group.assignedTo) ?? 0) + count)
     }
     const byAgent: ConversationCounts['byAgent'] = [...perAgent].map(([userId, count]) => ({
       userId,
       count
     }))
     const mine = byAgent.find(agent => agent.userId === viewer.userId)?.count ?? 0
-    return { all, mine, unassigned, byStatus, byChannel, byAgent }
+    const activeByAgent = [...activePerAgent].map(([userId, count]) => ({ userId, count }))
+    return { all, mine, unassigned, byStatus, byChannel, byAgent, activeByAgent }
   }
 }

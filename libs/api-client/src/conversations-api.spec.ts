@@ -97,7 +97,8 @@ describe('fetchConversationCounts', () => {
         unassigned: 2,
         byStatus: { OPEN: 3 },
         byChannel: {},
-        byAgent: []
+        byAgent: [],
+        activeByAgent: []
       })
     )
 
@@ -206,14 +207,15 @@ describe('fetchSnippets', () => {
 })
 
 describe('fetchInboxBehavior', () => {
-  it('reads how resolving behaves and ignores the rest of the settings', async () => {
+  it('reads how resolving behaves, the load threshold and ignores the rest of the settings', async () => {
     const { client } = setup(
       json(200, {
         resolveShowOptions: false,
         sendClosingMessage: true,
         closingSnippetId: 'n1',
         timezone: 'America/El_Salvador',
-        agentLoadThreshold: 8
+        agentLoadThreshold: 8,
+        requestCsat: true
       })
     )
 
@@ -221,6 +223,7 @@ describe('fetchInboxBehavior', () => {
       resolveShowOptions: false,
       sendClosingMessage: true,
       closingSnippetId: 'n1',
+      agentLoadThreshold: 8,
       timezone: 'America/El_Salvador'
     })
   })

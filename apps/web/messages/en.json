@@ -812,7 +812,8 @@
           "markedUnread": "Marked unread: {name}",
           "archived": "Archived: {name}",
           "updated": "Updated: {name}"
-        }
+        },
+        "busy": "An action is still running. Wait a moment and try again."
       }
     },
     "shortcuts": {
@@ -850,6 +851,37 @@
           "SEND_MESSAGE": "Send the message",
           "GO_TO_INBOX": "Go to the inbox"
         }
+      }
+    },
+    "sidebar": {
+      "label": "Team and queue",
+      "add": "Add {widget}",
+      "hide": "Hide {widget}",
+      "moveUp": "Move {widget} up",
+      "moveDown": "Move {widget} down",
+      "widgets": {
+        "teamStatus": "Team status",
+        "unassignedQueue": "Unassigned queue"
+      },
+      "team": {
+        "loading": "Loading the team",
+        "failed": "The team could not be loaded.",
+        "empty": "No teammates yet.",
+        "status": {
+          "online": "online",
+          "away": "away",
+          "offline": "offline"
+        },
+        "load": "{count, plural, one {# open} other {# open}}",
+        "loadOver": "{count, plural, one {# open, over the limit} other {# open, over the limit}}"
+      },
+      "queue": {
+        "loading": "Loading the queue",
+        "failed": "The queue could not be loaded.",
+        "empty": "Nobody is waiting.",
+        "take": "Take it",
+        "takeFor": "Take the conversation with {name}",
+        "seeAll": "See all"
       }
     }
   }

@@ -3,6 +3,7 @@
 import { ChevronDown, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import {
   type BulkOperation,
@@ -146,6 +147,11 @@ export function BulkBar({
   ) => request({ action: BulkActions.SET_STATUS, params: { status: value } }, tStatus(value))
 
   const disabled = runner.isPending || isOverLimit
+  // A key taken by a selection that cannot act says why, as the bar does
+  const explainBlocked = (): void => {
+    if (isOverLimit) toast.info(t('overLimit', { max: BulkLimits.MAX_ITEMS }))
+    else toast.info(t('result.busy'))
+  }
 
   // The keys act on what is ticked, before they act on a row or on the open conversation. They are
   // always registered while the bar shows: a selection over the limit, or an action in flight, takes the
@@ -154,14 +160,16 @@ export function BulkBar({
   useShortcut(
     Shortcuts.list.ASSIGN_TO_ME,
     () => {
-      if (!disabled) request({ action: BulkActions.ASSIGN_TO_ME })
+      if (disabled) explainBlocked()
+      else request({ action: BulkActions.ASSIGN_TO_ME })
     },
     { ...keyboard, enabled: mayResolve || mayAssign }
   )
   useShortcut(
     Shortcuts.list.MARK_RESOLVED,
     () => {
-      if (!disabled) status(ConversationStatus.RESOLVED)
+      if (disabled) explainBlocked()
+      else status(ConversationStatus.RESOLVED)
     },
     { ...keyboard, enabled: mayResolve }
   )

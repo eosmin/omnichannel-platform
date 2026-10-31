@@ -28,6 +28,8 @@ import { Textarea } from '../ui/textarea'
 export interface ResolveFlow {
   // False until the settings of the store are read: they decide which of the two flows runs
   isReady: boolean
+  // The options dialog is showing: a caller that mounts the flow for one action waits for it to close
+  isDialogOpen: boolean
   start: () => void
   // The options dialog, to render once where the flow is used
   dialog: ReactElement
@@ -96,6 +98,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
     // Ready once the settings and the window are known (a failed read does not block: the click then
     // says what failed and reads again)
     isReady: !behavior.isPending && !windowQuery.isPending,
+    isDialogOpen,
     start: stableStart,
     dialog: (
       <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>

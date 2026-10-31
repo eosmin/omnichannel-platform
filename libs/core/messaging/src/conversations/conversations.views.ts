@@ -63,6 +63,9 @@ export interface ConversationCounts {
   byStatus: Partial<Record<ConversationStatus, number>>
   byChannel: Partial<Record<ChannelId, number>>
   byAgent: { userId: string; count: number }[]
+  // `byAgent` without the resolved ones: the conversations an agent still has to work (open or
+  // pending), which is their load
+  activeByAgent: { userId: string; count: number }[]
 }
 
 export const LIST_SELECT = {

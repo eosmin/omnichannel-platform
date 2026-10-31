@@ -12,6 +12,7 @@ import { ConversationControls } from '../../components/inbox/conversation-contro
 import { ConversationHeader } from '../../components/inbox/conversation-header'
 import { ConversationList } from '../../components/inbox/conversation-list'
 import { InboxFilters } from '../../components/inbox/inbox-filters'
+import { InboxSidebar } from '../../components/inbox/inbox-sidebar'
 import { MessageThread } from '../../components/inbox/message-thread'
 import { RealtimeAnnouncer } from '../../components/inbox/realtime-announcer'
 import { SelectConversation } from '../../components/inbox/select-conversation'
@@ -100,6 +101,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
         )}
         {children}
       </section>
+      <InboxSidebar />
       <RealtimeAnnouncer />
       <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} />
     </div>
