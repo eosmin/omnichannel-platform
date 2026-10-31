@@ -15,6 +15,7 @@ function boot(token: string, overrides: Partial<Bootstrap> = {}): Bootstrap {
     store: { name: 'Shop', locale: 'es' },
     away: false,
     messages: [],
+    readUpToMessageId: null,
     ...overrides
   }
 }
@@ -217,6 +218,40 @@ describe('Session', () => {
 
       socket.receive(WidgetSocketEvents.READ, { messageId: 'a' })
       socket.receive(WidgetSocketEvents.READ, { nonsense: true })
+
+      expect(log.messages.map(message => message.seen)).toEqual([true, false, false])
+      session.stop()
+    })
+
+    it('marks nothing when the message that was read is older than the history it loaded', async () => {
+      const history = [
+        { id: 'c', from: 'visitor', content: '3', createdAt: '2026-01-01T00:00:02.000Z' }
+      ] as const
+      const { session, log } = setup({
+        bootstrap: jest
+          .fn()
+          .mockResolvedValue(boot('t1', { messages: [...history], readUpToMessageId: 'gone' }))
+      })
+
+      await session.start()
+
+      expect(log.messages.map(message => message.seen)).toEqual([false])
+      session.stop()
+    })
+
+    it('shows as seen what an agent read before the page was opened', async () => {
+      const history = [
+        { id: 'a', from: 'visitor', content: '1', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'b', from: 'team', content: '2', createdAt: '2026-01-01T00:00:01.000Z' },
+        { id: 'c', from: 'visitor', content: '3', createdAt: '2026-01-01T00:00:02.000Z' }
+      ] as const
+      const { session, log } = setup({
+        bootstrap: jest
+          .fn()
+          .mockResolvedValue(boot('t1', { messages: [...history], readUpToMessageId: 'a' }))
+      })
+
+      await session.start()
 
       expect(log.messages.map(message => message.seen)).toEqual([true, false, false])
       session.stop()

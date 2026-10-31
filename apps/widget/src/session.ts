@@ -160,6 +160,11 @@ export class Session {
     const boot = await this.deps.api.bootstrap(this.deps.siteKey, this.deps.visitorId)
     this.token = boot.visitorToken
     this.deps.log.loadHistory(boot.messages)
+    // An id outside the loaded window is older than all of it, so nothing loaded was read
+    const readUpTo = boot.readUpToMessageId
+    if (readUpTo !== null && boot.messages.some(message => message.id === readUpTo)) {
+      this.deps.log.markSeenUpTo(readUpTo)
+    }
     clearTimeout(this.renewTimer)
     if (this.stopped) return boot
     const delay = Math.max(

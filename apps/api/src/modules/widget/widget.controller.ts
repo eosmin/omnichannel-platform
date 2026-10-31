@@ -33,6 +33,8 @@ export interface WidgetBootstrapView {
   store: { name: string; locale: string }
   away: boolean
   messages: WidgetMessageView[]
+  // The latest message of the visitor that an agent read, so a page that opens late shows "Seen"
+  readUpToMessageId: string | null
 }
 
 // The public doors of the widget (TDD_10 §5.4), called by a script on the store's site. The site key
@@ -62,8 +64,9 @@ export class WidgetController {
     const site = await this.sites.find(body.siteKey)
     if (site === null) throw resourceNotFound('widget')
     allowOrigin(site, origin, res)
-    const [messages, away] = await Promise.all([
+    const [messages, readUpToMessageId, away] = await Promise.all([
       this.history.of(site, body.visitorId),
+      this.history.readUpTo(site, body.visitorId),
       this.away.isAway(site)
     ])
     const { token, expiresInSeconds } = this.tokens.issue({
@@ -75,7 +78,8 @@ export class WidgetController {
       expiresInSeconds,
       store: { name: site.storeName, locale: site.storeLocale },
       away,
-      messages
+      messages,
+      readUpToMessageId
     }
   }
 

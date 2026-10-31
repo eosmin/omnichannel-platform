@@ -5,6 +5,7 @@ const BOOTSTRAP = {
   expiresInSeconds: 3600,
   store: { name: 'Shop', locale: 'es' },
   away: false,
+  readUpToMessageId: null,
   messages: [{ id: 'm1', from: 'team', content: 'hola', createdAt: '2026-01-01T00:00:00.000Z' }]
 }
 
@@ -74,6 +75,22 @@ describe('WidgetApi', () => {
       status: 0,
       permanent: false
     })
+  })
+
+  it('takes the id of the last message that was read, or none', async () => {
+    const read = answering(200, { ...BOOTSTRAP, readUpToMessageId: 'm1' })
+
+    expect(
+      (await new WidgetApi('https://api.test', read).bootstrap('pk', 'v')).readUpToMessageId
+    ).toBe('m1')
+  })
+
+  it('does not accept an answer that leaves out the id of the last message read', async () => {
+    const without: Partial<typeof BOOTSTRAP> = { ...BOOTSTRAP }
+    delete without.readUpToMessageId
+    const api = new WidgetApi('https://api.test', answering(200, without))
+
+    await expect(api.bootstrap('pk', 'v')).rejects.toBeInstanceOf(WidgetApiError)
   })
 
   it('does not accept an answer of another shape', async () => {

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { type AccountProfile, accountProfileSchema } from '@platform/api-client'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
+import { ChannelIds } from '@platform/core/domain'
+import { HttpStatusCodes } from '@platform/core/errors'
 
 import { FORWARDED_FOR, newClientIp } from './client-ip'
 import { API_URL } from './env'
@@ -72,5 +74,62 @@ export async function writeNote(
       content,
       idempotencyKey: crypto.randomUUID()
     })
+  })
+}
+
+const connectedSchema = z.object({ id: z.string().min(1) })
+const embedSchema = z.object({ siteKey: z.string().min(1), snippet: z.string().min(1) })
+
+export interface WidgetSite {
+  connectionId: string
+  siteKey: string
+  snippet: string
+}
+
+const storeHeaders = (token: string, storeId: string) => ({
+  authorization: `Bearer ${token}`,
+  [TenantHeaders.STORE_ID]: storeId
+})
+
+// What the owner of a store does to put the web widget on a site: installs the channel (once; a
+// store that has it keeps it), connects it for the sites and reads the snippet to paste
+export async function connectWidget(
+  token: string,
+  storeId: string,
+  siteOrigins: string[]
+): Promise<WidgetSite> {
+  const headers = storeHeaders(token, storeId)
+  await call(ApiRoutes.plugins.install, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ pluginId: ChannelIds.WEB_WIDGET })
+  }).catch((error: unknown) => {
+    // The laptop keeps its database between runs, so the channel may already be installed
+    if (!(error instanceof Error) || !error.message.endsWith(`${HttpStatusCodes.CONFLICT}`)) {
+      throw error
+    }
+  })
+  const { id } = connectedSchema.parse(
+    await call(ApiRoutes.channels.connect(ChannelIds.WEB_WIDGET), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ credentials: { siteOrigins } })
+    })
+  )
+  const embed = embedSchema.parse(await call(ApiRoutes.channels.widgetEmbed(id), { headers }))
+  return { connectionId: id, ...embed }
+}
+
+// The sites that may load the widget, replaced by the list
+export async function setWidgetOrigins(
+  token: string,
+  storeId: string,
+  connectionId: string,
+  siteOrigins: string[]
+): Promise<void> {
+  await call(ApiRoutes.channels.widgetOrigins(connectionId), {
+    method: 'PUT',
+    headers: storeHeaders(token, storeId),
+    body: JSON.stringify({ siteOrigins })
   })
 }

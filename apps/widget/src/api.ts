@@ -47,7 +47,8 @@ function isBootstrap(value: unknown): value is Bootstrap {
     typeof value['store']['locale'] === 'string' &&
     typeof value['away'] === 'boolean' &&
     Array.isArray(value['messages']) &&
-    value['messages'].every(isServerMessage)
+    value['messages'].every(isServerMessage) &&
+    (value['readUpToMessageId'] === null || typeof value['readUpToMessageId'] === 'string')
   )
 }
 
