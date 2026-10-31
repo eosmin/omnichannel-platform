@@ -1,5 +1,14 @@
 import { createApiClient } from './api-client'
-import { fetchCustomer, fetchCustomerConversations, fetchCustomerTimeline } from './customers-api'
+import {
+  attachCustomerTag,
+  createCustomerAddress,
+  deleteCustomerNote,
+  fetchCustomer,
+  fetchCustomerConversations,
+  fetchCustomers,
+  fetchCustomerTimeline,
+  updateCustomer
+} from './customers-api'
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -85,5 +94,89 @@ describe('fetchCustomer', () => {
     const { client } = setup(json(200, { id: 'c1' }))
 
     await expect(fetchCustomer(client, 's1', 'c1')).rejects.toThrow()
+  })
+})
+
+describe('fetchCustomers', () => {
+  const page = { data: [], nextCursor: null, hasMore: false }
+
+  it('sends the search and the cursor, and nothing for an empty search', async () => {
+    const { client, fetchImpl } = setup(json(200, page))
+
+    await fetchCustomers(client, 's1', { q: 'ana', cursor: 'cur' })
+    await fetchCustomers(client, 's1', { q: '', cursor: null })
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/customers?q=ana&cursor=cur'
+    )
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe('https://api.example.com/api/v1/customers')
+  })
+})
+
+describe('customer changes', () => {
+  const detail = {
+    id: 'c1',
+    name: 'Ana',
+    email: null,
+    phone: null,
+    locale: null,
+    isCaution: false,
+    cautionReason: null,
+    identities: [],
+    addresses: [],
+    tags: [],
+    createdAt: '2026-10-01T00:00:00.000Z',
+    updatedAt: '2026-10-01T00:00:00.000Z'
+  }
+
+  it('patches only the fields it is given, with null to clear', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+
+    await updateCustomer(client, 's1', 'c1', { email: null })
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/c1')
+    expect(init?.method).toBe('PATCH')
+    expect(init?.body).toBe(JSON.stringify({ email: null }))
+  })
+
+  it('posts a new address and reads the one it answers', async () => {
+    const address = {
+      id: 'a1',
+      label: null,
+      line1: 'Calle 1',
+      line2: null,
+      city: 'SS',
+      state: null,
+      postalCode: null,
+      country: 'SV',
+      isDefault: false
+    }
+    const { client, fetchImpl } = setup(json(201, address))
+
+    const created = await createCustomerAddress(client, 's1', 'c1', {
+      line1: 'Calle 1',
+      city: 'SS'
+    })
+
+    expect(created.id).toBe('a1')
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/customers/c1/addresses'
+    )
+  })
+
+  it('attaches a tag and answers the tags the customer holds', async () => {
+    const { client } = setup(json(200, [{ id: 't1', name: 'VIP', color: '#ff0000' }]))
+
+    await expect(attachCustomerTag(client, 's1', 'c1', 't1')).resolves.toEqual([
+      { id: 't1', name: 'VIP', color: '#ff0000' }
+    ])
+  })
+
+  it('deletes a note and accepts the empty answer', async () => {
+    const { client, fetchImpl } = setup(new Response(null, { status: 204 }))
+
+    await expect(deleteCustomerNote(client, 's1', 'c1', 'n1')).resolves.toBeUndefined()
+    expect(fetchImpl.mock.calls[0]?.[1].method).toBe('DELETE')
   })
 })

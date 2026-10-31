@@ -1,10 +1,9 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
 
-import { AppPaths } from '@platform/api-client'
 import { Shortcuts } from '@platform/core/domain'
 
 import { Composer } from '../../components/inbox/composer'
@@ -20,6 +19,7 @@ import { ShortcutHelp } from '../../components/inbox/shortcut-help'
 import { TypingLine } from '../../components/inbox/typing-line'
 import { useStore } from '../../components/providers/store-context'
 import { ShortcutsProvider, useShortcut } from '../../components/shortcuts/shortcuts-provider'
+import { useGoToShortcuts } from '../../components/shortcuts/use-go-to'
 import {
   useChannelDirectory,
   useConversationCounts,
@@ -55,12 +55,9 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
   const members = useMemberDirectory(storeId)
   const tags = useTags(storeId)
   const isOpen = conversationId !== undefined
-  const router = useRouter()
   const [isHelpOpen, setHelpOpen] = useState(false)
   useShortcut(Shortcuts.list.SHOW_HELP, () => setHelpOpen(true))
-  useShortcut(Shortcuts.global.GO_TO_INBOX, () =>
-    router.push(`${AppPaths.store.inbox(storeId)}${search}`)
-  )
+  useGoToShortcuts(search)
 
   return (
     <div className="-m-4 flex h-[calc(100dvh-3.5rem)]">

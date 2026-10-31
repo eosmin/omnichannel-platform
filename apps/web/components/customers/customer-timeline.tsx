@@ -1,6 +1,6 @@
 'use client'
 
-import { MessageSquare, GitMerge, StickyNote } from 'lucide-react'
+import { MessageSquare, GitMerge, StickyNote, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
@@ -10,12 +10,15 @@ import { Permissions } from '@platform/core/auth'
 import { CustomerTimelineTypes } from '@platform/core/domain'
 
 import { groupByDay } from '../../lib/customers/timeline-days'
-import { useCustomerTimeline } from '../../lib/customers/use-customer-data'
+import { useCustomerEdits, useCustomerTimeline } from '../../lib/customers/use-customer-data'
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
+import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
+
+import { MutationError } from './mutation-error'
 
 const ALL = 'all'
 // Merges stay in the "All" view: they are an event of the record, not something to filter for
@@ -59,11 +62,54 @@ function ConversationEntry({
   )
 }
 
+// A note is deleted by who wrote it or by who may delete customers (the api checks the same)
+function NoteEntry({
+  entry,
+  customerId
+}: {
+  entry: Extract<CustomerTimelineEntryView, { type: 'note' }>
+  customerId: string
+}): ReactElement {
+  const t = useTranslations('customers.timeline')
+  const { storeId, can } = useStore()
+  const profile = useProfile()
+  const { removeNote } = useCustomerEdits(storeId, customerId)
+  const mayDelete =
+    can(Permissions.CUSTOMERS_EDIT) &&
+    (can(Permissions.CUSTOMERS_DELETE) || profile.data?.id === entry.authorId)
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <p className="flex flex-1 items-center gap-2 text-sm font-medium">
+          <StickyNote aria-hidden className="size-4" />
+          {entry.authorName === null ? t('note') : t('noteBy', { name: entry.authorName })}
+        </p>
+        {mayDelete ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            aria-label={t('deleteNote')}
+            disabled={removeNote.isPending}
+            onClick={() => removeNote.mutate(entry.id)}
+          >
+            <Trash2 />
+          </Button>
+        ) : null}
+      </div>
+      <p className="text-sm break-words whitespace-pre-wrap">{entry.content}</p>
+      <MutationError error={removeNote.error} />
+    </div>
+  )
+}
+
 function Entry({
   entry,
+  customerId,
   onNavigate
 }: {
   entry: CustomerTimelineEntryView
+  customerId: string
   onNavigate: () => void
 }): ReactElement {
   const t = useTranslations('customers.timeline')
@@ -71,15 +117,7 @@ function Entry({
     case 'conversation':
       return <ConversationEntry entry={entry} onNavigate={onNavigate} />
     case 'note':
-      return (
-        <div className="flex flex-col gap-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <StickyNote aria-hidden className="size-4" />
-            {entry.authorName === null ? t('note') : t('noteBy', { name: entry.authorName })}
-          </p>
-          <p className="text-sm break-words whitespace-pre-wrap">{entry.content}</p>
-        </div>
-      )
+      return <NoteEntry entry={entry} customerId={customerId} />
     case 'merge':
       return (
         <div className="flex flex-col gap-1">
@@ -158,7 +196,7 @@ export function CustomerTimeline({
           <ul className="flex flex-col gap-4">
             {day.entries.map(entry => (
               <li key={`${entry.type}-${entry.id}`}>
-                <Entry entry={entry} onNavigate={onNavigate} />
+                <Entry entry={entry} customerId={customerId} onNavigate={onNavigate} />
               </li>
             ))}
           </ul>

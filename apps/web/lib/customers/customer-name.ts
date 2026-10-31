@@ -23,3 +23,13 @@ export function initialsOfName(name: string | null): string {
   const words = name.trim().split(/\s+/u).slice(0, 2)
   return words.map(word => [...word][0]?.toUpperCase() ?? '').join('') || '?'
 }
+
+// The row of the customers page has no identities: the name, else the e-mail, else the phone
+export function customerListLabel(
+  customer: Pick<CustomerDetailView, 'name' | 'email' | 'phone'>
+): string | null {
+  const found = [customer.name, customer.email, customer.phone].find(
+    value => value !== null && value.trim() !== ''
+  )
+  return found ?? null
+}

@@ -246,6 +246,7 @@ test.describe.serial('the inbox list', () => {
     const titles = () => sidebar.getByRole('heading', { level: 2 }).allTextContents()
     const before = await titles()
     expect(before).toEqual([
+      en.inbox.sidebar.widgets.quickActions,
       en.inbox.sidebar.widgets.unassignedQueue,
       en.inbox.sidebar.widgets.teamStatus
     ])
@@ -296,6 +297,34 @@ test.describe.serial('the inbox list', () => {
     await expect(drawer).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(drawer).toBeHidden()
+  })
+
+  test('finds a customer from the sidebar, edits the profile and jumps back with g i', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const sidebar = page.getByRole('complementary', { name: en.inbox.sidebar.label })
+    await sidebar.getByRole('link', { name: en.inbox.sidebar.quick.findCustomer }).click()
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
+    await expect(page.getByRole('searchbox', { name: en.customers.list.searchLabel })).toBeFocused()
+
+    // Any customer: the first row opens the drawer, where the name is changed
+    const table = page.getByRole('table', { name: en.customers.list.title })
+    await table.getByRole('button').first().click()
+    const drawer = page.getByRole('dialog', { name: en.customers.profile.title })
+    await drawer.getByRole('button', { name: en.customers.edit.editProfile }).click()
+    const name = `Edited ${Date.now()}`
+    await drawer.getByLabel(en.customers.edit.name).fill(name)
+    await drawer.getByRole('button', { name: en.customers.edit.save }).click()
+    await expect(drawer.getByText(name)).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+
+    // The shortcut of the page goes back to the inbox
+    await page.locator('body').click()
+    await page.keyboard.press('g')
+    await page.keyboard.press('i')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.inbox(storeId)}`))
   })
 
   test('shows the list alone on a phone, and the conversation alone once one is open', async () => {

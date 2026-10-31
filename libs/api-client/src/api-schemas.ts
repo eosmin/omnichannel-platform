@@ -375,6 +375,40 @@ export const customerDetailSchema = z.object({
 })
 export type CustomerDetailView = z.output<typeof customerDetailSchema>
 
+export type CustomerAddressView = CustomerDetailView['addresses'][number]
+export const customerAddressSchema = customerDetailSchema.shape.addresses.element
+
+// GET /customers: a row of the customers page
+export const customerListItemSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  isCaution: z.boolean(),
+  channels: z.array(z.string()),
+  tags: z.array(z.object({ id: z.string(), name: z.string(), color: z.string() })),
+  createdAt: z.string()
+})
+export type CustomerListItemView = z.output<typeof customerListItemSchema>
+export const customerListPageSchema = z.object({
+  data: z.array(customerListItemSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type CustomerListPageView = z.output<typeof customerListPageSchema>
+
+// POST /customers/:id/notes
+export const customerNoteSchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  content: z.string(),
+  createdAt: z.string()
+})
+export type CustomerNoteView = z.output<typeof customerNoteSchema>
+
+// POST /customers/:id/tags answers the tags the customer now holds
+export const customerTagListSchema = customerDetailSchema.shape.tags
+
 // The three kinds of entry of GET /customers/:id/timeline (orders join in Step 4.3)
 const timelineConversationSchema = z.object({
   type: z.literal('conversation'),

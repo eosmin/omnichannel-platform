@@ -12,16 +12,18 @@ import { TopBar } from './top-bar'
 export function AppFrame({
   profile,
   currentStoreId,
+  nav,
   children
 }: {
   profile: AccountProfile
   currentStoreId: string | null
+  nav?: ReactNode
   children: ReactNode
 }): ReactElement {
   const t = useTranslations('app')
   return (
     <div className="flex min-h-dvh flex-col">
-      <TopBar profile={profile} currentStoreId={currentStoreId} appTitle={t('title')} />
+      <TopBar profile={profile} currentStoreId={currentStoreId} appTitle={t('title')} nav={nav} />
       <ConnectionIndicator />
       <main className="flex-1 p-4">{children}</main>
     </div>

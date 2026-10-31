@@ -79,7 +79,62 @@
       "mergedBy": "Por {name}",
       "empty": "Aún no hay actividad.",
       "failed": "No se pudo cargar la actividad.",
-      "loadMore": "Cargar más"
+      "loadMore": "Cargar más",
+      "deleteNote": "Eliminar la nota"
+    },
+    "edit": {
+      "editProfile": "Editar los datos de contacto",
+      "name": "Nombre",
+      "email": "Correo",
+      "phone": "Teléfono",
+      "save": "Guardar",
+      "tags": {
+        "remove": "Quitar la etiqueta {name}",
+        "add": "Agregar {name}",
+        "addLabel": "Agregar una etiqueta",
+        "failed": "No se pudieron cargar las etiquetas de la tienda."
+      },
+      "note": {
+        "label": "Agregar una nota sobre este cliente",
+        "add": "Agregar la nota"
+      },
+      "address": {
+        "add": "Agregar una dirección",
+        "edit": "Editar la dirección",
+        "remove": "Eliminar la dirección",
+        "save": "Guardar la dirección",
+        "makeDefault": "Usar como dirección predeterminada",
+        "fields": {
+          "label": "Etiqueta",
+          "line1": "Dirección, línea 1",
+          "line2": "Dirección, línea 2",
+          "city": "Ciudad",
+          "state": "Estado",
+          "postalCode": "Código postal",
+          "country": "País (dos letras)"
+        }
+      }
+    },
+    "list": {
+      "title": "Clientes",
+      "noAccess": "No tienes acceso a los clientes.",
+      "searchLabel": "Buscar clientes",
+      "searchPlaceholder": "Buscar por nombre, correo o teléfono",
+      "export": "Exportar CSV",
+      "exportSoon": "La exportación aún no está disponible.",
+      "unnamed": "Cliente sin nombre",
+      "caution": "Precaución",
+      "failed": "No se pudieron cargar los clientes.",
+      "empty": "Aún no hay clientes.",
+      "noMatches": "Ningún cliente coincide con la búsqueda.",
+      "loadMore": "Cargar más",
+      "columns": {
+        "name": "Cliente",
+        "contact": "Contacto",
+        "channels": "Canales",
+        "tags": "Etiquetas",
+        "since": "Cliente desde"
+      }
     }
   },
   "email": {
@@ -454,7 +509,12 @@
     "stores": "Tiendas",
     "manageStores": "Administrar tiendas",
     "account": "Cuenta",
-    "accountMenu": "Menú de la cuenta"
+    "accountMenu": "Menú de la cuenta",
+    "nav": {
+      "label": "Páginas de la tienda",
+      "inbox": "Bandeja",
+      "customers": "Clientes"
+    }
   },
   "inbox": {
     "listLabel": "Conversaciones",
@@ -903,7 +963,8 @@
         },
         "global": {
           "SEND_MESSAGE": "Enviar el mensaje",
-          "GO_TO_INBOX": "Ir a la bandeja"
+          "GO_TO_INBOX": "Ir a la bandeja",
+          "GO_TO_CUSTOMERS": "Ir a clientes"
         }
       }
     },
@@ -914,6 +975,7 @@
       "moveUp": "Subir {widget}",
       "moveDown": "Bajar {widget}",
       "widgets": {
+        "quickActions": "Acciones rápidas",
         "teamStatus": "Estado del equipo",
         "unassignedQueue": "Cola sin asignar"
       },
@@ -936,6 +998,10 @@
         "take": "Tomarla",
         "takeFor": "Tomar la conversación con {name}",
         "seeAll": "Ver todas"
+      },
+      "quick": {
+        "findCustomer": "Buscar cliente",
+        "none": "No hay acciones disponibles."
       }
     }
   }
