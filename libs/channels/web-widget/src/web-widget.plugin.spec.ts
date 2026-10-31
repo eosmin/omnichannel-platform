@@ -92,6 +92,36 @@ describe('WebWidgetPlugin', () => {
       })
     })
 
+    it('carries what the visitor typed in the form as the profile of the event', async () => {
+      const [event] = await plugin.handleWebhook({
+        ...body,
+        profile: { name: 'Ana', email: 'ana@example.com', phone: '+503 7000 1111' }
+      })
+
+      expect(event?.channelProfile).toEqual({
+        displayName: 'Ana',
+        email: 'ana@example.com',
+        phone: '+503 7000 1111'
+      })
+    })
+
+    it('sends no profile when there is none, or when it is empty', async () => {
+      const [without] = await plugin.handleWebhook(body)
+      const [empty] = await plugin.handleWebhook({ ...body, profile: {} })
+
+      expect(without).not.toHaveProperty('channelProfile')
+      expect(empty).not.toHaveProperty('channelProfile')
+    })
+
+    it('reads nothing from a profile with a field it does not know or one that is too long', async () => {
+      await expect(
+        plugin.handleWebhook({ ...body, profile: { name: 'Ana', admin: true } })
+      ).resolves.toEqual([])
+      await expect(
+        plugin.handleWebhook({ ...body, profile: { email: 'a'.repeat(255) } })
+      ).resolves.toEqual([])
+    })
+
     it('reads nothing from a bad token, an empty text or a bad id', async () => {
       await expect(plugin.handleWebhook({ ...body, visitorToken: 'x.y' })).resolves.toEqual([])
       await expect(plugin.handleWebhook({ ...body, content: '   ' })).resolves.toEqual([])

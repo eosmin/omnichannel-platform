@@ -1,4 +1,12 @@
-import { isAllowedOrigin, isSiteKey, newSiteKey, originOf, siteOriginsSchema } from './widget-site'
+import {
+  allowedOriginsOf,
+  isAllowedOrigin,
+  isSiteKey,
+  newSiteKey,
+  originOf,
+  preChatEnabledOf,
+  siteOriginsSchema
+} from './widget-site'
 
 describe('site key', () => {
   it('makes keys that are recognized and never repeat', () => {
@@ -54,5 +62,26 @@ describe('origins', () => {
     expect(isAllowedOrigin(['https://a.test'], 'https://b.test')).toBe(false)
     expect(isAllowedOrigin(['https://a.test'], undefined)).toBe(false)
     expect(isAllowedOrigin([], 'https://a.test')).toBe(false)
+  })
+})
+
+describe('the metadata of a connection', () => {
+  it('has the pre-chat form off unless it says so with a boolean', () => {
+    const origins = { allowedOrigins: ['https://shop.test'] }
+
+    expect(preChatEnabledOf(origins)).toBe(false)
+    expect(preChatEnabledOf({ ...origins, preChatEnabled: true })).toBe(true)
+    expect(preChatEnabledOf({ ...origins, preChatEnabled: false })).toBe(false)
+    expect(preChatEnabledOf({ ...origins, preChatEnabled: 'true' })).toBe(false)
+    expect(preChatEnabledOf(null)).toBe(false)
+  })
+
+  it('keeps the sites when the form is on, and a bad flag does not close the widget', () => {
+    expect(
+      allowedOriginsOf({ allowedOrigins: ['https://shop.test'], preChatEnabled: true })
+    ).toEqual(['https://shop.test'])
+    expect(allowedOriginsOf({ allowedOrigins: ['https://shop.test'], preChatEnabled: 1 })).toEqual([
+      'https://shop.test'
+    ])
   })
 })

@@ -63,6 +63,7 @@ interface BootstrapBody {
   expiresInSeconds: number
   store: { name: string; locale: string }
   away: boolean
+  preChat: boolean
   messages: MessageBody[]
   readUpToMessageId: string | null
 }
@@ -177,6 +178,7 @@ describe('The web widget', () => {
       expect(body.store.name).toBe(`${prefix}-store-a`)
       expect(body.store.locale).toBe('es')
       expect(body.away).toBe(false)
+      expect(body.preChat).toBe(false)
       expect(body.messages).toEqual([])
       expect(response.headers['access-control-allow-origin']).toBe(SITE)
     })
@@ -984,6 +986,7 @@ describe('The web widget', () => {
     interface EmbedBody {
       siteKey: string
       allowedOrigins: string[]
+      preChatEnabled: boolean
       snippet: string
     }
     const NEW_SITE = 'https://www.example.com'
@@ -1108,6 +1111,158 @@ describe('The web widget', () => {
         .send({ siteOrigins: [SITE] })
 
       expect(response.status).toBe(409)
+    })
+  })
+  describe('the pre-chat form', () => {
+    const PROFILE = { name: 'Ana', email: 'ana@example.com', phone: '+503 7000 1111' }
+    const turn = (id: string, enabled: boolean, actor = ctx.adminA, store = ctx.storeA) =>
+      api(app, actor, store).put(ApiRoutes.channels.widgetPreChat(id)).send({ enabled })
+    async function widget(): Promise<{ id: string; siteKey: string }> {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const row = await owner.channelConnection.findFirstOrThrow({
+        where: { pluginId: ChannelIds.WEB_WIDGET, connectionId: siteKey },
+        select: { id: true }
+      })
+      return { id: row.id, siteKey }
+    }
+    const sendWithProfile = async (siteKey: string) => {
+      const visitor = await enter(siteKey)
+      queued().length = 0
+      await send({
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        content: 'hola',
+        profile: PROFILE
+      }).expect(OK)
+      return (queued()[0]?.data as ProcessChannelEventJob).event
+    }
+
+    it('is off for a new widget, and the owner turns it on and off', async () => {
+      const { id, siteKey } = await widget()
+      expect((await enter(siteKey)).preChat).toBe(false)
+
+      const on = await turn(id, true).expect(OK)
+      expect((on.body as { preChatEnabled: boolean }).preChatEnabled).toBe(true)
+      expect((await enter(siteKey)).preChat).toBe(true)
+      const embed = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.channels.widgetEmbed(id))
+        .expect(OK)
+      expect((embed.body as { preChatEnabled: boolean }).preChatEnabled).toBe(true)
+
+      await turn(id, false).expect(OK)
+      expect((await enter(siteKey)).preChat).toBe(false)
+    })
+
+    it('stays on when the sites change, and the sites stay when it changes', async () => {
+      const { id, siteKey } = await widget()
+      await turn(id, true).expect(OK)
+
+      await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.channels.widgetOrigins(id))
+        .send({ siteOrigins: [SITE, 'https://www.example.com'] })
+        .expect(OK)
+      expect((await enter(siteKey)).preChat).toBe(true)
+      await turn(id, false).expect(OK)
+
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id } })
+      expect(row.metadata).toEqual({
+        allowedOrigins: [SITE, 'https://www.example.com'],
+        preChatEnabled: false
+      })
+    })
+
+    it('keeps both changes when the sites and the form are saved at the same moment', async () => {
+      const { id } = await widget()
+
+      await Promise.all([
+        turn(id, true).expect(OK),
+        api(app, ctx.adminA, ctx.storeA)
+          .put(ApiRoutes.channels.widgetOrigins(id))
+          .send({ siteOrigins: ['https://www.example.com'] })
+          .expect(OK)
+      ])
+
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id } })
+      expect(row.metadata).toEqual({
+        allowedOrigins: ['https://www.example.com'],
+        preChatEnabled: true
+      })
+    })
+
+    it('refuses a body that is not exactly the switch', async () => {
+      const { id } = await widget()
+      const put = (body: object) =>
+        api(app, ctx.adminA, ctx.storeA).put(ApiRoutes.channels.widgetPreChat(id)).send(body)
+
+      expect((await put({})).status).toBe(BAD_REQUEST)
+      expect((await put({ enabled: 'yes' })).status).toBe(BAD_REQUEST)
+      expect((await put({ enabled: true, extra: 1 })).status).toBe(BAD_REQUEST)
+    })
+
+    it('needs the right to edit settings, and is not found from another store', async () => {
+      const { id } = await widget()
+
+      expect((await turn(id, true, ctx.viewerA)).status).toBe(FORBIDDEN)
+      expect((await turn(id, true, ctx.adminB, ctx.storeB)).status).toBe(NOT_FOUND)
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id } })
+      expect(row.metadata).toEqual({ allowedOrigins: [SITE] })
+    })
+
+    it('is a conflict for a widget that was disconnected', async () => {
+      const { id } = await widget()
+      await api(app, ctx.adminA, ctx.storeA).post(ApiRoutes.channels.disconnect(id)).expect(OK)
+
+      expect((await turn(id, true)).status).toBe(409)
+    })
+
+    it('records in the audit log who turned it on', async () => {
+      const { id } = await widget()
+      await turn(id, true).expect(OK)
+
+      const where = { resourceId: id, action: 'channel.widget_pre_chat_changed' }
+      const deadline = Date.now() + WAIT_MS
+      while ((await owner.auditLog.count({ where })) === 0 && Date.now() < deadline) {
+        await sleep(POLL_MS)
+      }
+      const entry = await owner.auditLog.findFirstOrThrow({ where })
+
+      expect(entry.metadata).toEqual({ before: false, after: true })
+    })
+
+    it('sends the profile with the message when the store turned the form on', async () => {
+      const { id, siteKey } = await widget()
+      await turn(id, true).expect(OK)
+
+      const event = await sendWithProfile(siteKey)
+
+      expect(event.channelProfile).toEqual({
+        displayName: 'Ana',
+        email: 'ana@example.com',
+        phone: '+503 7000 1111'
+      })
+    })
+
+    it('drops the profile of a script when the store did not turn the form on', async () => {
+      const { siteKey } = await widget()
+
+      const event = await sendWithProfile(siteKey)
+
+      expect(event).not.toHaveProperty('channelProfile')
+    })
+
+    it('refuses a profile with a field it does not know', async () => {
+      const { id, siteKey } = await widget()
+      await turn(id, true).expect(OK)
+      const visitor = await enter(siteKey)
+
+      const response = await send({
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        content: 'hola',
+        profile: { name: 'Ana', role: 'admin' }
+      })
+
+      expect(response.status).toBe(BAD_REQUEST)
     })
   })
 })

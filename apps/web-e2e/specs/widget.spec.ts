@@ -4,8 +4,14 @@ import { AppPaths } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { connectWidget, signInByApi, type WidgetSite, setWidgetOrigins } from '../support/api'
-import { storeIdNamed } from '../support/database'
+import {
+  connectWidget,
+  setWidgetOrigins,
+  setWidgetPreChat,
+  signInByApi,
+  type WidgetSite
+} from '../support/api'
+import { storeIdNamed, withOwner } from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 import { openSite, SITE_ORIGIN, startSite, STRICT_CSP } from '../support/widget-site'
@@ -19,7 +25,11 @@ const OTHER_SITE = 'https://other.example.com'
 const WIDGET_TEXT = {
   open: 'Open the chat',
   input: 'Write a message',
-  send: 'Send'
+  send: 'Send',
+  name: 'Name',
+  email: 'Email',
+  startChat: 'Start the chat',
+  invalidEmail: 'Check the email.'
 } as const
 
 // A visitor's browser, which reaches the api from an address of its own
@@ -117,5 +127,42 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
 
     await expect(visitor.page.getByRole('button', { name: WIDGET_TEXT.open })).toHaveCount(0)
     await visitor.context.close()
+  })
+  test('asks for the contact data first when the store wants it, and the customer carries it', async ({
+    browser
+  }) => {
+    await setWidgetOrigins(ownerToken, storeId, site.connectionId, [SITE_ORIGIN])
+    await setWidgetPreChat(ownerToken, storeId, site.connectionId, true)
+    const visitor = await visitorBrowser(browser)
+    await openSite(visitor.page)
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
+
+    // The form comes before the conversation, and an address that cannot be right holds it back
+    await expect(visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input })).toBeHidden()
+    await visitor.page.getByLabel(WIDGET_TEXT.name).fill('Lucia Prechat')
+    await visitor.page.getByLabel(WIDGET_TEXT.email).fill('not an address')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.startChat }).click()
+    await expect(visitor.page.getByText(WIDGET_TEXT.invalidEmail)).toBeVisible()
+    await visitor.page.getByLabel(WIDGET_TEXT.email).fill('Lucia.Prechat@Example.com')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.startChat }).click()
+
+    await visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input }).fill('Do you ship abroad?')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
+    await expect(visitor.page.getByRole('log').getByText('Do you ship abroad?')).toBeVisible()
+
+    // The worker stores it with the first message: the customer has the name and the address
+    await expect(async () => {
+      const customer = await withOwner(owner =>
+        owner.customer.findFirst({ where: { storeId, email: 'lucia.prechat@example.com' } })
+      )
+      expect(customer?.name).toBe('Lucia Prechat')
+    }).toPass({ timeout: 15_000 })
+
+    // Asked once: the same browser, a new visit, goes straight to the conversation
+    await visitor.page.reload()
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
+    await expect(visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input })).toBeVisible()
+    await visitor.context.close()
+    await setWidgetPreChat(ownerToken, storeId, site.connectionId, false)
   })
 })

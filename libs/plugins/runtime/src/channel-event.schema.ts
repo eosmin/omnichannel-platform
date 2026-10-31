@@ -107,7 +107,10 @@ export const channelEventSchema = z
       .strictObject({
         displayName: text(200).optional(),
         avatarUrl: z.url().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
-        locale: text(35).optional()
+        locale: text(35).optional(),
+        // Typed by the person in a form, not proved: the core reads them as contact data
+        email: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
+        phone: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional()
       })
       .optional(),
     message: message.optional(),

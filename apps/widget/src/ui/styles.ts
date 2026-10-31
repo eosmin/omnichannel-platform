@@ -104,6 +104,22 @@ svg { width: 20px; height: 20px; display: block; }
   background: var(--accent); color: var(--on-accent);
 }
 .send:disabled { opacity: 0.5; cursor: default; }
+.prechat { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.prechat[hidden] { display: none; }
+.messages[hidden], .composer[hidden] { display: none; }
+.intro { margin: 0; color: var(--muted); }
+.label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.input {
+  padding: 8px 10px; font: inherit; color: var(--text); background: transparent;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.input:focus-visible, .start:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.problem { margin: 0; font-size: 12px; color: var(--error); }
+.problem[hidden] { display: none; }
+.start {
+  border: 0; border-radius: 10px; padding: 10px 12px; font-weight: 600;
+  background: var(--accent); color: var(--on-accent);
+}
 @media (max-width: 480px) {
   :host { right: 12px; bottom: 12px; }
   .panel { position: fixed; inset: 0; width: auto; height: auto; max-width: none; max-height: none; border-radius: 0; }

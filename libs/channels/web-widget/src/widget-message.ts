@@ -6,6 +6,16 @@ import { WidgetLimits } from '@platform/core/domain'
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/
 const INVISIBLE_ONLY = /^[\s\u200b-\u200f\u2060\ufeff]*$/
 
+// What the pre-chat form collects, all of it optional and none of it proved. Only the size is checked
+// here: a value the core cannot read (an address with no @) is dropped there, so that a typo does not
+// cost the visitor their message.
+export const widgetProfileSchema = z.strictObject({
+  name: z.string().max(WidgetLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
+  email: z.string().max(WidgetLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
+  phone: z.string().max(WidgetLimits.PROFILE_FIELD_MAX_LENGTH).optional()
+})
+export type WidgetProfile = z.output<typeof widgetProfileSchema>
+
 // What a visitor sends: the token from the bootstrap, an id the browser made for the message (sending
 // it again stores it once) and the text. The token travels in the body, beside what it authorizes, so
 // that the plugin can check it where it reads the message.
@@ -24,6 +34,8 @@ export const widgetMessageSchema = z.object({
     // A NUL cannot be stored in text and the other controls are noise, but a line break and a tab are
     // what people type; a text of zero-width characters shows nothing
     .refine(text => !CONTROL_CHARACTERS.test(text), { message: 'control characters' })
-    .refine(text => !INVISIBLE_ONLY.test(text), { message: 'nothing to show' })
+    .refine(text => !INVISIBLE_ONLY.test(text), { message: 'nothing to show' }),
+  // Sent with the first message once the visitor filled the form
+  profile: widgetProfileSchema.optional()
 })
 export type WidgetMessage = z.output<typeof widgetMessageSchema>

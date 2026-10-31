@@ -6,9 +6,9 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType } from '@platform/core/domain'
+import { ChannelIds, ChannelType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { CustomerIdentityService } from '@platform/core/messaging'
+import { type ChannelProfile, CustomerIdentityService } from '@platform/core/messaging'
 
 import { createConversation, createCustomer, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -449,6 +449,72 @@ describe('The customers of a store', () => {
       })
     })
 
+    describe('the contact data a person typed in a form', () => {
+      const widget = (storeId: string, visitor: string, profile?: ChannelProfile) =>
+        identities().findOrCreateByIdentity({
+          storeId,
+          channelType: ChannelIds.WEB_WIDGET,
+          channelIdentity: visitor,
+          profile
+        })
+
+      it('is kept on the new customer, the address in lower case and the phone with its country code', async () => {
+        const visitor = randomUUID()
+
+        const result = await widget(ctx.storeA.id, visitor, {
+          displayName: 'Ana',
+          email: ' Ana@Example.COM ',
+          phone: '7000 2222'
+        })
+
+        const row = await owner.customer.findUniqueOrThrow({ where: { id: result.customerId } })
+        expect(row).toMatchObject({
+          name: 'Ana',
+          email: 'ana@example.com',
+          phoneNormalized: '50370002222'
+        })
+      })
+
+      it('drops an address or a number that cannot be read, and keeps the rest', async () => {
+        const result = await widget(ctx.storeA.id, randomUUID(), {
+          displayName: 'Beto',
+          email: 'not an address',
+          phone: 'abc'
+        })
+
+        const row = await owner.customer.findUniqueOrThrow({ where: { id: result.customerId } })
+        expect(row).toMatchObject({ name: 'Beto', email: null, phone: null, phoneNormalized: null })
+      })
+
+      it('fills a blank of the customer later and never replaces what is there', async () => {
+        const visitor = randomUUID()
+        const first = await widget(ctx.storeA.id, visitor, { displayName: 'Carla' })
+
+        await widget(ctx.storeA.id, visitor, { email: 'carla@example.com', phone: '7000 3333' })
+        await widget(ctx.storeA.id, visitor, { email: 'other@example.com', phone: '7000 4444' })
+
+        const row = await owner.customer.findUniqueOrThrow({ where: { id: first.customerId } })
+        expect(row).toMatchObject({ email: 'carla@example.com', phoneNormalized: '50370003333' })
+      })
+
+      it('never links a visitor to the customer who has that address: nobody proved it was theirs', async () => {
+        const owned = await owner.customer.create({
+          data: { storeId: ctx.storeA.id, name: 'Dueña', email: 'duena@example.com' }
+        })
+
+        const stranger = await widget(ctx.storeA.id, randomUUID(), {
+          displayName: 'Intruso',
+          email: 'duena@example.com'
+        })
+
+        expect(stranger.customerId).not.toBe(owned.id)
+        expect(stranger.created).toBe(true)
+        const untouched = await owner.customer.findUniqueOrThrow({ where: { id: owned.id } })
+        expect(untouched).toMatchObject({ name: 'Dueña', email: 'duena@example.com' })
+        expect(await owner.customerIdentity.count({ where: { customerId: owned.id } })).toBe(0)
+      })
+    })
+
     it('does not trust the profile a channel sends', async () => {
       const blank = await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
@@ -703,7 +769,7 @@ describe('The customers of a store', () => {
         data: {
           storeId: ctx.storeA.id,
           customerId: withHistory.id,
-          channelType: ChannelType.WEB_WIDGET,
+          channelType: ChannelIds.WEB_WIDGET,
           channelIdentity: `${prefix}-visitor`
         }
       })

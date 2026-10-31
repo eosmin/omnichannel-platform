@@ -724,8 +724,9 @@ holds the origins allowed to load the widget and call the widget API (CORS, `TDD
 
 **Visitor identity.** `widget.js` keeps a `visitorId` (UUID) in `localStorage` on the
 merchant's site; that is the `channelIdentity`. A pre-chat form (optional per store) collects
-name/email/phone into `channelProfile`; an email match links the visitor to an existing
-customer through the normal identity-linking rules.
+name/email/phone into `channelProfile`. Nobody proves what a visitor types, so an email never links
+the visitor to an existing customer: the typed data goes on the visitor's own customer, and a
+duplicate is for an agent to merge (`MVP_TRIM_CHECKLIST.md`, Step 3.3 PR D2).
 
 **Transport.** The widget is a client of two public endpoints and one socket namespace,
 all authenticated by the site key + visitor id and origin-checked:

@@ -2,7 +2,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { WidgetAuthors } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
-import type { Bootstrap, ServerMessage } from './types'
+import type { Bootstrap, ServerMessage, VisitorProfile } from './types'
 
 // A refusal of the api, or no answer at all (`status` 0)
 export class WidgetApiError extends Error {
@@ -46,6 +46,7 @@ function isBootstrap(value: unknown): value is Bootstrap {
     typeof value['store']['name'] === 'string' &&
     typeof value['store']['locale'] === 'string' &&
     typeof value['away'] === 'boolean' &&
+    typeof value['preChat'] === 'boolean' &&
     Array.isArray(value['messages']) &&
     value['messages'].every(isServerMessage) &&
     (value['readUpToMessageId'] === null || typeof value['readUpToMessageId'] === 'string')
@@ -71,8 +72,18 @@ export class WidgetApi {
     return body
   }
 
-  async send(visitorToken: string, clientMessageId: string, content: string): Promise<void> {
-    await this.post(ApiRoutes.widget.messages, { visitorToken, clientMessageId, content })
+  async send(
+    visitorToken: string,
+    clientMessageId: string,
+    content: string,
+    profile?: VisitorProfile
+  ): Promise<void> {
+    await this.post(ApiRoutes.widget.messages, {
+      visitorToken,
+      clientMessageId,
+      content,
+      ...(profile === undefined ? {} : { profile })
+    })
   }
 
   private async post(route: string, payload: object): Promise<unknown> {

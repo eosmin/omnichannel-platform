@@ -26,9 +26,20 @@ import {
 } from '@platform/plugins/sdk'
 
 import { WidgetConfig } from './widget-config'
-import { widgetMessageSchema } from './widget-message'
+import { type WidgetProfile, widgetMessageSchema } from './widget-message'
 import { newSiteKey, originsLabel, siteOriginsSchema } from './widget-site'
 import { verifyVisitorToken } from './widget-token'
+
+// What the visitor typed, as the profile of the event; nothing when they typed nothing
+function profileOf(profile: WidgetProfile | undefined): Pick<ChannelEvent, 'channelProfile'> {
+  if (profile === undefined) return {}
+  const channelProfile = {
+    ...(profile.name === undefined ? {} : { displayName: profile.name }),
+    ...(profile.email === undefined ? {} : { email: profile.email }),
+    ...(profile.phone === undefined ? {} : { phone: profile.phone })
+  }
+  return Object.keys(channelProfile).length === 0 ? {} : { channelProfile }
+}
 
 const connectSchema = z.object({ siteOrigins: siteOriginsSchema })
 
@@ -126,6 +137,7 @@ export class WebWidgetPlugin implements ChannelPlugin {
         type: ChannelEventTypes.MESSAGE_RECEIVED,
         connectionId: claims.siteKey,
         channelIdentity: claims.visitorId,
+        ...profileOf(message.data.profile),
         message: {
           // The visitor is part of it: ids are the browser's own, and two visitors may repeat one
           externalId: `${claims.visitorId}:${message.data.clientMessageId}`,

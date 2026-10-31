@@ -133,3 +133,17 @@ export async function setWidgetOrigins(
     body: JSON.stringify({ siteOrigins })
   })
 }
+
+// The pre-chat form of the widget, turned on or off
+export async function setWidgetPreChat(
+  token: string,
+  storeId: string,
+  connectionId: string,
+  enabled: boolean
+): Promise<void> {
+  await call(ApiRoutes.channels.widgetPreChat(connectionId), {
+    method: 'PUT',
+    headers: storeHeaders(token, storeId),
+    body: JSON.stringify({ enabled })
+  })
+}

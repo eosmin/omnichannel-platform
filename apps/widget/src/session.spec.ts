@@ -14,6 +14,7 @@ function boot(token: string, overrides: Partial<Bootstrap> = {}): Bootstrap {
     expiresInSeconds: HOUR,
     store: { name: 'Shop', locale: 'es' },
     away: false,
+    preChat: false,
     messages: [],
     readUpToMessageId: null,
     ...overrides
@@ -45,7 +46,10 @@ class FakeSocket implements VisitorSocket {
   }
 }
 
-function setup(api: Partial<jest.Mocked<Pick<WidgetApi, 'bootstrap' | 'send'>>>) {
+function setup(
+  api: Partial<jest.Mocked<Pick<WidgetApi, 'bootstrap' | 'send'>>>,
+  onProfileSent?: () => void
+) {
   const log = new ChatLog()
   const socket = new FakeSocket()
   let auth: ((deliver: (data: Record<string, string>) => void) => void) | undefined
@@ -60,7 +64,8 @@ function setup(api: Partial<jest.Mocked<Pick<WidgetApi, 'bootstrap' | 'send'>>>)
       auth = authenticate
       return socket
     },
-    newMessageId: () => `id-${(ids += 1)}`
+    newMessageId: () => `id-${(ids += 1)}`,
+    ...(onProfileSent === undefined ? {} : { onProfileSent })
   })
   const tokenOnTheWire = (): string | undefined => {
     let seen: string | undefined
@@ -360,7 +365,7 @@ describe('Session', () => {
 
       await session.send('hola')
 
-      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola')
+      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola', undefined)
       expect(log.find('id-1')?.state).toBe('sent')
       session.stop()
     })
@@ -379,7 +384,7 @@ describe('Session', () => {
 
       await session.send('hola')
 
-      expect(send).toHaveBeenNthCalledWith(2, 't2', 'id-1', 'hola')
+      expect(send).toHaveBeenNthCalledWith(2, 't2', 'id-1', 'hola', undefined)
       expect(log.find('id-1')?.state).toBe('sent')
       session.stop()
     })
@@ -396,8 +401,74 @@ describe('Session', () => {
       expect(log.find('id-1')?.state).toBe('failed')
       await session.retry('id-1')
 
-      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola')
+      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola', undefined)
       expect(log.find('id-1')?.state).toBe('sent')
+      session.stop()
+    })
+
+    it('sends what the visitor typed in the form with the first message only', async () => {
+      const send = jest.fn().mockResolvedValue(undefined)
+      const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
+      await session.start()
+
+      session.setProfile({ name: 'Ana', email: 'ana@example.com' })
+      await session.send('hola')
+      await session.send('otra')
+
+      expect(send).toHaveBeenNthCalledWith(1, 't1', 'id-1', 'hola', {
+        name: 'Ana',
+        email: 'ana@example.com'
+      })
+      expect(send).toHaveBeenNthCalledWith(2, 't1', 'id-2', 'otra', undefined)
+      session.stop()
+    })
+
+    it('keeps the profile for the next message when the first one could not go', async () => {
+      const send = jest
+        .fn()
+        .mockRejectedValueOnce(new WidgetApiError(0, null))
+        .mockResolvedValue(undefined)
+      const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
+      await session.start()
+
+      session.setProfile({ name: 'Ana' })
+      await session.send('hola')
+      await session.retry('id-1')
+
+      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola', { name: 'Ana' })
+      session.stop()
+    })
+
+    it('says when the api took the profile, and not when the message failed', async () => {
+      const onProfileSent = jest.fn()
+      const send = jest
+        .fn()
+        .mockRejectedValueOnce(new WidgetApiError(0, null))
+        .mockResolvedValue(undefined)
+      const { session } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), send },
+        onProfileSent
+      )
+      await session.start()
+
+      session.setProfile({ name: 'Ana' })
+      await session.send('hola')
+      expect(onProfileSent).not.toHaveBeenCalled()
+      await session.retry('id-1')
+
+      expect(onProfileSent).toHaveBeenCalledTimes(1)
+      session.stop()
+    })
+
+    it('sends no profile for a form that was left blank', async () => {
+      const send = jest.fn().mockResolvedValue(undefined)
+      const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
+      await session.start()
+
+      session.setProfile({})
+      await session.send('hola')
+
+      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola', undefined)
       session.stop()
     })
 

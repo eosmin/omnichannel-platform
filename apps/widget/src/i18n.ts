@@ -15,7 +15,14 @@ const MESSAGES = {
     team: 'Equipo',
     you: 'Tú',
     teamTyping: 'El equipo está escribiendo…',
-    seen: 'Visto'
+    seen: 'Visto',
+    preChatIntro: 'Cuéntanos quién eres para atenderte mejor. Todo es opcional.',
+    nameLabel: 'Nombre',
+    emailLabel: 'Correo electrónico',
+    phoneLabel: 'Teléfono',
+    startChat: 'Empezar el chat',
+    invalidEmail: 'Revisa el correo.',
+    invalidPhone: 'Revisa el teléfono.'
   },
   [Locales.EN]: {
     open: 'Open the chat',
@@ -29,7 +36,14 @@ const MESSAGES = {
     team: 'Team',
     you: 'You',
     teamTyping: 'The team is typing…',
-    seen: 'Seen'
+    seen: 'Seen',
+    preChatIntro: 'Tell us who you are so we can help you better. Everything is optional.',
+    nameLabel: 'Name',
+    emailLabel: 'Email',
+    phoneLabel: 'Phone',
+    startChat: 'Start the chat',
+    invalidEmail: 'Check the email.',
+    invalidPhone: 'Check the phone.'
   }
 } as const
 

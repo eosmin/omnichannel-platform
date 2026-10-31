@@ -70,7 +70,9 @@ export function originsLabel(origins: readonly string[]): string {
 // What the plugin keeps in `ChannelConnection.metadata`. A connection whose metadata is not this
 // allows no site, which is the safe reading.
 const metadataSchema = z.object({
-  [WidgetMetadataKeys.ALLOWED_ORIGINS]: z.array(z.string())
+  [WidgetMetadataKeys.ALLOWED_ORIGINS]: z.array(z.string()),
+  // A key that is missing or is not a boolean reads as off: the form is never asked by accident
+  [WidgetMetadataKeys.PRE_CHAT_ENABLED]: z.boolean().catch(false).optional()
 })
 export function allowedOriginsOf(metadata: unknown): string[] {
   const parsed = metadataSchema.safeParse(metadata)
@@ -81,4 +83,10 @@ export function allowedOriginsOf(metadata: unknown): string[] {
 // is not allowed to claim a site.
 export function isAllowedOrigin(allowed: readonly string[], origin: string | undefined): boolean {
   return origin !== undefined && allowed.includes(origin)
+}
+
+// Whether the widget of this connection asks the visitor for their contact data first
+export function preChatEnabledOf(metadata: unknown): boolean {
+  const parsed = metadataSchema.safeParse(metadata)
+  return parsed.success && parsed.data[WidgetMetadataKeys.PRE_CHAT_ENABLED] === true
 }

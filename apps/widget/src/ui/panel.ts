@@ -1,7 +1,7 @@
 import { WidgetAuthors, WidgetDeliveryStates, WidgetLimits } from '@platform/core/domain'
 
 import type { WidgetText } from '../i18n'
-import type { ChatMessage } from '../types'
+import type { ChatMessage, VisitorProfile } from '../types'
 
 import { el, icon, Icons } from './dom'
 import { applyStyles } from './styles'
@@ -10,6 +10,11 @@ export interface PanelProps {
   storeName: string
   text: WidgetText
   away: boolean
+  // Ask for a name, an email and a phone before the first message; false when the store did not turn it
+  // on or the visitor already answered
+  preChat: boolean
+  // The visitor answered the form: what they typed (nothing when they left it blank)
+  onProfile: (profile: VisitorProfile) => void
   onSend: (content: string) => void
   onRetry: (key: string) => void
   // The visitor is writing; the session decides how often the server hears of it
@@ -25,6 +30,10 @@ export interface Panel {
 const HOST_ID = 'platform-widget'
 const ENTER = 'Enter'
 const ESCAPE = 'Escape'
+// What a number is typed with: digits, a plus, spaces, dots, dashes and brackets; the api reads it
+// An address with something before and after the @ and a dot in the domain, as the api reads it
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_PATTERN = /^\+?[\d\s().-]{6,}$/
 
 // The launcher and the panel, in a shadow root on the page. Null when the page is not able to hold it.
 const keyOf = (entry: string): string => entry.slice(0, entry.lastIndexOf('|'))
@@ -71,11 +80,48 @@ export function mountPanel(props: PanelProps): Panel | null {
   sendButton.disabled = true
   const form = el('form', 'composer', [field, sendButton])
 
-  const panel = el('section', 'panel', [header, away, list, typing, form])
+  // The form that comes first when the store asks for it. Every field is optional, and a value that is
+  // not an address or a number is refused here, because the server would drop it without a word.
+  const fields = (
+    [
+      ['name', 'text', 'name', text.nameLabel],
+      ['email', 'email', 'email', text.emailLabel],
+      ['phone', 'tel', 'tel', text.phoneLabel]
+    ] as const
+  ).map(([key, type, autocomplete, label]) => {
+    const input = el('input', 'input')
+    input.type = type
+    input.autocomplete = autocomplete
+    input.name = key
+    input.maxLength = WidgetLimits.PROFILE_FIELD_MAX_LENGTH
+    const caption = el('label', 'label', [label, input])
+    return { key, input, caption }
+  })
+  const problem = el('p', 'problem')
+  problem.setAttribute('role', 'alert')
+  problem.hidden = true
+  const startButton = el('button', 'start', [text.startChat])
+  startButton.type = 'submit'
+  const preChatForm = el('form', 'prechat', [
+    el('p', 'intro', [text.preChatIntro]),
+    ...fields.map(field => field.caption),
+    problem,
+    startButton
+  ])
+  preChatForm.noValidate = true
+  preChatForm.hidden = !props.preChat
+
+  const panel = el('section', 'panel', [header, away, preChatForm, list, typing, form])
   panel.setAttribute('role', 'dialog')
   panel.setAttribute('aria-label', props.storeName)
   panel.hidden = true
   root.append(panel, launcher)
+  // While the form is up there is no conversation to show or write in
+  const showChat = (shown: boolean): void => {
+    list.hidden = !shown
+    form.hidden = !shown
+  }
+  showChat(!props.preChat)
 
   let open = false
   let seen = 0
@@ -90,7 +136,8 @@ export function mountPanel(props: PanelProps): Panel | null {
     if (next) {
       seen = latest.length
       launcher.classList.remove('launcher--unread')
-      field.focus()
+      if (preChatForm.hidden) field.focus()
+      else fields[0]?.input.focus()
       list.scrollTop = list.scrollHeight
     } else {
       launcher.focus()
@@ -105,6 +152,34 @@ export function mountPanel(props: PanelProps): Panel | null {
     props.onSend(content)
   }
 
+  preChatForm.addEventListener('submit', event => {
+    event.preventDefault()
+    const profile: VisitorProfile = {}
+    for (const { key, input } of fields) {
+      const value = input.value.trim()
+      if (value !== '') profile[key] = value
+    }
+    const email = fields[1]?.input
+    if (profile.email !== undefined && !EMAIL_PATTERN.test(profile.email)) {
+      problem.textContent = text.invalidEmail
+      problem.hidden = false
+      email?.focus()
+      return
+    }
+    if (profile.phone !== undefined && !PHONE_PATTERN.test(profile.phone)) {
+      problem.textContent = text.invalidPhone
+      problem.hidden = false
+      fields[2]?.input.focus()
+      return
+    }
+    preChatForm.hidden = true
+    showChat(true)
+    props.onProfile(profile)
+    field.focus()
+  })
+  preChatForm.addEventListener('input', () => {
+    problem.hidden = true
+  })
   launcher.addEventListener('click', () => setOpen(!open))
   closeButton.addEventListener('click', () => setOpen(false))
   panel.addEventListener('keydown', event => {

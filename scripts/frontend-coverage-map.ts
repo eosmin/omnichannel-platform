@@ -203,6 +203,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'channels.disconnect': { step: '3.6' },
   'channels.widgetEmbed': { step: '3.6' },
   'channels.widgetOrigins': { step: '3.6' },
+  'channels.widgetPreChat': { step: '3.6' },
   'channels.templates': { step: '3.2' },
   'settings.store': { step: '3.6' },
   'settings.inbox': { step: '3.6' },

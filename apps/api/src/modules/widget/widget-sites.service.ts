@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { allowedOriginsOf, isSiteKey } from '@platform/channels/web-widget'
+import { allowedOriginsOf, isSiteKey, preChatEnabledOf } from '@platform/channels/web-widget'
 import { PrismaService } from '@platform/core/database'
 import { ChannelConnectionStatus, ChannelIds } from '@platform/core/domain'
 
@@ -14,6 +14,8 @@ export interface WidgetSite {
   // Store.defaultLocale, which the widget speaks unless the snippet names another
   storeLocale: string
   allowedOrigins: readonly string[]
+  // The widget asks the visitor for a name, an email and a phone before the first message
+  preChatEnabled: boolean
 }
 
 // The door from a site key, which anyone can send, to the store it belongs to. Only an active
@@ -42,7 +44,8 @@ export class WidgetSites {
       storeId: row.storeId,
       storeName: row.store.name,
       storeLocale: row.store.defaultLocale,
-      allowedOrigins: allowedOriginsOf(row.metadata)
+      allowedOrigins: allowedOriginsOf(row.metadata),
+      preChatEnabled: preChatEnabledOf(row.metadata)
     }
   }
 }
