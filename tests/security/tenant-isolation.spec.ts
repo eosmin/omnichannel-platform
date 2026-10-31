@@ -725,6 +725,30 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The profile of a customer reads from several tables at once; none of them may reach across stores
+  describe('the activity of a customer', () => {
+    it('is not read, nor previewed for a merge, through a customer of another store', async () => {
+      const mine = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const theirs = await createCustomer(owner, { storeId: ctx.storeB.id })
+      await owner.customerNote.create({
+        data: { customerId: theirs.id, authorId: ctx.adminB.id, content: 'secret note' }
+      })
+      const asA = () => api(app, ctx.adminA, ctx.storeA)
+
+      const responses = await Promise.all([
+        asA().get(ApiRoutes.customers.timeline(theirs.id)),
+        asA().get(ApiRoutes.customers.conversations(theirs.id)),
+        asA().get(ApiRoutes.customers.mergePreview(mine.id)).query({ absorbedId: theirs.id }),
+        asA().get(ApiRoutes.customers.mergePreview(theirs.id)).query({ absorbedId: mine.id })
+      ])
+
+      for (const response of responses) {
+        expect(response.status).toBe(404)
+        expect(JSON.stringify(response.body)).not.toContain('secret note')
+      }
+    })
+  })
+
   // Who of the team is online comes from Redis, keyed by the store of the request
   describe('the presence of the team', () => {
     it('is answered for the store of the caller, with nobody of another store in it', async () => {

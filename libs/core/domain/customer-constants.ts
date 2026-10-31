@@ -8,6 +8,16 @@ export const MergeFieldSources = {
   ABSORBED: 'absorbed'
 } as const
 
+// What the activity timeline of a customer is made of (TDD_09 §6). Orders join it in Step 4.3.
+export const CustomerTimelineTypes = {
+  CONVERSATION: 'conversation',
+  NOTE: 'note',
+  MERGE: 'merge'
+} as const
+
+export type CustomerTimelineType =
+  (typeof CustomerTimelineTypes)[keyof typeof CustomerTimelineTypes]
+
 export const MergeableFields = ['name', 'email', 'phone'] as const
 
 export const CustomerLimits = {

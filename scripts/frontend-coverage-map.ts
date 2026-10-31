@@ -52,6 +52,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'customers.identityById': { step: '3.3' },
   'customers.merge': { step: '3.3' },
   'customers.unmerge': { step: '3.3' },
+  'customers.mergePreview': { step: '3.3' },
   'customers.orders': { step: '4.4' },
   'customers.conversations': { step: '3.3' },
   'customers.notes': { step: '3.3' },
