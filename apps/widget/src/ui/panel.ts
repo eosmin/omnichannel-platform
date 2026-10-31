@@ -12,9 +12,12 @@ export interface PanelProps {
   away: boolean
   onSend: (content: string) => void
   onRetry: (key: string) => void
+  // The visitor is writing; the session decides how often the server hears of it
+  onTyping: () => void
 }
 
 export interface Panel {
+  setAgentTyping(active: boolean): void
   update(messages: readonly ChatMessage[]): void
   destroy(): void
 }
@@ -52,6 +55,11 @@ export function mountPanel(props: PanelProps): Panel | null {
   list.setAttribute('role', 'log')
   list.setAttribute('aria-live', 'polite')
 
+  // Read out when it appears (a polite status), but not again while it stays
+  const typing = el('p', 'typing', [text.teamTyping])
+  typing.setAttribute('role', 'status')
+  typing.hidden = true
+
   const field = el('textarea', 'field')
   field.rows = 1
   field.maxLength = WidgetLimits.CONTENT_MAX_LENGTH
@@ -63,7 +71,7 @@ export function mountPanel(props: PanelProps): Panel | null {
   sendButton.disabled = true
   const form = el('form', 'composer', [field, sendButton])
 
-  const panel = el('section', 'panel', [header, away, list, form])
+  const panel = el('section', 'panel', [header, away, list, typing, form])
   panel.setAttribute('role', 'dialog')
   panel.setAttribute('aria-label', props.storeName)
   panel.hidden = true
@@ -104,6 +112,7 @@ export function mountPanel(props: PanelProps): Panel | null {
   })
   field.addEventListener('input', () => {
     sendButton.disabled = field.value.trim() === ''
+    if (!sendButton.disabled) props.onTyping()
   })
   field.addEventListener('keydown', event => {
     if (event.key === ENTER && !event.shiftKey && !event.isComposing) {
@@ -124,6 +133,7 @@ export function mountPanel(props: PanelProps): Panel | null {
       author,
       bubble
     ])
+    if (mine && message.seen) item.append(el('span', 'seen', [text.seen]))
     if (message.state === WidgetDeliveryStates.FAILED) {
       const retry = el('button', 'retry', [text.retry])
       retry.type = 'button'
@@ -136,7 +146,9 @@ export function mountPanel(props: PanelProps): Panel | null {
   // A live region announces what is added to it; rebuilding it would read the whole conversation again
   // at every change, so lines are appended and only the one whose state changed is replaced
   const draw = (messages: readonly ChatMessage[]): void => {
-    const next = messages.map(message => `${message.key}|${message.state}`)
+    const next = messages.map(
+      message => `${message.key}|${message.state}${message.seen ? '+seen' : ''}`
+    )
     const prefix = drawn.length > 0 && drawn.every((entry, index) => entry === next[index])
     if (messages.length === 0) {
       list.replaceChildren(el('p', 'empty', [text.empty]))
@@ -156,6 +168,12 @@ export function mountPanel(props: PanelProps): Panel | null {
 
   document.body.append(host)
   return {
+    setAgentTyping(active) {
+      const wasAtEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40
+      typing.hidden = !active
+      // The indicator takes room from the list: keep the last line in view
+      if (wasAtEnd) list.scrollTop = list.scrollHeight
+    },
     update(messages) {
       const grew = messages.length > latest.length
       latest = messages

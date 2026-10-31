@@ -47,6 +47,7 @@ import {
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
+import { WidgetReadNotifier } from '../widget/widget-read-notifier.service'
 
 import { type BulkResult, ConversationBulkService } from './conversation-bulk.service'
 import { ConversationCountsService } from './conversation-counts.service'
@@ -69,7 +70,8 @@ export class ConversationsController {
     private readonly counts: ConversationCountsService,
     private readonly tags: ConversationTagsService,
     private readonly origins: ConversationOriginsService,
-    private readonly readReceipts: ReadReceipts
+    private readonly readReceipts: ReadReceipts,
+    private readonly widgetRead: WidgetReadNotifier
   ) {}
 
   // countsOnly=true answers the numbers beside the filters instead of a page
@@ -188,6 +190,7 @@ export class ConversationsController {
     // Not awaited, so that a slow or unreachable Redis does not hold the answer; queueFor logs its own
     // failures and never rejects.
     void this.readReceipts.queueFor(store.id, conversationId)
+    void this.widgetRead.notify(store.id, conversationId)
     return detail
   }
 

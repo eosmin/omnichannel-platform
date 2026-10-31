@@ -13,7 +13,9 @@ const MESSAGES = {
     retry: 'Reintentar',
     empty: 'Escríbenos, con gusto te ayudamos.',
     team: 'Equipo',
-    you: 'Tú'
+    you: 'Tú',
+    teamTyping: 'El equipo está escribiendo…',
+    seen: 'Visto'
   },
   [Locales.EN]: {
     open: 'Open the chat',
@@ -25,7 +27,9 @@ const MESSAGES = {
     retry: 'Retry',
     empty: 'Write to us, we are happy to help.',
     team: 'Team',
-    you: 'You'
+    you: 'You',
+    teamTyping: 'The team is typing…',
+    seen: 'Seen'
   }
 } as const
 

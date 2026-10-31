@@ -1,3 +1,5 @@
+import { WidgetClientEvents, WidgetLimits, WidgetSocketEvents } from '@platform/core/domain'
+
 import { WidgetApiError, type WidgetApi } from './api'
 import { ChatLog } from './chat-log'
 import { Session, type VisitorSocket } from './session'
@@ -30,8 +32,15 @@ class FakeSocket implements VisitorSocket {
   disconnect(): void {
     this.disconnects += 1
   }
-  emit(event: string, ...args: unknown[]): void {
+  // What the server pushes
+  receive(event: string, ...args: unknown[]): void {
     this.handlers.get(event)?.(...args)
+  }
+  // What the visitor's widget sends
+  readonly sent: string[] = []
+  connected = true
+  emit(event: string): void {
+    this.sent.push(event)
   }
 }
 
@@ -124,10 +133,92 @@ describe('Session', () => {
       const { session, log, socket } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')) })
       await session.start()
 
-      socket.emit('widget.message', { id: 'r1', from: 'team', content: 'hola', createdAt: 'd' })
-      socket.emit('widget.message', { nonsense: true })
+      socket.receive('widget.message', { id: 'r1', from: 'team', content: 'hola', createdAt: 'd' })
+      socket.receive('widget.message', { nonsense: true })
 
       expect(log.messages.map(message => message.content)).toEqual(['hola'])
+      session.stop()
+    })
+  })
+
+  describe('typing', () => {
+    it('tells the server the visitor types, at most once in the gap, and only on a live socket', async () => {
+      const { session, socket } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')) })
+      await session.start()
+
+      session.typing()
+      session.typing()
+      await jest.advanceTimersByTimeAsync(WidgetLimits.CUSTOMER_TYPING_GAP_MS)
+      session.typing()
+      socket.connected = false
+      await jest.advanceTimersByTimeAsync(WidgetLimits.CUSTOMER_TYPING_GAP_MS)
+      session.typing()
+
+      expect(socket.sent).toEqual([WidgetClientEvents.TYPING, WidgetClientEvents.TYPING])
+      session.stop()
+    })
+
+    it('shows the team typing, until a stop, a reply or the lapse', async () => {
+      const { session, socket } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')) })
+      const states: boolean[] = []
+      session.onAgentTyping(active => states.push(active))
+      await session.start()
+
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: false })
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
+      socket.receive('widget.message', { id: 'r1', from: 'team', content: 'hola', createdAt: 'd' })
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
+      await jest.advanceTimersByTimeAsync(WidgetLimits.AGENT_TYPING_LAPSE_MS)
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: 'yes' })
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, null)
+
+      expect(states).toEqual([true, false, true, false, true, false])
+      session.stop()
+    })
+
+    it('ignores a start of the team after the session stopped', async () => {
+      const { session, socket } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')) })
+      const states: boolean[] = []
+      session.onAgentTyping(active => states.push(active))
+      await session.start()
+      session.stop()
+
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
+
+      expect(states).toEqual([])
+    })
+
+    it('lets the indicator go when the socket goes', async () => {
+      const { session, socket } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')) })
+      const states: boolean[] = []
+      session.onAgentTyping(active => states.push(active))
+      await session.start()
+
+      socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
+      socket.receive('disconnect', 'transport close')
+
+      expect(states).toEqual([true, false])
+      session.stop()
+    })
+  })
+
+  describe('read receipts', () => {
+    it('marks the messages of the visitor up to the one the agent read', async () => {
+      const history = [
+        { id: 'a', from: 'visitor', content: '1', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'b', from: 'team', content: '2', createdAt: '2026-01-01T00:00:01.000Z' },
+        { id: 'c', from: 'visitor', content: '3', createdAt: '2026-01-01T00:00:02.000Z' }
+      ] as const
+      const { session, log, socket } = setup({
+        bootstrap: jest.fn().mockResolvedValue(boot('t1', { messages: [...history] }))
+      })
+      await session.start()
+
+      socket.receive(WidgetSocketEvents.READ, { messageId: 'a' })
+      socket.receive(WidgetSocketEvents.READ, { nonsense: true })
+
+      expect(log.messages.map(message => message.seen)).toEqual([true, false, false])
       session.stop()
     })
   })
@@ -158,7 +249,7 @@ describe('Session', () => {
       const { session, socket } = setup({ bootstrap })
       await session.start()
 
-      socket.emit('disconnect', 'io server disconnect')
+      socket.receive('disconnect', 'io server disconnect')
       await jest.advanceTimersByTimeAsync(0)
 
       expect(bootstrap).toHaveBeenCalledTimes(2)
@@ -171,9 +262,9 @@ describe('Session', () => {
       const { session, socket } = setup({ bootstrap })
       await session.start()
 
-      socket.emit('connect_error', { data: { code: 'RATE_LIMIT_EXCEEDED' } })
+      socket.receive('connect_error', { data: { code: 'RATE_LIMIT_EXCEEDED' } })
       expect(bootstrap).toHaveBeenCalledTimes(1)
-      socket.emit('connect_error', { data: { code: 'WIDGET_TOKEN_INVALID' } })
+      socket.receive('connect_error', { data: { code: 'WIDGET_TOKEN_INVALID' } })
       await jest.advanceTimersByTimeAsync(0)
 
       expect(bootstrap).toHaveBeenCalledTimes(2)

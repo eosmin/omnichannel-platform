@@ -4,6 +4,9 @@
 export const WidgetLimits = {
   // The least time between two typing signals the server takes from one visitor, in all their tabs
   CUSTOMER_TYPING_GAP_MS: 2_000,
+  // How long the widget shows "the team is typing" with no stop from the server: the agent's client
+  // repeats a start every 5 s while they type, so a start that is not renewed has gone stale
+  AGENT_TYPING_LAPSE_MS: 25_000,
   // The most typing signals the server takes from one site in a minute, whoever sends them
   CUSTOMER_TYPING_SITE_PER_MINUTE: 600,
   CUSTOMER_TYPING_SITE_WINDOW_MS: 60_000,
@@ -47,8 +50,11 @@ export type WidgetAuthor = (typeof WidgetAuthors)[keyof typeof WidgetAuthors]
 export const WidgetSocketEvents = {
   MESSAGE: 'widget.message',
   // The team is typing a reply: `{ active }`, and the visitor's widget
-  // is to let it lapse by itself if no stop arrives (the bundle task of Step 3.2, PR B5)
-  AGENT_TYPING: 'widget.agent_typing'
+  // lets it lapse by itself (`WidgetLimits.AGENT_TYPING_LAPSE_MS`) if no stop arrives
+  AGENT_TYPING: 'widget.agent_typing',
+  // An agent read the conversation: `{ messageId }`, the latest message of the visitor at that moment.
+  // That one and every earlier message of the visitor is seen
+  READ: 'widget.read'
 } as const
 
 // What the visitor's socket sends the server (the one thing the namespace listens to): the visitor is

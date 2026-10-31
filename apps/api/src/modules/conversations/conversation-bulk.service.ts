@@ -16,6 +16,7 @@ import {
 } from '@platform/core/messaging'
 
 import type { Actor } from '../tenancy'
+import { WidgetReadNotifier } from '../widget/widget-read-notifier.service'
 
 import { ConversationTagsService } from './conversation-tags.service'
 
@@ -53,6 +54,7 @@ export class ConversationBulkService {
     private readonly routing: RoutingService,
     private readonly tags: ConversationTagsService,
     private readonly readReceipts: ReadReceipts,
+    private readonly widgetRead: WidgetReadNotifier,
     private readonly audit: AuditService,
     private readonly logger: PinoLogger
   ) {
@@ -172,6 +174,7 @@ export class ConversationBulkService {
         await this.conversations.markRead(storeId, conversationId, viewer)
         // Not awaited, as the route of one conversation does: queueFor logs its own failures
         void this.readReceipts.queueFor(storeId, conversationId)
+        void this.widgetRead.notify(storeId, conversationId)
         return
       case BulkActions.MARK_UNREAD:
         await this.conversations.markUnread(storeId, conversationId, viewer)

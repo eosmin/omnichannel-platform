@@ -25,12 +25,13 @@ const ctx: ChannelContext = { storeId: 's', connectionId: siteKey, credentials: 
 const token = signVisitorToken(tokenKey, { siteKey, visitorId })
 
 describe('WebWidgetPlugin', () => {
-  it('declares text and typing, with no window and no read receipts', () => {
+  it('declares text, typing and read receipts, with no window', () => {
     expect(plugin.id).toBe(ChannelIds.WEB_WIDGET)
     expect(plugin.capabilities).toEqual([
       ChannelCapability.TEXT,
       ChannelCapability.TYPING_INDICATOR,
-      ChannelCapability.CUSTOMER_TYPING
+      ChannelCapability.CUSTOMER_TYPING,
+      ChannelCapability.READ_RECEIPTS
     ])
     expect(plugin.messagingWindow).toBeNull()
   })

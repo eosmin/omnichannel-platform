@@ -9,6 +9,7 @@ import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
+  BulkActions,
   ChannelConnectionStatus,
   ChannelIds,
   ConversationStatus,
@@ -773,6 +774,103 @@ describe('The web widget', () => {
       await sleep(100)
       expect(heard).toEqual([{ active: true }, { active: false }])
       expect(overheard).toEqual([])
+    })
+
+    describe('read receipts', () => {
+      // A visitor with a socket, a conversation and two messages of theirs, the second the latest
+      async function visitorWithMessages(siteKey: string) {
+        const visitor = await enter(siteKey)
+        await createCustomerIdentity(owner, {
+          storeId: ctx.storeA.id,
+          channelType: ChannelIds.WEB_WIDGET,
+          handle: visitor.visitorId
+        })
+        const conversationId = await conversationFor(siteKey, visitor.visitorId)
+        const ids: string[] = []
+        for (const [index, content] of ['one', 'two'].entries()) {
+          const message = await owner.message.create({
+            data: {
+              storeId: ctx.storeA.id,
+              conversationId,
+              type: MessageType.TEXT,
+              content,
+              authorType: AuthorType.CUSTOMER,
+              channelMessageId: `${visitor.visitorId}:${content}`,
+              createdAt: new Date(Date.now() - (2 - index) * 1000)
+            },
+            select: { id: true }
+          })
+          ids.push(message.id)
+        }
+        const heard: { messageId: string }[] = []
+        const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+        socket.on(WidgetSocketEvents.READ, (body: { messageId: string }) => heard.push(body))
+        return { conversationId, ids, heard }
+      }
+      const readBy = (conversationId: string) =>
+        api(app, ctx.adminA, ctx.storeA).post(ApiRoutes.conversations.read(conversationId))
+
+      beforeEach(async () => {
+        await owner.storeSettings.deleteMany({ where: { storeId: ctx.storeA.id } })
+      })
+
+      it('tells its visitor, with the latest message of theirs, when an agent reads, and no other visitor', async () => {
+        const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+        const mine = await visitorWithMessages(siteKey)
+        const other = await visitorWithMessages(siteKey)
+
+        await readBy(mine.conversationId).expect(OK)
+
+        await until(() => mine.heard.length === 1)
+        await sleep(100)
+        expect(mine.heard).toEqual([{ messageId: mine.ids[1] }])
+        expect(other.heard).toEqual([])
+      })
+
+      it('tells it also when the read comes from the bulk action', async () => {
+        const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+        const mine = await visitorWithMessages(siteKey)
+
+        await api(app, ctx.adminA, ctx.storeA)
+          .post(ApiRoutes.conversations.bulk)
+          .send({ action: BulkActions.MARK_READ, conversationIds: [mine.conversationId] })
+          .expect(OK)
+
+        await until(() => mine.heard.length === 1)
+        expect(mine.heard).toEqual([{ messageId: mine.ids[1] }])
+      })
+
+      it('says nothing when the store turned read receipts off', async () => {
+        const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+        const mine = await visitorWithMessages(siteKey)
+        await owner.storeSettings.create({
+          data: { storeId: ctx.storeA.id, preferences: { sendReadReceipts: false } }
+        })
+
+        await readBy(mine.conversationId).expect(OK)
+        await sleep(200)
+
+        expect(mine.heard).toEqual([])
+      })
+
+      it('says nothing when the visitor has written nothing a reader could see', async () => {
+        const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+        const visitor = await enter(siteKey)
+        await createCustomerIdentity(owner, {
+          storeId: ctx.storeA.id,
+          channelType: ChannelIds.WEB_WIDGET,
+          handle: visitor.visitorId
+        })
+        const conversationId = await conversationFor(siteKey, visitor.visitorId)
+        const heard: unknown[] = []
+        const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+        socket.on(WidgetSocketEvents.READ, (body: unknown) => heard.push(body))
+
+        await readBy(conversationId).expect(OK)
+        await sleep(200)
+
+        expect(heard).toEqual([])
+      })
     })
 
     it('does not hear a reply that is not on a conversation of the widget', async () => {
