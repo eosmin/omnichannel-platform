@@ -1,4 +1,4 @@
-import type { ChannelId, ConversationStatus } from '@platform/core/domain'
+import type { ChannelId, ConversationStatus, CustomerTimelineType } from '@platform/core/domain'
 
 // What narrows the list (the filters of TDD_09 §2); the cursor is not part of a key. `assigned` is
 // `me`, `unassigned` or the id of a member (ConversationAssignedFilters).
@@ -42,7 +42,12 @@ export const QueryKeys = {
   },
   customers: {
     all: (storeId: string) => ['customers', storeId] as const,
-    byId: (storeId: string, id: string) => ['customers', storeId, id] as const
+    byId: (storeId: string, id: string) => ['customers', storeId, id] as const,
+    // Under the customer: whatever makes the customer stale makes its activity stale too
+    timeline: (storeId: string, id: string, type: CustomerTimelineType | 'all') =>
+      ['customers', storeId, id, 'timeline', type] as const,
+    conversations: (storeId: string, id: string) =>
+      ['customers', storeId, id, 'conversations'] as const
   },
   orders: {
     all: (storeId: string) => ['orders', storeId] as const,

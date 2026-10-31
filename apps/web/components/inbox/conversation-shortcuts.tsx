@@ -13,6 +13,7 @@ import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
 import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useCustomerDrawer } from '../customers/customer-drawer-context'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 
@@ -33,6 +34,7 @@ export function ConversationShortcuts({
   const conversation = useConversation(storeId, conversationId)
   const runner = useBulkRunner()
   const nameOf = useCustomerNamer()
+  const { openCustomer } = useCustomerDrawer()
   const { resolve, openSnooze } = useConversationControls()
   const [pick, setPick] = useState<BulkPick | null>(null)
 
@@ -89,6 +91,13 @@ export function ConversationShortcuts({
     ...keyboard,
     enabled: mayChange && mayResolve && resolve.isReady
   })
+  useShortcut(
+    Shortcuts.conversation.OPEN_CUSTOMER,
+    () => {
+      if (detail !== undefined) openCustomer(detail.customer.id)
+    },
+    { ...keyboard, enabled: isLoaded && can(Permissions.CUSTOMERS_VIEW) }
+  )
   useShortcut(Shortcuts.conversation.SNOOZE, openSnooze, {
     ...keyboard,
     enabled: mayChange && can(Permissions.CONVERSATIONS_SNOOZE)

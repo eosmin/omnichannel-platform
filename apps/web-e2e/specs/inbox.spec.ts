@@ -267,6 +267,37 @@ test.describe.serial('the inbox list', () => {
     await expect.poll(titles).toEqual(before)
   })
 
+  test('shows the customer of the conversation in the sidebar and opens the profile with Shift+C', async () => {
+    const conversationId = await newConversationIn(storeId)
+
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const sidebar = page.getByRole('complementary', { name: en.inbox.sidebar.label })
+    await expect(sidebar.getByRole('heading', { name: en.customers.panel.title })).toBeVisible()
+    await expect(sidebar.getByText(en.customers.profile.stats.conversations)).toBeVisible()
+
+    // The shortcut waits for the thread to be loaded: it works where the button would be offered
+    await expect(page.getByRole('button', { name: en.inbox.openCustomer })).toBeVisible()
+    await page.keyboard.press('Shift+C')
+    const drawer = page.getByRole('dialog', { name: en.customers.profile.title })
+    await expect(drawer).toBeVisible()
+    await expect(
+      drawer.getByRole('tab', { name: en.customers.timeline.filters.note })
+    ).toBeVisible()
+    // The conversation itself is the first entry of the activity
+    await expect(
+      drawer.getByRole('link', { name: en.customers.timeline.openConversation })
+    ).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+
+    // The same drawer opens from the button, for the widths with no sidebar
+    await page.getByRole('button', { name: en.inbox.openCustomer }).click()
+    await expect(drawer).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+  })
+
   test('shows the list alone on a phone, and the conversation alone once one is open', async () => {
     const conversationId = await newConversationIn(storeId)
     await page.setViewportSize(PHONE)

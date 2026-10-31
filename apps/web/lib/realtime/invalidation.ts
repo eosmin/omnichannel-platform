@@ -9,6 +9,7 @@ import { type RealtimeEvent, RealtimeEvents } from '@platform/core/realtime'
 const Scopes = {
   CONVERSATIONS: 'conversations',
   THREAD: 'thread',
+  CUSTOMERS: 'customers',
   PRESENCE: 'presence',
   NOTIFICATIONS: 'notifications'
 } as const
@@ -16,9 +17,10 @@ type Scope = (typeof Scopes)[keyof typeof Scopes]
 
 // Orders and shipments join with the steps that build their pages (4.4 and 4.x)
 const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> = {
-  [RealtimeEvents.CONVERSATION_CREATED]: [Scopes.CONVERSATIONS],
+  // The activity and the count of conversations of a customer open in the panel
+  [RealtimeEvents.CONVERSATION_CREATED]: [Scopes.CONVERSATIONS, Scopes.CUSTOMERS],
   [RealtimeEvents.CONVERSATION_ASSIGNED]: [Scopes.CONVERSATIONS],
-  [RealtimeEvents.CONVERSATION_STATUS_CHANGED]: [Scopes.CONVERSATIONS],
+  [RealtimeEvents.CONVERSATION_STATUS_CHANGED]: [Scopes.CONVERSATIONS, Scopes.CUSTOMERS],
   [RealtimeEvents.CONVERSATION_READ]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.CONVERSATION_UNREAD]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.MESSAGE_RECEIVED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
@@ -51,6 +53,8 @@ function keysForScope(scope: Scope, storeId: string, conversationId: string | nu
           ? QueryKeys.messages.all(storeId)
           : QueryKeys.messages.thread(storeId, conversationId)
       ]
+    case Scopes.CUSTOMERS:
+      return [QueryKeys.customers.all(storeId)]
     case Scopes.PRESENCE:
       return [QueryKeys.presence.team(storeId)]
     case Scopes.NOTIFICATIONS:
@@ -75,6 +79,7 @@ export function queryKeysAfterReconnect(storeId: string): QueryKey[] {
   return [
     QueryKeys.conversations.all(storeId),
     QueryKeys.messages.all(storeId),
+    QueryKeys.customers.all(storeId),
     QueryKeys.presence.team(storeId),
     QueryKeys.notifications.list(storeId),
     QueryKeys.notifications.unread(storeId)

@@ -34,6 +34,54 @@
       "SPAM": "Spam"
     }
   },
+  "customers": {
+    "profile": {
+      "title": "Perfil del cliente",
+      "description": "Las identidades, cifras, etiquetas, direcciones y actividad del cliente.",
+      "unnamed": "Cliente sin nombre",
+      "caution": "Marcado con precaución.",
+      "identities": "Identidades",
+      "noIdentities": "Aún no hay un canal vinculado.",
+      "stats": {
+        "title": "Cifras",
+        "conversations": "Conversaciones",
+        "atLeast": "{count}+",
+        "unknown": "Desconocido",
+        "since": "Cliente desde",
+        "failed": "No disponible"
+      },
+      "tags": "Etiquetas",
+      "noTags": "Sin etiquetas.",
+      "addresses": "Direcciones ({count})",
+      "noAddresses": "No hay direcciones guardadas.",
+      "defaultAddress": "Predeterminada",
+      "failed": "No se pudo cargar el perfil.",
+      "noAccess": "No tienes acceso a los perfiles de clientes."
+    },
+    "panel": {
+      "title": "Cliente",
+      "openProfile": "Abrir el perfil completo",
+      "failed": "No se pudo cargar el cliente."
+    },
+    "timeline": {
+      "filterLabel": "Filtrar la actividad",
+      "filters": {
+        "all": "Todo",
+        "conversation": "Conversaciones",
+        "note": "Notas"
+      },
+      "conversation": "Conversación por {channel}",
+      "openConversation": "Abrir la conversación",
+      "note": "Nota",
+      "noteBy": "Nota de {name}",
+      "merged": "Combinado con otro cliente",
+      "unmerged": "Combinación deshecha",
+      "mergedBy": "Por {name}",
+      "empty": "Aún no hay actividad.",
+      "failed": "No se pudo cargar la actividad.",
+      "loadMore": "Cargar más"
+    }
+  },
   "email": {
     "magicLink": {
       "subject": "Tu enlace para iniciar sesión",
@@ -474,6 +522,7 @@
       "body": "Quizá se eliminó, o el enlace es incorrecto."
     },
     "backToList": "Volver a las conversaciones",
+    "openCustomer": "Abrir el perfil del cliente",
     "announce": {
       "newMessage": "Nuevo mensaje en una conversación",
       "assignedToYou": "Se te asignó una conversación"
@@ -849,7 +898,8 @@
           "ADD_TAG": "Agregar una etiqueta",
           "MARK_PENDING": "Marcar como pendiente",
           "MARK_RESOLVED": "Marcar como resuelta",
-          "SNOOZE": "Posponer"
+          "SNOOZE": "Posponer",
+          "OPEN_CUSTOMER": "Abrir el perfil del cliente"
         },
         "global": {
           "SEND_MESSAGE": "Enviar el mensaje",
@@ -858,7 +908,7 @@
       }
     },
     "sidebar": {
-      "label": "Equipo y cola",
+      "label": "Cliente, equipo y cola",
       "add": "Añadir {widget}",
       "hide": "Ocultar {widget}",
       "moveUp": "Subir {widget}",

@@ -34,6 +34,54 @@
       "SPAM": "Spam"
     }
   },
+  "customers": {
+    "profile": {
+      "title": "Customer profile",
+      "description": "The customer's identities, figures, tags, addresses and activity.",
+      "unnamed": "Unnamed customer",
+      "caution": "Marked with caution.",
+      "identities": "Identities",
+      "noIdentities": "No channel linked yet.",
+      "stats": {
+        "title": "Figures",
+        "conversations": "Conversations",
+        "atLeast": "{count}+",
+        "unknown": "Unknown",
+        "since": "Customer since",
+        "failed": "Not available"
+      },
+      "tags": "Tags",
+      "noTags": "No tags.",
+      "addresses": "Addresses ({count})",
+      "noAddresses": "No addresses saved.",
+      "defaultAddress": "Default",
+      "failed": "The profile could not be loaded.",
+      "noAccess": "You do not have access to customer profiles."
+    },
+    "panel": {
+      "title": "Customer",
+      "openProfile": "Open the full profile",
+      "failed": "The customer could not be loaded."
+    },
+    "timeline": {
+      "filterLabel": "Filter the activity",
+      "filters": {
+        "all": "All",
+        "conversation": "Conversations",
+        "note": "Notes"
+      },
+      "conversation": "Conversation on {channel}",
+      "openConversation": "Open the conversation",
+      "note": "Note",
+      "noteBy": "Note by {name}",
+      "merged": "Merged with another customer",
+      "unmerged": "Merge undone",
+      "mergedBy": "By {name}",
+      "empty": "No activity yet.",
+      "failed": "The activity could not be loaded.",
+      "loadMore": "Load more"
+    }
+  },
   "email": {
     "magicLink": {
       "subject": "Your sign-in link",
@@ -474,6 +522,7 @@
       "body": "It may have been removed, or the link is wrong."
     },
     "backToList": "Back to the conversations",
+    "openCustomer": "Open the customer profile",
     "announce": {
       "newMessage": "New message in a conversation",
       "assignedToYou": "A conversation was assigned to you"
@@ -849,7 +898,8 @@
           "ADD_TAG": "Add a tag",
           "MARK_PENDING": "Mark pending",
           "MARK_RESOLVED": "Mark resolved",
-          "SNOOZE": "Snooze"
+          "SNOOZE": "Snooze",
+          "OPEN_CUSTOMER": "Open the customer profile"
         },
         "global": {
           "SEND_MESSAGE": "Send the message",
@@ -858,7 +908,7 @@
       }
     },
     "sidebar": {
-      "label": "Team and queue",
+      "label": "Customer, team and queue",
       "add": "Add {widget}",
       "hide": "Hide {widget}",
       "moveUp": "Move {widget} up",

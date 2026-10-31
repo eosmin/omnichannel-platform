@@ -67,7 +67,8 @@ export const ListKeyAliases = {
 } as const
 
 // The bindings the screen handles today. The help sheet lists only these: search and the palette wait
-// for Step 5.1, the orders and customers jumps and `Shift+O`/`Shift+C` for the pages they open.
+// for Step 5.1; the jumps to orders and customers and `Shift+O` wait for the pages they open (`g c`
+// joins with the customers page, Step 3.3 PR C).
 export const AvailableShortcuts = {
   list: [
     'NEXT_CONVERSATION',
@@ -88,7 +89,8 @@ export const AvailableShortcuts = {
     'ADD_TAG',
     'MARK_PENDING',
     'MARK_RESOLVED',
-    'SNOOZE'
+    'SNOOZE',
+    'OPEN_CUSTOMER'
   ],
   global: ['SEND_MESSAGE', 'GO_TO_INBOX']
 } as const satisfies {
