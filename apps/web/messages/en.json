@@ -80,7 +80,12 @@
       "empty": "No activity yet.",
       "failed": "The activity could not be loaded.",
       "loadMore": "Load more",
-      "deleteNote": "Delete the note"
+      "deleteNote": "Delete the note",
+      "undoMerge": "Undo the merge",
+      "undoUntil": "Can be undone until {date}",
+      "undoTitle": "Undo the merge?",
+      "undoDescription": "The other customer comes back with their conversations, notes, addresses, tags and channels, as they were before the merge.",
+      "undoConfirm": "Undo the merge"
     },
     "edit": {
       "editProfile": "Edit the contact data",
@@ -135,6 +140,52 @@
         "tags": "Tags",
         "since": "Customer since"
       }
+    },
+    "identity": {
+      "add": "Link a channel",
+      "channel": "Channel",
+      "handle": "Handle on the channel (number, username or id)",
+      "link": "Link",
+      "unlink": "Unlink {handle} on {channel}",
+      "taken": "This handle already belongs to another customer.",
+      "mergeInstead": "Merge instead"
+    },
+    "merge": {
+      "title": "Merge with another customer",
+      "moreActions": "More actions",
+      "open": "Merge with another customer",
+      "steps": {
+        "pick": "Step 1 of 3. Search for the duplicate: this customer stays and the one you pick joins it.",
+        "review": "Step 2 of 3. Review what the merge gives and choose the data to keep.",
+        "confirm": "Step 3 of 3. Confirm the merge."
+      },
+      "searchLabel": "Search the duplicate",
+      "searchPlaceholder": "Search by name, e-mail or phone",
+      "searchFailed": "The customers could not be loaded.",
+      "noMatches": "No customer matches the search.",
+      "unnamed": "Unnamed customer",
+      "summary": "{absorbed} will join {survivor}.",
+      "counts": {
+        "conversations": "Conversations",
+        "notes": "Notes",
+        "addresses": "Addresses",
+        "tags": "Tags",
+        "identities": "Channels"
+      },
+      "countSum": "{survivor} + {absorbed} = {merged}",
+      "countUnion": "{survivor} + {absorbed} = {merged} (without repeats)",
+      "conflictsTitle": "Both have different data. Choose which to keep:",
+      "fields": {
+        "name": "Name",
+        "email": "E-mail",
+        "phone": "Phone"
+      },
+      "back": "Back",
+      "continue": "Continue",
+      "confirmWord": "MERGE",
+      "confirmIntro": "{name} will be merged into this customer. You can undo it from the activity for 30 days.",
+      "confirmLabel": "Type {word} to confirm",
+      "confirm": "Merge the customers"
     }
   },
   "email": {

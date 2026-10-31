@@ -1,6 +1,7 @@
 'use client'
 
-import { Pencil } from 'lucide-react'
+import { MoreHorizontal, Pencil, Plus, X } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
 
@@ -10,15 +11,35 @@ import { Permissions } from '@platform/core/auth'
 import { conversationCount } from '../../lib/customers/conversation-count'
 import { customerDisplayName, initialsOfName } from '../../lib/customers/customer-name'
 import { tagDotColor } from '../../lib/customers/tag-color'
-import { useCustomerConversations } from '../../lib/customers/use-customer-data'
+import {
+  useCustomerConversations,
+  useCustomerIdentityEdits
+} from '../../lib/customers/use-customer-data'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
 import { CustomerAvatar } from '../inbox/customer-avatar'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
 
 import { AddressEditor } from './address-editor'
+import { MutationError } from './mutation-error'
 import { ProfileForm } from './profile-form'
 import { TagEditor } from './tag-editor'
+
+// The merge dialog and the link form load when they are first opened: the panel of the inbox draws
+// this component, and the inbox has a script budget (apps/web-e2e/lighthouse/budgets.ts)
+const MergeDialog = dynamic(() => import('./merge-dialog').then(module => module.MergeDialog), {
+  ssr: false
+})
+const IdentityLinkForm = dynamic(
+  () => import('./identity-link-form').then(module => module.IdentityLinkForm),
+  { ssr: false }
+)
 
 function Section({ title, children }: { title: string; children: ReactNode }): ReactElement {
   return (
@@ -32,18 +53,38 @@ function Section({ title, children }: { title: string; children: ReactNode }): R
 }
 
 function IdentityRow({
-  identity
+  identity,
+  customerId,
+  editable
 }: {
   identity: CustomerDetailView['identities'][number]
+  customerId: string
+  editable: boolean
 }): ReactElement {
+  const t = useTranslations('customers.identity')
   const { storeId } = useStore()
   const channelName = useChannelName(storeId, identity.channelType)
+  const { unlink } = useCustomerIdentityEdits(storeId, customerId)
+  const handle = identity.displayName ?? identity.channelIdentity
   return (
     <li className="flex flex-col text-sm">
-      <span className="font-medium">{channelName}</span>
-      <span className="text-muted-foreground break-all">
-        {identity.displayName ?? identity.channelIdentity}
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="flex-1 font-medium">{channelName}</span>
+        {editable ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-6"
+            aria-label={t('unlink', { channel: channelName, handle })}
+            disabled={unlink.isPending}
+            onClick={() => unlink.mutate(identity.id)}
+          >
+            <X />
+          </Button>
+        ) : null}
+      </div>
+      <span className="text-muted-foreground break-all">{handle}</span>
+      <MutationError error={unlink.error} />
     </li>
   )
 }
@@ -89,9 +130,15 @@ export function CustomerDetails({
 }): ReactElement {
   const t = useTranslations('customers.profile')
   const tEdit = useTranslations('customers.edit')
+  const tIdentity = useTranslations('customers.identity')
   const { can } = useStore()
   const mayEdit = editable && can(Permissions.CUSTOMERS_EDIT)
+  const tMerge = useTranslations('customers.merge')
+  const mayMerge = editable && can(Permissions.CUSTOMERS_MERGE)
   const [isEditing, setEditing] = useState(false)
+  const [isLinking, setLinking] = useState(false)
+  // `absorbedId` is set by "Merge instead", which skips the search for the duplicate
+  const [merge, setMerge] = useState<{ absorbedId?: string } | null>(null)
   const format = useFormatter()
   const name = customerDisplayName(customer)
   const since = new Date(customer.createdAt)
@@ -126,6 +173,24 @@ export function CustomerDetails({
               <Pencil />
             </Button>
           ) : null}
+          {mayMerge ? (
+            // Not modal: a modal menu leaves the page locked when it hands over to the merge dialog
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  aria-label={tMerge('moreActions')}
+                >
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setMerge({})}>{tMerge('open')}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
       )}
       {customer.isCaution ? (
@@ -141,10 +206,37 @@ export function CustomerDetails({
         ) : (
           <ul className="flex flex-col gap-2">
             {customer.identities.map(identity => (
-              <IdentityRow key={identity.id} identity={identity} />
+              <IdentityRow
+                key={identity.id}
+                identity={identity}
+                customerId={customer.id}
+                editable={mayEdit}
+              />
             ))}
           </ul>
         )}
+        {mayEdit ? (
+          isLinking ? (
+            <IdentityLinkForm
+              customerId={customer.id}
+              onDone={() => setLinking(false)}
+              onMergeInstead={ownerId => {
+                setLinking(false)
+                setMerge({ absorbedId: ownerId })
+              }}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="self-start"
+              onClick={() => setLinking(true)}
+            >
+              <Plus />
+              {tIdentity('add')}
+            </Button>
+          )
+        ) : null}
       </Section>
 
       <Section title={t('stats.title')}>
@@ -181,6 +273,14 @@ export function CustomerDetails({
           </ul>
         )}
       </Section>
+
+      {merge === null ? null : (
+        <MergeDialog
+          survivorId={customer.id}
+          absorbedId={merge.absorbedId}
+          onClose={() => setMerge(null)}
+        />
+      )}
 
       <Section title={t('addresses', { count: customer.addresses.length })}>
         {mayEdit ? (

@@ -80,7 +80,12 @@
       "empty": "Aún no hay actividad.",
       "failed": "No se pudo cargar la actividad.",
       "loadMore": "Cargar más",
-      "deleteNote": "Eliminar la nota"
+      "deleteNote": "Eliminar la nota",
+      "undoMerge": "Deshacer la combinación",
+      "undoUntil": "Se puede deshacer hasta el {date}",
+      "undoTitle": "¿Deshacer la combinación?",
+      "undoDescription": "El otro cliente vuelve con sus conversaciones, notas, direcciones, etiquetas y canales, como estaban antes de combinarlos.",
+      "undoConfirm": "Deshacer la combinación"
     },
     "edit": {
       "editProfile": "Editar los datos de contacto",
@@ -135,6 +140,52 @@
         "tags": "Etiquetas",
         "since": "Cliente desde"
       }
+    },
+    "identity": {
+      "add": "Vincular un canal",
+      "channel": "Canal",
+      "handle": "Dato en el canal (número, usuario o id)",
+      "link": "Vincular",
+      "unlink": "Desvincular {handle} en {channel}",
+      "taken": "Este dato ya pertenece a otro cliente.",
+      "mergeInstead": "Combinar en su lugar"
+    },
+    "merge": {
+      "title": "Combinar con otro cliente",
+      "moreActions": "Más acciones",
+      "open": "Combinar con otro cliente",
+      "steps": {
+        "pick": "Paso 1 de 3. Busca el duplicado: este cliente se queda y el que elijas se une a él.",
+        "review": "Paso 2 de 3. Revisa lo que da la combinación y elige los datos que se conservan.",
+        "confirm": "Paso 3 de 3. Confirma la combinación."
+      },
+      "searchLabel": "Buscar el duplicado",
+      "searchPlaceholder": "Buscar por nombre, correo o teléfono",
+      "searchFailed": "No se pudieron cargar los clientes.",
+      "noMatches": "Ningún cliente coincide con la búsqueda.",
+      "unnamed": "Cliente sin nombre",
+      "summary": "{absorbed} se unirá a {survivor}.",
+      "counts": {
+        "conversations": "Conversaciones",
+        "notes": "Notas",
+        "addresses": "Direcciones",
+        "tags": "Etiquetas",
+        "identities": "Canales"
+      },
+      "countSum": "{survivor} + {absorbed} = {merged}",
+      "countUnion": "{survivor} + {absorbed} = {merged} (sin repetidas)",
+      "conflictsTitle": "Los dos tienen datos distintos. Elige cuál conservar:",
+      "fields": {
+        "name": "Nombre",
+        "email": "Correo",
+        "phone": "Teléfono"
+      },
+      "back": "Atrás",
+      "continue": "Continuar",
+      "confirmWord": "COMBINAR",
+      "confirmIntro": "{name} se combinará con este cliente. Puedes deshacerlo desde la actividad durante 30 días.",
+      "confirmLabel": "Escribe {word} para confirmar",
+      "confirm": "Combinar los clientes"
     }
   },
   "email": {

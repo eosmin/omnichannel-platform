@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import type { CustomerTimelineType } from '@platform/core/domain'
+import type { CustomerTimelineType, MergeableField, MergeFieldSource } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
@@ -11,8 +11,12 @@ import {
   customerAddressSchema,
   type CustomerAddressView,
   customerDetailSchema,
+  customerIdentitySchema,
+  type CustomerIdentityView,
   customerListPageSchema,
   type CustomerListPageView,
+  customerMergePreviewSchema,
+  type CustomerMergePreviewView,
   customerNoteSchema,
   type CustomerNoteView,
   customerTagListSchema,
@@ -230,6 +234,89 @@ export function detachCustomerTag(
   tagId: string
 ): Promise<void> {
   return client.request(ApiRoutes.customers.tagById(customerId, tagId), {
+    method: 'DELETE',
+    schema: z.undefined(),
+    storeId
+  })
+}
+
+// What a merge would do, counted before anyone confirms it
+export function fetchCustomerMergePreview(
+  client: ApiClient,
+  storeId: string,
+  survivorId: string,
+  absorbedId: string,
+  signal?: AbortSignal
+): Promise<CustomerMergePreviewView> {
+  const query = pageQuery({ absorbedId })
+  return client.request(`${ApiRoutes.customers.mergePreview(survivorId)}${query}`, {
+    schema: customerMergePreviewSchema,
+    storeId,
+    signal
+  })
+}
+
+// Which side keeps each contact field the two customers differ on; a field left out keeps the survivor
+export type MergeFieldChoices = Partial<Record<MergeableField, MergeFieldSource>>
+
+// The absorbed customer joins the survivor, who is answered with everything now
+export function mergeCustomers(
+  client: ApiClient,
+  storeId: string,
+  survivorId: string,
+  absorbedId: string,
+  fieldChoices: MergeFieldChoices
+): Promise<CustomerDetailView> {
+  return client.request(ApiRoutes.customers.merge(survivorId), {
+    method: 'POST',
+    body: { absorbedId, fieldChoices },
+    schema: customerDetailSchema,
+    storeId
+  })
+}
+
+// `mergeId` is the id of the merge entry of the timeline
+export function unmergeCustomers(
+  client: ApiClient,
+  storeId: string,
+  survivorId: string,
+  mergeId: string
+): Promise<CustomerDetailView> {
+  return client.request(ApiRoutes.customers.unmerge(survivorId), {
+    method: 'POST',
+    body: { mergeId },
+    schema: customerDetailSchema,
+    storeId
+  })
+}
+
+export interface CustomerIdentityInput {
+  channelType: string
+  channelIdentity: string
+  displayName?: string
+}
+
+export function linkCustomerIdentity(
+  client: ApiClient,
+  storeId: string,
+  customerId: string,
+  identity: CustomerIdentityInput
+): Promise<CustomerIdentityView> {
+  return client.request(ApiRoutes.customers.identities(customerId), {
+    method: 'POST',
+    body: identity,
+    schema: customerIdentitySchema,
+    storeId
+  })
+}
+
+export function unlinkCustomerIdentity(
+  client: ApiClient,
+  storeId: string,
+  customerId: string,
+  identityId: string
+): Promise<void> {
+  return client.request(ApiRoutes.customers.identityById(customerId, identityId), {
     method: 'DELETE',
     schema: z.undefined(),
     storeId

@@ -406,6 +406,39 @@ export const customerNoteSchema = z.object({
 })
 export type CustomerNoteView = z.output<typeof customerNoteSchema>
 
+// GET /customers/:id/merge-preview?absorbedId= (TDD_09 §6.1): both sides, the counts and the contact
+// fields where the two hold a different value
+const mergeSideSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  channels: z.array(z.string())
+})
+const mergeCountSchema = z.object({
+  survivor: z.number(),
+  absorbed: z.number(),
+  merged: z.number()
+})
+export const customerMergePreviewSchema = z.object({
+  survivor: mergeSideSchema,
+  absorbed: mergeSideSchema,
+  counts: z.object({
+    conversations: mergeCountSchema,
+    notes: mergeCountSchema,
+    addresses: mergeCountSchema,
+    tags: mergeCountSchema,
+    identities: mergeCountSchema
+  }),
+  // A field this page does not know is dropped: the dialog can only draw the ones it has a label for
+  conflicts: z.array(z.string())
+})
+export type CustomerMergePreviewView = z.output<typeof customerMergePreviewSchema>
+
+// POST /customers/:id/identities
+export const customerIdentitySchema = customerDetailSchema.shape.identities.element
+export type CustomerIdentityView = z.output<typeof customerIdentitySchema>
+
 // POST /customers/:id/tags answers the tags the customer now holds
 export const customerTagListSchema = customerDetailSchema.shape.tags
 

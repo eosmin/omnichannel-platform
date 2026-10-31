@@ -22,6 +22,9 @@ import {
   type CustomerAddressInput,
   type CustomerAddressView,
   type CustomerChanges,
+  type CustomerIdentityInput,
+  type CustomerIdentityView,
+  type CustomerMergePreviewView,
   type CustomerDetailView,
   type CustomerListPageView,
   type CustomerNoteView,
@@ -30,11 +33,17 @@ import {
   deleteCustomerNote,
   detachCustomerTag,
   fetchCustomer,
+  fetchCustomerMergePreview,
   fetchCustomers,
   fetchCustomerConversations,
   fetchCustomerTimeline,
+  linkCustomerIdentity,
+  mergeCustomers,
+  type MergeFieldChoices,
   QueryKeys,
   type TagView,
+  unlinkCustomerIdentity,
+  unmergeCustomers,
   updateCustomer,
   updateCustomerAddress
 } from '@platform/api-client'
@@ -174,4 +183,88 @@ export function useCustomerEdits(storeId: string, customerId: string): CustomerE
   })
 
   return { update, addNote, removeNote, addAddress, editAddress, removeAddress, addTag, removeTag }
+}
+
+// What the merge would do, read when the user has picked the duplicate. A merge that is under way
+// must not change what the user confirmed, so the preview is not read again on its own.
+export function useMergePreview(
+  storeId: string,
+  survivorId: string,
+  absorbedId: string | null
+): UseQueryResult<CustomerMergePreviewView> {
+  return useQuery({
+    queryKey: QueryKeys.customers.mergePreview(storeId, survivorId, absorbedId ?? ''),
+    queryFn: ({ signal }) =>
+      fetchCustomerMergePreview(apiClient, storeId, survivorId, absorbedId ?? '', signal),
+    enabled: absorbedId !== null,
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false
+  })
+}
+
+// A merge or a link moves conversations between customers, so the customers, their activity and the
+// inbox are all stale after it
+function useRefreshCustomersAndInbox(storeId: string): () => Promise<void> {
+  const queryClient = useQueryClient()
+  return useCallback(async (): Promise<void> => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: QueryKeys.customers.all(storeId) }),
+      queryClient.invalidateQueries({ queryKey: QueryKeys.conversations.all(storeId) })
+    ])
+  }, [queryClient, storeId])
+}
+
+export interface CustomerMerges {
+  merge: UseMutationResult<
+    CustomerDetailView,
+    Error,
+    { absorbedId: string; fieldChoices: MergeFieldChoices }
+  >
+  unmerge: UseMutationResult<CustomerDetailView, Error, string>
+}
+
+// A merge moves conversations, notes, addresses, tags and identities, so the customers, their activity
+// and the inbox are all stale after it, and after undoing it.
+export function useCustomerMerges(storeId: string, customerId: string): CustomerMerges {
+  const refresh = useRefreshCustomersAndInbox(storeId)
+  const merge = useMutation({
+    mutationFn: ({
+      absorbedId,
+      fieldChoices
+    }: {
+      absorbedId: string
+      fieldChoices: MergeFieldChoices
+    }) => mergeCustomers(apiClient, storeId, customerId, absorbedId, fieldChoices),
+    onSuccess: refresh
+  })
+  const unmerge = useMutation({
+    mutationFn: (mergeId: string) => unmergeCustomers(apiClient, storeId, customerId, mergeId),
+    onSuccess: refresh
+  })
+  return { merge, unmerge }
+}
+
+export interface CustomerIdentityEdits {
+  link: UseMutationResult<CustomerIdentityView, Error, CustomerIdentityInput>
+  unlink: UseMutationResult<void, Error, string>
+}
+
+// Linking a handle changes the customer, the list (its channels) and who a conversation belongs to
+export function useCustomerIdentityEdits(
+  storeId: string,
+  customerId: string
+): CustomerIdentityEdits {
+  const refresh = useRefreshCustomersAndInbox(storeId)
+  const link = useMutation({
+    mutationFn: (identity: CustomerIdentityInput) =>
+      linkCustomerIdentity(apiClient, storeId, customerId, identity),
+    onSuccess: refresh
+  })
+  const unlink = useMutation({
+    mutationFn: (identityId: string) =>
+      unlinkCustomerIdentity(apiClient, storeId, customerId, identityId),
+    onSuccess: refresh
+  })
+  return { link, unlink }
 }

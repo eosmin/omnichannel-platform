@@ -5,8 +5,13 @@ import {
   deleteCustomerNote,
   fetchCustomer,
   fetchCustomerConversations,
+  fetchCustomerMergePreview,
   fetchCustomers,
   fetchCustomerTimeline,
+  linkCustomerIdentity,
+  mergeCustomers,
+  unlinkCustomerIdentity,
+  unmergeCustomers,
   updateCustomer
 } from './customers-api'
 
@@ -178,5 +183,101 @@ describe('customer changes', () => {
 
     await expect(deleteCustomerNote(client, 's1', 'c1', 'n1')).resolves.toBeUndefined()
     expect(fetchImpl.mock.calls[0]?.[1].method).toBe('DELETE')
+  })
+})
+
+const side = (id: string) => ({ id, name: 'Ana', email: null, phone: null, channels: ['whatsapp'] })
+const count = { survivor: 4, absorbed: 2, merged: 6 }
+const detail = {
+  id: 'c1',
+  name: 'Ana',
+  email: null,
+  phone: null,
+  locale: null,
+  isCaution: false,
+  cautionReason: null,
+  identities: [],
+  addresses: [],
+  tags: [],
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z'
+}
+
+describe('the merge', () => {
+  it('asks the preview for the absorbed customer of the survivor', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, {
+        survivor: side('c1'),
+        absorbed: side('c2'),
+        counts: {
+          conversations: count,
+          notes: count,
+          addresses: count,
+          tags: count,
+          identities: count
+        },
+        conflicts: ['name']
+      })
+    )
+
+    const preview = await fetchCustomerMergePreview(client, 's1', 'c1', 'c2')
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/customers/c1/merge-preview?absorbedId=c2'
+    )
+    expect(preview.conflicts).toEqual(['name'])
+    expect(preview.counts.conversations.merged).toBe(6)
+  })
+
+  it('posts the absorbed customer and the choices to the survivor', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+
+    await mergeCustomers(client, 's1', 'c1', 'c2', { name: 'absorbed' })
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/c1/merge')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBe(
+      JSON.stringify({ absorbedId: 'c2', fieldChoices: { name: 'absorbed' } })
+    )
+  })
+
+  it('posts the merge id to undo it', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+
+    await unmergeCustomers(client, 's1', 'c1', 'm1')
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/c1/unmerge')
+    expect(init?.body).toBe(JSON.stringify({ mergeId: 'm1' }))
+  })
+})
+
+describe('the identities', () => {
+  it('links a handle and unlinks it by id', async () => {
+    const identity = {
+      id: 'i1',
+      channelType: 'whatsapp',
+      channelIdentity: '50370000000',
+      displayName: null,
+      lastInboundAt: null
+    }
+    const link = setup(json(201, identity))
+    await expect(
+      linkCustomerIdentity(link.client, 's1', 'c1', {
+        channelType: 'whatsapp',
+        channelIdentity: '7000 0000'
+      })
+    ).resolves.toEqual(identity)
+    expect(link.fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/customers/c1/identities'
+    )
+
+    const unlink = setup(new Response(null, { status: 204 }))
+    await unlinkCustomerIdentity(unlink.client, 's1', 'c1', 'i1')
+    expect(unlink.fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/customers/c1/identities/i1'
+    )
+    expect(unlink.fetchImpl.mock.calls[0]?.[1].method).toBe('DELETE')
   })
 })
