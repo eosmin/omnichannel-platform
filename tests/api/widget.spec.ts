@@ -64,6 +64,7 @@ interface BootstrapBody {
   store: { name: string; locale: string }
   away: boolean
   messages: MessageBody[]
+  readUpToMessageId: string | null
 }
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
@@ -825,6 +826,50 @@ describe('The web widget', () => {
         await sleep(100)
         expect(mine.heard).toEqual([{ messageId: mine.ids[1] }])
         expect(other.heard).toEqual([])
+      })
+
+      it('gives a visitor who comes back the last message of theirs that was read', async () => {
+        const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+        const mine = await visitorWithMessages(siteKey)
+        const visitorId = (
+          await owner.conversation.findUniqueOrThrow({
+            where: { id: mine.conversationId },
+            select: { customerIdentity: { select: { channelIdentity: true } } }
+          })
+        ).customerIdentity.channelIdentity
+        const before = (await bootstrap(siteKey, visitorId).expect(OK)).body as BootstrapBody
+        expect(before.readUpToMessageId).toBeNull()
+
+        await readBy(mine.conversationId).expect(OK)
+
+        const after = (await bootstrap(siteKey, visitorId).expect(OK)).body as BootstrapBody
+        expect(after.readUpToMessageId).toBe(mine.ids[1])
+        // A message that came after the read is not covered by it
+        await owner.conversation.update({
+          where: { id: mine.conversationId },
+          data: { lastReadAt: new Date(Date.now() - 1500) }
+        })
+        const earlier = (await bootstrap(siteKey, visitorId).expect(OK)).body as BootstrapBody
+        expect(earlier.readUpToMessageId).toBe(mine.ids[0])
+      })
+
+      it('keeps the read back from a returning visitor when the store sends no receipts', async () => {
+        const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+        const mine = await visitorWithMessages(siteKey)
+        const identity = await owner.conversation.findUniqueOrThrow({
+          where: { id: mine.conversationId },
+          select: { customerIdentity: { select: { channelIdentity: true } } }
+        })
+        await owner.storeSettings.create({
+          data: { storeId: ctx.storeA.id, preferences: { sendReadReceipts: false } }
+        })
+        await readBy(mine.conversationId).expect(OK)
+
+        const body = (
+          await bootstrap(siteKey, identity.customerIdentity.channelIdentity).expect(OK)
+        ).body as BootstrapBody
+
+        expect(body.readUpToMessageId).toBeNull()
       })
 
       it('tells it also when the read comes from the bulk action', async () => {

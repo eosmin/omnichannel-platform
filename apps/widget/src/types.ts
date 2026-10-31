@@ -15,6 +15,8 @@ export interface Bootstrap {
   store: { name: string; locale: string }
   away: boolean
   messages: ServerMessage[]
+  // The latest message of the visitor that an agent read; null when none was
+  readUpToMessageId: string | null
 }
 
 // A line of the conversation. A message the visitor just wrote has no server id until the history is
