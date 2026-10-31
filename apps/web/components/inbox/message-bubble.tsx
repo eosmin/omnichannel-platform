@@ -9,6 +9,8 @@ import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
 import { knownErrorCode } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
+import { mentionSegments } from '../../lib/inbox/mention-segments'
+import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import {
   deliveryTicksOf,
   isFromCustomer,
@@ -19,6 +21,7 @@ import { cn } from '../../lib/utils'
 
 import { CustomerAvatar } from './customer-avatar'
 import { DeliveryTicksIcon } from './delivery-ticks'
+import { MessageActionsBar } from './message-actions-bar'
 import { QuotedMessage } from './quoted-message'
 import { ReactionChips } from './reaction-chips'
 import { SharedLink } from './shared-link'
@@ -44,6 +47,12 @@ export interface MessageBubbleProps {
   // The ids of the messages in the loaded part of the thread: a quote links to one of them only
   loadedIds: ReadonlySet<string>
   onJumpTo: (messageId: string) => void
+  // What the agent may do to this message; the thread works it out once for each message
+  actions: MessageActions
+  conversationId: string
+  userId: string | undefined
+  // The names a note mentions, to highlight them in its text
+  mentionNames: readonly string[]
 }
 
 // The element a quote scrolls to and focuses has to exist for every kind of message, a line included
@@ -99,7 +108,11 @@ function Bubble({
   showAuthor,
   authorLabel,
   loadedIds,
-  onJumpTo
+  onJumpTo,
+  actions,
+  conversationId,
+  userId,
+  mentionNames
 }: MessageBubbleProps & { kind: Exclude<MessageKind, 'system' | 'neutral'> }): ReactElement {
   const t = useTranslations('inbox.thread')
   const tAll = useTranslations()
@@ -146,32 +159,61 @@ function Bubble({
       ) : null}
       <div
         className={cn(
-          'flex max-w-[85%] flex-col gap-1 rounded-lg px-3 py-2 text-sm md:max-w-[70%]',
-          isCustomer && 'bg-card border',
-          !isCustomer && !isNote && 'bg-secondary text-secondary-foreground',
-          isNote && 'bg-note text-note-foreground border-note-border border border-dashed'
+          'group flex max-w-[85%] items-start gap-1 md:max-w-[70%]',
+          !isCustomer && 'flex-row-reverse'
         )}
       >
-        {isNote ? <p className="text-xs font-semibold">{t('internalNote')}</p> : null}
-        {message.replyToMessageId === null ? null : (
-          <QuotedMessage
-            quote={message.replyTo}
-            replyTo={message.replyToMessageId}
-            authorName={
-              message.replyTo === null
-                ? null
-                : authorLabel(message.replyTo.authorType, message.replyTo.authorId)
-            }
-            onJump={loadedIds.has(message.replyToMessageId) ? onJumpTo : undefined}
+        <div
+          className={cn(
+            'flex min-w-0 flex-col gap-1 rounded-lg px-3 py-2 text-sm',
+            isCustomer && 'bg-card border',
+            !isCustomer && !isNote && 'bg-secondary text-secondary-foreground',
+            isNote && 'bg-note text-note-foreground border-note-border border border-dashed'
+          )}
+        >
+          {isNote ? <p className="text-xs font-semibold">{t('internalNote')}</p> : null}
+          {message.replyToMessageId === null ? null : (
+            <QuotedMessage
+              quote={message.replyTo}
+              replyTo={message.replyToMessageId}
+              authorName={
+                message.replyTo === null
+                  ? null
+                  : authorLabel(message.replyTo.authorType, message.replyTo.authorId)
+              }
+              onJump={loadedIds.has(message.replyToMessageId) ? onJumpTo : undefined}
+            />
+          )}
+          <Content
+            message={message}
+            kind={kind}
+            authorLabel={authorLabel}
+            mentionNames={isNote ? mentionNames : NO_NAMES}
           />
-        )}
-        <Content message={message} kind={kind} authorLabel={authorLabel} />
-        {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
-        <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
-          {message.editedAt === null ? null : <span>{t('edited')}</span>}
-          <time dateTime={message.createdAt}>{time}</time>
-          {ticks === null ? null : <DeliveryTicksIcon status={ticks} />}
-        </p>
+          {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
+          <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
+            {message.editedAt === null ? null : (
+              <span>
+                {isNote && message.editedById !== null
+                  ? t('editedBy', {
+                      name: authorLabel(message.editedByType ?? '', message.editedById)
+                    })
+                  : t('edited')}
+              </span>
+            )}
+            <time dateTime={message.createdAt}>{time}</time>
+            {ticks === null ? null : <DeliveryTicksIcon status={ticks} />}
+          </p>
+        </div>
+        {hasAnyAction(actions) ? (
+          <MessageActionsBar
+            message={message}
+            conversationId={conversationId}
+            actions={actions}
+            userId={userId}
+            authorLabel={authorLabel}
+          />
+        ) : null}
       </div>
       {problems.map(problem => (
         <p key={problem} role="status" className="text-destructive text-xs">
@@ -183,17 +225,21 @@ function Bubble({
   )
 }
 
+const NO_NAMES: readonly string[] = []
+
 const joinReason = (what: string, reason: string | null): string =>
   reason === null ? what : `${what}: ${reason}`
 
 function Content({
   message,
   kind,
-  authorLabel
+  authorLabel,
+  mentionNames
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
   authorLabel: (type: string, id: string | null) => string
+  mentionNames: readonly string[]
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -220,7 +266,19 @@ function Content({
       {message.type === String(MessageType.TEMPLATE) ? (
         <p className="text-muted-foreground text-xs">{t('templateLabel')}</p>
       ) : null}
-      {text === null ? null : <p className="break-words whitespace-pre-wrap">{text}</p>}
+      {text === null ? null : (
+        <p className="break-words whitespace-pre-wrap">
+          {mentionSegments(text, mentionNames).map((segment, index) =>
+            segment.isMention ? (
+              <strong key={index} className="bg-note-border/40 rounded px-0.5 font-semibold">
+                {segment.text}
+              </strong>
+            ) : (
+              segment.text
+            )
+          )}
+        </p>
+      )}
     </>
   )
 }

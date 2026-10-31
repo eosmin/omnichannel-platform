@@ -25,6 +25,7 @@ import {
   fetchConversationsPage,
   fetchInboxBehavior,
   fetchSnippets,
+  fetchTags,
   fetchMemberDirectory,
   fetchMessagesPage,
   fetchMessagingWindow,
@@ -32,7 +33,8 @@ import {
   type MessagePageView,
   type MessagingWindowView,
   QueryKeys,
-  type SnippetView
+  type SnippetView,
+  type TagView
 } from '@platform/api-client'
 
 import { apiClient } from '../api'
@@ -151,5 +153,13 @@ export function useInboxBehavior(storeId: string): UseQueryResult<InboxBehaviorV
   return useQuery({
     queryKey: QueryKeys.inboxBehavior.store(storeId),
     queryFn: ({ signal }) => fetchInboxBehavior(apiClient, storeId, signal)
+  })
+}
+
+// The tags of the store, for the filter of the list. Any agent who sees conversations reads them.
+export function useTags(storeId: string): UseQueryResult<TagView[]> {
+  return useQuery({
+    queryKey: QueryKeys.tags.all(storeId),
+    queryFn: ({ signal }) => fetchTags(apiClient, storeId, signal)
   })
 }

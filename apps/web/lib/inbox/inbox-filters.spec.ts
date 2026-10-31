@@ -3,6 +3,7 @@ import { ConversationStatus } from '@platform/core/domain'
 import { filtersFromParams, hasFilters, paramsFromFilters } from './inbox-filters'
 
 const AGENT_ID = '0f8fad5b-d9cb-469f-a165-70867728950e'
+const TAG_ID = '3b241101-e2bb-4255-8caf-4136c566a962'
 
 describe('filtersFromParams', () => {
   it('reads each filter the address names', () => {
@@ -22,6 +23,13 @@ describe('filtersFromParams', () => {
     })
   })
 
+  it('reads the tag by its id and drops one that is not an id', () => {
+    expect(filtersFromParams(new URLSearchParams(`tagId=${TAG_ID.toUpperCase()}`))).toEqual({
+      tagId: TAG_ID
+    })
+    expect(filtersFromParams(new URLSearchParams('tagId=vip'))).toEqual({})
+  })
+
   it('drops what is not valid instead of sending it to the api', () => {
     const params = new URLSearchParams('assigned=everyone&status=open&channelType=NOT%20AN%20ID!')
 
@@ -31,7 +39,12 @@ describe('filtersFromParams', () => {
 
 describe('paramsFromFilters', () => {
   it('writes back what filtersFromParams reads', () => {
-    const filters = { assigned: 'me', status: ConversationStatus.PENDING, channelType: 'instagram' }
+    const filters = {
+      assigned: 'me',
+      status: ConversationStatus.PENDING,
+      channelType: 'instagram',
+      tagId: TAG_ID
+    }
 
     expect(filtersFromParams(paramsFromFilters(filters))).toEqual(filters)
   })

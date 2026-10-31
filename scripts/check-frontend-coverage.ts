@@ -13,7 +13,7 @@ import { planSteps } from './lib/isolation'
 
 const PLAN = 'docs/IMPLEMENTATION_PLAN.md'
 // The SDK is not a dependency of the tooling scope: its list of capabilities is read as text
-const CAPABILITIES = 'libs/plugins/sdk/src/channel-capability.ts'
+const CAPABILITIES = 'libs/core/domain/channel-capability.ts'
 const CAPABILITY_KEY = /^\s{2}([A-Z_]+):\s*'/gm
 const steps = planSteps(readFileSync(PLAN, 'utf8'))
 // No step at all means that the progress table was not read, not that nothing is planned

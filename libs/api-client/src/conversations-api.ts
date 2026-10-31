@@ -5,6 +5,8 @@ import type { ConversationStatus } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
+  type TagView,
+  tagListSchema,
   type ChannelDirectoryEntryView,
   channelDirectorySchema,
   type ChannelTemplateView,
@@ -34,6 +36,7 @@ function listQuery(filters: ConversationFilters, cursor: string | null): string 
   if (filters.assigned !== undefined) params.set('assigned', filters.assigned)
   if (filters.status !== undefined) params.set('status', filters.status)
   if (filters.channelType !== undefined) params.set('channelType', filters.channelType)
+  if (filters.tagId !== undefined) params.set('tagId', filters.tagId)
   if (cursor !== null) params.set('cursor', cursor)
   const query = params.toString()
   return query === '' ? '' : `?${query}`
@@ -158,6 +161,14 @@ export function fetchChannelTemplates(
     storeId,
     signal
   })
+}
+
+export function fetchTags(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<TagView[]> {
+  return client.request(ApiRoutes.settings.tags, { schema: tagListSchema, storeId, signal })
 }
 
 export function fetchSnippets(

@@ -1,10 +1,18 @@
+import { z } from 'zod'
+
 import { ApiRoutes } from '@platform/core/api'
 import type { MessageType } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 import {
+  type DeletedContentView,
+  deletedContentSchema,
   type MessagePageView,
   messagePageSchema,
+  type MessageView,
+  messageSchema,
+  type RevisionView,
+  revisionListSchema,
   type SentMessage,
   sentMessageSchema
 } from './api-schemas'
@@ -69,5 +77,86 @@ export function sendTemplate(
     body: input,
     schema: sentMessageSchema,
     storeId
+  })
+}
+
+// "Send again" on a reply that failed: the same message goes back on its way as queued
+export function resendMessage(
+  client: ApiClient,
+  storeId: string,
+  messageId: string
+): Promise<MessageView> {
+  return client.request(ApiRoutes.messages.resend(messageId), {
+    method: 'POST',
+    schema: messageSchema,
+    storeId
+  })
+}
+
+// The reaction of the caller: an emoji sets it, null takes it back. The answer is 204.
+export function reactToMessage(
+  client: ApiClient,
+  storeId: string,
+  messageId: string,
+  emoji: string | null
+): Promise<void> {
+  return client.request(ApiRoutes.messages.reaction(messageId), {
+    method: 'PUT',
+    body: { emoji },
+    schema: z.undefined(),
+    storeId
+  })
+}
+
+// The whole new text. A note carries the `version` it was read at; a stale one answers 409.
+export function editMessage(
+  client: ApiClient,
+  storeId: string,
+  messageId: string,
+  input: { content: string; version?: number }
+): Promise<MessageView> {
+  return client.request(ApiRoutes.messages.byId(messageId), {
+    method: 'PATCH',
+    body: input,
+    schema: messageSchema,
+    storeId
+  })
+}
+
+// Deletes for everyone, or answers 409 when the channel cannot
+export function deleteMessage(
+  client: ApiClient,
+  storeId: string,
+  messageId: string
+): Promise<void> {
+  return client.request(ApiRoutes.messages.byId(messageId), {
+    method: 'DELETE',
+    schema: z.undefined(),
+    storeId
+  })
+}
+
+// Every read of the kept text is audited by the api
+export function fetchDeletedContent(
+  client: ApiClient,
+  storeId: string,
+  messageId: string
+): Promise<DeletedContentView> {
+  return client.request(ApiRoutes.messages.deletedContent(messageId), {
+    schema: deletedContentSchema,
+    storeId
+  })
+}
+
+export function fetchRevisions(
+  client: ApiClient,
+  storeId: string,
+  messageId: string,
+  signal?: AbortSignal
+): Promise<RevisionView[]> {
+  return client.request(ApiRoutes.messages.revisions(messageId), {
+    schema: revisionListSchema,
+    storeId,
+    signal
   })
 }

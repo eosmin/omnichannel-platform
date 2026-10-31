@@ -6,6 +6,7 @@ export interface ConversationFilters {
   assigned?: string
   status?: ConversationStatus
   channelType?: ChannelId
+  tagId?: string
 }
 
 // TanStack Query keys are constants, built the same way as CacheKeys. Realtime invalidation
@@ -28,8 +29,16 @@ export const QueryKeys = {
     origins: (storeId: string, conversationId: string) =>
       ['messages', storeId, conversationId, 'origins'] as const,
     // Also under the thread key: a message of the customer opens the window again
+    // Read on demand by a dialog, not part of the thread: the kept text is audited on each read
+    deletedContent: (storeId: string, messageId: string) =>
+      ['messages', storeId, 'deleted-content', messageId] as const,
+    revisions: (storeId: string, messageId: string) =>
+      ['messages', storeId, 'revisions', messageId] as const,
     window: (storeId: string, conversationId: string) =>
       ['messages', storeId, conversationId, 'window'] as const
+  },
+  tags: {
+    all: (storeId: string) => ['tags', storeId] as const
   },
   customers: {
     all: (storeId: string) => ['customers', storeId] as const,

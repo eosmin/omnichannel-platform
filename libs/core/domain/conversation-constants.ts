@@ -185,3 +185,7 @@ export const ConversationLimits = {
   // from many ads has more, and the card shows the latest
   MAX_ORIGINS_LISTED: 50
 } as const
+
+// The emoji an agent can leave with one click. They are the content of a reaction, not decoration of
+// the interface (rule 9 is about the latter); any other emoji goes through the "other" dialog.
+export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const
