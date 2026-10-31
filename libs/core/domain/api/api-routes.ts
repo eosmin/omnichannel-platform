@@ -283,7 +283,9 @@ export const ApiRoutes = {
     templates: (pluginId: string) => `/channels/${pluginId}/templates`,
     // The web widget's own settings: the sites that may load it and the snippet to paste
     widgetEmbed: (id: string) => `/channels/connections/${id}/widget`,
-    widgetOrigins: (id: string) => `/channels/connections/${id}/widget/origins`
+    widgetOrigins: (id: string) => `/channels/connections/${id}/widget/origins`,
+    // Turns the pre-chat form of the widget on or off
+    widgetPreChat: (id: string) => `/channels/connections/${id}/widget/pre-chat`
   },
 
   // Who of the team is connected to the store of the request, read once when the inbox opens; the

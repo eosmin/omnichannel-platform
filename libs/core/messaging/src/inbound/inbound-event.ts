@@ -1,5 +1,7 @@
 import type { MessageType, OriginKind, OriginMediaType } from '@platform/core/domain'
 
+import type { ChannelProfile } from '../customers/customer-identity.service'
+
 export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
@@ -39,7 +41,7 @@ export interface InboundMessage {
 export interface InboundEvent {
   connectionId: string
   channelIdentity: string
-  channelProfile?: { displayName?: string | undefined; locale?: string | undefined } | undefined
+  channelProfile?: ChannelProfile | undefined
   message: InboundMessage
 }
 

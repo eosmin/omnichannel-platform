@@ -103,6 +103,7 @@ export const AuditAction = {
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
   WIDGET_ORIGINS_CHANGED: 'channel.widget_origins_changed',
+  WIDGET_PRE_CHAT_CHANGED: 'channel.widget_pre_chat_changed',
   SETTINGS_CHANGED: 'settings.changed',
   ROUTING_RULE_CHANGED: 'routing_rule.changed',
   RETENTION_CHANGED: 'retention.changed',

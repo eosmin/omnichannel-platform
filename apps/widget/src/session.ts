@@ -12,7 +12,7 @@ import { RealtimeNamespaces } from '@platform/core/realtime'
 
 import { isServerMessage, type WidgetApi, WidgetApiError } from './api'
 import type { ChatLog } from './chat-log'
-import type { Bootstrap } from './types'
+import type { Bootstrap, VisitorProfile } from './types'
 
 // The part of a socket the session uses, so that a test does not need a network
 export interface VisitorSocket {
@@ -42,6 +42,8 @@ export interface SessionDeps {
   socketUrl: string
   createSocket: SocketFactory
   newMessageId: () => string
+  // The api took the profile of the visitor with a message
+  onProfileSent?: () => void
 }
 
 const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
@@ -58,6 +60,8 @@ export class Session {
   private lastTypingAt = 0
   private typingListener: ((active: boolean) => void) | undefined
   private typingLapse: ReturnType<typeof setTimeout> | undefined
+  // What the visitor typed in the form, sent with the first message that gets through
+  private pendingProfile: VisitorProfile | undefined
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -117,6 +121,12 @@ export class Session {
     this.typingListener?.(active)
   }
 
+  // The form was filled: the api takes it with the next message. A message already sent cannot carry it,
+  // and a visitor who skips the form sends nothing.
+  setProfile(profile: VisitorProfile): void {
+    this.pendingProfile = Object.keys(profile).length === 0 ? undefined : profile
+  }
+
   // Writes the message at once and sends it; the same key can be sent again, and the api stores it once
   async send(content: string): Promise<void> {
     const key = this.deps.newMessageId()
@@ -133,17 +143,22 @@ export class Session {
   private async deliver(key: string): Promise<void> {
     const message = this.deps.log.find(key)
     if (message === undefined) return
+    // Taken before the request: it goes with this message, and is given back if the message fails
+    const profile = this.pendingProfile
+    this.pendingProfile = undefined
     try {
       try {
-        await this.deps.api.send(this.token, key, message.content)
+        await this.deps.api.send(this.token, key, message.content, profile)
       } catch (error) {
         if (!(error instanceof WidgetApiError && error.tokenInvalid)) throw error
         // The session ended while the page stayed open: begin another and send once more
         await this.renew()
-        await this.deps.api.send(this.token, key, message.content)
+        await this.deps.api.send(this.token, key, message.content, profile)
       }
       this.deps.log.setState(key, WidgetDeliveryStates.SENT)
+      if (profile !== undefined) this.deps.onProfileSent?.()
     } catch {
+      this.pendingProfile ??= profile
       this.deps.log.setState(key, WidgetDeliveryStates.FAILED)
     }
   }

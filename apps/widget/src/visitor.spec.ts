@@ -1,4 +1,4 @@
-import { loadVisitorId } from './visitor'
+import { loadVisitorId, markPreChatDone, preChatDone } from './visitor'
 
 const ID = '123e4567-e89b-42d3-a456-426614174000'
 
@@ -52,5 +52,30 @@ describe('loadVisitorId', () => {
 
     expect(loadVisitorId(refusing)).toBe(ID)
     expect(loadVisitorId(null)).toBe(ID)
+  })
+})
+
+describe('the pre-chat answer', () => {
+  it('is not asked again once it was given', () => {
+    const storage = memory()
+
+    expect(preChatDone(storage)).toBe(false)
+    markPreChatDone(storage)
+    expect(preChatDone(storage)).toBe(true)
+  })
+
+  it('is asked again when the browser refuses its storage', () => {
+    const refusing = {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      }
+    }
+
+    expect(preChatDone(refusing)).toBe(false)
+    expect(() => markPreChatDone(refusing)).not.toThrow()
+    expect(preChatDone(null)).toBe(false)
   })
 })

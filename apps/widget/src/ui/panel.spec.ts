@@ -25,12 +25,15 @@ const message = (overrides: Partial<ChatMessage>): ChatMessage => ({
 describe('mountPanel', () => {
   let mounted: Panel | null = null
   const onSend = jest.fn()
+  const onProfile = jest.fn()
   const onRetry = jest.fn()
   const onTyping = jest.fn()
   const props = (overrides: Partial<PanelProps> = {}): PanelProps => ({
     storeName: 'Shop',
     text: textFor('es'),
     away: false,
+    preChat: false,
+    onProfile,
     onSend,
     onRetry,
     onTyping,
@@ -253,5 +256,71 @@ describe('mountPanel', () => {
     expect(after[1]).not.toBe(second)
     expect(after[1]?.className).toContain('msg--sent')
     expect(after).toHaveLength(3)
+  })
+  describe('the pre-chat form', () => {
+    const type = (name: string, value: string): void => {
+      q<HTMLInputElement>(`input[name="${name}"]`).value = value
+    }
+    const submitForm = (): void => {
+      q<HTMLFormElement>('.prechat').dispatchEvent(new Event('submit', { cancelable: true }))
+    }
+
+    it('comes before the conversation when the store asks for it', () => {
+      mount({ preChat: true })
+
+      expect(q<HTMLElement>('.prechat').hidden).toBe(false)
+      expect(q<HTMLElement>('.messages').hidden).toBe(true)
+      expect(q<HTMLElement>('.composer').hidden).toBe(true)
+    })
+
+    it('is not drawn when the store did not ask for it', () => {
+      mount({ preChat: false })
+
+      expect(q<HTMLElement>('.prechat').hidden).toBe(true)
+      expect(q<HTMLElement>('.composer').hidden).toBe(false)
+    })
+
+    it('hands over what was typed and opens the conversation', () => {
+      mount({ preChat: true })
+      type('name', ' Ana ')
+      type('email', 'ana@example.com')
+      type('phone', '+503 7000 1111')
+
+      submitForm()
+
+      expect(onProfile).toHaveBeenCalledWith({
+        name: 'Ana',
+        email: 'ana@example.com',
+        phone: '+503 7000 1111'
+      })
+      expect(q<HTMLElement>('.prechat').hidden).toBe(true)
+      expect(q<HTMLElement>('.composer').hidden).toBe(false)
+    })
+
+    it('lets the visitor go on with nothing typed', () => {
+      mount({ preChat: true })
+
+      submitForm()
+
+      expect(onProfile).toHaveBeenCalledWith({})
+      expect(q<HTMLElement>('.composer').hidden).toBe(false)
+    })
+
+    it('holds the form back for an email or a phone that cannot be right', () => {
+      mount({ preChat: true })
+      type('email', 'a@b')
+
+      submitForm()
+
+      expect(onProfile).not.toHaveBeenCalled()
+      expect(q('.problem').textContent).toBe('Revisa el correo.')
+      type('email', '')
+      type('phone', 'abc')
+
+      submitForm()
+
+      expect(onProfile).not.toHaveBeenCalled()
+      expect(q('.problem').textContent).toBe('Revisa el teléfono.')
+    })
   })
 })

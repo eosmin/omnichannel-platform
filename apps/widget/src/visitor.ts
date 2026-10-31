@@ -1,6 +1,7 @@
 import { VISITOR_ID_PATTERN } from '@platform/core/domain'
 
 const STORAGE_KEY = 'platform-widget-visitor'
+const PRE_CHAT_KEY = 'platform-widget-prechat-done'
 
 // The visitor is anonymous: a random id kept in the browser, so the conversation is still theirs the
 // next day. Storage can be refused (private windows, blocked site data), and then the id lives only
@@ -27,5 +28,23 @@ export function browserStorage(): Storage | null {
     return window.localStorage
   } catch {
     return null
+  }
+}
+
+// The visitor answered the pre-chat form once (or skipped it): it is not asked again on this browser.
+// Storage can be refused, and then the form comes back on the next visit, which costs nothing.
+export function preChatDone(storage: Pick<Storage, 'getItem'> | null): boolean {
+  try {
+    return storage?.getItem(PRE_CHAT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markPreChatDone(storage: Pick<Storage, 'setItem'> | null): void {
+  try {
+    storage?.setItem(PRE_CHAT_KEY, '1')
+  } catch {
+    // Not kept
   }
 }

@@ -525,8 +525,13 @@ describe('Tenant isolation', () => {
         .put(ApiRoutes.channels.widgetOrigins(connection.id))
         .send({ siteOrigins: [SITE_B] })
 
+      const preChat = await api(app, ctx.adminB, ctx.storeB)
+        .put(ApiRoutes.channels.widgetPreChat(connection.id))
+        .send({ enabled: true })
+
       expect(read.status).toBe(404)
       expect(write.status).toBe(404)
+      expect(preChat.status).toBe(404)
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: connection.id } })
       expect(row.metadata).toEqual({ allowedOrigins: [SITE_A] })
     })

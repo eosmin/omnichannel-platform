@@ -1,3 +1,4 @@
+import { CustomerLimits } from './customer-constants'
 // The web widget (TDD_10 §5.4): a script on the store's own site that a visitor chats from. The site
 // key is the public id of the connection; the token a visitor gets from the bootstrap is the only
 // credential of everything else.
@@ -16,6 +17,8 @@ export const WidgetLimits = {
   // The sites that may load the widget: a store has a few
   MAX_ORIGINS: 20,
   MAX_ORIGIN_LENGTH: 200,
+  // What a visitor may type in the pre-chat form (the name has the limit of a customer's name)
+  PROFILE_FIELD_MAX_LENGTH: CustomerLimits.EMAIL_MAX_LENGTH,
   // What a visitor may write in one message
   CONTENT_MAX_LENGTH: 2000,
   // The id the browser gives a message so that sending it twice stores it once
@@ -34,7 +37,9 @@ export const VISITOR_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 // What the web widget plugin keeps in `ChannelConnection.metadata`
 export const WidgetMetadataKeys = {
-  ALLOWED_ORIGINS: 'allowedOrigins'
+  ALLOWED_ORIGINS: 'allowedOrigins',
+  // Whether the widget asks a visitor for a name, an email and a phone before the first message
+  PRE_CHAT_ENABLED: 'preChatEnabled'
 } as const
 
 // Who wrote a message, as the visitor sees it. The team, a bot and the owner typing elsewhere are one

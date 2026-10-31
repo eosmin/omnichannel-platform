@@ -32,6 +32,8 @@ export interface WidgetBootstrapView {
   expiresInSeconds: number
   store: { name: string; locale: string }
   away: boolean
+  // The widget asks for name, email and phone before the first message, when nothing was said yet
+  preChat: boolean
   messages: WidgetMessageView[]
   // The latest message of the visitor that an agent read, so a page that opens late shows "Seen"
   readUpToMessageId: string | null
@@ -78,6 +80,7 @@ export class WidgetController {
       expiresInSeconds,
       store: { name: site.storeName, locale: site.storeLocale },
       away,
+      preChat: site.preChatEnabled,
       messages,
       readUpToMessageId
     }
@@ -108,7 +111,9 @@ export class WidgetController {
     const site = await this.sites.find(claims.siteKey)
     if (site === null) throw resourceNotFound('widget')
     allowOrigin(site, origin, res)
-    const events = await this.registry.get(ChannelIds.WEB_WIDGET).handleWebhook(body)
+    // A store that did not turn the form on takes no profile, whatever a script sends
+    const accepted = site.preChatEnabled ? body : { ...body, profile: undefined }
+    const events = await this.registry.get(ChannelIds.WEB_WIDGET).handleWebhook(accepted)
     this.received.inc({ channel_type: ChannelIds.WEB_WIDGET })
     await this.queue.enqueue(ChannelIds.WEB_WIDGET, events)
     return { received: true }

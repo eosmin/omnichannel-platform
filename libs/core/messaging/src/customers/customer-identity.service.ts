@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { z } from 'zod'
 
 import {
   isUniqueViolation,
@@ -13,11 +14,24 @@ import { Events } from '@platform/core/events'
 
 import { cleanText } from './customers.support'
 import { type ParsedChannelIdentity, parseChannelIdentity } from './identity'
+import { normalizePhone, type NormalizedPhone } from './phone'
 
 // What a channel knows about the person who wrote (TDD_10 §3, ChannelEvent.channelProfile)
 export interface ChannelProfile {
   displayName?: string | undefined
   locale?: string | undefined
+  // What the person typed in a form (the pre-chat form of the web widget). Nobody proved it: it is
+  // contact data for the team, never a reason to link the handle to another customer.
+  email?: string | undefined
+  phone?: string | undefined
+}
+
+// The profile once cleaned: the phone is read, and what could not be read is gone
+interface CleanProfile {
+  displayName?: string | undefined
+  locale?: string | undefined
+  email?: string | undefined
+  phone?: NormalizedPhone | undefined
 }
 
 export interface FindOrCreateByIdentityInput {
@@ -78,7 +92,7 @@ export class CustomerIdentityService {
     tx: PrismaTransaction,
     key: { storeId: string; channelType: ChannelId; channelIdentity: string },
     parsed: ParsedChannelIdentity,
-    profile: ChannelProfile
+    profile: CleanProfile
   ): Promise<ResolvedIdentity> {
     // Before anything is read: a delete of the store waits for this, and a store that is gone is
     // found as such
@@ -107,6 +121,21 @@ export class CustomerIdentityService {
           data: { displayName: profile.displayName }
         })
       }
+      // What the person typed fills a blank of their customer and never replaces a value: the
+      // agents' edits, and a number or address a channel gave, stay. The condition is in the write,
+      // so two events at once cannot both win.
+      if (profile.email !== undefined) {
+        await tx.customer.updateMany({
+          where: { id: found.customerId, storeId: key.storeId, email: null },
+          data: { email: profile.email }
+        })
+      }
+      if (profile.phone !== undefined) {
+        await tx.customer.updateMany({
+          where: { id: found.customerId, storeId: key.storeId, phoneNormalized: null },
+          data: { phone: profile.phone.display, phoneNormalized: profile.phone.digits }
+        })
+      }
       return { customerId: found.customerId, identityId: found.id, created: false }
     }
     const customer = await tx.customer.create({
@@ -114,8 +143,10 @@ export class CustomerIdentityService {
         storeId: key.storeId,
         name: profile.displayName ?? null,
         locale: profile.locale ?? null,
-        phone: parsed.phone?.display ?? null,
-        phoneNormalized: parsed.phone?.digits ?? null
+        email: profile.email ?? null,
+        // The number of the handle is the channel's own; one typed in a form comes after it
+        phone: (parsed.phone ?? profile.phone)?.display ?? null,
+        phoneNormalized: (parsed.phone ?? profile.phone)?.digits ?? null
       },
       select: { id: true }
     })
@@ -145,15 +176,22 @@ export class CustomerIdentityService {
 
 // What a channel says about a person is not trusted as the body of a request is: it is trimmed, an
 // empty value is no value, and it is cut to the size a field of the api can have
-function cleanProfile(profile: ChannelProfile | undefined): ChannelProfile {
+const emailSchema = z.email().max(CustomerLimits.EMAIL_MAX_LENGTH)
+
+function cleanProfile(profile: ChannelProfile | undefined): CleanProfile {
   // A tag that is too long is not cut (a cut tag is another language): it is not a locale
   const locale = profile?.locale?.trim()
   const validLocale =
     locale !== undefined &&
     locale.length <= CustomerLimits.LOCALE_MAX_LENGTH &&
     LOCALE_TAG_PATTERN.test(locale)
+  // An address or a number that is not valid is dropped, not stored half-understood
+  const email = emailSchema.safeParse(profile?.email?.trim())
+  const phone = profile?.phone === undefined ? null : normalizePhone(profile.phone)
   return {
     displayName: cleanText(profile?.displayName, CustomerLimits.NAME_MAX_LENGTH),
-    locale: validLocale ? locale : undefined
+    locale: validLocale ? locale : undefined,
+    email: email.success ? email.data.toLowerCase() : undefined,
+    phone: phone ?? undefined
   }
 }

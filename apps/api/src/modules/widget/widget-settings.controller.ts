@@ -10,7 +10,12 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
-import { type WidgetOriginsBody, widgetOriginsSchema } from './widget-settings.schemas'
+import {
+  type WidgetOriginsBody,
+  widgetOriginsSchema,
+  type WidgetPreChatBody,
+  widgetPreChatSchema
+} from './widget-settings.schemas'
 import { type WidgetEmbedView, WidgetSettings } from './widget-settings.service'
 
 type Store = ResolvedTenant['store']
@@ -47,6 +52,24 @@ export class WidgetSettingsController {
       store.id,
       connectionId,
       body.siteOrigins,
+      actorOf(user, store, req)
+    )
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @Put(ApiRoutes.channels.widgetPreChat(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  updatePreChat(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) connectionId: string,
+    @Body(new ZodValidationPipe(widgetPreChatSchema)) body: WidgetPreChatBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<WidgetEmbedView> {
+    return this.settings.updatePreChat(
+      store.id,
+      connectionId,
+      body.enabled,
       actorOf(user, store, req)
     )
   }

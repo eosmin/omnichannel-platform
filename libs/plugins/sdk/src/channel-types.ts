@@ -58,7 +58,15 @@ export interface ChannelEvent {
   // The customer's handle on this channel: phone (E.164 without '+'), page-scoped id, widget
   // visitor id
   channelIdentity: string
-  channelProfile?: { displayName?: string; avatarUrl?: string; locale?: string }
+  // `email` and `phone` are what the person typed in a form (the pre-chat form of the web widget),
+  // which nobody proved: the core stores them as contact data and never links a customer by them
+  channelProfile?: {
+    displayName?: string
+    avatarUrl?: string
+    locale?: string
+    email?: string
+    phone?: string
+  }
   message?: {
     externalId: string
     type: MessageType

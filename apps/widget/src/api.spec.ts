@@ -5,6 +5,7 @@ const BOOTSTRAP = {
   expiresInSeconds: 3600,
   store: { name: 'Shop', locale: 'es' },
   away: false,
+  preChat: true,
   readUpToMessageId: null,
   messages: [{ id: 'm1', from: 'team', content: 'hola', createdAt: '2026-01-01T00:00:00.000Z' }]
 }
@@ -33,6 +34,33 @@ describe('WidgetApi', () => {
         body: JSON.stringify({ siteKey: 'pk_x', visitorId: 'visitor' })
       })
     )
+  })
+
+  it('sends the profile beside the message when there is one', async () => {
+    const request = answering(200, { received: true })
+
+    await new WidgetApi('https://api.test', request).send('tok', 'id-1', 'hola', { name: 'Ana' })
+
+    expect(request).toHaveBeenCalledWith(
+      'https://api.test/widget/messages',
+      expect.objectContaining({
+        body: JSON.stringify({
+          visitorToken: 'tok',
+          clientMessageId: 'id-1',
+          content: 'hola',
+          profile: { name: 'Ana' }
+        })
+      })
+    )
+  })
+
+  it('refuses a bootstrap that does not say whether to ask for the form', async () => {
+    const incomplete: Partial<typeof BOOTSTRAP> = { ...BOOTSTRAP }
+    delete incomplete.preChat
+
+    await expect(
+      new WidgetApi('https://api.test', answering(200, incomplete)).bootstrap('pk_x', 'visitor')
+    ).rejects.toBeInstanceOf(WidgetApiError)
   })
 
   it('sends the token in the body beside the message', async () => {

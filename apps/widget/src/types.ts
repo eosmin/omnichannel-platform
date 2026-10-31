@@ -9,11 +9,20 @@ export interface ServerMessage {
   createdAt: string
 }
 
+// What the pre-chat form collects; every field is optional and none is proved
+export interface VisitorProfile {
+  name?: string
+  email?: string
+  phone?: string
+}
+
 export interface Bootstrap {
   visitorToken: string
   expiresInSeconds: number
   store: { name: string; locale: string }
   away: boolean
+  // The store asks for a name, an email and a phone before the first message
+  preChat: boolean
   messages: ServerMessage[]
   // The latest message of the visitor that an agent read; null when none was
   readUpToMessageId: string | null
