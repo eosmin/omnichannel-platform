@@ -36,12 +36,14 @@ async function run(): Promise<void> {
     text: textFor(resolveLocale(options.locale, boot.store.locale, navigator.language)),
     away: boot.away,
     onSend: content => void session.send(content),
-    onRetry: key => void session.retry(key)
+    onRetry: key => void session.retry(key),
+    onTyping: () => session.typing()
   })
   if (panel === null) {
     session.stop()
     return
   }
+  session.onAgentTyping(active => panel.setAgentTyping(active))
   panel.update(log.messages)
   log.subscribe(messages => panel.update(messages))
 }

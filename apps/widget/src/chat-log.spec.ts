@@ -110,4 +110,45 @@ describe('ChatLog', () => {
       expect(log.messages.map(message => message.serverId)).toEqual(['1', null])
     })
   })
+
+  describe('seen', () => {
+    const history = [
+      server('1', 'visitor', 'a'),
+      server('2', 'team', 'b'),
+      server('3', 'visitor', 'c')
+    ]
+
+    it('marks the visitor messages up to the one read, and no team message', () => {
+      const log = new ChatLog()
+      log.loadHistory(history)
+
+      log.markSeenUpTo('1')
+
+      expect(log.messages.map(message => message.seen)).toEqual([true, false, false])
+    })
+
+    it('marks everything the log knows when the id is newer than the log', () => {
+      const log = new ChatLog()
+      log.loadHistory(history)
+      log.addOutgoing('k', 'pending')
+
+      log.markSeenUpTo('9')
+
+      expect(log.messages.map(message => message.seen)).toEqual([true, false, true, false])
+    })
+
+    it('keeps the mark when the history is read again, and does not notify twice', () => {
+      const log = new ChatLog()
+      log.loadHistory(history)
+      const listener = jest.fn()
+      log.markSeenUpTo('3')
+      log.subscribe(listener)
+
+      log.markSeenUpTo('3')
+      log.loadHistory(history)
+
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(log.messages.map(message => message.seen)).toEqual([true, false, true])
+    })
+  })
 })

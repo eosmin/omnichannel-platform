@@ -88,6 +88,9 @@ svg { width: 20px; height: 20px; display: block; }
 .msg--visitor .bubble { background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 4px; }
 .msg--team .bubble { background: var(--bubble-team); border-bottom-left-radius: 4px; }
 .msg--sending .bubble { opacity: 0.6; }
+.seen { font-size: 11px; color: var(--muted); }
+.typing { margin: 0; padding: 0 14px 8px; font-size: 12px; color: var(--muted); }
+.typing[hidden] { display: none; }
 .failure { font-size: 12px; color: var(--error); }
 .retry { border: 0; background: transparent; color: var(--error); text-decoration: underline; padding: 0 0 0 4px; font-size: 12px; }
 .composer { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }

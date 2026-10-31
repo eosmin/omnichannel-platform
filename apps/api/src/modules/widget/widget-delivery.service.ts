@@ -24,6 +24,12 @@ export class WidgetDelivery {
       .emit(WidgetSocketEvents.AGENT_TYPING, { active })
   }
 
+  readToVisitor(siteKey: string, visitorId: string, messageId: string): void {
+    this.namespace
+      ?.to(RoomNames.widgetVisitor(siteKey, visitorId))
+      .emit(WidgetSocketEvents.READ, { messageId })
+  }
+
   toVisitor(siteKey: string, visitorId: string, message: WidgetMessageView): void {
     this.namespace
       ?.to(RoomNames.widgetVisitor(siteKey, visitorId))

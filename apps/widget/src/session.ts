@@ -1,7 +1,10 @@
 import {
   SocketLifecycle,
   WIDGET_TOKEN_AUTH_KEY,
+  WidgetAuthors,
+  WidgetClientEvents,
   WidgetDeliveryStates,
+  WidgetLimits,
   WidgetSocketEvents
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -13,7 +16,9 @@ import type { Bootstrap } from './types'
 
 // The part of a socket the session uses, so that a test does not need a network
 export interface VisitorSocket {
+  readonly connected: boolean
   on(event: string, listener: (...args: unknown[]) => void): void
+  emit(event: string): void
   connect(): void
   disconnect(): void
 }
@@ -50,6 +55,9 @@ export class Session {
   private socket: VisitorSocket | undefined
   private stopped = false
   private renewing: Promise<Bootstrap> | undefined
+  private lastTypingAt = 0
+  private typingListener: ((active: boolean) => void) | undefined
+  private typingLapse: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -76,7 +84,37 @@ export class Session {
   stop(): void {
     this.stopped = true
     clearTimeout(this.renewTimer)
+    clearTimeout(this.typingLapse)
     this.socket?.disconnect()
+  }
+
+  // The visitor is typing: the server is told at most once in the gap it takes from a visitor (it drops
+  // the rest), and only on a socket that is up, so that nothing waits in a buffer to arrive late
+  typing(): void {
+    const now = Date.now()
+    if (this.socket?.connected !== true) return
+    if (now - this.lastTypingAt < WidgetLimits.CUSTOMER_TYPING_GAP_MS) return
+    this.lastTypingAt = now
+    this.socket.emit(WidgetClientEvents.TYPING)
+  }
+
+  // Told whether the team is typing. A start that is not followed by a stop lapses by itself, because
+  // the stop can be lost with the socket.
+  onAgentTyping(listener: (active: boolean) => void): void {
+    this.typingListener = listener
+  }
+
+  private setAgentTyping(active: boolean): void {
+    clearTimeout(this.typingLapse)
+    // A late start after stop() would have no lapse to end it
+    if (active && this.stopped) return
+    if (active) {
+      this.typingLapse = setTimeout(
+        () => this.typingListener?.(false),
+        WidgetLimits.AGENT_TYPING_LAPSE_MS
+      )
+    }
+    this.typingListener?.(active)
   }
 
   // Writes the message at once and sends it; the same key can be sent again, and the api stores it once
@@ -170,11 +208,23 @@ export class Session {
       deliver => deliver({ [WIDGET_TOKEN_AUTH_KEY]: this.token })
     )
     socket.on(WidgetSocketEvents.MESSAGE, (payload: unknown) => {
-      if (isServerMessage(payload)) this.deps.log.addIncoming(payload)
+      if (!isServerMessage(payload)) return
+      this.deps.log.addIncoming(payload)
+      // A reply ends the typing that announced it
+      if (payload.from === WidgetAuthors.TEAM) this.setAgentTyping(false)
+    })
+    socket.on(WidgetSocketEvents.AGENT_TYPING, (payload: unknown) => {
+      const active = (payload as { active?: unknown } | null)?.active
+      if (typeof active === 'boolean') this.setAgentTyping(active)
+    })
+    socket.on(WidgetSocketEvents.READ, (payload: unknown) => {
+      const messageId = (payload as { messageId?: unknown } | null)?.messageId
+      if (typeof messageId === 'string') this.deps.log.markSeenUpTo(messageId)
     })
     // A server that closes the socket on purpose (the token ended) is not retried by the library, and
     // neither is a handshake it refused: both are asked for a new token and connected again here
     socket.on(SocketLifecycle.DISCONNECT, (reason: unknown) => {
+      this.setAgentTyping(false)
       if (reason === SocketLifecycle.SERVER_DISCONNECT) this.reconnectWithNewToken(socket)
     })
     socket.on(SocketLifecycle.CONNECT_ERROR, (error: unknown) => {

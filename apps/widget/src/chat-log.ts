@@ -8,14 +8,15 @@ import type { ChatMessage, ServerMessage } from './types'
 
 type Listener = (messages: readonly ChatMessage[]) => void
 
-function fromServer(message: ServerMessage): ChatMessage {
+function fromServer(message: ServerMessage, seen: boolean): ChatMessage {
   return {
     key: message.id,
     serverId: message.id,
     from: message.from,
     content: message.content,
     createdAt: message.createdAt,
-    state: WidgetDeliveryStates.SENT
+    state: WidgetDeliveryStates.SENT,
+    seen
   }
 }
 
@@ -23,6 +24,8 @@ function fromServer(message: ServerMessage): ChatMessage {
 // has not heard back from yet.
 export class ChatLog {
   private items: ChatMessage[] = []
+  // Kept apart from the lines because the history replaces them: a mark must outlive a reload of it
+  private readonly seenIds = new Set<string>()
   private readonly listeners = new Set<Listener>()
 
   get messages(): readonly ChatMessage[] {
@@ -58,14 +61,14 @@ export class ChatLog {
       unmatched.splice(stored, 1)
       return false
     })
-    this.items = [...history.map(fromServer), ...pushed, ...local]
+    this.items = [...history.map(message => this.fromServer(message)), ...pushed, ...local]
     this.emit()
   }
 
   // A reply pushed by the socket; one the history already holds is not added again
   addIncoming(message: ServerMessage): void {
     if (this.items.some(item => item.serverId === message.id)) return
-    this.items = [...this.items, fromServer(message)]
+    this.items = [...this.items, this.fromServer(message)]
     this.emit()
   }
 
@@ -78,10 +81,28 @@ export class ChatLog {
         from: WidgetAuthors.VISITOR,
         content,
         createdAt: new Date().toISOString(),
-        state: WidgetDeliveryStates.SENDING
+        state: WidgetDeliveryStates.SENDING,
+        seen: false
       }
     ]
     this.emit()
+  }
+
+  // An agent read the conversation up to this message of the visitor: it and every earlier one of theirs
+  // are seen. An id this log does not hold is newer than all it knows (it came by the socket before the
+  // history did), so every message of the visitor it knows is earlier.
+  markSeenUpTo(messageId: string): void {
+    const end = this.items.findIndex(item => item.serverId === messageId)
+    const last = end === -1 ? this.items.length - 1 : end
+    let changed = false
+    this.items = this.items.map((item, index) => {
+      if (index > last || item.from !== WidgetAuthors.VISITOR || item.serverId === null) return item
+      this.seenIds.add(item.serverId)
+      if (item.seen) return item
+      changed = true
+      return { ...item, seen: true }
+    })
+    if (changed) this.emit()
   }
 
   setState(key: string, state: WidgetDeliveryState): void {
@@ -91,6 +112,10 @@ export class ChatLog {
 
   find(key: string): ChatMessage | undefined {
     return this.items.find(item => item.key === key)
+  }
+
+  private fromServer(message: ServerMessage): ChatMessage {
+    return fromServer(message, this.seenIds.has(message.id))
   }
 
   private emit(): void {

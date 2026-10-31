@@ -26,4 +26,6 @@ export interface ChatMessage {
   content: string
   createdAt: string
   state: WidgetDeliveryState
+  // An agent read it: only a message of the visitor can be
+  seen: boolean
 }

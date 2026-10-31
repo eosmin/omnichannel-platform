@@ -18,6 +18,7 @@ const message = (overrides: Partial<ChatMessage>): ChatMessage => ({
   content: 'hola',
   createdAt: 'd',
   state: 'sent',
+  seen: false,
   ...overrides
 })
 
@@ -25,12 +26,14 @@ describe('mountPanel', () => {
   let mounted: Panel | null = null
   const onSend = jest.fn()
   const onRetry = jest.fn()
+  const onTyping = jest.fn()
   const props = (overrides: Partial<PanelProps> = {}): PanelProps => ({
     storeName: 'Shop',
     text: textFor('es'),
     away: false,
     onSend,
     onRetry,
+    onTyping,
     ...overrides
   })
   const mount = (overrides: Partial<PanelProps> = {}): Panel => {
@@ -96,6 +99,43 @@ describe('mountPanel', () => {
     q<HTMLButtonElement>('.launcher').click()
     panelNode.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     expect(panelNode.hidden).toBe(true)
+  })
+
+  it('shows that the team is typing only while they are', () => {
+    const panel = mount()
+
+    expect(q<HTMLElement>('.typing').hidden).toBe(true)
+    panel.setAgentTyping(true)
+    expect(q<HTMLElement>('.typing').hidden).toBe(false)
+    expect(q('.typing').textContent).toBe('El equipo está escribiendo…')
+    expect(q('.typing').getAttribute('role')).toBe('status')
+    panel.setAgentTyping(false)
+    expect(q<HTMLElement>('.typing').hidden).toBe(true)
+  })
+
+  it('tells the session the visitor writes, and not when the field is emptied', () => {
+    mount()
+    const field = q<HTMLTextAreaElement>('.field')
+
+    field.value = 'ho'
+    field.dispatchEvent(new Event('input'))
+    field.value = ''
+    field.dispatchEvent(new Event('input'))
+
+    expect(onTyping).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks a message of the visitor as seen, in place, once an agent read it', () => {
+    const panel = mount()
+    panel.update([message({ key: 'a', from: 'visitor' })])
+    const bubble = q('.bubble')
+
+    expect(shadow().querySelector('.seen')).toBeNull()
+    panel.update([message({ key: 'a', from: 'visitor', seen: true })])
+
+    expect(q('.seen').textContent).toBe('Visto')
+    expect(q('.bubble')).not.toBe(bubble)
+    expect(shadow().querySelectorAll('.msg')).toHaveLength(1)
   })
 
   it('says the store is away only when it is', () => {
