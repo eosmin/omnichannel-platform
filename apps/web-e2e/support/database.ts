@@ -17,6 +17,7 @@ import {
 import {
   createConversation,
   createConversationOf,
+  createCustomer,
   createCustomerIdentity,
   createMessage,
   createSnippet,
@@ -300,5 +301,45 @@ export function newWhatsAppConversationWrittenAgo(storeId: string, agoMs: number
       createdAt: WRITTEN_AT
     })
     return conversation.id
+  })
+}
+
+// A customer with a name, an e-mail and, with a handle, one identity on a channel, for the cases of the
+// customers page. The name is what a case looks the customer up by, so it must be unique.
+export function newCustomerIn(
+  storeId: string,
+  input: { name: string; email?: string; channelType?: string; handle?: string }
+): Promise<string> {
+  return withOwner(async owner => {
+    const customer = await createCustomer(owner, { storeId, name: input.name })
+    if (input.email !== undefined) {
+      await owner.customer.update({ where: { id: customer.id }, data: { email: input.email } })
+    }
+    if (input.handle !== undefined) {
+      await createCustomerIdentity(owner, {
+        storeId,
+        customerId: customer.id,
+        channelType: input.channelType ?? ChannelType.WHATSAPP,
+        handle: input.handle
+      })
+    }
+    return customer.id
+  })
+}
+
+// The store has a WhatsApp connection, so the channel is among those a handle can be linked on
+export function withWhatsAppChannel(storeId: string): Promise<void> {
+  return withOwner(async owner => {
+    await whatsAppConnectionOf(owner, storeId)
+  })
+}
+
+export function mergedIntoOf(customerId: string): Promise<string | null | undefined> {
+  return withOwner(async owner => {
+    const row = await owner.customer.findUnique({
+      where: { id: customerId },
+      select: { mergedIntoId: true }
+    })
+    return row === null ? undefined : row.mergedIntoId
   })
 }
