@@ -5,7 +5,14 @@ import { type BrowserContext, type Page } from '@playwright/test'
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { mergedIntoOf, newCustomerIn, storeIdNamed, withWhatsAppChannel } from '../support/database'
+import {
+  mergedIntoOf,
+  newCustomerIn,
+  newTagIn,
+  savedProfileOf,
+  storeIdNamed,
+  withWhatsAppChannel
+} from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -142,5 +149,49 @@ test.describe('customer merge and identities', () => {
     await expect(profile.getByText(handle.digits)).toBeVisible()
     await profile.getByRole('button', { name: unlinkLabelStart }).click()
     await expect(profile.getByText(en.customers.profile.noIdentities)).toBeVisible()
+  })
+
+  test('edits the name, tags, addresses and notes from the drawer', async () => {
+    const name = uniqueName('Editor')
+    const newName = uniqueName('Renamed')
+    const tagName = uniqueName('Vip')
+    const city = uniqueName('City')
+    const note = uniqueName('Note')
+    const customerId = await newCustomerIn(storeId, { name })
+    await newTagIn(storeId, tagName)
+
+    await openProfile(page, storeId, name)
+    const profile = page.getByRole('dialog', { name: en.customers.profile.title })
+
+    await profile.getByRole('button', { name: en.customers.edit.editProfile }).click()
+    await profile.getByLabel(en.customers.edit.name, { exact: true }).fill(newName)
+    await profile.getByRole('button', { name: en.customers.edit.save, exact: true }).click()
+    await expect(profile.getByText(newName, { exact: true })).toBeVisible()
+
+    await profile
+      .getByRole('button', { name: en.customers.edit.tags.add.replace('{name}', tagName) })
+      .click()
+    await expect(
+      profile.getByRole('button', {
+        name: en.customers.edit.tags.remove.replace('{name}', tagName)
+      })
+    ).toBeVisible()
+
+    await profile.getByRole('button', { name: en.customers.edit.address.add }).click()
+    await profile.getByLabel(en.customers.edit.address.fields.line1).fill('1 Main Street')
+    await profile.getByLabel(en.customers.edit.address.fields.city).fill(city)
+    await profile.getByRole('button', { name: en.customers.edit.address.save }).click()
+    await expect(profile.getByText(city, { exact: false })).toBeVisible()
+
+    await profile.getByLabel(en.customers.edit.note.label).fill(note)
+    await profile.getByRole('button', { name: en.customers.edit.note.add }).click()
+    await expect(profile.getByText(note)).toBeVisible()
+
+    expect(await savedProfileOf(customerId)).toEqual({
+      name: newName,
+      tagNames: [tagName],
+      noteCount: 1,
+      cities: [city]
+    })
   })
 })

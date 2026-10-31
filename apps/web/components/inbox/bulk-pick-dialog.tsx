@@ -18,13 +18,7 @@ import {
   DialogTitle
 } from '../ui/dialog'
 
-export const BulkPicks = {
-  AGENT: 'agent',
-  TEAM: 'team',
-  ADD_TAG: 'add_tag',
-  REMOVE_TAG: 'remove_tag'
-} as const
-export type BulkPick = (typeof BulkPicks)[keyof typeof BulkPicks]
+import { type BulkPick, BulkPicks } from './bulk-picks'
 
 interface Choice {
   id: string

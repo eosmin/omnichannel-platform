@@ -24,6 +24,7 @@ import {
 } from '../../lib/inbox/selection'
 import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
@@ -35,8 +36,9 @@ import {
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 
-import { BulkConfirmDialog, type BulkRequest } from './bulk-confirm-dialog'
-import { BulkPickDialog, type BulkPick, BulkPicks } from './bulk-pick-dialog'
+import type { BulkRequest } from './bulk-confirm-dialog'
+import { type BulkPick, BulkPicks } from './bulk-picks'
+import { BulkConfirmDialog, BulkPickDialog } from './lazy-dialogs'
 
 function Menu({
   label,
@@ -83,6 +85,8 @@ export function BulkBar({
   const runner = useBulkRunner()
   const [pick, setPick] = useState<BulkPick | null>(null)
   const [confirm, setConfirm] = useState<BulkRequest | null>(null)
+  const pickMounted = useMountedOnce(pick !== null)
+  const confirmMounted = useMountedOnce(confirm !== null)
 
   const mayAssign = can(Permissions.CONVERSATIONS_ASSIGN)
   const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
@@ -285,20 +289,24 @@ export function BulkBar({
           </>
         ) : null}
       </div>
-      <BulkPickDialog
-        pick={pick}
-        onOpenChange={open => (open ? undefined : setPick(null))}
-        onPick={(operation, label) => {
-          setPick(null)
-          request(operation, label)
-        }}
-      />
-      <BulkConfirmDialog
-        request={confirm}
-        isPending={runner.isPending}
-        onConfirm={asked => void go(asked)}
-        onCancel={() => setConfirm(null)}
-      />
+      {pickMounted ? (
+        <BulkPickDialog
+          pick={pick}
+          onOpenChange={open => (open ? undefined : setPick(null))}
+          onPick={(operation, label) => {
+            setPick(null)
+            request(operation, label)
+          }}
+        />
+      ) : null}
+      {confirmMounted ? (
+        <BulkConfirmDialog
+          request={confirm}
+          isPending={runner.isPending}
+          onConfirm={asked => void go(asked)}
+          onCancel={() => setConfirm(null)}
+        />
+      ) : null}
     </div>
   )
 }

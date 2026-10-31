@@ -9,9 +9,11 @@ import {
   useState
 } from 'react'
 
+import { useMountedOnce } from '../../lib/use-mounted-once'
+
 import { ConversationShortcuts } from './conversation-shortcuts'
+import { SnoozeDialog } from './lazy-dialogs'
 import { type ResolveFlow, useResolveFlow } from './resolve-flow'
-import { SnoozeDialog } from './snooze-dialog'
 
 interface ConversationControlsValue {
   resolve: Pick<ResolveFlow, 'isReady' | 'start'>
@@ -32,6 +34,7 @@ export function ConversationControls({
 }): ReactElement {
   const resolve = useResolveFlow(conversationId)
   const [isSnoozeOpen, setSnoozeOpen] = useState(false)
+  const isSnoozeMounted = useMountedOnce(isSnoozeOpen)
   const { isReady, start, dialog } = resolve
   const value = useMemo<ConversationControlsValue>(
     () => ({ resolve: { isReady, start }, openSnooze: () => setSnoozeOpen(true) }),
@@ -41,11 +44,13 @@ export function ConversationControls({
     <ConversationControlsContext.Provider value={value}>
       {children}
       <ConversationShortcuts conversationId={conversationId} />
-      <SnoozeDialog
-        open={isSnoozeOpen}
-        onOpenChange={setSnoozeOpen}
-        conversationId={conversationId}
-      />
+      {isSnoozeMounted ? (
+        <SnoozeDialog
+          open={isSnoozeOpen}
+          onOpenChange={setSnoozeOpen}
+          conversationId={conversationId}
+        />
+      ) : null}
       {dialog}
     </ConversationControlsContext.Provider>
   )

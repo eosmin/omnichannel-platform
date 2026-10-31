@@ -13,12 +13,14 @@ import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
 import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useCustomerDrawer } from '../customers/customer-drawer-context'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 
-import { BulkPickDialog, type BulkPick, BulkPicks } from './bulk-pick-dialog'
+import { type BulkPick, BulkPicks } from './bulk-picks'
 import { useConversationControls } from './conversation-controls'
+import { BulkPickDialog } from './lazy-dialogs'
 
 // The keys of the open conversation (TDD_09 §9). Each works only where its button would be offered: with
 // its permission and in a state that allows it. The reply box and the note keys are the composer's.
@@ -27,7 +29,7 @@ export function ConversationShortcuts({
   conversationId
 }: {
   conversationId: string
-}): ReactElement {
+}): ReactElement | null {
   const router = useRouter()
   const { storeId, can } = useStore()
   const { search } = useInboxFilters()
@@ -37,6 +39,7 @@ export function ConversationShortcuts({
   const { openCustomer } = useCustomerDrawer()
   const { resolve, openSnooze } = useConversationControls()
   const [pick, setPick] = useState<BulkPick | null>(null)
+  const isPickMounted = useMountedOnce(pick !== null)
 
   const detail = conversation.data
   const channelName = useChannelName(storeId, detail?.channelType ?? '')
@@ -103,7 +106,7 @@ export function ConversationShortcuts({
     enabled: mayChange && can(Permissions.CONVERSATIONS_SNOOZE)
   })
 
-  return (
+  return isPickMounted ? (
     <BulkPickDialog
       pick={pick}
       onOpenChange={open => (open ? undefined : setPick(null))}
@@ -112,5 +115,5 @@ export function ConversationShortcuts({
         run(operation)
       }}
     />
-  )
+  ) : null
 }
