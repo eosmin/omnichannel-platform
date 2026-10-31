@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 
 import { type BrowserContext, type Page } from '@playwright/test'
 
@@ -17,6 +17,19 @@ const MERGE_WORD = en.customers.merge.confirmWord
 // A name no other run has used: the database keeps what a case writes, and the case finds the
 // customer by it
 const uniqueName = (label: string): string => `${label} ${randomUUID().slice(0, 8)}`
+
+// A Salvadoran mobile number no other run has used: a handle belongs to one customer of the store, and
+// the database keeps what a case writes. `digits` is what is stored, `typed` what a person writes.
+const THREE_DIGITS = 1_000
+const FOUR_DIGITS = 10_000
+function uniqueHandle(): { digits: string; typed: string } {
+  const head = `7${String(randomInt(THREE_DIGITS)).padStart(3, '0')}`
+  const tail = String(randomInt(FOUR_DIGITS)).padStart(4, '0')
+  return { digits: `503${head}${tail}`, typed: `+503 ${head} ${tail}` }
+}
+
+// The label of the unlink button names the channel and the handle; the profile holds one identity here
+const unlinkLabelStart = en.customers.identity.unlink.split('{')[0]?.trim() ?? ''
 
 // Finds the customer on the customers page and opens the profile drawer
 async function openProfile(page: Page, storeId: string, name: string): Promise<void> {
@@ -91,12 +104,13 @@ test.describe('customer merge and identities', () => {
   test('offers to merge instead when the handle belongs to another customer', async () => {
     const ownerName = uniqueName('Owner')
     const otherName = uniqueName('Other')
-    await newCustomerIn(storeId, { name: ownerName, handle: '50370001111' })
+    const handle = uniqueHandle()
+    await newCustomerIn(storeId, { name: ownerName, handle: handle.digits })
     await newCustomerIn(storeId, { name: otherName })
 
     await openProfile(page, storeId, otherName)
     await page.getByRole('button', { name: en.customers.identity.add }).click()
-    await page.getByLabel(en.customers.identity.handle).fill('+503 7000 1111')
+    await page.getByLabel(en.customers.identity.handle).fill(handle.typed)
     await page.getByRole('button', { name: en.customers.identity.link, exact: true }).click()
 
     await expect(page.getByText(en.customers.identity.taken)).toBeVisible()
@@ -113,16 +127,17 @@ test.describe('customer merge and identities', () => {
 
   test('links a handle and unlinks it', async () => {
     const name = uniqueName('Linker')
+    const handle = uniqueHandle()
     await newCustomerIn(storeId, { name })
 
     await openProfile(page, storeId, name)
     await page.getByRole('button', { name: en.customers.identity.add }).click()
-    await page.getByLabel(en.customers.identity.handle).fill('+503 7000 2222')
+    await page.getByLabel(en.customers.identity.handle).fill(handle.typed)
     await page.getByRole('button', { name: en.customers.identity.link, exact: true }).click()
 
     const profile = page.getByRole('dialog', { name: en.customers.profile.title })
-    await expect(profile.getByText('50370002222')).toBeVisible()
-    await profile.getByRole('button', { name: /^Unlink / }).click()
+    await expect(profile.getByText(handle.digits)).toBeVisible()
+    await profile.getByRole('button', { name: unlinkLabelStart }).click()
     await expect(profile.getByText(en.customers.profile.noIdentities)).toBeVisible()
   })
 })
