@@ -1,21 +1,24 @@
 'use client'
 
+import { Pencil } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
-import type { ReactElement, ReactNode } from 'react'
+import { type ReactElement, type ReactNode, useState } from 'react'
 
 import type { CustomerDetailView } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
-import { DEFAULT_TAG_COLOR, TAG_COLOR_PATTERN } from '@platform/core/domain'
 
 import { conversationCount } from '../../lib/customers/conversation-count'
 import { customerDisplayName, initialsOfName } from '../../lib/customers/customer-name'
+import { tagDotColor } from '../../lib/customers/tag-color'
 import { useCustomerConversations } from '../../lib/customers/use-customer-data'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
 import { CustomerAvatar } from '../inbox/customer-avatar'
 import { useStore } from '../providers/store-context'
+import { Button } from '../ui/button'
 
-const dotColor = (color: string): string =>
-  TAG_COLOR_PATTERN.test(color) ? color : DEFAULT_TAG_COLOR
+import { AddressEditor } from './address-editor'
+import { ProfileForm } from './profile-form'
+import { TagEditor } from './tag-editor'
 
 function Section({ title, children }: { title: string; children: ReactNode }): ReactElement {
   return (
@@ -74,9 +77,21 @@ function ConversationsStat({ customerId }: { customerId: string }): ReactElement
 }
 
 // The identity side of the profile (TDD_09 §6), used by the drawer and by the panel of the inbox:
-// who the customer is, the channels they write from, the figures, the tags and the addresses.
-export function CustomerDetails({ customer }: { customer: CustomerDetailView }): ReactElement {
+// who the customer is, the channels they write from, the figures, the tags and the addresses. With
+// `editable` (the drawer) whoever holds CUSTOMERS_EDIT can change the contact data, the tags and the
+// addresses; the panel of the inbox only reads.
+export function CustomerDetails({
+  customer,
+  editable = false
+}: {
+  customer: CustomerDetailView
+  editable?: boolean
+}): ReactElement {
   const t = useTranslations('customers.profile')
+  const tEdit = useTranslations('customers.edit')
+  const { can } = useStore()
+  const mayEdit = editable && can(Permissions.CUSTOMERS_EDIT)
+  const [isEditing, setEditing] = useState(false)
   const format = useFormatter()
   const name = customerDisplayName(customer)
   const since = new Date(customer.createdAt)
@@ -86,17 +101,33 @@ export function CustomerDetails({ customer }: { customer: CustomerDetailView }):
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <CustomerAvatar avatarUrl={null} initials={initialsOfName(name)} />
-        <div className="flex min-w-0 flex-col">
-          <p className="truncate font-semibold">{name ?? t('unnamed')}</p>
-          {contact.map(line => (
-            <p key={line} className="text-muted-foreground truncate text-xs">
-              {line}
-            </p>
-          ))}
+      {isEditing ? (
+        // Keyed by the customer: a refetch while the agent types must not wipe the form
+        <ProfileForm key={customer.id} customer={customer} onDone={() => setEditing(false)} />
+      ) : (
+        <div className="flex items-center gap-3">
+          <CustomerAvatar avatarUrl={null} initials={initialsOfName(name)} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="truncate font-semibold">{name ?? t('unnamed')}</p>
+            {contact.map(line => (
+              <p key={line} className="text-muted-foreground truncate text-xs">
+                {line}
+              </p>
+            ))}
+          </div>
+          {mayEdit ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-7"
+              aria-label={tEdit('editProfile')}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil />
+            </Button>
+          ) : null}
         </div>
-      </div>
+      )}
       {customer.isCaution ? (
         <p role="note" className="bg-muted rounded-md p-2 text-sm">
           <span className="font-medium">{t('caution')}</span>
@@ -131,7 +162,9 @@ export function CustomerDetails({ customer }: { customer: CustomerDetailView }):
       </Section>
 
       <Section title={t('tags')}>
-        {customer.tags.length === 0 ? (
+        {mayEdit ? (
+          <TagEditor customer={customer} />
+        ) : customer.tags.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t('noTags')}</p>
         ) : (
           <ul className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
@@ -140,7 +173,7 @@ export function CustomerDetails({ customer }: { customer: CustomerDetailView }):
                 <span
                   aria-hidden
                   className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: dotColor(tag.color) }}
+                  style={{ backgroundColor: tagDotColor(tag.color) }}
                 />
                 {tag.name}
               </li>
@@ -150,7 +183,9 @@ export function CustomerDetails({ customer }: { customer: CustomerDetailView }):
       </Section>
 
       <Section title={t('addresses', { count: customer.addresses.length })}>
-        {customer.addresses.length === 0 ? (
+        {mayEdit ? (
+          <AddressEditor customer={customer} />
+        ) : customer.addresses.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t('noAddresses')}</p>
         ) : (
           <ul className="flex flex-col gap-2">

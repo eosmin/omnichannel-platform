@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 
 import { CustomerDetails } from './customer-details'
 import { CustomerTimeline } from './customer-timeline'
+import { NoteBox } from './note-box'
 
 // The customer profile (TDD_09 §6): a drawer over the page with the identity on the left and the
 // activity on the right. It reads nothing while closed.
@@ -70,8 +71,11 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
           </p>
         ) : (
           <>
-            <CustomerDetails customer={customer.data} />
-            <CustomerTimeline customerId={customerId} onNavigate={onClose} />
+            <CustomerDetails customer={customer.data} editable />
+            <div className="flex flex-col gap-6">
+              {can(Permissions.CUSTOMERS_EDIT) ? <NoteBox customerId={customerId} /> : null}
+              <CustomerTimeline customerId={customerId} onNavigate={onClose} />
+            </div>
           </>
         )}
       </div>

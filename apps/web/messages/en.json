@@ -79,7 +79,62 @@
       "mergedBy": "By {name}",
       "empty": "No activity yet.",
       "failed": "The activity could not be loaded.",
-      "loadMore": "Load more"
+      "loadMore": "Load more",
+      "deleteNote": "Delete the note"
+    },
+    "edit": {
+      "editProfile": "Edit the contact data",
+      "name": "Name",
+      "email": "E-mail",
+      "phone": "Phone",
+      "save": "Save",
+      "tags": {
+        "remove": "Remove the tag {name}",
+        "add": "Add {name}",
+        "addLabel": "Add a tag",
+        "failed": "The tags of the store could not be loaded."
+      },
+      "note": {
+        "label": "Add a note about this customer",
+        "add": "Add the note"
+      },
+      "address": {
+        "add": "Add an address",
+        "edit": "Edit the address",
+        "remove": "Delete the address",
+        "save": "Save the address",
+        "makeDefault": "Use as the default address",
+        "fields": {
+          "label": "Label",
+          "line1": "Address line 1",
+          "line2": "Address line 2",
+          "city": "City",
+          "state": "State",
+          "postalCode": "Postal code",
+          "country": "Country (two letters)"
+        }
+      }
+    },
+    "list": {
+      "title": "Customers",
+      "noAccess": "You do not have access to customers.",
+      "searchLabel": "Search customers",
+      "searchPlaceholder": "Search by name, e-mail or phone",
+      "export": "Export CSV",
+      "exportSoon": "The export is not available yet.",
+      "unnamed": "Unnamed customer",
+      "caution": "Caution",
+      "failed": "The customers could not be loaded.",
+      "empty": "No customers yet.",
+      "noMatches": "No customer matches the search.",
+      "loadMore": "Load more",
+      "columns": {
+        "name": "Customer",
+        "contact": "Contact",
+        "channels": "Channels",
+        "tags": "Tags",
+        "since": "Customer since"
+      }
     }
   },
   "email": {
@@ -454,7 +509,12 @@
     "stores": "Stores",
     "manageStores": "Manage stores",
     "account": "Account",
-    "accountMenu": "Account menu"
+    "accountMenu": "Account menu",
+    "nav": {
+      "label": "Store pages",
+      "inbox": "Inbox",
+      "customers": "Customers"
+    }
   },
   "inbox": {
     "listLabel": "Conversations",
@@ -903,7 +963,8 @@
         },
         "global": {
           "SEND_MESSAGE": "Send the message",
-          "GO_TO_INBOX": "Go to the inbox"
+          "GO_TO_INBOX": "Go to the inbox",
+          "GO_TO_CUSTOMERS": "Go to customers"
         }
       }
     },
@@ -914,6 +975,7 @@
       "moveUp": "Move {widget} up",
       "moveDown": "Move {widget} down",
       "widgets": {
+        "quickActions": "Quick actions",
         "teamStatus": "Team status",
         "unassignedQueue": "Unassigned queue"
       },
@@ -936,6 +998,10 @@
         "take": "Take it",
         "takeFor": "Take the conversation with {name}",
         "seeAll": "See all"
+      },
+      "quick": {
+        "findCustomer": "Find customer",
+        "none": "No actions available."
       }
     }
   }

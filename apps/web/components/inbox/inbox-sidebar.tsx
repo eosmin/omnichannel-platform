@@ -14,10 +14,12 @@ import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
 import { CustomerPanel } from './customer-panel'
+import { QuickActionsWidget } from './quick-actions-widget'
 import { TeamStatusWidget } from './team-status-widget'
 import { UnassignedQueueWidget } from './unassigned-queue-widget'
 
 const BODIES: Record<SidebarWidgetId, () => ReactElement> = {
+  [SidebarWidgets.QUICK_ACTIONS]: QuickActionsWidget,
   [SidebarWidgets.TEAM_STATUS]: TeamStatusWidget,
   [SidebarWidgets.UNASSIGNED_QUEUE]: UnassignedQueueWidget
 }

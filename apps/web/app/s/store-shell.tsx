@@ -10,6 +10,7 @@ import { RealtimeProvider } from '../../components/providers/realtime-provider'
 import { StoreProvider } from '../../components/providers/store-context'
 import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
+import { StoreNav } from '../../components/shell/store-nav'
 import { rememberLastStoreId } from '../../lib/last-store'
 
 // Everything under /s/[storeId]. The profile says which stores the person belongs to; one that is
@@ -33,7 +34,7 @@ export function StoreShell({
             <Remember storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
               <CustomerDrawerProvider>
-                <AppFrame profile={profile} currentStoreId={storeId}>
+                <AppFrame profile={profile} currentStoreId={storeId} nav={<StoreNav />}>
                   {children}
                 </AppFrame>
               </CustomerDrawerProvider>

@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import type { AccountProfile } from '@platform/api-client'
 
@@ -11,16 +11,20 @@ import { UserMenu } from './user-menu'
 export function TopBar({
   profile,
   currentStoreId,
-  appTitle
+  appTitle,
+  nav
 }: {
   profile: AccountProfile
   currentStoreId: string | null
   appTitle: string
+  // The links to the pages of the area, when it has them
+  nav?: ReactNode
 }): ReactElement {
   return (
     <header className="bg-background flex h-14 items-center gap-3 border-b px-4">
       <span className="font-semibold">{appTitle}</span>
       <StoreSwitcher memberships={profile.memberships} currentStoreId={currentStoreId} />
+      {nav}
       <div className="flex-1" />
       <UserMenu name={profile.name} email={profile.email} />
     </header>
