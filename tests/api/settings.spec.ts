@@ -456,11 +456,12 @@ describe('The settings of the inbox of a store', () => {
       })
     })
 
-    it('gives an agent how resolving behaves and the timezone, and nothing else of the settings', async () => {
+    it('gives an agent how resolving behaves, the timezone and the load threshold, and nothing else of the settings', async () => {
       const response = await asAgent().get(ApiRoutes.settings.inboxBehavior)
 
       expect(response.status).toBe(OK)
       expect(Object.keys(response.body as object).sort()).toEqual([
+        'agentLoadThreshold',
         'closingSnippetId',
         'resolveShowOptions',
         'sendClosingMessage',

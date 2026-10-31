@@ -9,13 +9,7 @@ import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } 
 import type { ChannelDirectoryEntryView, ConversationFilters } from '@platform/api-client'
 import { ApiError } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
-import {
-  BulkActions,
-  BulkLimits,
-  ConversationStatus,
-  ListKeyAliases,
-  Shortcuts
-} from '@platform/core/domain'
+import { BulkActions, BulkLimits, ListKeyAliases, Shortcuts } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
@@ -46,6 +40,7 @@ import { BulkBar } from './bulk-bar'
 import { CONVERSATION_ROW_HEIGHT_PX, ConversationItem } from './conversation-item'
 import { InboxState } from './inbox-state'
 import { RowCheckbox } from './row-checkbox'
+import { RowResolve } from './row-resolve'
 import { RowSnooze } from './row-snooze'
 import { SnoozeDialog } from './snooze-dialog'
 
@@ -122,6 +117,7 @@ export function ConversationList({
   const runner = useBulkRunner()
   const nameOf = useCustomerNamer()
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null)
+  const [resolveFor, setResolveFor] = useState<string | null>(null)
 
   const focusRow = useCallback((id: string, attemptsLeft = FOCUS_ATTEMPTS): void => {
     const link = scrollRef.current?.querySelector<HTMLElement>(`[${ROW_ID_ATTRIBUTE}="${id}"] a`)
@@ -177,7 +173,7 @@ export function ConversationList({
     () => {
       const item = focusedItem()
       if (item === undefined) return false
-      if (runner.isBusy()) return
+      if (!runner.claim()) return
       void runner.run(
         { action: BulkActions.ASSIGN_TO_ME },
         { conversationIds: [item.id] },
@@ -192,13 +188,9 @@ export function ConversationList({
     () => {
       const item = focusedItem()
       if (item === undefined || !canChangeState(item.status)) return false
-      if (runner.isBusy()) return
-      void runner.run(
-        { action: BulkActions.SET_STATUS, params: { status: ConversationStatus.RESOLVED } },
-        { conversationIds: [item.id] },
-        [item],
-        nameOfRow(item)
-      )
+      if (!runner.claim()) return
+      // The flow of the store (reason, closing message), as in the open conversation
+      setResolveFor(item.id)
     },
     { enabled: mayResolve, priority: ShortcutPriority.FOCUSED_ROW }
   )
@@ -357,6 +349,13 @@ export function ConversationList({
         onOpenChange={open => (open ? undefined : setSnoozeFor(null))}
         conversationId={snoozeFor ?? ''}
       />
+      {resolveFor === null ? null : (
+        <RowResolve
+          key={resolveFor}
+          conversationId={resolveFor}
+          onFinished={() => setResolveFor(null)}
+        />
+      )}
     </>
   )
 }

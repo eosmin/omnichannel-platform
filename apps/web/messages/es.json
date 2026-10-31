@@ -812,7 +812,8 @@
           "markedUnread": "Marcada como no leída: {name}",
           "archived": "Archivada: {name}",
           "updated": "Actualizada: {name}"
-        }
+        },
+        "busy": "Todavía hay una acción en curso. Espera un momento e inténtalo de nuevo."
       }
     },
     "shortcuts": {
@@ -850,6 +851,37 @@
           "SEND_MESSAGE": "Enviar el mensaje",
           "GO_TO_INBOX": "Ir a la bandeja"
         }
+      }
+    },
+    "sidebar": {
+      "label": "Equipo y cola",
+      "add": "Añadir {widget}",
+      "hide": "Ocultar {widget}",
+      "moveUp": "Subir {widget}",
+      "moveDown": "Bajar {widget}",
+      "widgets": {
+        "teamStatus": "Estado del equipo",
+        "unassignedQueue": "Cola sin asignar"
+      },
+      "team": {
+        "loading": "Cargando el equipo",
+        "failed": "No se pudo cargar el equipo.",
+        "empty": "Aún no hay compañeros.",
+        "status": {
+          "online": "en línea",
+          "away": "ausente",
+          "offline": "desconectado"
+        },
+        "load": "{count, plural, one {# abierta} other {# abiertas}}",
+        "loadOver": "{count, plural, one {# abierta, sobre el límite} other {# abiertas, sobre el límite}}"
+      },
+      "queue": {
+        "loading": "Cargando la cola",
+        "failed": "No se pudo cargar la cola.",
+        "empty": "Nadie está esperando.",
+        "take": "Tomarla",
+        "takeFor": "Tomar la conversación con {name}",
+        "seeAll": "Ver todas"
       }
     }
   }

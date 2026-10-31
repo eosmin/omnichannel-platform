@@ -147,7 +147,9 @@ export const conversationCountsSchema = z.object({
   unassigned: z.number().int(),
   byStatus: z.record(z.string(), z.number().int()),
   byChannel: z.record(z.string(), z.number().int()),
-  byAgent: z.array(z.object({ userId: z.string(), count: z.number().int() }))
+  byAgent: z.array(z.object({ userId: z.string(), count: z.number().int() })),
+  // `byAgent` without the resolved ones (open or pending): the load of an agent
+  activeByAgent: z.array(z.object({ userId: z.string(), count: z.number().int() }))
 })
 export type ConversationCountsView = z.output<typeof conversationCountsSchema>
 
@@ -182,11 +184,12 @@ export const snippetListSchema = z.array(snippetSchema)
 export type SnippetView = z.output<typeof snippetSchema>
 
 // GET /settings/inbox/behavior: how resolving behaves in this store (TDD_09 §3.2) and the timezone its
-// snooze presets are counted in
+// snooze presets are counted in, and the open count at which the team widget flags an agent
 export const inboxBehaviorSchema = z.object({
   resolveShowOptions: z.boolean(),
   sendClosingMessage: z.boolean(),
   closingSnippetId: z.string().nullable(),
+  agentLoadThreshold: z.number().int(),
   timezone: z.string()
 })
 export type InboxBehaviorView = z.output<typeof inboxBehaviorSchema>

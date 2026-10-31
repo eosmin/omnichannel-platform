@@ -44,7 +44,7 @@ export function ConversationShortcuts({
   const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
 
   const run = (operation: BulkOperation): void => {
-    if (detail === undefined || runner.isBusy()) return
+    if (detail === undefined || !runner.claim()) return
     void runner.run(
       operation,
       { conversationIds: [conversationId] },

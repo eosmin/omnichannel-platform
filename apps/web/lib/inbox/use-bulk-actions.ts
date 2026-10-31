@@ -27,6 +27,9 @@ export interface BulkRunner {
   isPending: boolean
   // Any runner of the page has an action going
   isBusy: () => boolean
+  // True when a new action may start. When one is going it says so with a toast and gives false, so
+  // that a key pressed meanwhile is never taken without a word
+  claim: () => boolean
   // Runs the action and tells the agent what happened; resolves to the result, or null when the
   // request itself failed
   run: (
@@ -135,5 +138,11 @@ export function useBulkRunner(): BulkRunner {
     [storeId, t, tAll, refresh, undo, reasonsOf]
   )
 
-  return { isPending: pending > 0, isBusy: () => inFlightCount > 0, run }
+  const claim = useCallback((): boolean => {
+    if (inFlightCount === 0) return true
+    toast.info(t('busy'))
+    return false
+  }, [t])
+
+  return { isPending: pending > 0, isBusy: () => inFlightCount > 0, claim, run }
 }

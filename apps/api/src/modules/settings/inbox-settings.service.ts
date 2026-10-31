@@ -24,11 +24,12 @@ export interface InboxSettingsView {
   agentLoadThreshold: number
 }
 
-// What the people who work the inbox read: how resolving behaves, and the timezone the presets of
-// a snooze are counted in. The rest of the settings needs SETTINGS_VIEW.
+// What the people who work the inbox read: how resolving behaves, the timezone the presets of a
+// snooze are counted in, and the load at which the team widget flags an agent. The rest of the
+// settings needs SETTINGS_VIEW.
 export type InboxBehaviorView = Pick<
   InboxSettingsView,
-  'resolveShowOptions' | 'sendClosingMessage' | 'closingSnippetId'
+  'resolveShowOptions' | 'sendClosingMessage' | 'closingSnippetId' | 'agentLoadThreshold'
 > & { timezone: string }
 
 const INBOX_SELECT = {
@@ -56,7 +57,12 @@ export class InboxSettingsService {
       select: {
         timezone: true,
         settings: {
-          select: { resolveShowOptions: true, sendClosingMessage: true, closingSnippetId: true }
+          select: {
+            resolveShowOptions: true,
+            sendClosingMessage: true,
+            closingSnippetId: true,
+            agentLoadThreshold: true
+          }
         }
       }
     })
