@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   channelIdSchema,
   CustomerLimits,
+  CustomerTimelineTypes,
   LOCALE_TAG_PATTERN,
   MergeableFields,
   MergeFieldSources,
@@ -45,6 +46,14 @@ export const listCustomersQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   q: text().min(1).max(CustomerLimits.SEARCH_MAX_LENGTH).optional()
 })
+
+export const listTimelineQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  type: z.enum(Object.values(CustomerTimelineTypes)).optional()
+})
+
+export const mergePreviewQuerySchema = z.strictObject({ absorbedId: z.uuid() })
 
 export const createCustomerSchema = z
   .strictObject({
@@ -147,6 +156,8 @@ export const createNoteSchema = z.strictObject({
 
 export const attachTagSchema = z.strictObject({ tagId: z.uuid() })
 
+export type ListTimelineQuery = z.output<typeof listTimelineQuerySchema>
+export type MergePreviewQuery = z.output<typeof mergePreviewQuerySchema>
 export type ListCustomersQuery = z.output<typeof listCustomersQuerySchema>
 export type CreateCustomerBody = z.output<typeof createCustomerSchema>
 export type UpdateCustomerBody = z.output<typeof updateCustomerSchema>

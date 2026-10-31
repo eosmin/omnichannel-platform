@@ -141,12 +141,16 @@ export class ConversationsService {
   async list(
     storeId: string,
     query: ListConversationsQuery,
-    viewer: Viewer
+    viewer: Viewer,
+    // The conversations of one customer (the profile): set by the server from the path, never by a
+    // client, so it is not part of the query
+    customerId?: string
   ): Promise<ConversationPage> {
     const { cursor } = query
     const rows = await this.prisma.client.conversation.findMany({
       where: {
         ...this.filterWhere(storeId, query, viewer),
+        ...(customerId === undefined ? {} : { customerId }),
         AND: [
           visibleTo(viewer),
           assignedFilter(query.assigned, viewer),

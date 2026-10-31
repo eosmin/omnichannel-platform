@@ -68,6 +68,7 @@ export const ApiRoutes = {
     identityById: (id: string, identityId: string) => `/customers/${id}/identities/${identityId}`,
     merge: (id: string) => `/customers/${id}/merge`,
     unmerge: (id: string) => `/customers/${id}/unmerge`,
+    mergePreview: (id: string) => `/customers/${id}/merge-preview`,
     orders: (id: string) => `/customers/${id}/orders`,
     conversations: (id: string) => `/customers/${id}/conversations`,
     notes: (id: string) => `/customers/${id}/notes`,

@@ -19,6 +19,14 @@ import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
+import {
+  type ConversationPage,
+  ConversationsService,
+  type ListConversationsQuery,
+  listConversationsQuerySchema,
+  invalidInput,
+  viewerOf
+} from '@platform/core/messaging'
 
 import {
   actorOf,
@@ -29,8 +37,10 @@ import {
 } from '../tenancy'
 
 import { AddressesService } from './addresses.service'
+import { CustomerMergePreviewService, type MergePreview } from './customer-merge-preview.service'
 import { CustomerMergeService } from './customer-merge.service'
 import { CustomerTagsService } from './customer-tags.service'
+import { CustomerTimelineService, type TimelinePage } from './customer-timeline.service'
 import {
   type AttachTagBody,
   attachTagSchema,
@@ -45,6 +55,10 @@ import {
   linkIdentitySchema,
   type ListCustomersQuery,
   listCustomersQuerySchema,
+  type ListTimelineQuery,
+  listTimelineQuerySchema,
+  type MergePreviewQuery,
+  mergePreviewQuerySchema,
   type MergeCustomersBody,
   mergeCustomersSchema,
   type UnmergeCustomersBody,
@@ -76,7 +90,10 @@ export class CustomersController {
     private readonly addresses: AddressesService,
     private readonly notes: NotesService,
     private readonly tags: CustomerTagsService,
-    private readonly merges: CustomerMergeService
+    private readonly merges: CustomerMergeService,
+    private readonly mergePreviews: CustomerMergePreviewService,
+    private readonly timeline: CustomerTimelineService,
+    private readonly conversations: ConversationsService
   ) {}
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
@@ -179,6 +196,48 @@ export class CustomersController {
     @Req() req: AuthenticatedRequest
   ): Promise<CustomerDetail> {
     return this.merges.unmerge(store.id, survivorId, body.mergeId, actorOf(user, store, req))
+  }
+
+  // What a merge would do, for the confirmation step of the dialog. Declared with the merge routes.
+  @RequirePermissions(Permissions.CUSTOMERS_MERGE)
+  @Get(ApiRoutes.customers.mergePreview(':id'))
+  mergePreview(
+    @CurrentStore() store: { id: string },
+    @Param('id', id()) survivorId: string,
+    @Query(new ZodValidationPipe(mergePreviewQuerySchema)) query: MergePreviewQuery
+  ): Promise<MergePreview> {
+    return this.mergePreviews.preview(store.id, survivorId, query.absorbedId)
+  }
+
+  // Conversations, notes and merges of the customer. The conversations follow the visibility of the
+  // inbox, so a viewer without CONVERSATIONS_VIEW gets the rest only.
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @Get(ApiRoutes.customers.timeline(':id'))
+  listTimeline(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', id()) customerId: string,
+    @Query(new ZodValidationPipe(listTimelineQuerySchema)) query: ListTimelineQuery
+  ): Promise<TimelinePage> {
+    return this.timeline.list(store.id, customerId, query, viewerOf(user.id, held))
+  }
+
+  // The same page as GET /conversations, for one customer
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CONVERSATIONS_VIEW)
+  @Get(ApiRoutes.customers.conversations(':id'))
+  async listConversations(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', id()) customerId: string,
+    @Query(new ZodValidationPipe(listConversationsQuerySchema)) query: ListConversationsQuery
+  ): Promise<ConversationPage> {
+    // The counts are the business of GET /conversations; this route answers pages only
+    if (query.countsOnly) throw invalidInput('countsOnly is not a filter of this route')
+    // 404 for a customer that is not in this store, not an empty page
+    await this.timeline.requireCustomer(store.id, customerId)
+    return this.conversations.list(store.id, query, viewerOf(user.id, held), customerId)
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
