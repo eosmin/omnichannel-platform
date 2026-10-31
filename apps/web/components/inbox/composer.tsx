@@ -35,6 +35,7 @@ import {
 import { useWindowState } from '../../lib/inbox/use-window-state'
 import { hoursAndMinutes } from '../../lib/inbox/window-state'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
+import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useProfile } from '../../lib/use-profile'
@@ -135,6 +136,15 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const { resolve: resolveFlow, openSnooze } = useConversationControls()
   const wantsSnippets = draft.toLowerCase().startsWith(`${SLASH_PREFIX}${SlashCommand.SNIPPET} `)
   const snippets = useSnippets(storeId, wantsSnippets)
+  // Only a reply that could reach the customer is announced: not a note, not a command, and not a
+  // box that cannot send (a closed window sends nothing, so it shows nothing)
+  useAgentTyping(
+    conversationId,
+    draft,
+    allowedMode(chosenMode, mayReply, mayNote) === MessageType.TEXT &&
+      typedCommand(draft.trim()) === undefined &&
+      windowState.kind !== 'closed'
+  )
 
   // The dialog belongs to the closed window: when the customer writes and it reopens, the dialog
   // goes, and it must not come back by itself the next time the window closes

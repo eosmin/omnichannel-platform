@@ -17,6 +17,7 @@ import { MessageThread } from '../../components/inbox/message-thread'
 import { RealtimeAnnouncer } from '../../components/inbox/realtime-announcer'
 import { SelectConversation } from '../../components/inbox/select-conversation'
 import { ShortcutHelp } from '../../components/inbox/shortcut-help'
+import { TypingLine } from '../../components/inbox/typing-line'
 import { useStore } from '../../components/providers/store-context'
 import { ShortcutsProvider, useShortcut } from '../../components/shortcuts/shortcuts-provider'
 import {
@@ -95,6 +96,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
             <ConversationControls key={conversationId} conversationId={conversationId}>
               <ConversationHeader conversationId={conversationId} />
               <MessageThread conversationId={conversationId} />
+              <TypingLine conversationId={conversationId} />
               <Composer conversationId={conversationId} />
             </ConversationControls>
           </>

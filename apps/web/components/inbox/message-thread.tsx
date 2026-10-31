@@ -27,6 +27,7 @@ import {
 } from '../../lib/inbox/use-inbox-data'
 import { useMarkRead } from '../../lib/inbox/use-mark-read'
 import { useActionViewer } from '../../lib/inbox/use-message-actions'
+import { useConversationRoom } from '../../lib/realtime/use-conversation-room'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -63,6 +64,8 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
     channelName
   )
   useMarkRead(conversationId, conversation.data?.unreadCount)
+  // Typing and the read marks of the open conversation come through its room
+  useConversationRoom(conversationId)
   const { waiting } = useComposerQueue(storeId, conversationId)
   const viewer = useActionViewer(conversationId)
   const members = useMemberDirectory(storeId)

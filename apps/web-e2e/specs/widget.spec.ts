@@ -58,9 +58,8 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
 
     // The launcher is drawn in a shadow root that the script attaches to the page
     await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
-    await visitor.page
-      .getByRole('textbox', { name: WIDGET_TEXT.input })
-      .fill('Is the blue one in stock?')
+    const visitorInput = visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input })
+    await visitorInput.fill('Is the blue one in stock?')
     await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
     await expect(visitor.page.getByRole('log').getByText('Is the blue one in stock?')).toBeVisible()
 
@@ -75,7 +74,26 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
       .getByText('Is the blue one in stock?')
       .first()
       .click()
-    await agent.getByRole('textbox', { name: en.inbox.composer.replyLabel }).fill('Yes, two left')
+    // The room of the conversation is joined once the thread is on screen; a signal sent before
+    // would be lost, and the widget sends one in two seconds at most
+    await expect(
+      agent
+        .getByRole('list', { name: en.inbox.thread.label })
+        .getByText('Is the blue one in stock?')
+    ).toBeVisible()
+
+    // The visitor types: the signal is not stored, so it can only arrive through the socket
+    // One key at a time until the signal lands: the widget sends one in two seconds at most, and the
+    // join may take longer than the first one
+    await expect(async () => {
+      await visitorInput.press('a')
+      await expect(agent.getByText(en.inbox.thread.typing.customer)).toBeVisible({ timeout: 2500 })
+    }).toPass({ timeout: 15_000 })
+
+    // The agent types a reply: the visitor sees it before anything is sent
+    const reply = agent.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+    await reply.pressSequentially('Yes, two left', { delay: 50 })
+    await expect(visitor.page.getByText('The team is typing')).toBeVisible()
     await agent.getByRole('button', { name: en.inbox.composer.send }).click()
 
     // The reply reaches the visitor through the socket
