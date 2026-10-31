@@ -44,7 +44,7 @@ the SDK is sufficient.
 ## 2. Plugin SDK
 
 ```typescript
-// libs/plugins/sdk/src/channel-capability.ts
+// libs/core/domain/channel-capability.ts (re-exported by the SDK, so the browser can ask for a capability by name)
 export const ChannelCapability = {
   TEXT: 'text',
   IMAGE: 'image',

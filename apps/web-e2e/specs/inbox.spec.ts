@@ -3,7 +3,7 @@ import { type BrowserContext, type Page } from '@playwright/test'
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { newConversationIn, storeIdNamed } from '../support/database'
+import { newConversationIn, newTaggedConversationIn, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -64,6 +64,25 @@ test.describe.serial('the inbox list', () => {
     await page.getByRole('button', { name: en.inbox.clearFilters }).click()
     await expect(page).not.toHaveURL(/assigned=/)
     await expect(rowOf(page, storeId, conversationId)).toBeVisible()
+  })
+
+  test('filters by a tag, keeps it in the address, and draws the tag on the row', async () => {
+    const tagName = `vip-${crypto.randomUUID().slice(0, 8)}`
+    const { conversationId, tagId } = await newTaggedConversationIn(storeId, tagName)
+    const untagged = await newConversationIn(storeId)
+
+    await page.goto(AppPaths.store.inbox(storeId))
+    await expect(rowOf(page, storeId, conversationId)).toBeVisible()
+    await expect(rowOf(page, storeId, conversationId).getByText(tagName)).toBeVisible()
+
+    await page.getByRole('combobox', { name: en.inbox.tagFilter }).selectOption({ label: tagName })
+    await expect(page).toHaveURL(new RegExp(`tagId=${tagId}`))
+    await expect(rowOf(page, storeId, conversationId)).toBeVisible()
+    await expect(rowOf(page, storeId, untagged)).toHaveCount(0)
+
+    await page.getByRole('button', { name: en.inbox.clearFilters }).click()
+    await expect(page).not.toHaveURL(/tagId=/)
+    await expect(rowOf(page, storeId, untagged)).toBeVisible()
   })
 
   test('shows the list alone on a phone, and the conversation alone once one is open', async () => {

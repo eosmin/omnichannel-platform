@@ -7,7 +7,8 @@ import type {
   ChannelDirectoryEntryView,
   ConversationCountsView,
   ConversationFilters,
-  MemberDirectoryEntryView
+  MemberDirectoryEntryView,
+  TagView
 } from '@platform/api-client'
 import { ConversationAssignedFilters, ConversationStatus } from '@platform/core/domain'
 
@@ -56,13 +57,15 @@ export function InboxFilters({
   onChange,
   counts,
   channels,
-  members
+  members,
+  tags
 }: {
   filters: ConversationFilters
   onChange: (filters: ConversationFilters) => void
   counts: ConversationCountsView | undefined
   channels: readonly ChannelDirectoryEntryView[]
   members: readonly MemberDirectoryEntryView[]
+  tags: readonly TagView[]
 }): ReactElement {
   const t = useTranslations('inbox')
   const tStatus = useTranslations('conversations.status')
@@ -86,6 +89,9 @@ export function InboxFilters({
   // An agent in the address that the directory does not list (yet, or any more) stays selected
   const agentId = isAgentId(filters.assigned) ? filters.assigned : ''
   const unlistedAgent = agentId !== '' && !members.some(member => member.id === agentId)
+  // Same for a tag that was deleted, or one the list has not loaded yet
+  const tagId = filters.tagId ?? ''
+  const unlistedTag = tagId !== '' && !tags.some(tag => tag.id === tagId)
 
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -153,6 +159,20 @@ export function InboxFilters({
               member.name,
               countOf(counts?.byAgent.find(entry => entry.userId === member.id)?.count)
             )}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={t('tagFilter')}
+        className={SELECT_CLASS}
+        value={tagId}
+        onChange={field('tagId')}
+      >
+        <option value="">{t('allTags')}</option>
+        {unlistedTag ? <option value={tagId}>{t('otherTag')}</option> : null}
+        {tags.map(tag => (
+          <option key={tag.id} value={tag.id}>
+            {tag.name}
           </option>
         ))}
       </select>

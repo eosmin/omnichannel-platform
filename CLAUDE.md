@@ -102,7 +102,7 @@ same checks and the merge waits for it.
 
 ---
 
-## Absolute rules (violating these requires stopping and asking first)
+## Absolute rules (violating one is never a shortcut; rule 12 says when to stop and ask)
 
 1. **No magic strings, anywhere.** Every event name, cache key, permission,
    error code, route, status and notification type comes from a constant in
@@ -153,6 +153,7 @@ same checks and the merge waits for it.
 - [ ] Tenant isolation test added if the step introduces a tenant-scoped resource
 - [ ] Every new route, realtime event or channel capability is mapped in `scripts/frontend-coverage-map.ts` to the step that draws it (or to a reason it has no interface); `pnpm validate:frontend` fails otherwise
 - [ ] The step's own "Done when" criterion verified, not assumed
+- [ ] `/code-review` run on the working tree before the PR is opened, for every PR with no exception for size or kind (a test-only or docs-touching change included), with every lens the PR requires (see "Code review of a step"); the mechanical gates do not replace it
 - [ ] The step's PR is green on GitHub with every CI job that exists at that point; if the step created a CI job, the plan says which check to add to the `main` ruleset
 - [ ] The step's task boxes are checked and its "Progress tracking" row is updated
 
@@ -160,11 +161,20 @@ same checks and the merge waits for it.
 
 ## Code review of a step
 
+**No PR is opened, and `gh pr merge --auto` is not run, before `/code-review` has run on the change.** Auto-merge
+ends the review window: once armed, GitHub merges as soon as the checks are green. Judging a change "too small
+to review" is a shortcut under rule 12; say in the PR which review pass ran and what it found.
+
 The automated `/code-review` reports at most 10 findings per run, even when asked for more (two
 scoped runs returned exactly 10 each). A run that returns 10 has **not** run out of findings.
 
 - Review in small batches (one library, or at most 8 to 10 files), never the whole step at once.
 - Give each pass one lens: correctness, security (secrets, permissions, customer data), tests, or
+- **Lenses every PR must pass:** correctness always, plus one pass for each area the PR touches: tests (any
+  `*.spec.ts` or fixture), configuration, CI and Docker (workflows, Dockerfiles, `package.json`, env schemas),
+  and security (auth, tenancy, permissions, migrations, payments, secrets, customer data). A PR that touches
+  none of the last three still passes correctness. The PR description lists the lenses that ran and what each
+  found; a lens that did not run is stated, with the reason.
   configuration, CI and Docker.
 - **Fewer than 10 findings means the cap did not bind**: that batch is complete. Exactly 10 means
   the cap bound. Repeat the batch only for security, data and money code (auth, tenancy, permissions,

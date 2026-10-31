@@ -16,13 +16,15 @@ import { useStore } from '../../components/providers/store-context'
 import {
   useChannelDirectory,
   useConversationCounts,
-  useMemberDirectory
+  useMemberDirectory,
+  useTags
 } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { cn } from '../../lib/utils'
 
 const NO_CHANNELS: never[] = []
 const NO_MEMBERS: never[] = []
+const NO_TAGS: never[] = []
 
 // The inbox is the list on the left and the conversation on the right: its header, its thread and its
 // composer (the customer panel of Step 3.3 joins as a third column). On a phone it is a stack of screens (TDD_09 §16.4): the list, and the
@@ -36,6 +38,7 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
   const counts = useConversationCounts(storeId)
   const channels = useChannelDirectory(storeId)
   const members = useMemberDirectory(storeId)
+  const tags = useTags(storeId)
   const isOpen = conversationId !== undefined
 
   return (
@@ -52,6 +55,7 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
           counts={counts.data}
           channels={channels.data ?? NO_CHANNELS}
           members={members.data ?? NO_MEMBERS}
+          tags={tags.data ?? NO_TAGS}
         />
         <ConversationList
           storeId={storeId}

@@ -13,6 +13,7 @@ import {
 } from 'react'
 
 import { errorCodeOf } from '../../lib/error-message'
+import { messageActionsOf } from '../../lib/inbox/message-actions'
 import { buildThreadItems, memberIdsOf } from '../../lib/inbox/thread-items'
 import { useAuthorLabel } from '../../lib/inbox/use-author-label'
 import { useComposerQueue } from '../../lib/inbox/use-composer-queue'
@@ -20,10 +21,12 @@ import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import {
   useChannelName,
   useConversation,
+  useMemberDirectory,
   useOrigins,
   useThread
 } from '../../lib/inbox/use-inbox-data'
 import { useMarkRead } from '../../lib/inbox/use-mark-read'
+import { useActionViewer } from '../../lib/inbox/use-message-actions'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -61,6 +64,12 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
   )
   useMarkRead(conversationId, conversation.data?.unreadCount)
   const { waiting } = useComposerQueue(storeId, conversationId)
+  const viewer = useActionViewer(conversationId)
+  const members = useMemberDirectory(storeId)
+  const memberNames = useMemo(
+    () => new Map((members.data ?? []).map(member => [member.id, member.name])),
+    [members.data]
+  )
 
   const items = useMemo(
     () => buildThreadItems(thread.data?.pages.map(page => page.data) ?? []),
@@ -282,6 +291,10 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                     authorLabel={authorLabel}
                     loadedIds={loadedIds}
                     onJumpTo={jumpTo}
+                    actions={messageActionsOf(item.message, viewer)}
+                    conversationId={conversationId}
+                    userId={viewer.userId}
+                    mentionNames={item.message.mentions.flatMap(id => memberNames.get(id) ?? [])}
                   />
                 </li>
               )

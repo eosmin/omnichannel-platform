@@ -9,7 +9,12 @@ import {
 
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
-import { createConversationOf, createMessage, createSnippet } from '../../../tests/builders'
+import {
+  createConversationOf,
+  createMessage,
+  createSnippet,
+  createTag
+} from '../../../tests/builders'
 
 import { databaseUrls } from './env'
 
@@ -30,6 +35,22 @@ export function newConversationIn(storeId: string): Promise<string> {
   return withOwner(
     async owner => (await createConversationOf(owner, { storeId, lastMessageAt: new Date() })).id
   )
+}
+
+// A tag of the store and a new conversation that carries it, for the filter of the list
+export function newTaggedConversationIn(
+  storeId: string,
+  tagName: string
+): Promise<{ conversationId: string; tagId: string }> {
+  return withOwner(async owner => {
+    const tag = await createTag(owner, { storeId, name: tagName })
+    const conversation = await createConversationOf(owner, { storeId, lastMessageAt: new Date() })
+    await owner.conversation.update({
+      where: { id: conversation.id },
+      data: { tags: { connect: { id: tag.id } } }
+    })
+    return { conversationId: conversation.id, tagId: tag.id }
+  })
 }
 
 // A conversation that has something to read, for the cases of the thread

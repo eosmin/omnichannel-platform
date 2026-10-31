@@ -10,6 +10,7 @@ import {
   fetchConversationsPage,
   fetchInboxBehavior,
   fetchSnippets,
+  fetchTags,
   markConversationRead,
   snoozeConversation
 } from './conversations-api'
@@ -50,14 +51,19 @@ describe('fetchConversationsPage', () => {
     const page = await fetchConversationsPage(
       client,
       's1',
-      { assigned: 'me', status: ConversationStatus.OPEN, channelType: 'whatsapp' },
+      {
+        assigned: 'me',
+        status: ConversationStatus.OPEN,
+        channelType: 'whatsapp',
+        tagId: 'tag-1'
+      },
       'abc'
     )
 
     expect(page.data).toHaveLength(1)
     const [url, init] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe(
-      'https://api.example.com/api/v1/conversations?assigned=me&status=OPEN&channelType=whatsapp&cursor=abc'
+      'https://api.example.com/api/v1/conversations?assigned=me&status=OPEN&channelType=whatsapp&tagId=tag-1&cursor=abc'
     )
     expect(init?.headers).toMatchObject({ 'x-store-id': 's1' })
   })
@@ -100,6 +106,19 @@ describe('fetchConversationCounts', () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(
       'https://api.example.com/api/v1/conversations?countsOnly=true'
     )
+  })
+})
+
+describe('fetchTags', () => {
+  it('reads the tags of the store', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, [{ id: 't1', name: 'VIP', color: '#ff0000', extra: true }])
+    )
+
+    const tags = await fetchTags(client, 's1')
+
+    expect(tags).toEqual([{ id: 't1', name: 'VIP', color: '#ff0000' }])
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/settings/tags')
   })
 })
 

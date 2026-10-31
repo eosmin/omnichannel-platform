@@ -15,6 +15,7 @@ import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import { cn } from '../../lib/utils'
 
 import { CustomerAvatar } from './customer-avatar'
+import { TagChips } from './tag-chips'
 
 export const CONVERSATION_ROW_HEIGHT_PX = 84
 
@@ -102,6 +103,7 @@ export function ConversationItem({
               {tStatus(status)}
             </span>
           )}
+          <TagChips tags={item.tags} />
         </span>
       </span>
     </Link>

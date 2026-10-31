@@ -23,10 +23,10 @@ const OK = 200
 const MINUTE_MS = 60_000
 
 // What the api sends and the web client leaves out on purpose, until the step that draws it reads it
-// (the edit of a note needs `version`, Step 3.2 PR B4). A field in this list that the client starts
+// (empty since Step 3.2 PR B4, which reads `version`, `mentions` and the editor). A field in this list that the client starts
 // reading, or a new one the api starts sending, fails the suite: the list is exact, so a field never
 // disappears from the page by accident.
-const NOT_READ_BY_THE_WEB_YET = ['editedById', 'editedByType', 'mentions', 'version']
+const NOT_READ_BY_THE_WEB_YET: string[] = []
 
 const keysOf = (value: unknown): string[] => Object.keys(value as Record<string, unknown>).sort()
 

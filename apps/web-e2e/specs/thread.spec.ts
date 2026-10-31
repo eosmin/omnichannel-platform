@@ -371,4 +371,43 @@ test.describe.serial('the thread of a conversation', () => {
 
     await expect.poll(async () => (await mentionsOf(conversationId)).flat()).toHaveLength(1)
   })
+  test('edits an own note with the history kept, then deletes it', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    await page.getByRole('tab', { name: en.inbox.composer.note }).click()
+    const noteBox = page.getByRole('textbox', { name: en.inbox.composer.noteLabel })
+    await noteBox.fill('first version')
+    await noteBox.press('Enter')
+
+    const note = threadOf(page).getByRole('listitem').filter({ hasText: 'first version' })
+    await expect(note).toBeVisible()
+    await note.hover()
+    await note.getByRole('button', { name: en.inbox.thread.actions.more }).click()
+    await page.getByRole('menuitem', { name: en.inbox.thread.actions.edit }).click()
+
+    const editBox = page.getByRole('textbox', { name: en.inbox.thread.actions.editLabel })
+    await editBox.fill('second version')
+    await page.getByRole('button', { name: en.inbox.thread.actions.save }).click()
+
+    const edited = threadOf(page).getByRole('listitem').filter({ hasText: 'second version' })
+    await expect(edited).toBeVisible()
+    await expect(edited.getByText(/^edited by /)).toBeVisible()
+
+    await edited.hover()
+    await edited.getByRole('button', { name: en.inbox.thread.actions.more }).click()
+    await page.getByRole('menuitem', { name: en.inbox.thread.actions.revisions }).click()
+    await expect(page.getByRole('dialog').getByText('first version')).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    await edited.hover()
+    await edited.getByRole('button', { name: en.inbox.thread.actions.more }).click()
+    await page.getByRole('menuitem', { name: en.inbox.thread.actions.delete }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: en.inbox.thread.actions.delete })
+      .click()
+
+    await expect(threadOf(page).getByText('second version')).toHaveCount(0)
+    await expect(threadOf(page).getByText(/ deleted this message$/)).toBeVisible()
+  })
 })

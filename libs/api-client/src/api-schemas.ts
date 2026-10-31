@@ -241,7 +241,12 @@ export const messageSchema = z.object({
   // Untrusted: drawn as a link with its host visible, never fetched
   attachmentUrl: z.string().nullable(),
   reactions: z.array(reactionSchema),
+  // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
+  mentions: z.array(z.string()),
+  version: z.number().int(),
   editedAt: z.string().nullable(),
+  editedByType: z.string().nullable(),
+  editedById: z.string().nullable(),
   pendingEdit: z.boolean(),
   editStatus: z.string().nullable(),
   editError: z.string().nullable(),
@@ -299,3 +304,23 @@ export const channelTemplateSchema = z.object({
 })
 export const channelTemplateListSchema = z.array(channelTemplateSchema)
 export type ChannelTemplateView = z.output<typeof channelTemplateSchema>
+
+// GET /messages/:id/deleted-content: the kept text of a message the customer deleted
+export const deletedContentSchema = z.object({ content: z.string().nullable() })
+export type DeletedContentView = z.output<typeof deletedContentSchema>
+
+// GET /messages/:id/revisions: the earlier texts of an edited message, as the api orders them
+export const revisionSchema = z.object({
+  version: z.number().int(),
+  content: z.string().nullable(),
+  editedByType: z.string(),
+  editedById: z.string().nullable(),
+  createdAt: z.string()
+})
+export const revisionListSchema = z.array(revisionSchema)
+export type RevisionView = z.output<typeof revisionSchema>
+
+// GET /settings/tags: the tags of the store, for the filter of the inbox
+export const tagSchema = z.object({ id: z.string(), name: z.string(), color: z.string() })
+export const tagListSchema = z.array(tagSchema)
+export type TagView = z.output<typeof tagSchema>
