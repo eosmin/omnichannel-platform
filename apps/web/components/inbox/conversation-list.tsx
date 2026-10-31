@@ -12,11 +12,14 @@ import { HttpStatusCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
 import { hasFilters } from '../../lib/inbox/inbox-filters'
+import { EMPTY_SELECTION, retainLoaded, type Selection, toggleId } from '../../lib/inbox/selection'
 import { useConversationPages } from '../../lib/inbox/use-inbox-data'
 import { Button } from '../ui/button'
 
+import { BulkBar } from './bulk-bar'
 import { CONVERSATION_ROW_HEIGHT_PX, ConversationItem } from './conversation-item'
 import { InboxState } from './inbox-state'
+import { RowCheckbox } from './row-checkbox'
 
 const OVERSCAN_ROWS = 6
 const NOW_REFRESH_MS = 60_000
@@ -55,6 +58,23 @@ export function ConversationList({
     () => new Map(channels.map(channel => [channel.pluginId, channel.pluginName])),
     [channels]
   )
+
+  // The ticked rows belong to the filters they were ticked under: other filters, other list
+  const filterKey = JSON.stringify(filters)
+  const [ticked, setTicked] = useState<{ filterKey: string; selection: Selection }>({
+    filterKey,
+    selection: EMPTY_SELECTION
+  })
+  // Other filters, other list: what was ticked is dropped for good, not hidden until the filters return
+  if (ticked.filterKey !== filterKey) setTicked({ filterKey, selection: EMPTY_SELECTION })
+  const loadedIds = useMemo(() => new Set(items.map(item => item.id)), [items])
+  const selection = useMemo(
+    () =>
+      ticked.filterKey === filterKey ? retainLoaded(ticked.selection, loadedIds) : EMPTY_SELECTION,
+    [ticked, filterKey, loadedIds]
+  )
+  const setSelection = (next: Selection): void => setTicked({ filterKey, selection: next })
+  const isSelecting = selection.ids.size > 0 || selection.isAllMatching
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -118,51 +138,74 @@ export function ConversationList({
   }
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-      <ul
-        aria-label={t('listLabel')}
-        className="relative w-full"
-        style={{ height: virtualizer.getTotalSize() }}
-      >
-        {virtualRows.map(row => {
-          const item = items[row.index]
-          if (item === undefined) return null
-          return (
-            // Measured, not fixed: a larger font or a wrapped badge makes a taller row
-            <li
-              key={row.key}
-              ref={virtualizer.measureElement}
-              data-index={row.index}
-              aria-setsize={hasNextPage ? -1 : items.length}
-              aria-posinset={row.index + 1}
-              className="absolute top-0 left-0 w-full"
-              style={{ transform: `translateY(${row.start}px)` }}
-            >
-              <ConversationItem
-                storeId={storeId}
-                item={item}
-                channelName={channelNames.get(item.channelType) ?? item.channelType}
-                isSelected={item.id === conversationId}
-                search={search}
-                now={now}
-              />
-            </li>
-          )
-        })}
-      </ul>
-      {isFetchingNextPage ? (
-        <p role="status" className="text-muted-foreground p-3 text-center text-xs">
-          {t('loadingMore')}
-        </p>
+    <>
+      {isSelecting ? (
+        <BulkBar
+          selection={selection}
+          onSelectionChange={setSelection}
+          items={items}
+          filters={filters}
+          hasMore={hasNextPage}
+        />
       ) : null}
-      {pages.isError ? (
-        <div role="alert" className="flex items-center justify-between gap-2 border-t p-3 text-sm">
-          <span>{tAll(`errors.${errorCodeOf(pages.error)}`)}</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => void pages.refetch()}>
-            {tAll('common.tryAgain')}
-          </Button>
-        </div>
-      ) : null}
-    </div>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <ul
+          aria-label={t('listLabel')}
+          className="relative w-full"
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualRows.map(row => {
+            const item = items[row.index]
+            if (item === undefined) return null
+            return (
+              // Measured, not fixed: a larger font or a wrapped badge makes a taller row
+              <li
+                key={row.key}
+                ref={virtualizer.measureElement}
+                data-index={row.index}
+                aria-setsize={hasNextPage ? -1 : items.length}
+                aria-posinset={row.index + 1}
+                className="absolute top-0 left-0 w-full"
+                style={{ transform: `translateY(${row.start}px)` }}
+              >
+                <div className="group relative">
+                  <ConversationItem
+                    storeId={storeId}
+                    item={item}
+                    channelName={channelNames.get(item.channelType) ?? item.channelType}
+                    isSelected={item.id === conversationId}
+                    search={search}
+                    now={now}
+                  />
+                  <RowCheckbox
+                    customer={item.customer}
+                    channelName={channelNames.get(item.channelType) ?? item.channelType}
+                    isChecked={selection.ids.has(item.id)}
+                    isSelecting={isSelecting}
+                    onToggle={() => setSelection(toggleId(selection, item.id))}
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+        {isFetchingNextPage ? (
+          <p role="status" className="text-muted-foreground p-3 text-center text-xs">
+            {t('loadingMore')}
+          </p>
+        ) : null}
+        {pages.isError ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 border-t p-3 text-sm"
+          >
+            <span>{tAll(`errors.${errorCodeOf(pages.error)}`)}</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void pages.refetch()}>
+              {tAll('common.tryAgain')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </>
   )
 }

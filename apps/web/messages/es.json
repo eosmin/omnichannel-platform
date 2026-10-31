@@ -712,6 +712,93 @@
       "resolve": "Resolver",
       "reopen": "Reabrir",
       "wakeUp": "Despertar"
+    },
+    "bulk": {
+      "label": "Acciones masivas",
+      "selected": "{count, plural, one {# seleccionada} other {# seleccionadas}}",
+      "allMatching": "Todas las conversaciones de este filtro (hasta {max})",
+      "clear": "Quitar la selección",
+      "selectRow": "Seleccionar la conversación con {name}",
+      "selectLoaded": "Seleccionar las {count} cargadas",
+      "onlyLoaded": "Solo están seleccionadas las {count} conversaciones cargadas.",
+      "selectMatching": "Seleccionar todas las de este filtro (hasta {max})",
+      "overLimit": "Selecciona como máximo {max} conversaciones a la vez.",
+      "assign": {
+        "label": "Asignar",
+        "toMe": "Asignarme",
+        "unassign": "Quitar la asignación",
+        "toAgent": "Asignar a un agente...",
+        "roundRobin": "Repartir entre el equipo..."
+      },
+      "status": {
+        "label": "Estado"
+      },
+      "tag": {
+        "label": "Etiqueta",
+        "add": "Agregar una etiqueta...",
+        "remove": "Quitar una etiqueta..."
+      },
+      "more": {
+        "label": "Más",
+        "markRead": "Marcar como leídas",
+        "markUnread": "Marcar como no leídas",
+        "archive": "Archivar"
+      },
+      "pick": {
+        "loading": "Cargando",
+        "failed": "No se pudo cargar la lista.",
+        "noTags": "Todavía no hay etiquetas.",
+        "noMembers": "No hay miembros entre quienes elegir.",
+        "continue": "Continuar",
+        "teamLabel": "{count, plural, one {# persona} other {# personas}}",
+        "agent": {
+          "title": "Asignar a un agente",
+          "description": "Elige quién se queda con las conversaciones seleccionadas."
+        },
+        "team": {
+          "title": "Repartir entre el equipo",
+          "description": "Elige entre {min} y {max} personas. Las conversaciones que nadie tiene se reparten según la carga."
+        },
+        "add_tag": {
+          "title": "Agregar una etiqueta",
+          "description": "Elige la etiqueta que se pone a las conversaciones seleccionadas."
+        },
+        "remove_tag": {
+          "title": "Quitar una etiqueta",
+          "description": "Elige la etiqueta que se quita de las conversaciones seleccionadas."
+        }
+      },
+      "confirm": {
+        "title": "Confirma el cambio",
+        "cancel": "Cancelar",
+        "confirm": "Confirmar",
+        "archivePhrase": "archivar",
+        "typePhrase": "Escribe \"{phrase}\" para confirmar",
+        "scopeIds": "{count, plural, one {# conversación} other {# conversaciones}}",
+        "scopeFilter": "todas las conversaciones de este filtro (hasta {max})",
+        "summary": {
+          "assign_to_me": "Asignarte {scope}.",
+          "assign_to_agent": "Asignar {scope} a {target}.",
+          "round_robin_to_team": "Repartir {scope} entre {target}.",
+          "unassign": "Quitar {scope} a quien las tenga.",
+          "set_status": "Cambiar el estado de {scope} a {target}.",
+          "add_tag": "Agregar la etiqueta {target} a {scope}.",
+          "remove_tag": "Quitar la etiqueta {target} de {scope}.",
+          "mark_read": "Marcar {scope} como leídas.",
+          "mark_unread": "Marcar {scope} como no leídas.",
+          "archive": "Archivar {scope}. Las conversaciones archivadas salen de la bandeja y aquí no se puede deshacer."
+        }
+      },
+      "result": {
+        "allDone": "{count, plural, one {# conversación actualizada} other {# conversaciones actualizadas}}",
+        "someDone": "{succeeded} actualizadas, {failed} sin cambios: {reasons}",
+        "noneDone": "No cambió nada: {reasons}",
+        "reason": "{reason} ({count})",
+        "truncated": "El filtro alcanzó más conversaciones de las que una acción cubre; ejecútala de nuevo para el resto.",
+        "undo": "Deshacer",
+        "undone": "El cambio se deshizo",
+        "undonePartly": "{count, plural, one {# conversación no se pudo} other {# conversaciones no se pudieron}} devolver a como estaban"
+      }
     }
   }
 }

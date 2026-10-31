@@ -712,6 +712,93 @@
       "resolve": "Resolve",
       "reopen": "Reopen",
       "wakeUp": "Wake up"
+    },
+    "bulk": {
+      "label": "Bulk actions",
+      "selected": "{count, plural, one {# selected} other {# selected}}",
+      "allMatching": "Every conversation matching this filter (up to {max})",
+      "clear": "Clear the selection",
+      "selectRow": "Select the conversation with {name}",
+      "selectLoaded": "Select the {count} loaded",
+      "onlyLoaded": "Only the {count} loaded conversations are selected.",
+      "selectMatching": "Select all matching this filter (up to {max})",
+      "overLimit": "Select at most {max} conversations at a time.",
+      "assign": {
+        "label": "Assign",
+        "toMe": "Assign to me",
+        "unassign": "Unassign",
+        "toAgent": "Assign to an agent...",
+        "roundRobin": "Round-robin to the team..."
+      },
+      "status": {
+        "label": "Status"
+      },
+      "tag": {
+        "label": "Tag",
+        "add": "Add a tag...",
+        "remove": "Remove a tag..."
+      },
+      "more": {
+        "label": "More",
+        "markRead": "Mark as read",
+        "markUnread": "Mark as unread",
+        "archive": "Archive"
+      },
+      "pick": {
+        "loading": "Loading",
+        "failed": "The list could not be loaded.",
+        "noTags": "There are no tags yet.",
+        "noMembers": "There are no members to choose from.",
+        "continue": "Continue",
+        "teamLabel": "{count, plural, one {# person} other {# people}}",
+        "agent": {
+          "title": "Assign to an agent",
+          "description": "Choose who takes the selected conversations."
+        },
+        "team": {
+          "title": "Round-robin to the team",
+          "description": "Choose between {min} and {max} people. The conversations nobody holds are handed out by load."
+        },
+        "add_tag": {
+          "title": "Add a tag",
+          "description": "Choose the tag to put on the selected conversations."
+        },
+        "remove_tag": {
+          "title": "Remove a tag",
+          "description": "Choose the tag to take off the selected conversations."
+        }
+      },
+      "confirm": {
+        "title": "Confirm the change",
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "archivePhrase": "archive",
+        "typePhrase": "Type \"{phrase}\" to confirm",
+        "scopeIds": "{count, plural, one {# conversation} other {# conversations}}",
+        "scopeFilter": "every conversation matching the filter (up to {max})",
+        "summary": {
+          "assign_to_me": "Assign {scope} to you.",
+          "assign_to_agent": "Assign {scope} to {target}.",
+          "round_robin_to_team": "Hand out {scope} among {target}.",
+          "unassign": "Take {scope} away from whoever holds them.",
+          "set_status": "Change the status of {scope} to {target}.",
+          "add_tag": "Add the tag {target} to {scope}.",
+          "remove_tag": "Remove the tag {target} from {scope}.",
+          "mark_read": "Mark {scope} as read.",
+          "mark_unread": "Mark {scope} as unread.",
+          "archive": "Archive {scope}. Archived conversations leave the inbox and this cannot be undone here."
+        }
+      },
+      "result": {
+        "allDone": "{count, plural, one {# conversation updated} other {# conversations updated}}",
+        "someDone": "{succeeded} updated, {failed} not changed: {reasons}",
+        "noneDone": "Nothing changed: {reasons}",
+        "reason": "{reason} ({count})",
+        "truncated": "The filter matched more conversations than one action reaches; run it again for the rest.",
+        "undo": "Undo",
+        "undone": "The change was undone",
+        "undonePartly": "{count, plural, one {# conversation} other {# conversations}} could not be put back"
+      }
     }
   }
 }

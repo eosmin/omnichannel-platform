@@ -98,6 +98,7 @@ describe('conversation constants', () => {
   it('has unique bulk actions and the documented cap', () => {
     expect(unique(Object.values(BulkActions))).toBe(true)
     expect(BulkLimits.MAX_ITEMS).toBe(500)
+    expect(BulkLimits.CONFIRM_FROM).toBe(10)
   })
 })
 

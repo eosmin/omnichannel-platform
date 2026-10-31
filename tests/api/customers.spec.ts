@@ -12,6 +12,7 @@ import { CustomerIdentityService } from '@platform/core/messaging'
 
 import { createConversation, createCustomer, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
@@ -62,16 +63,6 @@ describe('The customers of a store', () => {
 
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
   const identities = () => app.get(CustomerIdentityService, { strict: false })
-
-  // The audit entry is written after the answer: wait for it instead of guessing a delay
-  async function auditEntries(action: string, resourceId: string, expected = 1) {
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      const entries = await owner.auditLog.findMany({ where: { action, resourceId } })
-      if (entries.length >= expected) return entries
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-    return owner.auditLog.findMany({ where: { action, resourceId } })
-  }
 
   async function create(body: Record<string, unknown>): Promise<CustomerBody> {
     const response = await asAdmin().post(ApiRoutes.customers.list).send(body)
@@ -633,7 +624,11 @@ describe('The customers of a store', () => {
       expect((stranger.body as ErrorBody).error.code).toBe(ErrorCodes.PERMISSION_DENIED)
       expect(author.status).toBe(NO_CONTENT)
       expect(admin.status).toBe(NO_CONTENT)
-      const entries = await auditEntries(AuditAction.CUSTOMER_NOTE_DELETED, customer.id, 2)
+      const entries = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.CUSTOMER_NOTE_DELETED, resourceId: customer.id },
+        2
+      )
       expect(entries.map(entry => entry.userId).sort()).toEqual(
         [ctx.agentA.id, ctx.adminA.id].sort()
       )
@@ -726,7 +721,10 @@ describe('The customers of a store', () => {
       expect(kept.status).toBe(CONFLICT)
       expect(await owner.customer.findUnique({ where: { id: alone.id } })).toBeNull()
       expect(await owner.customer.findUnique({ where: { id: withHistory.id } })).not.toBeNull()
-      const [audit] = await auditEntries(AuditAction.CUSTOMER_DELETED, alone.id)
+      const [audit] = await waitForAuditEntries(owner, {
+        action: AuditAction.CUSTOMER_DELETED,
+        resourceId: alone.id
+      })
       expect(audit?.userId).toBe(ctx.adminA.id)
     })
   })

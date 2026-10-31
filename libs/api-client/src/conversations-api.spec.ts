@@ -1,8 +1,9 @@
-import { ConversationStatus } from '@platform/core/domain'
+import { BulkActions, ConversationStatus } from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
   assignConversation,
+  bulkConversations,
   changeConversationStatus,
   fetchChannelDirectory,
   fetchConversationCounts,
@@ -272,5 +273,49 @@ describe('assignConversation', () => {
     )
     expect(bodyOf(fetchImpl, 0)).toEqual({ userId: 'u2' })
     expect(bodyOf(fetchImpl, 1)).toEqual({ userId: null })
+  })
+})
+
+describe('bulkConversations', () => {
+  it('posts the action with the ids it reaches and reads who went through', async () => {
+    const answer = {
+      succeeded: ['c1'],
+      failed: [{ id: 'c2', code: 'FORBIDDEN' }],
+      truncated: false
+    }
+    const { client, fetchImpl } = setup(json(200, answer))
+
+    const result = await bulkConversations(
+      client,
+      's1',
+      { action: BulkActions.ADD_TAG, params: { tagId: 't1' } },
+      { conversationIds: ['c1', 'c2'] }
+    )
+
+    expect(result).toEqual(answer)
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/conversations/bulk')
+    expect(init?.method).toBe('POST')
+    expect(bodyOf(fetchImpl, 0)).toEqual({
+      action: 'add_tag',
+      params: { tagId: 't1' },
+      conversationIds: ['c1', 'c2']
+    })
+  })
+
+  it('sends a filter instead of ids when "all matching" is chosen', async () => {
+    const { client, fetchImpl } = setup(json(200, { succeeded: [], failed: [], truncated: true }))
+
+    await bulkConversations(
+      client,
+      's1',
+      { action: BulkActions.UNASSIGN },
+      { filter: { status: ConversationStatus.OPEN } }
+    )
+
+    expect(bodyOf(fetchImpl, 0)).toEqual({
+      action: 'unassign',
+      filter: { status: 'OPEN' }
+    })
   })
 })
