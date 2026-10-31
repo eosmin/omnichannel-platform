@@ -1,11 +1,12 @@
 'use client'
 
-import { ArrowLeft, SearchX, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, SearchX, TriangleAlert, UserRound } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef } from 'react'
 
 import { ApiError, AppPaths, type ConversationListItemView } from '@platform/api-client'
+import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
@@ -14,6 +15,7 @@ import { isListHiddenByConversation } from '../../lib/inbox/layout'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
+import { useCustomerDrawer } from '../customers/customer-drawer-context'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -112,7 +114,9 @@ function LoadedHeader({
   status: string
   backLink: ReactElement
 }): ReactElement {
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
+  const { openCustomer } = useCustomerDrawer()
+  const t = useTranslations('inbox')
   const channelName = useChannelName(storeId, channelType)
   const { label, name } = useCustomerName(customer, channelName)
   // On a phone the list the agent tapped is gone and the focus with it: it goes to the heading of the
@@ -131,7 +135,18 @@ function LoadedHeader({
         </h1>
         <p className="text-muted-foreground truncate text-xs">{channelName}</p>
       </div>
-      <div className="ml-auto shrink-0">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {can(Permissions.CUSTOMERS_VIEW) ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t('openCustomer')}
+            onClick={() => openCustomer(customer.id)}
+          >
+            <UserRound aria-hidden />
+          </Button>
+        ) : null}
         <ConversationActions conversationId={conversationId} status={status} />
       </div>
     </header>

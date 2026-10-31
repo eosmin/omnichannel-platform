@@ -337,3 +337,87 @@ export type RevisionView = z.output<typeof revisionSchema>
 export const tagSchema = z.object({ id: z.string(), name: z.string(), color: z.string() })
 export const tagListSchema = z.array(tagSchema)
 export type TagView = z.output<typeof tagSchema>
+
+// GET /customers/:id: what the profile shows. The dates come as text.
+export const customerDetailSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  locale: z.string().nullable(),
+  isCaution: z.boolean(),
+  cautionReason: z.string().nullable(),
+  identities: z.array(
+    z.object({
+      id: z.string(),
+      channelType: z.string(),
+      channelIdentity: z.string(),
+      displayName: z.string().nullable(),
+      lastInboundAt: z.string().nullable()
+    })
+  ),
+  addresses: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string().nullable(),
+      line1: z.string(),
+      line2: z.string().nullable(),
+      city: z.string(),
+      state: z.string().nullable(),
+      postalCode: z.string().nullable(),
+      country: z.string(),
+      isDefault: z.boolean()
+    })
+  ),
+  tags: z.array(z.object({ id: z.string(), name: z.string(), color: z.string() })),
+  createdAt: z.string(),
+  updatedAt: z.string()
+})
+export type CustomerDetailView = z.output<typeof customerDetailSchema>
+
+// The three kinds of entry of GET /customers/:id/timeline (orders join in Step 4.3)
+const timelineConversationSchema = z.object({
+  type: z.literal('conversation'),
+  id: z.string(),
+  at: z.string(),
+  channelType: z.string(),
+  status: z.string()
+})
+const timelineNoteSchema = z.object({
+  type: z.literal('note'),
+  id: z.string(),
+  at: z.string(),
+  authorId: z.string(),
+  authorName: z.string().nullable(),
+  content: z.string()
+})
+const timelineMergeSchema = z.object({
+  type: z.literal('merge'),
+  id: z.string(),
+  at: z.string(),
+  absorbedId: z.string(),
+  mergedById: z.string(),
+  mergedByName: z.string().nullable(),
+  unmergeUntil: z.string(),
+  unmergedAt: z.string().nullable()
+})
+export const customerTimelineEntrySchema = z.discriminatedUnion('type', [
+  timelineConversationSchema,
+  timelineNoteSchema,
+  timelineMergeSchema
+])
+export type CustomerTimelineEntryView = z.output<typeof customerTimelineEntrySchema>
+
+// An entry of a kind this page does not know (a server newer than the page) is left out: it must not
+// break the whole timeline
+export const customerTimelinePageSchema = z.object({
+  data: z.array(z.unknown()).transform(entries =>
+    entries.flatMap(entry => {
+      const parsed = customerTimelineEntrySchema.safeParse(entry)
+      return parsed.success ? [parsed.data] : []
+    })
+  ),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type CustomerTimelinePageView = z.output<typeof customerTimelinePageSchema>

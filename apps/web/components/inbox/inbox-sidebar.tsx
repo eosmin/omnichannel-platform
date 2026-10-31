@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronDown, ChevronUp, EyeOff, Plus } from 'lucide-react'
+import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
@@ -12,6 +13,7 @@ import { useSidebarLayout } from '../../lib/inbox/use-sidebar-layout'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
+import { CustomerPanel } from './customer-panel'
 import { TeamStatusWidget } from './team-status-widget'
 import { UnassignedQueueWidget } from './unassigned-queue-widget'
 
@@ -28,6 +30,7 @@ export function InboxSidebar(): ReactElement | null {
   const { can } = useStore()
   const { layout, move, setHidden } = useSidebarLayout()
   const hasRoom = useHasRoomForSidebar()
+  const { conversationId } = useParams<{ conversationId?: string }>()
   // Both widgets read what CONVERSATIONS_VIEW opens
   // Under the width the column is not drawn, and its widgets do not read anything
   if (!hasRoom || !can(Permissions.CONVERSATIONS_VIEW)) return null
@@ -39,6 +42,7 @@ export function InboxSidebar(): ReactElement | null {
       aria-label={t('label')}
       className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto border-l p-3"
     >
+      {conversationId === undefined ? null : <CustomerPanel conversationId={conversationId} />}
       {shown.map((entry, index) => {
         const Body = BODIES[entry.id]
         const title = t(`widgets.${entry.id}`)

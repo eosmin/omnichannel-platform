@@ -38,8 +38,24 @@ describe('queryKeysForEvent', () => {
 
   it('refreshes the whole list when a conversation changes', () => {
     expect(
-      queryKeysForEvent(RealtimeEvents.CONVERSATION_STATUS_CHANGED, { conversationId: 'c1' }, 's1')
+      queryKeysForEvent(RealtimeEvents.CONVERSATION_ASSIGNED, { conversationId: 'c1' }, 's1')
     ).toEqual([QueryKeys.conversations.all('s1')])
+  })
+
+  it('refreshes the customers too when a conversation opens or changes state', () => {
+    for (const event of [
+      RealtimeEvents.CONVERSATION_CREATED,
+      RealtimeEvents.CONVERSATION_STATUS_CHANGED
+    ]) {
+      expect(queryKeysForEvent(event, { conversationId: 'c1' }, 's1')).toEqual([
+        QueryKeys.conversations.all('s1'),
+        QueryKeys.customers.all('s1')
+      ])
+    }
+    // The activity of a customer sits under customers.all, so one invalidation reaches it
+    expect(QueryKeys.customers.timeline('s1', 'u1', 'all').slice(0, 2)).toEqual(
+      QueryKeys.customers.all('s1')
+    )
   })
 
   it('refreshes the presence of the team on user.online and user.offline', () => {
@@ -81,6 +97,7 @@ describe('queryKeysAfterReconnect', () => {
       expect.arrayContaining([
         QueryKeys.conversations.all('s1'),
         QueryKeys.messages.all('s1'),
+        QueryKeys.customers.all('s1'),
         QueryKeys.presence.team('s1')
       ])
     )
