@@ -10,8 +10,11 @@ import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-// Only an administrator holds the permission to merge customers
-const ADMIN = 'admin@test.com'
+// Only an administrator holds the permission to merge customers. Not admin@test.com: the magic link is
+// limited to 5 requests a minute for each address, and the other specs already spend that one
+// (the realtime cases failed for lack of their e-mail). This user is an administrator of the first
+// store too.
+const ADMIN = 'multi-store@test.com'
 const MERGE_WORD = en.customers.merge.confirmWord
 
 // A name no other run has used: the database keeps what a case writes, and the case finds the
