@@ -6,4 +6,6 @@ export abstract class MetaAppConfig {
   abstract readonly verifyToken: string | undefined
   // 'v23.0'
   abstract readonly graphVersion: string
+  // Replaces Facebook's Graph host, for a test that serves a fake one. Never set where it is deployed.
+  abstract readonly graphOrigin?: string | undefined
 }

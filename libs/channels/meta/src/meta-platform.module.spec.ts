@@ -18,7 +18,8 @@ describe('MetaPlatformModule', () => {
     expect(moduleRef.get(MetaAppConfig)).toEqual({
       appSecret: 'sec',
       verifyToken: 'ver',
-      graphVersion: 'v24.0'
+      graphVersion: 'v24.0',
+      graphOrigin: undefined
     })
     expect(moduleRef.get(MetaGraphClient)).toBeInstanceOf(MetaGraphClient)
     jest.dontMock('@platform/core/config/env')

@@ -132,6 +132,31 @@ describe('deployed environments', () => {
     it('does not ask for them on a laptop', () => {
       expect(() => parseEnv(validEnv)).not.toThrow()
     })
+
+    // The host receives the access token of every connection
+    it.each(['development', 'staging', 'production'])(
+      'refuses a Graph host of its own in %s',
+      nodeEnv => {
+        expect(() =>
+          parseEnv({
+            ...deployed,
+            ...metaApp,
+            NODE_ENV: nodeEnv,
+            META_GRAPH_ORIGIN: 'http://localhost:8099'
+          })
+        ).toThrow(/META_GRAPH_ORIGIN/)
+      }
+    )
+
+    it('lets a test environment point Graph at a fake host, and only over http(s)', () => {
+      expect(
+        parseEnv({ ...validEnv, NODE_ENV: 'test', META_GRAPH_ORIGIN: 'http://localhost:8099/' })
+          .META_GRAPH_ORIGIN
+      ).toBe('http://localhost:8099')
+      expect(() =>
+        parseEnv({ ...validEnv, NODE_ENV: 'test', META_GRAPH_ORIGIN: 'file:///etc/passwd' })
+      ).toThrow(/META_GRAPH_ORIGIN/)
+    })
   })
 
   it.each(['staging', 'production'])('refuse to send through SMTP in %s', nodeEnv => {
