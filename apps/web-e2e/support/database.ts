@@ -1,6 +1,11 @@
+import { randomInt } from 'node:crypto'
+
+import { encryptJson, parseEncryptionKey } from '@platform/core/crypto'
 import { createOwnerClient, type OwnerClient } from '@platform/core/database-testing'
 import {
   type AuthorType,
+  ChannelConnectionStatus,
+  ChannelType,
   type DeliveryStatus,
   type MessageType,
   OriginKinds,
@@ -10,13 +15,17 @@ import {
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
 import {
+  createConversation,
   createConversationOf,
+  createCustomerIdentity,
   createMessage,
   createSnippet,
-  createTag
+  createTag,
+  ensurePluginInstallation
 } from '../../../tests/builders'
 
-import { databaseUrls } from './env'
+import { credentialsEncryptionKey, databaseUrls } from './env'
+import { FAKE_ACCESS_TOKEN, FAKE_BUSINESS_ACCOUNT_ID, FAKE_PHONE_NUMBER_ID } from './fake-graph'
 
 // What a case needs in the database that no screen creates yet (the inbox is Step 3.2): reads and
 // writes as the owner role, which is the one that sees every store
@@ -224,4 +233,72 @@ export function mentionsOf(conversationId: string): Promise<string[][]> {
       row => row.mentions
     )
   )
+}
+
+// The WhatsApp connection that the fake Graph answers for. The one of the fixtures holds credentials
+// that no real call could use (no phone number id), so the cases that reach the provider own theirs.
+async function whatsAppConnectionOf(owner: OwnerClient, storeId: string): Promise<string> {
+  const installation = await ensurePluginInstallation(owner, {
+    storeId,
+    pluginId: ChannelType.WHATSAPP
+  })
+  const credentials = encryptJson(
+    {
+      phoneNumberId: FAKE_PHONE_NUMBER_ID,
+      businessAccountId: FAKE_BUSINESS_ACCOUNT_ID,
+      accessToken: FAKE_ACCESS_TOKEN
+    },
+    parseEncryptionKey(credentialsEncryptionKey)
+  )
+  const row = await owner.channelConnection.upsert({
+    where: {
+      pluginId_connectionId: { pluginId: ChannelType.WHATSAPP, connectionId: FAKE_PHONE_NUMBER_ID }
+    },
+    create: {
+      storeId,
+      pluginId: ChannelType.WHATSAPP,
+      installationId: installation.id,
+      connectionId: FAKE_PHONE_NUMBER_ID,
+      displayName: '+503 4444-5555',
+      status: ChannelConnectionStatus.ACTIVE,
+      credentials
+    },
+    update: {
+      storeId,
+      installationId: installation.id,
+      status: ChannelConnectionStatus.ACTIVE,
+      credentials
+    },
+    select: { id: true }
+  })
+  return row.id
+}
+
+// A WhatsApp conversation whose customer wrote `agoMs` ago: the messaging window counts from there, so
+// the age picks the state of the composer (more than 22 hours is the banner, more than 24 is closed)
+export function newWhatsAppConversationWrittenAgo(storeId: string, agoMs: number): Promise<string> {
+  const WRITTEN_AT = new Date(Date.now() - agoMs)
+  return withOwner(async owner => {
+    const identity = await createCustomerIdentity(owner, {
+      storeId,
+      channelType: ChannelType.WHATSAPP,
+      handle: `5037${randomInt(1_000_000, 10_000_000)}`,
+      lastInboundAt: WRITTEN_AT
+    })
+    const conversation = await createConversation(owner, {
+      storeId,
+      customerId: identity.customerId,
+      customerIdentityId: identity.id,
+      channelType: ChannelType.WHATSAPP,
+      channelConnectionId: await whatsAppConnectionOf(owner, storeId),
+      lastMessageAt: new Date()
+    })
+    await createMessage(owner, {
+      storeId,
+      conversationId: conversation.id,
+      content: 'Hello, is my order on its way?',
+      createdAt: WRITTEN_AT
+    })
+    return conversation.id
+  })
 }

@@ -104,6 +104,13 @@ export const envSchema = z
       .string()
       .regex(/^v\d+\.\d+$/)
       .default('v23.0'),
+    // Only for the e2e suite, which points Facebook's Graph host at a fake one it controls. Every
+    // call carries the connection's access token, so a deployed environment refuses it (see below).
+    META_GRAPH_ORIGIN: z
+      .url({ protocol: /^https?$/ })
+      // A path or a trailing slash would break every url built from it
+      .transform(value => new URL(value).origin)
+      .optional(),
 
     // Virus scanning
     CLAMAV_HOST: z.string().default('localhost'),
@@ -158,6 +165,17 @@ export const envSchema = z
           : 'set RESEND_API_KEY, or SMTP_URL to send through Mailpit',
         path: ['RESEND_API_KEY'],
         input: env.RESEND_API_KEY
+      })
+    }
+    if (env.NODE_ENV !== 'test' && env.META_GRAPH_ORIGIN !== undefined) {
+      // A host of the operator's choosing would receive the access token of every connection. Only the
+      // test environment may name one: any other value of NODE_ENV could be a deployment.
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'META_GRAPH_ORIGIN is for NODE_ENV=test only: any other environment calls Meta itself',
+        path: ['META_GRAPH_ORIGIN'],
+        input: env.META_GRAPH_ORIGIN
       })
     }
     if (!isDeployed) return

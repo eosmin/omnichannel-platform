@@ -167,7 +167,10 @@ export class MetaGraphClient {
     if (path.length === 0 || !path.every(segment => PATH_SEGMENT.test(segment))) {
       throw graphUnexpected()
     }
-    const base = `${origin}/${this.config.graphVersion}/${path.join('/')}`
+    // Only Facebook's host is replaced: Instagram's has its own token and no test stands in for it
+    const host =
+      origin === MetaGraph.ORIGIN ? (this.config.graphOrigin ?? MetaGraph.ORIGIN) : origin
+    const base = `${host}/${this.config.graphVersion}/${path.join('/')}`
     return query ? `${base}?${new URLSearchParams(query).toString()}` : base
   }
 

@@ -18,7 +18,8 @@ import { MetaGraphClient } from './meta-graph.client'
         return {
           appSecret: env.META_APP_SECRET,
           verifyToken: env.META_WEBHOOK_VERIFY_TOKEN,
-          graphVersion: env.META_GRAPH_API_VERSION
+          graphVersion: env.META_GRAPH_API_VERSION,
+          graphOrigin: env.META_GRAPH_ORIGIN
         }
       }
     },

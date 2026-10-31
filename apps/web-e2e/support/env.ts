@@ -26,3 +26,9 @@ if (encryptionKey === undefined || encryptionKey === '') {
   throw new Error('CREDENTIALS_ENCRYPTION_KEY is required to load the fixtures (see .env.example)')
 }
 export const credentialsEncryptionKey = encryptionKey
+
+// The fake Graph API that the api and the worker call in place of graph.facebook.com
+// (META_GRAPH_ORIGIN, set in playwright.shared.ts); the spec of the templates serves it
+export const GRAPH_PORT = 8099
+export const GRAPH_HOST = '127.0.0.1'
+export const GRAPH_URL = `http://${GRAPH_HOST}:${GRAPH_PORT}`
