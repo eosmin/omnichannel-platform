@@ -11,7 +11,7 @@ import {
   type ConversationListItemView
 } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
-import { BulkActions, BulkLimits, ConversationStatus } from '@platform/core/domain'
+import { BulkActions, BulkLimits, ConversationStatus, Shortcuts } from '@platform/core/domain'
 
 import { BulkConfirmations, confirmationOf, targetCountOf } from '../../lib/inbox/bulk'
 import { hasFilters } from '../../lib/inbox/inbox-filters'
@@ -22,7 +22,9 @@ import {
   selectIds
 } from '../../lib/inbox/selection'
 import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
+import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useStore } from '../providers/store-context'
+import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
 import {
   DropdownMenu,
@@ -144,6 +146,27 @@ export function BulkBar({
   ) => request({ action: BulkActions.SET_STATUS, params: { status: value } }, tStatus(value))
 
   const disabled = runner.isPending || isOverLimit
+
+  // The keys act on what is ticked, before they act on a row or on the open conversation. They are
+  // always registered while the bar shows: a selection over the limit, or an action in flight, takes the
+  // key and does nothing (the bar says why), instead of letting it reach another conversation.
+  const keyboard = { priority: ShortcutPriority.SELECTION }
+  useShortcut(
+    Shortcuts.list.ASSIGN_TO_ME,
+    () => {
+      if (!disabled) request({ action: BulkActions.ASSIGN_TO_ME })
+    },
+    { ...keyboard, enabled: mayResolve || mayAssign }
+  )
+  useShortcut(
+    Shortcuts.list.MARK_RESOLVED,
+    () => {
+      if (!disabled) status(ConversationStatus.RESOLVED)
+    },
+    { ...keyboard, enabled: mayResolve }
+  )
+  // Escape drops the selection first and closes the conversation after
+  useShortcut(Shortcuts.conversation.CLOSE, clear, { priority: ShortcutPriority.SELECTION })
 
   return (
     <div role="region" aria-label={t('label')} className="bg-muted/50 grid gap-1 border-b p-2">

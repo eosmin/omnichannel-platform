@@ -4,3 +4,9 @@ import { ConversationStatus } from '@platform/core/domain'
 export function conversationStatusOf(value: string): ConversationStatus | null {
   return Object.values(ConversationStatus).find(status => String(status) === value) ?? null
 }
+
+// A resolved or snoozed conversation is reopened, not resolved or snoozed again; any other can be
+export function canChangeState(value: string): boolean {
+  const status = conversationStatusOf(value)
+  return status !== ConversationStatus.RESOLVED && status !== ConversationStatus.SNOOZED
+}
