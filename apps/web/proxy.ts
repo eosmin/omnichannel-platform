@@ -25,6 +25,7 @@ export function proxy(request: NextRequest): NextResponse {
     nonce,
     apiUrl: webEnv.NEXT_PUBLIC_API_URL,
     wsUrl: webEnv.NEXT_PUBLIC_WS_URL,
+    storageUrl: webEnv.NEXT_PUBLIC_STORAGE_URL,
     sentryDsn: webEnv.NEXT_PUBLIC_SENTRY_DSN,
     isDev: isDevelopment
   })

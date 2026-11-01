@@ -7,7 +7,8 @@ jest.mock('./lib/env', () => ({
   isProduction: true,
   webEnv: {
     NEXT_PUBLIC_API_URL: 'https://api.example.com',
-    NEXT_PUBLIC_WS_URL: 'https://api.example.com'
+    NEXT_PUBLIC_WS_URL: 'https://api.example.com',
+    NEXT_PUBLIC_STORAGE_URL: 'https://files.example.com'
   }
 }))
 

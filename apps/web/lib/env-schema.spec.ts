@@ -3,6 +3,7 @@ import { parseWebEnv } from './env-schema'
 const validWebEnv = {
   NEXT_PUBLIC_API_URL: 'http://localhost:8080',
   NEXT_PUBLIC_WS_URL: 'http://localhost:8080',
+  NEXT_PUBLIC_STORAGE_URL: 'http://localhost:8333',
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: 'http://localhost:4200/v1/widget.js'
 }
 

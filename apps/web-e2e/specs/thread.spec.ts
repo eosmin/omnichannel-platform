@@ -5,6 +5,7 @@ import {
   AuthorType,
   ConversationStatus,
   DeliveryStatus,
+  MediaStatus,
   MessageType,
   ResolveUndo,
   SystemMessageEvents
@@ -14,6 +15,7 @@ import en from '../../web/messages/en.json' with { type: 'json' }
 import { writeNote } from '../support/api'
 import {
   addManyMessagesTo,
+  addMediaTo,
   addMessageTo,
   addOriginTo,
   addSnippetTo,
@@ -409,5 +411,64 @@ test.describe.serial('the thread of a conversation', () => {
 
     await expect(threadOf(page).getByText('second version')).toHaveCount(0)
     await expect(threadOf(page).getByText(/ deleted this message$/)).toBeVisible()
+  })
+
+  test('draws each file of a message in the state of its scan', async () => {
+    const conversationId = await newConversationIn(storeId)
+    const withFile = async (
+      filename: string,
+      contentType: string,
+      status: MediaStatus,
+      type: MessageType,
+      minutes: number
+    ): Promise<void> => {
+      const message = await addMessageTo(storeId, conversationId, {
+        content: `caption of ${filename}`,
+        type,
+        createdAt: minutesAgo(minutes)
+      })
+      await addMediaTo(storeId, message.id, { filename, contentType, status })
+    }
+    await withFile('waiting.png', 'image/png', MediaStatus.PENDING, MessageType.IMAGE, 30)
+    await withFile('virus.pdf', 'application/pdf', MediaStatus.INFECTED, MessageType.DOCUMENT, 20)
+    await withFile('invoice.pdf', 'application/pdf', MediaStatus.CLEAN, MessageType.DOCUMENT, 10)
+
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const thread = threadOf(page)
+    await expect(
+      thread.getByText(en.inbox.thread.media.checking.replace('{name}', 'waiting.png'))
+    ).toBeVisible()
+    await expect(
+      thread.getByText(en.inbox.thread.media.infected.replace('{name}', 'virus.pdf'))
+    ).toBeVisible()
+    await expect(thread.getByText('caption of invoice.pdf')).toBeVisible()
+    await expect(thread.getByRole('link', { name: new RegExp('invoice\\.pdf') })).toHaveAttribute(
+      'href',
+      /^http:\/\/localhost:8333\//
+    )
+  })
+
+  test('refuses a file of a type that is not allowed before anything is uploaded', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, { content: 'Hello', createdAt: minutesAgo(1) })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    await expect(threadOf(page).getByText('Hello')).toBeVisible()
+
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'setup.exe',
+      mimeType: 'application/x-msdownload',
+      buffer: Buffer.from('MZ')
+    })
+
+    await expect(
+      page.getByRole('alert').filter({ hasText: en.errors.FILE_TYPE_NOT_ALLOWED })
+    ).toBeVisible()
+    await page
+      .getByRole('button', { name: en.inbox.composer.attach.remove.replace('{name}', 'setup.exe') })
+      .click()
+    await expect(
+      page.getByRole('alert').filter({ hasText: en.errors.FILE_TYPE_NOT_ALLOWED })
+    ).toHaveCount(0)
   })
 })

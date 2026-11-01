@@ -22,6 +22,7 @@ import { cn } from '../../lib/utils'
 import { CustomerAvatar } from './customer-avatar'
 import { DeliveryTicksIcon } from './delivery-ticks'
 import { MessageActionsBar } from './message-actions-bar'
+import { MessageMedia } from './message-media'
 import { QuotedMessage } from './quoted-message'
 import { ReactionChips } from './reaction-chips'
 import { SharedLink } from './shared-link'
@@ -257,7 +258,8 @@ function Content({
   const MediaIcon = isMediaType(message.type) ? MEDIA_ICONS[message.type] : null
   return (
     <>
-      {MediaIcon === null || !isMediaType(message.type) ? null : (
+      {message.media.length > 0 ? <MessageMedia files={message.media} /> : null}
+      {MediaIcon === null || !isMediaType(message.type) || message.media.length > 0 ? null : (
         <p className="flex items-center gap-1.5 text-xs font-medium">
           <MediaIcon aria-hidden className="size-4" />
           {t(`mediaLabel.${message.type}`)}
