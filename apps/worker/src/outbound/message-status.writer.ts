@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
-import { DeliveryStatus } from '@platform/core/domain'
+import { PrismaService, type PrismaTransaction } from '@platform/core/database'
+import { ChannelResultMetadata, DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -24,6 +24,9 @@ export interface StatusChange {
   to: Exclude<DeliveryStatus, DeliveryStatus.QUEUED>
   // The provider's id, written when the channel takes the message
   channelMessageId?: string
+  // The id of the second message that carried the caption of a file (`ChannelResultMetadata`), kept
+  // so that the echo of that message is not stored again as the owner's
+  captionExternalId?: string
   // Only for FAILED: a code of ours, never the provider's words
   errorCode?: ErrorCode
 }
@@ -53,6 +56,9 @@ export class MessageStatusWriter {
         }
       })
       if (changed.count === 0) return false
+      if (change.captionExternalId !== undefined) {
+        await this.keepCaptionId(tx, storeId, messageId, change.captionExternalId)
+      }
 
       const message = await tx.message.findFirst({
         where: { id: messageId, storeId },
@@ -89,6 +95,30 @@ export class MessageStatusWriter {
           break
       }
       return true
+    })
+  }
+
+  // Added to the metadata the message has, never in place of it
+  private async keepCaptionId(
+    tx: PrismaTransaction,
+    storeId: string,
+    messageId: string,
+    captionExternalId: string
+  ): Promise<void> {
+    const row = await tx.message.findFirst({
+      where: { id: messageId, storeId },
+      select: { metadata: true }
+    })
+    if (row === null) return
+    const current =
+      typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {}
+    await tx.message.updateMany({
+      where: { id: messageId, storeId },
+      data: {
+        metadata: { ...current, [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: captionExternalId }
+      }
     })
   }
 }

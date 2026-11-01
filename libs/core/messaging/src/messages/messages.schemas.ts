@@ -10,6 +10,7 @@ import {
   PaginationLimits,
   uuidSchema
 } from '@platform/core/domain'
+import { MediaMessageLimits } from '@platform/core/storage'
 
 import { messageCursorSchema } from './message-cursor'
 
@@ -56,7 +57,35 @@ const templateVariable = z
     message: 'has a line break, a tab or four spaces in a row'
   })
 
+// A file with its text under it: one message, one key. The text is the caption and may be missing.
+// The files are uploaded and scanned before this request (`POST /media/confirm-upload`).
+const mediaMessageFields = {
+  conversationId: uuidSchema,
+  mediaIds: z
+    .array(uuidSchema.transform(id => id.toLowerCase()))
+    .min(1)
+    .max(MediaMessageLimits.MAX_FILES)
+    .refine(ids => new Set(ids).size === ids.length, { message: 'a file is attached once' }),
+  // A blank caption is no caption: the composer may send the empty field
+  content: z
+    .union([
+      z
+        .string()
+        .trim()
+        .length(0)
+        .transform(() => undefined),
+      content
+    ])
+    .optional(),
+  idempotencyKey: idempotencyKeySchema,
+  replyToMessageId: uuidSchema.optional()
+}
+
 export const createMessageSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal(MessageType.IMAGE), ...mediaMessageFields }),
+  z.strictObject({ type: z.literal(MessageType.VIDEO), ...mediaMessageFields }),
+  z.strictObject({ type: z.literal(MessageType.AUDIO), ...mediaMessageFields }),
+  z.strictObject({ type: z.literal(MessageType.DOCUMENT), ...mediaMessageFields }),
   z.strictObject({
     type: z.literal(MessageType.TEXT),
     conversationId: uuidSchema,

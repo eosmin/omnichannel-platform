@@ -79,6 +79,13 @@ export const MessageLimits = {
   TEMPLATE_VARIABLE_MAX_LENGTH: 1024
 } as const
 
+// The keys a channel plugin may add to its answer to a send (`ChannelMessageResult.metadata`), and the
+// core keeps. Instagram and Messenger cannot put a caption on a file: the plugin sends it as a second
+// message and gives the id of that one here.
+export const ChannelResultMetadata = {
+  CAPTION_EXTERNAL_ID: 'captionExternalId'
+} as const
+
 // What a channel plugin may say a customer sent. A plugin is not trusted with the types that only the
 // platform writes (SYSTEM lines, internal notes, cards).
 export const InboundMessageTypes = [

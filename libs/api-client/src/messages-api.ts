@@ -27,10 +27,21 @@ export interface SendMessageInput {
   mentions?: string[]
 }
 
+// A file with its text under it: one message, one key. The file was uploaded and confirmed first
+// (`POST /media/confirm-upload`); the text is the caption and may be left out. One file per message.
+export interface SendMediaMessageInput {
+  type: MessageType.IMAGE | MessageType.VIDEO | MessageType.AUDIO | MessageType.DOCUMENT
+  conversationId: string
+  mediaIds: [string]
+  content?: string
+  idempotencyKey: string
+  replyToMessageId?: string
+}
+
 export function sendMessage(
   client: ApiClient,
   storeId: string,
-  input: SendMessageInput
+  input: SendMessageInput | SendMediaMessageInput
 ): Promise<SentMessage> {
   return client.request(ApiRoutes.messages.create, {
     method: 'POST',

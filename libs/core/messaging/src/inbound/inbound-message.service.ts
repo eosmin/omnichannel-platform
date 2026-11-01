@@ -11,6 +11,7 @@ import {
 } from '@platform/core/database'
 import {
   AuthorType,
+  ChannelResultMetadata,
   ConversationLimits,
   ConversationReopenedByReply,
   ConversationStatus,
@@ -176,13 +177,27 @@ export class InboundMessageService {
     })
     // The provider echoes what the platform sent too: that message has its provider id by now, in
     // whatever thread it went to
-    const known = await tx.message.findFirst({
-      where: {
-        conversationId: { in: conversations.map(conversation => conversation.id) },
-        channelMessageId: event.message.externalId
-      },
-      select: { id: true, authorType: true }
-    })
+    const conversationIds = conversations.map(conversation => conversation.id)
+    const known =
+      (await tx.message.findFirst({
+        where: {
+          conversationId: { in: conversationIds },
+          channelMessageId: event.message.externalId
+        },
+        select: { id: true, authorType: true }
+      })) ??
+      // Instagram and Messenger send the caption of a file as a message of its own: the platform
+      // kept its id in the message of the file, and the echo of it is that message, not a new one
+      (await tx.message.findFirst({
+        where: {
+          conversationId: { in: conversationIds },
+          metadata: {
+            path: [ChannelResultMetadata.CAPTION_EXTERNAL_ID],
+            equals: event.message.externalId
+          }
+        },
+        select: { id: true, authorType: true }
+      }))
     if (known !== null) {
       return {
         messageId: known.id,

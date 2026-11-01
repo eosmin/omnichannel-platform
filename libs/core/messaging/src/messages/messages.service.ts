@@ -7,8 +7,10 @@ import {
   AuthorType,
   ConversationReopenedByReply,
   ConversationStatus,
+  type ChannelCapabilityType,
   DeliveryStatus,
   type CursorPage,
+  MediaStatus,
   MembershipStatus,
   MessageType
 } from '@platform/core/domain'
@@ -22,6 +24,12 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ConversationVisibility, Events } from '@platform/core/events'
+import {
+  CapabilityOfMediaType,
+  isOutboundMediaType,
+  MediaPurpose,
+  mediaMessageTypeOf
+} from '@platform/core/storage'
 
 import { ConversationsService } from '../conversations/conversations.service'
 import {
@@ -52,6 +60,13 @@ import {
   type TemplateMetadata,
   templateMetadataSchema
 } from './template-metadata'
+
+// Whether the channel of a conversation declares a capability: the plugin registry lives above this
+// library, so the route hands the answer in
+export type ChannelSupportsFile = (
+  channelType: string,
+  capability: ChannelCapabilityType
+) => boolean
 
 export interface CreatedMessage {
   message: MessageView
@@ -84,9 +99,10 @@ export class MessagesService {
     storeId: string,
     body: CreateMessageBody,
     viewer: Viewer,
-    rendered?: RenderedTemplate
+    rendered?: RenderedTemplate,
+    supports?: ChannelSupportsFile
   ): Promise<CreatedMessage> {
-    const stored = await this.store(storeId, body, viewer, rendered)
+    const stored = await this.store(storeId, body, viewer, rendered, supports)
     return { ...stored, message: await this.withQuote(storeId, stored.message, viewer) }
   }
 
@@ -94,7 +110,8 @@ export class MessagesService {
     storeId: string,
     body: CreateMessageBody,
     viewer: Viewer,
-    rendered?: RenderedTemplate
+    rendered?: RenderedTemplate,
+    supports?: ChannelSupportsFile
   ): Promise<CreatedMessage> {
     const isNote = body.type === MessageType.INTERNAL_NOTE
     const isTemplate = body.type === MessageType.TEMPLATE
@@ -135,6 +152,10 @@ export class MessagesService {
       }
       const mentions = body.type === MessageType.INTERNAL_NOTE ? body.mentions : []
       if (mentions.length > 0) await this.requireMentionable(tx, storeId, mentions, current)
+      // Checked under the lock and after the replay: a retry finds its files already linked
+      const files = isMediaBody(body)
+        ? await this.requireFiles(tx, storeId, body, viewer, supports)
+        : null
 
       // The date is set here, in milliseconds, so that the message and the conversation agree on it
       const now = new Date()
@@ -143,7 +164,7 @@ export class MessagesService {
           storeId,
           conversationId: body.conversationId,
           type: body.type,
-          content: isTemplate ? (rendered?.content ?? null) : body.content,
+          content: isTemplate ? (rendered?.content ?? null) : (body.content ?? null),
           authorType: AuthorType.AGENT,
           authorId: viewer.userId,
           idempotencyKey: body.idempotencyKey ?? null,
@@ -155,6 +176,7 @@ export class MessagesService {
         },
         select: { ...MESSAGE_SELECT }
       })
+      if (files !== null) await this.linkFiles(tx, storeId, row.id, files)
       if (!isNote) {
         await this.conversations.recordReply(tx, storeId, body.conversationId, now)
         if (ConversationReopenedByReply.some(status => status === from)) {
@@ -341,11 +363,104 @@ export class MessagesService {
     if (
       message.authorId !== viewer.userId ||
       message.type !== body.type ||
-      (body.type === MessageType.TEMPLATE && !sameTemplate(existing.metadata, body))
+      (body.type === MessageType.TEMPLATE && !sameTemplate(existing.metadata, body)) ||
+      (isMediaBody(body) && !(await this.sameFiles(db, storeId, existing.id, body)))
     ) {
       throw resourceConflict('the idempotency key was used for another message')
     }
     return message
+  }
+
+  // The files of a media message, checked for who sends them: they exist in this store, this member
+  // uploaded them, no message has them yet, they are clean, and each is what the type says (the type
+  // decides how the channel sends it). The channel must declare the capability of the type.
+  private async requireFiles(
+    tx: PrismaTransaction,
+    storeId: string,
+    body: MediaMessageBody,
+    viewer: Viewer,
+    supports: ChannelSupportsFile | undefined
+  ): Promise<LinkableFiles> {
+    const conversation = await tx.conversation.findFirst({
+      where: { id: body.conversationId, storeId },
+      select: { channelType: true, customerId: true }
+    })
+    if (conversation === null) throw resourceNotFound('conversation')
+    if (supports === undefined)
+      throw invalidInput('a media message needs the channel checked first')
+    if (!supports(conversation.channelType, CapabilityOfMediaType[body.type])) {
+      throw new PlatformException(
+        ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+        'the channel of this conversation does not send this kind of file',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    const rows = await tx.media.findMany({
+      where: {
+        id: { in: body.mediaIds },
+        storeId,
+        purpose: MediaPurpose.MESSAGE,
+        uploadedBy: viewer.userId
+      },
+      select: { id: true, status: true, contentType: true, messageId: true }
+    })
+    // Another store's file, another member's upload and a file that does not exist are one answer
+    if (rows.length !== body.mediaIds.length) throw resourceNotFound('media')
+    for (const row of rows) {
+      if (row.messageId !== null)
+        throw resourceConflict('the file is already attached to a message')
+      if (row.status === String(MediaStatus.INFECTED)) {
+        throw new PlatformException(
+          ErrorCodes.FILE_INFECTED,
+          'File unavailable',
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      if (row.status !== String(MediaStatus.CLEAN)) {
+        throw new PlatformException(
+          ErrorCodes.FILE_NOT_READY,
+          'File is being scanned',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      if (mediaMessageTypeOf(row.contentType) !== body.type) {
+        throw invalidInput('the file is not of the type of the message')
+      }
+    }
+    return { ids: body.mediaIds, customerId: conversation.customerId }
+  }
+
+  // Inside the transaction of the message. `messageId: null` in the condition makes a file that two
+  // conversations try to attach at once belong to the first; the other one is refused whole.
+  private async linkFiles(
+    tx: PrismaTransaction,
+    storeId: string,
+    messageId: string,
+    files: LinkableFiles
+  ): Promise<void> {
+    const linked = await tx.media.updateMany({
+      where: { id: { in: [...files.ids] }, storeId, messageId: null },
+      data: { messageId, customerId: files.customerId }
+    })
+    if (linked.count !== files.ids.length) {
+      throw resourceConflict('the file is already attached to a message')
+    }
+  }
+
+  // The key names one message: the same key with other files is another request
+  private async sameFiles(
+    db: PrismaService['client'],
+    storeId: string,
+    messageId: string,
+    body: MediaMessageBody
+  ): Promise<boolean> {
+    const linked = await db.media.findMany({
+      where: { storeId, messageId },
+      select: { id: true }
+    })
+    return (
+      linked.length === body.mediaIds.length && linked.every(row => body.mediaIds.includes(row.id))
+    )
   }
 
   // Only after the commit: the worker reads the message by id and must find it. If Redis fails here
@@ -543,6 +658,17 @@ export class MessagesService {
   }
 }
 
+type MediaMessageBody = Extract<CreateMessageBody, { mediaIds: string[] }>
+
+function isMediaBody(body: CreateMessageBody): body is MediaMessageBody {
+  return isOutboundMediaType(body.type)
+}
+
+interface LinkableFiles {
+  ids: readonly string[]
+  customerId: string
+}
+
 function templateMetadataOf(
   body: Extract<CreateMessageBody, { type: MessageType.TEMPLATE }>
 ): TemplateMetadata {
@@ -575,6 +701,10 @@ function permissionToWrite(body: CreateMessageBody): Permission {
     case MessageType.TEMPLATE:
       return Permissions.MESSAGES_SEND_TEMPLATE
     case MessageType.TEXT:
+    case MessageType.IMAGE:
+    case MessageType.VIDEO:
+    case MessageType.AUDIO:
+    case MessageType.DOCUMENT:
       return Permissions.MESSAGES_SEND
   }
 }

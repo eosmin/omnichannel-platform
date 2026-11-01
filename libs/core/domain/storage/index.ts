@@ -1,3 +1,4 @@
+export * from './media-message'
 export * from './media-processing'
 export * from './media-purpose'
 export * from './sanitize-filename'
