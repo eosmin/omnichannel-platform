@@ -26,6 +26,15 @@ export const WidgetLimits = {
   TOKEN_TTL_SECONDS: 3600,
   // How much of the conversation the bootstrap hands back
   HISTORY_MESSAGES: 50,
+  // Files one message of a visitor may carry
+  UPLOADS_PER_MESSAGE: 5,
+  // Signed upload urls a visitor and a site may ask for per hour. `upload-url` writes nothing until
+  // the url is used, so without a cap anyone with a token fills the bucket with files never sent.
+  UPLOAD_URLS_PER_VISITOR_PER_HOUR: 20,
+  UPLOAD_URLS_PER_SITE_PER_HOUR: 300,
+  // How long the api remembers what a visitor asked to upload: the message that carries it is sent
+  // within this time or the file is left to the cleanup of stray uploads
+  UPLOAD_TTL_SECONDS: 3600,
   // A visitor has a few tabs open
   MAX_SOCKETS_PER_VISITOR: 5,
   // What the script a store pastes into its site may weigh once compressed (TDD_10 §5.4)
@@ -71,7 +80,15 @@ export const WidgetClientEvents = {
 // Anyone on the internet can call these: per address, and far below the webhook limit
 export const WidgetThrottle = {
   BOOTSTRAP: { limit: 30, ttlMs: 60_000 },
-  MESSAGES: { limit: 60, ttlMs: 60_000 }
+  MESSAGES: { limit: 60, ttlMs: 60_000 },
+  UPLOAD: { limit: 20, ttlMs: 60_000 }
+} as const
+
+// How `POST /widget/messages` names a field of the pre-chat form it could not take, in the `issues` of
+// VALIDATION_FAILED (the same shape as any validation error), so that the widget marks that field
+export const WidgetFieldIssues = {
+  PHONE_PATH: 'profile.phone',
+  INVALID_PHONE: 'invalid_phone'
 } as const
 
 // Where the token travels: in this header for the check that stands for a provider's signature, and

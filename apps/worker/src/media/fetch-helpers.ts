@@ -1,3 +1,5 @@
+import { GENERIC_CONTENT_TYPE } from '@platform/core/storage'
+
 // What a file that came from outside is read with, whoever fetched it: the plugin for a file of a
 // message, the core for the picture of an ad
 export class FileRefused extends Error {}
@@ -28,7 +30,7 @@ export async function readLimited(
 // bytes themselves, then decide
 export const GENERIC_TYPES: ReadonlySet<string> = new Set([
   '',
-  'application/octet-stream',
+  GENERIC_CONTENT_TYPE,
   'binary/octet-stream',
   'application/x-download'
 ])

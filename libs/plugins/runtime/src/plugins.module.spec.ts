@@ -152,9 +152,12 @@ describe('PluginsModule', () => {
         scriptUrl: 'https://cdn.example.com/widget.js',
         apiUrl: 'https://api.example.com'
       })
-      .useMocker(token =>
-        token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
-      )
+      .useMocker(token => {
+        if (token === PinoLogger) return { setContext: jest.fn(), info: jest.fn() }
+        // The widget plugin reads visitor files from the bucket; the app provides it globally
+        // Named, not imported: this lib may not depend on the storage module
+        return typeof token === 'function' && token.name === 'StorageService' ? {} : undefined
+      })
       .compile()
     await moduleRef.init()
 
@@ -190,9 +193,11 @@ describe('PluginsModule', () => {
     // After resetModules the logger class is a new one, and the token must be the same class
     const { PinoLogger: FreshLogger } = await import('nestjs-pino')
     const moduleRef = await Test.createTestingModule({ imports: [Fresh.forRoot()] })
-      .useMocker(token =>
-        token === FreshLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
-      )
+      .useMocker(token => {
+        if (token === FreshLogger) return { setContext: jest.fn(), info: jest.fn() }
+        // The app provides the storage globally; the widget plugin needs it
+        return typeof token === 'function' && token.name === 'StorageService' ? {} : undefined
+      })
       .compile()
     await moduleRef.init()
 

@@ -8,3 +8,13 @@ export const widgetBootstrapSchema = z.strictObject({
   visitorId: z.string().regex(VISITOR_ID_PATTERN)
 })
 export type WidgetBootstrapBody = z.output<typeof widgetBootstrapSchema>
+
+// A file the visitor wants to send. Whether the type is allowed and the size fits is answered with the
+// error codes of any upload (FILE_TYPE_NOT_ALLOWED, FILE_TOO_LARGE), not as a malformed body.
+export const widgetUploadSchema = z.strictObject({
+  visitorToken: z.string().min(1).max(512),
+  filename: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(127),
+  fileSizeBytes: z.number().int().positive()
+})
+export type WidgetUploadBody = z.output<typeof widgetUploadSchema>

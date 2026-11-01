@@ -21,18 +21,18 @@ import {
   type MediaPurposeType,
   type MediaUrls,
   mediaVariantsSchema,
-  maxBytesFor,
-  refuseUpload,
   type RequestUploadUrlBody,
   MediaPurpose,
   sanitizeFilename,
   StorageKeys,
   type UploadUrlResult,
+  QUOTA_WINDOW_MS,
   UploadLimits,
-  UploadRefusals,
   VARIANT_CONTENT_TYPE
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+
+import { countWithinQuota, refuseTypeOrSize, uploadVerificationFailed } from './upload-checks'
 
 export interface MediaView {
   id: string
@@ -64,43 +64,6 @@ type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   variants: unknown
   uploadedBy: string | null
 }
-
-// The one answer for an upload that cannot be trusted: the object is missing, is not what was
-// declared, or is not the one signed for this media. It says nothing about which of those.
-function uploadVerificationFailed(): PlatformException {
-  return new PlatformException(
-    ErrorCodes.FILE_UPLOAD_FAILED,
-    'Upload verification failed',
-    HttpStatusCodes.BAD_REQUEST
-  )
-}
-
-function refuseTypeOrSize(contentType: string, fileSizeBytes: number): void {
-  const refused = refuseUpload(contentType, fileSizeBytes)
-  if (refused === UploadRefusals.TYPE_NOT_ALLOWED) {
-    throw new PlatformException(
-      ErrorCodes.FILE_TYPE_NOT_ALLOWED,
-      'File type not allowed',
-      HttpStatusCodes.BAD_REQUEST,
-      { contentType }
-    )
-  }
-  if (refused === UploadRefusals.TOO_LARGE) {
-    throw new PlatformException(
-      ErrorCodes.FILE_TOO_LARGE,
-      'File too large',
-      HttpStatusCodes.BAD_REQUEST,
-      { maxSizeBytes: maxBytesFor(contentType) }
-    )
-  }
-}
-
-const QUOTA_TTL_SECONDS = 2 * 3600
-const COUNT_SCRIPT = `
-  local used = redis.call('INCR', KEYS[1])
-  redis.call('EXPIRE', KEYS[1], ARGV[1])
-  return used
-`
 
 interface UploadKeys {
   // Where the client PUTs
@@ -178,7 +141,7 @@ export class MediaService {
   // member who keeps asking after the refusal cannot use up the quota of the whole store. Each counter
   // is one script (count and expiry together), so a crash cannot leave one that never expires.
   private async takeQuota(storeId: string, userId: string): Promise<void> {
-    const bucket = Math.floor(Date.now() / 3_600_000)
+    const bucket = Math.floor(Date.now() / QUOTA_WINDOW_MS)
     const counters = [
       {
         key: CacheKeys.upload.userQuota(storeId, userId, bucket),
@@ -190,14 +153,7 @@ export class MediaService {
       }
     ]
     for (const counter of counters) {
-      const used = Number(await this.redis.eval(COUNT_SCRIPT, 1, counter.key, QUOTA_TTL_SECONDS))
-      if (used > counter.limit) {
-        throw new PlatformException(
-          ErrorCodes.RATE_LIMIT_EXCEEDED,
-          'Too many upload urls requested',
-          HttpStatusCodes.TOO_MANY_REQUESTS
-        )
-      }
+      await countWithinQuota(this.redis, counter.key, counter.limit)
     }
   }
 

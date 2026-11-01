@@ -35,6 +35,9 @@ export const StorageKeys = {
   // never the one that is scanned and served.
   messageUpload: (storeId: string, mediaId: string, filename: string) =>
     `${STORES_ROOT}${storeId}/${MediaObjectAreas.UPLOADS}/${mediaId}/${filename}`,
+  // Everything under one upload id, to find the file of an upload whose name only the api knew
+  messageUploadPrefix: (storeId: string, mediaId: string) =>
+    `${STORES_ROOT}${storeId}/${MediaObjectAreas.UPLOADS}/${mediaId}/`,
   messageVariant: (storeId: string, mediaId: string, variant: ImageVariant) =>
     `${STORES_ROOT}${storeId}/${MediaObjectAreas.MESSAGES}/${mediaId}/variants/${variant}.webp`,
   product: (storeId: string, productId: string, mediaId: string, filename: string) =>

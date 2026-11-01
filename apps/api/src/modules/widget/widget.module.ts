@@ -17,6 +17,7 @@ import { WidgetSettingsController } from './widget-settings.controller'
 import { WidgetSettings } from './widget-settings.service'
 import { WidgetSites } from './widget-sites.service'
 import { WidgetTokens } from './widget-tokens.service'
+import { WidgetUploads } from './widget-uploads.service'
 import { WidgetController } from './widget.controller'
 import { WidgetGateway } from './widget.gateway'
 
@@ -38,6 +39,7 @@ import { WidgetGateway } from './widget.gateway'
     WidgetTokens,
     WidgetHistory,
     WidgetAway,
+    WidgetUploads,
     WidgetDeliveryListener,
     WidgetCustomerTyping,
     WidgetGateway
@@ -50,7 +52,8 @@ export class WidgetModule implements NestModule {
       .apply(WidgetCorsMiddleware)
       .forRoutes(
         { path: ApiRoutes.widget.bootstrap, method: RequestMethod.OPTIONS },
-        { path: ApiRoutes.widget.messages, method: RequestMethod.OPTIONS }
+        { path: ApiRoutes.widget.messages, method: RequestMethod.OPTIONS },
+        { path: ApiRoutes.widget.upload, method: RequestMethod.OPTIONS }
       )
   }
 }

@@ -1,3 +1,9 @@
+// What a store of objects calls a file whose type it does not know
+export const GENERIC_CONTENT_TYPE = 'application/octet-stream'
+
+// The window of the counters of signed urls: one hour, and a counter outlives its window by one more
+export const QUOTA_WINDOW_MS = 3_600_000
+
 export const UploadLimits = {
   MAX_FILE_SIZE_BYTES: 10 * 1024 * 1024, // 10 MB
   MAX_VIDEO_SIZE_BYTES: 25 * 1024 * 1024, // 25 MB
