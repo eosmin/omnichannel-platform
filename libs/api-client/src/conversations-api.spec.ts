@@ -159,6 +159,8 @@ describe('fetchConversationOrigins', () => {
       mediaType: null,
       mediaUrl: null,
       thumbnailUrl: null,
+      mediaFile: null,
+      thumbnailFile: null,
       createdAt: '2026-10-30T10:00:00.000Z'
     }
     const { client, fetchImpl } = setup(json(200, [origin]))

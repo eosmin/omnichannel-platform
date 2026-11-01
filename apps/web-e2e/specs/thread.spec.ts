@@ -38,6 +38,11 @@ const FIRST_STORE = 'Main Store'
 // address of the administrator is already spent by the other specs.
 const AGENT = 'agent@test.com'
 const MINUTE_MS = 60_000
+// A valid 1x1 image, what the bucket would answer for the thumbnail of an ad
+const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'base64'
+)
 // The first packet of a Socket.IO connection that the server accepted
 const SOCKET_IO_CONNECTED = '40'
 
@@ -109,6 +114,45 @@ test.describe.serial('the thread of a conversation', () => {
     ).toBeVisible()
     await expect(threadOf(page).getByText('Resolved automatically')).toBeVisible()
     await expect(page.getByText('Spring sale')).toBeVisible()
+  })
+
+  test('draws the picture of the ad from the file of the store, never from the address of the ad', async () => {
+    const remoteUrl = 'https://scontent.cdninstagram.com/never-drawn.jpg'
+    const withPicture = await newConversationIn(storeId)
+    const first = await addMessageTo(storeId, withPicture, {
+      content: 'Is it still on sale?',
+      createdAt: minutesAgo(5)
+    })
+    await addOriginTo(storeId, withPicture, first.id, 'Autumn sale', {
+      status: MediaStatus.CLEAN,
+      remoteUrl
+    })
+    const pending = await newConversationIn(storeId)
+    const second = await addMessageTo(storeId, pending, {
+      content: 'And this one?',
+      createdAt: minutesAgo(4)
+    })
+    await addOriginTo(storeId, pending, second.id, 'Winter sale', {
+      status: MediaStatus.PENDING,
+      remoteUrl
+    })
+
+    // The row is enough for the signed link, but the object is not in the bucket: without an answer the
+    // image fails to load and the card hides it, so the bucket is played by the browser
+    await page.route(/\/ad-thumb\.png/, route =>
+      route.fulfill({ contentType: 'image/png', body: ONE_PIXEL_PNG })
+    )
+    await page.goto(AppPaths.store.conversation(storeId, withPicture))
+    const card = page.getByRole('region', { name: en.inbox.thread.origin.label })
+    await expect(card.getByText('Autumn sale')).toBeVisible()
+    await expect(card.locator('img')).toHaveAttribute('src', /\/stores\/.+\/ad-thumb\.png/)
+    await expect(page.locator(`img[src="${remoteUrl}"]`)).toHaveCount(0)
+
+    // Until the scan ends the card has no picture, and still not the address of the ad
+    await page.goto(AppPaths.store.conversation(storeId, pending))
+    await expect(card.getByText('Winter sale')).toBeVisible()
+    await expect(card.locator('img')).toHaveCount(0)
+    await expect(page.locator(`img[src="${remoteUrl}"]`)).toHaveCount(0)
   })
 
   test('shows a note written by another session without a reload', async () => {

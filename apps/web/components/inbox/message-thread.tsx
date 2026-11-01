@@ -252,7 +252,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       <div ref={setTop} />
       <div ref={setContent}>
         {origins.data === undefined ? null : (
-          <OriginCard origins={origins.data} onGrow={keepPlaceBelow} />
+          <OriginCard storeId={storeId} origins={origins.data} onGrow={keepPlaceBelow} />
         )}
         {hasNextPage ? (
           <div className="flex justify-center p-3">

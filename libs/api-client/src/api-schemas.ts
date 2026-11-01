@@ -297,7 +297,13 @@ export const messagePageSchema = z.object({
 export type MessagePageView = z.output<typeof messagePageSchema>
 
 // GET /conversations/:id/origins: where the conversation came from, newest first. The links came from
-// an ad or a post: untrusted, drawn under the img-src of the CSP.
+// an ad or a post: untrusted, never drawn; the card draws the files the worker kept.
+// A picture of the ad kept as a file of the store: `pending` until the scan ends, then `clean`
+// An api that does not send the field yet (a rolling deploy) is a card with no picture, not a failed list
+const originFileSchema = z
+  .object({ id: z.string(), status: z.string() })
+  .nullish()
+  .transform(file => file ?? null)
 export const conversationOriginSchema = z.object({
   id: z.string(),
   messageId: z.string(),
@@ -309,6 +315,8 @@ export const conversationOriginSchema = z.object({
   mediaType: z.string().nullable(),
   mediaUrl: z.string().nullable(),
   thumbnailUrl: z.string().nullable(),
+  mediaFile: originFileSchema,
+  thumbnailFile: originFileSchema,
   createdAt: z.string()
 })
 export const conversationOriginListSchema = z.array(conversationOriginSchema)

@@ -132,6 +132,13 @@ export const OriginMediaTypes = {
 } as const
 export type OriginMediaType = (typeof OriginMediaTypes)[keyof typeof OriginMediaTypes]
 
+// The two pictures an origin can have as files of the store: the media of the ad and its thumbnail
+export const OriginMediaSlots = {
+  MEDIA: 'media',
+  THUMBNAIL: 'thumbnail'
+} as const
+export type OriginMediaSlot = (typeof OriginMediaSlots)[keyof typeof OriginMediaSlots]
+
 // Who acted on a message (reacted to it, edited it, deleted it), as a plugin can tell: the customer, or
 // the owner from the provider's own app. An agent of the platform acts through the api, never through
 // a channel event.

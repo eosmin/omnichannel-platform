@@ -816,6 +816,58 @@ describe('Messages that a channel delivers', () => {
 
         expect(await originsOf(from)).toHaveLength(1)
       })
+
+      it('sends the pictures of the ad to be fetched, once however many times it is delivered', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555105'
+        const heavy = queueOf(app, QueueNames.HEAVY_PROCESSING)
+        heavy.jobs.length = 0
+        const incoming = withOrigin(connectionId, from, 'ad-10')
+        incoming.message.origin = {
+          kind: 'ad',
+          sourceId: 'ad-10',
+          media: { type: 'image', ref: 'ad-image', url: 'https://cdn.example.com/ad.jpg' },
+          thumbnailUrl: 'https://cdn.example.com/ad-thumb.jpg'
+        }
+
+        await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+        await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+
+        const [origin] = await originsOf(from)
+        const jobs = heavy.jobs.filter(job => job.name === JobNames.FETCH_ORIGIN_MEDIA)
+        expect(new Set(jobs.map(job => job.opts?.jobId))).toEqual(
+          new Set([
+            `fetch-origin-media-${origin?.id}-thumbnail`,
+            `fetch-origin-media-${origin?.id}-media`
+          ])
+        )
+        // The links are read from the row when the job runs, never carried in the job
+        expect(JSON.stringify(jobs.map(job => job.data))).not.toContain('cdn.example.com')
+        expect(jobs[0]?.data).toMatchObject({ storeId: ctx.storeA.id, originId: origin?.id })
+      })
+
+      it('sends nothing to be fetched for an ad with no link, or for the same ad again', async () => {
+        const connectionId = await connectionOf(ctx.storeA.id)
+        const from = '50370555106'
+        const heavy = queueOf(app, QueueNames.HEAVY_PROCESSING)
+
+        heavy.jobs.length = 0
+        await service.handleMessageReceived(
+          TEST_CHANNEL_ID,
+          withOrigin(connectionId, from, 'ad-11')
+        )
+        expect(heavy.jobs.filter(job => job.name === JobNames.FETCH_ORIGIN_MEDIA)).toHaveLength(0)
+
+        const again = withOrigin(connectionId, from, 'ad-11')
+        again.message.origin = {
+          kind: 'ad',
+          sourceId: 'ad-11',
+          thumbnailUrl: 'https://cdn.example.com/t.jpg'
+        }
+        await service.handleMessageReceived(TEST_CHANNEL_ID, again)
+        // Same ad as the latest origin: no new row, so nothing to fetch for it
+        expect(heavy.jobs.filter(job => job.name === JobNames.FETCH_ORIGIN_MEDIA)).toHaveLength(0)
+      })
     })
 
     it('never takes a message of the customer for the one of an agent', async () => {

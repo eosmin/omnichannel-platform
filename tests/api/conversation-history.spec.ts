@@ -5,7 +5,8 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ConversationLimits } from '@platform/core/domain'
+import { ConversationLimits, MediaStatus, OriginMediaSlots } from '@platform/core/domain'
+import { MediaPurpose } from '@platform/core/storage'
 
 import { createConversationOf, createMessage, createMessageRevisionOf } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -26,6 +27,8 @@ interface OriginBody {
   title: string | null
   mediaUrl: string | null
   thumbnailUrl: string | null
+  mediaFile: { id: string; status: string } | null
+  thumbnailFile: { id: string; status: string } | null
 }
 interface RevisionBody {
   version: number
@@ -104,6 +107,59 @@ describe('The history of a conversation and of a message', () => {
       expect(response.status).toBe(OK)
       expect(JSON.stringify(response.body)).not.toContain('click-secret')
       expect(JSON.stringify(response.body)).not.toContain('referral-secret')
+    })
+
+    it('carry the files the worker kept, and leave out an infected one', async () => {
+      const id = await conversationFromAds([{ title: 'Ad' }])
+      const origin = await owner.conversationOrigin.findFirstOrThrow({
+        where: { conversationId: id }
+      })
+      const file = (slot: string, status: string) =>
+        owner.media.create({
+          data: {
+            storeId: ctx.storeA.id,
+            purpose: MediaPurpose.ORIGIN,
+            originId: origin.id,
+            originSlot: slot,
+            key: `stores/${ctx.storeA.id}/messages/${randomUUID()}/${slot}.png`,
+            filename: `${slot}.png`,
+            contentType: 'image/png',
+            fileSize: 10,
+            status
+          }
+        })
+      const thumb = await file(OriginMediaSlots.THUMBNAIL, MediaStatus.CLEAN)
+      await file(OriginMediaSlots.MEDIA, MediaStatus.INFECTED)
+
+      const response = await asAdmin().get(ApiRoutes.conversations.origins(id))
+
+      const [row] = response.body as OriginBody[]
+      expect(row?.thumbnailFile).toEqual({ id: thumb.id, status: MediaStatus.CLEAN })
+      expect(row?.mediaFile).toBeNull()
+    })
+
+    it('carry no file of another store', async () => {
+      const id = await conversationFromAds([{ title: 'Ad' }])
+      const origin = await owner.conversationOrigin.findFirstOrThrow({
+        where: { conversationId: id }
+      })
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeB.id,
+          purpose: MediaPurpose.ORIGIN,
+          originId: origin.id,
+          originSlot: OriginMediaSlots.THUMBNAIL,
+          key: `stores/${ctx.storeB.id}/messages/${randomUUID()}/thumbnail.png`,
+          filename: 'thumbnail.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          status: MediaStatus.CLEAN
+        }
+      })
+
+      const response = await asAdmin().get(ApiRoutes.conversations.origins(id))
+
+      expect((response.body as OriginBody[])[0]?.thumbnailFile).toBeNull()
     })
 
     it('carry a link only when it is a plain http link', async () => {

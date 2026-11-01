@@ -10,6 +10,7 @@ import {
   MediaStatus,
   type MessageType,
   OriginKinds,
+  OriginMediaSlots,
   type SystemMessageEvent
 } from '@platform/core/domain'
 import { ExportTypes } from '@platform/core/queues'
@@ -159,15 +160,42 @@ export function addManyMessagesTo(
   })
 }
 
+// The ad a conversation came from. With `picture` the origin also has a thumbnail in the state the scan
+// left it, and the address the provider sent for it (which the card must not draw): the row is enough,
+// the signed links are made from the key without reading the bucket.
 export function addOriginTo(
   storeId: string,
   conversationId: string,
   messageId: string,
-  title: string
+  title: string,
+  picture?: { status: MediaStatus; remoteUrl: string }
 ): Promise<void> {
   return withOwner(async owner => {
-    await owner.conversationOrigin.create({
-      data: { storeId, conversationId, messageId, kind: OriginKinds.AD, title }
+    const origin = await owner.conversationOrigin.create({
+      data: {
+        storeId,
+        conversationId,
+        messageId,
+        kind: OriginKinds.AD,
+        title,
+        ...(picture === undefined ? {} : { thumbnailUrl: picture.remoteUrl })
+      }
+    })
+    if (picture === undefined) return
+    const id = randomUUID()
+    await owner.media.create({
+      data: {
+        id,
+        storeId,
+        originId: origin.id,
+        originSlot: OriginMediaSlots.THUMBNAIL,
+        purpose: MediaPurpose.ORIGIN,
+        key: `stores/${storeId}/messages/${id}/ad-thumb.png`,
+        filename: 'ad-thumb.png',
+        contentType: 'image/png',
+        fileSize: 2048,
+        status: picture.status
+      }
     })
   })
 }
