@@ -8,6 +8,7 @@ import type { ReactElement } from 'react'
 import { AppPaths } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 
+import { mayOpenExports } from '../../lib/exports/export-state'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
@@ -27,6 +28,11 @@ export function StoreNav(): ReactElement {
       href: AppPaths.store.customers(storeId),
       label: t('customers'),
       isShown: can(Permissions.CUSTOMERS_VIEW)
+    },
+    {
+      href: AppPaths.store.exports(storeId),
+      label: t('exports'),
+      isShown: mayOpenExports(can)
     }
   ].filter(entry => entry.isShown)
   return (

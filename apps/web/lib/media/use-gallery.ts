@@ -4,6 +4,7 @@ import {
   type InfiniteData,
   useInfiniteQuery,
   useMutation,
+  useQueryClient,
   type UseInfiniteQueryResult,
   type UseMutationResult
 } from '@tanstack/react-query'
@@ -41,8 +42,13 @@ export function useDownloadAll(
   storeId: string,
   customerId: string
 ): UseMutationResult<ExportView, Error, { type: GalleryType; q: string }> {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (filter: { type: GalleryType; q: string }) =>
-      requestMediaZip(apiClient, storeId, { customerId, ...filter })
+      requestMediaZip(apiClient, storeId, { customerId, ...filter }),
+    // The exports center shows the new row the moment the person gets there
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.exports.all(storeId) })
+    }
   })
 }

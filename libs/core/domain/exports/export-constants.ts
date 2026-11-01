@@ -27,3 +27,25 @@ export const ExportFileExtensions = { CSV: 'csv', ZIP: 'zip' } as const
 
 // A spreadsheet reads UTF-8 with accents only when the file starts with this mark
 export const CSV_BOM = '﻿'
+
+export const ExportTypes = {
+  CONVERSATIONS: 'conversations',
+  CUSTOMERS: 'customers',
+  ORDERS: 'orders',
+  AUDIT_LOG: 'audit_log',
+  ANALYTICS: 'analytics',
+  MEDIA_ZIP: 'media_zip'
+} as const
+export type ExportType = (typeof ExportTypes)[keyof typeof ExportTypes]
+
+export const ExportFormats = { CSV: 'csv', EXCEL: 'excel', PDF: 'pdf', ZIP: 'zip' } as const
+export type ExportFormat = (typeof ExportFormats)[keyof typeof ExportFormats]
+
+// Export.status (TDD_01 §4). Exports expire after 7 days (DataRetentionPolicies.EXPORTS).
+export const ExportStatus = {
+  PENDING: 'pending',
+  READY: 'ready',
+  FAILED: 'failed',
+  EXPIRED: 'expired'
+} as const
+export type ExportStatusType = (typeof ExportStatus)[keyof typeof ExportStatus]

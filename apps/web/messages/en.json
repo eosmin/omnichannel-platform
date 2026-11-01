@@ -54,7 +54,8 @@
       "empty": "This customer has no files yet.",
       "noMatch": "No file matches the search.",
       "failed": "The files could not be loaded.",
-      "loadMore": "Load more"
+      "loadMore": "Load more",
+      "viewExports": "View exports"
     },
     "profile": {
       "media": "Files",
@@ -592,7 +593,8 @@
     "nav": {
       "label": "Store pages",
       "inbox": "Inbox",
-      "customers": "Customers"
+      "customers": "Customers",
+      "exports": "Exports"
     }
   },
   "inbox": {
@@ -1114,5 +1116,41 @@
         "none": "No actions available."
       }
     }
+  },
+  "exports": {
+    "title": "Exports",
+    "intro": "The files you asked for. Each one is kept for 7 days.",
+    "noAccess": "Your role cannot see exports.",
+    "failed": "The exports could not be loaded.",
+    "empty": "You have not asked for any export yet.",
+    "loadMore": "Load more",
+    "download": "Download",
+    "downloadFile": "Download {name}",
+    "columns": {
+      "type": "Kind",
+      "status": "State",
+      "file": "File",
+      "rows": "Rows",
+      "created": "Asked",
+      "expires": "Kept until",
+      "actions": "Actions"
+    },
+    "types": {
+      "conversations": "Conversations",
+      "customers": "Customers",
+      "orders": "Orders",
+      "audit_log": "Audit log",
+      "analytics": "Analytics",
+      "media_zip": "Customer files (ZIP)",
+      "unknown": "Other"
+    },
+    "statuses": {
+      "pending": "Being prepared",
+      "ready": "Ready",
+      "failed": "Failed",
+      "expired": "Expired",
+      "unknown": "Unknown"
+    },
+    "stale": "The list could not be refreshed. What you see may be out of date."
   }
 }

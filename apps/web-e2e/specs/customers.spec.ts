@@ -260,6 +260,16 @@ test.describe('customer merge and identities', () => {
     // "Download all" queues a ZIP of the tab that is open
     await gallery.getByRole('button', { name: en.customers.gallery.downloadAll }).click()
     await expect(page.getByText(en.customers.gallery.zipQueued)).toBeVisible()
+
+    // The toast leads to the exports center. It lives for a few seconds, so it is used before anything
+    // slow, and the gallery (a modal dialog that hides what is behind it) is closed first
+    await page.keyboard.press('Escape')
+    await expect(gallery).toBeHidden()
+    await page.getByRole('button', { name: en.customers.gallery.viewExports }).click()
+    await expect(page).toHaveURL(new RegExp(`/s/${storeId}/exports$`))
+    await expect(page.getByRole('heading', { name: en.exports.title })).toBeVisible()
+    await expect(page.getByRole('cell', { name: en.exports.types.media_zip }).first()).toBeVisible()
+
     const zips = await mediaZipsOf(storeId)
     expect(zips[0]?.filters).toMatchObject({ customerId, type: GalleryTypes.IMAGE })
   })

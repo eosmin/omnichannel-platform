@@ -54,7 +54,8 @@
       "empty": "Este cliente aún no tiene archivos.",
       "noMatch": "Ningún archivo coincide con la búsqueda.",
       "failed": "No se pudieron cargar los archivos.",
-      "loadMore": "Cargar más"
+      "loadMore": "Cargar más",
+      "viewExports": "Ver exportaciones"
     },
     "profile": {
       "media": "Archivos",
@@ -592,7 +593,8 @@
     "nav": {
       "label": "Páginas de la tienda",
       "inbox": "Bandeja",
-      "customers": "Clientes"
+      "customers": "Clientes",
+      "exports": "Exportaciones"
     }
   },
   "inbox": {
@@ -1114,5 +1116,41 @@
         "none": "No hay acciones disponibles."
       }
     }
+  },
+  "exports": {
+    "title": "Exportaciones",
+    "intro": "Los archivos que pediste. Cada uno se guarda 7 días.",
+    "noAccess": "Tu rol no puede ver exportaciones.",
+    "failed": "No se pudieron cargar las exportaciones.",
+    "empty": "Todavía no pediste ninguna exportación.",
+    "loadMore": "Cargar más",
+    "download": "Descargar",
+    "downloadFile": "Descargar {name}",
+    "columns": {
+      "type": "Tipo",
+      "status": "Estado",
+      "file": "Archivo",
+      "rows": "Filas",
+      "created": "Pedida",
+      "expires": "Disponible hasta",
+      "actions": "Acciones"
+    },
+    "types": {
+      "conversations": "Conversaciones",
+      "customers": "Clientes",
+      "orders": "Pedidos",
+      "audit_log": "Registro de auditoría",
+      "analytics": "Analítica",
+      "media_zip": "Archivos del cliente (ZIP)",
+      "unknown": "Otro"
+    },
+    "statuses": {
+      "pending": "Preparándose",
+      "ready": "Lista",
+      "failed": "Falló",
+      "expired": "Vencida",
+      "unknown": "Desconocido"
+    },
+    "stale": "No se pudo actualizar la lista. Lo que ves puede estar desactualizado."
   }
 }
