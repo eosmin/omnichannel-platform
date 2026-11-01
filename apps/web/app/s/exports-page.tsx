@@ -5,6 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { type ExportView, fetchExportDownload } from '@platform/api-client'
+import { ExportStatus } from '@platform/core/exports'
 
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
@@ -47,7 +48,7 @@ function Row({ item }: { item: ExportView }): ReactElement {
       <td className="py-2 pr-3 text-sm font-medium">{t(`types.${exportTypeKey(item.type)}`)}</td>
       <td className="py-2 pr-3 text-sm">
         <span>{t(`statuses.${statusKey}`)}</span>
-        {item.status === 'failed' && item.error !== null ? (
+        {item.status === ExportStatus.FAILED && item.error !== null ? (
           <p className="text-destructive text-xs">{tErrors(knownErrorCode(item.error))}</p>
         ) : null}
       </td>
