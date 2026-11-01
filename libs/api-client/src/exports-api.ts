@@ -40,3 +40,44 @@ export function requestMediaZip(
     storeId
   })
 }
+
+export const exportPageSchema = z.object({
+  data: z.array(exportSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type ExportPageView = z.output<typeof exportPageSchema>
+
+// The exports center: the files this member asked for, newest first
+export function fetchExports(
+  client: ApiClient,
+  storeId: string,
+  cursor: string | null,
+  signal?: AbortSignal
+): Promise<ExportPageView> {
+  const query = cursor === null ? '' : `?${new URLSearchParams({ cursor }).toString()}`
+  return client.request(`${ApiRoutes.exports.list}${query}`, {
+    schema: exportPageSchema,
+    storeId,
+    signal
+  })
+}
+
+// A signed link with `Content-Disposition: attachment`, asked each time: it lasts minutes
+const exportDownloadSchema = z.object({
+  url: z.url(),
+  filename: z.string(),
+  expiresInSeconds: z.number()
+})
+export type ExportDownloadView = z.output<typeof exportDownloadSchema>
+
+export function fetchExportDownload(
+  client: ApiClient,
+  storeId: string,
+  exportId: string
+): Promise<ExportDownloadView> {
+  return client.request(ApiRoutes.exports.download(exportId), {
+    schema: exportDownloadSchema,
+    storeId
+  })
+}

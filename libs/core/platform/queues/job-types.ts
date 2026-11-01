@@ -1,6 +1,7 @@
 import type { AnalyticsEventName } from '@platform/core/analytics'
 import type { ChannelId, DigestFrequency } from '@platform/core/domain'
 import type { EventName } from '@platform/core/events'
+import { ExportTypes, type ExportType } from '@platform/core/exports'
 import type { Locale } from '@platform/core/i18n'
 
 import { AuditAction, type AuditActionType } from '../audit'
@@ -68,27 +69,16 @@ export interface RollupJob extends BaseJob {
 }
 
 // exports
-export const ExportTypes = {
-  CONVERSATIONS: 'conversations',
-  CUSTOMERS: 'customers',
-  ORDERS: 'orders',
-  AUDIT_LOG: 'audit_log',
-  ANALYTICS: 'analytics',
-  MEDIA_ZIP: 'media_zip'
-} as const
-export type ExportType = (typeof ExportTypes)[keyof typeof ExportTypes]
-
-export const ExportFormats = { CSV: 'csv', EXCEL: 'excel', PDF: 'pdf', ZIP: 'zip' } as const
-export type ExportFormat = (typeof ExportFormats)[keyof typeof ExportFormats]
-
-// Export.status (TDD_01 §4). Exports expire after 7 days (DataRetentionPolicies.EXPORTS).
-export const ExportStatus = {
-  PENDING: 'pending',
-  READY: 'ready',
-  FAILED: 'failed',
-  EXPIRED: 'expired'
-} as const
-export type ExportStatusType = (typeof ExportStatus)[keyof typeof ExportStatus]
+// The kinds, formats and states live in the domain: the web page of the exports center reads them
+// and may not import from the platform layer. Re-exported so the api and the worker keep one path.
+export {
+  ExportFormats,
+  ExportStatus,
+  ExportTypes,
+  type ExportFormat,
+  type ExportStatusType,
+  type ExportType
+} from '@platform/core/exports'
 
 // Maps every ExportType to the AuditAction written when the file is generated (TDD_07 §6.6).
 export const ExportAuditActions: Record<ExportType, AuditActionType> = {

@@ -262,5 +262,11 @@ test.describe('customer merge and identities', () => {
     await expect(page.getByText(en.customers.gallery.zipQueued)).toBeVisible()
     const zips = await mediaZipsOf(storeId)
     expect(zips[0]?.filters).toMatchObject({ customerId, type: GalleryTypes.IMAGE })
+
+    // The toast leads to the exports center, where the ZIP is listed (its state depends on the worker)
+    await page.getByRole('button', { name: en.customers.gallery.viewExports }).click()
+    await expect(page).toHaveURL(new RegExp(`/s/${storeId}/exports$`))
+    await expect(page.getByRole('heading', { name: en.exports.title })).toBeVisible()
+    await expect(page.getByRole('cell', { name: en.exports.types.media_zip }).first()).toBeVisible()
   })
 })

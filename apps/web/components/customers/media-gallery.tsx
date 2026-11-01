@@ -2,11 +2,12 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { Download, Eye, FileText, Mic, Video } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { GalleryCountsView, GalleryItemView } from '@platform/api-client'
+import { AppPaths, type GalleryCountsView, type GalleryItemView } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 import { GalleryTypes, type GalleryType } from '@platform/core/storage'
 
@@ -196,6 +197,7 @@ export function MediaGallery({
   const [openIndex, setOpenIndex] = useState<number | null>(null)
   const gallery = useGallery(storeId, customerId, type, q)
   const downloadAll = useDownloadAll(storeId, customerId)
+  const router = useRouter()
 
   const pages = gallery.data?.pages ?? []
   const items = pages.flatMap(page => page.data)
@@ -210,7 +212,18 @@ export function MediaGallery({
   const isEmpty = gallery.data !== undefined && items.length === 0
 
   const requestZip = (): void => {
-    downloadAll.mutate({ type, q }, { onSuccess: () => toast.success(t('zipQueued')) })
+    downloadAll.mutate(
+      { type, q },
+      {
+        onSuccess: () =>
+          toast.success(t('zipQueued'), {
+            action: {
+              label: t('viewExports'),
+              onClick: () => router.push(AppPaths.store.exports(storeId))
+            }
+          })
+      }
+    )
   }
 
   return (

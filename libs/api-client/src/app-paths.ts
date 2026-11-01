@@ -50,6 +50,7 @@ export const AppPaths = {
     analytics: (storeId: string) => `/s/${storeId}/analytics`,
     settings: (storeId: string, section: StoreSettingsSection = StoreSettingsSections.GENERAL) =>
       `/s/${storeId}/settings/${section}`,
+    exports: (storeId: string) => `/s/${storeId}/exports`,
     exportDownload: (storeId: string, exportId: string) => `/s/${storeId}/exports/${exportId}`
   },
   org: {
