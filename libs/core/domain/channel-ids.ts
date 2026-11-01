@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { MessageType } from './status-enums'
 import { WhatsAppLimits } from './whatsapp-constants'
 import { WidgetLimits } from './widget-constants'
 
@@ -72,6 +73,18 @@ export const ChannelTextLimits: Readonly<Record<string, number>> = {
   [ChannelIds.MESSENGER]: 2000,
   [ChannelIds.INSTAGRAM]: 1000,
   [ChannelIds.WEB_WIDGET]: WidgetLimits.CONTENT_MAX_LENGTH
+}
+
+// What a channel holds for the text under a file (its caption), when that is not the limit of its text:
+// `maxLength`, and the kinds of file that carry no caption at all. A channel that is not here takes the
+// limit of its text. `POST /messages` checks it so that the agent hears of it before the reply is queued.
+export const ChannelCaptionRules: Readonly<
+  Record<string, { maxLength: number; withoutCaption: readonly MessageType[] }>
+> = {
+  [ChannelIds.WHATSAPP]: {
+    maxLength: WhatsAppLimits.CAPTION_MAX_LENGTH,
+    withoutCaption: [MessageType.AUDIO]
+  }
 }
 
 // The send of a reply is one call to the provider, from a job: bounded like the other calls to it

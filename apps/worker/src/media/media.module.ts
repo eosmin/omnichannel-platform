@@ -16,6 +16,7 @@ import { ClamavClient } from './clamav.client'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
 import { MediaPipeline } from './media-pipeline.service'
 import { OrphanMediaCleaner } from './orphan-media-cleaner.service'
+import { UnavailableFileMarker } from './unavailable-file-marker.service'
 
 // The storage, the database and the logger come from the platform module of the worker; the queue of
 // the heavy jobs from QueuesPlatformModule; the address of ClamAV from VirusScanPlatformModule.
@@ -35,6 +36,7 @@ import { OrphanMediaCleaner } from './orphan-media-cleaner.service'
       useFactory: (address: ClamavAddress) => new ClamavClient(address)
     },
     MediaPipeline,
+    UnavailableFileMarker,
     InboundMediaFetcher,
     OrphanMediaCleaner,
     HeavyProcessingProcessor

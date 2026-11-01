@@ -33,6 +33,8 @@ export const RealtimeEvents = {
   // A file of a message was scanned and is ready, or was found infected: ids only
   MEDIA_PROCESSED: 'media.processed',
   MEDIA_INFECTED: 'media.infected',
+  // A file the customer sent could not be kept (refused, unsafe or unreachable): ids only
+  MEDIA_UNAVAILABLE: 'media.unavailable',
 
   TYPING_START: 'typing.start',
   TYPING_STOP: 'typing.stop',
@@ -101,6 +103,7 @@ export interface RealtimeEventMap {
   [RealtimeEvents.MESSAGE_DELETED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MEDIA_PROCESSED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MEDIA_INFECTED]: { conversationId: string; messageId: string }
+  [RealtimeEvents.MEDIA_UNAVAILABLE]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_FAILED]: {
     conversationId: string
     messageId: string

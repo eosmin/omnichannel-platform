@@ -1,14 +1,23 @@
 import { z } from 'zod'
 
-import type { AuthorType, DeliveryStatus, MediaStatus, MessageType } from '@platform/core/domain'
+import type {
+  AuthorType,
+  DeliveryStatus,
+  MediaStatus,
+  MediaUnavailableCode,
+  MessageType
+} from '@platform/core/domain'
 import {
   AuthorType as AuthorTypes,
   DeliveryStatus as DeliveryStatuses,
   httpUrl,
   InboundLimits,
   MediaStatus as MediaStatuses,
+  ChannelResultMetadata,
+  MediaUnavailableCodes,
   MessageLimits,
-  MessageType as MessageTypes
+  MessageType as MessageTypes,
+  UNAVAILABLE_FILES_KEY
 } from '@platform/core/domain'
 
 import { enumValueOf } from '../conversations/conversations.support'
@@ -90,6 +99,26 @@ export interface MessageMediaView {
   status: MediaStatus
 }
 
+// The metadata key that says the text under a file did not reach the customer
+const captionFailedSchema = z.object({ [ChannelResultMetadata.CAPTION_FAILED]: z.literal(true) })
+
+// A file the customer sent that the platform could not keep: where it was in the message and why. The
+// worker writes it when it gives up, so a file still being fetched is not in the list.
+export interface UnavailableFileView {
+  index: number
+  code: MediaUnavailableCode
+}
+
+export const unavailableFilesSchema = z.object({
+  [UNAVAILABLE_FILES_KEY]: z.array(
+    z.object({
+      index: z.int().min(0),
+      // A code of a newer worker is drawn as the generic one, never hidden
+      code: z.enum(MediaUnavailableCodes).catch(MediaUnavailableCodes.FETCH_FAILED)
+    })
+  )
+})
+
 // What the thread shows of a message. The metadata of the channel is not part of it, except the link
 // above; a system line carries its own, which is what the thread draws it from.
 export interface MessageView {
@@ -113,6 +142,10 @@ export interface MessageView {
   reactions: ReactionView[]
   // The files of the message (inbound, or sent with `mediaIds`); empty for a deleted message
   media: MessageMediaView[]
+  // Files of the customer that could not be kept; empty for a deleted message
+  unavailableFiles: UnavailableFileView[]
+  // The file of a reply went and the text under it did not (Instagram and Messenger send it apart)
+  captionFailed: boolean
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
   version: number
@@ -256,6 +289,8 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
             status: enumValueOf(MediaStatuses, file.status, 'media status')
           }))
         : [],
+    unavailableFiles: unavailableFilesOf(row, type),
+    captionFailed: row.deletedAt === null && captionFailedSchema.safeParse(row.metadata).success,
     version: row.version,
     editedAt: row.editedAt,
     editedByType: authorOrNull(row.editedByType, 'message editor'),
@@ -277,6 +312,12 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
 function attachmentUrlOf(row: MessageRow, type: MessageType): string | null {
   if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return null
   return attachmentUrlSchema.safeParse(row.metadata).data?.attachmentUrl ?? null
+}
+
+// Same rule as the link: a deleted message and a system line show none
+function unavailableFilesOf(row: MessageRow, type: MessageType): UnavailableFileView[] {
+  if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return []
+  return unavailableFilesSchema.safeParse(row.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
 }
 
 const authorOrNull = (text: string | null, what: string): AuthorType | null =>

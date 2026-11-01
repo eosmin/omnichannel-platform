@@ -362,7 +362,7 @@ describe('InstagramPlugin', () => {
       expect(result.metadata).toEqual({ captionExternalId: 'mid.3' })
     })
 
-    it('does not ask for a second try when only the caption failed: the file is already sent', async () => {
+    it('answers with the file, flagged, when only the caption failed: the file is already sent', async () => {
       const { plugin, post } = build()
       post
         .mockResolvedValueOnce({ message_id: 'mid.2' })
@@ -370,16 +370,18 @@ describe('InstagramPlugin', () => {
           new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
         )
 
-      await expect(
-        plugin.sendMedia(ctx, {
-          channelIdentity: '99',
-          mediaUrl: 'https://files.example.com/a.png',
-          contentType: 'image/png',
-          filename: null,
-          caption: 'mira',
-          ...key
-        })
-      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_MESSAGE_FAILED, retryable: false })
+      const result = await plugin.sendMedia(ctx, {
+        channelIdentity: '99',
+        mediaUrl: 'https://files.example.com/a.png',
+        contentType: 'image/png',
+        filename: null,
+        caption: 'mira',
+        ...key
+      })
+
+      expect(result.externalId).toBe('mid.2')
+      expect(result.metadata).toEqual({ captionFailed: true })
+      expect(post).toHaveBeenCalledTimes(2)
     })
 
     it('reacts, changes the emoji and takes it back with the sender actions of Meta', async () => {

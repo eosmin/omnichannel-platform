@@ -90,6 +90,8 @@ const message = {
   attachmentUrl: null,
   reactions: [],
   media: [],
+  unavailableFiles: [],
+  captionFailed: false,
   mentions: [],
   version: 1,
   editedAt: null,

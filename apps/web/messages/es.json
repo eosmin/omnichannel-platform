@@ -689,6 +689,7 @@
         "DOCUMENT": "Documento"
       },
       "templateLabel": "Mensaje de plantilla",
+      "captionFailed": "El archivo se envió, pero el texto que lo acompaña no. Envía el texto como un mensaje nuevo",
       "media": {
         "checking": "Revisando {name}",
         "loading": "Cargando {name}",
@@ -700,7 +701,13 @@
         "downloadFile": "Descargar {name}",
         "download": "Descargar",
         "close": "Cerrar",
-        "lightboxDescription": "El archivo en tamaño completo"
+        "lightboxDescription": "El archivo en tamaño completo",
+        "notKept": {
+          "refused": "No se guardó un archivo del cliente: su tipo o tamaño no está permitido",
+          "unsafe_link": "No se guardó un archivo del cliente: su enlace no es seguro",
+          "fetch_failed": "No se pudo obtener un archivo del cliente desde el canal",
+          "channel_cannot_fetch": "No se guardó un archivo del cliente: este canal no entrega archivos"
+        }
       },
       "neutral": {
         "LOCATION": "El cliente compartió una ubicación",

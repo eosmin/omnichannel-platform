@@ -7,7 +7,6 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
-  ChannelResultMetadata,
   ConversationStatus,
   DeliveryStatus,
   MessageType,
@@ -303,7 +302,7 @@ describe('Echoes and reactions that a channel delivers', () => {
           authorType: AuthorType.AGENT,
           deliveryStatus: DeliveryStatus.SENT,
           channelMessageId: 'file-cap',
-          metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: 'caption-cap' }
+          captionChannelMessageId: 'caption-cap'
         }
       })
 

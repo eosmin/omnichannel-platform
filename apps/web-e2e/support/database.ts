@@ -98,11 +98,16 @@ export function addMessageTo(
     deliveryStatus?: DeliveryStatus
     system?: { event: SystemMessageEvent; actorType: 'user' | 'system' }
     replyToMessageId?: string
+    // Files of the customer the worker gave up on, as it records them in the metadata
+    unavailableFiles?: { index: number; code: string }[]
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
     const { id } = await createMessage(owner, { storeId, conversationId, ...input })
-    const { deliveryStatus, system, replyToMessageId } = input
+    const { deliveryStatus, system, replyToMessageId, unavailableFiles } = input
+    if (unavailableFiles !== undefined) {
+      await owner.message.update({ where: { id }, data: { metadata: { unavailableFiles } } })
+    }
     if (deliveryStatus !== undefined || system !== undefined || replyToMessageId !== undefined) {
       await owner.message.update({
         where: { id },

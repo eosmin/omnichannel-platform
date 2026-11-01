@@ -10,7 +10,12 @@ import {
   withTimeout
 } from '@platform/channels/connections'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
-import { ChannelConnectionStatus, MediaStatus, OfActiveInstallation } from '@platform/core/domain'
+import {
+  ChannelConnectionStatus,
+  MediaStatus,
+  MediaUnavailableCodes,
+  OfActiveInstallation
+} from '@platform/core/domain'
 import { type ErrorCode } from '@platform/core/errors'
 import {
   type FetchInboundMediaJob,
@@ -34,6 +39,7 @@ import { refusalOf } from '../outbound/send-refusal'
 
 import { inboundMediaId } from './inbound-media-id'
 import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
+import { UnavailableFileMarker } from './unavailable-file-marker.service'
 
 // What the retry sees of a failed attempt: the code and the name of the error, never its text (the
 // error of a plugin can carry the token it was called with, and BullMQ keeps what is thrown)
@@ -87,6 +93,7 @@ export class InboundMediaFetcher {
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>,
+    private readonly marker: UnavailableFileMarker,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(InboundMediaFetcher.name)
@@ -136,6 +143,7 @@ export class InboundMediaFetcher {
         { pluginId: connection.pluginId, messageId },
         'the channel cannot fetch files'
       )
+      await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.CHANNEL_CANNOT_FETCH)
       return
     }
 
@@ -148,6 +156,14 @@ export class InboundMediaFetcher {
         this.logger.warn(
           { messageId, index, reason: error.message },
           'a file of the customer was not kept'
+        )
+        await this.marker.mark(
+          storeId,
+          messageId,
+          index,
+          error instanceof UnsafeUrlError
+            ? MediaUnavailableCodes.UNSAFE_LINK
+            : MediaUnavailableCodes.REFUSED
         )
         return
       }
@@ -163,6 +179,9 @@ export class InboundMediaFetcher {
       )
       // Also on the last attempt: the job then fails and reaches the dead-letter queue, where the loss
       // of a file is seen, instead of a success that kept nothing
+      if (refused.retryable && !isLastAttempt)
+        throw new MediaFetchAttemptFailed(refused.code, error)
+      await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.FETCH_FAILED)
       if (refused.retryable) throw new MediaFetchAttemptFailed(refused.code, error)
       return
     }
@@ -171,26 +190,35 @@ export class InboundMediaFetcher {
     // The name is the customer's: it is cleaned where it is written, once, for the key and the row
     const filename = sanitizeFilename(job.filename ?? '')
     const key = StorageKeys.message(storeId, mediaId, filename)
-    await this.storage.put(key, fetched.body, fetched.contentType)
     try {
-      await this.prisma.client.media.create({
-        data: {
-          id: mediaId,
-          storeId,
-          purpose: MediaPurpose.MESSAGE,
-          messageId,
-          customerId: message.conversation.customerId,
-          uploadedBy: null,
-          key,
-          filename,
-          contentType: fetched.contentType,
-          fileSize: fetched.body.length,
-          status: MediaStatus.PENDING
-        }
-      })
+      await this.storage.put(key, fetched.body, fetched.contentType)
+      try {
+        await this.prisma.client.media.create({
+          data: {
+            id: mediaId,
+            storeId,
+            purpose: MediaPurpose.MESSAGE,
+            messageId,
+            customerId: message.conversation.customerId,
+            uploadedBy: null,
+            key,
+            filename,
+            contentType: fetched.contentType,
+            fileSize: fetched.body.length,
+            status: MediaStatus.PENDING
+          }
+        })
+      } catch (error) {
+        // Another attempt wrote the row first; the file it wrote is the same one
+        if (!isUniqueViolation(error)) throw error
+      }
     } catch (error) {
-      // Another attempt wrote the row first; the file it wrote is the same one
-      if (!isUniqueViolation(error)) throw error
+      // Keeping the bytes failed on the last try (storage down): the job dies in the dead-letter queue and
+      // the thread must say the file was lost, like for a download that failed
+      if (isLastAttempt) {
+        await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.FETCH_FAILED)
+      }
+      throw error
     }
     await this.queueScan(mediaId)
   }

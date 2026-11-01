@@ -140,6 +140,8 @@ export const Events = {
   MEDIA_UPLOADED: 'media.uploaded',
   MEDIA_PROCESSED: 'media.processed',
   MEDIA_INFECTED: 'media.infected',
+  // A file the customer sent could not be kept (refused, unsafe or unreachable): ids only
+  MEDIA_UNAVAILABLE: 'media.unavailable',
 
   // Exports and compliance
   EXPORT_REQUESTED: 'export.requested',
@@ -177,6 +179,7 @@ export const BridgedEvents = [
   Events.MESSAGE_DELETED,
   Events.MEDIA_PROCESSED,
   Events.MEDIA_INFECTED,
+  Events.MEDIA_UNAVAILABLE,
   Events.CHANNEL_DISCONNECTED,
   Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]

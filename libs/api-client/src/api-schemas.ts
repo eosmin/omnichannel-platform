@@ -266,6 +266,10 @@ export const messageSchema = z.object({
       status: z.enum(MediaStatus).catch(MediaStatus.PENDING)
     })
   ),
+  // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one
+  unavailableFiles: z.array(z.object({ index: z.number().int(), code: z.string() })),
+  // The file of a reply went and the text under it did not
+  captionFailed: z.boolean(),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),
   version: z.number().int(),

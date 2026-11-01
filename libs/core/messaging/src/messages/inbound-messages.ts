@@ -1,7 +1,26 @@
 import type { PrismaTransaction } from '@platform/core/database'
-import { AuthorType, DeliveryStatus } from '@platform/core/domain'
+import {
+  AuthorType,
+  ChannelResultMetadata,
+  DeliveryStatus,
+  UNAVAILABLE_FILES_KEY
+} from '@platform/core/domain'
 
 import type { InboundMessage } from '../inbound/inbound-event'
+
+// The keys only the platform writes in the metadata of a message: whatever a channel plugin passes
+// through under these names is dropped, so a provider cannot draw a warning in the thread
+const RESERVED_METADATA_KEYS: ReadonlySet<string> = new Set([
+  ChannelResultMetadata.CAPTION_FAILED,
+  ChannelResultMetadata.CAPTION_EXTERNAL_ID,
+  UNAVAILABLE_FILES_KEY
+])
+
+function ownMetadata<T>(metadata: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => !RESERVED_METADATA_KEYS.has(key))
+  )
+}
 
 // The message of a customer, or the one the owner wrote in the provider's own app (it is already
 // sent), as a channel delivered it. The unique index of (conversation, channel
@@ -36,7 +55,7 @@ export async function insertInboundMessage(
       ...(input.author === AuthorType.EXTERNAL ? { deliveryStatus: DeliveryStatus.SENT } : {}),
       channelMessageId: message.externalId,
       replyToMessageId: replyTo?.id ?? null,
-      ...(message.metadata === undefined ? {} : { metadata: message.metadata }),
+      ...(message.metadata === undefined ? {} : { metadata: ownMetadata(message.metadata) }),
       createdAt: input.createdAt
     },
     select: { id: true }

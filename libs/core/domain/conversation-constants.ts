@@ -83,8 +83,27 @@ export const MessageLimits = {
 // core keeps. Instagram and Messenger cannot put a caption on a file: the plugin sends it as a second
 // message and gives the id of that one here.
 export const ChannelResultMetadata = {
-  CAPTION_EXTERNAL_ID: 'captionExternalId'
+  CAPTION_EXTERNAL_ID: 'captionExternalId',
+  // The file was taken but the text under it was not: the message is sent, and says so
+  CAPTION_FAILED: 'captionFailed'
 } as const
+
+// Why a file the customer sent was not kept, as the worker records it in the `metadata` of the message
+// (`unavailableFiles`, one entry per place of the file). The thread draws a line for each, from an
+// i18n key per code; the text of the failure never leaves the worker.
+export const MediaUnavailableCodes = {
+  // The type, the size or the bytes of the file are not allowed
+  REFUSED: 'refused',
+  // The link of the file does not point to a public https address
+  UNSAFE_LINK: 'unsafe_link',
+  // The provider did not hand the file over after every attempt
+  FETCH_FAILED: 'fetch_failed',
+  // The channel has no way to fetch files
+  CHANNEL_CANNOT_FETCH: 'channel_cannot_fetch'
+} as const
+export type MediaUnavailableCode =
+  (typeof MediaUnavailableCodes)[keyof typeof MediaUnavailableCodes]
+export const UNAVAILABLE_FILES_KEY = 'unavailableFiles'
 
 // What a channel plugin may say a customer sent. A plugin is not trusted with the types that only the
 // platform writes (SYSTEM lines, internal notes, cards).

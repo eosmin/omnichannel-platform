@@ -163,8 +163,9 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
 
   // Meta takes a file and no caption, so the caption is a message of its own after the file. Meta echoes
   // that second message too, so its id travels in `metadata[ChannelResultMetadata.CAPTION_EXTERNAL_ID]`: whoever deduplicates
-  // the echoes has to know it. If the second call fails the file is already with the customer: it is
-  // reported as failed for good, never as a retry that would send the file twice.
+  // the echoes has to know it. If the second call fails the file is already with the customer: the answer
+  // is the file's, flagged `CAPTION_FAILED`, so that the id of the file is kept (its echo is not stored as
+  // the owner's) and the message is not sent again, which would send the file twice.
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
     // Meta fetches the file itself, and only over https; a url with a user or a password would hand
     // them to Meta. And a kind of file the channel does not declare is refused here, not left to Meta.
@@ -194,7 +195,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
         metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: caption.externalId }
       }
     } catch {
-      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+      return { ...sent, metadata: { [ChannelResultMetadata.CAPTION_FAILED]: true } }
     }
   }
 

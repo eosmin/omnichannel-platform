@@ -449,6 +449,22 @@ test.describe.serial('the thread of a conversation', () => {
     )
   })
 
+  test('draws a line for a file of the customer that could not be kept', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, {
+      content: 'the invoice',
+      type: MessageType.DOCUMENT,
+      createdAt: minutesAgo(1),
+      unavailableFiles: [{ index: 0, code: 'refused' }]
+    })
+
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const thread = threadOf(page)
+    await expect(thread.getByText('the invoice')).toBeVisible()
+    await expect(thread.getByText(en.inbox.thread.media.notKept.refused)).toBeVisible()
+  })
+
   test('refuses a file of a type that is not allowed before anything is uploaded', async () => {
     const conversationId = await newConversationIn(storeId)
     await addMessageTo(storeId, conversationId, { content: 'Hello', createdAt: minutesAgo(1) })
