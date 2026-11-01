@@ -7,6 +7,7 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
+  ChannelResultMetadata,
   ConversationStatus,
   DeliveryStatus,
   MessageType,
@@ -286,6 +287,30 @@ describe('Echoes and reactions that a channel delivers', () => {
       // Its files were queued when the platform sent it, not fetched again as the owner's
       const heavy = queueOf(app, QueueNames.HEAVY_PROCESSING)
       expect(heavy.jobs.filter(job => job.name === JobNames.FETCH_INBOUND_MEDIA)).toEqual([])
+    })
+
+    it('is not stored again when it is the caption the platform sent as a message of its own', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-cap'))
+      const { conversation } = await threadOf(ctx.storeA.id, from)
+      await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          content: 'the caption',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: 'file-cap',
+          metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: 'caption-cap' }
+        }
+      })
+
+      const outcome = await echo(connectionId, from, 'caption-cap', 'the caption')
+
+      expect(outcome).toBe(InboundOutcomes.DUPLICATE)
+      expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(2)
     })
 
     it('waits for the provider id of a reply that was just queued, and stores it on the last try', async () => {

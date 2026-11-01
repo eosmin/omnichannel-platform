@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
@@ -161,7 +162,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 
   // Meta takes a file and no caption, so the caption is a message of its own after the file. Meta echoes
-  // that second message too, so its id travels in `metadata.captionExternalId`: whoever deduplicates
+  // that second message too, so its id travels in `metadata[ChannelResultMetadata.CAPTION_EXTERNAL_ID]`: whoever deduplicates
   // the echoes has to know it. If the second call fails the file is already with the customer: it is
   // reported as failed for good, never as a retry that would send the file twice.
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
@@ -188,7 +189,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       const caption = await this.send(ctx, params.channelIdentity, {
         message: { text: params.caption }
       })
-      return { ...sent, metadata: { captionExternalId: caption.externalId } }
+      return {
+        ...sent,
+        metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: caption.externalId }
+      }
     } catch {
       throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
     }

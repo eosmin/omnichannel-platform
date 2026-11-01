@@ -81,7 +81,14 @@ export class MessagesController {
       }
       rendered = await this.templates.render(store.id, body, viewer)
     }
-    const { message, created } = await this.messages.create(store.id, body, viewer, rendered)
+    // The channel of the conversation must take the kind of file of a media message
+    const { message, created } = await this.messages.create(
+      store.id,
+      body,
+      viewer,
+      rendered,
+      (channel, capability) => this.registry.hasCapability(channel, capability)
+    )
     if (!created) res.status(HttpStatusCodes.OK)
     return message
   }

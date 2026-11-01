@@ -29,12 +29,14 @@ import {
   OutboundQueue
 } from '@platform/core/messaging'
 import { JobNames, QueueNames } from '@platform/core/queues'
+import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
   type ChannelContext,
   ChannelEventTypes,
   PluginError,
+  type SendMediaParams,
   type SendMessageParams,
   type SendTemplateParams
 } from '@platform/plugins/sdk'
@@ -63,6 +65,10 @@ const CREATED = 201
 const OK = 200
 const INSTAGRAM_LIMIT = 1000
 const TEMPLATE_CHANNEL_ID = 'template_channel'
+const MEDIA_CHANNEL_ID = 'media_channel'
+const CONFLICT = 409
+const BAD_REQUEST = 400
+const NOT_FOUND = 404
 const THREE_MINUTES_MS = 180_000
 const TWO_HOURS_MS = 7_200_000
 const SIX_MINUTES_MS = 360_000
@@ -80,6 +86,8 @@ describe('Replies on their way to a channel', () => {
   let outboundQueue: OutboundQueue
   let sent: SendMessageParams[] = []
   let sentTemplates: SendTemplateParams[] = []
+  let sentMedia: SendMediaParams[] = []
+  let mediaResult: { metadata?: Record<string, unknown> } = {}
   let heard: { event: string; payload: Record<string, unknown> }[] = []
   let sendMessage: (ctx: ChannelContext, params: SendMessageParams) => ReturnType<ChannelSend>
   let externalCount = 0
@@ -119,6 +127,26 @@ describe('Replies on their way to a channel', () => {
         listTemplates: () => Promise.resolve([])
       })
     )
+    registry.register(
+      buildChannelPlugin({
+        id: MEDIA_CHANNEL_ID,
+        capabilities: [
+          ChannelCapability.TEXT,
+          ChannelCapability.IMAGE,
+          ChannelCapability.DOCUMENT,
+          ChannelCapability.MESSAGING_WINDOW
+        ],
+        sendMedia: (_ctx, params) => {
+          sentMedia.push(params)
+          return Promise.resolve({
+            externalId: `media-${params.idempotencyKey}`,
+            status: DeliveryStatus.SENT,
+            sentAt: new Date().toISOString(),
+            ...mediaResult
+          })
+        }
+      })
+    )
     // Instagram is an official plugin of the app now: its send is the only thing the suite replaces
     jest
       .spyOn(registry.get(ChannelIds.INSTAGRAM), 'sendMessage')
@@ -138,6 +166,7 @@ describe('Replies on their way to a channel', () => {
       new ConversationsService(prisma, events),
       app.get(MessagingWindowService, { strict: false }),
       events,
+      app.get(StorageService, { strict: false }),
       logger
     )
     receipts = new ChannelReceipts(
@@ -169,6 +198,8 @@ describe('Replies on their way to a channel', () => {
   beforeEach(() => {
     sent = []
     sentTemplates = []
+    sentMedia = []
+    mediaResult = {}
     heard = []
     sendMessage = accept
   })
@@ -606,8 +637,8 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
-    it('fails, and sends nothing, a reply that is not text', async () => {
-      const reply = await queuedReply({ type: MessageType.IMAGE })
+    it('fails, and sends nothing, a reply of a kind the platform does not send', async () => {
+      const reply = await queuedReply({ type: MessageType.LOCATION })
 
       await sender.send(job(reply), false)
 
@@ -735,6 +766,255 @@ describe('Replies on their way to a channel', () => {
       expect(await stored(second.id)).toMatchObject({
         deliveryStatus: DeliveryStatus.SENT,
         channelMessageId: null
+      })
+    })
+  })
+
+  describe('a media message', () => {
+    // A file of the message, written the way the confirmation leaves it
+    const fileOf = async (
+      storeId: string,
+      over: { messageId?: string; status?: string; contentType?: string; uploadedBy?: string } = {}
+    ) => {
+      const id = randomUUID()
+      return owner.media.create({
+        data: {
+          id,
+          storeId,
+          purpose: 'message',
+          key: `stores/${storeId}/messages/${id}/photo.png`,
+          filename: 'photo.png',
+          contentType: over.contentType ?? 'image/png',
+          fileSize: 10,
+          status: over.status ?? 'clean',
+          ...(over.messageId === undefined ? {} : { messageId: over.messageId }),
+          ...(over.uploadedBy === undefined ? {} : { uploadedBy: over.uploadedBy })
+        },
+        select: { id: true }
+      })
+    }
+
+    it('sends the file by a signed link with its text as the caption, in one message', async () => {
+      const reply = await queuedReply({
+        pluginId: MEDIA_CHANNEL_ID,
+        type: MessageType.IMAGE,
+        content: 'look at this'
+      })
+      await fileOf(reply.storeId, { messageId: reply.id })
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(1)
+      expect(sentMedia[0]).toMatchObject({
+        contentType: 'image/png',
+        filename: 'photo.png',
+        caption: 'look at this',
+        idempotencyKey: reply.id
+      })
+      expect(sentMedia[0]?.mediaUrl).toContain('photo.png')
+      expect(sent).toHaveLength(0)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
+    it('sends a file with no text under it, and no caption at all', async () => {
+      const reply = await queuedReply({
+        pluginId: MEDIA_CHANNEL_ID,
+        type: MessageType.IMAGE,
+        content: ''
+      })
+      await owner.message.update({ where: { id: reply.id }, data: { content: null } })
+      await fileOf(reply.storeId, { messageId: reply.id })
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(1)
+      expect(sentMedia[0]).not.toHaveProperty('caption')
+    })
+
+    it('keeps the id of the second message that carried the caption', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, { messageId: reply.id })
+      mediaResult = { metadata: { captionExternalId: 'cap-1', ignored: 'x' } }
+
+      await sender.send(job(reply), false)
+
+      const row = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { metadata: true }
+      })
+      expect(row.metadata).toEqual({ captionExternalId: 'cap-1' })
+    })
+
+    it.each(['infected', 'pending'])('fails the message when its file is %s', async status => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, { messageId: reply.id, status })
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(0)
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      })
+    })
+
+    it('fails a message that lost its file', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.DOCUMENT })
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(0)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+    })
+
+    describe('POST /messages with mediaIds', () => {
+      const conversationOnMediaChannel = async () => {
+        const conversation = await createConversationOf(owner, {
+          storeId: ctx.storeA.id,
+          channelType: MEDIA_CHANNEL_ID
+        })
+        await owner.customerIdentity.update({
+          where: { id: conversation.customerIdentityId },
+          data: { lastInboundAt: new Date() }
+        })
+        return conversation
+      }
+      const post = (body: Record<string, unknown>) =>
+        api(app, ctx.agentA, ctx.storeA).post(ApiRoutes.messages.create).send(body)
+
+      it('stores one message with the file linked to it and the customer, and queues it', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const file = await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id })
+        const queue = queueOf(app, QueueNames.OUTBOUND)
+        queue.jobs.length = 0
+
+        const response = await post({
+          type: MessageType.IMAGE,
+          conversationId: conversation.id,
+          mediaIds: [file.id],
+          content: 'caption',
+          idempotencyKey: randomUUID()
+        }).expect(CREATED)
+
+        const created = response.body as { id: string; type: string; content: string }
+        expect(created).toMatchObject({ type: MessageType.IMAGE, content: 'caption' })
+        const linked = await owner.media.findUniqueOrThrow({
+          where: { id: file.id },
+          select: { messageId: true, customerId: true }
+        })
+        expect(linked).toEqual({ messageId: created.id, customerId: conversation.customerId })
+        expect(queue.jobs).toHaveLength(1)
+      })
+
+      it('answers a repeated key with the same message, and refuses it with other files', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const file = await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id })
+        const other = await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id })
+        const body = {
+          type: MessageType.IMAGE,
+          conversationId: conversation.id,
+          mediaIds: [file.id],
+          idempotencyKey: randomUUID()
+        }
+        const first = await post(body).expect(CREATED)
+
+        const again = await post(body).expect(OK)
+        await post({ ...body, mediaIds: [other.id] }).expect(CONFLICT)
+
+        expect((again.body as { id: string }).id).toBe((first.body as { id: string }).id)
+      })
+
+      it('refuses the file of another store, of another member and one that does not exist', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const foreign = await fileOf(ctx.storeB.id, { uploadedBy: ctx.agentA.id })
+        const notMine = await fileOf(ctx.storeA.id, { uploadedBy: ctx.adminA.id })
+        for (const id of [foreign.id, notMine.id, randomUUID()]) {
+          await post({
+            type: MessageType.IMAGE,
+            conversationId: conversation.id,
+            mediaIds: [id],
+            idempotencyKey: randomUUID()
+          }).expect(NOT_FOUND)
+        }
+      })
+
+      it('refuses a file that is not clean yet, an infected one and one already sent', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const pending = await fileOf(ctx.storeA.id, {
+          uploadedBy: ctx.agentA.id,
+          status: 'pending'
+        })
+        const infected = await fileOf(ctx.storeA.id, {
+          uploadedBy: ctx.agentA.id,
+          status: 'infected'
+        })
+        const used = await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id })
+        await post({
+          type: MessageType.IMAGE,
+          conversationId: conversation.id,
+          mediaIds: [used.id],
+          idempotencyKey: randomUUID()
+        }).expect(CREATED)
+
+        const attempt = (id: string) =>
+          post({
+            type: MessageType.IMAGE,
+            conversationId: conversation.id,
+            mediaIds: [id],
+            idempotencyKey: randomUUID()
+          })
+        expect((await attempt(pending.id).expect(CONFLICT)).body).toMatchObject({
+          error: { code: ErrorCodes.FILE_NOT_READY }
+        })
+        await attempt(infected.id).expect(403)
+        await attempt(used.id).expect(CONFLICT)
+      })
+
+      it('refuses a file that is not of the type of the message', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const pdf = await fileOf(ctx.storeA.id, {
+          uploadedBy: ctx.agentA.id,
+          contentType: 'application/pdf'
+        })
+
+        await post({
+          type: MessageType.IMAGE,
+          conversationId: conversation.id,
+          mediaIds: [pdf.id],
+          idempotencyKey: randomUUID()
+        }).expect(BAD_REQUEST)
+      })
+
+      it('refuses a kind of file the channel does not declare', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const audio = await fileOf(ctx.storeA.id, {
+          uploadedBy: ctx.agentA.id,
+          contentType: 'audio/ogg'
+        })
+
+        const response = await post({
+          type: MessageType.AUDIO,
+          conversationId: conversation.id,
+          mediaIds: [audio.id],
+          idempotencyKey: randomUUID()
+        }).expect(CONFLICT)
+
+        expect(response.body).toMatchObject({
+          error: { code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED }
+        })
+      })
+
+      it('needs the file, one file at most, and the key', async () => {
+        const conversation = await conversationOnMediaChannel()
+        const base = { type: MessageType.IMAGE, conversationId: conversation.id }
+        await post({ ...base, idempotencyKey: randomUUID() }).expect(BAD_REQUEST)
+        await post({ ...base, mediaIds: [], idempotencyKey: randomUUID() }).expect(BAD_REQUEST)
+        await post({
+          ...base,
+          mediaIds: [randomUUID(), randomUUID()],
+          idempotencyKey: randomUUID()
+        }).expect(BAD_REQUEST)
+        await post({ ...base, mediaIds: [randomUUID()] }).expect(BAD_REQUEST)
       })
     })
   })

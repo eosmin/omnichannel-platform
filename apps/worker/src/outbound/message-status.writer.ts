@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { DeliveryStatus } from '@platform/core/domain'
+import { ChannelResultMetadata, DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -24,6 +24,9 @@ export interface StatusChange {
   to: Exclude<DeliveryStatus, DeliveryStatus.QUEUED>
   // The provider's id, written when the channel takes the message
   channelMessageId?: string
+  // The id of the second message that carried the caption of a file (`ChannelResultMetadata`), kept
+  // so that the echo of that message is not stored again as the owner's
+  captionExternalId?: string
   // Only for FAILED: a code of ours, never the provider's words
   errorCode?: ErrorCode
 }
@@ -49,6 +52,11 @@ export class MessageStatusWriter {
           ...(change.channelMessageId === undefined
             ? {}
             : { channelMessageId: change.channelMessageId }),
+          ...(change.captionExternalId === undefined
+            ? {}
+            : {
+                metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: change.captionExternalId }
+              }),
           deliveryError: to === DeliveryStatus.FAILED ? (change.errorCode ?? null) : null
         }
       })
