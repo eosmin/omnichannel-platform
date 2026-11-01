@@ -111,6 +111,7 @@ export class InboundMediaFetcher {
     })
     if (existing !== null) {
       if (existing.status === String(MediaStatus.PENDING)) await this.queueScan(mediaId)
+      await this.marker.clear(storeId, messageId, index)
       return
     }
 
@@ -220,6 +221,7 @@ export class InboundMediaFetcher {
       }
       throw error
     }
+    await this.marker.clear(storeId, messageId, index)
     await this.queueScan(mediaId)
   }
 

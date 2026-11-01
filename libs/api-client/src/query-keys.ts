@@ -1,4 +1,5 @@
 import type { ChannelId, ConversationStatus, CustomerTimelineType } from '@platform/core/domain'
+import type { GalleryType } from '@platform/core/storage'
 
 // What narrows the list (the filters of TDD_09 §2); the cursor is not part of a key. `assigned` is
 // `me`, `unassigned` or the id of a member (ConversationAssignedFilters).
@@ -50,6 +51,9 @@ export const QueryKeys = {
       ['customers', storeId, id, 'timeline', type] as const,
     conversations: (storeId: string, id: string) =>
       ['customers', storeId, id, 'conversations'] as const,
+    // The gallery under a tab and a search: a merge moves the files, so it goes stale with the customer
+    media: (storeId: string, id: string, type: GalleryType, q: string) =>
+      ['customers', storeId, id, 'media', type, q] as const,
     // Outside the root of the customers on purpose: the merge makes every customer stale, and the
     // preview of a merge that just ran must not be read again (the absorbed customer is gone)
     mergePreview: (storeId: string, id: string, absorbedId: string) =>

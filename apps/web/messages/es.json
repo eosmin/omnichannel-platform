@@ -35,7 +35,29 @@
     }
   },
   "customers": {
+    "gallery": {
+      "title": "Archivos del cliente",
+      "description": "Los archivos que este cliente envió o recibió, por tipo.",
+      "tabs": {
+        "all": "Todos",
+        "image": "Imágenes",
+        "video": "Videos",
+        "audio": "Audio",
+        "document": "Documentos"
+      },
+      "search": "Buscar archivos",
+      "downloadAll": "Descargar todo",
+      "zipQueued": "Se está preparando el ZIP. Estará listo en las exportaciones.",
+      "download": "Descargar {name}",
+      "open": "Abrir {name}",
+      "downloadFailed": "No se pudo descargar el archivo. Inténtalo de nuevo.",
+      "empty": "Este cliente aún no tiene archivos.",
+      "noMatch": "Ningún archivo coincide con la búsqueda.",
+      "failed": "No se pudieron cargar los archivos.",
+      "loadMore": "Cargar más"
+    },
     "profile": {
+      "media": "Archivos",
       "title": "Perfil del cliente",
       "description": "Las identidades, cifras, etiquetas, direcciones y actividad del cliente.",
       "unnamed": "Cliente sin nombre",
@@ -702,6 +724,8 @@
         "download": "Descargar",
         "close": "Cerrar",
         "lightboxDescription": "El archivo en tamaño completo",
+        "previous": "Archivo anterior",
+        "next": "Archivo siguiente",
         "notKept": {
           "refused": "No se guardó un archivo del cliente: su tipo o tamaño no está permitido",
           "unsafe_link": "No se guardó un archivo del cliente: su enlace no es seguro",

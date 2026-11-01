@@ -35,7 +35,29 @@
     }
   },
   "customers": {
+    "gallery": {
+      "title": "Customer files",
+      "description": "The files this customer sent or received, by type.",
+      "tabs": {
+        "all": "All",
+        "image": "Images",
+        "video": "Videos",
+        "audio": "Audio",
+        "document": "Documents"
+      },
+      "search": "Search files",
+      "downloadAll": "Download all",
+      "zipQueued": "The ZIP is being prepared. It will be ready in the exports.",
+      "download": "Download {name}",
+      "open": "Open {name}",
+      "downloadFailed": "The file could not be downloaded. Try again.",
+      "empty": "This customer has no files yet.",
+      "noMatch": "No file matches the search.",
+      "failed": "The files could not be loaded.",
+      "loadMore": "Load more"
+    },
     "profile": {
+      "media": "Files",
       "title": "Customer profile",
       "description": "The customer's identities, figures, tags, addresses and activity.",
       "unnamed": "Unnamed customer",
@@ -702,6 +724,8 @@
         "download": "Download",
         "close": "Close",
         "lightboxDescription": "The file at full size",
+        "previous": "Previous file",
+        "next": "Next file",
         "notKept": {
           "refused": "A file from the customer was not kept: its type or size is not allowed",
           "unsafe_link": "A file from the customer was not kept: its link is not safe",

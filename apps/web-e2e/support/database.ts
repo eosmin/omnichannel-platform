@@ -7,11 +7,12 @@ import {
   ChannelConnectionStatus,
   ChannelType,
   type DeliveryStatus,
-  type MediaStatus,
+  MediaStatus,
   type MessageType,
   OriginKinds,
   type SystemMessageEvent
 } from '@platform/core/domain'
+import { ExportTypes } from '@platform/core/queues'
 import { MediaPurpose } from '@platform/core/storage'
 
 // The e2e cases build their rows with the builders of the suites in tests/
@@ -407,4 +408,59 @@ export function addMediaTo(
     })
     return { id }
   })
+}
+
+// A clean file the customer sent, in a conversation of theirs: the gallery reads it by the customer.
+// The customer must have an identity (`handle` in `newCustomerIn`), which the conversation goes through.
+export function addCustomerFileTo(
+  storeId: string,
+  customerId: string,
+  input: { filename: string; contentType: string; createdAt: Date }
+): Promise<{ id: string }> {
+  return withOwner(async owner => {
+    const identity = await owner.customerIdentity.findFirstOrThrow({
+      where: { storeId, customerId },
+      select: { id: true, channelType: true }
+    })
+    const conversation = await createConversation(owner, {
+      storeId,
+      customerId,
+      customerIdentityId: identity.id,
+      channelType: identity.channelType,
+      lastMessageAt: input.createdAt
+    })
+    const message = await createMessage(owner, {
+      storeId,
+      conversationId: conversation.id,
+      createdAt: input.createdAt
+    })
+    const id = randomUUID()
+    await owner.media.create({
+      data: {
+        id,
+        storeId,
+        messageId: message.id,
+        customerId,
+        purpose: MediaPurpose.MESSAGE,
+        key: `stores/${storeId}/messages/${id}/${input.filename}`,
+        filename: input.filename,
+        contentType: input.contentType,
+        fileSize: 2048,
+        status: MediaStatus.CLEAN,
+        createdAt: input.createdAt
+      }
+    })
+    return { id }
+  })
+}
+
+// The ZIP exports of the store that were asked for a customer's gallery, newest first
+export function mediaZipsOf(storeId: string): Promise<{ status: string; filters: unknown }[]> {
+  return withOwner(owner =>
+    owner.export.findMany({
+      where: { storeId, type: ExportTypes.MEDIA_ZIP },
+      orderBy: { createdAt: 'desc' },
+      select: { status: true, filters: true }
+    })
+  )
 }
