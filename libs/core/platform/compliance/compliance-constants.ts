@@ -23,7 +23,7 @@ export const DataRetentionPolicies = {
   VERIFICATION_TOKENS: { defaultDays: 7, configurable: false },
   NOTIFICATIONS: { defaultDays: 90, configurable: true },
   WEBHOOK_DELIVERIES: { defaultDays: 30, configurable: false },
-  EXPORTS: { defaultDays: 14, configurable: false },
+  EXPORTS: { defaultDays: 7, configurable: false },
   CUSTOMER_MERGES: { defaultDays: 30, configurable: false }
 } as const
 

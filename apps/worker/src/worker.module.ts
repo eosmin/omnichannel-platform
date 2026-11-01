@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ScheduleModule } from '@nestjs/schedule'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
+import { AuditModule } from '@platform/core/audit-module'
 import { EmailPlatformModule, HttpPlatformModule, QueuesPlatformModule } from '@platform/core/http'
 import {
   ConversationsService,
@@ -12,6 +13,7 @@ import {
 } from '@platform/core/messaging'
 import { PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
+import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
 import { MediaModule } from './media/media.module'
@@ -28,6 +30,7 @@ import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
+import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
@@ -36,6 +39,7 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
 @Module({
   imports: [
     HttpPlatformModule,
+    AuditModule,
     QueuesPlatformModule,
     EmailPlatformModule,
     ChannelConnectionsLibModule,
@@ -43,7 +47,8 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     ScheduleModule.forRoot(),
     WorkerReadinessModule,
     InboundModule,
-    MediaModule
+    MediaModule,
+    ExportsModule
   ],
   providers: [
     ProcessorSupport,
@@ -72,7 +77,8 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     ChannelHealthScheduler,
     OutboundRequeueScheduler,
     DeletedMessagePurgeScheduler,
-    OrphanMediaScheduler
+    OrphanMediaScheduler,
+    ExpiredExportsScheduler
   ]
 })
 export class WorkerModule {}

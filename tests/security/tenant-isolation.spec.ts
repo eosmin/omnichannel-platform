@@ -14,6 +14,7 @@ import {
   RoutingActionTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { ExportFormats, ExportTypes } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -447,6 +448,31 @@ const resources: IsolationResource[] = [
     readPath: ApiRoutes.media.byId,
     untouched: async (owner, id) =>
       (await owner.media.findUnique({ where: { id }, select: { id: true } })) !== null
+  },
+  // The exports center shows a member only the exports they asked for, so the row is made by the
+  // Admin of its store (the one the suite acts as). No route changes an export, so it has no `modify`.
+  {
+    name: 'export',
+    create: async (owner, { storeId }) => {
+      const admin = await owner.membership.findFirstOrThrow({
+        where: { storeId, role: { name: RoleNames.ADMIN } },
+        select: { userId: true }
+      })
+      return owner.export.create({
+        data: {
+          storeId,
+          requestedBy: admin.userId,
+          type: ExportTypes.CUSTOMERS,
+          format: ExportFormats.CSV,
+          expiresAt: new Date(Date.now() + 86_400_000)
+        },
+        select: { id: true }
+      })
+    },
+    readPath: ApiRoutes.exports.byId,
+    listPath: ApiRoutes.exports.list,
+    untouched: async (owner, id) =>
+      (await owner.export.findUnique({ where: { id }, select: { id: true } })) !== null
   }
 ]
 

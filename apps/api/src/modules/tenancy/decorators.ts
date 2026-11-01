@@ -8,6 +8,7 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 
 export const SKIP_TENANT_KEY = 'skipTenant'
 export const PERMISSIONS_KEY = 'requiredPermissions'
+export const ANY_PERMISSION_KEY = 'requiredAnyPermission'
 
 // For the routes that belong to a person and not to a store (the session, the account): they need a
 // logged-in user but no X-Store-Id. Both tenancy guards are global and refuse everything else, so
@@ -19,6 +20,13 @@ export const SkipTenant = (): MethodDecorator & ClassDecorator => SetMetadata(SK
 export const RequirePermissions = (
   ...permissions: [Permission, ...Permission[]]
 ): MethodDecorator & ClassDecorator => SetMetadata(PERMISSIONS_KEY, permissions)
+
+// For a route that serves what several permissions each open a part of (the exports center: whoever may
+// make one kind of export sees the list), and whose service then narrows the answer to those parts.
+// One of the permissions listed is enough; it adds to @RequirePermissions, which still needs all of its own.
+export const RequireAnyPermission = (
+  ...permissions: [Permission, ...Permission[]]
+): MethodDecorator & ClassDecorator => SetMetadata(ANY_PERMISSION_KEY, permissions)
 
 function tenantRequest(context: ExecutionContext): AuthenticatedRequest {
   return context.switchToHttp().getRequest<AuthenticatedRequest>()
