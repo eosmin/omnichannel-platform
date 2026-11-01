@@ -10,6 +10,7 @@ import {
   PaginationLimits
 } from '@platform/core/domain'
 import { normalizeChannelIdentity, normalizePhone } from '@platform/core/messaging'
+import { galleryTypeSchema, GalleryTypes, gallerySearchSchema } from '@platform/core/storage'
 
 import { cursorSchema } from './list-cursor'
 
@@ -45,6 +46,14 @@ export const listCustomersQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   q: text().min(1).max(CustomerLimits.SEARCH_MAX_LENGTH).optional()
+})
+
+// The gallery of a customer (TDD_09 §7): a tab, a search by file name, a page
+export const listMediaQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  type: galleryTypeSchema.default(GalleryTypes.ALL),
+  q: gallerySearchSchema.optional()
 })
 
 export const listTimelineQuerySchema = z.strictObject({
@@ -158,6 +167,7 @@ export const attachTagSchema = z.strictObject({ tagId: z.uuid() })
 
 export type ListTimelineQuery = z.output<typeof listTimelineQuerySchema>
 export type MergePreviewQuery = z.output<typeof mergePreviewQuerySchema>
+export type ListMediaQuery = z.output<typeof listMediaQuerySchema>
 export type ListCustomersQuery = z.output<typeof listCustomersQuerySchema>
 export type CreateCustomerBody = z.output<typeof createCustomerSchema>
 export type UpdateCustomerBody = z.output<typeof updateCustomerSchema>

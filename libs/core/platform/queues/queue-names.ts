@@ -41,7 +41,6 @@ export const JobNames = {
   // exports
   GENERATE_EXPORT: 'generate-export',
   GENERATE_SCHEDULED_REPORT: 'generate-scheduled-report',
-  GENERATE_MEDIA_ZIP: 'generate-media-zip',
   DSR_EXPORT_DATA: 'dsr-export-data',
   DSR_ERASE_DATA: 'dsr-erase-data',
   EXPORT_AUDIT_LOGS_TO_COLD_STORAGE: 'export-audit-logs-to-cold-storage',

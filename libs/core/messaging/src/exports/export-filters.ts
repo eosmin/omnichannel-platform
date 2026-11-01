@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import { CustomerLimits } from '@platform/core/domain'
+import { downloadAllBodySchema } from '@platform/core/storage'
 
 import { conversationFilterSchema } from '../conversations/conversations.schemas'
 
@@ -26,11 +27,17 @@ export function viewPermissionsOf(held: readonly Permission[]): Permission[] {
   return VIEW_PERMISSIONS.filter(permission => held.includes(permission))
 }
 
+const viewerSchema = z.strictObject({
+  userId: z.uuid(),
+  held: z.array(z.enum(VIEW_PERMISSIONS as [Permission, ...Permission[]]))
+})
+
 export const conversationsExportFiltersSchema = z.strictObject({
   filter: conversationFilterSchema,
-  viewer: z.strictObject({
-    userId: z.uuid(),
-    held: z.array(z.enum(VIEW_PERMISSIONS as [Permission, ...Permission[]]))
-  })
+  viewer: viewerSchema
 })
 export type ConversationsExportFilters = z.output<typeof conversationsExportFiltersSchema>
+
+// The ZIP of a gallery holds the files of the conversations the requester could see when they asked
+export const mediaZipFiltersSchema = downloadAllBodySchema.extend({ viewer: viewerSchema })
+export type MediaZipFilters = z.output<typeof mediaZipFiltersSchema>
