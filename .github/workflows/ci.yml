@@ -152,6 +152,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
+      # The SeaweedFS container creates the bucket after its health check passes
+      - name: Wait for the bucket
+        run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
       - name: Every migration has a rollback
@@ -238,6 +241,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
+      # The SeaweedFS container creates the bucket after its health check passes
+      - name: Wait for the bucket
+        run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
       - name: Tenant isolation suite and endpoint specs

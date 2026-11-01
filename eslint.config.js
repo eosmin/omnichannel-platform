@@ -307,6 +307,7 @@ export default defineConfig([
       'apps/widget/src/env.ts',
       'libs/core/platform/config/env.ts',
       'scripts/db-role-env.ts',
+      'scripts/bucket-env.ts',
       'libs/core/database/testing/connection-urls.ts',
       'apps/api/src/testing/test-env.ts',
       'apps/worker/src/testing/test-env.ts',
