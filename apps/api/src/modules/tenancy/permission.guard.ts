@@ -11,7 +11,7 @@ import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
 import { AccessDenialAuditor } from './access-denial-auditor'
-import { isTenantExempt, PERMISSIONS_KEY, routePathOf } from './decorators'
+import { ANY_PERMISSION_KEY, isTenantExempt, PERMISSIONS_KEY, routePathOf } from './decorators'
 
 // Global, after the TenantGuard. A route in a store has to say what it needs with
 // @RequirePermissions(...): one that says nothing is refused, so a handler added without thinking
@@ -45,7 +45,12 @@ export class PermissionGuard implements CanActivate {
       context.getHandler(),
       context.getClass()
     ])
-    if (required.length === 0) {
+    const anyOf =
+      this.reflector.getAllAndOverride<Permission[] | undefined>(ANY_PERMISSION_KEY, [
+        context.getHandler(),
+        context.getClass()
+      ]) ?? []
+    if (required.length === 0 && anyOf.length === 0) {
       this.logger.error(
         { path: routePathOf(request), method: request.method },
         'a route in a store declares no @RequirePermissions: refused'
@@ -57,7 +62,10 @@ export class PermissionGuard implements CanActivate {
       )
     }
 
-    const missing = required.filter(permission => !granted.includes(permission))
+    const missingAll = required.filter(permission => !granted.includes(permission))
+    // None of the "any of" list is held: all of it is what was missing
+    const missingAny = anyOf.length > 0 && !anyOf.some(p => granted.includes(p)) ? anyOf : []
+    const missing = [...missingAll, ...missingAny]
     if (missing.length === 0) return true
 
     for (const permission of missing) this.denied.inc({ permission })

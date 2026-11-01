@@ -29,6 +29,7 @@
       "@platform/core/realtime": ["libs/core/domain/realtime/index.ts"],
       "@platform/core/api": ["libs/core/domain/api/index.ts"],
       "@platform/core/storage": ["libs/core/domain/storage/index.ts"],
+      "@platform/core/exports": ["libs/core/domain/exports/index.ts"],
       "@platform/core/analytics": ["libs/core/domain/analytics/index.ts"],
       "@platform/core/cache": ["libs/core/platform/cache/index.ts"],
       "@platform/core/queues": ["libs/core/platform/queues/index.ts"],

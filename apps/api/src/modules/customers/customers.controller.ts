@@ -22,12 +22,16 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type ConversationPage,
   ConversationsService,
+  type CustomersExportFilters,
+  customersExportFiltersSchema,
   type ListConversationsQuery,
   listConversationsQuerySchema,
   invalidInput,
   viewerOf
 } from '@platform/core/messaging'
+import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
+import { ExportsService, type ExportView } from '../exports'
 import {
   actorOf,
   CurrentPermissions,
@@ -93,8 +97,28 @@ export class CustomersController {
     private readonly merges: CustomerMergeService,
     private readonly mergePreviews: CustomerMergePreviewService,
     private readonly timeline: CustomerTimelineService,
-    private readonly conversations: ConversationsService
+    private readonly conversations: ConversationsService,
+    private readonly exports: ExportsService
   ) {}
+
+  // Declared before `:id`, or "export" would be read as an id. The file is made in the background:
+  // the answer is the export to follow in the exports center.
+  @RequirePermissions(Permissions.CUSTOMERS_EXPORT)
+  @Get(ApiRoutes.customers.export)
+  @HttpCode(HttpStatusCodes.ACCEPTED)
+  requestExport(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(customersExportFiltersSchema)) filters: CustomersExportFilters
+  ): Promise<ExportView> {
+    return this.exports.request({
+      storeId: store.id,
+      userId: user.id,
+      type: ExportTypes.CUSTOMERS,
+      format: ExportFormats.CSV,
+      filters
+    })
+  }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
   @Get(ApiRoutes.customers.list)

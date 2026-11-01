@@ -3,7 +3,6 @@ import { Injectable } from '@nestjs/common'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
-  ConversationAssignedFilters,
   ConversationHiddenStatuses,
   ConversationLimits,
   ConversationStatus,
@@ -26,8 +25,10 @@ import { type ActorRef, Events } from '@platform/core/events'
 import { encodeConversationCursor } from './conversation-cursor'
 import type { ConversationFilter, ListConversationsQuery } from './conversations.schemas'
 import {
+  assignedFilter,
   canSee,
   type ConversationActor,
+  conversationFilterWhere,
   invalidInput,
   isHiddenStatus,
   lockConversationForWrite,
@@ -149,7 +150,7 @@ export class ConversationsService {
     const { cursor } = query
     const rows = await this.prisma.client.conversation.findMany({
       where: {
-        ...this.filterWhere(storeId, query, viewer),
+        ...conversationFilterWhere(storeId, query, viewer),
         ...(customerId === undefined ? {} : { customerId }),
         AND: [
           visibleTo(viewer),
@@ -195,7 +196,7 @@ export class ConversationsService {
   ): Promise<string[]> {
     const rows = await this.prisma.client.conversation.findMany({
       where: {
-        ...this.filterWhere(storeId, filter, viewer),
+        ...conversationFilterWhere(storeId, filter, viewer),
         AND: [visibleTo(viewer), assignedFilter(filter.assigned, viewer)]
       },
       select: { id: true },
@@ -203,22 +204,6 @@ export class ConversationsService {
       orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
     })
     return rows.map(row => row.id)
-  }
-
-  // What the list and a bulk action by filter both select, so that "select all 43 matching" acts on
-  // the set the agent saw: the store, the status (the open ones when none is named), the channel and
-  // the tag. The visibility and the assignee are added by each caller.
-  private filterWhere(storeId: string, filter: ConversationFilter, viewer: Viewer) {
-    // The history of what was archived or marked as spam is for who may archive
-    if (filter.status !== undefined && isHiddenStatus(filter.status)) {
-      requireAnyPermission(viewer.held, [Permissions.CONVERSATIONS_ARCHIVE])
-    }
-    return {
-      storeId,
-      status: filter.status ?? { notIn: [...ConversationHiddenStatuses] },
-      ...(filter.channelType === undefined ? {} : { channelType: filter.channelType }),
-      ...(filter.tagId === undefined ? {} : { tags: { some: { id: filter.tagId } } })
-    }
   }
 
   async get(
@@ -672,13 +657,4 @@ function fieldsOf(to: ConversationStatus, options: StatusOptions) {
     case ConversationStatus.SNOOZED:
       return { snoozedUntil: options.snoozedUntil ?? null }
   }
-}
-
-function assignedFilter(
-  assigned: ConversationFilter['assigned'],
-  viewer: Viewer
-): { assignedTo?: string | null } {
-  if (assigned === undefined) return {}
-  if (assigned === ConversationAssignedFilters.UNASSIGNED) return { assignedTo: null }
-  return { assignedTo: assigned === ConversationAssignedFilters.ME ? viewer.userId : assigned }
 }

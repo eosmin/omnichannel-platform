@@ -9,7 +9,7 @@ import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
 import { PlatformException } from '@platform/core/errors'
 
 import type { AccessDenialAuditor } from './access-denial-auditor'
-import { PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
+import { ANY_PERMISSION_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
 import { PermissionGuard } from './permission.guard'
 import type { TenantContextService } from './tenant-context.service'
 import { TenantGuard } from './tenant.guard'
@@ -211,6 +211,41 @@ describe('PermissionGuard', () => {
       guard.canActivate(contextOf(member([Permissions.CUSTOMERS_VIEW]), metadata))
     )
     expect(failure.metadata).toEqual({ required: [Permissions.CUSTOMERS_EDIT] })
+  })
+
+  it('lets in who holds one of the "any" list, and names the whole list when none is held', async () => {
+    const { guard } = build()
+    const metadata = {
+      handler: {
+        [ANY_PERMISSION_KEY]: [Permissions.CUSTOMERS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL]
+      }
+    }
+
+    await expect(
+      guard.canActivate(contextOf(member([Permissions.MEDIA_DOWNLOAD_ALL]), metadata))
+    ).resolves.toBe(true)
+    const failure = await failureOf(
+      guard.canActivate(contextOf(member([Permissions.CUSTOMERS_VIEW]), metadata))
+    )
+    expect(failure.code).toBe('PERMISSION_DENIED')
+    expect(failure.metadata).toEqual({
+      required: [Permissions.CUSTOMERS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL]
+    })
+  })
+
+  it('still wants all of @RequirePermissions next to an "any" list', async () => {
+    const { guard } = build()
+    const metadata = {
+      handler: {
+        [PERMISSIONS_KEY]: [Permissions.CUSTOMERS_VIEW],
+        [ANY_PERMISSION_KEY]: [Permissions.CUSTOMERS_EXPORT]
+      }
+    }
+
+    const failure = await failureOf(
+      guard.canActivate(contextOf(member([Permissions.CUSTOMERS_EXPORT]), metadata))
+    )
+    expect(failure.metadata).toEqual({ required: [Permissions.CUSTOMERS_VIEW] })
   })
 
   it('adds the permissions of the controller to those of the handler', async () => {

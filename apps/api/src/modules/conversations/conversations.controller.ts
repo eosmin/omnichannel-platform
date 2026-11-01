@@ -29,17 +29,24 @@ import {
   changeStatusSchema,
   ConversationClosingService,
   type ConversationCounts,
+  type ConversationFilter,
+  conversationFilterSchema,
+  conversationFilterWhere,
+  type ConversationsExportFilters,
   type ConversationDetail,
   type ConversationPage,
   ConversationsService,
   type ListConversationsQuery,
   listConversationsQuerySchema,
   ReadReceipts,
+  viewPermissionsOf,
   type SnoozeBody,
   snoozeSchema,
   viewerOf
 } from '@platform/core/messaging'
+import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
+import { ExportsService, type ExportView } from '../exports'
 import {
   actorOf,
   CurrentPermissions,
@@ -71,8 +78,36 @@ export class ConversationsController {
     private readonly tags: ConversationTagsService,
     private readonly origins: ConversationOriginsService,
     private readonly readReceipts: ReadReceipts,
-    private readonly widgetRead: WidgetReadNotifier
+    private readonly widgetRead: WidgetReadNotifier,
+    private readonly exports: ExportsService
   ) {}
+
+  // Declared before `:id`, or "export" would be read as an id. The file holds what the member can see
+  // now, with the filters of the list; it is made in the background and the answer is the export to
+  // follow in the exports center.
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT)
+  @Get(ApiRoutes.conversations.export)
+  @HttpCode(HttpStatusCodes.ACCEPTED)
+  requestExport(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Query(new ZodValidationPipe(conversationFilterSchema)) filter: ConversationFilter
+  ): Promise<ExportView> {
+    // Same rule as the list: the history of what was archived is for who may archive
+    conversationFilterWhere(store.id, filter, viewerOf(user.id, held))
+    const filters: ConversationsExportFilters = {
+      filter,
+      viewer: { userId: user.id, held: viewPermissionsOf(held) }
+    }
+    return this.exports.request({
+      storeId: store.id,
+      userId: user.id,
+      type: ExportTypes.CONVERSATIONS,
+      format: ExportFormats.CSV,
+      filters
+    })
+  }
 
   // countsOnly=true answers the numbers beside the filters instead of a page
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)

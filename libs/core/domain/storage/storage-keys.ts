@@ -43,6 +43,7 @@ export const StorageKeys = {
     `stores/${storeId}/orders/${orderId}/${mediaId}/${filename}`,
   export: (storeId: string, exportId: string, filename: string) =>
     `stores/${storeId}/exports/${exportId}/${filename}`,
+  exportPrefix: (storeId: string, exportId: string) => `stores/${storeId}/exports/${exportId}/`,
   avatar: (userId: string, mediaId: string, filename: string) =>
     `users/${userId}/avatar/${mediaId}/${filename}`,
   dsrExport: (requestId: string) => `compliance/dsr/${requestId}/export.zip`,

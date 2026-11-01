@@ -16,7 +16,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
-  Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },

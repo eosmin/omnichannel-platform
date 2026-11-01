@@ -81,7 +81,7 @@ export type ExportType = (typeof ExportTypes)[keyof typeof ExportTypes]
 export const ExportFormats = { CSV: 'csv', EXCEL: 'excel', PDF: 'pdf', ZIP: 'zip' } as const
 export type ExportFormat = (typeof ExportFormats)[keyof typeof ExportFormats]
 
-// Export.status (TDD_01 §4). Exports expire after 14 days (DataRetentionPolicies.EXPORTS).
+// Export.status (TDD_01 §4). Exports expire after 7 days (DataRetentionPolicies.EXPORTS).
 export const ExportStatus = {
   PENDING: 'pending',
   READY: 'ready',

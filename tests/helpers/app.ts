@@ -33,6 +33,9 @@ export async function createTestApp(
     // A reply is queued for the worker, and no suite wants one that would send it
     .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
     .useValue(new CapturedQueue())
+    // An export is queued for the worker; the suite reads it and runs the generator itself
+    .overrideProvider(getQueueToken(QueueNames.EXPORTS))
+    .useValue(new CapturedQueue())
     // A scan is queued for the worker; the suite reads it, and nothing is left in the development queue
     .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
     .useValue(new CapturedQueue())

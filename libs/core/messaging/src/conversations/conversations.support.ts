@@ -4,7 +4,11 @@ import {
   type PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { ConversationHiddenStatuses, ConversationStatus } from '@platform/core/domain'
+import {
+  ConversationAssignedFilters,
+  ConversationHiddenStatuses,
+  ConversationStatus
+} from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -12,6 +16,8 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import type { ConversationVisibility } from '@platform/core/events'
+
+import type { ConversationFilter } from './conversations.schemas'
 
 // What the services of the module run their reads on: the transaction of the request when there is
 // one, the client otherwise
@@ -131,4 +137,40 @@ export function visibilityOf(row: {
   assignedTo: string | null
 }): ConversationVisibility {
   return { hidden: isHiddenStatus(row.status), assignedTo: row.assignedTo }
+}
+
+export function assignedFilter(
+  assigned: ConversationFilter['assigned'],
+  viewer: Viewer
+): { assignedTo?: string | null } {
+  if (assigned === undefined) return {}
+  if (assigned === ConversationAssignedFilters.UNASSIGNED) return { assignedTo: null }
+  return { assignedTo: assigned === ConversationAssignedFilters.ME ? viewer.userId : assigned }
+}
+
+// What the list and a bulk action by filter both select, so that "select all 43 matching" acts on
+// the set the agent saw: the store, the status (the open ones when none is named), the channel and
+// the tag. The visibility and the assignee are added by each caller.
+export interface ConversationFilterWhere {
+  storeId: string
+  status: string | { notIn: string[] }
+  channelType?: string
+  tags?: { some: { id: string } }
+}
+
+export function conversationFilterWhere(
+  storeId: string,
+  filter: ConversationFilter,
+  viewer: Viewer
+): ConversationFilterWhere {
+  // The history of what was archived or marked as spam is for who may archive
+  if (filter.status !== undefined && isHiddenStatus(filter.status)) {
+    requireAnyPermission(viewer.held, [Permissions.CONVERSATIONS_ARCHIVE])
+  }
+  return {
+    storeId,
+    status: filter.status ?? { notIn: [...ConversationHiddenStatuses] },
+    ...(filter.channelType === undefined ? {} : { channelType: filter.channelType }),
+    ...(filter.tagId === undefined ? {} : { tags: { some: { id: filter.tagId } } })
+  }
 }

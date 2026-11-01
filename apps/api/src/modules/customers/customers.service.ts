@@ -11,7 +11,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { escapeLike, lockCustomerForWrite } from '@platform/core/messaging'
+import { customerSearchWhere, lockCustomerForWrite } from '@platform/core/messaging'
 
 import type { Actor } from '../tenancy'
 
@@ -29,9 +29,6 @@ import {
 } from './customers.views'
 import { encodeCursor } from './list-cursor'
 
-// Digits, spaces and the punctuation a phone number is written with, and at least three digits
-const PHONE_LIKE = /^(?=(?:\D*\d){3})[\d\s+().-]+$/
-
 // The customers of the store of the request. Every query is filtered by that store (TenantGuard):
 // the same phone number in two stores is two customers.
 @Injectable()
@@ -43,26 +40,11 @@ export class CustomersService {
   ) {}
 
   async list(storeId: string, query: ListCustomersQuery): Promise<CustomerPage> {
-    const text = query.q === undefined ? null : escapeLike(query.q)
-    // "Calle 123" is a street and "7123-4567" a phone: the digits are looked for in the phones only
-    // when nothing but digits and the punctuation of a phone was typed
-    const digits =
-      query.q !== undefined && PHONE_LIKE.test(query.q) ? query.q.replace(/\D/g, '') : ''
     const { cursor } = query
     const rows = await this.prisma.client.customer.findMany({
       where: {
-        storeId,
-        mergedIntoId: null,
         AND: [
-          text === null
-            ? {}
-            : {
-                OR: [
-                  { name: { contains: text, mode: 'insensitive' } },
-                  { email: { contains: text, mode: 'insensitive' } },
-                  ...(digits === '' ? [] : [{ phoneNormalized: { contains: digits } }])
-                ]
-              },
+          customerSearchWhere(storeId, query.q),
           // After the last row of the previous page in (createdAt, id) order, wherever that row is now
           cursor === undefined
             ? {}

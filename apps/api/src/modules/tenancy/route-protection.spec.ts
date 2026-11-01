@@ -9,7 +9,7 @@ import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants'
 
 import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
 
-import { PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
+import { ANY_PERMISSION_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
 
 // Every route of the platform has to say what protects it (CLAUDE.md, rule 5): public on purpose, a
 // person's own (@SkipTenant), or a store's with @RequirePermissions. The guards refuse the rest at
@@ -70,7 +70,9 @@ function routesOf(file: string): Route[] {
             read<boolean>(SKIP_TENANT_KEY, controller) === true,
           permissions: [
             ...(read<string[]>(PERMISSIONS_KEY, controller) ?? []),
-            ...(read<string[]>(PERMISSIONS_KEY, handler) ?? [])
+            ...(read<string[]>(PERMISSIONS_KEY, handler) ?? []),
+            ...(read<string[]>(ANY_PERMISSION_KEY, controller) ?? []),
+            ...(read<string[]>(ANY_PERMISSION_KEY, handler) ?? [])
           ]
         }
       ]

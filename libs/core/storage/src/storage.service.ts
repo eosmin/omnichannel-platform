@@ -10,6 +10,7 @@ import {
   PutObjectCommand,
   type S3Client
 } from '@aws-sdk/client-s3'
+import { Upload } from '@aws-sdk/lib-storage'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common'
 
@@ -128,6 +129,21 @@ export class StorageService implements OnApplicationShutdown {
     await this.s3.send(
       new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType })
     )
+  }
+
+  // A body of unknown length, sent in parts as it is read: what is too big to hold (an export). When
+  // the stream fails the upload is aborted, so no half of the object is left behind.
+  async putStream(key: string, body: Readable, contentType: string): Promise<void> {
+    const upload = new Upload({
+      client: this.s3,
+      params: { Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }
+    })
+    try {
+      await upload.done()
+    } catch (error) {
+      await upload.abort().catch(() => undefined)
+      throw error
+    }
   }
 
   // null when there is no such object; any other failure (network, a broken request) is thrown
