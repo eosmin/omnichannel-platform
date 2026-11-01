@@ -5,13 +5,17 @@ import { type Events } from '@platform/core/events'
 
 import { isHiddenStatus } from '../conversations/conversations.support'
 
-// Tells the team that a message was edited or deleted: ids only, the text is read through the api, which
+// Tells the team that a message was edited or deleted, or that a file of it was scanned: ids only, the text is read through the api, which
 // knows who may see the conversation. A note is announced as one, so that only who may read notes hears
 // of it. The one place that builds this payload, for the api, the inbound pipeline and the worker.
 export async function publishMessageChanged(
   events: DomainEvents,
   tx: PrismaTransaction,
-  event: typeof Events.MESSAGE_EDITED | typeof Events.MESSAGE_DELETED,
+  event:
+    | typeof Events.MESSAGE_EDITED
+    | typeof Events.MESSAGE_DELETED
+    | typeof Events.MEDIA_PROCESSED
+    | typeof Events.MEDIA_INFECTED,
   storeId: string,
   messageId: string
 ): Promise<void> {

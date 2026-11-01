@@ -89,6 +89,7 @@ const message = {
   system: null,
   attachmentUrl: null,
   reactions: [],
+  media: [],
   mentions: [],
   version: 1,
   editedAt: null,

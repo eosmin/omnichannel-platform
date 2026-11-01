@@ -18,6 +18,10 @@ export const ExportContentTypes = {
   ZIP: 'application/zip'
 } as const
 
+// The entry a media ZIP carries when files of the gallery were no longer in the bucket: one name per
+// line, no prose, so it needs no language
+export const MEDIA_ZIP_MISSING_ENTRY = 'missing.txt'
+
 // The extension of the file of each format
 export const ExportFileExtensions = { CSV: 'csv', ZIP: 'zip' } as const
 

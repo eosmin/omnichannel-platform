@@ -109,6 +109,8 @@ export const ErrorCodes = {
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
   FILE_INFECTED: 'FILE_INFECTED',
   FILE_NOT_READY: 'FILE_NOT_READY',
+  // The file of a message was missing, infected or not alone when the channel was to receive it
+  FILE_UNAVAILABLE: 'FILE_UNAVAILABLE',
   FILE_UPLOAD_FAILED: 'FILE_UPLOAD_FAILED',
   FILE_KEY_OUT_OF_SCOPE: 'FILE_KEY_OUT_OF_SCOPE',
   EXPORT_NOT_READY: 'EXPORT_NOT_READY',

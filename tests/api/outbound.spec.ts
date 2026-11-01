@@ -869,7 +869,7 @@ describe('Replies on their way to a channel', () => {
       expect(sentMedia).toHaveLength(0)
       expect(await stored(reply.id)).toMatchObject({
         deliveryStatus: DeliveryStatus.FAILED,
-        deliveryError: ErrorCodes.CHANNEL_MESSAGE_FAILED
+        deliveryError: ErrorCodes.FILE_UNAVAILABLE
       })
     })
 
@@ -879,7 +879,10 @@ describe('Replies on their way to a channel', () => {
       await sender.send(job(reply), false)
 
       expect(sentMedia).toHaveLength(0)
-      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.FILE_UNAVAILABLE
+      })
     })
 
     describe('POST /messages with mediaIds', () => {
@@ -911,8 +914,15 @@ describe('Replies on their way to a channel', () => {
           idempotencyKey: randomUUID()
         }).expect(CREATED)
 
-        const created = response.body as { id: string; type: string; content: string }
+        const created = response.body as {
+          id: string
+          type: string
+          content: string
+          media: { id: string; status: string }[]
+        }
         expect(created).toMatchObject({ type: MessageType.IMAGE, content: 'caption' })
+        // The answer already carries the file it was sent with
+        expect(created.media.map(item => item.id)).toEqual([file.id])
         const linked = await owner.media.findUniqueOrThrow({
           where: { id: file.id },
           select: { messageId: true, customerId: true }

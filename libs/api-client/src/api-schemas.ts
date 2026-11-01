@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { MediaStatus } from '@platform/core/domain'
 import { PresenceStatus } from '@platform/core/realtime'
 
 // What the api answers, parsed at the edge: the browser never trusts a body it has not checked.
@@ -254,6 +255,17 @@ export const messageSchema = z.object({
   // Untrusted: drawn as a link with its host visible, never fetched
   attachmentUrl: z.string().nullable(),
   reactions: z.array(reactionSchema),
+  // Never a link: the signed one is asked from `GET /media/:id` once the file is clean
+  media: z.array(
+    z.object({
+      id: z.string(),
+      filename: z.string(),
+      contentType: z.string(),
+      fileSize: z.number(),
+      // A status of a newer server is a file still being processed, not a thread that fails to draw
+      status: z.enum(MediaStatus).catch(MediaStatus.PENDING)
+    })
+  ),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),
   version: z.number().int(),

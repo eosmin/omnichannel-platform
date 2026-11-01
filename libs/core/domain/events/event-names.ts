@@ -175,6 +175,8 @@ export const BridgedEvents = [
   Events.MESSAGE_REACTION,
   Events.MESSAGE_EDITED,
   Events.MESSAGE_DELETED,
+  Events.MEDIA_PROCESSED,
+  Events.MEDIA_INFECTED,
   Events.CHANNEL_DISCONNECTED,
   Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]

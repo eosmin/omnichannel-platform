@@ -1,11 +1,12 @@
 import { z } from 'zod'
 
-import type { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
+import type { AuthorType, DeliveryStatus, MediaStatus, MessageType } from '@platform/core/domain'
 import {
   AuthorType as AuthorTypes,
   DeliveryStatus as DeliveryStatuses,
   httpUrl,
   InboundLimits,
+  MediaStatus as MediaStatuses,
   MessageLimits,
   MessageType as MessageTypes
 } from '@platform/core/domain'
@@ -79,6 +80,16 @@ function previewOf(text: string | null): string | null {
 // link leaves, and anything else in the metadata is no link.
 const attachmentUrlSchema = z.object({ attachmentUrl: httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH) })
 
+// A file of a message, as the thread lists it: never a link or a key. The signed link is asked from
+// `GET /media/:id` when the bubble is drawn, and only once `status` is `clean`.
+export interface MessageMediaView {
+  id: string
+  filename: string
+  contentType: string
+  fileSize: number
+  status: MediaStatus
+}
+
 // What the thread shows of a message. The metadata of the channel is not part of it, except the link
 // above; a system line carries its own, which is what the thread draws it from.
 export interface MessageView {
@@ -100,6 +111,8 @@ export interface MessageView {
   // is a signed link that expires within about a day.
   attachmentUrl: string | null
   reactions: ReactionView[]
+  // The files of the message (inbound, or sent with `mediaIds`); empty for a deleted message
+  media: MessageMediaView[]
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
   version: number
@@ -155,6 +168,10 @@ export const MESSAGE_SELECT = {
     },
     orderBy: { createdAt: 'asc' }
   },
+  media: {
+    select: { id: true, filename: true, contentType: true, fileSize: true, status: true },
+    orderBy: { createdAt: 'asc' }
+  },
   createdAt: true
 } as const
 
@@ -190,6 +207,13 @@ interface MessageRow {
     deliveryStatus: string
     deliveryError: string | null
   }[]
+  media: {
+    id: string
+    filename: string
+    contentType: string
+    fileSize: number
+    status: string
+  }[]
   createdAt: Date
 }
 
@@ -221,6 +245,17 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
       deliveryStatus: enumValueOf(DeliveryStatuses, reaction.deliveryStatus, 'reaction delivery'),
       deliveryError: reaction.deliveryError
     })),
+    // The files of a deleted message are content too
+    media:
+      row.deletedAt === null
+        ? row.media.map(file => ({
+            id: file.id,
+            filename: file.filename,
+            contentType: file.contentType,
+            fileSize: file.fileSize,
+            status: enumValueOf(MediaStatuses, file.status, 'media status')
+          }))
+        : [],
     version: row.version,
     editedAt: row.editedAt,
     editedByType: authorOrNull(row.editedByType, 'message editor'),

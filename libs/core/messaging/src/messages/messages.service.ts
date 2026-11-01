@@ -176,7 +176,16 @@ export class MessagesService {
         },
         select: { ...MESSAGE_SELECT }
       })
-      if (files !== null) await this.linkFiles(tx, storeId, row.id, files)
+      // The row above was read before the files were linked: read them again for the answer
+      let media = row.media
+      if (files !== null) {
+        await this.linkFiles(tx, storeId, row.id, files)
+        media = await tx.media.findMany({
+          where: { messageId: row.id, storeId },
+          select: MESSAGE_SELECT.media.select,
+          orderBy: MESSAGE_SELECT.media.orderBy
+        })
+      }
       if (!isNote) {
         await this.conversations.recordReply(tx, storeId, body.conversationId, now)
         if (ConversationReopenedByReply.some(status => status === from)) {
@@ -198,7 +207,7 @@ export class MessagesService {
       }
       this.announce(tx, storeId, viewer, row.id, now, body, mentions, visibility)
       if (!isNote) this.queueForChannel(tx, storeId, row.id)
-      return { message: messageView(row), created: true }
+      return { message: messageView({ ...row, media }), created: true }
     })
   }
 

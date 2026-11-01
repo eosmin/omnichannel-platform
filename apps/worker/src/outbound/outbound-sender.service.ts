@@ -150,7 +150,7 @@ export class OutboundSender {
     // Outside the try below: a database error here is ours, not the provider's
     const file = isMedia ? await this.fileOf(storeId, messageId) : null
     if (isMedia && file === null) {
-      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_MESSAGE_FAILED)
+      await this.fail(storeId, messageId, ErrorCodes.FILE_UNAVAILABLE)
       return
     }
     const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
@@ -352,6 +352,10 @@ export class OutboundSender {
     })
     const [file] = files
     if (files.length !== 1 || file === undefined || file.status !== String(MediaStatus.CLEAN)) {
+      this.logger.warn(
+        { storeId, messageId, files: files.map(item => item.status) },
+        'the file of a media message is missing, not clean or not alone'
+      )
       return null
     }
     const url = await this.storage.downloadUrl({
