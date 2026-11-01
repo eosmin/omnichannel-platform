@@ -14,6 +14,8 @@ import {
   RoutingActionTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { StorageKeys } from '@platform/core/storage'
+import { StorageService } from '@platform/core/storage-module'
 
 import {
   createCustomer,
@@ -467,6 +469,105 @@ describe('Tenant isolation', () => {
         await isolationChecks[check](scene, resource)
       })
     }
+  })
+
+  // Media has no read or change route yet (GET /media/:id arrives with the signed download of this
+  // step, and joins the list of resources above then), so the upload routes are proven here: the store
+  // of a signed URL and of a confirmation is the one of the header, and a key of another store is
+  // never accepted. The exemption of the model in scripts/isolation-exemptions.ts stays until then.
+  describe('media upload', () => {
+    const uploadBody = {
+      purpose: 'message',
+      filename: 'photo.png',
+      contentType: 'image/png',
+      fileSizeBytes: 68
+    }
+
+    it('signs a key inside the store of the header, never one the body names', async () => {
+      const own = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.uploadUrl)
+        .send(uploadBody)
+      expect(own.status).toBe(200)
+      expect((own.body as { key: string }).key).toMatch(
+        new RegExp(`^${StorageKeys.storePrefix(ctx.storeA.id)}uploads/`)
+      )
+      const named = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.uploadUrl)
+        .send({ ...uploadBody, storeId: ctx.storeB.id })
+      expect(named.status).toBe(400)
+      expect((named.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.VALIDATION_FAILED
+      )
+    })
+
+    it('is refused in a store the user does not belong to, on both routes', async () => {
+      for (const path of [ApiRoutes.media.uploadUrl, ApiRoutes.media.confirmUpload]) {
+        const response = await api(app, ctx.adminA, ctx.storeB).post(path).send(uploadBody)
+        expect(response.status).toBe(403)
+        expect((response.body as { error: { code: string } }).error.code).toBe(
+          ErrorCodes.TENANT_ACCESS_DENIED
+        )
+      }
+    })
+
+    it('does not confirm the object of another store, and writes no row in either', async () => {
+      const mediaId = randomUUID()
+      const foreignKey = StorageKeys.messageUpload(ctx.storeB.id, mediaId, 'photo.png')
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.confirmUpload)
+        .send({ ...uploadBody, mediaId, key: foreignKey })
+      expect(response.status).toBe(403)
+      expect((response.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.FILE_KEY_OUT_OF_SCOPE
+      )
+      expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
+    })
+
+    it('does not let the id of a media of another store be taken over from this one', async () => {
+      const row = await owner.media.create({
+        data: {
+          storeId: ctx.storeB.id,
+          purpose: 'message',
+          key: StorageKeys.message(ctx.storeB.id, randomUUID(), 'photo.png'),
+          filename: 'photo.png',
+          contentType: 'image/png',
+          fileSize: 68
+        }
+      })
+      // The object is really there at the key store A would use for that id: the only thing left to
+      // refuse the confirmation is that the id belongs to a row of store B
+      const storage = app.get(StorageService, { strict: false })
+      const stagingKey = StorageKeys.messageUpload(ctx.storeA.id, row.id, 'photo.png')
+      const url = await storage.uploadUrl({
+        key: stagingKey,
+        contentType: 'image/png',
+        contentLength: 68
+      })
+      const put = await fetch(url, {
+        method: 'PUT',
+        headers: { 'content-type': 'image/png', 'content-length': '68' },
+        body: new Uint8Array(68)
+      })
+      expect(put.status).toBe(200)
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.confirmUpload)
+        .send({ ...uploadBody, mediaId: row.id, key: stagingKey })
+
+      expect(response.status).toBe(400)
+      expect((response.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.FILE_UPLOAD_FAILED
+      )
+      // The row of store B is as it was, and store A got none
+      expect(
+        await owner.media.findUniqueOrThrow({
+          where: { id: row.id },
+          select: { storeId: true, key: true, uploadedBy: true, status: true }
+        })
+      ).toEqual({ storeId: ctx.storeB.id, key: row.key, uploadedBy: null, status: 'pending' })
+      expect(await owner.media.count({ where: { id: row.id, storeId: ctx.storeA.id } })).toBe(0)
+      await storage.delete(stagingKey)
+    })
   })
 
   // TDD_13 section 6: the widget is public, so the key it carries is all that says which store it is

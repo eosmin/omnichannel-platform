@@ -9,6 +9,7 @@ import { ChannelsModule } from './modules/channels/channels.module'
 import { ConversationsModule } from './modules/conversations/conversations.module'
 import { CustomersModule } from './modules/customers/customers.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
+import { MediaModule } from './modules/media/media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
@@ -35,6 +36,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     CustomersModule,
     ConversationsModule,
     MessagesModule,
+    MediaModule,
     ChannelRegistryModule,
     ChannelsModule,
     PluginsApiModule,

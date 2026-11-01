@@ -16,6 +16,7 @@ import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import { LoggerModule } from '@platform/core/logger'
 import { MetricsModule } from '@platform/core/metrics-module'
 import { REDIS_CLIENT } from '@platform/core/redis'
+import { StorageService } from '@platform/core/storage-module'
 
 import { configureHttpApp } from './configure-http-app'
 import { HealthModule } from './health/health.module'
@@ -85,6 +86,16 @@ const redis = { ping: jest.fn<Promise<string>, []>() }
 })
 class FakeRedisModule {}
 
+// The bucket the readiness probe asks
+const bucket = { check: jest.fn<Promise<void>, []>() }
+
+@Global()
+@Module({
+  providers: [{ provide: StorageService, useValue: { checkBucket: () => bucket.check() } }],
+  exports: [StorageService]
+})
+class FakeStorageModule {}
+
 interface ErrorBody {
   error: { code: string; message: string; metadata: Record<string, unknown> }
   correlationId: string
@@ -101,6 +112,7 @@ describe('the HTTP platform', () => {
         MetricsModule,
         FakeDatabaseModule,
         FakeRedisModule,
+        FakeStorageModule,
         HttpErrorsModule,
         HealthModule
       ],
@@ -117,6 +129,7 @@ describe('the HTTP platform', () => {
   beforeEach(() => {
     database.queryRaw.mockReset().mockResolvedValue([{ '?column?': 1 }])
     redis.ping.mockReset().mockResolvedValue('PONG')
+    bucket.check.mockReset().mockResolvedValue(undefined)
     jest.mocked(Sentry.captureException).mockClear()
   })
 
@@ -147,7 +160,9 @@ describe('the HTTP platform', () => {
       const response = await fetch(`${baseUrl}/health/ready`)
       const text = await response.text()
       const body = JSON.parse(text) as ErrorBody
-      expect(body.error.metadata).toEqual({ checks: { database: 'down', redis: 'up' } })
+      expect(body.error.metadata).toEqual({
+        checks: { database: 'down', redis: 'up', storage: 'up' }
+      })
       expect(body.correlationId).toMatch(/^[0-9a-f-]{36}$/)
       expect(text).not.toContain('10.0.0.7')
     })
@@ -161,11 +176,35 @@ describe('the HTTP platform', () => {
       const text = await response.text()
       expect(response.status).toBe(503)
       expect((JSON.parse(text) as ErrorBody).error.metadata).toEqual({
-        checks: { database: 'up', redis: 'down' }
+        checks: { database: 'up', redis: 'down', storage: 'up' }
       })
       expect(text).not.toContain('10.0.0.9')
       expect((await fetch(`${baseUrl}/health`)).status).toBe(200)
     })
+
+    it('reports storage in readiness, and refuses when the bucket cannot be reached', async () => {
+      expect(await (await fetch(`${baseUrl}/health/ready`)).json()).toMatchObject({
+        info: { storage: { status: 'up' } }
+      })
+      bucket.check.mockRejectedValue(new Error('getaddrinfo ENOTFOUND s3.internal.example'))
+      const response = await fetch(`${baseUrl}/health/ready`)
+      const text = await response.text()
+      expect(response.status).toBe(503)
+      expect((JSON.parse(text) as ErrorBody).error.metadata).toEqual({
+        checks: { database: 'up', redis: 'up', storage: 'down' }
+      })
+      expect(text).not.toContain('s3.internal.example')
+      expect((await fetch(`${baseUrl}/health`)).status).toBe(200)
+    })
+
+    it('refuses readiness when the bucket does not answer in time', async () => {
+      bucket.check.mockReturnValue(new Promise(() => undefined))
+      const response = await fetch(`${baseUrl}/health/ready`)
+      expect(response.status).toBe(503)
+      expect(((await response.json()) as ErrorBody).error.metadata).toEqual({
+        checks: { database: 'up', redis: 'up', storage: 'down' }
+      })
+    }, 10_000)
 
     it('refuses readiness when the database does not answer in time', async () => {
       database.queryRaw.mockReturnValue(new Promise(() => undefined))

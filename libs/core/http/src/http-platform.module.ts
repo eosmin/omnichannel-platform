@@ -11,6 +11,7 @@ import { RedisModule } from '@platform/core/redis'
 import { AuthPlatformModule } from './auth-platform.module'
 import { HealthModule } from './health/health.module'
 import { HttpErrorsModule } from './http-errors.module'
+import { StoragePlatformModule } from './storage-platform.module'
 import { ThrottlerPlatformModule } from './throttler'
 import { TrustProxyModule } from './trust-proxy.module'
 
@@ -21,7 +22,7 @@ const BRIDGE_MODES = {
 } as const
 
 // What every HTTP service of the platform (api and worker) is made of, configured from the validated
-// env: logging, metrics, the database, the event bus, Redis, the rate limit, the access tokens, the
+// env: logging, metrics, the database, the event bus, Redis, object storage, the rate limit, the access tokens, the
 // error contract and the health routes. The apps never read the env themselves.
 @Module({
   imports: [
@@ -31,6 +32,7 @@ const BRIDGE_MODES = {
     // The worker has no sockets: what it announces goes to the api instances through Redis
     EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
     RedisModule.forRoot({ url: env.REDIS_URL }),
+    StoragePlatformModule,
     ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
     AuthPlatformModule,
     TrustProxyModule,

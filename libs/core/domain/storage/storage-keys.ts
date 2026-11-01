@@ -5,6 +5,11 @@ export type ImageVariant = (typeof ImageVariants)[keyof typeof ImageVariants]
 export const StorageKeys = {
   message: (storeId: string, mediaId: string, filename: string) =>
     `stores/${storeId}/messages/${mediaId}/${filename}`,
+  // Where a client PUTs a file for a message. Confirming copies it to `message(...)`: the signed URL
+  // stays valid for its TTL after the confirmation, so the object a client can still overwrite is
+  // never the one that is scanned and served.
+  messageUpload: (storeId: string, mediaId: string, filename: string) =>
+    `stores/${storeId}/uploads/${mediaId}/${filename}`,
   messageVariant: (storeId: string, mediaId: string, variant: ImageVariant) =>
     `stores/${storeId}/messages/${mediaId}/variants/${variant}.webp`,
   product: (storeId: string, productId: string, mediaId: string, filename: string) =>
