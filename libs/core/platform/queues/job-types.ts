@@ -125,6 +125,8 @@ export interface ProcessImageJob extends BaseJob {
 }
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
+  // Place of the file in the message: with the message it names the media, so a retry is one file
+  index: number
   storeId: string
   pluginId: ChannelId
   connectionId: string

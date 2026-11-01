@@ -1,7 +1,9 @@
 import { InjectQueue } from '@nestjs/bullmq'
-import { Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import type { Queue } from 'bullmq'
+import type { Redis } from 'ioredis'
 
+import { CacheKeys } from '@platform/core/cache'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import {
@@ -11,6 +13,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   type ClientUploadPurpose,
   type ConfirmUploadBody,
@@ -25,6 +28,7 @@ import {
   sanitizeFilename,
   StorageKeys,
   type UploadUrlResult,
+  UploadLimits,
   UploadRefusals,
   VARIANT_CONTENT_TYPE
 } from '@platform/core/storage'
@@ -49,7 +53,8 @@ const MEDIA_SELECT = {
   status: true,
   createdAt: true,
   key: true,
-  variants: true
+  variants: true,
+  uploadedBy: true
 } as const
 
 type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
@@ -57,6 +62,7 @@ type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   status: string
   key: string
   variants: unknown
+  uploadedBy: string | null
 }
 
 // The one answer for an upload that cannot be trusted: the object is missing, is not what was
@@ -88,6 +94,13 @@ function refuseTypeOrSize(contentType: string, fileSizeBytes: number): void {
     )
   }
 }
+
+const QUOTA_TTL_SECONDS = 2 * 3600
+const COUNT_SCRIPT = `
+  local used = redis.call('INCR', KEYS[1])
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+  return used
+`
 
 interface UploadKeys {
   // Where the client PUTs
@@ -129,11 +142,17 @@ export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ScanFileJob>
   ) {}
 
-  async requestUploadUrl(storeId: string, body: RequestUploadUrlBody): Promise<UploadUrlResult> {
+  async requestUploadUrl(
+    storeId: string,
+    userId: string,
+    body: RequestUploadUrlBody
+  ): Promise<UploadUrlResult> {
     refuseTypeOrSize(body.contentType, body.fileSizeBytes)
+    await this.takeQuota(storeId, userId)
 
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key, so a client
     // cannot confirm a key it was not given
@@ -144,7 +163,42 @@ export class MediaService {
       contentType: body.contentType,
       contentLength: body.fileSizeBytes
     })
+    // Who asked: only that user may confirm it (the ids travel through the browser)
+    await this.redis.set(
+      CacheKeys.upload.requester(storeId, mediaId),
+      userId,
+      'EX',
+      UploadLimits.PENDING_UPLOAD_TTL_SECONDS
+    )
     return { uploadUrl, key, mediaId }
+  }
+
+  // A signed url writes nothing until it is used, so what is counted is the asking, by the hour. The
+  // member's counter is taken first and the store's only for a request the member's let through: a
+  // member who keeps asking after the refusal cannot use up the quota of the whole store. Each counter
+  // is one script (count and expiry together), so a crash cannot leave one that never expires.
+  private async takeQuota(storeId: string, userId: string): Promise<void> {
+    const bucket = Math.floor(Date.now() / 3_600_000)
+    const counters = [
+      {
+        key: CacheKeys.upload.userQuota(storeId, userId, bucket),
+        limit: UploadLimits.SIGNED_URLS_PER_USER_PER_HOUR
+      },
+      {
+        key: CacheKeys.upload.storeQuota(storeId, bucket),
+        limit: UploadLimits.SIGNED_URLS_PER_STORE_PER_HOUR
+      }
+    ]
+    for (const counter of counters) {
+      const used = Number(await this.redis.eval(COUNT_SCRIPT, 1, counter.key, QUOTA_TTL_SECONDS))
+      if (used > counter.limit) {
+        throw new PlatformException(
+          ErrorCodes.RATE_LIMIT_EXCEEDED,
+          'Too many upload urls requested',
+          HttpStatusCodes.TOO_MANY_REQUESTS
+        )
+      }
+    }
   }
 
   async confirmUpload(
@@ -171,7 +225,11 @@ export class MediaService {
     // queued again (under the same job id, so never twice): the first attempt may have died between
     // writing the row and queueing it.
     const existing = await this.find(storeId, body.mediaId)
-    if (existing !== null) return this.again(existing, keys)
+    if (existing !== null) return this.again(existing, keys, userId)
+
+    // Only who asked for the signed url confirms it. Same answer as any other bad upload.
+    const requester = await this.redis.get(CacheKeys.upload.requester(storeId, body.mediaId))
+    if (requester !== userId) throw uploadVerificationFailed()
 
     const stored = await this.storage.head(keys.upload)
     if (
@@ -208,11 +266,12 @@ export class MediaService {
       // Two confirmations at once: the other one won
       const winner = await this.find(storeId, body.mediaId)
       if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, keys)
+      return this.again(winner, keys, userId)
     }
 
     await this.queueScan(media.id)
     await this.dropStaging(keys.upload)
+    await this.redis.del(CacheKeys.upload.requester(storeId, body.mediaId))
     return view(media)
   }
 
@@ -273,8 +332,8 @@ export class MediaService {
     }
   }
 
-  private async again(media: MediaRow, keys: UploadKeys): Promise<MediaView> {
-    if (media.key !== keys.final) throw uploadVerificationFailed()
+  private async again(media: MediaRow, keys: UploadKeys, userId: string): Promise<MediaView> {
+    if (media.key !== keys.final || media.uploadedBy !== userId) throw uploadVerificationFailed()
     if (media.status === String(MediaStatus.PENDING)) {
       await this.queueScan(media.id)
       await this.dropStaging(keys.upload)
@@ -284,7 +343,7 @@ export class MediaService {
 
   // The uploader's copy is of no use once the file is at its final key, and its signed URL is still
   // writable until it expires. A failure here leaves a stray object, not a wrong media: it is logged,
-  // and the cleanup of staging objects (Step 3.4, PR B) removes it.
+  // and the orphan cleanup of the worker removes it.
   private async dropStaging(key: string): Promise<void> {
     try {
       await this.storage.delete(key)

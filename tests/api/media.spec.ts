@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import type { Redis } from 'ioredis'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
+import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { JobNames, QueueNames } from '@platform/core/queues'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import { StorageKeys, UploadLimits } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -40,6 +43,7 @@ const BAD_REQUEST = 400
 const INTERNAL_SERVER_ERROR = 500
 const UNAUTHORIZED = 401
 const FORBIDDEN = 403
+const TOO_MANY_REQUESTS = 429
 
 // 1x1 transparent PNG
 const PNG = Buffer.from(
@@ -169,6 +173,40 @@ describe('Media upload', () => {
       const response = await put(upload.uploadUrl, bigger)
       // The signature covers the length: S3 answers 403 SignatureDoesNotMatch, not a transport error
       expect(response.status).toBe(FORBIDDEN)
+    })
+
+    it('limits how many signed urls a member may ask for in an hour', async () => {
+      const prolific = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'prolificA',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.MEDIA_UPLOAD]
+      })
+      const ask = () =>
+        api(app, prolific, ctx.storeA).post(ApiRoutes.media.uploadUrl).send({
+          purpose: 'message',
+          filename: 'photo.png',
+          contentType: 'image/png',
+          fileSizeBytes: PNG.length
+        })
+      for (let used = 0; used < UploadLimits.SIGNED_URLS_PER_USER_PER_HOUR; used++) {
+        expect((await ask()).status).toBe(OK)
+      }
+      const redis = app.get<Redis>(REDIS_CLIENT)
+      const storeKey = CacheKeys.upload.storeQuota(
+        ctx.storeA.id,
+        Math.floor(Date.now() / 3_600_000)
+      )
+      const storeBefore = Number(await redis.get(storeKey))
+      const refused = await ask()
+      expect(refused.status).toBe(TOO_MANY_REQUESTS)
+      await ask()
+      // The refusals of one member do not use up the quota of the store
+      expect(Number(await redis.get(storeKey))).toBe(storeBefore)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      // Another member of the same store is not held back by it
+      expect((await requestUpload()).status).toBe(OK)
     })
 
     it('needs MEDIA_UPLOAD: a viewer, who may only view, is refused', async () => {
@@ -397,6 +435,47 @@ describe('Media upload', () => {
           .get(StorageService, { strict: false })
           .head(StorageKeys.message(ctx.storeA.id, upload.mediaId, 'photo.png'))
       ).not.toBeNull()
+    })
+
+    it('lets only the member who asked for the signed url confirm it', async () => {
+      const upload = await uploadFile()
+      const colleague = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'colleagueA',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.MEDIA_UPLOAD]
+      })
+      const stolen = await api(app, colleague, ctx.storeA)
+        .post(ApiRoutes.media.confirmUpload)
+        .send(confirmBody(upload))
+      expect(stolen.status).toBe(BAD_REQUEST)
+      expect(codeOf(stolen.body)).toBe(ErrorCodes.FILE_UPLOAD_FAILED)
+      expect(await owner.media.count({ where: { id: upload.mediaId } })).toBe(0)
+
+      // The one who asked still can, and then nobody else gets the row by repeating it
+      const mine = await asAgent().post(ApiRoutes.media.confirmUpload).send(confirmBody(upload))
+      expect(mine.status).toBe(OK)
+      const again = await api(app, colleague, ctx.storeA)
+        .post(ApiRoutes.media.confirmUpload)
+        .send(confirmBody(upload))
+      expect(again.status).toBe(BAD_REQUEST)
+      expect(codeOf(again.body)).toBe(ErrorCodes.FILE_UPLOAD_FAILED)
+    })
+
+    it('refuses a media id nobody asked a signed url for', async () => {
+      const upload = await uploadFile()
+      const foreignId = randomUUID()
+      const key = StorageKeys.messageUpload(ctx.storeA.id, foreignId, 'photo.png')
+      const storage = app.get(StorageService, { strict: false })
+      await storage.put(key, PNG, 'image/png')
+      mediaIds.add(foreignId)
+      const response = await asAgent()
+        .post(ApiRoutes.media.confirmUpload)
+        .send(confirmBody(upload, { mediaId: foreignId, key }))
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.FILE_UPLOAD_FAILED)
+      expect(await owner.media.count({ where: { id: foreignId } })).toBe(0)
     })
 
     it('needs MEDIA_UPLOAD', async () => {

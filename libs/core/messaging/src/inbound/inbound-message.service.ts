@@ -292,6 +292,7 @@ export class InboundMessageService {
         name: JobNames.FETCH_INBOUND_MEDIA,
         data: {
           messageId,
+          index,
           storeId,
           pluginId,
           connectionId: event.connectionId,

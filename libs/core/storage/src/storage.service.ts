@@ -6,6 +6,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   type S3Client
 } from '@aws-sdk/client-s3'
@@ -38,6 +39,11 @@ export interface StoredObject {
   contentType: string | undefined
   // Identifies the exact bytes: what was checked can be pinned (copy) or compared later
   etag: string | undefined
+}
+
+export interface StoredObjectPage {
+  objects: { key: string; lastModified: Date }[]
+  next: string | undefined
 }
 
 // What S3 answers for an object that is not there: 404. A 403 is NOT "missing": it is a credential or
@@ -157,6 +163,25 @@ export class StorageService implements OnApplicationShutdown {
     } catch (error) {
       if (statusOf(error) === HttpStatusCodes.PRECONDITION_FAILED) return false
       throw error
+    }
+  }
+
+  // One page of the objects under a prefix, in key order; `next` is the token for the following page
+  async list(prefix: string, token?: string): Promise<StoredObjectPage> {
+    const page = await this.s3.send(
+      new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: prefix,
+        ContinuationToken: token
+      })
+    )
+    return {
+      objects: (page.Contents ?? []).flatMap(item =>
+        item.Key === undefined || item.LastModified === undefined
+          ? []
+          : [{ key: item.Key, lastModified: item.LastModified }]
+      ),
+      next: page.IsTruncated === true ? page.NextContinuationToken : undefined
     }
   }
 

@@ -30,9 +30,10 @@ export class MediaController {
   @HttpCode(HttpStatusCodes.OK)
   uploadUrl(
     @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(requestUploadUrlSchema)) body: RequestUploadUrlBody
   ): Promise<UploadUrlResult> {
-    return this.media.requestUploadUrl(store.id, body)
+    return this.media.requestUploadUrl(store.id, user.id, body)
   }
 
   @RequirePermissions(Permissions.MEDIA_UPLOAD)
