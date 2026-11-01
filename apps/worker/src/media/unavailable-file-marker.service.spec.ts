@@ -23,7 +23,10 @@ function setup(metadata: unknown, found = true) {
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     }
   }
-  const prisma = { transaction: jest.fn((work: (t: typeof tx) => Promise<void>) => work(tx)) }
+  const prisma = {
+    transaction: jest.fn((work: (t: typeof tx) => Promise<void>) => work(tx)),
+    client: { message: { findFirst: jest.fn().mockResolvedValue(found ? { metadata } : null) } }
+  }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
   const marker = new UnavailableFileMarker(prisma as never, {} as never, logger as never)
   return { marker, tx, prisma, logger }
@@ -115,6 +118,80 @@ describe('UnavailableFileMarker', () => {
           ]
         }
       }
+    })
+  })
+  describe('clear', () => {
+    it('drops the entry of the place and keeps the rest of the metadata and the other places', async () => {
+      const { marker, tx } = setup({
+        attachmentUrl: 'https://example.com/a',
+        unavailableFiles: [
+          { index: 0, code: 'refused' },
+          { index: 1, code: 'fetch_failed' }
+        ]
+      })
+
+      await marker.clear(STORE, MESSAGE, 1)
+
+      expect(lockMessageRow).toHaveBeenCalledWith(tx, MESSAGE)
+      expect(tx.message.updateMany).toHaveBeenCalledWith({
+        where: { id: MESSAGE, storeId: STORE },
+        data: {
+          metadata: {
+            attachmentUrl: 'https://example.com/a',
+            unavailableFiles: [{ index: 0, code: 'refused' }]
+          }
+        }
+      })
+      expect(publishMessageChanged).toHaveBeenCalledWith(
+        expect.anything(),
+        tx,
+        'media.unavailable',
+        STORE,
+        MESSAGE
+      )
+    })
+
+    it('removes the key when it was the last entry', async () => {
+      const { marker, tx } = setup({
+        attachmentUrl: 'x',
+        unavailableFiles: [{ index: 0, code: 'refused' }]
+      })
+
+      await marker.clear(STORE, MESSAGE, 0)
+
+      expect((tx.message.updateMany.mock.calls[0] as [object] | undefined)?.[0]).toMatchObject({
+        data: { metadata: { attachmentUrl: 'x' } }
+      })
+      expect(JSON.stringify(tx.message.updateMany.mock.calls)).not.toContain('unavailableFiles')
+    })
+
+    it('writes and announces nothing, and takes no lock, when the place was not listed', async () => {
+      const { marker, tx, prisma } = setup({ unavailableFiles: [{ index: 3, code: 'refused' }] })
+
+      await marker.clear(STORE, MESSAGE, 0)
+
+      expect(prisma.transaction).not.toHaveBeenCalled()
+      expect(tx.message.updateMany).not.toHaveBeenCalled()
+      expect(publishMessageChanged).not.toHaveBeenCalled()
+    })
+
+    it('leaves metadata it cannot read alone', async () => {
+      const { marker, tx } = setup('not an object')
+
+      await marker.clear(STORE, MESSAGE, 0)
+
+      expect(tx.message.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('never throws: a failure is logged without its text', async () => {
+      const { marker, prisma, logger } = setup({
+        unavailableFiles: [{ index: 0, code: 'refused' }]
+      })
+      prisma.transaction.mockRejectedValue(new Error('secret'))
+
+      await expect(marker.clear(STORE, MESSAGE, 0)).resolves.toBeUndefined()
+
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret')
     })
   })
 })

@@ -3,9 +3,13 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { type BrowserContext, type Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
+import { ChannelType } from '@platform/core/domain'
+import { GalleryTypes } from '@platform/core/storage'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import {
+  addCustomerFileTo,
+  mediaZipsOf,
   mergedIntoOf,
   newCustomerIn,
   newTagIn,
@@ -193,5 +197,70 @@ test.describe('customer merge and identities', () => {
       noteCount: 1,
       cities: [city]
     })
+  })
+
+  test('opens the files of a customer, filters them, walks the lightbox and queues the ZIP', async () => {
+    const name = uniqueName('Gallery')
+    const handle = uniqueHandle()
+    const customerId = await newCustomerIn(storeId, {
+      name,
+      channelType: ChannelType.WHATSAPP,
+      handle: handle.digits
+    })
+    const at = (minutes: number): Date => new Date(Date.now() - minutes * 60_000)
+    await addCustomerFileTo(storeId, customerId, {
+      filename: 'shoe.png',
+      contentType: 'image/png',
+      createdAt: at(30)
+    })
+    await addCustomerFileTo(storeId, customerId, {
+      filename: 'size.png',
+      contentType: 'image/png',
+      createdAt: at(20)
+    })
+    await addCustomerFileTo(storeId, customerId, {
+      filename: 'receipt.pdf',
+      contentType: 'application/pdf',
+      createdAt: at(10)
+    })
+
+    await openProfile(page, storeId, name)
+    const profile = page.getByRole('dialog', { name: en.customers.profile.title })
+    await profile.getByRole('button', { name: en.customers.profile.media }).click()
+    const gallery = page.getByRole('dialog', { name: en.customers.gallery.title })
+
+    // The tabs carry their counts
+    await expect(
+      gallery.getByRole('tab', { name: `${en.customers.gallery.tabs.all} 3` })
+    ).toBeVisible()
+    await expect(
+      gallery.getByRole('tab', { name: `${en.customers.gallery.tabs.image} 2` })
+    ).toBeVisible()
+
+    // A search narrows the grid by file name
+    await gallery.getByLabel(en.customers.gallery.search).fill('receipt')
+    await expect(gallery.getByText('receipt.pdf')).toBeVisible()
+    await expect(gallery.getByText('shoe.png')).toBeHidden()
+    await gallery.getByLabel(en.customers.gallery.search).fill('')
+
+    // The arrows walk the images in the lightbox
+    await gallery
+      .getByRole('tab', { name: new RegExp(`^${en.customers.gallery.tabs.image}`) })
+      .click()
+    await gallery
+      .getByRole('button', { name: en.customers.gallery.open.replace('{name}', 'size.png') })
+      .click()
+    const lightbox = page.getByRole('dialog', { name: 'size.png' })
+    await expect(lightbox).toBeVisible()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('dialog', { name: 'shoe.png' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: 'shoe.png' })).toBeHidden()
+
+    // "Download all" queues a ZIP of the tab that is open
+    await gallery.getByRole('button', { name: en.customers.gallery.downloadAll }).click()
+    await expect(page.getByText(en.customers.gallery.zipQueued)).toBeVisible()
+    const zips = await mediaZipsOf(storeId)
+    expect(zips[0]?.filters).toMatchObject({ customerId, type: GalleryTypes.IMAGE })
   })
 })

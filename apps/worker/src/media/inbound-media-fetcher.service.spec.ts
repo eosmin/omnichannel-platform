@@ -60,7 +60,10 @@ function setup(options: {
   const contexts = { contextFor: jest.fn().mockReturnValue({}) }
   const queue = { add: jest.fn().mockResolvedValue(undefined) }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
-  const marker = { mark: jest.fn().mockResolvedValue(undefined) }
+  const marker = {
+    mark: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined)
+  }
   const fetcher = new InboundMediaFetcher(
     prisma as never,
     storage as never,
@@ -84,10 +87,11 @@ describe('InboundMediaFetcher', () => {
 
   it('stores the file under a clean name, records it pending and queues the scan', async () => {
     const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(Buffer.from('jpegbytes'))) }
-    const { fetcher, media, storage, queue } = setup({ plugin })
+    const { fetcher, media, storage, queue, marker } = setup({ plugin })
 
     await fetcher.fetch(job, false)
 
+    expect(marker.clear).toHaveBeenCalledWith(STORE, MESSAGE, 1)
     const key = `stores/${STORE}/messages/${mediaId}/__.._etc_pas_swd.jpg`
     expect(storage.put).toHaveBeenCalledWith(key, Buffer.from('jpegbytes'), 'image/jpeg')
     expect(media.create).toHaveBeenCalledWith({
@@ -121,6 +125,13 @@ describe('InboundMediaFetcher', () => {
     expect(plugin.fetchMedia).not.toHaveBeenCalled()
     expect(storage.put).not.toHaveBeenCalled()
     expect(queue.add).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears the lost entry of the place once the file is stored, also on a re-run', async () => {
+    const plugin = { fetchMedia: jest.fn() }
+    const rerun = setup({ existing: { status: 'clean' }, plugin })
+    await rerun.fetcher.fetch(job, false)
+    expect(rerun.marker.clear).toHaveBeenCalledWith(STORE, MESSAGE, 1)
   })
 
   it('does nothing for a media that is past pending', async () => {

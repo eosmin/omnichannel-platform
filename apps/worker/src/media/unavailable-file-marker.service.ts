@@ -67,4 +67,52 @@ export class UnavailableFileMarker {
       )
     }
   }
+
+  // The opposite of `mark`: the file of that place is stored now (a dead job re-run by hand), so the
+  // thread must stop saying it was lost. Never throws, for the same reason as `mark`.
+  async clear(storeId: string, messageId: string, index: number): Promise<void> {
+    try {
+      // Most files were never listed: look without the lock first, and lock only to change something
+      const peek = await this.prisma.client.message.findFirst({
+        where: { id: messageId, storeId },
+        select: { metadata: true }
+      })
+      const listed = storedListSchema.safeParse(peek?.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+      if (!listed.some(file => file.index === index)) return
+      await this.prisma.transaction(async tx => {
+        await lockMessageRow(tx, messageId)
+        const message = await tx.message.findFirst({
+          where: { id: messageId, storeId },
+          select: { metadata: true }
+        })
+        if (message === null) return
+        const current =
+          storedListSchema.safeParse(message.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+        const remaining = current.filter(file => file.index !== index)
+        // Nothing was listed for this place: the common case, no write and no event
+        if (remaining.length === current.length) return
+        // Metadata that does not parse is left alone: writing it back would drop what the parse lost
+        const parsed = keptMetadataSchema.safeParse(message.metadata)
+        if (!parsed.success) return
+        const kept = parsed.data
+        const others = Object.fromEntries(
+          Object.entries(kept).filter(([key]) => key !== UNAVAILABLE_FILES_KEY)
+        )
+        await tx.message.updateMany({
+          where: { id: messageId, storeId },
+          data: {
+            metadata:
+              remaining.length === 0 ? others : { ...others, [UNAVAILABLE_FILES_KEY]: remaining }
+          }
+        })
+        // The thread reads the message again on this event and draws what the row holds now
+        await publishMessageChanged(this.events, tx, Events.MEDIA_UNAVAILABLE, storeId, messageId)
+      })
+    } catch (error) {
+      this.logger.warn(
+        { messageId, index, errorName: errorName(error) },
+        'a stored file was not cleared from the lost list'
+      )
+    }
+  }
 }
