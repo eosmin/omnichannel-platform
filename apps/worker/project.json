@@ -20,6 +20,7 @@
     "test-integration": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["^prisma-generate"],
       "options": {
         "command": "jest --config jest.integration.config.cts --runInBand",
         "cwd": "{projectRoot}",
