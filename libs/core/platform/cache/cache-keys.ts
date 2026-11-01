@@ -51,6 +51,18 @@ export const CacheKeys = {
     requester: (storeId: string, mediaId: string) => `store:${storeId}:upload:${mediaId}:requester`
   },
 
+  // Uploads of a web widget visitor: what the api recorded when it signed the url (the visitor, the
+  // file and its declared type and size), and the signed urls asked for in the current hour
+  widgetUpload: {
+    record: (storeId: string, uploadId: string) => `store:${storeId}:widget-upload:${uploadId}`,
+    // The message an upload was sent with: a file belongs to one message
+    claim: (storeId: string, uploadId: string) =>
+      `store:${storeId}:widget-upload:${uploadId}:claim`,
+    visitorQuota: (siteKey: string, visitorId: string, bucket: number) =>
+      `widget:${siteKey}:visitor:${visitorId}:upload-urls:${bucket}`,
+    siteQuota: (siteKey: string, bucket: number) => `widget:${siteKey}:upload-urls:${bucket}`
+  },
+
   // Where the cleanup of stray media stopped listing the bucket, for the next run
   mediaCleanup: {
     cursor: () => 'media-cleanup:cursor'

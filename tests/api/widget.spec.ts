@@ -27,7 +27,11 @@ import {
 } from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
 import { RealtimeNamespaces } from '@platform/core/realtime'
-import { inboundJobId, type ProcessChannelEventJob } from '@platform/plugins/runtime'
+import {
+  inboundJobId,
+  PluginRegistry,
+  type ProcessChannelEventJob
+} from '@platform/plugins/runtime'
 
 import { AgentTypingRelay } from '../../apps/api/src/modules/realtime/agent-typing-relay.service'
 import { createCustomerIdentity, ensurePluginInstallation } from '../builders'
@@ -1263,6 +1267,223 @@ describe('The web widget', () => {
       })
 
       expect(response.status).toBe(BAD_REQUEST)
+    })
+
+    it('names the phone it cannot read, and queues nothing', async () => {
+      const { id, siteKey } = await widget()
+      await turn(id, true).expect(OK)
+      const visitor = await enter(siteKey)
+      queued().length = 0
+
+      const response = await send({
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        content: 'hola',
+        profile: { name: 'Ana', phone: '12ab' }
+      })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      const body = response.body as {
+        error: { code: string; metadata: { issues: { path: string; code: string }[] } }
+      }
+      expect(body.error.code).toBe(ErrorCodes.VALIDATION_FAILED)
+      expect(body.error.metadata.issues).toEqual([
+        expect.objectContaining({ path: 'profile.phone', code: 'invalid_phone' })
+      ])
+      expect(queued()).toHaveLength(0)
+    })
+
+    it('takes the message of a store without the form even when the phone is junk', async () => {
+      const { siteKey } = await widget()
+      const visitor = await enter(siteKey)
+
+      await send({
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        content: 'hola',
+        profile: { phone: '12ab' }
+      }).expect(OK)
+    })
+  })
+
+  describe('the files of a visitor', () => {
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    let siteKey: string
+    beforeAll(async () => {
+      siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+    })
+
+    const ask = (visitorToken: string, overrides: Record<string, unknown> = {}, origin = SITE) =>
+      anonymousApi(app)
+        .post(ApiRoutes.widget.upload)
+        .set('origin', origin)
+        .send({
+          visitorToken,
+          filename: 'foto.png',
+          contentType: 'image/png',
+          fileSizeBytes: PNG.length,
+          ...overrides
+        })
+    const put = (url: string) =>
+      fetch(url, {
+        method: 'PUT',
+        headers: { 'content-type': 'image/png', 'content-length': String(PNG.length) },
+        body: new Uint8Array(PNG)
+      })
+    interface UploadBody {
+      uploadUrl: string
+      uploadId: string
+    }
+    // An upload the visitor asked for and made
+    async function uploaded(visitorToken: string): Promise<string> {
+      const response = await ask(visitorToken).expect(OK)
+      const upload = response.body as UploadBody
+      expect((await put(upload.uploadUrl)).status).toBe(OK)
+      return upload.uploadId
+    }
+    const sendFiles = (visitorToken: string, uploadIds: string[], more: object = {}) =>
+      send({ visitorToken, clientMessageId: randomUUID(), uploadIds, ...more })
+
+    it('answers the preflight of the browser for the route', async () => {
+      const response = await anonymousApi(app)
+        .options(ApiRoutes.widget.upload)
+        .set('origin', SITE)
+        .set('access-control-request-method', 'POST')
+
+      expect(response.status).toBe(NO_CONTENT)
+      expect(response.headers['access-control-allow-origin']).toBe(SITE)
+    })
+
+    it('signs a url for a visitor of the site, and the file travels with the message that names it', async () => {
+      const visitor = await enter(siteKey)
+      queued().length = 0
+      const uploadId = await uploaded(visitor.visitorToken)
+      const body = {
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        content: 'mi comprobante',
+        uploadIds: [uploadId]
+      }
+
+      await send(body).expect(OK)
+      await send(body).expect(OK)
+
+      expect(queued()).toHaveLength(2)
+      const data = queued()[0]?.data as ProcessChannelEventJob
+      expect(data.event.message).toMatchObject({
+        type: MessageType.IMAGE,
+        content: 'mi comprobante',
+        media: [{ ref: uploadId, contentType: 'image/png', filename: 'foto.png' }]
+      })
+    })
+
+    it('lets the plugin read the file the visitor put, from the store of the connection only', async () => {
+      const visitor = await enter(siteKey)
+      const uploadId = await uploaded(visitor.visitorToken)
+      const plugin = app.get(PluginRegistry).get(ChannelIds.WEB_WIDGET)
+      const context = (storeId: string) => ({
+        storeId,
+        connectionId: siteKey,
+        credentials: {},
+        metadata: {}
+      })
+
+      const file = await plugin.fetchMedia?.(context(ctx.storeA.id), uploadId)
+      const chunks: Buffer[] = []
+      for await (const chunk of file?.stream ?? []) chunks.push(Buffer.from(chunk as Uint8Array))
+
+      expect(file).toMatchObject({ contentType: 'image/png', contentLength: PNG.length })
+      expect(Buffer.concat(chunks).equals(PNG)).toBe(true)
+      // The same id asked through a connection of another store finds nothing
+      await expect(plugin.fetchMedia?.(context(ctx.storeB.id), uploadId)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      })
+    })
+
+    it('takes a message of only a file', async () => {
+      const visitor = await enter(siteKey)
+      queued().length = 0
+      const uploadId = await uploaded(visitor.visitorToken)
+
+      await sendFiles(visitor.visitorToken, [uploadId]).expect(OK)
+
+      const data = queued()[0]?.data as ProcessChannelEventJob
+      expect(data.event.message).toMatchObject({ type: MessageType.IMAGE, content: null })
+    })
+
+    it('ignores what a script adds beside the ids', async () => {
+      const visitor = await enter(siteKey)
+      queued().length = 0
+      const uploadId = await uploaded(visitor.visitorToken)
+
+      await sendFiles(visitor.visitorToken, [uploadId], {
+        content: 'hola',
+        attachments: [{ id: randomUUID(), filename: 'x.exe', contentType: 'image/png' }]
+      }).expect(OK)
+
+      const data = queued()[0]?.data as ProcessChannelEventJob
+      expect(data.event.message?.media).toEqual([
+        { ref: uploadId, contentType: 'image/png', filename: 'foto.png' }
+      ])
+    })
+
+    it('refuses a type that is not allowed and a file that is too big', async () => {
+      const visitor = await enter(siteKey)
+
+      const type = await ask(visitor.visitorToken, { contentType: 'text/html' })
+      const big = await ask(visitor.visitorToken, { fileSizeBytes: 30 * 1024 * 1024 })
+
+      expect(type.status).toBe(BAD_REQUEST)
+      expect((type.body as ErrorBody).error.code).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED)
+      expect(big.status).toBe(BAD_REQUEST)
+      expect((big.body as ErrorBody).error.code).toBe(ErrorCodes.FILE_TOO_LARGE)
+    })
+
+    it('refuses a token that is not ours, a site that is not listed and a body with extra fields', async () => {
+      const visitor = await enter(siteKey)
+
+      expect((await ask('x.y')).status).toBe(UNAUTHORIZED)
+      expect((await ask(visitor.visitorToken, {}, OTHER_SITE)).status).toBe(FORBIDDEN)
+      expect((await ask(visitor.visitorToken, { purpose: 'avatar' })).status).toBe(BAD_REQUEST)
+    })
+
+    it('refuses the upload of another visitor, a file never put in the bucket and an invented id', async () => {
+      const mine = await enter(siteKey)
+      const theirs = await enter(siteKey)
+      const upload = (await ask(theirs.visitorToken).expect(OK)).body as UploadBody
+      expect((await put(upload.uploadUrl)).status).toBe(OK)
+      const unsent = (await ask(mine.visitorToken).expect(OK)).body as UploadBody
+      queued().length = 0
+
+      for (const uploadId of [upload.uploadId, unsent.uploadId, randomUUID()]) {
+        const response = await sendFiles(mine.visitorToken, [uploadId])
+        expect(response.status).toBe(BAD_REQUEST)
+        expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.FILE_UPLOAD_FAILED)
+      }
+      expect(queued()).toHaveLength(0)
+    })
+
+    it('does not let one file be the attachment of two messages', async () => {
+      const visitor = await enter(siteKey)
+      const uploadId = await uploaded(visitor.visitorToken)
+      await sendFiles(visitor.visitorToken, [uploadId]).expect(OK)
+
+      const again = await sendFiles(visitor.visitorToken, [uploadId])
+
+      expect(again.status).toBe(BAD_REQUEST)
+    })
+
+    it('refuses a message with neither text nor files, or with too many files', async () => {
+      const visitor = await enter(siteKey)
+      const body = { visitorToken: visitor.visitorToken, clientMessageId: randomUUID() }
+
+      expect((await send(body)).status).toBe(BAD_REQUEST)
+      expect((await sendFiles(visitor.visitorToken, [])).status).toBe(BAD_REQUEST)
+      const many = Array.from({ length: 6 }, () => randomUUID())
+      expect((await sendFiles(visitor.visitorToken, many)).status).toBe(BAD_REQUEST)
     })
   })
 })

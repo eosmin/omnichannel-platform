@@ -1,5 +1,6 @@
 import { WebWidgetPlugin, signVisitorToken, widgetTokenKey } from '@platform/channels/web-widget'
 import { WIDGET_TOKEN_HEADER } from '@platform/core/domain'
+import type { StorageService } from '@platform/core/storage-module'
 import { channelEventSchema } from '@platform/plugins/runtime'
 
 import { testChannelPluginContract } from './channel-plugin.contract'
@@ -15,7 +16,7 @@ const body = {
 
 // The token is what a signature is to a provider's webhook
 testChannelPluginContract(
-  () => new WebWidgetPlugin({ tokenKey }),
+  () => new WebWidgetPlugin({ tokenKey }, {} as StorageService),
   {
     inboundWebhook: {
       rawBody: JSON.stringify(body),
@@ -42,7 +43,7 @@ testChannelPluginContract(
 // The core refuses an event that does not fit its schema, and a message refused is a message lost
 describe('web widget events against the schema of the core', () => {
   it('fit', async () => {
-    const events = await new WebWidgetPlugin({ tokenKey }).handleWebhook(body)
+    const events = await new WebWidgetPlugin({ tokenKey }, {} as StorageService).handleWebhook(body)
     expect(events).toHaveLength(1)
     for (const event of events) expect(channelEventSchema.safeParse(event).success).toBe(true)
   })

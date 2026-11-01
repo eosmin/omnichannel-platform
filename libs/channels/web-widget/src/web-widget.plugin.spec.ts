@@ -6,6 +6,8 @@ import {
   WidgetMetadataKeys
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { StorageKeys } from '@platform/core/storage'
+import type { StorageService } from '@platform/core/storage-module'
 import {
   ChannelCapability,
   type ChannelContext,
@@ -18,7 +20,12 @@ import { isSiteKey } from './widget-site'
 import { signVisitorToken, widgetTokenKey } from './widget-token'
 
 const tokenKey = widgetTokenKey('s'.repeat(32))
-const plugin = new WebWidgetPlugin({ tokenKey })
+const storage = {
+  list: jest.fn(),
+  head: jest.fn(),
+  stream: jest.fn()
+}
+const plugin = new WebWidgetPlugin({ tokenKey }, storage as unknown as StorageService)
 const visitorId = '3f2c1a9e-4b7d-4c1e-9a55-0d1e2f3a4b5c'
 const siteKey = 'pk_widget_AAAAAAAAAAAAAAAAAAAAAAAA'
 const ctx: ChannelContext = { storeId: 's', connectionId: siteKey, credentials: {}, metadata: {} }
@@ -122,6 +129,42 @@ describe('WebWidgetPlugin', () => {
       ).resolves.toEqual([])
     })
 
+    const uploadId = '8b1f6a3c-52d4-4e5a-9a3b-7c1d2e3f4a5b'
+    const png = { id: uploadId, filename: 'foto.png', contentType: 'image/png' }
+
+    it('reads a message of files, typed by the first one, with the upload id as the reference', async () => {
+      const pdf = {
+        id: '9c2a7b4d-63e5-4f6b-8b4c-8d2e3f4a5b6c',
+        filename: 'a.pdf',
+        contentType: 'application/pdf'
+      }
+      const [event] = await plugin.handleWebhook({
+        visitorToken: token,
+        clientMessageId: 'abc-2',
+        attachments: [png, pdf]
+      })
+
+      expect(event?.message).toMatchObject({
+        type: MessageType.IMAGE,
+        content: null,
+        media: [
+          { ref: uploadId, contentType: 'image/png', filename: 'foto.png' },
+          { ref: pdf.id, contentType: 'application/pdf', filename: 'a.pdf' }
+        ]
+      })
+    })
+
+    it('keeps the text beside the files', async () => {
+      const [event] = await plugin.handleWebhook({ ...body, attachments: [png] })
+      expect(event?.message).toMatchObject({ type: MessageType.IMAGE, content: 'hola' })
+    })
+
+    it('reads nothing from a message with neither text nor files', async () => {
+      await expect(
+        plugin.handleWebhook({ visitorToken: token, clientMessageId: 'abc-3', attachments: [] })
+      ).resolves.toEqual([])
+    })
+
     it('reads nothing from a bad token, an empty text or a bad id', async () => {
       await expect(plugin.handleWebhook({ ...body, visitorToken: 'x.y' })).resolves.toEqual([])
       await expect(plugin.handleWebhook({ ...body, content: '   ' })).resolves.toEqual([])
@@ -129,6 +172,56 @@ describe('WebWidgetPlugin', () => {
       await expect(plugin.handleWebhook({ ...body, content: 'x'.repeat(2001) })).resolves.toEqual(
         []
       )
+    })
+  })
+
+  describe('fetchMedia', () => {
+    const uploadId = '8b1f6a3c-52d4-4e5a-9a3b-7c1d2e3f4a5b'
+    const key = `${StorageKeys.messageUploadPrefix('s', uploadId)}foto.png`
+
+    beforeEach(() => jest.resetAllMocks())
+
+    it('reads the object under the upload id in the store of the connection', async () => {
+      const stream = {}
+      storage.list.mockResolvedValue({ objects: [{ key }], next: undefined })
+      storage.head.mockResolvedValue({ contentType: 'image/png', contentLength: 7 })
+      storage.stream.mockResolvedValue(stream)
+
+      await expect(plugin.fetchMedia(ctx, uploadId)).resolves.toEqual({
+        stream,
+        contentType: 'image/png',
+        contentLength: 7
+      })
+      expect(storage.list).toHaveBeenCalledWith(StorageKeys.messageUploadPrefix('s', uploadId))
+    })
+
+    it.each(['../x', 'https://a.test/a.png', `${uploadId}/../../other`])(
+      'refuses a reference that is not an upload id: %s',
+      async ref => {
+        await expect(plugin.fetchMedia(ctx, ref)).rejects.toMatchObject({
+          code: ErrorCodes.CHANNEL_MESSAGE_FAILED,
+          retryable: false
+        })
+        expect(storage.list).not.toHaveBeenCalled()
+      }
+    )
+
+    it('fails for good when nothing is under the id', async () => {
+      storage.list.mockResolvedValue({ objects: [], next: undefined })
+      await expect(plugin.fetchMedia(ctx, uploadId)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_MESSAGE_FAILED,
+        retryable: false
+      })
+    })
+
+    it('fails for good when the object is gone between the listing and the read', async () => {
+      storage.list.mockResolvedValue({ objects: [{ key }], next: undefined })
+      storage.head.mockResolvedValue(null)
+      await expect(plugin.fetchMedia(ctx, uploadId)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      })
+      // No stream was opened for an object that is gone
+      expect(storage.stream).not.toHaveBeenCalled()
     })
   })
 
