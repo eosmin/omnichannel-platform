@@ -72,6 +72,8 @@ describe('fetchMediaUrls', () => {
     )
     const urls = await fetchMediaUrls(client, 's1', 'm1')
     expect(urls.variants.thumb).toBeNull()
-    expect(fetchImpl.mock.calls[0][0]).toBe('https://api.example.com/api/v1/media/m1')
+    expect((fetchImpl.mock.calls[0] as [string, RequestInit])[0]).toBe(
+      'https://api.example.com/api/v1/media/m1'
+    )
   })
 })
