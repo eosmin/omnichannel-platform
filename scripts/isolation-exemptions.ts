@@ -18,11 +18,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   Export: { step: '3.4', reason: 'Created by the first export (the media gallery)' },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
-  Media: {
-    step: '3.4',
-    reason:
-      'The upload routes have their cases (describe "media upload"); it joins the list with GET /media/:id'
-  },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   Notification: { step: '3.5', reason: 'Has no endpoint yet' },

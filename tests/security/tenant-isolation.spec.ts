@@ -426,6 +426,27 @@ const resources: IsolationResource[] = [
       storeOf: async (owner, id) =>
         (await owner.role.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ?? null
     }
+  },
+  // The signed download of a clean file. No route changes it (a file is replaced by uploading
+  // another), so it has no `modify`. The upload routes have their own cases (describe "media upload").
+  {
+    name: 'media',
+    create: (owner, { storeId }) =>
+      owner.media.create({
+        data: {
+          storeId,
+          purpose: 'message',
+          key: StorageKeys.message(storeId, randomUUID(), 'photo.png'),
+          filename: 'photo.png',
+          contentType: 'image/png',
+          fileSize: 68,
+          status: 'clean'
+        },
+        select: { id: true }
+      }),
+    readPath: ApiRoutes.media.byId,
+    untouched: async (owner, id) =>
+      (await owner.media.findUnique({ where: { id }, select: { id: true } })) !== null
   }
 ]
 
@@ -471,10 +492,9 @@ describe('Tenant isolation', () => {
     }
   })
 
-  // Media has no read or change route yet (GET /media/:id arrives with the signed download of this
-  // step, and joins the list of resources above then), so the upload routes are proven here: the store
-  // of a signed URL and of a confirmation is the one of the header, and a key of another store is
-  // never accepted. The exemption of the model in scripts/isolation-exemptions.ts stays until then.
+  // The read of a media is in the list of resources above. The upload routes are proven here: the
+  // store of a signed URL and of a confirmation is the one of the header, and a key of another store
+  // is never accepted.
   describe('media upload', () => {
     const uploadBody = {
       purpose: 'message',

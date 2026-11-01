@@ -20,8 +20,9 @@ export interface IsolationResource {
   readPath?: (id: string) => string
   // The route that lists the resource of the store of the request
   listPath?: string
-  // A change a user could try to make to a row (a rename, a status)
-  modify: {
+  // A change a user could try to make to a row (a rename, a status). A resource no route changes (a
+  // file is replaced by uploading another) has none, and the change check does not apply to it.
+  modify?: {
     path: (id: string) => string
     // PATCH unless the resource is changed by a DELETE (an invitation is revoked) or by an action
     // (a merge is undone with a POST)
@@ -62,8 +63,8 @@ export interface IsolationScene {
 }
 
 // The request that changes a row of the resource
-function change(agent: TestAgent, resource: IsolationResource, id: string) {
-  const { path, method = 'patch', body } = resource.modify
+function change(agent: TestAgent, modify: NonNullable<IsolationResource['modify']>, id: string) {
+  const { path, method = 'patch', body } = modify
   if (method === 'delete') return agent.delete(path(id))
   const payload = typeof body === 'function' ? body(id) : body
   if (method === 'post') return agent.post(path(id)).send(payload)
@@ -83,9 +84,12 @@ async function expectUntouchedIfChangedToReach(
 
 // One request for a row of the resource, whichever way the api lets it be reached
 function reach(agent: TestAgent, resource: IsolationResource, id: string) {
-  return resource.readPath === undefined
-    ? change(agent, resource, id)
-    : agent.get(resource.readPath(id))
+  if (resource.readPath !== undefined) return agent.get(resource.readPath(id))
+  // A resource nobody can read or change has nothing to test here
+  if (resource.modify === undefined) {
+    throw new Error(`the resource ${resource.name} has neither a readPath nor a modify route`)
+  }
+  return change(agent, resource.modify, id)
 }
 
 interface ErrorBody {
@@ -173,10 +177,11 @@ export const isolationChecks = {
     { app, owner, ctx }: IsolationScene,
     resource: IsolationResource
   ): Promise<void> {
+    if (resource.modify === undefined) return
     const row = await resource.create(owner, { storeId: ctx.storeB.id })
 
-    const claiming = await change(api(app, ctx.adminA, ctx.storeA), resource, row.id)
-    const naming = await change(api(app, ctx.adminA, ctx.storeB), resource, row.id)
+    const claiming = await change(api(app, ctx.adminA, ctx.storeA), resource.modify, row.id)
+    const naming = await change(api(app, ctx.adminA, ctx.storeB), resource.modify, row.id)
 
     // A resource with one row per store changes the row of the own store: it must have worked, or the
     // untouched row below proves nothing

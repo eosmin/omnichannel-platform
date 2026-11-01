@@ -406,4 +406,113 @@ describe('Media upload', () => {
       expect(response.status).toBe(FORBIDDEN)
     })
   })
+
+  describe('download', () => {
+    const NOT_FOUND = 404
+    const CONFLICT = 409
+    const keys: string[] = []
+    afterAll(async () => {
+      const storage = app.get(StorageService, { strict: false })
+      await Promise.all(keys.map(key => storage.delete(key)))
+    })
+
+    const mediaRow = (status: string, filename = 'photo.png', variants?: object) => {
+      const id = randomUUID()
+      return owner.media.create({
+        data: {
+          id,
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          key: StorageKeys.message(ctx.storeA.id, id, filename),
+          filename,
+          contentType: 'image/png',
+          fileSize: PNG.length,
+          status,
+          ...(variants === undefined ? {} : { variants })
+        }
+      })
+    }
+    const read = (id: string) => asAgent().get(ApiRoutes.media.byId(id))
+
+    it('does not serve a file that is still being scanned', async () => {
+      const row = await mediaRow(MediaStatus.PENDING)
+      const response = await read(row.id)
+      expect(response.status).toBe(CONFLICT)
+      expect(codeOf(response.body)).toBe(ErrorCodes.FILE_NOT_READY)
+    })
+
+    it('does not serve an infected file', async () => {
+      const row = await mediaRow(MediaStatus.INFECTED)
+      const response = await read(row.id)
+      expect(response.status).toBe(FORBIDDEN)
+      expect(codeOf(response.body)).toBe(ErrorCodes.FILE_INFECTED)
+    })
+
+    it('answers 404 for an id that is not there and 400 for one that is not an id', async () => {
+      expect((await read(randomUUID())).status).toBe(NOT_FOUND)
+      expect((await read('not-an-id')).status).toBe(BAD_REQUEST)
+    })
+
+    it('needs a session', async () => {
+      const row = await mediaRow(MediaStatus.CLEAN)
+      const response = await anonymousApi(app).get(ApiRoutes.media.byId(row.id))
+      expect(response.status).toBe(UNAUTHORIZED)
+    })
+
+    it('signs the file as a download of the type it was declared, whatever its name says', async () => {
+      // The extension says page, the declared type says image: it must not be served as a page
+      const row = await mediaRow(MediaStatus.CLEAN, 'x.html')
+      keys.push(row.key)
+      await app.get(StorageService, { strict: false }).put(row.key, PNG, 'image/png')
+
+      const response = await read(row.id)
+      expect(response.status).toBe(OK)
+      const urls = response.body as {
+        url: string
+        filename: string
+        contentType: string
+        variants: Record<string, string | null>
+      }
+      expect(urls).toMatchObject({
+        filename: 'x.html',
+        contentType: 'image/png',
+        variants: { full: null, medium: null, thumb: null }
+      })
+      const file = await fetch(urls.url)
+      expect(file.status).toBe(OK)
+      expect(file.headers.get('content-type')).toBe('image/png')
+      expect(file.headers.get('content-disposition')).toMatch(/^attachment; filename="x\.html"/)
+      expect(Buffer.from(await file.arrayBuffer()).equals(PNG)).toBe(true)
+    })
+
+    it('shows the variants inline, as the WebP the worker made', async () => {
+      const id = randomUUID()
+      const thumbKey = StorageKeys.messageVariant(ctx.storeA.id, id, 'thumb')
+      keys.push(thumbKey)
+      await app.get(StorageService, { strict: false }).put(thumbKey, PNG, 'image/webp')
+      const row = await owner.media.create({
+        data: {
+          id,
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          key: StorageKeys.message(ctx.storeA.id, id, 'photo.png'),
+          filename: 'photo.png',
+          contentType: 'image/png',
+          fileSize: PNG.length,
+          status: MediaStatus.CLEAN,
+          variants: { thumb: thumbKey, full: 12 }
+        }
+      })
+
+      const response = await read(row.id)
+      expect(response.status).toBe(OK)
+      const { variants } = response.body as { variants: Record<string, string | null> }
+      // A value that is not a key is no variant: the answer does not fail for it
+      expect(variants['full']).toBeNull()
+      const thumb = await fetch(variants['thumb'] ?? '')
+      expect(thumb.status).toBe(OK)
+      expect(thumb.headers.get('content-type')).toBe('image/webp')
+      expect(thumb.headers.get('content-disposition')).toBe('inline')
+    })
+  })
 })

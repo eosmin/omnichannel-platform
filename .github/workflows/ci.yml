@@ -140,6 +140,14 @@ jobs:
         options: >-
           --health-cmd "wget -qO- http://127.0.0.1:8333/healthz"
           --health-interval 5s --health-timeout 3s --health-retries 10
+      # The virus scanner of the media suites of the worker (a real scan of the EICAR test string). It
+      # loads its signature database before it answers, so the job waits for it to be healthy.
+      clamav:
+        image: clamav/clamav:1.5.4-debian
+        ports: ['3310:3310']
+        options: >-
+          --health-cmd "clamdcheck.sh"
+          --health-start-period 180s --health-interval 10s --health-timeout 10s --health-retries 20
     env:
       DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
       DB_APP_PASSWORD: ci_app_password

@@ -1,6 +1,9 @@
+import type { Readable } from 'node:stream'
+
 import {
   CopyObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -10,7 +13,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common'
 
 import { HttpStatusCodes } from '@platform/core/errors'
-import { UploadLimits } from '@platform/core/storage'
+import { attachmentDisposition, UploadLimits } from '@platform/core/storage'
 
 import { S3_CLIENT, STORAGE_BUCKET } from './storage.constants'
 
@@ -18,6 +21,16 @@ export interface UploadUrlParams {
   key: string
   contentType: string
   contentLength: number
+}
+
+export interface DownloadUrlParams {
+  key: string
+  // What the browser is told the bytes are. It comes from the Media row, never from the extension of
+  // the name: `x.html` declared `image/png` is served as an image or not at all, never as a page.
+  contentType: string
+  filename: string
+  // Only for the re-encoded variants. Anything the uploader sent is always an attachment.
+  inline?: boolean
 }
 
 export interface StoredObject {
@@ -57,6 +70,58 @@ export class StorageService implements OnApplicationShutdown {
       expiresIn: UploadLimits.PRESIGNED_URL_TTL_SECONDS,
       signableHeaders: new Set(['content-type', 'content-length'])
     })
+  }
+
+  // A short-lived URL on the bucket host. The headers of the answer are fixed by the signature, so a
+  // client cannot ask for another type or for the file to be shown inline.
+  downloadUrl(params: DownloadUrlParams): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: params.key,
+      ResponseContentType: params.contentType,
+      ResponseContentDisposition:
+        params.inline === true ? 'inline' : attachmentDisposition(params.filename)
+    })
+    return getSignedUrl(this.s3, command, { expiresIn: UploadLimits.DOWNLOAD_URL_TTL_SECONDS })
+  }
+
+  // The object as a stream, for what is too big to hold (a virus scan). null when it is not there.
+  async stream(key: string): Promise<Readable | null> {
+    try {
+      const object = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }))
+      return (object.Body as Readable | undefined) ?? null
+    } catch (error) {
+      if (statusOf(error) === HttpStatusCodes.NOT_FOUND) return null
+      throw error
+    }
+  }
+
+  // The whole object, refused above `maxBytes` before any of it is read. null when it is not there.
+  async read(key: string, maxBytes: number): Promise<Buffer | null> {
+    const head = await this.head(key)
+    if (head === null) return null
+    if (head.contentLength > maxBytes) throw new Error('the object is bigger than the limit')
+    const body = await this.stream(key)
+    if (body === null) return null
+    const chunks: Buffer[] = []
+    let total = 0
+    for await (const chunk of body) {
+      const part = chunk as Buffer
+      total += part.length
+      // The size of the head can be stale by the time the body is read
+      if (total > maxBytes) {
+        body.destroy()
+        throw new Error('the object is bigger than the limit')
+      }
+      chunks.push(part)
+    }
+    return Buffer.concat(chunks)
+  }
+
+  async put(key: string, body: Buffer, contentType: string): Promise<void> {
+    await this.s3.send(
+      new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType })
+    )
   }
 
   // null when there is no such object; any other failure (network, a broken request) is thrown
