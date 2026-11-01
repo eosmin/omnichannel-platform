@@ -845,6 +845,21 @@ describe('Replies on their way to a channel', () => {
       expect(row.metadata).toEqual({ captionExternalId: 'cap-1' })
     })
 
+    it('adds the caption id to the metadata the message already has', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, { messageId: reply.id })
+      await owner.message.update({ where: { id: reply.id }, data: { metadata: { other: 1 } } })
+      mediaResult = { metadata: { captionExternalId: 'cap-2' } }
+
+      await sender.send(job(reply), false)
+
+      const row = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { metadata: true }
+      })
+      expect(row.metadata).toEqual({ other: 1, captionExternalId: 'cap-2' })
+    })
+
     it.each(['infected', 'pending'])('fails the message when its file is %s', async status => {
       const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
       await fileOf(reply.storeId, { messageId: reply.id, status })

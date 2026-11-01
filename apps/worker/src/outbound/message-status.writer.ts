@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { ChannelResultMetadata, DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -52,15 +52,13 @@ export class MessageStatusWriter {
           ...(change.channelMessageId === undefined
             ? {}
             : { channelMessageId: change.channelMessageId }),
-          ...(change.captionExternalId === undefined
-            ? {}
-            : {
-                metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: change.captionExternalId }
-              }),
           deliveryError: to === DeliveryStatus.FAILED ? (change.errorCode ?? null) : null
         }
       })
       if (changed.count === 0) return false
+      if (change.captionExternalId !== undefined) {
+        await this.keepCaptionId(tx, storeId, messageId, change.captionExternalId)
+      }
 
       const message = await tx.message.findFirst({
         where: { id: messageId, storeId },
@@ -97,6 +95,30 @@ export class MessageStatusWriter {
           break
       }
       return true
+    })
+  }
+
+  // Added to the metadata the message has, never in place of it
+  private async keepCaptionId(
+    tx: PrismaTransaction,
+    storeId: string,
+    messageId: string,
+    captionExternalId: string
+  ): Promise<void> {
+    const row = await tx.message.findFirst({
+      where: { id: messageId, storeId },
+      select: { metadata: true }
+    })
+    if (row === null) return
+    const current =
+      typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? row.metadata
+        : {}
+    await tx.message.updateMany({
+      where: { id: messageId, storeId },
+      data: {
+        metadata: { ...current, [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: captionExternalId }
+      }
     })
   }
 }
