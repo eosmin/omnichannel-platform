@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { type Permission, Permissions } from '@platform/core/auth'
-import { CustomerLimits } from '@platform/core/domain'
+import { BulkLimits, CustomerLimits } from '@platform/core/domain'
 import { downloadAllBodySchema } from '@platform/core/storage'
 
 import { conversationFilterSchema } from '../conversations/conversations.schemas'
@@ -32,10 +32,26 @@ const viewerSchema = z.strictObject({
   held: z.array(z.enum(VIEW_PERMISSIONS as [Permission, ...Permission[]]))
 })
 
-export const conversationsExportFiltersSchema = z.strictObject({
-  filter: conversationFilterSchema,
-  viewer: viewerSchema
-})
+// `conversationIds` is the selection of the bulk action "Export CSV": the ids the member could see when
+// they asked (the api drops the others before it writes the row), and then the filter names nothing,
+// because the selection already says which conversations
+export const conversationsExportFiltersSchema = z
+  .strictObject({
+    filter: conversationFilterSchema,
+    conversationIds: z
+      .array(z.uuid())
+      .min(1)
+      .max(BulkLimits.MAX_ITEMS)
+      .refine(ids => new Set(ids).size === ids.length, { message: 'a conversation is named once' })
+      .optional(),
+    viewer: viewerSchema
+  })
+  .refine(
+    body =>
+      body.conversationIds === undefined ||
+      Object.values(body.filter).every(value => value === undefined),
+    { message: 'a selection by ids does not carry a filter' }
+  )
 export type ConversationsExportFilters = z.output<typeof conversationsExportFiltersSchema>
 
 // The ZIP of a gallery holds the files of the conversations the requester could see when they asked

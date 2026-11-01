@@ -199,6 +199,16 @@ test.describe('customer merge and identities', () => {
     })
   })
 
+  test('queues the customers file from the customers page and follows the toast to the exports center', async () => {
+    await page.goto(AppPaths.store.customers(storeId))
+    await page.getByRole('button', { name: en.customers.list.export }).click()
+    await expect(page.getByText(en.customers.list.exportQueued)).toBeVisible()
+
+    await page.getByRole('button', { name: en.customers.list.viewExports }).click()
+    await expect(page).toHaveURL(new RegExp(`/s/${storeId}/exports$`))
+    await expect(page.getByRole('cell', { name: en.exports.types.customers }).first()).toBeVisible()
+  })
+
   test('opens the files of a customer, filters them, walks the lightbox and queues the ZIP', async () => {
     const name = uniqueName('Gallery')
     const handle = uniqueHandle()

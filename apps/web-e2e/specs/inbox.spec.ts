@@ -129,6 +129,28 @@ test.describe.serial('the inbox list', () => {
     await expect.poll(() => statusOf(second)).toBe('OPEN')
   })
 
+  test('ticks two rows and queues their conversations as a CSV in the exports center', async () => {
+    const first = await newConversationIn(storeId)
+    const second = await newConversationIn(storeId)
+
+    await page.goto(AppPaths.store.inbox(storeId))
+    for (const id of [first, second]) {
+      await rowOf(page, storeId, id).locator('xpath=following-sibling::label//input').check()
+    }
+    const bar = page.getByRole('region', { name: en.inbox.bulk.label })
+    await bar.getByRole('button', { name: en.inbox.bulk.more.label }).click()
+    await page.getByRole('menuitem', { name: en.inbox.bulk.more.exportCsv }).click()
+
+    await expect(page.getByText(/The file of 2 conversations is being prepared/)).toBeVisible()
+    // A file changes nothing, so there is no Undo and the conversations stay as they were
+    await expect(page.getByRole('button', { name: en.inbox.bulk.result.undo })).toHaveCount(0)
+    await page.getByRole('button', { name: en.inbox.bulk.result.viewExports }).click()
+    await expect(page).toHaveURL(new RegExp(`/s/${storeId}/exports$`))
+    await expect(
+      page.getByRole('cell', { name: en.exports.types.conversations }).first()
+    ).toBeVisible()
+  })
+
   test('shortcuts: opens the help sheet with ? and closes it with Escape', async () => {
     await page.goto(AppPaths.store.inbox(storeId))
     await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()

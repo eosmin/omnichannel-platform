@@ -114,8 +114,8 @@ const bulkTarget = {
     .optional()
 }
 
-// The actions that are built. SEND_TEMPLATE is Phase 2 and EXPORT_CSV waits for the exports center of
-// Step 3.4: neither is accepted here.
+// The actions that are built. SEND_TEMPLATE is Phase 2 and is not accepted here. EXPORT_CSV makes a file
+// in the exports center instead of changing the conversations.
 export const bulkActionSchema = z
   .discriminatedUnion('action', [
     z.strictObject({ action: z.literal(BulkActions.ASSIGN_TO_ME), ...bulkTarget }),
@@ -160,7 +160,8 @@ export const bulkActionSchema = z
     }),
     z.strictObject({ action: z.literal(BulkActions.MARK_READ), ...bulkTarget }),
     z.strictObject({ action: z.literal(BulkActions.MARK_UNREAD), ...bulkTarget }),
-    z.strictObject({ action: z.literal(BulkActions.ARCHIVE), ...bulkTarget })
+    z.strictObject({ action: z.literal(BulkActions.ARCHIVE), ...bulkTarget }),
+    z.strictObject({ action: z.literal(BulkActions.EXPORT_CSV), ...bulkTarget })
   ])
   .refine(body => (body.conversationIds === undefined) !== (body.filter === undefined), {
     message: 'name the conversations or a filter, not both and not neither'

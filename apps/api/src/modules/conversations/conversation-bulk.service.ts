@@ -8,13 +8,17 @@ import { BulkActions, BulkLimits, ConversationStatus } from '@platform/core/doma
 import { errorName, ErrorCodes, PlatformException } from '@platform/core/errors'
 import {
   type BulkActionBody,
+  type ConversationsExportFilters,
   ConversationsService,
   ReadReceipts,
   requireAnyPermission,
   RoutingService,
-  type Viewer
+  type Viewer,
+  viewPermissionsOf
 } from '@platform/core/messaging'
+import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
+import { ExportsService } from '../exports'
 import type { Actor } from '../tenancy'
 import { WidgetReadNotifier } from '../widget/widget-read-notifier.service'
 
@@ -42,7 +46,8 @@ const UP_FRONT_PERMISSIONS: Partial<Record<BulkActionBody['action'], Permission>
   [BulkActions.ADD_TAG]: Permissions.CONVERSATIONS_RESOLVE,
   [BulkActions.REMOVE_TAG]: Permissions.CONVERSATIONS_RESOLVE,
   [BulkActions.MARK_READ]: Permissions.CONVERSATIONS_RESOLVE,
-  [BulkActions.MARK_UNREAD]: Permissions.CONVERSATIONS_RESOLVE
+  [BulkActions.MARK_UNREAD]: Permissions.CONVERSATIONS_RESOLVE,
+  [BulkActions.EXPORT_CSV]: Permissions.CONVERSATIONS_EXPORT
 }
 
 // "Select all matching this filter" and the ids the agent ticked, one by one through the same services
@@ -55,6 +60,7 @@ export class ConversationBulkService {
     private readonly tags: ConversationTagsService,
     private readonly readReceipts: ReadReceipts,
     private readonly widgetRead: WidgetReadNotifier,
+    private readonly exports: ExportsService,
     private readonly audit: AuditService,
     private readonly logger: PinoLogger
   ) {
@@ -71,25 +77,17 @@ export class ConversationBulkService {
     if (needed !== undefined) requireAnyPermission(viewer.held, [needed])
 
     const { ids, truncated } = await this.targets(storeId, body, viewer)
-    const result: BulkResult = { succeeded: [], failed: [], truncated }
-    // One at a time: each change takes the locks of its conversation, and two that ran together on the
-    // same store would only wait for each other
-    for (const id of ids) {
-      try {
-        await this.apply(storeId, id, body, viewer)
-        result.succeeded.push(id)
-      } catch (error) {
-        const code = codeOf(error)
-        // What is ours (a deadlock, a timeout) is said here; the caller gets the code only
-        if (code === ErrorCodes.INTERNAL_ERROR) {
-          this.logger.error(
-            { conversationId: id, action: body.action, errorName: errorName(error) },
-            'a conversation of a bulk action was not changed'
+    const result: BulkResult =
+      body.action === BulkActions.EXPORT_CSV
+        ? await this.exportSelection(
+            storeId,
+            ids,
+            truncated,
+            body.filter !== undefined,
+            viewer,
+            actor
           )
-        }
-        result.failed.push({ id, code })
-      }
-    }
+        : await this.applyEach(storeId, ids, truncated, body, viewer)
     this.audit.log({
       action: AuditAction.BULK_ACTION_EXECUTED,
       actor: { userId: actor.userId },
@@ -107,6 +105,73 @@ export class ConversationBulkService {
       },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
+    })
+    return result
+  }
+
+  // One at a time: each change takes the locks of its conversation, and two that ran together on the
+  // same store would only wait for each other
+  private async applyEach(
+    storeId: string,
+    ids: readonly string[],
+    truncated: boolean,
+    body: BulkActionBody,
+    viewer: Viewer
+  ): Promise<BulkResult> {
+    const result: BulkResult = { succeeded: [], failed: [], truncated }
+    for (const id of ids) {
+      try {
+        await this.apply(storeId, id, body, viewer)
+        result.succeeded.push(id)
+      } catch (error) {
+        const code = codeOf(error)
+        // What is ours (a deadlock, a timeout) is said here; the caller gets the code only
+        if (code === ErrorCodes.INTERNAL_ERROR) {
+          this.logger.error(
+            { conversationId: id, action: body.action, errorName: errorName(error) },
+            'a conversation of a bulk action was not changed'
+          )
+        }
+        result.failed.push({ id, code })
+      }
+    }
+    return result
+  }
+
+  // Changes nothing: queues one file for the conversations the member may see, and says which of the
+  // others were left out, as a conversation that "does not exist" for them (the single routes' answer).
+  // The row freezes the ids that passed and the permissions that decide what the file holds.
+  private async exportSelection(
+    storeId: string,
+    ids: readonly string[],
+    truncated: boolean,
+    // The ids came from the filter with the viewer's view: they are all visible already
+    fromFilter: boolean,
+    viewer: Viewer,
+    actor: Actor
+  ): Promise<BulkResult> {
+    const visible = fromFilter
+      ? new Set(ids)
+      : await this.conversations.visibleAmong(storeId, ids, viewer)
+    const result: BulkResult = {
+      succeeded: ids.filter(id => visible.has(id)),
+      failed: ids
+        .filter(id => !visible.has(id))
+        .map(id => ({ id, code: ErrorCodes.RESOURCE_NOT_FOUND })),
+      truncated
+    }
+    if (result.succeeded.length === 0) return result
+    const filters: ConversationsExportFilters = {
+      filter: {},
+      conversationIds: result.succeeded,
+      viewer: { userId: viewer.userId, held: viewPermissionsOf(viewer.held) }
+    }
+    await this.exports.request({
+      storeId,
+      userId: actor.userId,
+      type: ExportTypes.CONVERSATIONS,
+      format: ExportFormats.CSV,
+      filters
     })
     return result
   }
@@ -179,6 +244,9 @@ export class ConversationBulkService {
       case BulkActions.MARK_UNREAD:
         await this.conversations.markUnread(storeId, conversationId, viewer)
         return
+      case BulkActions.EXPORT_CSV:
+        // run() makes the file for the whole selection; reaching here would be a silent no-op
+        throw new Error('EXPORT_CSV is not applied one conversation at a time')
     }
   }
 }

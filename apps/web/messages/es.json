@@ -149,7 +149,8 @@
       "searchLabel": "Buscar clientes",
       "searchPlaceholder": "Buscar por nombre, correo o teléfono",
       "export": "Exportar CSV",
-      "exportSoon": "La exportación aún no está disponible.",
+      "exportQueued": "El archivo de clientes se está preparando. Estará listo en las exportaciones.",
+      "viewExports": "Ver exportaciones",
       "unnamed": "Cliente sin nombre",
       "caution": "Precaución",
       "failed": "No se pudieron cargar los clientes.",
@@ -968,6 +969,7 @@
         "label": "Más",
         "markRead": "Marcar como leídas",
         "markUnread": "Marcar como no leídas",
+        "exportCsv": "Exportar CSV",
         "archive": "Archivar"
       },
       "pick": {
@@ -1012,12 +1014,18 @@
           "remove_tag": "Quitar la etiqueta {target} de {scope}.",
           "mark_read": "Marcar {scope} como leídas.",
           "mark_unread": "Marcar {scope} como no leídas.",
+          "export_csv": "Exportar {scope} como archivo CSV.",
           "archive": "Archivar {scope}. Las conversaciones archivadas salen de la bandeja y aquí no se puede deshacer."
         }
       },
       "result": {
         "allDone": "{count, plural, one {# conversación actualizada} other {# conversaciones actualizadas}}",
         "someDone": "{succeeded} actualizadas, {failed} sin cambios: {reasons}",
+        "exportQueued": "{count, plural, one {Se está preparando el archivo de # conversación} other {Se está preparando el archivo de # conversaciones}}. Estará listo en las exportaciones.",
+        "exportTruncated": "El filtro alcanzó más conversaciones de las que cabe en un archivo; el archivo tiene las primeras {max}.",
+        "exportNothing": "Ninguna conversación coincidió, así que no se hizo ningún archivo.",
+        "exportPartly": "El archivo se prepara con {succeeded}; {failed} quedaron fuera: {reasons}. Estará listo en las exportaciones.",
+        "viewExports": "Ver exportaciones",
         "noneDone": "No cambió nada: {reasons}",
         "reason": "{reason} ({count})",
         "truncated": "El filtro alcanzó más conversaciones de las que una acción cubre; ejecútala de nuevo para el resto.",

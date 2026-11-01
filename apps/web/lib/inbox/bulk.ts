@@ -18,6 +18,8 @@ export type BulkConfirmation = (typeof BulkConfirmations)[keyof typeof BulkConfi
 // `count` is null for "all matching": the number reached is not known until the server answers
 export function confirmationOf(operation: BulkOperation, count: number | null): BulkConfirmation {
   if (operation.action === BulkActions.ARCHIVE) return BulkConfirmations.TYPED
+  // A file for the exports center changes nothing: it asks no confirmation, whatever the count
+  if (operation.action === BulkActions.EXPORT_CSV) return BulkConfirmations.NONE
   if (count === null || count >= BulkLimits.CONFIRM_FROM) return BulkConfirmations.DIALOG
   return BulkConfirmations.NONE
 }
@@ -124,6 +126,7 @@ export function undoStepsOf(
       break
     }
     case BulkActions.ARCHIVE:
+    case BulkActions.EXPORT_CSV:
       break
   }
   return steps

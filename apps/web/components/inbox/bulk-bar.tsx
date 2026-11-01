@@ -91,6 +91,7 @@ export function BulkBar({
   const mayAssign = can(Permissions.CONVERSATIONS_ASSIGN)
   const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
   const mayArchive = can(Permissions.CONVERSATIONS_ARCHIVE)
+  const mayExport = can(Permissions.CONVERSATIONS_EXPORT)
 
   const count = selection.ids.size
   const isOverLimit = !selection.isAllMatching && count > BulkLimits.MAX_ITEMS
@@ -232,7 +233,7 @@ export function BulkBar({
             </DropdownMenuItem>
           </Menu>
         ) : null}
-        {mayResolve || mayArchive ? (
+        {mayResolve || mayArchive || mayExport ? (
           <Menu label={t('more.label')} disabled={disabled}>
             {mayResolve ? (
               <DropdownMenuItem onSelect={() => request({ action: BulkActions.MARK_READ })}>
@@ -242,6 +243,11 @@ export function BulkBar({
             {mayResolve ? (
               <DropdownMenuItem onSelect={() => request({ action: BulkActions.MARK_UNREAD })}>
                 {t('more.markUnread')}
+              </DropdownMenuItem>
+            ) : null}
+            {mayExport ? (
+              <DropdownMenuItem onSelect={() => request({ action: BulkActions.EXPORT_CSV })}>
+                {t('more.exportCsv')}
               </DropdownMenuItem>
             ) : null}
             {mayArchive ? (
