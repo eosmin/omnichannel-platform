@@ -52,7 +52,7 @@ const httpStatusBans = [
     message: 'Name the status: res.status(HttpStatusCodes.NOT_FOUND), not 404'
   },
   {
-    selector: `VariableDeclarator[id.name=/^(HTTP_)?(OK|CREATED|ACCEPTED|NO_CONTENT|BAD_REQUEST|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|REQUEST_TIMEOUT|CONFLICT|GONE|TOO_MANY_REQUESTS|INTERNAL|INTERNAL_SERVER_ERROR)$/] > ${STATUS_ARGUMENT}`,
+    selector: `VariableDeclarator[id.name=/^(HTTP_)?(OK|CREATED|ACCEPTED|NO_CONTENT|BAD_REQUEST|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|REQUEST_TIMEOUT|CONFLICT|GONE|PRECONDITION_FAILED|TOO_MANY_REQUESTS|INTERNAL|INTERNAL_SERVER_ERROR)$/] > ${STATUS_ARGUMENT}`,
     message: 'Use HttpStatusCodes from @platform/core/errors instead of a constant of your own'
   },
   {
