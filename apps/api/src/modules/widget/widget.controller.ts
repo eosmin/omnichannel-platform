@@ -25,6 +25,7 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import { InboundEventQueue } from '../channels/inbound-event-queue.service'
 
 import { WidgetAway } from './widget-away.service'
+import { WidgetDownloads, type WidgetFileLink } from './widget-downloads.service'
 import { WidgetHistory } from './widget-history.service'
 import type { WidgetMessageView } from './widget-message-view'
 import { allowOrigin } from './widget-origin'
@@ -34,6 +35,8 @@ import { WidgetUploads } from './widget-uploads.service'
 import {
   type WidgetBootstrapBody,
   widgetBootstrapSchema,
+  type WidgetDownloadBody,
+  widgetDownloadSchema,
   type WidgetUploadBody,
   widgetUploadSchema
 } from './widget.schemas'
@@ -83,6 +86,7 @@ export class WidgetController {
     private readonly history: WidgetHistory,
     private readonly away: WidgetAway,
     private readonly uploads: WidgetUploads,
+    private readonly downloads: WidgetDownloads,
     private readonly registry: PluginRegistry,
     private readonly queue: InboundEventQueue,
     @InjectMetric(MetricNames.CHANNEL_WEBHOOK_RECEIVED) private readonly received: Counter<string>,
@@ -175,6 +179,20 @@ export class WidgetController {
   ): Promise<{ uploadUrl: string; uploadId: string }> {
     const { claims, site } = await this.authenticate(body.visitorToken, origin, res)
     return this.uploads.requestUrl(site, claims.visitorId, body)
+  }
+
+  // The signed link of one file of the visitor's own conversation, asked when they open it. It is
+  // signed for a few minutes and always a download; a file of anyone else's is a 404.
+  @RateLimit(WidgetThrottle.DOWNLOAD)
+  @Post(ApiRoutes.widget.download)
+  @HttpCode(HttpStatusCodes.OK)
+  async download(
+    @Body(new ZodValidationPipe(widgetDownloadSchema)) body: WidgetDownloadBody,
+    @Headers('origin') origin: string | undefined,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<WidgetFileLink> {
+    const { claims, site } = await this.authenticate(body.visitorToken, origin, res)
+    return this.downloads.linkFor(site, claims.visitorId, body.mediaId)
   }
 
   // The token of a request, the site it names and the origin that may read the answer. A bad token

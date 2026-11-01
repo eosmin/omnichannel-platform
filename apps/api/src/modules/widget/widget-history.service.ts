@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import {
-  AuthorType,
-  ChannelIds,
-  DeliveryStatus,
-  MessageType,
-  WidgetLimits
-} from '@platform/core/domain'
+import { AuthorType, ChannelIds, WidgetLimits } from '@platform/core/domain'
 import { readStorePreferences } from '@platform/core/store-preferences'
 
-import { type WidgetMessageView, widgetMessageView } from './widget-message-view'
+import {
+  type WidgetMessageView,
+  WIDGET_FILES_SELECT,
+  WIDGET_VISIBLE_TYPES,
+  visitorMessagesWhere,
+  widgetMessageView
+} from './widget-message-view'
 import type { WidgetSite } from './widget-sites.service'
 
 // What a visitor may read of their own conversation with the store
@@ -18,29 +18,25 @@ import type { WidgetSite } from './widget-sites.service'
 export class WidgetHistory {
   constructor(private readonly prisma: PrismaService) {}
 
-  // The last messages the visitor and the store have exchanged on this widget, oldest first. Only text
-  // that reached the visitor: not a note, a system line, a reply still waiting or one that failed, and
-  // not a message that was deleted.
+  // The last messages the visitor and the store have exchanged on this widget, oldest first. Only what
+  // reached the visitor (see `visitorMessagesWhere`): not a note, a system line, a reply still waiting
+  // or one that failed, and not a message that was deleted. A message of files shows the files the scan
+  // found clean.
   async of(site: WidgetSite, visitorId: string): Promise<WidgetMessageView[]> {
     const rows = await this.prisma.client.message.findMany({
+      // Something to show is part of the query, or a message of files not yet clean would use up one of
+      // the slots of the window and push an older real message out
       where: {
-        storeId: site.storeId,
-        type: MessageType.TEXT,
-        deletedAt: null,
-        conversation: {
-          channelConnectionId: site.connectionId,
-          customerIdentity: { channelType: ChannelIds.WEB_WIDGET, channelIdentity: visitorId }
-        },
-        OR: [
-          { authorType: AuthorType.CUSTOMER },
-          {
-            deliveryStatus: {
-              in: [DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ]
-            }
-          }
-        ]
+        ...visitorMessagesWhere(site, visitorId),
+        AND: [{ OR: [{ content: { not: null } }, { media: { some: WIDGET_FILES_SELECT.where } }] }]
       },
-      select: { id: true, content: true, authorType: true, createdAt: true },
+      select: {
+        id: true,
+        content: true,
+        authorType: true,
+        createdAt: true,
+        media: WIDGET_FILES_SELECT
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: WidgetLimits.HISTORY_MESSAGES
     })
@@ -50,7 +46,7 @@ export class WidgetHistory {
       .reverse()
   }
 
-  // The latest text message of the visitor that an agent has read, for a visitor who comes back after
+  // The latest message of the visitor that an agent has read, for a visitor who comes back after
   // the live "read" was sent. `lastReadAt` is the moment of the last read of the conversation, and
   // "mark as unread" moves it back before the last message. Null when the store sends no read
   // receipts, as for the live ones, or nothing of the visitor was read.
@@ -79,10 +75,13 @@ export class WidgetHistory {
       where: {
         storeId: site.storeId,
         authorType: AuthorType.CUSTOMER,
-        type: MessageType.TEXT,
+        type: { in: [...WIDGET_VISIBLE_TYPES] },
         deletedAt: null,
-        content: { not: null },
-        OR: read
+        // Something to be seen: a text, or a file that is clean
+        AND: [
+          { OR: read },
+          { OR: [{ content: { not: null } }, { media: { some: WIDGET_FILES_SELECT.where } }] }
+        ]
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { id: true }

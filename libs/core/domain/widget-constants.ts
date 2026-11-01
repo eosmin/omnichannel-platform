@@ -81,7 +81,8 @@ export const WidgetClientEvents = {
 export const WidgetThrottle = {
   BOOTSTRAP: { limit: 30, ttlMs: 60_000 },
   MESSAGES: { limit: 60, ttlMs: 60_000 },
-  UPLOAD: { limit: 20, ttlMs: 60_000 }
+  UPLOAD: { limit: 20, ttlMs: 60_000 },
+  DOWNLOAD: { limit: 60, ttlMs: 60_000 }
 } as const
 
 // How `POST /widget/messages` names a field of the pre-chat form it could not take, in the `issues` of

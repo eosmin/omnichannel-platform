@@ -5,6 +5,7 @@ import { ApiRoutes } from '@platform/core/api'
 
 import { ChannelRegistryModule } from '../channel-registry'
 import { ChannelsModule } from '../channels/channels.module'
+import { MediaModule } from '../media/media.module'
 import { TenancyModule } from '../tenancy'
 
 import { WidgetAway } from './widget-away.service'
@@ -12,6 +13,7 @@ import { WidgetCorsMiddleware } from './widget-cors.middleware'
 import { WidgetCustomerTyping } from './widget-customer-typing.service'
 import { WidgetDeliveryListener } from './widget-delivery.listener'
 import { WidgetDeliveryModule } from './widget-delivery.module'
+import { WidgetDownloads } from './widget-downloads.service'
 import { WidgetHistory } from './widget-history.service'
 import { WidgetSettingsController } from './widget-settings.controller'
 import { WidgetSettings } from './widget-settings.service'
@@ -28,6 +30,7 @@ import { WidgetGateway } from './widget.gateway'
   imports: [
     ChannelRegistryModule,
     ChannelsModule,
+    MediaModule,
     TenancyModule,
     WebWidgetPlatformModule,
     WidgetDeliveryModule
@@ -40,6 +43,7 @@ import { WidgetGateway } from './widget.gateway'
     WidgetHistory,
     WidgetAway,
     WidgetUploads,
+    WidgetDownloads,
     WidgetDeliveryListener,
     WidgetCustomerTyping,
     WidgetGateway
@@ -53,7 +57,8 @@ export class WidgetModule implements NestModule {
       .forRoutes(
         { path: ApiRoutes.widget.bootstrap, method: RequestMethod.OPTIONS },
         { path: ApiRoutes.widget.messages, method: RequestMethod.OPTIONS },
-        { path: ApiRoutes.widget.upload, method: RequestMethod.OPTIONS }
+        { path: ApiRoutes.widget.upload, method: RequestMethod.OPTIONS },
+        { path: ApiRoutes.widget.download, method: RequestMethod.OPTIONS }
       )
   }
 }

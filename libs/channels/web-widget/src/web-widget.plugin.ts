@@ -66,7 +66,9 @@ const connectSchema = z.object({ siteOrigins: siteOriginsSchema })
 // provider to call: a reply is delivered to the visitor's socket by the api when it is sent.
 //
 // Files from the visitor arrive as uploads the api checked (`attachments`) and are read from the
-// bucket by the worker (`fetchMedia`) like any customer file; files to the visitor wait for PR F2.
+// bucket by the worker (`fetchMedia`) like any customer file. Files to the visitor are images and
+// documents, delivered like a text: the api pushes the message to the socket and the visitor asks for
+// a signed link when they open the file.
 // Typing is declared in both directions, and the read receipts too: the api tells the visitor's socket
 // when an agent reads. There is no messaging window.
 @Injectable()
@@ -79,6 +81,8 @@ export class WebWidgetPlugin implements ChannelPlugin {
   readonly messagingWindow = null
   readonly capabilities = [
     ChannelCapability.TEXT,
+    ChannelCapability.IMAGE,
+    ChannelCapability.DOCUMENT,
     ChannelCapability.TYPING_INDICATOR,
     ChannelCapability.CUSTOMER_TYPING,
     ChannelCapability.READ_RECEIPTS
@@ -160,10 +164,22 @@ export class WebWidgetPlugin implements ChannelPlugin {
     }
   }
 
-  sendMedia(_ctx: ChannelContext, _params: SendMediaParams): Promise<ChannelMessageResult> {
-    return Promise.reject(
-      new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
-    )
+  // Same as a text: the file is already clean and stored, the visitor is given a link they ask for when
+  // they open it, so there is nothing to upload to anyone. The id is ours.
+  sendMedia(_ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
+    // Only what is declared: images and documents (the api checks the capability first, this keeps the
+    // plugin honest for any other path)
+    const kind = messageTypeOf(params.contentType)
+    if (kind !== MessageType.IMAGE && kind !== MessageType.DOCUMENT) {
+      return Promise.reject(
+        new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+      )
+    }
+    return Promise.resolve({
+      externalId: params.idempotencyKey,
+      status: DeliveryStatus.SENT,
+      sentAt: new Date().toISOString()
+    })
   }
 
   // The token is the signature: the request is genuine when it carries one this platform gave a

@@ -2,13 +2,18 @@ import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, ChannelConnectionStatus, ChannelIds, MessageType } from '@platform/core/domain'
+import { AuthorType } from '@platform/core/domain'
 import { Events, type MessageStatusPayload } from '@platform/core/events'
 
 import { WidgetDelivery } from './widget-delivery.service'
-import { widgetMessageView } from './widget-message-view'
+import {
+  LIVE_DELIVERY_CONNECTION,
+  WIDGET_FILES_SELECT,
+  WIDGET_VISIBLE_TYPES,
+  widgetMessageView
+} from './widget-message-view'
 
-// A reply the channel has taken goes to the visitor who is waiting for it. The domain event carries
+// A reply (text or file) the channel has taken goes to the visitor who is waiting for it. The domain event carries
 // ids only, so the message is read here, and only a reply on a conversation of the widget is passed on.
 @Injectable()
 export class WidgetDeliveryListener {
@@ -23,21 +28,17 @@ export class WidgetDeliveryListener {
       where: {
         id: payload.messageId,
         storeId: payload.storeId,
-        type: MessageType.TEXT,
+        type: { in: [...WIDGET_VISIBLE_TYPES] },
         deletedAt: null,
         authorType: { not: AuthorType.CUSTOMER },
-        conversation: {
-          channelConnection: {
-            pluginId: ChannelIds.WEB_WIDGET,
-            status: ChannelConnectionStatus.ACTIVE
-          }
-        }
+        conversation: { channelConnection: LIVE_DELIVERY_CONNECTION }
       },
       select: {
         id: true,
         content: true,
         authorType: true,
         createdAt: true,
+        media: WIDGET_FILES_SELECT,
         conversation: {
           select: {
             channelConnection: { select: { connectionId: true } },
