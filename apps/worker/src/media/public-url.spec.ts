@@ -1,4 +1,4 @@
-import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
+import { assertPublicHttpsUrl, resolvePublicHttpsUrl, UnsafeUrlError } from './public-url'
 
 const resolvesTo =
   (...addresses: string[]) =>
@@ -44,6 +44,28 @@ describe('assertPublicHttpsUrl', () => {
   it('refuses a host that resolves to nothing', async () => {
     await expect(
       assertPublicHttpsUrl('https://nowhere.example.com/a.jpg', resolvesTo())
+    ).rejects.toBeInstanceOf(UnsafeUrlError)
+  })
+})
+
+describe('resolvePublicHttpsUrl', () => {
+  it('returns the addresses the check read, for the caller to connect to', async () => {
+    const target = await resolvePublicHttpsUrl(
+      'https://cdn.example.com/a.jpg',
+      resolvesTo('8.8.8.8', '1.1.1.1')
+    )
+    expect(target.addresses).toEqual(['8.8.8.8', '1.1.1.1'])
+    expect(target.url.hostname).toBe('cdn.example.com')
+  })
+
+  it('returns a public ip literal as its own address', async () => {
+    const target = await resolvePublicHttpsUrl('https://8.8.8.8/a.jpg', jest.fn())
+    expect(target.addresses).toEqual(['8.8.8.8'])
+  })
+
+  it('refuses a host with one private address among public ones', async () => {
+    await expect(
+      resolvePublicHttpsUrl('https://cdn.example.com/a.jpg', resolvesTo('8.8.8.8', '192.168.1.5'))
     ).rejects.toBeInstanceOf(UnsafeUrlError)
   })
 })

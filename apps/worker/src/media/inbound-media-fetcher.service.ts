@@ -37,6 +37,7 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 
 import { refusalOf } from '../outbound/send-refusal'
 
+import { bareType, FileRefused, GENERIC_TYPES, readLimited } from './fetch-helpers'
 import { inboundMediaId } from './inbound-media-id'
 import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
@@ -50,37 +51,9 @@ export class MediaFetchAttemptFailed extends Error {
   }
 }
 
-class FileRefused extends Error {}
-
 // What a file server says when it does not know: the type of the webhook is then the one taken
 // A media id of a provider: letters, digits, underscore, dash. Anything else is read as a link.
 const PLAIN_REFERENCE = /^[\w-]+$/
-
-const GENERIC_TYPES: ReadonlySet<string> = new Set([
-  '',
-  'application/octet-stream',
-  'binary/octet-stream',
-  'application/x-download'
-])
-
-// "image/jpeg; charset=x" is "image/jpeg"
-const bareType = (contentType: string): string =>
-  (contentType.split(';')[0] ?? '').trim().toLowerCase()
-
-async function readLimited(stream: NodeJS.ReadableStream, maxBytes: number): Promise<Buffer> {
-  const chunks: Buffer[] = []
-  let total = 0
-  for await (const chunk of stream) {
-    const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    total += part.length
-    if (total > maxBytes) {
-      ;(stream as { destroy?: () => void }).destroy?.()
-      throw new FileRefused('the file is bigger than the limit')
-    }
-    chunks.push(part)
-  }
-  return Buffer.concat(chunks)
-}
 
 // The worker half of a file the customer sent: asks the plugin of the connection that delivered the
 // message for the bytes, keeps them in the bucket and hands them to the scan. The file is `pending`

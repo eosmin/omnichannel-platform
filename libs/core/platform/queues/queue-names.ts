@@ -49,6 +49,7 @@ export const JobNames = {
   SCAN_FILE: 'scan-file',
   PROCESS_IMAGE: 'process-image', // Enqueued by SCAN_FILE only after a clean result
   FETCH_INBOUND_MEDIA: 'fetch-inbound-media',
+  FETCH_ORIGIN_MEDIA: 'fetch-origin-media', // The picture or the thumbnail of an ad: one job each
   ENFORCE_RETENTION: 'enforce-retention',
   RECONCILE_INVENTORY: 'reconcile-inventory',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
@@ -76,5 +77,9 @@ export const JobNames = {
   // dead letter
   EXHAUSTED: 'exhausted'
 } as const
+
+// One job per picture of an ad: asked twice (a retry of the event) it is one job
+export const originMediaJobId = (originId: string, slot: string): string =>
+  `${JobNames.FETCH_ORIGIN_MEDIA}-${originId}-${slot}`
 
 export type JobName = (typeof JobNames)[keyof typeof JobNames]

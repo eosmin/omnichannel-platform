@@ -15,6 +15,7 @@ import { ProcessorSupport } from '../processors/processor-support'
 import { ClamavClient } from './clamav.client'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
 import { MediaPipeline } from './media-pipeline.service'
+import { OriginMediaFetcher } from './origin-media-fetcher.service'
 import { OrphanMediaCleaner } from './orphan-media-cleaner.service'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
 
@@ -38,6 +39,7 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     MediaPipeline,
     UnavailableFileMarker,
     InboundMediaFetcher,
+    OriginMediaFetcher,
     OrphanMediaCleaner,
     HeavyProcessingProcessor
   ],

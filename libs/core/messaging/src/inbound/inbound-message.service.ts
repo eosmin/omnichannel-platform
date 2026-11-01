@@ -18,12 +18,20 @@ import {
   MessageType,
   OutboundLimits,
   OriginKinds,
+  OriginMediaSlots,
+  OriginMediaTypes,
   ConversationStatusReasons
 } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { type FetchInboundMediaJob, JobNames, QueueNames } from '@platform/core/queues'
+import {
+  type FetchInboundMediaJob,
+  type FetchOriginMediaJob,
+  JobNames,
+  originMediaJobId,
+  QueueNames
+} from '@platform/core/queues'
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { ConversationsService } from '../conversations/conversations.service'
@@ -58,7 +66,7 @@ export class InboundMessageService {
     private readonly routing: RoutingService,
     private readonly events: DomainEvents,
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
-    private readonly heavyQueue: Queue<FetchInboundMediaJob>,
+    private readonly heavyQueue: Queue<FetchInboundMediaJob | FetchOriginMediaJob>,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(InboundMessageService.name)
@@ -104,6 +112,7 @@ export class InboundMessageService {
     })
 
     await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
+    if (event.message.origin !== undefined) await this.queueOriginFetches(storeId, stored.messageId)
     if (stored.duplicate) return InboundOutcomes.DUPLICATE
     if (stored.needsRouting) {
       await this.route(storeId, stored.conversationId, event, receivedAt)
@@ -312,6 +321,35 @@ export class InboundMessageService {
           filename: media.filename
         },
         opts: { jobId: `fetch-media-${messageId}-${index}` }
+      }))
+    )
+  }
+
+  // The pictures of the ad this message opened, if it opened one (the same ad as the latest origin
+  // makes no row). The job reads the links from the row; its id is the origin and the slot, so a
+  // retry of the event queues nothing twice.
+  private async queueOriginFetches(storeId: string, messageId: string): Promise<void> {
+    const origin = await this.prisma.client.conversationOrigin.findFirst({
+      where: { storeId, messageId },
+      select: { id: true, mediaType: true, mediaUrl: true, thumbnailUrl: true }
+    })
+    if (origin === null) return
+    const slots = [
+      ...(origin.thumbnailUrl === null ? [] : [OriginMediaSlots.THUMBNAIL]),
+      // The media only when it is an image of its own: a video is not kept, and the same link as the
+      // thumbnail would be a second copy of one file
+      ...(origin.mediaUrl === null ||
+      origin.mediaType !== OriginMediaTypes.IMAGE ||
+      origin.mediaUrl === origin.thumbnailUrl
+        ? []
+        : [OriginMediaSlots.MEDIA])
+    ]
+    if (slots.length === 0) return
+    await this.heavyQueue.addBulk(
+      slots.map(slot => ({
+        name: JobNames.FETCH_ORIGIN_MEDIA,
+        data: { storeId, originId: origin.id, slot },
+        opts: { jobId: originMediaJobId(origin.id, slot) }
       }))
     )
   }

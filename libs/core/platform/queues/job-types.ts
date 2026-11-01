@@ -1,5 +1,5 @@
 import type { AnalyticsEventName } from '@platform/core/analytics'
-import type { ChannelId, DigestFrequency } from '@platform/core/domain'
+import type { ChannelId, DigestFrequency, OriginMediaSlot } from '@platform/core/domain'
 import type { EventName } from '@platform/core/events'
 import { ExportTypes, type ExportType } from '@platform/core/exports'
 import type { Locale } from '@platform/core/i18n'
@@ -112,6 +112,13 @@ export interface ScanFileJob extends BaseJob {
 }
 export interface ProcessImageJob extends BaseJob {
   mediaId: string
+}
+// The picture of an ad, fetched by the core from the link the provider sent; the link is read from
+// the origin row when the job runs, never carried in the job
+export interface FetchOriginMediaJob extends BaseJob {
+  storeId: string
+  originId: string
+  slot: OriginMediaSlot
 }
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string

@@ -2,9 +2,10 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
-import { channelIdSchema } from '@platform/core/domain'
+import { channelIdSchema, OriginMediaSlots, type OriginMediaSlot } from '@platform/core/domain'
 import {
   type FetchInboundMediaJob,
+  type FetchOriginMediaJob,
   JobNames,
   QueueNames,
   type ProcessImageJob,
@@ -13,12 +14,18 @@ import {
 
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
+import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
-type HeavyJob = ScanFileJob | ProcessImageJob | FetchInboundMediaJob
+type HeavyJob = ScanFileJob | ProcessImageJob | FetchInboundMediaJob | FetchOriginMediaJob
 
+const originFetchJobSchema = z.object({
+  storeId: z.uuid(),
+  originId: z.uuid(),
+  slot: z.enum(Object.values(OriginMediaSlots) as [OriginMediaSlot, ...OriginMediaSlot[]])
+})
 const mediaJobSchema = z.object({ mediaId: z.uuid() })
 const fetchJobSchema = z.object({
   messageId: z.uuid(),
@@ -38,7 +45,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
   constructor(
     support: ProcessorSupport,
     private readonly pipeline: MediaPipeline,
-    private readonly fetcher: InboundMediaFetcher
+    private readonly fetcher: InboundMediaFetcher,
+    private readonly originFetcher: OriginMediaFetcher
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -49,6 +57,11 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       // The job crossed Redis: what does not fit now will not fit when it is tried again
       if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
       return this.fetcher.fetch(fetch.data, isLastAttempt(job))
+    }
+    if (job.name === JobNames.FETCH_ORIGIN_MEDIA) {
+      const fetch = originFetchJobSchema.safeParse(job.data)
+      if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
+      return this.originFetcher.fetch(fetch.data)
     }
     const parsed = mediaJobSchema.safeParse(job.data)
     if (!parsed.success) throw new UnrecoverableError('the media job does not fit its schema')

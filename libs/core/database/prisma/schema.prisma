@@ -606,6 +606,8 @@ model ConversationOrigin {
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  // The picture and the thumbnail of the ad, fetched by the worker (purpose origin)
+  files        Media[]
 
   @@index([conversationId, createdAt])
   @@index([storeId])
@@ -798,8 +800,10 @@ model InventoryMovement {
 model Media {
   id          String    @id @default(uuid())
   storeId     String?   @map("store_id") // Null only for user avatars
-  purpose     String // MediaPurpose: message | product | order | avatar | export
+  purpose     String // MediaPurpose: message | origin | product | order | avatar | export
   messageId   String?   @map("message_id")
+  originSlot  String?   @map("origin_slot") // OriginMediaSlot: which picture of the ad this is
+  originId    String?   @map("origin_id") // Set for the picture of an ad (purpose origin), never for the gallery
   customerId  String?   @map("customer_id") // Set for message media: gallery queries
   productId   String?   @map("product_id")
   orderId     String?   @map("order_id")
@@ -816,15 +820,17 @@ model Media {
   scannedAt   DateTime? @map("scanned_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  store    Store?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  message  Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  product  Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
-  order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  store    Store?              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message  Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  origin   ConversationOrigin? @relation(fields: [originId], references: [id], onDelete: Cascade)
+  customer Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  product  Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order    Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([storeId, createdAt])
   @@index([storeId, customerId, createdAt(sort: Desc)])
   @@index([messageId])
+  @@index([originId])
   @@index([status, createdAt])
   @@map("media")
 }

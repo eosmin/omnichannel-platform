@@ -5,8 +5,10 @@ import {
   ConversationLimits,
   httpUrl,
   InboundLimits,
+  MediaStatus,
   type OriginKind,
   OriginKinds,
+  OriginMediaSlots,
   type OriginMediaType,
   OriginMediaTypes
 } from '@platform/core/domain'
@@ -26,7 +28,18 @@ export interface OriginView {
   mediaType: OriginMediaType | null
   mediaUrl: string | null
   thumbnailUrl: string | null
+  // The pictures the worker kept as files of the store: the card draws these, from a signed link, and
+  // not the address of the ad, which expires and tells the ad's CDN who is looking. Null while there
+  // is none, and for a file that was found infected.
+  mediaFile: OriginFileView | null
+  thumbnailFile: OriginFileView | null
   createdAt: Date
+}
+
+export interface OriginFileView {
+  id: string
+  // `pending` until the scan ends: the card asks again
+  status: typeof MediaStatus.PENDING | typeof MediaStatus.CLEAN
 }
 
 // The links came from an ad: untrusted, drawn as a link or an image and never fetched here. They are
@@ -78,8 +91,26 @@ export class ConversationOriginsService {
       })
       if (first !== null && !rows.some(row => row.id === first.id)) rows.push(first)
     }
+    const files = await this.prisma.client.media.findMany({
+      where: {
+        storeId,
+        originId: { in: rows.map(row => row.id) },
+        status: { in: [MediaStatus.PENDING, MediaStatus.CLEAN] }
+      },
+      select: { id: true, originId: true, originSlot: true, status: true }
+    })
+    const fileOf = (originId: string, slot: string): OriginFileView | null => {
+      const file = files.find(item => item.originId === originId && item.originSlot === slot)
+      if (file === undefined) return null
+      return {
+        id: file.id,
+        status: file.status === String(MediaStatus.CLEAN) ? MediaStatus.CLEAN : MediaStatus.PENDING
+      }
+    }
     return rows.map(row => ({
       ...row,
+      mediaFile: fileOf(row.id, OriginMediaSlots.MEDIA),
+      thumbnailFile: fileOf(row.id, OriginMediaSlots.THUMBNAIL),
       kind: enumValueOf(OriginKinds, row.kind, 'origin kind'),
       mediaType:
         row.mediaType === null

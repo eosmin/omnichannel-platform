@@ -1,5 +1,7 @@
 export const MediaPurpose = {
   MESSAGE: 'message',
+  // The picture of the ad a conversation came from
+  ORIGIN: 'origin',
   PRODUCT: 'product',
   ORDER: 'order',
   AVATAR: 'avatar',

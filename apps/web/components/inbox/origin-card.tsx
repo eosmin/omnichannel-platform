@@ -5,34 +5,52 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useLayoutEffect, useRef, useState } from 'react'
 
 import type { ConversationOriginView } from '@platform/api-client'
-import { OriginKinds, OriginMediaTypes } from '@platform/core/domain'
+import { MediaStatus, OriginKinds } from '@platform/core/domain'
 
 import { hostOf } from '../../lib/inbox/link-host'
+import { pictureFileOf } from '../../lib/inbox/origin-picture'
+import { useMediaUrls } from '../../lib/media/use-media-urls'
 
 import { RemoteImage } from './remote-image'
 
 const kindKeyOf = (kind: string): 'ad' | 'post' | 'other' =>
   kind === OriginKinds.AD ? 'ad' : kind === OriginKinds.POST ? 'post' : 'other'
 
+// The picture the worker kept, from a signed link of the bucket. The address of the ad is never drawn:
+// it expires, and loading it would tell the CDN of the ad who is looking at the inbox.
+function OriginPicture({
+  storeId,
+  origin
+}: {
+  storeId: string
+  origin: ConversationOriginView
+}): ReactElement | null {
+  const file = pictureFileOf(origin)
+  const isClean = file?.status === String(MediaStatus.CLEAN)
+  const urls = useMediaUrls(storeId, file?.id ?? '', isClean)
+  const src = urls.data === undefined ? null : (urls.data.variants.thumb ?? urls.data.url)
+  if (src === null) return null
+  return (
+    <div className="bg-muted size-16 shrink-0 overflow-hidden rounded-md">
+      <RemoteImage src={src} className="size-full object-cover" />
+    </div>
+  )
+}
+
 function OriginEntry({
+  storeId,
   origin,
   isFirstContact
 }: {
+  storeId: string
   origin: ConversationOriginView
   isFirstContact: boolean
 }): ReactElement {
   const t = useTranslations('inbox.thread.origin')
-  // The picture is the thumbnail, or the media itself when it is an image: a video has no frame to draw
-  const picture =
-    origin.thumbnailUrl ?? (origin.mediaType === OriginMediaTypes.IMAGE ? origin.mediaUrl : null)
   const host = origin.sourceUrl === null ? null : hostOf(origin.sourceUrl)
   return (
     <div className="flex gap-3">
-      {picture === null ? null : (
-        <div className="bg-muted size-16 shrink-0 overflow-hidden rounded-md">
-          <RemoteImage src={picture} className="size-full object-cover" />
-        </div>
-      )}
+      <OriginPicture storeId={storeId} origin={origin} />
       <div className="flex min-w-0 flex-col gap-0.5 text-xs">
         <p className="text-muted-foreground">
           {t(isFirstContact ? 'firstContactFrom' : 'cameFrom', {
@@ -64,9 +82,11 @@ function OriginEntry({
 // folded under "N earlier". The oldest one is the first contact. The list is newest first. A
 // conversation with no origin shows nothing.
 export function OriginCard({
+  storeId,
   origins,
   onGrow
 }: {
+  storeId: string
   origins: readonly ConversationOriginView[]
   // Called with the change in height and the card, after it unfolds or folds
   onGrow: (growth: number, card: HTMLElement) => void
@@ -95,7 +115,12 @@ export function OriginCard({
       className="bg-card mx-3 mt-3 flex flex-col gap-3 rounded-lg border p-3"
     >
       {shown.map(origin => (
-        <OriginEntry key={origin.id} origin={origin} isFirstContact={origin.id === first?.id} />
+        <OriginEntry
+          key={origin.id}
+          storeId={storeId}
+          origin={origin}
+          isFirstContact={origin.id === first?.id}
+        />
       ))}
       {earlier.length === 0 ? null : (
         <button
