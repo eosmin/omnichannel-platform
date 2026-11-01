@@ -1,0 +1,70 @@
+import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
+import { z } from 'zod'
+
+import { errorName } from '@platform/channels/connections'
+import { PrismaService } from '@platform/core/database'
+import { type MediaUnavailableCode, UNAVAILABLE_FILES_KEY } from '@platform/core/domain'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import { lockMessageRow, publishMessageChanged } from '@platform/core/messaging'
+
+// What the channel put in the metadata stays as it is
+const storedListSchema = z.object({
+  [UNAVAILABLE_FILES_KEY]: z.array(z.record(z.string(), z.json()))
+})
+const keptMetadataSchema = z.record(z.string(), z.json())
+
+// Writes down, in the metadata of the message, that a file the customer sent was given up on, and tells
+// the team so the thread draws the line. Never throws: the job already decided its own outcome, and a
+// failure here must not turn a kept decision into a retry that would fetch the file again.
+@Injectable()
+export class UnavailableFileMarker {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: DomainEvents,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(UnavailableFileMarker.name)
+  }
+
+  async mark(
+    storeId: string,
+    messageId: string,
+    index: number,
+    code: MediaUnavailableCode
+  ): Promise<void> {
+    try {
+      await this.prisma.transaction(async tx => {
+        // An album is several jobs on one message: they take turns on its row
+        await lockMessageRow(tx, messageId)
+        const message = await tx.message.findFirst({
+          where: { id: messageId, storeId },
+          select: { metadata: true }
+        })
+        if (message === null) return
+        // Read as it is stored: an entry this version does not know (a newer worker wrote it) is kept
+        const current =
+          storedListSchema.safeParse(message.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+        // Asked twice (a retry, a redelivered job): one entry per place of the file
+        if (current.some(file => file.index === index)) return
+        const kept = keptMetadataSchema.safeParse(message.metadata).data ?? {}
+        await tx.message.updateMany({
+          where: { id: messageId, storeId },
+          data: {
+            metadata: {
+              ...kept,
+              [UNAVAILABLE_FILES_KEY]: [...current, { index, code }]
+            }
+          }
+        })
+        await publishMessageChanged(this.events, tx, Events.MEDIA_UNAVAILABLE, storeId, messageId)
+      })
+    } catch (error) {
+      this.logger.warn(
+        { messageId, index, errorName: errorName(error) },
+        'a file that could not be kept was not recorded'
+      )
+    }
+  }
+}

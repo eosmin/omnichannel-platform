@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Image as ImageIcon, Mic, Video } from 'lucide-react'
+import { FileText, Image as ImageIcon, Mic, TriangleAlert, Video } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
@@ -256,10 +256,13 @@ function Content({
   }
   const text = message.content === null || message.content === '' ? null : message.content
   const MediaIcon = isMediaType(message.type) ? MEDIA_ICONS[message.type] : null
+  const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
   return (
     <>
-      {message.media.length > 0 ? <MessageMedia files={message.media} /> : null}
-      {MediaIcon === null || !isMediaType(message.type) || message.media.length > 0 ? null : (
+      {hasFiles ? (
+        <MessageMedia files={message.media} unavailable={message.unavailableFiles} />
+      ) : null}
+      {MediaIcon === null || !isMediaType(message.type) || hasFiles ? null : (
         <p className="flex items-center gap-1.5 text-xs font-medium">
           <MediaIcon aria-hidden className="size-4" />
           {t(`mediaLabel.${message.type}`)}
@@ -281,6 +284,12 @@ function Content({
           )}
         </p>
       )}
+      {message.captionFailed ? (
+        <p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
+          {t('captionFailed')}
+        </p>
+      ) : null}
     </>
   )
 }

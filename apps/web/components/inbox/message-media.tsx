@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
 
 import type { MessageView } from '@platform/api-client'
-import { MediaStatus, MessageType } from '@platform/core/domain'
+import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/domain'
 import { mediaMessageTypeOf } from '@platform/core/storage'
 
 import { formatBytes } from '../../lib/media/attachment-rules'
@@ -15,16 +15,26 @@ import { useStore } from '../providers/store-context'
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
 
 type MediaFile = MessageView['media'][number]
+type UnavailableFile = MessageView['unavailableFiles'][number]
 
 // The files of a message, each in the state its scan is in. The signed links are asked from the api
 // when the file is clean and drawn at once; the list of the thread never carries a link.
-export function MessageMedia({ files }: { files: readonly MediaFile[] }): ReactElement | null {
+export function MessageMedia({
+  files,
+  unavailable
+}: {
+  files: readonly MediaFile[]
+  unavailable: readonly UnavailableFile[]
+}): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
-  if (files.length === 0) return null
+  if (files.length === 0 && unavailable.length === 0) return null
   return (
     <div className="flex flex-col gap-1.5">
       {files.map(file => (
         <MediaItem key={file.id} file={file} onOpen={setOpen} />
+      ))}
+      {unavailable.map(file => (
+        <UnavailableItem key={file.index} code={file.code} />
       ))}
       <MediaLightbox file={open} onClose={() => setOpen(null)} />
     </div>
@@ -36,6 +46,37 @@ function Frame({ children }: { children: ReactNode }): ReactElement {
     <div className="bg-background/60 flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs">
       {children}
     </div>
+  )
+}
+
+// A code of a newer server reads as the generic one
+function reasonOf(
+  code: string,
+  t: ReturnType<typeof useTranslations<'inbox.thread.media.notKept'>>
+): string {
+  switch (code) {
+    case MediaUnavailableCodes.REFUSED:
+      return t('refused')
+    case MediaUnavailableCodes.UNSAFE_LINK:
+      return t('unsafe_link')
+    case MediaUnavailableCodes.CHANNEL_CANNOT_FETCH:
+      return t('channel_cannot_fetch')
+    default:
+      return t('fetch_failed')
+  }
+}
+
+// A file the customer sent that the platform could not keep. It was never stored, so there is nothing to
+// retry from here: the line says why, in words of the agent.
+function UnavailableItem({ code }: { code: string }): ReactElement {
+  const t = useTranslations('inbox.thread.media.notKept')
+  return (
+    <Frame>
+      <TriangleAlert aria-hidden className="size-4 shrink-0" />
+      <span role="status" className="min-w-0 break-words">
+        {reasonOf(code, t)}
+      </span>
+    </Frame>
   )
 }
 

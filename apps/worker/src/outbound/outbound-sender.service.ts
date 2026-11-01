@@ -47,7 +47,8 @@ const resultSchema = z.object({
   // Only what the core uses is read; anything else the plugin adds is dropped
   metadata: z
     .object({
-      [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: z.string().min(1).max(255).optional()
+      [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: z.string().min(1).max(255).optional(),
+      [ChannelResultMetadata.CAPTION_FAILED]: z.boolean().optional()
     })
     .optional()
 })
@@ -271,11 +272,13 @@ export class OutboundSender {
     })
     if (taken > 0) this.logger.warn({ messageId }, 'the provider id of a reply was already used')
     const captionExternalId = accepted.metadata?.[ChannelResultMetadata.CAPTION_EXTERNAL_ID]
+    const captionFailed = accepted.metadata?.[ChannelResultMetadata.CAPTION_FAILED] === true
     const withoutId: StatusChange = {
       storeId,
       messageId,
       to: accepted.status,
-      ...(captionExternalId === undefined ? {} : { captionExternalId })
+      ...(captionExternalId === undefined ? {} : { captionExternalId }),
+      ...(captionFailed ? { captionFailed } : {})
     }
     let change: StatusChange =
       taken > 0 ? withoutId : { ...withoutId, channelMessageId: accepted.externalId }

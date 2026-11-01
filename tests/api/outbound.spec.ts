@@ -840,12 +840,30 @@ describe('Replies on their way to a channel', () => {
 
       const row = await owner.message.findUniqueOrThrow({
         where: { id: reply.id },
-        select: { metadata: true }
+        select: { metadata: true, captionChannelMessageId: true }
       })
-      expect(row.metadata).toEqual({ captionExternalId: 'cap-1' })
+      expect(row.captionChannelMessageId).toBe('cap-1')
+      // The column is the only place of the id, and what else the plugin said is dropped
+      expect(row.metadata).toBeNull()
     })
 
-    it('adds the caption id to the metadata the message already has', async () => {
+    it('flags a reply whose file went and whose caption did not', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, { messageId: reply.id })
+      mediaResult = { metadata: { captionFailed: true } }
+
+      await sender.send(job(reply), false)
+
+      const row = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { metadata: true, deliveryStatus: true, channelMessageId: true }
+      })
+      expect(row.deliveryStatus).toBe(DeliveryStatus.SENT)
+      expect(row.channelMessageId).not.toBeNull()
+      expect(row.metadata).toEqual({ captionFailed: true })
+    })
+
+    it('keeps the metadata the message already has when the caption id is written', async () => {
       const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
       await fileOf(reply.storeId, { messageId: reply.id })
       await owner.message.update({ where: { id: reply.id }, data: { metadata: { other: 1 } } })
@@ -855,9 +873,10 @@ describe('Replies on their way to a channel', () => {
 
       const row = await owner.message.findUniqueOrThrow({
         where: { id: reply.id },
-        select: { metadata: true }
+        select: { metadata: true, captionChannelMessageId: true }
       })
-      expect(row.metadata).toEqual({ other: 1, captionExternalId: 'cap-2' })
+      expect(row.metadata).toEqual({ other: 1 })
+      expect(row.captionChannelMessageId).toBe('cap-2')
     })
 
     it.each(['infected', 'pending'])('fails the message when its file is %s', async status => {

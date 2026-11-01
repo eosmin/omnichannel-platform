@@ -79,3 +79,55 @@ describe('messageView media', () => {
     expect(() => messageView({ ...row(null), media: [{ ...file, status: 'weird' }] })).toThrow()
   })
 })
+
+describe('messageView unavailableFiles', () => {
+  const metadata = { unavailableFiles: [{ index: 1, code: 'refused' }], secret: 'x' }
+
+  it('lists the files the worker could not keep, and nothing else of the metadata', () => {
+    const view = messageView(row(metadata))
+
+    expect(view.unavailableFiles).toEqual([{ index: 1, code: 'refused' }])
+    expect(JSON.stringify(view)).not.toContain('secret')
+  })
+
+  it.each([
+    ['no metadata', null],
+    ['metadata without the list', { attachmentUrl: 'https://example.com/a' }],
+    ['a list that is no list', { unavailableFiles: 'x' }]
+  ])('is empty for %s', (_name, value) => {
+    expect(messageView(row(value)).unavailableFiles).toEqual([])
+  })
+
+  it('draws a code it does not know as the generic one, and keeps the other entries', () => {
+    const view = messageView(
+      row({
+        unavailableFiles: [
+          { index: 0, code: 'refused' },
+          { index: 1, code: 'weird' }
+        ]
+      })
+    )
+
+    expect(view.unavailableFiles).toEqual([
+      { index: 0, code: 'refused' },
+      { index: 1, code: 'fetch_failed' }
+    ])
+  })
+
+  it('is empty for a deleted message', () => {
+    expect(messageView({ ...row(metadata), deletedAt: new Date() }).unavailableFiles).toEqual([])
+  })
+})
+
+describe('messageView captionFailed', () => {
+  it('is true when the worker flagged that the text under the file did not go', () => {
+    expect(messageView(row({ captionFailed: true })).captionFailed).toBe(true)
+  })
+
+  it.each([null, {}, { captionFailed: false }, { captionFailed: 'yes' }])(
+    'is false for %j',
+    metadata => {
+      expect(messageView(row(metadata)).captionFailed).toBe(false)
+    }
+  )
+})

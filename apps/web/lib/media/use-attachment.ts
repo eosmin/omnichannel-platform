@@ -15,7 +15,12 @@ import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { apiClient } from '../api'
 import { errorCodeOf } from '../error-message'
 
-import { attachmentMessageType, refusalCode, refuseAttachment } from './attachment-rules'
+import {
+  attachmentMessageType,
+  channelTakesFile,
+  refusalCode,
+  refuseAttachment
+} from './attachment-rules'
 import { UploadAbortedError, UploadFailedError, uploadToUrl } from './upload-to-url'
 import { waitUntilClean } from './wait-until-clean'
 
@@ -48,7 +53,13 @@ const IDLE: AttachmentState = { kind: 'idle' }
 // The file the agent attaches to a reply: upload with progress, scan, and the single message that
 // carries it with its caption. It does not go through the offline queue: an upload needs the network,
 // so a file is never "written now and sent later". One file at a time (MediaMessageLimits.MAX_FILES).
-export function useAttachment(storeId: string, conversationId: string): Attachment {
+// `capabilities` are the ones the channel of the conversation declares; unknown (the directory is still
+// loading) leaves the check to the api.
+export function useAttachment(
+  storeId: string,
+  conversationId: string,
+  capabilities?: readonly string[]
+): Attachment {
   const queryClient = useQueryClient()
   const [state, setState] = useState<AttachmentState>(IDLE)
   const run = useRef<{
@@ -76,6 +87,11 @@ export function useAttachment(storeId: string, conversationId: string): Attachme
       if (refusal !== null) {
         run.current = null
         setState({ kind: 'failed', file: meta, code: refusalCode(refusal) })
+        return
+      }
+      if (capabilities !== undefined && !channelTakesFile(capabilities, file.type)) {
+        run.current = null
+        setState({ kind: 'failed', file: meta, code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED })
         return
       }
       const controller = new AbortController()
@@ -137,7 +153,7 @@ export function useAttachment(storeId: string, conversationId: string): Attachme
         }
       })()
     },
-    [storeId]
+    [storeId, capabilities]
   )
 
   const send = useCallback(

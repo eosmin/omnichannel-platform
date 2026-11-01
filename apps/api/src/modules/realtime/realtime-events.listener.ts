@@ -253,6 +253,11 @@ export class RealtimeEventsListener {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_INFECTED)
   }
 
+  @OnEvent(Events.MEDIA_UNAVAILABLE)
+  onMediaUnavailable(payload: MessageChangedPayload): Promise<void> {
+    return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_UNAVAILABLE)
+  }
+
   // A note that changed is for who may read notes; any other message, for who hears of its conversation
   private toWhoMayRead(
     payload: MessageChangedPayload,
@@ -261,6 +266,7 @@ export class RealtimeEventsListener {
       | typeof RealtimeEvents.MESSAGE_DELETED
       | typeof RealtimeEvents.MEDIA_PROCESSED
       | typeof RealtimeEvents.MEDIA_INFECTED
+      | typeof RealtimeEvents.MEDIA_UNAVAILABLE
   ): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,

@@ -272,6 +272,7 @@ export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   MESSAGE_DELETED: { step: '3.2' },
   MEDIA_PROCESSED: { step: '3.4' },
   MEDIA_INFECTED: { step: '3.4' },
+  MEDIA_UNAVAILABLE: { step: '3.4' },
   TYPING_START: { step: '3.2' },
   TYPING_STOP: { step: '3.2' },
   CUSTOMER_TYPING: { step: '3.2' },

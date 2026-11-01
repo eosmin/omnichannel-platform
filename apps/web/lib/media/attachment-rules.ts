@@ -1,6 +1,7 @@
 import { type ErrorCode, ErrorCodes } from '@platform/core/errors'
 import {
   AllowedContentTypes,
+  CapabilityOfMediaType,
   mediaMessageTypeOf,
   type OutboundMediaType,
   refuseUpload,
@@ -9,6 +10,21 @@ import {
 
 // What the picker offers: the allowed types and nothing else (the api checks them again)
 export const ATTACHMENT_ACCEPT = Object.values(AllowedContentTypes).flat().join(',')
+
+// Whether the channel declares the kind of message this file is sent as. The api asks the same (the
+// plugin refuses a kind it does not declare); here the agent hears it before any byte is uploaded.
+export function channelTakesFile(capabilities: readonly string[], contentType: string): boolean {
+  const type = mediaMessageTypeOf(contentType)
+  return type !== null && capabilities.includes(CapabilityOfMediaType[type])
+}
+
+// The picker of a channel offers only the types it takes; a channel that takes none has no picker
+export function acceptFor(capabilities: readonly string[]): string {
+  return Object.values(AllowedContentTypes)
+    .flat()
+    .filter(type => channelTakesFile(capabilities, type))
+    .join(',')
+}
 
 export type AttachmentRefusal = 'empty' | typeof UploadRefusals.TYPE_NOT_ALLOWED | 'too_large'
 

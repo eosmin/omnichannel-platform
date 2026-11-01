@@ -1,5 +1,7 @@
 import {
+  acceptFor,
   attachmentMessageType,
+  channelTakesFile,
   formatBytes,
   refusalCode,
   refuseAttachment
@@ -47,5 +49,21 @@ describe('refusalCode', () => {
     expect(refusalCode('type_not_allowed')).toBe('FILE_TYPE_NOT_ALLOWED')
     expect(refusalCode('too_large')).toBe('FILE_TOO_LARGE')
     expect(refusalCode('empty')).toBe('FILE_UPLOAD_FAILED')
+  })
+})
+
+describe('channelTakesFile and acceptFor', () => {
+  it('takes a file when the channel declares the kind of message it is sent as', () => {
+    expect(channelTakesFile(['text', 'image'], 'image/png')).toBe(true)
+    expect(channelTakesFile(['text', 'image'], 'application/pdf')).toBe(false)
+    expect(channelTakesFile(['image'], 'application/x-msdownload')).toBe(false)
+  })
+
+  it('offers the picker only the types the channel takes', () => {
+    expect(acceptFor(['image'])).toBe('image/jpeg,image/png,image/webp,image/gif')
+    expect(acceptFor(['text'])).toBe('')
+    expect(acceptFor(['video', 'document']).split(',')).toEqual(
+      expect.arrayContaining(['video/mp4', 'application/pdf'])
+    )
   })
 })

@@ -163,6 +163,7 @@ export const Events = {
   MEDIA_UPLOADED: 'media.uploaded',
   MEDIA_PROCESSED: 'media.processed',
   MEDIA_INFECTED: 'media.infected',
+  MEDIA_UNAVAILABLE: 'media.unavailable',
 
   // Exports & compliance
   EXPORT_REQUESTED: 'export.requested',

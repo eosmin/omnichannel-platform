@@ -15,7 +15,8 @@ export async function publishMessageChanged(
     | typeof Events.MESSAGE_EDITED
     | typeof Events.MESSAGE_DELETED
     | typeof Events.MEDIA_PROCESSED
-    | typeof Events.MEDIA_INFECTED,
+    | typeof Events.MEDIA_INFECTED
+    | typeof Events.MEDIA_UNAVAILABLE,
   storeId: string,
   messageId: string
 ): Promise<void> {

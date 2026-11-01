@@ -27,6 +27,8 @@ export interface StatusChange {
   // The id of the second message that carried the caption of a file (`ChannelResultMetadata`), kept
   // so that the echo of that message is not stored again as the owner's
   captionExternalId?: string
+  // The file went and the text under it did not: the thread says so (`ChannelResultMetadata`)
+  captionFailed?: boolean
   // Only for FAILED: a code of ours, never the provider's words
   errorCode?: ErrorCode
 }
@@ -55,10 +57,20 @@ export class MessageStatusWriter {
           deliveryError: to === DeliveryStatus.FAILED ? (change.errorCode ?? null) : null
         }
       })
-      if (changed.count === 0) return false
+      // Also when a receipt moved the message past this state first: the id of the caption (its echo must
+      // not be stored again) and the flag are facts about what was sent, not about the state
       if (change.captionExternalId !== undefined) {
-        await this.keepCaptionId(tx, storeId, messageId, change.captionExternalId)
+        await tx.message.updateMany({
+          where: { id: messageId, storeId },
+          data: { captionChannelMessageId: change.captionExternalId }
+        })
       }
+      if (change.captionFailed === true) {
+        await this.keepMetadata(tx, storeId, messageId, {
+          [ChannelResultMetadata.CAPTION_FAILED]: true
+        })
+      }
+      if (changed.count === 0) return false
 
       const message = await tx.message.findFirst({
         where: { id: messageId, storeId },
@@ -98,27 +110,18 @@ export class MessageStatusWriter {
     })
   }
 
-  // Added to the metadata the message has, never in place of it
-  private async keepCaptionId(
+  // Added to the metadata the message has, never in place of it. One statement, so two writers of
+  // different keys cannot overwrite each other with a stale copy.
+  private async keepMetadata(
     tx: PrismaTransaction,
     storeId: string,
     messageId: string,
-    captionExternalId: string
+    added: Record<string, string | boolean>
   ): Promise<void> {
-    const row = await tx.message.findFirst({
-      where: { id: messageId, storeId },
-      select: { metadata: true }
-    })
-    if (row === null) return
-    const current =
-      typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
-        ? row.metadata
-        : {}
-    await tx.message.updateMany({
-      where: { id: messageId, storeId },
-      data: {
-        metadata: { ...current, [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: captionExternalId }
-      }
-    })
+    await tx.$executeRaw`
+      UPDATE messages
+      SET metadata = COALESCE(CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata END, '{}'::jsonb)
+                     || ${JSON.stringify(added)}::jsonb
+      WHERE id = ${messageId} AND store_id = ${storeId}`
   }
 }

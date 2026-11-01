@@ -11,7 +11,6 @@ import {
 } from '@platform/core/database'
 import {
   AuthorType,
-  ChannelResultMetadata,
   ConversationLimits,
   ConversationReopenedByReply,
   ConversationStatus,
@@ -191,10 +190,7 @@ export class InboundMessageService {
       (await tx.message.findFirst({
         where: {
           conversationId: { in: conversationIds },
-          metadata: {
-            path: [ChannelResultMetadata.CAPTION_EXTERNAL_ID],
-            equals: event.message.externalId
-          }
+          captionChannelMessageId: event.message.externalId
         },
         select: { id: true, authorType: true }
       }))

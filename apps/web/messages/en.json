@@ -689,6 +689,7 @@
         "DOCUMENT": "Document"
       },
       "templateLabel": "Template message",
+      "captionFailed": "The file was sent, but the text under it was not. Send the text as a new message",
       "media": {
         "checking": "Checking {name}",
         "loading": "Loading {name}",
@@ -700,7 +701,13 @@
         "downloadFile": "Download {name}",
         "download": "Download",
         "close": "Close",
-        "lightboxDescription": "The file at full size"
+        "lightboxDescription": "The file at full size",
+        "notKept": {
+          "refused": "A file from the customer was not kept: its type or size is not allowed",
+          "unsafe_link": "A file from the customer was not kept: its link is not safe",
+          "fetch_failed": "A file from the customer could not be retrieved from the channel",
+          "channel_cannot_fetch": "A file from the customer was not kept: this channel cannot deliver files"
+        }
       },
       "neutral": {
         "LOCATION": "The customer shared a location",

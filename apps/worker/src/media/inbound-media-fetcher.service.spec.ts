@@ -60,15 +60,17 @@ function setup(options: {
   const contexts = { contextFor: jest.fn().mockReturnValue({}) }
   const queue = { add: jest.fn().mockResolvedValue(undefined) }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
+  const marker = { mark: jest.fn().mockResolvedValue(undefined) }
   const fetcher = new InboundMediaFetcher(
     prisma as never,
     storage as never,
     registry as never,
     contexts as never,
     queue as never,
+    marker as never,
     logger as never
   )
-  return { fetcher, media, storage, queue, logger }
+  return { fetcher, media, storage, queue, logger, marker }
 }
 
 const file = (body: Buffer, contentType = 'image/jpeg', contentLength: number | null = null) => ({
@@ -140,9 +142,10 @@ describe('InboundMediaFetcher', () => {
     ['an empty file', file(Buffer.alloc(0))]
   ])('keeps no file for %s', async (_label, fetched) => {
     const plugin = { fetchMedia: jest.fn().mockResolvedValue(fetched) }
-    const { fetcher, storage, media, logger } = setup({ plugin })
+    const { fetcher, storage, media, logger, marker } = setup({ plugin })
 
     await expect(fetcher.fetch(job, false)).resolves.toBeUndefined()
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
 
     expect(storage.put).not.toHaveBeenCalled()
     expect(media.create).not.toHaveBeenCalled()
@@ -190,8 +193,10 @@ describe('InboundMediaFetcher', () => {
     'treats %j as a link and refuses it',
     async mediaRef => {
       const plugin = { fetchMedia: jest.fn() }
-      await setup({ plugin }).fetcher.fetch({ ...job, mediaRef }, false)
+      const { fetcher, marker } = setup({ plugin })
+      await fetcher.fetch({ ...job, mediaRef }, false)
       expect(plugin.fetchMedia).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
     }
   )
 
@@ -210,19 +215,43 @@ describe('InboundMediaFetcher', () => {
     const error = new PluginError('CHANNEL_MESSAGE_FAILED', { retryable: true })
     const plugin = { fetchMedia: jest.fn().mockRejectedValue(error) }
 
-    await expect(setup({ plugin }).fetcher.fetch(job, false)).rejects.toThrow(
-      /fetching a customer file failed/
-    )
-    // Also on the last attempt, so that the loss reaches the dead-letter queue
-    await expect(setup({ plugin }).fetcher.fetch(job, true)).rejects.toThrow(
-      /fetching a customer file failed/
-    )
+    const early = setup({ plugin })
+    await expect(early.fetcher.fetch(job, false)).rejects.toThrow(/fetching a customer file failed/)
+    // Still being retried: the file is not given up on yet
+    expect(early.marker.mark).not.toHaveBeenCalled()
+    // Also on the last attempt, so that the loss reaches the dead-letter queue; the thread says so too
+    const last = setup({ plugin })
+    await expect(last.fetcher.fetch(job, true)).rejects.toThrow(/fetching a customer file failed/)
+    expect(last.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed')
   })
 
   it('does not retry a refusal of the plugin', async () => {
     const plugin = {
       fetchMedia: jest.fn().mockRejectedValue(new PluginError('CHANNEL_MESSAGE_FAILED'))
     }
-    await expect(setup({ plugin }).fetcher.fetch(job, false)).resolves.toBeUndefined()
+    const { fetcher, marker } = setup({ plugin })
+    await expect(fetcher.fetch(job, false)).resolves.toBeUndefined()
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed')
+  })
+
+  it('records a channel that cannot fetch files', async () => {
+    const { fetcher, marker } = setup({ plugin: {} })
+    await fetcher.fetch(job, false)
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'channel_cannot_fetch')
+  })
+
+  it('records the loss when keeping the bytes fails on the last attempt, and only then', async () => {
+    const plugin = {
+      fetchMedia: jest.fn().mockImplementation(() => Promise.resolve(file(Buffer.from('x'))))
+    }
+    const early = setup({ plugin })
+    early.storage.put.mockRejectedValue(new Error('storage down'))
+    await expect(early.fetcher.fetch(job, false)).rejects.toThrow('storage down')
+    expect(early.marker.mark).not.toHaveBeenCalled()
+
+    const last = setup({ plugin })
+    last.storage.put.mockRejectedValue(new Error('storage down'))
+    await expect(last.fetcher.fetch(job, true)).rejects.toThrow('storage down')
+    expect(last.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed')
   })
 })

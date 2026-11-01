@@ -34,7 +34,7 @@ import {
 } from '../../lib/inbox/use-inbox-data'
 import { useWindowState } from '../../lib/inbox/use-window-state'
 import { hoursAndMinutes } from '../../lib/inbox/window-state'
-import { ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
+import { acceptFor, ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
 import { useAttachment } from '../../lib/media/use-attachment'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
@@ -120,7 +120,13 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const channels = useChannelDirectory(storeId)
   const windowState = useWindowState(storeId, conversationId)
   const queue = useComposerQueue(storeId, conversationId)
-  const attachment = useAttachment(storeId, conversationId)
+  // Unknown while the directory loads; a connection the directory does not list takes no file
+  const channelCapabilities =
+    channels.data === undefined
+      ? undefined
+      : (channels.data.find(channel => channel.id === conversation.data?.channelConnectionId)
+          ?.capabilities ?? [])
+  const attachment = useAttachment(storeId, conversationId, channelCapabilities)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const mayReply = can(Permissions.MESSAGES_SEND)
@@ -172,6 +178,10 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     channels.data?.find(channel => channel.id === conversation.data.channelConnectionId)
       ?.pluginId ?? conversation.data.channelType
   const mayTemplate = can(Permissions.MESSAGES_SEND_TEMPLATE)
+  // Only what the channel takes; empty is a channel that takes no file, which has no paperclip. Until the
+  // directory loads the picker offers every allowed type and the check is left to the api.
+  const acceptedFiles =
+    channelCapabilities === undefined ? ATTACHMENT_ACCEPT : acceptFor(channelCapabilities)
 
   const content = draft.trim()
   // A resolved or snoozed conversation is reopened, not resolved or snoozed again: the same rule as
@@ -445,12 +455,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
             <AttachmentChip state={fileState} onRemove={attachment.clear} />
           )}
           <div className="flex items-end gap-2">
-            {mayReply && !isNote ? (
+            {mayReply && !isNote && acceptedFiles !== '' ? (
               <>
                 <input
                   ref={fileInput}
                   type="file"
-                  accept={ATTACHMENT_ACCEPT}
+                  accept={acceptedFiles}
                   className="sr-only"
                   tabIndex={-1}
                   aria-hidden

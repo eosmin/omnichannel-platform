@@ -45,6 +45,7 @@ import {
 import { MessagingWindowService } from '../messaging-window/messaging-window.service'
 import { OutboundQueue } from '../outbound/outbound-queue'
 
+import { requireCaptionFits } from './caption-rules'
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
 import {
@@ -404,6 +405,7 @@ export class MessagesService {
         HttpStatusCodes.CONFLICT
       )
     }
+    requireCaptionFits(conversation.channelType, body.type, body.content)
     const rows = await tx.media.findMany({
       where: {
         id: { in: body.mediaIds },

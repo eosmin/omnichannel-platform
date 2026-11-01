@@ -34,6 +34,7 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.MESSAGE_DELETED]: [Scopes.THREAD],
   [RealtimeEvents.MEDIA_PROCESSED]: [Scopes.THREAD],
   [RealtimeEvents.MEDIA_INFECTED]: [Scopes.THREAD],
+  [RealtimeEvents.MEDIA_UNAVAILABLE]: [Scopes.THREAD],
   [RealtimeEvents.MESSAGE_FAILED]: [Scopes.THREAD],
   [RealtimeEvents.MESSAGE_NOTE_ADDED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   [RealtimeEvents.USER_ONLINE]: [Scopes.PRESENCE],
