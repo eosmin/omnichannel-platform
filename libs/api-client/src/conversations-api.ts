@@ -252,9 +252,11 @@ type NoParamsBulkAction =
   | typeof BulkActions.MARK_READ
   | typeof BulkActions.MARK_UNREAD
   | typeof BulkActions.ARCHIVE
+  | typeof BulkActions.EXPORT_CSV
 
 // What a bulk action does: the ones that take no parameter, and each of the others with its own.
-// Snoozing, spam and the export are not here: the server does not take them in bulk.
+// Snoozing and spam are not here: the server does not take them in bulk. The export makes a file in the
+// exports center instead of changing the conversations.
 export type BulkOperation =
   | { action: NoParamsBulkAction }
   | { action: typeof BulkActions.ASSIGN_TO_AGENT; params: { userId: string } }

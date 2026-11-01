@@ -30,6 +30,11 @@ describe('confirmationOf', () => {
     expect(confirmationOf({ action: BulkActions.MARK_READ }, null)).toBe(BulkConfirmations.DIALOG)
   })
 
+  it('never asks before a file for the exports center, however many conversations', () => {
+    expect(confirmationOf({ action: BulkActions.EXPORT_CSV }, 400)).toBe(BulkConfirmations.NONE)
+    expect(confirmationOf({ action: BulkActions.EXPORT_CSV }, null)).toBe(BulkConfirmations.NONE)
+  })
+
   it('asks for the phrase to archive, however few', () => {
     expect(confirmationOf({ action: BulkActions.ARCHIVE }, 1)).toBe(BulkConfirmations.TYPED)
   })

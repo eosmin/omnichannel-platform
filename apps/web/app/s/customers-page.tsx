@@ -1,14 +1,17 @@
 'use client'
 
 import { Download, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
-import type { CustomerListItemView } from '@platform/api-client'
+import { AppPaths, type CustomerListItemView } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 import { CustomerLimits } from '@platform/core/domain'
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
+import { MutationError } from '../../components/customers/mutation-error'
 import { useStore } from '../../components/providers/store-context'
 import { ShortcutsProvider } from '../../components/shortcuts/shortcuts-provider'
 import { useGoToShortcuts } from '../../components/shortcuts/use-go-to'
@@ -17,6 +20,7 @@ import { Input } from '../../components/ui/input'
 import { customerListLabel } from '../../lib/customers/customer-name'
 import { tagDotColor } from '../../lib/customers/tag-color'
 import { useCustomerList } from '../../lib/customers/use-customer-data'
+import { useExportCustomers } from '../../lib/customers/use-customer-export'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
 import { useDebouncedValue } from '../../lib/use-debounced-value'
 
@@ -104,6 +108,8 @@ function Page(): ReactElement {
   const [text, setText] = useState('')
   const q = useDebouncedValue(text.trim(), SEARCH_DELAY_MS)
   const customers = useCustomerList(storeId, q, can(Permissions.CUSTOMERS_VIEW))
+  const router = useRouter()
+  const exportCsv = useExportCustomers(storeId)
   const rows = customers.data?.pages.flatMap(page => page.data) ?? []
 
   // The search is where the hand goes first, and the Find customer action of the inbox lands here
@@ -127,12 +133,32 @@ function Page(): ReactElement {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="flex-1 text-xl font-semibold">{t('title')}</h1>
         {can(Permissions.CUSTOMERS_EXPORT) ? (
-          <Button variant="outline" size="sm" disabled title={t('exportSoon')}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={exportCsv.isPending}
+            onClick={() => {
+              // What the input shows, not the debounced search; mutateAsync so the toast also
+              // appears when the person has already left the page
+              exportCsv
+                .mutateAsync(text.trim())
+                .then(() =>
+                  toast.success(t('exportQueued'), {
+                    action: {
+                      label: t('viewExports'),
+                      onClick: () => router.push(AppPaths.store.exports(storeId))
+                    }
+                  })
+                )
+                .catch(() => undefined) // the error is drawn by MutationError
+            }}
+          >
             <Download />
             {t('export')}
           </Button>
         ) : null}
       </div>
+      <MutationError error={exportCsv.error} />
       <div className="relative max-w-md">
         <Search
           aria-hidden

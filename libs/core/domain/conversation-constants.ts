@@ -29,7 +29,7 @@ export type SystemMessageEvent = (typeof SystemMessageEvents)[keyof typeof Syste
 // POST /conversations/bulk { action, conversationIds | filter, params } (TDD_09 §10). SET_STATUS
 // takes the status in params (open, pending or resolved); the others take their target the same way.
 // SEND_TEMPLATE is Phase 2 (a template has variables and a window for each conversation, and no flow of
-// the MVP sends one in bulk); EXPORT_CSV has no behavior until the exports center of Step 3.4.
+// the MVP sends one in bulk); EXPORT_CSV queues a conversations export for the selection.
 export const BulkActions = {
   ASSIGN_TO_ME: 'assign_to_me',
   ASSIGN_TO_AGENT: 'assign_to_agent',

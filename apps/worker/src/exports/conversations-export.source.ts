@@ -1,13 +1,7 @@
-import { Permissions } from '@platform/core/auth'
 import type { PrismaService } from '@platform/core/database'
 import { MessageType } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
-import {
-  assignedFilter,
-  type ConversationsExportFilters,
-  conversationFilterWhere,
-  visibleTo
-} from '@platform/core/messaging'
+import { type ConversationsExportFilters, conversationsExportWhere } from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
 
@@ -30,22 +24,15 @@ export const CONVERSATION_COLUMNS = [
 // store said to each other: neither goes into a file that leaves the platform
 const LEFT_OUT_TYPES = [MessageType.SYSTEM, MessageType.INTERNAL_NOTE]
 
-// One row per message of the conversations the member could see when they asked, oldest first inside
-// each conversation. The text of a deleted message, or one already purged, is never written.
+// One row per message of the conversations the member could see when they asked (the ones that match the
+// filter, or the ones they ticked), oldest first inside each conversation. The text of a deleted
+// message, or one already purged, is never written.
 export function conversationsExportSource(
   prisma: PrismaService,
   storeId: string,
   filters: ConversationsExportFilters
 ): CsvSource {
-  const viewer = {
-    userId: filters.viewer.userId,
-    held: filters.viewer.held,
-    canViewAll: filters.viewer.held.includes(Permissions.CONVERSATIONS_VIEW_ALL)
-  }
-  const where = {
-    ...conversationFilterWhere(storeId, filters.filter, viewer),
-    AND: [visibleTo(viewer), assignedFilter(filters.filter.assigned, viewer)]
-  }
+  const where = conversationsExportWhere(storeId, filters)
   return {
     columns: CONVERSATION_COLUMNS,
     rows: async function* () {

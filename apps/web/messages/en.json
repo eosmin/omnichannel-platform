@@ -149,7 +149,8 @@
       "searchLabel": "Search customers",
       "searchPlaceholder": "Search by name, e-mail or phone",
       "export": "Export CSV",
-      "exportSoon": "The export is not available yet.",
+      "exportQueued": "The customers file is being prepared. It will be ready in the exports.",
+      "viewExports": "View exports",
       "unnamed": "Unnamed customer",
       "caution": "Caution",
       "failed": "The customers could not be loaded.",
@@ -968,6 +969,7 @@
         "label": "More",
         "markRead": "Mark as read",
         "markUnread": "Mark as unread",
+        "exportCsv": "Export CSV",
         "archive": "Archive"
       },
       "pick": {
@@ -1012,6 +1014,7 @@
           "remove_tag": "Remove the tag {target} from {scope}.",
           "mark_read": "Mark {scope} as read.",
           "mark_unread": "Mark {scope} as unread.",
+          "export_csv": "Export {scope} as a CSV file.",
           "archive": "Archive {scope}. Archived conversations leave the inbox and this cannot be undone here."
         }
       },
@@ -1019,6 +1022,11 @@
         "allDone": "{count, plural, one {# conversation updated} other {# conversations updated}}",
         "someDone": "{succeeded} updated, {failed} not changed: {reasons}",
         "noneDone": "Nothing changed: {reasons}",
+        "exportQueued": "{count, plural, one {The file of # conversation is being prepared} other {The file of # conversations is being prepared}}. It will be ready in the exports.",
+        "exportTruncated": "The filter matched more conversations than one file holds; the file has the first {max}.",
+        "exportNothing": "No conversation matched, so no file was made.",
+        "exportPartly": "The file is being prepared with {succeeded}; {failed} left out: {reasons}. It will be ready in the exports.",
+        "viewExports": "View exports",
         "reason": "{reason} ({count})",
         "truncated": "The filter matched more conversations than one action reaches; run it again for the rest.",
         "undo": "Undo",

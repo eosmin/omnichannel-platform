@@ -196,7 +196,6 @@ describe('Marking unread and acting on many conversations', () => {
 
     it.each([
       ['an action that is Phase 2', 'send_template'],
-      ['an action that waits for the exports center', 'export_csv'],
       ['an action that does not exist', 'explode']
     ])('refuses %s', async (_name, action) => {
       const conversation = await mk()

@@ -10,7 +10,7 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AuthorType, MessageType } from '@platform/core/domain'
+import { AuthorType, BulkActions, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { ExportLimits } from '@platform/core/exports'
 import {
@@ -357,6 +357,123 @@ describe('Exports', () => {
       expect(file).toContain('for-agent')
       expect(file).toContain('for-nobody')
       expect(file).not.toContain('for-admin')
+    })
+
+    describe('the bulk action Export CSV', () => {
+      interface BulkBody {
+        succeeded: string[]
+        failed: { id: string; code: string }[]
+        truncated: boolean
+      }
+      const seed = async (text: string, extra: { assignedTo?: string } = {}) => {
+        const conversation = await createConversationOf(owner, {
+          storeId: ctx.storeA.id,
+          ...extra
+        })
+        await createMessage(owner, {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          content: text
+        })
+        return conversation
+      }
+      const bulk = (as: typeof ctx.adminA, body: object) =>
+        api(app, as, ctx.storeA).post(ApiRoutes.conversations.bulk).send(body)
+      const lastExport = () =>
+        owner.export.findFirstOrThrow({
+          where: { storeId: ctx.storeA.id, type: ExportTypes.CONVERSATIONS },
+          orderBy: { createdAt: 'desc' }
+        })
+
+      it('needs the export permission', async () => {
+        const one = await seed('bulk-denied')
+        const response = await bulk(ctx.agentA, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [one.id]
+        })
+        expect(response.status).toBe(FORBIDDEN)
+      })
+
+      it('makes one file of the ticked conversations and leaves out those the member may not see', async () => {
+        const wanted = await seed('bulk-wanted')
+        const notTicked = await seed('bulk-not-ticked')
+        const elsewhere = await createConversationOf(owner, { storeId: ctx.storeB.id })
+        const response = await bulk(ctx.adminA, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [wanted.id, elsewhere.id]
+        })
+        expect(response.status).toBe(OK)
+        const body = response.body as BulkBody
+        expect(body.succeeded).toEqual([wanted.id])
+        expect(body.failed).toEqual([{ id: elsewhere.id, code: ErrorCodes.RESOURCE_NOT_FOUND }])
+
+        const row = await lastExport()
+        expect(row.requestedBy).toBe(ctx.adminA.id)
+        const file = await made(row.id)
+        expect(file).toContain('bulk-wanted')
+        expect(file).not.toContain('bulk-not-ticked')
+        expect(file).not.toContain(notTicked.id)
+      })
+
+      it('does not export the conversation another agent holds to an agent who may not see it', async () => {
+        const supervisorOnly = await createRole(owner, {
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT]
+        })
+        const member = await createActor(owner, app, {
+          prefix,
+          name: 'bulk-exporter',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          roleId: supervisorOnly.id
+        })
+        const mine = await seed('bulk-mine', { assignedTo: member.id })
+        const theirs = await seed('bulk-theirs', { assignedTo: ctx.adminA.id })
+
+        const response = await bulk(member, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [mine.id, theirs.id]
+        })
+
+        expect(response.status).toBe(OK)
+        const body = response.body as BulkBody
+        expect(body.succeeded).toEqual([mine.id])
+        expect(body.failed.map(failure => failure.id)).toEqual([theirs.id])
+        const file = await made((await lastExport()).id)
+        expect(file).toContain('bulk-mine')
+        expect(file).not.toContain('bulk-theirs')
+      })
+
+      it('writes no file when nothing ticked can be seen', async () => {
+        const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
+        const elsewhere = await createConversationOf(owner, { storeId: ctx.storeB.id })
+        const response = await bulk(ctx.adminA, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [elsewhere.id]
+        })
+        expect(response.status).toBe(OK)
+        expect((response.body as BulkBody).succeeded).toEqual([])
+        expect(await owner.export.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
+      })
+
+      it('exports what a filter matches', async () => {
+        const tagged = await seed('bulk-by-filter')
+        const tag = await createTag(owner, { storeId: ctx.storeA.id, name: `${prefix}-export` })
+        await owner.conversation.update({
+          where: { id: tagged.id },
+          data: { tags: { connect: { id: tag.id } } }
+        })
+        await seed('bulk-untagged')
+        const response = await bulk(ctx.adminA, {
+          action: BulkActions.EXPORT_CSV,
+          filter: { tagId: tag.id }
+        })
+        expect(response.status).toBe(OK)
+        expect((response.body as BulkBody).succeeded).toEqual([tagged.id])
+        const file = await made((await lastExport()).id)
+        expect(file).toContain('bulk-by-filter')
+        expect(file).not.toContain('bulk-untagged')
+      })
     })
 
     it('refuses the history of what was archived to who may not archive', async () => {

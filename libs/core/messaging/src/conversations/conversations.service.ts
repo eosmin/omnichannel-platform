@@ -206,6 +206,20 @@ export class ConversationsService {
     return rows.map(row => row.id)
   }
 
+  // Which of the ids the viewer may see: the same rule as the single routes, which answer "not found"
+  // for a conversation of another store or one the viewer may not read
+  async visibleAmong(
+    storeId: string,
+    ids: readonly string[],
+    viewer: Viewer
+  ): Promise<Set<string>> {
+    const rows = await this.prisma.client.conversation.findMany({
+      where: { storeId, id: { in: [...ids] } },
+      select: { id: true, status: true, assignedTo: true }
+    })
+    return new Set(rows.filter(row => canSee(viewer, row)).map(row => row.id))
+  }
+
   async get(
     storeId: string,
     conversationId: string,

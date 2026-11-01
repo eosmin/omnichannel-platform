@@ -41,6 +41,20 @@ export function requestMediaZip(
   })
 }
 
+// The customers CSV: queues the file for the search the page shows and answers with its row
+export function requestCustomersExport(
+  client: ApiClient,
+  storeId: string,
+  q: string
+): Promise<ExportView> {
+  const text = q.trim()
+  const query = text === '' ? '' : `?${new URLSearchParams({ q: text }).toString()}`
+  return client.request(`${ApiRoutes.customers.export}${query}`, {
+    schema: exportSchema,
+    storeId
+  })
+}
+
 export const exportPageSchema = z.object({
   data: z.array(exportSchema),
   nextCursor: z.string().nullable(),

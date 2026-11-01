@@ -1,17 +1,20 @@
 'use client'
 
 import { useQueryClient } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
+  AppPaths,
   type BulkOperation,
   type BulkResultView,
   type BulkTarget,
   bulkConversations,
   QueryKeys
 } from '@platform/api-client'
+import { BulkActions, BulkLimits } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
@@ -49,6 +52,7 @@ export function useBulkRunner(): BulkRunner {
   const tAll = useTranslations()
   const { storeId } = useStore()
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [pending, setPending] = useState(0)
 
   const refresh = useCallback(
@@ -118,6 +122,37 @@ export function useBulkRunner(): BulkRunner {
         steps.length === 0 ? undefined : { label: t('undo'), onClick: () => void undo(steps) }
       const truncated = summary.truncated ? ` ${t('truncated')}` : ''
 
+      // A file is not undone: the toast leads to the exports center, where it will be
+      if (
+        operation.action === BulkActions.EXPORT_CSV &&
+        summary.succeeded === 0 &&
+        summary.failed === 0
+      ) {
+        toast.info(t('exportNothing'))
+        return result
+      }
+      if (operation.action === BulkActions.EXPORT_CSV && summary.succeeded > 0) {
+        void queryClient.invalidateQueries({ queryKey: QueryKeys.exports.all(storeId) })
+        const cut = summary.truncated
+          ? ` ${t('exportTruncated', { max: BulkLimits.MAX_ITEMS })}`
+          : ''
+        const viewExports = {
+          label: t('viewExports'),
+          onClick: () => router.push(AppPaths.store.exports(storeId))
+        }
+        if (summary.outcome === BulkOutcomes.ALL_DONE) {
+          toast.success(`${t('exportQueued', { count: summary.succeeded })}${cut}`, {
+            action: viewExports
+          })
+        } else {
+          toast.warning(
+            `${t('exportPartly', { succeeded: summary.succeeded, failed: summary.failed, reasons: reasonsOf(summary) })}${cut}`,
+            { action: viewExports }
+          )
+        }
+        return result
+      }
+
       const isOne = 'conversationIds' in target && target.conversationIds.length === 1
       if (summary.outcome === BulkOutcomes.ALL_DONE) {
         const text =
@@ -135,7 +170,7 @@ export function useBulkRunner(): BulkRunner {
       }
       return result
     },
-    [storeId, t, tAll, refresh, undo, reasonsOf]
+    [storeId, t, tAll, refresh, undo, reasonsOf, queryClient, router]
   )
 
   const claim = useCallback((): boolean => {

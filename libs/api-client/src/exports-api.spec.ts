@@ -1,7 +1,7 @@
 import { TenantHeaders } from '@platform/core/auth'
 
 import { createApiClient } from './api-client'
-import { fetchExportDownload, fetchExports } from './exports-api'
+import { fetchExportDownload, fetchExports, requestCustomersExport } from './exports-api'
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -69,5 +69,21 @@ describe('fetchExportDownload', () => {
     const link = await fetchExportDownload(client, 'store-1', 'e1')
     expect(link.url).toBe('https://files.example.com/x')
     expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/exports/e1/download')
+  })
+})
+
+describe('requestCustomersExport', () => {
+  it('asks for the file of the search the page shows, encoded, and trims it', async () => {
+    const { client, fetchImpl } = setup(json(202, row))
+    await requestCustomersExport(client, 'store-1', '  ana & co ')
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/export?q=ana+%26+co')
+    expect(new Headers(init?.headers).get(TenantHeaders.STORE_ID)).toBe('store-1')
+  })
+
+  it('asks with no query when nothing is searched', async () => {
+    const { client, fetchImpl } = setup(json(202, row))
+    await requestCustomersExport(client, 'store-1', '   ')
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/customers/export')
   })
 })
