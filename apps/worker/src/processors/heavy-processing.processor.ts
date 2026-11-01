@@ -2,30 +2,54 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
-import { JobNames, QueueNames, type ProcessImageJob, type ScanFileJob } from '@platform/core/queues'
+import { channelIdSchema } from '@platform/core/domain'
+import {
+  type FetchInboundMediaJob,
+  JobNames,
+  QueueNames,
+  type ProcessImageJob,
+  type ScanFileJob
+} from '@platform/core/queues'
 
+import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 
-import { BaseProcessor } from './base.processor'
+import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
-type HeavyJob = ScanFileJob | ProcessImageJob
+type HeavyJob = ScanFileJob | ProcessImageJob | FetchInboundMediaJob
 
 const mediaJobSchema = z.object({ mediaId: z.uuid() })
+const fetchJobSchema = z.object({
+  messageId: z.uuid(),
+  index: z.number().int().min(0),
+  storeId: z.uuid(),
+  pluginId: channelIdSchema,
+  connectionId: z.string().min(1),
+  mediaRef: z.string().min(1),
+  contentType: z.string(),
+  filename: z.string().nullable()
+})
 
-// The worker half of a file: scan it, then make the variants of a clean image. One processor for the
-// queue, told apart by the name of the job (the media of an inbound message joins them in PR B2).
+// The worker half of a file: fetch what a customer sent, scan it, then make the variants of a clean
+// image. One processor for the queue, told apart by the name of the job.
 @Processor(QueueNames.HEAVY_PROCESSING, { concurrency: 2 })
 export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
   constructor(
     support: ProcessorSupport,
-    private readonly pipeline: MediaPipeline
+    private readonly pipeline: MediaPipeline,
+    private readonly fetcher: InboundMediaFetcher
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
 
   protected async handle(job: Job<HeavyJob>): Promise<void> {
-    // The job crossed Redis: what does not fit now will not fit when it is tried again
+    if (job.name === JobNames.FETCH_INBOUND_MEDIA) {
+      const fetch = fetchJobSchema.safeParse(job.data)
+      // The job crossed Redis: what does not fit now will not fit when it is tried again
+      if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
+      return this.fetcher.fetch(fetch.data, isLastAttempt(job))
+    }
     const parsed = mediaJobSchema.safeParse(job.data)
     if (!parsed.success) throw new UnrecoverableError('the media job does not fit its schema')
 

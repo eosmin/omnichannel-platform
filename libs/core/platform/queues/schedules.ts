@@ -14,6 +14,7 @@ export const Schedules = {
   CHECK_CHANNEL_HEALTH: '*/5 * * * *', // Every 5 minutes (TDD_10 §10)
   REQUEUE_OUTBOUND: '* * * * *', // Every minute: a reply stored but never queued (Redis was down)
   PURGE_DELETED_MESSAGES: '20 * * * *', // Hourly: the text of a deleted message past its retention
+  CLEAN_ORPHAN_MEDIA: '50 * * * *', // Hourly: stray uploads, stuck scans, files of infected rows
   CHECK_DSR_DEADLINES: '0 7 * * *', // 07:00 UTC daily (TDD_05 §10.2)
   COLLECT_QUEUE_METRICS: '*/15 * * * * *', // Every 15 seconds (6-field cron, @nestjs/schedule)
   RECONCILE_INVENTORY: '0 4 * * *', // 04:00 UTC daily, one job per store (TDD_16 §4.8)

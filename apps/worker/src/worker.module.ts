@@ -29,6 +29,7 @@ import { ProcessorSupport } from './processors/processor-support'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
+import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
 
 // ScheduleModule is imported only here: the api never runs crons
@@ -70,7 +71,8 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     EmailProcessor,
     ChannelHealthScheduler,
     OutboundRequeueScheduler,
-    DeletedMessagePurgeScheduler
+    DeletedMessagePurgeScheduler,
+    OrphanMediaScheduler
   ]
 })
 export class WorkerModule {}

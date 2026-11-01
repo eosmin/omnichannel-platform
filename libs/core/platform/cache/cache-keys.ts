@@ -43,6 +43,19 @@ export const CacheKeys = {
     addressHandshakes: (address: string) => `realtime:handshakes:address:${address}`
   },
 
+  // Signed upload urls asked for in the current hour (`bucket` is the hour), and who asked for each
+  upload: {
+    storeQuota: (storeId: string, bucket: number) => `store:${storeId}:upload-urls:${bucket}`,
+    userQuota: (storeId: string, userId: string, bucket: number) =>
+      `store:${storeId}:user:${userId}:upload-urls:${bucket}`,
+    requester: (storeId: string, mediaId: string) => `store:${storeId}:upload:${mediaId}:requester`
+  },
+
+  // Where the cleanup of stray media stopped listing the bucket, for the next run
+  mediaCleanup: {
+    cursor: () => 'media-cleanup:cursor'
+  },
+
   eventsBridge: {
     // Set by the one api instance that takes an event of the bridge (every instance hears it)
     taken: (eventId: string) => `events-bridge:taken:${eventId}`
