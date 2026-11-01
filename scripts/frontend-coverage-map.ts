@@ -251,7 +251,9 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'widget.bootstrap': { step: '2.8' },
   'widget.messages': { step: '2.8' },
   // Drawn by the widget bundle, which Step 3.4 extends with the upload (the route is built there too)
-  'widget.upload': { step: '3.4' }
+  'widget.upload': { step: '3.4' },
+  // The link of a file in the conversation, asked by the bundle when the visitor opens it (PR F3)
+  'widget.download': { step: '3.4' }
 }
 
 export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {

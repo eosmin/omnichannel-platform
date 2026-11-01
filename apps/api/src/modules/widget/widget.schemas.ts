@@ -18,3 +18,10 @@ export const widgetUploadSchema = z.strictObject({
   fileSizeBytes: z.number().int().positive()
 })
 export type WidgetUploadBody = z.output<typeof widgetUploadSchema>
+
+// The file of a message of the visitor's own conversation, by its id (the one the history carries)
+export const widgetDownloadSchema = z.strictObject({
+  visitorToken: z.string().min(1).max(512),
+  mediaId: z.uuid()
+})
+export type WidgetDownloadBody = z.output<typeof widgetDownloadSchema>

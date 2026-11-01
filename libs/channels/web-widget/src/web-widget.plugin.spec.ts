@@ -32,10 +32,12 @@ const ctx: ChannelContext = { storeId: 's', connectionId: siteKey, credentials: 
 const token = signVisitorToken(tokenKey, { siteKey, visitorId })
 
 describe('WebWidgetPlugin', () => {
-  it('declares text, typing and read receipts, with no window', () => {
+  it('declares text, images, documents, typing and read receipts, with no window', () => {
     expect(plugin.id).toBe(ChannelIds.WEB_WIDGET)
     expect(plugin.capabilities).toEqual([
       ChannelCapability.TEXT,
+      ChannelCapability.IMAGE,
+      ChannelCapability.DOCUMENT,
       ChannelCapability.TYPING_INDICATOR,
       ChannelCapability.CUSTOMER_TYPING,
       ChannelCapability.READ_RECEIPTS
@@ -235,18 +237,30 @@ describe('WebWidgetPlugin', () => {
       expect(result).toMatchObject({ externalId: 'm1', status: DeliveryStatus.SENT })
     })
 
-    it('refuses media: nothing stores it yet', async () => {
+    it('refuses a video or audio: it declares images and documents only', async () => {
       const error: unknown = await plugin
         .sendMedia(ctx, {
           channelIdentity: visitorId,
-          mediaUrl: 'https://a.test/a.png',
-          contentType: 'image/png',
-          filename: null,
-          idempotencyKey: 'm2'
+          mediaUrl: 'https://bucket.test/a.mp4?signed',
+          contentType: 'video/mp4',
+          filename: 'a.mp4',
+          idempotencyKey: 'm3'
         })
         .catch((caught: unknown) => caught)
       expect(error).toBeInstanceOf(PluginError)
       expect(error).toMatchObject({ code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED })
+    })
+
+    it('accepts a file with the id we gave it: the visitor asks for the link when they open it', async () => {
+      const result = await plugin.sendMedia(ctx, {
+        channelIdentity: visitorId,
+        mediaUrl: 'https://bucket.test/a.png?signed',
+        contentType: 'image/png',
+        filename: 'a.png',
+        caption: 'tu comprobante',
+        idempotencyKey: 'm2'
+      })
+      expect(result).toMatchObject({ externalId: 'm2', status: DeliveryStatus.SENT })
     })
   })
 })

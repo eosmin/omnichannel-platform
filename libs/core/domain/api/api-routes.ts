@@ -354,7 +354,9 @@ export const ApiRoutes = {
   widget: {
     bootstrap: '/widget/bootstrap',
     messages: '/widget/messages',
-    upload: '/widget/upload-url'
+    upload: '/widget/upload-url',
+    // The signed link of one file of the visitor's own conversation
+    download: '/widget/download-url'
   }
 } as const
 

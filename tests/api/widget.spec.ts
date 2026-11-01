@@ -14,6 +14,7 @@ import {
   ChannelIds,
   ConversationStatus,
   DeliveryStatus,
+  MediaStatus,
   MessageType,
   WIDGET_TOKEN_AUTH_KEY,
   WidgetClientEvents,
@@ -60,6 +61,7 @@ interface MessageBody {
   id: string
   from: string
   content: string
+  attachments: { id: string; filename: string; contentType: string; size: number }[]
   createdAt: string
 }
 interface BootstrapBody {
@@ -506,6 +508,231 @@ describe('The web widget', () => {
     })
   })
 
+  describe('the files of a conversation', () => {
+    interface Stage {
+      siteKey: string
+      visitorId: string
+      token: string
+      conversationId: string
+      customerId: string
+      stranger: { visitorId: string; conversationId: string; customerId: string }
+    }
+
+    // A visitor with a conversation, and a stranger on the same widget with theirs
+    async function stage(): Promise<Stage> {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const connection = await owner.channelConnection.findFirstOrThrow({
+        where: { connectionId: siteKey },
+        select: { id: true }
+      })
+      const conversationFor = async (handle: string) => {
+        const identity = await createCustomerIdentity(owner, {
+          storeId: ctx.storeA.id,
+          channelType: ChannelIds.WEB_WIDGET,
+          handle
+        })
+        const conversation = await owner.conversation.create({
+          data: {
+            storeId: ctx.storeA.id,
+            customerId: identity.customerId,
+            customerIdentityId: identity.id,
+            channelConnectionId: connection.id,
+            channelType: ChannelIds.WEB_WIDGET
+          },
+          select: { id: true }
+        })
+        return { conversationId: conversation.id, customerId: identity.customerId }
+      }
+      const visitorId = randomUUID()
+      const strangerId = randomUUID()
+      const mine = await conversationFor(visitorId)
+      const theirs = await conversationFor(strangerId)
+      const entered = await enter(siteKey, visitorId)
+      return {
+        siteKey,
+        visitorId,
+        token: entered.visitorToken,
+        ...mine,
+        stranger: { visitorId: strangerId, ...theirs }
+      }
+    }
+
+    let clock = 0
+    async function messageWithFile(
+      where: { conversationId: string; customerId: string },
+      over: Partial<{
+        authorType: AuthorType
+        type: MessageType
+        content: string | null
+        deliveryStatus: DeliveryStatus
+        status: MediaStatus
+        purpose: string
+        filename: string
+        contentType: string
+        deletedAt: Date
+      }> = {}
+    ): Promise<{ messageId: string; mediaId: string }> {
+      clock += 1
+      const authorType = over.authorType ?? AuthorType.AGENT
+      const message = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: where.conversationId,
+          type: over.type ?? MessageType.IMAGE,
+          content: over.content === undefined ? null : over.content,
+          authorType,
+          createdAt: new Date(Date.UTC(2026, 10, 2, 12, 0, clock)),
+          ...(authorType === AuthorType.CUSTOMER
+            ? {}
+            : { deliveryStatus: over.deliveryStatus ?? DeliveryStatus.SENT }),
+          ...(over.deletedAt === undefined ? {} : { deletedAt: over.deletedAt })
+        },
+        select: { id: true }
+      })
+      const media = await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          purpose: over.purpose ?? 'message',
+          messageId: message.id,
+          customerId: where.customerId,
+          key: `stores/${ctx.storeA.id}/messages/${randomUUID()}/file`,
+          filename: over.filename ?? 'comprobante.png',
+          contentType: over.contentType ?? 'image/png',
+          fileSize: 2048,
+          status: over.status ?? MediaStatus.CLEAN
+        },
+        select: { id: true }
+      })
+      return { messageId: message.id, mediaId: media.id }
+    }
+
+    const download = (token: string, mediaId: string, origin: string | null = SITE) => {
+      const request = anonymousApi(app)
+        .post(ApiRoutes.widget.download)
+        .send({ visitorToken: token, mediaId })
+      return origin === null ? request : request.set('origin', origin)
+    }
+
+    it('shows a message of files with its caption and only the files the scan found clean', async () => {
+      const s = await stage()
+      const captioned = await messageWithFile(s, { content: 'tu comprobante' })
+      const fileOnly = await messageWithFile(s, {
+        authorType: AuthorType.CUSTOMER,
+        type: MessageType.DOCUMENT,
+        filename: 'cedula.pdf',
+        contentType: 'application/pdf'
+      })
+      await messageWithFile(s, { status: MediaStatus.PENDING })
+      await messageWithFile(s, { status: MediaStatus.INFECTED, content: null })
+      await messageWithFile(s, { purpose: 'origin' })
+      await messageWithFile(s, { deliveryStatus: DeliveryStatus.QUEUED })
+      await messageWithFile(s, { type: MessageType.INTERNAL_NOTE })
+      await messageWithFile(s, { deletedAt: new Date() })
+      await messageWithFile(s.stranger)
+
+      const history = await enter(s.siteKey, s.visitorId)
+
+      expect(history.messages.map(m => [m.from, m.content, m.attachments])).toEqual([
+        [
+          'team',
+          'tu comprobante',
+          [
+            {
+              id: captioned.mediaId,
+              filename: 'comprobante.png',
+              contentType: 'image/png',
+              size: 2048
+            }
+          ]
+        ],
+        [
+          'visitor',
+          '',
+          [
+            {
+              id: fileOnly.mediaId,
+              filename: 'cedula.pdf',
+              contentType: 'application/pdf',
+              size: 2048
+            }
+          ]
+        ]
+      ])
+    })
+
+    it('gives the signed link of a file of its own conversation, with the picture to show for an image', async () => {
+      const s = await stage()
+      const file = await messageWithFile(s)
+      const own = await messageWithFile(s, {
+        authorType: AuthorType.CUSTOMER,
+        type: MessageType.DOCUMENT,
+        filename: 'cedula.pdf',
+        contentType: 'application/pdf'
+      })
+
+      const received = await download(s.token, file.mediaId).expect(OK)
+      const mine = await download(s.token, own.mediaId).expect(OK)
+
+      expect(received.header['access-control-allow-origin']).toBe(SITE)
+      expect(received.body).toMatchObject({
+        filename: 'comprobante.png',
+        contentType: 'image/png',
+        previewUrl: null
+      })
+      expect((received.body as { url: string }).url).toContain('X-Amz-')
+      expect(mine.body).toMatchObject({ filename: 'cedula.pdf', contentType: 'application/pdf' })
+    })
+
+    it('answers 404 alike for a file of another visitor, of a note, of a deleted or unsent message, of an ad, and one that does not exist', async () => {
+      const s = await stage()
+      const strangers = await messageWithFile(s.stranger)
+      const note = await messageWithFile(s, { type: MessageType.INTERNAL_NOTE })
+      const deleted = await messageWithFile(s, { deletedAt: new Date() })
+      const waiting = await messageWithFile(s, { deliveryStatus: DeliveryStatus.QUEUED })
+      const ad = await messageWithFile(s, { purpose: 'origin' })
+
+      for (const id of [strangers, note, deleted, waiting, ad]
+        .map(f => f.mediaId)
+        .concat(randomUUID())) {
+        const response = await download(s.token, id).expect(NOT_FOUND)
+        expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+      }
+    })
+
+    it('does not give a file that is not clean, and does not say why: it is a 404 like any file that is not theirs yet', async () => {
+      const s = await stage()
+      const pending = await messageWithFile(s, { status: MediaStatus.PENDING })
+      const infected = await messageWithFile(s, { status: MediaStatus.INFECTED })
+
+      for (const file of [pending, infected]) {
+        const response = await download(s.token, file.mediaId).expect(NOT_FOUND)
+        expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+      }
+    })
+
+    it('keeps the window of the history for messages it can show: pending files do not push older ones out', async () => {
+      const s = await stage()
+      await messageWithFile(s, { content: 'primero' })
+      for (let i = 0; i < 55; i += 1) {
+        await messageWithFile(s, { status: MediaStatus.PENDING })
+      }
+      const history = await enter(s.siteKey, s.visitorId)
+      expect(history.messages.map(m => m.content)).toEqual(['primero'])
+    })
+
+    it('cannot be asked with the token of another store, a bad token, or from a site that is not listed', async () => {
+      const s = await stage()
+      const file = await messageWithFile(s)
+      const other = await connectWidget(ctx.adminB, ctx.storeB)
+      const foreign = await enter(other, s.visitorId)
+
+      await download(foreign.visitorToken, file.mediaId).expect(NOT_FOUND)
+      await download('not-a-token', file.mediaId).expect(UNAUTHORIZED)
+      const refused = await download(s.token, file.mediaId, OTHER_SITE)
+      expect(refused.header['access-control-allow-origin']).toBeUndefined()
+    })
+  })
+
   describe('the socket of a visitor', () => {
     async function connectSocket(
       auth: Record<string, unknown>,
@@ -588,6 +815,70 @@ describe('The web widget', () => {
       return message.id
     }
 
+    it('hears a file of the store as a message with its attachment, and a file still being scanned not at all', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const visitor = await enter(siteKey)
+      await createCustomerIdentity(owner, {
+        storeId: ctx.storeA.id,
+        channelType: ChannelIds.WEB_WIDGET,
+        handle: visitor.visitorId
+      })
+      const conversationId = await conversationFor(siteKey, visitor.visitorId)
+      const customerId = (
+        await owner.conversation.findUniqueOrThrow({
+          where: { id: conversationId },
+          select: { customerId: true }
+        })
+      ).customerId
+      const heard: MessageBody[] = []
+      const socket = await connectSocket({ [WIDGET_TOKEN_AUTH_KEY]: visitor.visitorToken })
+      socket.on(WidgetSocketEvents.MESSAGE, (message: MessageBody) => heard.push(message))
+      const sendFile = async (content: string | null, status: MediaStatus) => {
+        const message = await owner.message.create({
+          data: {
+            storeId: ctx.storeA.id,
+            conversationId,
+            type: MessageType.IMAGE,
+            content,
+            authorType: AuthorType.AGENT,
+            deliveryStatus: DeliveryStatus.SENT
+          },
+          select: { id: true }
+        })
+        const media = await owner.media.create({
+          data: {
+            storeId: ctx.storeA.id,
+            purpose: 'message',
+            messageId: message.id,
+            customerId,
+            key: `stores/${ctx.storeA.id}/messages/${randomUUID()}/file`,
+            filename: 'comprobante.png',
+            contentType: 'image/png',
+            fileSize: 2048,
+            status
+          },
+          select: { id: true }
+        })
+        const payload: MessageStatusPayload = {
+          storeId: ctx.storeA.id,
+          conversationId,
+          messageId: message.id,
+          visibility: { hidden: false, assignedTo: null }
+        }
+        await app.get(EventEmitter2, { strict: false }).emitAsync(Events.MESSAGE_SENT, payload)
+        return media.id
+      }
+
+      await sendFile(null, MediaStatus.PENDING)
+      const mediaId = await sendFile('tu factura', MediaStatus.CLEAN)
+      await until(() => heard.length === 1)
+
+      expect(heard[0]).toMatchObject({ from: 'team', content: 'tu factura' })
+      expect(heard[0]?.attachments).toEqual([
+        { id: mediaId, filename: 'comprobante.png', contentType: 'image/png', size: 2048 }
+      ])
+    })
+
     it('hears the replies of the store addressed to its visitor, and no one else’s', async () => {
       const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
       const mine = await enter(siteKey)
@@ -611,7 +902,14 @@ describe('The web widget', () => {
       await until(() => heard.length === 1)
       await sleep(100)
       expect(heard[0]).toMatchObject({ id, from: 'team', content: 'Sí, enviamos a Santa Ana' })
-      expect(Object.keys(heard[0] ?? {}).sort()).toEqual(['content', 'createdAt', 'from', 'id'])
+      expect(Object.keys(heard[0] ?? {}).sort()).toEqual([
+        'attachments',
+        'content',
+        'createdAt',
+        'from',
+        'id'
+      ])
+      expect(heard[0]?.attachments).toEqual([])
       expect(overheard).toEqual([])
     })
 

@@ -13,6 +13,8 @@ import { MediaService } from './media.service'
 @Module({
   imports: [ExportsModule, QueuesPlatformModule, TenancyModule],
   controllers: [MediaController],
-  providers: [MediaDownloadService, MediaService]
+  providers: [MediaDownloadService, MediaService],
+  // The widget signs the downloads of a visitor with the same rules (clean only, never inline)
+  exports: [MediaService]
 })
 export class MediaModule {}
