@@ -1594,6 +1594,7 @@ const webEnvSchema = z.object({
   NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
+  NEXT_PUBLIC_STORAGE_URL: z.url(), // The bucket host: connect-src, img-src and media-src of the CSP
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: z.url(),
 })
 
@@ -1603,6 +1604,7 @@ export const webEnv = webEnvSchema.parse({
   NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  NEXT_PUBLIC_STORAGE_URL: process.env.NEXT_PUBLIC_STORAGE_URL,
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: process.env.NEXT_PUBLIC_WIDGET_SCRIPT_URL,
 })
 ```

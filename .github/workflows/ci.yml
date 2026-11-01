@@ -275,13 +275,14 @@ jobs:
             port: 8081
             file: docker/node-service.Dockerfile
             build-args: APP=worker
-          # The three NEXT_PUBLIC_* are baked into the bundle, so the build needs them
+          # The NEXT_PUBLIC_* are baked into the bundle, so the build needs them
           - app: web
             port: 3000
             file: apps/web/Dockerfile
             build-args: |
               NEXT_PUBLIC_API_URL=https://api.example.com
               NEXT_PUBLIC_WS_URL=https://api.example.com
+              NEXT_PUBLIC_STORAGE_URL=https://files.example.com
               NEXT_PUBLIC_WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js
     # Only for the check that the image starts and answers
     services:

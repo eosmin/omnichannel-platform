@@ -689,6 +689,19 @@
         "DOCUMENT": "Documento"
       },
       "templateLabel": "Mensaje de plantilla",
+      "media": {
+        "checking": "Revisando {name}",
+        "loading": "Cargando {name}",
+        "infected": "{name} se bloqueó porque no es seguro",
+        "unavailable": "No se pudo cargar {name}",
+        "retry": "Reintentar",
+        "open": "Abrir {name}",
+        "play": "Reproducir {name}",
+        "downloadFile": "Descargar {name}",
+        "download": "Descargar",
+        "close": "Cerrar",
+        "lightboxDescription": "El archivo en tamaño completo"
+      },
       "neutral": {
         "LOCATION": "El cliente compartió una ubicación",
         "PRODUCT_CARD": "Se compartió un producto",
@@ -806,6 +819,15 @@
       "replyPlaceholder": "Escribe una respuesta",
       "notePlaceholder": "Escribe una nota para tu equipo",
       "send": "Enviar",
+      "attach": {
+        "button": "Adjuntar un archivo",
+        "remove": "Quitar {name}",
+        "uploading": "Subiendo {name}, {percent}%",
+        "checking": "Revisando {name}",
+        "ready": "{name} está listo para enviar",
+        "captionHint": "El texto que escribas se envía junto con el archivo",
+        "failed": "No se adjuntó {name}"
+      },
       "window": {
         "closing": "La ventana de mensajería se cierra en {hours} h {minutes} min",
         "closedTemplate": "La ventana de mensajería expiró. Envía una plantilla aprobada para reabrir la conversación.",

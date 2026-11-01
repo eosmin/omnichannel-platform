@@ -689,6 +689,19 @@
         "DOCUMENT": "Document"
       },
       "templateLabel": "Template message",
+      "media": {
+        "checking": "Checking {name}",
+        "loading": "Loading {name}",
+        "infected": "{name} was blocked because it is not safe",
+        "unavailable": "{name} could not be loaded",
+        "retry": "Try again",
+        "open": "Open {name}",
+        "play": "Play {name}",
+        "downloadFile": "Download {name}",
+        "download": "Download",
+        "close": "Close",
+        "lightboxDescription": "The file at full size"
+      },
       "neutral": {
         "LOCATION": "The customer shared a location",
         "PRODUCT_CARD": "A product was shared",
@@ -806,6 +819,15 @@
       "replyPlaceholder": "Write a reply",
       "notePlaceholder": "Write a note for your team",
       "send": "Send",
+      "attach": {
+        "button": "Attach a file",
+        "remove": "Remove {name}",
+        "uploading": "Uploading {name}, {percent}%",
+        "checking": "Checking {name}",
+        "ready": "{name} is ready to send",
+        "captionHint": "The text you write is sent with the file",
+        "failed": "{name} was not attached"
+      },
       "window": {
         "closing": "The messaging window closes in {hours}h {minutes}m",
         "closedTemplate": "The messaging window has expired. Send an approved template to reopen the conversation.",

@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 
 import { encryptJson, parseEncryptionKey } from '@platform/core/crypto'
 import { createOwnerClient, type OwnerClient } from '@platform/core/database-testing'
@@ -7,10 +7,12 @@ import {
   ChannelConnectionStatus,
   ChannelType,
   type DeliveryStatus,
+  type MediaStatus,
   type MessageType,
   OriginKinds,
   type SystemMessageEvent
 } from '@platform/core/domain'
+import { MediaPurpose } from '@platform/core/storage'
 
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
@@ -373,5 +375,31 @@ export function savedProfileOf(customerId: string): Promise<{
       noteCount: row._count.notes,
       cities: row.addresses.map(address => address.city)
     }
+  })
+}
+
+// A file of a message in the state the scan left it. The row is enough for the thread: the signed
+// links are made from the key without reading the bucket, so no scan or upload is needed.
+export function addMediaTo(
+  storeId: string,
+  messageId: string,
+  input: { filename: string; contentType: string; status: MediaStatus }
+): Promise<{ id: string }> {
+  return withOwner(async owner => {
+    const id = randomUUID()
+    await owner.media.create({
+      data: {
+        id,
+        storeId,
+        messageId,
+        purpose: MediaPurpose.MESSAGE,
+        key: `stores/${storeId}/messages/${id}/${input.filename}`,
+        filename: input.filename,
+        contentType: input.contentType,
+        fileSize: 2048,
+        status: input.status
+      }
+    })
+    return { id }
   })
 }

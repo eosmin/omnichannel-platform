@@ -8,6 +8,7 @@ const options = {
   nonce: 'abc123',
   apiUrl: 'https://api.example.com',
   wsUrl: 'https://api.example.com',
+  storageUrl: 'https://files.example.com/bucket',
   isDev: false
 }
 
@@ -32,12 +33,22 @@ describe('buildContentSecurityPolicy', () => {
 
   it('draws images only from the app, inline data and the avatar hosts of Meta', () => {
     const img = directive(buildContentSecurityPolicy(options), 'img-src')
-    expect(img).toBe(`img-src 'self' data: blob: ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`)
+    expect(img).toBe(
+      `img-src 'self' data: blob: https://files.example.com ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`
+    )
+  })
+
+  it('plays audio and video only from the app and the bucket origin, never its path', () => {
+    expect(directive(buildContentSecurityPolicy(options), 'media-src')).toBe(
+      "media-src 'self' blob: https://files.example.com"
+    )
   })
 
   it('connects to the api and to its websocket, nothing else', () => {
     const connect = directive(buildContentSecurityPolicy(options), 'connect-src')
-    expect(connect).toBe("connect-src 'self' https://api.example.com wss://api.example.com")
+    expect(connect).toBe(
+      "connect-src 'self' https://api.example.com https://files.example.com wss://api.example.com"
+    )
   })
 
   it('uses ws for an http websocket url and adds the origin of the Sentry dsn', () => {
@@ -51,7 +62,7 @@ describe('buildContentSecurityPolicy', () => {
       'connect-src'
     )
     expect(connect).toBe(
-      "connect-src 'self' http://localhost:8080 ws://localhost:8080 https://o1.ingest.sentry.io"
+      "connect-src 'self' http://localhost:8080 https://files.example.com ws://localhost:8080 https://o1.ingest.sentry.io"
     )
   })
 
@@ -60,7 +71,9 @@ describe('buildContentSecurityPolicy', () => {
       buildContentSecurityPolicy({ ...options, wsUrl: 'wss://realtime.example.com' }),
       'connect-src'
     )
-    expect(connect).toBe("connect-src 'self' https://api.example.com wss://realtime.example.com")
+    expect(connect).toBe(
+      "connect-src 'self' https://api.example.com wss://realtime.example.com https://files.example.com"
+    )
   })
 
   it('forbids framing, plugins and foreign forms', () => {

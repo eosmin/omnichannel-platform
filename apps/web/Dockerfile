@@ -3,6 +3,7 @@
 #   docker build -f apps/web/Dockerfile \
 #     --build-arg NEXT_PUBLIC_API_URL=https://api.example.com \
 #     --build-arg NEXT_PUBLIC_WS_URL=https://api.example.com \
+#     --build-arg NEXT_PUBLIC_STORAGE_URL=https://files.example.com \
 #     --build-arg NEXT_PUBLIC_WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js .
 
 # Same Node.js and the same Debian/Alpine split as docker/node-service.Dockerfile
@@ -14,9 +15,11 @@ FROM ${BUILD_IMAGE} AS build
 # them too, so they are arguments of the build and not variables of the container
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
+ARG NEXT_PUBLIC_STORAGE_URL
 ARG NEXT_PUBLIC_WIDGET_SCRIPT_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL \
+    NEXT_PUBLIC_STORAGE_URL=$NEXT_PUBLIC_STORAGE_URL \
     NEXT_PUBLIC_WIDGET_SCRIPT_URL=$NEXT_PUBLIC_WIDGET_SCRIPT_URL \
     NX_DAEMON=false CI=true HUSKY=0 NEXT_TELEMETRY_DISABLED=1
 WORKDIR /repo

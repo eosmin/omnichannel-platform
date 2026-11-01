@@ -13,6 +13,8 @@ export interface ContentSecurityPolicyOptions {
   nonce: string
   apiUrl: string
   wsUrl: string
+  // The bucket of the files: the browser uploads to it (PUT) and draws and plays what it signs
+  storageUrl: string
   sentryDsn?: string | undefined
   isDev: boolean
 }
@@ -29,12 +31,14 @@ function webSocketOrigin(url: string): string {
 // 'unsafe-inline' because the Radix portals inject a few. Nothing here lets another site frame
 // the app or load a plugin iframe: those origins join frame-src with the step that builds them.
 export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions): string {
-  const { nonce, apiUrl, wsUrl, sentryDsn, isDev } = options
+  const { nonce, apiUrl, wsUrl, storageUrl, sentryDsn, isDev } = options
+  const storageOrigin = new URL(storageUrl).origin
   // A Set, because the api and the websocket share an origin in development
   const connectSources = new Set([
     "'self'",
     new URL(apiUrl).origin,
     new URL(wsUrl).origin,
+    storageOrigin,
     webSocketOrigin(wsUrl),
     ...(sentryDsn ? [new URL(sentryDsn).origin] : [])
   ])
@@ -42,7 +46,8 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`,
+    `img-src 'self' data: blob: ${storageOrigin} ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`,
+    `media-src 'self' blob: ${storageOrigin}`,
     `connect-src ${[...connectSources].join(' ')}`,
     "font-src 'self'",
     "object-src 'none'",

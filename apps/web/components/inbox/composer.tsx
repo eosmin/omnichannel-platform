@@ -1,6 +1,6 @@
 'use client'
 
-import { Clock, Send } from 'lucide-react'
+import { Clock, Paperclip, Send } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -34,6 +34,8 @@ import {
 } from '../../lib/inbox/use-inbox-data'
 import { useWindowState } from '../../lib/inbox/use-window-state'
 import { hoursAndMinutes } from '../../lib/inbox/window-state'
+import { ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
+import { useAttachment } from '../../lib/media/use-attachment'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
@@ -47,6 +49,7 @@ import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 import { Textarea } from '../ui/textarea'
 
+import { AttachmentChip } from './attachment-chip'
 import { CommandMenu } from './command-menu'
 import { useConversationControls } from './conversation-controls'
 import { type EditState, FailedMessages } from './failed-messages'
@@ -117,6 +120,8 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const channels = useChannelDirectory(storeId)
   const windowState = useWindowState(storeId, conversationId)
   const queue = useComposerQueue(storeId, conversationId)
+  const attachment = useAttachment(storeId, conversationId)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const mayReply = can(Permissions.MESSAGES_SEND)
   const mayNote = can(Permissions.MESSAGES_INTERNAL_NOTE)
@@ -204,11 +209,29 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   }
   // Text that is a command is not a message: nothing sends it, and the button says so by being off
   const isCommandText = typedCommand(content) !== undefined
+  // A file belongs to a reply to the customer; a note never carries one. The file goes out with the
+  // text as its caption in one message, and only once it is clean; while it uploads or is scanned
+  // nothing is sent, so the text cannot leave without the file the agent meant to send with it.
+  const fileState = isNote ? ({ kind: 'idle' } as const) : attachment.state
+  const isFileReady = fileState.kind === 'ready'
+  const isFileBusy = fileState.kind === 'uploading' || fileState.kind === 'checking'
+  const isFileSending = fileState.kind === 'ready' && fileState.isSending
   const submit = (): void => {
-    if (content === '' || isClosed || !queue.isReady) return
+    if ((content === '' && !isFileReady) || isClosed || !queue.isReady) return
     // Text that starts with a command is never a message, whether or not the agent may use it or the
     // menu found a match: "/snippet thx" must not reach the customer
     if (isCommandText) return
+    if (isFileBusy || isFileSending) return
+    if (isFileReady) {
+      void attachment.send(content).then(sent => {
+        // The text is cleared only if the agent has not changed it while the file was going out
+        if (sent) {
+          setDraft(current => (current.trim() === content ? '' : current))
+          setActiveIndex(0)
+        }
+      })
+      return
+    }
     const mentions = isNote ? mentionedIds(content, picked) : []
     queue.send({ type: mode, content, ...(mentions.length > 0 ? { mentions } : {}) })
     setText('')
@@ -418,7 +441,38 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               {tMenu('noMatches')}
             </p>
           ) : null}
+          {fileState.kind === 'idle' ? null : (
+            <AttachmentChip state={fileState} onRemove={attachment.clear} />
+          )}
           <div className="flex items-end gap-2">
+            {mayReply && !isNote ? (
+              <>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept={ATTACHMENT_ACCEPT}
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-hidden
+                  onChange={event => {
+                    const picked = event.target.files?.[0]
+                    // The same file can be chosen again after it was removed
+                    event.target.value = ''
+                    if (picked !== undefined) attachment.attach(picked)
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInput.current?.click()}
+                  disabled={isFileBusy || isFileSending}
+                  aria-label={t('attach.button')}
+                >
+                  <Paperclip aria-hidden />
+                </Button>
+              </>
+            ) : null}
             <Textarea
               ref={textarea}
               {...{ [SHORTCUT_FIELD_ATTRIBUTE]: '' }}
@@ -440,7 +494,13 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               type="button"
               size="icon"
               onClick={submit}
-              disabled={content === '' || !queue.isReady || isCommandText}
+              disabled={
+                (content === '' && !isFileReady) ||
+                !queue.isReady ||
+                isCommandText ||
+                isFileBusy ||
+                isFileSending
+              }
               aria-label={t('send')}
             >
               <Send aria-hidden />

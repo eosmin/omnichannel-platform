@@ -112,6 +112,10 @@ export const QueryKeys = {
   returnReception: {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const
   },
+  media: {
+    // The signed links of one clean file; they expire, so the query has a short life
+    urls: (storeId: string, mediaId: string) => ['media', storeId, mediaId, 'urls'] as const
+  },
   preferences: {
     store: (storeId: string) => ['preferences', storeId] as const
   },
