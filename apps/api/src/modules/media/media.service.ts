@@ -4,12 +4,20 @@ import type { Queue } from 'bullmq'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import {
   type ClientUploadPurpose,
   type ConfirmUploadBody,
+  ImageVariants,
   type MediaPurposeType,
+  type MediaUrls,
+  mediaVariantsSchema,
   maxBytesFor,
   refuseUpload,
   type RequestUploadUrlBody,
@@ -17,7 +25,8 @@ import {
   sanitizeFilename,
   StorageKeys,
   type UploadUrlResult,
-  UploadRefusals
+  UploadRefusals,
+  VARIANT_CONTENT_TYPE
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -39,13 +48,15 @@ const MEDIA_SELECT = {
   fileSize: true,
   status: true,
   createdAt: true,
-  key: true
+  key: true,
+  variants: true
 } as const
 
 type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   purpose: string
   status: string
   key: string
+  variants: unknown
 }
 
 // The one answer for an upload that cannot be trusted: the object is missing, is not what was
@@ -203,6 +214,63 @@ export class MediaService {
     await this.queueScan(media.id)
     await this.dropStaging(keys.upload)
     return view(media)
+  }
+
+  // Short-lived signed URLs on the bucket host (TDD_07 §6.6). Only a clean file is served; the original
+  // is always a download, and only the WebP variants the worker made are shown inline.
+  async urlsFor(storeId: string, mediaId: string): Promise<MediaUrls> {
+    const media = await this.find(storeId, mediaId)
+    if (media === null) throw resourceNotFound('Media not found')
+    if (media.status === String(MediaStatus.INFECTED)) {
+      throw new PlatformException(
+        ErrorCodes.FILE_INFECTED,
+        'File unavailable',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
+    if (media.status !== String(MediaStatus.CLEAN)) {
+      throw new PlatformException(
+        ErrorCodes.FILE_NOT_READY,
+        'File is being scanned',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+
+    // A JSON column: parsed at the boundary. A value that does not fit is no variant, not an error.
+    const parsed = mediaVariantsSchema.safeParse(media.variants ?? {})
+    const variants = parsed.success ? parsed.data : {}
+    // Keys the worker wrote for this media; one outside the store is never signed
+    const sign = (variant: (typeof ImageVariants)[keyof typeof ImageVariants]) => {
+      const key = variants[variant]
+      return key === undefined || !key.startsWith(StorageKeys.storePrefix(storeId))
+        ? Promise.resolve(null)
+        : this.storage.downloadUrl({
+            key,
+            contentType: VARIANT_CONTENT_TYPE,
+            filename: media.filename,
+            inline: true
+          })
+    }
+    const [url, full, medium, thumb] = await Promise.all([
+      this.storage.downloadUrl({
+        key: media.key,
+        contentType: media.contentType,
+        filename: media.filename
+      }),
+      sign(ImageVariants.FULL),
+      sign(ImageVariants.MEDIUM),
+      sign(ImageVariants.THUMB)
+    ])
+    return {
+      url,
+      filename: media.filename,
+      contentType: media.contentType,
+      variants: {
+        [ImageVariants.FULL]: full,
+        [ImageVariants.MEDIUM]: medium,
+        [ImageVariants.THUMB]: thumb
+      }
+    }
   }
 
   private async again(media: MediaRow, keys: UploadKeys): Promise<MediaView> {

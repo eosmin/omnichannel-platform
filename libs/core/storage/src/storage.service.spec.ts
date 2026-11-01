@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream'
+
 import type { S3Client } from '@aws-sdk/client-s3'
 
 import { createS3Client } from './storage.module'
@@ -123,6 +125,76 @@ describe('StorageService', () => {
       const signed = url.searchParams.get('X-Amz-SignedHeaders') ?? ''
       expect(signed).toContain('content-type')
       expect(signed).toContain('content-length')
+    })
+  })
+  describe('downloadUrl', () => {
+    const real = new StorageService(
+      createS3Client({
+        bucket: 'bucket',
+        region: 'us-east-1',
+        accessKeyId: 'k',
+        secretAccessKey: 's',
+        endpoint: 'http://localhost:8333',
+        forcePathStyle: true
+      }),
+      'bucket'
+    )
+
+    it('fixes the type and forces a download of what an uploader sent', async () => {
+      const url = new URL(
+        await real.downloadUrl({
+          key: 'stores/s/messages/m/x.html',
+          contentType: 'image/png',
+          filename: 'x.html'
+        })
+      )
+      expect(url.searchParams.get('response-content-type')).toBe('image/png')
+      expect(url.searchParams.get('response-content-disposition')).toMatch(
+        /^attachment; filename="x\.html"/
+      )
+      expect(url.searchParams.get('X-Amz-Expires')).toBe('900')
+    })
+
+    it('shows a re-encoded variant inline', async () => {
+      const url = new URL(
+        await real.downloadUrl({
+          key: 'stores/s/messages/m/variants/thumb.webp',
+          contentType: 'image/webp',
+          filename: 'x.png',
+          inline: true
+        })
+      )
+      expect(url.searchParams.get('response-content-disposition')).toBe('inline')
+    })
+  })
+
+  describe('read', () => {
+    const body = (...chunks: string[]) => Readable.from(chunks.map(chunk => Buffer.from(chunk)))
+
+    it('answers the bytes of an object inside the limit', async () => {
+      const send = jest
+        .fn()
+        .mockResolvedValueOnce({ ContentLength: 6 })
+        .mockResolvedValueOnce({ Body: body('abc', 'def') })
+      expect((await serviceWith(send).read('k', 10))?.toString()).toBe('abcdef')
+    })
+
+    it('refuses an object that its head says is too big, without reading it', async () => {
+      const send = jest.fn().mockResolvedValueOnce({ ContentLength: 11 })
+      await expect(serviceWith(send).read('k', 10)).rejects.toThrow('bigger than the limit')
+      expect(send).toHaveBeenCalledTimes(1)
+    })
+
+    it('stops reading when the body is bigger than the head said', async () => {
+      const send = jest
+        .fn()
+        .mockResolvedValueOnce({ ContentLength: 3 })
+        .mockResolvedValueOnce({ Body: body('abcdef', 'ghijkl') })
+      await expect(serviceWith(send).read('k', 8)).rejects.toThrow('bigger than the limit')
+    })
+
+    it('answers null for an object that is not there', async () => {
+      expect(await serviceWith(jest.fn().mockRejectedValue(failure(404))).read('k', 10)).toBeNull()
     })
   })
 })

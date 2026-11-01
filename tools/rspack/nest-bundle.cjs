@@ -31,33 +31,43 @@ function withAutomaticJsxRuntime(loader) {
 // bundled in. The output is ESM, and the bundled CommonJS packages expect require('events') to
 // return the class itself, so Node's built-in modules are required (node-commonjs), not imported.
 //
-// Rspack configuration of an app built with `nest build`: pass the name of the app (dist/apps/<name>).
-module.exports = appName => (defaults, rspack) => ({
-  output: { ...defaults.output, path: path.join(WORKSPACE_ROOT, 'dist', 'apps', appName) },
-  // The Nest CLI's SWC loader compiles JSX with the classic runtime (React.createElement) and ignores
-  // "jsx": "react-jsx" of the tsconfig, so the email templates (.tsx) die with "React is not defined"
-  // in the bundle while passing under ts-jest. Use the automatic runtime, as the tsconfig says.
-  module: {
-    ...defaults.module,
-    rules: defaults.module.rules.map(rule => ({
-      ...rule,
-      use: rule.use.map(loader => withAutomaticJsxRuntime(loader))
-    }))
-  },
-  externals: [
-    ({ request }, callback) => {
-      if (request === undefined) return callback()
-      // Some built-ins exist only with the prefix (node:sqlite, node:test): the prefix is enough
-      const builtin = request.startsWith('node:') || builtinModules.includes(request)
-      return builtin ? callback(null, `node-commonjs ${request}`) : callback()
-    }
-  ],
-  plugins: [
-    ...defaults.plugins,
-    ...LAZY_NEST_PACKAGES.filter(name => !isInstalled(name)).map(
-      name => new rspack.IgnorePlugin({ resourceRegExp: new RegExp(`^${name}/.+\\.js$`) })
-    ),
-    // pg loads its optional native driver lazily and never needs it here
-    new rspack.IgnorePlugin({ resourceRegExp: /^pg-native$/ })
-  ]
-})
+// Packages with a native binary cannot be bundled: they are required at run time from the node_modules
+// next to main.js, which the Dockerfile fills for the apps that ask for them (`nativePackages`).
+//
+// Rspack configuration of an app built with `nest build`: pass the name of the app (dist/apps/<name>)
+// and, for an app that needs one, the packages it loads from node_modules.
+module.exports =
+  (appName, nativePackages = []) =>
+  (defaults, rspack) => ({
+    output: { ...defaults.output, path: path.join(WORKSPACE_ROOT, 'dist', 'apps', appName) },
+    // The Nest CLI's SWC loader compiles JSX with the classic runtime (React.createElement) and ignores
+    // "jsx": "react-jsx" of the tsconfig, so the email templates (.tsx) die with "React is not defined"
+    // in the bundle while passing under ts-jest. Use the automatic runtime, as the tsconfig says.
+    module: {
+      ...defaults.module,
+      rules: defaults.module.rules.map(rule => ({
+        ...rule,
+        use: rule.use.map(loader => withAutomaticJsxRuntime(loader))
+      }))
+    },
+    externals: [
+      ({ request }, callback) => {
+        if (request === undefined) return callback()
+        // Some built-ins exist only with the prefix (node:sqlite, node:test): the prefix is enough
+        const builtin = request.startsWith('node:') || builtinModules.includes(request)
+        if (builtin) return callback(null, `node-commonjs ${request}`)
+        const native = nativePackages.some(
+          name => request === name || request.startsWith(`${name}/`)
+        )
+        return native ? callback(null, `node-commonjs ${request}`) : callback()
+      }
+    ],
+    plugins: [
+      ...defaults.plugins,
+      ...LAZY_NEST_PACKAGES.filter(name => !isInstalled(name)).map(
+        name => new rspack.IgnorePlugin({ resourceRegExp: new RegExp(`^${name}/.+\\.js$`) })
+      ),
+      // pg loads its optional native driver lazily and never needs it here
+      new rspack.IgnorePlugin({ resourceRegExp: /^pg-native$/ })
+    ]
+  })

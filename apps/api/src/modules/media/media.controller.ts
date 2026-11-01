@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
@@ -10,6 +10,7 @@ import {
   confirmUploadSchema,
   type ConfirmUploadBody,
   requestUploadUrlSchema,
+  type MediaUrls,
   type RequestUploadUrlBody,
   type UploadUrlResult
 } from '@platform/core/storage'
@@ -43,5 +44,14 @@ export class MediaController {
     @Body(new ZodValidationPipe(confirmUploadSchema)) body: ConfirmUploadBody
   ): Promise<MediaView> {
     return this.media.confirmUpload(store.id, user.id, body)
+  }
+
+  @RequirePermissions(Permissions.MEDIA_VIEW)
+  @Get(ApiRoutes.media.byId(':id'))
+  urls(
+    @CurrentStore() store: Store,
+    @Param('id', new ParseUUIDPipe()) id: string
+  ): Promise<MediaUrls> {
+    return this.media.urlsFor(store.id, id)
   }
 }
