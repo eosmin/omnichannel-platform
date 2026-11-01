@@ -1,4 +1,4 @@
-import { AuthorType, MessageType } from '@platform/core/domain'
+import { AuthorType, MediaStatus, MessageType } from '@platform/core/domain'
 
 import { messageView } from './messages.views'
 
@@ -27,6 +27,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   deleteStatus: null,
   deleteError: null,
   reactions: [],
+  media: [],
   createdAt: new Date('2026-10-30T10:00:00Z')
 })
 
@@ -52,5 +53,29 @@ describe('messageView attachmentUrl', () => {
     const view = messageView(row({ attachmentUrl: 'https://example.com/a', secret: 'x' }))
 
     expect(JSON.stringify(view)).not.toContain('secret')
+  })
+})
+
+describe('messageView media', () => {
+  const file = {
+    id: 'f1',
+    filename: 'a.png',
+    contentType: 'image/png',
+    fileSize: 10,
+    status: MediaStatus.CLEAN
+  }
+
+  it('lists the files of a message without a link or a key', () => {
+    const view = messageView({ ...row(null), media: [file] })
+    expect(view.media).toEqual([file])
+  })
+
+  it('lists no file for a deleted message', () => {
+    const view = messageView({ ...row(null), media: [file], deletedAt: new Date() })
+    expect(view.media).toEqual([])
+  })
+
+  it('refuses a status it does not know', () => {
+    expect(() => messageView({ ...row(null), media: [{ ...file, status: 'weird' }] })).toThrow()
   })
 })

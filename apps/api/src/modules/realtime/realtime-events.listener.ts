@@ -243,10 +243,24 @@ export class RealtimeEventsListener {
     return this.toWhoMayRead(payload, RealtimeEvents.MESSAGE_DELETED)
   }
 
+  @OnEvent(Events.MEDIA_PROCESSED)
+  onMediaProcessed(payload: MessageChangedPayload): Promise<void> {
+    return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_PROCESSED)
+  }
+
+  @OnEvent(Events.MEDIA_INFECTED)
+  onMediaInfected(payload: MessageChangedPayload): Promise<void> {
+    return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_INFECTED)
+  }
+
   // A note that changed is for who may read notes; any other message, for who hears of its conversation
   private toWhoMayRead(
     payload: MessageChangedPayload,
-    event: typeof RealtimeEvents.MESSAGE_EDITED | typeof RealtimeEvents.MESSAGE_DELETED
+    event:
+      | typeof RealtimeEvents.MESSAGE_EDITED
+      | typeof RealtimeEvents.MESSAGE_DELETED
+      | typeof RealtimeEvents.MEDIA_PROCESSED
+      | typeof RealtimeEvents.MEDIA_INFECTED
   ): Promise<void> {
     return this.realtime.toStoreWhere(
       payload.storeId,

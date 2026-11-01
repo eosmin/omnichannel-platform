@@ -11,6 +11,11 @@ const MAX_ENTRY_STEM = 110
 export class ZipEntryNames {
   private readonly taken = new Set<string>()
 
+  // A name the ZIP will use itself: a customer's file with the same name is numbered, not the other
+  reserve(name: string): void {
+    this.taken.add(name.toLowerCase())
+  }
+
   next(filename: string): string {
     const clean = sanitizeFilename(filename)
     const dot = clean.lastIndexOf('.')

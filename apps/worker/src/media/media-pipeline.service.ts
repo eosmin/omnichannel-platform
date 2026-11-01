@@ -6,6 +6,10 @@ import sharp from 'sharp'
 
 import { PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
+import { errorName } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import { publishMessageChanged } from '@platform/core/messaging'
 import { JobNames, type ProcessImageJob, QueueNames } from '@platform/core/queues'
 import {
   AllowedContentTypes,
@@ -32,6 +36,7 @@ export class MediaPipeline {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly clamav: ClamavClient,
+    private readonly events: DomainEvents,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly heavyQueue: Queue<ProcessImageJob>,
     private readonly logger: PinoLogger
   ) {
@@ -73,6 +78,8 @@ export class MediaPipeline {
         { mediaId: media.id, storeId: media.storeId },
         'an uploaded file is infected'
       )
+      // Never throws, so the delete below always runs
+      await this.announce(media, Events.MEDIA_INFECTED)
       await this.storage.delete(media.key)
       return
     }
@@ -82,7 +89,38 @@ export class MediaPipeline {
       data: { status: MediaStatus.CLEAN, scannedAt: new Date() }
     })
     if (marked.count === 0) return
+    await this.announce(media, Events.MEDIA_PROCESSED)
     if (isImage(media.contentType)) await this.queueVariants(media.id)
+  }
+
+  // Tells the team that a file of a message has a verdict, so the thread stops showing its placeholder.
+  // A file that belongs to no message yet has no thread to refresh: the composer asks for it itself.
+  private async announce(
+    media: { id: string; storeId: string | null },
+    event: typeof Events.MEDIA_PROCESSED | typeof Events.MEDIA_INFECTED
+  ): Promise<void> {
+    if (media.storeId === null) return
+    const { storeId } = media
+    // The verdict is already written and a retry would not announce it again (the row is past its
+    // state), so a failure here is logged and must not fail the job; the next fetch of the thread
+    // shows the state anyway
+    try {
+      // Read now, not at the start of the job: a send may have linked the file while it was processed
+      const current = await this.prisma.client.media.findUnique({
+        where: { id: media.id },
+        select: { messageId: true }
+      })
+      const messageId = current?.messageId ?? null
+      if (messageId === null) return
+      await this.prisma.transaction(tx =>
+        publishMessageChanged(this.events, tx, event, storeId, messageId)
+      )
+    } catch (error) {
+      this.logger.warn(
+        { mediaId: media.id, errorName: errorName(error) },
+        'a file verdict was not announced'
+      )
+    }
   }
 
   private async queueVariants(mediaId: string): Promise<void> {
@@ -134,5 +172,7 @@ export class MediaPipeline {
       where: { id: media.id },
       data: { variants: variantKeys, processedAt: new Date() }
     })
+    // The thread draws the variants once they exist
+    await this.announce(media, Events.MEDIA_PROCESSED)
   }
 }

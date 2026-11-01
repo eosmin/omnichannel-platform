@@ -245,6 +245,7 @@
     "FILE_NOT_READY": "The file is still being processed",
     "FILE_TOO_LARGE": "The file is too large",
     "FILE_TYPE_NOT_ALLOWED": "This type of file is not allowed",
+    "FILE_UNAVAILABLE": "The file could not be sent because it is no longer available",
     "FILE_UPLOAD_FAILED": "The file could not be uploaded",
     "INSUFFICIENT_INVENTORY": "There is not enough stock",
     "INTERNAL_ERROR": "Something went wrong. Try again",

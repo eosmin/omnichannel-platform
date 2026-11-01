@@ -5,8 +5,8 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 import { ZipFile } from 'yazl'
 
-import { errorName } from '@platform/channels/connections'
-import { ExportContentTypes } from '@platform/core/exports'
+import { errorName } from '@platform/core/errors'
+import { ExportContentTypes, MEDIA_ZIP_MISSING_ENTRY } from '@platform/core/exports'
 import { AllowedContentTypes } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -36,8 +36,11 @@ export class ZipExportWriter {
     // yazl hands out a PassThrough, typed as the bare NodeJS.ReadableStream interface
     const output = zip.outputStream as Readable
     const names = new ZipEntryNames()
+    // The report is told apart from a customer's file called the same
+    names.reserve(MEDIA_ZIP_MISSING_ENTRY)
     let current: Readable | null = null
     let rowCount = 0
+    const missing: string[] = []
     let feedError: unknown
 
     const upload = this.storage.putStream(key, output, ExportContentTypes.ZIP)
@@ -56,6 +59,7 @@ export class ZipExportWriter {
           if (body === null) {
             // Gone from the bucket: the ZIP holds the rest rather than nothing
             this.logger.warn({ key: entry.key }, 'a file of a ZIP is not in the bucket')
+            missing.push(entry.filename)
             continue
           }
           current = body
@@ -68,6 +72,14 @@ export class ZipExportWriter {
           rowCount += 1
           await read
           current = null
+        }
+        // The member must be able to tell that the ZIP holds fewer files than the gallery showed
+        if (missing.length > 0 && rowCount > 0) {
+          zip.addBuffer(
+            Buffer.from(`${missing.map(missingLine).join('\n')}\n`, 'utf8'),
+            MEDIA_ZIP_MISSING_ENTRY,
+            { compress: false }
+          )
         }
         zip.end()
       } catch (error) {
@@ -92,3 +104,6 @@ export class ZipExportWriter {
     return { rowCount }
   }
 }
+
+// A name is the customer's: a line break in it would pass for two names
+const missingLine = (filename: string): string => filename.replace(/[\r\n]+/g, ' ')

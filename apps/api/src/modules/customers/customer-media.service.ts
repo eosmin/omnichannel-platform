@@ -54,11 +54,13 @@ export class CustomerMediaService {
         take: query.limit + 1,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
       }),
-      this.prisma.client.media.groupBy({
-        by: ['contentType'],
-        where: mediaGalleryWhere(storeId, customerId, { q: query.q }, viewer),
-        _count: { _all: true }
-      })
+      cursor === undefined
+        ? this.prisma.client.media.groupBy({
+            by: ['contentType'],
+            where: mediaGalleryWhere(storeId, customerId, { q: query.q }, viewer),
+            _count: { _all: true }
+          })
+        : Promise.resolve(null)
     ])
 
     const hasMore = rows.length > query.limit
@@ -76,7 +78,7 @@ export class CustomerMediaService {
       })),
       nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
       hasMore,
-      counts: countsOf(groups)
+      counts: groups === null ? null : countsOf(groups)
     }
   }
 }

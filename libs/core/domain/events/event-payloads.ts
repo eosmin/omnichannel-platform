@@ -225,6 +225,8 @@ export interface DomainEventPayloads {
   [Events.MESSAGE_REACTION]: MessageStatusPayload
   [Events.MESSAGE_EDITED]: MessageChangedPayload
   [Events.MESSAGE_DELETED]: MessageChangedPayload
+  [Events.MEDIA_PROCESSED]: MessageChangedPayload
+  [Events.MEDIA_INFECTED]: MessageChangedPayload
   [Events.MESSAGE_MENTION]: MessageMentionPayload
   [Events.CUSTOMER_CREATED]: CustomerCreatedPayload
   [Events.CUSTOMER_UPDATED]: CustomerUpdatedPayload

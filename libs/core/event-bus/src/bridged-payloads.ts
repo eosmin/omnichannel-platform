@@ -87,6 +87,10 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
   [Events.MESSAGE_REACTION]: status,
   [Events.MESSAGE_EDITED]: status.extend({ internal: z.boolean() }),
   [Events.MESSAGE_DELETED]: status.extend({ internal: z.boolean() }),
+  // A file of a message was scanned (clean, or its variants are ready) or found infected: ids only,
+  // the thread reads the state through the api
+  [Events.MEDIA_PROCESSED]: status.extend({ internal: z.boolean() }),
+  [Events.MEDIA_INFECTED]: status.extend({ internal: z.boolean() }),
   [Events.MESSAGE_FAILED]: status.extend({ errorCode: z.enum(ErrorCodes) }),
   // The ids of a connection, no text: what the health check of the worker announces
   [Events.CHANNEL_DISCONNECTED]: z.object({

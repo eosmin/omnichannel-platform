@@ -22,8 +22,10 @@ export interface GalleryItem {
 export type GalleryCounts = Record<GalleryType, number>
 
 export interface GalleryPage extends CursorPage<GalleryItem> {
-  // How many files each tab holds under the search text, whatever tab is open
-  counts: GalleryCounts
+  // How many files each tab holds under the search text, whatever tab is open. Only the first page
+  // carries it (null on a page that follows a cursor): the numbers do not depend on the cursor, and
+  // the client keeps the ones it has.
+  counts: GalleryCounts | null
 }
 
 export function countsOf(

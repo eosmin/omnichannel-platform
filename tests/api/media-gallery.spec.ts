@@ -53,7 +53,7 @@ interface GalleryBody {
     key?: unknown
     url?: unknown
   }[]
-  counts: Record<string, number>
+  counts: Record<string, number> | null
   nextCursor: string | null
   hasMore: boolean
 }
@@ -277,7 +277,7 @@ describe('Media gallery', () => {
 
       const both = (await asAdmin().get(`${path}?q=zapato&type=document`)).body as GalleryBody
       expect(both.data.map(item => item.filename)).toEqual(['zapato.pdf'])
-      expect(both.counts.all).toBe(2)
+      expect(both.counts?.all).toBe(2)
 
       const percent = (await asAdmin().get(`${path}?q=${encodeURIComponent('%')}`))
         .body as GalleryBody
@@ -298,8 +298,9 @@ describe('Media gallery', () => {
         .body as GalleryBody
       expect(second.data.map(item => item.filename)).toEqual(['p1.png'])
       expect(second.hasMore).toBe(false)
-      // The counts are the whole gallery, not the page
-      expect(second.counts.all).toBe(3)
+      // The counts are the whole gallery and come once, with the first page
+      expect(first.counts?.all).toBe(3)
+      expect(second.counts).toBeNull()
 
       expect((await asAdmin().get(`${path}?type=pdf`)).status).toBe(BAD_REQUEST)
       expect((await asAdmin().get(`${path}?storeId=${ctx.storeB.id}`)).status).toBe(BAD_REQUEST)
@@ -339,7 +340,7 @@ describe('Media gallery', () => {
       const body = (await asAdmin().get(ApiRoutes.customers.media(customer.id))).body as GalleryBody
 
       expect(body.data.map(item => item.filename)).toEqual(['mine.png'])
-      expect(body.counts.all).toBe(1)
+      expect(body.counts?.all).toBe(1)
     })
   })
 
@@ -396,7 +397,7 @@ describe('Media gallery', () => {
 
       const body = response.body as GalleryBody
       expect(body.data.map(item => item.filename)).toEqual(['free.png'])
-      expect(body.counts.all).toBe(1)
+      expect(body.counts?.all).toBe(1)
     })
 
     it('lists everything but what is hidden to who sees all, and all of it to who may also archive', async () => {
@@ -648,7 +649,8 @@ describe('Media gallery', () => {
 
       const entries = await zipOf(view.id)
 
-      expect(entries).toEqual({ 'here.png': 'here' })
+      // The ZIP says which file it could not include
+      expect(entries).toEqual({ 'here.png': 'here', 'missing.txt': 'gone.png\n' })
       expect(warn).toHaveBeenCalled()
       expect((await owner.export.findUniqueOrThrow({ where: { id: view.id } })).rowCount).toBe(1)
     })

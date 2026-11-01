@@ -21,6 +21,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   system: null,
   attachmentUrl: null,
   reactions: [],
+  media: [],
   mentions: [],
   version: 1,
   editedAt: null,

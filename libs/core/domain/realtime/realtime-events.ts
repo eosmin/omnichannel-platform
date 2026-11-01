@@ -30,6 +30,9 @@ export const RealtimeEvents = {
   MESSAGE_REACTION: 'message.reaction',
   MESSAGE_EDITED: 'message.edited',
   MESSAGE_DELETED: 'message.deleted',
+  // A file of a message was scanned and is ready, or was found infected: ids only
+  MEDIA_PROCESSED: 'media.processed',
+  MEDIA_INFECTED: 'media.infected',
 
   TYPING_START: 'typing.start',
   TYPING_STOP: 'typing.stop',
@@ -96,6 +99,8 @@ export interface RealtimeEventMap {
   [RealtimeEvents.MESSAGE_REACTION]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_EDITED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_DELETED]: { conversationId: string; messageId: string }
+  [RealtimeEvents.MEDIA_PROCESSED]: { conversationId: string; messageId: string }
+  [RealtimeEvents.MEDIA_INFECTED]: { conversationId: string; messageId: string }
   [RealtimeEvents.MESSAGE_FAILED]: {
     conversationId: string
     messageId: string
