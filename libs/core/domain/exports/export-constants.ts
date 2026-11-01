@@ -18,5 +18,8 @@ export const ExportContentTypes = {
   ZIP: 'application/zip'
 } as const
 
+// The extension of the file of each format
+export const ExportFileExtensions = { CSV: 'csv', ZIP: 'zip' } as const
+
 // A spreadsheet reads UTF-8 with accents only when the file starts with this mark
 export const CSV_BOM = '﻿'

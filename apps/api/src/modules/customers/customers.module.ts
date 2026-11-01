@@ -8,6 +8,7 @@ import { ExportsModule } from '../exports'
 import { TenancyModule } from '../tenancy'
 
 import { AddressesService } from './addresses.service'
+import { CustomerMediaService } from './customer-media.service'
 import { CustomerMergePreviewService } from './customer-merge-preview.service'
 import { CustomerMergeService } from './customer-merge.service'
 import { CustomerTagsService } from './customer-tags.service'
@@ -31,6 +32,7 @@ import { NotesService } from './notes.service'
     CustomerMergeService,
     CustomerMergePreviewService,
     CustomerTimelineService,
+    CustomerMediaService,
     CustomerIdentityService
   ],
   exports: [CustomersService, CustomerIdentityService]

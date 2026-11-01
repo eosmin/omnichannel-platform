@@ -616,6 +616,49 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The gallery of a customer and "Download all" name the customer in the path or the body, so the
+  // store that decides is the one of the header: a customer of another store is a 404 on both, and
+  // a file of another store is never listed or zipped, even if its row names this customer.
+  describe('media gallery', () => {
+    it('answers 404 for a customer of another store, on the gallery and on "Download all"', async () => {
+      const foreign = await createCustomer(owner, { storeId: ctx.storeB.id })
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeB.id,
+          purpose: 'message',
+          customerId: foreign.id,
+          key: StorageKeys.message(ctx.storeB.id, randomUUID(), 'theirs.png'),
+          filename: 'theirs.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          status: 'clean'
+        }
+      })
+      const exportsBefore = await owner.export.count({ where: { storeId: ctx.storeA.id } })
+
+      const gallery = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.customers.media(foreign.id)
+      )
+      const zip = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.downloadAll)
+        .send({ customerId: foreign.id })
+
+      expect(gallery.status).toBe(404)
+      expect(zip.status).toBe(404)
+      expect(await owner.export.count({ where: { storeId: ctx.storeA.id } })).toBe(exportsBefore)
+    })
+
+    it('is refused in a store the user does not belong to', async () => {
+      const own = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const gallery = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.customers.media(own.id))
+      const zip = await api(app, ctx.adminA, ctx.storeB)
+        .post(ApiRoutes.media.downloadAll)
+        .send({ customerId: own.id })
+      expect(gallery.status).toBe(403)
+      expect(zip.status).toBe(403)
+    })
+  })
+
   // TDD_13 section 6: the widget is public, so the key it carries is all that says which store it is
   // talking to. The case was waiting for the step that builds it (Step 2.8)
   describe('a widget site key', () => {

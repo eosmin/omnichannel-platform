@@ -26,6 +26,7 @@ import { StorageService } from '@platform/core/storage-module'
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExpiredExportsCleaner } from '../../apps/worker/src/exports/expired-exports-cleaner.service'
 import { ExportGenerator } from '../../apps/worker/src/exports/export-generator.service'
+import { ZipExportWriter } from '../../apps/worker/src/exports/zip-export-writer'
 import {
   createConversationOf,
   createCustomer,
@@ -87,10 +88,15 @@ describe('Exports', () => {
     ctx = await seedTestContext(owner, app, prefix)
     const prisma = app.get(PrismaService, { strict: false })
     storage = app.get(StorageService, { strict: false })
-    const logger = { setContext: jest.fn(), error: jest.fn() } as unknown as PinoLogger
+    const logger = {
+      setContext: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn()
+    } as unknown as PinoLogger
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
+      new ZipExportWriter(storage, logger),
       storage,
       app.get(AuditService, { strict: false }),
       logger

@@ -41,6 +41,8 @@ import {
 } from '../tenancy'
 
 import { AddressesService } from './addresses.service'
+import { CustomerMediaService } from './customer-media.service'
+import type { GalleryPage } from './customer-media.views'
 import { CustomerMergePreviewService, type MergePreview } from './customer-merge-preview.service'
 import { CustomerMergeService } from './customer-merge.service'
 import { CustomerTagsService } from './customer-tags.service'
@@ -59,6 +61,8 @@ import {
   linkIdentitySchema,
   type ListCustomersQuery,
   listCustomersQuerySchema,
+  type ListMediaQuery,
+  listMediaQuerySchema,
   type ListTimelineQuery,
   listTimelineQuerySchema,
   type MergePreviewQuery,
@@ -97,6 +101,7 @@ export class CustomersController {
     private readonly merges: CustomerMergeService,
     private readonly mergePreviews: CustomerMergePreviewService,
     private readonly timeline: CustomerTimelineService,
+    private readonly gallery: CustomerMediaService,
     private readonly conversations: ConversationsService,
     private readonly exports: ExportsService
   ) {}
@@ -245,6 +250,20 @@ export class CustomersController {
     @Query(new ZodValidationPipe(listTimelineQuerySchema)) query: ListTimelineQuery
   ): Promise<TimelinePage> {
     return this.timeline.list(store.id, customerId, query, viewerOf(user.id, held))
+  }
+
+  // The gallery of the customer: the files that came in or went out in the conversations the viewer
+  // may open, clean ones only, with the count of each tab. Opening a file asks `GET /media/:id` for its signed link.
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.MEDIA_VIEW)
+  @Get(ApiRoutes.customers.media(':id'))
+  listMedia(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', id()) customerId: string,
+    @Query(new ZodValidationPipe(listMediaQuerySchema)) query: ListMediaQuery
+  ): Promise<GalleryPage> {
+    return this.gallery.list(store.id, customerId, query, viewerOf(user.id, held))
   }
 
   // The same page as GET /conversations, for one customer

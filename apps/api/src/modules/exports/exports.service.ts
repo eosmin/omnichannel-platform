@@ -44,7 +44,11 @@ import {
 const TYPE_PERMISSIONS: Partial<Record<ExportType, readonly Permission[]>> = {
   [ExportTypes.CONVERSATIONS]: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT],
   [ExportTypes.CUSTOMERS]: [Permissions.CUSTOMERS_EXPORT],
-  [ExportTypes.MEDIA_ZIP]: [Permissions.MEDIA_DOWNLOAD_ALL]
+  [ExportTypes.MEDIA_ZIP]: [
+    Permissions.CUSTOMERS_VIEW,
+    Permissions.MEDIA_VIEW,
+    Permissions.MEDIA_DOWNLOAD_ALL
+  ]
 }
 
 export const ExportListPermissions: [Permission, ...Permission[]] = [
