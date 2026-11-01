@@ -7,11 +7,11 @@ import pg from 'pg'
 import sharp from 'sharp'
 
 import { PrismaService } from '@platform/core/database'
+import { connectionUrls } from '@platform/core/database-testing'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { ImageVariants, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
-import { DIRECT_DATABASE_URL } from '../testing/test-env'
 import { WorkerModule } from '../worker.module'
 
 import { MediaPipeline } from './media-pipeline.service'
@@ -33,12 +33,16 @@ describe('MediaPipeline', () => {
   const keys: string[] = []
 
   beforeAll(async () => {
-    moduleRef = await Test.createTestingModule({ imports: [WorkerModule] }).compile()
+    moduleRef = await Test.createTestingModule({ imports: [WorkerModule] })
+      // The role of the worker, at the address of the run: the env file holds the one of a laptop
+      .overrideProvider(PrismaService)
+      .useValue(new PrismaService({ databaseUrl: connectionUrls().worker }))
+      .compile()
     pipeline = moduleRef.get(MediaPipeline, { strict: false })
     storage = moduleRef.get(StorageService, { strict: false })
     prisma = moduleRef.get(PrismaService, { strict: false })
     heavy = moduleRef.get(getQueueToken(QueueNames.HEAVY_PROCESSING), { strict: false })
-    owner = new pg.Client({ connectionString: DIRECT_DATABASE_URL })
+    owner = new pg.Client({ connectionString: connectionUrls().owner })
     await owner.connect()
     const slug = `it-media-${storeId.slice(0, 8)}`
     await owner.query(
@@ -73,18 +77,12 @@ describe('MediaPipeline', () => {
         StorageKeys.messageVariant(storeId, id, variant)
       )
     )
-    await prisma.client.media.create({
-      data: {
-        id,
-        storeId,
-        purpose: 'message',
-        key,
-        filename,
-        contentType,
-        fileSize: body.length,
-        status: 'pending'
-      }
-    })
+    // As the owner: the role of the worker reads and updates media, it never creates it
+    await owner.query(
+      `INSERT INTO media (id, store_id, purpose, key, filename, content_type, file_size, status)
+       VALUES ($1, $2, 'message', $3, $4, $5, $6, 'pending')`,
+      [id, storeId, key, filename, contentType, body.length]
+    )
     return { id, key }
   }
 
