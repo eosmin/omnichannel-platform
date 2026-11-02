@@ -267,6 +267,7 @@
     "FILE_INFECTED": "Se rechazó el archivo porque no es seguro",
     "FILE_KEY_OUT_OF_SCOPE": "Ese archivo no pertenece a esta tienda",
     "FILE_NOT_READY": "El archivo aún se está procesando",
+    "FILE_UNSCANNABLE": "No se pudo revisar el archivo y se descartó. Súbelo de nuevo",
     "FILE_TOO_LARGE": "El archivo es demasiado grande",
     "FILE_TYPE_NOT_ALLOWED": "No se permite este tipo de archivo",
     "FILE_UNAVAILABLE": "No se pudo enviar el archivo porque ya no está disponible",
@@ -445,6 +446,10 @@
       "infected": {
         "title": "Se bloqueó un archivo",
         "body": "Un archivo enviado en una conversación no es seguro y fue bloqueado."
+      },
+      "unscannable": {
+        "title": "No se pudo revisar un archivo",
+        "body": "Un archivo enviado en una conversación no se pudo analizar y se descartó. Pídelo de nuevo."
       }
     },
     "inventory": {
@@ -729,6 +734,7 @@
         "checking": "Revisando {name}",
         "loading": "Cargando {name}",
         "infected": "{name} se bloqueó porque no es seguro",
+        "unscannable": "{name} no se pudo revisar y se descartó",
         "unavailable": "No se pudo cargar {name}",
         "retry": "Reintentar",
         "open": "Abrir {name}",

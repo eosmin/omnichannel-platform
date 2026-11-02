@@ -35,6 +35,7 @@ export const AuditAction = {
   ANALYTICS_EXPORTED: 'analytics.exported',
   MEDIA_BULK_DOWNLOADED: 'media.bulk_downloaded',
   MEDIA_INFECTED: 'media.infected',
+  MEDIA_UNSCANNABLE: 'media.unscannable',
   AUDIT_LOG_VIEWED: 'audit_log.viewed',
   AUDIT_LOG_EXPORTED: 'audit_log.exported',
 

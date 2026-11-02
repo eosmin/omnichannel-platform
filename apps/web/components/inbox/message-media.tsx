@@ -103,6 +103,16 @@ function MediaItem({
       </Frame>
     )
   }
+  if (file.status === MediaStatus.UNSCANNABLE) {
+    return (
+      <Frame>
+        <TriangleAlert aria-hidden className="text-destructive size-4 shrink-0" />
+        <span role="status" className="min-w-0 break-words">
+          {t('unscannable', { name: file.filename })}
+        </span>
+      </Frame>
+    )
+  }
   if (!isClean) {
     return (
       <Frame>

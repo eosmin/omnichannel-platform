@@ -43,6 +43,7 @@ const BAD_REQUEST = 400
 const INTERNAL_SERVER_ERROR = 500
 const UNAUTHORIZED = 401
 const FORBIDDEN = 403
+const GONE = 410
 const TOO_MANY_REQUESTS = 429
 
 // 1x1 transparent PNG
@@ -525,6 +526,13 @@ describe('Media upload', () => {
       const response = await read(row.id)
       expect(response.status).toBe(FORBIDDEN)
       expect(codeOf(response.body)).toBe(ErrorCodes.FILE_INFECTED)
+    })
+
+    it('does not serve a file the scan gave up on, and says it will not come', async () => {
+      const row = await mediaRow(MediaStatus.UNSCANNABLE)
+      const response = await read(row.id)
+      expect(response.status).toBe(GONE)
+      expect(codeOf(response.body)).toBe(ErrorCodes.FILE_UNSCANNABLE)
     })
 
     it('answers 404 for an id that is not there and 400 for one that is not an id', async () => {

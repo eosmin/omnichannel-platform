@@ -138,7 +138,9 @@ export enum CountStatus {
 export enum MediaStatus {
   PENDING = 'pending',
   CLEAN = 'clean',
-  INFECTED = 'infected'
+  INFECTED = 'infected',
+  // The scan could not give a verdict after every try: terminal, never served, never queued again
+  UNSCANNABLE = 'unscannable'
 }
 
 export enum WebhookStatus {

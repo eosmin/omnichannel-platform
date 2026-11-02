@@ -427,6 +427,13 @@ export class MessagesService {
           HttpStatusCodes.FORBIDDEN
         )
       }
+      if (row.status === String(MediaStatus.UNSCANNABLE)) {
+        throw new PlatformException(
+          ErrorCodes.FILE_UNSCANNABLE,
+          'File could not be scanned',
+          HttpStatusCodes.GONE
+        )
+      }
       if (row.status !== String(MediaStatus.CLEAN)) {
         throw new PlatformException(
           ErrorCodes.FILE_NOT_READY,

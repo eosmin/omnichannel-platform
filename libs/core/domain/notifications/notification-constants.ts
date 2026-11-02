@@ -40,6 +40,7 @@ export const NotificationTypes = {
   EXPORT_READY: 'export.ready',
   EXPORT_FAILED: 'export.failed',
   MEDIA_INFECTED: 'media.infected',
+  MEDIA_UNSCANNABLE: 'media.unscannable',
   DSR_DEADLINE_APPROACHING: 'dsr.deadline_approaching',
   DSR_MANUAL_REVIEW: 'dsr.manual_review'
 } as const
@@ -125,6 +126,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.EXPORT_READY]: { severity: SUCCESS, channels: [IN_APP] },
   [NotificationTypes.EXPORT_FAILED]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.MEDIA_INFECTED]: { severity: WARNING, channels: [IN_APP, PUSH] },
+  [NotificationTypes.MEDIA_UNSCANNABLE]: { severity: WARNING, channels: [IN_APP] },
   [NotificationTypes.DSR_DEADLINE_APPROACHING]: { severity: WARNING, channels: [IN_APP, EMAIL] },
   [NotificationTypes.DSR_MANUAL_REVIEW]: { severity: INFO, channels: [IN_APP, EMAIL] }
 }

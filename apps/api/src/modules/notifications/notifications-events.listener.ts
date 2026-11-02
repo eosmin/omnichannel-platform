@@ -104,6 +104,45 @@ export class NotificationsEventsListener {
     }
   }
 
+  // Same readers as an infected file; the team is told to ask the sender for the file again
+  @OnEvent(Events.MEDIA_UNSCANNABLE)
+  async onUnscannable(payload: MessageChangedPayload): Promise<void> {
+    const { storeId, conversationId, messageId } = payload
+    try {
+      this.audit.log({
+        action: AuditAction.MEDIA_UNSCANNABLE,
+        actor: { system: true },
+        storeId,
+        resourceType: 'message',
+        resourceId: messageId
+      })
+      const readers = await this.prisma.client.membership.findMany({
+        where: conversationReaders(payload.visibility, { storeId, notes: payload.internal }),
+        select: { userId: true }
+      })
+      const told = await this.prisma.client.notification.findMany({
+        where: { storeId, type: NotificationTypes.MEDIA_UNSCANNABLE, resourceId: messageId },
+        select: { userId: true }
+      })
+      const already = new Set(told.map(row => row.userId))
+      await this.notifications.sendToUsers(
+        readers.map(reader => reader.userId).filter(userId => !already.has(userId)),
+        {
+          storeId,
+          type: NotificationTypes.MEDIA_UNSCANNABLE,
+          resourceType: 'message',
+          resourceId: messageId,
+          actionPath: AppPaths.store.conversation(storeId, conversationId)
+        }
+      )
+    } catch (error) {
+      this.logger.error(
+        { messageId, err: String(error) },
+        'an unscannable file could not be notified'
+      )
+    }
+  }
+
   @OnEvent(Events.EXPORT_READY)
   async onExportReady(payload: ExportSettledPayload): Promise<void> {
     await this.notifyExport(payload, NotificationTypes.EXPORT_READY)

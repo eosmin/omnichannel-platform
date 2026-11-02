@@ -68,7 +68,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
 
     switch (job.name) {
       case JobNames.SCAN_FILE:
-        return this.pipeline.scan(parsed.data.mediaId)
+        return this.pipeline.scan(parsed.data.mediaId, isLastAttempt(job))
       case JobNames.PROCESS_IMAGE:
         return this.pipeline.processImage(parsed.data.mediaId)
       default:

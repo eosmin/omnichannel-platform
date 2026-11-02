@@ -43,7 +43,9 @@ export class MediaPipeline {
     this.logger.setContext(MediaPipeline.name)
   }
 
-  async scan(mediaId: string): Promise<void> {
+  // `lastAttempt` is true on the last try the job has: a scan that still has no verdict then is given
+  // up for good (see `giveUp`), instead of being queued again by the hourly cleanup for ever.
+  async scan(mediaId: string, lastAttempt = false): Promise<void> {
     const media = await this.prisma.client.media.findUnique({ where: { id: mediaId } })
     if (media === null) return
     // Scanned by an earlier attempt that may have died before queueing the variants: queue them again
@@ -58,7 +60,13 @@ export class MediaPipeline {
     const body = await this.storage.stream(media.key)
     if (body === null) throw new Error('the file to scan is not in the bucket')
     // No verdict (the daemon is down or timed out) throws: the file stays pending and the queue retries
-    const verdict = await this.clamav.scan(body)
+    let verdict
+    try {
+      verdict = await this.clamav.scan(body)
+    } catch (error) {
+      if (lastAttempt) await this.giveUp(media)
+      throw error
+    }
 
     if (verdict.infected) {
       // The row is the gate for serving, so it is written first: a failure in between leaves an
@@ -93,11 +101,39 @@ export class MediaPipeline {
     if (isImage(media.contentType)) await this.queueVariants(media.id)
   }
 
+  // The daemon gave no verdict on any try. The row goes to a terminal state the cleanup does not look
+  // at, so it is never queued again, and the file leaves the bucket: it was never scanned, so it is
+  // never served. The row is written first (the gate), as for an infected file. The error of the scan
+  // still propagates, so the job ends as failed and goes to the dead-letter queue.
+  private async giveUp(media: { id: string; key: string; storeId: string | null }): Promise<void> {
+    try {
+      const marked = await this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.PENDING },
+        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+      })
+      if (marked.count === 0) return
+      this.logger.error(
+        { mediaId: media.id, storeId: media.storeId },
+        'an uploaded file could not be scanned and was given up'
+      )
+      // The file first: announce never throws, but the delete is what must not be skipped
+      await this.storage.delete(media.key)
+      await this.announce(media, Events.MEDIA_UNSCANNABLE)
+    } catch (error) {
+      // The next hourly pass of the cleanup deletes the file of an unscannable row
+      this.logger.warn(
+        { mediaId: media.id, errorName: errorName(error) },
+        'an unscannable file was not settled'
+      )
+    }
+  }
+
   // Tells the team that a file of a message has a verdict, so the thread stops showing its placeholder.
   // A file that belongs to no message yet has no thread to refresh: the composer asks for it itself.
   private async announce(
     media: { id: string; storeId: string | null },
-    event: typeof Events.MEDIA_PROCESSED | typeof Events.MEDIA_INFECTED
+    event:
+      typeof Events.MEDIA_PROCESSED | typeof Events.MEDIA_INFECTED | typeof Events.MEDIA_UNSCANNABLE
   ): Promise<void> {
     if (media.storeId === null) return
     const { storeId } = media

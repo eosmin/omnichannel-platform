@@ -256,6 +256,40 @@ describe('Notifications raised by events', () => {
     })
   })
 
+  describe('an unscannable file', () => {
+    it('tells who may read the conversation, audits it, and tells each person once', async () => {
+      const conversation = await mk()
+      const message = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id
+      })
+      const events = app.get(EventEmitter2)
+      const payload: MessageChangedPayload = {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        messageId: message.id,
+        internal: false,
+        visibility: { hidden: false, assignedTo: null }
+      }
+
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+      await events.emitAsync(Events.MEDIA_UNSCANNABLE, payload)
+
+      const rows = await rowsOf(NotificationTypes.MEDIA_UNSCANNABLE)
+      const told = rows.map(row => row.userId)
+      expect(told).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
+      expect(told).not.toContain(ctx.adminB.id)
+      expect(new Set(told).size).toBe(told.length)
+      expect(
+        await waitForAuditEntries(owner, {
+          storeId: ctx.storeA.id,
+          action: AuditAction.MEDIA_UNSCANNABLE,
+          resourceId: message.id
+        })
+      ).toHaveLength(2)
+    })
+  })
+
   describe('an export that settled', () => {
     const exportOf = (requestedBy: string, status: string, type: string = ExportTypes.CUSTOMERS) =>
       owner.export.create({
