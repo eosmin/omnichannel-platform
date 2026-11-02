@@ -9,7 +9,7 @@ import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants'
 
 import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
 
-import { ANY_PERMISSION_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
+import { ANY_PERMISSION_KEY, MEMBER_ONLY_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
 
 // Every route of the platform has to say what protects it (CLAUDE.md, rule 5): public on purpose, a
 // person's own (@SkipTenant), or a store's with @RequirePermissions. The guards refuse the rest at
@@ -43,6 +43,7 @@ interface Route {
   handler: string
   isPublic: boolean
   skipsTenant: boolean
+  memberOnly: boolean
   permissions: string[]
 }
 
@@ -68,6 +69,9 @@ function routesOf(file: string): Route[] {
           skipsTenant:
             read<boolean>(SKIP_TENANT_KEY, handler) === true ||
             read<boolean>(SKIP_TENANT_KEY, controller) === true,
+          memberOnly:
+            read<boolean>(MEMBER_ONLY_KEY, handler) === true ||
+            read<boolean>(MEMBER_ONLY_KEY, controller) === true,
           permissions: [
             ...(read<string[]>(PERMISSIONS_KEY, controller) ?? []),
             ...(read<string[]>(PERMISSIONS_KEY, handler) ?? []),
@@ -110,7 +114,13 @@ describe('the protection of every route', () => {
 
   it("leaves no route without a protection: public, a person's own, or a store's permission", () => {
     const unprotected = routes
-      .filter(route => !route.isPublic && !route.skipsTenant && route.permissions.length === 0)
+      .filter(
+        route =>
+          !route.isPublic &&
+          !route.skipsTenant &&
+          !route.memberOnly &&
+          route.permissions.length === 0
+      )
       .map(label)
 
     expect(unprotected).toEqual([])
@@ -124,5 +134,17 @@ describe('the protection of every route', () => {
       .map(label)
 
     expect(misleading).toEqual([])
+  })
+
+  // Both would be a mistake: the permission is checked, and the author thinks "members" is the rule
+  it('does not mix @MemberOfStore with a permission, or with an exempt route', () => {
+    const mixed = routes
+      .filter(
+        route =>
+          route.memberOnly && (route.permissions.length > 0 || route.isPublic || route.skipsTenant)
+      )
+      .map(label)
+
+    expect(mixed).toEqual([])
   })
 })

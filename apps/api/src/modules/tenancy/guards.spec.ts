@@ -9,7 +9,7 @@ import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
 import { PlatformException } from '@platform/core/errors'
 
 import type { AccessDenialAuditor } from './access-denial-auditor'
-import { ANY_PERMISSION_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
+import { ANY_PERMISSION_KEY, MEMBER_ONLY_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
 import { PermissionGuard } from './permission.guard'
 import type { TenantContextService } from './tenant-context.service'
 import { TenantGuard } from './tenant.guard'
@@ -194,6 +194,30 @@ describe('PermissionGuard', () => {
 
     expect(failure.code).toBe('PERMISSION_DENIED')
     expect(error).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('declares no'))
+  })
+
+  it('lets a member with no permission into a @MemberOfStore route, and into no other', async () => {
+    const { guard } = build()
+
+    await expect(
+      guard.canActivate(contextOf(member([]), { handler: { [MEMBER_ONLY_KEY]: true } }))
+    ).resolves.toBe(true)
+    const failure = await failureOf(guard.canActivate(contextOf(member([]))))
+    expect(failure.code).toBe('PERMISSION_DENIED')
+  })
+
+  it('still wants the permission of a route that also names one next to @MemberOfStore', async () => {
+    const { guard } = build()
+
+    const failure = await failureOf(
+      guard.canActivate(
+        contextOf(member([]), {
+          handler: { [MEMBER_ONLY_KEY]: true, [PERMISSIONS_KEY]: [Permissions.CUSTOMERS_VIEW] }
+        })
+      )
+    )
+
+    expect(failure.code).toBe('PERMISSION_DENIED')
   })
 
   it('wants every permission listed, not any of them', async () => {

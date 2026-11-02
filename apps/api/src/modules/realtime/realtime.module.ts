@@ -37,6 +37,7 @@ import { SocketAccessService } from './socket-access.service'
         silentMs: SocketLimits.SILENT_SECONDS * 1000
       }
     }
-  ]
+  ],
+  exports: [RealtimeService]
 })
 export class RealtimeModule {}
