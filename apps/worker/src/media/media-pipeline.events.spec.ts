@@ -18,10 +18,11 @@ const MESSAGE = '22222222-2222-4222-8222-222222222222'
 describe('MediaPipeline announcements', () => {
   const publish = jest.fn<void, [unknown, string, unknown]>()
   const claim = jest.fn()
-  const media = (messageId: string | null) => ({
+  const media = (messageId: string | null, originMessageId: string | null = null) => ({
     id: 'media-1',
     storeId: STORE,
     messageId,
+    origin: originMessageId === null ? null : { messageId: originMessageId },
     key: 'k',
     contentType: 'text/plain',
     status: 'pending',
@@ -76,6 +77,19 @@ describe('MediaPipeline announcements', () => {
 
   it('announces an infected file of a message', async () => {
     await build(media(MESSAGE), true).scan('media-1')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_INFECTED)
+  })
+
+  it('announces the picture of an ad as the message that carried it', async () => {
+    await build(media(null, MESSAGE), false).scan('media-1')
+    expect(publish).toHaveBeenCalledTimes(1)
+    expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_PROCESSED)
+    expect(publish.mock.calls[0]?.[2]).toMatchObject({ storeId: STORE, messageId: MESSAGE })
+  })
+
+  it('announces an infected picture of an ad too, so the card drops its placeholder', async () => {
+    await build(media(null, MESSAGE), true).scan('media-1')
     expect(publish).toHaveBeenCalledTimes(1)
     expect(publish.mock.calls[0]?.[1]).toBe(Events.MEDIA_INFECTED)
   })

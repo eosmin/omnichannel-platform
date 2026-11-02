@@ -44,10 +44,9 @@ export function conversationsExportSource(
               ? where
               : { AND: [where, { id: { gt: afterConversation } }] },
           orderBy: { id: 'asc' },
+          // Keyset by `id > last`, as the customers file does. No `cursor` + `skip: 1` on top: the last row
+          // is already left out by the filter, so the skip would drop the next conversation of every page.
           take: ExportLimits.ROW_PAGE_SIZE,
-          ...(afterConversation === undefined
-            ? {}
-            : { cursor: { id: afterConversation }, skip: 1 }),
           select: {
             id: true,
             channelType: true,

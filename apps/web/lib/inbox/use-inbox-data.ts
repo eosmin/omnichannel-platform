@@ -39,8 +39,6 @@ import {
 
 import { apiClient } from '../api'
 
-import { ORIGIN_REFRESH_MS, originsNeedRefresh } from './origin-picture'
-
 // The list is read page by page; a realtime event makes the whole `conversations` key of the store
 // stale (invalidation.ts), which refetches the pages that are loaded
 export function useConversationPages(
@@ -108,10 +106,9 @@ export function useOrigins(
 ): UseQueryResult<ConversationOriginView[]> {
   return useQuery({
     queryKey: QueryKeys.messages.origins(storeId, conversationId),
-    queryFn: ({ signal }) => fetchConversationOrigins(apiClient, storeId, conversationId, signal),
-    // The worker keeps the picture of an ad after the message arrives: ask again until the scan ends
-    refetchInterval: query =>
-      originsNeedRefresh(query.state.data, Date.now()) ? ORIGIN_REFRESH_MS : false
+    // The worker keeps the picture of an ad after the message arrives; its verdict is announced as a
+    // `MEDIA_PROCESSED` of the message that carried the ad, which refreshes this key (under the thread)
+    queryFn: ({ signal }) => fetchConversationOrigins(apiClient, storeId, conversationId, signal)
   })
 }
 

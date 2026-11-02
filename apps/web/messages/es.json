@@ -1130,12 +1130,12 @@
     "bulk": {
       "label": "Acciones masivas",
       "selected": "{count, plural, one {# seleccionada} other {# seleccionadas}}",
-      "allMatching": "Todas las conversaciones de este filtro (hasta {max})",
+      "allMatching": "Todas las conversaciones de este filtro (hasta {max}, salvo Exportar CSV, que las toma todas)",
       "clear": "Quitar la selección",
       "selectRow": "Seleccionar la conversación con {name}",
       "selectLoaded": "Seleccionar las {count} cargadas",
       "onlyLoaded": "Solo están seleccionadas las {count} conversaciones cargadas.",
-      "selectMatching": "Seleccionar todas las de este filtro (hasta {max})",
+      "selectMatching": "Seleccionar todas las de este filtro (hasta {max}, salvo Exportar CSV, que las toma todas)",
       "overLimit": "Selecciona como máximo {max} conversaciones a la vez.",
       "assign": {
         "label": "Asignar",
@@ -1209,7 +1209,6 @@
         "allDone": "{count, plural, one {# conversación actualizada} other {# conversaciones actualizadas}}",
         "someDone": "{succeeded} actualizadas, {failed} sin cambios: {reasons}",
         "exportQueued": "{count, plural, one {Se está preparando el archivo de # conversación} other {Se está preparando el archivo de # conversaciones}}. Estará listo en las exportaciones.",
-        "exportTruncated": "El filtro alcanzó más conversaciones de las que cabe en un archivo; el archivo tiene las primeras {max}.",
         "exportNothing": "Ninguna conversación coincidió, así que no se hizo ningún archivo.",
         "exportPartly": "El archivo se prepara con {succeeded}; {failed} quedaron fuera: {reasons}. Estará listo en las exportaciones.",
         "viewExports": "Ver exportaciones",

@@ -14,7 +14,7 @@ import {
   bulkConversations,
   QueryKeys
 } from '@platform/api-client'
-import { BulkActions, BulkLimits } from '@platform/core/domain'
+import { BulkActions } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
@@ -133,20 +133,21 @@ export function useBulkRunner(): BulkRunner {
       }
       if (operation.action === BulkActions.EXPORT_CSV && summary.succeeded > 0) {
         void queryClient.invalidateQueries({ queryKey: QueryKeys.exports.all(storeId) })
-        const cut = summary.truncated
-          ? ` ${t('exportTruncated', { max: BulkLimits.MAX_ITEMS })}`
-          : ''
         const viewExports = {
           label: t('viewExports'),
           onClick: () => router.push(AppPaths.store.exports(storeId))
         }
         if (summary.outcome === BulkOutcomes.ALL_DONE) {
-          toast.success(`${t('exportQueued', { count: summary.succeeded })}${cut}`, {
+          toast.success(t('exportQueued', { count: summary.succeeded }), {
             action: viewExports
           })
         } else {
           toast.warning(
-            `${t('exportPartly', { succeeded: summary.succeeded, failed: summary.failed, reasons: reasonsOf(summary) })}${cut}`,
+            t('exportPartly', {
+              succeeded: summary.succeeded,
+              failed: summary.failed,
+              reasons: reasonsOf(summary)
+            }),
             { action: viewExports }
           )
         }

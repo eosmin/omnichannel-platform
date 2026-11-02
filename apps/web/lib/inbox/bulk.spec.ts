@@ -157,6 +157,12 @@ describe('summaryOf', () => {
     })
   })
 
+  it('counts the conversations a file of a whole filter holds, which names no ids', () => {
+    expect(summaryOf({ succeeded: [], failed: [], truncated: false, exported: 730 })).toMatchObject(
+      { outcome: BulkOutcomes.ALL_DONE, succeeded: 730, failed: 0 }
+    )
+  })
+
   it('counts the reasons, the most frequent first', () => {
     const summary = summaryOf({
       succeeded: ['a'],

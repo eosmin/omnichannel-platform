@@ -154,7 +154,8 @@ export function summaryOf(result: BulkResultView): BulkSummary {
   const reasons = [...counts.entries()]
     .map(([code, count]) => ({ code, count }))
     .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code))
-  const succeeded = result.succeeded.length
+  // A file of a whole filter names no ids: the api counts what it holds
+  const succeeded = result.exported ?? result.succeeded.length
   const failed = result.failed.length
   const outcome =
     failed === 0
