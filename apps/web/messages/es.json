@@ -437,6 +437,12 @@
         "body": "Ya puedes descargar tu exportación."
       }
     },
+    "media": {
+      "infected": {
+        "title": "Se bloqueó un archivo",
+        "body": "Un archivo enviado en una conversación no es seguro y fue bloqueado."
+      }
+    },
     "inventory": {
       "low": {
         "title": "Existencias bajas",

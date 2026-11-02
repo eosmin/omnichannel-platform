@@ -1,3 +1,4 @@
+export * from './app-paths'
 export * from './business-hours'
 export * from './channel-capability'
 export * from './channel-ids'

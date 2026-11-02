@@ -121,10 +121,19 @@ export class NotificationsService {
       },
       select: { userId: true }
     })
-    // One failing recipient must not take the others with it
-    const results = await Promise.allSettled(
-      members.map(member => this.send({ ...rest, userId: member.userId }))
+    await this.sendToUsers(
+      members.map(member => member.userId),
+      rest
     )
+  }
+
+  // The same notification to each of these people (already checked to be allowed to see it)
+  async sendToUsers(
+    userIds: readonly string[],
+    input: Omit<SendNotification, 'userId'>
+  ): Promise<void> {
+    // One failing recipient must not take the others with it
+    const results = await Promise.allSettled(userIds.map(userId => this.send({ ...input, userId })))
     const failed = results.find(result => result.status === 'rejected')
     if (failed !== undefined) throw failed.reason
   }

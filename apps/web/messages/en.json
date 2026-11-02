@@ -437,6 +437,12 @@
         "body": "Your export can be downloaded."
       }
     },
+    "media": {
+      "infected": {
+        "title": "A file was blocked",
+        "body": "A file sent in a conversation is not safe and was blocked."
+      }
+    },
     "inventory": {
       "low": {
         "title": "Low stock",

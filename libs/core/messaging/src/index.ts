@@ -1,5 +1,6 @@
 export * from './conversations/conversation-closing.service'
 export * from './conversations/conversation-cursor'
+export * from './conversations/conversation-readers'
 export * from './conversations/conversations.schemas'
 export * from './conversations/conversations.service'
 export * from './conversations/conversations.support'
