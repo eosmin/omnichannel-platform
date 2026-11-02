@@ -335,7 +335,8 @@ describe('The account of a person', () => {
         await storage.head(StorageKeys.avatar(ctx.agentA.id, upload.mediaId, 'me.png'))
       ).toBeNull()
       const entry = await auditEntry(AuditAction.ACCOUNT_PROFILE_UPDATED, ctx.agentA.id)
-      expect(JSON.stringify(entry.metadata)).not.toContain(upload.mediaId)
+      expect(entry).not.toBeNull()
+      expect(JSON.stringify(entry?.metadata)).not.toContain(upload.mediaId)
     })
 
     it('is taken away with null', async () => {
