@@ -8,6 +8,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 
 import { FORWARDED_FOR, newClientIp } from './client-ip'
 import { API_URL } from './env'
+import { waitForLinkBudget } from './link-budget'
 import { emptyMailboxOf, magicLinkTokenIn, nextEmailTo } from './mailbox'
 
 const consumeSchema = z.object({ session: z.object({ accessToken: z.string().min(1) }) })
@@ -25,6 +26,7 @@ async function call(path: string, init: RequestInit = {}): Promise<unknown> {
 // What an administrator does through the api, for a test that needs a state the screens cannot yet
 // set up (the invitation form is a task of Step 3.2). It signs in the way a person does: by link.
 export async function signInByApi(email: string): Promise<string> {
+  await waitForLinkBudget(email)
   await emptyMailboxOf(email)
   await call(ApiRoutes.auth.magicLinkRequest, { method: 'POST', body: JSON.stringify({ email }) })
   const token = magicLinkTokenIn(await nextEmailTo(email))
