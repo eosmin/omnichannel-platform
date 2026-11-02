@@ -900,8 +900,10 @@
         "DOCUMENT": "Document"
       },
       "templateLabel": "Template message",
-      "captionFailed": "The file was sent, but the text under it was not. Send the text as a new message",
+      "captionFailed": "The file was sent, but the text under it was not",
       "captionUnconfirmed": "The file was sent, but the text under it may not have been. Check the chat before sending the text again",
+      "captionQueued": "Sending the text under the file",
+      "resendCaption": "Send the text again",
       "media": {
         "checking": "Checking {name}",
         "loading": "Loading {name}",

@@ -900,8 +900,10 @@
         "DOCUMENT": "Documento"
       },
       "templateLabel": "Mensaje de plantilla",
-      "captionFailed": "El archivo se envió, pero el texto que lo acompaña no. Envía el texto como un mensaje nuevo",
+      "captionFailed": "El archivo se envió, pero el texto que lo acompaña no",
       "captionUnconfirmed": "El archivo se envió, pero puede que el texto que lo acompaña no. Revisa el chat antes de volver a enviar el texto",
+      "captionQueued": "Enviando el texto que acompaña al archivo",
+      "resendCaption": "Enviar el texto otra vez",
       "media": {
         "checking": "Revisando {name}",
         "loading": "Cargando {name}",

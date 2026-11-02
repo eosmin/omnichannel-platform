@@ -165,6 +165,12 @@ export interface SendOutboundDeleteJob extends BaseJob {
   messageId: string
   version: number
 }
+// The text under a file that an agent asked to send again; `version` only gives each request its own job id
+export interface SendOutboundCaptionJob extends BaseJob {
+  storeId: string
+  messageId: string
+  version: number
+}
 // The agent read the conversation up to `messageId`, the latest message of the customer that has an id at
 // the channel. Nothing is stored about it: the job is best effort.
 export interface SendOutboundReadReceiptJob extends BaseJob {

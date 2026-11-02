@@ -69,6 +69,8 @@ export const JobNames = {
   // An agent's edit or deletion of a message of ours, sent to the channel that supports it
   SEND_OUTBOUND_EDIT: 'send-outbound-edit',
   SEND_OUTBOUND_DELETE: 'send-outbound-delete',
+  // Only the text under a file, sent again as a message of its own when the first try failed
+  SEND_OUTBOUND_CAPTION: 'send-outbound-caption',
   // The blue ticks: the customer's channel is told that an agent read up to a message
   SEND_OUTBOUND_READ_RECEIPT: 'send-outbound-read-receipt',
   // The agent started or stopped typing: the customer's channel shows it when it can

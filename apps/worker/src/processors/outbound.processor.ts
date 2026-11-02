@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   JobNames,
   QueueNames,
+  type SendOutboundCaptionJob,
   type SendOutboundDeleteJob,
   type SendOutboundEditJob,
   type SendOutboundMessageJob,
@@ -27,11 +28,12 @@ type OutboundJob =
   | SendOutboundReactionJob
   | SendOutboundEditJob
   | SendOutboundDeleteJob
+  | SendOutboundCaptionJob
   | SendOutboundReadReceiptJob
   | SendOutboundTypingJob
 
 const jobSchema = z.object({ storeId: z.uuid(), messageId: z.uuid() })
-// An edit or a deletion: the `version` of the message when the agent asked
+// An edit, a deletion or a caption sent again: the `version` of the message when the agent asked
 const changeJobSchema = jobSchema.extend({ version: z.number().int() })
 const readReceiptJobSchema = jobSchema.extend({ conversationId: z.uuid() })
 const typingJobSchema = z.object({
@@ -70,7 +72,11 @@ export class OutboundProcessor extends BaseProcessor<OutboundJob> {
       await this.handleTyping(job)
       return
     }
-    if (job.name === JobNames.SEND_OUTBOUND_EDIT || job.name === JobNames.SEND_OUTBOUND_DELETE) {
+    if (
+      job.name === JobNames.SEND_OUTBOUND_EDIT ||
+      job.name === JobNames.SEND_OUTBOUND_DELETE ||
+      job.name === JobNames.SEND_OUTBOUND_CAPTION
+    ) {
       await this.handleChange(job)
       return
     }
@@ -95,6 +101,8 @@ export class OutboundProcessor extends BaseProcessor<OutboundJob> {
     if (!parsed.success) throw new UnrecoverableError('the change job does not fit its schema')
     if (job.name === JobNames.SEND_OUTBOUND_EDIT) {
       await this.changes.sendEdit(parsed.data, isLastAttempt(job))
+    } else if (job.name === JobNames.SEND_OUTBOUND_CAPTION) {
+      await this.changes.sendCaption(parsed.data, isLastAttempt(job))
     } else {
       await this.changes.sendDeletion(parsed.data, isLastAttempt(job))
     }

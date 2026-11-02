@@ -6,6 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  CaptionState,
   ChannelIds,
   ConversationStatus,
   DeliveryStatus,
@@ -35,6 +36,7 @@ import {
   conversationOfOrigin,
   createConversationOf,
   createConversationOriginOf,
+  createFailedCaptionOf,
   createMessageOf,
   createMessageReactionOf,
   createMessageRevisionOf,
@@ -359,6 +361,24 @@ const resources: IsolationResource[] = [
         select: { conversation: { select: { status: true } } }
       })
       return origin?.conversation.status === ConversationStatus.OPEN.valueOf()
+    }
+  },
+  {
+    name: 'messageCaption',
+    create: createFailedCaptionOf,
+    readPath: id => ApiRoutes.conversations.messages(conversationOfMessage.get(id) ?? randomUUID()),
+    // A stranger tries to send the text again: nothing is queued and the caption stays as it was
+    modify: { path: ApiRoutes.messages.resendCaption, method: 'post', body: {} },
+    untouched: async (owner, id) => {
+      const message = await owner.message.findUnique({
+        where: { id },
+        select: { captionState: true, changeRequestedAt: true, version: true }
+      })
+      return (
+        message?.captionState === CaptionState.FAILED &&
+        message.changeRequestedAt === null &&
+        message.version === 1
+      )
     }
   },
   {

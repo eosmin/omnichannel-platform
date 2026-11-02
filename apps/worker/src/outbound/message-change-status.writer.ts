@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, DeliveryStatus } from '@platform/core/domain'
+import { AuthorType, CaptionState, DeliveryStatus } from '@platform/core/domain'
 import type { ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -20,6 +20,17 @@ export interface DeletionSettlement {
   storeId: string
   messageId: string
   errorCode: ErrorCode | null
+}
+
+export interface CaptionSettlement {
+  storeId: string
+  messageId: string
+  // The `version` of the request the job carries: a late job never settles a request made again
+  version: number
+  // What the channel answered: `sent` with the id of the text, or a state that says it did not clearly go
+  outcome:
+    | { state: typeof CaptionState.SENT; externalId: string }
+    | { state: typeof CaptionState.FAILED | typeof CaptionState.UNCONFIRMED }
 }
 
 // The one writer of what becomes of an agent's edit or deletion once the channel answered. An edit the
@@ -85,6 +96,28 @@ export class MessageChangeStatusWriter {
                 changeRequestedAt: null
               }
       })
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
+    })
+  }
+
+  // The text under a file that an agent sent again: the channel took it (`sent`, with its id so that its
+  // echo is not stored again), refused it (`failed`) or gave no clear answer (`unconfirmed`, settled by the
+  // echo of the owner). It names the state it expects, so a late job never settles a request made again.
+  async settleCaption(settlement: CaptionSettlement): Promise<void> {
+    const { storeId, messageId, version, outcome } = settlement
+    await this.prisma.transaction(async tx => {
+      await lockMessageRow(tx, messageId)
+      const changed = await tx.message.updateMany({
+        where: { id: messageId, storeId, version, captionState: CaptionState.QUEUED },
+        data: {
+          captionState: outcome.state,
+          changeRequestedAt: null,
+          ...(outcome.state === CaptionState.SENT
+            ? { captionChannelMessageId: outcome.externalId }
+            : {})
+        }
+      })
+      if (changed.count === 0) return
       await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
     })
   }

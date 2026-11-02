@@ -5,12 +5,14 @@ import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   AuthorType,
+  CaptionState,
   ConversationReopenedByReply,
   ConversationStatus,
   type ChannelCapabilityType,
   DeliveryStatus,
   type CursorPage,
-  MessageType
+  MessageType,
+  ResendableCaptionStates
 } from '@platform/core/domain'
 import {
   errorName,
@@ -29,6 +31,7 @@ import {
   mediaMessageTypeOf
 } from '@platform/core/storage'
 
+import { lockMessageRow, publishMessageChanged } from '../changes/message-changed'
 import { conversationReaders } from '../conversations/conversation-readers'
 import { ConversationsService } from '../conversations/conversations.service'
 import {
@@ -247,6 +250,10 @@ export class MessagesService {
       ) {
         throw resourceConflict('only a reply that failed can be sent again')
       }
+      // The text alone is on its way: sending the whole message too would send it twice
+      if (row.captionState === CaptionState.QUEUED.valueOf()) {
+        throw resourceConflict('the text under this file is on its way')
+      }
       if (statusOf(current.status) === ConversationStatus.SPAM) {
         throw new PlatformException(
           ErrorCodes.CONVERSATION_INVALID_STATUS_TRANSITION,
@@ -291,6 +298,84 @@ export class MessagesService {
         visibility: { hidden: false, assignedTo: current.assignedTo }
       })
       this.requeueForChannel(tx, storeId, messageId)
+      return messageView(updated)
+    })
+    return this.withQuote(storeId, message, viewer)
+  }
+
+  // "Send the text again" on a file whose caption did not go (or may not have): only that text goes back
+  // to the channel, as a message of its own, and the answer is the message with the caption `queued`.
+  // The file is never sent again. After `unconfirmed` the customer may see the text twice: the agent
+  // chose it, having been told to check the chat. A text needs the window open, as any reply.
+  async resendCaption(storeId: string, messageId: string, viewer: Viewer): Promise<MessageView> {
+    const message = await this.prisma.transaction(async tx => {
+      const found = await tx.message.findFirst({
+        where: { id: messageId, storeId },
+        select: { conversationId: true }
+      })
+      if (found === null) throw resourceNotFound('message')
+      const current = await lockConversationForWrite(tx, storeId, found.conversationId, viewer)
+      await lockMessageRow(tx, messageId)
+      const row = await tx.message.findFirst({
+        where: { id: messageId, storeId },
+        select: {
+          ...MESSAGE_SELECT,
+          version: true,
+          editStatus: true,
+          deleteStatus: true
+        }
+      })
+      if (row === null) throw resourceNotFound('message')
+      requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
+      const state = row.captionState
+      if (
+        row.authorType !== String(AuthorType.AGENT) ||
+        row.deletedAt !== null ||
+        // The file itself must have gone: a file that failed is sent again whole, with its text
+        row.deliveryStatus === String(DeliveryStatus.FAILED) ||
+        row.deliveryStatus === String(DeliveryStatus.QUEUED) ||
+        row.content === null ||
+        row.content === '' ||
+        !ResendableCaptionStates.some(allowed => allowed === state)
+      ) {
+        throw resourceConflict('only the caption of a file that was sent can be sent again')
+      }
+      // One request at a time for a message, so that each settles on its own
+      if (
+        row.editStatus === DeliveryStatus.QUEUED.valueOf() ||
+        row.deleteStatus === DeliveryStatus.QUEUED.valueOf()
+      ) {
+        throw resourceConflict('another change of this message is on its way')
+      }
+      if (statusOf(current.status) === ConversationStatus.SPAM) {
+        throw new PlatformException(
+          ErrorCodes.CONVERSATION_INVALID_STATUS_TRANSITION,
+          'a spam conversation is not answered: mark it as not spam first',
+          HttpStatusCodes.CONFLICT,
+          { from: ConversationStatus.SPAM, to: ConversationStatus.OPEN }
+        )
+      }
+      await this.window.requireOpen(tx, storeId, row.conversationId)
+      const version = row.version + 1
+      const updated = await tx.message.update({
+        where: { id: messageId, storeId },
+        data: {
+          captionState: CaptionState.QUEUED,
+          changeRequestedAt: new Date(),
+          version
+        },
+        select: { ...MESSAGE_SELECT }
+      })
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
+      // Only after the commit: the worker reads the state and must find it
+      this.prisma.afterCommit(tx, () => {
+        this.outbound.enqueueCaption({ storeId, messageId, version }).catch((error: unknown) => {
+          this.logger.warn(
+            { messageId, errorName: errorName(error) },
+            'the caption could not be queued; the sweep will mark it unconfirmed'
+          )
+        })
+      })
       return messageView(updated)
     })
     return this.withQuote(storeId, message, viewer)

@@ -18,6 +18,7 @@ import {
   type MessageView,
   QueryKeys,
   reactToMessage,
+  resendCaption,
   resendMessage,
   type RevisionView
 } from '@platform/api-client'
@@ -38,6 +39,7 @@ export interface EditInput {
 export interface MessageMutations {
   react: UseMutationResult<void, Error, string | null>
   resend: UseMutationResult<MessageView, Error, void>
+  resendCaption: UseMutationResult<MessageView, Error, void>
   edit: UseMutationResult<MessageView, Error, EditInput>
   remove: UseMutationResult<void, Error, void>
 }
@@ -64,6 +66,12 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     mutationFn: () => resendMessage(apiClient, storeId, messageId),
     onSuccess: refresh
   })
+  const resendCaptionOnly = useMutation({
+    mutationFn: () => resendCaption(apiClient, storeId, messageId),
+    onSuccess: refresh,
+    // A 409 means the caption moved on (settled, or another agent asked): the thread says how it stands
+    onError: refresh
+  })
   const edit = useMutation({
     mutationFn: (input: EditInput) => editMessage(apiClient, storeId, messageId, input),
     onSuccess: refresh,
@@ -74,7 +82,7 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     mutationFn: () => deleteMessage(apiClient, storeId, messageId),
     onSuccess: refresh
   })
-  return { react, resend, edit, remove }
+  return { react, resend, resendCaption: resendCaptionOnly, edit, remove }
 }
 
 // Read when the dialog opens, never with the thread: every read of the kept text is audited by the api,

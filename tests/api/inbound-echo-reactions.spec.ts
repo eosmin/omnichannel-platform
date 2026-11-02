@@ -314,6 +314,36 @@ describe('Echoes and reactions that a channel delivers', () => {
       expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(2)
     })
 
+    it('settles a caption sent again with its echo, even when the reply is old', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-que'))
+      const { conversation } = await threadOf(ctx.storeA.id, from)
+      const file = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          content: 'the text sent again',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: 'file-que',
+          captionState: CaptionState.QUEUED,
+          createdAt: new Date(Date.now() - 3 * 3_600_000),
+          changeRequestedAt: new Date()
+        }
+      })
+
+      const outcome = await echo(connectionId, from, 'caption-que', 'the text sent again')
+
+      expect(outcome).toBe(InboundOutcomes.DUPLICATE)
+      const row = await owner.message.findUniqueOrThrow({ where: { id: file.id } })
+      expect(row).toMatchObject({
+        captionState: CaptionState.SENT,
+        captionChannelMessageId: 'caption-que'
+      })
+    })
+
     it("settles an unconfirmed caption with its echo instead of storing the echo as the owner's message", async () => {
       const connectionId = await connectionOf(ctx.storeA.id)
       const from = handleOf()
