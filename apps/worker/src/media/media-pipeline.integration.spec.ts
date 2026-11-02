@@ -199,6 +199,152 @@ describe('MediaPipeline', () => {
     })
   })
 
+  // The picture of a person: no store, and never served as it was uploaded
+  describe('an avatar', () => {
+    const userIds: string[] = []
+    afterEach(async () => {
+      const ids = userIds.splice(0)
+      await owner.query(`DELETE FROM media WHERE uploaded_by = ANY($1)`, [ids])
+      await owner.query(`DELETE FROM users WHERE id = ANY($1)`, [ids])
+    })
+
+    // A photo that carries metadata, which is what must not reach the people who see the picture
+    const photoWithMetadata = (): Promise<Buffer> =>
+      sharp({ create: { width: 800, height: 400, channels: 3, background: '#cc6633' } })
+        .withExif({ IFD0: { ImageDescription: 'taken at 19.4326,-99.1332' } })
+        .jpeg()
+        .toBuffer()
+
+    async function pendingAvatar(body: Buffer, contentType = 'image/jpeg') {
+      const userId = randomUUID()
+      const id = randomUUID()
+      userIds.push(userId)
+      await owner.query(
+        `INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, 'avatar owner', now())`,
+        [userId, `it-avatar-${userId}@example.com`]
+      )
+      const key = StorageKeys.avatar(userId, id, 'me.jpg')
+      await storage.put(key, body, contentType)
+      keys.push(key, StorageKeys.avatarImage(userId, id))
+      await owner.query(
+        `INSERT INTO media (id, store_id, purpose, uploaded_by, key, filename, content_type, file_size, status)
+         VALUES ($1, NULL, 'avatar', $2, $3, 'me.jpg', $4, $5, 'pending')`,
+        [id, userId, key, contentType, body.length]
+      )
+      return { id, userId, key }
+    }
+
+    it('is scanned, then re-encoded to a small square WebP with no metadata, and the upload goes', async () => {
+      const original = await photoWithMetadata()
+      expect((await sharp(original).metadata()).exif).toBeDefined()
+      const avatar = await pendingAvatar(original)
+
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+      await pipeline.processImage(avatar.id)
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      const served = StorageKeys.avatarImage(avatar.userId, avatar.id)
+      expect(row).toMatchObject({
+        status: 'clean',
+        key: served,
+        filename: 'avatar.webp',
+        contentType: 'image/webp',
+        storeId: null
+      })
+      expect(row.processedAt).not.toBeNull()
+      const bytes = await storage.read(served, 5e6)
+      const meta = await sharp(bytes ?? Buffer.alloc(0)).metadata()
+      expect([meta.format, meta.width, meta.height]).toEqual(['webp', 256, 256])
+      expect(meta.exif).toBeUndefined()
+      expect(bytes?.length).toBe(row.fileSize)
+      expect(await storage.head(avatar.key)).toBeNull()
+    })
+
+    it('is processed once: a repeated job changes nothing', async () => {
+      const avatar = await pendingAvatar(await photoWithMetadata())
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+      await pipeline.processImage(avatar.id)
+      const first = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+
+      await pipeline.processImage(avatar.id)
+
+      const again = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      expect(again.processedAt).toEqual(first.processedAt)
+    })
+
+    it('is refused for good when it cannot be re-encoded: never served, file gone', async () => {
+      const avatar = await pendingAvatar(Buffer.from('not an image'))
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+
+      await expect(pipeline.processImage(avatar.id)).resolves.toBeUndefined()
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      expect(row.status).toBe('unscannable')
+      expect(row.processedAt).toBeNull()
+      expect(await storage.head(avatar.key)).toBeNull()
+    })
+
+    it('leaves nothing behind when the person replaced it while it was processed', async () => {
+      const avatar = await pendingAvatar(await photoWithMetadata())
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+      // The person's replacement deletes the row after the worker read it and before it wrote
+      const put = storage.put.bind(storage)
+      const spy = jest.spyOn(storage, 'put').mockImplementationOnce(async (...args) => {
+        await put(...args)
+        await owner.query(`DELETE FROM media WHERE id = $1`, [avatar.id])
+      })
+      try {
+        await pipeline.processImage(avatar.id)
+      } finally {
+        spy.mockRestore()
+      }
+
+      expect(await storage.head(StorageKeys.avatarImage(avatar.userId, avatar.id))).toBeNull()
+    })
+
+    it('is not processed when its key is not under its own user', async () => {
+      const avatar = await pendingAvatar(await photoWithMetadata())
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+      await owner.query(`UPDATE media SET uploaded_by = NULL WHERE id = $1`, [avatar.id])
+
+      await pipeline.processImage(avatar.id)
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      expect(row.processedAt).toBeNull()
+      expect(row.status).toBe('unscannable')
+    })
+
+    it('fails (to be tried again) when its file is missing but the row is there', async () => {
+      const avatar = await pendingAvatar(await photoWithMetadata())
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+      await storage.delete(avatar.key)
+
+      await expect(pipeline.processImage(avatar.id)).rejects.toThrow('not in the bucket')
+    })
+
+    it('is refused when it declares more pixels than an avatar needs', async () => {
+      const huge = await sharp({
+        create: { width: 6000, height: 5000, channels: 3, background: '#000' }
+      })
+        .png({ compressionLevel: 9 })
+        .toBuffer()
+      const avatar = await pendingAvatar(huge, 'image/png')
+      await pipeline.scan(avatar.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${avatar.id}`))
+
+      await pipeline.processImage(avatar.id)
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: avatar.id } })
+      expect(row.status).toBe('unscannable')
+    })
+  })
+
   it('does nothing for a media that was deleted or is not pending', async () => {
     await expect(pipeline.scan(randomUUID())).resolves.toBeUndefined()
     await expect(pipeline.processImage(randomUUID())).resolves.toBeUndefined()

@@ -5,7 +5,7 @@ import { ImageVariants, MediaPurpose } from '@platform/core/storage'
 
 import type { ApiClient } from './api-client'
 
-const uploadUrlSchema = z.object({
+export const uploadUrlSchema = z.object({
   uploadUrl: z.url(),
   key: z.string(),
   mediaId: z.string()

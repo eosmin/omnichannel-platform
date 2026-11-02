@@ -16,7 +16,11 @@ import {
   ImageVariants,
   type ImageVariant,
   ImageVariantSpecs,
+  AvatarProcessing,
+  AvatarUpload,
   MAX_IMAGE_PIXELS,
+  MediaPurpose,
+  parseAvatarKey,
   StorageKeys,
   UploadLimits,
   VARIANT_CONTENT_TYPE
@@ -58,7 +62,11 @@ export class MediaPipeline {
     if (media.status !== String(MediaStatus.PENDING)) return
 
     const body = await this.storage.stream(media.key)
-    if (body === null) throw new Error('the file to scan is not in the bucket')
+    if (body === null) {
+      // A picture replaced or removed while its job waited: the row and file went together
+      if (await this.isGone(media.id)) return
+      throw new Error('the file to scan is not in the bucket')
+    }
     // No verdict (the daemon is down or timed out) throws: the file stays pending and the queue retries
     let verdict
     try {
@@ -169,10 +177,111 @@ export class MediaPipeline {
     )
   }
 
+  // The picture of a person, scanned clean: re-encoded to one small square WebP, which is the only file
+  // of it that is ever served. The encoder drops the metadata of the upload (location, camera) unless
+  // asked to keep it. The row is pointed at the new file (the gate for serving: AccountSettingsService
+  // gives a link only once `processedAt` is set) and the uploaded file is deleted. Safe to run twice: a
+  // retry writes the same key again.
+  private async processAvatar(media: {
+    id: string
+    key: string
+    uploadedBy: string | null
+  }): Promise<void> {
+    const owner = parseAvatarKey(media.key)?.userId
+    // A row that does not sit under its own user's files is not served
+    if (owner === undefined || owner !== media.uploadedBy) {
+      this.logger.error(
+        { mediaId: media.id },
+        'an avatar is not under its own user and was refused'
+      )
+      await this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+      })
+      return
+    }
+    const original = await this.storage.read(media.key, AvatarUpload.MAX_SIZE_BYTES)
+    if (original === null) {
+      // Replaced or removed while the job waited: the row and file went together
+      if (await this.isGone(media.id)) return
+      throw new Error('the avatar to process is not in the bucket')
+    }
+
+    let encoded: Buffer
+    try {
+      encoded = await sharp(original, {
+        limitInputPixels: AvatarProcessing.MAX_INPUT_PIXELS,
+        // A photo with a small flaw in its tail is still a photo; only a file that cannot be decoded fails
+        failOn: 'error'
+      })
+        .rotate()
+        .resize(AvatarProcessing.IMAGE_PIXELS, AvatarProcessing.IMAGE_PIXELS, { fit: 'cover' })
+        .webp({ quality: AvatarProcessing.IMAGE_QUALITY })
+        .toBuffer()
+    } catch (error) {
+      // A file the decoder refuses is refused on every attempt, and a picture that cannot be re-encoded
+      // cannot have its metadata removed: it is never served. Terminal, like a file nobody could scan.
+      this.logger.warn(
+        { mediaId: media.id, errorName: errorName(error) },
+        'an avatar could not be re-encoded and was refused'
+      )
+      const marked = await this.prisma.client.media.updateMany({
+        where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+      })
+      if (marked.count > 0) await this.storage.delete(media.key)
+      return
+    }
+
+    const key = StorageKeys.avatarImage(owner, media.id)
+    // A failure of the bucket is not the image's: it propagates and the queue retries
+    await this.storage.put(key, encoded, VARIANT_CONTENT_TYPE)
+    const done = await this.prisma.client.media.updateMany({
+      where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+      data: {
+        key,
+        filename: AvatarProcessing.IMAGE_FILENAME,
+        contentType: VARIANT_CONTENT_TYPE,
+        fileSize: encoded.length,
+        processedAt: new Date()
+      }
+    })
+    if (done.count === 0) {
+      // The person replaced or removed the picture while it was processed: the row is gone
+      await this.storage.delete(key)
+      return
+    }
+    // The uploaded file is of no use now. A failure leaves a stray object that is never served and that
+    // the orphan cleanup removes (it is not the file of its row).
+    if (media.key !== key) {
+      try {
+        await this.storage.delete(media.key)
+      } catch (error) {
+        this.logger.warn(
+          { mediaId: media.id, errorName: errorName(error) },
+          'the uploaded file of an avatar was not deleted'
+        )
+      }
+    }
+  }
+
+  private async isGone(mediaId: string): Promise<boolean> {
+    const row = await this.prisma.client.media.findUnique({
+      where: { id: mediaId },
+      select: { id: true }
+    })
+    return row === null
+  }
+
   async processImage(mediaId: string): Promise<void> {
     const media = await this.prisma.client.media.findUnique({ where: { id: mediaId } })
-    if (media === null || media.storeId === null) return
+    if (media === null) return
     if (media.status !== String(MediaStatus.CLEAN) || media.processedAt !== null) return
+    // A picture of a person has no store and its own, smaller processing
+    if (media.storeId === null) {
+      if (media.purpose === String(MediaPurpose.AVATAR)) await this.processAvatar(media)
+      return
+    }
 
     const original = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
     if (original === null) throw new Error('the image to process is not in the bucket')

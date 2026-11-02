@@ -16,14 +16,12 @@ import { assertMediaServable } from '@platform/core/messaging'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
-  type ClientUploadPurpose,
   type ConfirmUploadBody,
   ImageVariants,
   type MediaPurposeType,
   type MediaUrls,
   mediaVariantsSchema,
   type RequestUploadUrlBody,
-  MediaPurpose,
   sanitizeFilename,
   StorageKeys,
   type UploadUrlResult,
@@ -73,42 +71,12 @@ interface UploadKeys {
   final: string
 }
 
-// Who an upload is for: the request's store, and the user who makes it. A message file belongs to
-// the store; an avatar belongs to the user and to no store at all.
-interface UploadOwner {
-  storeId: string
-  userId: string
-}
-
-// A record over every purpose a client may upload for: adding one to ClientUploadPurposes does not
-// compile until it has its keys (and its checks) here.
-const KEYS_OF_PURPOSE: Record<
-  ClientUploadPurpose,
-  (owner: UploadOwner, mediaId: string, filename: string) => UploadKeys
-> = {
-  [MediaPurpose.MESSAGE]: ({ storeId }, mediaId, filename) => ({
-    upload: StorageKeys.messageUpload(storeId, mediaId, filename),
-    final: StorageKeys.message(storeId, mediaId, filename)
-  }),
-  [MediaPurpose.AVATAR]: ({ userId }, mediaId, filename) => ({
-    upload: StorageKeys.avatarUpload(userId, mediaId, filename),
-    final: StorageKeys.avatar(userId, mediaId, filename)
-  })
-}
-
-const keysFor = (
-  purpose: ClientUploadPurpose,
-  owner: UploadOwner,
-  mediaId: string,
-  filename: string
-): UploadKeys => KEYS_OF_PURPOSE[purpose](owner, mediaId, filename)
-
-// The prefix every key of an upload must start with: the store's for a message file, the user's for
-// an avatar. A key under the other one is a cross-tenant (or cross-user) attempt.
-const scopePrefix = (purpose: ClientUploadPurpose, owner: UploadOwner): string =>
-  purpose === MediaPurpose.AVATAR
-    ? StorageKeys.userPrefix(owner.userId)
-    : StorageKeys.storePrefix(owner.storeId)
+// Where a message file is put and where it is served from. (An avatar is not a purpose of these routes:
+// it belongs to a person and has its own, AvatarUploadsService.)
+const keysFor = (storeId: string, mediaId: string, filename: string): UploadKeys => ({
+  upload: StorageKeys.messageUpload(storeId, mediaId, filename),
+  final: StorageKeys.message(storeId, mediaId, filename)
+})
 
 // Media is uploaded BEFORE the message that carries it exists (TDD_07 §6.1): the client asks for a
 // signed URL, PUTs the file straight to the bucket (the api never sees the bytes) and confirms.
@@ -139,12 +107,7 @@ export class MediaService {
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key, so a client
     // cannot confirm a key it was not given
     const mediaId = crypto.randomUUID()
-    const key = keysFor(
-      body.purpose,
-      { storeId, userId },
-      mediaId,
-      sanitizeFilename(body.filename)
-    ).upload
+    const key = keysFor(storeId, mediaId, sanitizeFilename(body.filename)).upload
     const uploadUrl = await this.storage.uploadUrl({
       key,
       contentType: body.contentType,
@@ -186,10 +149,8 @@ export class MediaService {
     userId: string,
     body: ConfirmUploadBody
   ): Promise<MediaView> {
-    const owner = { storeId, userId }
-    // A key of another store (or, for an avatar, of another user) is a cross-tenant attempt, whatever
-    // else is wrong with the request
-    if (!body.key.startsWith(scopePrefix(body.purpose, owner))) {
+    // A key of another store is a cross-tenant attempt, whatever else is wrong with the request
+    if (!body.key.startsWith(StorageKeys.storePrefix(storeId))) {
       throw new PlatformException(
         ErrorCodes.FILE_KEY_OUT_OF_SCOPE,
         'Key outside store scope',
@@ -197,7 +158,7 @@ export class MediaService {
       )
     }
     const filename = sanitizeFilename(body.filename)
-    const keys = keysFor(body.purpose, owner, body.mediaId, filename)
+    const keys = keysFor(storeId, body.mediaId, filename)
     // Not any object of the store: the one signed for this media id and name. Without this a member
     // could attach an export or another message's file as their own upload.
     if (body.key !== keys.upload) throw uploadVerificationFailed()
@@ -206,7 +167,7 @@ export class MediaService {
     // A retry of a confirmation that already went through answers with the same media. The scan is
     // queued again (under the same job id, so never twice): the first attempt may have died between
     // writing the row and queueing it.
-    const existing = await this.findOwn(body.purpose, owner, body.mediaId)
+    const existing = await this.find(storeId, body.mediaId)
     if (existing !== null) return this.again(existing, keys, userId)
 
     // Only who asked for the signed url confirms it. Same answer as any other bad upload.
@@ -232,8 +193,7 @@ export class MediaService {
       media = await this.prisma.client.media.create({
         data: {
           id: body.mediaId,
-          // An avatar is the user's: no store, so deleting a store never takes someone's picture
-          storeId: body.purpose === MediaPurpose.AVATAR ? null : storeId,
+          storeId,
           purpose: body.purpose,
           uploadedBy: userId,
           key: keys.final,
@@ -247,7 +207,7 @@ export class MediaService {
     } catch (error) {
       if (!isUniqueViolation(error)) throw error
       // Two confirmations at once: the other one won
-      const winner = await this.findOwn(body.purpose, owner, body.mediaId)
+      const winner = await this.find(storeId, body.mediaId)
       if (winner === null) throw uploadVerificationFailed()
       return this.again(winner, keys, userId)
     }
@@ -336,20 +296,6 @@ export class MediaService {
       { mediaId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
-  }
-
-  // The row of an upload being confirmed again: an avatar is found among the user's own, anything else
-  // in the store
-  private findOwn(
-    purpose: ClientUploadPurpose,
-    owner: UploadOwner,
-    mediaId: string
-  ): Promise<MediaRow | null> {
-    if (purpose !== MediaPurpose.AVATAR) return this.find(owner.storeId, mediaId)
-    return this.prisma.client.media.findFirst({
-      where: { id: mediaId, storeId: null, purpose, uploadedBy: owner.userId },
-      select: MEDIA_SELECT
-    })
   }
 
   private find(storeId: string, mediaId: string): Promise<MediaRow | null> {

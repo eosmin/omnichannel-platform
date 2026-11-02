@@ -6,10 +6,11 @@ import type { UploadRulePurpose } from './upload-rules'
 // The purposes a client may upload for. The others are written by the server (an export, a label) or
 // need a parent that no step builds yet: product and order media come with Steps 4.x. Each of those
 // steps adds its purpose here with its own checks, so that a purpose never exists in the API before
-// the code that checks who may attach it. An avatar belongs to a user, not to a store: its checks are
-// in MediaService (the key is under the user) and AccountSettingsService (only your own upload becomes your
-// picture).
-export const ClientUploadPurposes = [MediaPurpose.MESSAGE, MediaPurpose.AVATAR] as const
+// the code that checks who may attach it. An avatar belongs to a user, not to a store, so it has its own
+// routes (`ApiRoutes.account.avatarUploadUrl`, `avatarConfirm`; AvatarUploadsService) that need no store
+// and no permission, and it is not a purpose of the store's routes: that would ask a Viewer for
+// MEDIA_UPLOAD and use up the quota of the store.
+export const ClientUploadPurposes = [MediaPurpose.MESSAGE] as const
 export type ClientUploadPurpose = (typeof ClientUploadPurposes)[number]
 // Does not compile when a purpose is added above without rules in upload-rules.ts
 export const UPLOAD_PURPOSES_HAVE_RULES: readonly UploadRulePurpose[] = ClientUploadPurposes

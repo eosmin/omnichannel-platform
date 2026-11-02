@@ -68,10 +68,13 @@ describe('refuseUpload for an avatar', () => {
 describe('the upload schemas', () => {
   it('accept a request for a purpose a client may upload for', () => {
     expect(requestUploadUrlSchema.parse(request)).toEqual(request)
-    expect(requestUploadUrlSchema.parse({ ...request, purpose: MediaPurpose.AVATAR }).purpose).toBe(
-      MediaPurpose.AVATAR
-    )
-    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE, MediaPurpose.AVATAR])
+    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE])
+  })
+
+  it('refuse the avatar as a purpose of a store: it has routes of its own', () => {
+    expect(
+      requestUploadUrlSchema.safeParse({ ...request, purpose: MediaPurpose.AVATAR }).success
+    ).toBe(false)
   })
 
   it.each([

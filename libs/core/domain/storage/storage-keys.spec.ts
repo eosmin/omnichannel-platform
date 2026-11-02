@@ -50,6 +50,13 @@ describe('the keys of an avatar', () => {
     })
   })
 
+  it('puts the re-encoded picture under the media id of the upload, and reads it back', () => {
+    const key = StorageKeys.avatarImage(USER, MEDIA)
+    expect(key).toBe(`users/${USER}/avatar/${MEDIA}/processed/avatar.webp`)
+    expect(key.startsWith(StorageKeys.userPrefix(USER))).toBe(true)
+    expect(parseAvatarKey(key)).toEqual({ userId: USER, mediaId: MEDIA })
+  })
+
   it('reads back the final key of an avatar, and not the staging one', () => {
     expect(parseAvatarKey(StorageKeys.avatar(USER, MEDIA, 'a.png'))).toEqual({
       userId: USER,

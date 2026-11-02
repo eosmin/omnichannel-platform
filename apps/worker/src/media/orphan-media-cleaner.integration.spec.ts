@@ -192,6 +192,49 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(aliveKey)).not.toBeNull()
   })
 
+  it('deletes the uploaded file of an avatar that was re-encoded, and keeps the one the row names', async () => {
+    const userId = randomUUID()
+    const id = randomUUID()
+    avatarUsers.push(userId)
+    await owner.query(
+      `INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, 'avatar owner', now())`,
+      [userId, `it-avatar-${userId}@example.com`]
+    )
+    const uploaded = await object(StorageKeys.avatar(userId, id, 'me.jpg'))
+    const served = await object(StorageKeys.avatarImage(userId, id))
+    await avatarRow(userId, id, served)
+    await owner.query(`UPDATE users SET avatar_media_id = $1 WHERE id = $2`, [id, userId])
+
+    await cleaner.run(later())
+
+    expect(await storage.head(uploaded)).toBeNull()
+    expect(await storage.head(served)).not.toBeNull()
+  })
+
+  it.each(['infected', 'unscannable'])(
+    'clears the pointer to a %s avatar and drops its row',
+    async status => {
+      const userId = randomUUID()
+      const id = randomUUID()
+      avatarUsers.push(userId)
+      await owner.query(
+        `INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, 'avatar owner', now())`,
+        [userId, `it-avatar-${userId}@example.com`]
+      )
+      await avatarRow(userId, id, StorageKeys.avatar(userId, id, 'me.png'), status)
+      await owner.query(`UPDATE users SET avatar_media_id = $1 WHERE id = $2`, [id, userId])
+
+      await cleaner.run()
+
+      const user = await owner.query<{ avatar_media_id: string | null }>(
+        `SELECT avatar_media_id FROM users WHERE id = $1`,
+        [userId]
+      )
+      expect(user.rows[0]?.avatar_media_id).toBeNull()
+      expect((await owner.query(`SELECT 1 FROM media WHERE id = $1`, [id])).rowCount).toBe(0)
+    }
+  )
+
   it('leaves a young avatar upload alone: a confirmation may be in flight', async () => {
     const young = await object(StorageKeys.avatarUpload(randomUUID(), randomUUID(), 'new.png'))
 

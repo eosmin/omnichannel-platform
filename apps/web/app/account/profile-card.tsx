@@ -11,20 +11,42 @@ import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { useOwnProfile, useSaveOwnProfile } from '../../lib/settings/use-settings-data'
+import { useOwnProfileWithPicture } from '../../lib/settings/use-avatar'
+import { useSaveOwnProfile } from '../../lib/settings/use-settings-data'
+
+import { AvatarPicker } from './avatar-picker'
 
 // Account → Profile: the name the team sees. The e-mail is how the person signs in, so it is shown
-// and cannot be changed here. The picture joins in the next change (Step 3.6, avatar).
+// and cannot be changed here. The picture has its own control and saves on its own.
 export function ProfileCard(): ReactElement {
-  const profile = useOwnProfile()
+  const profile = useOwnProfileWithPicture()
   if (profile.isError) {
     return <LoadFailed error={profile.error} onRetry={() => void profile.refetch()} />
   }
   if (profile.data === undefined) return <PageLoading />
-  return <ProfileForm email={profile.data.email} savedName={profile.data.name} />
+  return (
+    <ProfileForm
+      email={profile.data.email}
+      savedName={profile.data.name}
+      avatarMediaId={profile.data.avatarMediaId}
+      avatarUrl={profile.data.avatarUrl}
+    />
+  )
 }
 
-function ProfileForm({ email, savedName }: { email: string; savedName: string }): ReactElement {
+interface ProfileFormProps {
+  email: string
+  savedName: string
+  avatarMediaId: string | null
+  avatarUrl: string | null
+}
+
+function ProfileForm({
+  email,
+  savedName,
+  avatarMediaId,
+  avatarUrl
+}: ProfileFormProps): ReactElement {
   const t = useTranslations('account')
   const tAll = useTranslations()
   const id = useId()
@@ -56,6 +78,7 @@ function ProfileForm({ email, savedName }: { email: string; savedName: string })
         <h1 className="text-2xl font-semibold">{t('profileTitle')}</h1>
         <p className="text-muted-foreground text-sm">{t('profile.description')}</p>
       </header>
+      <AvatarPicker name={savedName} avatarMediaId={avatarMediaId} avatarUrl={avatarUrl} />
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <Label htmlFor={`${id}-name`}>{t('name')}</Label>

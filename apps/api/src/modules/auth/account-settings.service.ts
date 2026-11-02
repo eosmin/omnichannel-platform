@@ -15,8 +15,8 @@ export interface ProfileView {
   email: string
   name: string
   avatarMediaId: string | null
-  // A short-lived signed link, only for a picture the scan found clean; null while it is being
-  // scanned, when it was refused, or when there is none
+  // A short-lived signed link, only for a picture the scan found clean and the worker re-encoded; null
+  // while it is being scanned or processed (the id is there), when it was refused, or when there is none
   avatarUrl: string | null
 }
 
@@ -155,14 +155,15 @@ export class AccountSettingsService {
   }
 
   // A picture the scan refused (or whose row is gone) is no picture: the profile says there is none,
-  // instead of naming an id that never shows. One still being scanned keeps its id and has no link yet.
+  // instead of naming an id that never shows. One still being scanned or re-encoded keeps its id and
+  // has no link yet.
   private async avatar(
     mediaId: string | null
   ): Promise<{ mediaId: string | null; url: string | null }> {
     if (mediaId === null) return { mediaId: null, url: null }
     const media = await this.prisma.client.media.findFirst({
       where: { id: mediaId, storeId: null, purpose: MediaPurpose.AVATAR },
-      select: { key: true, filename: true, contentType: true, status: true }
+      select: { key: true, filename: true, contentType: true, status: true, processedAt: true }
     })
     if (media === null) return { mediaId: null, url: null }
     if (
@@ -171,7 +172,11 @@ export class AccountSettingsService {
     ) {
       return { mediaId: null, url: null }
     }
-    if (media.status !== String(MediaStatus.CLEAN)) return { mediaId, url: null }
+    // Only the file the worker re-encoded is served: until then the picture is the one uploaded, with
+    // whatever metadata it carries (location, camera), and it has no link
+    if (media.status !== String(MediaStatus.CLEAN) || media.processedAt === null) {
+      return { mediaId, url: null }
+    }
     const url = await this.storage.downloadUrl({
       key: media.key,
       contentType: media.contentType,

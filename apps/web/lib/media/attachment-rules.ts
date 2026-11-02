@@ -6,6 +6,7 @@ import {
   MediaPurpose,
   type OutboundMediaType,
   refuseUpload,
+  type UploadRulePurpose,
   UploadRefusals
 } from '@platform/core/storage'
 
@@ -31,9 +32,12 @@ export type AttachmentRefusal = 'empty' | typeof UploadRefusals.TYPE_NOT_ALLOWED
 
 // Why a file cannot be sent, before any byte leaves the browser. The type is the one the browser
 // declares, as the api reads it; a file with no declared type is refused like any other type.
-export function refuseAttachment(file: { type: string; size: number }): AttachmentRefusal | null {
+export function refuseAttachment(
+  file: { type: string; size: number },
+  purpose: UploadRulePurpose = MediaPurpose.MESSAGE
+): AttachmentRefusal | null {
   if (file.size === 0) return 'empty'
-  return refuseUpload(file.type, file.size, MediaPurpose.MESSAGE)
+  return refuseUpload(file.type, file.size, purpose)
 }
 
 // The message type a file is sent as, or null when it is not an allowed type

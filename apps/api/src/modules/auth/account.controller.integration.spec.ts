@@ -152,7 +152,7 @@ describe('AccountController', () => {
       }
     })
 
-    it('serves a clean picture, and says nothing of one still being scanned', async () => {
+    it('serves a picture once it is clean and re-encoded, and says nothing of one still being prepared', async () => {
       const me = await person()
       const pending = await avatar(me.id, MediaStatus.PENDING)
       const set = await call<ProfileBody>('PATCH', ApiRoutes.account.profile, {
@@ -163,6 +163,13 @@ describe('AccountController', () => {
 
       await test.asOwner(client =>
         client.query(`UPDATE media SET status = 'clean' WHERE id = $1`, [pending])
+      )
+      // Clean is not enough: the uploaded file is not served, only the one the worker re-encoded
+      const scanned = await call<ProfileBody>('GET', ApiRoutes.account.profile, { token: me.token })
+      expect(scanned.body).toMatchObject({ avatarMediaId: pending, avatarUrl: null })
+
+      await test.asOwner(client =>
+        client.query(`UPDATE media SET processed_at = now() WHERE id = $1`, [pending])
       )
       const clean = await call<ProfileBody>('GET', ApiRoutes.account.profile, { token: me.token })
       expect(clean.body.avatarUrl).toContain(`users/${me.id}/avatar/${pending}`)

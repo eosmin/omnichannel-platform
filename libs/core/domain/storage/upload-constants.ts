@@ -41,7 +41,8 @@ export const AllowedContentTypes = {
 } as const
 
 // A profile picture is a small image: no gif (it moves), no video, no document. The limit is far under the
-// 10 MB of a message file, because it is shown at a few dozen pixels and served as it was uploaded.
+// 10 MB of a message file, because it is shown at a few dozen pixels. What is served is never the upload
+// (see `AvatarProcessing`). The browser reads only this: the rest sits in its own file.
 export const AvatarUpload = {
   MAX_SIZE_BYTES: 2 * 1024 * 1024, // 2 MB
   CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']

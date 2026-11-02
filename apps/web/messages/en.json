@@ -139,7 +139,20 @@
       "description": "The name your team sees.",
       "saved": "Profile saved.",
       "nameInvalid": "Enter a name of up to 100 characters.",
-      "emailHint": "This is the address you sign in with."
+      "emailHint": "This is the address you sign in with.",
+      "avatar": {
+        "title": "Picture",
+        "alt": "Your profile picture",
+        "choose": "Choose a picture",
+        "change": "Change picture",
+        "remove": "Remove",
+        "uploading": "Uploading...",
+        "uploaded": "Picture uploaded.",
+        "removed": "Picture removed.",
+        "processing": "Getting your picture ready...",
+        "refused": "This picture could not be used. Try another one.",
+        "hint": "JPEG, PNG or WebP, up to {size} MB. It is resized to a small square, and its metadata is removed."
+      }
     },
     "preferences": {
       "title": "Preferences",
