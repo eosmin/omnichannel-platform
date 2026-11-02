@@ -10,3 +10,9 @@ export const DEFAULT_UI_DENSITY: UiDensityType = UiDensity.COMFORTABLE
 export const AccountLimits = {
   NAME_MAX_LENGTH: 100
 } as const
+
+// The name of an organization or of a store: the api refuses a longer one and the forms check it
+// before sending
+export const OrganizationLimits = {
+  NAME_MAX_LENGTH: 100
+} as const

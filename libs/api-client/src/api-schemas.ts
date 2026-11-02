@@ -77,6 +77,44 @@ export const storeViewSchema = z.object({
 })
 export type StoreView = z.output<typeof storeViewSchema>
 
+// The organization of the store in X-Store-Id (GET /organizations/current)
+export const organizationViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string()
+})
+export type OrganizationView = z.output<typeof organizationViewSchema>
+
+// The person's own name and picture (GET /account/profile). `avatarUrl` is a short-lived signed link,
+// null while the picture is scanned, when it was refused and when there is none.
+export const ownProfileSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  avatarMediaId: z.string().nullable(),
+  avatarUrl: z.string().nullable()
+})
+export type OwnProfile = z.output<typeof ownProfileSchema>
+
+// Locale, timezone and density are kept as the text they came as: a server newer than the page must
+// not make the whole page fail
+export const accountPreferencesSchema = z.object({
+  locale: z.string(),
+  timezone: z.string().nullable(),
+  density: z.string()
+})
+export type AccountPreferences = z.output<typeof accountPreferencesSchema>
+
+// A signed-in device (GET /auth/sessions); `id` is the family, which survives the rotation of the token
+export const activeSessionSchema = z.object({
+  id: z.string(),
+  userAgent: z.string().nullable(),
+  ipAddress: z.string().nullable(),
+  lastActiveAt: z.string(),
+  current: z.boolean()
+})
+export type ActiveSession = z.output<typeof activeSessionSchema>
+
 // The reply a send answers with. Only what the client acts on: a server newer than the page may add
 // fields, and the thread is read again through the REST api for the rest.
 export const sentMessageSchema = z.object({

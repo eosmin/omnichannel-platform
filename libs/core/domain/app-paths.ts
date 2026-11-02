@@ -53,6 +53,7 @@ export const AppPaths = {
     exports: (storeId: string) => `/s/${storeId}/exports`
   },
   org: {
+    profile: '/org/profile',
     stores: '/org/stores',
     warehouses: '/org/warehouses',
     transfers: '/org/transfers',

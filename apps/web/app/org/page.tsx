@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation'
+import type { ReactElement } from 'react'
 
-import { AppPaths } from '@platform/api-client'
+import { OrgHome } from './org-shell'
 
-export default function OrgPage(): never {
-  redirect(AppPaths.org.stores)
+export default function OrgPage(): ReactElement {
+  return <OrgHome />
 }

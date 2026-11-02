@@ -157,7 +157,18 @@ export const QueryKeys = {
   },
   // The stores of the organization of the store in storeId (the api reads it from X-Store-Id)
   organizations: {
-    stores: (storeId: string) => ['organizations', storeId, 'stores'] as const
+    // Everything read through the store: a create, rename or delete refreshes all of it
+    all: (storeId: string) => ['organizations', storeId] as const,
+    stores: (storeId: string) => ['organizations', storeId, 'stores'] as const,
+    current: (storeId: string) => ['organizations', storeId, 'current'] as const,
+    // The one store of the General page; under `stores`, so a create, rename or delete refreshes it
+    store: (storeId: string, id: string) => ['organizations', storeId, 'stores', id] as const
+  },
+  // The person's own account: no store in the key, because it belongs to the person
+  account: {
+    profile: ['account', 'profile'] as const,
+    preferences: ['account', 'preferences'] as const,
+    sessions: ['account', 'sessions'] as const
   },
 
   session: ['session'] as const

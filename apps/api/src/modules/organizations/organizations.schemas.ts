@@ -1,10 +1,9 @@
 import { z } from 'zod'
 
 import { slugify } from '@platform/core/database'
-import { timezoneSchema } from '@platform/core/domain'
+import { OrganizationLimits, timezoneSchema } from '@platform/core/domain'
 import { SUPPORTED_LOCALES } from '@platform/core/i18n'
 
-const MAX_NAME_LENGTH = 100
 const CURRENCY_CODE = /^[A-Z]{3}$/
 
 // The slug of a store is made from its name, so a name that leaves nothing to make it from is refused
@@ -17,7 +16,7 @@ function hasSlug(name: string): boolean {
   }
 }
 
-const name = z.string().trim().min(1).max(MAX_NAME_LENGTH)
+const name = z.string().trim().min(1).max(OrganizationLimits.NAME_MAX_LENGTH)
 const storeName = name.refine(hasSlug, { message: 'the name needs a letter or a digit' })
 const timezone = timezoneSchema
 const currency = z.string().regex(CURRENCY_CODE)

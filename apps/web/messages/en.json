@@ -134,6 +134,36 @@
         "enabled": "Notify me about conversations in my other stores",
         "supervisorOnly": "Only where I am a supervisor"
       }
+    },
+    "profile": {
+      "description": "The name your team sees.",
+      "saved": "Profile saved.",
+      "nameInvalid": "Enter a name of up to 100 characters.",
+      "emailHint": "This is the address you sign in with."
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "How the app looks and speaks for you, on every device.",
+      "language": "Language",
+      "timezone": "Time zone",
+      "browserZone": "Use the time zone of this browser",
+      "density": "Density",
+      "densities": {
+        "comfortable": "Comfortable",
+        "compact": "Compact"
+      },
+      "saved": "Preferences saved."
+    },
+    "security": {
+      "title": "Security",
+      "description": "The devices where you are signed in.",
+      "empty": "There are no active sessions.",
+      "thisDevice": "This device",
+      "unknownDevice": "Unknown device",
+      "unknownAddress": "Unknown address",
+      "lastActive": "Active {when}",
+      "revoke": "Sign out",
+      "revoked": "Device signed out."
     }
   },
   "app": {
@@ -147,7 +177,9 @@
     "tryAgain": "Try again",
     "signOut": "Sign out",
     "signingOut": "Signing out",
-    "loading": "Loading"
+    "loading": "Loading",
+    "save": "Save",
+    "discard": "Discard changes"
   },
   "confirm": {
     "typePhrase": "Type \"{phrase}\" to confirm",
@@ -741,7 +773,30 @@
     }
   },
   "org": {
-    "storesTitle": "Stores"
+    "storesTitle": "Stores",
+    "newStore": "New store",
+    "empty": "There are no stores yet.",
+    "create": {
+      "title": "New store",
+      "description": "Pick the basics. You can change them later in the store settings.",
+      "submit": "Create store",
+      "done": "Store {name} created."
+    },
+    "rename": {
+      "action": "Rename",
+      "title": "Rename store",
+      "description": "The address of the store does not change.",
+      "name": "Store name"
+    },
+    "delete": {
+      "action": "Delete",
+      "title": "Delete {name}?",
+      "description": "The store is deleted for good and cannot be recovered. A store that still holds conversations, customers or other data cannot be deleted.",
+      "confirm": "Delete store",
+      "done": "Store {name} deleted.",
+      "lastStore": "The last store of an organization cannot be deleted."
+    },
+    "settings": "Settings"
   },
   "realtime": {
     "reconnecting": "Reconnecting...",
@@ -758,7 +813,8 @@
       "label": "Store pages",
       "inbox": "Inbox",
       "customers": "Customers",
-      "exports": "Exports"
+      "exports": "Exports",
+      "settings": "Settings"
     },
     "notifications": {
       "open": "Notifications",
@@ -1381,6 +1437,58 @@
       "setup": {
         "messengerProfileAccess": "In the settings of your Facebook Page, request \"Business Asset User Profile Access\" so that customer names and photos can be read."
       }
+    },
+    "nav": {
+      "store": {
+        "label": "Store settings",
+        "title": "Store",
+        "general": "General"
+      },
+      "org": {
+        "label": "Organization",
+        "title": "Organization",
+        "stores": "Stores",
+        "profile": "Profile"
+      },
+      "account": {
+        "label": "My account",
+        "title": "My account",
+        "profile": "Profile",
+        "preferences": "Preferences",
+        "notifications": "Notifications",
+        "security": "Security"
+      }
+    },
+    "store": {
+      "title": "General",
+      "description": "The name, time zone, currency and language of this store.",
+      "name": "Store name",
+      "timezone": "Time zone",
+      "currency": "Currency",
+      "defaultLocale": "Default language",
+      "defaultLocaleHint": "The language of the messages your customers get from this store.",
+      "saved": "Store settings saved.",
+      "problems": {
+        "nameRequired": "Enter a name.",
+        "nameTooLong": "The name is too long.",
+        "currencyInvalid": "Pick a currency.",
+        "localeInvalid": "Pick a supported language."
+      }
+    },
+    "organization": {
+      "title": "Organization profile",
+      "description": "The name of your organization.",
+      "readOnly": "You can see the organization but not change it.",
+      "name": "Organization name",
+      "slug": "Address name",
+      "nameInvalid": "Enter a name of up to 100 characters.",
+      "saved": "Organization saved."
+    }
+  },
+  "emptyStates": {
+    "permissionDenied": {
+      "title": "You do not have access to this",
+      "body": "Ask an administrator to grant the required permission."
     }
   }
 }
