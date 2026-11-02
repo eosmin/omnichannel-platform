@@ -64,7 +64,9 @@ test.describe('Settings → Channels and Plugins', () => {
     // The widget card: snippet, sites and the pre-chat switch
     await card.getByRole('button', { name: channels.widget.toggle }).click()
     await expect(card.getByText(/pk_widget_/)).toBeVisible()
-    await expect(card.getByText(channels.widget.connectSrc.title)).toBeVisible()
+    await expect(
+      card.getByRole('heading', { name: channels.widget.connectSrc.title })
+    ).toBeVisible()
     const preChat = card.getByLabel(channels.widget.preChat.label)
     await expect(preChat).not.toBeChecked()
     await preChat.check()
