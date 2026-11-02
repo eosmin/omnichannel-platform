@@ -7,10 +7,6 @@ import {
   type ExportType
 } from '@platform/core/exports'
 
-// How often the list asks again while an export is being made. The realtime event and the
-// notification of a ready export belong to Step 3.5; until then the page watches by itself.
-export const EXPORT_POLL_MS = 5000
-
 const KNOWN_TYPES: ReadonlySet<string> = new Set(Object.values(ExportTypes))
 const KNOWN_STATUSES: ReadonlySet<string> = new Set(Object.values(ExportStatus))
 
@@ -32,10 +28,6 @@ export function exportStatusKey(status: string): ExportStatusKey {
 
 export function isExportReady(item: Pick<ExportView, 'status'>): boolean {
   return item.status === ExportStatus.READY
-}
-
-export function hasPendingExport(items: readonly Pick<ExportView, 'status'>[]): boolean {
-  return items.some(item => item.status === ExportStatus.PENDING)
 }
 
 // One of these is enough to open the exports center (the api lists only what the member asked for,

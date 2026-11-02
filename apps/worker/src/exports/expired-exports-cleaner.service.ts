@@ -4,10 +4,14 @@ import { PinoLogger } from 'nestjs-pino'
 import { errorName } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
 import { ErrorCodes } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import { ExportLimits } from '@platform/core/exports'
 import { ExportStatus } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+
+import { publishExportSettled } from './export-settled'
 
 export interface ExportCleanupReport {
   filesDeleted: number
@@ -21,6 +25,7 @@ export class ExpiredExportsCleaner {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly events: DomainEvents,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(ExpiredExportsCleaner.name)
@@ -56,7 +61,7 @@ export class ExpiredExportsCleaner {
     const giveUp = new Date(now.getTime() - ExportLimits.PENDING_GIVE_UP_HOURS * 3_600_000)
     const stale = await this.prisma.client.export.findMany({
       where: { status: ExportStatus.PENDING, createdAt: { lte: giveUp } },
-      select: { id: true, storeId: true },
+      select: { id: true, storeId: true, requestedBy: true, type: true },
       take: ExportLimits.CLEANUP_BATCH
     })
     let abandoned = 0
@@ -70,6 +75,17 @@ export class ExpiredExportsCleaner {
           data: { status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED, completedAt: now }
         })
         abandoned += marked.count
+        // The person who asked is told it failed. The row is closed already: a failure here is its own log
+        if (marked.count > 0) {
+          await publishExportSettled(this.prisma, this.events, Events.EXPORT_FAILED, row).catch(
+            (error: unknown) => {
+              this.logger.warn(
+                { exportId: row.id, errorName: errorName(error) },
+                'an abandoned export was not announced'
+              )
+            }
+          )
+        }
       } catch (error) {
         this.logger.error(
           { exportId: row.id, errorName: errorName(error) },

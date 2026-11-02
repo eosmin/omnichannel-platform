@@ -24,6 +24,12 @@ const status = z.object({
   messageId: id,
   visibility
 })
+const exportSettled = z.object({
+  storeId: id,
+  exportId: id,
+  requestedBy: id,
+  exportType: z.string().min(1).max(64)
+})
 const actor = z.object({ type: z.enum(['user', 'system']), id: id.nullable() })
 
 // What may cross from the worker to the api, event by event. Parsing keeps only these fields: a
@@ -92,6 +98,9 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
   [Events.MEDIA_PROCESSED]: status.extend({ internal: z.boolean() }),
   [Events.MEDIA_INFECTED]: status.extend({ internal: z.boolean() }),
   [Events.MEDIA_UNAVAILABLE]: status.extend({ internal: z.boolean() }),
+  // An export settled: the ids and the kind, no file name and no path
+  [Events.EXPORT_READY]: exportSettled,
+  [Events.EXPORT_FAILED]: exportSettled,
   [Events.MESSAGE_FAILED]: status.extend({ errorCode: z.enum(ErrorCodes) }),
   // The ids of a connection, no text: what the health check of the worker announces
   [Events.CHANNEL_DISCONNECTED]: z.object({

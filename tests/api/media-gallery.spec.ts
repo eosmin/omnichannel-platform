@@ -12,6 +12,7 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelType, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
 import {
   ExportFormats,
   ExportStatus,
@@ -100,6 +101,7 @@ describe('Media gallery', () => {
       new ZipExportWriter(storage, logger),
       storage,
       app.get(AuditService, { strict: false }),
+      app.get(DomainEvents, { strict: false }),
       logger
     )
   })

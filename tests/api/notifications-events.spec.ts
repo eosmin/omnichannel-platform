@@ -10,6 +10,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import { AppPaths, MessageType } from '@platform/core/domain'
 import { Events, type MessageChangedPayload } from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
+import { ExportFormats, ExportStatus, ExportTypes } from '@platform/core/queues'
 
 import { createConversationOf, createMessage } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -252,6 +253,67 @@ describe('Notifications raised by events', () => {
       const told = (await rowsOf(NotificationTypes.MEDIA_INFECTED)).map(row => row.userId)
       expect(told).toContain(ctx.adminA.id)
       expect(told).not.toContain(noNotes.id)
+    })
+  })
+
+  describe('an export that settled', () => {
+    const exportOf = (requestedBy: string, status: string, type: string = ExportTypes.CUSTOMERS) =>
+      owner.export.create({
+        data: {
+          storeId: ctx.storeA.id,
+          requestedBy,
+          type,
+          format: ExportFormats.CSV,
+          status,
+          key: status === ExportStatus.READY ? `exports/${ctx.storeA.id}/x/customers.csv` : null,
+          expiresAt: new Date(Date.now() + 86_400_000)
+        }
+      })
+    const settled = (row: { id: string; requestedBy: string; type: string }) => ({
+      storeId: ctx.storeA.id,
+      exportId: row.id,
+      requestedBy: row.requestedBy,
+      exportType: row.type
+    })
+
+    it('tells who asked for it, with the file name and the path of the center', async () => {
+      const row = await exportOf(ctx.adminA.id, ExportStatus.READY)
+
+      await app.get(EventEmitter2).emitAsync(Events.EXPORT_READY, settled(row))
+
+      const rows = await rowsOf(NotificationTypes.EXPORT_READY)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        userId: ctx.adminA.id,
+        actionPath: AppPaths.store.exports(ctx.storeA.id),
+        resourceType: 'export',
+        resourceId: row.id,
+        params: { filename: 'customers.csv', type: ExportTypes.CUSTOMERS }
+      })
+    })
+
+    it('tells who asked for it that the export failed', async () => {
+      const row = await exportOf(ctx.adminA.id, ExportStatus.FAILED)
+
+      await app.get(EventEmitter2).emitAsync(Events.EXPORT_FAILED, settled(row))
+
+      const rows = await rowsOf(NotificationTypes.EXPORT_FAILED, ctx.adminA.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ params: { type: ExportTypes.CUSTOMERS } })
+    })
+
+    it('tells nobody when the row is not in the state of the event, is not theirs or is of a kind their role lost', async () => {
+      const events = app.get(EventEmitter2)
+      const pending = await exportOf(ctx.adminA.id, ExportStatus.PENDING)
+      const ready = await exportOf(ctx.adminA.id, ExportStatus.READY)
+      const lost = await exportOf(ctx.agentA.id, ExportStatus.READY)
+
+      await events.emitAsync(Events.EXPORT_READY, settled(pending))
+      await events.emitAsync(Events.EXPORT_READY, { ...settled(ready), requestedBy: ctx.agentA.id })
+      await events.emitAsync(Events.EXPORT_READY, settled(lost))
+      await events.emitAsync(Events.EXPORT_READY, { ...settled(ready), exportType: 'orders' })
+
+      expect(await rowsOf(NotificationTypes.EXPORT_READY)).toHaveLength(0)
     })
   })
 })

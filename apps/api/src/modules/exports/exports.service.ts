@@ -12,12 +12,11 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { ExportLimits } from '@platform/core/exports'
+import { ExportLimits, ExportTypePermissions } from '@platform/core/exports'
 import {
   type ExportFormat,
   ExportStatus,
   type ExportType,
-  ExportTypes,
   type GenerateExportJob,
   JobNames,
   QueueNames
@@ -38,19 +37,6 @@ import {
   type JsonObject
 } from './exports.views'
 
-// What each kind of export needs. A kind with no entry is not served here yet (orders: Step 4.4,
-// analytics: Step 5.2, the audit log: Step 7.2), so nobody sees its rows or downloads its file.
-// Every permission listed, the same ones the route that makes the kind asks for.
-const TYPE_PERMISSIONS: Partial<Record<ExportType, readonly Permission[]>> = {
-  [ExportTypes.CONVERSATIONS]: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT],
-  [ExportTypes.CUSTOMERS]: [Permissions.CUSTOMERS_EXPORT],
-  [ExportTypes.MEDIA_ZIP]: [
-    Permissions.CUSTOMERS_VIEW,
-    Permissions.MEDIA_VIEW,
-    Permissions.MEDIA_DOWNLOAD_ALL
-  ]
-}
-
 export const ExportListPermissions: [Permission, ...Permission[]] = [
   Permissions.CONVERSATIONS_EXPORT,
   Permissions.CUSTOMERS_EXPORT,
@@ -66,7 +52,7 @@ export interface RequestExport {
 }
 
 function typesOf(held: readonly Permission[]): ExportType[] {
-  return Object.entries(TYPE_PERMISSIONS)
+  return Object.entries(ExportTypePermissions)
     .filter(([, needed]) => needed.every(permission => held.includes(permission)))
     .map(([type]) => type as ExportType)
 }

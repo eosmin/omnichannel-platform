@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -12,6 +13,8 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, BulkActions, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import { ExportLimits } from '@platform/core/exports'
 import {
   ExportFormats,
@@ -88,6 +91,7 @@ describe('Exports', () => {
     ctx = await seedTestContext(owner, app, prefix)
     const prisma = app.get(PrismaService, { strict: false })
     storage = app.get(StorageService, { strict: false })
+    const events = app.get(DomainEvents, { strict: false })
     const logger = {
       setContext: jest.fn(),
       error: jest.fn(),
@@ -99,9 +103,10 @@ describe('Exports', () => {
       new ZipExportWriter(storage, logger),
       storage,
       app.get(AuditService, { strict: false }),
+      events,
       logger
     )
-    cleaner = new ExpiredExportsCleaner(prisma, storage, logger)
+    cleaner = new ExpiredExportsCleaner(prisma, storage, events, logger)
   })
   afterAll(async () => {
     for (const key of keys) await storage.delete(key)
@@ -246,6 +251,50 @@ describe('Exports', () => {
 
       const after = await owner.export.findUniqueOrThrow({ where: { id: row.id } })
       expect(after).toMatchObject({ status: ExportStatus.FAILED, error: ErrorCodes.EXPORT_FAILED })
+    })
+  })
+
+  describe('telling that an export settled', () => {
+    // The events that reach the listeners of the api, the way the bridge would hand them over
+    function hear(event: string): jest.Mock {
+      const handler = jest.fn()
+      app.get(EventEmitter2).on(event, handler)
+      return handler
+    }
+
+    it('announces a ready export with ids and the kind, and nothing of the file', async () => {
+      const heard = hear(Events.EXPORT_READY)
+      const view = await request(ApiRoutes.customers.export)
+
+      await made(view.id)
+
+      expect(heard).toHaveBeenCalledWith({
+        storeId: ctx.storeA.id,
+        exportId: view.id,
+        requestedBy: ctx.adminA.id,
+        exportType: ExportTypes.CUSTOMERS
+      })
+    })
+
+    it('announces a failed export once, and a ready one that is generated again not at all', async () => {
+      const failed = hear(Events.EXPORT_FAILED)
+      const ready = hear(Events.EXPORT_READY)
+      const row = await owner.export.create({
+        data: {
+          storeId: ctx.storeA.id,
+          requestedBy: ctx.adminA.id,
+          type: ExportTypes.CUSTOMERS,
+          format: ExportFormats.CSV,
+          filters: { q: 5 },
+          expiresAt: new Date(Date.now() + 86_400_000)
+        }
+      })
+      await expect(generator.generate(row.id, false)).rejects.toThrow('does not fit')
+      await expect(generator.generate(row.id, false)).resolves.toBeUndefined()
+
+      expect(failed).toHaveBeenCalledTimes(1)
+      expect(failed).toHaveBeenCalledWith(expect.objectContaining({ exportId: row.id }))
+      expect(ready).not.toHaveBeenCalledWith(expect.objectContaining({ exportId: row.id }))
     })
   })
 

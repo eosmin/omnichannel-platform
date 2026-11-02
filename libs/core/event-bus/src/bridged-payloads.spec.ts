@@ -77,6 +77,18 @@ describe('bridgedPayload', () => {
     [Events.MEDIA_PROCESSED]: { ...status, internal: false },
     [Events.MEDIA_INFECTED]: { ...status, internal: false },
     [Events.MEDIA_UNAVAILABLE]: { ...status, internal: false },
+    [Events.EXPORT_READY]: {
+      storeId: randomUUID(),
+      exportId: randomUUID(),
+      requestedBy: randomUUID(),
+      exportType: 'customers'
+    },
+    [Events.EXPORT_FAILED]: {
+      storeId: randomUUID(),
+      exportId: randomUUID(),
+      requestedBy: randomUUID(),
+      exportType: 'media_zip'
+    },
     [Events.MESSAGE_FAILED]: { ...status, errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED },
     [Events.CHANNEL_DISCONNECTED]: {
       storeId: randomUUID(),

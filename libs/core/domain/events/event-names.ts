@@ -146,6 +146,7 @@ export const Events = {
   // Exports and compliance
   EXPORT_REQUESTED: 'export.requested',
   EXPORT_READY: 'export.ready',
+  EXPORT_FAILED: 'export.failed',
   DSR_CREATED: 'dsr.created',
   DSR_COMPLETED: 'dsr.completed'
 } as const
@@ -180,6 +181,8 @@ export const BridgedEvents = [
   Events.MEDIA_PROCESSED,
   Events.MEDIA_INFECTED,
   Events.MEDIA_UNAVAILABLE,
+  Events.EXPORT_READY,
+  Events.EXPORT_FAILED,
   Events.CHANNEL_DISCONNECTED,
   Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]

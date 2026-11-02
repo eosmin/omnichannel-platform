@@ -11,7 +11,8 @@ const Scopes = {
   THREAD: 'thread',
   CUSTOMERS: 'customers',
   PRESENCE: 'presence',
-  NOTIFICATIONS: 'notifications'
+  NOTIFICATIONS: 'notifications',
+  EXPORTS: 'exports'
 } as const
 type Scope = (typeof Scopes)[keyof typeof Scopes]
 
@@ -39,7 +40,8 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.MESSAGE_NOTE_ADDED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   [RealtimeEvents.USER_ONLINE]: [Scopes.PRESENCE],
   [RealtimeEvents.USER_OFFLINE]: [Scopes.PRESENCE],
-  [RealtimeEvents.NOTIFICATION]: [Scopes.NOTIFICATIONS]
+  [RealtimeEvents.NOTIFICATION]: [Scopes.NOTIFICATIONS],
+  [RealtimeEvents.EXPORT_UPDATED]: [Scopes.EXPORTS]
 }
 
 const conversationIdSchema = z.object({ conversationId: z.string().min(1) })
@@ -62,6 +64,8 @@ function keysForScope(scope: Scope, storeId: string, conversationId: string | nu
       return [QueryKeys.presence.team(storeId)]
     case Scopes.NOTIFICATIONS:
       return [QueryKeys.notifications.list(storeId), QueryKeys.notifications.unread(storeId)]
+    case Scopes.EXPORTS:
+      return [QueryKeys.exports.all(storeId)]
   }
 }
 
@@ -85,7 +89,8 @@ export function queryKeysAfterReconnect(storeId: string): QueryKey[] {
     QueryKeys.customers.all(storeId),
     QueryKeys.presence.team(storeId),
     QueryKeys.notifications.list(storeId),
-    QueryKeys.notifications.unread(storeId)
+    QueryKeys.notifications.unread(storeId),
+    QueryKeys.exports.all(storeId)
   ]
 }
 

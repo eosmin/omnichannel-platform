@@ -11,8 +11,6 @@ import { type ExportPageView, fetchExports, QueryKeys } from '@platform/api-clie
 
 import { apiClient } from '../api'
 
-import { EXPORT_POLL_MS, hasPendingExport } from './export-state'
-
 export function useExportList(
   storeId: string,
   enabled: boolean
@@ -23,11 +21,6 @@ export function useExportList(
     queryFn: ({ pageParam, signal }) => fetchExports(apiClient, storeId, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
     placeholderData: keepPreviousData,
-    // Asks again while something is being made, and stops when nothing is
-    refetchInterval: query =>
-      hasPendingExport(query.state.data?.pages.flatMap(page => page.data) ?? [])
-        ? EXPORT_POLL_MS
-        : false,
     enabled
   })
 }
