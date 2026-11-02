@@ -359,6 +359,14 @@
       "fallback": "Si el botón no funciona, copia este enlace en tu navegador:",
       "expiry": "Esta invitación caduca en {days} días.",
       "ignore": "Si no la esperabas, puedes ignorar este correo."
+    },
+    "notificationDigest": {
+      "subject": "Tienes notificaciones nuevas",
+      "heading": "Notificaciones nuevas ({count})",
+      "open": "Abrir",
+      "more": "Y {count} más, esperando en la aplicación.",
+      "center": "Abrir la aplicación",
+      "settings": "Recibes este correo por tu configuración de notificaciones. Cámbiala en"
     }
   },
   "errorPage": {

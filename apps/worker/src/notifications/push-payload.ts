@@ -25,7 +25,7 @@ export function pushLocale(value: string): Locale {
 }
 
 // Only the text and numbers of the params fill the message: the column is JSON and crossed Redis
-function messageParams(value: unknown): Record<string, string | number> {
+export function messageParams(value: unknown): Record<string, string | number> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
   const params: Record<string, string | number> = {}
   for (const [key, item] of Object.entries(value)) {

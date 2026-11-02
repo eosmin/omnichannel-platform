@@ -1005,22 +1005,25 @@ model ApiKey {
 // Persisted as an i18n key + params (TDD_02 §12). Rendered at display time in the
 // recipient's locale; emails render server-side.
 model Notification {
-  id           String    @id @default(uuid())
-  userId       String    @map("user_id")
-  storeId      String    @map("store_id")
-  type         String // NotificationType
-  severity     String // NotificationSeverity
-  messageKey   String    @map("message_key") // e.g. "notifications.conversation.assigned"
-  params       Json      @default("{}") // { customerName, conversationId, … }
-  resourceType String?   @map("resource_type")
-  resourceId   String?   @map("resource_id")
-  actionPath   String?   @map("action_path") // App-relative path, built from AppPaths
-  readAt       DateTime? @map("read_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  storeId        String    @map("store_id")
+  type           String // NotificationType
+  severity       String // NotificationSeverity
+  messageKey     String    @map("message_key") // e.g. "notifications.conversation.assigned"
+  params         Json      @default("{}") // { customerName, conversationId, … }
+  resourceType   String?   @map("resource_type")
+  resourceId     String?   @map("resource_id")
+  actionPath     String?   @map("action_path") // App-relative path, built from AppPaths
+  readAt         DateTime? @map("read_at")
+  // Set when the person asked for this one by email: the digest sends the rows that have it and clears it
+  emailPendingAt DateTime? @map("email_pending_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
+  @@index([emailPendingAt])
   @@index([userId, readAt, createdAt(sort: Desc)])
   @@index([userId, storeId, createdAt(sort: Desc)])
   @@index([storeId, createdAt(sort: Desc)])

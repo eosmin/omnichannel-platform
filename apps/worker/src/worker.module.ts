@@ -31,6 +31,7 @@ import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
+import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
 import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
@@ -80,7 +81,8 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     OutboundRequeueScheduler,
     DeletedMessagePurgeScheduler,
     OrphanMediaScheduler,
-    ExpiredExportsScheduler
+    ExpiredExportsScheduler,
+    EmailDigestScheduler
   ]
 })
 export class WorkerModule {}

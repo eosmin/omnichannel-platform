@@ -359,6 +359,14 @@
       "fallback": "If the button does not work, copy this link into your browser:",
       "expiry": "This invitation expires in {days} days.",
       "ignore": "If you were not expecting it, you can ignore this email."
+    },
+    "notificationDigest": {
+      "subject": "You have new notifications",
+      "heading": "New notifications ({count})",
+      "open": "Open",
+      "more": "And {count} more, waiting in the app.",
+      "center": "Open the app",
+      "settings": "You get this email because of your notification settings. Change them at"
     }
   },
   "errorPage": {

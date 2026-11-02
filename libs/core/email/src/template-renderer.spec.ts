@@ -155,3 +155,48 @@ describe('TemplateRenderer', () => {
     })
   })
 })
+
+describe('TemplateRenderer: notification digest', () => {
+  const digest = {
+    items: [
+      {
+        storeName: 'Shop',
+        title: 'Conversation assigned',
+        body: 'Ana assigned you a conversation.',
+        url: 'https://app.example.com/s/s1/inbox/c1'
+      },
+      { storeName: 'Shop', title: 'Export ready', body: 'Your file is ready.', url: null }
+    ],
+    moreCount: 3,
+    appUrl: 'https://app.example.com/',
+    settingsUrl: 'https://app.example.com/account/notifications'
+  }
+
+  it('lists every notification, counts the ones left out and links to the settings', async () => {
+    const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, digest)
+    expect(email.subject).toBe('You have new notifications')
+    expect(email.html).toContain('New notifications (5)')
+    expect(email.html).toContain('href="https://app.example.com/s/s1/inbox/c1"')
+    expect(email.text).toContain('Export ready')
+    expect(email.text).toContain('And 3 more, waiting in the app.')
+    expect(email.text).toContain('https://app.example.com/account/notifications')
+  })
+
+  it('renders it in Spanish', async () => {
+    const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.ES, digest)
+    expect(email.subject).toBe('Tienes notificaciones nuevas')
+    expect(email.text).toContain('Y 3 más, esperando en la aplicación.')
+  })
+
+  it('refuses a digest with nothing to list or a link that is not http', async () => {
+    await expect(
+      renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, { ...digest, items: [] })
+    ).rejects.toThrow()
+    await expect(
+      renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, {
+        ...digest,
+        settingsUrl: 'javascript:alert(1)'
+      })
+    ).rejects.toThrow()
+  })
+})

@@ -858,10 +858,12 @@ async isInQuietHours(userId: string, storeId: string): Promise<boolean> {
 
 ### 6.4 Email digest
 
-`QUEUE_EMAIL_DIGEST` only records that a notification is pending email delivery. Two
-schedulers drain it (`Schedules.SEND_EMAIL_DIGEST_HOURLY` / `_DAILY`, `TDD_07` §4): for
-every user whose `digestFrequency` matches, the pending notifications since
-`lastDigestSentAt` are rendered into one `EmailTemplates.NOTIFICATION_DIGEST` email.
+`Notification.emailPendingAt` records that a notification is pending email delivery (set by
+`send` when the user has email on for the type); `QUEUE_EMAIL_DIGEST` tells the worker one was
+saved. Two schedulers drain it (`Schedules.SEND_EMAIL_DIGEST_HOURLY` / `_DAILY`, `TDD_07` §4): for
+every user whose `digestFrequency` matches, the pending, unread notifications younger than
+`DigestLimits.MAX_AGE_HOURS` are rendered into one `EmailTemplates.NOTIFICATION_DIGEST` email and
+the marks are cleared (`lastDigestSentAt` is kept for information).
 `digestFrequency = IMMEDIATE` sends one email per notification from the queue processor
 directly; `OFF` drops the job. The daily scheduler runs every hour and sends only to the users whose local time is then 08:10, so each user gets the digest at their own morning (`TDD_07` §4).
 
