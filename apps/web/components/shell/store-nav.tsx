@@ -9,7 +9,7 @@ import { AppPaths } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 
 import { mayOpenExports } from '../../lib/exports/export-state'
-import { storeSettingsEntries, visibleEntries } from '../../lib/settings/entries'
+import { storeSettingsEntries, visibleEntries } from '../../lib/settings/store-entries'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 

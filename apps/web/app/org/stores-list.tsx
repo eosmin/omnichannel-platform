@@ -127,28 +127,34 @@ function StoreRow({
       <div className="flex gap-1">
         {isMember ? (
           <Button asChild variant="outline" size="sm">
-            <Link href={AppPaths.store.settings(store.id)}>
+            <Link
+              href={AppPaths.store.settings(store.id)}
+              aria-label={`${t('settings')} ${store.name}`}
+            >
               <Settings aria-hidden />
               {t('settings')}
-              <span className="sr-only">{store.name}</span>
             </Link>
           </Button>
         ) : null}
-        <Button variant="outline" size="sm" onClick={() => setRenaming(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`${t('rename.action')} ${store.name}`}
+          onClick={() => setRenaming(true)}
+        >
           <Pencil aria-hidden />
           {t('rename.action')}
-          <span className="sr-only">{store.name}</span>
         </Button>
         <Button
           variant="outline"
           size="sm"
           disabled={isOnlyStore}
+          aria-label={`${t('delete.action')} ${store.name}`}
           title={isOnlyStore ? t('delete.lastStore') : undefined}
           onClick={askToDelete}
         >
           <Trash2 aria-hidden />
           {t('delete.action')}
-          <span className="sr-only">{store.name}</span>
         </Button>
       </div>
       {renaming ? <RenameDialog store={store} onClose={() => setRenaming(false)} /> : null}

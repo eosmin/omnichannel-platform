@@ -1,31 +1,14 @@
-import { AppPaths, StoreSettingsSections } from '@platform/api-client'
+import { AppPaths } from '@platform/api-client'
 import { type Permission, Permissions } from '@platform/core/auth'
 
-// One page of a settings area (TDD_09 §13). `permission` is what the api asks for the page's own
-// read; null is a page of the person's own account, which needs none. The list holds only pages that
-// exist: each later step adds its entry together with its page.
-export interface SettingsEntry {
-  id: string
-  // The key under settings.nav.<area>
-  labelKey: string
-  href: string
-  permission: Permission | null
-}
+import { type SettingsEntry, visibleEntries } from './store-entries'
+
+// The store pages live in their own module so that the store navigation, which every screen of the
+// store loads, does not carry the organization and account lists with it
+export { type SettingsEntry, storeSettingsEntries, visibleEntries } from './store-entries'
 
 export const SettingsAreas = { STORE: 'store', ORG: 'org', ACCOUNT: 'account' } as const
 export type SettingsArea = (typeof SettingsAreas)[keyof typeof SettingsAreas]
-
-export function storeSettingsEntries(storeId: string): SettingsEntry[] {
-  return [
-    {
-      id: StoreSettingsSections.GENERAL,
-      labelKey: 'general',
-      href: AppPaths.store.settings(storeId, StoreSettingsSections.GENERAL),
-      // The page reads and writes the store through organizations.storeById
-      permission: Permissions.ORG_MANAGE_STORES
-    }
-  ]
-}
 
 export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
@@ -58,15 +41,6 @@ export const ACCOUNT_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   },
   { id: 'security', labelKey: 'security', href: AppPaths.account.security, permission: null }
 ]
-
-// What the person may open. The api still decides every request: this only spares them a link that
-// ends in a refusal.
-export function visibleEntries(
-  entries: readonly SettingsEntry[],
-  can: (permission: Permission) => boolean
-): SettingsEntry[] {
-  return entries.filter(entry => entry.permission === null || can(entry.permission))
-}
 
 // The page to open when the area itself is opened ("/org", "/s/x/settings"): the first one the
 // person may see, or null when there is none

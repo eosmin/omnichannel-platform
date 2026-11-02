@@ -80,10 +80,15 @@ function SessionRow({ session }: { session: ActiveSession }): ReactElement {
         </div>
       </div>
       {session.current ? null : (
-        <Button variant="outline" size="sm" disabled={revoke.isPending} onClick={close}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={revoke.isPending}
+          aria-label={`${t('revoke')} ${title}`}
+          onClick={close}
+        >
           <LogOut aria-hidden />
           {t('revoke')}
-          <span className="sr-only">{title}</span>
         </Button>
       )}
     </li>

@@ -87,6 +87,7 @@ test.describe('the stores of the organization', () => {
 test.describe('the settings of a store follow the permissions', () => {
   test('a viewer has no settings entry and is told so on the page', async ({ page }) => {
     await signIn(page, VIEWER)
+    await page.waitForURL(/\/s\/[^/]+\/inbox/)
     const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1]
     expect(storeId).toBeDefined()
 
