@@ -7,12 +7,12 @@ import { CacheKeys } from '@platform/core/cache'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import {
-  assertMediaServable,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
+import { assertMediaServable } from '@platform/core/messaging'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
