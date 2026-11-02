@@ -10,6 +10,8 @@ import { StorageService } from '@platform/core/storage-module'
 export interface CsvSource {
   columns: readonly string[]
   rows: () => AsyncGenerator<CsvValue[]>
+  // How many rows `rows` will give, counted before the first is read, for the progress of the file
+  count: () => Promise<number>
 }
 
 @Injectable()
@@ -17,12 +19,17 @@ export class CsvExportWriter {
   constructor(private readonly storage: StorageService) {}
 
   // The file goes to the bucket as it is made. Nothing is left at the key when the source fails.
-  async write(key: string, source: CsvSource): Promise<{ rowCount: number }> {
+  async write(
+    key: string,
+    source: CsvSource,
+    onRow?: (done: number) => void
+  ): Promise<{ rowCount: number }> {
     let rowCount = 0
     async function* chunks(): AsyncGenerator<string> {
       yield csvHeader(source.columns)
       for await (const row of source.rows()) {
         rowCount += 1
+        onRow?.(rowCount)
         yield csvLine(row)
       }
     }

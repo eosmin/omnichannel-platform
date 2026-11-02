@@ -1317,6 +1317,14 @@
     "noAccess": "Your role cannot see exports.",
     "failed": "The exports could not be loaded.",
     "empty": "You have not asked for any export yet.",
+    "noMatch": "No export matches these filters.",
+    "progress": "Preparing {name}",
+    "filters": {
+      "type": "Kind",
+      "allTypes": "All kinds",
+      "status": "State",
+      "allStatuses": "All states"
+    },
     "loadMore": "Load more",
     "download": "Download",
     "downloadFile": "Download {name}",

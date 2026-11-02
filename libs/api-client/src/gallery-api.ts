@@ -12,8 +12,8 @@ const galleryTabSchema = z.enum([
   GalleryTypes.DOCUMENT
 ])
 
-// One file of the gallery. Never a link: the signed one is asked from `GET /media/:id` when the file
-// is opened or downloaded, because it lasts minutes.
+// One file of the gallery. The link to open or download it is asked from `GET /media/:id` when the
+// person does so, because it lasts minutes; only the small picture of an image comes with the list.
 export const galleryItemSchema = z.object({
   id: z.string(),
   // A type this page does not know (a newer server) has no tab: it is listed under "all" only
@@ -22,7 +22,9 @@ export const galleryItemSchema = z.object({
   contentType: z.string(),
   fileSizeBytes: z.number(),
   createdAt: z.string(),
-  channelType: z.string().nullable()
+  channelType: z.string().nullable(),
+  // The small picture of an image, signed for minutes; null when there is none (yet)
+  thumbUrl: z.string().nullable().catch(null)
 })
 export type GalleryItemView = z.output<typeof galleryItemSchema>
 

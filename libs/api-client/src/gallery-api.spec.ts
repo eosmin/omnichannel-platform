@@ -27,7 +27,8 @@ const item = {
   contentType: 'image/jpeg',
   fileSizeBytes: 10,
   createdAt: '2026-11-01T10:00:00.000Z',
-  channelType: 'whatsapp'
+  channelType: 'whatsapp',
+  thumbUrl: 'https://files.example.com/thumb.webp'
 }
 const counts = { all: 1, image: 1, video: 0, audio: 0, document: 0 }
 
@@ -44,6 +45,7 @@ describe('fetchCustomerMedia', () => {
       'cur'
     )
     expect(page.counts?.image).toBe(1)
+    expect(page.data[0]?.thumbUrl).toBe('https://files.example.com/thumb.webp')
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
     const parsed = new URL(url)
     expect(parsed.pathname).toBe('/api/v1/customers/c1/media')

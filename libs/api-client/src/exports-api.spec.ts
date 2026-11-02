@@ -26,21 +26,47 @@ const row = {
   status: 'ready',
   filename: 'files.zip',
   rowCount: 3,
+  progress: null,
   error: null,
   createdAt: '2026-11-01T10:00:00.000Z',
   completedAt: '2026-11-01T10:01:00.000Z',
   expiresAt: '2026-11-08T10:01:00.000Z'
 }
 
+const none = { type: null, status: null }
+
 describe('fetchExports', () => {
   it('asks the list in the store of the request, with the cursor when there is one', async () => {
     const { client, fetchImpl } = setup(json(200, { data: [row], nextCursor: 'c2', hasMore: true }))
-    const page = await fetchExports(client, 'store-1', 'c1')
+    const page = await fetchExports(client, 'store-1', none, 'c1')
     expect(page.data[0]?.id).toBe('e1')
     expect(page.nextCursor).toBe('c2')
     const [url, init] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe('https://api.example.com/api/v1/exports?cursor=c1')
     expect(new Headers(init?.headers).get(TenantHeaders.STORE_ID)).toBe('store-1')
+  })
+
+  it('sends the kind and the state the member narrowed to', async () => {
+    const { client, fetchImpl } = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
+    await fetchExports(client, 'store-1', { type: 'media_zip', status: 'pending' }, null)
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/exports?type=media_zip&status=pending'
+    )
+  })
+
+  it('reads the progress of a file being prepared, and takes a bad one for none', async () => {
+    const { client } = setup(
+      json(200, {
+        data: [
+          { ...row, status: 'pending', progress: 40 },
+          { ...row, id: 'e2', progress: 'x' }
+        ],
+        nextCursor: null,
+        hasMore: false
+      })
+    )
+    const page = await fetchExports(client, 'store-1', none, null)
+    expect(page.data.map(item => item.progress)).toEqual([40, null])
   })
 
   it('asks the first page with no query, and keeps a kind or state it does not know', async () => {
@@ -51,7 +77,7 @@ describe('fetchExports', () => {
         hasMore: false
       })
     )
-    const page = await fetchExports(client, 'store-1', null)
+    const page = await fetchExports(client, 'store-1', none, null)
     expect(page.data[0]?.type).toBe('invoices')
     expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://api.example.com/api/v1/exports')
   })

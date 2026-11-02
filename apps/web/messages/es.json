@@ -1317,6 +1317,14 @@
     "noAccess": "Tu rol no puede ver exportaciones.",
     "failed": "No se pudieron cargar las exportaciones.",
     "empty": "Todavía no pediste ninguna exportación.",
+    "noMatch": "Ninguna exportación coincide con estos filtros.",
+    "progress": "Preparando {name}",
+    "filters": {
+      "type": "Tipo",
+      "allTypes": "Todos los tipos",
+      "status": "Estado",
+      "allStatuses": "Todos los estados"
+    },
     "loadMore": "Cargar más",
     "download": "Descargar",
     "downloadFile": "Descargar {name}",

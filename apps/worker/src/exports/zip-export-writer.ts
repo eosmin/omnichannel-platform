@@ -31,7 +31,11 @@ export class ZipExportWriter {
   }
 
   // Nothing is left at the key when the source or a file fails. `rowCount` is the files in the ZIP.
-  async write(key: string, source: ZipSource): Promise<{ rowCount: number }> {
+  async write(
+    key: string,
+    source: ZipSource,
+    onFile?: (done: number) => void
+  ): Promise<{ rowCount: number }> {
     const zip = new ZipFile()
     // yazl hands out a PassThrough, typed as the bare NodeJS.ReadableStream interface
     const output = zip.outputStream as Readable
@@ -71,6 +75,7 @@ export class ZipExportWriter {
           })
           rowCount += 1
           await read
+          onFile?.(rowCount)
           current = null
         }
         // The member must be able to tell that the ZIP holds fewer files than the gallery showed

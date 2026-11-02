@@ -10,6 +10,7 @@ const row = {
   status: ExportStatus.READY,
   key: 'stores/s/exports/e1/customers-2026-11-01.csv',
   rowCount: 3,
+  progress: null,
   error: null,
   createdAt: new Date('2026-11-01T10:00:00.000Z'),
   completedAt: new Date('2026-11-01T10:01:00.000Z'),
@@ -28,6 +29,13 @@ describe('exportView', () => {
       exportView({ ...row, expiresAt: new Date('2026-11-01T11:59:59.000Z') }, now).status
     ).toBe(ExportStatus.EXPIRED)
     expect(exportView(row, now).status).toBe(ExportStatus.READY)
+  })
+
+  it('shows the progress only while the file is being prepared', () => {
+    const pending = { ...row, status: ExportStatus.PENDING, key: null, progress: 40 }
+    expect(exportView(pending, now).progress).toBe(40)
+    expect(exportView({ ...pending, status: ExportStatus.FAILED }, now).progress).toBeNull()
+    expect(exportView({ ...row, progress: 99 }, now).progress).toBeNull()
   })
 
   it('has no file name while the file is not made', () => {

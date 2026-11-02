@@ -20,6 +20,9 @@ import type { GalleryType } from '@platform/core/storage'
 
 import { apiClient } from '../api'
 
+// Below the life of a signed link (5 minutes)
+const THUMB_STALE_MS = 2 * 60_000
+
 // The files of a customer under a tab and a search, a page at a time. The counts of the tabs come
 // with the first page only; `countsOf` keeps them.
 export function useGallery(
@@ -33,7 +36,11 @@ export function useGallery(
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       fetchCustomerMedia(apiClient, storeId, customerId, { type, q }, pageParam, signal),
-    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined)
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    // The small pictures come signed for a few minutes: a list kept longer asks again, and so does
+    // coming back to the window
+    staleTime: THUMB_STALE_MS,
+    refetchOnWindowFocus: true
   })
 }
 

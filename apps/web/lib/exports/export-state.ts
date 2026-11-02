@@ -41,3 +41,30 @@ export const ExportPermissions: readonly Permission[] = [
 export function mayOpenExports(can: (permission: Permission) => boolean): boolean {
   return ExportPermissions.some(permission => can(permission))
 }
+
+// The kinds the center can be narrowed to: the ones this version makes. A row of any other kind still
+// draws (under "Other") when no filter is on.
+export const FILTERABLE_TYPES: readonly ExportType[] = [
+  ExportTypes.CONVERSATIONS,
+  ExportTypes.CUSTOMERS,
+  ExportTypes.MEDIA_ZIP
+]
+
+export const FILTERABLE_STATUSES: readonly ExportStatusType[] = [
+  ExportStatus.PENDING,
+  ExportStatus.READY,
+  ExportStatus.FAILED,
+  ExportStatus.EXPIRED
+]
+
+// The value of a select that names no kind or no state
+export const ALL_EXPORTS = ''
+
+// The kind a select holds, or null for "all" and for a value this page does not offer
+export function exportTypeFilter(value: string): ExportType | null {
+  return FILTERABLE_TYPES.find(type => type === value) ?? null
+}
+
+export function exportStatusFilter(value: string): ExportStatusType | null {
+  return FILTERABLE_STATUSES.find(status => status === value) ?? null
+}
