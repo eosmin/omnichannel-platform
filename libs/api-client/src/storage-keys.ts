@@ -3,7 +3,8 @@ export const StorageKeys = {
   LAST_STORE_ID: 'platform_last_store_id', // "/" redirects to the last store (TDD_09 §12)
   SIDEBAR_COLLAPSED: 'platform_sidebar_collapsed',
   SIDEBAR_WIDGETS: 'platform_sidebar_widgets',
-  PENDING_MESSAGES: 'platform_pending_messages' // The offline send queue (TDD_06 §4)
+  PENDING_MESSAGES: 'platform_pending_messages', // The offline send queue (TDD_06 §4)
+  PUSH_OFFERED: 'platform_push_offered' // The push prompt was shown in this browser (TDD_06 §7.3)
 } as const
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys]
 

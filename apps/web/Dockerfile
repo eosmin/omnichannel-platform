@@ -4,7 +4,9 @@
 #     --build-arg NEXT_PUBLIC_API_URL=https://api.example.com \
 #     --build-arg NEXT_PUBLIC_WS_URL=https://api.example.com \
 #     --build-arg NEXT_PUBLIC_STORAGE_URL=https://files.example.com \
-#     --build-arg NEXT_PUBLIC_WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js .
+#     --build-arg NEXT_PUBLIC_WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js \
+#     --build-arg NEXT_PUBLIC_VAPID_PUBLIC_KEY=<the public key of the VAPID pair> .
+# The VAPID key is optional: without it the interface never offers web push.
 
 # Same Node.js and the same Debian/Alpine split as docker/node-service.Dockerfile
 ARG BUILD_IMAGE=node:24.20.0-bookworm-slim
@@ -17,10 +19,12 @@ ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
 ARG NEXT_PUBLIC_STORAGE_URL
 ARG NEXT_PUBLIC_WIDGET_SCRIPT_URL
+ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL \
     NEXT_PUBLIC_STORAGE_URL=$NEXT_PUBLIC_STORAGE_URL \
     NEXT_PUBLIC_WIDGET_SCRIPT_URL=$NEXT_PUBLIC_WIDGET_SCRIPT_URL \
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY \
     NX_DAEMON=false CI=true HUSKY=0 NEXT_TELEMETRY_DISABLED=1
 WORKDIR /repo
 RUN corepack enable

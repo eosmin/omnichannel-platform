@@ -40,8 +40,10 @@ export function proxy(request: NextRequest): NextResponse {
 export const config = {
   matcher: [
     {
-      // Pages only: not the static files, the image optimizer or a prefetch of next/link
-      source: '/((?!_next/static|_next/image|favicon.ico).*)',
+      // Pages only: not the static files, the image optimizer, the service worker (/serwist/sw.js and its map, which
+      // a browser fetches with no page around it) or a prefetch of next/link. A matcher must be a
+      // literal, so the path is written here and not read from lib/push.
+      source: '/((?!_next/static|_next/image|favicon.ico|serwist/sw\\.js).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' }

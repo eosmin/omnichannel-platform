@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 
-import { proxy } from './proxy'
+import { config, proxy } from './proxy'
 
 jest.mock('./lib/env', () => ({
   isDevelopment: false,
@@ -68,5 +68,16 @@ describe('proxy', () => {
       new NextRequest('https://app.example.com/', { headers: { cookie: 'platform_refresh=token' } })
     )
     expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/login')
+  })
+
+  it('leaves the service worker out of what it runs on, so its fetch is never sent to the login', () => {
+    const first = config.matcher[0]
+    const pattern = new RegExp(`^${first?.source ?? ''}$`)
+    expect(pattern.test('/serwist/sw.js')).toBe(false)
+    expect(pattern.test('/serwist/sw.js.map')).toBe(false)
+    // Only the worker is left out, not whatever else sits under the same prefix
+    expect(pattern.test('/serwist/other')).toBe(true)
+    expect(pattern.test('/serwist-x')).toBe(true)
+    expect(pattern.test('/s/abc/inbox')).toBe(true)
   })
 })

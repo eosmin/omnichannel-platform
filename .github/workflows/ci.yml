@@ -284,6 +284,7 @@ jobs:
               NEXT_PUBLIC_WS_URL=https://api.example.com
               NEXT_PUBLIC_STORAGE_URL=https://files.example.com
               NEXT_PUBLIC_WIDGET_SCRIPT_URL=https://cdn.example.com/widget.js
+              NEXT_PUBLIC_VAPID_PUBLIC_KEY=BPJNI2b9XNUaMZdiMw-lw1t8o9c5IKKEydv4knzKkzklkUoVSQUsoRa2VLL7zfUv1NFEL891XQZ1zv8YSckI_k8
     # Only for the check that the image starts and answers
     services:
       postgres:
@@ -398,6 +399,12 @@ jobs:
           curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-connrefused \
             --dump-header "$RUNNER_TEMP/headers.txt" --output /dev/null http://localhost:3000/login
           grep --ignore-case --quiet "^content-security-policy:.*script-src[^;]*'nonce-" "$RUNNER_TEMP/headers.txt"
+          # The service worker of web push is built into the image at build time (the runtime image
+          # has no esbuild) and must reach the whole origin, with no session and no login redirect
+          curl --fail --silent --show-error --dump-header "$RUNNER_TEMP/sw-headers.txt" \
+            --output "$RUNNER_TEMP/sw.js" http://localhost:3000/serwist/sw.js
+          grep --ignore-case --quiet '^service-worker-allowed: /' "$RUNNER_TEMP/sw-headers.txt"
+          grep --quiet 'notificationclick' "$RUNNER_TEMP/sw.js"
       - name: Service log
         if: failure()
         run: docker logs service

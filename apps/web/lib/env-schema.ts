@@ -8,7 +8,11 @@ export const webEnvSchema = z.object({
   NEXT_PUBLIC_WS_URL: z.url({ protocol: /^(https?|wss?)$/ }),
   // The bucket host the browser uploads to and draws files from (signed urls): it joins the CSP
   NEXT_PUBLIC_STORAGE_URL: z.url({ protocol: /^https?$/ }),
-  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
+  // The Docker build always sets the variable: an empty one means no key, as an absent one does
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z
+    .string()
+    .optional()
+    .transform(value => (value === '' ? undefined : value)),
   NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
   NEXT_PUBLIC_WIDGET_SCRIPT_URL: z.url()
 })

@@ -1,4 +1,4 @@
-import { DigestFrequency, NotificationChannel } from '../index'
+import { DigestFrequency, NotificationChannel } from '../status-enums'
 
 export const NotificationTypes = {
   CONVERSATION_ASSIGNED: 'conversation.assigned',
