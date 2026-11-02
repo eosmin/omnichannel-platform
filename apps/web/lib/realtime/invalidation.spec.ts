@@ -91,14 +91,21 @@ describe('queryKeysForEvent', () => {
 })
 
 describe('queryKeysAfterReconnect', () => {
-  it('covers the list, every thread, the presence and the notifications', () => {
+  it('refreshes the exports center when an export of the person settles', () => {
+    expect(queryKeysForEvent(RealtimeEvents.EXPORT_UPDATED, { exportId: 'e1' }, 's1')).toEqual([
+      QueryKeys.exports.all('s1')
+    ])
+  })
+
+  it('covers the list, every thread, the presence, the notifications and the exports', () => {
     const keys = queryKeysAfterReconnect('s1')
     expect(keys).toEqual(
       expect.arrayContaining([
         QueryKeys.conversations.all('s1'),
         QueryKeys.messages.all('s1'),
         QueryKeys.customers.all('s1'),
-        QueryKeys.presence.team('s1')
+        QueryKeys.presence.team('s1'),
+        QueryKeys.exports.all('s1')
       ])
     )
     // A thread key sits under messages.all, so one invalidation reaches every thread

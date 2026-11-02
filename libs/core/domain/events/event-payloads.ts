@@ -203,6 +203,15 @@ export interface CustomerTypingPayload {
   conversationId: string
 }
 
+// An export that settled, ready or failed: ids and the kind only. The file name and the path are read
+// from the row when the notification is made, so nothing about the file crosses the bridge.
+export interface ExportSettledPayload {
+  storeId: string
+  exportId: string
+  requestedBy: string
+  exportType: string
+}
+
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name
 // and checks the payload against this map
 
@@ -229,6 +238,8 @@ export interface DomainEventPayloads {
   [Events.MEDIA_INFECTED]: MessageChangedPayload
   [Events.MEDIA_UNAVAILABLE]: MessageChangedPayload
   [Events.MESSAGE_MENTION]: MessageMentionPayload
+  [Events.EXPORT_READY]: ExportSettledPayload
+  [Events.EXPORT_FAILED]: ExportSettledPayload
   [Events.CUSTOMER_CREATED]: CustomerCreatedPayload
   [Events.CUSTOMER_UPDATED]: CustomerUpdatedPayload
   [Events.CUSTOMER_MERGED]: CustomerMergedPayload

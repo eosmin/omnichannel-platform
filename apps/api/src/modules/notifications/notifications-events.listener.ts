@@ -4,12 +4,14 @@ import { OnEvent } from '@nestjs/event-emitter'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { AppPaths } from '@platform/core/domain'
+import { AppPaths, MembershipStatus } from '@platform/core/domain'
 import {
+  type ExportSettledPayload,
   Events,
   type MessageChangedPayload,
   type MessageMentionPayload
 } from '@platform/core/events'
+import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/core/exports'
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { NotificationTypes } from '@platform/core/notifications'
 
@@ -99,6 +101,68 @@ export class NotificationsEventsListener {
       )
     } catch (error) {
       this.logger.error({ messageId, err: String(error) }, 'an infected file could not be notified')
+    }
+  }
+
+  @OnEvent(Events.EXPORT_READY)
+  async onExportReady(payload: ExportSettledPayload): Promise<void> {
+    await this.notifyExport(payload, NotificationTypes.EXPORT_READY)
+  }
+
+  @OnEvent(Events.EXPORT_FAILED)
+  async onExportFailed(payload: ExportSettledPayload): Promise<void> {
+    await this.notifyExport(payload, NotificationTypes.EXPORT_FAILED)
+  }
+
+  // Only to who asked for it, and only while they are an active member whose role still makes this
+  // kind of export: the center would show them nothing else (an export is personal data, and a row
+  // of a kind the role lost is a 404 there). The state is read from the row, not trusted from the event.
+  private async notifyExport(
+    payload: ExportSettledPayload,
+    type: typeof NotificationTypes.EXPORT_READY | typeof NotificationTypes.EXPORT_FAILED
+  ): Promise<void> {
+    const { storeId, exportId, requestedBy, exportType } = payload
+    try {
+      const needed = ExportTypePermissions[exportType as ExportType]
+      if (needed === undefined) {
+        this.logger.warn(
+          { exportId, exportType },
+          'an export of a kind nobody may see was not notified'
+        )
+        return
+      }
+      const row = await this.prisma.client.export.findFirst({
+        where: { id: exportId, storeId, requestedBy },
+        select: { status: true, key: true }
+      })
+      const expected =
+        type === NotificationTypes.EXPORT_READY ? ExportStatus.READY : ExportStatus.FAILED
+      if (row === null || row.status !== expected) return
+      const member = await this.prisma.client.membership.count({
+        where: {
+          userId: requestedBy,
+          storeId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          AND: needed.map(name => ({ role: { permissions: { some: { name } } } }))
+        }
+      })
+      if (member === 0) return
+      const filename = row.key?.split('/').pop() ?? ''
+      await this.notifications.send({
+        userId: requestedBy,
+        storeId,
+        type,
+        params:
+          type === NotificationTypes.EXPORT_READY
+            ? { filename, type: exportType }
+            : { type: exportType },
+        resourceType: 'export',
+        resourceId: exportId,
+        actionPath: AppPaths.store.exports(storeId)
+      })
+    } catch (error) {
+      this.logger.error({ exportId, err: String(error) }, 'an export could not be notified')
     }
   }
 }

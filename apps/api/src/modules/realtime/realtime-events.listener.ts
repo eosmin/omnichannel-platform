@@ -10,6 +10,7 @@ import {
   type ConversationStatusChangedPayload,
   type ConversationVisibility,
   Events,
+  type ExportSettledPayload,
   type MessageChangedPayload,
   type MessageFailedPayload,
   type MessageNoteAddedPayload,
@@ -135,6 +136,16 @@ export class RealtimeEventsListener {
     this.realtime.toStoreUser(payload.storeId, payload.userId, RealtimeEvents.CONVERSATION_UNREAD, {
       conversationId: payload.conversationId,
       userId: payload.userId
+    })
+  }
+
+  // An export is the requester's alone: their tabs of this store re-read the center, nobody else's.
+  // The id only; the page asks the api for the row, which applies the permissions of the kind.
+  @OnEvent(Events.EXPORT_READY)
+  @OnEvent(Events.EXPORT_FAILED)
+  onExportSettled(payload: ExportSettledPayload): void {
+    this.realtime.toStoreUser(payload.storeId, payload.requestedBy, RealtimeEvents.EXPORT_UPDATED, {
+      exportId: payload.exportId
     })
   }
 

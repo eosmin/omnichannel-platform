@@ -1,7 +1,6 @@
 import {
   exportStatusKey,
   exportTypeKey,
-  hasPendingExport,
   isExportReady,
   mayOpenExports,
   UNKNOWN_EXPORT_LABEL
@@ -27,11 +26,5 @@ describe('export state', () => {
   it('opens the center for who may make any one kind of export', () => {
     expect(mayOpenExports(permission => permission === 'media:download_all')).toBe(true)
     expect(mayOpenExports(() => false)).toBe(false)
-  })
-
-  it('polls only while one export is pending', () => {
-    expect(hasPendingExport([{ status: 'ready' }, { status: 'pending' }])).toBe(true)
-    expect(hasPendingExport([{ status: 'ready' }, { status: 'failed' }])).toBe(false)
-    expect(hasPendingExport([])).toBe(false)
   })
 })

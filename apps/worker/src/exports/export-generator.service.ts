@@ -6,6 +6,8 @@ import { errorName } from '@platform/channels/connections'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import { ErrorCodes } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import { ExportFileExtensions } from '@platform/core/exports'
 import {
   conversationsExportFiltersSchema,
@@ -24,8 +26,11 @@ import { StorageService } from '@platform/core/storage-module'
 import { conversationsExportSource } from './conversations-export.source'
 import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
+import { publishExportSettled } from './export-settled'
 import { mediaZipSource, ZipEmptyError, ZipTooLargeError } from './media-zip-export.source'
 import { ZipExportWriter } from './zip-export-writer'
+
+type ExportRow = NonNullable<Awaited<ReturnType<PrismaService['client']['export']['findUnique']>>>
 
 // How a kind of export is written: the extension of its file and the call that writes it at a key
 interface ExportPlan {
@@ -43,6 +48,7 @@ export class ExportGenerator {
     private readonly zipWriter: ZipExportWriter,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
+    private readonly events: DomainEvents,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(ExportGenerator.name)
@@ -55,7 +61,7 @@ export class ExportGenerator {
 
     const plan = this.planOf(row.type, row.storeId, row.filters)
     if (plan === null) {
-      await this.fail(exportId, row.storeId)
+      await this.fail(row)
       throw new UnrecoverableError('the export row does not fit its kind')
     }
 
@@ -81,18 +87,19 @@ export class ExportGenerator {
         resourceId: row.id,
         metadata: { type: row.type, format: row.format, rowCount, filters: row.filters ?? {} }
       })
+      await this.announce(Events.EXPORT_READY, row)
     } catch (error) {
       this.logger.error({ exportId, errorName: errorName(error) }, 'an export could not be written')
       if (error instanceof ZipTooLargeError || error instanceof ZipEmptyError) {
         // Trying again finds the same files
         const code =
           error instanceof ZipTooLargeError ? ErrorCodes.EXPORT_TOO_LARGE : ErrorCodes.EXPORT_EMPTY
-        await this.fail(exportId, row.storeId, code)
+        await this.fail(row, code)
         await this.discard(key)
         throw new UnrecoverableError(error.message)
       }
       if (lastAttempt) {
-        await this.fail(exportId, row.storeId)
+        await this.fail(row)
         await this.discard(key)
       }
       throw error
@@ -132,18 +139,32 @@ export class ExportGenerator {
     })
   }
 
-  private async fail(
-    exportId: string,
-    storeId: string,
-    code: string = ErrorCodes.EXPORT_FAILED
-  ): Promise<void> {
-    await this.prisma.client.export.updateMany({
-      where: { id: exportId, storeId, status: ExportStatus.PENDING },
+  // Marks the row failed and tells its owner, only if this call is the one that settled it
+  private async fail(row: ExportRow, code: string = ErrorCodes.EXPORT_FAILED): Promise<void> {
+    const settled = await this.prisma.client.export.updateMany({
+      where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
       data: {
         status: ExportStatus.FAILED,
         error: code,
         completedAt: new Date()
       }
     })
+    if (settled.count > 0) await this.announce(Events.EXPORT_FAILED, row)
+  }
+
+  // Ids and the kind only. The row is already settled, a retry would not announce it again, so a
+  // failure here is logged and must not fail the job: the center shows the state when it is opened.
+  private async announce(
+    event: typeof Events.EXPORT_READY | typeof Events.EXPORT_FAILED,
+    row: ExportRow
+  ): Promise<void> {
+    try {
+      await publishExportSettled(this.prisma, this.events, event, row)
+    } catch (error) {
+      this.logger.warn(
+        { exportId: row.id, errorName: errorName(error) },
+        'an export was not announced'
+      )
+    }
   }
 }

@@ -51,6 +51,8 @@ export const RealtimeEvents = {
   BULK_LABELS_DONE: 'bulk_labels.done',
 
   NOTIFICATION: 'notification',
+  // An export of the person turned ready or failed: its id only, the page reads the row
+  EXPORT_UPDATED: 'export.updated',
 
   // Client -> server
   HEARTBEAT: 'heartbeat',
@@ -148,6 +150,7 @@ export interface RealtimeEventMap {
   }
 
   [RealtimeEvents.NOTIFICATION]: NotificationRealtimePayload
+  [RealtimeEvents.EXPORT_UPDATED]: { exportId: string }
 
   // active: the user did something (typed, navigated) since the last one, so presence stays online
   // instead of turning away. The socket alone only proves the tab is open.
