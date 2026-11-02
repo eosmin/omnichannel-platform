@@ -71,6 +71,9 @@ export const QueryKeys = {
   },
   notifications: {
     list: (storeId: string) => ['notifications', storeId] as const,
+    // One tab of the center; under `list`, so the event that refreshes `list` refreshes every tab
+    filtered: (storeId: string, filter: string) =>
+      ['notifications', storeId, 'list', filter] as const,
     unread: (storeId: string) => ['notifications', storeId, 'unread'] as const
   },
 

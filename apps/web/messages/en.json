@@ -566,6 +566,10 @@
         "title": "A webhook was turned off",
         "body": "A webhook failed too many times and was disabled."
       }
+    },
+    "unknown": {
+      "title": "New notification",
+      "body": "Open it to see the details."
     }
   },
   "orders": {
@@ -618,6 +622,28 @@
       "inbox": "Inbox",
       "customers": "Customers",
       "exports": "Exports"
+    },
+    "notifications": {
+      "open": "Notifications",
+      "openWithCount": "Notifications, {count} unread",
+      "title": "Notifications",
+      "description": "What happened in this store that needs you.",
+      "markAllRead": "Mark all read",
+      "tabs": {
+        "label": "Filter notifications",
+        "all": "All",
+        "unread": "Unread",
+        "mentions": "Mentions"
+      },
+      "empty": {
+        "all": "You have no notifications.",
+        "unread": "Nothing unread.",
+        "mentions": "No one has mentioned you."
+      },
+      "failed": "The notifications could not be loaded.",
+      "markFailed": "The notification could not be marked as read.",
+      "loadMore": "Load more",
+      "unreadDot": "Unread"
     }
   },
   "inbox": {

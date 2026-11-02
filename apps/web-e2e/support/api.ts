@@ -63,7 +63,8 @@ export async function writeNote(
   token: string,
   storeId: string,
   conversationId: string,
-  content: string
+  content: string,
+  mentions: readonly string[] = []
 ): Promise<void> {
   await call(ApiRoutes.messages.create, {
     method: 'POST',
@@ -72,6 +73,7 @@ export async function writeNote(
       type: 'INTERNAL_NOTE',
       conversationId,
       content,
+      mentions,
       idempotencyKey: crypto.randomUUID()
     })
   })

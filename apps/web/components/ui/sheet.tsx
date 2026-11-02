@@ -4,6 +4,7 @@ import type { ComponentProps, ReactElement } from 'react'
 import { cn } from '../../lib/utils'
 
 export const Sheet = DialogPrimitive.Root
+export const SheetTrigger = DialogPrimitive.Trigger
 export const SheetClose = DialogPrimitive.Close
 
 // A panel that slides over the right side of the page (the customer profile of TDD_09 §6): it takes

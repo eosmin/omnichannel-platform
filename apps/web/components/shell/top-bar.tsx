@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react'
 
 import type { AccountProfile } from '@platform/api-client'
 
+import { NotificationCenter } from './notification-center'
 import { StoreSwitcher } from './store-switcher'
 import { UserMenu } from './user-menu'
 
@@ -26,6 +27,7 @@ export function TopBar({
       <StoreSwitcher memberships={profile.memberships} currentStoreId={currentStoreId} />
       {nav}
       <div className="flex-1" />
+      {currentStoreId !== null && <NotificationCenter storeId={currentStoreId} />}
       <UserMenu name={profile.name} email={profile.email} />
     </header>
   )
