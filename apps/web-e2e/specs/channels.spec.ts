@@ -69,7 +69,7 @@ test.describe('Settings → Channels and Plugins', () => {
     ).toBeVisible()
     const preChat = card.getByLabel(channels.widget.preChat.label)
     await expect(preChat).not.toBeChecked()
-    await preChat.check()
+    await preChat.click()
     await expect(preChat).toBeChecked()
 
     const secondHost = `https://second-${host}`
