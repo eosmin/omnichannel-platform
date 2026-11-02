@@ -189,6 +189,9 @@ test.describe('customer merge and identities', () => {
 
     await profile.getByLabel(en.customers.edit.note.label).fill(note)
     await profile.getByRole('button', { name: en.customers.edit.note.add }).click()
+    // The box empties only when the api has saved the note. `getByText(note)` alone is not enough:
+    // React copies the typed text into the textarea's own text, so it matches before anything is saved
+    await expect(profile.getByLabel(en.customers.edit.note.label, { exact: true })).toHaveValue('')
     await expect(profile.getByText(note)).toBeVisible()
 
     expect(await savedProfileOf(customerId)).toEqual({
