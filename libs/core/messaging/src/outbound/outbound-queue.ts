@@ -5,6 +5,7 @@ import type { Queue } from 'bullmq'
 import {
   JobNames,
   QueueNames,
+  type SendOutboundCaptionJob,
   type SendOutboundDeleteJob,
   type SendOutboundEditJob,
   type SendOutboundMessageJob,
@@ -19,6 +20,7 @@ export type OutboundQueueJob =
   | SendOutboundReactionJob
   | SendOutboundEditJob
   | SendOutboundDeleteJob
+  | SendOutboundCaptionJob
   | SendOutboundReadReceiptJob
   | SendOutboundTypingJob
 
@@ -43,6 +45,10 @@ export function editJobId(job: SendOutboundEditJob): string {
 
 export function deleteJobId(job: SendOutboundDeleteJob): string {
   return `delete-${job.messageId}-${job.version}`
+}
+
+export function captionJobId(job: SendOutboundCaptionJob): string {
+  return `caption-${job.messageId}-${job.version}`
 }
 
 // One job for each message read up to: reading the same thread again changes nothing, and a newer
@@ -112,6 +118,15 @@ export class OutboundQueue {
 
   async enqueueDelete(job: SendOutboundDeleteJob): Promise<void> {
     await this.queue.add(JobNames.SEND_OUTBOUND_DELETE, job, { jobId: deleteJobId(job) })
+  }
+
+  async enqueueCaption(job: SendOutboundCaptionJob): Promise<void> {
+    await this.queue.add(JobNames.SEND_OUTBOUND_CAPTION, job, { jobId: captionJobId(job) })
+  }
+
+  async requeueCaption(job: SendOutboundCaptionJob): Promise<void> {
+    await this.removeFinished(captionJobId(job))
+    await this.enqueueCaption(job)
   }
 
   // The same as `requeue` for an edit or a deletion that is still `queued` long after it was asked

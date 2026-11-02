@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
+import { z } from 'zod'
 
 import {
   CONNECTION_ROW_SELECT,
@@ -9,6 +10,7 @@ import {
 } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
 import {
+  CaptionState,
   ChannelConnectionStatus,
   DeliveryStatus,
   isInstallationActive,
@@ -16,16 +18,23 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { enumValueOf } from '@platform/core/messaging'
-import type { SendOutboundDeleteJob, SendOutboundEditJob } from '@platform/core/queues'
+import type {
+  SendOutboundCaptionJob,
+  SendOutboundDeleteJob,
+  SendOutboundEditJob
+} from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import type { ChannelContext, ChannelPlugin } from '@platform/plugins/sdk'
+import { type ChannelContext, type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
-import { MessageChangeStatusWriter } from './message-change-status.writer'
+import { MessageChangeStatusWriter, type CaptionSettlement } from './message-change-status.writer'
 import { refusalOf, SendAttemptFailed } from './send-refusal'
 
 const MESSAGE_SELECT = {
   channelMessageId: true,
   deletedAt: true,
+  version: true,
+  content: true,
+  captionState: true,
   pendingContent: true,
   editStatus: true,
   deleteStatus: true,
@@ -46,6 +55,9 @@ const MESSAGE_SELECT = {
 type Prepared =
   | { plugin: ChannelPlugin; ctx: ChannelContext; channelIdentity: string; externalId: string }
   | { refusedWith: ErrorCode }
+
+// What the channel answered to a text sent again: its id, or nothing usable
+const captionResultSchema = z.object({ externalId: z.string().min(1).max(255) })
 
 // The worker half of an agent's edit or deletion of a message the customer has: reads the request as
 // it stands now, asks the plugin of the channel, and settles it as taken or refused so that the thread
@@ -112,6 +124,87 @@ export class MessageChangeSender {
     )
   }
 
+  // The text under a file that an agent asked to send again, as a message of its own. Nothing is read
+  // from the provider's side to make the second call safe (Meta has no idempotency key), so a call that may
+  // have gone out is never repeated here: it ends `unconfirmed`, and the echo of the owner settles it.
+  async sendCaption(job: SendOutboundCaptionJob, isLastAttempt: boolean): Promise<void> {
+    const { storeId, messageId } = job
+    const message = await this.read(storeId, messageId)
+    // Not waiting, or waiting for a newer request than this job's: a late job sends nothing
+    if (
+      message === null ||
+      message.captionState !== CaptionState.QUEUED ||
+      message.version !== job.version
+    ) {
+      return
+    }
+    const settle = (outcome: CaptionSettlement['outcome']): Promise<void> =>
+      this.settleCaption({ storeId, messageId, version: job.version, outcome })
+    const content = message.content
+    // Nothing to send any more (deleted, or the text is gone): the request ends without a call
+    if (message.deletedAt !== null || content === null || content === '') {
+      return settle({ state: CaptionState.FAILED })
+    }
+    const prepared = this.prepare(message, 'sendMessage', isLastAttempt)
+    // Nothing was sent: the text is where it was
+    if ('refusedWith' in prepared) return settle({ state: CaptionState.FAILED })
+    let externalId: string
+    try {
+      const answer = await withTimeout(
+        prepared.plugin.sendMessage(prepared.ctx, {
+          channelIdentity: prepared.channelIdentity,
+          content,
+          idempotencyKey: `caption-${messageId}-${job.version}`
+        }),
+        OutboundLimits.SEND_TIMEOUT_MS
+      )
+      const parsed = captionResultSchema.safeParse(answer)
+      // A 2xx the core cannot read may still have delivered the text
+      if (!parsed.success) return settle({ state: CaptionState.UNCONFIRMED })
+      externalId = parsed.data.externalId
+    } catch (error) {
+      const refused = refusalOf(error)
+      // A refusal of the provider did not deliver the text; a timeout, a 5xx or any other error may have
+      const outcomeUnknown = !(error instanceof PluginError) || error.outcomeUnknown
+      this.logger.warn(
+        {
+          pluginId: prepared.plugin.id,
+          messageId,
+          code: refused.code,
+          errorName: errorName(error)
+        },
+        'sending the text under a file failed'
+      )
+      if (!outcomeUnknown && refused.retryable && !isLastAttempt) {
+        throw new SendAttemptFailed(refused.code, error, 'a caption')
+      }
+      return settle({ state: outcomeUnknown ? CaptionState.UNCONFIRMED : CaptionState.FAILED })
+    }
+    return settle({ state: CaptionState.SENT, externalId })
+  }
+
+  // Once the call was made, a write that fails is tried a few times and never makes the job call the
+  // provider a second time: if it still fails, the state stays `queued` and the sweep marks it
+  // `unconfirmed`, which says to check the chat
+  private async settleCaption(settlement: CaptionSettlement): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.status.settleCaption(settlement)
+      } catch (error) {
+        if (attempt >= OutboundLimits.WRITE_ATTEMPTS) {
+          this.logger.error(
+            { messageId: settlement.messageId, errorName: errorName(error) },
+            'the state of the text under a file was not written; the sweep marks it unconfirmed'
+          )
+          return
+        }
+        await new Promise(resolve =>
+          setTimeout(resolve, OutboundLimits.WRITE_RETRY_DELAY_MS * attempt)
+        )
+      }
+    }
+  }
+
   private read(storeId: string, messageId: string) {
     return this.prisma.client.message.findFirst({
       where: { id: messageId, storeId },
@@ -121,7 +214,7 @@ export class MessageChangeSender {
 
   private prepare(
     message: NonNullable<Awaited<ReturnType<MessageChangeSender['read']>>>,
-    method: 'editMessage' | 'deleteMessage',
+    method: 'editMessage' | 'deleteMessage' | 'sendMessage',
     isLastAttempt: boolean
   ): Prepared {
     if (message.channelMessageId === null) return { refusedWith: ErrorCodes.CHANNEL_MESSAGE_FAILED }

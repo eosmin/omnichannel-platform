@@ -114,6 +114,7 @@ describe('messageActionsOf', () => {
       edit: false,
       remove: false,
       resend: false,
+      resendCaption: false,
       viewDeleted: false,
       revisions: false
     })
@@ -136,6 +137,7 @@ describe('messageActionsOf', () => {
       edit: true,
       remove: true,
       resend: false,
+      resendCaption: false,
       viewDeleted: false,
       revisions: false
     })
@@ -187,5 +189,36 @@ describe('messageActionsOf', () => {
     expect(
       messageActionsOf(template, viewer([...AGENT, Permissions.MESSAGES_SEND_TEMPLATE])).resend
     ).toBe(true)
+  })
+
+  describe('the text under a file', () => {
+    const file = (captionState: MessageView['captionState']): MessageView =>
+      message({ type: 'IMAGE', captionState })
+
+    it.each(['failed', 'unconfirmed'] as const)('can be sent again when it is %s', state => {
+      const actions = messageActionsOf(file(state), viewer(AGENT, ALL_CAPABILITIES))
+      expect(actions.resendCaption).toBe(true)
+      // The button lives in the bubble: it alone does not open the bar
+      expect(hasAnyAction({ ...actions, react: false, remove: false })).toBe(false)
+      expect(hasAnyAction({ ...actions, react: false, remove: false, resendCaption: true })).toBe(
+        false
+      )
+    })
+
+    it.each([null, 'queued'] as const)('cannot be sent again when it is %j', state => {
+      expect(messageActionsOf(file(state), viewer(AGENT, ALL_CAPABILITIES)).resendCaption).toBe(
+        false
+      )
+    })
+
+    it('is not offered to who may not send', () => {
+      expect(
+        messageActionsOf(file('failed'), viewer([Permissions.MESSAGES_VIEW])).resendCaption
+      ).toBe(false)
+    })
+
+    it('leaves the message alone from the moment it is queued: it cannot be deleted', () => {
+      expect(messageActionsOf(file('queued'), viewer(AGENT, ALL_CAPABILITIES)).remove).toBe(false)
+    })
   })
 })

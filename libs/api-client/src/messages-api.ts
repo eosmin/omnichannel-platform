@@ -104,6 +104,20 @@ export function resendMessage(
   })
 }
 
+// "Send the text again" on a file whose caption failed or may not have gone: only the text is sent, and the
+// message comes back with its caption queued
+export function resendCaption(
+  client: ApiClient,
+  storeId: string,
+  messageId: string
+): Promise<MessageView> {
+  return client.request(ApiRoutes.messages.resendCaption(messageId), {
+    method: 'POST',
+    schema: messageSchema,
+    storeId
+  })
+}
+
 // The reaction of the caller: an emoji sets it, null takes it back. The answer is 204.
 export function reactToMessage(
   client: ApiClient,

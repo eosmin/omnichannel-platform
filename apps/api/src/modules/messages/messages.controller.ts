@@ -107,6 +107,20 @@ export class MessagesController {
     return this.messages.resend(store.id, messageId, viewerOf(user.id, held))
   }
 
+  // "Send the text again" on a file whose caption failed or may not have gone. Only the text goes back to
+  // the channel; the answer is the message with the caption `queued`.
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @Post(ApiRoutes.messages.resendCaption(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  resendCaption(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
+  ): Promise<MessageView> {
+    return this.messages.resendCaption(store.id, messageId, viewerOf(user.id, held))
+  }
+
   // The reaction of the caller to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. The
   // answer is 204: the thread shows the reaction and whether the channel took it.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)

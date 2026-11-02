@@ -298,22 +298,29 @@ export class InboundMessageService {
     if (type !== MessageType.TEXT || content === null || content === '') {
       return null
     }
+    const since = new Date(Date.now() - OutboundLimits.UNCONFIRMED_CAPTION_MS)
     const waiting = await tx.message.findFirst({
       where: {
         storeId,
         conversationId: { in: conversationIds },
         authorType: AuthorType.AGENT,
-        captionState: CaptionState.UNCONFIRMED,
+        // `queued` is a text sent again whose echo came before the worker wrote it down
+        captionState: { in: [CaptionState.UNCONFIRMED, CaptionState.QUEUED] },
         deletedAt: null,
         content,
-        createdAt: { gt: new Date(Date.now() - OutboundLimits.UNCONFIRMED_CAPTION_MS) }
+        // From the reply, or from the last time an agent asked to send the text again
+        OR: [{ createdAt: { gt: since } }, { changeRequestedAt: { gt: since } }]
       },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, authorType: true }
     })
     if (waiting === null) return null
     const claimed = await tx.message.updateMany({
-      where: { id: waiting.id, storeId, captionState: CaptionState.UNCONFIRMED },
+      where: {
+        id: waiting.id,
+        storeId,
+        captionState: { in: [CaptionState.UNCONFIRMED, CaptionState.QUEUED] }
+      },
       data: { captionChannelMessageId: externalId, captionState: CaptionState.SENT }
     })
     return claimed.count === 1 ? waiting : null

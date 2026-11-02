@@ -1,11 +1,11 @@
 'use client'
 
-import { FileText, Image as ImageIcon, Mic, TriangleAlert, Video } from 'lucide-react'
+import { FileText, Image as ImageIcon, Mic, Video } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
-import { AuthorType, CaptionState, DeliveryStatus, MessageType } from '@platform/core/domain'
+import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
 import { knownErrorCode } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
@@ -19,6 +19,7 @@ import {
 } from '../../lib/inbox/thread-items'
 import { cn } from '../../lib/utils'
 
+import { CaptionNotice } from './caption-notice'
 import { CustomerAvatar } from './customer-avatar'
 import { DeliveryTicksIcon } from './delivery-ticks'
 import { MessageActionsBar } from './message-actions-bar'
@@ -190,6 +191,8 @@ function Bubble({
             kind={kind}
             authorLabel={authorLabel}
             mentionNames={isNote ? mentionNames : NO_NAMES}
+            conversationId={conversationId}
+            canResendCaption={actions.resendCaption}
           />
           {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
@@ -235,12 +238,16 @@ function Content({
   message,
   kind,
   authorLabel,
-  mentionNames
+  mentionNames,
+  conversationId,
+  canResendCaption
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
   authorLabel: (type: string, id: string | null) => string
   mentionNames: readonly string[]
+  conversationId: string
+  canResendCaption: boolean
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -284,12 +291,11 @@ function Content({
           )}
         </p>
       )}
-      {message.captionState === null ? null : (
-        <p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
-          <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
-          {t(message.captionState === CaptionState.FAILED ? 'captionFailed' : 'captionUnconfirmed')}
-        </p>
-      )}
+      <CaptionNotice
+        message={message}
+        conversationId={conversationId}
+        canResend={canResendCaption}
+      />
     </>
   )
 }

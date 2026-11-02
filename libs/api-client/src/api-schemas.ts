@@ -270,9 +270,12 @@ export const messageSchema = z.object({
   ),
   // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one
   unavailableFiles: z.array(z.object({ index: z.number().int(), code: z.string() })),
-  // The text under a file that went apart from it: failed, or unconfirmed (the provider may have
-  // delivered it); null otherwise, and for a state of a newer server
-  captionState: z.enum([CaptionState.FAILED, CaptionState.UNCONFIRMED]).nullable().catch(null),
+  // The text under a file that went apart from it: failed, unconfirmed (the provider may have delivered
+  // it) or queued (an agent asked to send it again); null otherwise, and for a state of a newer server
+  captionState: z
+    .enum([CaptionState.FAILED, CaptionState.UNCONFIRMED, CaptionState.QUEUED])
+    .nullable()
+    .catch(null),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),
   version: z.number().int(),

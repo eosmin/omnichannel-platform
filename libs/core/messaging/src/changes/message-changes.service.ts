@@ -3,7 +3,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
+import { AuthorType, CaptionState, DeliveryStatus, MessageType } from '@platform/core/domain'
 import {
   ErrorCodes,
   errorName,
@@ -54,6 +54,7 @@ interface Target {
   deletedAt: Date | null
   editStatus: string | null
   deleteStatus: string | null
+  captionState: string | null
   conversation: { channelType: string; status: string; assignedTo: string | null }
 }
 
@@ -68,6 +69,7 @@ const TARGET_SELECT = {
   deletedAt: true,
   editStatus: true,
   deleteStatus: true,
+  captionState: true,
   conversation: { select: { channelType: true, status: true, assignedTo: true } }
 } as const
 
@@ -151,6 +153,9 @@ export class MessageChangesService {
       // One request at a time for a message, so that each settles on its own
       if (message.editStatus === DeliveryStatus.QUEUED.valueOf()) {
         throw resourceConflict('an edit of this message is on its way')
+      }
+      if (message.captionState === CaptionState.QUEUED.valueOf()) {
+        throw resourceConflict('the text under this file is on its way')
       }
       if (isNote(message)) {
         await tx.message.update({

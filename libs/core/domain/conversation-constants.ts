@@ -102,11 +102,17 @@ export const CaptionState = {
   FAILED: 'failed',
   // The call got no clear answer (a timeout, a 5xx): the provider may have delivered it, and the echo of
   // the owner's message settles it (`reconcileUnconfirmedCaption`)
-  UNCONFIRMED: 'unconfirmed'
+  UNCONFIRMED: 'unconfirmed',
+  // An agent asked to send only the text again (`POST /messages/:id/resend-caption`): the worker has the
+  // job, and the state becomes `sent`, `failed` or `unconfirmed` when the channel answers
+  QUEUED: 'queued'
 } as const
 export type CaptionState = (typeof CaptionState)[keyof typeof CaptionState]
 // What a plugin may report; SENT is told by the id of the caption
 export const ReportedCaptionStates = [CaptionState.FAILED, CaptionState.UNCONFIRMED] as const
+// The states from which an agent may send the text again: after a refusal it is safe, and after a call that
+// got no clear answer it is the agent's call (the customer may then see the text twice)
+export const ResendableCaptionStates: readonly CaptionState[] = ReportedCaptionStates
 
 // Why a file the customer sent was not kept, as the worker records it in the `metadata` of the message
 // (`unavailableFiles`, one entry per place of the file). The thread draws a line for each, from an

@@ -1,6 +1,12 @@
 import type { MessageView } from '@platform/api-client'
 import { Permissions, type Permission } from '@platform/core/auth'
-import { AuthorType, ChannelCapability, DeliveryStatus, MessageType } from '@platform/core/domain'
+import {
+  AuthorType,
+  CaptionState,
+  ChannelCapability,
+  DeliveryStatus,
+  MessageType
+} from '@platform/core/domain'
 
 import { messageKindOf } from './thread-items'
 
@@ -17,6 +23,8 @@ export interface MessageActions {
   edit: boolean
   remove: boolean
   resend: boolean
+  // Only the text under a file, sent again: drawn in the bubble beside the notice, not in the menu
+  resendCaption: boolean
   // The kept text of a message the customer deleted
   viewDeleted: boolean
   // The earlier texts of an edited note
@@ -28,6 +36,7 @@ const NONE: MessageActions = {
   edit: false,
   remove: false,
   resend: false,
+  resendCaption: false,
   viewDeleted: false,
   revisions: false
 }
@@ -79,6 +88,8 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
   if (!isReplyOfTeam) return { ...NONE, react }
 
   const isEditPending = message.pendingEdit
+  // The text under a file is on its way: the message is left alone until it settles
+  const isCaptionQueued = message.captionState === CaptionState.QUEUED
   return {
     ...NONE,
     react,
@@ -93,7 +104,14 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
       ((maySend && isOwn) || viewer.can(Permissions.MESSAGES_DELETE)) &&
       reached &&
       !isEditPending &&
+      !isCaptionQueued &&
       supports(ChannelCapability.DELETE_MESSAGE),
+    resendCaption:
+      maySend &&
+      reached &&
+      !isEditPending &&
+      (message.captionState === CaptionState.FAILED ||
+        message.captionState === CaptionState.UNCONFIRMED),
     resend:
       message.deliveryStatus === String(DeliveryStatus.FAILED) &&
       viewer.can(
@@ -104,5 +122,11 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
   }
 }
 
+// Whether the bar beside the bubble has anything to offer; the caption button lives in the bubble
 export const hasAnyAction = (actions: MessageActions): boolean =>
-  Object.values(actions).some(Boolean)
+  actions.react ||
+  actions.edit ||
+  actions.remove ||
+  actions.resend ||
+  actions.viewDeleted ||
+  actions.revisions

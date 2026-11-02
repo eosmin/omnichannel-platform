@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, DeliveryStatus, OutboundLimits } from '@platform/core/domain'
+import { AuthorType, CaptionState, DeliveryStatus, OutboundLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { OutboundQueue } from '@platform/core/messaging'
 import { LockNames, Schedules } from '@platform/core/queues'
@@ -155,7 +155,7 @@ export class OutboundRequeueScheduler {
     return done
   }
 
-  // The edits and deletions of agents are swept the same way: the time of the request says when the job
+  // The edits, deletions and resent captions of agents are swept the same way: the time of the request says when the job
   // was lost, and one that waited more than an hour shows as failed and not as sending
   async requeueStaleChanges(now: Date = new Date()): Promise<{ requeued: number; gaveUp: number }> {
     const staleBefore = new Date(now.getTime() - OutboundLimits.REQUEUE_AFTER_MS)
@@ -164,7 +164,8 @@ export class OutboundRequeueScheduler {
         changeRequestedAt: { lt: staleBefore },
         OR: [
           { editStatus: DeliveryStatus.QUEUED, pendingContent: { not: null } },
-          { deleteStatus: DeliveryStatus.QUEUED }
+          { deleteStatus: DeliveryStatus.QUEUED },
+          { captionState: CaptionState.QUEUED }
         ]
       },
       select: {
@@ -174,6 +175,7 @@ export class OutboundRequeueScheduler {
         pendingContent: true,
         editStatus: true,
         deleteStatus: true,
+        captionState: true,
         changeRequestedAt: true
       },
       orderBy: [{ changeRequestedAt: 'asc' }, { id: 'asc' }],
@@ -211,11 +213,24 @@ export class OutboundRequeueScheduler {
             await this.outbound.requeueDelete({ storeId, messageId, version })
           }
         }
+        if (message.captionState === CaptionState.QUEUED.valueOf()) {
+          // Never queued again: a job that sent the text and could not write it down looks the same as
+          // a job that was lost, and sending twice is worse than saying to check the chat. Both end
+          // `unconfirmed` once the request is old enough to have had its job.
+          await this.changeStatus.settleCaption({
+            storeId,
+            messageId,
+            version,
+            outcome: { state: CaptionState.UNCONFIRMED }
+          })
+          done.gaveUp += 1
+          continue
+        }
         done[gaveUp ? 'gaveUp' : 'requeued'] += 1
       } catch (error) {
         this.logger.error(
           { messageId, errorName: errorName(error) },
-          'a stale edit or deletion was not handled'
+          'a stale edit, deletion or caption was not handled'
         )
       }
     }
