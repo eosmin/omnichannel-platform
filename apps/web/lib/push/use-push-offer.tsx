@@ -21,6 +21,14 @@ function readOffered(): boolean {
   }
 }
 
+function readTurnedOff(): boolean {
+  try {
+    return window.localStorage.getItem(StorageKeys.PUSH_TURNED_OFF) !== null
+  } catch {
+    return false
+  }
+}
+
 function writeOffered(): void {
   try {
     window.localStorage.setItem(StorageKeys.PUSH_OFFERED, '1')
@@ -56,6 +64,8 @@ export function usePushOffer(storeId: string): { offer: () => void } {
     })
     if (decision === PushOffer.NONE) return
     if (decision === PushOffer.SYNC) {
+      // The person switched push off on the preferences page: their choice outlives the permission
+      if (readTurnedOff()) return
       // Silent: the permission is already given
       if (syncedInThisPage) return
       syncedInThisPage = true

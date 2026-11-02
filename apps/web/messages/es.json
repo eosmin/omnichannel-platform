@@ -5,7 +5,136 @@
     "email": "Correo",
     "language": "Idioma",
     "timezone": "Zona horaria",
-    "notSet": "Sin definir"
+    "notSet": "Sin definir",
+    "notifications": {
+      "title": "Notificaciones",
+      "forStore": "Tus preferencias para {store}.",
+      "noStore": "Todavía no perteneces a ninguna tienda.",
+      "loading": "Cargando...",
+      "saveFailed": "No se pudo guardar el cambio.",
+      "type": "Notificación",
+      "cell": "{type}: {channel}",
+      "channels": {
+        "inApp": "En la app",
+        "push": "Push",
+        "email": "Email",
+        "sound": "Sonido"
+      },
+      "groups": {
+        "conversations": "Conversaciones",
+        "messages": "Mensajes",
+        "orders": "Pedidos",
+        "inventory": "Inventario",
+        "shipping": "Envíos",
+        "team": "Equipo",
+        "system": "Sistema"
+      },
+      "types": {
+        "conversation": {
+          "assigned": "Asignada a mí",
+          "mentioned": "Mencionado en una nota",
+          "unassigned_queue": "Nueva conversación sin asignar",
+          "snooze_expired": "Pausa terminada",
+          "reopened": "Reabierta por el cliente"
+        },
+        "message": {
+          "received": "Mensaje nuevo en mi conversación",
+          "failed": "Mensaje no enviado"
+        },
+        "order": {
+          "created": "Pedido creado",
+          "status_changed": "Cambió el estado de un pedido",
+          "payment_failed": "Pago fallido",
+          "message_not_sent": "Mensaje del pedido no enviado",
+          "price_approval_requested": "Aprobación de precio solicitada",
+          "price_overridden": "Precio modificado"
+        },
+        "inventory": {
+          "low": "Stock bajo"
+        },
+        "transfer": {
+          "dispatched": "Transferencia despachada"
+        },
+        "count": {
+          "awaiting_apply": "Conteo pendiente de aplicar"
+        },
+        "pickup": {
+          "cutoff_approaching": "Se acerca el corte de recolección",
+          "manual_required": "Recolección requiere acción manual"
+        },
+        "shipment": {
+          "cancel_failed": "Falló la cancelación del envío",
+          "requires_review": "Envío requiere revisión",
+          "failed_attempt": "Intento de entrega fallido"
+        },
+        "carrier": {
+          "status_unmapped": "Estado del transportista no reconocido"
+        },
+        "bulk_labels": {
+          "ready": "Etiquetas listas"
+        },
+        "return": {
+          "awaiting_receipt": "Devolución pendiente de recibir"
+        },
+        "remittance": {
+          "overdue": "Remesa vencida"
+        },
+        "member": {
+          "joined": "Se unió un miembro"
+        },
+        "invitation": {
+          "accepted": "Invitación aceptada"
+        },
+        "channel": {
+          "disconnected": "Canal desconectado"
+        },
+        "webhook": {
+          "auto_disabled": "Webhook desactivado"
+        },
+        "plugin": {
+          "error": "Error de plugin"
+        },
+        "export": {
+          "ready": "Exportación lista",
+          "failed": "Exportación fallida"
+        },
+        "media": {
+          "infected": "Archivo infectado bloqueado",
+          "unscannable": "No se pudo analizar un archivo"
+        }
+      },
+      "push": {
+        "title": "Push en este dispositivo",
+        "label": "Enviar notificaciones push a este navegador",
+        "hint": "La columna Push de arriba elige cuáles notificaciones lo usan.",
+        "blocked": "Este navegador bloqueó las notificaciones. Permítelas en la configuración del sitio para activar el push.",
+        "unsupported": "Este navegador no puede recibir notificaciones push."
+      },
+      "quietHours": {
+        "title": "Horas de silencio",
+        "enabled": "Pausar push y sonido durante las horas de silencio",
+        "from": "Desde",
+        "to": "Hasta",
+        "timezone": "Zona horaria",
+        "followStore": "Seguir el horario de atención de la tienda",
+        "hint": "Las notificaciones siguen llegando a la app; solo el push y el sonido esperan."
+      },
+      "digest": {
+        "title": "Resumen por correo",
+        "hint": "Cada cuánto se envían los correos de la columna Email.",
+        "options": {
+          "immediate": "Inmediato",
+          "hourly": "Cada hora",
+          "daily": "Diario",
+          "off": "Apagado"
+        }
+      },
+      "crossStore": {
+        "title": "Otras tiendas",
+        "enabled": "Avisarme de las conversaciones de mis otras tiendas",
+        "supervisorOnly": "Solo donde soy supervisor"
+      }
+    }
   },
   "app": {
     "title": "Plataforma omnicanal"
@@ -643,7 +772,8 @@
       "failed": "No se pudieron cargar las notificaciones.",
       "markFailed": "No se pudo marcar la notificación como leída.",
       "loadMore": "Cargar más",
-      "unreadDot": "Sin leer"
+      "unreadDot": "Sin leer",
+      "settings": "Configuración de notificaciones"
     }
   },
   "inbox": {

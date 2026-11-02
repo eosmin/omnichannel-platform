@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test'
+
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
@@ -48,7 +50,9 @@ test.describe('the notification center', () => {
     await expect(page).toHaveURL(AppPaths.store.conversation(storeId, conversationId))
   })
 
-  test('marks everything read from the panel', async ({ page }) => {
+  test('marks everything read from the panel, and its link opens the preferences', async ({
+    page
+  }) => {
     const storeId = await storeIdNamed('Main Store')
     const conversationId = await newConversationIn(storeId)
     await writeNote(adminToken, storeId, conversationId, 'one more', [agentId])
@@ -61,5 +65,36 @@ test.describe('the notification center', () => {
     await page.getByRole('tab', { name: bell.tabs.unread }).click()
 
     await expect(page.getByText(bell.empty.unread)).toBeVisible()
+
+    // The panel is still open: its link leads to the preferences, and a choice survives a reload
+    await checkPreferences(page)
   })
+
+  // Not a test of its own on purpose: another sign-in of the agent would use the magic-link budget
+  // (5 a minute per address) that the specs after this file need
+  async function checkPreferences(page: Page): Promise<void> {
+    const prefs = en.account.notifications
+    await page.getByRole('link', { name: bell.settings }).click()
+    await expect(page).toHaveURL(AppPaths.account.notifications)
+
+    // Email of "Mentioned in a note": flipped from whatever the last run left, then put back
+    const cell = (): ReturnType<typeof page.getByRole> =>
+      page.getByRole('checkbox', {
+        name: `${prefs.types.conversation.mentioned}: ${prefs.channels.email}`
+      })
+    await expect(cell()).toBeVisible()
+    const before = await cell().isChecked()
+
+    // A click and not `setChecked`: the box follows the answer of the api, not the click itself
+    try {
+      await cell().click()
+      await expect(cell()).toHaveJSProperty('checked', !before)
+      await page.reload()
+      await expect(cell()).toHaveJSProperty('checked', !before)
+    } finally {
+      // The preference lives in the shared dev database: put it back even when an assertion failed
+      if ((await cell().isChecked()) !== before) await cell().click()
+    }
+    await expect(cell()).toHaveJSProperty('checked', before)
+  }
 })

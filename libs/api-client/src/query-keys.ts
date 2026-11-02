@@ -74,7 +74,9 @@ export const QueryKeys = {
     // One tab of the center; under `list`, so the event that refreshes `list` refreshes every tab
     filtered: (storeId: string, filter: string) =>
       ['notifications', storeId, 'list', filter] as const,
-    unread: (storeId: string) => ['notifications', storeId, 'unread'] as const
+    unread: (storeId: string) => ['notifications', storeId, 'unread'] as const,
+    // The person's own choices for this store; not under `list`, a new notification does not change them
+    preferences: (storeId: string) => ['notifications', storeId, 'preferences'] as const
   },
 
   // Inventory (TDD_16 §3)

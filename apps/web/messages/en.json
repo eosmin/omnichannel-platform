@@ -5,7 +5,136 @@
     "email": "Email",
     "language": "Language",
     "timezone": "Time zone",
-    "notSet": "Not set"
+    "notSet": "Not set",
+    "notifications": {
+      "title": "Notifications",
+      "forStore": "Your choices for {store}.",
+      "noStore": "You do not belong to any store yet.",
+      "loading": "Loading...",
+      "saveFailed": "The change could not be saved.",
+      "type": "Notification",
+      "cell": "{type}: {channel}",
+      "channels": {
+        "inApp": "In-app",
+        "push": "Push",
+        "email": "Email",
+        "sound": "Sound"
+      },
+      "groups": {
+        "conversations": "Conversations",
+        "messages": "Messages",
+        "orders": "Orders",
+        "inventory": "Inventory",
+        "shipping": "Shipping",
+        "team": "Team",
+        "system": "System"
+      },
+      "types": {
+        "conversation": {
+          "assigned": "Assigned to me",
+          "mentioned": "Mentioned in a note",
+          "unassigned_queue": "New unassigned conversation",
+          "snooze_expired": "Snooze expired",
+          "reopened": "Reopened by the customer"
+        },
+        "message": {
+          "received": "New message in my conversation",
+          "failed": "Message failed to send"
+        },
+        "order": {
+          "created": "Order created",
+          "status_changed": "Order status changed",
+          "payment_failed": "Payment failed",
+          "message_not_sent": "Order message not sent",
+          "price_approval_requested": "Price approval requested",
+          "price_overridden": "Price overridden"
+        },
+        "inventory": {
+          "low": "Low stock"
+        },
+        "transfer": {
+          "dispatched": "Transfer dispatched"
+        },
+        "count": {
+          "awaiting_apply": "Count awaiting apply"
+        },
+        "pickup": {
+          "cutoff_approaching": "Pickup cutoff approaching",
+          "manual_required": "Pickup needs manual action"
+        },
+        "shipment": {
+          "cancel_failed": "Shipment cancel failed",
+          "requires_review": "Shipment needs review",
+          "failed_attempt": "Delivery attempt failed"
+        },
+        "carrier": {
+          "status_unmapped": "Carrier status not recognized"
+        },
+        "bulk_labels": {
+          "ready": "Labels ready"
+        },
+        "return": {
+          "awaiting_receipt": "Return awaiting receipt"
+        },
+        "remittance": {
+          "overdue": "Remittance overdue"
+        },
+        "member": {
+          "joined": "Member joined"
+        },
+        "invitation": {
+          "accepted": "Invitation accepted"
+        },
+        "channel": {
+          "disconnected": "Channel disconnected"
+        },
+        "webhook": {
+          "auto_disabled": "Webhook disabled"
+        },
+        "plugin": {
+          "error": "Plugin error"
+        },
+        "export": {
+          "ready": "Export ready",
+          "failed": "Export failed"
+        },
+        "media": {
+          "infected": "Infected file blocked",
+          "unscannable": "File could not be scanned"
+        }
+      },
+      "push": {
+        "title": "Push on this device",
+        "label": "Send push notifications to this browser",
+        "hint": "The Push column above chooses which notifications use it.",
+        "blocked": "This browser blocked notifications. Allow them in its site settings to turn push on.",
+        "unsupported": "This browser cannot receive push notifications."
+      },
+      "quietHours": {
+        "title": "Quiet hours",
+        "enabled": "Pause push and sound during quiet hours",
+        "from": "From",
+        "to": "To",
+        "timezone": "Time zone",
+        "followStore": "Follow the business hours of the store instead",
+        "hint": "Notifications still arrive in the app; only push and sound wait."
+      },
+      "digest": {
+        "title": "Email digest",
+        "hint": "How often the emails of the Email column are sent.",
+        "options": {
+          "immediate": "Immediate",
+          "hourly": "Hourly",
+          "daily": "Daily",
+          "off": "Off"
+        }
+      },
+      "crossStore": {
+        "title": "Other stores",
+        "enabled": "Notify me about conversations in my other stores",
+        "supervisorOnly": "Only where I am a supervisor"
+      }
+    }
   },
   "app": {
     "title": "Omnichannel Platform"
@@ -643,7 +772,8 @@
       "failed": "The notifications could not be loaded.",
       "markFailed": "The notification could not be marked as read.",
       "loadMore": "Load more",
-      "unreadDot": "Unread"
+      "unreadDot": "Unread",
+      "settings": "Notification settings"
     }
   },
   "inbox": {

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
+import { DigestFrequency } from '@platform/core/domain'
 import type { NotificationFilter } from '@platform/core/notifications'
 
 import type { ApiClient } from './api-client'
@@ -85,4 +86,64 @@ export async function markAllNotificationsRead(
     storeId
   })
   return updated
+}
+
+// What the person chose (TDD_06 §9). `type` stays text: a type a newer server adds must not break the page.
+export const typePreferenceSchema = z.object({
+  type: z.string(),
+  severity: z.string(),
+  inApp: z.boolean(),
+  push: z.boolean(),
+  email: z.boolean(),
+  sound: z.boolean()
+})
+export type TypePreferenceView = z.output<typeof typePreferenceSchema>
+
+export const notificationSettingsSchema = z.object({
+  quietHoursEnabled: z.boolean(),
+  quietHoursStart: z.number().int().min(0).max(23),
+  quietHoursEnd: z.number().int().min(0).max(23),
+  quietHoursFollowStore: z.boolean(),
+  timezone: z.string(),
+  digestFrequency: z.enum(DigestFrequency),
+  crossStoreEnabled: z.boolean(),
+  crossStoreSupervisorOnly: z.boolean()
+})
+export type NotificationSettingsView = z.output<typeof notificationSettingsSchema>
+
+export const notificationPreferencesSchema = z.object({
+  types: z.array(typePreferenceSchema),
+  settings: notificationSettingsSchema
+})
+export type NotificationPreferencesView = z.output<typeof notificationPreferencesSchema>
+
+export interface NotificationPreferencesPatch {
+  types?: { type: string; inApp: boolean; push: boolean; email: boolean; sound: boolean }[]
+  settings?: Partial<NotificationSettingsView>
+}
+
+export function fetchNotificationPreferences(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<NotificationPreferencesView> {
+  return client.request(ApiRoutes.notifications.preferences, {
+    schema: notificationPreferencesSchema,
+    storeId,
+    signal
+  })
+}
+
+// The per-type rows belong to the store of the header; the settings are the person's in every store
+export function putNotificationPreferences(
+  client: ApiClient,
+  storeId: string,
+  patch: NotificationPreferencesPatch
+): Promise<NotificationPreferencesView> {
+  return client.request(ApiRoutes.notifications.preferences, {
+    method: 'PUT',
+    body: patch,
+    schema: notificationPreferencesSchema,
+    storeId
+  })
 }
