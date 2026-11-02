@@ -34,3 +34,7 @@ export const ConversationPane = dynamic(
   () => import('./conversation-pane').then(module => module.ConversationPane),
   { ssr: false, loading: () => <ConversationPaneLoading /> }
 )
+
+export const EmptyInbox = dynamic(() => import('./empty-inbox').then(module => module.EmptyInbox), {
+  ssr: false
+})

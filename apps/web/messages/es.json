@@ -897,7 +897,8 @@
     "loadingMore": "Cargando más conversaciones",
     "empty": {
       "title": "Aún no hay conversaciones",
-      "body": "Los mensajes de tus canales conectados aparecerán aquí."
+      "body": "Los mensajes de tus canales conectados aparecerán aquí.",
+      "connectChannel": "Conectar un canal"
     },
     "noResults": {
       "title": "Ninguna conversación coincide con estos filtros",
@@ -1449,13 +1450,111 @@
       },
       "setup": {
         "messengerProfileAccess": "En la configuración de tu Página de Facebook, solicita \"Business Asset User Profile Access\" para poder leer los nombres y las fotos de los clientes."
+      },
+      "title": "Canales",
+      "description": "Las cuentas que traen clientes a tu bandeja y cómo está cada una.",
+      "listLabel": "Canales conectados",
+      "empty": {
+        "title": "No hay canales conectados",
+        "body": "Conecta un canal para recibir en la bandeja los mensajes de tus clientes."
+      },
+      "add": {
+        "title": "Agregar un canal",
+        "catalogFailed": "No se pudieron cargar los canales que puedes conectar.",
+        "nonInstalled": "Aún no hay ningún canal instalado en esta tienda.",
+        "goToPlugins": "Instala uno en Plugins",
+        "connect": "Conectar"
+      },
+      "past": {
+        "title": "Desconectados",
+        "hint": "Estas cuentas ya no reciben ni envían mensajes. Sus conversaciones siguen en la bandeja."
+      },
+      "disconnectedNote": "Esta cuenta está desconectada.",
+      "status": {
+        "active": "Activo",
+        "error": "Requiere atención",
+        "disconnected": "Desconectado"
+      },
+      "health": {
+        "never": "Todavía no se ha comprobado.",
+        "lastHealthy": "Último funcionamiento: {date}",
+        "errors": {
+          "check_failed": "No se pudo completar la última comprobación.",
+          "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
+          "unspecified": "El canal informó de un problema sin decir cuál."
+        }
+      },
+      "profile": {
+        "title": "{count, plural, one {No se pudo leer el nombre y la foto de # cliente.} other {No se pudo leer el nombre y la foto de # clientes.}}"
+      },
+      "test": {
+        "action": "Probar conexión",
+        "running": "Probando",
+        "healthy": "La conexión funciona.",
+        "unhealthy": "La conexión no funciona."
+      },
+      "disconnect": {
+        "action": "Desconectar",
+        "title": "¿Desconectar {name}?",
+        "description": "El canal deja de recibir y enviar mensajes y se borran sus credenciales. Las conversaciones y los clientes se conservan. Para usarlo de nuevo hay que conectarlo otra vez.",
+        "confirm": "Desconectar",
+        "done": "{name} se desconectó."
+      },
+      "callbackUrl": {
+        "label": "URL de callback",
+        "hint": "Pega esta dirección en la configuración de webhooks del proveedor para que pueda enviarte mensajes."
+      },
+      "copy": "Copiar",
+      "copied": "Copiado",
+      "copyFailed": "No se pudo copiar el texto. Selecciónalo y cópialo a mano.",
+      "connectDialog": {
+        "title": "Conectar {name}",
+        "description": "Escribe lo que pide el canal. Los secretos se guardan cifrados y no se vuelven a mostrar.",
+        "optional": "(opcional)",
+        "secretHint": "No se volverá a mostrar.",
+        "connecting": "Conectando",
+        "submit": "Conectar",
+        "connected": "{name} está conectado."
+      },
+      "widget": {
+        "toggle": "Configuración del chat web",
+        "snippet": {
+          "title": "Código para insertar",
+          "hint": "Pégalo antes de la etiqueta de cierre del body en cada página donde debe aparecer el chat."
+        },
+        "origins": {
+          "label": "Sitios que pueden cargar el chat",
+          "hint": "Una dirección por línea, por ejemplo https://www.ejemplo.com. Hasta {max}.",
+          "tooMany": "Usa como máximo {max} sitios.",
+          "save": "Guardar sitios"
+        },
+        "originsSaved": "Sitios guardados.",
+        "preChat": {
+          "label": "Pedir nombre, correo y teléfono antes del primer mensaje",
+          "hint": "El visitante llena un formulario corto antes de empezar el chat."
+        },
+        "connectSrc": {
+          "title": "Si tu sitio tiene una política de seguridad de contenido estricta",
+          "hint": "Agrega estas direcciones a su directiva connect-src para que el chat pueda comunicarse con nosotros y subir archivos."
+        }
+      },
+      "templates": {
+        "toggle": "Plantillas de mensajes",
+        "empty": "Esta cuenta no tiene plantillas.",
+        "status": {
+          "approved": "Aprobada",
+          "pending": "Pendiente de aprobación",
+          "rejected": "Rechazada"
+        }
       }
     },
     "nav": {
       "store": {
         "label": "Ajustes de la tienda",
         "title": "Tienda",
-        "general": "General"
+        "general": "General",
+        "channels": "Canales",
+        "plugins": "Plugins"
       },
       "org": {
         "label": "Organización",
@@ -1496,6 +1595,31 @@
       "slug": "Nombre en la dirección",
       "nameInvalid": "Escribe un nombre de hasta 100 caracteres.",
       "saved": "Organización guardada."
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Los canales e integraciones que puedes instalar en esta tienda.",
+      "listLabel": "Plugins disponibles",
+      "empty": {
+        "title": "No hay plugins disponibles",
+        "body": "Todavía no hay nada que instalar en esta tienda."
+      },
+      "official": "Oficial",
+      "by": "De {author}",
+      "installed": "Instalado",
+      "connections": "{count, plural, one {# cuenta conectada} other {# cuentas conectadas}}",
+      "comingLater": "Aún no disponible",
+      "install": {
+        "action": "Instalar",
+        "done": "{name} se instaló. Puedes conectarlo en Canales."
+      },
+      "uninstall": {
+        "action": "Desinstalar",
+        "title": "¿Desinstalar {name}?",
+        "description": "{count, plural, =0 {El plugin deja de funcionar en esta tienda.} one {El plugin deja de funcionar y se desconecta su cuenta conectada.} other {El plugin deja de funcionar y se desconectan sus # cuentas conectadas.}} Las conversaciones y los clientes se conservan.",
+        "confirm": "Desinstalar",
+        "done": "{name} se desinstaló."
+      }
     }
   },
   "emptyStates": {

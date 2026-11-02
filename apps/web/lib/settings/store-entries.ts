@@ -20,6 +20,18 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       href: AppPaths.store.settings(storeId, StoreSettingsSections.GENERAL),
       // The page reads and writes the store through organizations.storeById
       permission: Permissions.ORG_MANAGE_STORES
+    },
+    {
+      id: StoreSettingsSections.CHANNELS,
+      labelKey: 'channels',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS),
+      permission: Permissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.PLUGINS,
+      labelKey: 'plugins',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS),
+      permission: Permissions.SETTINGS_VIEW
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
   storeSettingsEntries,
   visibleEntries
 } from './entries'
+import { mayOpenStoreSettings } from './may-open-settings'
 
 const holding =
   (...held: string[]) =>
@@ -44,7 +45,30 @@ describe('settings entries', () => {
     const entries = storeSettingsEntries('s-1')
     expect(entries[0]?.href).toBe('/s/s-1/settings/general')
     expect(visibleEntries(entries, holding())).toEqual([])
-    expect(visibleEntries(entries, holding(Permissions.ORG_MANAGE_STORES))).toHaveLength(1)
+    expect(
+      visibleEntries(entries, holding(Permissions.ORG_MANAGE_STORES)).map(entry => entry.id)
+    ).toEqual(['general'])
+  })
+
+  it('shows Channels and Plugins to who may see settings, and General only to who manages stores', () => {
+    const entries = storeSettingsEntries('s-1')
+    expect(
+      visibleEntries(entries, holding(Permissions.SETTINGS_VIEW)).map(entry => entry.href)
+    ).toEqual(['/s/s-1/settings/channels', '/s/s-1/settings/plugins'])
+  })
+
+  it('shows the Settings entry of the navigation exactly when a page of the area is visible', () => {
+    const entries = storeSettingsEntries('s-1')
+    for (const held of [
+      [],
+      [Permissions.ORG_MANAGE_STORES],
+      [Permissions.SETTINGS_VIEW],
+      [Permissions.ORG_MANAGE_STORES, Permissions.SETTINGS_VIEW],
+      [Permissions.SETTINGS_EDIT]
+    ]) {
+      const can = holding(...held)
+      expect(mayOpenStoreSettings(can)).toBe(visibleEntries(entries, can).length > 0)
+    }
   })
 
   it('opens an area on the first page the person may see', () => {
