@@ -10,7 +10,7 @@ import { AvatarUpload, MediaPurpose } from '@platform/core/storage'
 import { MutationError } from '../../components/customers/mutation-error'
 import { Button } from '../../components/ui/button'
 import { refuseAttachment, refusalCode } from '../../lib/media/attachment-rules'
-import { useRemoveAvatar, useUploadAvatar } from '../../lib/settings/use-settings-data'
+import { useRemoveAvatar, useUploadAvatar } from '../../lib/settings/use-avatar'
 
 const ACCEPT = AvatarUpload.CONTENT_TYPES.join(',')
 const MEGABYTE = 1024 * 1024

@@ -11,14 +11,15 @@ import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { useOwnProfile, useSaveOwnProfile } from '../../lib/settings/use-settings-data'
+import { useOwnProfileWithPicture } from '../../lib/settings/use-avatar'
+import { useSaveOwnProfile } from '../../lib/settings/use-settings-data'
 
 import { AvatarPicker } from './avatar-picker'
 
 // Account → Profile: the name the team sees. The e-mail is how the person signs in, so it is shown
 // and cannot be changed here. The picture has its own control and saves on its own.
 export function ProfileCard(): ReactElement {
-  const profile = useOwnProfile()
+  const profile = useOwnProfileWithPicture()
   if (profile.isError) {
     return <LoadFailed error={profile.error} onRetry={() => void profile.refetch()} />
   }

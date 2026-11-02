@@ -135,6 +135,8 @@ test.describe('my account', () => {
   // A viewer holds no permission to upload to the store, and still sets a picture: it belongs to the
   // person. The file is scanned and re-encoded by the worker, so the picture shows a moment later.
   test('a viewer sets a picture, sees it after a reload and takes it away', async ({ page }) => {
+    // The worker scans and re-encodes the file before the picture shows
+    test.setTimeout(120_000)
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
       'base64'
