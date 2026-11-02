@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test'
+
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
@@ -48,7 +50,9 @@ test.describe('the notification center', () => {
     await expect(page).toHaveURL(AppPaths.store.conversation(storeId, conversationId))
   })
 
-  test('marks everything read from the panel', async ({ page }) => {
+  test('marks everything read from the panel, and its link opens the preferences', async ({
+    page
+  }) => {
     const storeId = await storeIdNamed('Main Store')
     const conversationId = await newConversationIn(storeId)
     await writeNote(adminToken, storeId, conversationId, 'one more', [agentId])
@@ -61,13 +65,15 @@ test.describe('the notification center', () => {
     await page.getByRole('tab', { name: bell.tabs.unread }).click()
 
     await expect(page.getByText(bell.empty.unread)).toBeVisible()
+
+    // The panel is still open: its link leads to the preferences, and a choice survives a reload
+    await checkPreferences(page)
   })
 
-  test('the panel leads to the preferences, and a choice survives a reload', async ({ page }) => {
+  // Not a test of its own on purpose: another sign-in of the agent would use the magic-link budget
+  // (5 a minute per address) that the specs after this file need
+  async function checkPreferences(page: Page): Promise<void> {
     const prefs = en.account.notifications
-    await signIn(page, 'agent@test.com')
-    await page.waitForURL(START_SCREEN)
-    await page.getByRole('button', { name: bell.open }).click()
     await page.getByRole('link', { name: bell.settings }).click()
     await expect(page).toHaveURL(AppPaths.account.notifications)
 
@@ -90,5 +96,5 @@ test.describe('the notification center', () => {
       if ((await cell().isChecked()) !== before) await cell().click()
     }
     await expect(cell()).toHaveJSProperty('checked', before)
-  })
+  }
 })
