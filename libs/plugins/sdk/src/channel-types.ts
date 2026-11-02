@@ -29,6 +29,11 @@ export type ChannelEventType = (typeof ChannelEventTypes)[keyof typeof ChannelEv
 // A file the customer attached. `ref` is whatever the plugin's `fetchMedia` needs to get it: a media
 // id (WhatsApp) or a url (Instagram, Messenger).
 export interface ChannelMedia {
+  // The id the stored file will have (a uuid), only for a plugin whose caller must name the file before
+  // the worker stores it: the web widget tells the visitor the id when it takes the message. The worker
+  // honours it for the web widget only; any other plugin leaves it out and one is derived from the
+  // message and the place.
+  id?: string
   ref: string
   contentType: string
   filename: string | null

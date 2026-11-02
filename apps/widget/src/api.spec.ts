@@ -75,6 +75,28 @@ describe('WidgetApi', () => {
     )
   })
 
+  it('gives back the ids the api says the files will have', async () => {
+    const request = answering(200, { received: true, mediaIds: ['m1', 'm2'] })
+
+    await expect(
+      new WidgetApi('https://api.test', request).send('tok', 'id-1', '', undefined, ['u1', 'u2'])
+    ).resolves.toEqual(['m1', 'm2'])
+  })
+
+  it('gives no ids for an answer without them or in a shape it does not know', async () => {
+    for (const answer of [
+      { received: true },
+      { mediaIds: 'm1' },
+      { mediaIds: ['m1', 2] },
+      { mediaIds: ['', ''] },
+      null
+    ]) {
+      await expect(
+        new WidgetApi('https://api.test', answering(200, answer)).send('tok', 'id-1', 'hola')
+      ).resolves.toEqual([])
+    }
+  })
+
   it('asks for a signed url with the name, type and size of the file', async () => {
     const request = answering(200, { uploadUrl: 'https://b/x', uploadId: 'u1' })
 

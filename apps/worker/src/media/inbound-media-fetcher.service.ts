@@ -12,6 +12,7 @@ import {
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
+  ChannelIds,
   MediaStatus,
   MediaUnavailableCodes,
   OfActiveInstallation,
@@ -56,6 +57,7 @@ export class MediaFetchAttemptFailed extends Error {
 // What a file server says when it does not know: the type of the webhook is then the one taken
 // A media id of a provider: letters, digits, underscore, dash. Anything else is read as a link.
 const PLAIN_REFERENCE = PROVIDER_MEDIA_REF
+const CHOSEN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // The worker half of a file the customer sent: asks the plugin of the connection that delivered the
 // message for the bytes, keeps them in the bucket and hands them to the scan. The file is `pending`
@@ -77,13 +79,31 @@ export class InboundMediaFetcher {
   // Throws when the attempt should be repeated; returns when the file is stored or will never be
   async fetch(job: FetchInboundMediaJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, messageId, index } = job
-    const mediaId = inboundMediaId(messageId, index)
+    // Only the web widget names its files (the visitor was told the id when the message was taken); for
+    // any other plugin, or an id that is not a uuid, the id is the one derived from message and place
+    const mediaId =
+      job.mediaId !== undefined &&
+      job.pluginId === ChannelIds.WEB_WIDGET &&
+      CHOSEN_ID.test(job.mediaId)
+        ? job.mediaId
+        : inboundMediaId(messageId, index)
 
     // An earlier attempt got this far: only the scan may be missing
     const existing = await this.prisma.client.media.findFirst({
-      where: { id: mediaId, storeId },
+      where: { id: mediaId, storeId, messageId },
       select: { status: true }
     })
+    // An id that is already a file of another message or store is not ours to write: the same answer
+    // on every try, and the existing file is left alone
+    if (
+      existing === null &&
+      mediaId !== inboundMediaId(messageId, index) &&
+      (await this.isTaken(mediaId))
+    ) {
+      this.logger.warn({ messageId, index }, 'the id chosen for a file is already in use')
+      await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.REFUSED)
+      return
+    }
     if (existing !== null) {
       if (existing.status === String(MediaStatus.PENDING)) await this.queueScan(mediaId)
       await this.marker.clear(storeId, messageId, index)
@@ -192,8 +212,18 @@ export class InboundMediaFetcher {
           }
         })
       } catch (error) {
-        // Another attempt wrote the row first; the file it wrote is the same one
+        // Another attempt wrote the row first; the file it wrote is the same one. If the row is not of
+        // this message (a row the check above could not see), it is not our file: refuse, never retry
         if (!isUniqueViolation(error)) throw error
+        const ours = await this.prisma.client.media.findFirst({
+          where: { id: mediaId, storeId, messageId },
+          select: { id: true }
+        })
+        if (ours === null) {
+          this.logger.warn({ messageId, index }, 'the id chosen for a file is already in use')
+          await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.REFUSED)
+          return
+        }
       }
     } catch (error) {
       // Keeping the bytes failed on the last try (storage down): the job dies in the dead-letter queue and
@@ -273,6 +303,15 @@ export class InboundMediaFetcher {
       open?.destroy?.()
       throw error
     }
+  }
+
+  // True when a row of any store holds the id: the primary key is global
+  private async isTaken(mediaId: string): Promise<boolean> {
+    const row = await this.prisma.client.media.findFirst({
+      where: { id: mediaId },
+      select: { id: true }
+    })
+    return row !== null
   }
 
   private async queueScan(mediaId: string): Promise<void> {

@@ -331,4 +331,108 @@ describe('InboundMediaFetcher', () => {
       expect.objectContaining({ filename: null })
     )
   })
+
+  describe('an id chosen by the plugin', () => {
+    const CHOSEN = '33333333-3333-4333-8333-333333333333'
+    const chosen = { ...job, pluginId: 'web_widget', mediaId: CHOSEN }
+    const plugin = () => ({
+      fetchMedia: jest.fn().mockResolvedValue(file(Buffer.from('jpegbytes')))
+    })
+    const collision = Object.assign(new Error('unique'), { code: 'P2002' })
+
+    it('gives the stored file that id and queues the scan for it', async () => {
+      const { fetcher, media, storage, queue } = setup({
+        plugin: plugin(),
+        connection: { pluginId: 'web_widget' }
+      })
+
+      await fetcher.fetch(chosen, false)
+
+      expect(media.create).toHaveBeenCalledWith({
+        data: {
+          id: CHOSEN,
+          purpose: 'message',
+          contentType: 'image/jpeg',
+          storeId: STORE,
+          messageId: MESSAGE,
+          customerId: 'c1',
+          uploadedBy: null,
+          key: `stores/${STORE}/messages/${CHOSEN}/__.._etc_pas_swd.jpg`,
+          filename: '__.._etc_pas_swd.jpg',
+          status: 'pending',
+          fileSize: 9
+        }
+      })
+      expect(storage.put).toHaveBeenCalledTimes(1)
+      expect(queue.add).toHaveBeenCalledWith(
+        'scan-file',
+        { mediaId: CHOSEN },
+        { jobId: `scan-file-${CHOSEN}` }
+      )
+    })
+
+    it.each([
+      ['a plugin that is not the web widget', { ...chosen, pluginId: 'whatsapp' }],
+      ['an id that is not a uuid', { ...chosen, mediaId: '../../other' }]
+    ])('derives the id from message and place for %s', async (_name, data) => {
+      const { fetcher, storage } = setup({
+        plugin: plugin(),
+        connection: { pluginId: 'web_widget' }
+      })
+
+      await fetcher.fetch(data, false)
+
+      expect(storage.put).toHaveBeenCalledWith(
+        expect.stringContaining(`/messages/${mediaId}/`),
+        expect.anything(),
+        'image/jpeg'
+      )
+    })
+
+    it('looks for an earlier attempt under that id, of this message', async () => {
+      const { fetcher, media } = setup({ existing: { status: 'clean' }, plugin: {} })
+
+      await fetcher.fetch(chosen, false)
+
+      expect(media.findFirst).toHaveBeenCalledWith({
+        where: { id: CHOSEN, storeId: STORE, messageId: MESSAGE },
+        select: { status: true }
+      })
+    })
+
+    it('refuses the file, with no retry, when the id is already a file of something else', async () => {
+      const { fetcher, media, storage, queue, marker } = setup({ plugin: plugin() })
+      media.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: CHOSEN })
+
+      await expect(fetcher.fetch(chosen, false)).resolves.toBeUndefined()
+
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(media.create).not.toHaveBeenCalled()
+      expect(queue.add).not.toHaveBeenCalled()
+    })
+
+    it('refuses it too when the row only shows at the insert, and accepts a row of this message', async () => {
+      const refused = setup({ plugin: plugin() })
+      refused.media.create.mockRejectedValueOnce(collision)
+      refused.media.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+      await expect(refused.fetcher.fetch(chosen, false)).resolves.toBeUndefined()
+      expect(refused.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
+      expect(refused.queue.add).not.toHaveBeenCalled()
+
+      const same = setup({ plugin: plugin() })
+      same.media.create.mockRejectedValueOnce(collision)
+      same.media.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: CHOSEN })
+      await expect(same.fetcher.fetch(chosen, false)).resolves.toBeUndefined()
+      expect(same.marker.clear).toHaveBeenCalledWith(STORE, MESSAGE, 1)
+      expect(same.storage.put).toHaveBeenCalledTimes(1)
+      expect(same.queue.add).toHaveBeenCalledTimes(1)
+    })
+  })
 })

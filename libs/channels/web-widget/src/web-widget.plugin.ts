@@ -213,6 +213,8 @@ export class WebWidgetPlugin implements ChannelPlugin {
             ? {}
             : {
                 media: attachments.map(file => ({
+                  // The api tells the visitor this id when it takes the message, before the file is stored
+                  id: file.id,
                   ref: file.id,
                   contentType: file.contentType,
                   filename: file.filename

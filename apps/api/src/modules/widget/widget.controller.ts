@@ -63,6 +63,14 @@ function refuseUnreadablePhone(profile: WidgetMessage['profile']): void {
   )
 }
 
+// What the api answers to a message: the ids its files will have, in the order they were named. The
+// worker stores each file under that id, so the visitor can ask for the link before the history has it
+// (the link is a 404 until the file is stored and clean).
+export interface WidgetSendView {
+  received: true
+  mediaIds: string[]
+}
+
 export interface WidgetBootstrapView {
   visitorToken: string
   expiresInSeconds: number
@@ -133,7 +141,7 @@ export class WidgetController {
     @Body(new ZodValidationPipe(widgetMessageSchema)) body: WidgetMessage,
     @Headers('origin') origin: string | undefined,
     @Res({ passthrough: true }) res: Response
-  ): Promise<{ received: true }> {
+  ): Promise<WidgetSendView> {
     const { claims, site } = await this.authenticate(body.visitorToken, origin, res)
     // A store that did not turn the form on takes no profile, whatever a script sends
     const accepted = site.preChatEnabled ? body : { ...body, profile: undefined }
@@ -165,7 +173,7 @@ export class WidgetController {
       )
       throw error
     }
-    return { received: true }
+    return { received: true, mediaIds: attachments.map(file => file.id) }
   }
 
   // The signed url for one file of the visitor; the file is attached by the message that names it

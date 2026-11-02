@@ -42,6 +42,30 @@ describe('channelEventSchema', () => {
     )
   })
 
+  it('accepts files where only some carry an id', () => {
+    const id = '33333333-3333-4333-8333-333333333333'
+    const event = withMessage({
+      type: MessageType.IMAGE,
+      media: [
+        { id, ref: 'a', contentType: 'image/png', filename: null },
+        { ref: 'b', contentType: 'image/png', filename: null },
+        { ref: 'c', contentType: 'image/png', filename: null }
+      ]
+    })
+
+    expect(channelEventSchema.safeParse(event).success).toBe(true)
+  })
+
+  it('accepts the id a plugin gives a file when it is a uuid', () => {
+    const id = '33333333-3333-4333-8333-333333333333'
+    const event = withMessage({
+      type: MessageType.IMAGE,
+      media: [{ id, ref: 'r', contentType: 'image/png', filename: null }]
+    })
+
+    expect(channelEventSchema.safeParse(event).success).toBe(true)
+  })
+
   it.each([MessageType.SYSTEM, MessageType.INTERNAL_NOTE, MessageType.ORDER_SUMMARY])(
     'refuses a customer message of the type %s, which only the platform writes',
     type => {
@@ -57,6 +81,33 @@ describe('channelEventSchema', () => {
     [
       'a text message that carries media',
       withMessage({ media: [{ ref: 'r', contentType: 'image/png', filename: null }] })
+    ],
+    [
+      'a media id that is not a uuid',
+      withMessage({
+        type: MessageType.IMAGE,
+        media: [{ id: 'media-1', ref: 'r', contentType: 'image/png', filename: null }]
+      })
+    ],
+    [
+      'two files that share an id',
+      withMessage({
+        type: MessageType.IMAGE,
+        media: [
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            ref: 'a',
+            contentType: 'image/png',
+            filename: null
+          },
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            ref: 'b',
+            contentType: 'image/png',
+            filename: null
+          }
+        ]
+      })
     ],
     ['an image with no media', withMessage({ type: MessageType.IMAGE, content: null })],
     ['an empty connection', { ...valid, connectionId: '' }],

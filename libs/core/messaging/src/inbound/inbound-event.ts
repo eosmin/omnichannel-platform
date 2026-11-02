@@ -9,6 +9,8 @@ export type JsonValue =
 // plugin (channelEventSchema) before it gets here, and this is the part of it that the core reads; the
 // core does not depend on the plugin SDK.
 export interface InboundMedia {
+  // The id the stored file will have, when the plugin must name it before it is stored (a uuid)
+  id?: string | undefined
   ref: string
   contentType: string
   filename: string | null

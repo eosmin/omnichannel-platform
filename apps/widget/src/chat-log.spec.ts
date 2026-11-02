@@ -177,6 +177,38 @@ describe('ChatLog', () => {
       expect(log.find('k1')?.progress).toBe(0)
     })
 
+    it('gives the files of a message the ids the api answered, in order, and tells the listeners', () => {
+      const log = new ChatLog()
+      log.addOutgoing('k1', '', [file, { ...file, filename: 'b.png' }])
+      const listener = jest.fn()
+      log.subscribe(listener)
+
+      log.setMediaIds('k1', ['m1', 'm2'])
+
+      expect(log.find('k1')?.attachments.map(item => [item.filename, item.id])).toEqual([
+        ['a.png', 'm1'],
+        ['b.png', 'm2']
+      ])
+      expect(listener).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores ids that do not match the files of the message, or a message it does not hold', () => {
+      const log = new ChatLog()
+      log.addOutgoing('k1', '', [file])
+      const listener = jest.fn()
+      log.subscribe(listener)
+
+      log.setMediaIds('k1', ['m1', 'm2'])
+      log.setMediaIds('k1', [])
+      log.setMediaIds('nope', ['m1'])
+      log.addOutgoing('k2', 'hola')
+      listener.mockClear()
+      log.setMediaIds('k2', [])
+
+      expect(log.find('k1')?.attachments[0]?.id).toBeNull()
+      expect(listener).not.toHaveBeenCalled()
+    })
+
     it('has no progress for a message without files', () => {
       const log = new ChatLog()
 

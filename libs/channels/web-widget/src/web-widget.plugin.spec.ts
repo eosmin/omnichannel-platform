@@ -150,8 +150,8 @@ describe('WebWidgetPlugin', () => {
         type: MessageType.IMAGE,
         content: null,
         media: [
-          { ref: uploadId, contentType: 'image/png', filename: 'foto.png' },
-          { ref: pdf.id, contentType: 'application/pdf', filename: 'a.pdf' }
+          { id: uploadId, ref: uploadId, contentType: 'image/png', filename: 'foto.png' },
+          { id: pdf.id, ref: pdf.id, contentType: 'application/pdf', filename: 'a.pdf' }
         ]
       })
     })

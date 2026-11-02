@@ -211,10 +211,11 @@ export class Session {
     const outgoing = this.outbox.get(key)
     try {
       const uploadIds = outgoing === undefined ? [] : await this.uploadFiles(key, outgoing)
-      await this.authorized(token =>
+      const mediaIds = await this.authorized(token =>
         this.deps.api.send(token, key, message.content, profile, uploadIds)
       )
       this.outbox.delete(key)
+      this.deps.log.setMediaIds(key, mediaIds)
       this.deps.log.setState(key, WidgetDeliveryStates.SENT)
       if (profile !== undefined) this.deps.onProfileSent?.()
     } catch (error) {

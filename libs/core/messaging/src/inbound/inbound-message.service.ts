@@ -363,6 +363,7 @@ export class InboundMessageService {
           pluginId,
           connectionId: event.connectionId,
           mediaRef: media.ref,
+          ...(media.id === undefined ? {} : { mediaId: media.id }),
           contentType: media.contentType,
           filename: media.filename
         },
