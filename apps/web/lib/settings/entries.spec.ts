@@ -57,6 +57,13 @@ describe('settings entries', () => {
     ).toEqual(['/s/s-1/settings/channels', '/s/s-1/settings/plugins'])
   })
 
+  it('shows Team to who may view the team, whatever else they hold', () => {
+    const entries = storeSettingsEntries('s-1')
+    expect(
+      visibleEntries(entries, holding(Permissions.TEAM_VIEW)).map(entry => entry.href)
+    ).toEqual(['/s/s-1/settings/team'])
+  })
+
   it('shows the Settings entry of the navigation exactly when a page of the area is visible', () => {
     const entries = storeSettingsEntries('s-1')
     for (const held of [
@@ -64,7 +71,8 @@ describe('settings entries', () => {
       [Permissions.ORG_MANAGE_STORES],
       [Permissions.SETTINGS_VIEW],
       [Permissions.ORG_MANAGE_STORES, Permissions.SETTINGS_VIEW],
-      [Permissions.SETTINGS_EDIT]
+      [Permissions.SETTINGS_EDIT],
+      [Permissions.TEAM_VIEW]
     ]) {
       const can = holding(...held)
       expect(mayOpenStoreSettings(can)).toBe(visibleEntries(entries, can).length > 0)

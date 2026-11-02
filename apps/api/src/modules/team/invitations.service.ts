@@ -6,6 +6,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import {
   INVITATION_RESEND_COOLDOWN_SECONDS,
+  RETRY_AFTER_METADATA_KEY,
   INVITATION_TTL_DAYS,
   INVITATION_WEB_PATH,
   type Permission
@@ -238,7 +239,7 @@ export class InvitationsService {
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'that address was invited a moment ago',
         HttpStatusCodes.TOO_MANY_REQUESTS,
-        { retryAfterSeconds: INVITATION_RESEND_COOLDOWN_SECONDS }
+        { [RETRY_AFTER_METADATA_KEY]: INVITATION_RESEND_COOLDOWN_SECONDS }
       )
     }
   }

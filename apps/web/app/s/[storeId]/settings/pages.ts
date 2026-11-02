@@ -4,3 +4,4 @@
 export { StoreGeneralPage } from '../../store-general-page'
 export { StoreChannelsPage } from '../../store-channels-page'
 export { StorePluginsPage } from '../../store-plugins-page'
+export { StoreTeamPage } from '../../store-team-page'

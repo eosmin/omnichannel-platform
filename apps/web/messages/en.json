@@ -192,7 +192,8 @@
     "signingOut": "Signing out",
     "loading": "Loading",
     "save": "Save",
-    "discard": "Discard changes"
+    "discard": "Discard changes",
+    "close": "Close"
   },
   "confirm": {
     "typePhrase": "Type \"{phrase}\" to confirm",
@@ -1554,7 +1555,8 @@
         "title": "Store",
         "general": "General",
         "channels": "Channels",
-        "plugins": "Plugins"
+        "plugins": "Plugins",
+        "team": "Team"
       },
       "org": {
         "label": "Organization",
@@ -1619,6 +1621,220 @@
         "description": "{count, plural, =0 {The plugin stops working in this store.} one {The plugin stops working and its connected account is disconnected.} other {The plugin stops working and its # connected accounts are disconnected.}} Conversations and customers stay.",
         "confirm": "Uninstall",
         "done": "{name} was uninstalled."
+      }
+    },
+    "team": {
+      "title": "Team",
+      "description": "The people in this store, the roles they hold and the invitations still waiting.",
+      "tabsLabel": "Team sections",
+      "tabs": {
+        "members": "Members",
+        "roles": "Roles",
+        "invitations": "Invitations"
+      },
+      "permissionGroups": {
+        "conversations": "Conversations",
+        "messages": "Messages",
+        "customers": "Customers",
+        "orders": "Orders",
+        "products": "Products",
+        "inventory": "Inventory",
+        "shipping": "Shipping",
+        "returns": "Returns",
+        "remittances": "Remittances",
+        "media": "Media",
+        "team": "Team",
+        "settings": "Settings",
+        "analytics": "Analytics",
+        "org": "Organization"
+      },
+      "permissions": {
+        "conversations": {
+          "view": "View assigned conversations",
+          "view_all": "View all conversations",
+          "create": "Start conversations",
+          "assign": "Assign conversations",
+          "resolve": "Resolve conversations",
+          "snooze": "Snooze conversations",
+          "archive": "Archive conversations",
+          "delete": "Delete conversations",
+          "export": "Export conversations"
+        },
+        "messages": {
+          "view": "View messages",
+          "send": "Send messages",
+          "send_template": "Send templates",
+          "internal_note": "Write internal notes",
+          "delete": "Delete messages",
+          "view_deleted": "View deleted messages"
+        },
+        "customers": {
+          "view": "View customers",
+          "create": "Create customers",
+          "edit": "Edit customers",
+          "delete": "Delete customers",
+          "merge": "Merge customers",
+          "export": "Export customers",
+          "flag_caution": "Flag customers with caution"
+        },
+        "orders": {
+          "view": "View orders",
+          "create": "Create orders",
+          "edit": "Edit orders",
+          "cancel": "Cancel orders",
+          "change_status": "Change order status",
+          "export": "Export orders",
+          "confirm": "Confirm orders",
+          "send_messages": "Send order messages",
+          "override_price": "Override prices",
+          "approve_price": "Approve prices"
+        },
+        "products": {
+          "view": "View products",
+          "create": "Create products",
+          "edit": "Edit products",
+          "delete": "Delete products"
+        },
+        "inventory": {
+          "view": "View inventory",
+          "adjust": "Adjust stock",
+          "manage_transfers": "Manage transfers",
+          "receive_transfers": "Receive transfers",
+          "manage_counts": "Manage stock counts",
+          "apply_counts": "Apply stock counts"
+        },
+        "shipping": {
+          "view": "View shipping",
+          "manage": "Manage shipments",
+          "manage_pickups": "Manage pickups"
+        },
+        "returns": {
+          "view": "View returns",
+          "manage": "Manage returns"
+        },
+        "remittances": {
+          "view": "View remittances",
+          "manage": "Manage remittances"
+        },
+        "media": {
+          "view": "View media",
+          "upload": "Upload media",
+          "download_all": "Download all media"
+        },
+        "team": {
+          "view": "View the team",
+          "invite": "Invite members",
+          "remove": "Remove members",
+          "manage_roles": "Manage roles"
+        },
+        "settings": {
+          "view": "View settings",
+          "edit": "Edit settings",
+          "manage_plugins": "Manage plugins",
+          "manage_webhooks": "Manage webhooks",
+          "manage_api_keys": "Manage API keys",
+          "manage_retention": "Manage data retention",
+          "manage_routing": "Manage routing",
+          "manage_carriers": "Manage carriers",
+          "manage_order_templates": "Manage order templates",
+          "manage_preferences": "Manage preferences"
+        },
+        "analytics": {
+          "view": "View analytics",
+          "export": "Export analytics",
+          "manage_reports": "Manage reports"
+        },
+        "org": {
+          "manage_stores": "Manage stores",
+          "manage_warehouses": "Manage warehouses",
+          "view_audit_log": "View the audit log",
+          "manage_compliance": "Manage compliance"
+        }
+      },
+      "members": {
+        "listLabel": "Members",
+        "empty": {
+          "title": "No members",
+          "body": "People who accept an invitation appear here."
+        },
+        "joined": "Joined {date}",
+        "roleOf": "Role of {name}",
+        "roleChanged": "{name} is now {role}.",
+        "remove": {
+          "action": "Remove",
+          "title": "Remove {name}?",
+          "description": "They lose access to this store at once and their conversations become unassigned. You can invite them again later.",
+          "confirm": "Remove member",
+          "done": "{name} was removed."
+        }
+      },
+      "roles": {
+        "description": "A role is a set of permissions. The system roles are the same in every store and cannot be changed; create your own for anything else.",
+        "create": "New role",
+        "listLabel": "Roles",
+        "emptyCustom": "You have not created a custom role yet.",
+        "system": "System",
+        "permissionCount": "{count, plural, one {# permission} other {# permissions}}",
+        "edit": "Edit",
+        "view": "View",
+        "delete": {
+          "action": "Delete",
+          "title": "Delete {name}?",
+          "description": "A role that a member or an invitation still holds cannot be deleted: change theirs first.",
+          "confirm": "Delete role",
+          "done": "{name} was deleted.",
+          "inUse": "{name} is still held by a member or an invitation. Change theirs first."
+        },
+        "dialog": {
+          "createTitle": "New role",
+          "editTitle": "Edit {name}",
+          "viewTitle": "{name}",
+          "description": "Tick what people with this role may do. You can only give permissions you hold yourself.",
+          "systemNote": "System roles are the same in every store and cannot be changed.",
+          "notHeldNote": "This role holds permissions you do not have, so you cannot change it.",
+          "readOnlyNote": "You may see this role but not change it.",
+          "name": "Name",
+          "descriptionLabel": "Description",
+          "optional": "(optional)",
+          "permissions": "Permissions",
+          "save": "Save role",
+          "saving": "Saving",
+          "saved": "{name} was saved."
+        }
+      },
+      "invitations": {
+        "description": "People you invited who have not accepted yet.",
+        "invite": "Invite",
+        "listLabel": "Pending invitations",
+        "empty": {
+          "title": "No pending invitations",
+          "body": "Invite someone by email and they appear here until they accept."
+        },
+        "invitedBy": "invited by {name}",
+        "expires": "Expires {date}",
+        "expired": "Expired {date}",
+        "resend": {
+          "action": "Resend",
+          "done": "A new invitation was sent to {email}.",
+          "cooldown": "An invitation was sent a moment ago. Try again in {seconds, plural, one {# second} other {# seconds}}."
+        },
+        "revoke": {
+          "action": "Revoke",
+          "title": "Revoke the invitation to {email}?",
+          "description": "The link they received stops working. You can invite them again later.",
+          "confirm": "Revoke invitation",
+          "done": "The invitation to {email} was revoked."
+        },
+        "dialog": {
+          "title": "Invite someone",
+          "description": "They receive an email with a link to join this store with the role you choose.",
+          "email": "Email",
+          "role": "Role",
+          "send": "Send invitation",
+          "sending": "Sending",
+          "sent": "An invitation was sent to {email}.",
+          "noRole": "No role is available to you: every role holds permissions you do not have."
+        }
       }
     }
   },

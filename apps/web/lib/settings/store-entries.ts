@@ -32,6 +32,12 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'plugins',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS),
       permission: Permissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.TEAM,
+      labelKey: 'team',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.TEAM),
+      permission: Permissions.TEAM_VIEW
     }
   ]
 }
