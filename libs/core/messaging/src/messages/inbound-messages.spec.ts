@@ -19,6 +19,7 @@ describe('insertInboundMessage metadata', () => {
         metadata: {
           attachmentUrl: 'https://example.com/a',
           captionFailed: true,
+          captionState: 'failed',
           captionExternalId: 'z',
           unavailableFiles: [{ index: 0, code: 'refused' }]
         }

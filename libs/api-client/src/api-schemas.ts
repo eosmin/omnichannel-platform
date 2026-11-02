@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { MediaStatus } from '@platform/core/domain'
+import { CaptionState, MediaStatus } from '@platform/core/domain'
 import { PresenceStatus } from '@platform/core/realtime'
 
 // What the api answers, parsed at the edge: the browser never trusts a body it has not checked.
@@ -270,8 +270,9 @@ export const messageSchema = z.object({
   ),
   // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one
   unavailableFiles: z.array(z.object({ index: z.number().int(), code: z.string() })),
-  // The file of a reply went and the text under it did not
-  captionFailed: z.boolean(),
+  // The text under a file that went apart from it: failed, or unconfirmed (the provider may have
+  // delivered it); null otherwise, and for a state of a newer server
+  captionState: z.enum([CaptionState.FAILED, CaptionState.UNCONFIRMED]).nullable().catch(null),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),
   version: z.number().int(),

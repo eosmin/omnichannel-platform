@@ -5,7 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
-import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
+import { AuthorType, CaptionState, DeliveryStatus, MessageType } from '@platform/core/domain'
 
 import { knownErrorCode } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
@@ -284,12 +284,12 @@ function Content({
           )}
         </p>
       )}
-      {message.captionFailed ? (
+      {message.captionState === null ? null : (
         <p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
           <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
-          {t('captionFailed')}
+          {t(message.captionState === CaptionState.FAILED ? 'captionFailed' : 'captionUnconfirmed')}
         </p>
-      ) : null}
+      )}
     </>
   )
 }

@@ -54,7 +54,10 @@ export function graphFailure(
     MetaTransientStatuses.some(transient => transient === status) ||
     (code !== undefined && isOutageCode(code))
   ) {
-    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: safeToRepeat })
+    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+      retryable: safeToRepeat,
+      outcomeUnknown: !safeToRepeat
+    })
   }
   // Not a failure of the call: this person has no profile to read, and asking again changes nothing
   if (code === MetaErrorCodes.NO_PROFILE) {
@@ -82,7 +85,10 @@ export function graphFailure(
 export function graphUnreachable(
   { safeToRepeat }: { safeToRepeat: boolean } = { safeToRepeat: true }
 ): PluginError {
-  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: safeToRepeat })
+  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+    retryable: safeToRepeat,
+    outcomeUnknown: !safeToRepeat
+  })
 }
 
 // Meta answered something that is not what its API says: the same call would answer the same

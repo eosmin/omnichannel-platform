@@ -18,7 +18,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   reactions: [],
   media: [],
   unavailableFiles: [],
-  captionFailed: false,
+  captionState: null,
   mentions: [],
   version: 1,
   editedAt: null,

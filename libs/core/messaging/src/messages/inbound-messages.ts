@@ -3,6 +3,7 @@ import {
   AuthorType,
   ChannelResultMetadata,
   DeliveryStatus,
+  LEGACY_CAPTION_FAILED_KEY,
   UNAVAILABLE_FILES_KEY
 } from '@platform/core/domain'
 
@@ -11,7 +12,9 @@ import type { InboundMessage } from '../inbound/inbound-event'
 // The keys only the platform writes in the metadata of a message: whatever a channel plugin passes
 // through under these names is dropped, so a provider cannot draw a warning in the thread
 const RESERVED_METADATA_KEYS: ReadonlySet<string> = new Set([
-  ChannelResultMetadata.CAPTION_FAILED,
+  ChannelResultMetadata.CAPTION_STATE,
+  // The key the flag had before `Message.captionState`: a provider cannot draw it either
+  LEGACY_CAPTION_FAILED_KEY,
   ChannelResultMetadata.CAPTION_EXTERNAL_ID,
   UNAVAILABLE_FILES_KEY
 ])

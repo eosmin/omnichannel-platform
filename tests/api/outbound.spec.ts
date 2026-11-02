@@ -840,28 +840,38 @@ describe('Replies on their way to a channel', () => {
 
       const row = await owner.message.findUniqueOrThrow({
         where: { id: reply.id },
-        select: { metadata: true, captionChannelMessageId: true }
+        select: { metadata: true, captionChannelMessageId: true, captionState: true }
       })
       expect(row.captionChannelMessageId).toBe('cap-1')
+      expect(row.captionState).toBe('sent')
       // The column is the only place of the id, and what else the plugin said is dropped
       expect(row.metadata).toBeNull()
     })
 
-    it('flags a reply whose file went and whose caption did not', async () => {
-      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
-      await fileOf(reply.storeId, { messageId: reply.id })
-      mediaResult = { metadata: { captionFailed: true } }
+    it.each(['failed', 'unconfirmed'])(
+      'marks a reply whose file went and whose caption is %s',
+      async state => {
+        const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+        await fileOf(reply.storeId, { messageId: reply.id })
+        mediaResult = { metadata: { captionState: state } }
 
-      await sender.send(job(reply), false)
+        await sender.send(job(reply), false)
 
-      const row = await owner.message.findUniqueOrThrow({
-        where: { id: reply.id },
-        select: { metadata: true, deliveryStatus: true, channelMessageId: true }
-      })
-      expect(row.deliveryStatus).toBe(DeliveryStatus.SENT)
-      expect(row.channelMessageId).not.toBeNull()
-      expect(row.metadata).toEqual({ captionFailed: true })
-    })
+        const row = await owner.message.findUniqueOrThrow({
+          where: { id: reply.id },
+          select: {
+            metadata: true,
+            captionState: true,
+            deliveryStatus: true,
+            channelMessageId: true
+          }
+        })
+        expect(row.deliveryStatus).toBe(DeliveryStatus.SENT)
+        expect(row.channelMessageId).not.toBeNull()
+        expect(row.captionState).toBe(state)
+        expect(row.metadata).toBeNull()
+      }
+    )
 
     it('keeps the metadata the message already has when the caption id is written', async () => {
       const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })

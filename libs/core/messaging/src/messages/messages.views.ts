@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type {
   AuthorType,
+  CaptionState,
   DeliveryStatus,
   MediaStatus,
   MediaUnavailableCode,
@@ -13,7 +14,7 @@ import {
   httpUrl,
   InboundLimits,
   MediaStatus as MediaStatuses,
-  ChannelResultMetadata,
+  CaptionState as CaptionStates,
   MediaUnavailableCodes,
   MessageLimits,
   MessageType as MessageTypes,
@@ -99,9 +100,6 @@ export interface MessageMediaView {
   status: MediaStatus
 }
 
-// The metadata key that says the text under a file did not reach the customer
-const captionFailedSchema = z.object({ [ChannelResultMetadata.CAPTION_FAILED]: z.literal(true) })
-
 // A file the customer sent that the platform could not keep: where it was in the message and why. The
 // worker writes it when it gives up, so a file still being fetched is not in the list.
 export interface UnavailableFileView {
@@ -144,8 +142,9 @@ export interface MessageView {
   media: MessageMediaView[]
   // Files of the customer that could not be kept; empty for a deleted message
   unavailableFiles: UnavailableFileView[]
-  // The file of a reply went and the text under it did not (Instagram and Messenger send it apart)
-  captionFailed: boolean
+  // The state of the text under a file that went apart from it (Instagram and Messenger): failed, or
+  // unconfirmed when the provider may have delivered it; null when there is nothing to say
+  captionState: CaptionState | null
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
   version: number
@@ -178,6 +177,7 @@ export const MESSAGE_SELECT = {
   deliveryError: true,
   mentions: true,
   metadata: true,
+  captionState: true,
   version: true,
   editedAt: true,
   editedByType: true,
@@ -220,6 +220,7 @@ interface MessageRow {
   deliveryError: string | null
   mentions: string[]
   metadata: unknown
+  captionState: string | null
   version: number
   editedAt: Date | null
   editedByType: string | null
@@ -290,7 +291,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
           }))
         : [],
     unavailableFiles: unavailableFilesOf(row, type),
-    captionFailed: row.deletedAt === null && captionFailedSchema.safeParse(row.metadata).success,
+    captionState: row.deletedAt === null ? captionStateOf(row.captionState) : null,
     version: row.version,
     editedAt: row.editedAt,
     editedByType: authorOrNull(row.editedByType, 'message editor'),
@@ -318,6 +319,12 @@ function attachmentUrlOf(row: MessageRow, type: MessageType): string | null {
 function unavailableFilesOf(row: MessageRow, type: MessageType): UnavailableFileView[] {
   if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return []
   return unavailableFilesSchema.safeParse(row.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+}
+
+// A state this version does not know (written by a newer one) says nothing rather than failing the thread
+const KNOWN_CAPTION_STATES: readonly CaptionState[] = Object.values(CaptionStates)
+function captionStateOf(text: string | null): CaptionState | null {
+  return KNOWN_CAPTION_STATES.find(state => state === text) ?? null
 }
 
 const authorOrNull = (text: string | null, what: string): AuthorType | null =>

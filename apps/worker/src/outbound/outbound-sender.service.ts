@@ -10,6 +10,7 @@ import {
 } from '@platform/channels/connections'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
+  CaptionState,
   ChannelConnectionStatus,
   ChannelTextLimits,
   ChannelResultMetadata,
@@ -18,6 +19,7 @@ import {
   MediaStatus,
   MessageType,
   OutboundLimits,
+  ReportedCaptionStates,
   isInstallationActive
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
@@ -48,7 +50,7 @@ const resultSchema = z.object({
   metadata: z
     .object({
       [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: z.string().min(1).max(255).optional(),
-      [ChannelResultMetadata.CAPTION_FAILED]: z.boolean().optional()
+      [ChannelResultMetadata.CAPTION_STATE]: z.enum(ReportedCaptionStates).optional()
     })
     .optional()
 })
@@ -272,13 +274,17 @@ export class OutboundSender {
     })
     if (taken > 0) this.logger.warn({ messageId }, 'the provider id of a reply was already used')
     const captionExternalId = accepted.metadata?.[ChannelResultMetadata.CAPTION_EXTERNAL_ID]
-    const captionFailed = accepted.metadata?.[ChannelResultMetadata.CAPTION_FAILED] === true
+    // The id of the caption says it was sent; otherwise the plugin says how it stands
+    const captionState =
+      captionExternalId === undefined
+        ? accepted.metadata?.[ChannelResultMetadata.CAPTION_STATE]
+        : CaptionState.SENT
     const withoutId: StatusChange = {
       storeId,
       messageId,
       to: accepted.status,
       ...(captionExternalId === undefined ? {} : { captionExternalId }),
-      ...(captionFailed ? { captionFailed } : {})
+      ...(captionState === undefined ? {} : { captionState })
     }
     let change: StatusChange =
       taken > 0 ? withoutId : { ...withoutId, channelMessageId: accepted.externalId }

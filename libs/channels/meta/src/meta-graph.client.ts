@@ -155,7 +155,8 @@ export class MetaGraphClient {
     // A 2xx whose body cannot be read: a read can be asked again, a send may already have gone out
     if (body === undefined) throw graphUnreachable({ safeToRepeat })
     const parsed = request.schema.safeParse(body)
-    if (!parsed.success) throw graphUnexpected()
+    // A 2xx that does not fit: a send may have gone out, so it is not a plain refusal
+    if (!parsed.success) throw safeToRepeat ? graphUnexpected() : graphUnreachable({ safeToRepeat })
     return parsed.data
   }
 

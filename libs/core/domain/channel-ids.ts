@@ -94,6 +94,9 @@ export const OutboundLimits = {
   // failed for good without the message being marked. Past the 75 seconds of the five attempts.
   REQUEUE_AFTER_MS: 120_000,
   REQUEUE_BATCH: 100,
+  // An echo settles an `unconfirmed` caption only this long after the reply was written: the provider
+  // echoes within seconds, and a later identical text is the owner typing it again, not that caption
+  UNCONFIRMED_CAPTION_MS: 3_600_000,
   // Past this a reply is not sent any more: the customer would get it hours late, out of its time and
   // probably out of the messaging window. It is marked failed so that the agent sees it and decides.
   GIVE_UP_AFTER_MS: 3_600_000,
