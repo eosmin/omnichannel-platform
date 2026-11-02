@@ -5,7 +5,7 @@ import { ChatLog } from './chat-log'
 import { readOptions } from './config'
 import { resolveLocale, textFor } from './i18n'
 import { Session, type SocketFactory } from './session'
-import { mountPanel } from './ui/panel'
+import { mountPanel, type Panel } from './ui/panel'
 import { browserStorage, loadVisitorId, markPreChatDone, preChatDone } from './visitor'
 
 // Replies come on a socket of their own namespace, over websocket alone: no long polling, so the api
@@ -30,11 +30,14 @@ async function run(): Promise<void> {
     createSocket,
     newMessageId: () => crypto.randomUUID(),
     // Answered for good only once the api has the data: a tab closed before the first message asks again
-    onProfileSent: () => markPreChatDone(storage)
+    onProfileSent: () => markPreChatDone(storage),
+    // The form comes back with the message under the phone
+    onPhoneRefused: () => panel?.showPhoneProblem()
   })
+  let panel: Panel | null = null
   const boot = await session.start()
   if (boot === null) return
-  const panel = mountPanel({
+  panel = mountPanel({
     storeName: boot.store.name,
     text: textFor(resolveLocale(options.locale, boot.store.locale, navigator.language)),
     away: boot.away,
@@ -45,7 +48,8 @@ async function run(): Promise<void> {
       // Nothing typed, nothing to send: the visitor skipped the form
       if (Object.keys(profile).length === 0) markPreChatDone(storage)
     },
-    onSend: content => void session.send(content),
+    onSend: (content, files) => void session.send(content, files),
+    onOpenFile: mediaId => session.fileLink(mediaId),
     onRetry: key => void session.retry(key),
     onTyping: () => session.typing()
   })

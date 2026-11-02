@@ -6,7 +6,7 @@ import type { Page, Response } from '@playwright/test'
 
 import { HttpStatusCodes } from '@platform/core/errors'
 
-import { API_URL } from './env'
+import { API_URL, STORAGE_URL } from './env'
 
 // The address the api expects the script at (WIDGET_SCRIPT_URL); a plain http origin is allowed for a
 // machine of the developer, so the stand-in site needs no certificate
@@ -15,13 +15,17 @@ const SITE_PAGE = `${SITE_ORIGIN}/`
 const BUNDLE = resolve(import.meta.dirname, '../../../dist/apps/widget/widget.js')
 
 const apiOrigin = new URL(API_URL)
+// A visitor's browser puts a file on the bucket itself, on a signed url: a store with a strict
+// `connect-src` must list that host too, or the upload is blocked by the page's own policy
+const storageOrigin = new URL(STORAGE_URL).origin
 
 // The strictest policy a store can have: scripts of its own origin, no inline script and no
-// stylesheet source at all, and the api (and its socket) as the only place the page may talk to
+// stylesheet source at all, and the api (and its socket) and the bucket as the only places the page
+// may talk to
 export const STRICT_CSP = [
   "default-src 'none'",
   "script-src 'self'",
-  `connect-src ${apiOrigin.origin} ${apiOrigin.protocol === 'https:' ? 'wss' : 'ws'}://${apiOrigin.host}`
+  `connect-src ${apiOrigin.origin} ${storageOrigin} ${apiOrigin.protocol === 'https:' ? 'wss' : 'ws'}://${apiOrigin.host}`
 ].join('; ')
 
 // The snippet as the store pastes it, pointing at the bundle that `nx build widget` wrote

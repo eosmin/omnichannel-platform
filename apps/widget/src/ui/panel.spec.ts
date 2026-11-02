@@ -16,6 +16,8 @@ const message = (overrides: Partial<ChatMessage>): ChatMessage => ({
   serverId: 'k',
   from: 'team',
   content: 'hola',
+  attachments: [],
+  progress: null,
   createdAt: 'd',
   state: 'sent',
   seen: false,
@@ -25,6 +27,7 @@ const message = (overrides: Partial<ChatMessage>): ChatMessage => ({
 describe('mountPanel', () => {
   let mounted: Panel | null = null
   const onSend = jest.fn()
+  const onOpenFile = jest.fn()
   const onProfile = jest.fn()
   const onRetry = jest.fn()
   const onTyping = jest.fn()
@@ -35,6 +38,7 @@ describe('mountPanel', () => {
     preChat: false,
     onProfile,
     onSend,
+    onOpenFile,
     onRetry,
     onTyping,
     ...overrides
@@ -185,13 +189,13 @@ describe('mountPanel', () => {
     field.dispatchEvent(new Event('input'))
     expect(button.disabled).toBe(false)
     field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
-    expect(onSend).toHaveBeenCalledWith('hola')
+    expect(onSend).toHaveBeenCalledWith('hola', [])
     expect(field.value).toBe('')
 
     field.value = 'otra'
     field.dispatchEvent(new Event('input'))
     q<HTMLFormElement>('.composer').dispatchEvent(new Event('submit', { cancelable: true }))
-    expect(onSend).toHaveBeenLastCalledWith('otra')
+    expect(onSend).toHaveBeenLastCalledWith('otra', [])
   })
 
   it('leaves a line break for Shift+Enter', () => {
@@ -322,5 +326,210 @@ describe('mountPanel', () => {
       expect(onProfile).not.toHaveBeenCalled()
       expect(q('.problem').textContent).toBe('Revisa el teléfono.')
     })
+  })
+  describe('files', () => {
+    const png = (name = 'a.png', size = 1000): File => {
+      const file = new File(['x'], name, { type: 'image/png' })
+      Object.defineProperty(file, 'size', { value: size })
+      return file
+    }
+    const choose = (...files: File[]): void => {
+      const picker = q<HTMLInputElement>('input[type="file"]')
+      Object.defineProperty(picker, 'files', { value: files, configurable: true })
+      picker.dispatchEvent(new Event('change'))
+    }
+
+    it('offers only the types the api takes', () => {
+      mount()
+
+      expect(q<HTMLInputElement>('input[type="file"]').accept).toContain('image/png')
+      expect(q<HTMLInputElement>('input[type="file"]').accept).not.toContain('text/html')
+    })
+
+    it('keeps a chosen file beside the text, lets send go with the file alone, and clears them', () => {
+      mount()
+      const button = q<HTMLButtonElement>('.send')
+
+      choose(png('foto.png', 2048))
+
+      expect(q('.staged-file .file-name').textContent).toBe('foto.png')
+      expect(q('.staged-file .file-size').textContent).toBe('2.0 KB')
+      expect(button.disabled).toBe(false)
+      q<HTMLFormElement>('.composer').dispatchEvent(new Event('submit', { cancelable: true }))
+
+      expect(onSend).toHaveBeenCalledWith('', [expect.objectContaining({ name: 'foto.png' })])
+      expect(shadow().querySelectorAll('.staged-file')).toHaveLength(0)
+      expect(button.disabled).toBe(true)
+    })
+
+    it('takes a file off before it is sent', () => {
+      mount()
+      choose(png('a.png'), png('b.png'))
+
+      q<HTMLButtonElement>('.staged-file button').click()
+
+      expect(
+        Array.from(shadow().querySelectorAll('.file-name')).map(node => node.textContent)
+      ).toEqual(['b.png'])
+    })
+
+    it('says why a file is refused and keeps the others', () => {
+      mount()
+
+      choose(new File(['x'], 'a.exe', { type: 'application/x-msdownload' }), png('ok.png'))
+      expect(q('.notice').textContent).toBe(textFor('es').fileTypeNotAllowed)
+      expect(shadow().querySelectorAll('.staged-file')).toHaveLength(1)
+
+      choose(png('big.png', 11 * 1024 * 1024))
+      expect(q('.notice').textContent).toBe('El archivo pesa más de 10 MB.')
+
+      choose(png('empty.png', 0))
+      expect(q('.notice').textContent).toBe(textFor('es').fileEmpty)
+    })
+
+    it('takes no more files than a message may carry', () => {
+      mount()
+
+      choose(...Array.from({ length: 6 }, (_, n) => png(`${n}.png`)))
+
+      expect(shadow().querySelectorAll('.staged-file')).toHaveLength(5)
+      expect(q('.notice').textContent).toContain('5')
+    })
+
+    it('draws a file as a name and a size, and the bubble only when there is text', () => {
+      const panel = mount()
+      const attachment = { id: 'm1', filename: 'a.pdf', contentType: 'application/pdf', size: 3000 }
+
+      panel.update([message({ key: 'a', content: '', attachments: [attachment] })])
+
+      expect(q('.file .file-name').textContent).toBe('a.pdf')
+      expect(q('.file .file-size').textContent).toBe('2.9 KB')
+      expect(shadow().querySelector('.bubble')).toBeNull()
+      panel.update([
+        message({ key: 'a', content: '', attachments: [attachment] }),
+        message({ key: 'b', content: 'hola' })
+      ])
+      expect(q('.bubble').textContent).toBe('hola')
+    })
+
+    it('asks for the link only when the file is opened, and follows it', async () => {
+      const click = jest
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => undefined)
+      onOpenFile.mockResolvedValue({
+        url: 'https://b/f',
+        filename: 'a',
+        contentType: 'x',
+        previewUrl: null
+      })
+      const panel = mount()
+      panel.update([
+        message({
+          key: 'a',
+          content: '',
+          attachments: [{ id: 'm1', filename: 'a.pdf', contentType: 'x', size: 1 }]
+        })
+      ])
+      expect(onOpenFile).not.toHaveBeenCalled()
+
+      q<HTMLButtonElement>('button.file').click()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(onOpenFile).toHaveBeenCalledWith('m1')
+      expect(click).toHaveBeenCalledTimes(1)
+      click.mockRestore()
+    })
+
+    it('does not follow a link that is not a web address', async () => {
+      const click = jest
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => undefined)
+      onOpenFile.mockResolvedValue({
+        url: 'javascript:alert(1)',
+        filename: 'a',
+        contentType: 'x',
+        previewUrl: null
+      })
+      const panel = mount()
+      panel.update([
+        message({
+          key: 'a',
+          content: '',
+          attachments: [{ id: 'm1', filename: 'a.pdf', contentType: 'x', size: 1 }]
+        })
+      ])
+
+      q<HTMLButtonElement>('button.file').click()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(click).not.toHaveBeenCalled()
+      expect(q('.notice').textContent).toBe(textFor('es').fileUnavailable)
+      click.mockRestore()
+    })
+
+    it('says so when the link cannot be had', async () => {
+      onOpenFile.mockRejectedValue(new Error('no'))
+      const panel = mount()
+      panel.update([
+        message({
+          key: 'a',
+          content: '',
+          attachments: [{ id: 'm1', filename: 'a.pdf', contentType: 'x', size: 1 }]
+        })
+      ])
+
+      q<HTMLButtonElement>('button.file').click()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(q('.notice').textContent).toBe(textFor('es').fileUnavailable)
+    })
+
+    it('shows a file still going up without a button, and a bar that moves in place', () => {
+      const panel = mount()
+      const going = { id: null, filename: 'a.png', contentType: 'image/png', size: 1 }
+      panel.update([
+        message({
+          key: 'a',
+          from: 'visitor',
+          state: 'sending',
+          attachments: [going],
+          progress: 0.2
+        })
+      ])
+      const bar = q<HTMLProgressElement>('progress')
+
+      panel.update([
+        message({
+          key: 'a',
+          from: 'visitor',
+          state: 'sending',
+          attachments: [going],
+          progress: 0.6
+        })
+      ])
+
+      expect(shadow().querySelector('button.file')).toBeNull()
+      expect(q<HTMLProgressElement>('progress')).toBe(bar)
+      expect(bar.value).toBe(0.6)
+    })
+  })
+
+  it('brings the form back with the phone marked when the api cannot read it', () => {
+    const panel = mount({ preChat: true })
+    q<HTMLFormElement>('.prechat').dispatchEvent(new Event('submit', { cancelable: true }))
+    expect(q<HTMLElement>('.prechat').hidden).toBe(true)
+
+    panel.showPhoneProblem()
+
+    expect(q<HTMLElement>('.panel').hidden).toBe(false)
+    expect(q<HTMLElement>('.prechat').hidden).toBe(false)
+    expect(q<HTMLElement>('.composer').hidden).toBe(true)
+    expect(q('input[name="phone"]').getAttribute('aria-invalid')).toBe('true')
+    expect(q('input[name="phone"]').parentElement?.querySelector('.problem')?.textContent).toBe(
+      'Revisa el teléfono.'
+    )
   })
 })

@@ -2,8 +2,8 @@ import { WidgetClientEvents, WidgetLimits, WidgetSocketEvents } from '@platform/
 
 import { WidgetApiError, type WidgetApi } from './api'
 import { ChatLog } from './chat-log'
-import { Session, type VisitorSocket } from './session'
-import type { Bootstrap } from './types'
+import { Session, type SessionDeps, type VisitorSocket } from './session'
+import type { Bootstrap, ServerMessage } from './types'
 
 const MS = 1000
 const HOUR = 3600
@@ -47,8 +47,9 @@ class FakeSocket implements VisitorSocket {
 }
 
 function setup(
-  api: Partial<jest.Mocked<Pick<WidgetApi, 'bootstrap' | 'send'>>>,
-  onProfileSent?: () => void
+  api: Partial<jest.Mocked<Pick<WidgetApi, 'bootstrap' | 'send' | 'requestUpload' | 'fileLink'>>>,
+  onProfileSent?: () => void,
+  extra: Partial<SessionDeps> = {}
 ) {
   const log = new ChatLog()
   const socket = new FakeSocket()
@@ -65,7 +66,8 @@ function setup(
       return socket
     },
     newMessageId: () => `id-${(ids += 1)}`,
-    ...(onProfileSent === undefined ? {} : { onProfileSent })
+    ...(onProfileSent === undefined ? {} : { onProfileSent }),
+    ...extra
   })
   const tokenOnTheWire = (): string | undefined => {
     let seen: string | undefined
@@ -85,7 +87,7 @@ describe('Session', () => {
     it('reads the history, opens the socket with the token and hands back the store', async () => {
       const bootstrap = jest.fn().mockResolvedValue(
         boot('t1', {
-          messages: [{ id: 'm1', from: 'team', content: 'hola', createdAt: 'd' }]
+          messages: [{ id: 'm1', from: 'team', content: 'hola', attachments: [], createdAt: 'd' }]
         })
       )
       const { session, log, tokenOnTheWire } = setup({ bootstrap })
@@ -139,7 +141,13 @@ describe('Session', () => {
       const { session, log, socket } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')) })
       await session.start()
 
-      socket.receive('widget.message', { id: 'r1', from: 'team', content: 'hola', createdAt: 'd' })
+      socket.receive('widget.message', {
+        id: 'r1',
+        from: 'team',
+        content: 'hola',
+        attachments: [],
+        createdAt: 'd'
+      })
       socket.receive('widget.message', { nonsense: true })
 
       expect(log.messages.map(message => message.content)).toEqual(['hola'])
@@ -173,7 +181,13 @@ describe('Session', () => {
       socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
       socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: false })
       socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
-      socket.receive('widget.message', { id: 'r1', from: 'team', content: 'hola', createdAt: 'd' })
+      socket.receive('widget.message', {
+        id: 'r1',
+        from: 'team',
+        content: 'hola',
+        attachments: [],
+        createdAt: 'd'
+      })
       socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: true })
       await jest.advanceTimersByTimeAsync(WidgetLimits.AGENT_TYPING_LAPSE_MS)
       socket.receive(WidgetSocketEvents.AGENT_TYPING, { active: 'yes' })
@@ -211,11 +225,29 @@ describe('Session', () => {
 
   describe('read receipts', () => {
     it('marks the messages of the visitor up to the one the agent read', async () => {
-      const history = [
-        { id: 'a', from: 'visitor', content: '1', createdAt: '2026-01-01T00:00:00.000Z' },
-        { id: 'b', from: 'team', content: '2', createdAt: '2026-01-01T00:00:01.000Z' },
-        { id: 'c', from: 'visitor', content: '3', createdAt: '2026-01-01T00:00:02.000Z' }
-      ] as const
+      const history: ServerMessage[] = [
+        {
+          id: 'a',
+          from: 'visitor',
+          content: '1',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:00.000Z'
+        },
+        {
+          id: 'b',
+          from: 'team',
+          content: '2',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:01.000Z'
+        },
+        {
+          id: 'c',
+          from: 'visitor',
+          content: '3',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:02.000Z'
+        }
+      ]
       const { session, log, socket } = setup({
         bootstrap: jest.fn().mockResolvedValue(boot('t1', { messages: [...history] }))
       })
@@ -229,8 +261,14 @@ describe('Session', () => {
     })
 
     it('marks nothing when the message that was read is older than the history it loaded', async () => {
-      const history = [
-        { id: 'c', from: 'visitor', content: '3', createdAt: '2026-01-01T00:00:02.000Z' }
+      const history: ServerMessage[] = [
+        {
+          id: 'c',
+          from: 'visitor',
+          content: '3',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:02.000Z'
+        }
       ] as const
       const { session, log } = setup({
         bootstrap: jest
@@ -245,10 +283,28 @@ describe('Session', () => {
     })
 
     it('shows as seen what an agent read before the page was opened', async () => {
-      const history = [
-        { id: 'a', from: 'visitor', content: '1', createdAt: '2026-01-01T00:00:00.000Z' },
-        { id: 'b', from: 'team', content: '2', createdAt: '2026-01-01T00:00:01.000Z' },
-        { id: 'c', from: 'visitor', content: '3', createdAt: '2026-01-01T00:00:02.000Z' }
+      const history: ServerMessage[] = [
+        {
+          id: 'a',
+          from: 'visitor',
+          content: '1',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:00.000Z'
+        },
+        {
+          id: 'b',
+          from: 'team',
+          content: '2',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:01.000Z'
+        },
+        {
+          id: 'c',
+          from: 'visitor',
+          content: '3',
+          attachments: [],
+          createdAt: '2026-01-01T00:00:02.000Z'
+        }
       ] as const
       const { session, log } = setup({
         bootstrap: jest
@@ -365,7 +421,7 @@ describe('Session', () => {
 
       await session.send('hola')
 
-      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola', undefined)
+      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola', undefined, [])
       expect(log.find('id-1')?.state).toBe('sent')
       session.stop()
     })
@@ -384,7 +440,7 @@ describe('Session', () => {
 
       await session.send('hola')
 
-      expect(send).toHaveBeenNthCalledWith(2, 't2', 'id-1', 'hola', undefined)
+      expect(send).toHaveBeenNthCalledWith(2, 't2', 'id-1', 'hola', undefined, [])
       expect(log.find('id-1')?.state).toBe('sent')
       session.stop()
     })
@@ -401,7 +457,7 @@ describe('Session', () => {
       expect(log.find('id-1')?.state).toBe('failed')
       await session.retry('id-1')
 
-      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola', undefined)
+      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola', undefined, [])
       expect(log.find('id-1')?.state).toBe('sent')
       session.stop()
     })
@@ -415,11 +471,18 @@ describe('Session', () => {
       await session.send('hola')
       await session.send('otra')
 
-      expect(send).toHaveBeenNthCalledWith(1, 't1', 'id-1', 'hola', {
-        name: 'Ana',
-        email: 'ana@example.com'
-      })
-      expect(send).toHaveBeenNthCalledWith(2, 't1', 'id-2', 'otra', undefined)
+      expect(send).toHaveBeenNthCalledWith(
+        1,
+        't1',
+        'id-1',
+        'hola',
+        {
+          name: 'Ana',
+          email: 'ana@example.com'
+        },
+        []
+      )
+      expect(send).toHaveBeenNthCalledWith(2, 't1', 'id-2', 'otra', undefined, [])
       session.stop()
     })
 
@@ -435,7 +498,7 @@ describe('Session', () => {
       await session.send('hola')
       await session.retry('id-1')
 
-      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola', { name: 'Ana' })
+      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', 'hola', { name: 'Ana' }, [])
       session.stop()
     })
 
@@ -468,7 +531,7 @@ describe('Session', () => {
       session.setProfile({})
       await session.send('hola')
 
-      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola', undefined)
+      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'hola', undefined, [])
       session.stop()
     })
 
@@ -482,6 +545,189 @@ describe('Session', () => {
       await session.retry('nope')
 
       expect(send).toHaveBeenCalledTimes(1)
+      session.stop()
+    })
+  })
+  describe('files', () => {
+    const file = (name: string): File => new File(['x'], name, { type: 'image/png' })
+    const slot = (n: number) => ({ uploadUrl: `https://bucket.test/${n}`, uploadId: `up-${n}` })
+
+    it('puts the files up, then sends the message naming them, with the text as caption', async () => {
+      const requestUpload = jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2))
+      const send = jest.fn().mockResolvedValue(undefined)
+      const uploadFile = jest.fn(
+        (_url: string, _file: Blob, _type: string, progress: (f: number) => void) => {
+          progress(0.5)
+          return Promise.resolve()
+        }
+      )
+      const { session, log } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
+        undefined,
+        { uploadFile }
+      )
+      await session.start()
+
+      await session.send('mira', [file('a.png'), file('b.png')])
+
+      expect(requestUpload).toHaveBeenCalledWith('t1', expect.objectContaining({ name: 'a.png' }))
+      expect(uploadFile).toHaveBeenCalledTimes(2)
+      expect(send).toHaveBeenCalledWith('t1', 'id-1', 'mira', undefined, ['up-1', 'up-2'])
+      expect(log.find('id-1')?.state).toBe('sent')
+      expect(log.find('id-1')?.progress).toBeNull()
+      expect(log.find('id-1')?.attachments.map(item => item.filename)).toEqual(['a.png', 'b.png'])
+      session.stop()
+    })
+
+    it('reports how much of all the files has gone up', async () => {
+      const seen: (number | null | undefined)[] = []
+      const holder: { log?: ChatLog } = {}
+      const uploadFile = jest.fn(
+        (_u: string, _f: Blob, _t: string, progress: (f: number) => void) => {
+          progress(0.5)
+          seen.push(holder.log?.find('id-1')?.progress)
+          return Promise.resolve()
+        }
+      )
+      const made = setup(
+        {
+          bootstrap: jest.fn().mockResolvedValue(boot('t1')),
+          requestUpload: jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2)),
+          send: jest.fn().mockResolvedValue(undefined)
+        },
+        undefined,
+        { uploadFile }
+      )
+      holder.log = made.log
+      await made.session.start()
+
+      await made.session.send('', [file('a.png'), file('b.png')])
+
+      expect(seen).toEqual([0.25, 0.75])
+      made.session.stop()
+    })
+
+    it('puts up on retry only the files that are not up, under the same message id', async () => {
+      const requestUpload = jest
+        .fn()
+        .mockResolvedValueOnce(slot(1))
+        .mockResolvedValueOnce(slot(2))
+        .mockResolvedValueOnce(slot(3))
+      const uploadFile = jest
+        .fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('network'))
+        .mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue(undefined)
+      const { session, log } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
+        undefined,
+        { uploadFile }
+      )
+      await session.start()
+
+      await session.send('', [file('a.png'), file('b.png')])
+      expect(log.find('id-1')?.state).toBe('failed')
+      expect(send).not.toHaveBeenCalled()
+      await session.retry('id-1')
+
+      // The first file stays up; only the second asks for a new url
+      expect(requestUpload).toHaveBeenCalledTimes(3)
+      expect(send).toHaveBeenCalledWith('t1', 'id-1', '', undefined, ['up-1', 'up-3'])
+      session.stop()
+    })
+
+    it('puts the files up again when the api no longer vouches for them', async () => {
+      const requestUpload = jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2))
+      const send = jest
+        .fn()
+        .mockRejectedValueOnce(new WidgetApiError(400, 'FILE_UPLOAD_FAILED'))
+        .mockResolvedValue(undefined)
+      const { session } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
+        undefined,
+        { uploadFile: jest.fn().mockResolvedValue(undefined) }
+      )
+      await session.start()
+
+      await session.send('', [file('a.png')])
+      await session.retry('id-1')
+
+      expect(requestUpload).toHaveBeenCalledTimes(2)
+      expect(send).toHaveBeenLastCalledWith('t1', 'id-1', '', undefined, ['up-2'])
+      session.stop()
+    })
+
+    it('asks for the link of a file with the token of now, and renews it once if it ended', async () => {
+      const fileLink = jest
+        .fn()
+        .mockRejectedValueOnce(new WidgetApiError(401, 'WIDGET_TOKEN_INVALID'))
+        .mockResolvedValue({
+          url: 'https://x',
+          filename: 'a',
+          contentType: 'image/png',
+          previewUrl: null
+        })
+      const bootstrap = jest
+        .fn()
+        .mockResolvedValueOnce(boot('t1'))
+        .mockResolvedValueOnce(boot('t2'))
+      const { session } = setup({ bootstrap, fileLink })
+      await session.start()
+
+      const link = await session.fileLink('media-1')
+
+      expect(link.url).toBe('https://x')
+      expect(fileLink).toHaveBeenNthCalledWith(1, 't1', 'media-1')
+      expect(fileLink).toHaveBeenNthCalledWith(2, 't2', 'media-1')
+      session.stop()
+    })
+  })
+
+  describe('a phone the api cannot read', () => {
+    const refusal = (): WidgetApiError =>
+      new WidgetApiError(400, 'VALIDATION_FAILED', ['profile.phone'])
+
+    it('queues a message once however many times it is refused', async () => {
+      const send = jest.fn().mockRejectedValue(refusal())
+      const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
+      await session.start()
+      await session.send('hola')
+
+      await session.retry('id-1')
+      session.setProfile({})
+      await jest.advanceTimersByTimeAsync(0)
+
+      // One resend for the one queued key
+      expect(send).toHaveBeenCalledTimes(3)
+      session.stop()
+    })
+
+    it('tells the page, keeps the message and sends it with the corrected form', async () => {
+      const send = jest.fn().mockRejectedValueOnce(refusal()).mockResolvedValue(undefined)
+      const onPhoneRefused = jest.fn()
+      const { session, log } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), send },
+        undefined,
+        { onPhoneRefused }
+      )
+      await session.start()
+      session.setProfile({ name: 'Ana', phone: '123' })
+
+      await session.send('hola')
+      expect(onPhoneRefused).toHaveBeenCalledTimes(1)
+      expect(log.find('id-1')?.state).toBe('failed')
+      session.setProfile({ name: 'Ana', phone: '+52 55 1234 5678' })
+      await jest.advanceTimersByTimeAsync(0)
+
+      expect(send).toHaveBeenLastCalledWith(
+        't1',
+        'id-1',
+        'hola',
+        { name: 'Ana', phone: '+52 55 1234 5678' },
+        []
+      )
+      expect(log.find('id-1')?.state).toBe('sent')
       session.stop()
     })
   })
