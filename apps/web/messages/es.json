@@ -566,6 +566,10 @@
         "title": "Se desactivó un webhook",
         "body": "Un webhook falló demasiadas veces y se desactivó."
       }
+    },
+    "unknown": {
+      "title": "Notificación nueva",
+      "body": "Ábrela para ver los detalles."
     }
   },
   "orders": {
@@ -618,6 +622,28 @@
       "inbox": "Bandeja",
       "customers": "Clientes",
       "exports": "Exportaciones"
+    },
+    "notifications": {
+      "open": "Notificaciones",
+      "openWithCount": "Notificaciones, {count} sin leer",
+      "title": "Notificaciones",
+      "description": "Lo que pasó en esta tienda y te necesita.",
+      "markAllRead": "Marcar todo como leído",
+      "tabs": {
+        "label": "Filtrar notificaciones",
+        "all": "Todas",
+        "unread": "Sin leer",
+        "mentions": "Menciones"
+      },
+      "empty": {
+        "all": "No tienes notificaciones.",
+        "unread": "Nada sin leer.",
+        "mentions": "Nadie te ha mencionado."
+      },
+      "failed": "No se pudieron cargar las notificaciones.",
+      "markFailed": "No se pudo marcar la notificación como leída.",
+      "loadMore": "Cargar más",
+      "unreadDot": "Sin leer"
     }
   },
   "inbox": {
