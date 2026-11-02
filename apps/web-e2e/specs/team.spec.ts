@@ -56,7 +56,7 @@ test.describe('Settings → Team', () => {
 
     // Invitations: invite with the role that will then be in use
     await page.getByRole('tab', { name: team.tabs.invitations }).click()
-    await page.getByRole('button', { name: invitations.invite }).click()
+    await page.getByRole('button', { name: invitations.invite, exact: true }).click()
     const invite = page.getByRole('dialog', { name: invitations.dialog.title })
     await invite.getByLabel(invitations.dialog.email).fill(email)
     await invite.getByLabel(invitations.dialog.role).selectOption({ label: usedRole })
