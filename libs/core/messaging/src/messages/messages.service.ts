@@ -11,7 +11,6 @@ import {
   DeliveryStatus,
   type CursorPage,
   MediaStatus,
-  MembershipStatus,
   MessageType
 } from '@platform/core/domain'
 import {
@@ -31,6 +30,7 @@ import {
   mediaMessageTypeOf
 } from '@platform/core/storage'
 
+import { conversationReaders } from '../conversations/conversation-readers'
 import { ConversationsService } from '../conversations/conversations.service'
 import {
   canSee,
@@ -638,29 +638,13 @@ export class MessagesService {
     userIds: readonly string[],
     conversation: LockedConversation
   ): Promise<void> {
-    const needed: Permission[] = [
-      Permissions.CONVERSATIONS_VIEW,
-      Permissions.MESSAGES_VIEW,
-      Permissions.MESSAGES_INTERNAL_NOTE
-    ]
-    if (isHiddenStatus(conversation.status)) needed.push(Permissions.CONVERSATIONS_ARCHIVE)
     const members = await tx.membership.count({
       where: {
-        storeId,
         userId: { in: [...userIds] },
-        status: MembershipStatus.ACTIVE,
-        revokedAt: null,
-        AND: [
-          ...needed.map(name => ({ role: { permissions: { some: { name } } } })),
-          conversation.assignedTo === null
-            ? {}
-            : {
-                OR: [
-                  { userId: conversation.assignedTo },
-                  { role: { permissions: { some: { name: Permissions.CONVERSATIONS_VIEW_ALL } } } }
-                ]
-              }
-        ]
+        ...conversationReaders(
+          { hidden: isHiddenStatus(conversation.status), assignedTo: conversation.assignedTo },
+          { storeId, notes: true }
+        )
       }
     })
     if (members !== userIds.length) {

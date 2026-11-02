@@ -38,6 +38,7 @@ export const NotificationTypes = {
   WEBHOOK_AUTO_DISABLED: 'webhook.auto_disabled',
   PLUGIN_ERROR: 'plugin.error',
   EXPORT_READY: 'export.ready',
+  MEDIA_INFECTED: 'media.infected',
   DSR_DEADLINE_APPROACHING: 'dsr.deadline_approaching',
   DSR_MANUAL_REVIEW: 'dsr.manual_review'
 } as const
@@ -121,6 +122,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.WEBHOOK_AUTO_DISABLED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.PLUGIN_ERROR]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.EXPORT_READY]: { severity: SUCCESS, channels: [IN_APP] },
+  [NotificationTypes.MEDIA_INFECTED]: { severity: WARNING, channels: [IN_APP, PUSH] },
   [NotificationTypes.DSR_DEADLINE_APPROACHING]: { severity: WARNING, channels: [IN_APP, EMAIL] },
   [NotificationTypes.DSR_MANUAL_REVIEW]: { severity: INFO, channels: [IN_APP, EMAIL] }
 }
