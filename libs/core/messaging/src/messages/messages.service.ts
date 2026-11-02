@@ -13,7 +13,6 @@ import {
   MessageType
 } from '@platform/core/domain'
 import {
-  assertMediaServable,
   errorName,
   ErrorCodes,
   HttpStatusCodes,
@@ -46,6 +45,7 @@ import { MessagingWindowService } from '../messaging-window/messaging-window.ser
 import { OutboundQueue } from '../outbound/outbound-queue'
 
 import { requireCaptionFits } from './caption-rules'
+import { assertMediaServable } from './media-guard'
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
 import {
