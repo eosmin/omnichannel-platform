@@ -9,7 +9,7 @@ import { AppPaths } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 
 import { mayOpenExports } from '../../lib/exports/export-state'
-import { storeSettingsEntries, visibleEntries } from '../../lib/settings/store-entries'
+import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
@@ -40,7 +40,7 @@ export function StoreNav(): ReactElement {
       // Any page of the area keeps the entry current
       match: `/s/${storeId}/settings`,
       label: t('settings'),
-      isShown: visibleEntries(storeSettingsEntries(storeId), can).length > 0
+      isShown: mayOpenStoreSettings(can)
     }
   ].filter(entry => entry.isShown)
   return (

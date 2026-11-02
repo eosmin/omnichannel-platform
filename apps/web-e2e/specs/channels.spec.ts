@@ -34,6 +34,11 @@ test.describe('Settings → Channels and Plugins', () => {
     await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS))
     const row = page.getByRole('listitem').filter({ hasText: WIDGET_NAME })
     const install = row.getByRole('button', { name: `${plugins.install.action} ${WIDGET_NAME}` })
+    const uninstall = row.getByRole('button', {
+      name: `${plugins.uninstall.action} ${WIDGET_NAME}`
+    })
+    // The catalog is read first: one of the two buttons says where the store stands
+    await expect(install.or(uninstall)).toBeVisible()
     if ((await install.count()) > 0) await install.click()
     await expect(
       row.getByRole('button', { name: `${plugins.uninstall.action} ${WIDGET_NAME}` })

@@ -35,7 +35,6 @@ export const ConversationPane = dynamic(
   { ssr: false, loading: () => <ConversationPaneLoading /> }
 )
 
-export const ConnectChannelLink = dynamic(
-  () => import('./connect-channel-link').then(module => module.ConnectChannelLink),
-  { ssr: false }
-)
+export const EmptyInbox = dynamic(() => import('./empty-inbox').then(module => module.EmptyInbox), {
+  ssr: false
+})
