@@ -4,11 +4,13 @@ import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 
+import { waitForLinkBudget } from './link-budget'
 import { emptyMailboxOf, magicLinkTokenIn, nextEmailTo } from './mailbox'
 
 // Signs in the way a person does: asks for the link on the login page, takes it from the mailbox
 // and opens it. Leaves the page on the start screen of the person and returns the token that was traded.
 export async function signIn(page: Page, email: string): Promise<string> {
+  await waitForLinkBudget(email)
   await emptyMailboxOf(email)
   await page.goto(AppPaths.login)
   await page.getByLabel(en.login.emailLabel).fill(email)

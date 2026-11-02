@@ -9,6 +9,7 @@ import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const START_SCREEN = /\/s\/[^/]+\/inbox$/
 const FIRST_STORE = 'Main Store'
+const RECONNECTION_TEST_TIMEOUT_MS = 60_000
 const OTHER_STORE = 'Tienda Escalón'
 
 const threadOf = (page: Page) => page.getByRole('list', { name: en.inbox.thread.label })
@@ -31,6 +32,9 @@ test.describe('the realtime client in the inbox', () => {
     page,
     context
   }) => {
+    // The wait for the reconnection alone is 30 s (the backoff grows), after the sign-in and the
+    // offline write: the default of the whole test, 30 s, cut it off whenever the backoff was long
+    test.setTimeout(RECONNECTION_TEST_TIMEOUT_MS)
     const storeId = await storeIdNamed(FIRST_STORE)
     const conversationId = await newConversationIn(storeId)
     await openConversation(page, 'admin@test.com', conversationId)
