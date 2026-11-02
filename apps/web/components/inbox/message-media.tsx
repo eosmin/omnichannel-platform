@@ -3,11 +3,14 @@
 import { FileText, LoaderCircle, Mic, Play, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
+import { toast } from 'sonner'
 
 import type { MessageView } from '@platform/api-client'
 import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/domain'
 import { mediaMessageTypeOf } from '@platform/core/storage'
 
+import { errorCodeOf } from '../../lib/error-message'
+import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrls } from '../../lib/media/use-media-urls'
 import { useStore } from '../providers/store-context'
@@ -21,10 +24,16 @@ type UnavailableFile = MessageView['unavailableFiles'][number]
 // when the file is clean and drawn at once; the list of the thread never carries a link.
 export function MessageMedia({
   files,
-  unavailable
+  unavailable,
+  messageId,
+  conversationId,
+  canRefetch
 }: {
   files: readonly MediaFile[]
   unavailable: readonly UnavailableFile[]
+  messageId: string
+  conversationId: string
+  canRefetch: boolean
 }): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
   if (files.length === 0 && unavailable.length === 0) return null
@@ -34,7 +43,13 @@ export function MessageMedia({
         <MediaItem key={file.id} file={file} onOpen={setOpen} />
       ))}
       {unavailable.map(file => (
-        <UnavailableItem key={file.index} code={file.code} />
+        <UnavailableItem
+          key={file.index}
+          file={file}
+          messageId={messageId}
+          conversationId={conversationId}
+          canRefetch={canRefetch}
+        />
       ))}
       <MediaLightbox file={open} onClose={() => setOpen(null)} />
     </div>
@@ -66,16 +81,44 @@ function reasonOf(
   }
 }
 
-// A file the customer sent that the platform could not keep. It was never stored, so there is nothing to
-// retry from here: the line says why, in words of the agent.
-function UnavailableItem({ code }: { code: string }): ReactElement {
+// A file the customer sent that the platform could not keep: the line says why, in words of the agent,
+// and, when the provider simply did not hand it over, the button asks the worker for it again (the api
+// checks the permission and that the file can be asked for again).
+function UnavailableItem({
+  file,
+  messageId,
+  conversationId,
+  canRefetch
+}: {
+  file: UnavailableFile
+  messageId: string
+  conversationId: string
+  canRefetch: boolean
+}): ReactElement {
   const t = useTranslations('inbox.thread.media.notKept')
+  const tAll = useTranslations()
+  const { refetchFile } = useMessageMutations(conversationId, messageId)
   return (
     <Frame>
       <TriangleAlert aria-hidden className="size-4 shrink-0" />
       <span role="status" className="min-w-0 break-words">
-        {reasonOf(code, t)}
+        {reasonOf(file.code, t)}
       </span>
+      {canRefetch && file.canRetry ? (
+        <button
+          type="button"
+          className="focus-visible:ring-ring ml-auto rounded underline outline-none focus-visible:ring-2 disabled:opacity-50"
+          disabled={refetchFile.isPending}
+          onClick={() => {
+            refetchFile
+              .mutateAsync(file.index)
+              .then(() => toast.success(t('refetchRequested')))
+              .catch((error: unknown) => toast.error(tAll(`errors.${errorCodeOf(error)}`)))
+          }}
+        >
+          {t('refetch')}
+        </button>
+      ) : null}
     </Frame>
   )
 }

@@ -15,7 +15,6 @@ import {
   InboundLimits,
   MediaStatus as MediaStatuses,
   CaptionState as CaptionStates,
-  MediaUnavailableCodes,
   MessageLimits,
   MessageType as MessageTypes,
   UNAVAILABLE_FILES_KEY
@@ -23,6 +22,8 @@ import {
 
 import { enumValueOf } from '../conversations/conversations.support'
 import { type SystemLineMetadata, systemLineMetadataSchema } from '../conversations/system-lines'
+
+import { canRetryLostFile, displayCodeOf, lostFilesSchema } from './lost-files'
 
 // One person's emoji on a message. `authorId` is the user for an agent, the customer identity for the
 // customer, and null for the owner who reacted from the provider's own app.
@@ -105,17 +106,9 @@ export interface MessageMediaView {
 export interface UnavailableFileView {
   index: number
   code: MediaUnavailableCode
+  // An agent may ask for the file again (`POST /messages/:id/files/:index/refetch`)
+  canRetry: boolean
 }
-
-export const unavailableFilesSchema = z.object({
-  [UNAVAILABLE_FILES_KEY]: z.array(
-    z.object({
-      index: z.int().min(0),
-      // A code of a newer worker is drawn as the generic one, never hidden
-      code: z.enum(MediaUnavailableCodes).catch(MediaUnavailableCodes.FETCH_FAILED)
-    })
-  )
-})
 
 // What the thread shows of a message. The metadata of the channel is not part of it, except the link
 // above; a system line carries its own, which is what the thread draws it from.
@@ -318,7 +311,12 @@ function attachmentUrlOf(row: MessageRow, type: MessageType): string | null {
 // Same rule as the link: a deleted message and a system line show none
 function unavailableFilesOf(row: MessageRow, type: MessageType): UnavailableFileView[] {
   if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return []
-  return unavailableFilesSchema.safeParse(row.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+  const entries = lostFilesSchema.safeParse(row.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
+  return entries.map(entry => ({
+    index: entry.index,
+    code: displayCodeOf(entry.code),
+    canRetry: canRetryLostFile(entry)
+  }))
 }
 
 // A state this version does not know (written by a newer one) says nothing rather than failing the thread

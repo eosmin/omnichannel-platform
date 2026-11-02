@@ -87,7 +87,7 @@ describe('messageView unavailableFiles', () => {
   it('lists the files the worker could not keep, and nothing else of the metadata', () => {
     const view = messageView(row(metadata))
 
-    expect(view.unavailableFiles).toEqual([{ index: 1, code: 'refused' }])
+    expect(view.unavailableFiles).toEqual([{ index: 1, code: 'refused', canRetry: false }])
     expect(JSON.stringify(view)).not.toContain('secret')
   })
 
@@ -110,9 +110,53 @@ describe('messageView unavailableFiles', () => {
     )
 
     expect(view.unavailableFiles).toEqual([
-      { index: 0, code: 'refused' },
-      { index: 1, code: 'fetch_failed' }
+      { index: 0, code: 'refused', canRetry: false },
+      { index: 1, code: 'fetch_failed', canRetry: false }
     ])
+  })
+
+  describe('canRetry', () => {
+    const source = {
+      pluginId: 'whatsapp',
+      connectionId: 'conn',
+      ref: 'wa-media-id',
+      contentType: 'image/jpeg',
+      filename: null
+    }
+    const canRetry = (entry: object): boolean | undefined =>
+      messageView(row({ unavailableFiles: [{ index: 0, ...entry }] })).unavailableFiles[0]?.canRetry
+
+    it('is true for a failed fetch whose source was kept', () => {
+      expect(canRetry({ code: 'fetch_failed', source })).toBe(true)
+    })
+
+    it.each(['refused', 'unsafe_link', 'channel_cannot_fetch'])(
+      'is false for %s: the answer would be the same',
+      code => {
+        expect(canRetry({ code, source })).toBe(false)
+      }
+    )
+
+    it('is false for a code of a newer worker, though it is drawn as the generic one', () => {
+      expect(canRetry({ code: 'quarantined', source })).toBe(false)
+    })
+
+    it('is false when no source was kept (a file lost before this existed)', () => {
+      expect(canRetry({ code: 'fetch_failed' })).toBe(false)
+    })
+
+    it('is false for a source that is a link and not the id of the provider', () => {
+      expect(
+        canRetry({ code: 'fetch_failed', source: { ...source, ref: 'https://cdn.example.com/a' } })
+      ).toBe(false)
+    })
+
+    it('never carries the source to the thread', () => {
+      const view = messageView(
+        row({ unavailableFiles: [{ index: 0, code: 'fetch_failed', source }] })
+      )
+      expect(JSON.stringify(view)).not.toContain('wa-media-id')
+    })
   })
 
   it('is empty for a deleted message', () => {

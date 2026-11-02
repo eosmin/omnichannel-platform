@@ -193,6 +193,7 @@ function Bubble({
             mentionNames={isNote ? mentionNames : NO_NAMES}
             conversationId={conversationId}
             canResendCaption={actions.resendCaption}
+            canRefetchFile={actions.refetchFile}
           />
           {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
@@ -240,7 +241,8 @@ function Content({
   authorLabel,
   mentionNames,
   conversationId,
-  canResendCaption
+  canResendCaption,
+  canRefetchFile
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
@@ -248,6 +250,7 @@ function Content({
   mentionNames: readonly string[]
   conversationId: string
   canResendCaption: boolean
+  canRefetchFile: boolean
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -267,7 +270,13 @@ function Content({
   return (
     <>
       {hasFiles ? (
-        <MessageMedia files={message.media} unavailable={message.unavailableFiles} />
+        <MessageMedia
+          files={message.media}
+          unavailable={message.unavailableFiles}
+          messageId={message.id}
+          conversationId={conversationId}
+          canRefetch={canRefetchFile}
+        />
       ) : null}
       {MediaIcon === null || !isMediaType(message.type) || hasFiles ? null : (
         <p className="flex items-center gap-1.5 text-xs font-medium">

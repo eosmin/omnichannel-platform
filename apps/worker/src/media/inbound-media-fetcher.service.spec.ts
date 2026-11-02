@@ -233,7 +233,13 @@ describe('InboundMediaFetcher', () => {
     // Also on the last attempt, so that the loss reaches the dead-letter queue; the thread says so too
     const last = setup({ plugin })
     await expect(last.fetcher.fetch(job, true)).rejects.toThrow(/fetching a customer file failed/)
-    expect(last.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed')
+    expect(last.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed', {
+      pluginId: 'whatsapp',
+      connectionId: '15550001111',
+      ref: 'wa-media-id',
+      contentType: 'image/jpeg',
+      filename: '../../etc/pas swd.jpg'
+    })
   })
 
   it('does not retry a refusal of the plugin', async () => {
@@ -242,7 +248,8 @@ describe('InboundMediaFetcher', () => {
     }
     const { fetcher, marker } = setup({ plugin })
     await expect(fetcher.fetch(job, false)).resolves.toBeUndefined()
-    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed')
+    // A refusal the provider repeats is not offered again: no source
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed', undefined)
   })
 
   it('records a channel that cannot fetch files', async () => {
@@ -263,6 +270,65 @@ describe('InboundMediaFetcher', () => {
     const last = setup({ plugin })
     last.storage.put.mockRejectedValue(new Error('storage down'))
     await expect(last.fetcher.fetch(job, true)).rejects.toThrow('storage down')
-    expect(last.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed')
+    expect(last.marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed', {
+      pluginId: 'whatsapp',
+      connectionId: '15550001111',
+      ref: 'wa-media-id',
+      contentType: 'image/jpeg',
+      filename: '../../etc/pas swd.jpg'
+    })
+  })
+
+  it('keeps no source for a file named by a link: a link expires and is a credential', async () => {
+    const plugin = {
+      fetchMedia: jest.fn().mockRejectedValue(new PluginError('CHANNEL_MESSAGE_FAILED'))
+    }
+    const { fetcher, marker } = setup({ plugin })
+
+    // On the last attempt the loss is recorded, whatever the address resolves to here
+    await fetcher
+      .fetch({ ...job, mediaRef: 'https://cdn.example.com/a.jpg?sig=secret' }, true)
+      .catch(() => undefined)
+
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed', undefined)
+  })
+
+  it('cuts a long type and name so that the stored source still reads back', async () => {
+    const plugin = {
+      fetchMedia: jest
+        .fn()
+        .mockRejectedValue(new PluginError('CHANNEL_MESSAGE_FAILED', { retryable: true }))
+    }
+    const { fetcher, marker } = setup({ plugin })
+
+    await fetcher
+      .fetch({ ...job, contentType: 'x'.repeat(400), filename: 'n'.repeat(400) }, true)
+      .catch(() => undefined)
+
+    const source = (marker.mark.mock.calls[0] as unknown[] | undefined)?.[4] as {
+      contentType: string
+      filename: string
+    }
+    expect(source.contentType).toHaveLength(255)
+    expect(source.filename).toHaveLength(255)
+  })
+
+  it('keeps a null name as null in the source', async () => {
+    const plugin = {
+      fetchMedia: jest
+        .fn()
+        .mockRejectedValue(new PluginError('CHANNEL_MESSAGE_FAILED', { retryable: true }))
+    }
+    const { fetcher, marker } = setup({ plugin })
+
+    await fetcher.fetch({ ...job, filename: null }, true).catch(() => undefined)
+
+    expect(marker.mark).toHaveBeenCalledWith(
+      STORE,
+      MESSAGE,
+      1,
+      'fetch_failed',
+      expect.objectContaining({ filename: null })
+    )
   })
 })

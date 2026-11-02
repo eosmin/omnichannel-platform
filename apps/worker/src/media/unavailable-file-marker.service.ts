@@ -7,7 +7,11 @@ import { PrismaService } from '@platform/core/database'
 import { type MediaUnavailableCode, UNAVAILABLE_FILES_KEY } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { lockMessageRow, publishMessageChanged } from '@platform/core/messaging'
+import {
+  type LostFileSource,
+  lockMessageRow,
+  publishMessageChanged
+} from '@platform/core/messaging'
 
 // What the channel put in the metadata stays as it is
 const storedListSchema = z.object({
@@ -32,7 +36,9 @@ export class UnavailableFileMarker {
     storeId: string,
     messageId: string,
     index: number,
-    code: MediaUnavailableCode
+    code: MediaUnavailableCode,
+    // Where the file came from, kept only when an agent can ask for it again (see `lostFileSourceSchema`)
+    source?: LostFileSource
   ): Promise<void> {
     try {
       await this.prisma.transaction(async tx => {
@@ -43,18 +49,38 @@ export class UnavailableFileMarker {
           select: { metadata: true }
         })
         if (message === null) return
+        // A list that does not parse is left alone: writing it back would drop the entries the parse lost
+        const parsed = storedListSchema.safeParse(message.metadata)
+        const rawList = (message.metadata as Record<string, unknown> | null)?.[
+          UNAVAILABLE_FILES_KEY
+        ]
+        if (rawList !== undefined && !parsed.success) {
+          this.logger.warn(
+            { messageId, index },
+            'the lost-files list does not parse: left as it is'
+          )
+          return
+        }
         // Read as it is stored: an entry this version does not know (a newer worker wrote it) is kept
-        const current =
-          storedListSchema.safeParse(message.metadata).data?.[UNAVAILABLE_FILES_KEY] ?? []
-        // Asked twice (a retry, a redelivered job): one entry per place of the file
-        if (current.some(file => file.index === index)) return
+        const current = parsed.data?.[UNAVAILABLE_FILES_KEY] ?? []
+        const existing = current.find(file => file.index === index)
+        // Asked twice (a retry, a redelivered job): one entry per place of the file. A different answer
+        // for a place already listed (a file asked for again that now fails otherwise) replaces it, so the
+        // thread stops offering a download that cannot succeed.
+        // (a source that was not kept before is added when this answer brings one)
+        if (existing?.code === code && (source === undefined || existing.source !== undefined))
+          return
         const kept = keptMetadataSchema.safeParse(message.metadata).data ?? {}
+        const entry = source === undefined ? { index, code } : { index, code, source }
         await tx.message.updateMany({
           where: { id: messageId, storeId },
           data: {
             metadata: {
               ...kept,
-              [UNAVAILABLE_FILES_KEY]: [...current, { index, code }]
+              [UNAVAILABLE_FILES_KEY]:
+                existing === undefined
+                  ? [...current, entry]
+                  : current.map(file => (file.index === index ? entry : file))
             }
           }
         })

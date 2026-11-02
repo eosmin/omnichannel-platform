@@ -59,6 +59,89 @@ describe('UnavailableFileMarker', () => {
     )
   })
 
+  it('keeps where the file came from, so that an agent can ask for it again', async () => {
+    const { marker, tx } = setup(null)
+    const source = {
+      pluginId: 'whatsapp',
+      connectionId: 'conn',
+      ref: 'wa-media-id',
+      contentType: 'image/jpeg',
+      filename: null
+    }
+
+    await marker.mark(STORE, MESSAGE, 0, 'fetch_failed', source)
+
+    expect((tx.message.updateMany.mock.calls[0] as [object] | undefined)?.[0]).toMatchObject({
+      data: { metadata: { unavailableFiles: [{ index: 0, code: 'fetch_failed', source }] } }
+    })
+  })
+
+  it('replaces the entry of a place when a new answer differs, and drops its old source', async () => {
+    const source = {
+      pluginId: 'w',
+      connectionId: 'c',
+      ref: 'r',
+      contentType: 'image/jpeg',
+      filename: null
+    }
+    const { marker, tx } = setup({
+      unavailableFiles: [
+        { index: 0, code: 'fetch_failed', source, requestedAt: '2026-11-02T10:00:00Z' }
+      ]
+    })
+
+    await marker.mark(STORE, MESSAGE, 0, 'refused')
+
+    expect((tx.message.updateMany.mock.calls[0] as [object] | undefined)?.[0]).toMatchObject({
+      data: { metadata: { unavailableFiles: [{ index: 0, code: 'refused' }] } }
+    })
+    expect(publishMessageChanged).toHaveBeenCalled()
+  })
+
+  it('adds the source to a place listed without one when the same answer now brings it', async () => {
+    const source = {
+      pluginId: 'w',
+      connectionId: 'c',
+      ref: 'r',
+      contentType: 'image/jpeg',
+      filename: null
+    }
+    const { marker, tx } = setup({ unavailableFiles: [{ index: 0, code: 'fetch_failed' }] })
+
+    await marker.mark(STORE, MESSAGE, 0, 'fetch_failed', source)
+
+    expect((tx.message.updateMany.mock.calls[0] as [object] | undefined)?.[0]).toMatchObject({
+      data: { metadata: { unavailableFiles: [{ index: 0, code: 'fetch_failed', source }] } }
+    })
+  })
+
+  it('keeps the entry, and the wait of a request, when the same answer comes again', async () => {
+    const source = {
+      pluginId: 'w',
+      connectionId: 'c',
+      ref: 'r',
+      contentType: 'image/jpeg',
+      filename: null
+    }
+    const { marker, tx } = setup({
+      unavailableFiles: [
+        { index: 0, code: 'fetch_failed', source, requestedAt: '2026-11-02T10:00:00Z' }
+      ]
+    })
+
+    await marker.mark(STORE, MESSAGE, 0, 'fetch_failed', source)
+
+    expect(tx.message.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('leaves a list that does not parse alone instead of writing over it', async () => {
+    const { marker, tx } = setup({ unavailableFiles: ['junk', { index: 0, code: 'refused' }] })
+
+    await marker.mark(STORE, MESSAGE, 1, 'fetch_failed')
+
+    expect(tx.message.updateMany).not.toHaveBeenCalled()
+  })
+
   it('keeps the files already listed when another place of the album fails', async () => {
     const { marker, tx } = setup({ unavailableFiles: [{ index: 0, code: 'unsafe_link' }] })
 
@@ -76,8 +159,8 @@ describe('UnavailableFileMarker', () => {
     })
   })
 
-  it('writes nothing and announces nothing for a place that is already listed', async () => {
-    const { marker, tx } = setup({ unavailableFiles: [{ index: 1, code: 'refused' }] })
+  it('writes nothing and announces nothing for a place already listed with the same answer', async () => {
+    const { marker, tx } = setup({ unavailableFiles: [{ index: 1, code: 'fetch_failed' }] })
 
     await marker.mark(STORE, MESSAGE, 1, 'fetch_failed')
 
