@@ -470,6 +470,13 @@
         "body": "A new member joined the store."
       }
     },
+    "push": {
+      "prompt": "Get a notification on this device when someone assigns you a conversation or mentions you?",
+      "enable": "Turn on",
+      "later": "Not now",
+      "enabled": "Notifications are on for this browser.",
+      "denied": "This browser blocked notifications. You can allow them in its site settings."
+    },
     "message": {
       "failed": {
         "title": "A message was not delivered",

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2023", "webworker"],
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["sw.ts", "lib/push/service-worker-push.ts"]
+}

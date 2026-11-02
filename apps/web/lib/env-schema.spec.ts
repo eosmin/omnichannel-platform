@@ -14,6 +14,16 @@ describe('parseWebEnv', () => {
     expect(env.NEXT_PUBLIC_SENTRY_DSN).toBeUndefined()
   })
 
+  it('takes an empty VAPID key, as a Docker build without one sets it, for no key', () => {
+    expect(
+      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_VAPID_PUBLIC_KEY: '' }).NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    ).toBeUndefined()
+    expect(
+      parseWebEnv({ ...validWebEnv, NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'abc' })
+        .NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    ).toBe('abc')
+  })
+
   it('fails naming the missing variable', () => {
     expect(() => parseWebEnv({ NEXT_PUBLIC_API_URL: 'http://localhost:8080' })).toThrow(
       /NEXT_PUBLIC_WS_URL/

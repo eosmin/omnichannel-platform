@@ -11,6 +11,7 @@ import { errorCodeOf } from '../../lib/error-message'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import { useInboxBehavior, useMessagingWindow, useSnippets } from '../../lib/inbox/use-inbox-data'
 import { useWindowState } from '../../lib/inbox/use-window-state'
+import { usePushOffer } from '../../lib/push/use-push-offer'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -46,6 +47,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   const windowState = useWindowState(storeId, conversationId)
   const windowQuery = useMessagingWindow(storeId, conversationId)
   const { resolve, reopen } = useConversationActions(storeId, conversationId)
+  const { offer: offerPush } = usePushOffer(storeId)
   const [isDialogOpen, setDialogOpen] = useState(false)
 
   // The closing message is a reply: it needs the window open and the permission to reply
@@ -73,6 +75,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
     resolve
       .mutateAsync(closingSnippetId === null ? {} : { closingSnippetId })
       .then(() => {
+        offerPush()
         toast(t('resolved'), {
           duration: ResolveUndo.DURATION_MS,
           action: {
@@ -138,6 +141,7 @@ function ResolveForm({
   const { storeId } = useStore()
   const snippets = useSnippets(storeId, true)
   const { resolve } = useConversationActions(storeId, conversationId)
+  const { offer: offerPush } = usePushOffer(storeId)
   const [wantsClosing, setWantsClosing] = useState(defaults.sendClosingMessage)
   const [snippetId, setSnippetId] = useState(defaults.closingSnippetId ?? '')
   const [reason, setReason] = useState('')
@@ -159,6 +163,7 @@ function ResolveForm({
       })
       .then(() => {
         toast.success(t('resolved'))
+        offerPush()
         onDone()
       })
       // The error shows in the dialog, from the state of the mutation

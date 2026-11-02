@@ -226,6 +226,19 @@ export default defineConfig([
     rules: { ...nextPlugin.configs.recommended.rules }
   },
 
+  // The service worker has its own program (webworker types, no dom), which the project service
+  // would not find from the tsconfig of the app
+  {
+    files: ['apps/web/sw.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: './apps/web/tsconfig.sw.json',
+        tsconfigRootDir: import.meta.dirname
+      }
+    }
+  },
+
   // The libraries that build the modules of the apps may import the validated env; everything else
   // gets it through them. A block replaces the whole rule, so the deep-relative-import pattern is
   // repeated.

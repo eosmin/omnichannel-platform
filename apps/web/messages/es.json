@@ -470,6 +470,13 @@
         "body": "Un nuevo miembro se unió a la tienda."
       }
     },
+    "push": {
+      "prompt": "¿Quieres recibir un aviso en este dispositivo cuando te asignen una conversación o te mencionen?",
+      "enable": "Activar",
+      "later": "Ahora no",
+      "enabled": "Los avisos están activados en este navegador.",
+      "denied": "Este navegador bloqueó los avisos. Puedes permitirlos en la configuración del sitio."
+    },
     "message": {
       "failed": {
         "title": "No se entregó un mensaje",
