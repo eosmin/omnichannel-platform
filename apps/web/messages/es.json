@@ -435,6 +435,10 @@
       "ready": {
         "title": "Exportación lista",
         "body": "Ya puedes descargar tu exportación."
+      },
+      "failed": {
+        "title": "Exportación fallida",
+        "body": "No se pudo generar tu exportación. Intenta pedirla de nuevo."
       }
     },
     "media": {

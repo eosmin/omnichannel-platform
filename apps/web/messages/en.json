@@ -435,6 +435,10 @@
       "ready": {
         "title": "Export ready",
         "body": "Your export can be downloaded."
+      },
+      "failed": {
+        "title": "Export failed",
+        "body": "Your export could not be made. Try asking for it again."
       }
     },
     "media": {
