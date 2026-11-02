@@ -192,7 +192,8 @@
     "signingOut": "Cerrando sesión",
     "loading": "Cargando",
     "save": "Guardar",
-    "discard": "Descartar cambios"
+    "discard": "Descartar cambios",
+    "close": "Cerrar"
   },
   "confirm": {
     "typePhrase": "Escribe \"{phrase}\" para confirmar",
@@ -1554,7 +1555,8 @@
         "title": "Tienda",
         "general": "General",
         "channels": "Canales",
-        "plugins": "Plugins"
+        "plugins": "Plugins",
+        "team": "Equipo"
       },
       "org": {
         "label": "Organización",
@@ -1619,6 +1621,220 @@
         "description": "{count, plural, =0 {El plugin deja de funcionar en esta tienda.} one {El plugin deja de funcionar y se desconecta su cuenta conectada.} other {El plugin deja de funcionar y se desconectan sus # cuentas conectadas.}} Las conversaciones y los clientes se conservan.",
         "confirm": "Desinstalar",
         "done": "{name} se desinstaló."
+      }
+    },
+    "team": {
+      "title": "Equipo",
+      "description": "Las personas de esta tienda, los roles que tienen y las invitaciones pendientes.",
+      "tabsLabel": "Secciones del equipo",
+      "tabs": {
+        "members": "Miembros",
+        "roles": "Roles",
+        "invitations": "Invitaciones"
+      },
+      "permissionGroups": {
+        "conversations": "Conversaciones",
+        "messages": "Mensajes",
+        "customers": "Clientes",
+        "orders": "Pedidos",
+        "products": "Productos",
+        "inventory": "Inventario",
+        "shipping": "Envíos",
+        "returns": "Devoluciones",
+        "remittances": "Remesas",
+        "media": "Archivos",
+        "team": "Equipo",
+        "settings": "Ajustes",
+        "analytics": "Analítica",
+        "org": "Organización"
+      },
+      "permissions": {
+        "conversations": {
+          "view": "Ver conversaciones asignadas",
+          "view_all": "Ver todas las conversaciones",
+          "create": "Iniciar conversaciones",
+          "assign": "Asignar conversaciones",
+          "resolve": "Resolver conversaciones",
+          "snooze": "Posponer conversaciones",
+          "archive": "Archivar conversaciones",
+          "delete": "Eliminar conversaciones",
+          "export": "Exportar conversaciones"
+        },
+        "messages": {
+          "view": "Ver mensajes",
+          "send": "Enviar mensajes",
+          "send_template": "Enviar plantillas",
+          "internal_note": "Escribir notas internas",
+          "delete": "Eliminar mensajes",
+          "view_deleted": "Ver mensajes eliminados"
+        },
+        "customers": {
+          "view": "Ver clientes",
+          "create": "Crear clientes",
+          "edit": "Editar clientes",
+          "delete": "Eliminar clientes",
+          "merge": "Fusionar clientes",
+          "export": "Exportar clientes",
+          "flag_caution": "Marcar clientes con precaución"
+        },
+        "orders": {
+          "view": "Ver pedidos",
+          "create": "Crear pedidos",
+          "edit": "Editar pedidos",
+          "cancel": "Cancelar pedidos",
+          "change_status": "Cambiar el estado de pedidos",
+          "export": "Exportar pedidos",
+          "confirm": "Confirmar pedidos",
+          "send_messages": "Enviar mensajes de pedidos",
+          "override_price": "Cambiar precios",
+          "approve_price": "Aprobar precios"
+        },
+        "products": {
+          "view": "Ver productos",
+          "create": "Crear productos",
+          "edit": "Editar productos",
+          "delete": "Eliminar productos"
+        },
+        "inventory": {
+          "view": "Ver inventario",
+          "adjust": "Ajustar existencias",
+          "manage_transfers": "Gestionar traslados",
+          "receive_transfers": "Recibir traslados",
+          "manage_counts": "Gestionar conteos",
+          "apply_counts": "Aplicar conteos"
+        },
+        "shipping": {
+          "view": "Ver envíos",
+          "manage": "Gestionar envíos",
+          "manage_pickups": "Gestionar recolecciones"
+        },
+        "returns": {
+          "view": "Ver devoluciones",
+          "manage": "Gestionar devoluciones"
+        },
+        "remittances": {
+          "view": "Ver remesas",
+          "manage": "Gestionar remesas"
+        },
+        "media": {
+          "view": "Ver archivos",
+          "upload": "Subir archivos",
+          "download_all": "Descargar todos los archivos"
+        },
+        "team": {
+          "view": "Ver el equipo",
+          "invite": "Invitar miembros",
+          "remove": "Quitar miembros",
+          "manage_roles": "Gestionar roles"
+        },
+        "settings": {
+          "view": "Ver ajustes",
+          "edit": "Editar ajustes",
+          "manage_plugins": "Gestionar plugins",
+          "manage_webhooks": "Gestionar webhooks",
+          "manage_api_keys": "Gestionar claves de API",
+          "manage_retention": "Gestionar la retención de datos",
+          "manage_routing": "Gestionar el enrutamiento",
+          "manage_carriers": "Gestionar transportistas",
+          "manage_order_templates": "Gestionar plantillas de pedidos",
+          "manage_preferences": "Gestionar preferencias"
+        },
+        "analytics": {
+          "view": "Ver analítica",
+          "export": "Exportar analítica",
+          "manage_reports": "Gestionar informes"
+        },
+        "org": {
+          "manage_stores": "Gestionar tiendas",
+          "manage_warehouses": "Gestionar almacenes",
+          "view_audit_log": "Ver el registro de auditoría",
+          "manage_compliance": "Gestionar el cumplimiento"
+        }
+      },
+      "members": {
+        "listLabel": "Miembros",
+        "empty": {
+          "title": "Sin miembros",
+          "body": "Las personas que acepten una invitación aparecen aquí."
+        },
+        "joined": "Se unió el {date}",
+        "roleOf": "Rol de {name}",
+        "roleChanged": "{name} ahora es {role}.",
+        "remove": {
+          "action": "Quitar",
+          "title": "¿Quitar a {name}?",
+          "description": "Pierde el acceso a esta tienda de inmediato y sus conversaciones quedan sin asignar. Puedes invitarle de nuevo más adelante.",
+          "confirm": "Quitar miembro",
+          "done": "{name} fue quitado."
+        }
+      },
+      "roles": {
+        "description": "Un rol es un conjunto de permisos. Los roles del sistema son iguales en todas las tiendas y no se pueden cambiar; crea los tuyos para lo demás.",
+        "create": "Nuevo rol",
+        "listLabel": "Roles",
+        "emptyCustom": "Aún no has creado ningún rol propio.",
+        "system": "Sistema",
+        "permissionCount": "{count, plural, one {# permiso} other {# permisos}}",
+        "edit": "Editar",
+        "view": "Ver",
+        "delete": {
+          "action": "Eliminar",
+          "title": "¿Eliminar {name}?",
+          "description": "No se puede eliminar un rol que un miembro o una invitación todavía tiene: cambia primero el suyo.",
+          "confirm": "Eliminar rol",
+          "done": "{name} fue eliminado.",
+          "inUse": "{name} todavía lo tiene un miembro o una invitación. Cambia primero el suyo."
+        },
+        "dialog": {
+          "createTitle": "Nuevo rol",
+          "editTitle": "Editar {name}",
+          "viewTitle": "{name}",
+          "description": "Marca lo que pueden hacer las personas con este rol. Solo puedes dar permisos que tú mismo tienes.",
+          "systemNote": "Los roles del sistema son iguales en todas las tiendas y no se pueden cambiar.",
+          "notHeldNote": "Este rol tiene permisos que tú no tienes, así que no puedes cambiarlo.",
+          "readOnlyNote": "Puedes ver este rol pero no cambiarlo.",
+          "name": "Nombre",
+          "descriptionLabel": "Descripción",
+          "optional": "(opcional)",
+          "permissions": "Permisos",
+          "save": "Guardar rol",
+          "saving": "Guardando",
+          "saved": "{name} se guardó."
+        }
+      },
+      "invitations": {
+        "description": "Personas que invitaste y todavía no aceptan.",
+        "invite": "Invitar",
+        "listLabel": "Invitaciones pendientes",
+        "empty": {
+          "title": "Sin invitaciones pendientes",
+          "body": "Invita a alguien por correo y aparecerá aquí hasta que acepte."
+        },
+        "invitedBy": "invitó {name}",
+        "expires": "Vence el {date}",
+        "expired": "Venció el {date}",
+        "resend": {
+          "action": "Reenviar",
+          "done": "Se envió una nueva invitación a {email}.",
+          "cooldown": "Se envió una invitación hace un momento. Inténtalo de nuevo en {seconds, plural, one {# segundo} other {# segundos}}."
+        },
+        "revoke": {
+          "action": "Revocar",
+          "title": "¿Revocar la invitación a {email}?",
+          "description": "El enlace que recibió deja de funcionar. Puedes invitarle de nuevo más adelante.",
+          "confirm": "Revocar invitación",
+          "done": "La invitación a {email} fue revocada."
+        },
+        "dialog": {
+          "title": "Invitar a alguien",
+          "description": "Recibirá un correo con un enlace para unirse a esta tienda con el rol que elijas.",
+          "email": "Correo",
+          "role": "Rol",
+          "send": "Enviar invitación",
+          "sending": "Enviando",
+          "sent": "Se envió una invitación a {email}.",
+          "noRole": "No hay ningún rol disponible para ti: todos tienen permisos que tú no tienes."
+        }
       }
     }
   },

@@ -24,6 +24,7 @@ export const DestructiveActionTiers = {
   CANCEL_ORDER_WITH_SHIPMENT: HIGH, // Also voids the guide (TDD_17 §4.8)
   DISCONNECT_CHANNEL: HIGH,
   REMOVE_TEAM_MEMBER: HIGH,
+  DELETE_CUSTOM_ROLE: HIGH, // Settings → Team; the api refuses a role that members or invitations hold
   DELETE_ROUTING_RULE: HIGH,
   CANCEL_IN_TRANSIT_TRANSFER: HIGH, // TDD_16
   APPLY_STOCK_COUNT: HIGH, // TDD_16
@@ -36,6 +37,7 @@ export const DestructiveActionTiers = {
   REASSIGN_ASSIGNED_CONVERSATION: MODERATE,
   EDIT_CUSTOMER_IDENTITY: MODERATE,
   REQUEST_PICKUP_AFTER_CUTOFF: MODERATE, // TDD_17
+  REVOKE_INVITATION: MODERATE, // Settings → Team; the invitee's link stops working
 
   // Low
   ADD_OR_REMOVE_TAG: LOW,

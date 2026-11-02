@@ -135,6 +135,12 @@ describe('DestructiveActionTiers', () => {
     }
     expect(tierOf['REQUEST_PICKUP_AFTER_CUTOFF']).toBe(DestructiveActionTierLevels.MODERATE)
   })
+
+  it('asks before removing a member or a role, and before revoking an invitation', () => {
+    expect(tierOf['REMOVE_TEAM_MEMBER']).toBe(DestructiveActionTierLevels.HIGH)
+    expect(tierOf['DELETE_CUSTOM_ROLE']).toBe(DestructiveActionTierLevels.HIGH)
+    expect(tierOf['REVOKE_INVITATION']).toBe(DestructiveActionTierLevels.MODERATE)
+  })
 })
 
 describe('Shortcuts', () => {

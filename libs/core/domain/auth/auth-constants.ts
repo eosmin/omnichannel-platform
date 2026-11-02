@@ -14,6 +14,8 @@ export const INVITATION_WEB_PATH = '/invitations'
 // Inviting an address again replaces the invitation, but not before this long: it is also a way to
 // send an email, and one address must not be mail-bombed from a store
 export const INVITATION_RESEND_COOLDOWN_SECONDS = 60
+// The key of the metadata of a 429 that says how long to wait: the api writes it, the web reads it
+export const RETRY_AFTER_METADATA_KEY = 'retryAfterSeconds'
 
 // Requests per window, per client (TDD_05 section 3.1; MVP_TRIM_CHECKLIST.md D2). The profiles are
 // ThrottlerNames; a named endpoint may use a stricter limit than its profile.

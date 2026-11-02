@@ -9,7 +9,8 @@ import {
   MAGIC_LINK_FRAGMENT_KEY,
   MAGIC_LINK_TTL_MINUTES,
   MAGIC_LINK_WEB_PATH,
-  MagicLinkThrottle
+  MagicLinkThrottle,
+  RETRY_AFTER_METADATA_KEY
 } from '@platform/core/auth'
 import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
 import { generateToken, hashToken } from '@platform/core/crypto'
@@ -159,7 +160,7 @@ export class MagicLinkService {
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'too many magic links requested for this address',
         HttpStatusCodes.TOO_MANY_REQUESTS,
-        { retryAfterSeconds: record.timeToBlockExpire }
+        { [RETRY_AFTER_METADATA_KEY]: record.timeToBlockExpire }
       )
     }
   }
