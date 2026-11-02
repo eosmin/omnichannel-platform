@@ -50,11 +50,16 @@ describe('settings entries', () => {
     ).toEqual(['general'])
   })
 
-  it('shows Channels and Plugins to who may see settings, and General only to who manages stores', () => {
+  it('shows Channels, Plugins, Routing and Business hours to who may see settings, and General only to who manages stores', () => {
     const entries = storeSettingsEntries('s-1')
     expect(
       visibleEntries(entries, holding(Permissions.SETTINGS_VIEW)).map(entry => entry.href)
-    ).toEqual(['/s/s-1/settings/channels', '/s/s-1/settings/plugins'])
+    ).toEqual([
+      '/s/s-1/settings/channels',
+      '/s/s-1/settings/plugins',
+      '/s/s-1/settings/routing',
+      '/s/s-1/settings/business-hours'
+    ])
   })
 
   it('shows Team to who may view the team, whatever else they hold', () => {

@@ -1556,7 +1556,9 @@
         "general": "General",
         "channels": "Channels",
         "plugins": "Plugins",
-        "team": "Team"
+        "team": "Team",
+        "routing": "Routing",
+        "businessHours": "Business hours"
       },
       "org": {
         "label": "Organization",
@@ -1835,6 +1837,135 @@
           "sent": "An invitation was sent to {email}.",
           "noRole": "No role is available to you: every role holds permissions you do not have."
         }
+      }
+    },
+    "routing": {
+      "title": "Routing",
+      "description": "Rules are tried from top to bottom. The first one that matches a new conversation decides who gets it.",
+      "listLabel": "Routing rules",
+      "create": "New rule",
+      "empty": {
+        "title": "No routing rules",
+        "body": "Without rules, new conversations stay unassigned. Add a rule to send them to your team."
+      },
+      "disabled": "Off",
+      "on": "On",
+      "toggle": "Turn {name} on or off",
+      "edit": "Edit",
+      "channelNames": {
+        "whatsapp": "WhatsApp",
+        "instagram": "Instagram",
+        "messenger": "Messenger",
+        "web_widget": "Web widget"
+      },
+      "summary": {
+        "always": "Every conversation",
+        "channels": "Channel: {list}",
+        "tags": "Tag: {list}",
+        "keywords": "Words: {list}",
+        "outsideHours": "Outside business hours",
+        "unknownTag": "a deleted tag",
+        "formerMember": "a person who left",
+        "assign": "assign to {name}",
+        "roundRobin": "share between {count} people",
+        "unassigned": "leave unassigned"
+      },
+      "reorder": {
+        "drag": "Drag to reorder {name}",
+        "up": "Move {name} up",
+        "down": "Move {name} down",
+        "moved": "{name} is now rule {position}."
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete {name}?",
+        "description": "Conversations already assigned stay as they are. New conversations are no longer checked against this rule.",
+        "confirm": "Delete rule",
+        "done": "{name} was deleted."
+      },
+      "dialog": {
+        "createTitle": "New routing rule",
+        "editTitle": "Edit routing rule",
+        "description": "A rule has conditions and an action. It applies to a new conversation when every condition you set holds.",
+        "name": "Name",
+        "enabled": "Rule is on",
+        "conditions": "When",
+        "conditionsHint": "A rule with no condition matches every conversation. Within one condition, any choice is enough.",
+        "channels": "Channels",
+        "tags": "Customer tags",
+        "noTags": "This store has no tags yet.",
+        "keywords": "Words in the first message",
+        "keywordsHint": "One word or phrase per line.",
+        "outsideHours": "Only outside business hours",
+        "action": "Then",
+        "actions": {
+          "assign_user": "Assign to one person",
+          "round_robin": "Share between several people",
+          "unassigned": "Leave unassigned"
+        },
+        "people": "People",
+        "noMembers": "There are no people to choose from.",
+        "formerMember": "A person who left the store",
+        "save": "Save rule",
+        "saving": "Saving",
+        "created": "{name} was created.",
+        "saved": "{name} was saved.",
+        "problems": {
+          "nameRequired": "Enter a name.",
+          "nameTooLong": "The name is too long.",
+          "tooManyChannels": "Too many channels.",
+          "tooManyTags": "Too many tags.",
+          "tooManyKeywords": "Too many words.",
+          "keywordTooLong": "A word or phrase is too long.",
+          "assignNeedsOne": "Choose one person.",
+          "roundRobinNeedsMany": "Choose at least two people.",
+          "tooManyUsers": "Too many people.",
+          "keywordEmpty": "A word or phrase has nothing to look for."
+        },
+        "listsUnavailable": "Some people and tags cannot be shown because you cannot see conversations. What the rule already holds is kept."
+      }
+    },
+    "hours": {
+      "title": "Business hours",
+      "description": "When your team answers. Routing rules and the away message use this schedule.",
+      "readOnly": "You can see the schedule but not change it.",
+      "empty": {
+        "title": "No schedule yet",
+        "body": "Set the hours your team answers so that rules and the away message know when you are closed.",
+        "start": "Set a schedule"
+      },
+      "timezone": "Time zone",
+      "weekLabel": "Hours of the week",
+      "days": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      },
+      "closed": "Closed",
+      "addRange": "Add hours",
+      "removeRange": "Remove hours {number} of {day}",
+      "copyWeekdays": "Copy to weekdays",
+      "from": "From",
+      "to": "To",
+      "away": {
+        "title": "Away message",
+        "none": "Do not send a message",
+        "missing": "A saved reply that no longer exists",
+        "hint": "The saved reply sent to a customer who writes outside these hours.",
+        "noAccess": "You need to see conversations to pick a saved reply."
+      },
+      "save": "Save hours",
+      "saving": "Saving",
+      "saved": "Business hours saved.",
+      "problems": {
+        "badTime": "{day}: use a time of the day.",
+        "endsBeforeStart": "{day}: hours must end after they start.",
+        "overlap": "{day}: hours must not overlap.",
+        "tooMany": "{day}: too many ranges."
       }
     }
   },

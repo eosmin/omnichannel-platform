@@ -38,6 +38,18 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'team',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.TEAM),
       permission: Permissions.TEAM_VIEW
+    },
+    {
+      id: StoreSettingsSections.ROUTING,
+      labelKey: 'routing',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.ROUTING),
+      permission: Permissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.BUSINESS_HOURS,
+      labelKey: 'businessHours',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.BUSINESS_HOURS),
+      permission: Permissions.SETTINGS_VIEW
     }
   ]
 }
