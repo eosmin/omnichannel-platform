@@ -6,8 +6,9 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, PlatformException } from '@platform/core/errors'
 
+import { MembersService } from '../../apps/api/src/modules/team/members.service'
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
@@ -278,12 +279,64 @@ describe('The team of a store', () => {
           .patch(ApiRoutes.settings.memberById(membershipId))
           .send({ roleId: ctx.roleIds[RoleNames.VIEWER] })
 
+      const answers = await Promise.all([
+        lower(first.actor, second.membershipId),
+        lower(second.actor, first.membershipId)
+      ])
+
+      // One lowering wins. The other is a conflict (the last Admin) when it passed the guard before
+      // the winner committed, and a refusal (it is a Viewer now) when it arrived after. The lock
+      // itself is tested without the guard in the next case, where only the conflict is possible.
+      const sorted = [...answers].sort((a, b) => a.status - b.status)
+      const [won, lost] = sorted
+      expect(won?.status).toBe(200)
+      expect([403, 409]).toContain(lost?.status)
+      if (lost?.status === 409) {
+        expect((lost.body as ErrorBody).error.code).toBe(ErrorCodes.TENANT_CANNOT_REMOVE_LAST_ADMIN)
+      }
+      const admins = await owner.membership.count({
+        where: { storeId: store.id, roleId: ctx.roleIds[RoleNames.ADMIN] }
+      })
+      expect(admins).toBe(1)
+    })
+
+    it('keeps one Admin when two lowerings reach the lock together, past the guard', async () => {
+      const store = await owner.store.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          name: next('locked'),
+          slug: `${prefix}-${next('locked')}`
+        }
+      })
+      const target = { id: store.id, org: ctx.orgA.id }
+      const first = await member(ctx.roleIds[RoleNames.ADMIN], target)
+      const second = await member(ctx.roleIds[RoleNames.ADMIN], target)
+      const members = app.get(MembersService, { strict: false })
+      const lower = (by: Actor, membershipId: string) =>
+        members
+          .changeRole(
+            store.id,
+            membershipId,
+            ctx.roleIds[RoleNames.VIEWER],
+            { userId: by.id, storeId: store.id },
+            Object.values(Permissions)
+          )
+          .then(
+            () => 200,
+            (error: unknown) =>
+              error instanceof PlatformException &&
+              error.code === ErrorCodes.TENANT_CANNOT_REMOVE_LAST_ADMIN
+                ? error.statusCode
+                : 500
+          )
+
+      // Without the guard both reach the transaction: the lock decides, and it can only be a conflict
       const statuses = await Promise.all([
         lower(first.actor, second.membershipId),
         lower(second.actor, first.membershipId)
-      ]).then(responses => responses.map(response => response.status))
+      ])
 
-      expect(statuses.sort()).toEqual([200, 409])
+      expect(statuses.sort((a, b) => a - b)).toEqual([200, 409])
       const admins = await owner.membership.count({
         where: { storeId: store.id, roleId: ctx.roleIds[RoleNames.ADMIN] }
       })
