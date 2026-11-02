@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing'
 
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
+import { NotificationsProcessor } from './processors/notifications.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { WorkerModule } from './worker.module'
 
@@ -15,6 +16,9 @@ describe('WorkerModule', () => {
     // It lives in a module of its own: the one that asks the registry for the plugin of a connection
     expect(moduleRef.get(CustomerProfileProcessor, { strict: false })).toBeInstanceOf(
       CustomerProfileProcessor
+    )
+    expect(moduleRef.get(NotificationsProcessor, { strict: false })).toBeInstanceOf(
+      NotificationsProcessor
     )
     await moduleRef.close()
   })
