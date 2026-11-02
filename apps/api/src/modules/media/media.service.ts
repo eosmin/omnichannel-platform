@@ -7,6 +7,7 @@ import { CacheKeys } from '@platform/core/cache'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import {
+  assertMediaServable,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
@@ -236,27 +237,7 @@ export class MediaService {
   async urlsFor(storeId: string, mediaId: string): Promise<MediaUrls> {
     const media = await this.find(storeId, mediaId)
     if (media === null) throw resourceNotFound('Media not found')
-    if (media.status === String(MediaStatus.INFECTED)) {
-      throw new PlatformException(
-        ErrorCodes.FILE_INFECTED,
-        'File unavailable',
-        HttpStatusCodes.FORBIDDEN
-      )
-    }
-    if (media.status === String(MediaStatus.UNSCANNABLE)) {
-      throw new PlatformException(
-        ErrorCodes.FILE_UNSCANNABLE,
-        'File could not be scanned',
-        HttpStatusCodes.GONE
-      )
-    }
-    if (media.status !== String(MediaStatus.CLEAN)) {
-      throw new PlatformException(
-        ErrorCodes.FILE_NOT_READY,
-        'File is being scanned',
-        HttpStatusCodes.CONFLICT
-      )
-    }
+    assertMediaServable(media.status)
 
     // A JSON column: parsed at the boundary. A value that does not fit is no variant, not an error.
     const parsed = mediaVariantsSchema.safeParse(media.variants ?? {})

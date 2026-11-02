@@ -4,7 +4,7 @@ import type { Queue } from 'bullmq'
 
 import { type Permission } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
-import { MembershipStatus, type CursorPage } from '@platform/core/domain'
+import { DigestFrequency, MembershipStatus, type CursorPage } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 import {
   NotificationDefaults,
@@ -70,6 +70,12 @@ export class NotificationsService {
   async send(input: SendNotification): Promise<void> {
     const defaults = NotificationDefaults[input.type]
     const prefs = await this.preferences.resolve(input.userId, input.storeId, input.type)
+    // The email is wanted only if the type has it on and the person did not switch the digest off;
+    // the settings are read only for a type that has it, so the rest pays nothing for them
+    const frequency = prefs.email
+      ? (await this.preferences.settingsOf(input.userId)).digestFrequency
+      : DigestFrequency.OFF
+    const emailWanted = frequency !== DigestFrequency.OFF
 
     // Saved first and always: nothing about quiet hours may stop it from reaching the center
     const row = await this.prisma.client.notification.create({
@@ -83,7 +89,7 @@ export class NotificationsService {
         resourceType: input.resourceType ?? null,
         resourceId: input.resourceId ?? null,
         actionPath: input.actionPath ?? null,
-        emailPendingAt: prefs.email ? new Date() : null
+        emailPendingAt: emailWanted ? new Date() : null
       },
       select: { id: true, messageKey: true, actionPath: true, createdAt: true }
     })
@@ -95,8 +101,9 @@ export class NotificationsService {
 
     if (prefs.inApp) this.emitLive(input, row, defaults.severity, sound)
     if (prefs.push && !quiet) await this.queueWebPush(input.userId, row.id)
-    // Quiet hours do not hold the email back: they pause what makes noise, and a mail is read later
-    if (prefs.email) await this.queueEmailDigest(input.userId, row.id)
+    // Quiet hours do not hold the email back: they pause what makes noise, and a mail is read later.
+    // Only the immediate kind needs a job: hourly and daily are found by the scheduler by the mark
+    if (frequency === DigestFrequency.IMMEDIATE) await this.queueEmailDigest(input.userId, row.id)
   }
 
   private emitLive(

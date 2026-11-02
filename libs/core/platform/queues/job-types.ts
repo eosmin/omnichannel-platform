@@ -23,6 +23,7 @@ export interface SendEmailJob extends BaseJob {
   locale: Locale
   data: Record<string, unknown> // Validated against the template's schema when it is rendered
   attachments?: { filename: string; contentBase64: string; contentType: string }[]
+  headers?: Record<string, string> // Extra mail headers, e.g. List-Unsubscribe
   tags: { storeId?: string; template: EmailTemplate } // Echoed back by the Resend webhook (TDD_07 §5.4)
 }
 

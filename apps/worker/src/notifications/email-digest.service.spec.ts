@@ -179,10 +179,11 @@ describe('EmailDigestService', () => {
         locale: 'en',
         data: {
           moreCount: 0,
-          appUrl: 'https://app.example.com/',
+          appUrl: 'https://app.example.com/s/s1/inbox',
           settingsUrl: 'https://app.example.com/account/notifications',
           items: [{ storeName: 'Shop', url: 'https://app.example.com/s/s1/inbox/c1' }]
-        }
+        },
+        headers: { 'List-Unsubscribe': '<https://app.example.com/account/notifications>' }
       })
       // What the service queues is what the template accepts, in both languages
       const queued = data as { template: typeof EmailTemplates.NOTIFICATION_DIGEST; data: unknown }
@@ -239,6 +240,17 @@ describe('EmailDigestService', () => {
       const data = addEmail.mock.calls[0]?.[1] as { data: { items: unknown[]; moreCount: number } }
       expect(data.data.items).toHaveLength(1)
       expect(warn).toHaveBeenCalled()
+    })
+
+    it('opens the inbox of a store the email speaks of, not of one whose row it dropped', async () => {
+      findNotifications.mockResolvedValue([
+        { ...row('n1', { messageKey: 'notifications.nope' }), storeId: 's-dropped' },
+        { ...row('n2'), storeId: 's-shown' }
+      ])
+      findMemberships.mockResolvedValue([{ storeId: 's-dropped' }, { storeId: 's-shown' }])
+      await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+      const data = addEmail.mock.calls[0]?.[1] as { data: { appUrl: string } }
+      expect(data.data.appUrl).toBe('https://app.example.com/s/s-shown/inbox')
     })
 
     it('never makes a link out of a path that names another host', async () => {

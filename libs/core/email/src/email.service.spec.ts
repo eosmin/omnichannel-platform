@@ -57,6 +57,19 @@ describe('EmailService', () => {
     expect(send.mock.calls[0]?.[0].tags).toEqual({ template: 'magic-link' })
   })
 
+  it('hands the extra headers of the job to the provider', async () => {
+    const send = jest.fn<Promise<{ providerMessageId: string }>, [SendEmailOptions]>(() =>
+      Promise.resolve({ providerMessageId: 'id-1' })
+    )
+    await build(send).service.send({
+      ...job,
+      headers: { 'List-Unsubscribe': '<https://app.example.com/account/notifications>' }
+    })
+    expect(send.mock.calls[0]?.[0].headers).toEqual({
+      'List-Unsubscribe': '<https://app.example.com/account/notifications>'
+    })
+  })
+
   it('decodes attachments', async () => {
     const send = jest.fn<Promise<{ providerMessageId: string }>, [SendEmailOptions]>(() =>
       Promise.resolve({ providerMessageId: 'id-1' })
