@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -11,8 +12,10 @@ import {
   NotificationLimits,
   NotificationSeverity,
   NotificationTypes,
-  notificationMessageKey
+  notificationMessageKey,
+  PushLimits
 } from '@platform/core/notifications'
+import { JobNames, QueueNames } from '@platform/core/queues'
 import { RealtimeEvents } from '@platform/core/realtime'
 
 import { NotificationsService } from '../../apps/api/src/modules/notifications/notifications.service'
@@ -21,6 +24,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { CapturedQueue } from '../helpers/queue'
 
 interface ErrorBody {
   error: { code: string }
@@ -49,6 +53,12 @@ interface PreferencesBody {
 const OK = 200
 const BAD_REQUEST = 400
 const NOT_FOUND = 404
+const NO_CONTENT = 204
+// base64url of 65 and 16 bytes, the sizes of the keys of a browser
+const P256DH = 'B'.repeat(87)
+const P256DH_NEW = 'C'.repeat(87)
+const AUTH = 'a'.repeat(22)
+const AUTH_NEW = 'b'.repeat(22)
 
 // The notifications of a member in a store: the center (list, count, read) and the preferences that
 // decide what else is done with one (TDD_06 §6, §9).
@@ -58,10 +68,13 @@ describe('Notifications', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let service: NotificationsService
+  const pushQueue = new CapturedQueue()
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], builder =>
+      builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
+    )
     ctx = await seedTestContext(owner, app, prefix)
     service = app.get(NotificationsService, { strict: false })
   })
@@ -75,6 +88,8 @@ describe('Notifications', () => {
     await owner.notification.deleteMany({ where: { userId: { in: users } } })
     await owner.notificationPreference.deleteMany({ where: { userId: { in: users } } })
     await owner.userNotificationSettings.deleteMany({ where: { userId: { in: users } } })
+    await owner.pushSubscription.deleteMany({ where: { userId: { in: users } } })
+    pushQueue.jobs.length = 0
     jest.restoreAllMocks()
   })
 
@@ -370,6 +385,109 @@ describe('Notifications', () => {
       await owner.businessHours.deleteMany({ where: { storeId: ctx.storeA.id } })
     })
 
+    describe('web push', () => {
+      const assigned = {
+        userId: '',
+        storeId: '',
+        type: NotificationTypes.CONVERSATION_ASSIGNED
+      }
+      const sendAssigned = (): Promise<void> =>
+        service.send({ ...assigned, userId: ctx.adminA.id, storeId: ctx.storeA.id })
+
+      beforeEach(async () => {
+        jest
+          .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
+          .mockImplementation(() => undefined)
+        await owner.pushSubscription.create({
+          data: {
+            userId: ctx.adminA.id,
+            endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+            p256dh: 'k',
+            auth: 'a'
+          }
+        })
+      })
+
+      it('queues nothing for a person with no browser registered', async () => {
+        await owner.pushSubscription.deleteMany({ where: { userId: ctx.adminA.id } })
+        await sendAssigned()
+        expect(pushQueue.jobs).toEqual([])
+      })
+
+      it('queues one job for the notification, named after it', async () => {
+        await sendAssigned()
+
+        const row = await owner.notification.findFirstOrThrow({ where: { userId: ctx.adminA.id } })
+        expect(pushQueue.jobs).toEqual([
+          {
+            name: JobNames.SEND_WEB_PUSH,
+            data: { userId: ctx.adminA.id, notificationId: row.id },
+            opts: { jobId: `${JobNames.SEND_WEB_PUSH}-${row.id}` }
+          }
+        ])
+      })
+
+      it('queues nothing for a type that has no push, or that the user turned off', async () => {
+        await service.send({
+          userId: ctx.adminA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.EXPORT_READY
+        })
+        await owner.notificationPreference.create({
+          data: {
+            userId: ctx.adminA.id,
+            storeId: ctx.storeA.id,
+            type: NotificationTypes.CONVERSATION_ASSIGNED,
+            inApp: true,
+            push: false,
+            email: false,
+            sound: true
+          }
+        })
+        await sendAssigned()
+
+        expect(pushQueue.jobs).toEqual([])
+      })
+
+      it('queues nothing in quiet hours, and still queues without the in-app event', async () => {
+        const hour = new Date().getUTCHours()
+        await owner.userNotificationSettings.create({
+          data: {
+            userId: ctx.adminA.id,
+            quietHoursEnabled: true,
+            quietHoursStart: hour,
+            quietHoursEnd: (hour + 2) % 24,
+            timezone: 'UTC'
+          }
+        })
+        await sendAssigned()
+        expect(pushQueue.jobs).toEqual([])
+
+        await owner.userNotificationSettings.deleteMany({ where: { userId: ctx.adminA.id } })
+        await owner.notificationPreference.create({
+          data: {
+            userId: ctx.adminA.id,
+            storeId: ctx.storeA.id,
+            type: NotificationTypes.CONVERSATION_ASSIGNED,
+            inApp: false,
+            push: true,
+            email: false,
+            sound: false
+          }
+        })
+        await sendAssigned()
+        expect(pushQueue.jobs).toHaveLength(1)
+      })
+
+      it('keeps the notification when the queue is down', async () => {
+        jest.spyOn(pushQueue, 'add').mockRejectedValueOnce(new Error('redis is down'))
+
+        await expect(sendAssigned()).resolves.toBeUndefined()
+
+        expect(await owner.notification.count({ where: { userId: ctx.adminA.id } })).toBe(1)
+      })
+    })
+
     it('sends to the members of a store who hold the permission, except the excluded', async () => {
       jest
         .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
@@ -490,6 +608,106 @@ describe('Notifications', () => {
         expect(response.status).toBe(BAD_REQUEST)
       }
       expect(await owner.notificationPreference.count({ where: { userId: ctx.adminA.id } })).toBe(0)
+    })
+  })
+
+  describe('push subscriptions', () => {
+    const endpoint = (): string => `https://fcm.googleapis.com/fcm/send/${randomUUID()}`
+    const body = (url: string, extra: Record<string, unknown> = {}) => ({
+      endpoint: url,
+      p256dh: P256DH,
+      auth: AUTH,
+      ...extra
+    })
+    const register = (url: string, extra?: Record<string, unknown>) =>
+      asAdmin().post(ApiRoutes.notifications.pushSubscription).send(body(url, extra))
+    const unregister = (as: ReturnType<typeof asAdmin>, url: string) =>
+      as.post(ApiRoutes.notifications.pushSubscriptionRemove).send({ endpoint: url })
+
+    it('registers a browser of the user, and registering it again changes nothing but its keys', async () => {
+      const url = endpoint()
+
+      const first = await register(url, { userAgent: 'Firefox' })
+      const again = await asAdmin()
+        .post(ApiRoutes.notifications.pushSubscription)
+        .send({ endpoint: url, p256dh: P256DH_NEW, auth: AUTH_NEW })
+
+      expect(first.status).toBe(NO_CONTENT)
+      expect(again.status).toBe(NO_CONTENT)
+      const rows = await owner.pushSubscription.findMany({ where: { endpoint: url } })
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ userId: ctx.adminA.id, p256dh: P256DH_NEW, auth: AUTH_NEW })
+    })
+
+    it('moves the browser to the next person who signs in on it', async () => {
+      const url = endpoint()
+      await register(url)
+
+      await api(app, ctx.agentA, ctx.storeA)
+        .post(ApiRoutes.notifications.pushSubscription)
+        .send(body(url))
+
+      const rows = await owner.pushSubscription.findMany({ where: { endpoint: url } })
+      expect(rows.map(row => row.userId)).toEqual([ctx.agentA.id])
+    })
+
+    it('refuses an endpoint that is not the host of a push service, and a field it does not know', async () => {
+      const bad = [
+        body('http://fcm.googleapis.com/fcm/send/x'),
+        body('https://169.254.169.254/latest/meta-data'),
+        body('https://fcm.googleapis.com.attacker.example/push'),
+        body('not a url'),
+        { ...body(endpoint()), p256dh: '' },
+        { ...body(endpoint()), p256dh: 'short' },
+        { ...body(endpoint()), auth: 'not base64url!' + 'a'.repeat(8) },
+        { ...body(endpoint()), userId: ctx.agentA.id }
+      ]
+      for (const payload of bad) {
+        const response = await asAdmin()
+          .post(ApiRoutes.notifications.pushSubscription)
+          .send(payload)
+        expect(response.status).toBe(BAD_REQUEST)
+        expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.VALIDATION_FAILED)
+      }
+      expect(await owner.pushSubscription.count({ where: { userId: ctx.adminA.id } })).toBe(0)
+    })
+
+    it('keeps the newest browsers up to the limit', async () => {
+      const urls = Array.from({ length: PushLimits.MAX_SUBSCRIPTIONS_PER_USER + 1 }, endpoint)
+      for (const url of urls) await register(url)
+
+      const kept = await owner.pushSubscription.findMany({ where: { userId: ctx.adminA.id } })
+      expect(kept).toHaveLength(PushLimits.MAX_SUBSCRIPTIONS_PER_USER)
+      expect(kept.map(row => row.endpoint)).not.toContain(urls[0])
+    })
+
+    it('removes the own browser, and answers the same for one that is someone else’s or unknown', async () => {
+      const mine = endpoint()
+      const theirs = endpoint()
+      await register(mine)
+      await owner.pushSubscription.create({
+        data: { userId: ctx.agentA.id, endpoint: theirs, p256dh: 'k', auth: 'a' }
+      })
+
+      const own = await unregister(asAdmin(), mine)
+      const foreign = await unregister(asAdmin(), theirs)
+      const unknown = await unregister(asAdmin(), endpoint())
+
+      expect([own.status, foreign.status, unknown.status]).toEqual([
+        NO_CONTENT,
+        NO_CONTENT,
+        NO_CONTENT
+      ])
+      expect(await owner.pushSubscription.count({ where: { endpoint: mine } })).toBe(0)
+      expect(await owner.pushSubscription.count({ where: { endpoint: theirs } })).toBe(1)
+    })
+
+    it('answers a member whose role holds no permission at all', async () => {
+      const response = await api(app, ctx.viewerA, ctx.storeA)
+        .post(ApiRoutes.notifications.pushSubscription)
+        .send(body(endpoint()))
+
+      expect(response.status).toBe(NO_CONTENT)
     })
   })
 })

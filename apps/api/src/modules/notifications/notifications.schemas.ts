@@ -7,9 +7,13 @@ import {
   uuidSchema
 } from '@platform/core/domain'
 import {
+  isBase64UrlOfBytes,
+  isPushEndpoint,
+  normalizePushEndpoint,
   NotificationFilters,
   NotificationLimits,
-  NotificationTypes
+  NotificationTypes,
+  PushLimits
 } from '@platform/core/notifications'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -63,3 +67,27 @@ export const putPreferencesBodySchema = z
     message: 'nothing to change'
   })
 export type PutPreferencesBody = z.output<typeof putPreferencesBodySchema>
+
+// What a browser gives after pushManager.subscribe (TDD_06 §7.3). The endpoint is a url the worker
+// will call, so only the hosts of the push services pass (PushServiceHosts).
+export const pushSubscriptionBodySchema = z.strictObject({
+  endpoint: z
+    .string()
+    .refine(isPushEndpoint, 'must be the endpoint of a push service')
+    .transform(normalizePushEndpoint),
+  p256dh: z
+    .string()
+    .max(PushLimits.MAX_KEY_LENGTH)
+    .refine(value => isBase64UrlOfBytes(value, PushLimits.P256DH_BYTES), 'must be the p256dh key'),
+  auth: z
+    .string()
+    .max(PushLimits.MAX_KEY_LENGTH)
+    .refine(value => isBase64UrlOfBytes(value, PushLimits.AUTH_BYTES), 'must be the auth secret'),
+  userAgent: z.string().max(PushLimits.MAX_USER_AGENT_LENGTH).optional()
+})
+export type PushSubscriptionBody = z.output<typeof pushSubscriptionBodySchema>
+
+export const removePushSubscriptionBodySchema = z.strictObject({
+  endpoint: z.string().min(1).max(PushLimits.MAX_ENDPOINT_LENGTH)
+})
+export type RemovePushSubscriptionBody = z.output<typeof removePushSubscriptionBodySchema>
