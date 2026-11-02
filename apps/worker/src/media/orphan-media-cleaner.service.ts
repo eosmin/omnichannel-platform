@@ -129,13 +129,13 @@ export class OrphanMediaCleaner {
   }
 
   // The scan marks the row first and deletes the file second: a failure in between leaves the file of
-  // an infected row. It is never served; here it goes.
+  // an infected or unscannable row. It is never served; here it goes.
   private async deleteInfectedFiles(): Promise<number> {
     // Only the verdicts of the last days: nothing marks a row as cleaned, and a failure of the delete
     // shows up within the retries of the scan, not weeks later
     const infected = await this.prisma.client.media.findMany({
       where: {
-        status: MediaStatus.INFECTED,
+        status: { in: [MediaStatus.INFECTED, MediaStatus.UNSCANNABLE] },
         scannedAt: {
           gt: new Date(Date.now() - UploadLimits.INFECTED_CLEANUP_WINDOW_HOURS * HOUR_MS)
         }
@@ -154,13 +154,14 @@ export class OrphanMediaCleaner {
       } catch (error) {
         this.logger.warn(
           { errorName: errorName(error) },
-          'the file of an infected row was not deleted'
+          'the file of an infected or unscannable row was not deleted'
         )
       }
     }
     return deleted
   }
 
+  // A row whose scan gave up for good is `unscannable`, not `pending`, so it is not queued again here.
   // A row still pending long after it was made lost its scan job (Redis was down, the job expired):
   // queue it again under the same id. If the file is not there, no scan can ever finish: the row goes
   // once it is past the TTL (before that a confirmation may be mid-way).

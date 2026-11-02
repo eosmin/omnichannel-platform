@@ -97,6 +97,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
   // the thread reads the state through the api
   [Events.MEDIA_PROCESSED]: status.extend({ internal: z.boolean() }),
   [Events.MEDIA_INFECTED]: status.extend({ internal: z.boolean() }),
+  [Events.MEDIA_UNSCANNABLE]: status.extend({ internal: z.boolean() }),
   [Events.MEDIA_UNAVAILABLE]: status.extend({ internal: z.boolean() }),
   // An export settled: the ids and the kind, no file name and no path
   [Events.EXPORT_READY]: exportSettled,

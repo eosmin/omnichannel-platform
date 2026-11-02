@@ -14,6 +14,7 @@ import { StorageService } from '@platform/core/storage-module'
 
 import { WorkerModule } from '../worker.module'
 
+import { ClamavClient } from './clamav.client'
 import { MediaPipeline } from './media-pipeline.service'
 
 // The standard antivirus test string: every scanner flags it, and it is harmless
@@ -163,6 +164,38 @@ describe('MediaPipeline', () => {
     const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
     expect(row.status).toBe('clean')
     expect(row.variants).toBeNull()
+  })
+
+  describe('a scan with no verdict', () => {
+    let clamav: ClamavClient
+    beforeEach(() => {
+      clamav = moduleRef.get(ClamavClient, { strict: false })
+      jest.spyOn(clamav, 'scan').mockRejectedValue(new Error('the daemon is down'))
+    })
+    afterEach(() => jest.restoreAllMocks())
+
+    it('stays pending while the job has tries left, so the queue retries it', async () => {
+      const media = await pendingMedia('retry.txt', 'text/plain', Buffer.from('plain text'))
+
+      await expect(pipeline.scan(media.id, false)).rejects.toThrow('the daemon is down')
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('pending')
+      expect(await storage.head(media.key)).not.toBeNull()
+    })
+
+    it('is given up on the last try: terminal row, file gone, error still raised', async () => {
+      const media = await pendingMedia('lost.txt', 'text/plain', Buffer.from('plain text'))
+
+      await expect(pipeline.scan(media.id, true)).rejects.toThrow('the daemon is down')
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('unscannable')
+      expect(row.scannedAt).not.toBeNull()
+      expect(await storage.head(media.key)).toBeNull()
+      // Past its state: a later job does nothing, not even ask the daemon
+      await expect(pipeline.scan(media.id, true)).resolves.toBeUndefined()
+    })
   })
 
   it('does nothing for a media that was deleted or is not pending', async () => {

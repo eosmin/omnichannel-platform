@@ -6,8 +6,8 @@ export const CLEAN_POLL_INTERVAL_MS = 1500
 export const CLEAN_POLL_MAX_TRIES = 40
 
 // Asks until the file has a verdict. `check` is GET /media/:id, which answers FILE_NOT_READY until
-// the file is clean and FILE_INFECTED when it is not. Resolves when clean; throws the api error of an
-// infected file, FILE_NOT_READY when the tries run out, and any other failure as it is.
+// the file is clean, FILE_INFECTED when it is not and FILE_UNSCANNABLE when the scan gave up. Resolves when clean; throws the api error of an
+// infected or unscannable file, FILE_NOT_READY when the tries run out, and any other failure as it is.
 export async function waitUntilClean(
   check: () => Promise<unknown>,
   options: {

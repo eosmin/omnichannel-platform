@@ -76,6 +76,7 @@ describe('bridgedPayload', () => {
     [Events.MESSAGE_DELETED]: { ...status, internal: true },
     [Events.MEDIA_PROCESSED]: { ...status, internal: false },
     [Events.MEDIA_INFECTED]: { ...status, internal: false },
+    [Events.MEDIA_UNSCANNABLE]: { ...status, internal: false },
     [Events.MEDIA_UNAVAILABLE]: { ...status, internal: false },
     [Events.EXPORT_READY]: {
       storeId: randomUUID(),

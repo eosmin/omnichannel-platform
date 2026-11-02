@@ -151,6 +151,19 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(key)).toBeNull()
   })
 
+  it('deletes the file an unscannable row left behind and never queues it again', async () => {
+    const key = await object(StorageKeys.message(storeId, randomUUID(), 'unreadable.txt'))
+    const id = await row('unscannable', key)
+    await owner.query(`UPDATE media SET scanned_at = now() WHERE id = $1`, [id])
+
+    const report = await cleaner.run()
+
+    expect(report.infectedFilesDeleted).toBeGreaterThanOrEqual(1)
+    expect(await storage.head(key)).toBeNull()
+    expect(await heavy.getJob(`${JobNames.SCAN_FILE}-${id}`)).toBeUndefined()
+    expect(await prisma.client.media.findUnique({ where: { id } })).not.toBeNull()
+  })
+
   it('queues the scan again for a pending row that never got one', async () => {
     const key = await object(StorageKeys.message(storeId, randomUUID(), 'lost.txt'))
     const id = await row('pending', key)

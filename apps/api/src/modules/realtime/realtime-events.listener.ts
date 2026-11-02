@@ -264,6 +264,11 @@ export class RealtimeEventsListener {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_INFECTED)
   }
 
+  @OnEvent(Events.MEDIA_UNSCANNABLE)
+  onMediaUnscannable(payload: MessageChangedPayload): Promise<void> {
+    return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_UNSCANNABLE)
+  }
+
   @OnEvent(Events.MEDIA_UNAVAILABLE)
   onMediaUnavailable(payload: MessageChangedPayload): Promise<void> {
     return this.toWhoMayRead(payload, RealtimeEvents.MEDIA_UNAVAILABLE)
@@ -277,6 +282,7 @@ export class RealtimeEventsListener {
       | typeof RealtimeEvents.MESSAGE_DELETED
       | typeof RealtimeEvents.MEDIA_PROCESSED
       | typeof RealtimeEvents.MEDIA_INFECTED
+      | typeof RealtimeEvents.MEDIA_UNSCANNABLE
       | typeof RealtimeEvents.MEDIA_UNAVAILABLE
   ): Promise<void> {
     return this.realtime.toStoreWhere(

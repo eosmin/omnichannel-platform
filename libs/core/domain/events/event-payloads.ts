@@ -236,6 +236,7 @@ export interface DomainEventPayloads {
   [Events.MESSAGE_DELETED]: MessageChangedPayload
   [Events.MEDIA_PROCESSED]: MessageChangedPayload
   [Events.MEDIA_INFECTED]: MessageChangedPayload
+  [Events.MEDIA_UNSCANNABLE]: MessageChangedPayload
   [Events.MEDIA_UNAVAILABLE]: MessageChangedPayload
   [Events.MESSAGE_MENTION]: MessageMentionPayload
   [Events.EXPORT_READY]: ExportSettledPayload

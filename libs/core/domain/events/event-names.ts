@@ -140,6 +140,8 @@ export const Events = {
   MEDIA_UPLOADED: 'media.uploaded',
   MEDIA_PROCESSED: 'media.processed',
   MEDIA_INFECTED: 'media.infected',
+  // The scan of a file of a message gave up for good: ids only
+  MEDIA_UNSCANNABLE: 'media.unscannable',
   // A file the customer sent could not be kept (refused, unsafe or unreachable): ids only
   MEDIA_UNAVAILABLE: 'media.unavailable',
 
@@ -180,6 +182,7 @@ export const BridgedEvents = [
   Events.MESSAGE_DELETED,
   Events.MEDIA_PROCESSED,
   Events.MEDIA_INFECTED,
+  Events.MEDIA_UNSCANNABLE,
   Events.MEDIA_UNAVAILABLE,
   Events.EXPORT_READY,
   Events.EXPORT_FAILED,

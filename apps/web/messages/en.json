@@ -267,6 +267,7 @@
     "FILE_INFECTED": "The file was rejected because it is not safe",
     "FILE_KEY_OUT_OF_SCOPE": "That file does not belong to this store",
     "FILE_NOT_READY": "The file is still being processed",
+    "FILE_UNSCANNABLE": "The file could not be checked and was discarded. Upload it again",
     "FILE_TOO_LARGE": "The file is too large",
     "FILE_TYPE_NOT_ALLOWED": "This type of file is not allowed",
     "FILE_UNAVAILABLE": "The file could not be sent because it is no longer available",
@@ -445,6 +446,10 @@
       "infected": {
         "title": "A file was blocked",
         "body": "A file sent in a conversation is not safe and was blocked."
+      },
+      "unscannable": {
+        "title": "A file could not be checked",
+        "body": "A file sent in a conversation could not be scanned and was discarded. Ask for it again."
       }
     },
     "inventory": {
@@ -729,6 +734,7 @@
         "checking": "Checking {name}",
         "loading": "Loading {name}",
         "infected": "{name} was blocked because it is not safe",
+        "unscannable": "{name} could not be checked and was discarded",
         "unavailable": "{name} could not be loaded",
         "retry": "Try again",
         "open": "Open {name}",

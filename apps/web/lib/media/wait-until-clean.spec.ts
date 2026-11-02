@@ -25,6 +25,15 @@ describe('waitUntilClean', () => {
     expect(check).toHaveBeenCalledTimes(1)
   })
 
+  it('throws a file the scan gave up on at once', async () => {
+    const gone = new ApiError(410, 'FILE_UNSCANNABLE', 'x')
+    const check = jest.fn<Promise<unknown>, []>().mockRejectedValue(gone)
+    await expect(
+      waitUntilClean(check, { signal: new AbortController().signal, sleep: noSleep })
+    ).rejects.toBe(gone)
+    expect(check).toHaveBeenCalledTimes(1)
+  })
+
   it('gives up as not ready when the tries run out', async () => {
     const check = jest.fn<Promise<unknown>, []>().mockRejectedValue(notReady())
     await expect(
