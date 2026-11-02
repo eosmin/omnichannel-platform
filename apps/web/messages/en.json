@@ -1130,12 +1130,12 @@
     "bulk": {
       "label": "Bulk actions",
       "selected": "{count, plural, one {# selected} other {# selected}}",
-      "allMatching": "Every conversation matching this filter (up to {max})",
+      "allMatching": "Every conversation matching this filter (up to {max}, except Export CSV, which takes them all)",
       "clear": "Clear the selection",
       "selectRow": "Select the conversation with {name}",
       "selectLoaded": "Select the {count} loaded",
       "onlyLoaded": "Only the {count} loaded conversations are selected.",
-      "selectMatching": "Select all matching this filter (up to {max})",
+      "selectMatching": "Select all matching this filter (up to {max}, except Export CSV, which takes them all)",
       "overLimit": "Select at most {max} conversations at a time.",
       "assign": {
         "label": "Assign",
@@ -1210,7 +1210,6 @@
         "someDone": "{succeeded} updated, {failed} not changed: {reasons}",
         "noneDone": "Nothing changed: {reasons}",
         "exportQueued": "{count, plural, one {The file of # conversation is being prepared} other {The file of # conversations is being prepared}}. It will be ready in the exports.",
-        "exportTruncated": "The filter matched more conversations than one file holds; the file has the first {max}.",
         "exportNothing": "No conversation matched, so no file was made.",
         "exportPartly": "The file is being prepared with {succeeded}; {failed} left out: {reasons}. It will be ready in the exports.",
         "viewExports": "View exports",

@@ -206,6 +206,20 @@ export class ConversationsService {
     return rows.map(row => row.id)
   }
 
+  // How many conversations a filter reaches for the viewer, by the same rule as `idsMatching`
+  async countMatching(
+    storeId: string,
+    filter: ConversationFilter,
+    viewer: Viewer
+  ): Promise<number> {
+    return this.prisma.client.conversation.count({
+      where: {
+        ...conversationFilterWhere(storeId, filter, viewer),
+        AND: [visibleTo(viewer), assignedFilter(filter.assigned, viewer)]
+      }
+    })
+  }
+
   // Which of the ids the viewer may see: the same rule as the single routes, which answer "not found"
   // for a conversation of another store or one the viewer may not read
   async visibleAmong(

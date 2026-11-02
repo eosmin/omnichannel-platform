@@ -129,7 +129,9 @@ export class MediaPipeline {
   }
 
   // Tells the team that a file of a message has a verdict, so the thread stops showing its placeholder.
-  // A file that belongs to no message yet has no thread to refresh: the composer asks for it itself.
+  // The picture of an ad hangs from its origin, not from a message: it is announced as the message that
+  // carried the ad, whose thread scope also holds the origins of the conversation. A file that belongs
+  // to neither yet has no thread to refresh: the composer asks for it itself.
   private async announce(
     media: { id: string; storeId: string | null },
     event:
@@ -144,9 +146,9 @@ export class MediaPipeline {
       // Read now, not at the start of the job: a send may have linked the file while it was processed
       const current = await this.prisma.client.media.findUnique({
         where: { id: media.id },
-        select: { messageId: true }
+        select: { messageId: true, origin: { select: { messageId: true } } }
       })
-      const messageId = current?.messageId ?? null
+      const messageId = current?.messageId ?? current?.origin?.messageId ?? null
       if (messageId === null) return
       await this.prisma.transaction(tx =>
         publishMessageChanged(this.events, tx, event, storeId, messageId)

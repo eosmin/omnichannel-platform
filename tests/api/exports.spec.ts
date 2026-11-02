@@ -11,7 +11,13 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AuthorType, BulkActions, MessageType } from '@platform/core/domain'
+import {
+  AuthorType,
+  BulkActions,
+  BulkLimits,
+  ChannelType,
+  MessageType
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -413,6 +419,7 @@ describe('Exports', () => {
         succeeded: string[]
         failed: { id: string; code: string }[]
         truncated: boolean
+        exported?: number
       }
       const seed = async (text: string, extra: { assignedTo?: string } = {}) => {
         const conversation = await createConversationOf(owner, {
@@ -518,10 +525,50 @@ describe('Exports', () => {
           filter: { tagId: tag.id }
         })
         expect(response.status).toBe(OK)
-        expect((response.body as BulkBody).succeeded).toEqual([tagged.id])
-        const file = await made((await lastExport()).id)
+        const body = response.body as BulkBody
+        // A filter keeps the filter, not ids: the answer counts, it does not list
+        expect(body).toMatchObject({ succeeded: [], failed: [], truncated: false, exported: 1 })
+        const row = await lastExport()
+        expect(row.filters).toMatchObject({ filter: { tagId: tag.id } })
+        expect(row.filters).not.toHaveProperty('conversationIds')
+        const file = await made(row.id)
         expect(file).toContain('bulk-by-filter')
         expect(file).not.toContain('bulk-untagged')
+      })
+
+      it('exports every conversation of a filter, past the limit of the other bulk actions', async () => {
+        const total = BulkLimits.MAX_ITEMS + 1
+        const batch = 25
+        for (let from = 0; from < total; from += batch) {
+          await Promise.all(
+            Array.from({ length: Math.min(batch, total - from) }, (_, offset) =>
+              seed(`bulk-over-limit-${String(from + offset)};`)
+            )
+          )
+        }
+        // The builder opens its conversations on Instagram
+        const response = await bulk(ctx.adminA, {
+          action: BulkActions.EXPORT_CSV,
+          filter: { channelType: ChannelType.INSTAGRAM }
+        })
+        expect(response.status).toBe(OK)
+        const body = response.body as BulkBody
+        expect(body.truncated).toBe(false)
+        expect(body.exported).toBeGreaterThan(BulkLimits.MAX_ITEMS)
+
+        const file = await made((await lastExport()).id)
+        expect(file.split('bulk-over-limit-').length - 1).toBe(total)
+      })
+
+      it('writes no file when a filter matches nothing', async () => {
+        const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
+        const response = await bulk(ctx.adminA, {
+          action: BulkActions.EXPORT_CSV,
+          filter: { tagId: randomUUID() }
+        })
+        expect(response.status).toBe(OK)
+        expect(response.body).toMatchObject({ succeeded: [], exported: 0 })
+        expect(await owner.export.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
       })
     })
 

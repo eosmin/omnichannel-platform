@@ -8,6 +8,7 @@ import { BulkActions, BulkLimits, ConversationStatus } from '@platform/core/doma
 import { errorName, ErrorCodes, PlatformException } from '@platform/core/errors'
 import {
   type BulkActionBody,
+  type ConversationFilter,
   type ConversationsExportFilters,
   ConversationsService,
   ReadReceipts,
@@ -36,6 +37,9 @@ export interface BulkResult {
   failed: BulkFailure[]
   // True when the filter matched more conversations than BulkLimits.MAX_ITEMS allows
   truncated: boolean
+  // Only for "Export CSV" of a filter: how many conversations the file will hold. The file keeps the
+  // filter, not ids, so it has no cap, and `succeeded` stays empty instead of naming thousands of ids.
+  exported?: number
 }
 
 // What an action needs on top of seeing each conversation, checked once before anything changes. The
@@ -76,18 +80,29 @@ export class ConversationBulkService {
     const needed = UP_FRONT_PERMISSIONS[body.action]
     if (needed !== undefined) requireAnyPermission(viewer.held, [needed])
 
+    // A file of a whole filter keeps the filter, so it neither lists the ids nor stops at the cap
+    if (body.action === BulkActions.EXPORT_CSV && body.filter !== undefined) {
+      const result = await this.exportFilter(storeId, body.filter, viewer, actor)
+      this.auditBulk(storeId, body, result.exported ?? 0, result, actor)
+      return result
+    }
+
     const { ids, truncated } = await this.targets(storeId, body, viewer)
     const result: BulkResult =
       body.action === BulkActions.EXPORT_CSV
-        ? await this.exportSelection(
-            storeId,
-            ids,
-            truncated,
-            body.filter !== undefined,
-            viewer,
-            actor
-          )
+        ? await this.exportSelection(storeId, ids, truncated, viewer, actor)
         : await this.applyEach(storeId, ids, truncated, body, viewer)
+    this.auditBulk(storeId, body, ids.length, result, actor)
+    return result
+  }
+
+  private auditBulk(
+    storeId: string,
+    body: BulkActionBody,
+    requested: number,
+    result: BulkResult,
+    actor: Actor
+  ): void {
     this.audit.log({
       action: AuditAction.BULK_ACTION_EXECUTED,
       actor: { userId: actor.userId },
@@ -95,8 +110,8 @@ export class ConversationBulkService {
       resourceType: 'conversation',
       metadata: {
         action: body.action,
-        requested: ids.length,
-        succeeded: result.succeeded.length,
+        requested,
+        succeeded: result.exported ?? result.succeeded.length,
         failed: result.failed.length,
         byFilter: body.filter !== undefined,
         // What was asked, to be told apart afterwards: who got them, which tag, which status, which filter
@@ -106,7 +121,6 @@ export class ConversationBulkService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return result
   }
 
   // One at a time: each change takes the locks of its conversation, and two that ran together on the
@@ -145,14 +159,10 @@ export class ConversationBulkService {
     storeId: string,
     ids: readonly string[],
     truncated: boolean,
-    // The ids came from the filter with the viewer's view: they are all visible already
-    fromFilter: boolean,
     viewer: Viewer,
     actor: Actor
   ): Promise<BulkResult> {
-    const visible = fromFilter
-      ? new Set(ids)
-      : await this.conversations.visibleAmong(storeId, ids, viewer)
+    const visible = await this.conversations.visibleAmong(storeId, ids, viewer)
     const result: BulkResult = {
       succeeded: ids.filter(id => visible.has(id)),
       failed: ids
@@ -174,6 +184,31 @@ export class ConversationBulkService {
       filters
     })
     return result
+  }
+
+  // "Select all matching" + Export CSV: one file for the filter, as `GET /conversations/export` makes it.
+  // The worker reads the conversations when it runs, with the viewer's permissions frozen in the row, so
+  // nothing is resolved to ids here and no cap applies; the count only tells the member what to expect.
+  private async exportFilter(
+    storeId: string,
+    filter: ConversationFilter,
+    viewer: Viewer,
+    actor: Actor
+  ): Promise<BulkResult> {
+    const exported = await this.conversations.countMatching(storeId, filter, viewer)
+    if (exported === 0) return { succeeded: [], failed: [], truncated: false, exported }
+    const filters: ConversationsExportFilters = {
+      filter,
+      viewer: { userId: viewer.userId, held: viewPermissionsOf(viewer.held) }
+    }
+    await this.exports.request({
+      storeId,
+      userId: actor.userId,
+      type: ExportTypes.CONVERSATIONS,
+      format: ExportFormats.CSV,
+      filters
+    })
+    return { succeeded: [], failed: [], truncated: false, exported }
   }
 
   private async targets(
