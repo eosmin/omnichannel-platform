@@ -1173,6 +1173,8 @@ model Export {
   status      String    @default("pending") // ExportStatus: pending | ready | failed | expired
   key         String? // S3 key when ready
   rowCount    Int?      @map("row_count")
+  // How much of the file is written, 0 to 100, while the status is pending; null until the worker has counted
+  progress    Int?
   error       String?
   expiresAt   DateTime  @map("expires_at")
   createdAt   DateTime  @default(now()) @map("created_at")

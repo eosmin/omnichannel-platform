@@ -3,7 +3,9 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
 import { mediaGalleryWhere, type Viewer } from '@platform/core/messaging'
-import { galleryTypeOf } from '@platform/core/storage'
+import { galleryTypeOf, GalleryTypes, ImageVariants } from '@platform/core/storage'
+
+import { MediaService } from '../media/media.service'
 
 import { countsOf, type GalleryPage } from './customer-media.views'
 import type { ListMediaQuery } from './customers.schemas'
@@ -13,7 +15,10 @@ import { encodeCursor } from './list-cursor'
 // moved to the survivor by a merge), as far as the viewer may open the conversation of each. Every query is filtered by the store of the request.
 @Injectable()
 export class CustomerMediaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly media: MediaService
+  ) {}
 
   async list(
     storeId: string,
@@ -49,6 +54,7 @@ export class CustomerMediaService {
           contentType: true,
           fileSize: true,
           createdAt: true,
+          variants: true,
           message: { select: { conversation: { select: { channelType: true } } } }
         },
         take: query.limit + 1,
@@ -66,15 +72,25 @@ export class CustomerMediaService {
     const hasMore = rows.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
     const last = page.at(-1)
+    // One small picture per image, signed with the page: the grid draws them without a call per tile
+    const thumbs = await Promise.all(
+      page.map(row =>
+        // Only an image has a small picture: the rest is not even parsed
+        galleryTypeOf(row.contentType) === GalleryTypes.IMAGE
+          ? this.media.signVariant(storeId, row.filename, row.variants, ImageVariants.THUMB)
+          : Promise.resolve(null)
+      )
+    )
     return {
-      data: page.map(row => ({
+      data: page.map((row, index) => ({
         id: row.id,
         type: galleryTypeOf(row.contentType),
         filename: row.filename,
         contentType: row.contentType,
         fileSizeBytes: row.fileSize,
         createdAt: row.createdAt.toISOString(),
-        channelType: row.message?.conversation.channelType ?? null
+        channelType: row.message?.conversation.channelType ?? null,
+        thumbUrl: thumbs[index] ?? null
       })),
       nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
       hasMore,

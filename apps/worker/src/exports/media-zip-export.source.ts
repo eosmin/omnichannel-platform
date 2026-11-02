@@ -13,6 +13,8 @@ export interface ZipEntry {
 
 export interface ZipSource {
   entries: () => AsyncGenerator<ZipEntry>
+  // How many files `entries` will give, counted before the first is read, for the progress of the file
+  count: () => Promise<number>
 }
 
 // The files are more than a ZIP may hold. The request refuses this at the door, but the files can
@@ -42,6 +44,10 @@ export function mediaZipSource(
 ): ZipSource {
   const viewer = viewerOf(filters.viewer.userId, filters.viewer.held)
   return {
+    count: () =>
+      prisma.client.media.count({
+        where: mediaGalleryWhere(storeId, filters.customerId, filters, viewer)
+      }),
     entries: async function* () {
       // Before a byte is read from the bucket: a selection over the ceiling fails in one query
       const total = await prisma.client.media.aggregate({

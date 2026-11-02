@@ -14,6 +14,8 @@ export const exportSchema = z.object({
   status: z.string(),
   filename: z.string().nullable(),
   rowCount: z.number().nullable(),
+  // 0 to 100 while the file is written; null before the worker has counted and once it is settled
+  progress: z.number().int().min(0).max(100).nullable().catch(null),
   error: z.string().nullable(),
   createdAt: z.string(),
   completedAt: z.string().nullable(),
@@ -63,13 +65,25 @@ export const exportPageSchema = z.object({
 export type ExportPageView = z.output<typeof exportPageSchema>
 
 // The exports center: the files this member asked for, newest first
+// `type` and `status` are the values of ExportTypes and ExportStatus; null shows all
+export interface ExportListFilter {
+  type: string | null
+  status: string | null
+}
+
 export function fetchExports(
   client: ApiClient,
   storeId: string,
+  filter: ExportListFilter,
   cursor: string | null,
   signal?: AbortSignal
 ): Promise<ExportPageView> {
-  const query = cursor === null ? '' : `?${new URLSearchParams({ cursor }).toString()}`
+  const params = new URLSearchParams()
+  if (filter.type !== null) params.set('type', filter.type)
+  if (filter.status !== null) params.set('status', filter.status)
+  if (cursor !== null) params.set('cursor', cursor)
+  const text = params.toString()
+  const query = text === '' ? '' : `?${text}`
   return client.request(`${ApiRoutes.exports.list}${query}`, {
     schema: exportPageSchema,
     storeId,

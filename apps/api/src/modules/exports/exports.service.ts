@@ -4,7 +4,7 @@ import type { Queue } from 'bullmq'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import { type ExportWhereInput, lockStoreForWrite, PrismaService } from '@platform/core/database'
 import type { CursorPage } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -49,6 +49,21 @@ export interface RequestExport {
   type: ExportType
   format: ExportFormat
   filters: JsonObject
+}
+
+// The state of the list as the view reports it: a `ready` row past its date is `expired` before the
+// cleanup marks it, so the two states are cut on the date and not only on the column.
+export function exportStatusWhere(status: string, now: Date): ExportWhereInput {
+  if (status === ExportStatus.READY) return { status, expiresAt: { gt: now } }
+  if (status === ExportStatus.EXPIRED) {
+    return {
+      OR: [
+        { status: ExportStatus.EXPIRED },
+        { status: ExportStatus.READY, expiresAt: { lte: now } }
+      ]
+    }
+  }
+  return { status }
 }
 
 function typesOf(held: readonly Permission[]): ExportType[] {
@@ -126,15 +141,25 @@ export class ExportsService {
       where: {
         storeId,
         requestedBy: userId,
-        type: { in: typesOf(held) },
-        ...(cursor === undefined
-          ? {}
-          : {
-              OR: [
-                { createdAt: { lt: cursor.createdAt } },
-                { createdAt: cursor.createdAt, id: { lt: cursor.id } }
-              ]
-            })
+        // A kind the role may not make stays out even when the filter names it
+        type: {
+          in:
+            query.type === undefined
+              ? typesOf(held)
+              : typesOf(held).filter(type => type === query.type)
+        },
+        // Two conditions can each need an OR, so they are joined and never spread side by side
+        AND: [
+          query.status === undefined ? {} : exportStatusWhere(query.status, new Date()),
+          cursor === undefined
+            ? {}
+            : {
+                OR: [
+                  { createdAt: { lt: cursor.createdAt } },
+                  { createdAt: cursor.createdAt, id: { lt: cursor.id } }
+                ]
+              }
+        ]
       },
       select: EXPORT_COLUMNS,
       take: query.limit + 1,

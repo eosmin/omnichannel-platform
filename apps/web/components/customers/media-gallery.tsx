@@ -35,19 +35,23 @@ const TABS: readonly GalleryType[] = [
   GalleryTypes.DOCUMENT
 ]
 
-function Thumbnail({ item }: { item: GalleryItemView }): ReactElement {
-  const { storeId } = useStore()
-  const isImage = item.type === GalleryTypes.IMAGE
-  const urls = useMediaUrls(storeId, item.id, isImage)
-  const src = urls.data?.variants.thumb ?? urls.data?.url
-  if (isImage && src !== undefined) {
+function Thumbnail({
+  item,
+  onBroken
+}: {
+  item: GalleryItemView
+  onBroken: () => void
+}): ReactElement {
+  if (item.thumbUrl !== null) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- a signed link on the bucket host: next/image would need it configured
       <img
-        src={src}
+        src={item.thumbUrl}
         alt=""
         loading="lazy"
         referrerPolicy="no-referrer"
+        // A link that lapsed: the list is asked again for fresh ones
+        onError={onBroken}
         className="size-full object-cover"
       />
     )
@@ -57,7 +61,15 @@ function Thumbnail({ item }: { item: GalleryItemView }): ReactElement {
   return <Icon aria-hidden className="text-muted-foreground size-8" />
 }
 
-function Tile({ item, onOpen }: { item: GalleryItemView; onOpen: () => void }): ReactElement {
+function Tile({
+  item,
+  onOpen,
+  onBroken
+}: {
+  item: GalleryItemView
+  onOpen: () => void
+  onBroken: () => void
+}): ReactElement {
   const t = useTranslations('customers.gallery')
   const format = useFormatter()
   const queryClient = useQueryClient()
@@ -72,8 +84,9 @@ function Tile({ item, onOpen }: { item: GalleryItemView; onOpen: () => void }): 
       const link = document.createElement('a')
       link.href = urls.url
       link.download = item.filename
+      // The api signs the original as an attachment: the browser downloads it and the page stays. No new
+      // tab, which Safari may block after an await.
       link.rel = 'noopener noreferrer'
-      link.target = '_blank'
       link.click()
     } catch {
       setFailed(true)
@@ -83,7 +96,7 @@ function Tile({ item, onOpen }: { item: GalleryItemView; onOpen: () => void }): 
   return (
     <li className="flex flex-col gap-1 rounded-md border p-2 text-xs">
       <div className="bg-muted flex aspect-square items-center justify-center overflow-hidden rounded">
-        <Thumbnail item={item} />
+        <Thumbnail item={item} onBroken={onBroken} />
       </div>
       <p className="truncate font-medium" title={item.filename}>
         {item.filename}
@@ -289,6 +302,7 @@ export function MediaGallery({
                 <Tile
                   key={item.id}
                   item={item}
+                  onBroken={() => void gallery.refetch()}
                   onOpen={() => setOpenIndex(viewable.findIndex(file => file.id === item.id))}
                 />
               ))}

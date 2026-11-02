@@ -26,6 +26,7 @@ import { StorageService } from '@platform/core/storage-module'
 import { conversationsExportSource } from './conversations-export.source'
 import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
+import { ExportProgress } from './export-progress'
 import { publishExportSettled } from './export-settled'
 import { mediaZipSource, ZipEmptyError, ZipTooLargeError } from './media-zip-export.source'
 import { ZipExportWriter } from './zip-export-writer'
@@ -35,7 +36,9 @@ type ExportRow = NonNullable<Awaited<ReturnType<PrismaService['client']['export'
 // How a kind of export is written: the extension of its file and the call that writes it at a key
 interface ExportPlan {
   extension: string
-  write: (key: string) => Promise<{ rowCount: number }>
+  // What the file will hold, counted before it is written
+  count: () => Promise<number>
+  write: (key: string, onProgress: (done: number) => void) => Promise<{ rowCount: number }>
 }
 
 // Makes the file of an export row (TDD_07 §7). The row is the whole job: the kind, the filters and who
@@ -68,11 +71,29 @@ export class ExportGenerator {
     const filename = `${row.type}-${new Date().toISOString().slice(0, 10)}.${plan.extension}`
     const key = StorageKeys.export(row.storeId, row.id, filename)
     try {
-      const { rowCount } = await plan.write(key)
+      // The count only feeds the bar: a query that fails must not fail the file
+      const total = await plan.count().catch((error: unknown) => {
+        this.logger.warn(
+          { exportId, errorName: errorName(error) },
+          'an export could not be counted'
+        )
+        return 0
+      })
+      const progress = new ExportProgress(this.prisma, row, total)
+      // A retry starts over: the bar of the attempt that died must not stay where it was
+      progress.start()
+      const { rowCount } = await plan.write(key, done => progress.report(done))
       const settled = await this.prisma.client.export.updateMany({
         // Not over a row that settled meanwhile
         where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
-        data: { status: ExportStatus.READY, key, rowCount, completedAt: new Date(), error: null }
+        data: {
+          status: ExportStatus.READY,
+          key,
+          rowCount,
+          progress: null,
+          completedAt: new Date(),
+          error: null
+        }
       })
       if (settled.count === 0) {
         // The row settled meanwhile (given up, failed): nothing will ever point at this file
@@ -112,13 +133,21 @@ export class ExportGenerator {
       const parsed = customersExportFiltersSchema.safeParse(filters ?? {})
       if (!parsed.success) return null
       const source = customersExportSource(this.prisma, storeId, parsed.data)
-      return { extension: ExportFileExtensions.CSV, write: key => this.writer.write(key, source) }
+      return {
+        extension: ExportFileExtensions.CSV,
+        count: source.count,
+        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+      }
     }
     if (type === ExportTypes.CONVERSATIONS) {
       const parsed = conversationsExportFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
       const source = conversationsExportSource(this.prisma, storeId, parsed.data)
-      return { extension: ExportFileExtensions.CSV, write: key => this.writer.write(key, source) }
+      return {
+        extension: ExportFileExtensions.CSV,
+        count: source.count,
+        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+      }
     }
     if (type === ExportTypes.MEDIA_ZIP) {
       const parsed = mediaZipFiltersSchema.safeParse(filters)
@@ -126,7 +155,8 @@ export class ExportGenerator {
       const source = mediaZipSource(this.prisma, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.ZIP,
-        write: key => this.zipWriter.write(key, source)
+        count: source.count,
+        write: (key, onProgress) => this.zipWriter.write(key, source, onProgress)
       }
     }
     return null
@@ -145,6 +175,7 @@ export class ExportGenerator {
       where: { id: row.id, storeId: row.storeId, status: ExportStatus.PENDING },
       data: {
         status: ExportStatus.FAILED,
+        progress: null,
         error: code,
         completedAt: new Date()
       }

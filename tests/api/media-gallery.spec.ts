@@ -53,6 +53,7 @@ interface GalleryBody {
     channelType: string | null
     key?: unknown
     url?: unknown
+    thumbUrl: string | null
   }[]
   counts: Record<string, number> | null
   nextCursor: string | null
@@ -203,7 +204,7 @@ describe('Media gallery', () => {
       expect((await api(app, both, ctx.storeA).get(path)).status).toBe(OK)
     })
 
-    it('lists the clean files newest first with the count of each tab, and never a link or a key', async () => {
+    it('lists the clean files newest first with the count of each tab, and never a download link or a key', async () => {
       const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
       const conversation = await createConversationOf(owner, {
         storeId: ctx.storeA.id,
@@ -249,6 +250,44 @@ describe('Media gallery', () => {
         expect(item.key).toBeUndefined()
         expect(item.url).toBeUndefined()
       }
+    })
+
+    it('gives the signed link of the small picture with the list, only for a variant of this store', async () => {
+      const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const withThumb = await file({
+        customerId: customer.id,
+        filename: 'with.png',
+        createdAt: at(3)
+      })
+      const withoutThumb = await file({
+        customerId: customer.id,
+        filename: 'without.png',
+        createdAt: at(2)
+      })
+      const foreign = await file({
+        customerId: customer.id,
+        filename: 'foreign.png',
+        createdAt: at(1)
+      })
+      const thumbKey = StorageKeys.message(ctx.storeA.id, randomUUID(), 'with-thumb.webp')
+      await owner.media.update({
+        where: { id: withThumb.id },
+        data: { variants: { thumb: thumbKey } }
+      })
+      // A key the worker never wrote for this store is never signed
+      await owner.media.update({
+        where: { id: foreign.id },
+        data: { variants: { thumb: StorageKeys.message(ctx.storeB.id, randomUUID(), 'x.webp') } }
+      })
+
+      const response = await asAdmin().get(ApiRoutes.customers.media(customer.id))
+
+      const byId = new Map((response.body as GalleryBody).data.map(item => [item.id, item]))
+      expect(byId.get(withThumb.id)?.thumbUrl).toContain(
+        encodeURI(thumbKey).split('/').at(-1) ?? ''
+      )
+      expect(byId.get(withoutThumb.id)?.thumbUrl).toBeNull()
+      expect(byId.get(foreign.id)?.thumbUrl).toBeNull()
     })
 
     it('filters by tab and by file name, counts the tabs under the search, and takes a % as text', async () => {

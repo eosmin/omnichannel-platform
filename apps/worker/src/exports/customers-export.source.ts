@@ -43,6 +43,7 @@ export function customersExportSource(
 ): CsvSource {
   return {
     columns: CUSTOMER_COLUMNS,
+    count: () => prisma.client.customer.count({ where: customerSearchWhere(storeId, filters.q) }),
     rows: async function* () {
       let after: string | undefined
       for (;;) {

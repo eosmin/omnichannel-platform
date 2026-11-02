@@ -59,10 +59,12 @@ interface ExportBody {
   status: string
   filename: string | null
   rowCount: number | null
+  progress: number | null
 }
 interface PageBody {
   data: ExportBody[]
   hasMore: boolean
+  nextCursor: string | null
 }
 interface DownloadBody {
   url: string
@@ -609,6 +611,135 @@ describe('Exports', () => {
       expect((one.body as ExportBody).id).toBe(second.id)
     })
 
+    describe('narrowing the list', () => {
+      const seed = (data: { type: string; status: string; expiresAt?: Date; progress?: number }) =>
+        owner.export.create({
+          data: {
+            storeId: ctx.storeA.id,
+            requestedBy: ctx.adminA.id,
+            type: data.type,
+            format: ExportFormats.CSV,
+            status: data.status,
+            progress: data.progress,
+            expiresAt: data.expiresAt ?? new Date(Date.now() + 86_400_000)
+          }
+        })
+      const idsOf = async (query: string): Promise<string[]> => {
+        const response = await asAdmin().get(`${ApiRoutes.exports.list}?${query}`)
+        expect(response.status).toBe(OK)
+        return (response.body as PageBody).data.map(item => item.id)
+      }
+
+      it('keeps one kind, and one state, and the two together', async () => {
+        const customersReady = await seed({
+          type: ExportTypes.CUSTOMERS,
+          status: ExportStatus.READY
+        })
+        const customersFailed = await seed({
+          type: ExportTypes.CUSTOMERS,
+          status: ExportStatus.FAILED
+        })
+        const zipReady = await seed({ type: ExportTypes.MEDIA_ZIP, status: ExportStatus.READY })
+
+        const customers = await idsOf(`type=${ExportTypes.CUSTOMERS}`)
+        expect(customers).toEqual(expect.arrayContaining([customersReady.id, customersFailed.id]))
+        expect(customers).not.toContain(zipReady.id)
+
+        const failed = await idsOf(`status=${ExportStatus.FAILED}`)
+        expect(failed).toContain(customersFailed.id)
+        expect(failed).not.toContain(customersReady.id)
+
+        const both = await idsOf(`type=${ExportTypes.CUSTOMERS}&status=${ExportStatus.READY}`)
+        expect(both).toContain(customersReady.id)
+        expect(both).not.toEqual(expect.arrayContaining([customersFailed.id, zipReady.id]))
+      })
+
+      it('counts a ready file past its date as expired, as the row says, and not as ready', async () => {
+        const lapsed = await seed({
+          type: ExportTypes.CUSTOMERS,
+          status: ExportStatus.READY,
+          expiresAt: new Date(Date.now() - 60_000)
+        })
+        const marked = await seed({ type: ExportTypes.CUSTOMERS, status: ExportStatus.EXPIRED })
+
+        const expired = await idsOf(`status=${ExportStatus.EXPIRED}`)
+        const ready = await idsOf(`status=${ExportStatus.READY}`)
+
+        expect(expired).toEqual(expect.arrayContaining([lapsed.id, marked.id]))
+        expect(ready).not.toContain(lapsed.id)
+      })
+
+      it('pages through a filter that needs an OR beside the cursor of the page', async () => {
+        const expired = await Promise.all(
+          [1, 2, 3].map(() => seed({ type: ExportTypes.CUSTOMERS, status: ExportStatus.EXPIRED }))
+        )
+        const first = await asAdmin().get(
+          `${ApiRoutes.exports.list}?status=${ExportStatus.EXPIRED}&limit=1`
+        )
+        const page = first.body as PageBody
+        expect(page.data).toHaveLength(1)
+        const second = await asAdmin().get(
+          `${ApiRoutes.exports.list}?status=${ExportStatus.EXPIRED}&limit=1&cursor=${page.nextCursor ?? ''}`
+        )
+        const next = (second.body as PageBody).data
+        expect(next).toHaveLength(1)
+        expect(next[0]?.id).not.toBe(page.data[0]?.id)
+        expect(expired.length).toBeGreaterThan(2)
+      })
+
+      it('does not give a kind the role may not make because the filter names it', async () => {
+        const role = await createRole(owner, {
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.MEDIA_DOWNLOAD_ALL]
+        })
+        const member = await createActor(owner, app, {
+          prefix,
+          name: 'media-filter',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          roleId: role.id
+        })
+        const mine = await owner.export.create({
+          data: {
+            storeId: ctx.storeA.id,
+            requestedBy: member.id,
+            type: ExportTypes.CUSTOMERS,
+            format: ExportFormats.CSV,
+            expiresAt: new Date(Date.now() + 86_400_000)
+          }
+        })
+
+        const response = await api(app, member, ctx.storeA).get(
+          `${ApiRoutes.exports.list}?type=${ExportTypes.CUSTOMERS}`
+        )
+
+        expect(response.status).toBe(OK)
+        expect((response.body as PageBody).data.map(item => item.id)).not.toContain(mine.id)
+      })
+
+      it('refuses a kind or a state it does not know', async () => {
+        expect((await asAdmin().get(`${ApiRoutes.exports.list}?type=invoices`)).status).toBe(400)
+        expect((await asAdmin().get(`${ApiRoutes.exports.list}?status=paused`)).status).toBe(400)
+      })
+    })
+
+    describe('the progress of a file', () => {
+      it('shows the percent while the file is made and none once it is ready', async () => {
+        const view = await request(ApiRoutes.customers.export)
+        await owner.export.update({ where: { id: view.id }, data: { progress: 40 } })
+
+        const during = await asAdmin().get(ApiRoutes.exports.byId(view.id))
+        expect((during.body as ExportBody).progress).toBe(40)
+
+        await made(view.id)
+
+        const after = await asAdmin().get(ApiRoutes.exports.byId(view.id))
+        expect((after.body as ExportBody).progress).toBeNull()
+        const row = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
+        expect(row.progress).toBeNull()
+      })
+    })
+
     it('shows an export to who asked for it and to nobody else: another member, another store, an agent', async () => {
       const view = await request(ApiRoutes.customers.export)
       const colleague = await createActor(owner, app, {
@@ -820,6 +951,7 @@ describe('Exports', () => {
     await expect(
       writer.write(key, {
         columns: ['a'],
+        count: () => Promise.resolve(2),
         rows: async function* () {
           yield ['one']
           await Promise.resolve()

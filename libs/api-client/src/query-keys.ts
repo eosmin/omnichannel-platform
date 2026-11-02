@@ -122,7 +122,9 @@ export const QueryKeys = {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const
   },
   exports: {
-    all: (storeId: string) => ['exports', storeId] as const
+    all: (storeId: string) => ['exports', storeId] as const,
+    list: (storeId: string, type: string | null, status: string | null) =>
+      ['exports', storeId, type, status] as const
   },
   media: {
     // The signed links of one clean file; they expire, so the query has a short life

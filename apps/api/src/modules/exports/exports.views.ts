@@ -14,6 +14,9 @@ export interface ExportView {
   status: ExportStatusType
   filename: string | null
   rowCount: number | null
+  // How much of the file is written, 0 to 100, while it is being prepared; null before the worker has
+  // counted and once the export is settled
+  progress: number | null
   // An ErrorCode, never the text of an exception
   error: string | null
   createdAt: string
@@ -35,6 +38,7 @@ export const EXPORT_COLUMNS = {
   status: true,
   key: true,
   rowCount: true,
+  progress: true,
   error: true,
   createdAt: true,
   completedAt: true,
@@ -48,6 +52,7 @@ export interface ExportRow {
   status: string
   key: string | null
   rowCount: number | null
+  progress: number | null
   error: string | null
   createdAt: Date
   completedAt: Date | null
@@ -71,6 +76,7 @@ export function exportView(row: ExportRow, now: Date = new Date()): ExportView {
     status: expired ? ExportStatus.EXPIRED : (row.status as ExportStatusType),
     filename: row.key === null ? null : (row.key.split('/').at(-1) ?? null),
     rowCount: row.rowCount,
+    progress: row.status === ExportStatus.PENDING ? row.progress : null,
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,

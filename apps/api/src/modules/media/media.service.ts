@@ -239,21 +239,8 @@ export class MediaService {
     if (media === null) throw resourceNotFound('Media not found')
     assertMediaServable(media.status)
 
-    // A JSON column: parsed at the boundary. A value that does not fit is no variant, not an error.
-    const parsed = mediaVariantsSchema.safeParse(media.variants ?? {})
-    const variants = parsed.success ? parsed.data : {}
-    // Keys the worker wrote for this media; one outside the store is never signed
-    const sign = (variant: (typeof ImageVariants)[keyof typeof ImageVariants]) => {
-      const key = variants[variant]
-      return key === undefined || !key.startsWith(StorageKeys.storePrefix(storeId))
-        ? Promise.resolve(null)
-        : this.storage.downloadUrl({
-            key,
-            contentType: VARIANT_CONTENT_TYPE,
-            filename: media.filename,
-            inline: true
-          })
-    }
+    const sign = (variant: (typeof ImageVariants)[keyof typeof ImageVariants]) =>
+      this.signVariant(storeId, media.filename, media.variants, variant)
     const [url, full, medium, thumb] = await Promise.all([
       this.storage.downloadUrl({
         key: media.key,
@@ -274,6 +261,26 @@ export class MediaService {
         [ImageVariants.THUMB]: thumb
       }
     }
+  }
+
+  // The signed inline link of one WebP variant the worker made, or null when there is none. The column is
+  // JSON, parsed at the boundary: a value that does not fit is no variant, not an error. A key outside
+  // the store is never signed.
+  async signVariant(
+    storeId: string,
+    filename: string,
+    variants: unknown,
+    variant: (typeof ImageVariants)[keyof typeof ImageVariants]
+  ): Promise<string | null> {
+    const parsed = mediaVariantsSchema.safeParse(variants ?? {})
+    const key = parsed.success ? parsed.data[variant] : undefined
+    if (key === undefined || !key.startsWith(StorageKeys.storePrefix(storeId))) return null
+    return this.storage.downloadUrl({
+      key,
+      contentType: VARIANT_CONTENT_TYPE,
+      filename,
+      inline: true
+    })
   }
 
   private async again(media: MediaRow, keys: UploadKeys, userId: string): Promise<MediaView> {

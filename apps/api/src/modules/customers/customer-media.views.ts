@@ -6,8 +6,9 @@ import {
   GalleryTypes
 } from '@platform/core/storage'
 
-// One file of the gallery. The signed link is not here: it is asked from `GET /media/:id` when the
-// file is drawn, never put in a list (it lasts minutes and a list may be cached or logged).
+// One file of the gallery. The link to download or open it is not here: it is asked from
+// `GET /media/:id` when the person presses the button. The only link a list carries is the small
+// picture of an image (`thumbUrl`), inline and signed for minutes, so the grid needs no call per tile.
 export interface GalleryItem {
   id: string
   type: GalleryTab | null
@@ -17,6 +18,8 @@ export interface GalleryItem {
   createdAt: string
   // The channel of the conversation the file came in or went out through; null when its message is gone
   channelType: string | null
+  // The signed link of the small picture; null for a file that is not an image or whose picture is not made yet
+  thumbUrl: string | null
 }
 
 export type GalleryCounts = Record<GalleryType, number>

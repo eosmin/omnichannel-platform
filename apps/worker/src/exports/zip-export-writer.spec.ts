@@ -34,6 +34,7 @@ function build(present: Set<string>): { writer: ZipExportWriter; written: () => 
 }
 
 const sourceOf = (...files: [string, string][]): ZipSource => ({
+  count: () => Promise.resolve(files.length),
   entries: () => Readable.from(files.map(([key, filename]) => entry(key, filename))) as never
 })
 

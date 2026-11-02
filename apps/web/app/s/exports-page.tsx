@@ -9,11 +9,17 @@ import { ExportStatus } from '@platform/core/exports'
 
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
+import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { apiClient } from '../../lib/api'
 import { errorCodeOf, knownErrorCode } from '../../lib/error-message'
 import {
+  ALL_EXPORTS,
+  exportStatusFilter,
   exportStatusKey,
+  exportTypeFilter,
   exportTypeKey,
+  FILTERABLE_STATUSES,
+  FILTERABLE_TYPES,
   isExportReady,
   mayOpenExports
 } from '../../lib/exports/export-state'
@@ -48,6 +54,19 @@ function Row({ item }: { item: ExportView }): ReactElement {
       <td className="py-2 pr-3 text-sm font-medium">{t(`types.${exportTypeKey(item.type)}`)}</td>
       <td className="py-2 pr-3 text-sm">
         <span>{t(`statuses.${statusKey}`)}</span>
+        {item.status === ExportStatus.PENDING && item.progress !== null ? (
+          <div className="mt-1 flex items-center gap-2">
+            <progress
+              className="accent-primary h-1.5 w-24"
+              max={100}
+              value={item.progress}
+              aria-label={t('progress', { name: t(`types.${exportTypeKey(item.type)}`) })}
+            />
+            <span className="text-muted-foreground text-xs">
+              {format.number(item.progress / 100, { style: 'percent' })}
+            </span>
+          </div>
+        ) : null}
         {item.status === ExportStatus.FAILED && item.error !== null ? (
           <p className="text-destructive text-xs">{tErrors(knownErrorCode(item.error))}</p>
         ) : null}
@@ -96,7 +115,14 @@ export function ExportsPage(): ReactElement {
   const tCommon = useTranslations('common')
   const { storeId, can } = useStore()
   const mayAsk = mayOpenExports(can)
-  const exports = useExportList(storeId, mayAsk)
+  const [type, setType] = useState<string>(ALL_EXPORTS)
+  const [status, setStatus] = useState<string>(ALL_EXPORTS)
+  const isFiltered = type !== ALL_EXPORTS || status !== ALL_EXPORTS
+  const exports = useExportList(
+    storeId,
+    { type: exportTypeFilter(type), status: exportStatusFilter(status) },
+    mayAsk
+  )
   const rows = exports.data?.pages.flatMap(page => page.data) ?? []
 
   if (!mayAsk) {
@@ -111,6 +137,38 @@ export function ExportsPage(): ReactElement {
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">{t('title')}</h1>
       <p className="text-muted-foreground text-sm">{t('intro')}</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          {t('filters.type')}
+          <select
+            className={`${SELECT_CLASS} sm:w-56`}
+            value={type}
+            onChange={event => setType(event.target.value)}
+          >
+            <option value={ALL_EXPORTS}>{t('filters.allTypes')}</option>
+            {FILTERABLE_TYPES.map(value => (
+              <option key={value} value={value}>
+                {t(`types.${value}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium">
+          {t('filters.status')}
+          <select
+            className={`${SELECT_CLASS} sm:w-48`}
+            value={status}
+            onChange={event => setStatus(event.target.value)}
+          >
+            <option value={ALL_EXPORTS}>{t('filters.allStatuses')}</option>
+            {FILTERABLE_STATUSES.map(value => (
+              <option key={value} value={value}>
+                {t(`statuses.${value}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {exports.isPending ? (
         <p role="status" className="text-muted-foreground text-sm">
           {tCommon('loading')}
@@ -125,11 +183,14 @@ export function ExportsPage(): ReactElement {
         </div>
       ) : null}
       {exports.isSuccess && rows.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t('empty')}</p>
+        <p className="text-muted-foreground text-sm">{isFiltered ? t('noMatch') : t('empty')}</p>
       ) : null}
       {rows.length === 0 ? null : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table
+            className={`w-full text-left ${exports.isPlaceholderData ? 'opacity-60' : ''}`}
+            aria-busy={exports.isPlaceholderData}
+          >
             <caption className="sr-only">{t('title')}</caption>
             <thead>
               <tr className="text-muted-foreground border-b text-xs uppercase">
