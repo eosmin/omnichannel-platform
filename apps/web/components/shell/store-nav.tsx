@@ -9,11 +9,12 @@ import { AppPaths } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 
 import { mayOpenExports } from '../../lib/exports/export-state'
+import { storeSettingsEntries, visibleEntries } from '../../lib/settings/store-entries'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
 // The pages of the store that exist, for who may open them. Orders and Analytics join with Steps 4.4
-// and 5.2; the settings shell of Step 3.6 adds its own entry.
+// and 5.2. Settings is shown when the person may open at least one of its pages.
 export function StoreNav(): ReactElement {
   const t = useTranslations('shell.nav')
   const { storeId, can } = useStore()
@@ -33,12 +34,19 @@ export function StoreNav(): ReactElement {
       href: AppPaths.store.exports(storeId),
       label: t('exports'),
       isShown: mayOpenExports(can)
+    },
+    {
+      href: AppPaths.store.settings(storeId),
+      // Any page of the area keeps the entry current
+      match: `/s/${storeId}/settings`,
+      label: t('settings'),
+      isShown: visibleEntries(storeSettingsEntries(storeId), can).length > 0
     }
   ].filter(entry => entry.isShown)
   return (
     <nav aria-label={t('label')} className="flex items-center gap-1">
       {entries.map(entry => {
-        const isCurrent = pathname.startsWith(entry.href)
+        const isCurrent = pathname.startsWith(entry.match ?? entry.href)
         return (
           <Link
             key={entry.href}

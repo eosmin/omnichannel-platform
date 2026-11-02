@@ -9,6 +9,17 @@ export function readLastStoreId(): string | null {
   }
 }
 
+// A deleted store must not stay as the one "/", the account pages and the sign-out read
+export function forgetLastStoreId(storeId: string): void {
+  try {
+    if (window.localStorage.getItem(StorageKeys.LAST_STORE_ID) === storeId) {
+      window.localStorage.removeItem(StorageKeys.LAST_STORE_ID)
+    }
+  } catch {
+    // Nothing remembered, nothing to forget
+  }
+}
+
 export function rememberLastStoreId(storeId: string): void {
   try {
     window.localStorage.setItem(StorageKeys.LAST_STORE_ID, storeId)

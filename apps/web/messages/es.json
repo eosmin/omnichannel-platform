@@ -134,6 +134,36 @@
         "enabled": "Avisarme de las conversaciones de mis otras tiendas",
         "supervisorOnly": "Solo donde soy supervisor"
       }
+    },
+    "profile": {
+      "description": "El nombre que ve tu equipo.",
+      "saved": "Perfil guardado.",
+      "nameInvalid": "Escribe un nombre de hasta 100 caracteres.",
+      "emailHint": "Es la dirección con la que inicias sesión."
+    },
+    "preferences": {
+      "title": "Preferencias",
+      "description": "Cómo se ve y habla la aplicación para ti, en todos tus dispositivos.",
+      "language": "Idioma",
+      "timezone": "Zona horaria",
+      "browserZone": "Usar la zona horaria de este navegador",
+      "density": "Densidad",
+      "densities": {
+        "comfortable": "Cómoda",
+        "compact": "Compacta"
+      },
+      "saved": "Preferencias guardadas."
+    },
+    "security": {
+      "title": "Seguridad",
+      "description": "Los dispositivos en los que tienes la sesión abierta.",
+      "empty": "No hay sesiones activas.",
+      "thisDevice": "Este dispositivo",
+      "unknownDevice": "Dispositivo desconocido",
+      "unknownAddress": "Dirección desconocida",
+      "lastActive": "Activo {when}",
+      "revoke": "Cerrar sesión",
+      "revoked": "Sesión del dispositivo cerrada."
     }
   },
   "app": {
@@ -147,7 +177,9 @@
     "tryAgain": "Intentar de nuevo",
     "signOut": "Cerrar sesión",
     "signingOut": "Cerrando sesión",
-    "loading": "Cargando"
+    "loading": "Cargando",
+    "save": "Guardar",
+    "discard": "Descartar cambios"
   },
   "confirm": {
     "typePhrase": "Escribe \"{phrase}\" para confirmar",
@@ -741,7 +773,30 @@
     }
   },
   "org": {
-    "storesTitle": "Tiendas"
+    "storesTitle": "Tiendas",
+    "newStore": "Nueva tienda",
+    "empty": "Todavía no hay tiendas.",
+    "create": {
+      "title": "Nueva tienda",
+      "description": "Elige lo básico. Podrás cambiarlo después en los ajustes de la tienda.",
+      "submit": "Crear tienda",
+      "done": "Tienda {name} creada."
+    },
+    "rename": {
+      "action": "Renombrar",
+      "title": "Renombrar tienda",
+      "description": "La dirección de la tienda no cambia.",
+      "name": "Nombre de la tienda"
+    },
+    "delete": {
+      "action": "Eliminar",
+      "title": "¿Eliminar {name}?",
+      "description": "La tienda se elimina para siempre y no se puede recuperar. Una tienda que aún tiene conversaciones, clientes u otros datos no se puede eliminar.",
+      "confirm": "Eliminar tienda",
+      "done": "Tienda {name} eliminada.",
+      "lastStore": "No se puede eliminar la última tienda de una organización."
+    },
+    "settings": "Ajustes"
   },
   "realtime": {
     "reconnecting": "Reconectando...",
@@ -758,7 +813,8 @@
       "label": "Páginas de la tienda",
       "inbox": "Bandeja",
       "customers": "Clientes",
-      "exports": "Exportaciones"
+      "exports": "Exportaciones",
+      "settings": "Ajustes"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -1381,6 +1437,58 @@
       "setup": {
         "messengerProfileAccess": "En la configuración de tu Página de Facebook, solicita \"Business Asset User Profile Access\" para poder leer los nombres y las fotos de los clientes."
       }
+    },
+    "nav": {
+      "store": {
+        "label": "Ajustes de la tienda",
+        "title": "Tienda",
+        "general": "General"
+      },
+      "org": {
+        "label": "Organización",
+        "title": "Organización",
+        "stores": "Tiendas",
+        "profile": "Perfil"
+      },
+      "account": {
+        "label": "Mi cuenta",
+        "title": "Mi cuenta",
+        "profile": "Perfil",
+        "preferences": "Preferencias",
+        "notifications": "Notificaciones",
+        "security": "Seguridad"
+      }
+    },
+    "store": {
+      "title": "General",
+      "description": "El nombre, la zona horaria, la moneda y el idioma de esta tienda.",
+      "name": "Nombre de la tienda",
+      "timezone": "Zona horaria",
+      "currency": "Moneda",
+      "defaultLocale": "Idioma predeterminado",
+      "defaultLocaleHint": "El idioma de los mensajes que tus clientes reciben de esta tienda.",
+      "saved": "Ajustes de la tienda guardados.",
+      "problems": {
+        "nameRequired": "Escribe un nombre.",
+        "nameTooLong": "El nombre es demasiado largo.",
+        "currencyInvalid": "Elige una moneda.",
+        "localeInvalid": "Elige un idioma compatible."
+      }
+    },
+    "organization": {
+      "title": "Perfil de la organización",
+      "description": "El nombre de tu organización.",
+      "readOnly": "Puedes ver la organización, pero no cambiarla.",
+      "name": "Nombre de la organización",
+      "slug": "Nombre en la dirección",
+      "nameInvalid": "Escribe un nombre de hasta 100 caracteres.",
+      "saved": "Organización guardada."
+    }
+  },
+  "emptyStates": {
+    "permissionDenied": {
+      "title": "No tienes acceso a esto",
+      "body": "Pide a un administrador que te dé el permiso necesario."
     }
   }
 }

@@ -1,42 +1,90 @@
 'use client'
 
-import { useLocale, useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { useTranslations } from 'next-intl'
+import { type FormEvent, type ReactElement, useId, useState } from 'react'
+import { toast } from 'sonner'
 
-import { useProfile } from '../../lib/use-profile'
+import { AccountLimits } from '@platform/core/domain'
 
-// Read-only for now: the api has no route to change the profile yet
-export function ProfileCard(): ReactElement | null {
-  const t = useTranslations('account')
-  const uiLocale = useLocale()
-  const { data: profile } = useProfile()
-  if (profile === undefined) return null
-  const rows: [string, string][] = [
-    [t('name'), profile.name],
-    [t('email'), profile.email],
-    [t('language'), languageName(profile.locale, uiLocale)],
-    [t('timezone'), profile.timezone ?? t('notSet')]
-  ]
-  return (
-    <section className="mx-auto flex max-w-xl flex-col gap-4">
-      <h1 className="text-2xl font-semibold">{t('profileTitle')}</h1>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3">
-        {rows.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  )
+import { MutationError } from '../../components/customers/mutation-error'
+import { LoadFailed, PageLoading } from '../../components/settings/states'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
+import { useOwnProfile, useSaveOwnProfile } from '../../lib/settings/use-settings-data'
+
+// Account → Profile: the name the team sees. The e-mail is how the person signs in, so it is shown
+// and cannot be changed here. The picture joins in the next change (Step 3.6, avatar).
+export function ProfileCard(): ReactElement {
+  const profile = useOwnProfile()
+  if (profile.isError) {
+    return <LoadFailed error={profile.error} onRetry={() => void profile.refetch()} />
+  }
+  if (profile.data === undefined) return <PageLoading />
+  return <ProfileForm email={profile.data.email} savedName={profile.data.name} />
 }
 
-// "es" shown as "español" in the language of the page; a code the runtime does not know stays as it is
-function languageName(code: string, uiLocale: string): string {
-  try {
-    return new Intl.DisplayNames([uiLocale], { type: 'language' }).of(code) ?? code
-  } catch {
-    return code
+function ProfileForm({ email, savedName }: { email: string; savedName: string }): ReactElement {
+  const t = useTranslations('account')
+  const tAll = useTranslations()
+  const id = useId()
+  const save = useSaveOwnProfile()
+  const [saved, setSaved] = useState(savedName)
+  const [name, setName] = useState(savedName)
+  const trimmed = name.trim()
+  const isValid = trimmed.length > 0 && trimmed.length <= AccountLimits.NAME_MAX_LENGTH
+  const canSave = isValid && trimmed !== saved && !save.isPending
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault()
+    if (!canSave) return
+    save.mutate(
+      { name: trimmed },
+      {
+        onSuccess: next => {
+          setSaved(next.name)
+          setName(next.name)
+          toast.success(t('profile.saved'))
+        }
+      }
+    )
   }
+
+  return (
+    <section className="flex max-w-xl flex-col gap-4">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">{t('profileTitle')}</h1>
+        <p className="text-muted-foreground text-sm">{t('profile.description')}</p>
+      </header>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`${id}-name`}>{t('name')}</Label>
+          <Input
+            id={`${id}-name`}
+            value={name}
+            maxLength={AccountLimits.NAME_MAX_LENGTH * 2}
+            autoComplete="name"
+            aria-invalid={!isValid}
+            onChange={event => setName(event.target.value)}
+          />
+          {isValid ? null : (
+            <p role="alert" className="text-destructive text-sm">
+              {t('profile.nameInvalid')}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`${id}-email`}>{t('email')}</Label>
+          <Input id={`${id}-email`} value={email} readOnly />
+          <p className="text-muted-foreground text-xs">{t('profile.emailHint')}</p>
+        </div>
+        <MutationError error={save.error} />
+        <div className="flex gap-2">
+          <Button type="submit" disabled={!canSave}>
+            {tAll('common.save')}
+          </Button>
+        </div>
+      </form>
+    </section>
+  )
 }
