@@ -120,6 +120,20 @@ svg { width: 20px; height: 20px; display: block; }
   border: 0; border-radius: 10px; padding: 10px 12px; font-weight: 600;
   background: var(--accent); color: var(--on-accent);
 }
+.attach { color: var(--muted); align-self: center; }
+.attach:focus-visible, .file:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.staged { list-style: none; margin: 0; padding: 8px 10px 0; display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); }
+.staged[hidden], .notice[hidden] { display: none; }
+.staged-file, .file {
+  display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 8px; font-size: 13px;
+  border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--text); text-align: left;
+}
+.file svg, .staged-file svg { flex: none; width: 16px; height: 16px; }
+div.file { cursor: default; }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { flex: none; font-size: 11px; color: var(--muted); }
+.progress { width: 100%; height: 6px; accent-color: var(--accent); }
+.notice { margin: 0; padding: 4px 14px 0; font-size: 12px; color: var(--error); }
 @media (max-width: 480px) {
   :host { right: 12px; bottom: 12px; }
   .panel { position: fixed; inset: 0; width: auto; height: auto; max-width: none; max-height: none; border-radius: 0; }

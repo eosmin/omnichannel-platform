@@ -7,7 +7,15 @@ const BOOTSTRAP = {
   away: false,
   preChat: true,
   readUpToMessageId: null,
-  messages: [{ id: 'm1', from: 'team', content: 'hola', createdAt: '2026-01-01T00:00:00.000Z' }]
+  messages: [
+    {
+      id: 'm1',
+      from: 'team',
+      content: 'hola',
+      attachments: [],
+      createdAt: '2026-01-01T00:00:00.000Z'
+    }
+  ]
 }
 
 // jsdom has no fetch: the api only reads `ok`, `status` and the json of an answer
@@ -52,6 +60,84 @@ describe('WidgetApi', () => {
         })
       })
     )
+  })
+
+  it('sends the ids of the files and leaves out the text when there is none', async () => {
+    const request = answering(200, { received: true })
+
+    await new WidgetApi('https://api.test', request).send('tok', 'id-1', '', undefined, ['u1'])
+
+    expect(request).toHaveBeenCalledWith(
+      'https://api.test/widget/messages',
+      expect.objectContaining({
+        body: JSON.stringify({ visitorToken: 'tok', clientMessageId: 'id-1', uploadIds: ['u1'] })
+      })
+    )
+  })
+
+  it('asks for a signed url with the name, type and size of the file', async () => {
+    const request = answering(200, { uploadUrl: 'https://b/x', uploadId: 'u1' })
+
+    const slot = await new WidgetApi('https://api.test', request).requestUpload('tok', {
+      name: 'a.png',
+      type: 'image/png',
+      size: 3
+    })
+
+    expect(slot).toEqual({ uploadUrl: 'https://b/x', uploadId: 'u1' })
+    expect(request).toHaveBeenCalledWith(
+      'https://api.test/widget/upload-url',
+      expect.objectContaining({
+        body: JSON.stringify({
+          visitorToken: 'tok',
+          filename: 'a.png',
+          contentType: 'image/png',
+          fileSizeBytes: 3
+        })
+      })
+    )
+  })
+
+  it('refuses an answer that is not a signed url or a link', async () => {
+    const api = new WidgetApi('https://api.test', answering(200, { url: 5 }))
+
+    await expect(api.requestUpload('t', { name: 'a', type: 'b', size: 1 })).rejects.toBeInstanceOf(
+      WidgetApiError
+    )
+    await expect(api.fileLink('t', 'm')).rejects.toBeInstanceOf(WidgetApiError)
+  })
+
+  it('asks for the link of a file', async () => {
+    const link = {
+      url: 'https://b/f',
+      filename: 'a.png',
+      contentType: 'image/png',
+      previewUrl: null
+    }
+    const request = answering(200, link)
+
+    expect(await new WidgetApi('https://api.test', request).fileLink('tok', 'm1')).toEqual(link)
+    expect(request).toHaveBeenCalledWith(
+      'https://api.test/widget/download-url',
+      expect.objectContaining({ body: JSON.stringify({ visitorToken: 'tok', mediaId: 'm1' }) })
+    )
+  })
+
+  it('reads the fields a validation error names', async () => {
+    const body = {
+      error: {
+        code: 'VALIDATION_FAILED',
+        metadata: { issues: [{ path: 'profile.phone', code: 'invalid_phone' }, { code: 'x' }] }
+      }
+    }
+
+    const error = await new WidgetApi('https://api.test', answering(400, body))
+      .send('t', 'i', 'x')
+      .catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(WidgetApiError)
+    expect((error as WidgetApiError).phoneRefused).toBe(true)
+    expect((error as WidgetApiError).issuePaths).toEqual(['profile.phone'])
   })
 
   it('refuses a bootstrap that does not say whether to ask for the form', async () => {
@@ -130,9 +216,22 @@ describe('WidgetApi', () => {
 
 describe('isServerMessage', () => {
   it('only takes a message from the visitor or the team with text', () => {
-    expect(isServerMessage({ id: 'a', from: 'visitor', content: 'x', createdAt: 'd' })).toBe(true)
-    expect(isServerMessage({ id: 'a', from: 'bot', content: 'x', createdAt: 'd' })).toBe(false)
+    expect(
+      isServerMessage({ id: 'a', from: 'visitor', content: 'x', attachments: [], createdAt: 'd' })
+    ).toBe(true)
+    expect(
+      isServerMessage({ id: 'a', from: 'bot', content: 'x', attachments: [], createdAt: 'd' })
+    ).toBe(false)
     expect(isServerMessage({ id: 'a', from: 'team', createdAt: 'd' })).toBe(false)
     expect(isServerMessage(null)).toBe(false)
+  })
+
+  it('needs the files to be well formed', () => {
+    const base = { id: 'a', from: 'team', content: '', createdAt: 'd' }
+    const file = { id: 'f', filename: 'a.png', contentType: 'image/png', size: 3 }
+
+    expect(isServerMessage({ ...base, attachments: [file] })).toBe(true)
+    expect(isServerMessage({ ...base, attachments: [{ ...file, size: '3' }] })).toBe(false)
+    expect(isServerMessage(base)).toBe(false)
   })
 })

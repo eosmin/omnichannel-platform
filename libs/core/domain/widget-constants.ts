@@ -35,6 +35,8 @@ export const WidgetLimits = {
   // How long the api remembers what a visitor asked to upload: the message that carries it is sent
   // within this time or the file is left to the cleanup of stray uploads
   UPLOAD_TTL_SECONDS: 3600,
+  // The longest the widget waits for the bucket to take one file before it counts as failed
+  UPLOAD_TIMEOUT_MS: 10 * 60 * 1000,
   // A visitor has a few tabs open
   MAX_SOCKETS_PER_VISITOR: 5,
   // What the script a store pastes into its site may weigh once compressed (TDD_10 §5.4)

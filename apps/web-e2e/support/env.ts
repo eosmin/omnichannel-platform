@@ -16,6 +16,8 @@ export const isCi = process.env['CI'] !== undefined
 export const WEB_URL = 'http://localhost:3000'
 export const API_URL = 'http://localhost:8080'
 export const WORKER_PORT = 8081
+// The bucket the browser puts files on, from .env.example
+export const STORAGE_URL = process.env['S3_ENDPOINT'] ?? 'http://localhost:8333'
 export const MAILPIT_URL = 'http://localhost:8025'
 
 // Each service connects with its own role, as it does where it is deployed

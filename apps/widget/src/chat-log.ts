@@ -4,7 +4,7 @@ import {
   WidgetDeliveryStates
 } from '@platform/core/domain'
 
-import type { ChatMessage, ServerMessage } from './types'
+import type { Attachment, ChatMessage, ServerMessage } from './types'
 
 type Listener = (messages: readonly ChatMessage[]) => void
 
@@ -14,6 +14,8 @@ function fromServer(message: ServerMessage, seen: boolean): ChatMessage {
     serverId: message.id,
     from: message.from,
     content: message.content,
+    attachments: message.attachments,
+    progress: null,
     createdAt: message.createdAt,
     state: WidgetDeliveryStates.SENT,
     seen
@@ -56,7 +58,11 @@ export class ChatLog {
     const local = this.items.filter(item => {
       if (item.serverId !== null) return false
       if (item.state !== WidgetDeliveryStates.SENT) return true
-      const stored = unmatched.findIndex(message => message.content === item.content)
+      // The same text and the same number of files: a file-only message has no text to tell it by
+      const stored = unmatched.findIndex(
+        message =>
+          message.content === item.content && message.attachments.length === item.attachments.length
+      )
       if (stored === -1) return true
       unmatched.splice(stored, 1)
       return false
@@ -72,7 +78,7 @@ export class ChatLog {
     this.emit()
   }
 
-  addOutgoing(key: string, content: string): void {
+  addOutgoing(key: string, content: string, attachments: readonly Attachment[] = []): void {
     this.items = [
       ...this.items,
       {
@@ -80,6 +86,8 @@ export class ChatLog {
         serverId: null,
         from: WidgetAuthors.VISITOR,
         content,
+        attachments,
+        progress: attachments.length === 0 ? null : 0,
         createdAt: new Date().toISOString(),
         state: WidgetDeliveryStates.SENDING,
         seen: false
@@ -105,8 +113,27 @@ export class ChatLog {
     if (changed) this.emit()
   }
 
+  // The state of a message; one that is no longer sending has nothing going up
   setState(key: string, state: WidgetDeliveryState): void {
-    this.items = this.items.map(item => (item.key === key ? { ...item, state } : item))
+    this.items = this.items.map(item =>
+      item.key === key
+        ? {
+            ...item,
+            state,
+            // A retry starts the files over, and shows the bar again
+            progress:
+              state === WidgetDeliveryStates.SENDING && item.attachments.length > 0
+                ? (item.progress ?? 0)
+                : null
+          }
+        : item
+    )
+    this.emit()
+  }
+
+  // How much of the files of a message has gone up, as a fraction of all of them
+  setProgress(key: string, progress: number): void {
+    this.items = this.items.map(item => (item.key === key ? { ...item, progress } : item))
     this.emit()
   }
 

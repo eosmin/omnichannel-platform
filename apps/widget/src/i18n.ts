@@ -22,7 +22,15 @@ const MESSAGES = {
     phoneLabel: 'Teléfono',
     startChat: 'Empezar el chat',
     invalidEmail: 'Revisa el correo.',
-    invalidPhone: 'Revisa el teléfono.'
+    invalidPhone: 'Revisa el teléfono.',
+    attach: 'Adjuntar un archivo',
+    removeFile: 'Quitar el archivo',
+    fileTypeNotAllowed: 'Ese tipo de archivo no se puede enviar.',
+    fileTooLarge: 'El archivo pesa más de {max}.',
+    fileEmpty: 'El archivo está vacío.',
+    tooManyFiles: 'Puedes enviar hasta {max} archivos a la vez.',
+    fileUnavailable: 'No se pudo abrir el archivo. Inténtalo de nuevo.',
+    uploading: 'Subiendo'
   },
   [Locales.EN]: {
     open: 'Open the chat',
@@ -43,7 +51,15 @@ const MESSAGES = {
     phoneLabel: 'Phone',
     startChat: 'Start the chat',
     invalidEmail: 'Check the email.',
-    invalidPhone: 'Check the phone.'
+    invalidPhone: 'Check the phone.',
+    attach: 'Attach a file',
+    removeFile: 'Remove the file',
+    fileTypeNotAllowed: 'That type of file cannot be sent.',
+    fileTooLarge: 'The file is larger than {max}.',
+    fileEmpty: 'The file is empty.',
+    tooManyFiles: 'You can send up to {max} files at a time.',
+    fileUnavailable: 'The file could not be opened. Try again.',
+    uploading: 'Uploading'
   }
 } as const
 

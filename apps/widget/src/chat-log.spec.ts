@@ -5,6 +5,7 @@ const server = (id: string, from: 'visitor' | 'team', content: string): ServerMe
   id,
   from,
   content,
+  attachments: [],
   createdAt: '2026-01-01T00:00:00.000Z'
 })
 
@@ -149,6 +150,55 @@ describe('ChatLog', () => {
 
       expect(listener).toHaveBeenCalledTimes(1)
       expect(log.messages.map(message => message.seen)).toEqual([true, false, true])
+    })
+  })
+  describe('files', () => {
+    const file = { id: null, filename: 'a.png', contentType: 'image/png', size: 3 }
+
+    it('shows a file of the visitor going up, with its progress, until it is sent', () => {
+      const log = new ChatLog()
+
+      log.addOutgoing('k1', '', [file])
+      log.setProgress('k1', 0.4)
+      expect(log.find('k1')).toMatchObject({ progress: 0.4, attachments: [file] })
+      log.setState('k1', 'sent')
+
+      expect(log.find('k1')?.progress).toBeNull()
+    })
+
+    it('shows the bar again when a failed message is sent again', () => {
+      const log = new ChatLog()
+      log.addOutgoing('k1', '', [file])
+      log.setState('k1', 'failed')
+      expect(log.find('k1')?.progress).toBeNull()
+
+      log.setState('k1', 'sending')
+
+      expect(log.find('k1')?.progress).toBe(0)
+    })
+
+    it('has no progress for a message without files', () => {
+      const log = new ChatLog()
+
+      log.addOutgoing('k1', 'hola')
+
+      expect(log.find('k1')?.progress).toBeNull()
+    })
+
+    it('replaces a sent message of only files with its stored copy, and not one with another count', () => {
+      const log = new ChatLog()
+      log.addOutgoing('k1', '', [file])
+      log.setState('k1', 'sent')
+      const stored = (id: string, count: number): ServerMessage => ({
+        ...server(id, 'visitor', ''),
+        attachments: Array.from({ length: count }, (_, n) => ({ ...file, id: `f${n}` }))
+      })
+
+      log.loadHistory([stored('s0', 2)])
+      expect(log.messages.map(message => message.key)).toEqual(['s0', 'k1'])
+      log.loadHistory([stored('s1', 1)])
+
+      expect(log.messages.map(message => message.key)).toEqual(['s1'])
     })
   })
 })

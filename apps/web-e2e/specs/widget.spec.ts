@@ -29,8 +29,18 @@ const WIDGET_TEXT = {
   name: 'Name',
   email: 'Email',
   startChat: 'Start the chat',
-  invalidEmail: 'Check the email.'
+  invalidEmail: 'Check the email.',
+  invalidPhone: 'Check the phone.',
+  phone: 'Phone',
+  attach: 'Attach a file',
+  failed: 'Not sent.'
 } as const
+
+// The smallest PNG there is: a real image, so the type the browser declares is the one the api takes
+const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+)
 
 // A visitor's browser, which reaches the api from an address of its own
 async function visitorBrowser(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
@@ -164,5 +174,60 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
     await expect(visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input })).toBeVisible()
     await visitor.context.close()
     await setWidgetPreChat(ownerToken, storeId, site.connectionId, false)
+  })
+  test('a phone the api cannot read brings the form back, and the message goes once it is fixed', async ({
+    browser
+  }) => {
+    await setWidgetPreChat(ownerToken, storeId, site.connectionId, true)
+    const visitor = await visitorBrowser(browser)
+    await openSite(visitor.page)
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
+    // Long enough to look like a number, but no country has one like it
+    await visitor.page.getByLabel(WIDGET_TEXT.phone).fill('123456')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.startChat }).click()
+    await visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input }).fill('Is it available?')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
+
+    // The api names the field: the form is back, with the message under the phone
+    const phone = visitor.page.getByLabel(WIDGET_TEXT.phone)
+    await expect(visitor.page.getByText(WIDGET_TEXT.invalidPhone)).toBeVisible()
+    await expect(phone).toHaveAttribute('aria-invalid', 'true')
+    await phone.fill('+52 55 1234 5678')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.startChat }).click()
+
+    // The message that was held back goes with the corrected form
+    const log = visitor.page.getByRole('log')
+    await expect(log.getByText('Is it available?')).toBeVisible()
+    await expect(log.locator('.msg--sent')).toHaveCount(1)
+    await expect(log.getByText(WIDGET_TEXT.failed)).toHaveCount(0)
+    await visitor.context.close()
+    await setWidgetPreChat(ownerToken, storeId, site.connectionId, false)
+  })
+
+  test('a visitor attaches a file: it goes to the bucket under the strict policy and the message is sent', async ({
+    browser
+  }) => {
+    const visitor = await visitorBrowser(browser)
+    const violations: string[] = []
+    visitor.page.on('console', message => {
+      if (message.text().includes('Content Security Policy')) violations.push(message.text())
+    })
+    await openSite(visitor.page)
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.attach }).waitFor()
+
+    await visitor.page
+      .locator('input[type="file"]')
+      .setInputFiles({ name: 'pixel.png', mimeType: 'image/png', buffer: ONE_PIXEL_PNG })
+    await expect(visitor.page.getByText('pixel.png')).toBeVisible()
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
+
+    // Up on the bucket, then named by the message: the line is sent, not failed
+    const log = visitor.page.getByRole('log')
+    await expect(log.getByText('pixel.png')).toBeVisible()
+    await expect(log.locator('.msg--sent')).toHaveCount(1)
+    await expect(log.getByText(WIDGET_TEXT.failed)).toHaveCount(0)
+    expect(violations).toEqual([])
+    await visitor.context.close()
   })
 })

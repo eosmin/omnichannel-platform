@@ -5,8 +5,33 @@ import type { WidgetAuthor, WidgetDeliveryState } from '@platform/core/domain'
 export interface ServerMessage {
   id: string
   from: WidgetAuthor
+  // The text, or the caption of the files; empty when the message is only files
   content: string
+  attachments: Attachment[]
   createdAt: string
+}
+
+// A file of a message. Its link is never here: it is asked for when the visitor opens the file.
+export interface Attachment {
+  // The id the download route takes. A file still going up has none.
+  id: string | null
+  filename: string
+  contentType: string
+  size: number
+}
+
+// What `POST /widget/download-url` answers
+export interface FileLink {
+  url: string
+  filename: string
+  contentType: string
+  previewUrl: string | null
+}
+
+// What the api answers when asked to sign an upload
+export interface UploadSlot {
+  uploadUrl: string
+  uploadId: string
 }
 
 // What the pre-chat form collects; every field is optional and none is proved
@@ -35,6 +60,9 @@ export interface ChatMessage {
   serverId: string | null
   from: WidgetAuthor
   content: string
+  attachments: readonly Attachment[]
+  // 0 to 1 while the files of a message of the visitor go up; null when nothing is going up
+  progress: number | null
   createdAt: string
   state: WidgetDeliveryState
   // An agent read it: only a message of the visitor can be

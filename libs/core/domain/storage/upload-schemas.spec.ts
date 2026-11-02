@@ -1,12 +1,7 @@
 import { MediaPurpose } from './media-purpose'
 import { UploadLimits } from './upload-constants'
-import {
-  ClientUploadPurposes,
-  confirmUploadSchema,
-  refuseUpload,
-  requestUploadUrlSchema,
-  UploadRefusals
-} from './upload-schemas'
+import { refuseUpload, UploadRefusals } from './upload-rules'
+import { ClientUploadPurposes, confirmUploadSchema, requestUploadUrlSchema } from './upload-schemas'
 
 const request = {
   purpose: MediaPurpose.MESSAGE,

@@ -1,7 +1,8 @@
 import { WidgetAuthors, WidgetDeliveryStates, WidgetLimits } from '@platform/core/domain'
 
 import type { WidgetText } from '../i18n'
-import type { ChatMessage, VisitorProfile } from '../types'
+import type { Attachment, ChatMessage, FileLink, VisitorProfile } from '../types'
+import { FILE_ACCEPT, formatBytes, maxBytesFor, refuseFile } from '../upload'
 
 import { el, icon, Icons } from './dom'
 import { applyStyles } from './styles'
@@ -15,13 +16,17 @@ export interface PanelProps {
   preChat: boolean
   // The visitor answered the form: what they typed (nothing when they left it blank)
   onProfile: (profile: VisitorProfile) => void
-  onSend: (content: string) => void
+  onSend: (content: string, files: readonly File[]) => void
+  // Asks for the link of a file of the conversation; the panel opens it
+  onOpenFile: (mediaId: string) => Promise<FileLink>
   onRetry: (key: string) => void
   // The visitor is writing; the session decides how often the server hears of it
   onTyping: () => void
 }
 
 export interface Panel {
+  // The api could not read the phone: the form comes back with the message under the phone
+  showPhoneProblem(): void
   setAgentTyping(active: boolean): void
   update(messages: readonly ChatMessage[]): void
   destroy(): void
@@ -69,6 +74,23 @@ export function mountPanel(props: PanelProps): Panel | null {
   typing.setAttribute('role', 'status')
   typing.hidden = true
 
+  // The files chosen and not sent yet
+  let staged: File[] = []
+  const stagedList = el('ul', 'staged')
+  stagedList.hidden = true
+  const notice = el('p', 'notice')
+  notice.setAttribute('role', 'alert')
+  notice.hidden = true
+  const picker = el('input', 'sr-only')
+  picker.type = 'file'
+  picker.multiple = true
+  picker.accept = FILE_ACCEPT
+  picker.tabIndex = -1
+  picker.setAttribute('aria-hidden', 'true')
+  const attachButton = el('button', 'icon-button attach', [icon(Icons.paperclip)])
+  attachButton.type = 'button'
+  attachButton.setAttribute('aria-label', text.attach)
+
   const field = el('textarea', 'field')
   field.rows = 1
   field.maxLength = WidgetLimits.CONTENT_MAX_LENGTH
@@ -78,7 +100,7 @@ export function mountPanel(props: PanelProps): Panel | null {
   sendButton.type = 'submit'
   sendButton.setAttribute('aria-label', text.send)
   sendButton.disabled = true
-  const form = el('form', 'composer', [field, sendButton])
+  const form = el('form', 'composer', [attachButton, picker, field, sendButton])
 
   // The form that comes first when the store asks for it. Every field is optional, and a value that is
   // not an address or a number is refused here, because the server would drop it without a word.
@@ -105,13 +127,21 @@ export function mountPanel(props: PanelProps): Panel | null {
   const preChatForm = el('form', 'prechat', [
     el('p', 'intro', [text.preChatIntro]),
     ...fields.map(field => field.caption),
-    problem,
     startButton
   ])
   preChatForm.noValidate = true
   preChatForm.hidden = !props.preChat
 
-  const panel = el('section', 'panel', [header, away, preChatForm, list, typing, form])
+  const panel = el('section', 'panel', [
+    header,
+    away,
+    preChatForm,
+    list,
+    typing,
+    stagedList,
+    notice,
+    form
+  ])
   panel.setAttribute('role', 'dialog')
   panel.setAttribute('aria-label', props.storeName)
   panel.hidden = true
@@ -120,6 +150,7 @@ export function mountPanel(props: PanelProps): Panel | null {
   const showChat = (shown: boolean): void => {
     list.hidden = !shown
     form.hidden = !shown
+    stagedList.hidden = !shown || staged.length === 0
   }
   showChat(!props.preChat)
 
@@ -144,13 +175,84 @@ export function mountPanel(props: PanelProps): Panel | null {
     }
   }
 
+  // The message under the field that is wrong, read out with it
+  const showProblem = (index: 0 | 1 | 2, message: string): void => {
+    const target = fields[index]
+    if (target === undefined) return
+    problem.textContent = message
+    problem.hidden = false
+    target.caption.append(problem)
+    target.input.setAttribute('aria-invalid', 'true')
+    target.input.focus()
+  }
+  const clearProblem = (): void => {
+    problem.hidden = true
+    for (const { input } of fields) input.removeAttribute('aria-invalid')
+  }
+
+  const say = (message: string | null): void => {
+    notice.textContent = message ?? ''
+    notice.hidden = message === null
+  }
+
+  const drawStaged = (): void => {
+    stagedList.replaceChildren(
+      ...staged.map(file => {
+        const remove = el('button', 'icon-button', [icon(Icons.close)])
+        remove.type = 'button'
+        remove.setAttribute('aria-label', `${text.removeFile}: ${file.name}`)
+        remove.addEventListener('click', () => {
+          staged = staged.filter(other => other !== file)
+          drawStaged()
+          field.focus()
+        })
+        return el('li', 'staged-file', [
+          icon(Icons.file),
+          el('span', 'file-name', [file.name]),
+          el('span', 'file-size', [formatBytes(file.size)]),
+          remove
+        ])
+      })
+    )
+    stagedList.hidden = staged.length === 0 || form.hidden
+    sendButton.disabled = field.value.trim() === '' && staged.length === 0
+  }
+
+  // A file the api would refuse is refused here, before any byte leaves; the rest are kept
+  const stage = (chosen: readonly File[]): void => {
+    say(null)
+    for (const file of chosen) {
+      if (staged.length >= WidgetLimits.UPLOADS_PER_MESSAGE) {
+        say(text.tooManyFiles.replace('{max}', String(WidgetLimits.UPLOADS_PER_MESSAGE)))
+        break
+      }
+      const refusal = refuseFile(file)
+      if (refusal === 'type') say(text.fileTypeNotAllowed)
+      else if (refusal === 'empty') say(text.fileEmpty)
+      else if (refusal === 'size') {
+        say(text.fileTooLarge.replace('{max}', formatBytes(maxBytesFor(file.type))))
+      } else staged.push(file)
+    }
+    drawStaged()
+  }
+
   const submit = (): void => {
     const content = field.value.trim()
-    if (content === '') return
+    if (content === '' && staged.length === 0) return
+    const files = staged
     field.value = ''
-    sendButton.disabled = true
-    props.onSend(content)
+    staged = []
+    say(null)
+    drawStaged()
+    props.onSend(content, files)
   }
+
+  attachButton.addEventListener('click', () => picker.click())
+  picker.addEventListener('change', () => {
+    stage(Array.from(picker.files ?? []))
+    // The same file can be chosen again after it is taken off
+    picker.value = ''
+  })
 
   preChatForm.addEventListener('submit', event => {
     event.preventDefault()
@@ -159,17 +261,12 @@ export function mountPanel(props: PanelProps): Panel | null {
       const value = input.value.trim()
       if (value !== '') profile[key] = value
     }
-    const email = fields[1]?.input
     if (profile.email !== undefined && !EMAIL_PATTERN.test(profile.email)) {
-      problem.textContent = text.invalidEmail
-      problem.hidden = false
-      email?.focus()
+      showProblem(1, text.invalidEmail)
       return
     }
     if (profile.phone !== undefined && !PHONE_PATTERN.test(profile.phone)) {
-      problem.textContent = text.invalidPhone
-      problem.hidden = false
-      fields[2]?.input.focus()
+      showProblem(2, text.invalidPhone)
       return
     }
     preChatForm.hidden = true
@@ -177,17 +274,15 @@ export function mountPanel(props: PanelProps): Panel | null {
     props.onProfile(profile)
     field.focus()
   })
-  preChatForm.addEventListener('input', () => {
-    problem.hidden = true
-  })
+  preChatForm.addEventListener('input', clearProblem)
   launcher.addEventListener('click', () => setOpen(!open))
   closeButton.addEventListener('click', () => setOpen(false))
   panel.addEventListener('keydown', event => {
     if (event.key === ESCAPE) setOpen(false)
   })
   field.addEventListener('input', () => {
-    sendButton.disabled = field.value.trim() === ''
-    if (!sendButton.disabled) props.onTyping()
+    sendButton.disabled = field.value.trim() === '' && staged.length === 0
+    if (field.value.trim() !== '') props.onTyping()
   })
   field.addEventListener('keydown', event => {
     if (event.key === ENTER && !event.shiftKey && !event.isComposing) {
@@ -200,14 +295,66 @@ export function mountPanel(props: PanelProps): Panel | null {
     submit()
   })
 
+  // The bar of each message whose files are going up, so that progress moves it without redrawing the line
+  const bars = new Map<string, HTMLProgressElement>()
+  const showProgress = (message: ChatMessage): void => {
+    const bar = bars.get(message.key)
+    if (bar === undefined) return
+    if (message.progress === null) bars.delete(message.key)
+    else bar.value = message.progress
+  }
+
+  // The link is asked now, when the visitor opens the file, and the browser follows it as a download:
+  // the api signs every link as an attachment, so nothing from the store is ever shown on the page
+  const openFile = (attachment: Attachment): void => {
+    if (attachment.id === null) return
+    say(null)
+    props.onOpenFile(attachment.id).then(
+      link => {
+        // Only a web address is followed
+        if (!/^https?:\/\//i.test(link.url)) {
+          say(text.fileUnavailable)
+          return
+        }
+        const anchor = document.createElement('a')
+        anchor.href = link.url
+        anchor.target = '_blank'
+        anchor.rel = 'noopener noreferrer'
+        anchor.click()
+      },
+      () => say(text.fileUnavailable)
+    )
+  }
+
+  const fileRow = (attachment: Attachment): HTMLElement => {
+    const children = [
+      icon(Icons.file),
+      el('span', 'file-name', [attachment.filename]),
+      el('span', 'file-size', [formatBytes(attachment.size)])
+    ]
+    // A file still going up has no id: there is nothing to open yet
+    if (attachment.id === null) return el('div', 'file', children)
+    const button = el('button', 'file', children)
+    button.type = 'button'
+    button.addEventListener('click', () => openFile(attachment))
+    return button
+  }
+
   const row = (message: ChatMessage): HTMLElement => {
     const mine = message.from === WidgetAuthors.VISITOR
     const author = el('span', 'sr-only', [mine ? text.you : text.team])
-    const bubble = el('p', 'bubble', [message.content])
-    const item = el('div', `msg msg--${mine ? 'visitor' : 'team'} msg--${message.state}`, [
-      author,
-      bubble
-    ])
+    const item = el('div', `msg msg--${mine ? 'visitor' : 'team'} msg--${message.state}`, [author])
+    item.append(...message.attachments.map(fileRow))
+    // A message of only files has no text to put in a bubble
+    if (message.content !== '') item.append(el('p', 'bubble', [message.content]))
+    if (message.progress !== null) {
+      const bar = el('progress', 'progress')
+      bar.max = 1
+      bar.value = message.progress
+      bar.setAttribute('aria-label', text.uploading)
+      bars.set(message.key, bar)
+      item.append(bar)
+    }
     if (mine && message.seen) item.append(el('span', 'seen', [text.seen]))
     if (message.state === WidgetDeliveryStates.FAILED) {
       const retry = el('button', 'retry', [text.retry])
@@ -243,6 +390,14 @@ export function mountPanel(props: PanelProps): Panel | null {
 
   document.body.append(host)
   return {
+    showPhoneProblem() {
+      preChatForm.hidden = false
+      showChat(false)
+      say(null)
+      // The visitor may have closed the chat: the form has to be where they can see it
+      if (!open) setOpen(true)
+      showProblem(2, text.invalidPhone)
+    },
     setAgentTyping(active) {
       const wasAtEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40
       typing.hidden = !active
@@ -250,6 +405,10 @@ export function mountPanel(props: PanelProps): Panel | null {
       if (wasAtEnd) list.scrollTop = list.scrollHeight
     },
     update(messages) {
+      for (const message of messages) showProgress(message)
+      // A line the history replaced is gone with its bar
+      const keys = new Set(messages.map(message => message.key))
+      for (const key of bars.keys()) if (!keys.has(key)) bars.delete(key)
       const grew = messages.length > latest.length
       latest = messages
       const stickToEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40

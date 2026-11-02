@@ -12,7 +12,8 @@ import { RealtimeNamespaces } from '@platform/core/realtime'
 
 import { isServerMessage, type WidgetApi, WidgetApiError } from './api'
 import type { ChatLog } from './chat-log'
-import type { Bootstrap, VisitorProfile } from './types'
+import type { Bootstrap, FileLink, VisitorProfile } from './types'
+import { putFile } from './upload'
 
 // The part of a socket the session uses, so that a test does not need a network
 export interface VisitorSocket {
@@ -44,6 +45,18 @@ export interface SessionDeps {
   newMessageId: () => string
   // The api took the profile of the visitor with a message
   onProfileSent?: () => void
+  // The api could not read the phone of the form: the form is shown again, and the messages it held
+  // back are sent when the visitor answers it
+  onPhoneRefused?: () => void
+  // Puts a file on its signed url, reporting how much has gone up; the browser's by default
+  uploadFile?: typeof putFile
+}
+
+// The files of a message that is not yet stored. Each upload keeps its id once it is up, so that a
+// retry puts up only what is missing and the message goes out with the same files.
+interface Outgoing {
+  files: readonly File[]
+  uploadIds: (string | undefined)[]
 }
 
 const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
@@ -62,6 +75,9 @@ export class Session {
   private typingLapse: ReturnType<typeof setTimeout> | undefined
   // What the visitor typed in the form, sent with the first message that gets through
   private pendingProfile: VisitorProfile | undefined
+  private readonly outbox = new Map<string, Outgoing>()
+  // Messages the api refused because of the phone: they wait for the visitor to correct it
+  private readonly phoneRefused: string[] = []
 
   constructor(private readonly deps: SessionDeps) {}
 
@@ -125,13 +141,31 @@ export class Session {
   // and a visitor who skips the form sends nothing.
   setProfile(profile: VisitorProfile): void {
     this.pendingProfile = Object.keys(profile).length === 0 ? undefined : profile
+    // The messages held back for the phone go now, with the corrected form
+    for (const key of this.phoneRefused.splice(0)) void this.retry(key)
   }
 
-  // Writes the message at once and sends it; the same key can be sent again, and the api stores it once
-  async send(content: string): Promise<void> {
+  // Writes the message at once and sends it; the same key can be sent again, and the api stores it once.
+  // The files go up first, one after the other, and the message names them when they are all up.
+  async send(content: string, files: readonly File[] = []): Promise<void> {
     const key = this.deps.newMessageId()
-    this.deps.log.addOutgoing(key, content)
+    if (files.length > 0) this.outbox.set(key, { files, uploadIds: files.map(() => undefined) })
+    this.deps.log.addOutgoing(
+      key,
+      content,
+      files.map(file => ({
+        id: null,
+        filename: file.name,
+        contentType: file.type,
+        size: file.size
+      }))
+    )
     await this.deliver(key)
+  }
+
+  // The link to open a file of the conversation (asked when the visitor opens it, never in advance)
+  fileLink(mediaId: string): Promise<FileLink> {
+    return this.authorized(token => this.deps.api.fileLink(token, mediaId))
   }
 
   async retry(key: string): Promise<void> {
@@ -140,25 +174,61 @@ export class Session {
     await this.deliver(key)
   }
 
+  // A call with the token of now; when the session ended while the page stayed open, begin another and
+  // ask once more
+  private async authorized<T>(call: (token: string) => Promise<T>): Promise<T> {
+    try {
+      return await call(this.token)
+    } catch (error) {
+      if (!(error instanceof WidgetApiError && error.tokenInvalid)) throw error
+      await this.renew()
+      return call(this.token)
+    }
+  }
+
+  // Puts up the files that are not up yet, and shows how much of all of them has gone
+  private async uploadFiles(key: string, outgoing: Outgoing): Promise<string[]> {
+    const put = this.deps.uploadFile ?? putFile
+    const total = outgoing.files.length
+    for (const [index, file] of outgoing.files.entries()) {
+      if (outgoing.uploadIds[index] !== undefined) continue
+      const slot = await this.authorized(token => this.deps.api.requestUpload(token, file))
+      await put(slot.uploadUrl, file, file.type, fraction =>
+        this.deps.log.setProgress(key, (index + fraction) / total)
+      )
+      outgoing.uploadIds[index] = slot.uploadId
+      this.deps.log.setProgress(key, (index + 1) / total)
+    }
+    return outgoing.uploadIds.filter((id): id is string => id !== undefined)
+  }
+
   private async deliver(key: string): Promise<void> {
     const message = this.deps.log.find(key)
     if (message === undefined) return
     // Taken before the request: it goes with this message, and is given back if the message fails
     const profile = this.pendingProfile
     this.pendingProfile = undefined
+    const outgoing = this.outbox.get(key)
     try {
-      try {
-        await this.deps.api.send(this.token, key, message.content, profile)
-      } catch (error) {
-        if (!(error instanceof WidgetApiError && error.tokenInvalid)) throw error
-        // The session ended while the page stayed open: begin another and send once more
-        await this.renew()
-        await this.deps.api.send(this.token, key, message.content, profile)
-      }
+      const uploadIds = outgoing === undefined ? [] : await this.uploadFiles(key, outgoing)
+      await this.authorized(token =>
+        this.deps.api.send(token, key, message.content, profile, uploadIds)
+      )
+      this.outbox.delete(key)
       this.deps.log.setState(key, WidgetDeliveryStates.SENT)
       if (profile !== undefined) this.deps.onProfileSent?.()
-    } catch {
+    } catch (error) {
       this.pendingProfile ??= profile
+      if (error instanceof WidgetApiError) {
+        // An upload the api no longer vouches for (it expired) is put up again with the retry
+        if (error.code === ErrorCodes.FILE_UPLOAD_FAILED && outgoing !== undefined) {
+          outgoing.uploadIds.fill(undefined)
+        }
+        if (error.phoneRefused) {
+          if (!this.phoneRefused.includes(key)) this.phoneRefused.push(key)
+          this.deps.onPhoneRefused?.()
+        }
+      }
       this.deps.log.setState(key, WidgetDeliveryStates.FAILED)
     }
   }
