@@ -7,9 +7,11 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
+  CaptionState,
   ConversationStatus,
   DeliveryStatus,
   MessageType,
+  OutboundLimits,
   ReactionActors
 } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -310,6 +312,92 @@ describe('Echoes and reactions that a channel delivers', () => {
 
       expect(outcome).toBe(InboundOutcomes.DUPLICATE)
       expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(2)
+    })
+
+    it("settles an unconfirmed caption with its echo instead of storing the echo as the owner's message", async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-unc'))
+      const { conversation } = await threadOf(ctx.storeA.id, from)
+      const file = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          content: 'the unsure caption',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: 'file-unc',
+          captionState: CaptionState.UNCONFIRMED
+        }
+      })
+
+      const outcome = await echo(connectionId, from, 'caption-unc', 'the unsure caption')
+
+      expect(outcome).toBe(InboundOutcomes.DUPLICATE)
+      expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(2)
+      const row = await owner.message.findUniqueOrThrow({ where: { id: file.id } })
+      expect(row.captionState).toBe(CaptionState.SENT)
+      expect(row.captionChannelMessageId).toBe('caption-unc')
+      // The same echo again is the known id now
+      expect(await echo(connectionId, from, 'caption-unc', 'the unsure caption')).toBe(
+        InboundOutcomes.DUPLICATE
+      )
+    })
+
+    it.each([
+      ['another text', CaptionState.UNCONFIRMED, 'something else'],
+      ['a caption that is known to have failed', CaptionState.FAILED, 'same text']
+    ])('does not take %s for the echo of an unconfirmed caption', async (_name, state, text) => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-unc2'))
+      const { conversation } = await threadOf(ctx.storeA.id, from)
+      const file = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          content: 'same text',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: `file-${state}-${text.length}`,
+          captionState: state
+        }
+      })
+
+      await echo(connectionId, from, `echo-${state}-${text.length}`, text)
+
+      expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(3)
+      const row = await owner.message.findUniqueOrThrow({ where: { id: file.id } })
+      expect(row.captionState).toBe(state)
+      expect(row.captionChannelMessageId).toBeNull()
+    })
+
+    it('does not take the echo of a later message for a caption that has been unconfirmed for long', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-old'))
+      const { conversation } = await threadOf(ctx.storeA.id, from)
+      const file = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          content: 'Thanks',
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: 'file-old',
+          captionState: CaptionState.UNCONFIRMED,
+          createdAt: new Date(Date.now() - OutboundLimits.UNCONFIRMED_CAPTION_MS - 60_000)
+        }
+      })
+
+      await echo(connectionId, from, 'typed-again', 'Thanks')
+
+      expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(3)
+      const row = await owner.message.findUniqueOrThrow({ where: { id: file.id } })
+      expect(row.captionState).toBe(CaptionState.UNCONFIRMED)
     })
 
     it('waits for the provider id of a reply that was just queued, and stores it on the last try', async () => {

@@ -1,6 +1,6 @@
 import { ErrorCodes } from '@platform/core/errors'
 
-import { graphFailure } from './graph-failure'
+import { graphFailure, graphUnreachable } from './graph-failure'
 
 const graphError = (code: number): unknown => ({
   error: { message: 'secret-token-echo', type: 'OAuthException', code, fbtrace_id: 'trace' }
@@ -117,4 +117,28 @@ describe('graphFailure', () => {
       expect(error.retryable).toBe(false)
     }
   )
+})
+
+describe('the outcome of a send that got no clear answer', () => {
+  it.each([500, 503])('is unknown after HTTP %i of a call that changes something', status => {
+    const error = graphFailure(status, null, { safeToRepeat: false })
+    expect(error.outcomeUnknown).toBe(true)
+    expect(error.retryable).toBe(false)
+  })
+
+  it('is unknown after an outage code of a send, and not for a read', () => {
+    expect(graphFailure(400, graphError(2), { safeToRepeat: false }).outcomeUnknown).toBe(true)
+    expect(graphFailure(400, graphError(2)).outcomeUnknown).toBe(false)
+  })
+
+  it('is known after a refusal or a throttle: Meta did not do the work', () => {
+    expect(graphFailure(400, graphError(100), { safeToRepeat: false }).outcomeUnknown).toBe(false)
+    expect(graphFailure(429, null, { safeToRepeat: false }).outcomeUnknown).toBe(false)
+    expect(graphFailure(403, null, { safeToRepeat: false }).outcomeUnknown).toBe(false)
+  })
+
+  it('is unknown when a send got no answer at all', () => {
+    expect(graphUnreachable({ safeToRepeat: false }).outcomeUnknown).toBe(true)
+    expect(graphUnreachable().outcomeUnknown).toBe(false)
+  })
 })

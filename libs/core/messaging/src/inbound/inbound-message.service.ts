@@ -11,6 +11,7 @@ import {
 } from '@platform/core/database'
 import {
   AuthorType,
+  CaptionState,
   ConversationLimits,
   ConversationReopenedByReply,
   ConversationStatus,
@@ -202,7 +203,8 @@ export class InboundMessageService {
           captionChannelMessageId: event.message.externalId
         },
         select: { id: true, authorType: true }
-      }))
+      })) ??
+      (await this.reconcileUnconfirmedCaption(tx, storeId, conversationIds, event))
     if (known !== null) {
       return {
         messageId: known.id,
@@ -278,6 +280,43 @@ export class InboundMessageService {
       })
     }
     return { messageId: message.id, duplicate: false, fetchMedia: true }
+  }
+
+  // Meta has no idempotency key, so a caption whose call timed out is neither resent nor written off: it
+  // waits as `unconfirmed`. If the provider delivered it, its echo arrives here with an id nobody has; it
+  // is that caption when the text is the same, and then it is not a new message of the owner. The oldest
+  // waiting caption with that text takes it, and the update names the state it expects so that two echoes
+  // never claim one caption. An echo later than `UNCONFIRMED_CAPTION_MS` is the owner typing again. No echo at all means it was not delivered or
+  // not echoed: the state stays `unconfirmed` and the thread says so.
+  private async reconcileUnconfirmedCaption(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationIds: string[],
+    event: InboundEvent
+  ): Promise<{ id: string; authorType: string } | null> {
+    const { content, type, externalId } = event.message
+    if (type !== MessageType.TEXT || content === null || content === '') {
+      return null
+    }
+    const waiting = await tx.message.findFirst({
+      where: {
+        storeId,
+        conversationId: { in: conversationIds },
+        authorType: AuthorType.AGENT,
+        captionState: CaptionState.UNCONFIRMED,
+        deletedAt: null,
+        content,
+        createdAt: { gt: new Date(Date.now() - OutboundLimits.UNCONFIRMED_CAPTION_MS) }
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, authorType: true }
+    })
+    if (waiting === null) return null
+    const claimed = await tx.message.updateMany({
+      where: { id: waiting.id, storeId, captionState: CaptionState.UNCONFIRMED },
+      data: { captionChannelMessageId: externalId, captionState: CaptionState.SENT }
+    })
+    return claimed.count === 1 ? waiting : null
   }
 
   private async mayBeWaitingForItsId(

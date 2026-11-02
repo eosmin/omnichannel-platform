@@ -84,9 +84,29 @@ export const MessageLimits = {
 // message and gives the id of that one here.
 export const ChannelResultMetadata = {
   CAPTION_EXTERNAL_ID: 'captionExternalId',
-  // The file was taken but the text under it was not: the message is sent, and says so
-  CAPTION_FAILED: 'captionFailed'
+  // How the second message went when it did not clearly go (`CaptionState`): the file is sent, and the
+  // text under it either did not reach the customer or may have
+  CAPTION_STATE: 'captionState'
 } as const
+
+// The key the flag of a failed caption had in the metadata before `Message.captionState`; the migration
+// moved it, and a provider still may not draw it
+export const LEGACY_CAPTION_FAILED_KEY = 'captionFailed'
+
+// Where the text under a file stands when the channel sends it as a message of its own (`Message.captionState`;
+// null for a message whose text travels with its file, or has none)
+export const CaptionState = {
+  // The channel took it: its id is `Message.captionChannelMessageId`
+  SENT: 'sent',
+  // The provider refused it, or never got it: the customer has no text under the file
+  FAILED: 'failed',
+  // The call got no clear answer (a timeout, a 5xx): the provider may have delivered it, and the echo of
+  // the owner's message settles it (`reconcileUnconfirmedCaption`)
+  UNCONFIRMED: 'unconfirmed'
+} as const
+export type CaptionState = (typeof CaptionState)[keyof typeof CaptionState]
+// What a plugin may report; SENT is told by the id of the caption
+export const ReportedCaptionStates = [CaptionState.FAILED, CaptionState.UNCONFIRMED] as const
 
 // Why a file the customer sent was not kept, as the worker records it in the `metadata` of the message
 // (`unavailableFiles`, one entry per place of the file). The thread draws a line for each, from an

@@ -362,27 +362,32 @@ describe('InstagramPlugin', () => {
       expect(result.metadata).toEqual({ captionExternalId: 'mid.3' })
     })
 
-    it('answers with the file, flagged, when only the caption failed: the file is already sent', async () => {
-      const { plugin, post } = build()
-      post
-        .mockResolvedValueOnce({ message_id: 'mid.2' })
-        .mockRejectedValueOnce(
-          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
-        )
+    it.each([
+      ['a refusal', { retryable: false }, 'failed'],
+      ['a throttle', { retryable: true }, 'failed'],
+      ['a call with no clear answer', { retryable: false, outcomeUnknown: true }, 'unconfirmed']
+    ])(
+      'answers with the file and the caption state when only the caption failed: %s',
+      async (_name, options, state) => {
+        const { plugin, post } = build()
+        post
+          .mockResolvedValueOnce({ message_id: 'mid.2' })
+          .mockRejectedValueOnce(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, options))
 
-      const result = await plugin.sendMedia(ctx, {
-        channelIdentity: '99',
-        mediaUrl: 'https://files.example.com/a.png',
-        contentType: 'image/png',
-        filename: null,
-        caption: 'mira',
-        ...key
-      })
+        const result = await plugin.sendMedia(ctx, {
+          channelIdentity: '99',
+          mediaUrl: 'https://files.example.com/a.png',
+          contentType: 'image/png',
+          filename: null,
+          caption: 'mira',
+          ...key
+        })
 
-      expect(result.externalId).toBe('mid.2')
-      expect(result.metadata).toEqual({ captionFailed: true })
-      expect(post).toHaveBeenCalledTimes(2)
-    })
+        expect(result.externalId).toBe('mid.2')
+        expect(result.metadata).toEqual({ captionState: state })
+        expect(post).toHaveBeenCalledTimes(2)
+      }
+    )
 
     it('reacts, changes the emoji and takes it back with the sender actions of Meta', async () => {
       const { plugin, post } = build()

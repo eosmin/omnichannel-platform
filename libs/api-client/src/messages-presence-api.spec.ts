@@ -91,7 +91,7 @@ const message = {
   reactions: [],
   media: [],
   unavailableFiles: [],
-  captionFailed: false,
+  captionState: null,
   mentions: [],
   version: 1,
   editedAt: null,

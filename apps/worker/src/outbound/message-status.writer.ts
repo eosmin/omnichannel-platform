@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { ChannelResultMetadata, DeliveryStatus } from '@platform/core/domain'
+import { PrismaService } from '@platform/core/database'
+import { CaptionState, DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -27,8 +27,8 @@ export interface StatusChange {
   // The id of the second message that carried the caption of a file (`ChannelResultMetadata`), kept
   // so that the echo of that message is not stored again as the owner's
   captionExternalId?: string
-  // The file went and the text under it did not: the thread says so (`ChannelResultMetadata`)
-  captionFailed?: boolean
+  // The file went and the text under it did not, or may not have: the thread says so (`CaptionState`)
+  captionState?: CaptionState
   // Only for FAILED: a code of ours, never the provider's words
   errorCode?: ErrorCode
 }
@@ -58,16 +58,23 @@ export class MessageStatusWriter {
         }
       })
       // Also when a receipt moved the message past this state first: the id of the caption (its echo must
-      // not be stored again) and the flag are facts about what was sent, not about the state
-      if (change.captionExternalId !== undefined) {
+      // not be stored again) and its state are facts about what was sent, not about the delivery state
+      if (change.captionExternalId !== undefined || change.captionState !== undefined) {
         await tx.message.updateMany({
-          where: { id: messageId, storeId },
-          data: { captionChannelMessageId: change.captionExternalId }
-        })
-      }
-      if (change.captionFailed === true) {
-        await this.keepMetadata(tx, storeId, messageId, {
-          [ChannelResultMetadata.CAPTION_FAILED]: true
+          // A repeated attempt must not take a caption back from `sent` (its echo may have settled it)
+          where: {
+            id: messageId,
+            storeId,
+            ...(change.captionState === CaptionState.SENT
+              ? {}
+              : { OR: [{ captionState: null }, { captionState: { not: CaptionState.SENT } }] })
+          },
+          data: {
+            ...(change.captionExternalId === undefined
+              ? {}
+              : { captionChannelMessageId: change.captionExternalId }),
+            ...(change.captionState === undefined ? {} : { captionState: change.captionState })
+          }
         })
       }
       if (changed.count === 0) return false
@@ -108,20 +115,5 @@ export class MessageStatusWriter {
       }
       return true
     })
-  }
-
-  // Added to the metadata the message has, never in place of it. One statement, so two writers of
-  // different keys cannot overwrite each other with a stale copy.
-  private async keepMetadata(
-    tx: PrismaTransaction,
-    storeId: string,
-    messageId: string,
-    added: Record<string, string | boolean>
-  ): Promise<void> {
-    await tx.$executeRaw`
-      UPDATE messages
-      SET metadata = COALESCE(CASE WHEN jsonb_typeof(metadata) = 'object' THEN metadata END, '{}'::jsonb)
-                     || ${JSON.stringify(added)}::jsonb
-      WHERE id = ${messageId} AND store_id = ${storeId}`
   }
 }

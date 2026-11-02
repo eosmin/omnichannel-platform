@@ -901,6 +901,7 @@
       },
       "templateLabel": "Mensaje de plantilla",
       "captionFailed": "El archivo se envió, pero el texto que lo acompaña no. Envía el texto como un mensaje nuevo",
+      "captionUnconfirmed": "El archivo se envió, pero puede que el texto que lo acompaña no. Revisa el chat antes de volver a enviar el texto",
       "media": {
         "checking": "Revisando {name}",
         "loading": "Cargando {name}",

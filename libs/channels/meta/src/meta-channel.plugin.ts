@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  CaptionState,
   ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
@@ -164,7 +165,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // Meta takes a file and no caption, so the caption is a message of its own after the file. Meta echoes
   // that second message too, so its id travels in `metadata[ChannelResultMetadata.CAPTION_EXTERNAL_ID]`: whoever deduplicates
   // the echoes has to know it. If the second call fails the file is already with the customer: the answer
-  // is the file's, flagged `CAPTION_FAILED`, so that the id of the file is kept (its echo is not stored as
+  // is the file's, carrying a `CAPTION_STATE`, so that the id of the file is kept (its echo is not stored as
   // the owner's) and the message is not sent again, which would send the file twice.
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
     // Meta fetches the file itself, and only over https; a url with a user or a password would hand
@@ -194,8 +195,19 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
         ...sent,
         metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: caption.externalId }
       }
-    } catch {
-      return { ...sent, metadata: { [ChannelResultMetadata.CAPTION_FAILED]: true } }
+    } catch (error) {
+      // Meta has no idempotency key on the Send API, so a second call cannot be made safe. What can be
+      // told is whether the first one may have gone out: a refusal did not, a timeout or a 5xx may have.
+      // Only the first is a failure; the other waits for the echo (`CaptionState.UNCONFIRMED`).
+      const refused = error instanceof PluginError && !error.outcomeUnknown
+      return {
+        ...sent,
+        metadata: {
+          [ChannelResultMetadata.CAPTION_STATE]: refused
+            ? CaptionState.FAILED
+            : CaptionState.UNCONFIRMED
+        }
+      }
     }
   }
 

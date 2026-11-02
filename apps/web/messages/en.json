@@ -901,6 +901,7 @@
       },
       "templateLabel": "Template message",
       "captionFailed": "The file was sent, but the text under it was not. Send the text as a new message",
+      "captionUnconfirmed": "The file was sent, but the text under it may not have been. Check the chat before sending the text again",
       "media": {
         "checking": "Checking {name}",
         "loading": "Loading {name}",

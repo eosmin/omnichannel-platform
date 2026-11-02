@@ -14,6 +14,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   deliveryError: null,
   mentions: [],
   metadata,
+  captionState: null,
   version: 1,
   editedAt: null,
   editedByType: null,
@@ -119,15 +120,18 @@ describe('messageView unavailableFiles', () => {
   })
 })
 
-describe('messageView captionFailed', () => {
-  it('is true when the worker flagged that the text under the file did not go', () => {
-    expect(messageView(row({ captionFailed: true })).captionFailed).toBe(true)
+describe('messageView captionState', () => {
+  it.each(['failed', 'unconfirmed', 'sent'])('carries %s', captionState => {
+    expect(messageView({ ...row(null), captionState }).captionState).toBe(captionState)
   })
 
-  it.each([null, {}, { captionFailed: false }, { captionFailed: 'yes' }])(
-    'is false for %j',
-    metadata => {
-      expect(messageView(row(metadata)).captionFailed).toBe(false)
-    }
-  )
+  it.each([null, 'weird'])('is null for %j', captionState => {
+    expect(messageView({ ...row(null), captionState }).captionState).toBeNull()
+  })
+
+  it('is null for a deleted message', () => {
+    expect(
+      messageView({ ...row(null), captionState: 'failed', deletedAt: new Date() }).captionState
+    ).toBeNull()
+  })
 })

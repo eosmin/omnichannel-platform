@@ -21,10 +21,17 @@ export class PluginError extends PlatformException {
   // it will not change. It wins over any guess the core makes (TDD_10 §6.7.4); left out, the core
   // does not try again.
   readonly retryable: boolean | undefined
+  // True when the call changes something at the provider and got no clear answer (a timeout, a 5xx, an
+  // unreadable 2xx): the provider may have done the work. False or left out: it did not.
+  readonly outcomeUnknown: boolean
 
-  constructor(code: PluginErrorCode, options: { retryable?: boolean } = {}) {
+  constructor(
+    code: PluginErrorCode,
+    options: { retryable?: boolean; outcomeUnknown?: boolean } = {}
+  ) {
     super(code, `channel plugin failed: ${code}`)
     this.name = 'PluginError'
     this.retryable = options.retryable
+    this.outcomeUnknown = options.outcomeUnknown === true
   }
 }

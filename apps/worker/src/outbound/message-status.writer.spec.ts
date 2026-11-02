@@ -1,4 +1,4 @@
-import { DeliveryStatus } from '@platform/core/domain'
+import { CaptionState, DeliveryStatus } from '@platform/core/domain'
 
 import { MessageStatusWriter } from './message-status.writer'
 
@@ -7,7 +7,6 @@ const MESSAGE = '22222222-2222-4222-8222-222222222222'
 
 function setup(changed: number) {
   const tx = {
-    $executeRaw: jest.fn().mockResolvedValue(1),
     message: {
       updateMany: jest
         .fn()
@@ -31,17 +30,16 @@ describe('MessageStatusWriter caption facts', () => {
     messageId: MESSAGE,
     to: DeliveryStatus.SENT as typeof DeliveryStatus.SENT,
     captionExternalId: 'cap-1',
-    captionFailed: true
+    captionState: CaptionState.UNCONFIRMED
   }
 
-  it('writes the caption id and the flag when the state changes', async () => {
+  it('writes the caption id and its state when the state changes', async () => {
     const { writer, tx, events } = setup(1)
 
     await expect(writer.apply(change)).resolves.toBe(true)
 
     const data = tx.message.updateMany.mock.calls.map(call => (call as [{ data: object }])[0].data)
-    expect(data).toContainEqual({ captionChannelMessageId: 'cap-1' })
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+    expect(data).toContainEqual({ captionChannelMessageId: 'cap-1', captionState: 'unconfirmed' })
     expect(events.publish).toHaveBeenCalled()
   })
 
@@ -51,8 +49,24 @@ describe('MessageStatusWriter caption facts', () => {
     await expect(writer.apply(change)).resolves.toBe(false)
 
     const data = tx.message.updateMany.mock.calls.map(call => (call as [{ data: object }])[0].data)
-    expect(data).toContainEqual({ captionChannelMessageId: 'cap-1' })
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+    expect(data).toContainEqual({ captionChannelMessageId: 'cap-1', captionState: 'unconfirmed' })
     expect(events.publish).not.toHaveBeenCalled()
+  })
+
+  it('does not take a caption back from sent, and always lets sent in', async () => {
+    const { writer, tx } = setup(1)
+
+    await writer.apply({ ...change, captionExternalId: undefined })
+    await writer.apply({ ...change, captionExternalId: 'cap-2', captionState: CaptionState.SENT })
+
+    const wheres = tx.message.updateMany.mock.calls.map(
+      call => (call as [{ where: object }])[0].where
+    )
+    expect(wheres).toContainEqual({
+      id: MESSAGE,
+      storeId: STORE,
+      OR: [{ captionState: null }, { captionState: { not: 'sent' } }]
+    })
+    expect(wheres).toContainEqual({ id: MESSAGE, storeId: STORE })
   })
 })
