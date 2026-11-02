@@ -15,11 +15,16 @@ import {
   listNotificationsQuerySchema,
   type MarkReadBody,
   markReadBodySchema,
+  type PushSubscriptionBody,
+  pushSubscriptionBodySchema,
   type PutPreferencesBody,
-  putPreferencesBodySchema
+  putPreferencesBodySchema,
+  type RemovePushSubscriptionBody,
+  removePushSubscriptionBodySchema
 } from './notifications.schemas'
 import { NotificationsService } from './notifications.service'
 import type { NotificationView, PreferencesView } from './notifications.views'
+import { PushSubscriptionsService } from './push-subscriptions.service'
 
 // A member's own notifications in the store of the header. Nothing here reads another person's rows,
 // so no role permission applies (MemberOfStore): TenantGuard has proved the membership.
@@ -28,7 +33,8 @@ import type { NotificationView, PreferencesView } from './notifications.views'
 export class NotificationsController {
   constructor(
     private readonly notifications: NotificationsService,
-    private readonly preferences: NotificationPreferencesService
+    private readonly preferences: NotificationPreferencesService,
+    private readonly pushSubscriptions: PushSubscriptionsService
   ) {}
 
   @NoStore()
@@ -85,5 +91,23 @@ export class NotificationsController {
     @Body(new ZodValidationPipe(putPreferencesBodySchema)) body: PutPreferencesBody
   ): Promise<PreferencesView> {
     return this.preferences.put(user.id, store.id, body)
+  }
+
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  @Post(ApiRoutes.notifications.pushSubscription)
+  async registerPushSubscription(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(pushSubscriptionBodySchema)) body: PushSubscriptionBody
+  ): Promise<void> {
+    await this.pushSubscriptions.register(user.id, body)
+  }
+
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  @Post(ApiRoutes.notifications.pushSubscriptionRemove)
+  async removePushSubscription(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(removePushSubscriptionBodySchema)) body: RemovePushSubscriptionBody
+  ): Promise<void> {
+    await this.pushSubscriptions.remove(user.id, body.endpoint)
   }
 }

@@ -248,7 +248,9 @@ export const ApiRoutes = {
     markRead: '/notifications/read',
     markAllRead: '/notifications/read-all',
     preferences: '/notifications/preferences',
-    pushSubscription: '/notifications/push-subscription'
+    pushSubscription: '/notifications/push-subscription',
+    // A POST and not a DELETE with a body, which proxies and fetch wrappers drop
+    pushSubscriptionRemove: '/notifications/push-subscription/remove'
   },
 
   analytics: {

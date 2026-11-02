@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { isBase64UrlOfBytes, PushLimits } from '@platform/core/notifications'
+
 import { DURATION_PATTERN, durationToSeconds } from './duration'
 
 // Platform-level variables only. Channel credentials are per store and live encrypted in
@@ -17,6 +19,12 @@ const LOCAL_HOSTNAMES: readonly string[] = ['localhost', '127.0.0.1', '[::1]', '
 
 // A bare address or "Name <address>", the form providers like Resend accept and customers see.
 const SENDER_WITH_NAME = /^([^<>"\r\n]{1,100}?)\s*<([^<>\s]+)>$/
+// A variable passed through empty (`KEY=${KEY:-}`) is a variable not set
+const emptyAsUnset = z
+  .string()
+  .optional()
+  .transform(value => (value === '' ? undefined : value))
+
 const senderAddress = z.string().refine(value => {
   const trimmed = value.trim()
   const address = SENDER_WITH_NAME.exec(trimmed)?.[2] ?? trimmed
@@ -92,8 +100,8 @@ export const envSchema = z
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 
     // Push
-    VAPID_PUBLIC_KEY: z.string().optional(),
-    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_PUBLIC_KEY: emptyAsUnset,
+    VAPID_PRIVATE_KEY: emptyAsUnset,
 
     // Meta (WhatsApp Cloud API, Instagram, Messenger): one app for all three
     META_APP_ID: z.string().optional(),
@@ -176,6 +184,30 @@ export const envSchema = z
           'META_GRAPH_ORIGIN is for NODE_ENV=test only: any other environment calls Meta itself',
         path: ['META_GRAPH_ORIGIN'],
         input: env.META_GRAPH_ORIGIN
+      })
+    }
+    // One key without the other: the push would be off with nothing saying why
+    if ((env.VAPID_PUBLIC_KEY === undefined) !== (env.VAPID_PRIVATE_KEY === undefined)) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are set together or not at all',
+        path: ['VAPID_PRIVATE_KEY'],
+        input: env.VAPID_PRIVATE_KEY
+      })
+    }
+    if (
+      env.VAPID_PUBLIC_KEY !== undefined &&
+      env.VAPID_PRIVATE_KEY !== undefined &&
+      !(
+        isBase64UrlOfBytes(env.VAPID_PUBLIC_KEY, PushLimits.VAPID_PUBLIC_BYTES) &&
+        isBase64UrlOfBytes(env.VAPID_PRIVATE_KEY, PushLimits.VAPID_PRIVATE_BYTES)
+      )
+    ) {
+      ctx.issues.push({
+        code: 'custom',
+        message: 'the VAPID keys must be a pair made by web-push generate-vapid-keys',
+        path: ['VAPID_PRIVATE_KEY'],
+        input: env.VAPID_PRIVATE_KEY
       })
     }
     if (!isDeployed) return

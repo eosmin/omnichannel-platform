@@ -204,6 +204,24 @@ describe('EMAIL_FROM', () => {
   })
 })
 
+describe('VAPID keys', () => {
+  it('are set together or not at all', () => {
+    expect(parseEnv(validEnv).VAPID_PUBLIC_KEY).toBeUndefined()
+    const both = {
+      ...validEnv,
+      VAPID_PUBLIC_KEY: 'B'.repeat(87),
+      VAPID_PRIVATE_KEY: 'c'.repeat(43)
+    }
+    expect(parseEnv(both).VAPID_PRIVATE_KEY).toBe('c'.repeat(43))
+    expect(() => parseEnv({ ...both, VAPID_PRIVATE_KEY: 'priv' })).toThrow(/VAPID/)
+    expect(
+      parseEnv({ ...validEnv, VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' }).VAPID_PUBLIC_KEY
+    ).toBeUndefined()
+    expect(() => parseEnv({ ...validEnv, VAPID_PUBLIC_KEY: 'pub' })).toThrow(/VAPID/)
+    expect(() => parseEnv({ ...validEnv, VAPID_PRIVATE_KEY: 'priv' })).toThrow(/VAPID/)
+  })
+})
+
 describe('ports', () => {
   it('reject an empty, fractional or out-of-range port', () => {
     for (const port of ['', ' ', '80.5', '0', '99999']) {

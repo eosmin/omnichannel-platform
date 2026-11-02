@@ -1,4 +1,6 @@
+import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable, Logger } from '@nestjs/common'
+import type { Queue } from 'bullmq'
 
 import { type Permission } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
@@ -11,8 +13,10 @@ import {
   notificationMessageKey,
   type NotificationRealtimePayload,
   type NotificationType,
-  NotificationTypes
+  NotificationTypes,
+  PushLimits
 } from '@platform/core/notifications'
+import { JobNames, QueueNames, type SendWebPushJob } from '@platform/core/queues'
 import { RealtimeEvents } from '@platform/core/realtime'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -44,8 +48,8 @@ export interface SendNotificationToStore extends Omit<SendNotification, 'userId'
 }
 
 // The notifications of a person in a store (TDD_06 §6). Every row is saved, so that the center shows it;
-// the preferences and quiet hours only decide what else happens (the live event now; web push and the
-// email digest are Steps 3.5 PR C and D, which add their jobs here).
+// the preferences and quiet hours only decide what else happens: the live event, the web push, and
+// (Step 3.5 PR D, which adds its job here) the email digest.
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name)
@@ -53,7 +57,8 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
-    private readonly preferences: NotificationPreferencesService
+    private readonly preferences: NotificationPreferencesService,
+    @InjectQueue(QueueNames.NOTIFICATIONS) private readonly queue: Queue<SendWebPushJob>
   ) {}
 
   async send(input: SendNotification): Promise<void> {
@@ -76,16 +81,25 @@ export class NotificationsService {
       select: { id: true, messageKey: true, actionPath: true, createdAt: true }
     })
 
-    // Quiet hours hold back sound (and push, when it exists). If they cannot be read (a timezone the
-    // runtime does not know) the sound plays: a missed alert is worse than an unwanted one
+    // Quiet hours hold back sound and push. If they cannot be read (a timezone the runtime does not
+    // know) both are sent: a missed alert is worse than an unwanted one
     const quiet = prefs.push || prefs.sound ? await this.isQuiet(input) : false
     const sound = prefs.sound && !quiet
 
-    if (!prefs.inApp) return
+    if (prefs.inApp) this.emitLive(input, row, defaults.severity, sound)
+    if (prefs.push && !quiet) await this.queueWebPush(input.userId, row.id)
+  }
+
+  private emitLive(
+    input: SendNotification,
+    row: { id: string; messageKey: string; actionPath: string | null; createdAt: Date },
+    severity: NotificationRealtimePayload['severity'],
+    sound: boolean
+  ): void {
     const payload: NotificationRealtimePayload = {
       id: row.id,
       type: input.type,
-      severity: defaults.severity,
+      severity,
       messageKey: row.messageKey,
       params: input.params ?? {},
       actionPath: row.actionPath,
@@ -93,6 +107,43 @@ export class NotificationsService {
       createdAt: row.createdAt.toISOString()
     }
     this.realtime.toStoreUser(input.storeId, input.userId, RealtimeEvents.NOTIFICATION, payload)
+  }
+
+  // One job per notification, so a retry of the event that raised it pushes once. The row is saved:
+  // a queue that is down costs the push and never the action that raised the notification.
+  private async queueWebPush(userId: string, notificationId: string): Promise<void> {
+    try {
+      // Nobody to push to: no job, no Redis write, no read in the worker
+      const browser = await this.prisma.client.pushSubscription.findFirst({
+        where: { userId },
+        select: { id: true }
+      })
+      if (browser === null) return
+      // Redis down makes the queue wait instead of fail: the action is not held for a push
+      let timer: NodeJS.Timeout | undefined
+      try {
+        await Promise.race([
+          this.queue.add(
+            JobNames.SEND_WEB_PUSH,
+            { userId, notificationId },
+            { jobId: `${JobNames.SEND_WEB_PUSH}-${notificationId}` }
+          ),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('the queue did not answer')),
+              PushLimits.ENQUEUE_TIMEOUT_MS
+            )
+          })
+        ])
+      } finally {
+        clearTimeout(timer)
+      }
+    } catch (error) {
+      this.logger.warn(
+        { userId, notificationId, err: String(error) },
+        'web push could not be queued'
+      )
+    }
   }
 
   private async isQuiet(input: SendNotification): Promise<boolean> {

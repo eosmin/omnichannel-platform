@@ -17,6 +17,7 @@ import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
 import { MediaModule } from './media/media.module'
+import { NotificationsModule } from './notifications/notifications.module'
 import { MessageChangeSender } from './outbound/message-change-sender.service'
 import { MessageChangeStatusWriter } from './outbound/message-change-status.writer'
 import { MessageStatusWriter } from './outbound/message-status.writer'
@@ -48,7 +49,8 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     WorkerReadinessModule,
     InboundModule,
     MediaModule,
-    ExportsModule
+    ExportsModule,
+    NotificationsModule
   ],
   providers: [
     ProcessorSupport,
