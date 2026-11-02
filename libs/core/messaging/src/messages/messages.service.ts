@@ -10,10 +10,10 @@ import {
   type ChannelCapabilityType,
   DeliveryStatus,
   type CursorPage,
-  MediaStatus,
   MessageType
 } from '@platform/core/domain'
 import {
+  assertMediaServable,
   errorName,
   ErrorCodes,
   HttpStatusCodes,
@@ -420,27 +420,7 @@ export class MessagesService {
     for (const row of rows) {
       if (row.messageId !== null)
         throw resourceConflict('the file is already attached to a message')
-      if (row.status === String(MediaStatus.INFECTED)) {
-        throw new PlatformException(
-          ErrorCodes.FILE_INFECTED,
-          'File unavailable',
-          HttpStatusCodes.FORBIDDEN
-        )
-      }
-      if (row.status === String(MediaStatus.UNSCANNABLE)) {
-        throw new PlatformException(
-          ErrorCodes.FILE_UNSCANNABLE,
-          'File could not be scanned',
-          HttpStatusCodes.GONE
-        )
-      }
-      if (row.status !== String(MediaStatus.CLEAN)) {
-        throw new PlatformException(
-          ErrorCodes.FILE_NOT_READY,
-          'File is being scanned',
-          HttpStatusCodes.CONFLICT
-        )
-      }
+      assertMediaServable(row.status)
       if (mediaMessageTypeOf(row.contentType) !== body.type) {
         throw invalidInput('the file is not of the type of the message')
       }

@@ -55,6 +55,7 @@ interface DigestRow {
   actionPath: string | null
   readAt: Date | null
   createdAt: Date
+  storeId: string
   store: { name: string }
 }
 
@@ -229,9 +230,12 @@ export class EmailDigestService {
 
     const locale = pushLocale(user.locale)
     const shown = unread.slice(0, DigestLimits.MAX_ITEMS)
-    const items = this.itemsOf(shown, locale)
+    const { items, firstStoreId } = this.itemsOf(shown, locale)
     if (items.length > 0) {
       const moreCount = unread.length - shown.length
+      const settingsUrl = new URL(AppPaths.account.notifications, this.links.frontendUrl).toString()
+      // The newest store the email speaks of: the button opens its inbox, not the root of the app
+      const newestStore = firstStoreId
       await this.emailQueue.add(
         JobNames.SEND_EMAIL,
         {
@@ -241,9 +245,15 @@ export class EmailDigestService {
           data: {
             items,
             moreCount,
-            appUrl: new URL(this.links.frontendUrl).toString(),
-            settingsUrl: new URL(AppPaths.account.notifications, this.links.frontendUrl).toString()
+            appUrl: new URL(
+              newestStore === undefined ? AppPaths.home : AppPaths.store.inbox(newestStore),
+              this.links.frontendUrl
+            ).toString(),
+            settingsUrl
           },
+          // The mailbox's own "unsubscribe" opens the page where the digest is switched off. There is
+          // no one-click POST (RFC 8058): that needs a signed token endpoint, written in the plan
+          headers: { 'List-Unsubscribe': `<${settingsUrl}>` },
           tags: { template: EmailTemplates.NOTIFICATION_DIGEST }
         },
         // The newest row names the batch: a run repeated after a crash queues the same email once
@@ -261,8 +271,13 @@ export class EmailDigestService {
     }
   }
 
-  private itemsOf(rows: DigestRow[], locale: Locale): DigestItem[] {
+  // `firstStoreId` is the store of the first row that got a text: the button must not open a store the email omits
+  private itemsOf(
+    rows: DigestRow[],
+    locale: Locale
+  ): { items: DigestItem[]; firstStoreId: string | undefined } {
     const items: DigestItem[] = []
+    let firstStoreId: string | undefined
     for (const row of rows) {
       try {
         const t = createTranslator(locale, row.messageKey)
@@ -273,6 +288,7 @@ export class EmailDigestService {
           body: t('body', params),
           url: row.actionPath === null ? null : this.urlOf(row.actionPath)
         })
+        firstStoreId ??= row.storeId
       } catch (error) {
         // A type with no message will not have one when the row is tried again: left out of the email
         this.logger.warn(
@@ -281,7 +297,7 @@ export class EmailDigestService {
         )
       }
     }
-    return items
+    return { items, firstStoreId }
   }
 
   // Only a path of the app becomes a link: what is stored in the row never sets the host

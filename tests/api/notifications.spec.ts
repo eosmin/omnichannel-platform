@@ -502,7 +502,13 @@ describe('Notifications', () => {
           .mockImplementation(() => undefined)
       })
 
-      it('marks the row as waiting for email and queues one job named after it', async () => {
+      const chooseDigest = (digestFrequency: DigestFrequency): Promise<unknown> =>
+        owner.userNotificationSettings.create({ data: { userId: ctx.adminA.id, digestFrequency } })
+      const emailJobs = (): unknown[] =>
+        pushQueue.jobs.filter(job => job.name === JobNames.QUEUE_EMAIL_DIGEST)
+
+      it('marks the row and queues one job named after it for the immediate kind', async () => {
+        await chooseDigest(DigestFrequency.IMMEDIATE)
         await sendMentioned()
 
         const row = await owner.notification.findFirstOrThrow({ where: { userId: ctx.adminA.id } })
@@ -512,6 +518,29 @@ describe('Notifications', () => {
           data: { userId: ctx.adminA.id, notificationId: row.id },
           opts: { jobId: `${JobNames.QUEUE_EMAIL_DIGEST}-${row.id}` }
         })
+      })
+
+      it.each([DigestFrequency.HOURLY, DigestFrequency.DAILY])(
+        'marks the row and queues no job for a %s digest, which the scheduler finds by the mark',
+        async frequency => {
+          await chooseDigest(frequency)
+          await sendMentioned()
+
+          const row = await owner.notification.findFirstOrThrow({
+            where: { userId: ctx.adminA.id }
+          })
+          expect(row.emailPendingAt).toBeInstanceOf(Date)
+          expect(emailJobs()).toEqual([])
+        }
+      )
+
+      it('marks and queues nothing when the digest is switched off', async () => {
+        await chooseDigest(DigestFrequency.OFF)
+        await sendMentioned()
+
+        const row = await owner.notification.findFirstOrThrow({ where: { userId: ctx.adminA.id } })
+        expect(row.emailPendingAt).toBeNull()
+        expect(emailJobs()).toEqual([])
       })
 
       it('marks and queues nothing for a type with no email, or one the user turned off', async () => {
@@ -556,6 +585,7 @@ describe('Notifications', () => {
       })
 
       it('keeps the row, and its mark, when the queue is down', async () => {
+        await chooseDigest(DigestFrequency.IMMEDIATE)
         jest.spyOn(pushQueue, 'add').mockRejectedValue(new Error('redis is down'))
 
         await expect(sendMentioned()).resolves.toBeUndefined()

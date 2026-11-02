@@ -12,6 +12,7 @@ import { JobNames, QueueNames } from '@platform/core/queues'
 import { ImageVariants, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { dropJob } from '../testing/drop-job'
 import { WorkerModule } from '../worker.module'
 
 import { ClamavClient } from './clamav.client'
@@ -104,7 +105,7 @@ describe('MediaPipeline', () => {
     expect(row.scannedAt).not.toBeNull()
     const queued = await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)
     expect(queued?.data).toEqual({ mediaId: media.id })
-    await queued?.remove()
+    await dropJob(queued)
   })
 
   it('deletes an infected file and never serves it', async () => {
@@ -133,7 +134,7 @@ describe('MediaPipeline', () => {
   it('makes the three WebP variants of a clean image and keeps their keys', async () => {
     const media = await pendingMedia('photo.png', 'image/png', await png(3000, 2000))
     await pipeline.scan(media.id)
-    await (await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))?.remove()
+    await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
     await pipeline.processImage(media.id)
 
@@ -157,7 +158,7 @@ describe('MediaPipeline', () => {
   it('leaves the image as it is when it cannot be decoded', async () => {
     const media = await pendingMedia('broken.png', 'image/png', Buffer.from('not an image'))
     await pipeline.scan(media.id)
-    await (await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))?.remove()
+    await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
     await expect(pipeline.processImage(media.id)).rejects.toThrow('could not be processed')
 

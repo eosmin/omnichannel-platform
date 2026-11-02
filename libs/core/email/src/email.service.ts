@@ -33,6 +33,7 @@ export class EmailService {
       subject,
       html,
       text,
+      headers: job.headers,
       tags: definedTags(job.tags), // storeId and template, echoed back by the Resend webhook
       attachments: job.attachments?.map(attachment => ({
         filename: attachment.filename,

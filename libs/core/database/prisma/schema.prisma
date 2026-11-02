@@ -1016,14 +1016,14 @@ model Notification {
   resourceId     String?   @map("resource_id")
   actionPath     String?   @map("action_path") // App-relative path, built from AppPaths
   readAt         DateTime? @map("read_at")
-  // Set when the person asked for this one by email: the digest sends the rows that have it and clears it
+  // Set when the person asked for this one by email: the digest sends the rows that have it and clears it.
+  // Its partial index (ix_notifications_email_pending) is raw SQL in a migration, Prisma cannot express it
   emailPendingAt DateTime? @map("email_pending_at")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  @@index([emailPendingAt])
   @@index([userId, readAt, createdAt(sort: Desc)])
   @@index([userId, storeId, createdAt(sort: Desc)])
   @@index([storeId, createdAt(sort: Desc)])

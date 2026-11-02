@@ -14,6 +14,7 @@ import { REDIS_CLIENT } from '@platform/core/redis'
 import { StorageKeys, UploadLimits } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { dropJob } from '../testing/drop-job'
 import { WorkerModule } from '../worker.module'
 
 import { OrphanMediaCleaner } from './orphan-media-cleaner.service'
@@ -172,7 +173,7 @@ describe('OrphanMediaCleaner', () => {
 
     const queued = await heavy.getJob(`${JobNames.SCAN_FILE}-${id}`)
     expect(queued?.data).toEqual({ mediaId: id })
-    await queued?.remove()
+    await dropJob(queued)
   })
 
   it('drops a pending row whose file is gone once it is past the TTL', async () => {
