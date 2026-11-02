@@ -5,22 +5,22 @@ import type { AuthenticatedUser } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
-import {
-  type ConfirmAvatarUploadBody,
-  confirmAvatarUploadSchema,
-  type RequestAvatarUploadBody,
-  requestAvatarUploadSchema,
-  type UploadUrlResult
-} from '@platform/core/storage'
+import { type UploadUrlResult } from '@platform/core/storage'
 
 import { SkipTenant } from '../tenancy'
 
 import { type AvatarUploadView, AvatarUploadsService } from './avatar-uploads.service'
+import {
+  type ConfirmAvatarUploadBody,
+  confirmAvatarUploadSchema,
+  type RequestAvatarUploadBody,
+  requestAvatarUploadSchema
+} from './avatar.schemas'
 
 // The upload of one's own picture. It belongs to the person, not to a store: there is no X-Store-Id
 // and no permission to hold (a Viewer sets a picture too), the id is the token's and never comes from
 // the request, and the quota is the person's own. Attaching the uploaded file as the picture is
-// `PATCH /account/profile`; taking it away is `DELETE /account/avatar`.
+// `PATCH /account/profile`, and so is taking it away (a null id).
 @SkipTenant()
 @Controller()
 export class AvatarController {

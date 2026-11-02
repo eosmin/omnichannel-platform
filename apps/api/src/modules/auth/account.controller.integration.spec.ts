@@ -99,8 +99,7 @@ describe('AccountController', () => {
       ['GET', ApiRoutes.account.profile],
       ['PATCH', ApiRoutes.account.profile],
       ['GET', ApiRoutes.account.preferences],
-      ['PATCH', ApiRoutes.account.preferences],
-      ['DELETE', ApiRoutes.account.avatar]
+      ['PATCH', ApiRoutes.account.preferences]
     ])('%s %s demands an access token', async (method, path) => {
       expect((await call(method, path, method === 'GET' ? {} : { body: {} })).status).toBe(
         UNAUTHORIZED
@@ -231,26 +230,6 @@ describe('AccountController', () => {
       })
       expect(none.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
       expect(await mediaExists(second)).toBe(false)
-    })
-
-    it('takes the picture away with DELETE, row and file, and does nothing when there is none', async () => {
-      const me = await person()
-      const none = await call<ProfileBody>('DELETE', ApiRoutes.account.avatar, { token: me.token })
-      expect(none.status).toBe(OK)
-      expect(none.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
-
-      const id = await avatar(me.id, MediaStatus.CLEAN)
-      await call('PATCH', ApiRoutes.account.profile, {
-        token: me.token,
-        body: { avatarMediaId: id }
-      })
-      const removed = await call<ProfileBody>('DELETE', ApiRoutes.account.avatar, {
-        token: me.token
-      })
-
-      expect(removed.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
-      expect(await mediaExists(id)).toBe(false)
-      expect(await storage.head(StorageKeys.avatar(me.id, id, 'me.png'))).toBeNull()
     })
 
     it('is a 404 for the picture of someone else, a missing id, or a file that is not an avatar', async () => {

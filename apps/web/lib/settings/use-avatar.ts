@@ -9,18 +9,12 @@ import {
 } from '@tanstack/react-query'
 import { useRef } from 'react'
 
-import {
-  confirmAvatarUpload,
-  fetchOwnProfile,
-  type OwnProfile,
-  QueryKeys,
-  removeAvatar,
-  requestAvatarUploadUrl,
-  updateOwnProfile
-} from '@platform/api-client'
+import { fetchOwnProfile, type OwnProfile, QueryKeys, updateOwnProfile } from '@platform/api-client'
 
 import { apiClient } from '../api'
 import { uploadToUrl } from '../media/upload-to-url'
+
+import { confirmAvatarUpload, requestAvatarUploadUrl } from './avatar-requests'
 
 // The picture of the person. Kept apart from `use-settings-data`, which the app frame loads on every
 // screen: only Account → Profile needs these.
@@ -84,7 +78,7 @@ export function useUploadAvatar(): UseMutationResult<OwnProfile, Error, File> {
 export function useRemoveAvatar(): UseMutationResult<OwnProfile, Error, void> {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => removeAvatar(apiClient),
+    mutationFn: () => updateOwnProfile(apiClient, { avatarMediaId: null }),
     onSuccess: saved => {
       queryClient.setQueryData(QueryKeys.account.profile, saved)
       void queryClient.invalidateQueries({ queryKey: QueryKeys.session })

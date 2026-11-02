@@ -337,8 +337,8 @@ export const ApiRoutes = {
   account: {
     profile: '/account/profile', // GET and PATCH: the name and the picture
     preferences: '/account/preferences', // GET and PATCH: locale, timezone and density
-    // The picture of the person, apart from the store's media routes: no X-Store-Id, no permission
-    avatar: '/account/avatar', // DELETE: takes the picture away
+    // The picture of the person, apart from the store's media routes: no X-Store-Id, no permission.
+    // Attaching it and taking it away is `PATCH /account/profile` with the media id or null
     avatarUploadUrl: '/account/avatar/upload-url', // POST: a signed url to PUT the file to
     avatarConfirm: '/account/avatar/confirm' // POST: the file is there; it is scanned and re-encoded
   },

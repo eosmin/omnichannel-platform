@@ -238,7 +238,6 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'settings.retention': { step: '5.4' },
   'account.profile': { step: '3.6' },
   'account.preferences': { step: '3.6' },
-  'account.avatar': { step: '3.6' },
   'account.avatarUploadUrl': { step: '3.6' },
   'account.avatarConfirm': { step: '3.6' },
   'compliance.dsr': { step: '7.2' },

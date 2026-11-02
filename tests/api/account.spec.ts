@@ -322,13 +322,12 @@ describe('The account of a person', () => {
       expect(profile).toMatchObject({ avatarMediaId: null, avatarUrl: null })
     })
 
-    it('is taken away with its own route, row and file', async () => {
+    it('is taken away with null, row and file, and audited without the id', async () => {
       const upload = await uploadAvatar()
       await me().patch(ApiRoutes.account.profile).send({ avatarMediaId: upload.mediaId })
 
-      const response = await me().delete(ApiRoutes.account.avatar)
+      const response = await me().patch(ApiRoutes.account.profile).send({ avatarMediaId: null })
 
-      expect(response.status).toBe(OK)
       expect(response.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
       expect(await owner.media.findUnique({ where: { id: upload.mediaId } })).toBeNull()
       expect(
@@ -337,16 +336,6 @@ describe('The account of a person', () => {
       const entry = await auditEntry(AuditAction.ACCOUNT_PROFILE_UPDATED, ctx.agentA.id)
       expect(entry).not.toBeNull()
       expect(JSON.stringify(entry?.metadata)).not.toContain(upload.mediaId)
-    })
-
-    it('is taken away with null', async () => {
-      const upload = await uploadAvatar()
-      await me().patch(ApiRoutes.account.profile).send({ avatarMediaId: upload.mediaId })
-
-      const response = await me().patch(ApiRoutes.account.profile).send({ avatarMediaId: null })
-
-      expect(response.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
-      expect(await owner.media.findUnique({ where: { id: upload.mediaId } })).toBeNull()
     })
 
     it('is refused as a type or a size an avatar may not be, saying the limit', async () => {

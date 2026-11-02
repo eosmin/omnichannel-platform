@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Req } from '@nestjs/common'
+import { Body, Controller, Get, Patch, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import type { AuthenticatedUser } from '@platform/core/auth'
@@ -48,15 +48,6 @@ export class AccountController {
     @Req() req: AuthenticatedRequest
   ): Promise<ProfileView> {
     return this.settings.updateProfile(user.id, body, actorOf(user, req))
-  }
-
-  // The picture goes: the same change as `PATCH` with a null id, on a route of its own
-  @Delete(ApiRoutes.account.avatar)
-  removeAvatar(
-    @CurrentUser() user: AuthenticatedUser,
-    @Req() req: AuthenticatedRequest
-  ): Promise<ProfileView> {
-    return this.settings.updateProfile(user.id, { avatarMediaId: null }, actorOf(user, req))
   }
 
   @NoStore()

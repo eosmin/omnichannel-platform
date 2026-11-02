@@ -11,16 +11,15 @@ import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   AvatarProcessing,
-  type ConfirmAvatarUploadBody,
   MediaPurpose,
   QUOTA_WINDOW_MS,
-  type RequestAvatarUploadBody,
   sanitizeFilename,
   StorageKeys,
   type UploadUrlResult
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import type { ConfirmAvatarUploadBody, RequestAvatarUploadBody } from './avatar.schemas'
 import { countWithinQuota, refuseTypeOrSize, uploadVerificationFailed } from './upload-checks'
 
 export interface AvatarUploadView {
