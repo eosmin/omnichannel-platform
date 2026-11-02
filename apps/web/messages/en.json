@@ -923,7 +923,9 @@
           "refused": "A file from the customer was not kept: its type or size is not allowed",
           "unsafe_link": "A file from the customer was not kept: its link is not safe",
           "fetch_failed": "A file from the customer could not be retrieved from the channel",
-          "channel_cannot_fetch": "A file from the customer was not kept: this channel cannot deliver files"
+          "channel_cannot_fetch": "A file from the customer was not kept: this channel cannot deliver files",
+          "refetch": "Download it again",
+          "refetchRequested": "Download requested: the file will appear here if the channel hands it over"
         }
       },
       "neutral": {

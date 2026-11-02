@@ -115,12 +115,25 @@ describe('messageActionsOf', () => {
       remove: false,
       resend: false,
       resendCaption: false,
+      refetchFile: true,
       viewDeleted: false,
       revisions: false
     })
     expect(
       messageActionsOf(theirs, viewer([Permissions.MESSAGES_VIEW], ALL_CAPABILITIES)).react
     ).toBe(false)
+  })
+
+  it('offers to download a lost file of the customer only to who may send', () => {
+    const theirs = message({ authorType: 'customer', authorId: null, deliveryStatus: null })
+    expect(
+      messageActionsOf(theirs, viewer([Permissions.MESSAGES_VIEW], ALL_CAPABILITIES)).refetchFile
+    ).toBe(false)
+    expect(messageActionsOf(theirs, viewer(AGENT, ALL_CAPABILITIES)).refetchFile).toBe(true)
+    const ours = message({ type: 'IMAGE' })
+    expect(messageActionsOf(ours, viewer(AGENT, ALL_CAPABILITIES)).refetchFile).toBe(false)
+    const owners = message({ authorType: 'external', authorId: null, deliveryStatus: null })
+    expect(messageActionsOf(owners, viewer(AGENT, ALL_CAPABILITIES)).refetchFile).toBe(false)
   })
 
   it('does not offer a reaction on a plugin message the channel has not got yet', () => {
@@ -138,6 +151,7 @@ describe('messageActionsOf', () => {
       remove: true,
       resend: false,
       resendCaption: false,
+      refetchFile: false,
       viewDeleted: false,
       revisions: false
     })

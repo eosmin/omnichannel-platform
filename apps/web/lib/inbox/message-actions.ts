@@ -25,6 +25,8 @@ export interface MessageActions {
   resend: boolean
   // Only the text under a file, sent again: drawn in the bubble beside the notice, not in the menu
   resendCaption: boolean
+  // A file of the customer that was lost, downloaded again: drawn in the bubble beside the line that says so
+  refetchFile: boolean
   // The kept text of a message the customer deleted
   viewDeleted: boolean
   // The earlier texts of an edited note
@@ -37,6 +39,7 @@ const NONE: MessageActions = {
   remove: false,
   resend: false,
   resendCaption: false,
+  refetchFile: false,
   viewDeleted: false,
   revisions: false
 }
@@ -85,7 +88,13 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
     !needsDelivery ||
     (message.deliveryStatus !== null && REACHED_THE_CHANNEL.includes(message.deliveryStatus))
   const react = maySend && reached && supports(ChannelCapability.REACTIONS)
-  if (!isReplyOfTeam) return { ...NONE, react }
+  if (!isReplyOfTeam) {
+    return {
+      ...NONE,
+      react,
+      refetchFile: maySend && message.authorType === String(AuthorType.CUSTOMER)
+    }
+  }
 
   const isEditPending = message.pendingEdit
   // The text under a file is on its way: the message is left alone until it settles

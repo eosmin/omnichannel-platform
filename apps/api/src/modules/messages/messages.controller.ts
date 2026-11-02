@@ -27,8 +27,10 @@ import {
   createMessageSchema,
   type EditMessageBody,
   editMessageSchema,
+  fileIndexSchema,
   type ListMessagesQuery,
   listMessagesQuerySchema,
+  MediaRefetchService,
   MessageChangesService,
   MessagesService,
   type RenderedTemplate,
@@ -51,6 +53,7 @@ import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy
 export class MessagesController {
   constructor(
     private readonly messages: MessagesService,
+    private readonly refetches: MediaRefetchService,
     private readonly reactions: AgentReactionsService,
     private readonly changes: MessageChangesService,
     private readonly templates: ChannelTemplatesService,
@@ -119,6 +122,21 @@ export class MessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
   ): Promise<MessageView> {
     return this.messages.resendCaption(store.id, messageId, viewerOf(user.id, held))
+  }
+
+  // "Download it again" on a file of the customer that was lost. The worker fetches it from the provider
+  // with what it kept when it gave up; the caller names only the message and the place of the file.
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @Post(ApiRoutes.messages.refetchFile(':id', ':index'))
+  @HttpCode(HttpStatusCodes.OK)
+  refetchFile(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Param('index', new ZodValidationPipe(fileIndexSchema)) index: number
+  ): Promise<MessageView> {
+    return this.refetches.refetch(store.id, messageId, index, viewerOf(user.id, held))
   }
 
   // The reaction of the caller to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. The

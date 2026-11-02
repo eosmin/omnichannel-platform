@@ -118,6 +118,20 @@ export function resendCaption(
   })
 }
 
+// "Download it again" on a file of the customer that was lost: the worker fetches it from the provider
+export function refetchFile(
+  client: ApiClient,
+  storeId: string,
+  messageId: string,
+  index: number
+): Promise<MessageView> {
+  return client.request(ApiRoutes.messages.refetchFile(messageId, index), {
+    method: 'POST',
+    schema: messageSchema,
+    storeId
+  })
+}
+
 // The reaction of the caller: an emoji sets it, null takes it back. The answer is 204.
 export function reactToMessage(
   client: ApiClient,

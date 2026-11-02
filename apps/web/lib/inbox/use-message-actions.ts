@@ -18,6 +18,7 @@ import {
   type MessageView,
   QueryKeys,
   reactToMessage,
+  refetchFile,
   resendCaption,
   resendMessage,
   type RevisionView
@@ -40,6 +41,8 @@ export interface MessageMutations {
   react: UseMutationResult<void, Error, string | null>
   resend: UseMutationResult<MessageView, Error, void>
   resendCaption: UseMutationResult<MessageView, Error, void>
+  // The place of the file in the message
+  refetchFile: UseMutationResult<MessageView, Error, number>
   edit: UseMutationResult<MessageView, Error, EditInput>
   remove: UseMutationResult<void, Error, void>
 }
@@ -72,6 +75,12 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     // A 409 means the caption moved on (settled, or another agent asked): the thread says how it stands
     onError: refresh
   })
+  const refetchLostFile = useMutation({
+    mutationFn: (index: number) => refetchFile(apiClient, storeId, messageId, index),
+    onSuccess: refresh,
+    // A 409 means the file was asked for a moment ago or came back: the thread says how it stands
+    onError: refresh
+  })
   const edit = useMutation({
     mutationFn: (input: EditInput) => editMessage(apiClient, storeId, messageId, input),
     onSuccess: refresh,
@@ -82,7 +91,14 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     mutationFn: () => deleteMessage(apiClient, storeId, messageId),
     onSuccess: refresh
   })
-  return { react, resend, resendCaption: resendCaptionOnly, edit, remove }
+  return {
+    react,
+    resend,
+    resendCaption: resendCaptionOnly,
+    refetchFile: refetchLostFile,
+    edit,
+    remove
+  }
 }
 
 // Read when the dialog opens, never with the thread: every read of the kept text is audited by the api,

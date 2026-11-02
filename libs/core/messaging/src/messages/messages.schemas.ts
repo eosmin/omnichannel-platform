@@ -140,3 +140,15 @@ export type EditMessageBody = z.output<typeof editMessageSchema>
 export type ReactToMessageBody = z.output<typeof reactToMessageSchema>
 export type CreateMessageBody = z.output<typeof createMessageSchema>
 export type ListMessagesQuery = z.output<typeof listMessagesQuerySchema>
+
+// The place of a file in a message of the customer, from the path: a whole number inside an album
+export const fileIndexSchema = z
+  .string()
+  .regex(/^(0|[1-9]\d{0,2})$/)
+  .transform(Number)
+  .pipe(
+    z
+      .number()
+      .int()
+      .max(InboundLimits.MAX_MEDIA_PER_MESSAGE - 1)
+  )

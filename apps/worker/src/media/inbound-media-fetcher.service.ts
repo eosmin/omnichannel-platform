@@ -14,9 +14,11 @@ import {
   ChannelConnectionStatus,
   MediaStatus,
   MediaUnavailableCodes,
-  OfActiveInstallation
+  OfActiveInstallation,
+  PROVIDER_MEDIA_REF
 } from '@platform/core/domain'
 import { type ErrorCode } from '@platform/core/errors'
+import { type LostFileSource, LostFileLimits } from '@platform/core/messaging'
 import {
   type FetchInboundMediaJob,
   JobNames,
@@ -53,7 +55,7 @@ export class MediaFetchAttemptFailed extends Error {
 
 // What a file server says when it does not know: the type of the webhook is then the one taken
 // A media id of a provider: letters, digits, underscore, dash. Anything else is read as a link.
-const PLAIN_REFERENCE = /^[\w-]+$/
+const PLAIN_REFERENCE = PROVIDER_MEDIA_REF
 
 // The worker half of a file the customer sent: asks the plugin of the connection that delivered the
 // message for the bytes, keeps them in the bucket and hands them to the scan. The file is `pending`
@@ -155,7 +157,14 @@ export class InboundMediaFetcher {
       // of a file is seen, instead of a success that kept nothing
       if (refused.retryable && !isLastAttempt)
         throw new MediaFetchAttemptFailed(refused.code, error)
-      await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.FETCH_FAILED)
+      await this.marker.mark(
+        storeId,
+        messageId,
+        index,
+        MediaUnavailableCodes.FETCH_FAILED,
+        // A refusal the provider will repeat (the media is gone) is not offered again
+        refused.retryable ? this.sourceOf(job) : undefined
+      )
       if (refused.retryable) throw new MediaFetchAttemptFailed(refused.code, error)
       return
     }
@@ -190,12 +199,31 @@ export class InboundMediaFetcher {
       // Keeping the bytes failed on the last try (storage down): the job dies in the dead-letter queue and
       // the thread must say the file was lost, like for a download that failed
       if (isLastAttempt) {
-        await this.marker.mark(storeId, messageId, index, MediaUnavailableCodes.FETCH_FAILED)
+        await this.marker.mark(
+          storeId,
+          messageId,
+          index,
+          MediaUnavailableCodes.FETCH_FAILED,
+          this.sourceOf(job)
+        )
       }
       throw error
     }
     await this.marker.clear(storeId, messageId, index)
     await this.queueScan(mediaId)
+  }
+
+  // What an agent needs to ask for the file again. Only the plain id of the provider is kept: a link is
+  // a credential that expires and an address the customer chose, so it is never stored for a retry.
+  private sourceOf(job: FetchInboundMediaJob): LostFileSource | undefined {
+    if (!PLAIN_REFERENCE.test(job.mediaRef)) return undefined
+    return {
+      pluginId: job.pluginId,
+      connectionId: job.connectionId,
+      ref: job.mediaRef,
+      contentType: job.contentType.slice(0, LostFileLimits.TEXT_MAX_LENGTH),
+      filename: job.filename === null ? null : job.filename.slice(0, LostFileLimits.TEXT_MAX_LENGTH)
+    }
   }
 
   private async download(

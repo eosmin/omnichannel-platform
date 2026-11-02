@@ -5,6 +5,7 @@ import {
   AgentReactionsService,
   ChannelConnectionResolver,
   InboundMessageTargets,
+  MediaRefetchService,
   MessageChangesService,
   MessageReactionsService,
   MessagesService,
@@ -31,6 +32,7 @@ import { MessagesController } from './messages.controller'
   controllers: [MessagesController],
   providers: [
     MessagesService,
+    MediaRefetchService,
     ChannelConnectionResolver,
     InboundMessageTargets,
     MessageReactionsService,

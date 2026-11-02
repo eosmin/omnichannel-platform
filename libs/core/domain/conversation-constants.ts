@@ -131,6 +131,21 @@ export type MediaUnavailableCode =
   (typeof MediaUnavailableCodes)[keyof typeof MediaUnavailableCodes]
 export const UNAVAILABLE_FILES_KEY = 'unavailableFiles'
 
+// The codes after which an agent may ask for the file again: the provider did not hand it over, which
+// may pass. The other three give the same answer on every try.
+export const RefetchableUnavailableCodes: readonly MediaUnavailableCode[] = [
+  MediaUnavailableCodes.FETCH_FAILED
+]
+
+// A media id of a provider: letters, digits, underscore, dash. Anything else is read as a link (and a link
+// is never kept to fetch a file again).
+export const PROVIDER_MEDIA_REF = /^[\w-]+$/
+
+export const MediaRefetchLimits = {
+  // A second request for the same file inside this time is refused: the first job is still working
+  COOLDOWN_MS: 2 * 60 * 1000
+} as const
+
 // What a channel plugin may say a customer sent. A plugin is not trusted with the types that only the
 // platform writes (SYSTEM lines, internal notes, cards).
 export const InboundMessageTypes = [
