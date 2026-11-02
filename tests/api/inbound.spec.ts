@@ -591,6 +591,25 @@ describe('Messages that a channel delivers', () => {
       ])
     })
 
+    it('hands the worker the id a plugin chose for a file, and none when it chose none', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const heavy = queueOf(app, QueueNames.HEAVY_PROCESSING)
+      heavy.jobs.length = 0
+      const chosen = '33333333-3333-4333-8333-333333333333'
+      const incoming = event(connectionId)
+      incoming.message.type = MessageType.IMAGE
+      incoming.message.media = [
+        { id: chosen, ref: 'first', contentType: 'image/png', filename: null },
+        { ref: 'second', contentType: 'image/jpeg', filename: null }
+      ]
+
+      await service.handleMessageReceived(TEST_CHANNEL_ID, incoming)
+
+      const fetches = heavy.jobs.map(job => job.data as FetchInboundMediaJob)
+      expect(fetches.find(job => job.mediaRef === 'first')?.mediaId).toBe(chosen)
+      expect(fetches.find(job => job.mediaRef === 'second')).not.toHaveProperty('mediaId')
+    })
+
     describe('the window of an ad', () => {
       const identityOf = (from: string) =>
         owner.customerIdentity.findFirstOrThrow({

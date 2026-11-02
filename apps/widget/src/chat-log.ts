@@ -113,6 +113,27 @@ export class ChatLog {
     if (changed) this.emit()
   }
 
+  // The ids the api gave the files of a message it took, so the visitor can open a file they just sent
+  // without waiting for the history. Only when it names every file: a count that does not match is not
+  // trusted to say which file is which.
+  setMediaIds(key: string, mediaIds: readonly string[]): void {
+    const message = this.find(key)
+    if (message === undefined || message.attachments.length === 0) return
+    if (mediaIds.length !== message.attachments.length) return
+    this.items = this.items.map(item =>
+      item.key === key
+        ? {
+            ...item,
+            attachments: item.attachments.map((file, index) => ({
+              ...file,
+              id: mediaIds[index] ?? file.id
+            }))
+          }
+        : item
+    )
+    this.emit()
+  }
+
   // The state of a message; one that is no longer sending has nothing going up
   setState(key: string, state: WidgetDeliveryState): void {
     this.items = this.items.map(item =>

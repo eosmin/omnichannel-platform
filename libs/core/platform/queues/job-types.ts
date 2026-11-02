@@ -129,6 +129,8 @@ export interface FetchInboundMediaJob extends BaseJob {
   pluginId: ChannelId
   connectionId: string
   mediaRef: string
+  // The id the plugin asked the stored file to have; absent, it is derived from the message and the place
+  mediaId?: string
   contentType: string
   filename: string | null
 }

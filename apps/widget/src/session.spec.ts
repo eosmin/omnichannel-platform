@@ -415,7 +415,7 @@ describe('Session', () => {
 
   describe('sending', () => {
     it('shows the message at once and marks it sent when the api takes it', async () => {
-      const send = jest.fn().mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue([])
       const { session, log } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
       await session.start()
 
@@ -430,7 +430,7 @@ describe('Session', () => {
       const send = jest
         .fn()
         .mockRejectedValueOnce(new WidgetApiError(401, 'WIDGET_TOKEN_INVALID'))
-        .mockResolvedValue(undefined)
+        .mockResolvedValue([])
       const bootstrap = jest
         .fn()
         .mockResolvedValueOnce(boot('t1'))
@@ -449,7 +449,7 @@ describe('Session', () => {
       const send = jest
         .fn()
         .mockRejectedValueOnce(new WidgetApiError(0, null))
-        .mockResolvedValue(undefined)
+        .mockResolvedValue([])
       const { session, log } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
       await session.start()
 
@@ -463,7 +463,7 @@ describe('Session', () => {
     })
 
     it('sends what the visitor typed in the form with the first message only', async () => {
-      const send = jest.fn().mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue([])
       const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
       await session.start()
 
@@ -490,7 +490,7 @@ describe('Session', () => {
       const send = jest
         .fn()
         .mockRejectedValueOnce(new WidgetApiError(0, null))
-        .mockResolvedValue(undefined)
+        .mockResolvedValue([])
       const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
       await session.start()
 
@@ -507,7 +507,7 @@ describe('Session', () => {
       const send = jest
         .fn()
         .mockRejectedValueOnce(new WidgetApiError(0, null))
-        .mockResolvedValue(undefined)
+        .mockResolvedValue([])
       const { session } = setup(
         { bootstrap: jest.fn().mockResolvedValue(boot('t1')), send },
         onProfileSent
@@ -524,7 +524,7 @@ describe('Session', () => {
     })
 
     it('sends no profile for a form that was left blank', async () => {
-      const send = jest.fn().mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue([])
       const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
       await session.start()
 
@@ -536,7 +536,7 @@ describe('Session', () => {
     })
 
     it('does not send again a message that is not failed', async () => {
-      const send = jest.fn().mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue([])
       const { session } = setup({ bootstrap: jest.fn().mockResolvedValue(boot('t1')), send })
       await session.start()
       await session.send('hola')
@@ -554,7 +554,7 @@ describe('Session', () => {
 
     it('puts the files up, then sends the message naming them, with the text as caption', async () => {
       const requestUpload = jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2))
-      const send = jest.fn().mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue([])
       const uploadFile = jest.fn(
         (_url: string, _file: Blob, _type: string, progress: (f: number) => void) => {
           progress(0.5)
@@ -579,6 +579,59 @@ describe('Session', () => {
       session.stop()
     })
 
+    it('gives each file the id the api answered, so it opens at once', async () => {
+      const requestUpload = jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2))
+      const send = jest.fn().mockResolvedValue(['media-1', 'media-2'])
+      const { session, log } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
+        undefined,
+        { uploadFile: jest.fn().mockResolvedValue(undefined) }
+      )
+      await session.start()
+
+      await session.send('', [file('a.png'), file('b.png')])
+
+      expect(log.find('id-1')?.attachments.map(item => item.id)).toEqual(['media-1', 'media-2'])
+      session.stop()
+    })
+
+    it('gives the ids only once the message is taken, also when a retry is what succeeds', async () => {
+      const requestUpload = jest.fn().mockResolvedValueOnce(slot(1))
+      const send = jest
+        .fn()
+        .mockRejectedValueOnce(new WidgetApiError(0, null))
+        .mockResolvedValue(['media-1'])
+      const { session, log } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
+        undefined,
+        { uploadFile: jest.fn().mockResolvedValue(undefined) }
+      )
+      await session.start()
+
+      await session.send('', [file('a.png')])
+      expect(log.find('id-1')?.attachments[0]?.id).toBeNull()
+      await session.retry('id-1')
+
+      expect(log.find('id-1')?.attachments[0]?.id).toBe('media-1')
+      session.stop()
+    })
+
+    it('leaves the files without an id when the api did not name every one', async () => {
+      const requestUpload = jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2))
+      const send = jest.fn().mockResolvedValue(['media-1'])
+      const { session, log } = setup(
+        { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
+        undefined,
+        { uploadFile: jest.fn().mockResolvedValue(undefined) }
+      )
+      await session.start()
+
+      await session.send('', [file('a.png'), file('b.png')])
+
+      expect(log.find('id-1')?.attachments.map(item => item.id)).toEqual([null, null])
+      session.stop()
+    })
+
     it('reports how much of all the files has gone up', async () => {
       const seen: (number | null | undefined)[] = []
       const holder: { log?: ChatLog } = {}
@@ -593,7 +646,7 @@ describe('Session', () => {
         {
           bootstrap: jest.fn().mockResolvedValue(boot('t1')),
           requestUpload: jest.fn().mockResolvedValueOnce(slot(1)).mockResolvedValueOnce(slot(2)),
-          send: jest.fn().mockResolvedValue(undefined)
+          send: jest.fn().mockResolvedValue([])
         },
         undefined,
         { uploadFile }
@@ -618,7 +671,7 @@ describe('Session', () => {
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('network'))
         .mockResolvedValue(undefined)
-      const send = jest.fn().mockResolvedValue(undefined)
+      const send = jest.fn().mockResolvedValue([])
       const { session, log } = setup(
         { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
         undefined,
@@ -642,7 +695,7 @@ describe('Session', () => {
       const send = jest
         .fn()
         .mockRejectedValueOnce(new WidgetApiError(400, 'FILE_UPLOAD_FAILED'))
-        .mockResolvedValue(undefined)
+        .mockResolvedValue([])
       const { session } = setup(
         { bootstrap: jest.fn().mockResolvedValue(boot('t1')), requestUpload, send },
         undefined,
@@ -704,7 +757,7 @@ describe('Session', () => {
     })
 
     it('tells the page, keeps the message and sends it with the corrected form', async () => {
-      const send = jest.fn().mockRejectedValueOnce(refusal()).mockResolvedValue(undefined)
+      const send = jest.fn().mockRejectedValueOnce(refusal()).mockResolvedValue([])
       const onPhoneRefused = jest.fn()
       const { session, log } = setup(
         { bootstrap: jest.fn().mockResolvedValue(boot('t1')), send },

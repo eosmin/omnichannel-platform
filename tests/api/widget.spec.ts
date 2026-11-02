@@ -276,7 +276,7 @@ describe('The web widget', () => {
       const again = await send(body)
 
       expect(first.status).toBe(OK)
-      expect(first.body).toEqual({ received: true })
+      expect(first.body).toEqual({ received: true, mediaIds: [] })
       expect(again.status).toBe(OK)
       expect(queued()).toHaveLength(2)
       const [job, repeat] = queued()
@@ -1674,8 +1674,57 @@ describe('The web widget', () => {
       expect(data.event.message).toMatchObject({
         type: MessageType.IMAGE,
         content: 'mi comprobante',
-        media: [{ ref: uploadId, contentType: 'image/png', filename: 'foto.png' }]
+        media: [{ id: uploadId, ref: uploadId, contentType: 'image/png', filename: 'foto.png' }]
       })
+    })
+
+    it('answers the ids the files will have, in the order of the upload ids, once per file', async () => {
+      const visitor = await enter(siteKey)
+      const first = await uploaded(visitor.visitorToken)
+      const second = await uploaded(visitor.visitorToken)
+      const body = {
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        uploadIds: [second, first, second]
+      }
+
+      const answer = await send(body).expect(OK)
+      const again = await send(body).expect(OK)
+
+      expect(answer.body).toEqual({ received: true, mediaIds: [second, first] })
+      expect(again.body).toEqual(answer.body)
+    })
+
+    it('does not open an id it answered before the worker stored the file', async () => {
+      const visitor = await enter(siteKey)
+      const uploadId = await uploaded(visitor.visitorToken)
+      const answer = await send({
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        uploadIds: [uploadId]
+      }).expect(OK)
+
+      const link = await anonymousApi(app)
+        .post(ApiRoutes.widget.download)
+        .set('origin', SITE)
+        .send({
+          visitorToken: visitor.visitorToken,
+          mediaId: (answer.body as { mediaIds: string[] }).mediaIds[0]
+        })
+
+      expect(link.status).toBe(NOT_FOUND)
+    })
+
+    it('answers no ids for a message of only text', async () => {
+      const visitor = await enter(siteKey)
+
+      const answer = await send({
+        visitorToken: visitor.visitorToken,
+        clientMessageId: randomUUID(),
+        content: 'hola'
+      }).expect(OK)
+
+      expect(answer.body).toEqual({ received: true, mediaIds: [] })
     })
 
     it('lets the plugin read the file the visitor put, from the store of the connection only', async () => {
@@ -1724,7 +1773,7 @@ describe('The web widget', () => {
 
       const data = queued()[0]?.data as ProcessChannelEventJob
       expect(data.event.message?.media).toEqual([
-        { ref: uploadId, contentType: 'image/png', filename: 'foto.png' }
+        { id: uploadId, ref: uploadId, contentType: 'image/png', filename: 'foto.png' }
       ])
     })
 

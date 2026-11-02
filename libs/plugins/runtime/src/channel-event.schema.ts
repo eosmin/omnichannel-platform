@@ -22,6 +22,9 @@ const metadata = z
   })
 
 const media = z.strictObject({
+  // The id the stored file will have. Only the web widget's is used (the worker ignores it for any other
+  // plugin) and the worker refuses one that is already taken; here it is a uuid, once per file
+  id: z.uuid().optional(),
   ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH),
   contentType: z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH),
   filename: text(InboundLimits.FILENAME_MAX_LENGTH).nullable()
@@ -55,7 +58,18 @@ const message = z.strictObject({
   // A plugin says what the customer sent, not what only the platform writes (SYSTEM, INTERNAL_NOTE)
   type: z.enum(InboundMessageTypes),
   content: text(InboundLimits.CONTENT_MAX_LENGTH).nullable(),
-  media: z.array(media).min(1).max(InboundLimits.MAX_MEDIA_PER_MESSAGE).optional(),
+  media: z
+    .array(media)
+    .min(1)
+    .max(InboundLimits.MAX_MEDIA_PER_MESSAGE)
+    .refine(
+      files => {
+        const ids = files.flatMap(file => (file.id === undefined ? [] : [file.id]))
+        return new Set(ids).size === ids.length
+      },
+      { message: 'two files of a message cannot share an id' }
+    )
+    .optional(),
   origin: origin.optional(),
   replyToExternalId: id.optional(),
   metadata: metadata.optional(),

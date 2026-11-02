@@ -97,6 +97,14 @@ function isBootstrap(value: unknown): value is Bootstrap {
   )
 }
 
+// The ids the api says the files of a message will have. An answer without them (an older api) or in a
+// shape we do not know gives none: the files then open from the history, as they always did.
+function mediaIdsOf(body: unknown): string[] {
+  if (!isRecord(body) || !Array.isArray(body['mediaIds'])) return []
+  const ids: unknown[] = body['mediaIds']
+  return ids.every((id): id is string => typeof id === 'string' && id !== '') ? ids : []
+}
+
 function errorCodeOf(body: unknown): string | null {
   if (!isRecord(body) || !isRecord(body['error'])) return null
   const code = body['error']['code']
@@ -131,8 +139,8 @@ export class WidgetApi {
     content: string,
     profile?: VisitorProfile,
     uploadIds: readonly string[] = []
-  ): Promise<void> {
-    await this.post(ApiRoutes.widget.messages, {
+  ): Promise<string[]> {
+    const answer = await this.post(ApiRoutes.widget.messages, {
       visitorToken,
       clientMessageId,
       // A message of only files has no text to send
@@ -140,6 +148,7 @@ export class WidgetApi {
       ...(uploadIds.length === 0 ? {} : { uploadIds }),
       ...(profile === undefined ? {} : { profile })
     })
+    return mediaIdsOf(answer)
   }
 
   // Asks for a signed url to put one file on
