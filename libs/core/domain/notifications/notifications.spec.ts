@@ -2,6 +2,7 @@ import { NotificationChannel } from '../index'
 
 import {
   NotificationDefaults,
+  NotificationGroupTypes,
   NotificationSeverity,
   NotificationTypes,
   notificationMessageKey
@@ -31,6 +32,17 @@ describe('NotificationDefaults', () => {
   it('has no billing, AI, SLA or impersonation types', () => {
     const forbidden = /(quota|ai_|sla|impersonation|referral)/
     expect(Object.values(NotificationTypes).filter(t => forbidden.test(t))).toEqual([])
+  })
+})
+
+describe('NotificationGroupTypes', () => {
+  it('lists every type once, except the org-level data-request ones', () => {
+    const listed = Object.values(NotificationGroupTypes).flat()
+    expect(new Set(listed).size).toBe(listed.length)
+    const missing = Object.values(NotificationTypes).filter(type => !listed.includes(type))
+    expect(missing.sort()).toEqual(
+      [NotificationTypes.DSR_DEADLINE_APPROACHING, NotificationTypes.DSR_MANUAL_REVIEW].sort()
+    )
   })
 })
 

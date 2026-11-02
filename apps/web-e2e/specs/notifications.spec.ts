@@ -62,4 +62,33 @@ test.describe('the notification center', () => {
 
     await expect(page.getByText(bell.empty.unread)).toBeVisible()
   })
+
+  test('the panel leads to the preferences, and a choice survives a reload', async ({ page }) => {
+    const prefs = en.account.notifications
+    await signIn(page, 'agent@test.com')
+    await page.waitForURL(START_SCREEN)
+    await page.getByRole('button', { name: bell.open }).click()
+    await page.getByRole('link', { name: bell.settings }).click()
+    await expect(page).toHaveURL(AppPaths.account.notifications)
+
+    // Email of "Mentioned in a note": flipped from whatever the last run left, then put back
+    const cell = (): ReturnType<typeof page.getByRole> =>
+      page.getByRole('checkbox', {
+        name: `${prefs.types.conversation.mentioned}: ${prefs.channels.email}`
+      })
+    await expect(cell()).toBeVisible()
+    const before = await cell().isChecked()
+
+    // A click and not `setChecked`: the box follows the answer of the api, not the click itself
+    try {
+      await cell().click()
+      await expect(cell()).toHaveJSProperty('checked', !before)
+      await page.reload()
+      await expect(cell()).toHaveJSProperty('checked', !before)
+    } finally {
+      // The preference lives in the shared dev database: put it back even when an assertion failed
+      if ((await cell().isChecked()) !== before) await cell().click()
+    }
+    await expect(cell()).toHaveJSProperty('checked', before)
+  })
 })

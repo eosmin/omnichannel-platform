@@ -1,12 +1,13 @@
 'use client'
 
 import { Bell } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { NotificationView } from '@platform/api-client'
+import { AppPaths, type NotificationView } from '@platform/api-client'
 import { NotificationFilters, type NotificationFilter } from '@platform/core/notifications'
 
 import { relativeTime } from '../../lib/inbox/relative-time'
@@ -157,6 +158,13 @@ function NotificationPanel({
             </Button>
           </div>
         )}
+      </div>
+      <div className="border-t p-3">
+        <Button asChild variant="ghost" size="sm">
+          <Link href={AppPaths.account.notifications} onClick={onNavigate}>
+            {t('settings')}
+          </Link>
+        </Button>
       </div>
     </>
   )

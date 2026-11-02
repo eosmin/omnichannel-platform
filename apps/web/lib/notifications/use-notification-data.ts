@@ -12,11 +12,15 @@ import {
 } from '@tanstack/react-query'
 
 import {
+  fetchNotificationPreferences,
   fetchNotifications,
   fetchUnreadCount,
   markAllNotificationsRead,
   markNotificationsRead,
   type NotificationPageView,
+  type NotificationPreferencesPatch,
+  type NotificationPreferencesView,
+  putNotificationPreferences,
   QueryKeys
 } from '@platform/api-client'
 import type { NotificationFilter } from '@platform/core/notifications'
@@ -73,5 +77,61 @@ export function useMarkAllRead(storeId: string): UseMutationResult<number, Error
   return useMutation({
     mutationFn: () => markAllNotificationsRead(apiClient, storeId),
     onSuccess: refresh
+  })
+}
+
+const PREFERENCES_MUTATION = ['notifications', 'save-preferences'] as const
+
+export function usePreferences(storeId: string): UseQueryResult<NotificationPreferencesView> {
+  return useQuery({
+    queryKey: QueryKeys.notifications.preferences(storeId),
+    queryFn: ({ signal }) => fetchNotificationPreferences(apiClient, storeId, signal)
+  })
+}
+
+// Each change saves at once. The page shows the new value before the api answers and goes back to
+// the stored one if it refuses; the answer of the api is read again at the end, so two quick changes
+// that settle out of order cannot leave the page on the older one.
+export function useSavePreferences(
+  storeId: string,
+  onError: () => void
+): UseMutationResult<
+  NotificationPreferencesView,
+  Error,
+  NotificationPreferencesPatch,
+  { before: NotificationPreferencesView | undefined }
+> {
+  const queryClient = useQueryClient()
+  const key = QueryKeys.notifications.preferences(storeId)
+  return useMutation({
+    mutationKey: PREFERENCES_MUTATION,
+    mutationFn: (patch: NotificationPreferencesPatch) =>
+      putNotificationPreferences(apiClient, storeId, patch),
+    onMutate: async patch => {
+      await queryClient.cancelQueries({ queryKey: key })
+      const before = queryClient.getQueryData<NotificationPreferencesView>(key)
+      if (before !== undefined) {
+        queryClient.setQueryData<NotificationPreferencesView>(key, {
+          types: before.types.map(row => ({
+            ...row,
+            ...(patch.types?.find(changed => changed.type === row.type) ?? {})
+          })),
+          settings: { ...before.settings, ...patch.settings }
+        })
+      }
+      return { before }
+    },
+    // No snapshot is put back: another change may be in flight on top of it, and the api's answer
+    // (read again at the end) is the truth
+    onError,
+    onSettled: () => {
+      // Only the last change to settle reads again, so an older answer cannot cover a newer change.
+      // The settings are the person's in every store: the matrix of the others is read again too.
+      if (queryClient.isMutating({ mutationKey: PREFERENCES_MUTATION }) > 1) return
+      return queryClient.invalidateQueries({
+        predicate: query =>
+          query.queryKey[0] === 'notifications' && query.queryKey[2] === 'preferences'
+      })
+    }
   })
 }

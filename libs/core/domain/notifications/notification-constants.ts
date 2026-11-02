@@ -131,6 +131,66 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.DSR_MANUAL_REVIEW]: { severity: INFO, channels: [IN_APP, EMAIL] }
 }
 
+// How the preferences page groups the matrix (TDD_06 §9). A type that is not in a group is not
+// configurable by the person: the org-level ones (data requests) never appear in it.
+export const NotificationGroups = {
+  CONVERSATIONS: 'conversations',
+  MESSAGES: 'messages',
+  ORDERS: 'orders',
+  INVENTORY: 'inventory',
+  SHIPPING: 'shipping',
+  TEAM: 'team',
+  SYSTEM: 'system'
+} as const
+export type NotificationGroup = (typeof NotificationGroups)[keyof typeof NotificationGroups]
+
+const { CONVERSATIONS, MESSAGES, ORDERS, INVENTORY, SHIPPING, TEAM, SYSTEM } = NotificationGroups
+
+export const NotificationGroupTypes: Record<NotificationGroup, readonly NotificationType[]> = {
+  [CONVERSATIONS]: [
+    NotificationTypes.CONVERSATION_ASSIGNED,
+    NotificationTypes.CONVERSATION_MENTIONED,
+    NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE,
+    NotificationTypes.CONVERSATION_SNOOZE_EXPIRED,
+    NotificationTypes.CONVERSATION_REOPENED
+  ],
+  [MESSAGES]: [NotificationTypes.MESSAGE_RECEIVED, NotificationTypes.MESSAGE_FAILED],
+  [ORDERS]: [
+    NotificationTypes.ORDER_CREATED,
+    NotificationTypes.ORDER_STATUS_CHANGED,
+    NotificationTypes.ORDER_PAYMENT_FAILED,
+    NotificationTypes.ORDER_MESSAGE_NOT_SENT,
+    NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
+    NotificationTypes.ORDER_PRICE_OVERRIDDEN
+  ],
+  [INVENTORY]: [
+    NotificationTypes.INVENTORY_LOW,
+    NotificationTypes.TRANSFER_DISPATCHED,
+    NotificationTypes.COUNT_AWAITING_APPLY
+  ],
+  [SHIPPING]: [
+    NotificationTypes.PICKUP_CUTOFF_APPROACHING,
+    NotificationTypes.PICKUP_MANUAL_REQUIRED,
+    NotificationTypes.SHIPMENT_CANCEL_FAILED,
+    NotificationTypes.SHIPMENT_REQUIRES_REVIEW,
+    NotificationTypes.SHIPMENT_FAILED_ATTEMPT,
+    NotificationTypes.CARRIER_STATUS_UNMAPPED,
+    NotificationTypes.BULK_LABELS_READY,
+    NotificationTypes.RETURN_AWAITING_RECEIPT,
+    NotificationTypes.REMITTANCE_OVERDUE
+  ],
+  [TEAM]: [NotificationTypes.MEMBER_JOINED, NotificationTypes.INVITATION_ACCEPTED],
+  [SYSTEM]: [
+    NotificationTypes.CHANNEL_DISCONNECTED,
+    NotificationTypes.WEBHOOK_AUTO_DISABLED,
+    NotificationTypes.PLUGIN_ERROR,
+    NotificationTypes.EXPORT_READY,
+    NotificationTypes.EXPORT_FAILED,
+    NotificationTypes.MEDIA_INFECTED,
+    NotificationTypes.MEDIA_UNSCANNABLE
+  ]
+}
+
 // Realtime payload delivered to the browser (RealtimeEventMap[NOTIFICATION], TDD_02 §2).
 export interface NotificationRealtimePayload {
   id: string

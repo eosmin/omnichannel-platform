@@ -117,3 +117,15 @@ export async function unsubscribeFromPush(
     // Best effort
   }
 }
+
+// Whether this browser holds a push subscription right now (the permission alone does not say: a
+// person may have turned it off here). False where push cannot work.
+export async function hasPushSubscription(): Promise<boolean> {
+  try {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return false
+    const registration = await navigator.serviceWorker.getRegistration(ServiceWorkerFile.SCOPE)
+    return (await registration?.pushManager.getSubscription()) != null
+  } catch {
+    return false
+  }
+}
