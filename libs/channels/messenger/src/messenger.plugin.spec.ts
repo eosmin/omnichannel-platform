@@ -1,5 +1,5 @@
-import { type MetaGraphClient } from '@platform/channels/meta'
-import { MetaGraph } from '@platform/core/domain'
+import { type MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
+import { ChannelSetupStepKeys, MetaGraph } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelContext, ChannelCapability } from '@platform/plugins/sdk'
 
@@ -34,6 +34,19 @@ function build(): {
 }
 
 describe('MessengerPlugin', () => {
+  it('asks, in its connect form, for the one token its credentials need, as a secret', () => {
+    const { plugin } = build()
+    expect(plugin.connectFields.map(field => field.key)).toEqual(
+      Object.keys(metaTokenCredentialsSchema.shape)
+    )
+    expect(plugin.connectFields.every(field => field.secret && field.required)).toBe(true)
+    expect(plugin.receivesProviderWebhooks).toBe(true)
+  })
+
+  it('names the step the owner takes on the Page so that customer profiles can be read', () => {
+    expect(build().plugin.profileSetupKey).toBe(ChannelSetupStepKeys.MESSENGER_PROFILE_ACCESS)
+  })
+
   it('declares what it can do, with no buttons', () => {
     const { plugin } = build()
     expect(plugin.capabilities).toEqual(

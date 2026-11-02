@@ -19,6 +19,7 @@ import {
   type ChannelHealth,
   type ChannelMessageResult,
   type ChannelPlugin,
+  type ConnectField,
   type ConnectInput,
   type ConnectResult,
   type FetchedMedia,
@@ -72,6 +73,9 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   abstract readonly id: string
   abstract readonly name: string
   abstract readonly capabilities: readonly ChannelCapabilityType[]
+  // One token names the account (see metaTokenCredentialsSchema); each channel words its label
+  abstract readonly connectFields: readonly ConnectField[]
+  readonly receivesProviderWebhooks = true
   readonly version = '1.0.0'
   readonly author = 'Platform Team'
   readonly type = PluginTypes.CHANNEL

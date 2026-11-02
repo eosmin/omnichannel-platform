@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  ChannelConnectFieldKeys,
   ChannelIds,
   DeliveryStatus,
   MessageType,
@@ -79,6 +80,17 @@ export class WebWidgetPlugin implements ChannelPlugin {
   readonly author = 'Platform Team'
   readonly type = PluginTypes.CHANNEL
   readonly messagingWindow = null
+  // The visitor's browser calls the api itself: there is no provider to point at the callback url
+  readonly receivesProviderWebhooks = false
+  readonly connectFields = [
+    {
+      key: 'siteOrigins',
+      labelKey: ChannelConnectFieldKeys.WEB_WIDGET_SITE_ORIGINS,
+      secret: false,
+      required: true,
+      multiple: true
+    }
+  ] as const
   readonly capabilities = [
     ChannelCapability.TEXT,
     ChannelCapability.IMAGE,

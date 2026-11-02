@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import {
   allowedOriginsOf,
@@ -10,8 +11,14 @@ import { API_PREFIX } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { ChannelConnectionStatus, ChannelIds, WidgetMetadataKeys } from '@platform/core/domain'
+import {
+  ChannelConnectionStatus,
+  ChannelIds,
+  ConnectSrcProbe,
+  WidgetMetadataKeys
+} from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import { StorageService } from '@platform/core/storage-module'
 
 import type { Actor } from '../tenancy'
 
@@ -22,6 +29,10 @@ export interface WidgetEmbedView {
   // The widget asks the visitor for a name, an email and a phone before the first message
   preChatEnabled: boolean
   snippet: string
+  // What a page with a strict `connect-src` must list for the widget to work: the api (http and
+  // websocket) and the host of the bucket, where the visitor's browser puts a file on a signed url
+  // (TDD_10 §5.4). Origins and nothing else: no path, no query, nothing signed.
+  connectSrc: string[]
 }
 
 const CONNECTION_SELECT = {
@@ -46,8 +57,13 @@ export class WidgetSettings {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: WidgetEmbedConfig,
-    private readonly audit: AuditService
-  ) {}
+    private readonly audit: AuditService,
+    private readonly storage: StorageService,
+    private readonly logger: PinoLogger
+  ) {
+    // Not @InjectPinoLogger(name): see ProcessorSupport
+    this.logger.setContext(WidgetSettings.name)
+  }
 
   async embed(storeId: string, connectionId: string): Promise<WidgetEmbedView> {
     const row = await this.find(storeId, connectionId)
@@ -154,12 +170,48 @@ export class WidgetSettings {
     return row
   }
 
-  private view(
+  private async view(
     siteKey: string,
     allowedOrigins: string[],
     preChatEnabled: boolean
-  ): WidgetEmbedView {
-    return { siteKey, allowedOrigins, preChatEnabled, snippet: this.snippetOf(siteKey) }
+  ): Promise<WidgetEmbedView> {
+    return {
+      siteKey,
+      allowedOrigins,
+      preChatEnabled,
+      snippet: this.snippetOf(siteKey),
+      connectSrc: await this.connectSrc()
+    }
+  }
+
+  // The bucket host is the one the SDK signs for (path style or virtual host, endpoint or AWS), so it
+  // is read from a signed url instead of rebuilt from the settings. Signing is local, no call goes to
+  // the bucket, and the url is cut to its origin: the signature never leaves this method.
+  private bucketOrigin?: Promise<string>
+  private connectSrc(): Promise<string[]> {
+    this.bucketOrigin ??= this.storage
+      .uploadUrl({
+        key: ConnectSrcProbe.KEY,
+        contentType: ConnectSrcProbe.CONTENT_TYPE,
+        contentLength: ConnectSrcProbe.CONTENT_LENGTH
+      })
+      .then(url => new URL(url).origin)
+      .catch((error: unknown) => {
+        this.bucketOrigin = undefined // Not kept: the next read asks again
+        throw error
+      })
+    const api = new URL(this.config.apiUrl)
+    const socket = `${api.protocol === 'https:' ? 'wss' : 'ws'}://${api.host}`
+    // A bucket that cannot be read must not undo a save that committed, nor hide the snippet: the page
+    // then lacks the bucket host, which is all it loses
+    return this.bucketOrigin.then(
+      bucket => [...new Set([api.origin, socket, bucket])],
+      () => {
+        // Without a trace the owner lists two hosts and the uploads are blocked by their own page
+        this.logger.warn('the bucket host could not be read for connectSrc')
+        return [...new Set([api.origin, socket])]
+      }
+    )
   }
 
   // Plain attributes on a script tag: the script reads them itself, so the merchant writes no code.

@@ -1,12 +1,14 @@
 import type { INestApplication } from '@nestjs/common'
 
 import { ChannelHealthService } from '@platform/channels/connections'
+import { MetaAppConfig } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  ChannelConnectFieldKeys,
   ChannelConnectionStatus,
   ChannelIds,
   PluginCatalogTypes,
@@ -15,6 +17,7 @@ import {
   PluginStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { PublicApiConfig } from '@platform/core/http'
 import { ChannelConnectionResolver } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
@@ -172,6 +175,114 @@ describe('The plugin catalog and the installations of a store', () => {
         installed: false,
         installationId: null,
         activeConnections: 0
+      })
+    })
+
+    describe('how a channel is connected', () => {
+      interface ManifestBody extends EntryBody {
+        channel: {
+          connectFields: Record<string, unknown>[]
+          callbackUrl: string | null
+        } | null
+      }
+      const apiUrl = () => app.get(PublicApiConfig, { strict: false }).apiUrl
+      const manifestOf = async (id: string) =>
+        ((await catalogOf()) as ManifestBody[]).find(entry => entry.id === id)?.channel
+
+      it('gives the form of each official channel, and which of its values are secret', async () => {
+        expect((await manifestOf(ChannelIds.WHATSAPP))?.connectFields).toEqual([
+          {
+            key: 'phoneNumberId',
+            labelKey: ChannelConnectFieldKeys.WHATSAPP_PHONE_NUMBER_ID,
+            secret: false,
+            required: true,
+            multiple: false
+          },
+          {
+            key: 'businessAccountId',
+            labelKey: ChannelConnectFieldKeys.WHATSAPP_BUSINESS_ACCOUNT_ID,
+            secret: false,
+            required: true,
+            multiple: false
+          },
+          {
+            key: 'accessToken',
+            labelKey: ChannelConnectFieldKeys.WHATSAPP_ACCESS_TOKEN,
+            secret: true,
+            required: true,
+            multiple: false
+          }
+        ])
+        for (const id of [ChannelIds.INSTAGRAM, ChannelIds.MESSENGER]) {
+          expect((await manifestOf(id))?.connectFields).toEqual([
+            expect.objectContaining({ key: 'accessToken', secret: true, required: true })
+          ])
+        }
+        expect((await manifestOf(ChannelIds.WEB_WIDGET))?.connectFields).toEqual([
+          expect.objectContaining({ key: 'siteOrigins', secret: false, multiple: true })
+        ])
+      })
+
+      it('gives the callback url of the channels a provider calls, and none for the widget', async () => {
+        for (const id of [ChannelIds.WHATSAPP, ChannelIds.INSTAGRAM, ChannelIds.MESSENGER]) {
+          const url = (await manifestOf(id))?.callbackUrl
+          expect(url).toBe(`${apiUrl()}/api/v1${ApiRoutes.webhooks.channel(id)}`)
+        }
+        expect((await manifestOf(ChannelIds.WEB_WIDGET))?.callbackUrl).toBeNull()
+      })
+
+      it('carries no value of the environment: not the verify token, not a secret of the app', async () => {
+        const text = JSON.stringify(await catalogOf())
+        const meta = app.get(MetaAppConfig, { strict: false })
+        for (const value of [meta.verifyToken, meta.appSecret]) {
+          if (value !== undefined && value !== '') expect(text).not.toContain(value)
+        }
+        // The shape is closed too: a field of the manifest is one of these five, and nothing else
+        for (const entry of ((await catalogOf()) as ManifestBody[]).filter(
+          e => e.channel !== null
+        )) {
+          expect(Object.keys(entry.channel ?? {}).sort()).toEqual(['callbackUrl', 'connectFields'])
+          for (const field of entry.channel?.connectFields ?? []) {
+            expect(Object.keys(field).sort()).toEqual([
+              'key',
+              'labelKey',
+              'multiple',
+              'required',
+              'secret'
+            ])
+          }
+        }
+      })
+
+      it('gives a private plugin its own form and a callback url on its own id', async () => {
+        const id = await publish({
+          connectFields: [
+            {
+              key: 'apiKey',
+              labelKey: 'settings.channels.connect.acme.apiKey',
+              secret: true,
+              required: false,
+              multiple: false
+            }
+          ],
+          receivesProviderWebhooks: true
+        })
+
+        expect(await manifestOf(id)).toEqual({
+          connectFields: [
+            expect.objectContaining({ key: 'apiKey', secret: true, required: false })
+          ],
+          callbackUrl: `${apiUrl()}/api/v1/webhooks/channels/${id}`
+        })
+      })
+
+      it('gives the same manifest after installing and uninstalling', async () => {
+        const id = await publish({ receivesProviderWebhooks: false })
+        const before = await manifestOf(id)
+
+        const installed = (await install(id)).body as ManifestBody
+        expect(installed.channel).toEqual(before)
+        expect(before?.callbackUrl).toBeNull()
       })
     })
 

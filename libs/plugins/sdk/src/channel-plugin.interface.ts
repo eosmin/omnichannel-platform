@@ -5,6 +5,7 @@ import type {
   ChannelEvent,
   ChannelHealth,
   ChannelMessageResult,
+  ConnectField,
   ConnectInput,
   ConnectResult,
   FetchedMedia,
@@ -35,6 +36,17 @@ export interface ChannelPlugin {
 
   // Applied by the core: the plugin has no database
   readonly messagingWindow: MessagingWindowPolicy | null
+
+  // The fields of the connect form, in the order they are drawn. Declaring them does not validate
+  // anything: `connect` still checks what arrives. Empty when nothing is asked (never for a channel
+  // that needs an account).
+  readonly connectFields: readonly ConnectField[]
+  // The provider calls the api (webhooks): the owner must paste the callback url of the channel in the
+  // provider's dashboard. False for a channel that is reached by its own client (the web widget).
+  readonly receivesProviderWebhooks: boolean
+  // Message key of a step the owner takes on the provider's side so that the profile (name, photo) of
+  // a customer can be read, shown when the provider refuses it. Only for CUSTOMER_PROFILE channels.
+  readonly profileSetupKey?: string
 
   // Credentials are supplied by the core, encrypted at rest by the core
   connect(input: ConnectInput): Promise<ConnectResult>

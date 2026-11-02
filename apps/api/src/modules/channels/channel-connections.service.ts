@@ -38,7 +38,11 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { enumValueOf } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import type { ChannelCapabilityType, ChannelPlugin } from '@platform/plugins/sdk'
+import {
+  ChannelCapability,
+  type ChannelCapabilityType,
+  type ChannelPlugin
+} from '@platform/plugins/sdk'
 
 import type { Actor } from '../tenancy'
 
@@ -63,6 +67,20 @@ export interface ChannelConnectionView {
   // What the channel can do (`ChannelCapability`), so that the web app decides which actions to draw
   // without knowing any channel by name. Static per plugin.
   capabilities: ChannelCapabilityType[]
+  // How reading the name and photo of customers goes through this connection; null for a channel
+  // that has no such thing
+  profile: ConnectionProfileStatus | null
+}
+
+// Step 2.8 (1c-2): the profile of a customer is read by a job, and a refusal is stored on the identity
+// (`profileFetchError`, a code of ours). This counts them, so that the owner learns what is missing.
+export interface ConnectionProfileStatus {
+  // Customers of this connection whose last read failed
+  failedIdentities: number
+  errors: { code: string; identities: number }[]
+  // Message key of the step the owner takes at the provider (Messenger: "Business Asset User Profile
+  // Access"); only present while some read fails
+  setupKey: string | null
 }
 
 // What any agent may know of a connection: enough to name the channel in the inbox, to draw only the
@@ -97,7 +115,9 @@ const VIEW_SELECT = {
   createdAt: true
 } as const
 
-type ConnectionRow = Omit<ChannelConnectionView, 'status' | 'capabilities'> & { status: string }
+type ConnectionRow = Omit<ChannelConnectionView, 'status' | 'capabilities' | 'profile'> & {
+  status: string
+}
 
 // The connections of the store of the request (TDD_10 §10). Every read and write is filtered by that
 // store; the plugin is the one of the registry, and what it returns is checked before it is kept.
@@ -116,7 +136,10 @@ export class ChannelConnectionsService {
     this.logger.setContext(ChannelConnectionsService.name)
   }
 
-  private view(row: ConnectionRow): ChannelConnectionView {
+  private view(
+    row: ConnectionRow,
+    profiles: ReadonlyMap<string, ConnectionProfileStatus>
+  ): ChannelConnectionView {
     // Field by field: whatever else a query selects must not reach the response
     return {
       id: row.id,
@@ -126,7 +149,73 @@ export class ChannelConnectionsService {
       lastHealthyAt: row.lastHealthyAt,
       lastError: row.lastError,
       createdAt: row.createdAt,
-      capabilities: this.registry.capabilitiesOf(row.pluginId)
+      capabilities: this.registry.capabilitiesOf(row.pluginId),
+      profile: this.registry.hasCapability(row.pluginId, ChannelCapability.CUSTOMER_PROFILE)
+        ? (profiles.get(row.id) ?? this.noProfileFailures())
+        : null
+    }
+  }
+
+  private noProfileFailures(): ConnectionProfileStatus {
+    return { failedIdentities: 0, errors: [], setupKey: null }
+  }
+
+  // The failed profile reads of the store, by connection, in one query: the identities that have a
+  // conversation through the connection, grouped by the code stored. Filtered by the store on both
+  // tables. The setup step is the plugin's, and only shown while something fails.
+  private async profileStatuses(
+    storeId: string,
+    rows: readonly { id: string; pluginId: string }[]
+  ): Promise<Map<string, ConnectionProfileStatus>> {
+    const statuses = new Map<string, ConnectionProfileStatus>()
+    const asked = rows.filter(row =>
+      this.registry.hasCapability(row.pluginId, ChannelCapability.CUSTOMER_PROFILE)
+    )
+    if (asked.length === 0) return statuses
+    const counted = await this.prisma.client.$queryRaw<
+      { connectionId: string; code: string; identities: number }[]
+    >`
+      SELECT c.channel_connection_id AS "connectionId",
+             i.profile_fetch_error AS "code",
+             COUNT(DISTINCT i.id)::int AS "identities"
+      FROM customer_identities i
+      JOIN conversations c ON c.customer_identity_id = i.id AND c.store_id = i.store_id
+      WHERE i.store_id = ${storeId}
+        AND i.profile_fetch_error IS NOT NULL
+        AND c.channel_connection_id = ANY(${asked.map(row => row.id)}::text[])
+      GROUP BY c.channel_connection_id, i.profile_fetch_error
+      ORDER BY c.channel_connection_id, i.profile_fetch_error`
+    for (const row of asked) {
+      const mine = counted.filter(entry => entry.connectionId === row.id)
+      const failed = mine.reduce((total, entry) => total + entry.identities, 0)
+      statuses.set(row.id, {
+        failedIdentities: failed,
+        errors: mine.map(entry => ({ code: entry.code, identities: entry.identities })),
+        setupKey:
+          failed > 0
+            ? (this.registry.connectManifestOf(row.pluginId)?.profileSetupKey ?? null)
+            : null
+      })
+    }
+    return statuses
+  }
+
+  // A read says what it found or fails, like the list does
+  private async viewOf(storeId: string, row: ConnectionRow): Promise<ChannelConnectionView> {
+    return this.view(row, await this.profileStatuses(storeId, [row]))
+  }
+
+  // The answer of an operation that already happened (connect, disconnect) must not fail because the
+  // count of profile errors could not be read: it is told as none, and the next list says the truth
+  private async viewAfterWrite(
+    storeId: string,
+    row: ConnectionRow
+  ): Promise<ChannelConnectionView> {
+    try {
+      return this.view(row, await this.profileStatuses(storeId, [row]))
+    } catch (error) {
+      this.logger.warn({ storeId, errorName: errorName(error) }, 'profile status not read')
+      return this.view(row, new Map())
     }
   }
 
@@ -136,7 +225,8 @@ export class ChannelConnectionsService {
       select: VIEW_SELECT,
       orderBy: CONNECTION_ORDER
     })
-    return rows.map(row => this.view(row))
+    const profiles = await this.profileStatuses(storeId, rows)
+    return rows.map(row => this.view(row, profiles))
   }
 
   // Its own select, not the full view cut down: whatever a column holds that only who manages channels
@@ -188,7 +278,7 @@ export class ChannelConnectionsService {
       select: VIEW_SELECT
     })
     if (row === null) throw resourceNotFound('channel connection')
-    return this.view(row)
+    return this.viewOf(storeId, row)
   }
 
   // The call to the provider happens before the transaction: it can be slow, and a row lock held
@@ -313,7 +403,7 @@ export class ChannelConnectionsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return this.view(connection)
+    return this.viewAfterWrite(storeId, connection)
   }
 
   // Tells the provider to drop an account that was connected and could not be kept, if no row holds
@@ -488,7 +578,7 @@ export class ChannelConnectionsService {
         userAgent: actor.userAgent
       })
     }
-    return this.view(done.saved)
+    return this.viewAfterWrite(storeId, done.saved)
   }
 
   private async rowOf(storeId: string, connectionId: string) {

@@ -1,7 +1,12 @@
-import { MetaGraphClient } from '@platform/channels/meta'
+import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import { MetaGraph } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
+import {
+  type ChannelContext,
+  type ChannelPlugin,
+  ChannelCapability,
+  PluginError
+} from '@platform/plugins/sdk'
 
 import { InstagramPlugin } from './instagram.plugin'
 
@@ -37,6 +42,19 @@ function build(): {
 }
 
 describe('InstagramPlugin', () => {
+  it('asks, in its connect form, for the one token its credentials need, as a secret', () => {
+    const { plugin } = build()
+    expect(plugin.connectFields.map(field => field.key)).toEqual(
+      Object.keys(metaTokenCredentialsSchema.shape)
+    )
+    expect(plugin.connectFields.every(field => field.secret && field.required)).toBe(true)
+    expect(plugin.receivesProviderWebhooks).toBe(true)
+  })
+
+  it('has no step for the owner to take to read profiles', () => {
+    expect((build().plugin as ChannelPlugin).profileSetupKey).toBeUndefined()
+  })
+
   it('declares what it can do, with no buttons or templates', () => {
     const { plugin } = build()
     expect(plugin.capabilities).toEqual(

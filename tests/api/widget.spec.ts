@@ -18,7 +18,8 @@ import {
   MessageType,
   WIDGET_TOKEN_AUTH_KEY,
   WidgetClientEvents,
-  WidgetSocketEvents
+  WidgetSocketEvents,
+  ConnectSrcProbe
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -28,6 +29,7 @@ import {
 } from '@platform/core/events'
 import { QueueNames } from '@platform/core/queues'
 import { RealtimeNamespaces } from '@platform/core/realtime'
+import { StorageService } from '@platform/core/storage-module'
 import {
   inboundJobId,
   PluginRegistry,
@@ -1290,6 +1292,7 @@ describe('The web widget', () => {
       allowedOrigins: string[]
       preChatEnabled: boolean
       snippet: string
+      connectSrc: string[]
     }
     const NEW_SITE = 'https://www.example.com'
 
@@ -1316,6 +1319,30 @@ describe('The web widget', () => {
       expect(body.snippet).toContain(`data-site-key="${siteKey}"`)
       expect(body.snippet).toContain('data-api-url="http://localhost:8080/api/v1"')
       expect(body.snippet).toMatch(/^<script src="https?:\/\/[^"]+\.js" /)
+    })
+
+    it('tells a strict page which hosts to allow: the api, its socket and the bucket, as origins only', async () => {
+      const siteKey = await connectWidget(ctx.adminA, ctx.storeA)
+      const id = await connectionOf(siteKey)
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.channels.widgetEmbed(id))
+        .expect(OK)
+
+      const { connectSrc } = response.body as EmbedBody
+      expect(connectSrc).toEqual(
+        expect.arrayContaining(['http://localhost:8080', 'ws://localhost:8080'])
+      )
+      expect(connectSrc).toHaveLength(3)
+      const bucket = connectSrc.find(origin => !origin.includes('localhost:8080'))
+      // The bucket is the host the visitor's browser uploads to, taken from a signed url and cut to
+      // its origin: nothing of the signature, the key or the bucket path is left
+      const signed = await app
+        .get(StorageService, { strict: false })
+        .uploadUrl({ key: ConnectSrcProbe.KEY, contentType: 'text/plain', contentLength: 1 })
+      expect(bucket).toBe(new URL(signed).origin)
+      for (const origin of connectSrc) expect(origin).toMatch(/^(https?|wss?):\/\/[^/?#]+$/)
+      expect(JSON.stringify(response.body)).not.toMatch(/X-Amz/)
     })
 
     it('changes the sites without changing the key, so a published snippet keeps working', async () => {

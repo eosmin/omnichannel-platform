@@ -25,6 +25,8 @@ class SuitePlugin implements ChannelPlugin {
   readonly type = 'channel' as const
   readonly capabilities = [ChannelCapability.TEXT] as const
   readonly messagingWindow = null
+  readonly connectFields = []
+  readonly receivesProviderWebhooks = false
   connect = unused
   disconnect = unused
   healthCheck = unused

@@ -1359,5 +1359,28 @@
       "unknown": "Unknown"
     },
     "stale": "The list could not be refreshed. What you see may be out of date."
+  },
+  "settings": {
+    "channels": {
+      "connect": {
+        "whatsapp": {
+          "phoneNumberId": "Phone number ID",
+          "businessAccountId": "WhatsApp Business account ID",
+          "accessToken": "Access token"
+        },
+        "instagram": {
+          "accessToken": "Instagram access token"
+        },
+        "messenger": {
+          "accessToken": "Page access token"
+        },
+        "web_widget": {
+          "siteOrigins": "Sites that may load the chat (one address per line)"
+        }
+      },
+      "setup": {
+        "messengerProfileAccess": "In the settings of your Facebook Page, request \"Business Asset User Profile Access\" so that customer names and photos can be read."
+      }
+    }
   }
 }

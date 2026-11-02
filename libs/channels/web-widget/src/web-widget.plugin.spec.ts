@@ -32,6 +32,13 @@ const ctx: ChannelContext = { storeId: 's', connectionId: siteKey, credentials: 
 const token = signVisitorToken(tokenKey, { siteKey, visitorId })
 
 describe('WebWidgetPlugin', () => {
+  it('asks for the sites, as a list, and has no provider to point at a callback url', () => {
+    expect(plugin.connectFields).toEqual([
+      expect.objectContaining({ key: 'siteOrigins', secret: false, required: true, multiple: true })
+    ])
+    expect(plugin.receivesProviderWebhooks).toBe(false)
+  })
+
   it('declares text, images, documents, typing and read receipts, with no window', () => {
     expect(plugin.id).toBe(ChannelIds.WEB_WIDGET)
     expect(plugin.capabilities).toEqual([

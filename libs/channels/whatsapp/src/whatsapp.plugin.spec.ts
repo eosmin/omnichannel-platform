@@ -3,6 +3,7 @@ import { DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelContext, PluginError } from '@platform/plugins/sdk'
 
+import { whatsAppCredentialsSchema } from './whatsapp-credentials'
 import { WhatsAppPlugin } from './whatsapp.plugin'
 
 const credentials = { phoneNumberId: '111', businessAccountId: '222', accessToken: 'tok' }
@@ -38,6 +39,17 @@ function buildMeta() {
 }
 
 describe('WhatsAppPlugin', () => {
+  it('asks, in its connect form, for exactly the values its credentials need, and only the token is secret', () => {
+    const { plugin } = build()
+    expect(plugin.connectFields.map(field => field.key).sort()).toEqual(
+      Object.keys(whatsAppCredentialsSchema.shape).sort()
+    )
+    expect(plugin.connectFields.filter(field => field.secret).map(field => field.key)).toEqual([
+      'accessToken'
+    ])
+    expect(plugin.receivesProviderWebhooks).toBe(true)
+  })
+
   it('declares the 24 hour window that asks for a template once it is closed', () => {
     expect(build().plugin.messagingWindow).toEqual({ hours: 24, requiresTemplateWhenClosed: true })
   })
