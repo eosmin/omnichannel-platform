@@ -72,6 +72,20 @@ export class TeamController {
     return this.invitations.list(store.id)
   }
 
+  // Not idempotent: each call issues a new token. The cooldown of inviting (429) is what bounds it.
+  @RequirePermissions(Permissions.TEAM_INVITE)
+  @Post(ApiRoutes.settings.invitationResend(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  resendInvitation(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(idSchema)) id: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<InvitationView> {
+    return this.invitations.resend(store, id, actorOf(user, store, req), held)
+  }
+
   @RequirePermissions(Permissions.TEAM_INVITE)
   @Delete(ApiRoutes.settings.invitationById(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)

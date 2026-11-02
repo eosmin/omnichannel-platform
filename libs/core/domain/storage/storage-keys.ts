@@ -26,6 +26,28 @@ export function parseMediaObjectKey(
     : null
 }
 
+// Where every key of a user's own files begins (an avatar has no store)
+export const USERS_ROOT = 'users/'
+
+// The inverse of `StorageKeys.avatarUpload`: the user and the media a staging object of an avatar is
+// for, or null for any other key
+const AVATAR_UPLOAD_KEY = new RegExp(`^${USERS_ROOT}([^/]+)/avatar-uploads/([^/]+)/.+$`)
+export function parseAvatarUploadKey(key: string): { userId: string; mediaId: string } | null {
+  const match = AVATAR_UPLOAD_KEY.exec(key)
+  const userId = match?.[1]
+  const mediaId = match?.[2]
+  return userId === undefined || mediaId === undefined ? null : { userId, mediaId }
+}
+
+// The inverse of `StorageKeys.avatar`: the media a final avatar file belongs to, or null
+const AVATAR_KEY = new RegExp(`^${USERS_ROOT}([^/]+)/avatar/([^/]+)/.+$`)
+export function parseAvatarKey(key: string): { userId: string; mediaId: string } | null {
+  const match = AVATAR_KEY.exec(key)
+  const userId = match?.[1]
+  const mediaId = match?.[2]
+  return userId === undefined || mediaId === undefined ? null : { userId, mediaId }
+}
+
 // The ONLY place S3 keys are built (TDD_01 §2.3).
 export const StorageKeys = {
   message: (storeId: string, mediaId: string, filename: string) =>
@@ -48,7 +70,13 @@ export const StorageKeys = {
     `stores/${storeId}/exports/${exportId}/${filename}`,
   exportPrefix: (storeId: string, exportId: string) => `stores/${storeId}/exports/${exportId}/`,
   avatar: (userId: string, mediaId: string, filename: string) =>
-    `users/${userId}/avatar/${mediaId}/${filename}`,
+    `${USERS_ROOT}${userId}/avatar/${mediaId}/${filename}`,
+  // Where a client PUTs an avatar. Confirming copies it to `avatar(...)`, as for a message file: what is
+  // scanned and served is never writable by the uploader.
+  avatarUpload: (userId: string, mediaId: string, filename: string) =>
+    `${USERS_ROOT}${userId}/avatar-uploads/${mediaId}/${filename}`,
+  // Everything that belongs to one user: a key outside it is another user's, whatever the store
+  userPrefix: (userId: string) => `${USERS_ROOT}${userId}/`,
   dsrExport: (requestId: string) => `compliance/dsr/${requestId}/export.zip`,
   auditArchive: (year: number, month: number) =>
     `audit/${year}/${String(month).padStart(2, '0')}/audit-logs.jsonl.gz`,

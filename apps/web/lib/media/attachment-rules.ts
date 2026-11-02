@@ -3,6 +3,7 @@ import {
   AllowedContentTypes,
   CapabilityOfMediaType,
   mediaMessageTypeOf,
+  MediaPurpose,
   type OutboundMediaType,
   refuseUpload,
   UploadRefusals
@@ -32,7 +33,7 @@ export type AttachmentRefusal = 'empty' | typeof UploadRefusals.TYPE_NOT_ALLOWED
 // declares, as the api reads it; a file with no declared type is refused like any other type.
 export function refuseAttachment(file: { type: string; size: number }): AttachmentRefusal | null {
   if (file.size === 0) return 'empty'
-  return refuseUpload(file.type, file.size)
+  return refuseUpload(file.type, file.size, MediaPurpose.MESSAGE)
 }
 
 // The message type a file is sent as, or null when it is not an allowed type

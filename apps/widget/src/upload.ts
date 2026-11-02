@@ -2,6 +2,7 @@ import { WidgetLimits } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import {
   AllowedContentTypes,
+  MediaPurpose,
   maxBytesFor,
   refuseUpload,
   UploadRefusals
@@ -40,7 +41,7 @@ export type FileRefusal = 'empty' | 'type' | 'size'
 // which checks it again. The type is the one the browser declares, as the api reads it.
 export function refuseFile(file: { type: string; size: number }): FileRefusal | null {
   if (file.size === 0) return 'empty'
-  const refused = refuseUpload(file.type, file.size)
+  const refused = refuseUpload(file.type, file.size, MediaPurpose.MESSAGE)
   if (refused === UploadRefusals.TYPE_NOT_ALLOWED) return 'type'
   return refused === UploadRefusals.TOO_LARGE ? 'size' : null
 }
@@ -48,7 +49,9 @@ export function refuseFile(file: { type: string; size: number }): FileRefusal | 
 // What the picker offers: the allowed types and nothing else
 export const FILE_ACCEPT = Object.values(AllowedContentTypes).flat().join(',')
 
-export { maxBytesFor }
+// The widget only sends message files
+export const maxBytesForMessageFile = (contentType: string): number =>
+  maxBytesFor(contentType, MediaPurpose.MESSAGE)
 
 const UNITS = ['B', 'KB', 'MB'] as const
 

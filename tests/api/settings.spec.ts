@@ -546,6 +546,167 @@ describe('The settings of the inbox of a store', () => {
       expect(write.status).toBe(FORBIDDEN)
     })
   })
+  describe('the preferences of the store', () => {
+    it('start at the factory defaults, for a store that chose nothing', async () => {
+      const response = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toEqual({ sendReadReceipts: true })
+    })
+
+    it('change the key that is named, audit which one, and write only that key to the column', async () => {
+      const response = await api(app, ctx.adminA2, ctx.storeA2)
+        .put(ApiRoutes.settings.preferences)
+        .send({ sendReadReceipts: false })
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toEqual({ sendReadReceipts: false })
+      expect(
+        (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)).body
+      ).toEqual({ sendReadReceipts: false })
+      const settings = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA2.id }
+      })
+      expect(settings.preferences).toEqual({ sendReadReceipts: false })
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.SETTINGS_CHANGED,
+        resourceId: ctx.storeA2.id,
+        resourceType: 'store_preferences'
+      })
+      expect(entry?.metadata).toMatchObject({
+        fields: ['sendReadReceipts'],
+        changes: { sendReadReceipts: { from: true, to: false } }
+      })
+    })
+
+    it('leave no audit entry when nothing changed', async () => {
+      const as = api(app, ctx.adminB, ctx.storeB)
+      const where = {
+        action: AuditAction.SETTINGS_CHANGED,
+        resourceType: 'store_preferences',
+        storeId: ctx.storeB.id
+      }
+      await as.put(ApiRoutes.settings.preferences).send({ sendReadReceipts: true })
+      await waitForAuditEntries(owner, { ...where, resourceId: ctx.storeB.id })
+      const before = await owner.auditLog.count({ where })
+
+      // The same value again changes nothing; the change after it is the barrier that tells the audit
+      // writes have settled, so the count below is not a guess about timing
+      await as.put(ApiRoutes.settings.preferences).send({ sendReadReceipts: true })
+      await as.put(ApiRoutes.settings.preferences).send({ sendReadReceipts: false })
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        if ((await owner.auditLog.count({ where })) > before) break
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      expect(await owner.auditLog.count({ where })).toBe(before + 1)
+    })
+
+    it('keep both changes when two writers ask at once', async () => {
+      // One key exists today, so the race is on the column: n parallel flips must end in a state that
+      // one of them wrote and never throw
+      const results = await Promise.all(
+        Array.from({ length: 6 }, (_, index) =>
+          api(app, ctx.adminA2, ctx.storeA2)
+            .put(ApiRoutes.settings.preferences)
+            .send({ sendReadReceipts: index % 2 === 0 })
+        )
+      )
+      expect(results.map(result => result.status)).toEqual(Array(6).fill(OK))
+      const stored = (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences))
+        .body as { sendReadReceipts: boolean }
+      expect(typeof stored.sendReadReceipts).toBe('boolean')
+    })
+
+    it('keep a key this version does not know when another is changed', async () => {
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: { sendReadReceipts: true, fromALaterVersion: { kept: true } } }
+      })
+
+      await asAdmin().put(ApiRoutes.settings.preferences).send({ sendReadReceipts: false })
+
+      const settings = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA.id }
+      })
+      expect(settings.preferences).toEqual({
+        sendReadReceipts: false,
+        fromALaterVersion: { kept: true }
+      })
+    })
+
+    it('read a column that does not fit as the defaults, and the next change repairs it', async () => {
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: ['not', 'an', 'object'] }
+      })
+
+      expect((await asAdmin().get(ApiRoutes.settings.preferences)).body).toEqual({
+        sendReadReceipts: true
+      })
+      const put = await asAdmin()
+        .put(ApiRoutes.settings.preferences)
+        .send({ sendReadReceipts: false })
+      expect(put.body).toEqual({ sendReadReceipts: false })
+    })
+
+    it('never change the store of someone else', async () => {
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeB.id },
+        data: { preferences: {} }
+      })
+
+      await asAdmin().put(ApiRoutes.settings.preferences).send({ sendReadReceipts: false })
+
+      expect(
+        (await owner.storeSettings.findUniqueOrThrow({ where: { storeId: ctx.storeB.id } }))
+          .preferences
+      ).toEqual({})
+    })
+
+    it.each([
+      ['nothing', {}],
+      ['a value of another type', { sendReadReceipts: 'no' }],
+      ['null', { sendReadReceipts: null }],
+      ['a key it does not have', { sendReadReceipts: true, cancellationReasons: [] }],
+      ['a store in the body', { sendReadReceipts: true, storeId: 'x' }]
+    ])('refuse %s', async (_label, body) => {
+      const response = await asAdmin().put(ApiRoutes.settings.preferences).send(body)
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.VALIDATION_FAILED)
+    })
+
+    it('are read with SETTINGS_VIEW and changed with SETTINGS_MANAGE_PREFERENCES', async () => {
+      const manager = await createActor(owner, app, {
+        prefix,
+        name: 'prefsManager',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: (
+          await createRole(owner, {
+            storeId: ctx.storeA.id,
+            name: `${prefix}-prefs-reader`,
+            permissions: [Permissions.SETTINGS_VIEW]
+          })
+        ).id
+      })
+
+      const read = await api(app, manager, ctx.storeA).get(ApiRoutes.settings.preferences)
+      const write = await api(app, manager, ctx.storeA)
+        .put(ApiRoutes.settings.preferences)
+        .send({ sendReadReceipts: false })
+      const viewerRead = await asViewer().get(ApiRoutes.settings.preferences)
+
+      expect(read.status).toBe(OK)
+      expect(write.status).toBe(FORBIDDEN)
+      expect(viewerRead.status).toBe(FORBIDDEN)
+      expect(
+        (await asAdmin().put(ApiRoutes.settings.preferences).send({ sendReadReceipts: true }))
+          .status
+      ).toBe(OK)
+    })
+  })
+
   // Findings of the review of Step 2.3 (PR 1): each one is a test that failed before its fix
   describe('what the review found', () => {
     it('holds the case-insensitive name of a tag at the database, when two ask at once', async () => {

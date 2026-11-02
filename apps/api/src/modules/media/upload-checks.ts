@@ -1,7 +1,13 @@
 import type { Redis } from 'ioredis'
 
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { maxBytesFor, QUOTA_WINDOW_MS, refuseUpload, UploadRefusals } from '@platform/core/storage'
+import {
+  maxBytesFor,
+  QUOTA_WINDOW_MS,
+  refuseUpload,
+  type UploadRulePurpose,
+  UploadRefusals
+} from '@platform/core/storage'
 
 // The one answer for an upload that cannot be trusted: the object is missing, is not what was
 // declared, or is not the one signed for this media. It says nothing about which of those.
@@ -13,8 +19,12 @@ export function uploadVerificationFailed(): PlatformException {
   )
 }
 
-export function refuseTypeOrSize(contentType: string, fileSizeBytes: number): void {
-  const refused = refuseUpload(contentType, fileSizeBytes)
+export function refuseTypeOrSize(
+  contentType: string,
+  fileSizeBytes: number,
+  purpose: UploadRulePurpose
+): void {
+  const refused = refuseUpload(contentType, fileSizeBytes, purpose)
   if (refused === UploadRefusals.TYPE_NOT_ALLOWED) {
     throw new PlatformException(
       ErrorCodes.FILE_TYPE_NOT_ALLOWED,
@@ -28,7 +38,7 @@ export function refuseTypeOrSize(contentType: string, fileSizeBytes: number): vo
       ErrorCodes.FILE_TOO_LARGE,
       'File too large',
       HttpStatusCodes.BAD_REQUEST,
-      { maxSizeBytes: maxBytesFor(contentType) }
+      { maxSizeBytes: maxBytesFor(contentType, purpose) }
     )
   }
 }

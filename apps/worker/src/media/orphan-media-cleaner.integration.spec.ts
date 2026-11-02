@@ -70,6 +70,7 @@ describe('OrphanMediaCleaner', () => {
   // A run that did not reach the end of a shared bucket leaves a cursor: every case starts from the top
   beforeEach(async () => {
     await redis.del(CacheKeys.mediaCleanup.cursor())
+    await redis.del(CacheKeys.mediaCleanup.avatarCursor())
   })
 
   async function object(key: string): Promise<string> {
@@ -123,6 +124,80 @@ describe('OrphanMediaCleaner', () => {
     await cleaner.run(later())
 
     expect(await storage.head(staging)).toBeNull()
+  })
+
+  it('deletes the staging file of an avatar nobody confirmed', async () => {
+    const staging = await object(StorageKeys.avatarUpload(randomUUID(), randomUUID(), 'me.png'))
+
+    await cleaner.run(later())
+
+    expect(await storage.head(staging)).toBeNull()
+  })
+
+  // The users these cases make go with their rows, whether the case passed or not
+  const avatarUsers: string[] = []
+  afterEach(async () => {
+    const ids = avatarUsers.splice(0)
+    await owner.query(`DELETE FROM media WHERE uploaded_by = ANY($1)`, [ids])
+    await owner.query(`DELETE FROM users WHERE id = ANY($1)`, [ids])
+  })
+
+  async function avatarRow(userId: string, id: string, key: string, status = 'clean') {
+    await owner.query(
+      `INSERT INTO media (id, store_id, purpose, uploaded_by, key, filename, content_type, file_size, status, created_at)
+       VALUES ($1, NULL, 'avatar', $2, $3, 'me.png', 'image/png', 1, $4, now() - interval '3 days')`,
+      [id, userId, key, status]
+    )
+  }
+
+  it('drops an avatar nobody attached, file and row, and keeps the one a user has', async () => {
+    const userId = randomUUID()
+    avatarUsers.push(userId)
+    await owner.query(
+      `INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, 'avatar owner', now())`,
+      [userId, `it-avatar-${userId}@example.com`]
+    )
+    const heldId = randomUUID()
+    const heldKey = await object(StorageKeys.avatar(userId, heldId, 'me.png'))
+    await avatarRow(userId, heldId, heldKey)
+    await owner.query(`UPDATE users SET avatar_media_id = $1 WHERE id = $2`, [heldId, userId])
+    const looseId = randomUUID()
+    const looseKey = await object(StorageKeys.avatar(userId, looseId, 'me.png'))
+    await avatarRow(userId, looseId, looseKey)
+
+    await cleaner.run()
+
+    expect(await storage.head(looseKey)).toBeNull()
+    expect(await storage.head(heldKey)).not.toBeNull()
+    const rows = await owner.query(`SELECT id FROM media WHERE id = ANY($1)`, [[heldId, looseId]])
+    expect(rows.rows.map((row: { id: string }) => row.id)).toEqual([heldId])
+  })
+
+  it('deletes the file of an avatar whose row is gone, and keeps the file of a row that is there', async () => {
+    const userId = randomUUID()
+    const goneKey = await object(StorageKeys.avatar(userId, randomUUID(), 'me.png'))
+    const aliveId = randomUUID()
+    const aliveKey = await object(StorageKeys.avatar(userId, aliveId, 'me.png'))
+    avatarUsers.push(userId)
+    await owner.query(
+      `INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, 'avatar owner', now())`,
+      [userId, `it-avatar-${userId}@example.com`]
+    )
+    await avatarRow(userId, aliveId, aliveKey)
+    await owner.query(`UPDATE users SET avatar_media_id = $1 WHERE id = $2`, [aliveId, userId])
+
+    await cleaner.run(later())
+
+    expect(await storage.head(goneKey)).toBeNull()
+    expect(await storage.head(aliveKey)).not.toBeNull()
+  })
+
+  it('leaves a young avatar upload alone: a confirmation may be in flight', async () => {
+    const young = await object(StorageKeys.avatarUpload(randomUUID(), randomUUID(), 'new.png'))
+
+    await cleaner.run()
+
+    expect(await storage.head(young)).not.toBeNull()
   })
 
   it('leaves a young upload alone: a confirmation may be in flight', async () => {

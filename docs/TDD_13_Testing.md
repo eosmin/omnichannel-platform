@@ -612,7 +612,7 @@ describe('Permission enforcement', () => {
   const restricted = [
     { method: 'delete', path: ApiRoutes.customers.byId('x'), permission: Permissions.CUSTOMERS_DELETE },
     { method: 'post',   path: ApiRoutes.settings.members,     permission: Permissions.TEAM_INVITE },
-    { method: 'patch',  path: ApiRoutes.settings.store,       permission: Permissions.SETTINGS_EDIT },
+    { method: 'patch',  path: ApiRoutes.organizations.storeById('x'), permission: Permissions.ORG_MANAGE_STORES },
     { method: 'post',   path: ApiRoutes.settings.apiKeys,     permission: Permissions.SETTINGS_MANAGE_API_KEYS },
     { method: 'get',    path: ApiRoutes.organizations.auditLog, permission: Permissions.ORG_VIEW_AUDIT_LOG },
     { method: 'post',   path: ApiRoutes.conversations.takeOver('x'), permission: Permissions.CONVERSATIONS_ASSIGN },

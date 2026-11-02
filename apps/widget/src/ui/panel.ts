@@ -2,7 +2,7 @@ import { WidgetAuthors, WidgetDeliveryStates, WidgetLimits } from '@platform/cor
 
 import type { WidgetText } from '../i18n'
 import type { Attachment, ChatMessage, FileLink, VisitorProfile } from '../types'
-import { FILE_ACCEPT, formatBytes, maxBytesFor, refuseFile } from '../upload'
+import { FILE_ACCEPT, formatBytes, maxBytesForMessageFile, refuseFile } from '../upload'
 
 import { el, icon, Icons } from './dom'
 import { applyStyles } from './styles'
@@ -230,7 +230,7 @@ export function mountPanel(props: PanelProps): Panel | null {
       if (refusal === 'type') say(text.fileTypeNotAllowed)
       else if (refusal === 'empty') say(text.fileEmpty)
       else if (refusal === 'size') {
-        say(text.fileTooLarge.replace('{max}', formatBytes(maxBytesFor(file.type))))
+        say(text.fileTooLarge.replace('{max}', formatBytes(maxBytesForMessageFile(file.type))))
       } else staged.push(file)
     }
     drawStaged()

@@ -97,6 +97,36 @@ export class InvitationsService {
     actor: Actor,
     held: readonly Permission[]
   ): Promise<InvitationView> {
+    return this.issue(store, input, actor, held, AuditAction.MEMBER_INVITED, null)
+  }
+
+  // The same invitation again, for an invitee who lost the email or let the link expire: a new token,
+  // the old link stops working, the email goes out again. It is a new row (the answer carries its id),
+  // under the same cooldown as inviting. Only a pending invitation of this store is found; one that was
+  // accepted, revoked or belongs to another store is a 404, not a hint that it exists.
+  async resend(
+    store: { id: string; organizationId: string; name: string },
+    invitationId: string,
+    actor: Actor,
+    held: readonly Permission[]
+  ): Promise<InvitationView> {
+    const pending = await this.prisma.client.invitation.findFirst({
+      where: { id: invitationId, storeId: store.id, status: InvitationStatus.PENDING },
+      select: { email: true, roleId: true }
+    })
+    if (pending === null) throw resourceNotFound('invitation')
+    return this.issue(store, pending, actor, held, AuditAction.INVITATION_RESENT, invitationId)
+  }
+
+  private async issue(
+    store: { id: string; organizationId: string; name: string },
+    input: { email: string; roleId: string },
+    actor: Actor,
+    held: readonly Permission[],
+    action: typeof AuditAction.MEMBER_INVITED | typeof AuditAction.INVITATION_RESENT,
+    // The invitation a resend replaces: it must still be pending when the new one is written
+    replacing: string | null
+  ): Promise<InvitationView> {
     const email = normalizeEmail(input.email)
     const role = await this.prisma.client.role.findFirst({
       where: {
@@ -130,7 +160,7 @@ export class InvitationsService {
     await this.requireCooldownPassed(store.id, email)
 
     const token = generateToken()
-    const invitation = await this.replacePending(store, email, role.id, token, actor)
+    const invitation = await this.replacePending(store, email, role.id, token, actor, replacing)
     const [inviter, destination] = await Promise.all([
       this.prisma.client.user.findUniqueOrThrow({
         where: { id: actor.userId },
@@ -158,13 +188,17 @@ export class InvitationsService {
       { removeOnComplete: true }
     )
     this.audit.log({
-      action: AuditAction.MEMBER_INVITED,
+      action,
       actor: { userId: actor.userId },
       storeId: store.id,
       organizationId: store.organizationId,
       resourceType: 'invitation',
       resourceId: invitation.id,
-      metadata: { roleId: role.id, role: role.name },
+      metadata: {
+        roleId: role.id,
+        role: role.name,
+        ...(replacing === null ? {} : { replacedInvitationId: replacing })
+      },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -214,10 +248,19 @@ export class InvitationsService {
     email: string,
     roleId: string,
     token: string,
-    actor: Actor
+    actor: Actor,
+    replacing: string | null
   ) {
     try {
       return await this.prisma.transaction(async tx => {
+        if (replacing !== null) {
+          // A revoke or an accept that got here first ends the resend: it must not bring back access
+          const claimed = await tx.invitation.updateMany({
+            where: { id: replacing, storeId: store.id, status: InvitationStatus.PENDING },
+            data: { status: InvitationStatus.REVOKED }
+          })
+          if (claimed.count === 0) throw resourceNotFound('invitation')
+        }
         await tx.invitation.updateMany({
           where: { storeId: store.id, email, status: InvitationStatus.PENDING },
           data: { status: InvitationStatus.REVOKED }

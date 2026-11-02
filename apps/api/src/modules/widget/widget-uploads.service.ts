@@ -7,6 +7,7 @@ import { CacheKeys } from '@platform/core/cache'
 import { WidgetLimits } from '@platform/core/domain'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
+  MediaPurpose,
   QUOTA_WINDOW_MS,
   sanitizeFilename,
   StorageKeys,
@@ -49,7 +50,7 @@ export class WidgetUploads {
     visitorId: string,
     body: WidgetUploadBody
   ): Promise<Pick<UploadUrlResult, 'uploadUrl'> & { uploadId: string }> {
-    refuseTypeOrSize(body.contentType, body.fileSizeBytes)
+    refuseTypeOrSize(body.contentType, body.fileSizeBytes, MediaPurpose.MESSAGE)
     // The visitor's counter first, the site's only for a request the visitor's let through: a visitor
     // who keeps asking after the refusal cannot use up the quota of the whole site
     const bucket = Math.floor(Date.now() / QUOTA_WINDOW_MS)

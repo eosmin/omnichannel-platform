@@ -307,6 +307,158 @@ describe('Inviting to a store', () => {
     })
   })
 
+  describe('resending an invitation', () => {
+    const resend = (id: string, as = asAdmin()) => as.post(ApiRoutes.settings.invitationResend(id))
+
+    it('issues a new token, ends the old link and sends the email again', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      const oldToken = tokenSentTo(email)
+      await ageInvitation(first.id)
+
+      const response = await resend(first.id)
+
+      expect(response.status).toBe(200)
+      const second = response.body as InvitationBody
+      expect(second.id).not.toBe(first.id)
+      expect(second).toMatchObject({
+        email,
+        role: { id: ctx.roleIds[RoleNames.AGENT], name: RoleNames.AGENT },
+        expired: false
+      })
+      const newToken = tokenSentTo(email)
+      expect(newToken).not.toBe(oldToken)
+      expect(emailsOf(app).to(email)).toHaveLength(2)
+      const rows = await owner.invitation.findMany({ where: { storeId: ctx.storeA.id, email } })
+      expect(rows.find(row => row.id === first.id)?.status).toBe('REVOKED')
+      expect(rows.find(row => row.id === second.id)).toMatchObject({
+        status: 'PENDING',
+        tokenHash: hashToken(newToken)
+      })
+      expect(JSON.stringify(response.body)).not.toContain(newToken)
+    })
+
+    it('brings back an invitation whose link expired, with a full lifetime', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      await owner.invitation.update({
+        where: { id: first.id },
+        data: {
+          expiresAt: new Date(Date.now() - 1000),
+          createdAt: new Date(Date.now() - 2 * INVITATION_RESEND_COOLDOWN_SECONDS * 1000)
+        }
+      })
+
+      const response = await resend(first.id)
+
+      expect(response.status).toBe(200)
+      const days =
+        (new Date((response.body as InvitationBody).expiresAt).getTime() - Date.now()) / MS_PER_DAY
+      expect(days).toBeGreaterThan(INVITATION_TTL_DAYS - 0.01)
+    })
+
+    it('does not bring back an invitation that was revoked while the resend was on its way', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      await ageInvitation(first.id)
+
+      const [revoked, resent] = await Promise.all([
+        asAdmin().delete(ApiRoutes.settings.invitationById(first.id)),
+        resend(first.id)
+      ])
+
+      // The revoke wins (204) or finds the invitation already replaced by the resend (404)
+      expect([204, 404]).toContain(revoked.status)
+      // Either the resend came first (and its new invitation is the only pending one) or it found nothing
+      const pending = await owner.invitation.count({
+        where: { storeId: ctx.storeA.id, email, status: 'PENDING' }
+      })
+      expect(pending).toBe(resent.status === 200 ? 1 : 0)
+      expect([200, 404]).toContain(resent.status)
+    })
+
+    it('audits it as a resend, without the address or the token', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      await ageInvitation(first.id)
+
+      const second = (await resend(first.id)).body as InvitationBody
+
+      const entry = await auditEntry(AuditAction.INVITATION_RESENT, second.id)
+      expect(entry).toMatchObject({ userId: ctx.adminA.id, storeId: ctx.storeA.id })
+      expect(entry?.metadata).toMatchObject({ replacedInvitationId: first.id })
+      expect(JSON.stringify(entry)).not.toContain(tokenSentTo(email))
+      expect(JSON.stringify(entry)).not.toContain(email)
+    })
+
+    it('is held to the cooldown of inviting: a second resend at once is a 429 and sends nothing', async () => {
+      const email = newEmail()
+      const first = (await invite(email)).body as InvitationBody
+      await ageInvitation(first.id)
+      const second = (await resend(first.id)).body as InvitationBody
+
+      const again = await resend(second.id)
+
+      expect(again.status).toBe(429)
+      expect((again.body as ErrorBody).error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      expect(emailsOf(app).to(email)).toHaveLength(2)
+    })
+
+    it('answers 404 to a revoked one, an accepted one, a missing one and one of another store', async () => {
+      const revoked = (await invite(newEmail())).body as InvitationBody
+      await asAdmin().delete(ApiRoutes.settings.invitationById(revoked.id))
+      const accepted = (await invite(newEmail())).body as InvitationBody
+      await owner.invitation.update({ where: { id: accepted.id }, data: { status: 'ACCEPTED' } })
+      const elsewhere = (
+        await api(app, ctx.adminA2, ctx.storeA2)
+          .post(ApiRoutes.settings.members)
+          .send({ email: newEmail(), roleId: ctx.roleIds[RoleNames.AGENT] })
+      ).body as InvitationBody
+      const before = emailsOf(app).jobs.length
+
+      for (const id of [revoked.id, accepted.id, randomUUID(), elsewhere.id]) {
+        expect((await resend(id)).status).toBe(404)
+      }
+
+      expect(emailsOf(app).jobs).toHaveLength(before)
+      expect(
+        (await owner.invitation.findUniqueOrThrow({ where: { id: elsewhere.id } })).status
+      ).toBe('PENDING')
+    })
+
+    it('is refused to a member without the permission, and to a path that is not an id', async () => {
+      const invitation = (await invite(newEmail())).body as InvitationBody
+
+      expect((await resend(invitation.id, api(app, ctx.viewerA, ctx.storeA))).status).toBe(403)
+      expect((await resend('not-an-id')).status).toBe(400)
+    })
+
+    it('does not resend into a role that holds what the caller lacks', async () => {
+      const inviterRole = await owner.role.create({
+        data: {
+          storeId: ctx.storeA.id,
+          name: `${prefix}-resender`,
+          permissions: { create: [{ name: Permissions.TEAM_INVITE }] }
+        }
+      })
+      const resender = await createActor(owner, app, {
+        prefix,
+        name: 'resender',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: inviterRole.id
+      })
+      const adminInvitation = (await invite(newEmail(), ctx.roleIds[RoleNames.ADMIN]))
+        .body as InvitationBody
+      await ageInvitation(adminInvitation.id)
+
+      const response = await resend(adminInvitation.id, api(app, resender, ctx.storeA))
+
+      expect(response.status).toBe(403)
+      expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.PERMISSION_DENIED)
+    })
+  })
+
   describe('revoking an invitation', () => {
     it('ends it, keeps the record, and audits it', async () => {
       const invitation = (await invite(newEmail())).body as InvitationBody

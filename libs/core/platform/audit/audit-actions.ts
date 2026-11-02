@@ -9,6 +9,8 @@ export const AuditAction = {
   MAGIC_LINK_REQUESTED: 'user.magic_link_requested',
   MAGIC_LINK_CONSUMED: 'user.magic_link_consumed',
   SESSION_FAMILY_REVOKED: 'user.session_family_revoked',
+  ACCOUNT_PROFILE_UPDATED: 'user.profile_updated',
+  ACCOUNT_PREFERENCES_UPDATED: 'user.preferences_updated',
 
   // Tenancy
   ORGANIZATION_CREATED: 'organization.created',
@@ -18,6 +20,7 @@ export const AuditAction = {
   STORE_DELETED: 'store.deleted',
   MEMBER_INVITED: 'member.invited',
   INVITATION_REVOKED: 'member.invitation_revoked',
+  INVITATION_RESENT: 'member.invitation_resent',
   MEMBER_JOINED: 'member.joined',
   MEMBER_REMOVED: 'member.removed',
   ROLE_CHANGED: 'member.role_changed',

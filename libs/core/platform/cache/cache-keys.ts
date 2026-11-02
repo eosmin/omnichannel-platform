@@ -65,7 +65,9 @@ export const CacheKeys = {
 
   // Where the cleanup of stray media stopped listing the bucket, for the next run
   mediaCleanup: {
-    cursor: () => 'media-cleanup:cursor'
+    cursor: () => 'media-cleanup:cursor',
+    // The same for the files of the users (avatars), which sit outside `stores/`
+    avatarCursor: () => 'media-cleanup:avatar-cursor'
   },
 
   eventsBridge: {

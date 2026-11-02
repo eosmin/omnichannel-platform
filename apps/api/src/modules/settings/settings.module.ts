@@ -4,6 +4,7 @@ import { TenancyModule } from '../tenancy'
 
 import { BusinessHoursService } from './business-hours.service'
 import { InboxSettingsService } from './inbox-settings.service'
+import { PreferencesService } from './preferences.service'
 import { SettingsController } from './settings.controller'
 import { SnippetsService } from './snippets.service'
 import { TagsService } from './tags.service'
@@ -12,6 +13,12 @@ import { TagsService } from './tags.service'
 @Module({
   imports: [TenancyModule],
   controllers: [SettingsController],
-  providers: [TagsService, SnippetsService, BusinessHoursService, InboxSettingsService]
+  providers: [
+    TagsService,
+    SnippetsService,
+    BusinessHoursService,
+    InboxSettingsService,
+    PreferencesService
+  ]
 })
 export class SettingsModule {}
