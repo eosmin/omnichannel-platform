@@ -16,7 +16,12 @@ import {
   NotificationTypes,
   PushLimits
 } from '@platform/core/notifications'
-import { JobNames, QueueNames, type SendWebPushJob } from '@platform/core/queues'
+import {
+  JobNames,
+  type QueueEmailDigestJob,
+  QueueNames,
+  type SendWebPushJob
+} from '@platform/core/queues'
 import { RealtimeEvents } from '@platform/core/realtime'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -49,7 +54,7 @@ export interface SendNotificationToStore extends Omit<SendNotification, 'userId'
 
 // The notifications of a person in a store (TDD_06 §6). Every row is saved, so that the center shows it;
 // the preferences and quiet hours only decide what else happens: the live event, the web push, and
-// (Step 3.5 PR D, which adds its job here) the email digest.
+// the email (a mark on the row that the digest of the worker reads, and a job for the immediate kind).
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name)
@@ -58,7 +63,8 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly preferences: NotificationPreferencesService,
-    @InjectQueue(QueueNames.NOTIFICATIONS) private readonly queue: Queue<SendWebPushJob>
+    @InjectQueue(QueueNames.NOTIFICATIONS)
+    private readonly queue: Queue<SendWebPushJob | QueueEmailDigestJob>
   ) {}
 
   async send(input: SendNotification): Promise<void> {
@@ -76,7 +82,8 @@ export class NotificationsService {
         params: input.params ?? {},
         resourceType: input.resourceType ?? null,
         resourceId: input.resourceId ?? null,
-        actionPath: input.actionPath ?? null
+        actionPath: input.actionPath ?? null,
+        emailPendingAt: prefs.email ? new Date() : null
       },
       select: { id: true, messageKey: true, actionPath: true, createdAt: true }
     })
@@ -88,6 +95,8 @@ export class NotificationsService {
 
     if (prefs.inApp) this.emitLive(input, row, defaults.severity, sound)
     if (prefs.push && !quiet) await this.queueWebPush(input.userId, row.id)
+    // Quiet hours do not hold the email back: they pause what makes noise, and a mail is read later
+    if (prefs.email) await this.queueEmailDigest(input.userId, row.id)
   }
 
   private emitLive(
@@ -119,30 +128,46 @@ export class NotificationsService {
         select: { id: true }
       })
       if (browser === null) return
-      // Redis down makes the queue wait instead of fail: the action is not held for a push
-      let timer: NodeJS.Timeout | undefined
-      try {
-        await Promise.race([
-          this.queue.add(
-            JobNames.SEND_WEB_PUSH,
-            { userId, notificationId },
-            { jobId: `${JobNames.SEND_WEB_PUSH}-${notificationId}` }
-          ),
-          new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(
-              () => reject(new Error('the queue did not answer')),
-              PushLimits.ENQUEUE_TIMEOUT_MS
-            )
-          })
-        ])
-      } finally {
-        clearTimeout(timer)
-      }
+      await this.enqueue(JobNames.SEND_WEB_PUSH, { userId, notificationId })
     } catch (error) {
       this.logger.warn(
         { userId, notificationId, err: String(error) },
         'web push could not be queued'
       )
+    }
+  }
+
+  // One job per notification: the email goes at once or waits for the digest, as the person chose.
+  // The row carries the mark, so a queue that is down costs only the immediate kind.
+  private async queueEmailDigest(userId: string, notificationId: string): Promise<void> {
+    try {
+      await this.enqueue(JobNames.QUEUE_EMAIL_DIGEST, { userId, notificationId })
+    } catch (error) {
+      this.logger.warn(
+        { userId, notificationId, err: String(error) },
+        'the email of a notification could not be queued'
+      )
+    }
+  }
+
+  // Redis down makes the queue wait instead of fail: the action is not held for a job
+  private async enqueue(
+    name: typeof JobNames.SEND_WEB_PUSH | typeof JobNames.QUEUE_EMAIL_DIGEST,
+    data: SendWebPushJob & QueueEmailDigestJob
+  ): Promise<void> {
+    let timer: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        this.queue.add(name, data, { jobId: `${name}-${data.notificationId}` }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('the queue did not answer')),
+            PushLimits.ENQUEUE_TIMEOUT_MS
+          )
+        })
+      ])
+    } finally {
+      clearTimeout(timer)
     }
   }
 

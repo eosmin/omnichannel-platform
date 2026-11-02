@@ -488,6 +488,83 @@ describe('Notifications', () => {
       })
     })
 
+    describe('email', () => {
+      const sendMentioned = (): Promise<void> =>
+        service.send({
+          userId: ctx.adminA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.CONVERSATION_MENTIONED
+        })
+
+      beforeEach(() => {
+        jest
+          .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
+          .mockImplementation(() => undefined)
+      })
+
+      it('marks the row as waiting for email and queues one job named after it', async () => {
+        await sendMentioned()
+
+        const row = await owner.notification.findFirstOrThrow({ where: { userId: ctx.adminA.id } })
+        expect(row.emailPendingAt).toBeInstanceOf(Date)
+        expect(pushQueue.jobs).toContainEqual({
+          name: JobNames.QUEUE_EMAIL_DIGEST,
+          data: { userId: ctx.adminA.id, notificationId: row.id },
+          opts: { jobId: `${JobNames.QUEUE_EMAIL_DIGEST}-${row.id}` }
+        })
+      })
+
+      it('marks and queues nothing for a type with no email, or one the user turned off', async () => {
+        await service.send({
+          userId: ctx.adminA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.CONVERSATION_ASSIGNED
+        })
+        await owner.notificationPreference.create({
+          data: {
+            userId: ctx.adminA.id,
+            storeId: ctx.storeA.id,
+            type: NotificationTypes.CONVERSATION_MENTIONED,
+            inApp: true,
+            push: false,
+            email: false,
+            sound: false
+          }
+        })
+        await sendMentioned()
+
+        const rows = await owner.notification.findMany({ where: { userId: ctx.adminA.id } })
+        expect(rows.map(row => row.emailPendingAt)).toEqual([null, null])
+        expect(pushQueue.jobs.filter(job => job.name === JobNames.QUEUE_EMAIL_DIGEST)).toEqual([])
+      })
+
+      it('does not hold the email back in quiet hours', async () => {
+        const hour = new Date().getUTCHours()
+        await owner.userNotificationSettings.create({
+          data: {
+            userId: ctx.adminA.id,
+            quietHoursEnabled: true,
+            quietHoursStart: hour,
+            quietHoursEnd: (hour + 2) % 24,
+            timezone: 'UTC'
+          }
+        })
+        await sendMentioned()
+
+        const row = await owner.notification.findFirstOrThrow({ where: { userId: ctx.adminA.id } })
+        expect(row.emailPendingAt).toBeInstanceOf(Date)
+      })
+
+      it('keeps the row, and its mark, when the queue is down', async () => {
+        jest.spyOn(pushQueue, 'add').mockRejectedValue(new Error('redis is down'))
+
+        await expect(sendMentioned()).resolves.toBeUndefined()
+
+        const row = await owner.notification.findFirstOrThrow({ where: { userId: ctx.adminA.id } })
+        expect(row.emailPendingAt).toBeInstanceOf(Date)
+      })
+    })
+
     it('sends to the members of a store who hold the permission, except the excluded', async () => {
       jest
         .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')

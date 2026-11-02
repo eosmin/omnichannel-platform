@@ -7,6 +7,7 @@ import { type EmailTemplate, EmailTemplates } from '@platform/core/queues'
 
 import { Invitation, invitationSchema } from './invitation'
 import { MagicLink, magicLinkSchema } from './magic-link'
+import { NotificationDigest, notificationDigestSchema } from './notification-digest'
 
 // What the renderer needs from a template: its data schema (the job payload is data from outside the
 // type system), the namespace of its messages (which holds the subject) and its component.
@@ -43,5 +44,10 @@ export const templateRegistry: Record<EmailTemplate, RegisteredTemplate> = {
     namespace: 'email.invitation',
     schema: invitationSchema,
     element: (props, locale, t) => Invitation({ ...props, locale, t })
+  }),
+  [EmailTemplates.NOTIFICATION_DIGEST]: define({
+    namespace: 'email.notificationDigest',
+    schema: notificationDigestSchema,
+    element: (props, locale, t) => NotificationDigest({ ...props, locale, t })
   })
 }

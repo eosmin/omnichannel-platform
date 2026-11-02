@@ -3,7 +3,8 @@
 // cannot be rendered.
 export const EmailTemplates = {
   MAGIC_LINK: 'magic-link',
-  INVITATION: 'invitation'
+  INVITATION: 'invitation',
+  NOTIFICATION_DIGEST: 'notification-digest'
 } as const
 
 export type EmailTemplate = (typeof EmailTemplates)[keyof typeof EmailTemplates]

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
-import { JobNames, QueueNames } from '@platform/core/queues'
+import { Locales } from '@platform/core/i18n'
+import { EmailTemplates, JobNames, QueueNames } from '@platform/core/queues'
 
 import { deleteMessagesTo, messagesTo, waitForMessages } from './testing/mailpit'
 import { magicLinkJob, startWorkerTestApp, type WorkerTestApp } from './testing/worker-test-app'
@@ -41,6 +42,35 @@ describe('SEND_EMAIL', () => {
     expect(message?.From.Address).toBe('noreply@platform.local')
     expect(message?.HTML).toContain('https://app.example.com/auth/magic?token=abc123')
     expect(message?.Text).toContain('https://app.example.com/auth/magic?token=abc123')
+  })
+
+  it('delivers a notification digest to Mailpit with its items and the link to the settings', async () => {
+    await test.queue(QueueNames.EMAIL).add(JobNames.SEND_EMAIL, {
+      template: EmailTemplates.NOTIFICATION_DIGEST,
+      to,
+      locale: Locales.EN,
+      data: {
+        items: [
+          {
+            storeName: 'Shop',
+            title: 'Conversation assigned',
+            body: 'Ana assigned you a conversation.',
+            url: 'https://app.example.com/s/s1/inbox/c1'
+          }
+        ],
+        moreCount: 2,
+        appUrl: 'https://app.example.com/',
+        settingsUrl: 'https://app.example.com/account/notifications'
+      },
+      tags: { template: EmailTemplates.NOTIFICATION_DIGEST }
+    })
+
+    const [message] = await waitForMessages(to)
+
+    expect(message?.Subject).toBe('You have new notifications')
+    expect(message?.Text).toContain('Conversation assigned')
+    expect(message?.Text).toContain('And 2 more, waiting in the app.')
+    expect(message?.HTML).toContain('href="https://app.example.com/account/notifications"')
   })
 
   it('renders in the locale of the job', async () => {

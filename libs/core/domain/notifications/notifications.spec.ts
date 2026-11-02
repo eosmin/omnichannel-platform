@@ -1,6 +1,7 @@
 import { NotificationChannel } from '../index'
 
 import {
+  isDailyDigestHour,
   NotificationDefaults,
   NotificationGroupTypes,
   NotificationSeverity,
@@ -88,5 +89,16 @@ describe('channel rule', () => {
         expect(type).toMatch(/^(conversation|message)\./)
       }
     }
+  })
+})
+
+describe('isDailyDigestHour', () => {
+  // 14:10 UTC is 08:10 in El Salvador (UTC-6, no daylight saving) and 15:10 in Madrid in winter
+  const at = new Date('2026-11-02T14:10:00.000Z')
+
+  it('is true only where the local clock reads the digest hour', () => {
+    expect(isDailyDigestHour('America/El_Salvador', at)).toBe(true)
+    expect(isDailyDigestHour('UTC', at)).toBe(false)
+    expect(isDailyDigestHour('Europe/Madrid', at)).toBe(false)
   })
 })

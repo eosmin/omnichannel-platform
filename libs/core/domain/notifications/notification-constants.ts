@@ -1,5 +1,7 @@
 import { DigestFrequency, NotificationChannel } from '../status-enums'
 
+import { hourIn } from './quiet-hours'
+
 export const NotificationTypes = {
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_MENTIONED: 'conversation.mentioned',
@@ -231,3 +233,21 @@ export const NotificationSettingsDefaults = {
   crossStoreEnabled: true,
   crossStoreSupervisorOnly: false
 } as const
+
+// The email digest (TDD_06 §6.4)
+export const DigestLimits = {
+  // The hour, on the clock of the person, at which the daily digest goes out (TDD_07 §4: 08:10)
+  DAILY_LOCAL_HOUR: 8,
+  // Rows one email lists; the rest is counted ("and 12 more") and read in the app
+  MAX_ITEMS: 20,
+  // A row waiting for email longer than this is dropped unsent: the person had it switched off, or the
+  // digest could not run, and a morning email about last week is noise
+  MAX_AGE_HOURS: 48,
+  // People one scan of the scheduler queues; a full scan is logged and the next hour takes the rest
+  SCAN_BATCH: 500
+} as const
+
+// Whether the daily digest of a person is due at this moment: their clock reads the digest hour
+export function isDailyDigestHour(timezone: string, at: Date): boolean {
+  return hourIn(timezone, at) === DigestLimits.DAILY_LOCAL_HOUR
+}
