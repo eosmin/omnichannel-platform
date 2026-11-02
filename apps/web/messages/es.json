@@ -139,7 +139,20 @@
       "description": "El nombre que ve tu equipo.",
       "saved": "Perfil guardado.",
       "nameInvalid": "Escribe un nombre de hasta 100 caracteres.",
-      "emailHint": "Es la dirección con la que inicias sesión."
+      "emailHint": "Es la dirección con la que inicias sesión.",
+      "avatar": {
+        "title": "Foto",
+        "alt": "Tu foto de perfil",
+        "choose": "Elegir una foto",
+        "change": "Cambiar foto",
+        "remove": "Quitar",
+        "uploading": "Subiendo...",
+        "uploaded": "Foto subida.",
+        "removed": "Foto quitada.",
+        "processing": "Preparando tu foto...",
+        "refused": "No se pudo usar esta foto. Prueba con otra.",
+        "hint": "JPEG, PNG o WebP, hasta {size} MB. Se reduce a un cuadrado pequeño y se le quitan los metadatos."
+      }
     },
     "preferences": {
       "title": "Preferencias",

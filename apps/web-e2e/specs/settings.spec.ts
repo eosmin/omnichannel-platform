@@ -132,6 +132,34 @@ test.describe('my account', () => {
     await expect(page.getByText(en.account.preferences.saved)).toBeVisible()
   })
 
+  // A viewer holds no permission to upload to the store, and still sets a picture: it belongs to the
+  // person. The file is scanned and re-encoded by the worker, so the picture shows a moment later.
+  test('a viewer sets a picture, sees it after a reload and takes it away', async ({ page }) => {
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    await signIn(page, VIEWER)
+    await page.goto(AppPaths.account.profile)
+    const picture = page.getByRole('img', { name: en.account.profile.avatar.alt })
+    await expect(picture).toHaveCount(0)
+
+    await page
+      .getByTestId('avatar-input')
+      .setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: png })
+    await expect(page.getByText(en.account.profile.avatar.uploaded)).toBeVisible()
+    await expect(picture).toBeVisible({ timeout: 60_000 })
+    await page.reload()
+    await expect(picture).toBeVisible()
+
+    await page.getByRole('button', { name: en.account.profile.avatar.remove }).click()
+    await expect(page.getByText(en.account.profile.avatar.removed)).toBeVisible()
+    await expect(picture).toHaveCount(0)
+    // No row is left to start the next run with a picture
+    await page.reload()
+    await expect(picture).toHaveCount(0)
+  })
+
   test('the name is changed and shown in the top bar', async ({ page }) => {
     await signIn(page, AGENT)
     await page.goto(AppPaths.account.profile)

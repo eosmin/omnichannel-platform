@@ -1,7 +1,13 @@
 import { MediaPurpose } from './media-purpose'
 import { AvatarUpload, UploadLimits } from './upload-constants'
 import { refuseUpload, UploadRefusals } from './upload-rules'
-import { ClientUploadPurposes, confirmUploadSchema, requestUploadUrlSchema } from './upload-schemas'
+import {
+  ClientUploadPurposes,
+  confirmAvatarUploadSchema,
+  confirmUploadSchema,
+  requestAvatarUploadSchema,
+  requestUploadUrlSchema
+} from './upload-schemas'
 
 const request = {
   purpose: MediaPurpose.MESSAGE,
@@ -68,10 +74,13 @@ describe('refuseUpload for an avatar', () => {
 describe('the upload schemas', () => {
   it('accept a request for a purpose a client may upload for', () => {
     expect(requestUploadUrlSchema.parse(request)).toEqual(request)
-    expect(requestUploadUrlSchema.parse({ ...request, purpose: MediaPurpose.AVATAR }).purpose).toBe(
-      MediaPurpose.AVATAR
-    )
-    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE, MediaPurpose.AVATAR])
+    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE])
+  })
+
+  it('refuse the avatar as a purpose of a store: it has routes of its own', () => {
+    expect(
+      requestUploadUrlSchema.safeParse({ ...request, purpose: MediaPurpose.AVATAR }).success
+    ).toBe(false)
   })
 
   it.each([
@@ -127,5 +136,30 @@ describe('the upload schemas', () => {
     expect(
       refuseUpload('application/pdf', UploadLimits.MAX_FILE_SIZE_BYTES + 1, MediaPurpose.MESSAGE)
     ).toBe(UploadRefusals.TOO_LARGE)
+  })
+})
+
+describe('the avatar upload schemas', () => {
+  const body = { filename: 'me.png', contentType: 'image/png', fileSizeBytes: 1024 }
+
+  it('take the file and nothing else: no purpose, store or user is read from the body', () => {
+    expect(requestAvatarUploadSchema.parse(body)).toEqual(body)
+    for (const extra of [{ purpose: 'avatar' }, { storeId: 'x' }, { userId: 'x' }]) {
+      expect(requestAvatarUploadSchema.safeParse({ ...body, ...extra }).success).toBe(false)
+    }
+  })
+
+  it.each([0, -1, 1.5, '10'])('refuse the size %j', fileSizeBytes => {
+    expect(requestAvatarUploadSchema.safeParse({ ...body, fileSizeBytes }).success).toBe(false)
+  })
+
+  it('confirm needs a UUID media id, a key, and no extra field', () => {
+    const confirm = { ...body, mediaId: crypto.randomUUID(), key: 'users/u/avatar-uploads/m/a.png' }
+    expect(confirmAvatarUploadSchema.safeParse(confirm).success).toBe(true)
+    expect(confirmAvatarUploadSchema.safeParse({ ...confirm, mediaId: 'x' }).success).toBe(false)
+    expect(confirmAvatarUploadSchema.safeParse({ ...confirm, key: '' }).success).toBe(false)
+    expect(confirmAvatarUploadSchema.safeParse({ ...confirm, purpose: 'avatar' }).success).toBe(
+      false
+    )
   })
 })

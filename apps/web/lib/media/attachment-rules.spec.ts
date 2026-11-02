@@ -1,3 +1,5 @@
+import { MediaPurpose } from '@platform/core/storage'
+
 import {
   acceptFor,
   attachmentMessageType,
@@ -24,6 +26,22 @@ describe('refuseAttachment', () => {
   it('gives a video the larger limit', () => {
     expect(refuseAttachment({ type: 'video/mp4', size: 20 * 1024 * 1024 })).toBeNull()
     expect(refuseAttachment({ type: 'video/mp4', size: 26 * 1024 * 1024 })).toBe('too_large')
+  })
+})
+
+describe('refuseAttachment for a picture', () => {
+  it('takes a still image within 2 MB and refuses what a message file may be', () => {
+    expect(refuseAttachment({ type: 'image/webp', size: 1000 }, MediaPurpose.AVATAR)).toBeNull()
+    expect(refuseAttachment({ type: 'image/gif', size: 1000 }, MediaPurpose.AVATAR)).toBe(
+      'type_not_allowed'
+    )
+    expect(refuseAttachment({ type: 'video/mp4', size: 1000 }, MediaPurpose.AVATAR)).toBe(
+      'type_not_allowed'
+    )
+    expect(
+      refuseAttachment({ type: 'image/png', size: 3 * 1024 * 1024 }, MediaPurpose.AVATAR)
+    ).toBe('too_large')
+    expect(refuseAttachment({ type: 'image/png', size: 0 }, MediaPurpose.AVATAR)).toBe('empty')
   })
 })
 

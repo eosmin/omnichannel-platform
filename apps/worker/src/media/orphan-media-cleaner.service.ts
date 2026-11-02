@@ -154,8 +154,10 @@ export class OrphanMediaCleaner {
         throw error
       }
       token = page.next
-      // A final avatar file (users/<id>/avatar/<media>/...) is stray when no row has its media id: the
-      // row of a replaced picture goes first and its file second, and a failure in between leaves it
+      // A final avatar file (users/<id>/avatar/<media>/...) is stray when the row of its media id does not
+      // point at it: there is no row (the row of a replaced picture goes first and its file second, and a
+      // failure in between leaves it), or the worker re-encoded the picture and the file it was made from
+      // was not deleted
       const finals = page.objects.flatMap(object => {
         const parsed = parseAvatarKey(object.key)
         return parsed !== null && object.lastModified.getTime() < cutoff
@@ -169,11 +171,11 @@ export class OrphanMediaCleaner {
           ? []
           : await this.prisma.client.media.findMany({
               where: { id: { in: lookable.map(object => object.mediaId) } },
-              select: { id: true }
+              select: { id: true, key: true }
             })
-      const alive = new Set(known.map(row => row.id))
+      const alive = new Set(known.map(row => row.key))
       const strayFinals = new Set(
-        finals.filter(object => !alive.has(object.mediaId)).map(object => object.key)
+        finals.filter(object => !alive.has(object.key)).map(object => object.key)
       )
       for (const object of page.objects) {
         const stagingStray =
@@ -203,6 +205,13 @@ export class OrphanMediaCleaner {
     // first (the row is kept) or finds no row to attach, never a row that this run removes under it.
     // Two runs at once take different rows (SKIP LOCKED). The file goes second: a failure leaves a file
     // with no row, which the sweep of stray avatar files finds by its media id.
+    // A picture the scan or the re-encode refused is no picture: the pointer of the person who attached it
+    // while it was pending is cleared, so the row is no longer held and goes below
+    await this.prisma.client.$executeRaw`
+      UPDATE users SET avatar_media_id = NULL WHERE avatar_media_id IN (
+        SELECT id FROM media
+        WHERE purpose = ${MediaPurpose.AVATAR} AND store_id IS NULL AND created_at < ${cutoff}
+          AND status IN (${MediaStatus.INFECTED}, ${MediaStatus.UNSCANNABLE}))`
     const rows = await this.prisma.client.$queryRaw<{ key: string }[]>`
       DELETE FROM media WHERE id IN (
         SELECT m.id FROM media m

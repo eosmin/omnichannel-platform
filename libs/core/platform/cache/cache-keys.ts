@@ -48,7 +48,9 @@ export const CacheKeys = {
     storeQuota: (storeId: string, bucket: number) => `store:${storeId}:upload-urls:${bucket}`,
     userQuota: (storeId: string, userId: string, bucket: number) =>
       `store:${storeId}:user:${userId}:upload-urls:${bucket}`,
-    requester: (storeId: string, mediaId: string) => `store:${storeId}:upload:${mediaId}:requester`
+    requester: (storeId: string, mediaId: string) => `store:${storeId}:upload:${mediaId}:requester`,
+    // The avatar urls of one person in the hour: an avatar has no store, so no store's counter
+    avatarQuota: (userId: string, bucket: number) => `user:${userId}:avatar-upload-urls:${bucket}`
   },
 
   // Uploads of a web widget visitor: what the api recorded when it signed the url (the visitor, the

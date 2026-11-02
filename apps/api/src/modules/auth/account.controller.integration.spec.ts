@@ -99,7 +99,8 @@ describe('AccountController', () => {
       ['GET', ApiRoutes.account.profile],
       ['PATCH', ApiRoutes.account.profile],
       ['GET', ApiRoutes.account.preferences],
-      ['PATCH', ApiRoutes.account.preferences]
+      ['PATCH', ApiRoutes.account.preferences],
+      ['DELETE', ApiRoutes.account.avatar]
     ])('%s %s demands an access token', async (method, path) => {
       expect((await call(method, path, method === 'GET' ? {} : { body: {} })).status).toBe(
         UNAUTHORIZED
@@ -152,7 +153,7 @@ describe('AccountController', () => {
       }
     })
 
-    it('serves a clean picture, and says nothing of one still being scanned', async () => {
+    it('serves a picture once it is clean and re-encoded, and says nothing of one still being prepared', async () => {
       const me = await person()
       const pending = await avatar(me.id, MediaStatus.PENDING)
       const set = await call<ProfileBody>('PATCH', ApiRoutes.account.profile, {
@@ -163,6 +164,13 @@ describe('AccountController', () => {
 
       await test.asOwner(client =>
         client.query(`UPDATE media SET status = 'clean' WHERE id = $1`, [pending])
+      )
+      // Clean is not enough: the uploaded file is not served, only the one the worker re-encoded
+      const scanned = await call<ProfileBody>('GET', ApiRoutes.account.profile, { token: me.token })
+      expect(scanned.body).toMatchObject({ avatarMediaId: pending, avatarUrl: null })
+
+      await test.asOwner(client =>
+        client.query(`UPDATE media SET processed_at = now() WHERE id = $1`, [pending])
       )
       const clean = await call<ProfileBody>('GET', ApiRoutes.account.profile, { token: me.token })
       expect(clean.body.avatarUrl).toContain(`users/${me.id}/avatar/${pending}`)
@@ -223,6 +231,26 @@ describe('AccountController', () => {
       })
       expect(none.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
       expect(await mediaExists(second)).toBe(false)
+    })
+
+    it('takes the picture away with DELETE, row and file, and does nothing when there is none', async () => {
+      const me = await person()
+      const none = await call<ProfileBody>('DELETE', ApiRoutes.account.avatar, { token: me.token })
+      expect(none.status).toBe(OK)
+      expect(none.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
+
+      const id = await avatar(me.id, MediaStatus.CLEAN)
+      await call('PATCH', ApiRoutes.account.profile, {
+        token: me.token,
+        body: { avatarMediaId: id }
+      })
+      const removed = await call<ProfileBody>('DELETE', ApiRoutes.account.avatar, {
+        token: me.token
+      })
+
+      expect(removed.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
+      expect(await mediaExists(id)).toBe(false)
+      expect(await storage.head(StorageKeys.avatar(me.id, id, 'me.png'))).toBeNull()
     })
 
     it('is a 404 for the picture of someone else, a missing id, or a file that is not an avatar', async () => {

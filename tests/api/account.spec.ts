@@ -44,6 +44,7 @@ const BAD_REQUEST = 400
 const UNAUTHORIZED = 401
 const FORBIDDEN = 403
 const NOT_FOUND = 404
+const TOO_MANY_REQUESTS = 429
 
 // 1x1 transparent PNG
 const PNG = Buffer.from(
@@ -201,11 +202,9 @@ describe('The account of a person', () => {
   })
 
   describe('the avatar', () => {
-    const asAgent = () => api(app, ctx.agentA, ctx.storeA)
-
-    const requestUpload = (as = asAgent(), overrides: Record<string, unknown> = {}) =>
-      as.post(ApiRoutes.media.uploadUrl).send({
-        purpose: MediaPurpose.AVATAR,
+    // The routes of the avatar need no store: nobody sends X-Store-Id here
+    const requestUpload = (as = me(), overrides: Record<string, unknown> = {}) =>
+      as.post(ApiRoutes.account.avatarUploadUrl).send({
         filename: 'me.png',
         contentType: 'image/png',
         fileSizeBytes: PNG.length,
@@ -214,7 +213,6 @@ describe('The account of a person', () => {
     const confirmBody = (upload: UploadUrlBody, overrides: Record<string, unknown> = {}) => ({
       mediaId: upload.mediaId,
       key: upload.key,
-      purpose: MediaPurpose.AVATAR,
       filename: 'me.png',
       contentType: 'image/png',
       fileSizeBytes: PNG.length,
@@ -228,13 +226,14 @@ describe('The account of a person', () => {
       })
 
     // An avatar uploaded and confirmed the way a client does it
-    async function uploadAvatar(as = asAgent(), userId = ctx.agentA.id) {
+    async function uploadAvatar(as = me(), userId = ctx.agentA.id) {
       const upload = (await requestUpload(as)).body as UploadUrlBody
       objects.add(upload.key)
       objects.add(StorageKeys.avatar(userId, upload.mediaId, 'me.png'))
       expect((await put(upload.uploadUrl, PNG)).status).toBe(OK)
-      const confirmed = await as.post(ApiRoutes.media.confirmUpload).send(confirmBody(upload))
+      const confirmed = await as.post(ApiRoutes.account.avatarConfirm).send(confirmBody(upload))
       expect(confirmed.status).toBe(OK)
+      expect(confirmed.body).toEqual({ mediaId: upload.mediaId, status: MediaStatus.PENDING })
       return upload
     }
 
@@ -263,12 +262,12 @@ describe('The account of a person', () => {
 
     it('confirming twice answers with the same media', async () => {
       const upload = await uploadAvatar()
-      const again = await asAgent().post(ApiRoutes.media.confirmUpload).send(confirmBody(upload))
+      const again = await me().post(ApiRoutes.account.avatarConfirm).send(confirmBody(upload))
       expect(again.status).toBe(OK)
-      expect((again.body as { id: string }).id).toBe(upload.mediaId)
+      expect((again.body as { mediaId: string }).mediaId).toBe(upload.mediaId)
     })
 
-    it('becomes the picture, shown only once the scan found it clean', async () => {
+    it('becomes the picture, shown only once it is scanned clean and re-encoded', async () => {
       const upload = await uploadAvatar()
 
       const set = await me()
@@ -277,10 +276,16 @@ describe('The account of a person', () => {
       expect(set.status).toBe(OK)
       expect(set.body).toMatchObject({ avatarMediaId: upload.mediaId, avatarUrl: null })
 
+      // Clean is not enough: the file is the one uploaded, with its metadata, until the worker has
+      // re-encoded it (that step is tested against the real pipeline in the worker's suite)
       await owner.media.update({
         where: { id: upload.mediaId },
         data: { status: MediaStatus.CLEAN }
       })
+      const scanned = (await me().get(ApiRoutes.account.profile)).body as ProfileBody
+      expect(scanned).toMatchObject({ avatarMediaId: upload.mediaId, avatarUrl: null })
+
+      await owner.media.update({ where: { id: upload.mediaId }, data: { processedAt: new Date() } })
       const clean = (await me().get(ApiRoutes.account.profile)).body as ProfileBody
       expect(clean.avatarUrl).not.toBeNull()
       const served = await fetch(clean.avatarUrl ?? '')
@@ -317,6 +322,22 @@ describe('The account of a person', () => {
       expect(profile).toMatchObject({ avatarMediaId: null, avatarUrl: null })
     })
 
+    it('is taken away with its own route, row and file', async () => {
+      const upload = await uploadAvatar()
+      await me().patch(ApiRoutes.account.profile).send({ avatarMediaId: upload.mediaId })
+
+      const response = await me().delete(ApiRoutes.account.avatar)
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({ avatarMediaId: null, avatarUrl: null })
+      expect(await owner.media.findUnique({ where: { id: upload.mediaId } })).toBeNull()
+      expect(
+        await storage.head(StorageKeys.avatar(ctx.agentA.id, upload.mediaId, 'me.png'))
+      ).toBeNull()
+      const entry = await auditEntry(AuditAction.ACCOUNT_PROFILE_UPDATED, ctx.agentA.id)
+      expect(JSON.stringify(entry.metadata)).not.toContain(upload.mediaId)
+    })
+
     it('is taken away with null', async () => {
       const upload = await uploadAvatar()
       await me().patch(ApiRoutes.account.profile).send({ avatarMediaId: upload.mediaId })
@@ -328,11 +349,11 @@ describe('The account of a person', () => {
     })
 
     it('is refused as a type or a size an avatar may not be, saying the limit', async () => {
-      const gif = await requestUpload(asAgent(), { contentType: 'image/gif' })
+      const gif = await requestUpload(me(), { contentType: 'image/gif' })
       expect(gif.status).toBe(BAD_REQUEST)
       expect(codeOf(gif.body)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED)
 
-      const big = await requestUpload(asAgent(), { fileSizeBytes: AvatarUpload.MAX_SIZE_BYTES + 1 })
+      const big = await requestUpload(me(), { fileSizeBytes: AvatarUpload.MAX_SIZE_BYTES + 1 })
       expect(big.status).toBe(BAD_REQUEST)
       expect(codeOf(big.body)).toBe(ErrorCodes.FILE_TOO_LARGE)
       expect((big.body as ErrorBody).error.metadata).toEqual({
@@ -340,9 +361,83 @@ describe('The account of a person', () => {
       })
     })
 
-    it('needs the permission to upload, which a viewer does not hold', async () => {
-      const response = await requestUpload(api(app, ctx.viewerA, ctx.storeA))
-      expect(response.status).toBe(FORBIDDEN)
+    it('is set by a viewer, who holds no permission to upload to the store', async () => {
+      const viewer = apiWithoutStore(app, ctx.viewerA)
+      const upload = await uploadAvatar(viewer, ctx.viewerA.id)
+
+      const response = await viewer
+        .patch(ApiRoutes.account.profile)
+        .send({ avatarMediaId: upload.mediaId })
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({ avatarMediaId: upload.mediaId })
+    })
+
+    it('holds a person to a few avatar rows at once', async () => {
+      const heavy = await createActor(owner, app, {
+        prefix,
+        name: 'avatarRows',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      const asHeavy = apiWithoutStore(app, heavy)
+      for (let held = 0; held < AvatarUpload.MAX_ROWS_PER_USER; held += 1) {
+        await uploadAvatar(asHeavy, heavy.id)
+      }
+      const upload = (await requestUpload(asHeavy)).body as UploadUrlBody
+      objects.add(upload.key)
+      await put(upload.uploadUrl, PNG)
+
+      const over = await asHeavy.post(ApiRoutes.account.avatarConfirm).send(confirmBody(upload))
+
+      expect(over.status).toBe(TOO_MANY_REQUESTS)
+      expect(await owner.media.findUnique({ where: { id: upload.mediaId } })).toBeNull()
+    })
+
+    it('is not a purpose of the media routes of a store any more', async () => {
+      const response = await api(app, ctx.agentA, ctx.storeA).post(ApiRoutes.media.uploadUrl).send({
+        purpose: MediaPurpose.AVATAR,
+        filename: 'me.png',
+        contentType: 'image/png',
+        fileSizeBytes: PNG.length
+      })
+      expect(response.status).toBe(BAD_REQUEST)
+    })
+
+    it('needs a signed in person and takes nothing from the body but the file', async () => {
+      const anonymous = await anonymousApi(app).post(ApiRoutes.account.avatarUploadUrl).send({})
+      expect(anonymous.status).toBe(UNAUTHORIZED)
+      const extra = await requestUpload(me(), { userId: randomUUID() })
+      expect(extra.status).toBe(BAD_REQUEST)
+    })
+
+    it('is limited per person and hour, and uses none of the quota of the store', async () => {
+      const heavy = await createActor(owner, app, {
+        prefix,
+        name: 'avatarQuota',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      const asHeavy = apiWithoutStore(app, heavy)
+      for (let asked = 0; asked < AvatarUpload.SIGNED_URLS_PER_USER_PER_HOUR; asked += 1) {
+        expect((await requestUpload(asHeavy)).status).toBe(OK)
+      }
+
+      const over = await requestUpload(asHeavy)
+
+      expect(over.status).toBe(TOO_MANY_REQUESTS)
+      expect(codeOf(over.body)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      // Another person is not held back by it
+      const other = await createActor(owner, app, {
+        prefix,
+        name: 'avatarQuotaOther',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      expect((await requestUpload(apiWithoutStore(app, other))).status).toBe(OK)
     })
 
     describe("someone else's, or not an avatar at all", () => {
@@ -362,8 +457,8 @@ describe('The account of a person', () => {
         objects.add(upload.key)
         await put(upload.uploadUrl, PNG)
 
-        const response = await api(app, other, ctx.storeA)
-          .post(ApiRoutes.media.confirmUpload)
+        const response = await apiWithoutStore(app, other)
+          .post(ApiRoutes.account.avatarConfirm)
           .send(confirmBody(upload))
 
         expect(response.status).toBe(FORBIDDEN)
@@ -371,17 +466,36 @@ describe('The account of a person', () => {
         expect(await owner.media.findUnique({ where: { id: upload.mediaId } })).toBeNull()
       })
 
-      it('cannot be confirmed as a message file: the key is not under the store', async () => {
+      it('cannot be confirmed with the key of a file of the store', async () => {
         const upload = (await requestUpload()).body as UploadUrlBody
         objects.add(upload.key)
         await put(upload.uploadUrl, PNG)
 
-        const response = await asAgent()
-          .post(ApiRoutes.media.confirmUpload)
-          .send(confirmBody(upload, { purpose: MediaPurpose.MESSAGE }))
+        const response = await me()
+          .post(ApiRoutes.account.avatarConfirm)
+          .send(
+            confirmBody(upload, {
+              key: StorageKeys.messageUpload(ctx.storeA.id, upload.mediaId, 'me.png')
+            })
+          )
 
         expect(response.status).toBe(FORBIDDEN)
         expect(codeOf(response.body)).toBe(ErrorCodes.FILE_KEY_OUT_OF_SCOPE)
+      })
+
+      it('cannot be confirmed before the file is there, or with another size or type', async () => {
+        const upload = (await requestUpload()).body as UploadUrlBody
+        const missing = await me().post(ApiRoutes.account.avatarConfirm).send(confirmBody(upload))
+        expect(missing.status).toBe(BAD_REQUEST)
+        expect(codeOf(missing.body)).toBe(ErrorCodes.FILE_UPLOAD_FAILED)
+
+        objects.add(upload.key)
+        await put(upload.uploadUrl, PNG)
+        const lying = await me()
+          .post(ApiRoutes.account.avatarConfirm)
+          .send(confirmBody(upload, { fileSizeBytes: PNG.length + 1 }))
+        expect(lying.status).toBe(BAD_REQUEST)
+        expect(await owner.media.findUnique({ where: { id: upload.mediaId } })).toBeNull()
       })
 
       it('cannot become the picture of another user', async () => {
