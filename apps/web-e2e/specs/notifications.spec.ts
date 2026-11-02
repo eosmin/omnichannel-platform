@@ -9,20 +9,28 @@ import { expect, test } from '../support/test'
 const START_SCREEN = /\/s\/[^/]+\/inbox$/
 const bell = en.shell.notifications
 
+// One link per person for the whole file: the api allows a few per minute per address, and the
+// specs that run after this one sign in with the same addresses
+let adminToken = ''
+let agentId = ''
+
+test.beforeAll(async () => {
+  adminToken = await signInByApi('admin@test.com')
+  agentId = (await profileOf(await signInByApi('agent@test.com'))).id
+})
+
 test.describe('the notification center', () => {
   test('a mention reaches the bell with no reload and clicking it marks it read and opens the conversation', async ({
     page
   }) => {
     const storeId = await storeIdNamed('Main Store')
     const conversationId = await newConversationIn(storeId)
-    const adminToken = await signInByApi('admin@test.com')
-    const agent = await profileOf(await signInByApi('agent@test.com'))
 
     await signIn(page, 'agent@test.com')
     await page.waitForURL(START_SCREEN)
     await expect(page.getByRole('button', { name: bell.open })).toBeVisible()
 
-    await writeNote(adminToken, storeId, conversationId, 'can you check this?', [agent.id])
+    await writeNote(adminToken, storeId, conversationId, 'can you check this?', [agentId])
 
     // The event of the socket refreshes the count: the label of the bell now says how many
     const withCount = page.getByRole('button', { name: /Notifications, \d+ unread/ })
@@ -43,9 +51,7 @@ test.describe('the notification center', () => {
   test('marks everything read from the panel', async ({ page }) => {
     const storeId = await storeIdNamed('Main Store')
     const conversationId = await newConversationIn(storeId)
-    const adminToken = await signInByApi('admin@test.com')
-    const agent = await profileOf(await signInByApi('agent@test.com'))
-    await writeNote(adminToken, storeId, conversationId, 'one more', [agent.id])
+    await writeNote(adminToken, storeId, conversationId, 'one more', [agentId])
 
     await signIn(page, 'agent@test.com')
     await page.waitForURL(START_SCREEN)
