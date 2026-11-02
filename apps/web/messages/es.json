@@ -1556,7 +1556,9 @@
         "general": "General",
         "channels": "Canales",
         "plugins": "Plugins",
-        "team": "Equipo"
+        "team": "Equipo",
+        "routing": "Asignación",
+        "businessHours": "Horario de atención"
       },
       "org": {
         "label": "Organización",
@@ -1835,6 +1837,135 @@
           "sent": "Se envió una invitación a {email}.",
           "noRole": "No hay ningún rol disponible para ti: todos tienen permisos que tú no tienes."
         }
+      }
+    },
+    "routing": {
+      "title": "Asignación",
+      "description": "Las reglas se prueban de arriba abajo. La primera que coincide con una conversación nueva decide quién la recibe.",
+      "listLabel": "Reglas de asignación",
+      "create": "Nueva regla",
+      "empty": {
+        "title": "No hay reglas de asignación",
+        "body": "Sin reglas, las conversaciones nuevas quedan sin asignar. Agrega una regla para enviarlas a tu equipo."
+      },
+      "disabled": "Apagada",
+      "on": "Activa",
+      "toggle": "Activar o desactivar {name}",
+      "edit": "Editar",
+      "channelNames": {
+        "whatsapp": "WhatsApp",
+        "instagram": "Instagram",
+        "messenger": "Messenger",
+        "web_widget": "Widget web"
+      },
+      "summary": {
+        "always": "Toda conversación",
+        "channels": "Canal: {list}",
+        "tags": "Etiqueta: {list}",
+        "keywords": "Palabras: {list}",
+        "outsideHours": "Fuera del horario de atención",
+        "unknownTag": "una etiqueta eliminada",
+        "formerMember": "una persona que salió",
+        "assign": "asignar a {name}",
+        "roundRobin": "repartir entre {count} personas",
+        "unassigned": "dejar sin asignar"
+      },
+      "reorder": {
+        "drag": "Arrastra para reordenar {name}",
+        "up": "Subir {name}",
+        "down": "Bajar {name}",
+        "moved": "{name} ahora es la regla {position}."
+      },
+      "delete": {
+        "action": "Eliminar",
+        "title": "¿Eliminar {name}?",
+        "description": "Las conversaciones ya asignadas se quedan como están. Las conversaciones nuevas ya no se revisan con esta regla.",
+        "confirm": "Eliminar regla",
+        "done": "{name} se eliminó."
+      },
+      "dialog": {
+        "createTitle": "Nueva regla de asignación",
+        "editTitle": "Editar regla de asignación",
+        "description": "Una regla tiene condiciones y una acción. Se aplica a una conversación nueva cuando se cumplen todas las condiciones que pongas.",
+        "name": "Nombre",
+        "enabled": "La regla está activa",
+        "conditions": "Cuando",
+        "conditionsHint": "Una regla sin condiciones coincide con toda conversación. Dentro de una condición basta con una opción.",
+        "channels": "Canales",
+        "tags": "Etiquetas del cliente",
+        "noTags": "Esta tienda aún no tiene etiquetas.",
+        "keywords": "Palabras del primer mensaje",
+        "keywordsHint": "Una palabra o frase por línea.",
+        "outsideHours": "Solo fuera del horario de atención",
+        "action": "Entonces",
+        "actions": {
+          "assign_user": "Asignar a una persona",
+          "round_robin": "Repartir entre varias personas",
+          "unassigned": "Dejar sin asignar"
+        },
+        "people": "Personas",
+        "noMembers": "No hay personas para elegir.",
+        "formerMember": "Una persona que salió de la tienda",
+        "save": "Guardar regla",
+        "saving": "Guardando",
+        "created": "{name} se creó.",
+        "saved": "{name} se guardó.",
+        "problems": {
+          "nameRequired": "Escribe un nombre.",
+          "nameTooLong": "El nombre es demasiado largo.",
+          "tooManyChannels": "Hay demasiados canales.",
+          "tooManyTags": "Hay demasiadas etiquetas.",
+          "tooManyKeywords": "Hay demasiadas palabras.",
+          "keywordTooLong": "Una palabra o frase es demasiado larga.",
+          "assignNeedsOne": "Elige una persona.",
+          "roundRobinNeedsMany": "Elige al menos dos personas.",
+          "tooManyUsers": "Hay demasiadas personas.",
+          "keywordEmpty": "Una palabra o frase no tiene nada que buscar."
+        },
+        "listsUnavailable": "No se pueden mostrar algunas personas y etiquetas porque no puedes ver conversaciones. Lo que la regla ya tiene se conserva."
+      }
+    },
+    "hours": {
+      "title": "Horario de atención",
+      "description": "Cuándo responde tu equipo. Las reglas de asignación y el mensaje de ausencia usan este horario.",
+      "readOnly": "Puedes ver el horario, pero no cambiarlo.",
+      "empty": {
+        "title": "Aún no hay horario",
+        "body": "Define las horas en que responde tu equipo para que las reglas y el mensaje de ausencia sepan cuándo estás cerrado.",
+        "start": "Definir un horario"
+      },
+      "timezone": "Zona horaria",
+      "weekLabel": "Horas de la semana",
+      "days": {
+        "mon": "Lunes",
+        "tue": "Martes",
+        "wed": "Miércoles",
+        "thu": "Jueves",
+        "fri": "Viernes",
+        "sat": "Sábado",
+        "sun": "Domingo"
+      },
+      "closed": "Cerrado",
+      "addRange": "Agregar horas",
+      "removeRange": "Quitar las horas {number} del {day}",
+      "copyWeekdays": "Copiar a los días de semana",
+      "from": "Desde",
+      "to": "Hasta",
+      "away": {
+        "title": "Mensaje de ausencia",
+        "none": "No enviar mensaje",
+        "missing": "Una respuesta guardada que ya no existe",
+        "hint": "La respuesta guardada que recibe un cliente que escribe fuera de este horario.",
+        "noAccess": "Necesitas poder ver conversaciones para elegir una respuesta guardada."
+      },
+      "save": "Guardar horario",
+      "saving": "Guardando",
+      "saved": "Horario de atención guardado.",
+      "problems": {
+        "badTime": "{day}: usa una hora del día.",
+        "endsBeforeStart": "{day}: las horas deben terminar después de empezar.",
+        "overlap": "{day}: las horas no deben traslaparse.",
+        "tooMany": "{day}: hay demasiados rangos."
       }
     }
   },
