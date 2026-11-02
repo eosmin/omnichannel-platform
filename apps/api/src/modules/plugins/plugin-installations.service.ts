@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
+import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
@@ -15,7 +16,9 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
+import { PublicApiConfig } from '@platform/core/http'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import type { ConnectField } from '@platform/plugins/sdk'
 
 import { ChannelConnectionsService } from '../channels/channel-connections.service'
 import type { Actor } from '../tenancy'
@@ -33,6 +36,18 @@ export interface PluginCatalogEntry {
   installationId: string | null
   // The connections of the installation that are not disconnected
   activeConnections: number
+  // How a channel is connected, for the settings page; null for a plugin that is not a registered
+  // channel (it is drawn from this, not from knowing the channel by name)
+  channel: ChannelConnectManifest | null
+}
+
+export interface ChannelConnectManifest {
+  // The connect form, in order. Nothing in it is a value: only what to ask for.
+  connectFields: ConnectField[]
+  // For a channel the provider calls: the url the owner pastes into the provider's dashboard. It
+  // carries no secret; the verify token of Meta is one value for the app, in the environment, and no
+  // route returns it (owner decision, 2026-10-29).
+  callbackUrl: string | null
 }
 
 const CATALOG_SELECT = {
@@ -51,6 +66,7 @@ export class PluginInstallationsService {
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
     private readonly connections: ChannelConnectionsService,
+    private readonly publicApi: PublicApiConfig,
     private readonly audit: AuditService
   ) {}
 
@@ -86,7 +102,8 @@ export class PluginInstallationsService {
           ...plugin,
           installed,
           installationId: installation?.id ?? null,
-          activeConnections: installation ? (activeOf.get(installation.id) ?? 0) : 0
+          activeConnections: installation ? (activeOf.get(installation.id) ?? 0) : 0,
+          channel: this.manifestOf(plugin.id)
         }
       })
   }
@@ -219,6 +236,20 @@ export class PluginInstallationsService {
     for (const connection of open) {
       await this.connections.disconnect(storeId, connection.id, actor)
     }
+  }
+
+  // Copies of what the registry kept at registration; null for a row whose plugin is not running here
+  private manifestOf(pluginId: string): ChannelConnectManifest | null {
+    const manifest = this.registry.connectManifestOf(pluginId)
+    if (manifest === null) return null
+    return {
+      connectFields: manifest.connectFields.map(field => ({ ...field })),
+      callbackUrl: manifest.receivesProviderWebhooks ? this.callbackUrlOf(pluginId) : null
+    }
+  }
+
+  private callbackUrlOf(pluginId: string): string {
+    return `${this.publicApi.apiUrl.replace(/\/$/, '')}${API_PREFIX}${ApiRoutes.webhooks.channel(pluginId)}`
   }
 
   private async entryOf(storeId: string, pluginId: string): Promise<PluginCatalogEntry> {

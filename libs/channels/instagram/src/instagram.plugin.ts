@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
-import { ChannelIds, InstagramApi, MetaGraph, MetaMessaging } from '@platform/core/domain'
+import {
+  ChannelConnectFieldKeys,
+  ChannelIds,
+  InstagramApi,
+  MetaGraph,
+  MetaMessaging
+} from '@platform/core/domain'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
 // A string: the id has 17 digits, more than a JSON number holds exactly, so a number would already
@@ -20,6 +26,15 @@ const answerSchema = z.union([
 export class InstagramPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.INSTAGRAM
   readonly name = 'Instagram Direct'
+  readonly connectFields = [
+    {
+      key: 'accessToken',
+      labelKey: ChannelConnectFieldKeys.INSTAGRAM_ACCESS_TOKEN,
+      secret: true,
+      required: true,
+      multiple: false
+    }
+  ] as const
   readonly capabilities = [
     ChannelCapability.TEXT,
     ChannelCapability.IMAGE,

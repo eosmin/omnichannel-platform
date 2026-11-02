@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common'
 
+import { PublicApiPlatformModule } from '@platform/core/http'
+
 import { ChannelRegistryModule } from '../channel-registry'
 import { ChannelsModule } from '../channels/channels.module'
 import { TenancyModule } from '../tenancy'
@@ -12,7 +14,7 @@ import { PluginsController } from './plugins.controller'
 // official ones at boot; uninstalling a channel disconnects its connections through the channels
 // module.
 @Module({
-  imports: [ChannelRegistryModule, ChannelsModule, TenancyModule],
+  imports: [ChannelRegistryModule, ChannelsModule, PublicApiPlatformModule, TenancyModule],
   controllers: [PluginsController],
   providers: [PluginCatalogSync, PluginInstallationsService]
 })

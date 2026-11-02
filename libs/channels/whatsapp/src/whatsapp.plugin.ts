@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { MetaGraphClient } from '@platform/channels/meta'
 import {
+  ChannelConnectFieldKeys,
   ChannelIds,
   DeliveryStatus,
   WhatsAppApi,
@@ -139,6 +140,31 @@ export class WhatsAppPlugin implements ChannelPlugin {
   readonly author = 'Platform Team'
   readonly type = PluginTypes.CHANNEL
   readonly messagingWindow = { hours: MESSAGING_WINDOW_HOURS, requiresTemplateWhenClosed: true }
+  readonly receivesProviderWebhooks = true
+  // The three values of the Meta app; `connect` checks them against the Graph API
+  readonly connectFields = [
+    {
+      key: 'phoneNumberId',
+      labelKey: ChannelConnectFieldKeys.WHATSAPP_PHONE_NUMBER_ID,
+      secret: false,
+      required: true,
+      multiple: false
+    },
+    {
+      key: 'businessAccountId',
+      labelKey: ChannelConnectFieldKeys.WHATSAPP_BUSINESS_ACCOUNT_ID,
+      secret: false,
+      required: true,
+      multiple: false
+    },
+    {
+      key: 'accessToken',
+      labelKey: ChannelConnectFieldKeys.WHATSAPP_ACCESS_TOKEN,
+      secret: true,
+      required: true,
+      multiple: false
+    }
+  ] as const
 
   // No list picker: the SDK has no method to send one
   readonly capabilities = [

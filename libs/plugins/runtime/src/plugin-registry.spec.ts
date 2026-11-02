@@ -22,6 +22,8 @@ function channel(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin {
     type: 'channel',
     capabilities: [ChannelCapability.TEXT],
     messagingWindow: null,
+    connectFields: [],
+    receivesProviderWebhooks: false,
     connect: fail,
     disconnect: fail,
     healthCheck: fail,
@@ -120,6 +122,90 @@ describe('PluginRegistry', () => {
       ChannelCapability.TEXT
     ])
     expect(registry.capabilitiesOf('nobody')).toEqual([])
+  })
+
+  describe('connect manifest', () => {
+    const field = {
+      key: 'accessToken',
+      labelKey: 'settings.channels.connect.telegram.accessToken',
+      secret: true,
+      required: true,
+      multiple: false
+    }
+
+    it('keeps a copy of what the plugin declared when it registered', () => {
+      const registry = build()
+      const plugin = channel({
+        capabilities: [ChannelCapability.CUSTOMER_PROFILE],
+        fetchProfile: () => Promise.resolve(null),
+        connectFields: [field],
+        receivesProviderWebhooks: true,
+        profileSetupKey: 'settings.channels.setup.telegramProfile'
+      })
+      registry.register(plugin)
+      // Changed after the checks: the registry still answers with what passed them
+      ;(plugin as { connectFields: unknown }).connectFields = [{ ...field, key: 'other' }]
+      expect(registry.connectManifestOf('telegram')).toEqual({
+        connectFields: [field],
+        receivesProviderWebhooks: true,
+        profileSetupKey: 'settings.channels.setup.telegramProfile'
+      })
+      expect(registry.connectManifestOf('nobody')).toBeNull()
+    })
+
+    it('copies a field property by property, so an extra property never reaches the page', () => {
+      const registry = build()
+      registry.register(
+        channel({ connectFields: [{ ...field, apiKey: 'sk-live' } as typeof field] })
+      )
+      expect(registry.connectManifestOf('telegram')?.connectFields).toEqual([field])
+    })
+
+    it.each([
+      ['no list', undefined],
+      ['a list that is not an array', 'accessToken'],
+      ['too many fields', Array.from({ length: 21 }, (_, i) => ({ ...field, key: `k${i}` }))],
+      ['a repeated key', [field, field]],
+      ['a key that is not an identifier', [{ ...field, key: 'access token' }]],
+      ['a label that is text and not a message key', [{ ...field, labelKey: 'Access token' }]],
+      ['a label that is not a string', [{ ...field, labelKey: 42 }]],
+      ['a secret flag that is not a boolean', [{ ...field, secret: 'yes' }]],
+      ['a required flag that is not a boolean', [{ ...field, required: undefined }]],
+      ['a field named like a member of every object', [{ ...field, key: 'constructor' }]],
+      ['a field that is not an object', [null]]
+    ])('rejects %s', (_name, connectFields) => {
+      const plugin = channel({ connectFields: connectFields as ChannelPlugin['connectFields'] })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('rejects a plugin that does not say whether the provider calls it', () => {
+      const plugin = channel({
+        receivesProviderWebhooks: undefined as unknown as boolean
+      })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('rejects a profile setup key on a channel that reads no profiles', () => {
+      const plugin = channel({ profileSetupKey: 'settings.channels.setup.telegramProfile' })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('rejects a profile setup key that is text and not a message key', () => {
+      const plugin = channel({
+        capabilities: [ChannelCapability.CUSTOMER_PROFILE],
+        fetchProfile: () => Promise.resolve(null),
+        profileSetupKey: 'Ask Meta for access'
+      })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('does not register a plugin whose manifest is refused', () => {
+      const registry = build()
+      expect(codeOf(() => registry.register(channel({ connectFields: [field, field] })))).toBe(
+        ErrorCodes.PLUGIN_CONTRACT_VIOLATION
+      )
+      expect(registry.has('telegram')).toBe(false)
+    })
   })
 
   it('rejects messaging_window without a policy', () => {

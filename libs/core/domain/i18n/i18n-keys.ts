@@ -1,3 +1,4 @@
+import { ChannelConnectFieldKeys, ChannelSetupStepKeys } from '../channel-connect-constants'
 import { ErrorCodes } from '../errors/error-codes'
 import { notificationMessageKey, NotificationTypes } from '../notifications/notification-constants'
 import { OrderCancellationReasons } from '../order-constants'
@@ -13,6 +14,8 @@ export function generatedI18nKeys(): string[] {
     ...Object.values(OrderStatusI18nKeys),
     ...Object.values(OrderCancellationReasons),
     ...Object.values(OrderReturnReasons),
+    ...Object.values(ChannelConnectFieldKeys),
+    ...Object.values(ChannelSetupStepKeys),
     ...Object.values(ErrorCodes).map(code => `errors.${code}`),
     ...Object.values(NotificationTypes).flatMap(type => [
       `${notificationMessageKey(type)}.title`,

@@ -49,6 +49,16 @@ export function buildChannelPlugin(overrides: Partial<ChannelPlugin> = {}): Chan
       ChannelCapability.MESSAGING_WINDOW
     ],
     messagingWindow: { hours: 24, requiresTemplateWhenClosed: false },
+    connectFields: [
+      {
+        key: 'token',
+        labelKey: 'settings.channels.connect.test_channel.token',
+        secret: true,
+        required: true,
+        multiple: false
+      }
+    ],
+    receivesProviderWebhooks: true,
 
     connect: input =>
       Promise.resolve({

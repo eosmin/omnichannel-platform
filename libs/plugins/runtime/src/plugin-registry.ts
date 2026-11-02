@@ -9,6 +9,7 @@ import {
   PluginTypes
 } from '@platform/plugins/sdk'
 
+import { type ConnectManifest, snapshotConnectManifest } from './connect-manifest'
 import {
   assertMethodsForCapabilities,
   contractViolation,
@@ -54,6 +55,7 @@ interface Entry {
   plugin: ChannelPlugin
   // A copy taken when the plugin passed its contract: what it declares later does not count
   capabilities: ReadonlySet<ChannelCapabilityType>
+  manifest: ConnectManifest
   storeIds: ReadonlySet<string> | null
 }
 
@@ -83,7 +85,12 @@ export class PluginRegistry {
     if (storeIds !== null && isOfficialChannelId(id)) {
       throw contractViolation(`Official plugin ${printable(id)} cannot be private to a store`)
     }
-    this.entries.set(id, { plugin, capabilities: new Set(capabilities), storeIds })
+    this.entries.set(id, {
+      plugin,
+      capabilities: new Set(capabilities),
+      manifest: snapshotConnectManifest(plugin, id, capabilities),
+      storeIds
+    })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
   }
 
@@ -138,6 +145,12 @@ export class PluginRegistry {
   // do. A plugin that is not registered declares nothing.
   capabilitiesOf(pluginId: string): ChannelCapabilityType[] {
     return [...(this.entries.get(pluginId)?.capabilities ?? [])]
+  }
+
+  // What the plugin declared for the settings page when it registered: the form it asks for, whether
+  // the provider calls the api, and the owner step for the profile. Null for a plugin not registered.
+  connectManifestOf(pluginId: string): ConnectManifest | null {
+    return this.entries.get(pluginId)?.manifest ?? null
   }
 
   hasCapability(pluginId: string, capability: ChannelPlugin['capabilities'][number]): boolean {

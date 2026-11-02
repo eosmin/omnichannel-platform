@@ -1,3 +1,4 @@
+import { ChannelConnectFieldKeys, ChannelSetupStepKeys } from '../channel-connect-constants'
 import { ErrorCodes } from '../errors/error-codes'
 import { notificationMessageKey, NotificationTypes } from '../notifications/notification-constants'
 import { OrderCancellationReasons } from '../order-constants'
@@ -20,6 +21,8 @@ describe('generatedI18nKeys', () => {
     }
     for (const status of Object.values(OrderStatus))
       expect(keys).toContain(`orders.status.${status}`)
+    for (const key of Object.values(ChannelConnectFieldKeys)) expect(keys).toContain(key)
+    for (const key of Object.values(ChannelSetupStepKeys)) expect(keys).toContain(key)
     for (const code of Object.values(ErrorCodes)) expect(keys).toContain(`errors.${code}`)
     for (const reason of Object.values(OrderCancellationReasons)) expect(keys).toContain(reason)
     for (const reason of Object.values(OrderReturnReasons)) expect(keys).toContain(reason)
@@ -35,6 +38,8 @@ describe('generatedI18nKeys', () => {
       ...Object.values(OrderStatusI18nKeys),
       ...Object.values(OrderCancellationReasons),
       ...Object.values(OrderReturnReasons),
+      ...Object.values(ChannelConnectFieldKeys),
+      ...Object.values(ChannelSetupStepKeys),
       ...Object.values(ErrorCodes).map(code => `errors.${code}`),
       ...Object.values(NotificationTypes).flatMap(type => [
         `${notificationMessageKey(type)}.title`,
@@ -44,7 +49,7 @@ describe('generatedI18nKeys', () => {
     expect(keys).toHaveLength(generated.length)
     expect(keys).toEqual([...keys].sort())
     for (const key of keys) {
-      expect(key).toMatch(/^(conversations|orders|errors|notifications)\.[A-Za-z0-9_.]+$/)
+      expect(key).toMatch(/^(conversations|orders|errors|notifications|settings)\.[A-Za-z0-9_.]+$/)
     }
   })
 })

@@ -14,9 +14,15 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
+import { ChannelCapability, type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
-import { buildChannelPlugin, ensurePluginInstallation } from '../builders'
+import {
+  buildChannelPlugin,
+  createChannelConnection,
+  createConversation,
+  createCustomerIdentity,
+  ensurePluginInstallation
+} from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -41,6 +47,11 @@ interface ConnectionBody {
   status: string
   lastError: string | null
   capabilities: string[]
+  profile?: {
+    failedIdentities: number
+    errors: { code: string; identities: number }[]
+    setupKey: string | null
+  } | null
 }
 
 describe('The channel connections of a store', () => {
@@ -684,6 +695,133 @@ describe('The channel connections of a store', () => {
       expect(
         (await owner.channelConnection.findUniqueOrThrow({ where: { id: theirs.id } })).status
       ).toBe(ChannelConnectionStatus.ACTIVE)
+    })
+  })
+
+  describe('the profile status of a connection', () => {
+    const SETUP_KEY = 'settings.channels.setup.fakeProfileAccess'
+    const profilePlugin = () =>
+      register({
+        capabilities: [ChannelCapability.TEXT, ChannelCapability.CUSTOMER_PROFILE],
+        fetchProfile: () => Promise.resolve(null),
+        profileSetupKey: SETUP_KEY
+      })
+    const connectionOf = async (agent: typeof asAdmin, pluginId: string) =>
+      (await connect(pluginId, agent)).body as ConnectionBody
+    // An identity of the store that failed to read, with a conversation through the connection
+    async function failedIdentity(
+      storeId: string,
+      connectionId: string,
+      pluginId: string,
+      code: string | null,
+      conversations = 1
+    ) {
+      const identity = await createCustomerIdentity(owner, { storeId, channelType: pluginId })
+      await owner.customerIdentity.update({
+        where: { id: identity.id },
+        data: { profileFetchError: code }
+      })
+      for (let i = 0; i < conversations; i += 1) {
+        await createConversation(owner, {
+          storeId,
+          customerId: identity.customerId,
+          customerIdentityId: identity.id,
+          channelType: pluginId,
+          channelConnectionId: connectionId
+        })
+      }
+      return identity
+    }
+
+    it('counts each failed customer once, by the code stored, and names the step to take', async () => {
+      const { id } = profilePlugin()
+      const made = await connectionOf(asAdmin, id)
+      await failedIdentity(ctx.storeA.id, made.id, id, ErrorCodes.CHANNEL_CREDENTIALS_INVALID, 2)
+      await failedIdentity(ctx.storeA.id, made.id, id, ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      await failedIdentity(ctx.storeA.id, made.id, id, ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE)
+      await failedIdentity(ctx.storeA.id, made.id, id, null)
+
+      const one = (await asAdmin().get(ApiRoutes.channels.connectionById(made.id)))
+        .body as ConnectionBody
+      const list = (await asAdmin().get(ApiRoutes.channels.connections)).body as ConnectionBody[]
+
+      const expected = {
+        failedIdentities: 3,
+        errors: [
+          { code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID, identities: 2 },
+          { code: ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE, identities: 1 }
+        ],
+        setupKey: SETUP_KEY
+      }
+      expect(one.profile).toEqual(expected)
+      expect(list.find(row => row.id === made.id)?.profile).toEqual(expected)
+    })
+
+    it('says nothing is wrong, and gives no step, while no read has failed', async () => {
+      const { id } = profilePlugin()
+      const made = await connectionOf(asAdmin, id)
+      await failedIdentity(ctx.storeA.id, made.id, id, null)
+
+      expect(made.profile).toEqual({ failedIdentities: 0, errors: [], setupKey: null })
+      const one = (await asAdmin().get(ApiRoutes.channels.connectionById(made.id)))
+        .body as ConnectionBody
+      expect(one.profile).toEqual({ failedIdentities: 0, errors: [], setupKey: null })
+    })
+
+    it('has no profile status for a channel that reads no profiles', async () => {
+      const { id } = register()
+      const made = await connectionOf(asAdmin, id)
+
+      expect(made.profile).toBeNull()
+      expect(
+        ((await asAdmin().get(ApiRoutes.channels.connectionById(made.id))).body as ConnectionBody)
+          .profile
+      ).toBeNull()
+    })
+
+    it('counts only the customers that wrote through this connection of this store', async () => {
+      const { id } = profilePlugin()
+      const mine = await connectionOf(asAdmin, id)
+      const theirs = await createChannelConnection(owner, {
+        storeId: ctx.storeB.id,
+        channelType: id
+      })
+      const other = await createChannelConnection(owner, {
+        storeId: ctx.storeA.id,
+        channelType: id
+      })
+      await failedIdentity(ctx.storeA.id, mine.id, id, ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      // Another connection of the same store, and the connection of another store
+      await failedIdentity(ctx.storeA.id, other.id, id, ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      await failedIdentity(ctx.storeB.id, theirs.id, id, ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+
+      const own = (await asAdmin().get(ApiRoutes.channels.connectionById(mine.id)))
+        .body as ConnectionBody
+      const foreign = (await asAdminB().get(ApiRoutes.channels.connectionById(theirs.id)))
+        .body as ConnectionBody
+
+      expect(own.profile?.failedIdentities).toBe(1)
+      // In the list the connections are counted in one query: each row keeps its own customers
+      const list = (await asAdmin().get(ApiRoutes.channels.connections)).body as ConnectionBody[]
+      expect(list.find(row => row.id === mine.id)?.profile?.failedIdentities).toBe(1)
+      expect(list.find(row => row.id === other.id)?.profile?.failedIdentities).toBe(1)
+      expect(list.some(row => row.id === theirs.id)).toBe(false)
+      expect(foreign.profile?.failedIdentities).toBe(1)
+      // A store cannot ask about the connection of another, so it cannot read its count either
+      expect((await asAdmin().get(ApiRoutes.channels.connectionById(theirs.id))).status).toBe(
+        NOT_FOUND
+      )
+    })
+
+    it('does not give the profile status to the directory of an agent', async () => {
+      const { id } = profilePlugin()
+      await connectionOf(asAdmin, id)
+
+      const response = await asAgent().get(ApiRoutes.channels.directory)
+
+      expect(response.status).toBe(OK)
+      for (const entry of response.body as object[]) expect(entry).not.toHaveProperty('profile')
+      expect(JSON.stringify(response.body)).not.toContain(SETUP_KEY)
     })
   })
 })

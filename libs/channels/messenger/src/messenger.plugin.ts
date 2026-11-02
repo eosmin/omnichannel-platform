@@ -2,7 +2,14 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
-import { ChannelIds, MessengerApi, MetaGraph, MetaMessaging } from '@platform/core/domain'
+import {
+  ChannelConnectFieldKeys,
+  ChannelIds,
+  ChannelSetupStepKeys,
+  MessengerApi,
+  MetaGraph,
+  MetaMessaging
+} from '@platform/core/domain'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
 const pageSchema = z.object({ id: z.string(), name: z.string().min(1) })
@@ -12,6 +19,18 @@ const pageSchema = z.object({ id: z.string(), name: z.string().min(1) })
 export class MessengerPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.MESSENGER
   readonly name = 'Facebook Messenger'
+  readonly connectFields = [
+    {
+      key: 'accessToken',
+      labelKey: ChannelConnectFieldKeys.MESSENGER_ACCESS_TOKEN,
+      secret: true,
+      required: true,
+      multiple: false
+    }
+  ] as const
+  // Reading a customer's name and photo needs "Business Asset User Profile Access", requested by the
+  // owner in the settings of the Page
+  readonly profileSetupKey = ChannelSetupStepKeys.MESSENGER_PROFILE_ACCESS
   // No buttons: Phase 2
   readonly capabilities = [
     ChannelCapability.TEXT,

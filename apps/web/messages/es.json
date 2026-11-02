@@ -1359,5 +1359,28 @@
       "unknown": "Desconocido"
     },
     "stale": "No se pudo actualizar la lista. Lo que ves puede estar desactualizado."
+  },
+  "settings": {
+    "channels": {
+      "connect": {
+        "whatsapp": {
+          "phoneNumberId": "ID del número de teléfono",
+          "businessAccountId": "ID de la cuenta de WhatsApp Business",
+          "accessToken": "Token de acceso"
+        },
+        "instagram": {
+          "accessToken": "Token de acceso de Instagram"
+        },
+        "messenger": {
+          "accessToken": "Token de acceso de la Página"
+        },
+        "web_widget": {
+          "siteOrigins": "Sitios que pueden cargar el chat (una dirección por línea)"
+        }
+      },
+      "setup": {
+        "messengerProfileAccess": "En la configuración de tu Página de Facebook, solicita \"Business Asset User Profile Access\" para poder leer los nombres y las fotos de los clientes."
+      }
+    }
   }
 }

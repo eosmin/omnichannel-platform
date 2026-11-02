@@ -115,6 +115,20 @@ export interface ChannelContext {
   metadata: Record<string, unknown>
 }
 
+// One field of the connect form, declared by the plugin. The platform draws the form from the list and
+// sends back `credentials[key]`; the plugin is still the one that validates them in `connect`.
+export interface ConnectField {
+  // The name under `credentials`
+  key: string
+  // Message key of the label, translated by the web app
+  labelKey: string
+  // A token or a password: drawn masked, never shown again, and absent from every answer
+  secret: boolean
+  required: boolean
+  // The value is a list (the sites that may load the widget), one entry per line
+  multiple: boolean
+}
+
 export interface ConnectInput {
   storeId: string
   credentials: Record<string, unknown>
