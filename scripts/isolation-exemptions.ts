@@ -19,8 +19,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
-  Notification: { step: '3.5', reason: 'Has no endpoint yet' },
-  NotificationPreference: { step: '3.5', reason: 'Has no endpoint yet' },
   Order: { step: '4.3', reason: 'Has no endpoint yet' },
   Product: { step: '4.1', reason: 'Has no endpoint yet' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },

@@ -13,6 +13,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module'
 import { MediaModule } from './modules/media/media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
+import { NotificationsModule } from './modules/notifications'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
@@ -39,6 +40,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     MessagesModule,
     MediaModule,
     ExportsModule,
+    NotificationsModule,
     ChannelRegistryModule,
     ChannelsModule,
     PluginsApiModule,

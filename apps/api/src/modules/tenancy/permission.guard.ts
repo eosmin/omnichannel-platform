@@ -11,7 +11,13 @@ import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
 import { AccessDenialAuditor } from './access-denial-auditor'
-import { ANY_PERMISSION_KEY, isTenantExempt, PERMISSIONS_KEY, routePathOf } from './decorators'
+import {
+  ANY_PERMISSION_KEY,
+  isTenantExempt,
+  MEMBER_ONLY_KEY,
+  PERMISSIONS_KEY,
+  routePathOf
+} from './decorators'
 
 // Global, after the TenantGuard. A route in a store has to say what it needs with
 // @RequirePermissions(...): one that says nothing is refused, so a handler added without thinking
@@ -50,6 +56,12 @@ export class PermissionGuard implements CanActivate {
         context.getHandler(),
         context.getClass()
       ]) ?? []
+    // Handler or class, as route-protection.spec reads it
+    const memberOnly =
+      this.reflector.get<boolean | undefined>(MEMBER_ONLY_KEY, context.getHandler()) === true ||
+      this.reflector.get<boolean | undefined>(MEMBER_ONLY_KEY, context.getClass()) === true
+    // TenantGuard has proved the active membership; the service narrows to the user's own rows
+    if (memberOnly && required.length === 0 && anyOf.length === 0) return true
     if (required.length === 0 && anyOf.length === 0) {
       this.logger.error(
         { path: routePathOf(request), method: request.method },

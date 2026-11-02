@@ -14,6 +14,11 @@ import {
   RoutingActionTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import {
+  NotificationSeverity,
+  notificationMessageKey,
+  NotificationTypes
+} from '@platform/core/notifications'
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -78,6 +83,35 @@ const conversationOf = (messageId: string): string => {
   if (found === undefined)
     throw new Error(`the message ${messageId} was not made by createMessageOf`)
   return found
+}
+
+const PREFERENCE_TYPE = NotificationTypes.CONVERSATION_ASSIGNED
+const adminOf = async (owner: OwnerClient, storeId: string): Promise<string> =>
+  (
+    await owner.membership.findFirstOrThrow({
+      where: { storeId, role: { name: RoleNames.ADMIN } },
+      select: { userId: true }
+    })
+  ).userId
+const setPreferencePush = async (
+  owner: OwnerClient,
+  storeId: string,
+  push: boolean
+): Promise<void> => {
+  const userId = await adminOf(owner, storeId)
+  await owner.notificationPreference.upsert({
+    where: { userId_storeId_type: { userId, storeId, type: PREFERENCE_TYPE } },
+    create: {
+      userId,
+      storeId,
+      type: PREFERENCE_TYPE,
+      inApp: true,
+      push,
+      email: false,
+      sound: true
+    },
+    update: { push }
+  })
 }
 
 const resources: IsolationResource[] = [
@@ -473,6 +507,77 @@ const resources: IsolationResource[] = [
     listPath: ApiRoutes.exports.list,
     untouched: async (owner, id) =>
       (await owner.export.findUnique({ where: { id }, select: { id: true } })) !== null
+  },
+  // Notifications are a person's own: the row is made for the Admin of its store (the one the suite
+  // acts as) and the only way to change one is to mark it read, naming it in the body. There is no
+  // route that reads one by id, so a stranger is only ever answered by the 404 of that route.
+  {
+    name: 'notification',
+    create: async (owner, { storeId }) => {
+      const admin = await owner.membership.findFirstOrThrow({
+        where: { storeId, role: { name: RoleNames.ADMIN } },
+        select: { userId: true }
+      })
+      return owner.notification.create({
+        data: {
+          userId: admin.userId,
+          storeId,
+          type: NotificationTypes.EXPORT_READY,
+          severity: NotificationSeverity.SUCCESS,
+          messageKey: notificationMessageKey(NotificationTypes.EXPORT_READY)
+        },
+        select: { id: true }
+      })
+    },
+    listPath: ApiRoutes.notifications.list,
+    modify: {
+      path: () => ApiRoutes.notifications.markRead,
+      method: 'post',
+      body: id => ({ ids: [id] })
+    },
+    untouched: async (owner, id) =>
+      (await owner.notification.findUnique({ where: { id }, select: { readAt: true } }))?.readAt ===
+      null
+  },
+  // The choices of a member for one type, in one store: one row per store for the Admin the suite acts
+  // as, reached through the store of the request (GET and PUT preferences). The marker is the `push`
+  // flag: true for store A ('A'), false for store B ('B').
+  {
+    name: 'notificationPreference',
+    create: async (owner, { storeId }) => {
+      await setPreferencePush(owner, storeId, true)
+      return { id: storeId }
+    },
+    readPath: () => ApiRoutes.notifications.preferences,
+    own: {
+      set: (owner, storeId, marker) => setPreferencePush(owner, storeId, marker === 'A'),
+      markerIn: body => {
+        const row = (body as { types: { type: string; push: boolean }[] }).types.find(
+          candidate => candidate.type === PREFERENCE_TYPE
+        )
+        return row === undefined ? null : row.push ? 'A' : 'B'
+      }
+    },
+    modify: {
+      path: () => ApiRoutes.notifications.preferences,
+      method: 'put',
+      body: {
+        types: [{ type: PREFERENCE_TYPE, inApp: true, push: false, email: false, sound: true }]
+      }
+    },
+    untouched: async (owner, storeId) => {
+      const admin = await adminOf(owner, storeId)
+      return (
+        (
+          await owner.notificationPreference.findUnique({
+            where: {
+              userId_storeId_type: { userId: admin, storeId, type: PREFERENCE_TYPE }
+            },
+            select: { push: true }
+          })
+        )?.push === true
+      )
+    }
   }
 ]
 

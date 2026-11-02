@@ -1,4 +1,4 @@
-import { NotificationChannel } from '../index'
+import { DigestFrequency, NotificationChannel } from '../index'
 
 export const NotificationTypes = {
   CONVERSATION_ASSIGNED: 'conversation.assigned',
@@ -136,3 +136,32 @@ export interface NotificationRealtimePayload {
   sound: boolean
   createdAt: string
 }
+
+// The tabs of the notification center (TDD_06 §8)
+export const NotificationFilters = {
+  ALL: 'all',
+  UNREAD: 'unread',
+  MENTIONS: 'mentions'
+} as const
+
+export type NotificationFilter = (typeof NotificationFilters)[keyof typeof NotificationFilters]
+
+export const NotificationLimits = {
+  // Ids a single "mark as read" may name
+  MARK_READ_MAX_IDS: 100,
+  // The badge on the bell stops counting here and shows "99+" (TDD_06 §8)
+  BADGE_CAP: 99
+} as const
+
+// What a user who never opened the preferences gets for the settings that are theirs (the columns of
+// UserNotificationSettings carry the same values as their defaults)
+export const NotificationSettingsDefaults = {
+  quietHoursEnabled: false,
+  quietHoursStart: 22,
+  quietHoursEnd: 7,
+  quietHoursFollowStore: false,
+  timezone: 'America/El_Salvador',
+  digestFrequency: DigestFrequency.HOURLY,
+  crossStoreEnabled: true,
+  crossStoreSupervisorOnly: false
+} as const

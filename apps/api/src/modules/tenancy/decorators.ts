@@ -9,6 +9,7 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 export const SKIP_TENANT_KEY = 'skipTenant'
 export const PERMISSIONS_KEY = 'requiredPermissions'
 export const ANY_PERMISSION_KEY = 'requiredAnyPermission'
+export const MEMBER_ONLY_KEY = 'memberOnly'
 
 // For the routes that belong to a person and not to a store (the session, the account): they need a
 // logged-in user but no X-Store-Id. Both tenancy guards are global and refuse everything else, so
@@ -27,6 +28,13 @@ export const RequirePermissions = (
 export const RequireAnyPermission = (
   ...permissions: [Permission, ...Permission[]]
 ): MethodDecorator & ClassDecorator => SetMetadata(ANY_PERMISSION_KEY, permissions)
+
+// For the routes that serve a member what is theirs alone in a store (their notifications): TenantGuard
+// has already proved an active membership of the store of the header, and the service filters by the
+// user, so no role permission applies. It replaces @RequirePermissions only; naming both is a mistake
+// that route-protection.spec refuses.
+export const MemberOfStore = (): MethodDecorator & ClassDecorator =>
+  SetMetadata(MEMBER_ONLY_KEY, true)
 
 function tenantRequest(context: ExecutionContext): AuthenticatedRequest {
   return context.switchToHttp().getRequest<AuthenticatedRequest>()
