@@ -12,14 +12,19 @@ import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   MediaObjectAreas,
+  MediaPurpose,
+  parseAvatarKey,
+  parseAvatarUploadKey,
   parseMediaObjectKey,
   STORES_ROOT,
-  UploadLimits
+  UploadLimits,
+  USERS_ROOT
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 const HOUR_MS = 3_600_000
 const MINUTE_MS = 60_000
+const MEDIA_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface CleanupReport {
   objectsDeleted: number
@@ -54,11 +59,15 @@ export class OrphanMediaCleaner {
     }
     report.objectsDeleted =
       (await this.pass('stray objects', () => this.deleteStrayObjects(now))) ?? 0
+    report.objectsDeleted +=
+      (await this.pass('stray avatar uploads', () => this.deleteStrayAvatarUploads(now))) ?? 0
+    report.rowsDropped +=
+      (await this.pass('unattached avatars', () => this.dropUnattachedAvatars(now))) ?? 0
     report.infectedFilesDeleted =
       (await this.pass('infected files', () => this.deleteInfectedFiles())) ?? 0
     const stuck = await this.pass('stuck scans', () => this.settleStuckScans(now))
     report.scansRequeued = stuck?.requeued ?? 0
-    report.rowsDropped = stuck?.dropped ?? 0
+    report.rowsDropped += stuck?.dropped ?? 0
     return report
   }
 
@@ -126,6 +135,90 @@ export class OrphanMediaCleaner {
       if (token === undefined || deleted >= UploadLimits.ORPHAN_CLEANUP_BATCH) break
     }
     return deleted
+  }
+
+  // The staging objects of avatars (users/<id>/avatar-uploads/...) older than the TTL. A row never
+  // points to one: confirming copies the file to its final key and deletes this one, so any that is
+  // left is a signed url that was never confirmed or a delete that failed. The final files
+  // (users/<id>/avatar/...) are not matched and stay. Resumed from its own cursor, apart from the stores'.
+  private async deleteStrayAvatarUploads(now: Date): Promise<number> {
+    const cutoff = now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS
+    let deleted = 0
+    let token = (await this.redis.get(CacheKeys.mediaCleanup.avatarCursor())) ?? undefined
+    for (let pages = 0; pages < UploadLimits.ORPHAN_LIST_PAGES_PER_RUN; pages++) {
+      let page
+      try {
+        page = await this.storage.list(USERS_ROOT, token)
+      } catch (error) {
+        await this.redis.del(CacheKeys.mediaCleanup.avatarCursor())
+        throw error
+      }
+      token = page.next
+      // A final avatar file (users/<id>/avatar/<media>/...) is stray when no row has its media id: the
+      // row of a replaced picture goes first and its file second, and a failure in between leaves it
+      const finals = page.objects.flatMap(object => {
+        const parsed = parseAvatarKey(object.key)
+        return parsed !== null && object.lastModified.getTime() < cutoff
+          ? [{ key: object.key, mediaId: parsed.mediaId }]
+          : []
+      })
+      // Only a key whose media id is a real id is looked up; one that is not has no row by definition
+      const lookable = finals.filter(object => MEDIA_ID.test(object.mediaId))
+      const known =
+        lookable.length === 0
+          ? []
+          : await this.prisma.client.media.findMany({
+              where: { id: { in: lookable.map(object => object.mediaId) } },
+              select: { id: true }
+            })
+      const alive = new Set(known.map(row => row.id))
+      const strayFinals = new Set(
+        finals.filter(object => !alive.has(object.mediaId)).map(object => object.key)
+      )
+      for (const object of page.objects) {
+        const stagingStray =
+          parseAvatarUploadKey(object.key) !== null && object.lastModified.getTime() < cutoff
+        if (!stagingStray && !strayFinals.has(object.key)) continue
+        try {
+          await this.storage.delete(object.key)
+          deleted += 1
+        } catch (error) {
+          this.logger.warn({ errorName: errorName(error) }, 'a stray avatar upload was not deleted')
+        }
+      }
+      if (token === undefined) await this.redis.del(CacheKeys.mediaCleanup.avatarCursor())
+      else await this.redis.set(CacheKeys.mediaCleanup.avatarCursor(), token)
+      if (token === undefined || deleted >= UploadLimits.ORPHAN_CLEANUP_BATCH) break
+    }
+    return deleted
+  }
+
+  // An avatar that was uploaded and confirmed but never became anyone's picture, or that the scan
+  // refused: the row of a user's picture is the one `users.avatar_media_id` names. Older than the TTL,
+  // so a confirmation about to be attached is left alone. The file goes first and the row second, so a
+  // failure leaves a row the next run finds again and not a file nobody can name.
+  private async dropUnattachedAvatars(now: Date): Promise<number> {
+    const cutoff = new Date(now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS)
+    // One statement decides and deletes: a user who attaches the picture at this moment either commits
+    // first (the row is kept) or finds no row to attach, never a row that this run removes under it.
+    // Two runs at once take different rows (SKIP LOCKED). The file goes second: a failure leaves a file
+    // with no row, which the sweep of stray avatar files finds by its media id.
+    const rows = await this.prisma.client.$queryRaw<{ key: string }[]>`
+      DELETE FROM media WHERE id IN (
+        SELECT m.id FROM media m
+        WHERE m.purpose = ${MediaPurpose.AVATAR} AND m.store_id IS NULL AND m.created_at < ${cutoff}
+          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.avatar_media_id = m.id)
+        ORDER BY m.created_at LIMIT ${UploadLimits.ORPHAN_CLEANUP_BATCH}
+        FOR UPDATE OF m SKIP LOCKED)
+      RETURNING key`
+    for (const row of rows) {
+      try {
+        await this.storage.delete(row.key)
+      } catch (error) {
+        this.logger.warn({ errorName: errorName(error) }, 'an unattached avatar was not deleted')
+      }
+    }
+    return rows.length
   }
 
   // The scan marks the row first and deletes the file second: a failure in between leaves the file of

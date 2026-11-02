@@ -284,13 +284,13 @@ export class InboundMediaFetcher {
           if (!AllAllowedContentTypes.has(contentType)) {
             throw new FileRefused('the type of the file is not allowed')
           }
-          const limit = maxBytesFor(contentType)
+          const limit = maxBytesFor(contentType, MediaPurpose.MESSAGE)
           if (file.contentLength !== null && file.contentLength > limit) {
             throw new FileRefused('the file is bigger than the limit')
           }
           const body = await readLimited(file.stream, limit)
           // The same rule as an upload, on the bytes that arrived
-          if (refuseUpload(contentType, body.length) !== null) {
+          if (refuseUpload(contentType, body.length, MediaPurpose.MESSAGE) !== null) {
             throw new FileRefused('the file is bigger than the limit')
           }
           if (body.length === 0) throw new FileRefused('the file is empty')

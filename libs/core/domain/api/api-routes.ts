@@ -305,17 +305,17 @@ export const ApiRoutes = {
   },
 
   settings: {
-    store: '/settings/store',
     inbox: '/settings/inbox',
     // Read-only, for who works the inbox: how resolving behaves and the timezone the snooze presets use
     inboxBehavior: '/settings/inbox/behavior',
     safety: '/settings/safety',
-    preferences: '/settings/preferences', // GET and PUT, parsed through storePreferencesSchema
-    team: '/settings/team',
+    preferences: '/settings/preferences', // GET, and PUT of the keys that change (the others keep their value)
     members: '/settings/team/members',
     memberById: (id: string) => `/settings/team/members/${id}`,
     invitations: '/settings/team/invitations',
     invitationById: (id: string) => `/settings/team/invitations/${id}`,
+    // POST: a new token, the old link stops working and the email goes out again
+    invitationResend: (id: string) => `/settings/team/invitations/${id}/resend`,
     roles: '/settings/roles',
     roleById: (id: string) => `/settings/roles/${id}`,
     routing: '/settings/routing',
@@ -335,8 +335,8 @@ export const ApiRoutes = {
   },
 
   account: {
-    profile: '/account/profile',
-    preferences: '/account/preferences'
+    profile: '/account/profile', // GET and PATCH: the name and the picture
+    preferences: '/account/preferences' // GET and PATCH: locale, timezone and density
   },
 
   compliance: {

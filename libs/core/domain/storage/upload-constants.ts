@@ -40,6 +40,13 @@ export const AllowedContentTypes = {
   ]
 } as const
 
+// A profile picture is a small image: no gif (it moves), no video, no document. The limit is far under the
+// 10 MB of a message file, because it is shown at a few dozen pixels and served as it was uploaded.
+export const AvatarUpload = {
+  MAX_SIZE_BYTES: 2 * 1024 * 1024, // 2 MB
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
+} as const
+
 export const AllAllowedContentTypes: ReadonlySet<string> = new Set(
   Object.values(AllowedContentTypes).flat()
 )

@@ -17,6 +17,11 @@ import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
+import {
+  type StorePreferences,
+  updateStorePreferencesSchema,
+  type UpdateStorePreferencesBody
+} from '@platform/core/store-preferences'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
@@ -26,6 +31,7 @@ import {
   type InboxSettingsView,
   InboxSettingsService
 } from './inbox-settings.service'
+import { PreferencesService } from './preferences.service'
 import {
   type CreateSnippetBody,
   createSnippetSchema,
@@ -57,7 +63,8 @@ export class SettingsController {
     private readonly tags: TagsService,
     private readonly snippets: SnippetsService,
     private readonly businessHours: BusinessHoursService,
-    private readonly inbox: InboxSettingsService
+    private readonly inbox: InboxSettingsService,
+    private readonly preferences: PreferencesService
   ) {}
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
@@ -197,5 +204,22 @@ export class SettingsController {
     @Req() req: AuthenticatedRequest
   ): Promise<InboxSettingsView> {
     return this.inbox.update(store.id, body, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @Get(ApiRoutes.settings.preferences)
+  getPreferences(@CurrentStore() store: Store): Promise<StorePreferences> {
+    return this.preferences.get(store.id)
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PREFERENCES)
+  @Put(ApiRoutes.settings.preferences)
+  putPreferences(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateStorePreferencesSchema)) body: UpdateStorePreferencesBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<StorePreferences> {
+    return this.preferences.update(store.id, body, actorOf(user, store, req))
   }
 }

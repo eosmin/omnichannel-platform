@@ -17,6 +17,7 @@ import {
   BullBoardModule,
   configureHttpApp,
   HttpErrorsModule,
+  StoragePlatformModule,
   ThrottlerPlatformModule
 } from '@platform/core/http'
 import { LoggerModule } from '@platform/core/logger'
@@ -25,6 +26,8 @@ import { QueueNames, type SendEmailJob } from '@platform/core/queues'
 import { QueueJobOptions, QueuesModule } from '@platform/core/queues-module'
 import { REDIS_CLIENT, RedisModule } from '@platform/core/redis'
 
+import { AccountSettingsService } from '../modules/auth/account-settings.service'
+import { AccountController } from '../modules/auth/account.controller'
 import { AccountService } from '../modules/auth/account.service'
 import { AuthController } from '../modules/auth/auth.controller'
 import { emailLimitKey, MagicLinkService } from '../modules/auth/magic-link.service'
@@ -84,6 +87,8 @@ export async function startAuthTestApp(
       MetricsModule,
       DatabaseModule.forRoot({ databaseUrl: urls.app, poolSize: 6 }),
       RedisModule.forRoot({ url: REDIS_URL }),
+      // The picture of an account is a file in the bucket
+      StoragePlatformModule,
       queuesModule,
       HttpErrorsModule,
       // Before the auth module, as in HttpPlatformModule: the guards run in the order registered
@@ -102,8 +107,8 @@ export async function startAuthTestApp(
             })
           ])
     ],
-    controllers: [AuthController, TenantProbeController],
-    providers: [SessionService, MagicLinkService, AccountService]
+    controllers: [AuthController, AccountController, TenantProbeController],
+    providers: [SessionService, MagicLinkService, AccountService, AccountSettingsService]
   }).compile()
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true })
   // One proxy hop, so that a test picks its own client address with X-Forwarded-For: the limits

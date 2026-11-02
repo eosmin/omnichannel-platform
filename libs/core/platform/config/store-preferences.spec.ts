@@ -1,4 +1,4 @@
-import { readStorePreferences } from './store-preferences'
+import { readStorePreferences, updateStorePreferencesSchema } from './store-preferences'
 
 describe('readStorePreferences', () => {
   it('reads the factory defaults from an empty column', () => {
@@ -21,4 +21,24 @@ describe('readStorePreferences', () => {
       expect(readStorePreferences(raw)).toEqual({ sendReadReceipts: true })
     }
   )
+})
+
+describe('updateStorePreferencesSchema', () => {
+  it('takes the keys that change', () => {
+    expect(updateStorePreferencesSchema.parse({ sendReadReceipts: false })).toEqual({
+      sendReadReceipts: false
+    })
+  })
+
+  it.each([
+    ['nothing', {}],
+    ['a key it does not know', { sendReadReceipts: true, other: 1 }],
+    [
+      'a value of another type, which reading would turn into the default',
+      { sendReadReceipts: 'no' }
+    ],
+    ['null', { sendReadReceipts: null }]
+  ])('refuses %s', (_name, body) => {
+    expect(updateStorePreferencesSchema.safeParse(body).success).toBe(false)
+  })
 })

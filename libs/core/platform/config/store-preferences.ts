@@ -6,7 +6,8 @@ import { z } from 'zod'
 // What a store may change without a deploy, kept in StoreSettings.preferences (a Json column).
 // This file is the only place of the factory defaults: a key missing from the column reads as the
 // default here, so adding a key needs no migration. It holds the keys that exist today; Step 4.14
-// grows it into the full schema of TDD_17 §4.14 and builds GET and PUT /settings/preferences.
+// grows it into the full schema of TDD_17 §4.14. GET and PUT /settings/preferences (Step 3.6) are built
+// over it and take the new keys as they are added.
 //
 // Each key falls back to its own default (`catch`): a value that does not fit in one key must not reset
 // the others, least of all a switch the store turned off.
@@ -23,3 +24,16 @@ export function readStorePreferences(raw: unknown): StorePreferences {
   const parsed = storePreferencesSchema.safeParse(raw)
   return parsed.success ? parsed.data : storePreferencesSchema.parse({})
 }
+
+// What PUT /settings/preferences takes: the keys the caller changes, each held to its real type (the
+// `catch` above is for reading what is stored, never for accepting what a client sends). Keys that are
+// not named keep their value, so a page that draws only some of them cannot reset the others.
+export const updateStorePreferencesSchema = z
+  .strictObject({
+    sendReadReceipts: z.boolean().optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+
+export type UpdateStorePreferencesBody = z.output<typeof updateStorePreferencesSchema>

@@ -272,6 +272,39 @@ const resources: IsolationResource[] = [
       )?.reopenWindowDays !== 99
   },
   {
+    // The same row as above, read and changed through its preferences (one key of the Json column)
+    name: 'storePreferences',
+    create: resetStoreSettings,
+    own: {
+      set: async (owner, storeId, marker) => {
+        await owner.storeSettings.update({
+          where: { storeId },
+          data: { preferences: { sendReadReceipts: marker === 'A' } }
+        })
+      },
+      markerIn: body => {
+        const receipts = (body as { sendReadReceipts?: boolean }).sendReadReceipts
+        return receipts === true ? 'A' : receipts === false ? 'B' : null
+      }
+    },
+    readPath: () => ApiRoutes.settings.preferences,
+    modify: {
+      path: () => ApiRoutes.settings.preferences,
+      method: 'put',
+      body: { sendReadReceipts: false }
+    },
+    // The factory state is an empty column: a change would have written the key
+    untouched: async (owner, id) =>
+      JSON.stringify(
+        (
+          await owner.storeSettings.findUnique({
+            where: { storeId: id },
+            select: { preferences: true }
+          })
+        )?.preferences
+      ) === '{}'
+  },
+  {
     name: 'conversation',
     create: createConversationOf,
     readPath: ApiRoutes.conversations.byId,
@@ -425,6 +458,15 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.membership.findUnique({ where: { id }, select: { roleId: true } }))?.roleId !==
       viewerRoleId
+  },
+  {
+    // Resending is a second way to act on an invitation by its id: a stranger's gets a 404 and no mail
+    name: 'invitationResend',
+    create: (owner, { storeId }) => createInvitation(owner, { storeId, prefix }),
+    modify: { path: ApiRoutes.settings.invitationResend, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.invitation.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      InvitationStatus.PENDING
   },
   {
     name: 'invitation',
