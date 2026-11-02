@@ -41,24 +41,11 @@ export const AllowedContentTypes = {
 } as const
 
 // A profile picture is a small image: no gif (it moves), no video, no document. The limit is far under the
-// 10 MB of a message file, because it is shown at a few dozen pixels. What is served is never the upload:
-// the worker re-encodes it to a square WebP of `IMAGE_PIXELS`, which drops the metadata (location, camera).
+// 10 MB of a message file, because it is shown at a few dozen pixels. What is served is never the upload
+// (see `AvatarProcessing`). The browser reads only this: the rest sits in its own file.
 export const AvatarUpload = {
   MAX_SIZE_BYTES: 2 * 1024 * 1024, // 2 MB
-  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
-  // The side of the square picture that is stored and served
-  IMAGE_PIXELS: 256,
-  IMAGE_QUALITY: 85,
-  // The most pixels the decoder opens for an avatar (a 2 MB file can declare far more than it holds)
-  MAX_INPUT_PIXELS: 25_000_000,
-  // Avatar rows one person may hold at once (the current picture, the one being replaced, a few
-  // uploads not yet attached); the cleanup frees the unattached ones after a day
-  MAX_ROWS_PER_USER: 5,
-  // The name of the re-encoded file: the name the person gave the upload is not kept
-  IMAGE_FILENAME: 'avatar.webp',
-  // Signed upload urls one person may ask for per hour. An avatar belongs to the person, not to a
-  // store, so it has its own counter and never uses up the quota of a store (`UploadLimits`).
-  SIGNED_URLS_PER_USER_PER_HOUR: 20
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
 } as const
 
 export const AllAllowedContentTypes: ReadonlySet<string> = new Set(

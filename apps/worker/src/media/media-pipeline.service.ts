@@ -16,6 +16,7 @@ import {
   ImageVariants,
   type ImageVariant,
   ImageVariantSpecs,
+  AvatarProcessing,
   AvatarUpload,
   MAX_IMAGE_PIXELS,
   MediaPurpose,
@@ -209,13 +210,13 @@ export class MediaPipeline {
     let encoded: Buffer
     try {
       encoded = await sharp(original, {
-        limitInputPixels: AvatarUpload.MAX_INPUT_PIXELS,
+        limitInputPixels: AvatarProcessing.MAX_INPUT_PIXELS,
         // A photo with a small flaw in its tail is still a photo; only a file that cannot be decoded fails
         failOn: 'error'
       })
         .rotate()
-        .resize(AvatarUpload.IMAGE_PIXELS, AvatarUpload.IMAGE_PIXELS, { fit: 'cover' })
-        .webp({ quality: AvatarUpload.IMAGE_QUALITY })
+        .resize(AvatarProcessing.IMAGE_PIXELS, AvatarProcessing.IMAGE_PIXELS, { fit: 'cover' })
+        .webp({ quality: AvatarProcessing.IMAGE_QUALITY })
         .toBuffer()
     } catch (error) {
       // A file the decoder refuses is refused on every attempt, and a picture that cannot be re-encoded
@@ -239,7 +240,7 @@ export class MediaPipeline {
       where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
       data: {
         key,
-        filename: AvatarUpload.IMAGE_FILENAME,
+        filename: AvatarProcessing.IMAGE_FILENAME,
         contentType: VARIANT_CONTENT_TYPE,
         fileSize: encoded.length,
         processedAt: new Date()

@@ -1,13 +1,8 @@
+import { confirmAvatarUploadSchema, requestAvatarUploadSchema } from './avatar-schemas'
 import { MediaPurpose } from './media-purpose'
 import { AvatarUpload, UploadLimits } from './upload-constants'
 import { refuseUpload, UploadRefusals } from './upload-rules'
-import {
-  ClientUploadPurposes,
-  confirmAvatarUploadSchema,
-  confirmUploadSchema,
-  requestAvatarUploadSchema,
-  requestUploadUrlSchema
-} from './upload-schemas'
+import { ClientUploadPurposes, confirmUploadSchema, requestUploadUrlSchema } from './upload-schemas'
 
 const request = {
   purpose: MediaPurpose.MESSAGE,

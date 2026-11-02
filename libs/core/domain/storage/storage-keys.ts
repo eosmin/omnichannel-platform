@@ -1,4 +1,4 @@
-import { AvatarUpload } from './upload-constants'
+import { AvatarProcessing } from './avatar-processing'
 
 export const ImageVariants = { FULL: 'full', MEDIUM: 'medium', THUMB: 'thumb' } as const
 export type ImageVariant = (typeof ImageVariants)[keyof typeof ImageVariants]
@@ -81,7 +81,7 @@ export const StorageKeys = {
   // served. It sits under the media id of the original, in a folder of its own: a name the person gave the upload
   // (sanitized, so never with a slash) can never be the same key.
   avatarImage: (userId: string, mediaId: string) =>
-    `${USERS_ROOT}${userId}/avatar/${mediaId}/processed/${AvatarUpload.IMAGE_FILENAME}`,
+    `${USERS_ROOT}${userId}/avatar/${mediaId}/processed/${AvatarProcessing.IMAGE_FILENAME}`,
   // Everything that belongs to one user: a key outside it is another user's, whatever the store
   userPrefix: (userId: string) => `${USERS_ROOT}${userId}/`,
   dsrExport: (requestId: string) => `compliance/dsr/${requestId}/export.zip`,

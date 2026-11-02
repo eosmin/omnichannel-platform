@@ -133,33 +133,35 @@ test.describe('my account', () => {
   })
 
   // A viewer holds no permission to upload to the store, and still sets a picture: it belongs to the
-  // person. The file is scanned and re-encoded by the worker, so the picture shows a moment later.
-  test('a viewer sets a picture, sees it after a reload and takes it away', async ({ page }) => {
-    // The worker scans and re-encodes the file before the picture shows
-    test.setTimeout(120_000)
+  // person. The e2e stack has no antivirus, so the file is never scanned and the page stays on "getting
+  // your picture ready"; that the picture shows once scanned and re-encoded is tested against the real
+  // pipeline (tests/api/account.spec.ts and the worker's media-pipeline suite).
+  test('a viewer uploads a picture, it is being prepared, and takes it away', async ({ page }) => {
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
       'base64'
     )
     await signIn(page, VIEWER)
     await page.goto(AppPaths.account.profile)
-    const picture = page.getByRole('img', { name: en.account.profile.avatar.alt })
-    await expect(picture).toHaveCount(0)
+    await expect(page.getByRole('button', { name: en.account.profile.avatar.remove })).toHaveCount(
+      0
+    )
 
     await page
       .getByTestId('avatar-input')
       .setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: png })
     await expect(page.getByText(en.account.profile.avatar.uploaded)).toBeVisible()
-    await expect(picture).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(en.account.profile.avatar.processing)).toBeVisible()
     await page.reload()
-    await expect(picture).toBeVisible()
+    await expect(page.getByText(en.account.profile.avatar.processing)).toBeVisible()
 
     await page.getByRole('button', { name: en.account.profile.avatar.remove }).click()
     await expect(page.getByText(en.account.profile.avatar.removed)).toBeVisible()
-    await expect(picture).toHaveCount(0)
     // No row is left to start the next run with a picture
     await page.reload()
-    await expect(picture).toHaveCount(0)
+    await expect(page.getByRole('button', { name: en.account.profile.avatar.remove })).toHaveCount(
+      0
+    )
   })
 
   test('the name is changed and shown in the top bar', async ({ page }) => {

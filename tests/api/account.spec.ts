@@ -9,7 +9,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { JobNames, QueueNames } from '@platform/core/queues'
-import { AvatarUpload, MediaPurpose, StorageKeys } from '@platform/core/storage'
+import { AvatarProcessing, AvatarUpload, MediaPurpose, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { createTestApp } from '../helpers/app'
@@ -383,7 +383,7 @@ describe('The account of a person', () => {
         roleId: ctx.roleIds[RoleNames.AGENT]
       })
       const asHeavy = apiWithoutStore(app, heavy)
-      for (let held = 0; held < AvatarUpload.MAX_ROWS_PER_USER; held += 1) {
+      for (let held = 0; held < AvatarProcessing.MAX_ROWS_PER_USER; held += 1) {
         await uploadAvatar(asHeavy, heavy.id)
       }
       const upload = (await requestUpload(asHeavy)).body as UploadUrlBody
@@ -422,7 +422,7 @@ describe('The account of a person', () => {
         roleId: ctx.roleIds[RoleNames.AGENT]
       })
       const asHeavy = apiWithoutStore(app, heavy)
-      for (let asked = 0; asked < AvatarUpload.SIGNED_URLS_PER_USER_PER_HOUR; asked += 1) {
+      for (let asked = 0; asked < AvatarProcessing.SIGNED_URLS_PER_USER_PER_HOUR; asked += 1) {
         expect((await requestUpload(asHeavy)).status).toBe(OK)
       }
 

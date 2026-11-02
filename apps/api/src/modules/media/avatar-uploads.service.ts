@@ -10,7 +10,7 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
-  AvatarUpload,
+  AvatarProcessing,
   type ConfirmAvatarUploadBody,
   MediaPurpose,
   QUOTA_WINDOW_MS,
@@ -54,7 +54,7 @@ export class AvatarUploadsService {
     await countWithinQuota(
       this.redis,
       CacheKeys.upload.avatarQuota(userId, Math.floor(Date.now() / QUOTA_WINDOW_MS)),
-      AvatarUpload.SIGNED_URLS_PER_USER_PER_HOUR
+      AvatarProcessing.SIGNED_URLS_PER_USER_PER_HOUR
     )
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key
     const mediaId = crypto.randomUUID()
@@ -96,7 +96,7 @@ export class AvatarUploadsService {
     const held = await this.prisma.client.media.count({
       where: { storeId: null, purpose: MediaPurpose.AVATAR, uploadedBy: userId }
     })
-    if (held >= AvatarUpload.MAX_ROWS_PER_USER) {
+    if (held >= AvatarProcessing.MAX_ROWS_PER_USER) {
       throw new PlatformException(
         ErrorCodes.RATE_LIMIT_EXCEEDED,
         'Too many pending avatars',
