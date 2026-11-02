@@ -3,10 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
-  CaptionState,
   ChannelType,
   type ConversationStatus,
-  DeliveryStatus,
   MessageType
 } from '@platform/core/domain'
 
@@ -138,30 +136,6 @@ export async function createMessageOf(
   const message = await createMessage(owner, {
     storeId: input.storeId,
     conversationId: conversation.id
-  })
-  conversationOfMessage.set(message.id, conversation.id)
-  return message
-}
-
-// A file of the team that the channel took, whose caption failed: the one thing a stranger could try is
-// to send its text again
-export async function createFailedCaptionOf(
-  owner: OwnerClient,
-  input: { storeId: string }
-): Promise<{ id: string }> {
-  const conversation = await createConversationOf(owner, { storeId: input.storeId })
-  const message = await owner.message.create({
-    data: {
-      storeId: input.storeId,
-      conversationId: conversation.id,
-      type: MessageType.IMAGE,
-      content: 'the text under the file',
-      authorType: AuthorType.AGENT,
-      deliveryStatus: DeliveryStatus.SENT,
-      channelMessageId: `file-${randomUUID()}`,
-      captionState: CaptionState.FAILED
-    },
-    select: { id: true }
   })
   conversationOfMessage.set(message.id, conversation.id)
   return message
