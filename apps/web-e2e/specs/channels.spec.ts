@@ -90,7 +90,10 @@ test.describe('Settings → Channels and Plugins', () => {
 
     // Test the connection, then disconnect it: the confirmation names the account
     await again.getByRole('button', { name: channels.test.action }).click()
-    await expect(again.getByRole('status')).toBeVisible()
+    // The verdict is a line of text; the copy buttons have status regions of their own
+    await expect(
+      again.getByText(new RegExp(`^(${channels.test.healthy}|${channels.test.unhealthy})`))
+    ).toBeVisible()
     await again.getByRole('button', { name: `${channels.disconnect.action} ${host}` }).click()
     const confirm = page.getByRole('alertdialog')
     await confirm.getByRole('button', { name: channels.disconnect.confirm }).click()
