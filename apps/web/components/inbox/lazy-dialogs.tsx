@@ -34,3 +34,8 @@ export const ConversationPane = dynamic(
   () => import('./conversation-pane').then(module => module.ConversationPane),
   { ssr: false, loading: () => <ConversationPaneLoading /> }
 )
+
+export const ConnectChannelLink = dynamic(
+  () => import('./connect-channel-link').then(module => module.ConnectChannelLink),
+  { ssr: false }
+)

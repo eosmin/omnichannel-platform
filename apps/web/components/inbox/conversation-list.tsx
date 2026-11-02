@@ -40,7 +40,7 @@ import { Button } from '../ui/button'
 import { BulkBar } from './bulk-bar'
 import { CONVERSATION_ROW_HEIGHT_PX, ConversationItem } from './conversation-item'
 import { InboxState } from './inbox-state'
-import { SnoozeDialog } from './lazy-dialogs'
+import { ConnectChannelLink, SnoozeDialog } from './lazy-dialogs'
 import { RowCheckbox } from './row-checkbox'
 import { RowResolve } from './row-resolve'
 import { RowSnooze } from './row-snooze'
@@ -266,7 +266,9 @@ export function ConversationList({
     return hasFilters(filters) ? (
       <InboxState icon={SearchX} title={t('noResults.title')} body={t('noResults.body')} />
     ) : (
-      <InboxState icon={Inbox} title={t('empty.title')} body={t('empty.body')} />
+      <InboxState icon={Inbox} title={t('empty.title')} body={t('empty.body')}>
+        <ConnectChannelLink />
+      </InboxState>
     )
   }
 

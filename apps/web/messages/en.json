@@ -897,7 +897,8 @@
     "loadingMore": "Loading more conversations",
     "empty": {
       "title": "No conversations yet",
-      "body": "Messages from your connected channels will appear here."
+      "body": "Messages from your connected channels will appear here.",
+      "connectChannel": "Connect a channel"
     },
     "noResults": {
       "title": "No conversations match these filters",
@@ -1449,13 +1450,111 @@
       },
       "setup": {
         "messengerProfileAccess": "In the settings of your Facebook Page, request \"Business Asset User Profile Access\" so that customer names and photos can be read."
+      },
+      "title": "Channels",
+      "description": "The accounts that bring customers into your inbox, and how each one is doing.",
+      "listLabel": "Connected channels",
+      "empty": {
+        "title": "No channels connected",
+        "body": "Connect a channel to receive messages from your customers in the inbox."
+      },
+      "add": {
+        "title": "Add a channel",
+        "catalogFailed": "The channels you can connect could not be loaded.",
+        "nonInstalled": "No channel is installed in this store yet.",
+        "goToPlugins": "Install one in Plugins",
+        "connect": "Connect"
+      },
+      "past": {
+        "title": "Disconnected",
+        "hint": "These accounts no longer receive or send messages. Their conversations stay in the inbox."
+      },
+      "disconnectedNote": "This account is disconnected.",
+      "status": {
+        "active": "Active",
+        "error": "Needs attention",
+        "disconnected": "Disconnected"
+      },
+      "health": {
+        "never": "It has not been checked yet.",
+        "lastHealthy": "Last working: {date}",
+        "errors": {
+          "check_failed": "The last check could not be completed.",
+          "invalid_report": "The channel answered the check in an unexpected way.",
+          "unspecified": "The channel reported a problem without saying which."
+        }
+      },
+      "profile": {
+        "title": "{count, plural, one {The name and photo of # customer could not be read.} other {The name and photo of # customers could not be read.}}"
+      },
+      "test": {
+        "action": "Test connection",
+        "running": "Testing",
+        "healthy": "The connection works.",
+        "unhealthy": "The connection is not working."
+      },
+      "disconnect": {
+        "action": "Disconnect",
+        "title": "Disconnect {name}?",
+        "description": "The channel stops receiving and sending messages and its credentials are deleted. Conversations and customers stay. To use it again you connect it anew.",
+        "confirm": "Disconnect",
+        "done": "{name} was disconnected."
+      },
+      "callbackUrl": {
+        "label": "Callback URL",
+        "hint": "Paste this address in the webhook settings of the provider so that it can send you messages."
+      },
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "The text could not be copied. Select it and copy it by hand.",
+      "connectDialog": {
+        "title": "Connect {name}",
+        "description": "Enter what the channel asks for. Secrets are stored encrypted and are never shown again.",
+        "optional": "(optional)",
+        "secretHint": "It will not be shown again.",
+        "connecting": "Connecting",
+        "submit": "Connect",
+        "connected": "{name} is connected."
+      },
+      "widget": {
+        "toggle": "Chat widget settings",
+        "snippet": {
+          "title": "Embed code",
+          "hint": "Paste it before the closing body tag of every page where the chat should appear."
+        },
+        "origins": {
+          "label": "Sites that may load the chat",
+          "hint": "One address per line, for example https://www.example.com. Up to {max}.",
+          "tooMany": "Use at most {max} sites.",
+          "save": "Save sites"
+        },
+        "originsSaved": "Sites saved.",
+        "preChat": {
+          "label": "Ask for name, e-mail and phone before the first message",
+          "hint": "The visitor fills a short form before they start the chat."
+        },
+        "connectSrc": {
+          "title": "If your site has a strict content security policy",
+          "hint": "Add these addresses to its connect-src directive so that the chat can reach us and upload files."
+        }
+      },
+      "templates": {
+        "toggle": "Message templates",
+        "empty": "This account has no templates.",
+        "status": {
+          "approved": "Approved",
+          "pending": "Pending approval",
+          "rejected": "Rejected"
+        }
       }
     },
     "nav": {
       "store": {
         "label": "Store settings",
         "title": "Store",
-        "general": "General"
+        "general": "General",
+        "channels": "Channels",
+        "plugins": "Plugins"
       },
       "org": {
         "label": "Organization",
@@ -1496,6 +1595,31 @@
       "slug": "Address name",
       "nameInvalid": "Enter a name of up to 100 characters.",
       "saved": "Organization saved."
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "The channels and integrations you can install in this store.",
+      "listLabel": "Available plugins",
+      "empty": {
+        "title": "No plugins available",
+        "body": "There is nothing to install in this store yet."
+      },
+      "official": "Official",
+      "by": "By {author}",
+      "installed": "Installed",
+      "connections": "{count, plural, one {# account connected} other {# accounts connected}}",
+      "comingLater": "Not available yet",
+      "install": {
+        "action": "Install",
+        "done": "{name} was installed. You can connect it in Channels."
+      },
+      "uninstall": {
+        "action": "Uninstall",
+        "title": "Uninstall {name}?",
+        "description": "{count, plural, =0 {The plugin stops working in this store.} one {The plugin stops working and its connected account is disconnected.} other {The plugin stops working and its # connected accounts are disconnected.}} Conversations and customers stay.",
+        "confirm": "Uninstall",
+        "done": "{name} was uninstalled."
+      }
     }
   },
   "emptyStates": {

@@ -2,3 +2,5 @@
 // components of /s with a short relative import (the lint rule allows two levels at most). Each
 // page of the area adds its line here.
 export { StoreGeneralPage } from '../../store-general-page'
+export { StoreChannelsPage } from '../../store-channels-page'
+export { StorePluginsPage } from '../../store-plugins-page'
