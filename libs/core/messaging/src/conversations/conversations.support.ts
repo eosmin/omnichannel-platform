@@ -69,6 +69,8 @@ export function visibleTo(viewer: Viewer | undefined): { OR?: { assignedTo: stri
 export interface LockedConversation {
   status: string
   assignedTo: string | null
+  snoozedUntil: Date | null
+  resolvedAt: Date | null
 }
 
 // Every write of a conversation starts here, in this order: the shared lock on the store (so that
@@ -82,15 +84,27 @@ export async function lockConversationForWrite(
   viewer?: Viewer
 ): Promise<LockedConversation> {
   await lockStoreForWrite(tx, storeId)
-  const rows = await tx.$queryRaw<{ status: string; assigned_to: string | null }[]>`
-    SELECT status, assigned_to FROM conversations
+  const rows = await tx.$queryRaw<
+    {
+      status: string
+      assigned_to: string | null
+      snoozed_until: Date | null
+      resolved_at: Date | null
+    }[]
+  >`
+    SELECT status, assigned_to, snoozed_until, resolved_at FROM conversations
     WHERE id = ${conversationId} AND store_id = ${storeId}
     FOR UPDATE`
   const row = rows[0]
   if (row === undefined || !canSee(viewer, { assignedTo: row.assigned_to, status: row.status })) {
     throw resourceNotFound('conversation')
   }
-  return { status: row.status, assignedTo: row.assigned_to }
+  return {
+    status: row.status,
+    assignedTo: row.assigned_to,
+    snoozedUntil: row.snoozed_until,
+    resolvedAt: row.resolved_at
+  }
 }
 
 // A caller who holds none of the permissions cannot do it: they are named in the answer

@@ -255,6 +255,12 @@ export const ResolveUndo = {
   CLOSING_GRACE_MS: 2_000
 } as const
 
+// The `reason` in the metadata of a conflict on a conversation that a caller can tell from the rest
+export const ConversationConflictReasons = {
+  // A sweep's guarded change (`onlyIfDue`) found that a person changed the conversation meanwhile
+  NO_LONGER_DUE: 'no_longer_due'
+} as const
+
 export const ConversationLimits = {
   RESOLUTION_REASON_MAX_LENGTH: 500,
   MAX_SNOOZE_DAYS: 365,
