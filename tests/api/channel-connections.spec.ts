@@ -477,6 +477,26 @@ describe('The channel connections of a store', () => {
       expect(afterUp).toMatchObject({ status: ChannelConnectionStatus.ACTIVE, lastError: null })
     })
 
+    it('stores the reason of a plugin without the credential it repeated', async () => {
+      const { id } = register({
+        healthCheck: () =>
+          Promise.resolve({
+            healthy: false,
+            checkedAt: new Date().toISOString(),
+            error: `401 for Bearer ${SECRET} (access_token=${SECRET}, password: hunter2)`
+          })
+      })
+      const made = (await connect(id)).body as ConnectionBody
+
+      await asAdmin().post(ApiRoutes.channels.test(made.id))
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })
+
+      expect(row.status).toBe(ChannelConnectionStatus.ERROR)
+      expect(row.lastError).toBe(
+        '401 for Bearer [redacted] (access_token=[redacted], password: [redacted])'
+      )
+    })
+
     it('counts a plugin that throws or answers nonsense as not well, and keeps what it said out', async () => {
       const throwing = register({ healthCheck: () => Promise.reject(new Error(`bad ${SECRET}`)) })
       const nonsense = register({ healthCheck: () => Promise.resolve({ ok: true } as never) })

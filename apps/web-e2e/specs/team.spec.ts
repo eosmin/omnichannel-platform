@@ -61,7 +61,9 @@ test.describe('Settings → Team', () => {
     await invite.getByLabel(invitations.dialog.email).fill(email)
     await invite.getByLabel(invitations.dialog.role).selectOption({ label: usedRole })
     await invite.getByRole('button', { name: invitations.dialog.send }).click()
-    const row = page.getByRole('listitem').filter({ hasText: email })
+    const row = page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: email }) })
     await expect(row).toBeVisible()
 
     // A resend right after inviting is held by the cooldown, and says how long to wait

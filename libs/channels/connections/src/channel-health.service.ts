@@ -18,7 +18,7 @@ import {
   ChannelContextFactory,
   type ConnectionRow
 } from './channel-context.factory'
-import { providerText } from './provider-text'
+import { providerErrorText } from './provider-text'
 import { errorName, withTimeout } from './timeout'
 
 export interface CheckedHealth {
@@ -58,7 +58,10 @@ export class ChannelHealthService {
       }
       if (report.data.healthy) return { healthy: true }
       // Cleaned first, then the fallback: a reason made of invisible characters is no reason
-      const reason = providerText(report.data.error ?? '', ChannelHealthLimits.ERROR_MAX_LENGTH)
+      const reason = providerErrorText(
+        report.data.error ?? '',
+        ChannelHealthLimits.ERROR_MAX_LENGTH
+      )
       return { healthy: false, error: reason === '' ? ChannelHealthErrors.UNSPECIFIED : reason }
     } catch (error) {
       // The message of the error may hold a token: only its name is logged, and none of it is stored

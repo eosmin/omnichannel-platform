@@ -84,7 +84,9 @@ test.describe('Settings: the whole path of Step 3.6', () => {
       await invite.getByLabel(team.invitations.dialog.email).fill(agentEmail)
       await invite.getByLabel(team.invitations.dialog.role).selectOption({ label: RoleNames.AGENT })
       await invite.getByRole('button', { name: team.invitations.dialog.send }).click()
-      await expect(page.getByRole('listitem').filter({ hasText: agentEmail })).toBeVisible()
+      await expect(
+        page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: agentEmail }) })
+      ).toBeVisible()
       const link = AppPaths.invitation(invitationTokenIn(await nextEmailTo(agentEmail)))
 
       // The agent, in a browser of their own, names themselves and joins the store

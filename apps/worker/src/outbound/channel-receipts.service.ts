@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import {
   CONNECTION_ROW_SELECT,
   ChannelHealthService,
-  providerText
+  providerErrorText
 } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
 import {
@@ -128,7 +128,7 @@ export class ChannelReceipts {
       select: CONNECTION_ROW_SELECT
     })
     if (row === null) return
-    const reason = providerText(
+    const reason = providerErrorText(
       event.status?.error?.message ?? '',
       ChannelHealthLimits.ERROR_MAX_LENGTH
     )
