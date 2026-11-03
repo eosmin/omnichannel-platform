@@ -189,17 +189,7 @@ export class WidgetSettings {
   // the bucket, and the url is cut to its origin: the signature never leaves this method.
   private bucketOrigin?: Promise<string>
   private connectSrc(): Promise<string[]> {
-    this.bucketOrigin ??= this.storage
-      .uploadUrl({
-        key: ConnectSrcProbe.KEY,
-        contentType: ConnectSrcProbe.CONTENT_TYPE,
-        contentLength: ConnectSrcProbe.CONTENT_LENGTH
-      })
-      .then(url => new URL(url).origin)
-      .catch((error: unknown) => {
-        this.bucketOrigin = undefined // Not kept: the next read asks again
-        throw error
-      })
+    this.bucketOrigin ??= this.probeBucket()
     const api = new URL(this.config.apiUrl)
     const socket = `${api.protocol === 'https:' ? 'wss' : 'ws'}://${api.host}`
     // A bucket that cannot be read must not undo a save that committed, nor hide the snippet: the page
@@ -212,6 +202,29 @@ export class WidgetSettings {
         return [...new Set([api.origin, socket])]
       }
     )
+  }
+
+  private probeBucket(): Promise<string> {
+    // Started inside a promise, so that a signer that throws at once is a failed probe like any other
+    const probe = Promise.resolve()
+      .then(() =>
+        this.storage.uploadUrl({
+          key: ConnectSrcProbe.KEY,
+          contentType: ConnectSrcProbe.CONTENT_TYPE,
+          contentLength: ConnectSrcProbe.CONTENT_LENGTH
+        })
+      )
+      .then(url => {
+        const { origin } = new URL(url)
+        // A url with no host (`data:`, `file:`) has the origin "null", which no page can allow
+        if (origin === 'null') throw new Error('the signed url has no origin')
+        return origin
+      })
+    // A failure is not kept: the next read asks again
+    probe.catch(() => {
+      this.bucketOrigin = undefined
+    })
+    return probe
   }
 
   // Plain attributes on a script tag: the script reads them itself, so the merchant writes no code.
