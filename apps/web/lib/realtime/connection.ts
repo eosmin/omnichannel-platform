@@ -38,6 +38,9 @@ export interface RealtimeConnection {
   // Joins the room of a conversation, and again after each reconnection (a new socket has no rooms).
   // Returns the way to leave it.
   joinConversation: (conversationId: string) => () => void
+  // Why the session of this store ended, when the api said so: a code of the refusal that does not
+  // get better by trying again, or null (still going, closed by us, or the login itself is gone)
+  endedBy: () => string | null
   close: () => void
 }
 
@@ -65,6 +68,7 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   let closed = false
   let sessionOver = false
+  let endedBy: string | null = null
   let everConnected = false
   let refreshNext = false
   let lastTokenWasFresh = false
@@ -95,8 +99,9 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
     )
   }
 
-  const sessionEnded = (): void => {
+  const sessionEnded = (reason: string | null = null): void => {
     sessionOver = true
+    endedBy = reason
     stopRetry()
     stopStableTimer()
     status.set(ConnectionStatuses.UNAUTHENTICATED)
@@ -188,8 +193,9 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   socket.on('connect_error', error => {
     const code = handshakeErrorCode(error)
-    if (code === ErrorCodes.TENANT_ACCESS_DENIED) {
-      sessionEnded()
+    // Removed or suspended: no new token and no retry fixes it, and their other stores are untouched
+    if (code === ErrorCodes.TENANT_ACCESS_DENIED || code === ErrorCodes.TENANT_MEMBER_SUSPENDED) {
+      sessionEnded(code)
       return
     }
     if (code === ErrorCodes.AUTH_TOKEN_EXPIRED) refreshNext = true
@@ -233,6 +239,7 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
         if (socket.connected) socket.emit(RealtimeEvents.LEAVE_CONVERSATION, { conversationId })
       }
     },
+    endedBy: () => endedBy,
     close: () => {
       closed = true
       stopRetry()

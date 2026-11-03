@@ -5,12 +5,15 @@ import type { Page } from '@playwright/test'
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
+import { inviteAsAgent, signInByApi } from '../support/api'
 import { signIn } from '../support/login'
-import { expect, test } from '../support/test'
+import { invitationTokenIn, nextEmailTo } from '../support/mailbox'
+import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const team = en.settings.team
 const invitations = team.invitations
 const roles = team.roles
+const members = team.members
 
 function storeIdOf(page: Page): string {
   const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1]
@@ -101,5 +104,86 @@ test.describe('Settings → Team', () => {
     await expect(
       page.getByRole('heading', { name: en.emptyStates.permissionDenied.title })
     ).toBeVisible()
+  })
+
+  test('a suspended member is kept out at once, is told so, and returns with their role when reactivated', async ({
+    page,
+    browser
+  }) => {
+    const suffix = randomUUID().slice(0, 8)
+    const name = `Guest ${suffix}`
+    const email = `suspend-${suffix}@example.com`
+
+    // A new person joins the store through an invitation, and is working in it
+    await inviteAsAgent(await signInByApi('admin@test.com'), email)
+    const guest = await browser.newContext()
+    try {
+      await reachServicesFromOwnAddress(guest)
+      const guestPage = await guest.newPage()
+      await guestPage.goto(AppPaths.invitation(invitationTokenIn(await nextEmailTo(email))))
+      await guestPage.getByLabel(en.invitation.nameLabel).fill(name)
+      await guestPage.getByRole('button', { name: en.invitation.accept }).click()
+      await guestPage.waitForURL(/\/s\/[^/]+\/inbox$/)
+      const inboxPath = new URL(guestPage.url()).pathname
+
+      // The administrator suspends them after being asked to confirm
+      await signIn(page, 'admin@test.com')
+      await page.waitForURL(/\/s\/[^/]+\/inbox/)
+      await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.TEAM))
+      const row = page
+        .getByRole('listitem')
+        .filter({ has: page.getByRole('heading', { name, exact: true }) })
+      await expect(row).toBeVisible()
+      await row.getByRole('button', { name: members.suspend.action, exact: false }).click()
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: members.suspend.confirm })
+        .click()
+      await expect(row.getByText(members.status.suspended, { exact: true })).toBeVisible()
+      await expect(row.getByRole('button', { name: members.suspend.action })).toHaveCount(0)
+      await expect(row.getByRole('button', { name: members.reactivate.action })).toBeVisible()
+
+      // Their open tab is cut and says why, without a generic refusal
+      await expect(guestPage).toHaveURL(AppPaths.noAccess)
+      await expect(
+        guestPage.getByRole('heading', { name: en.noAccess.suspendedTitle })
+      ).toBeVisible()
+
+      // Opening the store by its link does the same, and does not loop
+      await guestPage.goto(inboxPath)
+      await expect(guestPage).toHaveURL(AppPaths.noAccess)
+      await expect(
+        guestPage.getByRole('heading', { name: en.noAccess.suspendedTitle })
+      ).toBeVisible()
+
+      // The filter finds them, and inviting their address says to reactivate instead
+      await page.getByLabel(members.filter.label).selectOption({ label: members.filter.suspended })
+      await expect(row).toBeVisible()
+      await page.getByLabel(members.filter.label).selectOption({ label: members.filter.active })
+      await expect(row).toHaveCount(0)
+      await page.getByRole('tab', { name: team.tabs.invitations }).click()
+      await page.getByRole('button', { name: invitations.invite, exact: true }).click()
+      const invite = page.getByRole('dialog', { name: invitations.dialog.title })
+      await invite.getByLabel(invitations.dialog.email).fill(email)
+      await invite.getByRole('button', { name: invitations.dialog.send }).click()
+      await expect(invite.getByText(en.errors.TENANT_INVITEE_SUSPENDED)).toBeVisible()
+      await invite.getByRole('button', { name: en.common.cancel }).click()
+
+      // Reactivating asks too, and gives the access back
+      await page.getByRole('tab', { name: team.tabs.members }).click()
+      await page.getByLabel(members.filter.label).selectOption({ label: members.filter.all })
+      await row.getByRole('button', { name: members.reactivate.action, exact: false }).click()
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: members.reactivate.confirm })
+        .click()
+      await expect(row.getByText(members.status.active, { exact: true })).toBeVisible()
+
+      // The person checks again and is back in the store with the role they had
+      await guestPage.getByRole('button', { name: en.noAccess.checkAgain }).click()
+      await expect(guestPage).toHaveURL(/\/s\/[^/]+\/inbox$/)
+    } finally {
+      await guest.close()
+    }
   })
 })

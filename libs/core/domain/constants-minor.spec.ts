@@ -142,6 +142,11 @@ describe('DestructiveActionTiers', () => {
     expect(tierOf['REVOKE_INVITATION']).toBe(DestructiveActionTierLevels.MODERATE)
   })
 
+  it('asks before suspending a member (high, it cuts access) and before bringing one back (moderate)', () => {
+    expect(tierOf['SUSPEND_TEAM_MEMBER']).toBe(DestructiveActionTierLevels.HIGH)
+    expect(tierOf['REACTIVATE_TEAM_MEMBER']).toBe(DestructiveActionTierLevels.MODERATE)
+  })
+
   it('asks before deleting a tag (it leaves every conversation) or a saved reply', () => {
     expect(tierOf['DELETE_TAG']).toBe(DestructiveActionTierLevels.HIGH)
     expect(tierOf['DELETE_SNIPPET']).toBe(DestructiveActionTierLevels.MODERATE)

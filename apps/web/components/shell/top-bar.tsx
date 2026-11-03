@@ -24,7 +24,11 @@ export function TopBar({
   return (
     <header className="bg-background flex h-14 items-center gap-3 border-b px-4">
       <span className="font-semibold">{appTitle}</span>
-      <StoreSwitcher memberships={profile.memberships} currentStoreId={currentStoreId} />
+      <StoreSwitcher
+        memberships={profile.memberships}
+        suspendedStores={profile.suspendedStores}
+        currentStoreId={currentStoreId}
+      />
       {nav}
       <div className="flex-1" />
       {currentStoreId !== null && <NotificationCenter storeId={currentStoreId} />}

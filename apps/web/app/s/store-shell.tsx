@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { type ReactElement, type ReactNode, useEffect } from 'react'
 
@@ -12,6 +13,11 @@ import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
 import { StoreNav } from '../../components/shell/store-nav'
 import { rememberLastStoreId } from '../../lib/last-store'
+
+// Only a suspended person ever loads this, so it stays out of the chunk every store page shares
+const Suspended = dynamic(() => import('./suspended-store').then(module => module.SuspendedStore), {
+  ssr: false
+})
 
 // Everything under /s/[storeId]. The profile says which stores the person belongs to; one that is
 // not in the list (a removed member, a link from someone else) goes to the no-access screen. The api
@@ -27,9 +33,15 @@ export function StoreShell({
     <SessionGate>
       {profile => {
         const membership = profile.memberships.find(item => item.storeId === storeId)
-        return membership === undefined ? (
-          <NoMembership />
-        ) : (
+        if (membership === undefined) {
+          const suspended = profile.suspendedStores.find(item => item.storeId === storeId)
+          return suspended === undefined ? (
+            <NoMembership />
+          ) : (
+            <Suspended storeId={storeId} storeName={suspended.storeName} profile={profile} />
+          )
+        }
+        return (
           <StoreProvider membership={membership}>
             <Remember storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>

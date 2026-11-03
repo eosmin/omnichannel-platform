@@ -554,7 +554,11 @@
   "noAccess": {
     "title": "You have no access",
     "body": "You cannot open this page, or your account is not in any store. Ask an administrator for access.",
-    "checkAgain": "Check again"
+    "checkAgain": "Check again",
+    "suspendedTitle": "Your access is suspended",
+    "suspendedBody": "An administrator suspended your access to {stores}. Talk to an administrator to get it back.",
+    "suspendedGeneric": "Your access to this store is suspended. Talk to an administrator.",
+    "suspendedNotice": "Your access to {store} is suspended. Talk to an administrator."
   },
   "notFound": {
     "title": "Page not found",
@@ -854,7 +858,8 @@
       "loadMore": "Load more",
       "unreadDot": "Unread",
       "settings": "Notification settings"
-    }
+    },
+    "accessSuspended": "Your access is suspended"
   },
   "inbox": {
     "listLabel": "Conversations",
@@ -1779,6 +1784,46 @@
           "description": "They lose access to this store at once and their conversations become unassigned. You can invite them again later.",
           "confirm": "Remove member",
           "done": "{name} was removed."
+        },
+        "filter": {
+          "label": "Show",
+          "all": "Everyone",
+          "active": "Active",
+          "suspended": "Suspended",
+          "empty": {
+            "all": {
+              "title": "No members",
+              "body": "People who accept an invitation appear here."
+            },
+            "active": {
+              "title": "No active members",
+              "body": "Everyone on the team is suspended. Reactivate someone to let them in."
+            },
+            "suspended": {
+              "title": "No suspended members",
+              "body": "Nobody is suspended in this store."
+            }
+          }
+        },
+        "status": {
+          "active": "Active",
+          "suspended": "Suspended"
+        },
+        "suspend": {
+          "action": "Suspend",
+          "title": "Suspend {name}?",
+          "description": "They lose access to this store at once and their open conversations go back to the queue, unassigned. Their role and history are kept, their other stores are not affected, and you can reactivate them at any time.",
+          "confirm": "Suspend member",
+          "done": "{name} was suspended.",
+          "outOfDate": "The list was out of date: the access of {name} had already changed. It was updated."
+        },
+        "reactivate": {
+          "action": "Reactivate",
+          "title": "Reactivate {name}?",
+          "description": "They get their access to this store back at once, with the role they had: {role}.",
+          "confirm": "Reactivate member",
+          "done": "{name} was reactivated.",
+          "outOfDate": "The list was out of date: the access of {name} had already changed. It was updated."
         }
       },
       "roles": {

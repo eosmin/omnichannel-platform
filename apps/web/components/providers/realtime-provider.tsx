@@ -2,9 +2,12 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { type ReactElement, type ReactNode, useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { AppPaths, QueryKeys, sendMessage } from '@platform/api-client'
+import { ErrorCodes } from '@platform/core/errors'
 
 import { apiClient, browserSession } from '../../lib/api'
 import { webEnv } from '../../lib/env'
@@ -40,6 +43,10 @@ export function RealtimeProvider({
   children: ReactNode
 }): ReactElement {
   const router = useRouter()
+  const t = useTranslations('noAccess')
+  // Read by the effect when the session ends; a change of language must not reopen the socket
+  const tRef = useRef(t)
+  tRef.current = t
   const queryClient = useQueryClient()
   const [value, setValue] = useState<RealtimeContextValue | null>(null)
 
@@ -81,6 +88,12 @@ export function RealtimeProvider({
       // Removed, not just marked stale: "/" would read the cached profile first, still listing the
       // store, and send the person straight back to it
       queryClient.removeQueries({ queryKey: QueryKeys.session })
+      // A suspension is told to the person where they are; "/" then picks a store they can still
+      // enter, or the screen that explains the suspension. Their sessions elsewhere are not touched.
+      // The id keeps a second call (StrictMode runs the effect twice) from showing it twice.
+      if (connection.endedBy() === ErrorCodes.TENANT_MEMBER_SUSPENDED) {
+        toast.error(tRef.current('suspendedGeneric'), { id: `suspended-${storeId}` })
+      }
       router.replace(AppPaths.home)
     }
     const stopWatching = status.subscribe(leaveIfSessionOver)
