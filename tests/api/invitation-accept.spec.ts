@@ -7,6 +7,7 @@ import { AuditAction } from '@platform/core/audit'
 import { RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ensureUser } from '@platform/core/database-testing'
+import { MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { SessionService } from '../../apps/api/src/modules/auth/session.service'
@@ -449,6 +450,37 @@ describe('Accepting an invitation', () => {
       expect(
         await owner.membership.count({ where: { userId: guest.id, storeId: ctx.storeA.id } })
       ).toBe(1)
+    })
+  })
+
+  describe('a person who is suspended in the store', () => {
+    it('is not brought back by an invitation: the suspension and the role stay', async () => {
+      const email = newEmail()
+      const guest = await existingAccount(email)
+      // The invitation was sent while they were not on the team, and then they joined and were suspended
+      const pending = await invite(email, ctx.roleIds[RoleNames.SUPERVISOR])
+      await owner.membership.create({
+        data: {
+          userId: guest.id,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          roleId: ctx.roleIds[RoleNames.VIEWER],
+          status: MembershipStatus.SUSPENDED
+        }
+      })
+
+      const response = await acceptAs(guest, pending.token)
+
+      expect(response.status).toBe(409)
+      expect(codeOf(response)).toBe(ErrorCodes.TENANT_MEMBER_SUSPENDED)
+      const row = await owner.membership.findFirstOrThrow({
+        where: { userId: guest.id, storeId: ctx.storeA.id }
+      })
+      expect(row).toMatchObject({
+        status: MembershipStatus.SUSPENDED,
+        roleId: ctx.roleIds[RoleNames.VIEWER]
+      })
+      expect((await tenants().access(guest.id, ctx.storeA.id)).status).toBe('suspended')
     })
   })
 

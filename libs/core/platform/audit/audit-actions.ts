@@ -23,6 +23,8 @@ export const AuditAction = {
   INVITATION_RESENT: 'member.invitation_resent',
   MEMBER_JOINED: 'member.joined',
   MEMBER_REMOVED: 'member.removed',
+  MEMBER_SUSPENDED: 'member.suspended',
+  MEMBER_REACTIVATED: 'member.reactivated',
   ROLE_CHANGED: 'member.role_changed',
   ROLE_CREATED: 'role.created',
   ROLE_UPDATED: 'role.updated',

@@ -7,7 +7,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AppPaths, MessageType } from '@platform/core/domain'
+import { AppPaths, MembershipStatus, MessageType } from '@platform/core/domain'
 import { Events, type MessageChangedPayload } from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
 import { ExportFormats, ExportStatus, ExportTypes } from '@platform/core/queues'
@@ -85,7 +85,38 @@ describe('Notifications raised by events', () => {
         mentions: [userId]
       })
 
+  // A member of the store whose access was suspended: still on the team, with the role of an agent
+  async function suspendedAgent() {
+    const suspended = await createActor(owner, app, {
+      prefix,
+      name: `suspendedNotified${randomUUID().slice(0, 6)}`,
+      organizationId: ctx.orgA.id,
+      storeId: ctx.storeA.id,
+      roleId: ctx.roleIds[RoleNames.AGENT]
+    })
+    await owner.membership.updateMany({
+      where: { userId: suspended.id, storeId: ctx.storeA.id },
+      data: { status: MembershipStatus.SUSPENDED }
+    })
+    return suspended
+  }
+
   describe('a mention', () => {
+    it('does not tell a member who is suspended', async () => {
+      const suspended = await suspendedAgent()
+      const { id } = await mk()
+
+      await app.get(EventEmitter2).emitAsync(Events.MESSAGE_MENTION, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        messageId: randomUUID(),
+        mentionedUserId: suspended.id,
+        authorId: ctx.adminA.id
+      })
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_MENTIONED)).toHaveLength(0)
+    })
+
     it('tells the person mentioned, and only them, with the path of the conversation', async () => {
       const { id } = await mk()
 
@@ -193,6 +224,23 @@ describe('Notifications raised by events', () => {
         resourceId: message.id
       })
       expect(audit).toHaveLength(1)
+    })
+
+    it('leaves out a member who is suspended', async () => {
+      const suspended = await suspendedAgent()
+      const conversation = await mk()
+      const message = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id
+      })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(Events.MEDIA_INFECTED, infected(conversation.id, message.id))
+
+      const told = (await rowsOf(NotificationTypes.MEDIA_INFECTED)).map(row => row.userId)
+      expect(told).toContain(ctx.agentA.id)
+      expect(told).not.toContain(suspended.id)
     })
 
     it('tells each person once when two files of one message are infected', async () => {
@@ -324,6 +372,25 @@ describe('Notifications raised by events', () => {
         resourceId: row.id,
         params: { filename: 'customers.csv', type: ExportTypes.CUSTOMERS }
       })
+    })
+
+    it('tells nobody when the one who asked for it is suspended', async () => {
+      const suspended = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `suspendedExport${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.CUSTOMERS_EXPORT]
+      })
+      const row = await exportOf(suspended.id, ExportStatus.READY)
+      await owner.membership.updateMany({
+        where: { userId: suspended.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+
+      await app.get(EventEmitter2).emitAsync(Events.EXPORT_READY, settled(row))
+
+      expect(await rowsOf(NotificationTypes.EXPORT_READY)).toHaveLength(0)
     })
 
     it('tells who asked for it that the export failed', async () => {

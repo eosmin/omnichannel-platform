@@ -14,7 +14,7 @@ import {
 import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
 import { generateToken, hashToken } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
-import { InvitationStatus, MembershipStatus } from '@platform/core/domain'
+import { InvitationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
 import {
   resourceConflict,
   ErrorCodes,
@@ -150,7 +150,16 @@ export class InvitationsService {
         { permissions: missing }
       )
     }
-    if (await this.isMember(store.id, email)) {
+    const membership = await this.membershipOf(store.id, email)
+    if (membership === MembershipStatus.SUSPENDED) {
+      // An invitation would not bring them back (accepting it refuses too): reactivating does
+      throw new PlatformException(
+        ErrorCodes.TENANT_INVITEE_SUSPENDED,
+        'that address is a suspended member of the store: reactivate it instead of inviting',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    if (membership === MembershipStatus.ACTIVE) {
       throw new PlatformException(
         ErrorCodes.TENANT_MEMBER_ALREADY_EXISTS,
         'that address is already a member of the store',
@@ -289,13 +298,20 @@ export class InvitationsService {
   }
 
   // Compared in lower case, as the login does: the seed stores an address as it was written
-  private async isMember(storeId: string, email: string): Promise<boolean> {
-    const rows = await this.prisma.client.$queryRaw<{ id: string }[]>`
-      SELECT m.id FROM memberships m JOIN users u ON u.id = m.user_id
-      WHERE m.store_id = ${storeId} AND m.status = ${MembershipStatus.ACTIVE}
+  private async membershipOf(
+    storeId: string,
+    email: string
+  ): Promise<MembershipStatus.ACTIVE | MembershipStatus.SUSPENDED | null> {
+    const rows = await this.prisma.client.$queryRaw<{ status: string }[]>`
+      SELECT m.status FROM memberships m JOIN users u ON u.id = m.user_id
+      WHERE m.store_id = ${storeId}
+        AND m.status IN (${MembershipStatus.ACTIVE}, ${MembershipStatus.SUSPENDED})
         AND m.revoked_at IS NULL AND lower(u.email) = ${email}
+      ORDER BY m.status
       LIMIT 1`
-    return rows.length > 0
+    const status = rows[0]?.status
+    if (status === undefined) return null
+    return isSuspended(status) ? MembershipStatus.SUSPENDED : MembershipStatus.ACTIVE
   }
 
   // The language of the person if they already have an account, otherwise the one of the store

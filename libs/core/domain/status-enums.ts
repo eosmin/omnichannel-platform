@@ -68,7 +68,14 @@ export enum DeliveryStatus {
 
 export enum MembershipStatus {
   ACTIVE = 'ACTIVE',
+  // Kept in the store with the role it had, but with no access at all; reactivating brings it back
+  SUSPENDED = 'SUSPENDED',
   REVOKED = 'REVOKED'
+}
+
+// The status column is plain text: one place decides what reads as suspended
+export function isSuspended(status: string): boolean {
+  return status === String(MembershipStatus.SUSPENDED)
 }
 
 export enum InvitationStatus {

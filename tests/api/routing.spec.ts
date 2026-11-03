@@ -309,6 +309,25 @@ describe('The routing rules of a store', () => {
       expect((asRemoved.body as ErrorBody).error.metadata?.ids).toEqual([removed.id])
     })
 
+    it('refuses a member who is suspended: the rule would name someone who cannot take the work', async () => {
+      const suspended = await createActor(owner, app, {
+        prefix,
+        name: `suspendedRouting${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: storeId(),
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      await owner.membership.updateMany({
+        where: { userId: suspended.id, storeId: storeId() },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+
+      const response = await create({ action: { type: ASSIGN_USER, userIds: [suspended.id] } })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect((response.body as ErrorBody).error.metadata?.ids).toEqual([suspended.id])
+    })
+
     it('keeps a person and a tag in one spelling', async () => {
       const tag = await createTag(owner, { storeId: storeId() })
 
@@ -815,6 +834,13 @@ describe('The routing rules of a store', () => {
         data: { status: MembershipStatus.REVOKED, revokedAt: new Date() }
       })
 
+    // What suspending a member leaves in the membership: the status, and no date of revocation
+    const suspend = (userIds: string[]) =>
+      owner.membership.updateMany({
+        where: { userId: { in: userIds }, storeId: storeId() },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+
     it('leaves it for the team when there are no rules or none matches', async () => {
       const made = await arriving()
       await createRoutingRule(owner, {
@@ -1146,6 +1172,32 @@ describe('The routing rules of a store', () => {
         expect(await assignedTo(made.id)).toBe(ana.id)
       })
 
+      it('is not given it while they are suspended, and is again once they are reactivated', async () => {
+        const member = await createActor(owner, app, {
+          prefix,
+          name: `suspendedApply${randomUUID().slice(0, 6)}`,
+          organizationId: ctx.orgA.id,
+          storeId: storeId(),
+          roleId: ctx.roleIds[RoleNames.AGENT]
+        })
+        await createRoutingRule(owner, { storeId: storeId(), action: assignTo(member.id) })
+        const next = await createRoutingRule(owner, {
+          storeId: storeId(),
+          action: assignTo(ana.id)
+        })
+        await suspend([member.id])
+
+        const whileSuspended = await apply(await arriving())
+        await owner.membership.updateMany({
+          where: { userId: member.id, storeId: storeId() },
+          data: { status: MembershipStatus.ACTIVE }
+        })
+        const afterwards = await apply(await arriving())
+
+        expect(whileSuspended).toEqual({ ruleId: next.id, assignedTo: ana.id })
+        expect(afterwards.assignedTo).toBe(member.id)
+      })
+
       it('is not given it if their membership has a date of revocation, whatever its status', async () => {
         const member = await createActor(owner, app, {
           prefix,
@@ -1300,6 +1352,31 @@ describe('The routing rules of a store', () => {
         const outcome = await apply(await arriving())
 
         expect(outcome).toEqual({ ruleId: fallback.id, assignedTo: carla.id })
+      })
+
+      it('skips the suspended ones of a round robin', async () => {
+        const members = await Promise.all(
+          ['one', 'two'].map(name =>
+            createActor(owner, app, {
+              prefix,
+              name: `suspendedRobin${name}${randomUUID().slice(0, 6)}`,
+              organizationId: ctx.orgA.id,
+              storeId: storeId(),
+              roleId: ctx.roleIds[RoleNames.AGENT]
+            })
+          )
+        )
+        const [suspended, working] = members.map(member => member.id)
+        await robin(suspended ?? '', working ?? '')
+        await suspend([suspended ?? ''])
+
+        const first = await apply(await arriving())
+        const second = await apply(await arriving())
+        await suspend([working ?? ''])
+        const nobody = await apply(await arriving())
+
+        expect([first.assignedTo, second.assignedTo]).toEqual([working, working])
+        expect(nobody).toEqual({ ruleId: null, assignedTo: null })
       })
 
       it('skips who left and leaves it unassigned when nobody is left', async () => {

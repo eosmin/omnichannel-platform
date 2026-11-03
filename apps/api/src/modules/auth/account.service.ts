@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import type { Permission } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
-import { MembershipStatus } from '@platform/core/domain'
+import { isSuspended, MembershipStatus } from '@platform/core/domain'
 import { unauthorized } from '@platform/core/errors'
 
 import { isPermission } from '../tenancy'
@@ -16,6 +16,13 @@ export interface AccountMembership {
   permissions: Permission[]
 }
 
+// A store whose access the person has lost for now: it is not a store they can use, and it is not
+// among their memberships, so nothing that picks "a store" or "the last store" can land on it
+export interface SuspendedStore {
+  storeId: string
+  storeName: string
+}
+
 export interface AccountProfile {
   id: string
   email: string
@@ -25,6 +32,7 @@ export interface AccountProfile {
   timezone: string | null
   density: string
   memberships: AccountMembership[]
+  suspendedStores: SuspendedStore[]
 }
 
 @Injectable()
@@ -44,9 +52,13 @@ export class AccountService {
         timezone: true,
         density: true,
         memberships: {
-          where: { status: MembershipStatus.ACTIVE, revokedAt: null },
+          where: {
+            status: { in: [MembershipStatus.ACTIVE, MembershipStatus.SUSPENDED] },
+            revokedAt: null
+          },
           orderBy: { store: { name: 'asc' } },
           select: {
+            status: true,
             store: { select: { id: true, name: true } },
             role: { select: { name: true, permissions: { select: { name: true } } } }
           }
@@ -56,9 +68,13 @@ export class AccountService {
     if (user === null) {
       throw unauthorized('account no longer exists')
     }
-    const { memberships, ...profile } = user
+    const { memberships: rows, ...profile } = user
+    const memberships = rows.filter(row => !isSuspended(row.status))
     return {
       ...profile,
+      suspendedStores: rows
+        .filter(row => isSuspended(row.status))
+        .map(row => ({ storeId: row.store.id, storeName: row.store.name })),
       memberships: memberships.map(membership => ({
         storeId: membership.store.id,
         storeName: membership.store.name,

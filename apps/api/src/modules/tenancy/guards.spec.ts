@@ -49,12 +49,21 @@ async function failureOf(promise: Promise<unknown>): Promise<PlatformException> 
 }
 
 describe('TenantGuard', () => {
-  function build(resolved: unknown = null) {
-    const resolve = jest.fn(() => Promise.resolve(resolved))
+  // `answer` is what the context of the user says: a tenant is a grant, null is a stranger
+  function build(answer: unknown = null) {
+    const resolve = jest.fn(() =>
+      Promise.resolve(
+        answer === null
+          ? { status: 'none' }
+          : typeof answer === 'object' && 'status' in answer
+            ? answer
+            : { status: 'granted', tenant: answer }
+      )
+    )
     const record = jest.fn(() => Promise.resolve())
     const guard = new TenantGuard(
       new Reflector(),
-      { resolve } as unknown as TenantContextService,
+      { access: resolve } as unknown as TenantContextService,
       { record } as unknown as AccessDenialAuditor
     )
     return { guard, resolve, record }
@@ -124,6 +133,25 @@ describe('TenantGuard', () => {
     expect(Object.isFrozen(request['permissions'])).toBe(true)
     expect(request['store']).not.toBe(tenant.store) // A copy: the cached object is untouched
     expect(Object.isFrozen(tenant.store)).toBe(false)
+  })
+
+  it('refuses a suspended member with a code of its own, and records why', async () => {
+    const { guard, record } = build({ status: 'suspended' })
+    const request = { user: USER, header: header(STORE_ID) }
+
+    const failure = await failureOf(guard.canActivate(contextOf(request)))
+
+    expect(failure.code).toBe('TENANT_MEMBER_SUSPENDED')
+    expect(failure.statusCode).toBe(403)
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'tenant.access_denied',
+        metadata: { requestedStoreId: STORE_ID, reason: 'suspended' }
+      })
+    )
+    // Nothing of the store reaches the request of a member who may not enter it
+    expect(request).not.toHaveProperty('store')
+    expect(request).not.toHaveProperty('permissions')
   })
 
   it('records and refuses a store without access', async () => {

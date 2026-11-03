@@ -111,6 +111,33 @@ export class TeamController {
     return this.members.changeRole(store.id, id, body.roleId, actorOf(user, store, req), held)
   }
 
+  // Suspending and reactivating take the permission of removing: both decide who may enter the store
+  @RequirePermissions(Permissions.TEAM_REMOVE)
+  @Post(ApiRoutes.settings.memberSuspend(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  suspendMember(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(idSchema)) id: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<MemberView> {
+    return this.members.suspend(store.id, id, actorOf(user, store, req), held)
+  }
+
+  @RequirePermissions(Permissions.TEAM_REMOVE)
+  @Post(ApiRoutes.settings.memberReactivate(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  reactivateMember(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(idSchema)) id: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<MemberView> {
+    return this.members.reactivate(store.id, id, actorOf(user, store, req), held)
+  }
+
   @RequirePermissions(Permissions.TEAM_REMOVE)
   @Delete(ApiRoutes.settings.memberById(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)

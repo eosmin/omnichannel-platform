@@ -514,6 +514,8 @@
     "TENANT_INVITATION_EXPIRED": "La invitación caducó",
     "TENANT_INVITATION_INVALID": "La invitación no es válida",
     "TENANT_MEMBER_ALREADY_EXISTS": "Esa persona ya está en el equipo",
+    "TENANT_INVITEE_SUSPENDED": "Esa persona está suspendida en esta tienda. Reactívala en lugar de invitarla",
+    "TENANT_MEMBER_SUSPENDED": "Tu acceso a esta tienda está suspendido",
     "TENANT_NOT_FOUND": "La tienda no existe",
     "VALIDATION_FAILED": "Algunos campos no son válidos",
     "VALIDATION_INVALID_INPUT": "Revisa lo que escribiste",

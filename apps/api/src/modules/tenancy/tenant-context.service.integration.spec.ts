@@ -96,6 +96,28 @@ describe('TenantContextService, when the change arrives while the context is loa
     expect(await next).toBeNull()
   })
 
+  it('does not keep the old context of a member who was suspended meanwhile, and says why', async () => {
+    const [userId, storeId] = [randomUUID(), randomUUID()]
+    touched.push({ userId, storeId })
+    const db = slowDatabase(membershipOf(storeId))
+    const contexts = new TenantContextService(db.prisma, cache)
+
+    const inFlight = contexts.access(userId, storeId)
+    await db.started()
+    db.change({ ...membershipOf(storeId), status: 'SUSPENDED' }) // Suspended...
+    await contexts.invalidateUser(userId, storeId) // ...and the cache is told
+    db.release()
+    expect((await inFlight).status).toBe('granted') // It began before the suspension
+
+    db.findFirst.mockClear()
+    const next = contexts.access(userId, storeId)
+    await db.started()
+    db.release()
+    expect(await next).toEqual({ status: 'suspended' })
+    // Whoever asks only for a grant is refused too: a suspended member is nothing it can use
+    expect(await contexts.resolve(userId, storeId)).toBeNull()
+  })
+
   it('does not keep the old context of anybody in a store whose role was edited meanwhile', async () => {
     const [userId, storeId] = [randomUUID(), randomUUID()]
     touched.push({ userId, storeId })

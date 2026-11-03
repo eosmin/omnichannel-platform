@@ -3,6 +3,7 @@ import type { PinoLogger } from 'nestjs-pino'
 import { WebPushError } from 'web-push'
 
 import type { PrismaService } from '@platform/core/database'
+import { MembershipStatus } from '@platform/core/domain'
 import { NotificationTypes, notificationMessageKey } from '@platform/core/notifications'
 
 import { WebPushSender } from './web-push-sender.service'
@@ -10,9 +11,11 @@ import type { WebPushGateway } from './web-push.gateway'
 
 const USER = '11111111-1111-4111-8111-111111111111'
 const NOTIFICATION = '22222222-2222-4222-8222-222222222222'
+const STORE = '33333333-3333-4333-8333-333333333333'
 
 const notificationRow = (overrides: Record<string, unknown> = {}) => ({
   id: NOTIFICATION,
+  storeId: STORE,
   type: NotificationTypes.CONVERSATION_ASSIGNED,
   severity: 'info',
   messageKey: notificationMessageKey(NotificationTypes.CONVERSATION_ASSIGNED),
@@ -35,6 +38,7 @@ const pushError = (status: number): WebPushError =>
 describe('WebPushSender', () => {
   const findNotification = jest.fn<Promise<unknown>, [unknown]>()
   const findSubscriptions = jest.fn<Promise<unknown>, [unknown]>()
+  const countMembers = jest.fn<Promise<number>, [unknown]>()
   const updateSubscription = jest.fn()
   const deleteSubscriptions = jest.fn()
   const send = jest.fn<Promise<void>, [{ endpoint: string }, string, boolean]>()
@@ -44,6 +48,7 @@ describe('WebPushSender', () => {
     const prisma = {
       client: {
         notification: { findFirst: findNotification },
+        membership: { count: countMembers },
         pushSubscription: {
           findMany: findSubscriptions,
           updateMany: updateSubscription,
@@ -70,6 +75,7 @@ describe('WebPushSender', () => {
     enabled = true
     findNotification.mockResolvedValue(notificationRow())
     findSubscriptions.mockResolvedValue([subscription('s1')])
+    countMembers.mockResolvedValue(1)
     send.mockResolvedValue(undefined)
     updateSubscription.mockResolvedValue({ count: 1 })
   })
@@ -96,6 +102,18 @@ describe('WebPushSender', () => {
       where: { id: NOTIFICATION, userId: USER }
     })
     expect(findSubscriptions.mock.calls[0]?.[0]).toEqual({ where: { userId: USER } })
+  })
+
+  it('pushes only for a store the person can still enter: a suspended or removed member gets nothing', async () => {
+    countMembers.mockResolvedValue(0)
+    await sender().send(USER, NOTIFICATION)
+
+    // Asked for the store of the notification and for an active membership, nothing else
+    expect(countMembers.mock.calls[0]?.[0]).toEqual({
+      where: { userId: USER, storeId: STORE, status: MembershipStatus.ACTIVE, revokedAt: null }
+    })
+    expect(findSubscriptions).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 
   it('asks for attention on an error', async () => {

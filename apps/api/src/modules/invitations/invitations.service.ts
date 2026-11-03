@@ -5,7 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import type { AuthenticatedUser } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { InvitationStatus, MembershipStatus } from '@platform/core/domain'
+import { InvitationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -238,6 +238,15 @@ export class InvitationAcceptService {
       throw new PlatformException(
         ErrorCodes.TENANT_MEMBER_ALREADY_EXISTS,
         'already a member of the store',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    // A suspended person is brought back by reactivating, never by accepting an invitation that was
+    // sent before or after: it would undo the suspension and could change the role
+    if (isSuspended(existing.status) && existing.revokedAt === null) {
+      throw new PlatformException(
+        ErrorCodes.TENANT_MEMBER_SUSPENDED,
+        'access to the store is suspended',
         HttpStatusCodes.CONFLICT
       )
     }

@@ -4,14 +4,16 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, RoleNames } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { MembershipStatus } from '@platform/core/domain'
+import { ConversationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
+  resourceConflict,
   resourceNotFound,
   PlatformException
 } from '@platform/core/errors'
 
+import { RealtimeService } from '../realtime/realtime.service'
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
 
 export interface MemberView {
@@ -20,8 +22,12 @@ export interface MemberView {
   name: string
   email: string
   role: { id: string; name: string }
+  // SUSPENDED: still on the team with the same role, but without access until reactivated
+  status: MemberStatus
   joinedAt: Date
 }
+
+export type MemberStatus = MembershipStatus.ACTIVE | MembershipStatus.SUSPENDED
 
 // What any agent of the store may know of a teammate: enough to name them, never how to reach them
 export interface MemberDirectoryEntry {
@@ -32,10 +38,17 @@ export interface MemberDirectoryEntry {
 }
 
 const ACTIVE = { status: MembershipStatus.ACTIVE, revokedAt: null } as const
+// On the team: the ones who may enter and the ones who may not for now. The directory, which is who
+// can be given work, keeps to ACTIVE.
+const ON_THE_TEAM = {
+  status: { in: [MembershipStatus.ACTIVE, MembershipStatus.SUSPENDED] as string[] },
+  revokedAt: null
+}
 
 const MEMBER_SELECT = {
   id: true,
   userId: true,
+  status: true,
   createdAt: true,
   user: { select: { name: true, email: true } },
   role: {
@@ -46,6 +59,7 @@ const MEMBER_SELECT = {
 function view(row: {
   id: string
   userId: string
+  status: string
   createdAt: Date
   user: { name: string; email: string }
   role: { id: string; name: string }
@@ -56,6 +70,7 @@ function view(row: {
     name: row.user.name,
     email: row.user.email,
     role: { id: row.role.id, name: row.role.name },
+    status: isSuspended(row.status) ? MembershipStatus.SUSPENDED : MembershipStatus.ACTIVE,
     joinedAt: row.createdAt
   }
 }
@@ -67,12 +82,13 @@ export class MembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly tenants: TenantContextService
+    private readonly tenants: TenantContextService,
+    private readonly realtime: RealtimeService
   ) {}
 
   async list(storeId: string): Promise<MemberView[]> {
     const rows = await this.prisma.client.membership.findMany({
-      where: { storeId, ...ACTIVE },
+      where: { storeId, ...ON_THE_TEAM },
       select: MEMBER_SELECT,
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     })
@@ -105,7 +121,13 @@ export class MembersService {
     held: readonly Permission[]
   ): Promise<MemberView> {
     const result = await this.prisma.transaction(async tx => {
-      const member = await this.findActive(tx, storeId, membershipId)
+      // The same lock as suspending: a role is not changed under a suspension that commits meanwhile
+      await lockStoreForWrite(tx, storeId)
+      const member = await this.findMember(tx, storeId, membershipId)
+      // The role a suspended member comes back with is the one they had: it is not changed meanwhile
+      if (isSuspended(member.status)) {
+        throw resourceConflict('the role of a suspended member changes after it is reactivated')
+      }
       const role = await tx.role.findFirst({
         where: { id: roleId, OR: [{ storeId }, { isSystem: true, storeId: null }] },
         select: { id: true, name: true, isSystem: true, permissions: { select: { name: true } } }
@@ -152,7 +174,7 @@ export class MembersService {
   ): Promise<void> {
     const member = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
-      const found = await this.findActive(tx, storeId, membershipId)
+      const found = await this.findMember(tx, storeId, membershipId)
       this.requireHolding(
         held,
         found.role.permissions.map(p => p.name)
@@ -171,15 +193,107 @@ export class MembersService {
       return found
     })
     await this.tenants.invalidateUser(member.userId, storeId)
+    this.realtime.closeStoreUser(storeId, member.userId, ErrorCodes.TENANT_ACCESS_DENIED)
     this.log(AuditAction.MEMBER_REMOVED, storeId, membershipId, actor, {
       userId: member.userId,
       role: member.role.name
     })
   }
 
-  private async findActive(tx: PrismaTransaction, storeId: string, membershipId: string) {
+  // Takes a member out of the access of the store and out of the queue: the person keeps the
+  // membership, the role and the history (a revoked one is gone for good, this one comes back). Only
+  // an active member, by someone who holds what their role holds, never oneself, never the last
+  // Admin that can enter.
+  async suspend(
+    storeId: string,
+    membershipId: string,
+    actor: Actor,
+    held: readonly Permission[]
+  ): Promise<MemberView> {
+    const member = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      const found = await this.findMember(tx, storeId, membershipId)
+      if (isSuspended(found.status)) {
+        throw resourceConflict('the member is already suspended')
+      }
+      if (found.userId === actor.userId) {
+        throw new PlatformException(
+          ErrorCodes.PERMISSION_DENIED,
+          'nobody suspends themselves',
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
+      this.requireHolding(
+        held,
+        found.role.permissions.map(p => p.name)
+      )
+      if (isAdminRole(found.role)) await this.requireAnotherAdmin(tx, storeId, membershipId)
+      await tx.membership.update({
+        where: { id: membershipId },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+      // Their conversations that are still being worked go back to the queue with their history:
+      // nobody is waiting for an answer from someone who cannot give it, and the others may pick
+      // them up. The finished ones (resolved, archived, spam) keep who handled them: the person
+      // comes back, and the record of the work does not change.
+      await tx.conversation.updateMany({
+        where: {
+          storeId,
+          assignedTo: found.userId,
+          status: {
+            in: [ConversationStatus.OPEN, ConversationStatus.PENDING, ConversationStatus.SNOOZED]
+          }
+        },
+        data: { assignedTo: null }
+      })
+      return found
+    })
+    // After the commit, so that nothing re-caches the old answer from a row that is still active
+    await this.tenants.invalidateUser(member.userId, storeId)
+    this.realtime.closeStoreUser(storeId, member.userId, ErrorCodes.TENANT_MEMBER_SUSPENDED)
+    this.log(AuditAction.MEMBER_SUSPENDED, storeId, membershipId, actor, {
+      userId: member.userId,
+      role: member.role.name
+    })
+    return view({ ...member, status: MembershipStatus.SUSPENDED })
+  }
+
+  // Gives the access back with the role the member had. Held to the same rule as suspending: nobody
+  // brings back a person whose role holds what they lack.
+  async reactivate(
+    storeId: string,
+    membershipId: string,
+    actor: Actor,
+    held: readonly Permission[]
+  ): Promise<MemberView> {
+    const member = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      const found = await this.findMember(tx, storeId, membershipId)
+      if (!isSuspended(found.status)) {
+        throw resourceConflict('the member is not suspended')
+      }
+      this.requireHolding(
+        held,
+        found.role.permissions.map(p => p.name)
+      )
+      await tx.membership.update({
+        where: { id: membershipId },
+        data: { status: MembershipStatus.ACTIVE }
+      })
+      return found
+    })
+    await this.tenants.invalidateUser(member.userId, storeId)
+    this.log(AuditAction.MEMBER_REACTIVATED, storeId, membershipId, actor, {
+      userId: member.userId,
+      role: member.role.name
+    })
+    return view({ ...member, status: MembershipStatus.ACTIVE })
+  }
+
+  // A member of the team of the store, active or suspended; a revoked one is not found
+  private async findMember(tx: PrismaTransaction, storeId: string, membershipId: string) {
     const member = await tx.membership.findFirst({
-      where: { id: membershipId, storeId, ...ACTIVE },
+      where: { id: membershipId, storeId, ...ON_THE_TEAM },
       select: MEMBER_SELECT
     })
     if (member === null) throw resourceNotFound('member')
@@ -220,7 +334,11 @@ export class MembersService {
   }
 
   private log(
-    action: typeof AuditAction.ROLE_CHANGED | typeof AuditAction.MEMBER_REMOVED,
+    action:
+      | typeof AuditAction.ROLE_CHANGED
+      | typeof AuditAction.MEMBER_REMOVED
+      | typeof AuditAction.MEMBER_SUSPENDED
+      | typeof AuditAction.MEMBER_REACTIVATED,
     storeId: string,
     membershipId: string,
     actor: Actor,
