@@ -1255,7 +1255,7 @@ Findings of the QA of 2026-11-03 (Steps 0.1 to 3.6, two runs, 326 cases; no P0).
 | QA fix PR | Scope | Status | PR | Date |
 |---|---|---|---|---|
 | Q1 | Snooze wake-up and auto-archive schedulers; assignment and expired-snooze notifications; this backlog | done | #164 | 2026-11-03 |
-| Q2 | The other notification types without an emitter (unassigned queue, reopened, message received and failed, new member, accepted invitation, channel disconnected, plugin error), the reason of a reopening by an agent, the email digest grouped by conversation and type | done | #PRNUMBER | 2026-11-03 |
+| Q2 | The other notification types without an emitter (unassigned queue, reopened, message received and failed, new member, accepted invitation, channel disconnected, plugin error), the reason of a reopening by an agent, the email digest grouped by conversation and type | done | #165 | 2026-11-03 |
 | Q3 | Assignment to a read-only user (B-07), business hours (B-06), the away message (FA-5), the default role of an invitation (FUNC-4), `requestCsat` (S.10) | todo | | |
 | Q4 | Channels pagination (FUNC-1, SEC-4), saving offline (FUNC-18), 413 for big bodies (SEC-1), Resend webhook with a bad body (SEC-6), the `analytics` and `webhooks` queues (WORKER-03), the default rate limit (FA-6) | todo | | |
 | Q5 | Composer draft and Escape (A2-1), Back with a dialog open (A2-2), focus after sending (A2-3), shortcuts after a dialog closes (FA-1), compact density, sidebar widget key, team status names, the Resolve dialog | todo | | |
