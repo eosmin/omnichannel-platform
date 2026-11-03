@@ -10,6 +10,8 @@ export interface SettingsEntry {
   labelKey: string
   href: string
   permission: Permission | null
+  // A second permission the page needs to read its own data, when the api asks one the entry does not
+  also?: Permission
 }
 
 export function storeSettingsEntries(storeId: string): SettingsEntry[] {
@@ -50,6 +52,28 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'businessHours',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.BUSINESS_HOURS),
       permission: Permissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.TAGS,
+      labelKey: 'tags',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.TAGS),
+      permission: Permissions.SETTINGS_VIEW,
+      // The api lists them for who may see conversations
+      also: Permissions.CONVERSATIONS_VIEW
+    },
+    {
+      id: StoreSettingsSections.SNIPPETS,
+      labelKey: 'snippets',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.SNIPPETS),
+      permission: Permissions.SETTINGS_VIEW,
+      // The api lists them for who may see conversations
+      also: Permissions.CONVERSATIONS_VIEW
+    },
+    {
+      id: StoreSettingsSections.INBOX,
+      labelKey: 'inbox',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.INBOX),
+      permission: Permissions.SETTINGS_VIEW
     }
   ]
 }
@@ -60,5 +84,9 @@ export function visibleEntries(
   entries: readonly SettingsEntry[],
   can: (permission: Permission) => boolean
 ): SettingsEntry[] {
-  return entries.filter(entry => entry.permission === null || can(entry.permission))
+  return entries.filter(
+    entry =>
+      (entry.permission === null || can(entry.permission)) &&
+      (entry.also === undefined || can(entry.also))
+  )
 }

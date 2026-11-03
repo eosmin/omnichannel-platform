@@ -26,6 +26,7 @@ export const DestructiveActionTiers = {
   REMOVE_TEAM_MEMBER: HIGH,
   DELETE_CUSTOM_ROLE: HIGH, // Settings → Team; the api refuses a role that members or invitations hold
   DELETE_ROUTING_RULE: HIGH,
+  DELETE_TAG: HIGH, // Settings → Tags; takes the tag off every customer and conversation that has it
   CANCEL_IN_TRANSIT_TRANSFER: HIGH, // TDD_16
   APPLY_STOCK_COUNT: HIGH, // TDD_16
   DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS: HIGH, // TDD_17
@@ -37,6 +38,7 @@ export const DestructiveActionTiers = {
   REASSIGN_ASSIGNED_CONVERSATION: MODERATE,
   EDIT_CUSTOMER_IDENTITY: MODERATE,
   REQUEST_PICKUP_AFTER_CUTOFF: MODERATE, // TDD_17
+  DELETE_SNIPPET: MODERATE, // Settings → Snippets; the api refuses one that the closing or away message uses
   REVOKE_INVITATION: MODERATE, // Settings → Team; the invitee's link stops working
 
   // Low

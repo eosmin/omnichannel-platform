@@ -141,6 +141,11 @@ describe('DestructiveActionTiers', () => {
     expect(tierOf['DELETE_CUSTOM_ROLE']).toBe(DestructiveActionTierLevels.HIGH)
     expect(tierOf['REVOKE_INVITATION']).toBe(DestructiveActionTierLevels.MODERATE)
   })
+
+  it('asks before deleting a tag (it leaves every conversation) or a saved reply', () => {
+    expect(tierOf['DELETE_TAG']).toBe(DestructiveActionTierLevels.HIGH)
+    expect(tierOf['DELETE_SNIPPET']).toBe(DestructiveActionTierLevels.MODERATE)
+  })
 })
 
 describe('Shortcuts', () => {
