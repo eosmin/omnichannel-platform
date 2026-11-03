@@ -38,8 +38,18 @@ export interface RealtimeConnection {
   // Joins the room of a conversation, and again after each reconnection (a new socket has no rooms).
   // Returns the way to leave it.
   joinConversation: (conversationId: string) => () => void
+  // Why the session of this store ended, when the api said so: a code of the refusal that does not
+  // get better by trying again, or null (still going, closed by us, or the login itself is gone)
+  endedBy: () => string | null
   close: () => void
 }
+
+// The refusals about the store that no new token and no retry can fix: the person is not a member
+// any more, or was suspended. The sessions they have in their other stores are not touched.
+const STORE_REFUSALS: ReadonlySet<string> = new Set([
+  ErrorCodes.TENANT_ACCESS_DENIED,
+  ErrorCodes.TENANT_MEMBER_SUSPENDED
+])
 
 // A refused handshake carries the reason in error.data.code (the gateway sets it in its middleware)
 const handshakeErrorDataSchema = z.object({ code: z.string() })
@@ -65,6 +75,7 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   let closed = false
   let sessionOver = false
+  let endedBy: string | null = null
   let everConnected = false
   let refreshNext = false
   let lastTokenWasFresh = false
@@ -95,8 +106,9 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
     )
   }
 
-  const sessionEnded = (): void => {
+  const sessionEnded = (reason: string | null = null): void => {
     sessionOver = true
+    endedBy = reason
     stopRetry()
     stopStableTimer()
     status.set(ConnectionStatuses.UNAUTHENTICATED)
@@ -188,8 +200,8 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   socket.on('connect_error', error => {
     const code = handshakeErrorCode(error)
-    if (code === ErrorCodes.TENANT_ACCESS_DENIED) {
-      sessionEnded()
+    if (code !== null && STORE_REFUSALS.has(code)) {
+      sessionEnded(code)
       return
     }
     if (code === ErrorCodes.AUTH_TOKEN_EXPIRED) refreshNext = true
@@ -207,7 +219,15 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   // The gateway looks at a socket every 30 s: it sends this and hangs up when the token or the
   // membership no longer holds, and the 'disconnect' above does the reconnecting
-  socket.on(RealtimeEvents.AUTH_ERROR, () => {
+  // It also says when the reason is the store: the person was removed or suspended, so the session
+  // ends here and the reconnection that the hang-up would start is never made
+  socket.on(RealtimeEvents.AUTH_ERROR, payload => {
+    // The payload is the gateway's, but a proxy or an older gateway may send none
+    const code: unknown = (payload as { code?: unknown } | undefined)?.code
+    if (typeof code === 'string' && STORE_REFUSALS.has(code)) {
+      sessionEnded(code)
+      return
+    }
     refreshNext = true
   })
 
@@ -233,6 +253,7 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
         if (socket.connected) socket.emit(RealtimeEvents.LEAVE_CONVERSATION, { conversationId })
       }
     },
+    endedBy: () => endedBy,
     close: () => {
       closed = true
       stopRetry()

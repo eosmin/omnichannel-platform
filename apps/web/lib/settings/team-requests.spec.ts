@@ -9,9 +9,11 @@ import {
   fetchMembers,
   fetchRoles,
   inviteMember,
+  reactivateMember,
   removeMember,
   resendInvitation,
   revokeInvitation,
+  suspendMember,
   updateRole
 } from './team-requests'
 
@@ -43,7 +45,8 @@ const member = {
   name: 'Ana',
   email: 'ana@example.com',
   role: { id: 'r1', name: 'Agent' },
-  joinedAt: '2026-11-01T10:00:00.000Z'
+  joinedAt: '2026-11-01T10:00:00.000Z',
+  status: 'ACTIVE'
 }
 const invitation = {
   id: 'i1',
@@ -69,6 +72,29 @@ describe('team requests', () => {
     await expect(fetchMembers(client, 's1')).resolves.toEqual([member])
     expect(call()[0]).toBe('https://api.example.com/api/v1/settings/team/members')
     expect(header(call()[1], TenantHeaders.STORE_ID)).toBe('s1')
+  })
+
+  it('suspends and reactivates a member with a POST to the route of each', async () => {
+    const suspended = { ...member, status: 'SUSPENDED' }
+    const first = setup(suspended)
+    await expect(suspendMember(first.client, 's1', 'm 1')).resolves.toEqual(suspended)
+    expect(first.call()[0]).toBe(
+      'https://api.example.com/api/v1/settings/team/members/m%201/suspend'
+    )
+    expect(first.call()[1]?.method).toBe('POST')
+    expect(header(first.call()[1], TenantHeaders.STORE_ID)).toBe('s1')
+
+    const second = setup(member)
+    await expect(reactivateMember(second.client, 's1', 'm1')).resolves.toEqual(member)
+    expect(second.call()[0]).toBe(
+      'https://api.example.com/api/v1/settings/team/members/m1/reactivate'
+    )
+    expect(second.call()[1]?.method).toBe('POST')
+  })
+
+  it('refuses a member whose status is not one the team lists', async () => {
+    const { client } = setup([{ ...member, status: 'REVOKED' }])
+    await expect(fetchMembers(client, 's1')).rejects.toBeDefined()
   })
 
   it('changes a role by sending only the role id', async () => {

@@ -201,6 +201,44 @@ describe('openRealtimeConnection', () => {
     expect(server.handshakes).toHaveLength(1)
   })
 
+  it('ends the session at once, without retrying, when the member is suspended', async () => {
+    server.refuseWith(ErrorCodes.TENANT_MEMBER_SUSPENDED)
+    const { status, connection } = connect(() => Promise.resolve('tok'))
+    await waitFor(() => status.get() === ConnectionStatuses.UNAUTHENTICATED, 'unauthenticated')
+    // Longer than several retries at the test's delays
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(server.handshakes).toHaveLength(1)
+    expect(connection.endedBy()).toBe(ErrorCodes.TENANT_MEMBER_SUSPENDED)
+  })
+
+  it('ends an open session when the gateway says the member was suspended, and never reconnects', async () => {
+    const { status, connection } = connect(() => Promise.resolve('tok'))
+    await waitFor(() => status.get() === ConnectionStatuses.CONNECTED, 'connected')
+
+    server.io.of(RealtimeNamespaces.AGENTS).sockets.forEach(socket => {
+      socket.emit(RealtimeEvents.AUTH_ERROR, { code: ErrorCodes.TENANT_MEMBER_SUSPENDED })
+      socket.disconnect(true)
+    })
+    await waitFor(() => status.get() === ConnectionStatuses.UNAUTHENTICATED, 'unauthenticated')
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    expect(server.handshakes).toHaveLength(1)
+    expect(connection.endedBy()).toBe(ErrorCodes.TENANT_MEMBER_SUSPENDED)
+  })
+
+  it('says that the person has no access when they were removed', async () => {
+    server.refuseWith(ErrorCodes.TENANT_ACCESS_DENIED)
+    const { status, connection } = connect(() => Promise.resolve('tok'))
+    await waitFor(() => status.get() === ConnectionStatuses.UNAUTHENTICATED, 'unauthenticated')
+    expect(connection.endedBy()).toBe(ErrorCodes.TENANT_ACCESS_DENIED)
+  })
+
+  it('has no reason while the session goes on', async () => {
+    const { status, connection } = connect(() => Promise.resolve('tok'))
+    await waitFor(() => status.get() === ConnectionStatuses.CONNECTED, 'connected')
+    expect(connection.endedBy()).toBeNull()
+  })
+
   it('ends the session when the refresh finds that it is gone', async () => {
     const { status } = connect(() =>
       Promise.reject(new ApiError(401, ErrorCodes.AUTH_TOKEN_INVALID, 'no session'))

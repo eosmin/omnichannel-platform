@@ -24,6 +24,7 @@ export const DestructiveActionTiers = {
   CANCEL_ORDER_WITH_SHIPMENT: HIGH, // Also voids the guide (TDD_17 §4.8)
   DISCONNECT_CHANNEL: HIGH,
   REMOVE_TEAM_MEMBER: HIGH,
+  SUSPEND_TEAM_MEMBER: HIGH, // Settings → Team; cuts the person's access at once and returns their open conversations to the queue
   DELETE_CUSTOM_ROLE: HIGH, // Settings → Team; the api refuses a role that members or invitations hold
   DELETE_ROUTING_RULE: HIGH,
   DELETE_TAG: HIGH, // Settings → Tags; takes the tag off every customer and conversation that has it
@@ -40,6 +41,7 @@ export const DestructiveActionTiers = {
   REQUEST_PICKUP_AFTER_CUTOFF: MODERATE, // TDD_17
   DELETE_SNIPPET: MODERATE, // Settings → Snippets; the api refuses one that the closing or away message uses
   REVOKE_INVITATION: MODERATE, // Settings → Team; the invitee's link stops working
+  REACTIVATE_TEAM_MEMBER: MODERATE, // Settings → Team; gives a suspended person their access and role back
 
   // Low
   ADD_OR_REMOVE_TAG: LOW,

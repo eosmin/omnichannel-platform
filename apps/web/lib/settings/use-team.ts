@@ -23,11 +23,13 @@ import {
   type InvitationView,
   inviteMember,
   type MemberView,
+  reactivateMember,
   removeMember,
   resendInvitation,
   revokeInvitation,
   type RoleInput,
   type RoleView,
+  suspendMember,
   updateRole
 } from './team-requests'
 
@@ -86,6 +88,23 @@ export function useRemoveMember(storeId: string): UseMutationResult<undefined, E
   const refresh = useRefreshTeam(storeId)
   return useMutation({
     mutationFn: (memberId: string) => removeMember(apiClient, storeId, memberId),
+    onSettled: refresh
+  })
+}
+
+export function useSuspendMember(storeId: string): UseMutationResult<MemberView, Error, string> {
+  const refresh = useRefreshTeam(storeId)
+  return useMutation({
+    mutationFn: (memberId: string) => suspendMember(apiClient, storeId, memberId),
+    // Also on failure: a conflict means the list was stale
+    onSettled: refresh
+  })
+}
+
+export function useReactivateMember(storeId: string): UseMutationResult<MemberView, Error, string> {
+  const refresh = useRefreshTeam(storeId)
+  return useMutation({
+    mutationFn: (memberId: string) => reactivateMember(apiClient, storeId, memberId),
     onSettled: refresh
   })
 }

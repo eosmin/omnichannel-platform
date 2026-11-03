@@ -554,7 +554,11 @@
   "noAccess": {
     "title": "No tienes acceso",
     "body": "No puedes abrir esta página, o tu cuenta no está en ninguna tienda. Pide acceso a un administrador.",
-    "checkAgain": "Revisar de nuevo"
+    "checkAgain": "Revisar de nuevo",
+    "suspendedTitle": "Tu acceso está suspendido",
+    "suspendedBody": "Un administrador suspendió tu acceso a {stores}. Habla con un administrador para recuperarlo.",
+    "suspendedGeneric": "Tu acceso a esta tienda está suspendido. Habla con un administrador.",
+    "suspendedNotice": "Tu acceso a {store} está suspendido. Habla con un administrador."
   },
   "notFound": {
     "title": "Página no encontrada",
@@ -854,7 +858,8 @@
       "loadMore": "Cargar más",
       "unreadDot": "Sin leer",
       "settings": "Configuración de notificaciones"
-    }
+    },
+    "accessSuspended": "Tu acceso está suspendido"
   },
   "inbox": {
     "listLabel": "Conversaciones",
@@ -1779,6 +1784,46 @@
           "description": "Pierde el acceso a esta tienda de inmediato y sus conversaciones quedan sin asignar. Puedes invitarle de nuevo más adelante.",
           "confirm": "Quitar miembro",
           "done": "{name} fue quitado."
+        },
+        "filter": {
+          "label": "Mostrar",
+          "all": "Todos",
+          "active": "Activos",
+          "suspended": "Suspendidos",
+          "empty": {
+            "all": {
+              "title": "Sin miembros",
+              "body": "Las personas que acepten una invitación aparecen aquí."
+            },
+            "active": {
+              "title": "Sin miembros activos",
+              "body": "Todo el equipo está suspendido. Reactiva a alguien para que pueda entrar."
+            },
+            "suspended": {
+              "title": "Sin miembros suspendidos",
+              "body": "Nadie está suspendido en esta tienda."
+            }
+          }
+        },
+        "status": {
+          "active": "Activo",
+          "suspended": "Suspendido"
+        },
+        "suspend": {
+          "action": "Suspender",
+          "title": "¿Suspender a {name}?",
+          "description": "Pierde el acceso a esta tienda de inmediato y sus conversaciones abiertas vuelven a la cola, sin asignar. Se conservan su rol y su historial, sus otras tiendas no cambian y puedes reactivar su acceso cuando quieras.",
+          "confirm": "Suspender miembro",
+          "done": "Se suspendió a {name}.",
+          "outOfDate": "La lista estaba desactualizada: el acceso de {name} ya había cambiado. Se actualizó."
+        },
+        "reactivate": {
+          "action": "Reactivar",
+          "title": "¿Reactivar a {name}?",
+          "description": "Recupera de inmediato su acceso a esta tienda, con el rol que tenía: {role}.",
+          "confirm": "Reactivar miembro",
+          "done": "Se reactivó a {name}.",
+          "outOfDate": "La lista estaba desactualizada: el acceso de {name} ya había cambiado. Se actualizó."
         }
       },
       "roles": {

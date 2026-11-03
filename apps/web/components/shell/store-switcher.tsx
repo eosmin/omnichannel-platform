@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, UserX } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
@@ -22,13 +22,16 @@ import {
 // conversations: it would take a call for each store (Phase 2, MVP_TRIM_CHECKLIST §10 item 39).
 export function StoreSwitcher({
   memberships,
+  suspendedStores = [],
   currentStoreId
 }: {
   memberships: readonly AccountMembership[]
+  // Stores the person belongs to and may not enter: listed, and not a way in
+  suspendedStores?: readonly { storeId: string; storeName: string }[]
   currentStoreId: string | null
 }): ReactElement | null {
   const t = useTranslations('shell')
-  if (memberships.length === 0) return null
+  if (memberships.length === 0 && suspendedStores.length === 0) return null
   const current = memberships.find(membership => membership.storeId === currentStoreId)
   const canManageStores = memberships.some(membership =>
     membership.permissions.includes(Permissions.ORG_MANAGE_STORES)
@@ -50,6 +53,15 @@ export function StoreSwitcher({
               <span className="text-muted-foreground text-xs">{membership.role}</span>
               {membership.storeId === currentStoreId && <Check aria-hidden className="size-4" />}
             </Link>
+          </DropdownMenuItem>
+        ))}
+        {suspendedStores.map(store => (
+          <DropdownMenuItem key={store.storeId} disabled>
+            <span className="flex-1 truncate">{store.storeName}</span>
+            <span className="text-muted-foreground flex items-center gap-1 text-xs">
+              <UserX aria-hidden className="size-3" />
+              {t('accessSuspended')}
+            </span>
           </DropdownMenuItem>
         ))}
         {canManageStores && (

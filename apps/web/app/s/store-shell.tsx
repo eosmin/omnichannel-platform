@@ -1,9 +1,11 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useEffect } from 'react'
+import { toast } from 'sonner'
 
-import { AppPaths } from '@platform/api-client'
+import { type AccountProfile, AppPaths } from '@platform/api-client'
 
 import { CustomerDrawerProvider } from '../../components/customers/customer-drawer-context'
 import { RealtimeProvider } from '../../components/providers/realtime-provider'
@@ -12,6 +14,7 @@ import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
 import { StoreNav } from '../../components/shell/store-nav'
 import { rememberLastStoreId } from '../../lib/last-store'
+import { chooseStartPath } from '../../lib/start-path'
 
 // Everything under /s/[storeId]. The profile says which stores the person belongs to; one that is
 // not in the list (a removed member, a link from someone else) goes to the no-access screen. The api
@@ -27,9 +30,15 @@ export function StoreShell({
     <SessionGate>
       {profile => {
         const membership = profile.memberships.find(item => item.storeId === storeId)
-        return membership === undefined ? (
-          <NoMembership />
-        ) : (
+        if (membership === undefined) {
+          const suspended = profile.suspendedStores.find(item => item.storeId === storeId)
+          return suspended === undefined ? (
+            <NoMembership />
+          ) : (
+            <Suspended storeId={storeId} storeName={suspended.storeName} profile={profile} />
+          )
+        }
+        return (
           <StoreProvider membership={membership}>
             <Remember storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
@@ -44,6 +53,31 @@ export function StoreShell({
       }}
     </SessionGate>
   )
+}
+
+// A store the person was suspended in (opened by its link, or the one used last): they are told, and
+// sent to a store they can still enter, or to the screen that explains the suspension when they have
+// none. "/" never targets a store they are suspended in, so this cannot loop.
+function Suspended({
+  storeId,
+  storeName,
+  profile
+}: {
+  storeId: string
+  storeName: string
+  profile: AccountProfile
+}): ReactElement {
+  const t = useTranslations('noAccess')
+  const router = useRouter()
+  const target = chooseStartPath(profile.memberships, null)
+  useEffect(() => {
+    // With no store left the screen it goes to says it all; the toast is for the person who moves on
+    if (profile.memberships.length > 0) {
+      toast.error(t('suspendedNotice', { store: storeName }), { id: `suspended-${storeId}` })
+    }
+    router.replace(target)
+  }, [router, t, storeId, storeName, target, profile.memberships.length])
+  return <LoadingScreen />
 }
 
 function NoMembership(): ReactElement {
