@@ -3,10 +3,12 @@ import { Injectable } from '@nestjs/common'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
+  ConversationConflictReasons,
   ConversationHiddenStatuses,
   ConversationLimits,
   ConversationStatus,
   type ConversationStatusReason,
+  ConversationStatusReasons,
   ConversationStatusTransitions,
   MembershipStatus,
   OfActiveInstallation,
@@ -85,6 +87,14 @@ export interface StatusOptions {
   // For a change made by the system because of what a person did (a reply reopens the conversation):
   // the person, for the event. It grants nothing: the permission to act was checked by the caller.
   causedBy?: string
+  // For a sweep that chose the conversation some moments ago: the change is made only if what made it
+  // due still holds under the lock: the conversation is still in `status` and its snooze ends (or its
+  // resolution dates) at or before `by`. A person who woke it, snoozed it, resolved it again or
+  // archived it meanwhile is not overridden.
+  onlyIfDue?: {
+    status: ConversationStatus.SNOOZED | ConversationStatus.RESOLVED
+    by: Date
+  }
 }
 
 export interface NewConversation {
@@ -276,6 +286,16 @@ export class ConversationsService {
       requireAnyPermission(viewer.held, [STATUS_PERMISSIONS[to]])
       // Archived and spam conversations never get here for who may not archive: they are not seen
     }
+    if (options.onlyIfDue !== undefined) {
+      const { status, by } = options.onlyIfDue
+      const since =
+        status === ConversationStatus.SNOOZED ? current.snoozedUntil : current.resolvedAt
+      if (from !== status || since === null || since.getTime() > by.getTime()) {
+        throw resourceConflict('the conversation is no longer due for this change', {
+          reason: ConversationConflictReasons.NO_LONGER_DUE
+        })
+      }
+    }
     if (to === ConversationStatus.RESOLVED && from === ConversationStatus.RESOLVED) {
       throw new PlatformException(
         ErrorCodes.CONVERSATION_ALREADY_RESOLVED,
@@ -326,6 +346,19 @@ export class ConversationsService {
       changedBy:
         options.causedBy === undefined ? actorRef(options.actor) : userRef(options.causedBy)
     })
+    // Only the sweep of the worker gives this reason: a customer who writes to a snoozed conversation
+    // wakes it too, but nobody's timer ran out
+    if (
+      from === ConversationStatus.SNOOZED &&
+      to === ConversationStatus.OPEN &&
+      options.reason === ConversationStatusReasons.SNOOZE_EXPIRED
+    ) {
+      this.events.publish(tx, Events.CONVERSATION_SNOOZE_EXPIRED, {
+        storeId,
+        conversationId,
+        assignedTo: current.assignedTo
+      })
+    }
   }
 
   // Gives a conversation nobody has to someone, atomically: a person who took it a moment earlier

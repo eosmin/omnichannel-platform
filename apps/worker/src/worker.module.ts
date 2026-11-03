@@ -29,6 +29,7 @@ import { TypingSender } from './outbound/typing-sender.service'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
+import { AutoArchiveScheduler } from './schedulers/auto-archive.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
@@ -36,6 +37,7 @@ import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
+import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
 
 // ScheduleModule is imported only here: the api never runs crons
 @Module({
@@ -82,7 +84,9 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
     DeletedMessagePurgeScheduler,
     OrphanMediaScheduler,
     ExpiredExportsScheduler,
-    EmailDigestScheduler
+    EmailDigestScheduler,
+    SnoozeWakeScheduler,
+    AutoArchiveScheduler
   ]
 })
 export class WorkerModule {}

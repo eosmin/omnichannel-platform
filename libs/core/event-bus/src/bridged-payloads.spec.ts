@@ -47,6 +47,11 @@ describe('bridgedPayload', () => {
       assignedBy: actor,
       visibility: { hidden: false, assignedTo: null }
     },
+    [Events.CONVERSATION_SNOOZE_EXPIRED]: {
+      storeId: randomUUID(),
+      conversationId: randomUUID(),
+      assignedTo: randomUUID()
+    },
     [Events.CONVERSATION_CREATED]: {
       storeId: randomUUID(),
       conversationId: randomUUID(),

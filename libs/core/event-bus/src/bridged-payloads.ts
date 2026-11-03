@@ -54,6 +54,11 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     assignedBy: actor,
     visibility
   }),
+  [Events.CONVERSATION_SNOOZE_EXPIRED]: z.object({
+    storeId: id,
+    conversationId: id,
+    assignedTo: id.nullable()
+  }),
   [Events.CONVERSATION_CREATED]: z.object({
     storeId: id,
     conversationId: id,

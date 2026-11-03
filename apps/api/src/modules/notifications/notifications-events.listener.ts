@@ -4,8 +4,10 @@ import { OnEvent } from '@nestjs/event-emitter'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { AppPaths, MembershipStatus } from '@platform/core/domain'
+import { AppPaths, ConversationStatus, MembershipStatus } from '@platform/core/domain'
 import {
+  type ConversationAssignedPayload,
+  type ConversationSnoozeExpiredPayload,
   type ExportSettledPayload,
   Events,
   type MessageChangedPayload,
@@ -62,6 +64,83 @@ export class NotificationsEventsListener {
       this.logger.error(
         { messageId: payload.messageId, err: String(error) },
         'a mention could not be notified'
+      )
+    }
+  }
+
+  // To the person who is given the conversation, unless they took it themselves. It comes from the
+  // api (a person assigns, a rule routes) and from the worker (the round robin of a bulk action)
+  @OnEvent(Events.CONVERSATION_ASSIGNED)
+  async onAssigned(payload: ConversationAssignedPayload): Promise<void> {
+    const { storeId, conversationId, assignedTo, previousAssignee, assignedBy } = payload
+    if (assignedTo === null || assignedTo === previousAssignee) return
+    if (assignedBy.type === 'user' && assignedBy.id === assignedTo) return
+    await this.notifyAssignee(NotificationTypes.CONVERSATION_ASSIGNED, {
+      storeId,
+      conversationId,
+      assignee: assignedTo
+    })
+  }
+
+  // To the assignee when the snooze of their conversation ran out. Nobody records who snoozed it, so
+  // a conversation without an assignee tells nobody here: the unassigned queue is its own notification
+  @OnEvent(Events.CONVERSATION_SNOOZE_EXPIRED)
+  async onSnoozeExpired(payload: ConversationSnoozeExpiredPayload): Promise<void> {
+    const { storeId, conversationId, assignedTo } = payload
+    if (assignedTo === null) return
+    await this.notifyAssignee(NotificationTypes.CONVERSATION_SNOOZE_EXPIRED, {
+      storeId,
+      conversationId,
+      assignee: assignedTo,
+      // Resolved, or snoozed again, since the snooze ran out: there is nothing to tell
+      mustBe: ConversationStatus.OPEN
+    })
+  }
+
+  // The row is read now, not trusted from the event: the conversation may have gone to someone else, or
+  // out of sight, between the change and this listener. Who is told must still be its assignee and
+  // still be able to open it.
+  private async notifyAssignee(
+    type:
+      | typeof NotificationTypes.CONVERSATION_ASSIGNED
+      | typeof NotificationTypes.CONVERSATION_SNOOZE_EXPIRED,
+    target: {
+      storeId: string
+      conversationId: string
+      assignee: string
+      mustBe?: `${ConversationStatus}`
+    }
+  ): Promise<void> {
+    const { storeId, conversationId, assignee, mustBe } = target
+    try {
+      const conversation = await this.prisma.client.conversation.findFirst({
+        where: { id: conversationId, storeId },
+        select: { status: true, assignedTo: true }
+      })
+      if (conversation === null || conversation.assignedTo !== assignee) return
+      if (mustBe !== undefined && conversation.status !== mustBe) return
+      const reader = await this.prisma.client.membership.count({
+        where: {
+          userId: assignee,
+          ...conversationReaders(
+            { hidden: isHiddenStatus(conversation.status), assignedTo: conversation.assignedTo },
+            { storeId, notes: false }
+          )
+        }
+      })
+      if (reader === 0) return
+      await this.notifications.send({
+        userId: assignee,
+        storeId,
+        type,
+        resourceType: 'conversation',
+        resourceId: conversationId,
+        actionPath: AppPaths.store.conversation(storeId, conversationId)
+      })
+    } catch (error) {
+      this.logger.error(
+        { conversationId, type, err: String(error) },
+        'a conversation notification could not be sent'
       )
     }
   }

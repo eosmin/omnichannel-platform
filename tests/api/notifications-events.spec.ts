@@ -7,8 +7,13 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AppPaths, MembershipStatus, MessageType } from '@platform/core/domain'
-import { Events, type MessageChangedPayload } from '@platform/core/events'
+import { AppPaths, ConversationStatus, MembershipStatus, MessageType } from '@platform/core/domain'
+import {
+  type ConversationAssignedPayload,
+  type ConversationSnoozeExpiredPayload,
+  Events,
+  type MessageChangedPayload
+} from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
 import { ExportFormats, ExportStatus, ExportTypes } from '@platform/core/queues'
 
@@ -181,6 +186,176 @@ describe('Notifications raised by events', () => {
       await emit(ctx.adminB.id)
 
       expect(await rowsOf(NotificationTypes.CONVERSATION_MENTIONED)).toHaveLength(0)
+    })
+  })
+
+  describe('an assignment', () => {
+    const OK = 200
+    const assign = (conversationId: string, userId: string | null) =>
+      api(app, ctx.adminA, ctx.storeA)
+        .patch(ApiRoutes.conversations.assign(conversationId))
+        .send({ userId })
+    const assigned = (
+      conversationId: string,
+      assignedTo: string | null,
+      extra: Partial<ConversationAssignedPayload> = {}
+    ): ConversationAssignedPayload => ({
+      storeId: ctx.storeA.id,
+      conversationId,
+      assignedTo,
+      previousAssignee: null,
+      assignedBy: { type: 'user', id: ctx.adminA.id },
+      visibility: { hidden: false, assignedTo },
+      ...extra
+    })
+
+    it('tells the agent who is given a conversation, with its path', async () => {
+      const { id } = await mk()
+
+      const response = await assign(id, ctx.agentA.id)
+      const rows = await waitForRows(NotificationTypes.CONVERSATION_ASSIGNED, 1)
+
+      expect(response.status).toBe(OK)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        userId: ctx.agentA.id,
+        actionPath: AppPaths.store.conversation(ctx.storeA.id, id),
+        resourceType: 'conversation',
+        resourceId: id
+      })
+    })
+
+    it('tells nobody when it is taken by the person who took it, or given to nobody', async () => {
+      const { id } = await mk()
+      const events = app.get(EventEmitter2)
+
+      await events.emitAsync(Events.CONVERSATION_ASSIGNED, assigned(id, ctx.adminA.id))
+      await events.emitAsync(Events.CONVERSATION_ASSIGNED, assigned(id, null))
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_ASSIGNED)).toHaveLength(0)
+    })
+
+    it('tells the agent when the system gave it, by a rule or the worker', async () => {
+      const { id } = await mk({ assignedTo: ctx.agentA.id })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(
+          Events.CONVERSATION_ASSIGNED,
+          assigned(id, ctx.agentA.id, { assignedBy: { type: 'system', id: null } })
+        )
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_ASSIGNED, ctx.agentA.id)).toHaveLength(1)
+    })
+
+    it('does not tell someone who is no longer active, nor one who cannot open it', async () => {
+      const suspended = await suspendedAgent()
+      const noView = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `noView${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CUSTOMERS_VIEW]
+      })
+      const events = app.get(EventEmitter2)
+      for (const userId of [suspended.id, noView.id, ctx.adminB.id]) {
+        const { id } = await mk({ assignedTo: userId })
+        await events.emitAsync(Events.CONVERSATION_ASSIGNED, assigned(id, userId))
+      }
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_ASSIGNED)).toHaveLength(0)
+    })
+
+    it('tells nobody when the assignment changes nothing', async () => {
+      const { id } = await mk({ assignedTo: ctx.agentA.id })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(
+          Events.CONVERSATION_ASSIGNED,
+          assigned(id, ctx.agentA.id, { previousAssignee: ctx.agentA.id })
+        )
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_ASSIGNED)).toHaveLength(0)
+    })
+
+    it('reads the assignee from the row: one that went to someone else meanwhile tells the first nobody', async () => {
+      const { id } = await mk({ assignedTo: ctx.adminA.id })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(Events.CONVERSATION_ASSIGNED, assigned(id, ctx.agentA.id))
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_ASSIGNED)).toHaveLength(0)
+    })
+  })
+
+  describe('a snooze that ran out', () => {
+    const expired = (
+      conversationId: string,
+      assignedTo: string | null
+    ): ConversationSnoozeExpiredPayload => ({
+      storeId: ctx.storeA.id,
+      conversationId,
+      assignedTo
+    })
+
+    it('tells the assignee, with the path of the conversation', async () => {
+      const { id } = await mk({ assignedTo: ctx.agentA.id })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(Events.CONVERSATION_SNOOZE_EXPIRED, expired(id, ctx.agentA.id))
+
+      const rows = await rowsOf(NotificationTypes.CONVERSATION_SNOOZE_EXPIRED)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        userId: ctx.agentA.id,
+        actionPath: AppPaths.store.conversation(ctx.storeA.id, id),
+        resourceType: 'conversation',
+        resourceId: id
+      })
+    })
+
+    it('tells nobody when the conversation has no assignee: the queue is not one person', async () => {
+      const { id } = await mk()
+
+      await app.get(EventEmitter2).emitAsync(Events.CONVERSATION_SNOOZE_EXPIRED, expired(id, null))
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_SNOOZE_EXPIRED)).toHaveLength(0)
+    })
+
+    it('reads the assignee from the row, not from the event: it may have changed since', async () => {
+      const { id } = await mk({ assignedTo: ctx.adminA.id })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(Events.CONVERSATION_SNOOZE_EXPIRED, expired(id, ctx.agentA.id))
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_SNOOZE_EXPIRED)).toHaveLength(0)
+    })
+
+    it('tells nobody when the conversation was resolved or snoozed again since', async () => {
+      for (const status of [ConversationStatus.RESOLVED, ConversationStatus.SNOOZED]) {
+        const { id } = await mk({ assignedTo: ctx.agentA.id, status })
+
+        await app
+          .get(EventEmitter2)
+          .emitAsync(Events.CONVERSATION_SNOOZE_EXPIRED, expired(id, ctx.agentA.id))
+      }
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_SNOOZE_EXPIRED)).toHaveLength(0)
+    })
+
+    it('does not tell a member who is suspended', async () => {
+      const suspended = await suspendedAgent()
+      const { id } = await mk({ assignedTo: suspended.id })
+
+      await app
+        .get(EventEmitter2)
+        .emitAsync(Events.CONVERSATION_SNOOZE_EXPIRED, expired(id, suspended.id))
+
+      expect(await rowsOf(NotificationTypes.CONVERSATION_SNOOZE_EXPIRED)).toHaveLength(0)
     })
   })
 

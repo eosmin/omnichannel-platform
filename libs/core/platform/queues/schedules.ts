@@ -25,6 +25,15 @@ export const Schedules = {
   CHECK_REMITTANCES: '0 15 * * *' // Daily
 } as const
 
+// A run of the snooze and auto-archive sweeps takes batches of conversations, the oldest first (for the
+// auto-archive, within each number of days the stores chose), and
+// repeats while a batch comes back full, up to MAX_BATCHES. A run that ends on a full batch says so in
+// the log, and the next run takes the rest.
+export const ConversationSweep = {
+  BATCH: 200,
+  MAX_BATCHES: 10
+} as const
+
 export type ScheduleName = keyof typeof Schedules
 
 export const LockNames = Object.fromEntries(

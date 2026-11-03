@@ -62,6 +62,14 @@ export interface ConversationAssignedPayload {
   visibility: ConversationVisibility
 }
 
+// A snooze reached its moment and the sweep of the worker reopened the conversation. Ids only: who
+// is told is decided when the notification is made.
+export interface ConversationSnoozeExpiredPayload {
+  storeId: string
+  conversationId: string
+  assignedTo: string | null
+}
+
 export interface OrderCreatedPayload {
   storeId: string
   orderId: string
@@ -223,6 +231,7 @@ export interface DomainEventPayloads {
   [Events.MESSAGE_RECEIVED]: MessageReceivedPayload
   [Events.CONVERSATION_STATUS_CHANGED]: ConversationStatusChangedPayload
   [Events.CONVERSATION_ASSIGNED]: ConversationAssignedPayload
+  [Events.CONVERSATION_SNOOZE_EXPIRED]: ConversationSnoozeExpiredPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
   [Events.CONVERSATION_UNREAD]: ConversationReadPayload
   [Events.MESSAGE_QUEUED]: MessageQueuedPayload
