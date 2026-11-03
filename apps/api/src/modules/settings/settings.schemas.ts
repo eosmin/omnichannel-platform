@@ -89,7 +89,9 @@ export const updateInboxSettingsSchema = z
     resolveShowOptions: z.boolean().optional(),
     sendClosingMessage: z.boolean().optional(),
     closingSnippetId: idSchema.nullable().optional(),
-    requestCsat: z.boolean().optional(),
+    // CSAT is not part of the MVP (MVP_TRIM_CHECKLIST §3): nothing sends the prompt or reads the rating,
+    // so the switch is never saved on. Phase 2 widens this to a boolean
+    requestCsat: z.literal(false).optional(),
     agentLoadThreshold: z
       .number()
       .int()

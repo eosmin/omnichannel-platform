@@ -41,7 +41,9 @@ export function InviteDialog({
   const idPrefix = useId()
   const offered = roles.filter(role => canGrant(role, can))
   const [email, setEmail] = useState('')
-  const [roleId, setRoleId] = useState(offered[0]?.id ?? '')
+  // No role is chosen for the person: the first one in the list is the most powerful, and an
+  // invitation sent without looking would hand it out
+  const [roleId, setRoleId] = useState('')
   const canSubmit = email.trim() !== '' && roleId !== '' && !invite.isPending
 
   // The cooldown of inviting says how long to wait, as a resend does; any other refusal is read from its code
@@ -96,6 +98,9 @@ export function InviteDialog({
               onChange={event => setRoleId(event.target.value)}
               disabled={invite.isPending}
             >
+              <option value="" disabled>
+                {t('rolePlaceholder')}
+              </option>
               {offered.map(role => (
                 <option key={role.id} value={role.id}>
                   {role.name}

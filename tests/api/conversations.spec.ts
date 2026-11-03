@@ -1055,7 +1055,7 @@ describe('The conversations of a store', () => {
       expect((reassigned.body as ItemBody).assignedTo).toBe(agent2.id)
     })
 
-    it('assigns only to a member of the store who may see its conversations', async () => {
+    it('assigns only to a member of the store who may answer its conversations', async () => {
       const conversation = await mk()
       const outsider = await createActor(owner, app, {
         prefix,
@@ -1077,8 +1077,20 @@ describe('The conversations of a store', () => {
 
       expect(toOutsider.status).toBe(NOT_FOUND)
       expect(toNobody.status).toBe(NOT_FOUND)
-      expect(toViewer.status).toBe(OK) // a viewer may see conversations: the role is read-only, not blind
-      expect((await row(conversation.id)).assignedTo).toBe(ctx.viewerA.id)
+      // A read-only role sees conversations but cannot answer them: it is not an assignee
+      expect(toViewer.status).toBe(NOT_FOUND)
+      const cannotOpen = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'answers-blind',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.MESSAGES_SEND]
+      })
+      const toBlind = await asAdmin()
+        .patch(ApiRoutes.conversations.assign(conversation.id))
+        .send({ userId: cannotOpen.id })
+      expect(toBlind.status).toBe(NOT_FOUND)
+      expect((await row(conversation.id)).assignedTo).toBeNull()
     })
 
     it('leaves a read-only role unable to take one', async () => {
@@ -1551,7 +1563,11 @@ describe('The conversations of a store', () => {
           await createRole(owner, {
             storeId: ctx.storeA.id,
             name: `${prefix}-takes-blind`,
-            permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE]
+            permissions: [
+              Permissions.CONVERSATIONS_VIEW,
+              Permissions.CONVERSATIONS_RESOLVE,
+              Permissions.MESSAGES_SEND // to be given a conversation, a role must answer it (AssigneePermissions)
+            ]
           })
         ).id
       })

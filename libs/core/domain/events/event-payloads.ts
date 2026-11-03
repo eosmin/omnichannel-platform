@@ -126,7 +126,8 @@ export interface MessageQueuedPayload {
   storeId: string
   conversationId: string
   messageId: string
-  authorId: string
+  // Null for what the platform sends by itself (the away reply of the business hours)
+  authorId: string | null
   // The idempotency key the client sent: the optimistic bubble of that client matches by it
   clientMessageId: string | null
   createdAt: string // ISO 8601

@@ -126,6 +126,14 @@ describe('timeOptions', () => {
     expect(ends.at(-1)).toBe('24:00')
   })
 
+  it('offers 23:59 as an end, which adding a range writes', () => {
+    const ends = timeOptions('18:00', true)
+    expect(ends).toContain('23:59')
+    expect(ends.indexOf('23:59')).toBe(ends.length - 2)
+    expect(timeOptions('09:00', false)).not.toContain('23:59')
+    expect(timeOptions('23:59', true)).toHaveLength(timeOptions('18:00', true).length)
+  })
+
   it('keeps a value that the api holds and the steps do not', () => {
     expect(timeOptions('09:10', false)).toContain('09:10')
     expect(timeOptions('09:10', false)).toHaveLength(97)

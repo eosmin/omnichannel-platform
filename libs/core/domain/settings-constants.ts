@@ -35,3 +35,11 @@ export const CLOCK_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 
 // The end of a range may be midnight, written 24:00: a store that closes then has no gap of a minute
 export const RANGE_END_PATTERN = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/
+
+// The reply a store sends to a customer who writes while it is closed (its `awayMessageSnippetId`).
+// Once for each closed stretch: `LOOKBACK_MS` is how far back the start of the stretch is looked for
+// (a customer who writes after a longer silence is answered again), `STEP_MS` how often the schedule is read (by the minute, as it is written).
+export const AwayReply = {
+  LOOKBACK_MS: 8 * 24 * 60 * 60 * 1000,
+  STEP_MS: 60 * 1000
+} as const

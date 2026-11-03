@@ -16,12 +16,15 @@ import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
+  AwayReplyService,
   ChannelConnectionResolver,
   ConversationsService,
   CustomerIdentityService,
   InboundMessageService,
   type InboundEvent,
   InboundOutcomes,
+  MessagingWindowService,
+  OutboundQueue,
   RoutingService
 } from '@platform/core/messaging'
 import { type FetchInboundMediaJob, JobNames, QueueNames } from '@platform/core/queues'
@@ -72,6 +75,8 @@ describe('Messages that a channel delivers', () => {
         .useValue(new CapturedQueue())
         .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
         .useValue(new CapturedQueue())
+        .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+        .useValue(new CapturedQueue())
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())
@@ -82,6 +87,14 @@ describe('Messages that a channel delivers', () => {
       app.get(CustomerIdentityService, { strict: false }),
       app.get(ConversationsService, { strict: false }),
       app.get(RoutingService, { strict: false }),
+      new AwayReplyService(
+        app.get(PrismaService, { strict: false }),
+        app.get(ConversationsService, { strict: false }),
+        app.get(MessagingWindowService, { strict: false }),
+        app.get(DomainEvents, { strict: false }),
+        app.get(OutboundQueue, { strict: false }),
+        await app.resolve(PinoLogger)
+      ),
       app.get(DomainEvents, { strict: false }),
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
       await app.resolve(PinoLogger)

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { Permissions } from '@platform/core/auth'
+import { AssigneePermissions, Permissions } from '@platform/core/auth'
 import {
   lockStoreForWrite,
   lockStoreScope,
@@ -207,9 +207,10 @@ export class RoutingService {
         AND m.user_id = ANY(${action.userIds}::text[])
         AND m.status = ${MembershipStatus.ACTIVE}
         AND m.revoked_at IS NULL
-        AND EXISTS (
-          SELECT 1 FROM permissions p
-          WHERE p.role_id = m.role_id AND p.name = ${Permissions.CONVERSATIONS_VIEW})
+        AND (
+          SELECT count(*) FROM permissions p
+          WHERE p.role_id = m.role_id AND p.name = ANY(${[...AssigneePermissions]}::text[])
+        ) = ${AssigneePermissions.length}
       ORDER BY m.user_id
       FOR SHARE OF m`
     const candidates = eligible.map(row => row.user_id)
