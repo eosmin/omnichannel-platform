@@ -35,7 +35,7 @@
           "mentioned": "Mentioned in a note",
           "unassigned_queue": "New unassigned conversation",
           "snooze_expired": "Snooze expired",
-          "reopened": "Reopened by the customer"
+          "reopened": "Reopened"
         },
         "message": {
           "received": "New message in my conversation",
@@ -411,6 +411,7 @@
       "heading": "New notifications ({count})",
       "open": "Open",
       "more": "And {count} more, waiting in the app.",
+      "repeated": "{count} notifications like this",
       "center": "Open the app",
       "settings": "You get this email because of your notification settings. Change them at"
     }
@@ -594,7 +595,7 @@
       },
       "reopened": {
         "title": "Conversation reopened",
-        "body": "A customer wrote again in a resolved conversation."
+        "body": "A conversation of yours is open again."
       },
       "snooze_expired": {
         "title": "Snooze ended",
@@ -1057,7 +1058,7 @@
       },
       "system": {
         "resolved": "{actorKind, select, user {Resolved by {actor}} other {Resolved automatically}}",
-        "reopened": "{actorKind, select, user {Reopened by {actor}} other {Reopened because the customer replied}}",
+        "reopened": "{actorKind, select, user {Reopened by {actor}} other {Reopened automatically}}",
         "archived": "{actorKind, select, user {Archived by {actor}} other {Archived automatically}}",
         "marked_spam": "{actorKind, select, user {Marked as spam by {actor}} other {Marked as spam automatically}}",
         "unmarked_spam": "{actorKind, select, user {Unmarked as spam by {actor}} other {Unmarked as spam automatically}}",
@@ -1071,7 +1072,8 @@
         "reasons": {
           "snooze_expired": "the snooze ended",
           "auto_archived": "it was inactive",
-          "customer_replied": "the customer replied"
+          "customer_replied": "the customer replied",
+          "agent_replied": "an agent replied"
         }
       },
       "loadEarlierFailed": "The earlier messages could not be loaded",

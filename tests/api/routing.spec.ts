@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
@@ -15,6 +16,7 @@ import {
   RoutingLimits
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
 import { ConversationsService, RoutingService } from '@platform/core/messaging'
 
 import { createConversationOf, createCustomer, createRoutingRule, createTag } from '../builders'
@@ -853,6 +855,81 @@ describe('The routing rules of a store', () => {
 
       expect(outcome).toEqual({ ruleId: null, assignedTo: null })
       expect(await assignedTo(made.id)).toBeNull()
+    })
+
+    describe('the queue of the team', () => {
+      // `expected` events are waited for (up to 5 s); when none is expected the wait is a short settle
+      const heardUnassigned = async (run: () => Promise<unknown>, expected = 0) => {
+        const heard: unknown[] = []
+        const bus = app.get(EventEmitter2)
+        const listener = (payload: unknown) => heard.push(payload)
+        bus.on(Events.CONVERSATION_UNASSIGNED, listener)
+        try {
+          await run()
+          for (let attempt = 0; attempt < 50 && heard.length < expected; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 100))
+          }
+          await new Promise(resolve => setTimeout(resolve, 300))
+        } finally {
+          bus.off(Events.CONVERSATION_UNASSIGNED, listener)
+        }
+        return heard
+      }
+
+      it('announces a conversation that no rule gave to anyone', async () => {
+        const made = await arriving()
+
+        const heard = await heardUnassigned(() => apply(made), 1)
+
+        expect(heard).toEqual([
+          {
+            storeId: storeId(),
+            conversationId: made.id,
+            unassignedBy: { type: 'system', id: null }
+          }
+        ])
+      })
+
+      it('announces a conversation that a rule leaves to the team', async () => {
+        const made = await arriving()
+        await createRoutingRule(owner, { storeId: storeId(), action: { type: UNASSIGNED } })
+
+        const heard = await heardUnassigned(() => apply(made), 1)
+
+        expect(heard).toHaveLength(1)
+      })
+
+      it('announces the queue when routing itself could not run', async () => {
+        const made = await arriving()
+
+        const heard = await heardUnassigned(() => routing().announceQueue(storeId(), made.id), 1)
+
+        expect(heard).toHaveLength(1)
+        expect(heard[0]).toMatchObject({ storeId: storeId(), conversationId: made.id })
+      })
+
+      it('does not announce the queue for a conversation someone took meanwhile', async () => {
+        const made = await arriving()
+        await owner.conversation.update({ where: { id: made.id }, data: { assignedTo: ana.id } })
+
+        const heard = await heardUnassigned(() => routing().announceQueue(storeId(), made.id))
+
+        expect(heard).toEqual([])
+      })
+
+      it('announces nothing when a rule gave it to someone, or someone had it already', async () => {
+        const given = await arriving()
+        await createRoutingRule(owner, { storeId: storeId(), action: assignTo(ana.id) })
+        const owned = await arriving()
+        await owner.conversation.update({ where: { id: owned.id }, data: { assignedTo: beto.id } })
+
+        const heard = await heardUnassigned(async () => {
+          await apply(given)
+          await apply(owned)
+        })
+
+        expect(heard).toEqual([])
+      })
     })
 
     it('gives it to the person of the first rule that matches', async () => {

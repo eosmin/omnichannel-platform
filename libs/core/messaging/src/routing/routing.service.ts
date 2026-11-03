@@ -18,6 +18,8 @@ import {
   weekScheduleSchema
 } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import { ConversationsService } from '../conversations/conversations.service'
 import { canSee, requireAnyPermission, type Viewer } from '../conversations/conversations.support'
@@ -57,6 +59,7 @@ export class RoutingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
+    private readonly events: DomainEvents,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(RoutingService.name)
@@ -103,6 +106,7 @@ export class RoutingService {
         if (!(await matches(conditions.data, context, conversation, facts))) continue
         // A rule that leaves it to the team says so and stops here
         if (action.data.type === RoutingActionTypes.UNASSIGNED) {
+          this.queueAnnouncement(tx, storeId, conversationId)
           return { ruleId: rule.id, assignedTo: null }
         }
         const userId = await this.chooseUser(tx, storeId, action.data)
@@ -118,7 +122,36 @@ export class RoutingService {
         })
         return { ruleId: null, assignedTo: taken?.assignedTo ?? null }
       }
+      this.queueAnnouncement(tx, storeId, conversationId)
       return { ruleId: null, assignedTo: null }
+    })
+  }
+
+  // Routing could not run at all (a rule query failed): the conversation waits in the queue of the
+  // team all the same, and the team is told. Never throws: it is the fallback of a failure.
+  async announceQueue(storeId: string, conversationId: string): Promise<void> {
+    try {
+      await this.prisma.transaction(async tx => {
+        // Said only of what is still true: someone may have taken it since routing failed
+        const still = await tx.conversation.count({
+          where: { id: conversationId, storeId, assignedTo: null }
+        })
+        if (still === 1) this.queueAnnouncement(tx, storeId, conversationId)
+      })
+    } catch (error) {
+      this.logger.warn(
+        { storeId, conversationId, err: String(error) },
+        'the queue could not be announced'
+      )
+    }
+  }
+
+  // Routing is done and nobody got it: it waits in the queue of the team, and the team is told
+  private queueAnnouncement(tx: PrismaTransaction, storeId: string, conversationId: string): void {
+    this.events.publish(tx, Events.CONVERSATION_UNASSIGNED, {
+      storeId,
+      conversationId,
+      unassignedBy: { type: 'system', id: null }
     })
   }
 

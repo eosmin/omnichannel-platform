@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
@@ -9,6 +10,8 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import { ensureUser } from '@platform/core/database-testing'
 import { MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
+import { NotificationTypes } from '@platform/core/notifications'
 
 import { SessionService } from '../../apps/api/src/modules/auth/session.service'
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
@@ -284,6 +287,47 @@ describe('Accepting an invitation', () => {
         storeId: ctx.storeA.id,
         metadata: { invitationId: id, role: RoleNames.AGENT, newAccount: true }
       })
+    })
+
+    it('tells who invited, and not the new member, once the join is committed', async () => {
+      const { token } = await invite(newEmail())
+      const body = (await accept(token, { name: 'Guest' })).body as AcceptedBody
+      const joinedId = body.user?.id
+      expect(joinedId).toBeDefined()
+
+      let rows = [] as { userId: string }[]
+      for (let attempt = 0; attempt < 50 && rows.length === 0; attempt += 1) {
+        rows = await owner.notification.findMany({
+          where: {
+            storeId: ctx.storeA.id,
+            type: NotificationTypes.INVITATION_ACCEPTED,
+            resourceId: joinedId
+          },
+          select: { userId: true }
+        })
+        if (rows.length === 0) await new Promise(resolve => setTimeout(resolve, 100))
+      }
+
+      expect(rows).toEqual([{ userId: ctx.adminA.id }])
+    })
+
+    it('announces no new member when the accept fails and is rolled back', async () => {
+      const { token } = await invite(newEmail())
+      const heard: unknown[] = []
+      const bus = app.get(EventEmitter2)
+      const listener = (payload: unknown) => heard.push(payload)
+      bus.on(Events.MEMBER_JOINED, listener)
+
+      try {
+        // No name: the account cannot be made, and the claim of the link is rolled back
+        const refused = await accept(token)
+        await new Promise(resolve => setTimeout(resolve, 300))
+        expect(refused.status).toBe(400)
+      } finally {
+        bus.off(Events.MEMBER_JOINED, listener)
+      }
+
+      expect(heard).toEqual([])
     })
   })
 

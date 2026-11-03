@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
-import { AuthorType, ChannelIds, ConversationStatus } from '@platform/core/domain'
+import {
+  AuthorType,
+  ChannelIds,
+  ConversationStatus,
+  ConversationStatusReasons
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { BridgedEvents, ChannelDisconnectedReasons, Events } from '@platform/core/events'
 
@@ -51,6 +56,18 @@ describe('bridgedPayload', () => {
       storeId: randomUUID(),
       conversationId: randomUUID(),
       assignedTo: randomUUID()
+    },
+    [Events.CONVERSATION_REOPENED]: {
+      storeId: randomUUID(),
+      conversationId: randomUUID(),
+      assignedTo: randomUUID(),
+      reason: ConversationStatusReasons.AGENT_REPLIED,
+      reopenedBy: { type: 'user', id: randomUUID() }
+    },
+    [Events.CONVERSATION_UNASSIGNED]: {
+      storeId: randomUUID(),
+      conversationId: randomUUID(),
+      unassignedBy: { type: 'system', id: null }
     },
     [Events.CONVERSATION_CREATED]: {
       storeId: randomUUID(),

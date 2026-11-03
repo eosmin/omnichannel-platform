@@ -197,6 +197,7 @@ export class NotificationsService {
       where: {
         storeId: input.storeId,
         status: MembershipStatus.ACTIVE,
+        revokedAt: null,
         ...(excludeUserIds === undefined ? {} : { userId: { notIn: [...excludeUserIds] } }),
         ...(requiredPermission === undefined
           ? {}
@@ -219,6 +220,57 @@ export class NotificationsService {
     const results = await Promise.allSettled(userIds.map(userId => this.send({ ...input, userId })))
     const failed = results.find(result => result.status === 'rejected')
     if (failed !== undefined) throw failed.reason
+  }
+
+  // Like sendToUsers, but a person who still has this very notification unread (same type, same
+  // resource) is not told again: a burst of messages in one conversation, or a queue that keeps
+  // growing, is one line in the center until they look at it. The resource is required for that reason.
+  async sendToUsersOnce(
+    userIds: readonly string[],
+    input: Omit<SendNotification, 'userId' | 'resourceId'> & {
+      resourceId: string
+      // Other types about the same resource that count as "told already" (an assignment says the
+      // conversation is theirs, so the first message of it adds nothing)
+      alsoUnread?: readonly NotificationType[]
+    }
+  ): Promise<void> {
+    if (userIds.length === 0) return
+    // The check and the write are one step per kind and resource: handlers that run together for a
+    // burst of messages must not all find nothing unread and all write
+    await this.exclusively(`${input.storeId}:${input.type}:${input.resourceId}`, async () => {
+      const { alsoUnread = [], ...notification } = input
+      const pending = await this.prisma.client.notification.findMany({
+        where: {
+          storeId: input.storeId,
+          type: { in: [input.type, ...alsoUnread] },
+          resourceId: input.resourceId,
+          userId: { in: [...userIds] },
+          readAt: null,
+          createdAt: { gte: new Date(Date.now() - NotificationLimits.DEDUP_WINDOW_MS) }
+        },
+        select: { userId: true }
+      })
+      const already = new Set(pending.map(row => row.userId))
+      await this.sendToUsers(
+        userIds.filter(userId => !already.has(userId)),
+        notification
+      )
+    })
+  }
+
+  // One at a time for each key, in this process. The events that make a burst reach one api instance
+  // (the worker's bridge goes to one), so this is the whole race; a second instance publishing the
+  // same kind at the same moment may still send twice, which costs one extra line and nothing else.
+  private readonly queues = new Map<string, Promise<unknown>>()
+  private async exclusively(key: string, run: () => Promise<void>): Promise<void> {
+    const previous = this.queues.get(key) ?? Promise.resolve()
+    const next = previous.catch(() => undefined).then(run)
+    this.queues.set(key, next)
+    try {
+      await next
+    } finally {
+      if (this.queues.get(key) === next) this.queues.delete(key)
+    }
   }
 
   async list(

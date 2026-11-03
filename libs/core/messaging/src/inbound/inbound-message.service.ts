@@ -264,7 +264,8 @@ export class InboundMessageService {
       ConversationReopenedByReply.some(status => String(status) === latest.status)
     ) {
       await this.conversations.applyStatus(tx, storeId, conversationId, ConversationStatus.OPEN, {
-        actor: 'system'
+        actor: 'system',
+        reason: ConversationStatusReasons.AGENT_REPLIED
       })
     }
     const conversation = await tx.conversation.findFirst({
@@ -609,6 +610,8 @@ export class InboundMessageService {
       })
     } catch (error) {
       this.logger.error({ err: error, storeId, conversationId }, 'routing failed, left unassigned')
+      // Left in the queue all the same: the team has to hear of it
+      await this.routing.announceQueue(storeId, conversationId)
     }
   }
 }

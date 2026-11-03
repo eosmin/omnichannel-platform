@@ -150,9 +150,9 @@ describe('EmailDigestService', () => {
     it('leaves out a store the person no longer belongs to, and counts only what it left for the app', async () => {
       findNotifications.mockResolvedValue([
         { ...row('n1'), storeId: 's-left' },
-        { ...row('n2'), storeId: 's-in' },
+        { ...row('n2', { actionPath: '/s/s-in/inbox/n2' }), storeId: 's-in' },
         ...Array.from({ length: DigestLimits.MAX_ITEMS }, (_, i) => ({
-          ...row(`m${i}`),
+          ...row(`m${i}`, { actionPath: `/s/s-in/inbox/m${i}` }),
           storeId: 's-in'
         }))
       ])
@@ -166,7 +166,7 @@ describe('EmailDigestService', () => {
     it('leaves out the store of a member who is suspended: their text does not reach the mailbox', async () => {
       findNotifications.mockResolvedValue([
         { ...row('n1'), storeId: 's-suspended' },
-        { ...row('n2'), storeId: 's-in' }
+        { ...row('n2', { actionPath: '/s/s-in/inbox/n2' }), storeId: 's-in' }
       ])
       // A table, not a canned answer: what comes back depends on the status the query asks for
       const table = [
@@ -226,12 +226,110 @@ describe('EmailDigestService', () => {
     })
 
     it('lists at most the limit and counts the rest', async () => {
-      const rows = Array.from({ length: DigestLimits.MAX_ITEMS + 5 }, (_, i) => row(`n${i}`))
+      const rows = Array.from({ length: DigestLimits.MAX_ITEMS + 5 }, (_, i) =>
+        row(`n${i}`, { actionPath: `/s/s1/inbox/c${i}` })
+      )
       findNotifications.mockResolvedValue(rows)
       await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
       const data = addEmail.mock.calls[0]?.[1] as { data: { items: unknown[]; moreCount: number } }
       expect(data.data.items).toHaveLength(DigestLimits.MAX_ITEMS)
       expect(data.data.moreCount).toBe(5)
+    })
+
+    describe('grouping', () => {
+      const sent = () =>
+        addEmail.mock.calls[0]?.[1] as {
+          data: {
+            items: { count: number; url: string | null; storeName: string }[]
+            moreCount: number
+          }
+        }
+
+      it('turns the same notification about the same conversation into one block with a count', async () => {
+        findNotifications.mockResolvedValue([row('n3'), row('n2'), row('n1')])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(sent().data.items).toHaveLength(1)
+        expect(sent().data.items[0]).toMatchObject({ count: 3 })
+        expect(sent().data.moreCount).toBe(0)
+        // Every mark is cleared, the grouped rows too: none is mailed again
+        expect(updateNotifications).toHaveBeenCalledWith({
+          where: { id: { in: ['n3', 'n2', 'n1'] }, userId: USER, emailPendingAt: { not: null } },
+          data: { emailPendingAt: null }
+        })
+      })
+
+      it('keeps two conversations, two types and two stores apart, in the order of their newest row', async () => {
+        const reopened = notificationMessageKey(NotificationTypes.CONVERSATION_REOPENED)
+        findNotifications.mockResolvedValue([
+          row('a1', { actionPath: '/s/s1/inbox/c1' }),
+          row('b1', { actionPath: '/s/s1/inbox/c2' }),
+          row('c1', { messageKey: reopened }),
+          row('a2', { actionPath: '/s/s1/inbox/c1' }),
+          { ...row('d1'), storeId: 's2', store: { name: 'Other shop' } }
+        ])
+        findMemberships.mockResolvedValue([{ storeId: 's1' }, { storeId: 's2' }])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(sent().data.items.map(item => [item.storeName, item.url, item.count])).toEqual([
+          ['Shop', 'https://app.example.com/s/s1/inbox/c1', 2],
+          ['Shop', 'https://app.example.com/s/s1/inbox/c2', 1],
+          ['Shop', 'https://app.example.com/s/s1/inbox/c1', 1],
+          ['Other shop', 'https://app.example.com/s/s1/inbox/c1', 1]
+        ])
+      })
+
+      it('keeps apart notifications with no link by what they are about', async () => {
+        findNotifications.mockResolvedValue([
+          row('e3', { actionPath: null, resourceId: 'exp-2' }),
+          row('e2', { actionPath: null, resourceId: 'exp-1' }),
+          row('e1', { actionPath: null, resourceId: 'exp-1' })
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(sent().data.items.map(item => item.count)).toEqual([1, 2])
+      })
+
+      it('counts the limit in blocks and what is left out in notifications', async () => {
+        const many = Array.from({ length: DigestLimits.MAX_ITEMS }, (_, i) =>
+          row(`n${i}`, { actionPath: `/s/s1/inbox/c${i}` })
+        )
+        // Three more of the last block, and two of one block that does not fit
+        findNotifications.mockResolvedValue([
+          ...many,
+          row('x1', { actionPath: `/s/s1/inbox/c${DigestLimits.MAX_ITEMS - 1}` }),
+          row('x2', { actionPath: '/s/s1/inbox/late' }),
+          row('x3', { actionPath: '/s/s1/inbox/late' })
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(sent().data.items).toHaveLength(DigestLimits.MAX_ITEMS)
+        expect(sent().data.items.at(-1)).toMatchObject({ count: 2 })
+        expect(sent().data.moreCount).toBe(2)
+      })
+
+      it('says in the email how many a block stands for, in both languages, and nothing for a lone one', async () => {
+        findNotifications.mockResolvedValue([row('n2'), row('n1')])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        const queued = addEmail.mock.calls[0]?.[1] as {
+          template: typeof EmailTemplates.NOTIFICATION_DIGEST
+          data: unknown
+        }
+
+        const en = await new TemplateRenderer().render(queued.template, Locales.EN, queued.data)
+        const es = await new TemplateRenderer().render(queued.template, Locales.ES, queued.data)
+        expect(en.text).toContain('2 notifications like this')
+        expect(en.text).toContain('(2)')
+        expect(es.text).toContain('2 notificaciones como esta')
+
+        addEmail.mockClear()
+        findNotifications.mockResolvedValue([row('n1')])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        const lone = addEmail.mock.calls[0]?.[1] as typeof queued
+        const text = (await new TemplateRenderer().render(lone.template, Locales.EN, lone.data))
+          .text
+        expect(text).not.toContain('like this')
+      })
     })
 
     it('sends nothing when all is read, too old, or the address bounces, but clears the marks', async () => {

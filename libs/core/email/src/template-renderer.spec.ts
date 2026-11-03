@@ -163,9 +163,16 @@ describe('TemplateRenderer: notification digest', () => {
         storeName: 'Shop',
         title: 'Conversation assigned',
         body: 'Ana assigned you a conversation.',
-        url: 'https://app.example.com/s/s1/inbox/c1'
+        url: 'https://app.example.com/s/s1/inbox/c1',
+        count: 1
       },
-      { storeName: 'Shop', title: 'Export ready', body: 'Your file is ready.', url: null }
+      {
+        storeName: 'Shop',
+        title: 'Export ready',
+        body: 'Your file is ready.',
+        url: null,
+        count: 1
+      }
     ],
     moreCount: 3,
     appUrl: 'https://app.example.com/',

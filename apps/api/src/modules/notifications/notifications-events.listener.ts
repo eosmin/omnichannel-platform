@@ -4,18 +4,26 @@ import { OnEvent } from '@nestjs/event-emitter'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { AppPaths, ConversationStatus, MembershipStatus } from '@platform/core/domain'
+import {
+  AppPaths,
+  AuthorType,
+  ConversationStatus,
+  ConversationStatusReasons,
+  MembershipStatus
+} from '@platform/core/domain'
 import {
   type ConversationAssignedPayload,
+  type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
   type ExportSettledPayload,
   Events,
   type MessageChangedPayload,
-  type MessageMentionPayload
+  type MessageMentionPayload,
+  type MessageReceivedPayload
 } from '@platform/core/events'
 import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/core/exports'
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
-import { NotificationTypes } from '@platform/core/notifications'
+import { type NotificationType, NotificationTypes } from '@platform/core/notifications'
 
 import { NotificationsService } from './notifications.service'
 
@@ -97,27 +105,75 @@ export class NotificationsEventsListener {
     })
   }
 
+  // A person reopened a conversation that was resolved or archived: its owner is told, unless that
+  // person is the owner. A reopening by the customer's own message is not told here: that message is
+  // the news (`onMessageReceived`), and telling both would be the same alert twice. One nobody owns
+  // goes to the queue of the team (`NotificationsInboxListener`).
+  @OnEvent(Events.CONVERSATION_REOPENED)
+  async onReopened(payload: ConversationReopenedPayload): Promise<void> {
+    const { storeId, conversationId, assignedTo, reason, reopenedBy } = payload
+    if (assignedTo === null || reason === ConversationStatusReasons.CUSTOMER_REPLIED) return
+    await this.notifyAssignee(NotificationTypes.CONVERSATION_REOPENED, {
+      storeId,
+      conversationId,
+      assignee: assignedTo,
+      mustBe: ConversationStatus.OPEN,
+      ...(reopenedBy.type === 'user' && reopenedBy.id !== null ? { actorId: reopenedBy.id } : {})
+    })
+  }
+
+  // To the owner of an open conversation when the customer writes, and only once until they look at
+  // it: ten messages in a row are one line in the center, not ten. A conversation nobody owns is the
+  // queue's news (`NotificationsInboxListener`), never one per message to everyone. What the team
+  // wrote itself (an agent, the owner's phone, the platform) is not news to the team.
+  @OnEvent(Events.MESSAGE_RECEIVED)
+  async onMessageReceived(payload: MessageReceivedPayload): Promise<void> {
+    if (payload.authorType !== AuthorType.CUSTOMER) return
+    await this.notifyAssignee(NotificationTypes.MESSAGE_RECEIVED, {
+      storeId: payload.storeId,
+      conversationId: payload.conversationId,
+      assignee: null,
+      mustBe: ConversationStatus.OPEN,
+      once: true,
+      // Given the conversation, woken or reopened for them a moment ago, the message adds nothing
+      alsoUnread: [
+        NotificationTypes.CONVERSATION_ASSIGNED,
+        NotificationTypes.CONVERSATION_SNOOZE_EXPIRED,
+        NotificationTypes.CONVERSATION_REOPENED
+      ]
+    })
+  }
+
   // The row is read now, not trusted from the event: the conversation may have gone to someone else, or
   // out of sight, between the change and this listener. Who is told must still be its assignee and
-  // still be able to open it.
+  // still be able to open it. `assignee: null` means whoever has it now; `actorId` is the person who
+  // made the change and knows it already; `once` skips who still has this one unread.
   private async notifyAssignee(
     type:
       | typeof NotificationTypes.CONVERSATION_ASSIGNED
-      | typeof NotificationTypes.CONVERSATION_SNOOZE_EXPIRED,
+      | typeof NotificationTypes.CONVERSATION_SNOOZE_EXPIRED
+      | typeof NotificationTypes.CONVERSATION_REOPENED
+      | typeof NotificationTypes.MESSAGE_RECEIVED,
     target: {
       storeId: string
       conversationId: string
-      assignee: string
+      assignee: string | null
       mustBe?: `${ConversationStatus}`
+      actorId?: string
+      once?: boolean
+      alsoUnread?: readonly NotificationType[]
     }
   ): Promise<void> {
-    const { storeId, conversationId, assignee, mustBe } = target
+    const { storeId, conversationId, mustBe, actorId, once, alsoUnread } = target
     try {
       const conversation = await this.prisma.client.conversation.findFirst({
         where: { id: conversationId, storeId },
         select: { status: true, assignedTo: true }
       })
-      if (conversation === null || conversation.assignedTo !== assignee) return
+      if (conversation === null || conversation.assignedTo === null) return
+      if (target.assignee !== null && conversation.assignedTo !== target.assignee) return
+      const assignee = conversation.assignedTo
+      if (assignee === actorId) return
       if (mustBe !== undefined && conversation.status !== mustBe) return
       const reader = await this.prisma.client.membership.count({
         where: {
@@ -129,14 +185,19 @@ export class NotificationsEventsListener {
         }
       })
       if (reader === 0) return
-      await this.notifications.send({
-        userId: assignee,
+      const notification = {
         storeId,
         type,
         resourceType: 'conversation',
         resourceId: conversationId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
-      })
+      }
+      if (once === true) {
+        await this.notifications.sendToUsersOnce([assignee], {
+          ...notification,
+          ...(alsoUnread === undefined ? {} : { alsoUnread })
+        })
+      } else await this.notifications.send({ ...notification, userId: assignee })
     } catch (error) {
       this.logger.error(
         { conversationId, type, err: String(error) },

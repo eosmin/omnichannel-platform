@@ -6,7 +6,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { ApiRoutes } from '@platform/core/api'
 import { RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType, ConversationStatus, MessageType } from '@platform/core/domain'
+import {
+  ChannelType,
+  ConversationStatus,
+  ConversationStatusReasons,
+  MessageType
+} from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 
 import { createConversationOf } from '../builders'
@@ -83,6 +88,38 @@ describe('The domain events of the services', () => {
             assignedTo: null,
             changedBy: { type: 'user', id: ctx.agentA.id }
           }
+        }
+      ])
+    })
+
+    it('announces a reopening by a person, with nobody as the reason, and none for a snooze that ends', async () => {
+      const resolved = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        status: ConversationStatus.RESOLVED,
+        assignedTo: agent2.id
+      })
+      const snoozed = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        status: ConversationStatus.SNOOZED,
+        assignedTo: agent2.id
+      })
+
+      await asAdmin()
+        .patch(ApiRoutes.conversations.status(resolved.id))
+        .send({ status: ConversationStatus.OPEN })
+        .expect(OK)
+      await asAdmin()
+        .patch(ApiRoutes.conversations.status(snoozed.id))
+        .send({ status: ConversationStatus.OPEN })
+        .expect(OK)
+
+      expect(heardOf(Events.CONVERSATION_REOPENED).map(item => item.payload)).toEqual([
+        {
+          storeId: ctx.storeA.id,
+          conversationId: resolved.id,
+          assignedTo: agent2.id,
+          reason: null,
+          reopenedBy: { type: 'user', id: ctx.adminA.id }
         }
       ])
     })
@@ -224,6 +261,22 @@ describe('The domain events of the services', () => {
           assignedTo: null,
           changedBy: { type: 'user', id: ctx.agentA.id }
         }
+      ])
+      // The reason is written down: the thread says an agent replied, not that the customer did
+      expect(heardOf(Events.CONVERSATION_REOPENED).map(item => item.payload)).toEqual([
+        {
+          storeId: ctx.storeA.id,
+          conversationId: id,
+          assignedTo: null,
+          reason: ConversationStatusReasons.AGENT_REPLIED,
+          reopenedBy: { type: 'user', id: ctx.agentA.id }
+        }
+      ])
+      const lines = await owner.message.findMany({
+        where: { conversationId: id, type: MessageType.SYSTEM }
+      })
+      expect(lines.map(line => line.metadata)).toEqual([
+        expect.objectContaining({ reason: ConversationStatusReasons.AGENT_REPLIED })
       ])
     })
 

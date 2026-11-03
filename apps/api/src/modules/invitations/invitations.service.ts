@@ -14,6 +14,8 @@ import {
   resourceConflict,
   unauthorized
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 
 import type { IssuedSession, SessionContext } from '../auth/session.service'
 import { SessionService } from '../auth/session.service'
@@ -49,7 +51,8 @@ export class InvitationAcceptService {
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
     private readonly audit: AuditService,
-    private readonly tenants: TenantContextService
+    private readonly tenants: TenantContextService,
+    private readonly events: DomainEvents
   ) {}
 
   async preview(token: string): Promise<InvitationPreview> {
@@ -127,6 +130,11 @@ export class InvitationAcceptService {
         data: { acceptedById: user.id }
       })
       const membershipId = await this.join(tx, user.id, invitation)
+      this.events.publish(tx, Events.MEMBER_JOINED, {
+        storeId: invitation.storeId,
+        userId: user.id,
+        invitedBy: invitation.invitedById
+      })
       return {
         user,
         membershipId,
