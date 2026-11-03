@@ -12,7 +12,7 @@ import { Public } from '@platform/core/auth-module'
 import { ProcessedWebhookEventsService } from '@platform/core/database'
 import { ResendBounceTypes, ResendEventTypes, WebhookSources } from '@platform/core/domain'
 import { ResendWebhookVerifier } from '@platform/core/email'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { EmailMetricStatus, MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import { JobNames, QueueNames, type TrackAnalyticsJob } from '@platform/core/queues'
@@ -55,7 +55,18 @@ export class ResendWebhookController {
     @Headers('svix-signature') signature: string | undefined
   ): Promise<{ received: true }> {
     const verified = this.verifier.verify(req.rawBody, { id, timestamp, signature })
-    const envelope = resendEnvelopeSchema.parse(verified) // Zod at the boundary, even after the signature
+    // Zod at the boundary, even after the signature. A signed body that is not an event (an array, a
+    // string) is the sender's mistake: 400, never the 500 of an uncaught ZodError. The issues name no
+    // value, only the shape that was expected.
+    const parsed = resendEnvelopeSchema.safeParse(verified)
+    if (!parsed.success) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'resend webhook body is not an event',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    const envelope = parsed.data
     const eventId = id ?? '' // verify() throws without it, so it is defined past this point
 
     await this.processedEvents.runOnce(WebhookSources.RESEND, eventId, envelope.type, () =>

@@ -31,6 +31,8 @@ export const ErrorCodes = {
   VALIDATION_FAILED: 'VALIDATION_FAILED',
   VALIDATION_INVALID_INPUT: 'VALIDATION_INVALID_INPUT',
   VALIDATION_URL_NOT_ALLOWED: 'VALIDATION_URL_NOT_ALLOWED',
+  // The body of a request is bigger than the parser accepts (413)
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
 
   // Rate limiting
   RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
@@ -130,6 +132,9 @@ export const ErrorCodes = {
   // External
   EXTERNAL_SERVICE_ERROR: 'EXTERNAL_SERVICE_ERROR',
   EXTERNAL_SERVICE_TIMEOUT: 'EXTERNAL_SERVICE_TIMEOUT',
+
+  // The browser could not reach the api: raised by the api client when no answer came, never by the api
+  NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE',
 
   // Generic
   INTERNAL_ERROR: 'INTERNAL_ERROR'

@@ -57,6 +57,11 @@ export const ChannelConnectionLimits = {
   PLUGIN_NAME_MAX_LENGTH: 60
 } as const
 
+// The two lists of Settings → Channels: the connections in use, and the ones that were disconnected
+export const ChannelConnectionListStates = { LIVE: 'live', PAST: 'past' } as const
+export type ChannelConnectionListState =
+  (typeof ChannelConnectionListStates)[keyof typeof ChannelConnectionListStates]
+
 // What `ChannelConnection.lastError` holds when the platform, and not the provider, is the one that
 // says what went wrong. The settings page turns each into text in the language of the reader.
 export const ChannelHealthErrors = {

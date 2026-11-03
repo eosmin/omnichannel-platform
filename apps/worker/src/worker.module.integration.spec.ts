@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing'
 
+import { AnalyticsProcessor } from './processors/analytics.processor'
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
 import { NotificationsProcessor } from './processors/notifications.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
@@ -20,6 +21,7 @@ describe('WorkerModule', () => {
     expect(moduleRef.get(NotificationsProcessor, { strict: false })).toBeInstanceOf(
       NotificationsProcessor
     )
+    expect(moduleRef.get(AnalyticsProcessor, { strict: false })).toBeInstanceOf(AnalyticsProcessor)
     await moduleRef.close()
   })
 })

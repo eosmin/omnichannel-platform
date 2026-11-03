@@ -7,7 +7,7 @@ import { type ReactElement, useState } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
-import { ChannelConnectionStatus } from '@platform/core/domain'
+import { ChannelConnectionListStates } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { ConnectDialog } from '../../components/settings/connect-dialog'
@@ -30,15 +30,19 @@ export function StoreChannelsPage(): ReactElement {
 
 function ChannelsLoader(): ReactElement {
   const { storeId } = useStore()
-  const connections = useConnections(storeId)
+  const live = useConnections(storeId, ChannelConnectionListStates.LIVE)
   const catalog = usePluginCatalog(storeId)
-  if (connections.isError) {
-    return <LoadFailed error={connections.error} onRetry={() => void connections.refetch()} />
+  if (live.isError && live.data === undefined) {
+    return <LoadFailed error={live.error} onRetry={() => void live.refetch()} />
   }
-  if (connections.data === undefined) return <PageLoading />
+  if (live.data === undefined) return <PageLoading />
   return (
     <ChannelsBody
-      connections={connections.data}
+      live={live.data.pages.flatMap(page => page.data)}
+      hasMoreLive={live.hasNextPage}
+      loadingMoreLive={live.isFetchingNextPage}
+      loadMoreLiveFailed={live.isFetchNextPageError}
+      onLoadMoreLive={() => void live.fetchNextPage()}
       catalog={catalog.data}
       catalogFailed={catalog.isError}
     />
@@ -46,11 +50,19 @@ function ChannelsLoader(): ReactElement {
 }
 
 function ChannelsBody({
-  connections,
+  live,
+  hasMoreLive,
+  loadingMoreLive,
+  loadMoreLiveFailed,
+  onLoadMoreLive,
   catalog,
   catalogFailed
 }: {
-  connections: ChannelConnectionView[]
+  live: ChannelConnectionView[]
+  hasMoreLive: boolean
+  loadingMoreLive: boolean
+  loadMoreLiveFailed: boolean
+  onLoadMoreLive: () => void
   catalog: PluginCatalogEntryView[] | undefined
   catalogFailed: boolean
 }): ReactElement {
@@ -62,12 +74,6 @@ function ChannelsBody({
     catalog?.find(entry => entry.id === id)
   // A channel can be connected once it is installed in the store (Settings → Plugins)
   const connectable = (catalog ?? []).filter(entry => entry.installed && entry.channel !== null)
-  const live = connections.filter(
-    connection => connection.status !== String(ChannelConnectionStatus.DISCONNECTED)
-  )
-  const past = connections.filter(
-    connection => connection.status === String(ChannelConnectionStatus.DISCONNECTED)
-  )
 
   return (
     <section className="flex max-w-3xl flex-col gap-6">
@@ -76,24 +82,7 @@ function ChannelsBody({
         <p className="text-muted-foreground text-sm">{t('description')}</p>
       </header>
 
-      {live.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center">
-          <Plug aria-hidden className="text-muted-foreground size-8" />
-          <h2 className="text-base font-semibold">{t('empty.title')}</h2>
-          <p className="text-muted-foreground max-w-sm text-sm">{t('empty.body')}</p>
-        </div>
-      ) : (
-        <ul aria-label={t('listLabel')} className="flex flex-col gap-3">
-          {live.map(connection => (
-            <ConnectionCard
-              key={connection.id}
-              connection={connection}
-              plugin={pluginOf(connection.pluginId)}
-            />
-          ))}
-        </ul>
-      )}
-
+      {/* Before the list: with hundreds of accounts it would sit below all of them */}
       <section aria-labelledby="add-channel" className="flex flex-col gap-3">
         <h2 id="add-channel" className="text-lg font-semibold">
           {t('add.title')}
@@ -134,26 +123,115 @@ function ChannelsBody({
         )}
       </section>
 
-      {past.length > 0 ? (
-        <section aria-labelledby="past-channels" className="flex flex-col gap-3">
-          <h2 id="past-channels" className="text-lg font-semibold">
-            {t('past.title')}
-          </h2>
-          <p className="text-muted-foreground text-sm">{t('past.hint')}</p>
-          <ul className="flex flex-col gap-3">
-            {past.map(connection => (
-              <ConnectionCard
-                key={connection.id}
-                connection={connection}
-                plugin={pluginOf(connection.pluginId)}
-              />
-            ))}
-          </ul>
-        </section>
+      {live.length === 0 && !hasMoreLive ? (
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center">
+          <Plug aria-hidden className="text-muted-foreground size-8" />
+          <h2 className="text-base font-semibold">{t('empty.title')}</h2>
+          <p className="text-muted-foreground max-w-sm text-sm">{t('empty.body')}</p>
+        </div>
+      ) : (
+        <ul aria-label={t('listLabel')} className="flex flex-col gap-3">
+          {live.map(connection => (
+            <ConnectionCard
+              key={connection.id}
+              connection={connection}
+              plugin={pluginOf(connection.pluginId)}
+            />
+          ))}
+        </ul>
+      )}
+      {loadMoreLiveFailed ? (
+        <p role="alert" className="text-destructive text-sm">
+          {t('loadMoreFailed')}
+        </p>
       ) : null}
+      {hasMoreLive ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          disabled={loadingMoreLive}
+          onClick={onLoadMoreLive}
+        >
+          {t('loadMore')}
+        </Button>
+      ) : null}
+
+      <PastChannels pluginOf={pluginOf} />
 
       {connecting === null ? null : (
         <ConnectDialog plugin={connecting} onClose={() => setConnecting(null)} />
+      )}
+    </section>
+  )
+}
+
+// The disconnected accounts are read when the person asks for them: most stores never look
+function PastChannels({
+  pluginOf
+}: {
+  pluginOf: (id: string) => PluginCatalogEntryView | undefined
+}): ReactElement {
+  const t = useTranslations('settings.channels')
+  const { storeId } = useStore()
+  const [shown, setShown] = useState(false)
+  const past = useConnections(storeId, ChannelConnectionListStates.PAST, shown)
+  const rows = past.data?.pages.flatMap(page => page.data) ?? []
+
+  return (
+    <section aria-labelledby="past-channels" className="flex flex-col gap-3">
+      <h2 id="past-channels" className="text-lg font-semibold">
+        {t('past.title')}
+      </h2>
+      {shown ? (
+        <>
+          <p className="text-muted-foreground text-sm">{t('past.hint')}</p>
+          {past.isError && past.data === undefined ? (
+            <LoadFailed error={past.error} onRetry={() => void past.refetch()} />
+          ) : past.data === undefined ? (
+            <PageLoading />
+          ) : rows.length === 0 ? (
+            <p className="text-muted-foreground text-sm">{t('past.none')}</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {rows.map(connection => (
+                <ConnectionCard
+                  key={connection.id}
+                  connection={connection}
+                  plugin={pluginOf(connection.pluginId)}
+                />
+              ))}
+            </ul>
+          )}
+          {past.isFetchNextPageError ? (
+            <p role="alert" className="text-destructive text-sm">
+              {t('loadMoreFailed')}
+            </p>
+          ) : null}
+          {past.hasNextPage ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              disabled={past.isFetchingNextPage}
+              onClick={() => void past.fetchNextPage()}
+            >
+              {t('loadMore')}
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setShown(true)}
+        >
+          {t('past.show')}
+        </Button>
       )}
     </section>
   )

@@ -4,6 +4,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
   ChannelType,
+  type ChannelConnectionStatus,
   type ConversationStatus,
   MessageType
 } from '@platform/core/domain'
@@ -28,7 +29,12 @@ export interface ConversationInput {
 // A connection of a channel in a store, as the owner bootstrap of a real one would leave it
 export async function createChannelConnection(
   owner: OwnerClient,
-  input: { storeId: string; channelType: string }
+  input: {
+    storeId: string
+    channelType: string
+    status?: ChannelConnectionStatus
+    createdAt?: Date
+  }
 ): Promise<{ id: string }> {
   const installation = await ensurePluginInstallation(owner, {
     storeId: input.storeId,
@@ -41,7 +47,9 @@ export async function createChannelConnection(
       installationId: installation.id,
       connectionId: `conn-${randomUUID()}`,
       displayName: 'test connection',
-      credentials: Buffer.from('not a secret')
+      credentials: Buffer.from('not a secret'),
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt })
     },
     select: { id: true }
   })

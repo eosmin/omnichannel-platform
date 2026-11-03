@@ -96,8 +96,12 @@ interface ErrorBody {
   error?: { code?: string }
 }
 
+// The most pages `listing` follows before it calls the list broken
+const MAX_LIST_PAGES = 50
+
 // Every check throws (a jest expectation) when the resource leaks, so that a suite and the test of
 // the suite (isolation-detects-leaks.spec.ts) use the very same code.
+
 export const isolationChecks = {
   // The user belongs to store A. The row is in store B, of another organization, and the user names
   // store B in the header: the guard refuses it before the resource is looked at.
@@ -197,12 +201,24 @@ export const isolationChecks = {
     const mine = await resource.create(owner, { storeId: ctx.storeA.id })
     const theirs = await resource.create(owner, { storeId: ctx.storeB.id })
 
-    const response = await api(app, ctx.adminA, ctx.storeA).get(resource.listPath)
-
-    expect(response.status).toBe(200)
-    // A list is a bare array or a page ({ data, nextCursor, hasMore }, TDD_08 §2.4)
-    const rows = response.body as { id: string }[] | { data: { id: string }[] }
-    const ids = (Array.isArray(rows) ? rows : rows.data).map(row => row.id)
+    // A list is a bare array or a page ({ data, nextCursor, hasMore }, TDD_08 §2.4). A page is read
+    // to its end: the row just made may sit on a later one.
+    const ids: string[] = []
+    let cursor: string | null = null
+    let pages = 0
+    do {
+      pages += 1
+      // A list that never ends (the same cursor again) fails here, not at the timeout of the suite
+      expect(pages).toBeLessThanOrEqual(MAX_LIST_PAGES)
+      const response: { status: number; body: unknown } = await api(app, ctx.adminA, ctx.storeA)
+        .get(resource.listPath)
+        .query(cursor === null ? {} : { cursor })
+      expect(response.status).toBe(200)
+      const rows = response.body as
+        { id: string }[] | { data: { id: string }[]; nextCursor?: string | null }
+      ids.push(...(Array.isArray(rows) ? rows : rows.data).map(row => row.id))
+      cursor = Array.isArray(rows) ? null : (rows.nextCursor ?? null)
+    } while (cursor !== null)
     expect(ids).toContain(mine.id)
     expect(ids).not.toContain(theirs.id)
   },

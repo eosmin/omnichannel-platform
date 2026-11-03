@@ -58,7 +58,7 @@ export function createApiClient({
       })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error
-      throw new ApiError(0, ErrorCodes.INTERNAL_ERROR, 'The api cannot be reached')
+      throw new ApiError(0, ErrorCodes.NETWORK_UNAVAILABLE, 'The api cannot be reached')
     }
   }
 

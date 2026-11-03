@@ -20,7 +20,9 @@ import {
 } from '@platform/core/database'
 import {
   ChannelConnectionLimits,
+  ChannelConnectionListStates,
   ChannelConnectionStatus,
+  type CursorPage,
   ChannelHealthLimits,
   isInstallationActive,
   OfActiveInstallation,
@@ -44,12 +46,14 @@ import {
   type ChannelPlugin
 } from '@platform/plugins/sdk'
 
+import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
 import {
   type ConnectChannelBody,
   type ConnectResult,
-  connectResultSchema
+  connectResultSchema,
+  type ListConnectionsQuery
 } from './channel-connections.schemas'
 
 type ConnectionWrite = Parameters<PrismaTransaction['channelConnection']['updateMany']>[0]['data']
@@ -219,14 +223,42 @@ export class ChannelConnectionsService {
     }
   }
 
-  async list(storeId: string): Promise<ChannelConnectionView[]> {
+  // One page, oldest first: the position is the (createdAt, id) of the last row, so a connection
+  // made or removed while the person reads does not shift the next page
+  async list(
+    storeId: string,
+    query: ListConnectionsQuery
+  ): Promise<CursorPage<ChannelConnectionView>> {
+    const { cursor, state, limit } = query
+    const disconnected = ChannelConnectionStatus.DISCONNECTED
     const rows = await this.prisma.client.channelConnection.findMany({
-      where: { storeId },
+      where: {
+        storeId,
+        ...(state === ChannelConnectionListStates.LIVE ? { status: { not: disconnected } } : {}),
+        ...(state === ChannelConnectionListStates.PAST ? { status: disconnected } : {}),
+        ...(cursor === undefined
+          ? {}
+          : {
+              OR: [
+                { createdAt: { gt: cursor.createdAt } },
+                { createdAt: cursor.createdAt, id: { gt: cursor.id } }
+              ]
+            })
+      },
       select: VIEW_SELECT,
-      orderBy: CONNECTION_ORDER
+      orderBy: CONNECTION_ORDER,
+      take: limit + 1
     })
-    const profiles = await this.profileStatuses(storeId, rows)
-    return rows.map(row => this.view(row, profiles))
+    const hasMore = rows.length > limit
+    const page = hasMore ? rows.slice(0, limit) : rows
+    const last = page.at(-1)
+    // The profile errors are counted for this page only, never for the whole store
+    const profiles = await this.profileStatuses(storeId, page)
+    return {
+      data: page.map(row => this.view(row, profiles)),
+      nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
+      hasMore
+    }
   }
 
   // Its own select, not the full view cut down: whatever a column holds that only who manages channels

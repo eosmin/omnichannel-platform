@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type { ApiClient } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
+import type { ChannelConnectionListState } from '@platform/core/domain'
 
 // Settings → Channels and Plugins: what the api answers to who manages channels. Kept in the page's own
 // files and not in `@platform/api-client`, whose barrel the inbox loads whole: nothing here is needed
@@ -28,6 +29,13 @@ const connectionSchema = z.object({
   profile: profileStatusSchema.nullable()
 })
 export type ChannelConnectionView = z.output<typeof connectionSchema>
+
+const connectionPageSchema = z.object({
+  data: z.array(connectionSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type ChannelConnectionPageView = z.output<typeof connectionPageSchema>
 
 const testResultSchema = z.object({
   healthy: z.boolean(),
@@ -72,13 +80,19 @@ export type WidgetEmbedView = z.output<typeof widgetSchema>
 // Every call goes through the store in X-Store-Id; the connection or the plugin is named in the path
 const enc = encodeURIComponent
 
+// One page of the connections in use or of the disconnected ones, oldest first: a store can hold
+// hundreds, and the api never answers them all at once
 export function fetchConnections(
   client: ApiClient,
   storeId: string,
+  state: ChannelConnectionListState,
+  cursor: string | null,
   signal?: AbortSignal
-): Promise<ChannelConnectionView[]> {
-  return client.request(ApiRoutes.channels.connections, {
-    schema: z.array(connectionSchema),
+): Promise<ChannelConnectionPageView> {
+  const params = new URLSearchParams({ state })
+  if (cursor !== null) params.set('cursor', cursor)
+  return client.request(`${ApiRoutes.channels.connections}?${params.toString()}`, {
+    schema: connectionPageSchema,
     storeId,
     signal
   })

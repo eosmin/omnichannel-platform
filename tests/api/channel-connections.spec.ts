@@ -8,8 +8,10 @@ import { AuditAction } from '@platform/core/audit'
 import { CredentialCipher } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  ChannelConnectionListStates,
   ChannelConnectionStatus,
   ChannelHealthErrors,
+  PaginationLimits,
   PluginInstallationStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -54,6 +56,12 @@ interface ConnectionBody {
   } | null
 }
 
+interface ConnectionPageBody {
+  data: ConnectionBody[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
 describe('The channel connections of a store', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -82,6 +90,19 @@ describe('The channel connections of a store', () => {
   const asAgent = () => api(app, ctx.agentA, ctx.storeA)
   const asAdminB = () => api(app, ctx.adminB, ctx.storeB)
   const codeOf = (body: unknown) => (body as ErrorBody).error.code
+  // Every page of the list, followed by its cursor: the store holds the connections of all the cases
+  async function allConnections(agent = asAdmin): Promise<ConnectionBody[]> {
+    const rows: ConnectionBody[] = []
+    let cursor: string | null = null
+    do {
+      const page: { body: ConnectionPageBody } = await agent()
+        .get(ApiRoutes.channels.connections)
+        .query({ limit: 100, ...(cursor === null ? {} : { cursor }) })
+      rows.push(...page.body.data)
+      cursor = page.body.nextCursor
+    } while (cursor !== null)
+    return rows
+  }
 
   // A plugin of its own for each test: the registry refuses an id twice
   function register(over: Partial<ChannelPlugin> = {}, connectionId = `acct-${randomUUID()}`) {
@@ -333,27 +354,148 @@ describe('The channel connections of a store', () => {
       await connect(mine.id)
       await connect(theirs.id, asAdminB)
 
-      const list = await asAdmin().get(ApiRoutes.channels.connections)
+      const items = await allConnections()
 
-      const items = list.body as ConnectionBody[]
       const ids = items.map(item => item.pluginId)
       expect(ids).toContain(mine.id)
       expect(ids).not.toContain(theirs.id)
-      expect(JSON.stringify(list.body)).not.toContain('credentials')
+      expect(JSON.stringify(items)).not.toContain('credentials')
     })
 
     it('says what each channel can do, so that the web app draws only that', async () => {
       const { id, plugin } = register()
       await connect(id)
 
-      const list = await asAdmin().get(ApiRoutes.channels.connections)
-
       const expected = [...new Set(plugin.capabilities)].sort()
-      const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
+      const item = (await allConnections()).find(each => each.pluginId === id)
       expect(item?.capabilities.slice().sort()).toEqual(expected)
       // The same view comes from every route that returns a connection
       const one = await asAdmin().get(ApiRoutes.channels.connectionById(item?.id ?? ''))
       expect((one.body as ConnectionBody).capabilities.slice().sort()).toEqual(expected)
+    })
+  })
+
+  describe('paging the list', () => {
+    const MINUTE = 60_000
+    const FIRST_SEEDED_AT = Date.UTC(2001, 0, 1)
+    let seeded = 0
+    // The other cases leave connections in the store: the rows made here are told apart by id. Their
+    // dates are old and a minute apart, so they come first and in a known order, whatever the clock
+    // of the insert and however many connections the other cases left
+    async function seedMany(
+      storeId: string,
+      count: number,
+      status = ChannelConnectionStatus.ACTIVE
+    ) {
+      const ids: string[] = []
+      const base = FIRST_SEEDED_AT + MINUTE * (seeded += 1000)
+      for (let index = 0; index < count; index += 1) {
+        const row = await createChannelConnection(owner, {
+          storeId,
+          channelType: 'test_channel',
+          status,
+          createdAt: new Date(base + index * MINUTE)
+        })
+        ids.push(row.id)
+      }
+      return ids
+    }
+    const page = (query: Record<string, string | number>, agent = asAdmin) =>
+      agent().get(ApiRoutes.channels.connections).query(query)
+
+    it('answers a page with the oldest first, a cursor, and no row twice', async () => {
+      const ids = await seedMany(ctx.storeA.id, 5)
+      const seen: string[] = []
+      let cursor: string | null = null
+      let pages = 0
+      do {
+        const response: { status: number; body: ConnectionPageBody } = await page({
+          limit: 2,
+          state: ChannelConnectionListStates.LIVE,
+          ...(cursor === null ? {} : { cursor })
+        })
+        expect(response.status).toBe(OK)
+        // A page is full unless it is the last
+        if (response.body.hasMore) expect(response.body.data).toHaveLength(2)
+        else expect(response.body.data.length).toBeLessThanOrEqual(2)
+        seen.push(...response.body.data.map(row => row.id))
+        expect(response.body.hasMore).toBe(response.body.nextCursor !== null)
+        cursor = response.body.nextCursor
+        pages += 1
+      } while (cursor !== null)
+      expect(pages).toBeGreaterThan(1)
+      expect(new Set(seen).size).toBe(seen.length)
+      expect(seen).toEqual(expect.arrayContaining(ids))
+      // The order is the creation order of the rows we made
+      expect(seen.filter(id => ids.includes(id))).toEqual(ids)
+    })
+
+    it('keeps the live and the disconnected apart', async () => {
+      const [live] = await seedMany(ctx.storeA.id, 1)
+      const [gone] = await seedMany(ctx.storeA.id, 1, ChannelConnectionStatus.DISCONNECTED)
+      const liveIds = (await page({ state: ChannelConnectionListStates.LIVE, limit: 100 }))
+        .body as ConnectionPageBody
+      const pastIds = (await page({ state: ChannelConnectionListStates.PAST, limit: 100 }))
+        .body as ConnectionPageBody
+      expect(liveIds.data.map(row => row.id)).toContain(live)
+      expect(liveIds.data.map(row => row.id)).not.toContain(gone)
+      expect(pastIds.data.map(row => row.id)).toContain(gone)
+      expect(
+        pastIds.data.every(row => row.status === String(ChannelConnectionStatus.DISCONNECTED))
+      ).toBe(true)
+    })
+
+    it('answers a page of the default size, and exactly the limit asked', async () => {
+      // One more than a page, whatever the other cases left in the store
+      await seedMany(ctx.storeA.id, PaginationLimits.DEFAULT + 1)
+      const byDefault = (await page({})).body as ConnectionPageBody
+      expect(byDefault.data).toHaveLength(PaginationLimits.DEFAULT)
+      expect(byDefault.hasMore).toBe(true)
+      const three = (await page({ limit: 3 })).body as ConnectionPageBody
+      expect(three.data).toHaveLength(3)
+      expect(three.hasMore).toBe(true)
+    })
+
+    it('says there is no more only when the limit meets the last row', async () => {
+      await seedMany(ctx.storeB.id, 2)
+      const total = (await allConnections(asAdminB)).length
+      expect(total).toBeGreaterThan(1)
+      expect(total).toBeLessThanOrEqual(PaginationLimits.MAX)
+      const exact = (await page({ limit: total }, asAdminB)).body as ConnectionPageBody
+      expect(exact.data).toHaveLength(total)
+      expect(exact.hasMore).toBe(false)
+      expect(exact.nextCursor).toBeNull()
+      const short = (await page({ limit: total - 1 }, asAdminB)).body as ConnectionPageBody
+      expect(short.data).toHaveLength(total - 1)
+      expect(short.hasMore).toBe(true)
+      expect(short.nextCursor).not.toBeNull()
+    })
+
+    it('refuses a limit out of range and a state that is not one of ours', async () => {
+      for (const limit of [0, PaginationLimits.MAX + 1, -1, 'x']) {
+        const response = await page({ limit })
+        expect(response.status).toBe(BAD_REQUEST)
+      }
+      expect((await page({ state: 'everything' })).status).toBe(BAD_REQUEST)
+    })
+
+    it('refuses a cursor that is not ours', async () => {
+      const response = await page({ cursor: 'not-a-cursor' })
+      expect(response.status).toBe(BAD_REQUEST)
+    })
+
+    it('never shows another store through a cursor taken from it', async () => {
+      const mineB = await seedMany(ctx.storeB.id, 3)
+      const first = (await page({ limit: 1 }, asAdminB)).body as ConnectionPageBody
+      expect(first.nextCursor).not.toBeNull()
+      const own = (await allConnections()).map(row => row.id)
+      for (const id of mineB) expect(own).not.toContain(id)
+      // The cursor of store B, used by store A, is only a position (a date and an id): what comes back
+      // is rows of store A and of no other
+      const stolen = (await page({ cursor: first.nextCursor ?? '', limit: 100 }))
+        .body as ConnectionPageBody
+      expect(stolen.data.length).toBeGreaterThan(0)
+      for (const row of stolen.data) expect(own).toContain(row.id)
     })
   })
 
@@ -763,7 +905,7 @@ describe('The channel connections of a store', () => {
 
       const one = (await asAdmin().get(ApiRoutes.channels.connectionById(made.id)))
         .body as ConnectionBody
-      const list = (await asAdmin().get(ApiRoutes.channels.connections)).body as ConnectionBody[]
+      const list = await allConnections()
 
       const expected = {
         failedIdentities: 3,
@@ -877,7 +1019,7 @@ describe('The channel connections of a store', () => {
 
       expect(own.profile?.failedIdentities).toBe(1)
       // In the list the connections are counted in one query: each row keeps its own customers
-      const list = (await asAdmin().get(ApiRoutes.channels.connections)).body as ConnectionBody[]
+      const list = await allConnections()
       expect(list.find(row => row.id === mine.id)?.profile?.failedIdentities).toBe(1)
       expect(list.find(row => row.id === other.id)?.profile?.failedIdentities).toBe(1)
       expect(list.some(row => row.id === theirs.id)).toBe(false)

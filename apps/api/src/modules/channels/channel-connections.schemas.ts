@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-import { ChannelConnectionLimits, InboundLimits } from '@platform/core/domain'
+import {
+  ChannelConnectionLimits,
+  ChannelConnectionListStates,
+  InboundLimits,
+  PaginationLimits
+} from '@platform/core/domain'
+
+import { cursorSchema } from '../customers/list-cursor'
 
 // A value that fits the limit once written as JSON, and holds no NUL: Postgres refuses it in text and
 // in jsonb, and that would be a 500 where the answer is a 400
@@ -38,3 +45,13 @@ export const connectResultSchema = z.object({
   metadata: boundedJson(z.record(z.string(), z.json()))
 })
 export type ConnectResult = z.output<typeof connectResultSchema>
+
+// One page of the connections of the store. `state` narrows the list to the ones in use or the ones
+// disconnected; without it both come, in order of creation. A cursor that is not ours, or a
+// limit out of range, is a malformed query (400), not an empty page.
+export const listConnectionsQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  state: z.enum(ChannelConnectionListStates).optional()
+})
+export type ListConnectionsQuery = z.output<typeof listConnectionsQuerySchema>
