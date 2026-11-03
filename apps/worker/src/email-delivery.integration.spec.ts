@@ -55,7 +55,8 @@ describe('SEND_EMAIL', () => {
             storeName: 'Shop',
             title: 'Conversation assigned',
             body: 'Ana assigned you a conversation.',
-            url: 'https://app.example.com/s/s1/inbox/c1'
+            url: 'https://app.example.com/s/s1/inbox/c1',
+            count: 1
           }
         ],
         moreCount: 2,
