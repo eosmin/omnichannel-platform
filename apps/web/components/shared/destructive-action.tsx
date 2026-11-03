@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import {
   createContext,
@@ -22,19 +23,6 @@ import {
   needsDestructiveButton,
   phraseMatches
 } from '../../lib/destructive-action'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from '../ui/alert-dialog'
-import { buttonVariants } from '../ui/button'
-import { Input } from '../ui/input'
-import { Label } from '../ui/label'
 
 // The texts arrive already translated: they name the thing being destroyed, which only the
 // caller knows
@@ -62,7 +50,14 @@ export function useDestructiveAction(): RunDestructiveAction {
   return run
 }
 
-interface DialogRequest {
+// The dialog is drawn on the first request, not with every page: its primitives stay out of the
+// chunk that all of them share
+const ConfirmationDialog = dynamic(
+  () => import('./confirmation-dialog').then(module => module.ConfirmationDialog),
+  { ssr: false }
+)
+
+export interface DialogRequest {
   request: DestructiveActionRequest
   requiresPhrase: boolean
   destructive: boolean
@@ -155,50 +150,23 @@ export function DestructiveActionProvider({ children }: { children: ReactNode })
   return (
     <DestructiveActionContext.Provider value={run}>
       {children}
-      <AlertDialog
-        open={open}
-        onOpenChange={next => {
-          if (busy) return
-          if (next) setOpen(true)
-          else close()
-        }}
-      >
-        <AlertDialogContent aria-busy={busy}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{dialog?.request.title}</AlertDialogTitle>
-            <AlertDialogDescription>{dialog?.request.description}</AlertDialogDescription>
-          </AlertDialogHeader>
-          {dialog?.requiresPhrase && phrase !== undefined ? (
-            <div className="grid gap-2">
-              <Label htmlFor={phraseId}>{t('confirm.phraseLabel')}</Label>
-              <Input
-                id={phraseId}
-                autoComplete="off"
-                value={typed}
-                placeholder={phrase}
-                onChange={event => setTyped(event.target.value)}
-              />
-              <p className="text-muted-foreground text-sm">{t('confirm.typePhrase', { phrase })}</p>
-            </div>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={!canConfirm || busy}
-              className={
-                dialog?.destructive ? buttonVariants({ variant: 'destructive' }) : undefined
-              }
-              onClick={event => {
-                // Radix closes the dialog on click; it closes here once the work is done
-                event.preventDefault()
-                void confirm()
-              }}
-            >
-              {dialog?.request.confirmLabel}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {dialog === null ? null : (
+        <ConfirmationDialog
+          open={open}
+          busy={busy}
+          dialog={dialog}
+          typed={typed}
+          phraseId={phraseId}
+          canConfirm={canConfirm}
+          onTyped={setTyped}
+          onConfirm={() => void confirm()}
+          onOpenChange={next => {
+            if (busy) return
+            if (next) setOpen(true)
+            else close()
+          }}
+        />
+      )}
     </DestructiveActionContext.Provider>
   )
 }

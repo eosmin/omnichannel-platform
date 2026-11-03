@@ -211,10 +211,11 @@ describe('openRealtimeConnection', () => {
     expect(connection.endedBy()).toBe(ErrorCodes.TENANT_MEMBER_SUSPENDED)
   })
 
-  it('ends an open session when the gateway says the member was suspended, and never reconnects', async () => {
+  it('ends an open session when the reconnection after a suspension is refused, and stops there', async () => {
     const { status, connection } = connect(() => Promise.resolve('tok'))
     await waitFor(() => status.get() === ConnectionStatuses.CONNECTED, 'connected')
 
+    server.refuseWith(ErrorCodes.TENANT_MEMBER_SUSPENDED)
     server.io.of(RealtimeNamespaces.AGENTS).sockets.forEach(socket => {
       socket.emit(RealtimeEvents.AUTH_ERROR, { code: ErrorCodes.TENANT_MEMBER_SUSPENDED })
       socket.disconnect(true)
@@ -222,7 +223,8 @@ describe('openRealtimeConnection', () => {
     await waitFor(() => status.get() === ConnectionStatuses.UNAUTHENTICATED, 'unauthenticated')
     await new Promise(resolve => setTimeout(resolve, 300))
 
-    expect(server.handshakes).toHaveLength(1)
+    // The first connection and the one refusal, and no more
+    expect(server.handshakes).toHaveLength(2)
     expect(connection.endedBy()).toBe(ErrorCodes.TENANT_MEMBER_SUSPENDED)
   })
 

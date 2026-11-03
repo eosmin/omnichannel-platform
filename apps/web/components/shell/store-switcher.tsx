@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronsUpDown, UserX } from 'lucide-react'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
@@ -58,10 +58,7 @@ export function StoreSwitcher({
         {suspendedStores.map(store => (
           <DropdownMenuItem key={store.storeId} disabled>
             <span className="flex-1 truncate">{store.storeName}</span>
-            <span className="text-muted-foreground flex items-center gap-1 text-xs">
-              <UserX aria-hidden className="size-3" />
-              {t('accessSuspended')}
-            </span>
+            <span className="text-muted-foreground text-xs">{t('accessSuspended')}</span>
           </DropdownMenuItem>
         ))}
         {canManageStores && (

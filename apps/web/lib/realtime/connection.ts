@@ -44,13 +44,6 @@ export interface RealtimeConnection {
   close: () => void
 }
 
-// The refusals about the store that no new token and no retry can fix: the person is not a member
-// any more, or was suspended. The sessions they have in their other stores are not touched.
-const STORE_REFUSALS: ReadonlySet<string> = new Set([
-  ErrorCodes.TENANT_ACCESS_DENIED,
-  ErrorCodes.TENANT_MEMBER_SUSPENDED
-])
-
 // A refused handshake carries the reason in error.data.code (the gateway sets it in its middleware)
 const handshakeErrorDataSchema = z.object({ code: z.string() })
 
@@ -200,7 +193,8 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   socket.on('connect_error', error => {
     const code = handshakeErrorCode(error)
-    if (code !== null && STORE_REFUSALS.has(code)) {
+    // Removed or suspended: no new token and no retry fixes it, and their other stores are untouched
+    if (code === ErrorCodes.TENANT_ACCESS_DENIED || code === ErrorCodes.TENANT_MEMBER_SUSPENDED) {
       sessionEnded(code)
       return
     }
@@ -219,15 +213,7 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
 
   // The gateway looks at a socket every 30 s: it sends this and hangs up when the token or the
   // membership no longer holds, and the 'disconnect' above does the reconnecting
-  // It also says when the reason is the store: the person was removed or suspended, so the session
-  // ends here and the reconnection that the hang-up would start is never made
-  socket.on(RealtimeEvents.AUTH_ERROR, payload => {
-    // The payload is the gateway's, but a proxy or an older gateway may send none
-    const code: unknown = (payload as { code?: unknown } | undefined)?.code
-    if (typeof code === 'string' && STORE_REFUSALS.has(code)) {
-      sessionEnded(code)
-      return
-    }
+  socket.on(RealtimeEvents.AUTH_ERROR, () => {
     refreshNext = true
   })
 
