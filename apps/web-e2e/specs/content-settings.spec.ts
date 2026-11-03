@@ -12,6 +12,11 @@ const tags = en.settings.tags
 const snippets = en.settings.snippets
 const inbox = en.settings.inbox
 
+// The rows of a list by its name: a toast is a list item too
+function rowsOf(page: Page, label: string) {
+  return page.getByRole('list', { name: label, exact: true }).getByRole('listitem')
+}
+
 function storeIdOf(page: Page): string {
   const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1]
   expect(storeId).toBeDefined()
@@ -38,7 +43,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
 
     await dialog.getByLabel(tags.dialog.name, { exact: true }).fill(name)
     await dialog.getByRole('button', { name: tags.dialog.save }).click()
-    const row = page.getByRole('listitem').filter({ hasText: name })
+    const row = rowsOf(page, tags.listLabel).filter({ hasText: name })
     await expect(row).toBeVisible()
 
     // A second tag with the same name is refused by the api, and the dialog says so
@@ -54,13 +59,12 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
     await edit.getByLabel(tags.dialog.descriptionLabel).fill('Top customers')
     await edit.getByRole('button', { name: tags.dialog.save }).click()
     await page.reload()
-    await expect(page.getByRole('listitem').filter({ hasText: name })).toContainText(
+    await expect(rowsOf(page, tags.listLabel).filter({ hasText: name })).toContainText(
       'Top customers'
     )
 
     // Deleting asks first
-    await page
-      .getByRole('listitem')
+    await rowsOf(page, tags.listLabel)
       .filter({ hasText: name })
       .getByRole('button', { name: tags.delete.action })
       .click()
@@ -88,7 +92,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
     await dialog.getByRole('button', { name: snippets.dialog.save }).click()
 
     // The shortcut is kept in lowercase, without the slash typed
-    const row = page.getByRole('listitem').filter({ hasText: title })
+    const row = rowsOf(page, snippets.listLabel).filter({ hasText: title })
     await expect(row).toContainText(`/e2e-${suffix}`)
 
     await row.getByRole('button', { name: snippets.edit }).click()
@@ -96,12 +100,11 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
     await edit.getByLabel(snippets.dialog.content).fill('Thanks a lot')
     await edit.getByRole('button', { name: snippets.dialog.save }).click()
     await page.reload()
-    await expect(page.getByRole('listitem').filter({ hasText: title })).toContainText(
+    await expect(rowsOf(page, snippets.listLabel).filter({ hasText: title })).toContainText(
       'Thanks a lot'
     )
 
-    await page
-      .getByRole('listitem')
+    await rowsOf(page, snippets.listLabel)
       .filter({ hasText: title })
       .getByRole('button', { name: snippets.delete.action })
       .click()
