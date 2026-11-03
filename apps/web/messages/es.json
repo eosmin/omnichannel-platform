@@ -1558,7 +1558,10 @@
         "plugins": "Plugins",
         "team": "Equipo",
         "routing": "Asignación",
-        "businessHours": "Horario de atención"
+        "businessHours": "Horario de atención",
+        "tags": "Etiquetas",
+        "snippets": "Respuestas guardadas",
+        "inbox": "Bandeja"
       },
       "org": {
         "label": "Organización",
@@ -1966,6 +1969,144 @@
         "endsBeforeStart": "{day}: las horas deben terminar después de empezar.",
         "overlap": "{day}: las horas no deben traslaparse.",
         "tooMany": "{day}: hay demasiados rangos."
+      }
+    },
+    "tags": {
+      "title": "Etiquetas",
+      "description": "Etiquetas para clientes y conversaciones. Sirven para filtrar la bandeja y en las reglas de enrutamiento.",
+      "create": "Nueva etiqueta",
+      "edit": "Editar",
+      "listLabel": "Etiquetas",
+      "empty": {
+        "title": "Aún no hay etiquetas",
+        "body": "Crea una etiqueta para agrupar clientes y conversaciones."
+      },
+      "delete": {
+        "action": "Eliminar",
+        "title": "¿Eliminar la etiqueta {name}?",
+        "description": "Se quita de todos los clientes y conversaciones que la tienen. No se puede deshacer.",
+        "confirm": "Eliminar etiqueta",
+        "done": "Etiqueta {name} eliminada",
+        "inUse": "Una regla de enrutamiento usa esta etiqueta. Cambia la regla primero."
+      },
+      "dialog": {
+        "createTitle": "Nueva etiqueta",
+        "editTitle": "Editar etiqueta",
+        "description": "Un nombre corto y un color hacen fácil encontrar la etiqueta.",
+        "name": "Nombre",
+        "color": "Color",
+        "descriptionLabel": "Descripción",
+        "descriptionHint": "Opcional. Quien atiende la bandeja la ve junto a la etiqueta.",
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "created": "Etiqueta {name} creada",
+        "saved": "Etiqueta {name} guardada",
+        "problems": {
+          "nameRequired": "Escribe un nombre.",
+          "nameTooLong": "El nombre es demasiado largo (60 caracteres como máximo).",
+          "nameInvalid": "El nombre tiene un carácter que no se puede usar.",
+          "colorInvalid": "Elige un color.",
+          "descriptionTooLong": "La descripción es demasiado larga (255 caracteres como máximo).",
+          "descriptionInvalid": "La descripción tiene un carácter que no se puede usar."
+        }
+      }
+    },
+    "snippets": {
+      "title": "Respuestas guardadas",
+      "description": "Respuestas guardadas. Escribe una diagonal y el atajo en el redactor para insertar una.",
+      "create": "Nueva respuesta",
+      "edit": "Editar",
+      "listLabel": "Respuestas guardadas",
+      "empty": {
+        "title": "Aún no hay respuestas guardadas",
+        "body": "Guarda las respuestas que das con más frecuencia para enviarlas en un instante."
+      },
+      "delete": {
+        "action": "Eliminar",
+        "title": "¿Eliminar la respuesta {title}?",
+        "description": "Ya no se podrá insertar en el redactor. No se puede deshacer.",
+        "confirm": "Eliminar respuesta",
+        "done": "Respuesta {title} eliminada",
+        "inUse": "El mensaje de cierre o el de ausencia usa esta respuesta. Elige otra primero."
+      },
+      "dialog": {
+        "createTitle": "Nueva respuesta guardada",
+        "editTitle": "Editar respuesta guardada",
+        "description": "El atajo es lo que se escribe después de la diagonal. El mensaje se envía tal como lo escribes.",
+        "shortcut": "Atajo",
+        "shortcutHint": "Letras minúsculas, dígitos, guiones y guiones bajos.",
+        "titleLabel": "Título",
+        "content": "Mensaje",
+        "contentCount": "{count} de {max} caracteres",
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "created": "Respuesta {title} creada",
+        "saved": "Respuesta {title} guardada",
+        "problems": {
+          "shortcutRequired": "Escribe un atajo.",
+          "shortcutTooLong": "El atajo es demasiado largo (32 caracteres como máximo).",
+          "shortcutInvalid": "El atajo solo puede tener letras minúsculas, dígitos, guiones y guiones bajos.",
+          "titleRequired": "Escribe un título.",
+          "titleTooLong": "El título es demasiado largo (120 caracteres como máximo).",
+          "titleInvalid": "El título tiene un carácter que no se puede usar.",
+          "contentRequired": "Escribe el mensaje.",
+          "contentTooLong": "El mensaje es demasiado largo (4096 caracteres como máximo).",
+          "contentInvalid": "El mensaje tiene un carácter que no se puede usar."
+        }
+      }
+    },
+    "inbox": {
+      "title": "Comportamiento de la bandeja",
+      "description": "Cómo se resuelven, reabren y archivan las conversaciones de esta tienda.",
+      "behaviorLabel": "Comportamiento de la bandeja",
+      "readOnly": "Puedes ver estos ajustes pero no cambiarlos.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Comportamiento de la bandeja guardado",
+      "resolve": {
+        "legend": "Al marcar una conversación como resuelta",
+        "showOptions": "Mostrar opciones",
+        "showOptionsHint": "Preguntar por el mensaje de cierre y el motivo antes de resolver.",
+        "immediately": "Resolver de inmediato",
+        "immediatelyHint": "Resolver al instante, con un aviso para deshacer durante unos segundos."
+      },
+      "closing": {
+        "send": "Enviar el mensaje de cierre predeterminado al resolver de inmediato",
+        "snippet": "Mensaje de cierre",
+        "none": "Sin respuesta guardada",
+        "missing": "Una respuesta eliminada",
+        "hint": "Elige una de tus respuestas guardadas.",
+        "noAccess": "Necesitas acceso a las conversaciones para elegir una respuesta."
+      },
+      "reopen": {
+        "legend": "Reapertura",
+        "hint": "Por omisión un cliente conserva una sola conversación por canal. Con una ventana, un mensaje tras esos días sin actividad inicia una conversación nueva.",
+        "limited": "Iniciar una conversación nueva tras un periodo sin actividad",
+        "days": "Días sin actividad"
+      },
+      "archive": {
+        "days": "Archivar conversaciones resueltas tras (días)",
+        "hint": "De 1 a 365 días."
+      },
+      "load": {
+        "threshold": "Umbral de carga (conversaciones abiertas)",
+        "hint": "El panel del equipo marca a un agente con más conversaciones abiertas que este número."
+      },
+      "problems": {
+        "reopenDays": "El periodo sin actividad debe ser un número entero de días de 1 a 365.",
+        "archiveDays": "El tiempo de archivo debe ser un número entero de días de 1 a 365.",
+        "loadThreshold": "El umbral de carga debe ser un número entero de 1 a 100.",
+        "closingSnippetRequired": "Elige la respuesta que se envía como mensaje de cierre."
+      },
+      "receipts": {
+        "label": "Confirmaciones de lectura",
+        "title": "Confirmaciones de lectura",
+        "switch": "Avisar al cliente cuando se lee una conversación",
+        "hint": "En los canales que lo permiten, el cliente ve que su mensaje fue leído (doble marca azul).",
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "saved": "Confirmaciones de lectura guardadas",
+        "readOnly": "Puedes ver este ajuste pero no cambiarlo."
       }
     }
   },

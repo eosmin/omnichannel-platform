@@ -1558,7 +1558,10 @@
         "plugins": "Plugins",
         "team": "Team",
         "routing": "Routing",
-        "businessHours": "Business hours"
+        "businessHours": "Business hours",
+        "tags": "Tags",
+        "snippets": "Snippets",
+        "inbox": "Inbox behavior"
       },
       "org": {
         "label": "Organization",
@@ -1966,6 +1969,144 @@
         "endsBeforeStart": "{day}: hours must end after they start.",
         "overlap": "{day}: hours must not overlap.",
         "tooMany": "{day}: too many ranges."
+      }
+    },
+    "tags": {
+      "title": "Tags",
+      "description": "Labels for customers and conversations. Use them to filter the inbox and in routing rules.",
+      "create": "New tag",
+      "edit": "Edit",
+      "listLabel": "Tags",
+      "empty": {
+        "title": "No tags yet",
+        "body": "Create a tag to group customers and conversations."
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete the tag {name}?",
+        "description": "It is taken off every customer and conversation that has it. This cannot be undone.",
+        "confirm": "Delete tag",
+        "done": "Tag {name} deleted",
+        "inUse": "A routing rule uses this tag. Change the rule first."
+      },
+      "dialog": {
+        "createTitle": "New tag",
+        "editTitle": "Edit tag",
+        "description": "A short name and a colour make a tag easy to find.",
+        "name": "Name",
+        "color": "Colour",
+        "descriptionLabel": "Description",
+        "descriptionHint": "Optional. Who works the inbox sees it next to the tag.",
+        "save": "Save",
+        "saving": "Saving…",
+        "created": "Tag {name} created",
+        "saved": "Tag {name} saved",
+        "problems": {
+          "nameRequired": "Write a name.",
+          "nameTooLong": "The name is too long (60 characters at most).",
+          "nameInvalid": "The name has a character that cannot be used.",
+          "colorInvalid": "Pick a colour.",
+          "descriptionTooLong": "The description is too long (255 characters at most).",
+          "descriptionInvalid": "The description has a character that cannot be used."
+        }
+      }
+    },
+    "snippets": {
+      "title": "Snippets",
+      "description": "Saved replies. Type a slash and the shortcut in the composer to insert one.",
+      "create": "New snippet",
+      "edit": "Edit",
+      "listLabel": "Snippets",
+      "empty": {
+        "title": "No snippets yet",
+        "body": "Save the answers you give most often to send them in two keystrokes."
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete the snippet {title}?",
+        "description": "It can no longer be inserted in the composer. This cannot be undone.",
+        "confirm": "Delete snippet",
+        "done": "Snippet {title} deleted",
+        "inUse": "The closing message or the away message uses this snippet. Choose another one first."
+      },
+      "dialog": {
+        "createTitle": "New snippet",
+        "editTitle": "Edit snippet",
+        "description": "The shortcut is what is typed after the slash. The message is sent as written.",
+        "shortcut": "Shortcut",
+        "shortcutHint": "Lowercase letters, digits, hyphens and underscores.",
+        "titleLabel": "Title",
+        "content": "Message",
+        "contentCount": "{count} of {max} characters",
+        "save": "Save",
+        "saving": "Saving…",
+        "created": "Snippet {title} created",
+        "saved": "Snippet {title} saved",
+        "problems": {
+          "shortcutRequired": "Write a shortcut.",
+          "shortcutTooLong": "The shortcut is too long (32 characters at most).",
+          "shortcutInvalid": "The shortcut can only have lowercase letters, digits, hyphens and underscores.",
+          "titleRequired": "Write a title.",
+          "titleTooLong": "The title is too long (120 characters at most).",
+          "titleInvalid": "The title has a character that cannot be used.",
+          "contentRequired": "Write the message.",
+          "contentTooLong": "The message is too long (4096 characters at most).",
+          "contentInvalid": "The message has a character that cannot be used."
+        }
+      }
+    },
+    "inbox": {
+      "title": "Inbox behavior",
+      "description": "How conversations are resolved, reopened and archived in this store.",
+      "behaviorLabel": "Inbox behavior",
+      "readOnly": "You can see these settings but not change them.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Inbox behavior saved",
+      "resolve": {
+        "legend": "When marking a conversation as resolved",
+        "showOptions": "Show options",
+        "showOptionsHint": "Ask for the closing message and the reason before resolving.",
+        "immediately": "Resolve immediately",
+        "immediatelyHint": "Resolve at once, with a toast to undo for a few seconds."
+      },
+      "closing": {
+        "send": "Send the default closing message when resolving immediately",
+        "snippet": "Closing message",
+        "none": "No snippet",
+        "missing": "A deleted snippet",
+        "hint": "Pick one of your snippets.",
+        "noAccess": "You need access to conversations to choose a snippet."
+      },
+      "reopen": {
+        "legend": "Reopening",
+        "hint": "By default a customer keeps one conversation per channel for good. With a window, a message after that many quiet days starts a new conversation.",
+        "limited": "Start a new conversation after a quiet period",
+        "days": "Quiet days"
+      },
+      "archive": {
+        "days": "Archive resolved conversations after (days)",
+        "hint": "From 1 to 365 days."
+      },
+      "load": {
+        "threshold": "Load threshold (open conversations)",
+        "hint": "The team widget flags an agent above this many open conversations."
+      },
+      "problems": {
+        "reopenDays": "The quiet period must be a whole number of days from 1 to 365.",
+        "archiveDays": "The archive time must be a whole number of days from 1 to 365.",
+        "loadThreshold": "The load threshold must be a whole number from 1 to 100.",
+        "closingSnippetRequired": "Choose the snippet to send as the closing message."
+      },
+      "receipts": {
+        "label": "Read receipts",
+        "title": "Read receipts",
+        "switch": "Tell the customer when a conversation is read",
+        "hint": "On channels that support it, the customer sees that their message was read (blue ticks).",
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "Read receipts saved",
+        "readOnly": "You can see this setting but not change it."
       }
     }
   },
