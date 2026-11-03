@@ -58,7 +58,7 @@ export function createBrowserSession({
         body: body === undefined ? undefined : JSON.stringify(body)
       })
     } catch {
-      throw new ApiError(0, ErrorCodes.INTERNAL_ERROR, 'The server cannot be reached')
+      throw new ApiError(0, ErrorCodes.NETWORK_UNAVAILABLE, 'The server cannot be reached')
     }
   }
 

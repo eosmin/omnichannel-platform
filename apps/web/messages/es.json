@@ -458,6 +458,7 @@
     "FILE_UPLOAD_FAILED": "No se pudo subir el archivo",
     "INSUFFICIENT_INVENTORY": "No hay existencias suficientes",
     "INTERNAL_ERROR": "Algo salió mal. Inténtalo de nuevo",
+    "NETWORK_UNAVAILABLE": "Sin conexión. Lo que escribiste sigue aquí: inténtalo de nuevo cuando vuelva",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Indica por qué ajustas las existencias",
     "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "El conteo no puede pasar a ese estado",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "El traslado no puede pasar a ese estado",
@@ -521,6 +522,7 @@
     "VALIDATION_FAILED": "Algunos campos no son válidos",
     "VALIDATION_INVALID_INPUT": "Revisa lo que escribiste",
     "VALIDATION_URL_NOT_ALLOWED": "Esa dirección no está permitida",
+    "PAYLOAD_TOO_LARGE": "La solicitud es demasiado grande",
     "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el widget",
     "WIDGET_TOKEN_INVALID": "La sesión del widget no es válida"
   },
@@ -1470,6 +1472,8 @@
       "title": "Canales",
       "description": "Las cuentas que traen clientes a tu bandeja y cómo está cada una.",
       "listLabel": "Canales conectados",
+      "loadMore": "Mostrar más",
+      "loadMoreFailed": "No se pudieron cargar más canales. Inténtalo de nuevo.",
       "empty": {
         "title": "No hay canales conectados",
         "body": "Conecta un canal para recibir en la bandeja los mensajes de tus clientes."
@@ -1483,7 +1487,9 @@
       },
       "past": {
         "title": "Desconectados",
-        "hint": "Estas cuentas ya no reciben ni envían mensajes. Sus conversaciones siguen en la bandeja."
+        "hint": "Estas cuentas ya no reciben ni envían mensajes. Sus conversaciones siguen en la bandeja.",
+        "show": "Mostrar canales desconectados",
+        "none": "Ningún canal se ha desconectado."
       },
       "disconnectedNote": "Esta cuenta está desconectada.",
       "status": {

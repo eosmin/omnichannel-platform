@@ -105,6 +105,8 @@ test.describe('Settings → Channels and Plugins', () => {
       await confirm.getByRole('button', { name: channels.disconnect.confirm }).click()
       await expect(page.getByText(channels.disconnect.done.replace('{name}', host))).toBeVisible()
       await expect(page.getByRole('heading', { name: channels.past.title })).toBeVisible()
+      // The disconnected accounts are read when asked for
+      await page.getByRole('button', { name: channels.past.show }).click()
       await expect(
         page
           .getByRole('listitem')

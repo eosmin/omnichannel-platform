@@ -13,6 +13,7 @@ import {
 } from '@platform/core/messaging'
 import { PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
+import { AnalyticsModule } from './analytics/analytics.module'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
@@ -53,7 +54,8 @@ import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
     InboundModule,
     MediaModule,
     ExportsModule,
-    NotificationsModule
+    NotificationsModule,
+    AnalyticsModule
   ],
   providers: [
     ProcessorSupport,

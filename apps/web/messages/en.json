@@ -458,6 +458,7 @@
     "FILE_UPLOAD_FAILED": "The file could not be uploaded",
     "INSUFFICIENT_INVENTORY": "There is not enough stock",
     "INTERNAL_ERROR": "Something went wrong. Try again",
+    "NETWORK_UNAVAILABLE": "No connection. What you wrote is still here: try again when it is back",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Say why you are adjusting the stock",
     "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "The stock count cannot change to that status",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "The transfer cannot change to that status",
@@ -521,6 +522,7 @@
     "VALIDATION_FAILED": "Some fields are not valid",
     "VALIDATION_INVALID_INPUT": "Check what you typed",
     "VALIDATION_URL_NOT_ALLOWED": "That address is not allowed",
+    "PAYLOAD_TOO_LARGE": "That request is too big",
     "WIDGET_ORIGIN_NOT_ALLOWED": "This site is not allowed to use the widget",
     "WIDGET_TOKEN_INVALID": "The widget session is not valid"
   },
@@ -1470,6 +1472,8 @@
       "title": "Channels",
       "description": "The accounts that bring customers into your inbox, and how each one is doing.",
       "listLabel": "Connected channels",
+      "loadMore": "Show more",
+      "loadMoreFailed": "More channels could not be loaded. Try again.",
       "empty": {
         "title": "No channels connected",
         "body": "Connect a channel to receive messages from your customers in the inbox."
@@ -1483,7 +1487,9 @@
       },
       "past": {
         "title": "Disconnected",
-        "hint": "These accounts no longer receive or send messages. Their conversations stay in the inbox."
+        "hint": "These accounts no longer receive or send messages. Their conversations stay in the inbox.",
+        "show": "Show disconnected channels",
+        "none": "No channel has been disconnected."
       },
       "disconnectedNote": "This account is disconnected.",
       "status": {

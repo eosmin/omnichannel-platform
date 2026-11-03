@@ -1,16 +1,21 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { uuidSchema } from '@platform/core/domain'
+import { type CursorPage, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
-import { type ConnectChannelBody, connectChannelSchema } from './channel-connections.schemas'
+import {
+  type ConnectChannelBody,
+  connectChannelSchema,
+  type ListConnectionsQuery,
+  listConnectionsQuerySchema
+} from './channel-connections.schemas'
 import {
   type ChannelConnectionView,
   ChannelConnectionsService,
@@ -31,8 +36,11 @@ export class ChannelConnectionsController {
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
   @Get(ApiRoutes.channels.connections)
-  list(@CurrentStore() store: Store): Promise<ChannelConnectionView[]> {
-    return this.connections.list(store.id)
+  list(
+    @CurrentStore() store: Store,
+    @Query(new ZodValidationPipe(listConnectionsQuerySchema)) query: ListConnectionsQuery
+  ): Promise<CursorPage<ChannelConnectionView>> {
+    return this.connections.list(store.id, query)
   }
 
   // For every agent, unlike the list above, which needs SETTINGS_VIEW: it answers only what the

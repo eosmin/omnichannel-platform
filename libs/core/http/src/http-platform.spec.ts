@@ -4,6 +4,7 @@ import {
   Global,
   type INestApplication,
   Module,
+  Post,
   Res,
   ServiceUnavailableException
 } from '@nestjs/common'
@@ -56,6 +57,11 @@ class ProbeController {
   half(@Res() response: Response): never {
     response.write('partial')
     throw new Error('failed halfway')
+  }
+
+  @Post('echo')
+  echo(): { ok: true } {
+    return { ok: true }
   }
 
   @Get('crash')
@@ -285,6 +291,46 @@ describe('the HTTP platform', () => {
       expect(body.error.code).toBe(ErrorCodes.TENANT_ACCESS_DENIED)
       const scrape = await (await fetch(`${baseUrl}/metrics`)).text()
       expect(scrape).toContain('platform_tenant_violations_total{resource="/api/v1/tenant"} 1')
+    })
+
+    describe('a body the parser refuses', () => {
+      const post = (body: string): ReturnType<typeof fetch> =>
+        fetch(`${baseUrl}/api/v1/echo`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body
+        })
+
+      it('answers 413 with its own code for a JSON body over the limit, and does not report it', async () => {
+        const secret = 'hunter2-in-a-big-body'
+        const response = await post(JSON.stringify({ secret, pad: 'x'.repeat(200_000) }))
+        const text = await response.text()
+        expect(response.status).toBe(413)
+        const body = JSON.parse(text) as ErrorBody
+        expect(body.error.code).toBe(ErrorCodes.PAYLOAD_TOO_LARGE)
+        expect(body.error.metadata).toEqual({})
+        expect(text).not.toContain(secret)
+        expect(Sentry.captureException).not.toHaveBeenCalled()
+      })
+
+      it('answers 415 for a content encoding it does not read, and does not report it', async () => {
+        const response = await fetch(`${baseUrl}/api/v1/echo`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'content-encoding': 'made-up' },
+          body: '{}'
+        })
+        expect(response.status).toBe(415)
+        expect(Sentry.captureException).not.toHaveBeenCalled()
+      })
+
+      it('answers 400 for a JSON body that does not parse, without echoing it', async () => {
+        const response = await post('{"secret": "hunter2", ')
+        const text = await response.text()
+        expect(response.status).toBe(400)
+        expect((JSON.parse(text) as ErrorBody).error.code).toBe(ErrorCodes.VALIDATION_FAILED)
+        expect(text).not.toContain('hunter2')
+        expect(Sentry.captureException).not.toHaveBeenCalled()
+      })
     })
 
     it('hides the message of a server failure and reports it, but not a failing probe', async () => {

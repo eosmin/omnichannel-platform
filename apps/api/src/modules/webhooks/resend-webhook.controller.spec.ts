@@ -4,7 +4,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import type { ProcessedWebhookEventsService } from '@platform/core/database'
 import type { ResendWebhookVerifier } from '@platform/core/email'
-import { PlatformException } from '@platform/core/errors'
+import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import type { TrackAnalyticsJob } from '@platform/core/queues'
 
 import type { EmailValidityService } from './email-validity.service'
@@ -61,6 +61,18 @@ describe('ResendWebhookController', () => {
     await expect(call(controller)).rejects.toBe(unauthorized)
     expect(runOnce).not.toHaveBeenCalled()
   })
+
+  it.each([[[1, 2, 3]], ['text'], [null], [{}], [{ type: 7 }]])(
+    'refuses with 400, not a 500, a signed body that is not an event: %j',
+    async verified => {
+      const { controller, runOnce, add } = build(verified)
+      const error = await call(controller).catch((caught: unknown) => caught)
+      expect(error).toBeInstanceOf(PlatformException)
+      expect(error).toMatchObject({ code: ErrorCodes.VALIDATION_FAILED, statusCode: 400 })
+      expect(runOnce).not.toHaveBeenCalled()
+      expect(add).not.toHaveBeenCalled()
+    }
+  )
 
   it('queues an engagement event of a store email for analytics', async () => {
     const { controller, add } = build({

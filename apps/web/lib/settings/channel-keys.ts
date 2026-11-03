@@ -10,6 +10,11 @@ export const ChannelKeys = {
     ...ChannelKeys.root(storeId),
     'connections'
   ],
+  // One list per state, under `connections`: the invalidation of that key reaches both
+  connectionList: (storeId: string, state: string): readonly string[] => [
+    ...ChannelKeys.connections(storeId),
+    state
+  ],
   widget: (storeId: string, connectionId: string): readonly string[] => [
     ...ChannelKeys.root(storeId),
     'widget',

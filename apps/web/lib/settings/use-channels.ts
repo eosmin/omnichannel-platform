@@ -1,6 +1,9 @@
 'use client'
 
 import {
+  type InfiniteData,
+  useInfiniteQuery,
+  type UseInfiniteQueryResult,
   useMutation,
   type UseMutationResult,
   useQuery,
@@ -8,10 +11,13 @@ import {
   type UseQueryResult
 } from '@tanstack/react-query'
 
+import type { ChannelConnectionListState } from '@platform/core/domain'
+
 import { apiClient } from '../api'
 
 import { ChannelKeys } from './channel-keys'
 import {
+  type ChannelConnectionPageView,
   type ChannelConnectionView,
   type ChannelTestView,
   connectChannel,
@@ -30,10 +36,20 @@ import {
 
 // The hooks of Settings → Channels and Plugins. Only those two pages load this file.
 
-export function useConnections(storeId: string): UseQueryResult<ChannelConnectionView[]> {
-  return useQuery({
-    queryKey: ChannelKeys.connections(storeId),
-    queryFn: ({ signal }) => fetchConnections(apiClient, storeId, signal)
+// A page at a time: the next one is asked by the person. The disconnected ones are asked only when
+// `enabled`, so a store that never opens that list never reads it.
+export function useConnections(
+  storeId: string,
+  state: ChannelConnectionListState,
+  enabled = true
+): UseInfiniteQueryResult<InfiniteData<ChannelConnectionPageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: ChannelKeys.connectionList(storeId, state),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchConnections(apiClient, storeId, state, pageParam, signal),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    enabled
   })
 }
 

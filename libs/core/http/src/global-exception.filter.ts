@@ -30,6 +30,7 @@ const CODE_BY_STATUS: Readonly<Record<number, ErrorCode>> = {
   [HttpStatusCodes.UNAUTHORIZED]: ErrorCodes.AUTH_UNAUTHORIZED,
   [HttpStatusCodes.FORBIDDEN]: ErrorCodes.PERMISSION_DENIED,
   [HttpStatusCodes.NOT_FOUND]: ErrorCodes.RESOURCE_NOT_FOUND,
+  [HttpStatusCodes.PAYLOAD_TOO_LARGE]: ErrorCodes.PAYLOAD_TOO_LARGE,
   [HttpStatusCodes.TOO_MANY_REQUESTS]: ErrorCodes.RATE_LIMIT_EXCEEDED
 }
 
@@ -48,6 +49,32 @@ export function checksOf(response: unknown): Record<string, string> {
       isRecord(check) && typeof check['status'] === 'string' ? check['status'] : 'unknown'
     ])
   )
+}
+
+// What the body parser (Express) raises when it refuses a body: an http-errors object (an Error with a
+// 4xx `status` and `expose: true`), not a Nest exception. Read by shape. Its `type` names the refusal
+// (too large, not JSON, an encoding or charset we do not read, an aborted upload). It never reaches the
+// log whole: the error of a parse failure carries the body that was sent.
+export interface BodyParserRefusal {
+  status: number
+  type: string
+}
+
+// The families of `type` the body parser (body-parser and raw-body) gives its errors: entity.too.large,
+// entity.parse.failed, entity.verify.failed, encoding.unsupported, charset.unsupported,
+// request.aborted, request.size.invalid, stream.encoding.set. Another http-errors object is not ours.
+const PARSER_TYPE_FAMILIES = ['entity.', 'encoding.', 'charset.', 'request.', 'stream.'] as const
+
+const CLIENT_ERROR_FLOOR = 400
+const SERVER_ERROR_FLOOR = 500
+
+export function bodyParserRefusal(exception: unknown): BodyParserRefusal | undefined {
+  if (!(exception instanceof Error) || !isRecord(exception)) return undefined
+  const { status, type, expose } = exception
+  if (typeof type !== 'string' || typeof status !== 'number' || expose !== true) return undefined
+  if (!PARSER_TYPE_FAMILIES.some(family => type.startsWith(family))) return undefined
+  if (status < CLIENT_ERROR_FLOOR || status >= SERVER_ERROR_FLOOR) return undefined
+  return { status, type }
 }
 
 export function codeForHttpStatus(status: number): ErrorCode {
@@ -88,6 +115,26 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           code: exception.code,
           message: exception.message,
           metadata: exception.metadata ?? {}
+        },
+        correlationId
+      })
+      return
+    }
+
+    // A body the parser refused: the client's fault, answered with the status the parser chose and the
+    // code of that status. Only the kind of refusal is logged, never the error (it can hold the
+    // body), and the path only scrubbed (public routes carry tokens in it).
+    const refusal = bodyParserRefusal(exception)
+    if (refusal !== undefined) {
+      this.logger.warn(
+        { type: refusal.type, status: refusal.status, path: scrubUrl(request.path) },
+        'request body refused by the parser'
+      )
+      this.send(response, refusal.status, {
+        error: {
+          code: codeForHttpStatus(refusal.status),
+          message: 'request body refused',
+          metadata: {}
         },
         correlationId
       })

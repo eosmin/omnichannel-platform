@@ -120,7 +120,10 @@ describe('createApiClient', () => {
       refreshAccessToken: jest.fn(),
       fetchImpl
     })
-    await expect(client.request('/x', { schema })).rejects.toMatchObject({ status: 0 })
+    await expect(client.request('/x', { schema })).rejects.toMatchObject({
+      status: 0,
+      code: ErrorCodes.NETWORK_UNAVAILABLE
+    })
   })
 
   it('refuses a body that does not match the schema', async () => {

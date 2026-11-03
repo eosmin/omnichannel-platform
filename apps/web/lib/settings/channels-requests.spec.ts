@@ -70,16 +70,23 @@ const entry = {
 
 describe('the channel requests', () => {
   it('reads the connections of the store named in the header', async () => {
-    const { client, call } = setup([connection])
-    await expect(fetchConnections(client, 's1')).resolves.toEqual([connection])
+    const page = { data: [connection], nextCursor: null, hasMore: false }
+    const { client, call } = setup(page)
+    await expect(fetchConnections(client, 's1', 'live', null)).resolves.toEqual(page)
     const [url, init] = call()
-    expect(url).toBe('https://api.example.com/api/v1/channels/connections')
+    expect(url).toBe('https://api.example.com/api/v1/channels/connections?state=live')
     expect((init?.headers as Record<string, string>)[TenantHeaders.STORE_ID]).toBe('s1')
   })
 
   it('keeps a status and a capability it does not know as the text it came as', async () => {
-    const { client } = setup([{ ...connection, status: 'paused', capabilities: ['hologram'] }])
-    const [read] = await fetchConnections(client, 's1')
+    const { client } = setup({
+      data: [{ ...connection, status: 'paused', capabilities: ['hologram'] }],
+      nextCursor: null,
+      hasMore: false
+    })
+    const {
+      data: [read]
+    } = await fetchConnections(client, 's1', 'live', null)
     expect(read?.status).toBe('paused')
     expect(read?.capabilities).toEqual(['hologram'])
   })
@@ -109,9 +116,19 @@ describe('the channel requests', () => {
     expect(result.status).toBe('disconnected')
   })
 
-  it('refuses an answer that is not a connection', async () => {
-    const { client } = setup([{ id: 'c1' }])
-    await expect(fetchConnections(client, 's1')).rejects.toBeDefined()
+  it('asks for the page the cursor names, and for the state of the list', async () => {
+    const { client, call } = setup({ data: [], nextCursor: null, hasMore: false })
+    await fetchConnections(client, 's1', 'past', 'abc_-123')
+    expect(call()[0]).toBe(
+      'https://api.example.com/api/v1/channels/connections?state=past&cursor=abc_-123'
+    )
+  })
+
+  it('refuses an answer that is not a page of connections', async () => {
+    const { client } = setup({ data: [{ id: 'c1' }], nextCursor: null, hasMore: false })
+    await expect(fetchConnections(client, 's1', 'live', null)).rejects.toBeDefined()
+    const old = setup([connection])
+    await expect(fetchConnections(old.client, 's1', 'live', null)).rejects.toBeDefined()
   })
 
   it('surfaces the code the api refused with', async () => {
