@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
 import { QueuesPlatformModule } from '@platform/core/http'
 import {
+  AwayReplyService,
   ChannelConnectionResolver,
   ConversationsService,
   CustomerIdentityService,
@@ -10,10 +11,14 @@ import {
   InboundMessageChangesService,
   InboundMessageService,
   InboundMessageTargets,
+  MESSAGING_WINDOW_POLICIES,
   MessageReactionsService,
+  type MessagingWindowPolicySource,
+  MessagingWindowService,
+  OutboundQueue,
   RoutingService
 } from '@platform/core/messaging'
-import { PluginsModule } from '@platform/plugins/runtime'
+import { PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
 import { ChannelReceipts } from '../outbound/channel-receipts.service'
 import { MessageStatusWriter } from '../outbound/message-status.writer'
@@ -35,6 +40,17 @@ import { ProfileRequester } from './profile-requester.service'
     CustomerProfileService,
     ConversationsService,
     RoutingService,
+    MessagingWindowService,
+    {
+      provide: MESSAGING_WINDOW_POLICIES,
+      // As in the api: the plugin owns its policy, and a channel with none has no window
+      useFactory: (registry: PluginRegistry): MessagingWindowPolicySource => ({
+        policyFor: channelId => registry.find(channelId)?.messagingWindow ?? null
+      }),
+      inject: [PluginRegistry]
+    },
+    OutboundQueue,
+    AwayReplyService,
     InboundMessageService,
     InboundMessageTargets,
     InboundMessageChangesService,

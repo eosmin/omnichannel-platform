@@ -311,6 +311,33 @@ describe('The routing rules of a store', () => {
       expect((asRemoved.body as ErrorBody).error.metadata?.ids).toEqual([removed.id])
     })
 
+    it('refuses a role that can see conversations but not answer them: the conversation would be stuck', async () => {
+      const readOnly = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `readOnlyRouting${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: storeId(),
+        permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW]
+      })
+
+      const cannotOpen = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `cannotOpenRouting${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: storeId(),
+        permissions: [Permissions.MESSAGES_SEND]
+      })
+      const unseen = await create({ action: { type: ASSIGN_USER, userIds: [cannotOpen.id] } })
+      expect(unseen.status).toBe(BAD_REQUEST)
+
+      const single = await create({ action: { type: ASSIGN_USER, userIds: [readOnly.id] } })
+      const robin = await create({ action: { type: ROUND_ROBIN, userIds: [ana.id, readOnly.id] } })
+
+      expect([single.status, robin.status]).toEqual([BAD_REQUEST, BAD_REQUEST])
+      expect((single.body as ErrorBody).error.metadata?.ids).toEqual([readOnly.id])
+      expect((robin.body as ErrorBody).error.metadata?.ids).toEqual([readOnly.id])
+    })
+
     it('refuses a member who is suspended: the rule would name someone who cannot take the work', async () => {
       const suspended = await createActor(owner, app, {
         prefix,
@@ -842,6 +869,23 @@ describe('The routing rules of a store', () => {
         where: { userId: { in: userIds }, storeId: storeId() },
         data: { status: MembershipStatus.SUSPENDED }
       })
+
+    it('skips a role that can see conversations but not answer them, as one that left', async () => {
+      const readOnly = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `readOnlyApply${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: storeId(),
+        permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW]
+      })
+      const made = await arriving()
+      await createRoutingRule(owner, { storeId: storeId(), action: assignTo(readOnly.id) })
+
+      const outcome = await apply(made)
+
+      expect(outcome.assignedTo).toBeNull()
+      expect(await assignedTo(made.id)).toBeNull()
+    })
 
     it('leaves it for the team when there are no rules or none matches', async () => {
       const made = await arriving()

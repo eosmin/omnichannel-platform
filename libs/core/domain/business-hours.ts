@@ -1,4 +1,4 @@
-import type { Weekday } from './settings-constants'
+import { AwayReply, type Weekday } from './settings-constants'
 
 export type WeekSchedule = Record<Weekday, readonly { from: string; to: string }[]>
 
@@ -40,4 +40,21 @@ export function isWithinSchedule(schedule: WeekSchedule, timezone: string, at: D
   if (day === undefined) throw new Error(`unknown weekday for ${timezone}: ${part('weekday')}`)
   const clock = `${part('hour')}:${part('minute')}`
   return schedule[day].some(range => range.from <= clock && clock < range.to)
+}
+
+// The last moment at or before `at` when the store was open, looking back to `notBefore` and no
+// further than `AwayReply.LOOKBACK_MS`; null when it was not open in all that time. The schedule is
+// read by the minute, which is how it is written. The reply for a customer who writes while the store
+// is closed is sent once for each closed stretch: this says whether the stretch began after a moment.
+export function lastOpenBefore(
+  schedule: WeekSchedule,
+  timezone: string,
+  at: Date,
+  notBefore?: Date
+): Date | null {
+  const earliest = Math.max(at.getTime() - AwayReply.LOOKBACK_MS, notBefore?.getTime() ?? 0)
+  for (let moment = at.getTime(); moment >= earliest; moment -= AwayReply.STEP_MS) {
+    if (isWithinSchedule(schedule, timezone, new Date(moment))) return new Date(moment)
+  }
+  return null
 }

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { Permissions } from '@platform/core/auth'
+import { AssigneePermissions } from '@platform/core/auth'
 import {
   lockStoreForWrite,
   lockStoreScope,
@@ -265,7 +265,7 @@ export class RoutingRulesService {
           userId: { in: action.userIds },
           status: MembershipStatus.ACTIVE,
           revokedAt: null,
-          role: { permissions: { some: { name: Permissions.CONVERSATIONS_VIEW } } }
+          AND: AssigneePermissions.map(name => ({ role: { permissions: { some: { name } } } }))
         },
         select: { userId: true }
       })

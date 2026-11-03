@@ -41,6 +41,7 @@ import { CustomerIdentityService } from '../customers/customer-identity.service'
 import { insertInboundMessage } from '../messages/inbound-messages'
 import { RoutingService } from '../routing/routing.service'
 
+import { AwayReplyService } from './away-reply.service'
 import { recordOrigin } from './conversation-origin'
 import { type InboundEvent, type InboundOutcome, InboundOutcomes } from './inbound-event'
 import { receivedTime } from './inbound-time'
@@ -65,6 +66,7 @@ export class InboundMessageService {
     private readonly identities: CustomerIdentityService,
     private readonly conversations: ConversationsService,
     private readonly routing: RoutingService,
+    private readonly awayReply: AwayReplyService,
     private readonly events: DomainEvents,
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
     private readonly heavyQueue: Queue<FetchInboundMediaJob | FetchOriginMediaJob>,
@@ -118,6 +120,8 @@ export class InboundMessageService {
     if (stored.needsRouting) {
       await this.route(storeId, stored.conversationId, event, receivedAt)
     }
+    // After the routing, so that the team already has the conversation; once for each closed stretch
+    await this.awayReply.replyIfClosed(storeId, stored.conversationId, receivedAt)
     return InboundOutcomes.STORED
   }
 

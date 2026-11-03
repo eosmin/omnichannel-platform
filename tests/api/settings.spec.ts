@@ -477,7 +477,7 @@ describe('The settings of the inbox of a store', () => {
       const before = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.inbox)
       const after = await api(app, ctx.adminA2, ctx.storeA2)
         .patch(ApiRoutes.settings.inbox)
-        .send({ reopenWindowDays: 14, requestCsat: true })
+        .send({ reopenWindowDays: 14, resolveShowOptions: false })
 
       expect(before.body).toEqual({
         reopenWindowDays: null,
@@ -490,7 +490,8 @@ describe('The settings of the inbox of a store', () => {
       })
       expect(after.body).toMatchObject({
         reopenWindowDays: 14,
-        requestCsat: true,
+        resolveShowOptions: false,
+        requestCsat: false,
         autoArchiveAfterDays: 30
       })
       const [entry] = await waitForAuditEntries(owner, {
@@ -498,7 +499,20 @@ describe('The settings of the inbox of a store', () => {
         resourceId: ctx.storeA2.id,
         resourceType: 'store_settings'
       })
-      expect(entry?.metadata).toMatchObject({ fields: ['reopenWindowDays', 'requestCsat'] })
+      expect(entry?.metadata).toMatchObject({ fields: ['reopenWindowDays', 'resolveShowOptions'] })
+    })
+
+    it('never saves the CSAT switch on: nothing in the MVP sends a rating prompt', async () => {
+      const on = await asAdmin().patch(ApiRoutes.settings.inbox).send({ requestCsat: true })
+      const off = await asAdmin().patch(ApiRoutes.settings.inbox).send({ requestCsat: false })
+
+      expect(on.status).toBe(BAD_REQUEST)
+      expect(codeOf(on.body)).toBe(ErrorCodes.VALIDATION_FAILED)
+      expect(off.status).toBe(OK)
+      const row = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA.id }
+      })
+      expect(row.requestCsat).toBe(false)
     })
 
     it('takes the window off again with null', async () => {
@@ -539,7 +553,7 @@ describe('The settings of the inbox of a store', () => {
     it('is read with SETTINGS_VIEW and changed with SETTINGS_EDIT', async () => {
       const read = await asAdmin().get(ApiRoutes.settings.inbox)
       const readByViewer = await asViewer().get(ApiRoutes.settings.inbox)
-      const write = await asAgent().patch(ApiRoutes.settings.inbox).send({ requestCsat: true })
+      const write = await asAgent().patch(ApiRoutes.settings.inbox).send({ requestCsat: false })
 
       expect(read.status).toBe(OK)
       expect(readByViewer.status).toBe(FORBIDDEN)

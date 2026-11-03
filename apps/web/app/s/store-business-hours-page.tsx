@@ -15,6 +15,7 @@ import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
 import { errorCodeOf } from '../../lib/error-message'
+import { useInboxBehavior } from '../../lib/inbox/use-inbox-data'
 import {
   closedWeek,
   DEFAULT_RANGE,
@@ -51,11 +52,12 @@ function browserTimezone(): string {
 }
 
 // A store that never saved a schedule starts from Monday to Friday, which is what most stores want and
-// is only saved when the person says so
-function startingHours(): BusinessHoursView {
+// is only saved when the person says so. The hours are the store's, so they start in its time zone,
+// not in the one of the browser of whoever opens the page
+function startingHours(timezone: string): BusinessHoursView {
   const week = closedWeek()
   for (const day of Weekdays.slice(0, WORKING_DAYS)) week[day] = [{ ...DEFAULT_RANGE }]
-  return { timezone: browserTimezone(), schedule: week, awayMessageSnippetId: null }
+  return { timezone, schedule: week, awayMessageSnippetId: null }
 }
 
 function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement {
@@ -65,6 +67,11 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const mayListSnippets = can(Permissions.CONVERSATIONS_VIEW)
   const snippets = useSnippetChoices(storeId, mayListSnippets)
+  // The time zone of the store comes with the inbox behavior (CONVERSATIONS_VIEW, as the snippets);
+  // without that permission the page can only offer the one of the browser
+  const storeBehavior = useInboxBehavior(storeId, mayListSnippets)
+  const storeTimezone = storeBehavior.data?.timezone
+  const storeTimezonePending = mayListSnippets && storeBehavior.isPending
   const save = useSaveBusinessHours(storeId)
   const idPrefix = useId()
   // null until the person starts a schedule on a store that has none
@@ -86,9 +93,24 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
           <h2 className="text-base font-semibold">{t('empty.title')}</h2>
           <p className="text-muted-foreground max-w-sm text-sm">{t('empty.body')}</p>
           {canEdit ? (
-            <Button type="button" size="sm" onClick={() => setDraft(startingHours())}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={storeTimezonePending || storeBehavior.isError}
+              onClick={() => {
+                const starting = startingHours(storeTimezone ?? browserTimezone())
+                // Starting is not a change: only what the person edits after it is unsaved
+                setBaseline(starting)
+                setDraft(starting)
+              }}
+            >
               {t('empty.start')}
             </Button>
+          ) : null}
+          {storeBehavior.isError ? (
+            <p role="alert" className="text-destructive text-sm">
+              {tErrors(errorCodeOf(storeBehavior.error))}
+            </p>
           ) : null}
         </div>
       </section>

@@ -17,6 +17,7 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
+  AwayReplyService,
   ChannelConnectionResolver,
   ConversationsService,
   CustomerIdentityService,
@@ -25,6 +26,8 @@ import {
   InboundOutcomes,
   InboundMessageTargets,
   MessageReactionsService,
+  MessagingWindowService,
+  OutboundQueue,
   ReactionOutcomes,
   RoutingService
 } from '@platform/core/messaging'
@@ -78,6 +81,8 @@ describe('Echoes and reactions that a channel delivers', () => {
         .useValue(new CapturedQueue())
         .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
         .useValue(new CapturedQueue())
+        .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+        .useValue(new CapturedQueue())
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())
@@ -90,6 +95,14 @@ describe('Echoes and reactions that a channel delivers', () => {
       app.get(CustomerIdentityService, { strict: false }),
       app.get(ConversationsService, { strict: false }),
       app.get(RoutingService, { strict: false }),
+      new AwayReplyService(
+        prisma,
+        app.get(ConversationsService, { strict: false }),
+        app.get(MessagingWindowService, { strict: false }),
+        events,
+        app.get(OutboundQueue, { strict: false }),
+        await app.resolve(PinoLogger)
+      ),
       events,
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
       await app.resolve(PinoLogger)

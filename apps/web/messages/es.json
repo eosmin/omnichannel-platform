@@ -1893,6 +1893,7 @@
           "send": "Enviar invitación",
           "sending": "Enviando",
           "sent": "Se envió una invitación a {email}.",
+          "rolePlaceholder": "Elige un rol",
           "noRole": "No hay ningún rol disponible para ti: todos tienen permisos que tú no tienes."
         }
       }

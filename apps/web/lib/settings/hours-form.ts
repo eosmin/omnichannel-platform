@@ -100,9 +100,10 @@ const CLOCK_TIMES: readonly string[] = Array.from({ length: (24 * 60) / STEP_MIN
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 })
 
-// The choices of a time field: every quarter of an hour, plus midnight (24:00) when it is an end, plus
-// the value the range holds now if it is none of those (hours saved through the api)
+// The choices of a time field: every quarter of an hour, plus, when it is an end, the last minute of
+// the day (23:59, which "add a range" writes) and midnight (24:00), plus the value the range holds now
+// if it is none of those (hours saved through the api)
 export function timeOptions(current: string, isEnd: boolean): string[] {
-  const options = isEnd ? [...CLOCK_TIMES.slice(1), '24:00'] : [...CLOCK_TIMES]
+  const options = isEnd ? [...CLOCK_TIMES.slice(1), '23:59', '24:00'] : [...CLOCK_TIMES]
   return options.includes(current) ? options : [...options, current].toSorted()
 }

@@ -165,6 +165,9 @@ test.describe('Settings → Team', () => {
       await page.getByRole('button', { name: invitations.invite, exact: true }).click()
       const invite = page.getByRole('dialog', { name: invitations.dialog.title })
       await invite.getByLabel(invitations.dialog.email).fill(email)
+      // No role is chosen for the person: sending is refused until they pick one
+      await expect(invite.getByRole('button', { name: invitations.dialog.send })).toBeDisabled()
+      await invite.getByLabel(invitations.dialog.role).selectOption({ index: 1 })
       await invite.getByRole('button', { name: invitations.dialog.send }).click()
       await expect(invite.getByText(en.errors.TENANT_INVITEE_SUSPENDED)).toBeVisible()
       await invite.getByRole('button', { name: en.common.cancel }).click()

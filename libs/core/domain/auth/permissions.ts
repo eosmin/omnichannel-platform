@@ -99,6 +99,14 @@ export const Permissions = {
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions]
 
+// What a person needs to be given a conversation, by hand or by a routing rule: to open it and to
+// answer it. A role that only reads would hold the conversation with nobody able to work it, and one
+// that answers but cannot open conversations could never find it.
+export const AssigneePermissions: readonly Permission[] = [
+  Permissions.CONVERSATIONS_VIEW,
+  Permissions.MESSAGES_SEND
+]
+
 export const RoleNames = {
   ADMIN: 'Admin',
   SUPERVISOR: 'Supervisor',

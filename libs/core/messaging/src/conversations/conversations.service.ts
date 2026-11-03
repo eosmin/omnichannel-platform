@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import { type Permission, Permissions } from '@platform/core/auth'
+import { AssigneePermissions, type Permission, Permissions } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   ConversationConflictReasons,
@@ -702,10 +702,10 @@ export class ConversationsService {
       FOR SHARE`
     const roleId = rows[0]?.role_id
     if (roleId === undefined) throw resourceNotFound('assignee')
-    const sees = await tx.permission.count({
-      where: { roleId, name: Permissions.CONVERSATIONS_VIEW }
+    const held = await tx.permission.count({
+      where: { roleId, name: { in: [...AssigneePermissions] } }
     })
-    if (sees === 0) throw resourceNotFound('assignee')
+    if (held < AssigneePermissions.length) throw resourceNotFound('assignee')
   }
 }
 

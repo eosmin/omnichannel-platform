@@ -151,10 +151,14 @@ export function useSnippets(storeId: string, isEnabled: boolean): UseQueryResult
   })
 }
 
-export function useInboxBehavior(storeId: string): UseQueryResult<InboxBehaviorView> {
+export function useInboxBehavior(
+  storeId: string,
+  isEnabled = true
+): UseQueryResult<InboxBehaviorView> {
   return useQuery({
     queryKey: QueryKeys.inboxBehavior.store(storeId),
-    queryFn: ({ signal }) => fetchInboxBehavior(apiClient, storeId, signal)
+    queryFn: ({ signal }) => fetchInboxBehavior(apiClient, storeId, signal),
+    enabled: isEnabled
   })
 }
 
