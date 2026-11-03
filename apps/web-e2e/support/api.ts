@@ -124,6 +124,37 @@ export async function connectWidget(
   return { connectionId: id, ...embed }
 }
 
+const catalogSchema = z.array(
+  z.object({ id: z.string(), installed: z.boolean(), installationId: z.string().nullable() })
+)
+
+// Takes the web widget off a store (every account of it is disconnected), as the Plugins page does.
+// For the end of a spec that must leave the shared database as it found it: a store that is not
+// installed is left as it is.
+export async function uninstallWidget(token: string, storeId: string): Promise<void> {
+  const headers = storeHeaders(token, storeId)
+  const catalog = catalogSchema.parse(await call(ApiRoutes.plugins.available, { headers }))
+  const installationId = catalog.find(entry => entry.id === ChannelIds.WEB_WIDGET)?.installationId
+  if (installationId === null || installationId === undefined) return
+  await call(ApiRoutes.plugins.revoke(installationId), { method: 'POST', headers })
+}
+
+// Deletes a store that holds nothing, through the same route as the organization page. The request
+// goes through the first store of the person, as the page does; a store that is already gone is
+// not an error, so a spec can call it from a `finally` after the page deleted the store itself.
+export async function deleteStoreIfThere(token: string, storeId: string): Promise<void> {
+  const through = (await profileOf(token)).memberships[0]
+  if (through === undefined) throw new Error('the person belongs to no store')
+  await call(ApiRoutes.organizations.storeById(storeId), {
+    method: 'DELETE',
+    headers: storeHeaders(token, through.storeId)
+  }).catch((error: unknown) => {
+    if (!(error instanceof Error) || !error.message.endsWith(`${HttpStatusCodes.NOT_FOUND}`)) {
+      throw error
+    }
+  })
+}
+
 // The sites that may load the widget, replaced by the list
 export async function setWidgetOrigins(
   token: string,

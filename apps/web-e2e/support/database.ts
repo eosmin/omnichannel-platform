@@ -1,12 +1,15 @@
 import { randomInt, randomUUID } from 'node:crypto'
 
-import { Permissions } from '@platform/core/auth'
+import { Permissions, RoleNames } from '@platform/core/auth'
 import { encryptJson, parseEncryptionKey } from '@platform/core/crypto'
 import {
   createOwnerClient,
   ensureMembership,
+  ensureStore,
+  ensureSystemRoles,
   ensureUser,
-  type OwnerClient
+  type OwnerClient,
+  slugify
 } from '@platform/core/database-testing'
 import {
   type AuthorType,
@@ -536,4 +539,28 @@ export async function addReadOnlySettingsUser(
       await owner.user.deleteMany({ where: { id: userId } })
       await owner.role.deleteMany({ where: { id: roleId } })
     })
+}
+
+// The one thing a person does before the first screen: a new account with an organization and a
+// store of its own, as the Admin of both (nothing in the product creates the first owner, the
+// bootstrap does). Nothing else in the database is theirs, so what a case does there cannot reach
+// the stores that the other cases share. Returns the id of the store.
+export async function addOwnerOfNewStore(email: string, storeName: string): Promise<string> {
+  return withOwner(async owner => {
+    const roles = await ensureSystemRoles(owner)
+    const organization = await owner.organization.upsert({
+      where: { slug: slugify(storeName) },
+      create: { name: storeName, slug: slugify(storeName) },
+      update: {}
+    })
+    const store = await ensureStore(owner, organization.id, storeName)
+    const user = await ensureUser(owner, email, 'Done When Owner')
+    await ensureMembership(owner, {
+      userId: user.id,
+      organizationId: organization.id,
+      storeId: store.id,
+      roleId: roles[RoleNames.ADMIN].id
+    })
+    return store.id
+  })
 }
