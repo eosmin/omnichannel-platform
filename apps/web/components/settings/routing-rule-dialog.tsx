@@ -16,13 +16,15 @@ import { errorCodeOf } from '../../lib/error-message'
 import type { RuleView } from '../../lib/settings/routing-requests'
 import {
   type ActionType,
+  type ChannelChoice,
+  channelChoicesOf,
   draftOf,
   emptyDraft,
   inputOf,
   type RuleDraft,
   ruleProblems
 } from '../../lib/settings/rule-form'
-import { useCreateRule, useUpdateRule } from '../../lib/settings/use-routing'
+import { useChannelChoices, useCreateRule, useUpdateRule } from '../../lib/settings/use-routing'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -38,7 +40,8 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
-const CHANNEL_CHOICES = Object.values(ChannelIds)
+// Shown when the store's own channels cannot be read (no CONVERSATIONS_VIEW, or the read failed)
+const OFFICIAL_CHOICES: ChannelChoice[] = Object.values(ChannelIds).map(id => ({ id, name: id }))
 const ACTION_CHOICES: readonly ActionType[] = Object.values(RoutingActionTypes)
 
 function toggled(list: readonly string[], value: string): string[] {
@@ -95,6 +98,17 @@ export function RuleDialog({
     else update.mutate({ ruleId: rule.id, input }, { onSuccess: done })
   }
 
+  // The channels the store has, not the four official ones: a rule for a channel that is not
+  // connected would never match. Where the store's own list cannot be read, the official ones.
+  const channels = useChannelChoices(storeId, listsAvailable)
+  const channelOptions =
+    channels.data === undefined
+      ? listsAvailable && !channels.isError
+        ? channelChoicesOf([], draft.channelTypes)
+        : channelChoicesOf([], draft.channelTypes).concat(
+            OFFICIAL_CHOICES.filter(choice => !draft.channelTypes.includes(choice.id))
+          )
+      : channelChoicesOf(channels.data, draft.channelTypes)
   const needsPeople = draft.actionType !== RoutingActionTypes.UNASSIGNED
   // A person who left the store is still in the rule until it is saved again: shown, so it can be taken out
   const known = new Set(members.map(member => member.id))
@@ -133,20 +147,20 @@ export function RuleDialog({
             <legend className="px-1 text-sm font-medium">{t('conditions')}</legend>
             <p className="text-muted-foreground text-xs">{t('conditionsHint')}</p>
             <div role="group" aria-label={t('channels')} className="flex flex-wrap gap-3">
-              {[
-                ...CHANNEL_CHOICES,
-                ...draft.channelTypes.filter(id => !CHANNEL_CHOICES.some(choice => choice === id))
-              ].map(channel => (
-                <label key={channel} className="flex items-center gap-1.5 text-sm">
+              {channelOptions.map(channel => (
+                <label key={channel.id} className="flex items-center gap-1.5 text-sm">
                   <input
                     type="checkbox"
-                    checked={draft.channelTypes.includes(channel)}
-                    onChange={() => set({ channelTypes: toggled(draft.channelTypes, channel) })}
+                    checked={draft.channelTypes.includes(channel.id)}
+                    onChange={() => set({ channelTypes: toggled(draft.channelTypes, channel.id) })}
                     disabled={saving}
                   />
-                  {isOfficialChannelId(channel) ? tChannels(channel) : channel}
+                  {isOfficialChannelId(channel.id) ? tChannels(channel.id) : channel.name}
                 </label>
               ))}
+              {channelOptions.length === 0 && !channels.isPending ? (
+                <p className="text-muted-foreground text-xs">{t('noChannels')}</p>
+              ) : null}
             </div>
             {listsAvailable ? null : (
               <p className="text-muted-foreground text-xs">{t('listsUnavailable')}</p>

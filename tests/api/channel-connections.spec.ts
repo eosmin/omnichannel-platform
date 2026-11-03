@@ -757,6 +757,61 @@ describe('The channel connections of a store', () => {
       expect(list.find(row => row.id === made.id)?.profile).toEqual(expected)
     })
 
+    it('forgets the failed reads of its customers when the account is connected again, and asks for them anew', async () => {
+      const { id } = profilePlugin()
+      const made = await connectionOf(asAdmin, id)
+      const failed = await failedIdentity(
+        ctx.storeA.id,
+        made.id,
+        id,
+        ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      )
+      await owner.customerIdentity.update({
+        where: { id: failed.id },
+        data: { profileFetchedAt: new Date(), profileRetryAfter: new Date(Date.now() + 3_600_000) }
+      })
+      // A failure on another connection of the same store is not this connection's to forget
+      const other = await createChannelConnection(owner, {
+        storeId: ctx.storeA.id,
+        channelType: id
+      })
+      const elsewhere = await failedIdentity(
+        ctx.storeA.id,
+        other.id,
+        id,
+        ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      )
+
+      const again = (await connect(id)).body as ConnectionBody
+
+      expect(again.id).toBe(made.id)
+      expect(again.profile).toEqual({ failedIdentities: 0, errors: [], setupKey: null })
+      const forgotten = await owner.customerIdentity.findUniqueOrThrow({ where: { id: failed.id } })
+      expect(forgotten).toMatchObject({
+        profileFetchError: null,
+        profileFetchedAt: null,
+        profileRetryAfter: null
+      })
+      const kept = await owner.customerIdentity.findUniqueOrThrow({ where: { id: elsewhere.id } })
+      expect(kept.profileFetchError).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+    })
+
+    it('leaves the read customers alone when the account is connected again', async () => {
+      const { id } = profilePlugin()
+      const made = await connectionOf(asAdmin, id)
+      const read = await failedIdentity(ctx.storeA.id, made.id, id, null)
+      const stamp = new Date('2026-10-01T00:00:00.000Z')
+      await owner.customerIdentity.update({
+        where: { id: read.id },
+        data: { profileFetchedAt: stamp }
+      })
+
+      await connect(id)
+
+      const row = await owner.customerIdentity.findUniqueOrThrow({ where: { id: read.id } })
+      expect(row.profileFetchedAt?.toISOString()).toBe(stamp.toISOString())
+    })
+
     it('says nothing is wrong, and gives no step, while no read has failed', async () => {
       const { id } = profilePlugin()
       const made = await connectionOf(asAdmin, id)

@@ -10,6 +10,8 @@ import {
 
 import {
   ApiError,
+  type ChannelDirectoryEntryView,
+  fetchChannelDirectory,
   fetchMemberDirectory,
   fetchSnippets,
   fetchTags,
@@ -92,6 +94,19 @@ export function useMemberChoices(
   return useQuery({
     queryKey: QueryKeys.members.directory(storeId),
     queryFn: ({ signal }) => fetchMemberDirectory(apiClient, storeId, signal),
+    enabled
+  })
+}
+
+// The channels of the store, to pick the ones a rule applies to. The directory is open to who may see
+// conversations, so it is asked for only by them.
+export function useChannelChoices(
+  storeId: string,
+  enabled: boolean
+): UseQueryResult<ChannelDirectoryEntryView[]> {
+  return useQuery({
+    queryKey: QueryKeys.channels.directory(storeId),
+    queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal),
     enabled
   })
 }

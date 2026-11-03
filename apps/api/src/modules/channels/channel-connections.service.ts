@@ -482,6 +482,17 @@ export class ChannelConnectionsService {
       data
     })
     if (updated.count !== 1) throw resourceConflict('this account is connected to another store')
+    // The owner just gave the provider new credentials or permissions: a refusal recorded before says
+    // nothing about them. Forget it on the customers that wrote through this connection, and let their
+    // next message ask again (a null date is a stale profile). A customer whose read succeeded keeps its date.
+    await tx.customerIdentity.updateMany({
+      where: {
+        storeId,
+        profileFetchError: { not: null },
+        conversations: { some: { storeId, channelConnectionId: existing.id } }
+      },
+      data: { profileFetchError: null, profileFetchedAt: null, profileRetryAfter: null }
+    })
     return tx.channelConnection.findUniqueOrThrow({
       where: { id: existing.id },
       select: VIEW_SELECT

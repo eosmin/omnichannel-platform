@@ -11,7 +11,7 @@ import { PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
-import { StorageKeys, UploadLimits } from '@platform/core/storage'
+import { StorageKeys, UploadLimits, USERS_ROOT } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { dropJob } from '../testing/drop-job'
@@ -142,11 +142,17 @@ describe('OrphanMediaCleaner', () => {
     await owner.query(`DELETE FROM users WHERE id = ANY($1)`, [ids])
   })
 
-  async function avatarRow(userId: string, id: string, key: string, status = 'clean') {
+  async function avatarRow(
+    userId: string,
+    id: string,
+    key: string,
+    status = 'clean',
+    age = '3 days'
+  ) {
     await owner.query(
       `INSERT INTO media (id, store_id, purpose, uploaded_by, key, filename, content_type, file_size, status, created_at)
-       VALUES ($1, NULL, 'avatar', $2, $3, 'me.png', 'image/png', 1, $4, now() - interval '3 days')`,
-      [id, userId, key, status]
+       VALUES ($1, NULL, 'avatar', $2, $3, 'me.png', 'image/png', 1, $4, now() - $5::interval)`,
+      [id, userId, key, status, age]
     )
   }
 
@@ -171,6 +177,65 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(heldKey)).not.toBeNull()
     const rows = await owner.query(`SELECT id FROM media WHERE id = ANY($1)`, [[heldId, looseId]])
     expect(rows.rows.map((row: { id: string }) => row.id)).toEqual([heldId])
+  })
+
+  it('spares an avatar confirmed a moment ago that nobody has attached yet: the attach may be in flight', async () => {
+    const userId = randomUUID()
+    avatarUsers.push(userId)
+    await owner.query(
+      `INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, 'avatar owner', now())`,
+      [userId, `it-avatar-${userId}@example.com`]
+    )
+    const freshId = randomUUID()
+    const freshKey = await object(StorageKeys.avatar(userId, freshId, 'me.png'))
+    await avatarRow(userId, freshId, freshKey, 'clean', '1 hour')
+
+    await cleaner.run()
+
+    expect(await storage.head(freshKey)).not.toBeNull()
+    const rows = await owner.query(`SELECT id FROM media WHERE id = $1`, [freshId])
+    expect(rows.rows).toHaveLength(1)
+  })
+
+  it('resumes the sweep of stray avatar uploads from where the last run stopped', async () => {
+    // The bucket is shared with other suites, so the listing of the users root is replaced by one of
+    // our own: a long run of empty pages, and the stray staging object on the page after the cap
+    const stray = StorageKeys.avatarUpload(randomUUID(), randomUUID(), 'old.png')
+    const lastPage = UploadLimits.ORPHAN_LIST_PAGES_PER_RUN
+    const real = storage.list.bind(storage)
+    const asked: (string | undefined)[] = []
+    const listing = jest.spyOn(storage, 'list').mockImplementation((prefix, token) => {
+      if (prefix !== USERS_ROOT) return real(prefix, token)
+      asked.push(token)
+      const page = token === undefined ? 0 : Number(token.slice(1))
+      return Promise.resolve(
+        page < lastPage
+          ? { objects: [], next: `P${page + 1}` }
+          : { objects: [{ key: stray, lastModified: new Date(0) }], next: undefined }
+      )
+    })
+    // Only the stray key is intercepted: everything else is deleted for real, as in the other cases
+    const realDelete = storage.delete.bind(storage)
+    const deleting = jest
+      .spyOn(storage, 'delete')
+      .mockImplementation(key => (key === stray ? Promise.resolve() : realDelete(key)))
+    try {
+      await cleaner.run(later())
+
+      expect(asked).toHaveLength(lastPage)
+      expect(deleting).not.toHaveBeenCalledWith(stray)
+      expect(await redis.get(CacheKeys.mediaCleanup.avatarCursor())).toBe(`P${lastPage}`)
+
+      asked.length = 0
+      await cleaner.run(later())
+
+      expect(asked[0]).toBe(`P${lastPage}`)
+      expect(deleting).toHaveBeenCalledWith(stray)
+      expect(await redis.get(CacheKeys.mediaCleanup.avatarCursor())).toBeNull()
+    } finally {
+      listing.mockRestore()
+      deleting.mockRestore()
+    }
   })
 
   it('deletes the file of an avatar whose row is gone, and keeps the file of a row that is there', async () => {

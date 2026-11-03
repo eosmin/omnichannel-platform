@@ -172,6 +172,44 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
     await expect(page.getByText(inbox.receipts.saved).first()).toBeVisible()
   })
 
+  test('the settings navigation asks before it leaves a form with changes that were not saved', async ({
+    page
+  }) => {
+    await signIn(page, 'admin@test.com')
+    await page.waitForURL(/\/s\/[^/]+\/inbox/)
+    await openSection(page, StoreSettingsSections.INBOX)
+    const behavior = page.getByRole('form', { name: inbox.behaviorLabel })
+    const archive = behavior.getByLabel(inbox.archive.days)
+    const original = await archive.inputValue()
+    // A value inside the limits that is not the saved one
+    const changed = original === '30' ? '31' : '30'
+    const nav = page.getByRole('navigation', { name: en.settings.nav.store.label })
+
+    // Nothing was touched: the link goes straight through
+    await nav.getByRole('link', { name: en.settings.nav.store.tags }).click()
+    await expect(page.getByRole('heading', { name: tags.title, level: 1 })).toBeVisible()
+    await nav.getByRole('link', { name: en.settings.nav.store.inbox }).click()
+    await expect(archive).toBeVisible()
+
+    // A change not saved: the link asks, and staying keeps the change
+    await archive.fill(changed)
+    await nav.getByRole('link', { name: en.settings.nav.store.tags }).click()
+    const ask = page.getByRole('dialog', { name: en.settings.unsaved.title })
+    await expect(ask).toBeVisible()
+    await ask.getByRole('button', { name: en.settings.unsaved.stay }).click()
+    await expect(ask).toBeHidden()
+    await expect(archive).toHaveValue(changed)
+
+    // Leaving goes on to the page that was asked for, and nothing was saved
+    await nav.getByRole('link', { name: en.settings.nav.store.tags }).click()
+    await ask.getByRole('button', { name: en.settings.unsaved.leave }).click()
+    await expect(page.getByRole('heading', { name: tags.title, level: 1 })).toBeVisible()
+    await nav.getByRole('link', { name: en.settings.nav.store.inbox }).click()
+    await expect(
+      page.getByRole('form', { name: inbox.behaviorLabel }).getByLabel(inbox.archive.days)
+    ).toHaveValue(original)
+  })
+
   test('a viewer reads tags and snippets without any action, and cannot open the inbox settings', async ({
     page
   }) => {

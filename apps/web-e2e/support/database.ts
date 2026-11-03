@@ -1,7 +1,13 @@
 import { randomInt, randomUUID } from 'node:crypto'
 
+import { Permissions } from '@platform/core/auth'
 import { encryptJson, parseEncryptionKey } from '@platform/core/crypto'
-import { createOwnerClient, type OwnerClient } from '@platform/core/database-testing'
+import {
+  createOwnerClient,
+  ensureMembership,
+  ensureUser,
+  type OwnerClient
+} from '@platform/core/database-testing'
 import {
   type AuthorType,
   ChannelConnectionStatus,
@@ -25,6 +31,7 @@ import {
   createCustomerIdentity,
   createMessage,
   createSnippet,
+  createRole,
   createTag,
   ensurePluginInstallation
 } from '../../../tests/builders'
@@ -491,4 +498,42 @@ export function mediaZipsOf(storeId: string): Promise<{ status: string; filters:
       select: { status: true, filters: true }
     })
   )
+}
+
+// A person who may look at the settings of the store and edit none of them: no seeded role holds
+// SETTINGS_VIEW without SETTINGS_EDIT, so the case makes one. Returns what removes it again.
+export async function addReadOnlySettingsUser(
+  storeId: string,
+  email: string
+): Promise<() => Promise<void>> {
+  const { roleId, userId } = await withOwner(async owner => {
+    const store = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const role = await createRole(owner, {
+      storeId,
+      name: `E2E read-only ${randomUUID().slice(0, 8)}`,
+      permissions: [
+        Permissions.SETTINGS_VIEW,
+        Permissions.TEAM_VIEW,
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.MESSAGES_VIEW
+      ]
+    })
+    const user = await ensureUser(owner, email, 'Read Only Person')
+    await ensureMembership(owner, {
+      userId: user.id,
+      organizationId: store.organizationId,
+      storeId,
+      roleId: role.id
+    })
+    return { roleId: role.id, userId: user.id }
+  })
+  return () =>
+    withOwner(async owner => {
+      await owner.membership.deleteMany({ where: { userId } })
+      await owner.user.deleteMany({ where: { id: userId } })
+      await owner.role.deleteMany({ where: { id: roleId } })
+    })
 }

@@ -1,12 +1,22 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import type { ReactElement, ReactNode } from 'react'
+import { type MouseEvent, type ReactElement, type ReactNode, useRef, useState } from 'react'
 
 import type { SettingsArea, SettingsEntry } from '../../lib/settings/entries'
+import { UnsavedChangesContext } from '../../lib/settings/unsaved-changes'
 import { cn } from '../../lib/utils'
+import { Button } from '../ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../ui/dialog'
 
 // The side navigation of a settings area next to its page. `entries` are already the ones the person
 // may open; an area with none draws only the page, which says what it needs.
@@ -20,7 +30,18 @@ export function SettingsFrame({
   children: ReactNode
 }): ReactElement {
   const t = useTranslations('settings.nav')
+  const tUnsaved = useTranslations('settings.unsaved')
   const pathname = usePathname()
+  const router = useRouter()
+  const unsaved = useRef(0)
+  const [leaving, setLeaving] = useState<string | null>(null)
+  // A link of this navigation, while a form of the page holds changes, waits for the person's answer
+  const guard = (event: MouseEvent, href: string): void => {
+    if (unsaved.current === 0 || href === pathname) return
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    setLeaving(href)
+  }
   // The keys are built from the area and the entry, and a spec checks every one exists
   type MessageKey = Parameters<typeof t>[0]
   const label = (key: string): string => t(`${area}.${key}` as MessageKey)
@@ -38,6 +59,7 @@ export function SettingsFrame({
                 <li key={entry.id}>
                   <Link
                     href={entry.href}
+                    onClick={event => guard(event, entry.href)}
                     aria-current={isCurrent ? 'page' : undefined}
                     className={cn(
                       'hover:bg-accent block rounded-md px-2 py-1.5 text-sm whitespace-nowrap',
@@ -52,7 +74,32 @@ export function SettingsFrame({
           </ul>
         </nav>
       ) : null}
-      <div className="min-w-0 flex-1">{children}</div>
+      <UnsavedChangesContext.Provider value={unsaved}>
+        <div className="min-w-0 flex-1">{children}</div>
+      </UnsavedChangesContext.Provider>
+      <Dialog open={leaving !== null} onOpenChange={open => (open ? undefined : setLeaving(null))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{tUnsaved('title')}</DialogTitle>
+            <DialogDescription>{tUnsaved('body')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLeaving(null)}>
+              {tUnsaved('stay')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const href = leaving
+                setLeaving(null)
+                if (href !== null) router.push(href)
+              }}
+            >
+              {tUnsaved('leave')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1432,6 +1432,12 @@
     "stale": "No se pudo actualizar la lista. Lo que ves puede estar desactualizado."
   },
   "settings": {
+    "unsaved": {
+      "title": "¿Salir sin guardar?",
+      "body": "Tienes cambios sin guardar. Si sales de esta página se pierden.",
+      "stay": "Quedarme en la página",
+      "leave": "Salir y perderlos"
+    },
     "channels": {
       "connect": {
         "whatsapp": {
@@ -1925,6 +1931,7 @@
           "tooManyUsers": "Hay demasiadas personas.",
           "keywordEmpty": "Una palabra o frase no tiene nada que buscar."
         },
+        "noChannels": "Esta tienda aún no tiene un canal conectado. Conecta uno en Ajustes, Canales.",
         "listsUnavailable": "No se pueden mostrar algunas personas y etiquetas porque no puedes ver conversaciones. Lo que la regla ya tiene se conserva."
       }
     },

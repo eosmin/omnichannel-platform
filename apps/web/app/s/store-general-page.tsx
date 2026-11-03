@@ -18,6 +18,7 @@ import {
   type StoreFormValues,
   storePatchOf
 } from '../../lib/settings/store-form'
+import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import { useOrganizationStore, useUpdateStore } from '../../lib/settings/use-settings-data'
 
 const valuesOf = (store: StoreView): StoreFormValues => ({
@@ -52,6 +53,7 @@ function GeneralForm({ store }: { store: StoreView }): ReactElement {
   const [values, setValues] = useState(initial)
   const problems = storeFormProblems(values)
   const patch = storePatchOf(initial, values)
+  useUnsavedChanges(hasChanges(patch))
   const canSave = hasChanges(patch) && Object.keys(problems).length === 0 && !update.isPending
 
   const submit = (event: FormEvent): void => {

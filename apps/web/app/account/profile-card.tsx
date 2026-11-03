@@ -11,6 +11,7 @@ import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
+import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import { useOwnProfileWithPicture } from '../../lib/settings/use-avatar'
 import { useSaveOwnProfile } from '../../lib/settings/use-settings-data'
 
@@ -54,6 +55,7 @@ function ProfileForm({
   const [saved, setSaved] = useState(savedName)
   const [name, setName] = useState(savedName)
   const trimmed = name.trim()
+  useUnsavedChanges(trimmed !== saved)
   const isValid = trimmed.length > 0 && trimmed.length <= AccountLimits.NAME_MAX_LENGTH
   const canSave = isValid && trimmed !== saved && !save.isPending
 

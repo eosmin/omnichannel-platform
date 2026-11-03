@@ -14,6 +14,7 @@ import { LoadFailed, PageLoading, PermissionDenied } from '../../components/sett
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
+import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import { useOrganization, useRenameOrganization } from '../../lib/settings/use-settings-data'
 
 // Organization → Profile: the name of the organization. Anyone who may look at settings reads it;
@@ -43,6 +44,7 @@ function ProfileForm({ organization }: { organization: OrganizationView }): Reac
   const [saved, setSaved] = useState(organization.name)
   const [name, setName] = useState(organization.name)
   const trimmed = name.trim()
+  useUnsavedChanges(canEdit && trimmed !== saved)
   const isValid = trimmed.length > 0 && trimmed.length <= OrganizationLimits.NAME_MAX_LENGTH
   const canSave = canEdit && isValid && trimmed !== saved && !rename.isPending
 

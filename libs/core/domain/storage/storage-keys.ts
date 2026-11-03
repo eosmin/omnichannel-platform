@@ -9,8 +9,12 @@ export type MediaObjectArea = (typeof MediaObjectAreas)[keyof typeof MediaObject
 // Where every key of the stores begins
 export const STORES_ROOT = 'stores/'
 
+// A path step (`.` or `..`) is not an id: nothing of ours writes one, and a key that carries one is
+// not read as belonging to anybody
+const isPathStep = (segment: string): boolean => segment === '.' || segment === '..'
+
 const MEDIA_OBJECT_KEY = new RegExp(
-  `^${STORES_ROOT}[^/]+/(${Object.values(MediaObjectAreas).join('|')})/([^/]+)/.+$`
+  `^${STORES_ROOT}([^/]+)/(${Object.values(MediaObjectAreas).join('|')})/([^/]+)/.+$`
 )
 
 // The inverse of `StorageKeys.message` and `messageUpload` (and of the variants, which sit under the
@@ -20,9 +24,11 @@ export function parseMediaObjectKey(
   key: string
 ): { area: MediaObjectArea; mediaId: string } | null {
   const match = MEDIA_OBJECT_KEY.exec(key)
-  const area = match?.[1]
-  const mediaId = match?.[2]
-  if (mediaId === undefined) return null
+  const storeId = match?.[1]
+  const area = match?.[2]
+  const mediaId = match?.[3]
+  if (storeId === undefined || mediaId === undefined) return null
+  if (isPathStep(storeId) || isPathStep(mediaId)) return null
   return area === MediaObjectAreas.UPLOADS || area === MediaObjectAreas.MESSAGES
     ? { area, mediaId }
     : null
@@ -31,23 +37,25 @@ export function parseMediaObjectKey(
 // Where every key of a user's own files begins (an avatar has no store)
 export const USERS_ROOT = 'users/'
 
+// The two ids of a key of ours, none of them a path step
+function avatarIdsOf(match: RegExpExecArray | null): { userId: string; mediaId: string } | null {
+  const userId = match?.[1]
+  const mediaId = match?.[2]
+  if (userId === undefined || mediaId === undefined) return null
+  return isPathStep(userId) || isPathStep(mediaId) ? null : { userId, mediaId }
+}
+
 // The inverse of `StorageKeys.avatarUpload`: the user and the media a staging object of an avatar is
 // for, or null for any other key
 const AVATAR_UPLOAD_KEY = new RegExp(`^${USERS_ROOT}([^/]+)/avatar-uploads/([^/]+)/.+$`)
 export function parseAvatarUploadKey(key: string): { userId: string; mediaId: string } | null {
-  const match = AVATAR_UPLOAD_KEY.exec(key)
-  const userId = match?.[1]
-  const mediaId = match?.[2]
-  return userId === undefined || mediaId === undefined ? null : { userId, mediaId }
+  return avatarIdsOf(AVATAR_UPLOAD_KEY.exec(key))
 }
 
 // The inverse of `StorageKeys.avatar`: the media a final avatar file belongs to, or null
 const AVATAR_KEY = new RegExp(`^${USERS_ROOT}([^/]+)/avatar/([^/]+)/.+$`)
 export function parseAvatarKey(key: string): { userId: string; mediaId: string } | null {
-  const match = AVATAR_KEY.exec(key)
-  const userId = match?.[1]
-  const mediaId = match?.[2]
-  return userId === undefined || mediaId === undefined ? null : { userId, mediaId }
+  return avatarIdsOf(AVATAR_KEY.exec(key))
 }
 
 // The ONLY place S3 keys are built (TDD_01 §2.3).

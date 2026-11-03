@@ -21,6 +21,7 @@ import {
   inboxProblems
 } from '../../lib/settings/content-form'
 import type { InboxSettingsView, PreferencesView } from '../../lib/settings/inbox-requests'
+import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import {
   useInboxSettings,
   usePreferences,
@@ -84,6 +85,7 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
   const [showProblems, setShowProblems] = useState(false)
   const problems = inboxProblems(draft)
   const changes = inboxChanges(saved, draft)
+  useUnsavedChanges(canEdit && Object.keys(changes).length > 0)
   const disabled = !canEdit || save.isPending
   const set = (patch: Partial<InboxDraft>): void => setDraft(current => ({ ...current, ...patch }))
   const snippetList = snippets.data ?? []
@@ -271,6 +273,7 @@ function ReceiptsForm({ saved: loaded }: { saved: PreferencesView }): ReactEleme
   const save = useSavePreferences(storeId)
   const [value, setValue] = useState(saved.sendReadReceipts)
   const disabled = !canManage || save.isPending
+  useUnsavedChanges(canManage && value !== saved.sendReadReceipts)
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()

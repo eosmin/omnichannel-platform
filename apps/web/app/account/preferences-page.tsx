@@ -16,6 +16,7 @@ import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
 import { writeLocaleCookie } from '../../lib/account/locale-cookie'
 import { intlValues, withCurrent } from '../../lib/settings/store-form'
+import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import {
   useAccountPreferences,
   useSaveAccountPreferences
@@ -72,6 +73,7 @@ function PreferencesForm({ saved }: { saved: AccountPreferences }): ReactElement
   ]
   const patch = patchOf(initial, values)
   const hasChanges = Object.keys(patch).length > 0
+  useUnsavedChanges(hasChanges)
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()

@@ -55,6 +55,17 @@ describe('refuseUpload for an avatar', () => {
     }
   )
 
+  it.each(['Image/PNG', 'IMAGE/JPEG', 'image/png; charset=binary', ' image/png', 'image/png '])(
+    'refuses the type "%s": it is compared as the signed url carries it, not cleaned up',
+    type => {
+      expect(refuseUpload(type, 10, MediaPurpose.AVATAR)).toBe(UploadRefusals.TYPE_NOT_ALLOWED)
+    }
+  )
+
+  it('is never reached by an empty file: the body schema refuses a size under one byte', () => {
+    expect(requestUploadUrlSchema.safeParse({ ...request, fileSizeBytes: 0 }).success).toBe(false)
+  })
+
   it('refuses what a message file would take: over 2 MB', () => {
     expect(refuseUpload('image/png', AvatarUpload.MAX_SIZE_BYTES + 1, MediaPurpose.AVATAR)).toBe(
       UploadRefusals.TOO_LARGE
