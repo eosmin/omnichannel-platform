@@ -1,5 +1,11 @@
 import type { ErrorCode } from '../errors/error-codes'
-import type { AuthorType, ChannelId, ConversationStatus, InventoryMovementType } from '../index'
+import type {
+  AuthorType,
+  ChannelId,
+  ConversationStatus,
+  ConversationStatusReason,
+  InventoryMovementType
+} from '../index'
 
 import type { Events } from './event-names'
 
@@ -42,6 +48,23 @@ export interface ConversationStatusChangedPayload {
   status: ConversationStatus
   assignedTo: string | null
   changedBy: ActorRef
+}
+
+// A resolved or archived conversation became open again. `reason` is why the system did it (null when a
+// person asked for it). Ids only: who is told is decided when the notification is made.
+export interface ConversationReopenedPayload {
+  storeId: string
+  conversationId: string
+  assignedTo: string | null
+  reason: ConversationStatusReason | null
+  reopenedBy: ActorRef
+}
+
+// The team's queue got a conversation nobody owns: routing left it without an owner, or a person gave it up
+export interface ConversationUnassignedPayload {
+  storeId: string
+  conversationId: string
+  unassignedBy: ActorRef
 }
 
 // Who may see a conversation once the change is made: a hidden one (archived or spam) is for who may
@@ -220,6 +243,13 @@ export interface ExportSettledPayload {
   exportType: string
 }
 
+// Someone accepted an invitation and is a member now. Ids only; `invitedBy` is who sent the invitation.
+export interface MemberJoinedPayload {
+  storeId: string
+  userId: string
+  invitedBy: string
+}
+
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name
 // and checks the payload against this map
 
@@ -232,6 +262,9 @@ export interface DomainEventPayloads {
   [Events.CONVERSATION_STATUS_CHANGED]: ConversationStatusChangedPayload
   [Events.CONVERSATION_ASSIGNED]: ConversationAssignedPayload
   [Events.CONVERSATION_SNOOZE_EXPIRED]: ConversationSnoozeExpiredPayload
+  [Events.CONVERSATION_REOPENED]: ConversationReopenedPayload
+  [Events.CONVERSATION_UNASSIGNED]: ConversationUnassignedPayload
+  [Events.MEMBER_JOINED]: MemberJoinedPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
   [Events.CONVERSATION_UNREAD]: ConversationReadPayload
   [Events.MESSAGE_QUEUED]: MessageQueuedPayload

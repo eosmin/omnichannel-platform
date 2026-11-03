@@ -7,6 +7,7 @@ import { TenancyModule } from '../tenancy'
 
 import { NotificationPreferencesService } from './notification-preferences.service'
 import { NotificationsEventsListener } from './notifications-events.listener'
+import { NotificationsInboxListener } from './notifications-inbox.listener'
 import { NotificationsController } from './notifications.controller'
 import { NotificationsService } from './notifications.service'
 import { PushSubscriptionsService } from './push-subscriptions.service'
@@ -20,6 +21,7 @@ import { PushSubscriptionsService } from './push-subscriptions.service'
     NotificationsService,
     NotificationPreferencesService,
     NotificationsEventsListener,
+    NotificationsInboxListener,
     PushSubscriptionsService
   ],
   exports: [NotificationsService]

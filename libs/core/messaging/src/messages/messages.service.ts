@@ -8,6 +8,7 @@ import {
   CaptionState,
   ConversationReopenedByReply,
   ConversationStatus,
+  ConversationStatusReasons,
   type ChannelCapabilityType,
   DeliveryStatus,
   type CursorPage,
@@ -199,7 +200,11 @@ export class MessagesService {
             storeId,
             body.conversationId,
             ConversationStatus.OPEN,
-            { actor: 'system', causedBy: viewer.userId }
+            {
+              actor: 'system',
+              causedBy: viewer.userId,
+              reason: ConversationStatusReasons.AGENT_REPLIED
+            }
           )
         }
       }
@@ -283,7 +288,8 @@ export class MessagesService {
           ConversationStatus.OPEN,
           {
             actor: 'system',
-            causedBy: viewer.userId
+            causedBy: viewer.userId,
+            reason: ConversationStatusReasons.AGENT_REPLIED
           }
         )
       }

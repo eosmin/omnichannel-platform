@@ -218,7 +218,10 @@ export const NotificationLimits = {
   // Ids a single "mark as read" may name
   MARK_READ_MAX_IDS: 100,
   // The badge on the bell stops counting here and shows "99+" (TDD_06 §8)
-  BADGE_CAP: 99
+  BADGE_CAP: 99,
+  // An unread notification stops holding back a new one of its kind after this long: a person who
+  // never clears the bell must still hear of what happens next
+  DEDUP_WINDOW_MS: 60 * 60 * 1000
 } as const
 
 // What a user who never opened the preferences gets for the settings that are theirs (the columns of

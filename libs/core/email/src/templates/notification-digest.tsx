@@ -11,7 +11,9 @@ const itemSchema = z.object({
   title: z.string().min(1),
   body: z.string(),
   // Absolute, or null when the notification points nowhere
-  url: z.url({ protocol: /^https?$/ }).nullable()
+  url: z.url({ protocol: /^https?$/ }).nullable(),
+  // How many notifications the block stands for; more than one says so under the text
+  count: z.number().int().min(1)
 })
 
 export const notificationDigestSchema = z.object({
@@ -36,7 +38,11 @@ export function NotificationDigest({
       <Head />
       <Body style={main}>
         <Container style={container}>
-          <Text style={heading}>{t('heading', { count: items.length + moreCount })}</Text>
+          <Text style={heading}>
+            {t('heading', {
+              count: items.reduce((sum, item) => sum + item.count, 0) + moreCount
+            })}
+          </Text>
           {items.map((item, index) => (
             <Section key={`${index}-${item.title}`}>
               <Text style={paragraph}>
@@ -44,6 +50,12 @@ export function NotificationDigest({
                 <br />
                 {item.body}
                 <br />
+                {item.count > 1 ? (
+                  <>
+                    {t('repeated', { count: item.count })}
+                    <br />
+                  </>
+                ) : null}
                 <span style={footer}>{item.storeName}</span>
               </Text>
               {item.url === null ? null : (

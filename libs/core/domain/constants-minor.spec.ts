@@ -91,7 +91,8 @@ describe('conversation constants', () => {
     expect(Object.keys(ConversationStatusReasons)).toEqual([
       'SNOOZE_EXPIRED',
       'AUTO_ARCHIVED',
-      'CUSTOMER_REPLIED'
+      'CUSTOMER_REPLIED',
+      'AGENT_REPLIED'
     ])
   })
 

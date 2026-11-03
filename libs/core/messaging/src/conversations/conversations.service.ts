@@ -346,6 +346,21 @@ export class ConversationsService {
       changedBy:
         options.causedBy === undefined ? actorRef(options.actor) : userRef(options.causedBy)
     })
+    // A resolved or archived conversation that works again. A snoozed or pending one waking is not a
+    // reopening: the snooze has its own event and the pending wait ends by itself
+    if (
+      to === ConversationStatus.OPEN &&
+      (from === ConversationStatus.RESOLVED || from === ConversationStatus.ARCHIVED)
+    ) {
+      this.events.publish(tx, Events.CONVERSATION_REOPENED, {
+        storeId,
+        conversationId,
+        assignedTo: current.assignedTo,
+        reason: options.reason ?? null,
+        reopenedBy:
+          options.causedBy === undefined ? actorRef(options.actor) : userRef(options.causedBy)
+      })
+    }
     // Only the sweep of the worker gives this reason: a customer who writes to a snoozed conversation
     // wakes it too, but nobody's timer ran out
     if (

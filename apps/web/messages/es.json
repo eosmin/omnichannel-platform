@@ -35,7 +35,7 @@
           "mentioned": "Mencionado en una nota",
           "unassigned_queue": "Nueva conversación sin asignar",
           "snooze_expired": "Pausa terminada",
-          "reopened": "Reabierta por el cliente"
+          "reopened": "Reabierta"
         },
         "message": {
           "received": "Mensaje nuevo en mi conversación",
@@ -411,6 +411,7 @@
       "heading": "Notificaciones nuevas ({count})",
       "open": "Abrir",
       "more": "Y {count} más, esperando en la aplicación.",
+      "repeated": "{count} notificaciones como esta",
       "center": "Abrir la aplicación",
       "settings": "Recibes este correo por tu configuración de notificaciones. Cámbiala en"
     }
@@ -594,7 +595,7 @@
       },
       "reopened": {
         "title": "Conversación reabierta",
-        "body": "Un cliente escribió de nuevo en una conversación resuelta."
+        "body": "Una conversación tuya volvió a abrirse."
       },
       "snooze_expired": {
         "title": "Terminó la pausa",
@@ -1057,7 +1058,7 @@
       },
       "system": {
         "resolved": "{actorKind, select, user {Resuelta por {actor}} other {Resuelta automáticamente}}",
-        "reopened": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta porque el cliente respondió}}",
+        "reopened": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta automáticamente}}",
         "archived": "{actorKind, select, user {Archivada por {actor}} other {Archivada automáticamente}}",
         "marked_spam": "{actorKind, select, user {Marcada como spam por {actor}} other {Marcada como spam automáticamente}}",
         "unmarked_spam": "{actorKind, select, user {{actor} quitó la marca de spam} other {Se quitó la marca de spam automáticamente}}",
@@ -1071,7 +1072,8 @@
         "reasons": {
           "snooze_expired": "terminó la pausa",
           "auto_archived": "estuvo inactiva",
-          "customer_replied": "el cliente respondió"
+          "customer_replied": "el cliente respondió",
+          "agent_replied": "un agente respondió"
         }
       },
       "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores",

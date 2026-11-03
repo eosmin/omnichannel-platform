@@ -46,6 +46,14 @@ interface DigestItem {
   title: string
   body: string
   url: string | null
+  // How many notifications this block stands for (1 when it is alone)
+  count: number
+}
+
+// Notifications that say the same thing about the same place: one block with a count
+interface DigestGroup {
+  row: DigestRow // The newest of them
+  count: number
 }
 
 interface DigestRow {
@@ -53,6 +61,7 @@ interface DigestRow {
   messageKey: string
   params: unknown
   actionPath: string | null
+  resourceId?: string | null
   readAt: Date | null
   createdAt: Date
   storeId: string
@@ -195,6 +204,7 @@ export class EmailDigestService {
         messageKey: true,
         params: true,
         actionPath: true,
+        resourceId: true,
         readAt: true,
         createdAt: true,
         storeId: true,
@@ -229,10 +239,12 @@ export class EmailDigestService {
     }
 
     const locale = pushLocale(user.locale)
-    const shown = unread.slice(0, DigestLimits.MAX_ITEMS)
+    // Ten messages of one customer are one block saying so, not ten identical ones; the limit counts blocks
+    const groups = this.groupRows(unread)
+    const shown = groups.slice(0, DigestLimits.MAX_ITEMS)
     const { items, firstStoreId } = this.itemsOf(shown, locale)
     if (items.length > 0) {
-      const moreCount = unread.length - shown.length
+      const moreCount = unread.length - shown.reduce((sum, group) => sum + group.count, 0)
       const settingsUrl = new URL(AppPaths.account.notifications, this.links.frontendUrl).toString()
       // The newest store the email speaks of: the button opens its inbox, not the root of the app
       const newestStore = firstStoreId
@@ -271,14 +283,34 @@ export class EmailDigestService {
     }
   }
 
+  // The same store, the same kind of notification, the same place it points to and the same text
+  // parameters are one group. Rows come newest first, so the first of a group is its newest and the
+  // groups keep the order of their newest row. Two conversations are two groups: each has its own link.
+  private groupRows(rows: DigestRow[]): DigestGroup[] {
+    const groups = new Map<string, DigestGroup>()
+    for (const row of rows) {
+      const key = JSON.stringify([
+        row.storeId,
+        row.messageKey,
+        // The place it points to; a notification with no link is told apart by what it is about
+        row.actionPath ?? row.resourceId ?? null,
+        messageParams(row.params)
+      ])
+      const group = groups.get(key)
+      if (group === undefined) groups.set(key, { row, count: 1 })
+      else group.count += 1
+    }
+    return [...groups.values()]
+  }
+
   // `firstStoreId` is the store of the first row that got a text: the button must not open a store the email omits
   private itemsOf(
-    rows: DigestRow[],
+    groups: DigestGroup[],
     locale: Locale
   ): { items: DigestItem[]; firstStoreId: string | undefined } {
     const items: DigestItem[] = []
     let firstStoreId: string | undefined
-    for (const row of rows) {
+    for (const { row, count } of groups) {
       try {
         const t = createTranslator(locale, row.messageKey)
         const params = messageParams(row.params)
@@ -286,7 +318,8 @@ export class EmailDigestService {
           storeName: row.store.name,
           title: t('title', params),
           body: t('body', params),
-          url: row.actionPath === null ? null : this.urlOf(row.actionPath)
+          url: row.actionPath === null ? null : this.urlOf(row.actionPath),
+          count
         })
         firstStoreId ??= row.storeId
       } catch (error) {

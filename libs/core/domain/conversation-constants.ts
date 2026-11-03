@@ -6,7 +6,9 @@ import { ConversationStatus, MessageType } from './status-enums'
 export const ConversationStatusReasons = {
   SNOOZE_EXPIRED: 'snooze_expired',
   AUTO_ARCHIVED: 'auto_archived',
-  CUSTOMER_REPLIED: 'customer_replied'
+  CUSTOMER_REPLIED: 'customer_replied',
+  // A teammate's reply (or the owner's from the phone) brought a resolved, snoozed or archived thread back
+  AGENT_REPLIED: 'agent_replied'
 } as const
 export type ConversationStatusReason =
   (typeof ConversationStatusReasons)[keyof typeof ConversationStatusReasons]

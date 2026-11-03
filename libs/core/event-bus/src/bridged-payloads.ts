@@ -4,6 +4,7 @@ import {
   AuthorType,
   CHANNEL_ID_PATTERN,
   ConversationStatus,
+  ConversationStatusReasons,
   idempotencyKeySchema
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -58,6 +59,18 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     conversationId: id,
     assignedTo: id.nullable()
+  }),
+  [Events.CONVERSATION_REOPENED]: z.object({
+    storeId: id,
+    conversationId: id,
+    assignedTo: id.nullable(),
+    reason: z.enum(ConversationStatusReasons).nullable(),
+    reopenedBy: actor
+  }),
+  [Events.CONVERSATION_UNASSIGNED]: z.object({
+    storeId: id,
+    conversationId: id,
+    unassignedBy: actor
   }),
   [Events.CONVERSATION_CREATED]: z.object({
     storeId: id,
