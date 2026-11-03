@@ -249,7 +249,9 @@ describe('Showing the customer that an agent is typing', () => {
 
     it('leaves no slot behind for a start that could not be queued', async () => {
       const { storeId, conversationId } = await conversationOf()
-      const relay = relayOf()
+      // Built here from the queue that is spied: several modules provide an OutboundQueue, and the
+      // relay of the app holds the one of its own module, which a lookup across modules may not return
+      const relay = freshRelay()
       const outbound = jest
         .spyOn(app.get(OutboundQueue, { strict: false }), 'enqueueTyping')
         .mockRejectedValueOnce(new Error('redis down'))
