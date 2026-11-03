@@ -6,7 +6,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { DigestFrequency } from '@platform/core/domain'
+import { DigestFrequency, MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   NotificationLimits,
@@ -628,6 +628,33 @@ describe('Notifications', () => {
         [ctx.adminA.id, ctx.agentA.id, ctx.viewerA.id].sort()
       )
     })
+  })
+
+  it('does not send to a member of the store who is suspended', async () => {
+    jest
+      .spyOn(app.get(RealtimeService, { strict: false }), 'toStoreUser')
+      .mockImplementation(() => undefined)
+    const setViewer = (status: MembershipStatus) =>
+      owner.membership.updateMany({
+        where: { userId: ctx.viewerA.id, storeId: ctx.storeA.id },
+        data: { status }
+      })
+    await owner.notification.deleteMany({ where: { storeId: ctx.storeA.id } })
+    await setViewer(MembershipStatus.SUSPENDED)
+    try {
+      await service.sendToStore({ storeId: ctx.storeA.id, type: NotificationTypes.EXPORT_READY })
+    } finally {
+      await setViewer(MembershipStatus.ACTIVE)
+    }
+
+    const told = (
+      await owner.notification.findMany({
+        where: { storeId: ctx.storeA.id },
+        select: { userId: true }
+      })
+    ).map(row => row.userId)
+    expect(told).toEqual(expect.arrayContaining([ctx.adminA.id, ctx.agentA.id]))
+    expect(told).not.toContain(ctx.viewerA.id)
   })
 
   describe('the preferences', () => {

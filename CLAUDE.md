@@ -122,7 +122,7 @@ same checks and the merge waits for it.
    `@RequirePermissions()` decorator, unless it is explicitly public
    (magic-link auth endpoints, invitation preview and accept, channel webhooks,
    widget endpoints, carrier webhooks, the Resend webhook, health checks), or it is the agents' websocket gateway, which checks the token, the store and the permissions itself (`events.gateway.ts`), or it is a plugin route under
-   `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead. The Stripe
+   `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead, or it is a route of the person's own account (`@SkipTenant`; the id always comes from the token, never from the body). The Stripe
    webhook joins the public list in Phase 2.
 6. **No user-facing string is hardcoded in any language.** Always an i18n key.
 7. **Logger is Pino.** Never `console.log`, never Winston.

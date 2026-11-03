@@ -6,10 +6,12 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
+import { ConversationStatus, MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 
 import { MembersService } from '../../apps/api/src/modules/team/members.service'
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
+import { createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -426,6 +428,258 @@ describe('The team of a store', () => {
       )
 
       expect(response.status).toBe(403)
+    })
+  })
+
+  describe('suspending and reactivating a member', () => {
+    const suspend = (membershipId: string, as: Actor = ctx.adminA) =>
+      api(app, as, ctx.storeA).post(ApiRoutes.settings.memberSuspend(membershipId))
+    const reactivate = (membershipId: string, as: Actor = ctx.adminA) =>
+      api(app, as, ctx.storeA).post(ApiRoutes.settings.memberReactivate(membershipId))
+    const statusOf = async (membershipId: string) =>
+      (await owner.membership.findUniqueOrThrow({ where: { id: membershipId } })).status
+
+    it('ends their access at once, with a valid token and a code of its own, and keeps the record', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      // Warm the cache: the answer to a request must change at once, not after its 30 seconds
+      expect((await api(app, actor, ctx.storeA).get(ApiRoutes.members.directory)).status).toBe(200)
+
+      const response = await suspend(membershipId)
+
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({
+        id: membershipId,
+        status: MembershipStatus.SUSPENDED,
+        role: { name: RoleNames.AGENT }
+      })
+      expect(await tenants().resolve(actor.id, ctx.storeA.id)).toBeNull()
+      expect((await tenants().access(actor.id, ctx.storeA.id)).status).toBe('suspended')
+      const next = await api(app, actor, ctx.storeA).get(ApiRoutes.members.directory)
+      expect(next.status).toBe(403)
+      expect((next.body as ErrorBody).error.code).toBe(ErrorCodes.TENANT_MEMBER_SUSPENDED)
+      const row = await owner.membership.findUniqueOrThrow({ where: { id: membershipId } })
+      expect(row).toMatchObject({ status: MembershipStatus.SUSPENDED, revokedAt: null })
+      expect(await auditEntry(AuditAction.MEMBER_SUSPENDED, membershipId)).not.toBeNull()
+    })
+
+    it('answers a stranger and a suspended member differently only to the suspended member', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      await suspend(membershipId)
+
+      const ofAnotherStore = await api(app, actor, ctx.storeB).get(ApiRoutes.members.directory)
+
+      expect((ofAnotherStore.body as ErrorBody).error.code).toBe(ErrorCodes.TENANT_ACCESS_DENIED)
+    })
+
+    it('is listed with its status, and left out of the directory of who can be given work', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      await suspend(membershipId)
+
+      const list = await asAdmin().get(ApiRoutes.settings.members)
+      const directory = await asAdmin().get(ApiRoutes.members.directory)
+
+      const listed = (list.body as (MemberBody & { status: string })[]).find(
+        row => row.id === membershipId
+      )
+      expect(listed?.status).toBe(MembershipStatus.SUSPENDED)
+      expect((directory.body as { id: string }[]).map(row => row.id)).not.toContain(actor.id)
+    })
+
+    it('leaves their open conversations unassigned, in the queue with their history', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      const mine = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: actor.id,
+        status: ConversationStatus.OPEN
+      })
+      const theirs = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: ctx.agentA.id
+      })
+
+      const finished = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: actor.id,
+        status: ConversationStatus.RESOLVED
+      })
+
+      await suspend(membershipId)
+
+      // What was resolved keeps who handled it: they come back, and the record does not change
+      const kept = await owner.conversation.findUniqueOrThrow({ where: { id: finished.id } })
+      expect(kept.assignedTo).toBe(actor.id)
+      const after = await owner.conversation.findUniqueOrThrow({ where: { id: mine.id } })
+      expect(after).toMatchObject({ assignedTo: null, status: ConversationStatus.OPEN })
+      const others = await owner.conversation.findUniqueOrThrow({ where: { id: theirs.id } })
+      expect(others.assignedTo).toBe(ctx.agentA.id)
+    })
+
+    it('leaves their other stores as they were', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      await owner.membership.create({
+        data: {
+          userId: actor.id,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          roleId: ctx.roleIds[RoleNames.AGENT],
+          status: MembershipStatus.ACTIVE
+        }
+      })
+
+      await suspend(membershipId)
+
+      expect(await tenants().resolve(actor.id, ctx.storeA2.id)).not.toBeNull()
+      const there = await api(app, actor, ctx.storeA2).get(ApiRoutes.members.directory)
+      expect(there.status).toBe(200)
+    })
+
+    it('is not done to oneself', async () => {
+      const own = await owner.membership.findFirstOrThrow({
+        where: { userId: ctx.adminA.id, storeId: ctx.storeA.id }
+      })
+
+      const response = await suspend(own.id)
+
+      expect(response.status).toBe(403)
+      expect(await statusOf(own.id)).toBe(MembershipStatus.ACTIVE)
+    })
+
+    describe('the last Admin', () => {
+      // A caller with every permission, who is not an Admin: only the last-Admin rule can stop them
+      const everything = async () => {
+        const roleId = await roleWith(ctx.storeA2.id, Object.values(Permissions))
+        return member(roleId, { id: ctx.storeA2.id, org: ctx.orgA.id })
+      }
+      const soleAdmin = () =>
+        owner.membership.findFirstOrThrow({
+          where: { userId: ctx.adminA2.id, storeId: ctx.storeA2.id }
+        })
+
+      it('cannot be suspended', async () => {
+        const caller = await everything()
+        const target = await soleAdmin()
+
+        const response = await api(app, caller.actor, ctx.storeA2).post(
+          ApiRoutes.settings.memberSuspend(target.id)
+        )
+
+        expect(response.status).toBe(409)
+        expect((response.body as ErrorBody).error.code).toBe(
+          ErrorCodes.TENANT_CANNOT_REMOVE_LAST_ADMIN
+        )
+        expect(await statusOf(target.id)).toBe(MembershipStatus.ACTIVE)
+      })
+
+      it('is still the last one when the other Admin is suspended, but may be suspended while another can enter', async () => {
+        const caller = await everything()
+        const target = await soleAdmin()
+        const other = await member(ctx.roleIds[RoleNames.ADMIN], {
+          id: ctx.storeA2.id,
+          org: ctx.orgA.id
+        })
+        const asCaller = (id: string) =>
+          api(app, caller.actor, ctx.storeA2).post(ApiRoutes.settings.memberSuspend(id))
+
+        // Two Admins can enter: one may be suspended
+        const first = await asCaller(other.membershipId)
+        // The other is out now, so the first is the only one who can enter
+        const second = await asCaller(target.id)
+
+        expect(first.status).toBe(200)
+        expect(second.status).toBe(409)
+        expect(await statusOf(target.id)).toBe(MembershipStatus.ACTIVE)
+        await owner.membership.update({
+          where: { id: other.membershipId },
+          data: { status: MembershipStatus.REVOKED, revokedAt: new Date() }
+        })
+      })
+    })
+
+    it('does not suspend a member who can do more than the caller', async () => {
+      const boss = await manager()
+      const admin = await member(ctx.roleIds[RoleNames.ADMIN])
+
+      const response = await suspend(admin.membershipId, boss.actor)
+
+      expect(response.status).toBe(403)
+      expect(await statusOf(admin.membershipId)).toBe(MembershipStatus.ACTIVE)
+    })
+
+    it('is refused to a member without the permission, and for a member of another store', async () => {
+      const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+
+      const byAgent = await suspend(membershipId, ctx.agentA)
+      const crossStore = await api(app, ctx.adminB, ctx.storeB).post(
+        ApiRoutes.settings.memberSuspend(membershipId)
+      )
+
+      expect(byAgent.status).toBe(403)
+      expect(crossStore.status).toBe(404)
+      expect(await statusOf(membershipId)).toBe(MembershipStatus.ACTIVE)
+    })
+
+    it('answers a conflict when the member is already suspended, and when reactivating one who is not', async () => {
+      const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+
+      const notSuspended = await reactivate(membershipId)
+      await suspend(membershipId)
+      const twice = await suspend(membershipId)
+
+      expect(notSuspended.status).toBe(409)
+      expect(twice.status).toBe(409)
+    })
+
+    it('gives the access back with exactly the role they had', async () => {
+      const roleId = await roleWith(ctx.storeA.id, [
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.MESSAGES_VIEW
+      ])
+      const { actor, membershipId } = await member(roleId)
+      await suspend(membershipId)
+
+      const response = await reactivate(membershipId)
+
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({ status: MembershipStatus.ACTIVE, role: { id: roleId } })
+      const access = await tenants().resolve(actor.id, ctx.storeA.id)
+      expect(access?.membership.roleId).toBe(roleId)
+      expect((await api(app, actor, ctx.storeA).get(ApiRoutes.members.directory)).status).toBe(200)
+      expect(await auditEntry(AuditAction.MEMBER_REACTIVATED, membershipId)).not.toBeNull()
+    })
+
+    it('does not bring back a member whose role holds what the caller lacks', async () => {
+      const boss = await manager()
+      const admin = await member(ctx.roleIds[RoleNames.ADMIN])
+      await suspend(admin.membershipId)
+
+      const response = await reactivate(admin.membershipId, boss.actor)
+
+      expect(response.status).toBe(403)
+      expect(await statusOf(admin.membershipId)).toBe(MembershipStatus.SUSPENDED)
+    })
+
+    it('keeps the role while suspended, and can still be removed', async () => {
+      const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      await suspend(membershipId)
+
+      const changed = await asAdmin()
+        .patch(ApiRoutes.settings.memberById(membershipId))
+        .send({ roleId: ctx.roleIds[RoleNames.VIEWER] })
+      const removed = await asAdmin().delete(ApiRoutes.settings.memberById(membershipId))
+
+      expect(changed.status).toBe(409)
+      expect(removed.status).toBe(NO_CONTENT)
+      expect(await statusOf(membershipId)).toBe('REVOKED')
+    })
+
+    it('does not let the role be deleted while a suspended member holds it', async () => {
+      const roleId = await roleWith(ctx.storeA.id, [Permissions.CONVERSATIONS_VIEW])
+      const { membershipId } = await member(roleId)
+      await suspend(membershipId)
+
+      const response = await asAdmin().delete(ApiRoutes.settings.roleById(roleId))
+
+      expect(response.status).toBe(409)
     })
   })
 

@@ -1306,6 +1306,22 @@ describe('The conversations of a store', () => {
       expect((await row(conversation.id)).assignedTo).toBeNull()
     })
 
+    it('does not give a conversation to a member who is suspended', async () => {
+      const suspended = await customRole('suspended-member', [Permissions.CONVERSATIONS_VIEW])
+      await owner.membership.updateMany({
+        where: { userId: suspended.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+      const conversation = await mk()
+
+      const response = await asAdmin()
+        .patch(ApiRoutes.conversations.assign(conversation.id))
+        .send({ userId: suspended.id })
+
+      expect(response.status).toBe(NOT_FOUND)
+      expect((await row(conversation.id)).assignedTo).toBeNull()
+    })
+
     it('never leaves a conversation with a member who is being removed at the same moment', async () => {
       for (let round = 0; round < 5; round += 1) {
         const leaver = await customRole(`racing-${round}`, [Permissions.CONVERSATIONS_VIEW])

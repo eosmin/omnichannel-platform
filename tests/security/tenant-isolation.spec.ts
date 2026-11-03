@@ -10,6 +10,7 @@ import {
   ConversationStatus,
   DeliveryStatus,
   InvitationStatus,
+  MembershipStatus,
   MessageType,
   RoutingActionTypes
 } from '@platform/core/domain'
@@ -458,6 +459,32 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.membership.findUnique({ where: { id }, select: { roleId: true } }))?.roleId !==
       viewerRoleId
+  },
+  {
+    // Suspending is another way to act on a membership by its id: a stranger's gets a 404 and the
+    // member of the other store keeps their access
+    name: 'membershipSuspend',
+    create: (owner, { storeId }) => createMember(owner, { storeId, prefix }),
+    modify: { path: ApiRoutes.settings.memberSuspend, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.membership.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      MembershipStatus.ACTIVE
+  },
+  {
+    // And so is reactivating: it must not give the access back to a member of another store
+    name: 'membershipReactivate',
+    create: async (owner, { storeId }) => {
+      const made = await createMember(owner, { storeId, prefix })
+      await owner.membership.update({
+        where: { id: made.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+      return made
+    },
+    modify: { path: ApiRoutes.settings.memberReactivate, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.membership.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      MembershipStatus.SUSPENDED
   },
   {
     // Resending is a second way to act on an invitation by its id: a stranger's gets a 404 and no mail

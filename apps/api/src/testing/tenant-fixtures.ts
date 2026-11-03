@@ -20,7 +20,7 @@ export interface TenantFixtures {
     userId: string,
     store: TestStore,
     roleId: string,
-    status?: 'ACTIVE' | 'REVOKED'
+    status?: 'ACTIVE' | 'REVOKED' | 'SUSPENDED'
   ): Promise<string>
   setPermissions(roleId: string, permissions: readonly Permission[]): Promise<void>
   removeMember(membershipId: string): Promise<void>
@@ -75,7 +75,7 @@ export function tenantFixtures(asOwner: AsOwner, runId: string): TenantFixtures 
       userId: string,
       store: TestStore,
       roleId: string,
-      status: 'ACTIVE' | 'REVOKED' = 'ACTIVE'
+      status: 'ACTIVE' | 'REVOKED' | 'SUSPENDED' = 'ACTIVE'
     ): Promise<string> {
       const membershipId = randomUUID()
       await asOwner(client =>

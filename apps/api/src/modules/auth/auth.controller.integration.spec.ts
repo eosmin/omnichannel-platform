@@ -442,6 +442,7 @@ describe('AuthController', () => {
           'locale',
           'memberships',
           'name',
+          'suspendedStores',
           'timezone'
         ].sort()
       )
@@ -471,6 +472,30 @@ describe('AuthController', () => {
           ]) as string[]
         }
       ])
+    })
+
+    it('names a store where the person is suspended apart, never among the ones they can use', async () => {
+      const { user, accessToken } = await login()
+      const usable = await test.tenants.createStore()
+      const suspended = await test.tenants.createStore()
+      const roleId = await test.tenants.createRole(usable.storeId, [Permissions.MESSAGES_VIEW])
+      await test.tenants.addMember(user.id, usable, roleId)
+      const suspendedRole = await test.tenants.createRole(suspended.storeId, [
+        Permissions.MESSAGES_VIEW
+      ])
+      await test.tenants.addMember(user.id, suspended, suspendedRole, 'SUSPENDED')
+
+      const reply = await call<{
+        memberships: { storeId: string }[]
+        suspendedStores: { storeId: string; storeName: string }[]
+      }>('GET', ApiRoutes.auth.me, { token: accessToken })
+
+      expect(reply.body.memberships.map(row => row.storeId)).toEqual([usable.storeId])
+      expect(reply.body.suspendedStores).toEqual([
+        { storeId: suspended.storeId, storeName: expect.any(String) as string }
+      ])
+      // Nothing of the role leaves with it: a suspended store carries no permission
+      expect(JSON.stringify(reply.body.suspendedStores)).not.toContain(Permissions.MESSAGES_VIEW)
     })
 
     it('leaves out a revoked membership and the stores of other users', async () => {

@@ -312,6 +312,9 @@ export const ApiRoutes = {
     preferences: '/settings/preferences', // GET, and PUT of the keys that change (the others keep their value)
     members: '/settings/team/members',
     memberById: (id: string) => `/settings/team/members/${id}`,
+    // POST: the member keeps the role and the history but cannot enter the store until reactivated
+    memberSuspend: (id: string) => `/settings/team/members/${id}/suspend`,
+    memberReactivate: (id: string) => `/settings/team/members/${id}/reactivate`,
     invitations: '/settings/team/invitations',
     invitationById: (id: string) => `/settings/team/invitations/${id}`,
     // POST: a new token, the old link stops working and the email goes out again

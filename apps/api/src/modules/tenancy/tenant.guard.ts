@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core'
 import { z } from 'zod'
 
 import { AuditAction } from '@platform/core/audit'
-import { TenantHeaders } from '@platform/core/auth'
+import { AccessDenialReasons, TenantAccessStatuses, TenantHeaders } from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException, unauthorized } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
@@ -55,20 +55,32 @@ export class TenantGuard implements CanActivate {
     }
     const storeId = parsed.data.toLowerCase()
 
-    const tenant = await this.tenants.resolve(user.id, storeId)
-    if (tenant === null) {
+    const access = await this.tenants.access(user.id, storeId)
+    if (access.status !== TenantAccessStatuses.GRANTED) {
       await this.denials.record({
         action: AuditAction.TENANT_ACCESS_DENIED,
         userId: user.id,
         request,
-        metadata: { requestedStoreId: storeId }
+        metadata: {
+          requestedStoreId: storeId,
+          ...(access.status === TenantAccessStatuses.SUSPENDED
+            ? { reason: AccessDenialReasons.SUSPENDED }
+            : {})
+        }
       })
+      // A suspended member is told why (they belong to the store, so nothing is revealed about it);
+      // a stranger and a store that does not exist get the same answer
       throw new PlatformException(
-        ErrorCodes.TENANT_ACCESS_DENIED,
-        'No access to this store',
+        access.status === TenantAccessStatuses.SUSPENDED
+          ? ErrorCodes.TENANT_MEMBER_SUSPENDED
+          : ErrorCodes.TENANT_ACCESS_DENIED,
+        access.status === TenantAccessStatuses.SUSPENDED
+          ? 'Access to this store is suspended'
+          : 'No access to this store',
         HttpStatusCodes.FORBIDDEN
       )
     }
+    const tenant = access.tenant
 
     // Copies that cannot be changed: a handler that edits what it was given must not alter what
     // another request of the same user in the same store is reading

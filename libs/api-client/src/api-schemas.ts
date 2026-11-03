@@ -33,7 +33,9 @@ export const accountProfileSchema = z.object({
   locale: z.string(),
   timezone: z.string().nullable(),
   density: z.string(),
-  memberships: z.array(accountMembershipSchema)
+  memberships: z.array(accountMembershipSchema),
+  // Stores the person belongs to and may not enter for now (an older api sends none)
+  suspendedStores: z.array(z.object({ storeId: z.string(), storeName: z.string() })).default([])
 })
 export type AccountProfile = z.output<typeof accountProfileSchema>
 

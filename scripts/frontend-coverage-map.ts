@@ -217,6 +217,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'settings.preferences': { step: '3.6' },
   'settings.members': { step: '3.6' },
   'settings.memberById': { step: '3.6' },
+  'settings.memberSuspend': { step: '3.6' },
+  'settings.memberReactivate': { step: '3.6' },
   'settings.invitations': { step: '3.6' },
   'settings.invitationById': { step: '3.6' },
   'settings.invitationResend': { step: '3.6' },

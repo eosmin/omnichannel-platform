@@ -12,6 +12,7 @@ import {
 } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
+import { MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { EmailTemplates } from '@platform/core/queues'
 
@@ -169,6 +170,26 @@ describe('Inviting to a store', () => {
       expect((created.body as InvitationBody).email).toBe(email)
       expect(member.status).toBe(409)
       expect((member.body as ErrorBody).error.code).toBe(ErrorCodes.TENANT_MEMBER_ALREADY_EXISTS)
+    })
+
+    it('refuses an address that is a suspended member, and says to reactivate it', async () => {
+      const suspended = await createActor(owner, app, {
+        prefix,
+        name: `suspendedInvitee${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      await owner.membership.updateMany({
+        where: { userId: suspended.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+
+      const response = await invite(suspended.email)
+
+      expect(response.status).toBe(409)
+      expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.TENANT_INVITEE_SUSPENDED)
+      expect(emailsOf(app).to(suspended.email.toLowerCase())).toHaveLength(0)
     })
 
     it('replaces the pending invitation of the same address: the old link stops being valid', async () => {

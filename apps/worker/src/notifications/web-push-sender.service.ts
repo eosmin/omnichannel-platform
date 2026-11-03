@@ -5,6 +5,7 @@ import { WebPushError } from 'web-push'
 import { z } from 'zod'
 
 import { PrismaService } from '@platform/core/database'
+import { MembershipStatus } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import {
   NotificationSeverity,
@@ -73,6 +74,7 @@ export class WebPushSender {
       where: { id: notificationId, userId },
       select: {
         id: true,
+        storeId: true,
         type: true,
         severity: true,
         messageKey: true,
@@ -85,6 +87,17 @@ export class WebPushSender {
     })
     // Gone, or read in the app while the job waited: the push has no reason left
     if (found === null || found.readAt !== null) return
+    // The browser is the person's, not the store's: a push of a store they can no longer enter (a
+    // suspended or removed member, queued before it happened) would still reach their screen
+    const member = await this.prisma.client.membership.count({
+      where: {
+        userId,
+        storeId: found.storeId,
+        status: MembershipStatus.ACTIVE,
+        revokedAt: null
+      }
+    })
+    if (member === 0) return
 
     const parsed = rowSchema.safeParse(found)
     if (!parsed.success) throw new UnrecoverableError('the notification does not fit a push')

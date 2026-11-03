@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 
+import type { ErrorCode } from '@platform/core/errors'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import {
@@ -58,6 +59,17 @@ export class RealtimeService {
     payload: RealtimeEventMap[E]
   ): void {
     this.send(RoomNames.storeUser(storeId, userId), event, payload)
+  }
+
+  // Closes every socket of one user in one store, on every instance, after telling them why. The
+  // others of the user (another store) stay. A socket that connects again is checked like any other,
+  // so this is only the speed of the effect: the access check is what keeps them out.
+  closeStoreUser(storeId: string, userId: string, code: ErrorCode): void {
+    const server = this.server
+    if (server === null) return
+    const room = RoomNames.storeUser(storeId, userId)
+    this.send(room, RealtimeEvents.AUTH_ERROR, { code })
+    server.in(room).disconnectSockets(true)
   }
 
   // The sockets of the store whose user passes `mayReceive`, whichever api instance holds them. This

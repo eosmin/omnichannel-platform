@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt'
 import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
-import { Permissions } from '@platform/core/auth'
+import { Permissions, TenantAccessStatuses } from '@platform/core/auth'
 import { toAuthenticatedUser } from '@platform/core/auth-module'
 import { CacheKeys } from '@platform/core/cache'
 import { PrismaService } from '@platform/core/database'
@@ -12,7 +12,7 @@ import { canSeeConversation, isHiddenStatus, viewerOf } from '@platform/core/mes
 import { SocketLimits } from '@platform/core/realtime'
 import { REDIS_CLIENT } from '@platform/core/redis'
 
-import { TenantContextService } from '../tenancy'
+import { type TenantAccess, TenantContextService } from '../tenancy'
 
 import type { SocketData } from './realtime.types'
 
@@ -35,6 +35,15 @@ export class SocketRefused extends Error {
   ) {
     super(code)
   }
+}
+
+// What a socket that is not let in is told: a suspended member is named, anybody else is a stranger
+function refusalOf(
+  access: Exclude<TenantAccess, { status: typeof TenantAccessStatuses.GRANTED }>
+): ErrorCode {
+  return access.status === TenantAccessStatuses.SUSPENDED
+    ? ErrorCodes.TENANT_MEMBER_SUSPENDED
+    : ErrorCodes.TENANT_ACCESS_DENIED
 }
 
 // Who a socket is and what it may see. The same checks as a request (the access token, an active
@@ -71,13 +80,14 @@ export class SocketAccessService {
     )
 
     const storeId = parsed.data.storeId.toLowerCase()
-    const tenant = await this.tenants.resolve(user.id, storeId)
-    if (tenant === null) {
-      throw new SocketRefused(ErrorCodes.TENANT_ACCESS_DENIED, {
+    const access = await this.tenants.access(user.id, storeId)
+    if (access.status !== TenantAccessStatuses.GRANTED) {
+      throw new SocketRefused(refusalOf(access), {
         userId: user.id,
         requestedStoreId: storeId
       })
     }
+    const tenant = access.tenant
 
     // The users are not tenant data: no tenant context is needed to read one
     const row = await this.prisma.client.user.findUnique({
@@ -101,8 +111,9 @@ export class SocketAccessService {
   // good goes on.
   async refresh(data: SocketData): Promise<SocketData> {
     if (Date.now() >= data.tokenExpiresAt) throw new SocketRefused(ErrorCodes.AUTH_TOKEN_EXPIRED)
-    const tenant = await this.tenants.resolve(data.userId, data.storeId)
-    if (tenant === null) throw new SocketRefused(ErrorCodes.TENANT_ACCESS_DENIED)
+    const access = await this.tenants.access(data.userId, data.storeId)
+    if (access.status !== TenantAccessStatuses.GRANTED) throw new SocketRefused(refusalOf(access))
+    const tenant = access.tenant
     return { ...data, organizationId: tenant.store.organizationId, held: tenant.permissions }
   }
 

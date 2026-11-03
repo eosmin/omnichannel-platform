@@ -2,7 +2,7 @@ import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
 import type { PrismaService } from '@platform/core/database'
-import { DigestFrequency } from '@platform/core/domain'
+import { DigestFrequency, MembershipStatus } from '@platform/core/domain'
 import { TemplateRenderer } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import {
@@ -161,6 +161,31 @@ describe('EmailDigestService', () => {
       const data = addEmail.mock.calls[0]?.[1] as { data: { items: unknown[]; moreCount: number } }
       expect(data.data.items).toHaveLength(DigestLimits.MAX_ITEMS)
       expect(data.data.moreCount).toBe(1)
+    })
+
+    it('leaves out the store of a member who is suspended: their text does not reach the mailbox', async () => {
+      findNotifications.mockResolvedValue([
+        { ...row('n1'), storeId: 's-suspended' },
+        { ...row('n2'), storeId: 's-in' }
+      ])
+      // A table, not a canned answer: what comes back depends on the status the query asks for
+      const table = [
+        { storeId: 's-in', status: MembershipStatus.ACTIVE },
+        { storeId: 's-suspended', status: MembershipStatus.SUSPENDED }
+      ]
+      findMemberships.mockImplementation((args: unknown) => {
+        const { status, storeId } = (
+          args as { where: { status: MembershipStatus; storeId: { in: string[] } } }
+        ).where
+        return Promise.resolve(
+          table.filter(member => member.status === status && storeId.in.includes(member.storeId))
+        )
+      })
+
+      await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+      const data = addEmail.mock.calls[0]?.[1] as { data: { items: unknown[]; moreCount: number } }
+      expect(data.data.items).toHaveLength(1)
     })
 
     it('queues one email with the unread rows, then clears every mark it read', async () => {

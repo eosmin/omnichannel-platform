@@ -598,6 +598,7 @@ describe('The messages of a conversation', () => {
 
     it.each([
       ['whose membership was revoked', { status: MembershipStatus.REVOKED, revokedAt: null }],
+      ['who is suspended', { status: MembershipStatus.SUSPENDED }],
       ['whose membership has a revocation date', { revokedAt: new Date() }]
     ])('refuses a mention of a member %s', async (_name, change) => {
       const { id } = await mk()

@@ -11,7 +11,13 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ensureMembership } from '@platform/core/database-testing'
-import { AuthorType, ChannelIds, ConversationStatus, MessageType } from '@platform/core/domain'
+import {
+  AuthorType,
+  ChannelIds,
+  ConversationStatus,
+  MembershipStatus,
+  MessageType
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { EventsBridge } from '@platform/core/event-bus'
 import { Events, EVENTS_BRIDGE_CHANNEL } from '@platform/core/events'
@@ -295,6 +301,24 @@ describe('The realtime gateway', () => {
 
       expect(await refusedWith({ token: expired, storeId: ctx.storeA.id })).toBe(
         ErrorCodes.AUTH_TOKEN_EXPIRED
+      )
+    })
+
+    it('is refused to a member who is suspended, and says so', async () => {
+      const suspended = await createActor(owner, app, {
+        prefix,
+        name: 'suspendedHandshake',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      await owner.membership.updateMany({
+        where: { userId: suspended.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+
+      expect(await refusedWith({ token: suspended.token, storeId: ctx.storeA.id })).toBe(
+        ErrorCodes.TENANT_MEMBER_SUSPENDED
       )
     })
 
@@ -1510,6 +1534,64 @@ describe('The realtime gateway', () => {
 
       expect(probe.of(RealtimeEvents.AUTH_ERROR)).toEqual([
         { event: RealtimeEvents.AUTH_ERROR, payload: { code: ErrorCodes.TENANT_ACCESS_DENIED } }
+      ])
+    })
+
+    it('is disconnected at once when its user is suspended, with no heartbeat, and only in that store', async () => {
+      const member = await createActor(owner, app, {
+        prefix,
+        name: 'suspendedLive',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      const row = await owner.membership.findFirstOrThrow({
+        where: { userId: member.id, storeId: ctx.storeA.id }
+      })
+      await ensureMembership(owner, {
+        userId: member.id,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA2.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      const inStore = await asA(member)
+      const elsewhere = await connect(member.token, ctx.storeA2.id)
+
+      const response = await api(app, ctx.adminA, ctx.storeA).post(
+        ApiRoutes.settings.memberSuspend(row.id)
+      )
+      expect(response.status).toBe(200)
+      await until(() => !inStore.socket.connected)
+
+      expect(inStore.of(RealtimeEvents.AUTH_ERROR)).toEqual([
+        { event: RealtimeEvents.AUTH_ERROR, payload: { code: ErrorCodes.TENANT_MEMBER_SUSPENDED } }
+      ])
+      // Their socket in another store is still theirs
+      expect(elsewhere.socket.connected).toBe(true)
+    })
+
+    it('is disconnected at its next heartbeat when the suspension was written behind the api', async () => {
+      const member = await createActor(owner, app, {
+        prefix,
+        name: 'suspendedBeat',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.AGENT]
+      })
+      const probe = await asA(member)
+      await owner.membership.updateMany({
+        where: { userId: member.id, storeId: ctx.storeA.id },
+        data: { status: MembershipStatus.SUSPENDED }
+      })
+      await app
+        .get(TenantContextService, { strict: false })
+        .invalidateUser(member.id, ctx.storeA.id)
+
+      probe.socket.emit(RealtimeEvents.HEARTBEAT, {})
+      await until(() => !probe.socket.connected)
+
+      expect(probe.of(RealtimeEvents.AUTH_ERROR)).toEqual([
+        { event: RealtimeEvents.AUTH_ERROR, payload: { code: ErrorCodes.TENANT_MEMBER_SUSPENDED } }
       ])
     })
 

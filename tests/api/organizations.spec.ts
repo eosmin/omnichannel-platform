@@ -153,6 +153,32 @@ describe('Organizations and stores', () => {
       )
     })
 
+    it('does not list a store where the caller is suspended, whatever their role there', async () => {
+      const both = await createActor(owner, app, {
+        prefix,
+        name: next('suspendedBoth'),
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.ADMIN]
+      })
+      await ensureMembership(owner, {
+        userId: both.id,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA2.id,
+        roleId: ctx.roleIds[RoleNames.ADMIN]
+      })
+      await owner.membership.updateMany({
+        where: { userId: both.id, storeId: ctx.storeA2.id },
+        data: { status: 'SUSPENDED' }
+      })
+
+      const response = await api(app, both, ctx.storeA).get(ApiRoutes.organizations.stores)
+
+      const ids = (response.body as StoreBody[]).map(store => store.id)
+      expect(ids).toContain(ctx.storeA.id)
+      expect(ids).not.toContain(ctx.storeA2.id)
+    })
+
     it('is refused to a member without the permission', async () => {
       const response = await api(app, ctx.viewerA, ctx.storeA).get(ApiRoutes.organizations.stores)
 
