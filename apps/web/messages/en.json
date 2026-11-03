@@ -1432,6 +1432,12 @@
     "stale": "The list could not be refreshed. What you see may be out of date."
   },
   "settings": {
+    "unsaved": {
+      "title": "Leave without saving?",
+      "body": "You have changes that were not saved. If you leave this page they are lost.",
+      "stay": "Stay on this page",
+      "leave": "Leave and lose them"
+    },
     "channels": {
       "connect": {
         "whatsapp": {
@@ -1925,6 +1931,7 @@
           "tooManyUsers": "Too many people.",
           "keywordEmpty": "A word or phrase has nothing to look for."
         },
+        "noChannels": "This store has no connected channel yet. Connect one in Settings, Channels.",
         "listsUnavailable": "Some people and tags cannot be shown because you cannot see conversations. What the rule already holds is kept."
       }
     },

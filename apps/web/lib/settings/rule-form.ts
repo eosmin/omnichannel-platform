@@ -1,4 +1,10 @@
-import { plainText, RoutingActionTypes, RoutingLimits } from '@platform/core/domain'
+import type { ChannelDirectoryEntryView } from '@platform/api-client'
+import {
+  ChannelConnectionStatus,
+  plainText,
+  RoutingActionTypes,
+  RoutingLimits
+} from '@platform/core/domain'
 
 import type { RuleAction, RuleConditions, RuleInput, RuleView } from './routing-requests'
 
@@ -123,4 +129,30 @@ export function inputOf(draft: RuleDraft): RuleInput {
     conditions: conditionsOf(draft),
     action: actionOf(draft)
   }
+}
+
+// A channel a rule can name: its id, and the name its plugin gave itself (drawn only for a channel
+// that is not an official one, which has its own translated name)
+export interface ChannelChoice {
+  id: string
+  name: string
+}
+
+// The channels the store has a live account on, once each, plus those the rule already names (a
+// channel since disconnected stays in the rule until it is saved again, and must be removable).
+export function channelChoicesOf(
+  directory: readonly ChannelDirectoryEntryView[],
+  selected: readonly string[]
+): ChannelChoice[] {
+  const choices = new Map<string, ChannelChoice>()
+  for (const entry of directory) {
+    if (entry.status === String(ChannelConnectionStatus.DISCONNECTED)) continue
+    if (!choices.has(entry.pluginId)) {
+      choices.set(entry.pluginId, { id: entry.pluginId, name: entry.pluginName })
+    }
+  }
+  for (const id of selected) {
+    if (!choices.has(id)) choices.set(id, { id, name: id })
+  }
+  return [...choices.values()]
 }

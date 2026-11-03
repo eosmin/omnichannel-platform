@@ -358,23 +358,34 @@ describe('Inviting to a store', () => {
     })
 
     it('does not bring back an invitation that was revoked while the resend was on its way', async () => {
-      const email = newEmail()
-      const first = (await invite(email)).body as InvitationBody
-      await ageInvitation(first.id)
+      // Several rounds, so that both orders of the two requests are likely to happen
+      for (let round = 0; round < 5; round += 1) {
+        const email = newEmail()
+        const first = (await invite(email)).body as InvitationBody
+        await ageInvitation(first.id)
 
-      const [revoked, resent] = await Promise.all([
-        asAdmin().delete(ApiRoutes.settings.invitationById(first.id)),
-        resend(first.id)
-      ])
+        const [revoked, resent] = await Promise.all([
+          asAdmin().delete(ApiRoutes.settings.invitationById(first.id)),
+          resend(first.id)
+        ])
 
-      // The revoke wins (204) or finds the invitation already replaced by the resend (404)
-      expect([204, 404]).toContain(revoked.status)
-      // Either the resend came first (and its new invitation is the only pending one) or it found nothing
-      const pending = await owner.invitation.count({
-        where: { storeId: ctx.storeA.id, email, status: 'PENDING' }
-      })
-      expect(pending).toBe(resent.status === 200 ? 1 : 0)
-      expect([200, 404]).toContain(resent.status)
+        // The revoke wins (204) or finds the invitation already replaced by the resend (404)
+        expect([204, 404]).toContain(revoked.status)
+        expect([200, 404]).toContain(resent.status)
+        // The invitation that was resent or revoked is never pending again, whatever the order was
+        const old = await owner.invitation.findUniqueOrThrow({ where: { id: first.id } })
+        expect(old.status).not.toBe('PENDING')
+        // What is pending is the new invitation if the resend came first, and nothing if it found none
+        const pending = await owner.invitation.findMany({
+          where: { storeId: ctx.storeA.id, email, status: 'PENDING' },
+          select: { id: true }
+        })
+        if (resent.status === 200) {
+          expect(pending.map(row => row.id)).toEqual([(resent.body as InvitationBody).id])
+        } else {
+          expect(pending).toEqual([])
+        }
+      }
     })
 
     it('audits it as a resend, without the address or the token', async () => {

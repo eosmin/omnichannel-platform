@@ -3,6 +3,7 @@ import { RoutingActionTypes, RoutingLimits } from '@platform/core/domain'
 import type { RuleView } from './routing-requests'
 import {
   actionOf,
+  channelChoicesOf,
   conditionsOf,
   draftOf,
   emptyDraft,
@@ -111,5 +112,60 @@ describe('ruleProblems', () => {
     expect(ruleProblems({ ...valid, channelTypes: channels })).toEqual([
       RuleProblems.TOO_MANY_CHANNELS
     ])
+  })
+})
+
+describe('channelChoicesOf', () => {
+  const entry = (pluginId: string, status: string, pluginName = pluginId) => ({
+    id: `c-${pluginId}-${status}`,
+    pluginId,
+    pluginName,
+    displayName: pluginName,
+    status,
+    capabilities: []
+  })
+
+  it('offers each channel of the store once, however many accounts it has', () => {
+    const directory = [
+      entry('whatsapp', 'active'),
+      entry('whatsapp', 'active'),
+      entry('web_widget', 'active')
+    ]
+
+    expect(channelChoicesOf(directory, []).map(choice => choice.id)).toEqual([
+      'whatsapp',
+      'web_widget'
+    ])
+  })
+
+  it('leaves out a channel whose accounts are all disconnected, and keeps one that has a live account', () => {
+    const directory = [
+      entry('messenger', 'disconnected'),
+      entry('whatsapp', 'disconnected'),
+      entry('whatsapp', 'active')
+    ]
+
+    expect(channelChoicesOf(directory, []).map(choice => choice.id)).toEqual(['whatsapp'])
+  })
+
+  it('keeps a channel the rule already names, so that it can be taken out', () => {
+    const directory = [entry('whatsapp', 'active')]
+
+    expect(channelChoicesOf(directory, ['instagram']).map(choice => choice.id)).toEqual([
+      'whatsapp',
+      'instagram'
+    ])
+  })
+
+  it('does not repeat a channel the rule names and the store has', () => {
+    const directory = [entry('whatsapp', 'active')]
+
+    expect(channelChoicesOf(directory, ['whatsapp'])).toHaveLength(1)
+  })
+
+  it('carries the name the plugin gave itself, for a channel that is not an official one', () => {
+    const directory = [entry('acme_chat', 'active', 'Acme Chat')]
+
+    expect(channelChoicesOf(directory, [])).toEqual([{ id: 'acme_chat', name: 'Acme Chat' }])
   })
 })

@@ -23,6 +23,7 @@ import {
 } from '../../lib/settings/hours-form'
 import type { BusinessHoursView } from '../../lib/settings/hours-requests'
 import { intlValues, withCurrent } from '../../lib/settings/store-form'
+import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import {
   useBusinessHours,
   useSaveBusinessHours,
@@ -68,6 +69,9 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
   const idPrefix = useId()
   // null until the person starts a schedule on a store that has none
   const [draft, setDraft] = useState<BusinessHoursView | null>(saved)
+  // What the form started from or its last save returned: the changes not saved are the difference
+  const [baseline, setBaseline] = useState<BusinessHoursView | null>(saved)
+  useUnsavedChanges(JSON.stringify(draft) !== JSON.stringify(baseline))
   const timezones = useMemo(
     () => withCurrent(intlValues('timeZone'), draft?.timezone ?? browserTimezone()),
     [draft?.timezone]
@@ -104,7 +108,11 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
     event.preventDefault()
     if (!canSave) return
     save.mutate(draft, {
-      onSuccess: () => toast.success(t('saved')),
+      onSuccess: stored => {
+        setBaseline(stored)
+        setDraft(stored)
+        toast.success(t('saved'))
+      },
       onError: error => toast.error(tErrors(errorCodeOf(error)))
     })
   }
