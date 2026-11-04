@@ -294,6 +294,16 @@ export const messageSchema = z.object({
   deliveryStatus: z.string().nullable(),
   deliveryError: z.string().nullable(),
   system: systemLineSchema.nullable(),
+  location: z
+    .object({
+      latitude: z.number(),
+      longitude: z.number(),
+      name: z.string().nullable(),
+      address: z.string().nullable()
+    })
+    .nullable()
+    // A server that does not send it yet (a rolling deploy) draws no card instead of failing the thread
+    .default(null),
   // Untrusted: drawn as a link with its host visible, never fetched
   attachmentUrl: z.string().nullable(),
   reactions: z.array(reactionSchema),

@@ -104,7 +104,7 @@ export function checkMedia(params: SendMediaParams): { kind: MediaKind; contentT
   const kind = mediaKind(contentType)
   // Meta refuses any other type (error 131053): better said here than after an upload
   if (!WhatsAppMediaTypes[kind].includes(contentType)) {
-    refuse(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+    refuse(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED)
   }
   if (!Number.isSafeInteger(params.fileSize) || params.fileSize <= 0) refuse()
   if (params.fileSize > WhatsAppMediaMaxBytes[kind])

@@ -1,6 +1,6 @@
 'use client'
 
-import { Clock, Paperclip, Send } from 'lucide-react'
+import { Clock, CornerUpLeft, Paperclip, Send, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -57,6 +57,8 @@ import { CommandMenu } from './command-menu'
 import { useConversationControls } from './conversation-controls'
 import { type EditState, FailedMessages } from './failed-messages'
 import { TemplateDialog } from './lazy-dialogs'
+import { typeKeyOf } from './quoted-message'
+import { useReplyTarget } from './reply-target'
 
 // What a keydown carries while an input method is composing
 const IME_KEY_CODE = 229
@@ -130,6 +132,8 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       : (channels.data.find(channel => channel.id === conversation.data?.channelConnectionId)
           ?.capabilities ?? [])
   const attachment = useAttachment(storeId, conversationId, channelCapabilities)
+  const { target: replyTarget, cancel: cancelReply, cancelIf: cancelReplyIf } = useReplyTarget()
+  const tQuote = useTranslations('inbox.thread.quote.type')
   const fileInput = useRef<HTMLInputElement>(null)
 
   const mayReply = can(Permissions.MESSAGES_SEND)
@@ -200,6 +204,11 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     )
   }, [draft, picked, keptMode, userId, storeId, conversationId, isDraftLoaded])
 
+  // Answering a message puts the cursor in the box
+  useEffect(() => {
+    if (replyTarget !== null) textarea.current?.focus()
+  }, [replyTarget])
+
   // The dialog belongs to the closed window: when the customer writes and it reopens, the dialog
   // goes, and it must not come back by itself the next time the window closes
   const isWindowClosed = windowState.kind === 'closed'
@@ -225,6 +234,8 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     channelCapabilities === undefined ? ATTACHMENT_ACCEPT : acceptFor(channelCapabilities)
 
   const content = draft.trim()
+  // The quote goes with a reply to the customer; a note does not carry it
+  const quoted = isNote ? undefined : (replyTarget ?? undefined)
   // A resolved or snoozed conversation is reopened, not resolved or snoozed again: the same rule as
   // the buttons of the header
   const status = conversationStatusOf(conversation.data.status)
@@ -275,9 +286,10 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     if (isCommandText) return
     if (isFileBusy || isFileSending) return
     if (isFileReady) {
-      void attachment.send(content).then(sent => {
+      void attachment.send(content, quoted?.messageId).then(sent => {
         // The text is cleared only if the agent has not changed it while the file was going out
         if (sent) {
+          if (quoted !== undefined) cancelReplyIf(quoted.messageId)
           setDraft(current => (current.trim() === content ? '' : current))
           setActiveIndex(0)
           releaseBox()
@@ -286,7 +298,13 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       return
     }
     const mentions = isNote ? mentionedIds(content, picked) : []
-    queue.send({ type: mode, content, ...(mentions.length > 0 ? { mentions } : {}) })
+    queue.send({
+      type: mode,
+      content,
+      ...(mentions.length > 0 ? { mentions } : {}),
+      ...(quoted === undefined ? {} : { replyToMessageId: quoted.messageId })
+    })
+    if (quoted !== undefined) cancelReply()
     setText('')
     setCaret(0)
     setPicked([])
@@ -512,6 +530,29 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               {tMenu('noMatches')}
             </p>
           ) : null}
+          {quoted === undefined ? null : (
+            <div className="bg-muted/60 border-foreground/30 flex items-center gap-2 rounded-md border-l-2 px-2 py-1 text-xs">
+              <CornerUpLeft aria-hidden className="size-3.5 shrink-0" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="font-medium">{t('replying', { author: quoted.author })}</span>
+                <span className="text-muted-foreground truncate">
+                  {quoted.content === null || quoted.content === ''
+                    ? tQuote(typeKeyOf(quoted.type))
+                    : quoted.content}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0 pointer-coarse:size-9"
+                aria-label={t('cancelReply')}
+                onClick={cancelReply}
+              >
+                <X aria-hidden className="size-3.5" />
+              </Button>
+            </div>
+          )}
           {fileState.kind === 'idle' ? null : (
             <AttachmentChip state={fileState} onRemove={attachment.clear} />
           )}

@@ -40,6 +40,8 @@ const pendingMessageSchema = z.object({
   type: z.enum([MessageType.TEXT, MessageType.INTERNAL_NOTE]),
   content: z.string(),
   mentions: z.array(z.string()).default([]),
+  // The message this one answers; absent for a message that quotes none
+  replyToMessageId: z.string().min(1).optional(),
   createdAt: z.string(),
   lastError: z.string().nullable()
 })
@@ -163,7 +165,10 @@ export class OfflineQueue {
           conversationId: message.conversationId,
           content: message.content,
           idempotencyKey: message.id,
-          ...(message.type === MessageType.INTERNAL_NOTE ? { mentions: message.mentions } : {})
+          ...(message.type === MessageType.INTERNAL_NOTE ? { mentions: message.mentions } : {}),
+          ...(message.replyToMessageId === undefined
+            ? {}
+            : { replyToMessageId: message.replyToMessageId })
         })
         this.discard(message.id)
       } catch (error) {

@@ -5,6 +5,7 @@ import {
   MessageType,
   OriginKinds,
   OriginMediaTypes,
+  placeTextOf,
   type ReactionActor,
   ReactionActors,
   WHATSAPP_USER_ID_PATTERN,
@@ -157,12 +158,23 @@ function toReceivedMessage(message: WhatsAppMessage): ReceivedMessage | null {
   }
 
   if (message.type === WhatsAppMessageTypes.LOCATION && message.location) {
-    const { latitude, longitude, name, address } = message.location
+    const { latitude, longitude } = message.location
+    // The name and the address are the customer's text: cut, and cleaned of what hides or reorders text,
+    // so that one long or hostile value never costs the whole message (the core refuses an event whose
+    // metadata or content is too long, and Meta does not send it again)
+    const name = placeTextOf(message.location.name)
+    const address = placeTextOf(message.location.address)
     return {
       ...base,
       type: MessageType.LOCATION,
       content: [name, address].filter(Boolean).join(' - ') || null,
-      metadata: { latitude, longitude }
+      // The place is kept apart from the line of text, so the thread can draw a card
+      metadata: {
+        latitude,
+        longitude,
+        ...(name === null ? {} : { name }),
+        ...(address === null ? {} : { address })
+      }
     }
   }
 

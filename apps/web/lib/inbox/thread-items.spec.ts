@@ -15,6 +15,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   deliveryError: null,
   system: null,
   attachmentUrl: null,
+  location: null,
   reactions: [],
   media: [],
   unavailableFiles: [],
@@ -48,6 +49,15 @@ describe('messageKindOf', () => {
     [{ type: 'TEXT', deletedAt: '2026-10-30T11:00:00.000Z' }, 'deleted']
   ])('draws %j as %s', (over, kind) => {
     expect(messageKindOf(message(over))).toBe(kind)
+  })
+
+  it('draws a location with a place as a card and one without as a line', () => {
+    const place = { latitude: 1, longitude: 2, name: null, address: null }
+    expect(messageKindOf(message({ type: 'LOCATION', location: place }))).toBe('location')
+    expect(messageKindOf(message({ type: 'LOCATION', location: null }))).toBe('neutral')
+    expect(messageKindOf(message({ type: 'LOCATION', location: place, deletedAt: 'x' }))).toBe(
+      'deleted'
+    )
   })
 
   it('draws a system message that has no metadata as a neutral line, not as a bubble', () => {

@@ -112,7 +112,7 @@ export async function createMessage(
     authorType?: AuthorType
     type?: MessageType
     createdAt?: Date
-    metadata?: Record<string, string>
+    metadata?: Record<string, string | number>
   }
 ): Promise<{ id: string }> {
   return owner.message.create({

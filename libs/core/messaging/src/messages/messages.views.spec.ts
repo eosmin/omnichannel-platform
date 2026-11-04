@@ -1,4 +1,4 @@
-import { AuthorType, MediaStatus, MessageType } from '@platform/core/domain'
+import { AuthorType, MediaStatus, MessageLimits, MessageType } from '@platform/core/domain'
 
 import { messageView } from './messages.views'
 
@@ -177,5 +177,84 @@ describe('messageView captionState', () => {
     expect(
       messageView({ ...row(null), captionState: 'failed', deletedAt: new Date() }).captionState
     ).toBeNull()
+  })
+})
+
+describe('messageView location', () => {
+  const located = (metadata: unknown, patch: object = {}): ReturnType<typeof messageView> =>
+    messageView({ ...row(metadata), type: MessageType.LOCATION, content: 'Shop', ...patch })
+
+  it('carries the place of a location with its coordinates, name and address', () => {
+    const view = located({ latitude: 19.4, longitude: -99.1, name: 'Shop', address: 'Street 1' })
+
+    expect(view.location).toEqual({
+      latitude: 19.4,
+      longitude: -99.1,
+      name: 'Shop',
+      address: 'Street 1'
+    })
+  })
+
+  it('has no name or address when the channel gave none', () => {
+    expect(located({ latitude: 0, longitude: 0 }).location).toEqual({
+      latitude: 0,
+      longitude: 0,
+      name: null,
+      address: null
+    })
+  })
+
+  it('cuts a name and an address that are too long, and drops blank ones', () => {
+    const view = located({
+      latitude: 1,
+      longitude: 2,
+      name: 'n'.repeat(1000),
+      address: '   '
+    })
+
+    expect(view.location?.name).toHaveLength(MessageLimits.LOCATION_TEXT_MAX_LENGTH)
+    expect(view.location?.address).toBeNull()
+  })
+
+  it.each([
+    ['no metadata', null],
+    ['no coordinates', { name: 'x' }],
+    ['a latitude out of range', { latitude: 91, longitude: 0 }],
+    ['a longitude out of range', { latitude: 0, longitude: -181 }],
+    ['coordinates that are text', { latitude: '19.4', longitude: '-99.1' }],
+    ['a null coordinate', { latitude: null, longitude: 1 }]
+  ])('is null for %s: the thread draws no card with a made-up place', (_name, metadata) => {
+    expect(located(metadata).location).toBeNull()
+  })
+
+  it('is null for a deleted location and for any other type', () => {
+    const metadata = { latitude: 1, longitude: 2 }
+
+    expect(located(metadata, { deletedAt: new Date('2026-10-30T11:00:00Z') }).location).toBeNull()
+    expect(messageView(row(metadata)).location).toBeNull()
+  })
+
+  it('takes the characters that reorder or hide text out of the name and the address', () => {
+    const view = located({
+      latitude: 1,
+      longitude: 2,
+      name: 'Bank\u202E gnihsihp\u200B',
+      address: '\u2066Street\u2069 1'
+    })
+
+    expect(view.location?.name).toBe('Bank gnihsihp')
+    expect(view.location?.address).toBe('Street 1')
+  })
+
+  it('cuts by characters, never through the middle of one', () => {
+    const view = located({ latitude: 1, longitude: 2, name: '🏠'.repeat(150) })
+
+    expect(view.location?.name).toBe('🏠'.repeat(MessageLimits.LOCATION_TEXT_MAX_LENGTH / 2))
+  })
+
+  it('never carries the rest of the metadata of the channel', () => {
+    const view = located({ latitude: 1, longitude: 2, secret: 'x' })
+
+    expect(JSON.stringify(view)).not.toContain('secret')
   })
 })

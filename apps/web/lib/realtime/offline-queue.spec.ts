@@ -65,6 +65,25 @@ describe('OfflineQueue', () => {
     expect(queue.waiting('u1')).toEqual([])
   })
 
+  it('sends the message a reply quotes, and nothing when it quotes none', async () => {
+    const { queue, send } = setup()
+    queue.enqueue(draft({ replyToMessageId: 'm-quoted' }))
+    queue.enqueue(draft())
+
+    await queue.flush('u1')
+
+    expect(send.mock.calls[0]?.[1]).toMatchObject({ replyToMessageId: 'm-quoted' })
+    expect(send.mock.calls[1]?.[1]).not.toHaveProperty('replyToMessageId')
+  })
+
+  it('keeps the quote of a message that waits in the storage', () => {
+    const { queue, storage } = setup()
+    queue.enqueue(draft({ replyToMessageId: 'm-quoted' }))
+
+    expect(storage.getItem(StorageKeys.PENDING_MESSAGES)).toContain('m-quoted')
+    expect(queue.all()[0]?.replyToMessageId).toBe('m-quoted')
+  })
+
   it('sends the mentions of a note and none for a reply', async () => {
     const { queue, send } = setup()
     send.mockResolvedValue({})

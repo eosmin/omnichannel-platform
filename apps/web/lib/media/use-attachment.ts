@@ -45,7 +45,7 @@ export interface Attachment {
   // Takes the attachment away: cancels an upload that is still going
   clear: () => void
   // Sends the file with its caption as one message. Resolves true when the api took it.
-  send: (caption: string) => Promise<boolean>
+  send: (caption: string, replyToMessageId?: string) => Promise<boolean>
 }
 
 const IDLE: AttachmentState = { kind: 'idle' }
@@ -157,7 +157,7 @@ export function useAttachment(
   )
 
   const send = useCallback(
-    async (caption: string): Promise<boolean> => {
+    async (caption: string, replyToMessageId?: string): Promise<boolean> => {
       const current = run.current
       if (current === null || current.mediaId === null || current.type === null) return false
       const { mediaId, type } = current
@@ -172,6 +172,7 @@ export function useAttachment(
           conversationId,
           mediaIds: [mediaId],
           ...(caption === '' ? {} : { content: caption }),
+          ...(replyToMessageId === undefined ? {} : { replyToMessageId }),
           // One key per attachment: a retry after a timeout gives back the message that exists
           idempotencyKey: current.key
         })
