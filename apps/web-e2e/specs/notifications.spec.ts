@@ -68,7 +68,27 @@ test.describe('the notification center', () => {
 
     // The panel is still open: its link leads to the preferences, and a choice survives a reload
     await checkPreferences(page)
+
+    // Still on the account page, with no navigation to a store: the bell must keep counting
+    await checkBellIsLiveOnAccountPage(page, storeId)
   })
+
+  // Not a test of its own either, for the same budget. The account pages belong to no store, but
+  // their bell counts the last store's notifications, so they open that store's socket too
+  async function checkBellIsLiveOnAccountPage(page: Page, storeId: string): Promise<void> {
+    await expect(page).toHaveURL(AppPaths.account.notifications)
+    // Everything was marked read above, so the bell shows no count yet
+    await expect(page.getByRole('button', { name: bell.open })).toBeVisible()
+    const conversationId = await newConversationIn(storeId)
+    // The page was just reloaded and nothing says when its socket has joined the store: a note
+    // written before that is missed, so it is written again until the count shows
+    await expect(async () => {
+      await writeNote(adminToken, storeId, conversationId, 'while on the account page', [agentId])
+      await expect(page.getByRole('button', { name: /Notifications, \d+ unread/ })).toBeVisible({
+        timeout: 2_000
+      })
+    }).toPass({ timeout: 20_000 })
+  }
 
   // Not a test of its own on purpose: another sign-in of the agent would use the magic-link budget
   // (5 a minute per address) that the specs after this file need

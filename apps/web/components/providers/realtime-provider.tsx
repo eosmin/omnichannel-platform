@@ -32,14 +32,20 @@ async function socketToken({ refresh }: { refresh: boolean }): Promise<string> {
 }
 
 // One socket for the store that is open. It is opened in an effect (never while rendering, where
-// StrictMode would open it twice) and closed when the store or the person changes.
+// StrictMode would open it twice) and closed when the store or the person changes. A null store opens
+// nothing, so a page can keep its tree whether or not there is a store to listen to.
+// `leaveWhenRefused` is for the pages of a store: a refused handshake there means the person cannot
+// stay. A page that belongs to no store (the account pages) passes false: the socket is only there
+// for the bell, so a refusal makes the profile reload and the page stays where it is.
 export function RealtimeProvider({
   storeId,
   userId,
+  leaveWhenRefused = true,
   children
 }: {
-  storeId: string
+  storeId: string | null
   userId: string
+  leaveWhenRefused?: boolean
   children: ReactNode
 }): ReactElement {
   const router = useRouter()
@@ -51,6 +57,7 @@ export function RealtimeProvider({
   const [value, setValue] = useState<RealtimeContextValue | null>(null)
 
   useEffect(() => {
+    if (storeId === null) return undefined
     const status = createConnectionStatusStore()
     const connection = openRealtimeConnection({
       url: webEnv.NEXT_PUBLIC_WS_URL,
@@ -83,8 +90,17 @@ export function RealtimeProvider({
     // A refused handshake that a fresh token did not fix: what the page knows about the person is
     // out of date (they may have been removed from the store). "/" reads it again and sends them to
     // a store they still belong to, or to the login if the session is gone
+    let profileReloaded = false
     const leaveIfSessionOver = (): void => {
       if (status.get() !== ConnectionStatuses.UNAUTHENTICATED) return
+      if (!leaveWhenRefused) {
+        // The profile may no longer list the store: once it does not, the page stops asking for a socket
+        if (!profileReloaded) {
+          profileReloaded = true
+          void queryClient.invalidateQueries({ queryKey: QueryKeys.session })
+        }
+        return
+      }
       // Removed, not just marked stale: "/" would read the cached profile first, still listing the
       // store, and send the person straight back to it
       queryClient.removeQueries({ queryKey: QueryKeys.session })
@@ -111,7 +127,7 @@ export function RealtimeProvider({
       activity.stop()
       connection.close()
     }
-  }, [storeId, userId, queryClient, router])
+  }, [storeId, userId, leaveWhenRefused, queryClient, router])
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>
 }
