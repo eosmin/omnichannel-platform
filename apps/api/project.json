@@ -28,6 +28,19 @@
           "NODE_OPTIONS": "--experimental-vm-modules --no-warnings=ExperimentalWarning"
         }
       }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "dependsOn": ["build"],
+      "options": {
+        "commands": [
+          "nest build --config apps/api/nest-cli.json --watch",
+          "tsx scripts/dev-service.ts api"
+        ],
+        "parallel": true,
+        "cwd": "{workspaceRoot}"
+      }
     }
   },
   "implicitDependencies": ["workspace"]

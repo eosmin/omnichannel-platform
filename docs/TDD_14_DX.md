@@ -48,8 +48,7 @@ cat <<'EOF'
 
 Setup complete.
 
-  pnpm dev                  Start api and web
-  pnpm dev:all              Start api, web, worker and admin
+  pnpm dev                  Start api, worker and web (the MVP has no admin app)
 
   App             http://localhost:3000
   Admin console   http://localhost:3100
@@ -78,12 +77,10 @@ working environment with realistic data in under five minutes.
   "scripts": {
     "bootstrap": "bash scripts/bootstrap.sh",
 
-    "dev": "nx run-many --target=serve --projects=api,web --parallel",
-    "dev:api": "nx serve api",
-    "dev:web": "nx serve web",
-    "dev:worker": "nx serve worker",
-    "dev:admin": "nx serve admin",
-    "dev:all": "nx run-many --target=serve --projects=api,web,worker,admin --parallel",
+    "dev": "nx run-many --target=serve --projects=api,worker,web --parallel=3",
+    "dev:api": "nx run api:serve",
+    "dev:worker": "nx run worker:serve",
+    "dev:web": "nx run web:serve",
 
     "build": "nx run-many --target=build --all",
     "build:affected": "nx affected --target=build --base=origin/main",
@@ -117,6 +114,9 @@ working environment with realistic data in under five minutes.
     "infra:reset": "docker compose down -v && docker compose up -d --wait && pnpm prisma migrate deploy && pnpm prisma db seed",
     "infra:logs": "docker compose logs -f",
 
+    "db:test:prepare": "tsx scripts/prepare-test-database.ts",
+    "vapid:generate": "tsx scripts/generate-vapid-keys.ts",
+
     "email:dev": "email dev --dir libs/core/email/templates --port 3001",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
@@ -142,13 +142,24 @@ All Prisma commands read `prisma.config.ts` at the repo root (`TDD_01` ยง2.3) โ€
 
 ## 3. Hot reload
 
+`pnpm dev` needs the infrastructure up (`pnpm infra:up`, which `pnpm bootstrap` already ran). The
+servers are the bundles the images run, so what you debug is what ships:
+
 ```
-api      NestJS watch mode with --inspect on port 9229
-worker   NestJS watch mode with --inspect on port 9230
-web      Next.js Fast Refresh, native
-admin    Next.js Fast Refresh, native (port 3100)
+api      `nest build --watch` rewrites dist/apps/api; `node --watch` restarts it (port 8080)
+worker   the same on dist/apps/worker, with APP_ROLE=worker, platform_worker and port 8081
+web      next dev, Fast Refresh (port 3000)
 prisma   pnpm prisma generate --watch regenerates the client on schema change
 ```
+
+The first start builds the api and the worker (Nx caches it), so it takes longer than the next ones.
+`scripts/dev-service.ts` reads `.env.local` and `.env.example` as the tests do, and gives the worker
+what makes it one (the api and the worker share the file on a laptop). It starts only the process it
+is asked for: it never looks for, signals or replaces another one, so if something already listens on
+8080, 8081 or 3000 the new one fails to bind and says so. Stop yours first.
+
+Not in the MVP: `--inspect` ports 9229 and 9230 (start `node --inspect` by hand on the bundle if
+you need a debugger) and the `admin` app (Phase 2).
 
 **VS Code debug configuration:**
 
@@ -1050,3 +1061,74 @@ pnpm prisma:generate
 # Verify everything CI verifies (needs docker compose up)
 pnpm validate:ci
 ```
+
+---
+
+## 14. The test database
+
+The integration, security and e2e suites write real rows (and the sweeps of the worker touch the
+rows of any store), so they never use the database you work in. They use `platform_test`, in the
+same Postgres as `platform_dev`:
+
+```bash
+pnpm db:test:prepare     # creates platform_test if it is missing and applies the migrations
+```
+
+`pnpm bootstrap` runs it. Run it again after pulling a migration; it is safe to repeat. It creates
+one database and migrates it, and it refuses to run against a database that is the one
+`DIRECT_DATABASE_URL` points at, against a server that is not local, or in CI.
+
+How a suite picks its database (`connectionUrls()` in `libs/core/database/testing`):
+
+1. `TEST_DATABASE_URL`, the owner URL of a database of your choice, if it is set.
+2. In CI (`CI` is set), `DIRECT_DATABASE_URL` as it is: the job has a database of its own.
+3. Anywhere else, `DIRECT_DATABASE_URL` with the database replaced by `platform_test`.
+
+So a laptop needs no configuration, and no suite can write to `platform_dev` unless you point
+`TEST_DATABASE_URL` at it on purpose. The roles `platform_app` and `platform_worker` belong to the
+server and get their passwords from `pnpm db:migrate`, so run that once for the development
+database first.
+
+**e2e.** The specs start their own api, worker and web (the bundles of `nx build`) on 8080, 8081 and
+3000 with the test database. A server that is already listening there is **not** reused, because on a
+laptop it is usually your `pnpm dev`, connected to the development database. Stop it first, or set
+`E2E_REUSE_SERVERS=1` if you started the servers yourself with the test database.
+
+**What is still shared** with the development environment: Redis (queues, cache, rate-limit
+counters), the bucket and Mailpit. The suites prefix what they create and remove their own keys.
+
+---
+
+## 15. Web push on a laptop
+
+Push needs three things, and the settings page says which one is missing:
+
+1. **A key pair.** `pnpm vapid:generate` prints a new pair to the terminal and writes nothing. The
+   private key is a secret and the repository is public: paste it only into `.env.local`, which git
+   ignores. Never into `.env.example`, a chat or an issue.
+2. **The pair in the right places.**
+
+   | Where                                         | Variable                       | Read                              |
+   | --------------------------------------------- | ------------------------------ | --------------------------------- |
+   | `.env.local` (api and worker)                 | `VAPID_PUBLIC_KEY`             | when they start                   |
+   | `.env.local` (api and worker)                 | `VAPID_PRIVATE_KEY`            | when they start                   |
+   | `apps/web/.env.local`                         | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | **when the web is built**         |
+
+   The api and the worker refuse a private key without a public one, and a pair that
+   `web-push` did not make. A `NEXT_PUBLIC_` variable is baked into the bundle: after changing it,
+   restart `pnpm dev:web`, or rebuild the image with
+   `--build-arg NEXT_PUBLIC_VAPID_PUBLIC_KEY=...` (`apps/web/Dockerfile`). Restarting is not enough
+   for a production build.
+3. **The service worker, served.** It is built from `apps/web/sw.ts` by the route
+   `app/serwist/[path]/route.ts` and lives at **`/serwist/sw.js`**, not at `/sw.js` (that one does not
+   exist and redirects to the login). It must answer 200 with no session and with the header
+   `Service-Worker-Allowed: /`, which is what lets it control the whole origin; the CI checks both
+   against the image. `proxy.ts` leaves the path out of its matcher on purpose.
+
+To try it: set the three variables, restart the api, the worker and the web, sign in, and turn on
+the browser notifications switch in the notification preferences. The browser asks for permission once; if it
+was refused, the site setting of the browser has to be reset by hand. Use `localhost` or HTTPS:
+browsers refuse service workers elsewhere.
+
+To rotate the pair, generate a new one and replace all three. Browsers subscribed with the old public
+key drop that subscription and ask again the next time they open the app.

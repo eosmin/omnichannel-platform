@@ -270,7 +270,7 @@ export default defineConfig([
   // the api, the worker and an app against their .env.example files, and the root prisma.config.ts is
   // the re-export the Prisma CLI looks for, which loads it without the tsconfig aliases
   {
-    files: ['scripts/validate-env-example.ts', 'prisma.config.ts'],
+    files: ['scripts/validate-env-example.ts', 'scripts/lib/dev-services.ts', 'prisma.config.ts'],
     rules: { '@nx/enforce-module-boundaries': 'off' }
   },
 
@@ -322,6 +322,12 @@ export default defineConfig([
       'scripts/db-role-env.ts',
       'scripts/bucket-env.ts',
       'libs/core/database/testing/connection-urls.ts',
+      // Its spec sets and restores the variables the function reads
+      'libs/core/database/testing/connection-urls.spec.ts',
+      // Tooling that starts a process with the env of the shell (`pnpm dev`) or points the tests at a
+      // database (`pnpm db:test:prepare`), as the suites do
+      'scripts/dev-service.ts',
+      'scripts/prepare-test-database.ts',
       'apps/api/src/testing/test-env.ts',
       'apps/worker/src/testing/test-env.ts',
       'libs/core/redis/src/testing/test-env.ts',

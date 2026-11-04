@@ -26,6 +26,9 @@ echo "→ Migrating the database and loading the development fixtures"
 pnpm db:migrate                                  # prisma migrate deploy, then the two role passwords
 pnpm db:fixtures
 
+echo "→ Creating the test database (the suites write to it, never to the development one)"
+pnpm db:test:prepare                             # platform_test, migrated, beside platform_dev
+
 cat <<'DONE'
 
 Setup complete.

@@ -25,6 +25,16 @@
     },
     "test": {
       "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/scripts/lib/**/*",
+        "{workspaceRoot}/scripts/jest.config.cts",
+        "{workspaceRoot}/jest.preset.cjs",
+        "{workspaceRoot}/tsconfig.spec.json",
+        "{workspaceRoot}/libs/core/**/*.ts",
+        "!{workspaceRoot}/libs/core/**/*.spec.ts",
+        "sharedGlobals"
+      ],
       "options": {
         "command": "jest --config scripts/jest.config.cts",
         "cwd": "{workspaceRoot}",
