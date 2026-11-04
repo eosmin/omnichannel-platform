@@ -12,10 +12,17 @@ export interface NotificationTextKeys {
 
 export function notificationTextKeys(
   messageKey: string,
-  has: (key: string) => boolean
+  has: (key: string) => boolean,
+  params: Record<string, unknown> = {}
 ): NotificationTextKeys {
   const title = `${messageKey}.title`
-  const body = `${messageKey}.body`
+  // A notification that carries who and whose (a mention) says it, where the text was written for it;
+  // an older one, saved without them, keeps the plain text
+  const withPeople = `${messageKey}.bodyWithPeople`
+  const body =
+    'author' in params && 'customer' in params && has(withPeople)
+      ? withPeople
+      : `${messageKey}.body`
   if (has(title) && has(body)) return { title, body }
   return { title: `${UNKNOWN_NOTIFICATION_KEY}.title`, body: `${UNKNOWN_NOTIFICATION_KEY}.body` }
 }

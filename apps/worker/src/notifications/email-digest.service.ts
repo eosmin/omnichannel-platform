@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { PrismaService } from '@platform/core/database'
 import { AppPaths, DigestFrequency, MembershipStatus } from '@platform/core/domain'
 import type { Locale } from '@platform/core/i18n'
-import { createTranslator } from '@platform/core/i18n-server'
+import { createTranslator, hasTranslation } from '@platform/core/i18n-server'
 import {
   DIGEST_LINKS,
   DigestLimits,
@@ -48,6 +48,8 @@ interface DigestItem {
   url: string | null
   // How many notifications this block stands for (1 when it is alone)
   count: number
+  // The body already says how many they are
+  saysCount: boolean
 }
 
 // Notifications that say the same thing about the same place: one block with a count
@@ -314,12 +316,22 @@ export class EmailDigestService {
       try {
         const t = createTranslator(locale, row.messageKey)
         const params = messageParams(row.params)
+        // The text that names the people is used where the notification carries them and the message
+        // exists: older rows, and the types without that text, keep the plain one
+        const named = 'author' in params && 'customer' in params
+        const variant =
+          named && count > 1 && hasTranslation(locale, `${row.messageKey}.bodyRepeated`)
+            ? 'bodyRepeated'
+            : named && hasTranslation(locale, `${row.messageKey}.bodyWithPeople`)
+              ? 'bodyWithPeople'
+              : 'body'
         items.push({
           storeName: row.store.name,
           title: t('title', params),
-          body: t('body', params),
+          body: t(variant, { ...params, count }),
           url: row.actionPath === null ? null : this.urlOf(row.actionPath),
-          count
+          count,
+          saysCount: variant === 'bodyRepeated'
         })
         firstStoreId ??= row.storeId
       } catch (error) {

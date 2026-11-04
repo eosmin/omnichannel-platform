@@ -93,7 +93,7 @@ export const envSchema = z
     RESEND_API_KEY: z.string().min(1).optional(),
     SMTP_URL: z.url().optional(),
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
-    EMAIL_FROM: senderAddress.default('noreply@platform.local'),
+    EMAIL_FROM: senderAddress.default('Omnichannel Platform <noreply@platform.local>'),
 
     // Observability
     SENTRY_DSN: z.url().optional(),

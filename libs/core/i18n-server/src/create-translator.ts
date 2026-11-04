@@ -14,6 +14,11 @@ function lookup(node: unknown, path: readonly string[]): string | undefined {
   return typeof current === 'string' ? current : undefined
 }
 
+// Whether a message exists in a language (a variant of a text is used only where it was written)
+export function hasTranslation(locale: Locale, path: string): boolean {
+  return lookup(messagesFor(locale), path.split('.')) !== undefined
+}
+
 // createTranslator('es', 'email.magicLink')('subject'). A missing key or parameter throws instead of
 // sending an email with a hole in it: the golden render tests of every template catch it first.
 export function createTranslator(locale: Locale, namespace: string): Translator {

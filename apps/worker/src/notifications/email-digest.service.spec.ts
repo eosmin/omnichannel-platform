@@ -332,6 +332,56 @@ describe('EmailDigestService', () => {
       })
     })
 
+    describe('a mention', () => {
+      const mention = (id: string, params: Record<string, unknown>) =>
+        row(id, {
+          messageKey: notificationMessageKey(NotificationTypes.CONVERSATION_MENTIONED),
+          params
+        })
+      const render = async (locale: typeof Locales.EN | typeof Locales.ES) => {
+        const queued = addEmail.mock.calls[0]?.[1] as {
+          template: typeof EmailTemplates.NOTIFICATION_DIGEST
+          data: unknown
+        }
+        return (await new TemplateRenderer().render(queued.template, locale, queued.data)).text
+      }
+      const people = { author: 'Ana Pérez', customer: 'Lucia Prechat' }
+
+      it('names who wrote the note and whose conversation it is', async () => {
+        findNotifications.mockResolvedValue([mention('n1', people)])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(await render(Locales.EN)).toContain(
+          'Ana Pérez mentioned you in a note on the conversation with Lucia Prechat.'
+        )
+      })
+
+      it('says once how many times, with no line that repeats it', async () => {
+        findNotifications.mockResolvedValue([
+          mention('n3', people),
+          mention('n2', people),
+          mention('n1', people)
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        const en = await render(Locales.EN)
+        expect(en).toContain(
+          'Ana Pérez mentioned you 3 times in a note (conversation with Lucia Prechat).'
+        )
+        expect(en).not.toContain('like this')
+      })
+
+      it('keeps the plain text for a mention saved before the names, and links the preferences by words', async () => {
+        findNotifications.mockResolvedValue([mention('n1', {})])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        const en = await render(Locales.EN)
+        expect(en).toContain('A teammate mentioned you in an internal note.')
+        expect(en).toContain('Change it in your notification preferences')
+        expect(en).toContain('Open conversation')
+      })
+    })
+
     it('sends nothing when all is read, too old, or the address bounces, but clears the marks', async () => {
       findNotifications.mockResolvedValue([
         row('n1', { readAt: NOW }),

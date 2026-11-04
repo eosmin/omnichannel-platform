@@ -163,6 +163,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
     expect(blocked).toBe(true)
     expect(response.status).toBe(CONFLICT)
+    expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.ORG_STORE_HAS_DATA)
     expect((response.body as ErrorBody).error.metadata?.tables).toEqual(['customers'])
     expect(await owner.customer.count({ where: { storeId } })).toBe(1)
   })

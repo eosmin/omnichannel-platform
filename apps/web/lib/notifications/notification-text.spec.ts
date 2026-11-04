@@ -1,5 +1,26 @@
 import { badgeLabel, notificationTextKeys, safeActionPath } from './notification-text'
 
+describe('notificationTextKeys with people', () => {
+  const has = () => true
+  const people = { author: 'Ana', customer: 'Lucia' }
+
+  it('uses the text that names them when the notification carries them', () => {
+    expect(notificationTextKeys('notifications.conversation.mentioned', has, people).body).toBe(
+      'notifications.conversation.mentioned.bodyWithPeople'
+    )
+  })
+
+  it('keeps the plain text for a notification saved without them, or a type without that text', () => {
+    expect(notificationTextKeys('notifications.conversation.mentioned', has, {}).body).toBe(
+      'notifications.conversation.mentioned.body'
+    )
+    expect(
+      notificationTextKeys('notifications.export.ready', key => !key.endsWith('WithPeople'), people)
+        .body
+    ).toBe('notifications.export.ready.body')
+  })
+})
+
 describe('notificationTextKeys', () => {
   it('uses the title and body of the key when both exist', () => {
     const keys = notificationTextKeys('notifications.export.ready', () => true)

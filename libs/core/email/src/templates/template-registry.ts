@@ -13,17 +13,32 @@ import { NotificationDigest, notificationDigestSchema } from './notification-dig
 // type system), the namespace of its messages (which holds the subject) and its component.
 interface TemplateDefinition<Props> {
   namespace: string
+  // Values the subject needs (the name of the store in an invitation)
+  subjectParams?: (props: Props) => Record<string, string | number>
   schema: z.ZodType<Props>
   element: (props: Props, locale: Locale, t: Translator) => ReactElement
+}
+
+// A name that goes into a subject: free text of whoever invites, so it loses control and invisible
+// characters (a line break would end the header) and is cut
+const SUBJECT_NAME_MAX = 60
+
+export function inSubject(value: string): string {
+  const clean = value
+    .replace(/[\p{Cc}\p{Cf}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return Array.from(clean).slice(0, SUBJECT_NAME_MAX).join('')
 }
 
 function define<Props>(definition: TemplateDefinition<Props>): RegisteredTemplate {
   return {
     build: (data, locale) => {
       const t = createTranslator(locale, definition.namespace)
+      const props = definition.schema.parse(data)
       return {
-        subject: t('subject'),
-        element: definition.element(definition.schema.parse(data), locale, t)
+        subject: t('subject', definition.subjectParams?.(props)),
+        element: definition.element(props, locale, t)
       }
     }
   }
@@ -43,6 +58,7 @@ export const templateRegistry: Record<EmailTemplate, RegisteredTemplate> = {
   [EmailTemplates.INVITATION]: define({
     namespace: 'email.invitation',
     schema: invitationSchema,
+    subjectParams: props => ({ store: inSubject(props.storeName) }),
     element: (props, locale, t) => Invitation({ ...props, locale, t })
   }),
   [EmailTemplates.NOTIFICATION_DIGEST]: define({

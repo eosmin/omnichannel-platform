@@ -94,7 +94,7 @@ describe('TemplateRenderer', () => {
 
     it('renders the same text in English every time', async () => {
       const email = await renderer.render(EmailTemplates.INVITATION, Locales.EN, invitation)
-      expect(email.subject).toBe('You have been invited to join a team')
+      expect(email.subject).toBe('You have been invited to join Tienda Escalón')
       expect(email.text).toMatchInlineSnapshot(`
         "You are invited to join Tienda Escalón
 
@@ -116,7 +116,7 @@ describe('TemplateRenderer', () => {
 
     it('renders the same text in Spanish every time', async () => {
       const email = await renderer.render(EmailTemplates.INVITATION, Locales.ES, invitation)
-      expect(email.subject).toBe('Te invitaron a unirte a un equipo')
+      expect(email.subject).toBe('Te invitaron a unirte a Tienda Escalón')
       expect(email.text).toMatchInlineSnapshot(`
         "Te invitan a unirte a Tienda Escalón
 
@@ -134,6 +134,18 @@ describe('TemplateRenderer', () => {
 
         Si no la esperabas, puedes ignorar este correo."
       `)
+    })
+
+    it('cuts and cleans the name of the store in the subject', async () => {
+      const email = await renderer.render(EmailTemplates.INVITATION, Locales.EN, {
+        ...invitation,
+        storeName: `Pay now\r\nBcc: x@y.z ${'a'.repeat(200)}`
+      })
+      expect(email.subject).not.toMatch(/[\r\n]/)
+      expect(Array.from(email.subject).length).toBeLessThan(120)
+      expect(email.subject.startsWith('You have been invited to join Pay now Bcc: x@y.z')).toBe(
+        true
+      )
     })
 
     it('shows the names as text and never as markup', async () => {
