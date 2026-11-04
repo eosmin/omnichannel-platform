@@ -20,7 +20,12 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import type { ConfirmAvatarUploadBody, RequestAvatarUploadBody } from './avatar.schemas'
-import { countWithinQuota, refuseTypeOrSize, uploadVerificationFailed } from './upload-checks'
+import {
+  countWithinQuota,
+  refuseSignatureMismatch,
+  refuseTypeOrSize,
+  uploadVerificationFailed
+} from './upload-checks'
 
 export interface AvatarUploadView {
   mediaId: string
@@ -110,6 +115,14 @@ export class AvatarUploadsService {
       stored.contentType !== body.contentType
     ) {
       throw uploadVerificationFailed()
+    }
+    // What the bytes are, not what the client says they are
+    try {
+      await refuseSignatureMismatch(this.storage, upload, body.contentType, stored.etag)
+    } catch (error) {
+      // A refused file is not kept for another try: its signed url is still writable
+      await this.dropStaging(upload)
+      throw error
     }
     // Pinned to the bytes just checked: the signed url is still valid until it expires, and a file put
     // there since is refused instead of promoted

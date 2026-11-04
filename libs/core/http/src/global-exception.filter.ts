@@ -18,6 +18,10 @@ import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
 const GENERIC_MESSAGE = 'An unexpected error occurred'
+const RATE_LIMIT_MESSAGE = 'Too many requests'
+// Nest writes the class in front of the message of some errors ("ThrottlerException: Too Many
+// Requests"): a name of ours that the client has no use for
+const CLASS_NAME_PREFIX = /^[A-Za-z]+Exception:\s*/
 const INFRA_PATHS: ReadonlySet<string> = new Set([
   InfraRoutes.healthLive,
   InfraRoutes.healthReady,
@@ -75,6 +79,13 @@ export function bodyParserRefusal(exception: unknown): BodyParserRefusal | undef
   if (!PARSER_TYPE_FAMILIES.some(family => type.startsWith(family))) return undefined
   if (status < CLIENT_ERROR_FLOOR || status >= SERVER_ERROR_FLOOR) return undefined
   return { status, type }
+}
+
+// What a client is told for an error Nest raised: the message without the name of a class, and for a
+// rate limit a message of ours
+export function publicMessage(status: number, message: string): string {
+  if (status === HttpStatusCodes.TOO_MANY_REQUESTS) return RATE_LIMIT_MESSAGE
+  return message.replace(CLASS_NAME_PREFIX, '')
 }
 
 export function codeForHttpStatus(status: number): ErrorCode {
@@ -152,7 +163,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.send(response, status, {
         error: {
           code: codeForHttpStatus(status),
-          message: serverFailure ? GENERIC_MESSAGE : exception.message,
+          message: serverFailure ? GENERIC_MESSAGE : publicMessage(status, exception.message),
           // A failing probe says which of its checks failed, so that whoever reads it knows where to look
           metadata: probe ? { checks: checksOf(exception.getResponse()) } : {}
         },

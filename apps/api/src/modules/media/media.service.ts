@@ -31,7 +31,12 @@ import {
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
-import { countWithinQuota, refuseTypeOrSize, uploadVerificationFailed } from './upload-checks'
+import {
+  countWithinQuota,
+  refuseSignatureMismatch,
+  refuseTypeOrSize,
+  uploadVerificationFailed
+} from './upload-checks'
 
 export interface MediaView {
   id: string
@@ -181,6 +186,15 @@ export class MediaService {
       stored.contentType !== body.contentType
     ) {
       throw uploadVerificationFailed()
+    }
+    // What the bytes are, not what the client says they are
+    try {
+      await refuseSignatureMismatch(this.storage, keys.upload, body.contentType, stored.etag)
+    } catch (error) {
+      // A refused file is not kept for another try: its signed url is still writable
+      await this.dropStaging(keys.upload)
+      await this.redis.del(CacheKeys.upload.requester(storeId, body.mediaId))
+      throw error
     }
     // Pinned to the bytes just checked: the signed URL is still valid, and a file put there since
     // is refused instead of promoted

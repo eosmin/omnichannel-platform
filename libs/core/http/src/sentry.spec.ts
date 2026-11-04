@@ -80,6 +80,25 @@ describe('scrubEvent', () => {
     })
   })
 
+  it('removes the signature of any provider from the headers, not only the ones it knew', () => {
+    const event = {
+      request: {
+        headers: {
+          'svix-signature': 'v1,abc',
+          'Stripe-Signature': 't=1,v1=abc',
+          'x-csrf-token': 'tok',
+          'svix-id': 'msg_1'
+        }
+      }
+    } as unknown as Sentry.ErrorEvent
+    expect(scrubEvent(event).request?.headers).toEqual({
+      'svix-signature': '[redacted]',
+      'Stripe-Signature': '[redacted]',
+      'x-csrf-token': '[redacted]',
+      'svix-id': 'msg_1'
+    })
+  })
+
   it('leaves an event with no body, or a body that is not an object, alone', () => {
     const noBody = { message: 'x' } as Sentry.ErrorEvent
     expect(scrubEvent(noBody)).toBe(noBody)

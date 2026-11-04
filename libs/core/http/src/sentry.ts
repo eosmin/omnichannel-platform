@@ -7,6 +7,7 @@ import {
   REDACTED,
   redactPairs,
   REFERER_HEADER,
+  isSecretHeader,
   REPORT_REDACTED_HEADERS,
   scrubQuery,
   scrubUrl
@@ -127,7 +128,7 @@ function scrubHeaders(headers: unknown): void {
   if (!isRecord(headers)) return
   for (const key of Object.keys(headers)) {
     const name = key.toLowerCase()
-    if (REPORT_REDACTED_HEADERS.includes(name)) headers[key] = REDACTED
+    if (isSecretHeader(name) || REPORT_REDACTED_HEADERS.includes(name)) headers[key] = REDACTED
     else if (name === REFERER_HEADER && typeof headers[key] === 'string')
       headers[key] = scrubUrl(headers[key])
   }

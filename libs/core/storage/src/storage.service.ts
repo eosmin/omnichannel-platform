@@ -125,6 +125,44 @@ export class StorageService implements OnApplicationShutdown {
     return Buffer.concat(chunks)
   }
 
+  // The first `bytes` of an object, to look at what a file is without reading it all. With `ifMatch`
+  // they are the bytes of the object whose ETag was checked: a file put there since gives null, like
+  // an object that is not there, instead of bytes of another file.
+  async readStart(key: string, bytes: number, ifMatch?: string): Promise<Buffer | null> {
+    try {
+      const object = await this.s3.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Range: `bytes=0-${bytes - 1}`,
+          ...(ifMatch === undefined ? {} : { IfMatch: ifMatch })
+        })
+      )
+      const body = object.Body as Readable | undefined
+      if (body === undefined) return null
+      // A store that ignores `Range` answers the whole object: read no more than was asked for
+      const chunks: Buffer[] = []
+      let total = 0
+      for await (const chunk of body) {
+        chunks.push(chunk as Buffer)
+        total += (chunk as Buffer).length
+        if (total >= bytes) {
+          body.destroy()
+          break
+        }
+      }
+      return Buffer.concat(chunks).subarray(0, bytes)
+    } catch (error) {
+      const status = statusOf(error)
+      if (status === HttpStatusCodes.NOT_FOUND || status === HttpStatusCodes.PRECONDITION_FAILED) {
+        return null
+      }
+      // A range over an empty object is a 416: there are no bytes to look at
+      if (status === HttpStatusCodes.RANGE_NOT_SATISFIABLE) return Buffer.alloc(0)
+      throw error
+    }
+  }
+
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
     await this.s3.send(
       new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType })

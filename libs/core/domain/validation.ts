@@ -21,15 +21,73 @@ function hasNoCredentials(link: string): boolean {
   return username === '' && password === ''
 }
 
+// Names that stay on the machine or its network: they have no place in a link that comes from outside
+const LOCAL_SUFFIXES: readonly string[] = [
+  'localhost',
+  'local',
+  'localdomain',
+  'internal',
+  'intranet',
+  'lan',
+  'corp',
+  'home',
+  'arpa', // home.arpa, and the reverse zones
+  'test',
+  'invalid',
+  'example'
+]
+const IPV4_LITERAL = /^\d{1,3}(\.\d{1,3}){3}$/
+
+// Control characters (tab, line breaks, NUL) and the invisible format ones (zero-width space, the
+// bidi marks, overrides and isolates) make a link read differently from what it is. `new URL` strips
+// a tab or a line break without a word, so the raw text is what is looked at, and its percent-decoded
+// form too.
+const HIDDEN_IN_LINK = /[\p{Cc}\p{Cf}]/u
+// Once percent-decoded only the invisible format characters count (an encoded bidi override reorders
+// the text the same as a raw one); an encoded line feed in a query (`?text=a%0Ab`) is inert
+const HIDDEN_WHEN_DECODED = /\p{Cf}/u
+
+function hasNoHiddenCharacters(link: string): boolean {
+  if (HIDDEN_IN_LINK.test(link)) return false
+  try {
+    return !HIDDEN_WHEN_DECODED.test(decodeURIComponent(link))
+  } catch {
+    // A legacy escape (`%E9`) does not decode as UTF-8; it holds no hidden character either
+    return true
+  }
+}
+
+// An address (v4 or v6, in any spelling `new URL` normalizes), `localhost` and its subdomains, a name
+// with no dot and the suffixes of a private network: all of them point inside the network of whoever
+// follows the link. The providers hand out names, never addresses. A public name can still resolve to
+// a private address, so the server that fetches one checks the answer of the DNS itself.
+function hasPublicHostName(link: string): boolean {
+  if (!URL.canParse(link)) return true
+  const host = new URL(link).hostname.toLowerCase().replace(/\.$/, '')
+  if (host === '' || host.startsWith('[') || IPV4_LITERAL.test(host) || !host.includes('.')) {
+    return false
+  }
+  const suffix = host.slice(host.lastIndexOf('.') + 1)
+  return !LOCAL_SUFFIXES.includes(suffix)
+}
+
 // A link that comes from outside (an ad's, a customer's) and may be drawn as a link or an image:
-// only http and https, never `javascript:` or `data:`, and no user or password in it. Being well
-// formed says nothing about where it points: whatever fetches it from a server (Step 3.4) must still
-// refuse private addresses itself.
-export const httpUrl = (maxLength: number): z.ZodURL =>
+// only http and https, never `javascript:` or `data:`, no user or password in it, no hidden
+// character, and a host that is a public-looking name. Being well formed says nothing about where it
+// points: whatever fetches it from a server (Step 3.4) must still refuse private addresses itself.
+export const httpUrl = (maxLength: number): z.ZodPipe<z.ZodString, z.ZodURL> =>
   z
-    .url({ protocol: /^https?$/ })
+    .string()
     .max(maxLength)
-    .refine(hasNoCredentials, { message: 'a link carries no credentials' })
+    // Before the url check: zod hands `.url` a link already stripped of its tabs and line breaks
+    .refine(hasNoHiddenCharacters, { message: 'a link carries no hidden character' })
+    .pipe(
+      z
+        .url({ protocol: /^https?$/ })
+        .max(maxLength)
+        .refine(hasNoCredentials, { message: 'a link carries no credentials' })
+        .refine(hasPublicHostName, { message: 'a link points to a public host name' })
+    )
 
 // Control characters (line breaks included) and the invisible format ones (zero-width space, bidi
 // overrides) make two names that look the same or draw a name backwards. The joiner U+200D stays: emoji

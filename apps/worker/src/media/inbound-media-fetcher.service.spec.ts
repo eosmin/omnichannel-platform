@@ -82,18 +82,22 @@ const file = (body: Buffer, contentType = 'image/jpeg', contentLength: number | 
   contentLength: contentLength ?? body.length
 })
 
+// The first bytes of a real file: the type is checked against them
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5])
+const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
+
 describe('InboundMediaFetcher', () => {
   const mediaId = inboundMediaId(MESSAGE, 1)
 
   it('stores the file under a clean name, records it pending and queues the scan', async () => {
-    const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(Buffer.from('jpegbytes'))) }
+    const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(JPEG)) }
     const { fetcher, media, storage, queue, marker } = setup({ plugin })
 
     await fetcher.fetch(job, false)
 
     expect(marker.clear).toHaveBeenCalledWith(STORE, MESSAGE, 1)
     const key = `stores/${STORE}/messages/${mediaId}/__.._etc_pas_swd.jpg`
-    expect(storage.put).toHaveBeenCalledWith(key, Buffer.from('jpegbytes'), 'image/jpeg')
+    expect(storage.put).toHaveBeenCalledWith(key, JPEG, 'image/jpeg')
     expect(media.create).toHaveBeenCalledWith({
       data: {
         id: mediaId,
@@ -150,7 +154,9 @@ describe('InboundMediaFetcher', () => {
   it.each([
     ['a type that is not allowed', file(Buffer.from('x'), 'text/html')],
     ['a declared size over the limit', file(Buffer.from('x'), 'image/jpeg', 11 * 1024 * 1024)],
-    ['an empty file', file(Buffer.alloc(0))]
+    ['an empty file', file(Buffer.alloc(0))],
+    ['a page declared as a picture', file(Buffer.from('<html><script>alert(1)</script>'))],
+    ['a picture of another type', file(PNG_HEAD)]
   ])('keeps no file for %s', async (_label, fetched) => {
     const plugin = { fetchMedia: jest.fn().mockResolvedValue(fetched) }
     const { fetcher, storage, media, logger, marker } = setup({ plugin })
@@ -179,7 +185,7 @@ describe('InboundMediaFetcher', () => {
 
   it('takes the declared type when the file server says it is generic', async () => {
     const plugin = {
-      fetchMedia: jest.fn().mockResolvedValue(file(Buffer.from('x'), 'application/octet-stream'))
+      fetchMedia: jest.fn().mockResolvedValue(file(JPEG, 'application/octet-stream'))
     }
     const { fetcher, storage } = setup({ plugin })
 
@@ -191,7 +197,7 @@ describe('InboundMediaFetcher', () => {
   it.each(['binary/octet-stream', 'application/x-download'])(
     'takes the declared type when the file server says %s',
     async generic => {
-      const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(Buffer.from('x'), generic)) }
+      const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(JPEG, generic)) }
       const { fetcher, storage } = setup({ plugin })
 
       await fetcher.fetch(job, false)
@@ -260,7 +266,7 @@ describe('InboundMediaFetcher', () => {
 
   it('records the loss when keeping the bytes fails on the last attempt, and only then', async () => {
     const plugin = {
-      fetchMedia: jest.fn().mockImplementation(() => Promise.resolve(file(Buffer.from('x'))))
+      fetchMedia: jest.fn().mockImplementation(() => Promise.resolve(file(JPEG)))
     }
     const early = setup({ plugin })
     early.storage.put.mockRejectedValue(new Error('storage down'))
@@ -336,7 +342,7 @@ describe('InboundMediaFetcher', () => {
     const CHOSEN = '33333333-3333-4333-8333-333333333333'
     const chosen = { ...job, pluginId: 'web_widget', mediaId: CHOSEN }
     const plugin = () => ({
-      fetchMedia: jest.fn().mockResolvedValue(file(Buffer.from('jpegbytes')))
+      fetchMedia: jest.fn().mockResolvedValue(file(JPEG))
     })
     const collision = Object.assign(new Error('unique'), { code: 'P2002' })
 

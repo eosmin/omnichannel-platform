@@ -5,6 +5,16 @@ const R = '[redacted]'
 const CREDENTIAL = ['a1b2c3d4', 'e5f6g7h8i9'].join('')
 const ZWSP = String.fromCharCode(0x200b)
 const BACKSLASH = String.fromCharCode(92)
+// Shapes of real keys, built from parts so that no line of this file reads as a committed secret
+const AWS_KEY = ['AKIA', 'IOSFODNN7EXAMPLE'].join('')
+const STRIPE_KEY = ['sk_', 'live_', '4eC39HqLyjWDarjtT1zdp7dc'].join('')
+const SLACK_TOKEN = ['xox', 'b-123456789012-1234567890123-', 'AbCdEfGhIjKlMnOpQrStUvWx'].join('')
+const GITHUB_TOKEN = ['gh', 'p_16C7e42F292c6912E7710c838347Ae178B4a'].join('')
+const GOOGLE_KEY = ['AI', 'zaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe'].join('')
+const PEM_BEGIN = ['-----BEGIN ', 'PRIVATE KEY-----'].join('')
+const PEM_END = ['-----END ', 'PRIVATE KEY-----'].join('')
+const VERIFY_VALUE = ['mySecret', 'Verify123'].join('')
+const INSTAGRAM_TOKEN = ['IG', 'QVJYabcdefghijklmnopqrstuvwxyz0123456789'].join('')
 
 describe('providerErrorText', () => {
   it('replaces a bearer credential', () => {
@@ -179,6 +189,107 @@ describe('providerErrorText', () => {
     ]) {
       expect(providerErrorText(text, 100)).toBe(text)
     }
+  })
+})
+
+// SEC-8: the QA threw 17 shapes of a leaked credential at the redactor and 3 were replaced. These are the
+// shapes a provider (or a library that wraps its answer) repeats back: a signature, a scheme word, a key
+// that carries the name of its issuer, a pasted private key, a name inside an address.
+describe('providerErrorText, the shapes of a leaked credential', () => {
+  const LEAKED_FORMS: readonly (readonly [string, string, string])[] = [
+    ['basic bare', 'rejected Basic dXNlcjpwYXNzd29yZA== by host', 'dXNlcjpwYXNzd29yZA'],
+    [
+      'hub signature header',
+      'X-Hub-Signature-256: sha256=9f86d081884c7d659a2feaa0c55ad015',
+      '9f86d081884c7d659a2f'
+    ],
+    [
+      'svix signature',
+      'svix-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=',
+      'K5oZfzN95Z9UVu1'
+    ],
+    ['signature query', 'GET /x?X-Amz-Signature=abcdef0123456789abcdef&a=1', 'abcdef0123456789'],
+    ['auth-token short', 'X-Auth-Token: abc123', 'abc123'],
+    ['aws key id', `bad key ${AWS_KEY} for user`, AWS_KEY],
+    ['stripe key', `invalid key ${STRIPE_KEY}`, STRIPE_KEY],
+    ['slack token', `invalid_auth ${SLACK_TOKEN}`, SLACK_TOKEN],
+    ['github token', `bad credentials ${GITHUB_TOKEN}`, GITHUB_TOKEN],
+    ['google key', `key ${GOOGLE_KEY} invalid`, GOOGLE_KEY],
+    ['instagram token', `token ${INSTAGRAM_TOKEN} expired`, INSTAGRAM_TOKEN],
+    [
+      'pem',
+      `${PEM_BEGIN}\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n${PEM_END}`,
+      'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC'
+    ],
+    [
+      'apikey scheme',
+      'sent ApiKey 7f3a9c1e5b2d4f6a8c0e1b3d5f7a9c2e to host',
+      '7f3a9c1e5b2d4f6a8c0e1b3d5f7a9c2e'
+    ],
+    ['oauth header', 'OAuth oauth_token="abc123xyz", oauth_signature="s1gn4tur3"', 's1gn4tur3'],
+    [
+      'sas sig',
+      'https://acct.blob.core.windows.net/c?sv=2020&sig=Zm9vYmFyYmF6cXV4&se=2030',
+      'Zm9vYmFyYmF6cXV4'
+    ],
+    [
+      'long hex',
+      'secret was 0123456789abcdef0123456789abcdef01234567 apparently',
+      '0123456789abcdef0123456789abcdef01234567'
+    ],
+    [
+      'json client secret camel',
+      '{"clientSecret":"s3cr3tValue","appSecret":"x9y8z7"}',
+      's3cr3tValue'
+    ],
+    ['camel accessToken', '{"accessToken":"ab12cd34","refreshToken":"zz99yy88"}', 'ab12cd34'],
+    ['userinfo no password', 'GET https://abc123def456ghi789@host/x', 'abc123def456ghi789'],
+    [
+      'token in path',
+      `POST https://hooks.slack.com/services/T000/B000/${'X'.repeat(24)} failed`,
+      'X'.repeat(24)
+    ],
+    ['whatsapp verify', `hub.verify_token=${VERIFY_VALUE}`, VERIFY_VALUE],
+    ['x-api-key json', '{"x-api-key":"k1k2k3"}', 'k1k2k3'],
+    ['proxy auth', 'Proxy-Authorization: Basic Zm9vOmJhcg==', 'Zm9vOmJhcg'],
+    ['password colon json', '{"password":"hunter2"}', 'hunter2']
+  ]
+
+  it.each(LEAKED_FORMS)('replaces %s', (_name, text, secret) => {
+    const result = providerErrorText(text, 400)
+    expect(result).not.toContain(secret)
+    expect(result).toContain(R)
+  })
+
+  it('replaces a short base64 credential made of letters only, after Basic or Bearer', () => {
+    expect(providerErrorText('rejected Basic dXNlcjpwYXNz by host', 100)).toBe(
+      `rejected Basic ${R} by host`
+    )
+    expect(providerErrorText('Bearer dXNlcjpwYXNz', 100)).toBe(`Bearer ${R}`)
+  })
+
+  it('keeps the words of a message that only mention them', () => {
+    for (const text of [
+      'Basic plan limit reached',
+      'Token expired',
+      'Invalid token abc-def',
+      'Digest of the day is empty',
+      'Invalid signature algorithm',
+      'The design was refused',
+      'Commit 9f86d08 failed',
+      'Request id 4b3403665fea6a8a'
+    ]) {
+      expect(providerErrorText(text, 100)).toBe(text)
+    }
+  })
+
+  it('stays idempotent and fast on a long run of what it looks for', () => {
+    const text = `${'-----BEGIN PRIVATE KEY-----'.repeat(2000)} ${'a'.repeat(100_000)} ${'sig='.repeat(20_000)}`
+    const once = providerErrorText(text, 300)
+    expect(providerErrorText(once, 300)).toBe(once)
+    const started = Date.now()
+    providerErrorText(text, 300)
+    expect(Date.now() - started).toBeLessThan(5000)
   })
 })
 

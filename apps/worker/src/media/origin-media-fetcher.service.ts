@@ -19,6 +19,8 @@ import {
 } from '@platform/core/queues'
 import {
   AllowedContentTypes,
+  FILE_SIGNATURE_WINDOW_BYTES,
+  matchesDeclaredType,
   MediaPurpose,
   sanitizeFilename,
   StorageKeys,
@@ -179,6 +181,10 @@ export class OriginMediaFetcher {
           if (body.length === 0) throw new FileRefused('the file is empty')
           const contentType = IMAGE_TYPES.has(declared) ? declared : sniffImageType(body)
           if (contentType === null) throw new FileRefused('the file is not an image')
+          // A declared type is the server's word: the bytes must be that type's
+          if (!matchesDeclaredType(contentType, body.subarray(0, FILE_SIGNATURE_WINDOW_BYTES))) {
+            throw new FileRefused('the file is not of the type it declares')
+          }
           return { body, contentType }
         })(),
         UploadLimits.INBOUND_FETCH_TIMEOUT_MS

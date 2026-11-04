@@ -17,6 +17,7 @@ import { StorageService } from '@platform/core/storage-module'
 
 import {
   countWithinQuota,
+  refuseSignatureMismatch,
   refuseTypeOrSize,
   uploadVerificationFailed
 } from '../media/upload-checks'
@@ -111,6 +112,15 @@ export class WidgetUploads {
           stored.contentType !== record.contentType
         ) {
           throw uploadVerificationFailed()
+        }
+        // What the bytes are, not what the visitor says they are
+        // The key stays the visitor's until the worker copies it, so this is an early refusal and not
+        // the guarantee: the worker checks the bytes it fetches again (`InboundMediaFetcher`)
+        try {
+          await refuseSignatureMismatch(this.storage, record.key, record.contentType, stored.etag)
+        } catch (error) {
+          await this.storage.delete(record.key).catch(() => undefined)
+          throw error
         }
         return { id: uploadId, filename: record.filename, contentType: record.contentType }
       })

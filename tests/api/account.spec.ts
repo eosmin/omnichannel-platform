@@ -237,6 +237,25 @@ describe('The account of a person', () => {
       return upload
     }
 
+    it('refuses an HTML page declared as image/png and keeps nothing of it', async () => {
+      const page = Buffer.from('<html><script>alert(1)</script></html>')
+      const upload = (await requestUpload(me(), { fileSizeBytes: page.length }))
+        .body as UploadUrlBody
+      objects.add(upload.key)
+      objects.add(StorageKeys.avatar(ctx.agentA.id, upload.mediaId, 'me.png'))
+      expect((await put(upload.uploadUrl, page)).status).toBe(OK)
+
+      const response = await me()
+        .post(ApiRoutes.account.avatarConfirm)
+        .send(confirmBody(upload, { fileSizeBytes: page.length }))
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED)
+      expect(await owner.media.count({ where: { id: upload.mediaId } })).toBe(0)
+      // The refused file is not kept: its signed url is still writable
+      expect(await storage.head(upload.key)).toBeNull()
+    })
+
     it('is uploaded under the user and belongs to no store', async () => {
       const upload = await uploadAvatar()
 
