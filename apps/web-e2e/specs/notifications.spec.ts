@@ -71,7 +71,23 @@ test.describe('the notification center', () => {
 
     // Still on the account page, with no navigation to a store: the bell must keep counting
     await checkBellIsLiveOnAccountPage(page, storeId)
+
+    // The way back to the inbox from the account pages: the brand, then the entry of the menu
+    await checkWayBackToInbox(page, storeId)
   })
+
+  // Not a test of its own either; both are client navigations, so no page reload spends the budget
+  // of the api (100 requests a minute per address)
+  async function checkWayBackToInbox(page: Page, storeId: string): Promise<void> {
+    await page.getByRole('link', { name: en.app.title }).click()
+    await expect(page).toHaveURL(AppPaths.store.inbox(storeId))
+
+    await page.getByRole('button', { name: /^Notifications/ }).click()
+    await page.getByRole('link', { name: bell.settings }).click()
+    await expect(page).toHaveURL(AppPaths.account.notifications)
+    await page.getByRole('link', { name: en.settings.nav.backToInbox }).click()
+    await expect(page).toHaveURL(AppPaths.store.inbox(storeId))
+  }
 
   // Not a test of its own either, for the same budget. The account pages belong to no store, but
   // their bell counts the last store's notifications, so they open that store's socket too
