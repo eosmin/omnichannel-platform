@@ -22,6 +22,14 @@
         }
       },
       "outputs": ["{projectRoot}/.next"]
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "command": "next dev --port 3000",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

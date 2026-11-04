@@ -2,14 +2,21 @@ import { resolve } from 'node:path'
 
 import { config } from 'dotenv-flow'
 
-import { connectionUrls } from '@platform/core/database-testing'
+import { connectionUrls, isCiRun } from '@platform/core/database-testing'
 
 // The base is the one of the integration suites and of CI: the laptop's .env.local first, then
 // .env.example for what is missing. A variable already set is never replaced, so the shell wins.
 config({ path: resolve(import.meta.dirname, '../../..'), pattern: '.env.local', silent: true })
 config({ path: resolve(import.meta.dirname, '../../..'), pattern: '.env.example', silent: true })
 
-export const isCi = process.env['CI'] !== undefined
+// The servers the specs start inherit this env: a replica of the development database must not reach them
+delete process.env['DATABASE_REPLICA_URL']
+
+export const isCi = isCiRun()
+
+// A server that is already listening on the ports of the specs is used only when the person says so:
+// on a laptop it is usually `pnpm dev`, connected to the development database (playwright.shared.ts)
+export const reuseExistingServers = !isCi && process.env['E2E_REUSE_SERVERS'] === '1'
 
 // The addresses of .env.example: the web app must be at FRONTEND_URL and the api at API_URL, because
 // the cookie of the session and the CORS list are built from them
