@@ -10,6 +10,10 @@ import {
 
 import { InstagramPlugin } from './instagram.plugin'
 
+// These channels send by link: the file is never opened
+const sendsByLink = (): Promise<NodeJS.ReadableStream> =>
+  Promise.reject(new Error('this channel sends by link'))
+
 const credentials = { accessToken: 'IGAA-token' }
 const ctx: ChannelContext = {
   storeId: 's',
@@ -307,6 +311,8 @@ describe('InstagramPlugin', () => {
       await plugin.sendMedia(ctx, {
         channelIdentity: '99',
         mediaUrl: 'https://files.example.com/a.png',
+        fileSize: 1,
+        openFile: sendsByLink,
         contentType: 'image/png',
         filename: 'a.png',
         ...key
@@ -330,6 +336,8 @@ describe('InstagramPlugin', () => {
         plugin.sendMedia(ctx, {
           channelIdentity: '99',
           mediaUrl: 'https://files.example.com/a',
+          fileSize: 1,
+          openFile: sendsByLink,
           contentType,
           filename: null,
           ...key
@@ -349,6 +357,8 @@ describe('InstagramPlugin', () => {
         plugin.sendMedia(ctx, {
           channelIdentity: '99',
           mediaUrl,
+          fileSize: 1,
+          openFile: sendsByLink,
           contentType: 'image/png',
           filename: null,
           ...key
@@ -366,6 +376,8 @@ describe('InstagramPlugin', () => {
       const result = await plugin.sendMedia(ctx, {
         channelIdentity: '99',
         mediaUrl: 'https://files.example.com/a.png',
+        fileSize: 1,
+        openFile: sendsByLink,
         contentType: 'image/png',
         filename: 'a.png',
         caption: 'tu factura',
@@ -395,6 +407,8 @@ describe('InstagramPlugin', () => {
         const result = await plugin.sendMedia(ctx, {
           channelIdentity: '99',
           mediaUrl: 'https://files.example.com/a.png',
+          fileSize: 1,
+          openFile: sendsByLink,
           contentType: 'image/png',
           filename: null,
           caption: 'mira',

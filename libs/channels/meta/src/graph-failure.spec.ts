@@ -142,3 +142,36 @@ describe('the outcome of a send that got no clear answer', () => {
     expect(graphUnreachable().outcomeUnknown).toBe(false)
   })
 })
+
+describe('graphFailure, what it keeps of the answer for the logs', () => {
+  const answer = (code: number, subcode?: number): unknown => ({
+    error: {
+      message: 'Bearer secret-token-echo',
+      type: 'OAuthException',
+      code,
+      ...(subcode === undefined ? {} : { error_subcode: subcode }),
+      fbtrace_id: 'trace'
+    }
+  })
+
+  it('carries the numeric code and subcode of Graph, and nothing else of the answer', () => {
+    const error = graphFailure(400, answer(100, 2494073))
+
+    expect(error.providerCode).toBe(100)
+    expect(error.providerSubcode).toBe(2494073)
+    expect(JSON.stringify(error)).not.toContain('secret-token-echo')
+    expect(String(error.message)).not.toContain('secret-token-echo')
+  })
+
+  it('keeps the code when there is no subcode, and nothing when the body is not a Graph error', () => {
+    expect(graphFailure(400, answer(131053)).providerSubcode).toBeUndefined()
+    expect(graphFailure(400, answer(131053)).providerCode).toBe(131053)
+    expect(graphFailure(500, 'html page').providerCode).toBeUndefined()
+  })
+
+  it('carries them for every kind of failure it classifies', () => {
+    expect(graphFailure(400, answer(190)).providerCode).toBe(190)
+    expect(graphFailure(400, answer(131047)).providerCode).toBe(131047)
+    expect(graphFailure(400, answer(4)).providerCode).toBe(4)
+  })
+})

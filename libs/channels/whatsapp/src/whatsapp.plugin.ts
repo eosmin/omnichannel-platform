@@ -38,6 +38,7 @@ import { parseWhatsAppCredentials, type WhatsAppCredentials } from './whatsapp-c
 import { webhookToEvents } from './whatsapp-events'
 import {
   buttonsPayload,
+  checkMedia,
   locationPayload,
   mediaPayload,
   reactionPayload,
@@ -59,6 +60,9 @@ const sentSchema = z.object({
 })
 
 const successSchema = z.object({ success: z.boolean() })
+
+// What Meta answers an upload with: the id the message will name
+const mediaUploadedSchema = z.object({ id: z.string().min(1).max(100) })
 
 const templateComponentSchema = z.object({
   type: z.string(),
@@ -239,8 +243,27 @@ export class WhatsAppPlugin implements ChannelPlugin {
     return this.send(ctx, textPayload(params))
   }
 
+  // The file goes to Meta first, from the platform's storage, and the message carries the id Meta
+  // gives it. Meta cannot be asked to fetch a link: the platform's storage is private (and a signed
+  // link to it is no business of a provider), so `mediaUrl` is never read and nothing is fetched from
+  // a url here. Everything refusable is refused before the file is opened. A retry uploads again, which
+  // makes another id and no other effect; the message itself is sent once.
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
-    return this.send(ctx, mediaPayload(params))
+    const credentials = parseWhatsAppCredentials(ctx.credentials)
+    // A host that does not give the file (a build of the core older than this contract) is a refusal
+    // with a name, not a TypeError that the queue would retry
+    if (typeof params.openFile !== 'function') {
+      throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+    }
+    const { contentType } = checkMedia(params)
+    const uploaded = await this.meta.uploadMedia({
+      path: [credentials.phoneNumberId, WhatsAppApi.EDGE_MEDIA],
+      token: credentials.accessToken,
+      fields: { messaging_product: WhatsAppApi.MESSAGING_PRODUCT, type: contentType },
+      file: { open: params.openFile, contentType, size: params.fileSize },
+      schema: mediaUploadedSchema
+    })
+    return this.send(ctx, mediaPayload(params, uploaded.id))
   }
 
   async sendTemplate(

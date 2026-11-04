@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto'
-import type { Readable } from 'node:stream'
+import { Readable } from 'node:stream'
 
 import { z } from 'zod'
 
@@ -590,6 +590,179 @@ describe('MetaGraphClient', () => {
         .mockResolvedValueOnce(new Response('', { status: 503 }))
 
       await expect(client.downloadMedia(TOKEN, '999')).rejects.toMatchObject({ retryable: true })
+    })
+  })
+
+  describe('uploadMedia', () => {
+    const schema = z.object({ id: z.string() })
+    const opened: Readable[] = []
+    const fileOf = (bytes: string, size = Buffer.byteLength(bytes)) => ({
+      open: () => {
+        const stream = Readable.from([Buffer.from(bytes)])
+        opened.push(stream)
+        return Promise.resolve(stream)
+      },
+      contentType: 'image/png',
+      size
+    })
+    const upload = (file = fileOf('abc')) =>
+      client.uploadMedia({
+        path: ['111', 'media'],
+        token: TOKEN,
+        fields: { messaging_product: 'whatsapp', type: 'image/png' },
+        file,
+        schema
+      })
+
+    // fetch reads the body while the mock answers, as the real one does
+    function answerAfterReading(response: Response): void {
+      fetchMock.mockImplementation(async (_url, init) => {
+        const body = init?.body as ReadableStream<Uint8Array>
+        const reader = body.getReader()
+        const chunks: Buffer[] = []
+        for (;;) {
+          const part = await reader.read()
+          if (part.done) break
+          chunks.push(Buffer.from(part.value))
+        }
+        captured = { init: init ?? {}, body: Buffer.concat(chunks).toString('latin1') }
+        return response
+      })
+    }
+    let captured: { init: RequestInit; body: string } | undefined
+
+    beforeEach(() => {
+      captured = undefined
+      opened.length = 0
+    })
+
+    it('posts a multipart body with the fields, then the file and its type, and answers the id', async () => {
+      answerAfterReading(json({ id: '555' }))
+
+      await expect(upload()).resolves.toEqual({ id: '555' })
+
+      const headers = captured?.init.headers as Record<string, string>
+      const boundary = /boundary=(.+)$/.exec(headers['content-type'] ?? '')?.[1]
+      expect(boundary).toBeDefined()
+      expect(captured?.body).toBe(
+        [
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="messaging_product"',
+          '',
+          'whatsapp',
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="type"',
+          '',
+          'image/png',
+          `--${boundary}`,
+          'Content-Disposition: form-data; name="file"; filename="upload"',
+          'Content-Type: image/png',
+          '',
+          'abc',
+          `--${boundary}--`,
+          ''
+        ].join('\r\n')
+      )
+      // The length is exact, so the body is not sent chunked and Graph can check it
+      expect(headers['content-length']).toBe(String(Buffer.byteLength(captured?.body ?? '')))
+      expect(headers['authorization']).toBe(`Bearer ${TOKEN}`)
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://graph.facebook.com/v23.0/111/media')
+      expect(captured?.init.signal).toBeDefined()
+    })
+
+    it.each([
+      ['a type with a line break', 'image/png\r\nX-Evil: 1'],
+      ['a type that is not a type', 'image'],
+      ['an empty type', '']
+    ])('refuses %s before calling Meta', async (_label, contentType) => {
+      const file = { ...fileOf('abc'), contentType }
+
+      await expect(upload(file)).rejects.toBeInstanceOf(PluginError)
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      // Nothing was opened to be left hanging
+      expect(opened).toHaveLength(0)
+    })
+
+    it.each([
+      ['a field name with a quote', { 'a"b': 'x' }],
+      ['a field value with a line break', { type: 'x\r\ny' }]
+    ])('refuses %s before calling Meta', async (_label, fields) => {
+      await expect(
+        client.uploadMedia({
+          path: ['111', 'media'],
+          token: TOKEN,
+          fields,
+          file: fileOf('abc'),
+          schema
+        })
+      ).rejects.toBeInstanceOf(PluginError)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('fails for good, not to be tried again, when the stream holds more bytes than the size recorded', async () => {
+      answerAfterReading(json({ id: '1' }))
+      await expect(upload(fileOf('abcdef', 3))).rejects.toMatchObject({ retryable: false })
+    })
+
+    it('closes the stored file when Meta answers before reading all of it', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(json({ error: { code: 100 } }, 400)))
+
+      await expect(upload()).rejects.toBeInstanceOf(PluginError)
+
+      expect(opened).toHaveLength(1)
+      expect(opened[0]?.destroyed).toBe(true)
+    })
+
+    it('fails when the stream ends before the announced size', async () => {
+      answerAfterReading(json({ id: '1' }))
+      await expect(upload(fileOf('ab', 3))).rejects.toBeInstanceOf(PluginError)
+    })
+
+    it('says invalid credentials for a token Meta refuses, with its code for the logs and no text', async () => {
+      answerAfterReading(
+        json({ error: { message: `bad ${TOKEN}`, code: 190, error_subcode: 463 } }, 401)
+      )
+
+      const error = await upload().catch((caught: unknown) => caught)
+
+      expect(error).toBeInstanceOf(PluginError)
+      expect(error).toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        providerCode: 190,
+        providerSubcode: 463
+      })
+      expect(JSON.stringify(error)).not.toContain(TOKEN)
+    })
+
+    it('can be tried again after a server error: nothing was sent to the customer', async () => {
+      answerAfterReading(json({ error: { code: 2 } }, 500))
+      await expect(upload()).rejects.toMatchObject({ retryable: true })
+    })
+
+    it('does not follow a redirect and refuses an answer that is not an id', async () => {
+      answerAfterReading(
+        new Response(null, { status: 302, headers: { location: 'https://evil.test' } })
+      )
+      await expect(upload()).rejects.toBeInstanceOf(PluginError)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      fetchMock.mockReset()
+      answerAfterReading(json({ nope: true }))
+      await expect(upload()).rejects.toBeInstanceOf(PluginError)
+    })
+
+    it('refuses a token that cannot be a header, without calling Meta', async () => {
+      await expect(
+        client.uploadMedia({
+          path: ['111', 'media'],
+          token: 'bad\ntoken',
+          fields: {},
+          file: fileOf('abc'),
+          schema
+        })
+      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID })
+      expect(fetchMock).not.toHaveBeenCalled()
     })
   })
 })

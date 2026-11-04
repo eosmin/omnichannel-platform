@@ -816,6 +816,51 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
+    it('lets the plugin read the stored bytes of the clean file, at the size that was recorded', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      const media = await fileOf(reply.storeId, { messageId: reply.id })
+      const { key } = await owner.media.findUniqueOrThrow({
+        where: { id: media.id },
+        select: { key: true }
+      })
+      const storage = app.get(StorageService, { strict: false })
+      await storage.put(key, Buffer.from('0123456789'), 'image/png')
+
+      try {
+        await sender.send(job(reply), false)
+
+        expect(sentMedia[0]?.fileSize).toBe(10)
+        const chunks: Buffer[] = []
+        for await (const chunk of (await sentMedia[0]?.openFile()) ?? []) {
+          chunks.push(Buffer.from(chunk as Uint8Array))
+        }
+        expect(Buffer.concat(chunks).toString()).toBe('0123456789')
+      } finally {
+        await storage.delete(key)
+      }
+    })
+
+    it('does not give the bytes of a file that stopped being clean after the send was picked up', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      const media = await fileOf(reply.storeId, { messageId: reply.id })
+      await sender.send(job(reply), false)
+      await owner.media.update({ where: { id: media.id }, data: { status: 'infected' } })
+
+      await expect(sentMedia[0]?.openFile()).rejects.toMatchObject({ retryable: false })
+    })
+
+    it('fails the read, and sends nothing else, when the object is gone from the bucket', async () => {
+      const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      await fileOf(reply.storeId, { messageId: reply.id })
+
+      await sender.send(job(reply), false)
+
+      await expect(sentMedia[0]?.openFile()).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_MESSAGE_FAILED,
+        retryable: false
+      })
+    })
+
     it('sends a file with no text under it, and no caption at all', async () => {
       const reply = await queuedReply({
         pluginId: MEDIA_CHANNEL_ID,

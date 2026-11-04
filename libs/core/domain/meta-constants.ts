@@ -9,6 +9,15 @@ export const MetaWebhook = {
   SUBSCRIBE_MODE: 'subscribe'
 } as const
 
+// The form of a file upload to the Graph API
+export const MetaUpload = {
+  FILE_FIELD: 'file',
+  // The name sent with the bytes is fixed: the real name of a document travels in the message
+  FILE_NAME: 'upload',
+  BOUNDARY_PREFIX: '----platform',
+  FORM_CONTENT_TYPE: 'multipart/form-data'
+} as const
+
 export const MetaGraph = {
   // The two Graph hosts. Facebook's serves WhatsApp and Messenger; Instagram Login tokens only work on
   // Instagram's. A call names one of these, never a url of its own.
@@ -32,6 +41,8 @@ export const MetaTransientStatuses = [408, 425] as const
 export const MetaLimits = {
   REQUEST_TIMEOUT_MS: 15_000,
   MEDIA_TIMEOUT_MS: 60_000,
+  // An upload of the largest file (100 MB) over an ordinary uplink; a call that takes longer is cut
+  UPLOAD_TIMEOUT_MS: 180_000,
   // WhatsApp accepts documents up to 100 MB, the largest media it carries
   MEDIA_MAX_BYTES: 100 * 1024 * 1024,
   // The challenge Meta sends is an integer

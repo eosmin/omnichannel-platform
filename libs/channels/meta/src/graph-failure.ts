@@ -5,7 +5,7 @@ import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
 const graphErrorSchema = z.object({
-  error: z.object({ code: z.number().int() })
+  error: z.object({ code: z.number().int(), error_subcode: z.number().int().optional() })
 })
 
 function isRateLimitCode(code: number): boolean {
@@ -40,6 +40,12 @@ export function graphFailure(
 ): PluginError {
   const parsed = graphErrorSchema.safeParse(body)
   const code = parsed.success ? parsed.data.error.code : undefined
+  const subcode = parsed.success ? parsed.data.error.error_subcode : undefined
+  // The two numbers of the answer go with the error, for the logs: nothing else of it does
+  const seen = {
+    ...(code === undefined ? {} : { providerCode: code }),
+    ...(subcode === undefined ? {} : { providerSubcode: subcode })
+  }
 
   // Meta sometimes answers a throttle with a 403: the code says what it is, and a healthy connection
   // must not be put in error for it
@@ -47,7 +53,7 @@ export function graphFailure(
     status === HttpStatusCodes.TOO_MANY_REQUESTS ||
     (code !== undefined && isRateLimitCode(code))
   ) {
-    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
+    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { ...seen, retryable: true })
   }
   if (
     status >= HttpStatusCodes.INTERNAL_SERVER_ERROR ||
@@ -55,29 +61,30 @@ export function graphFailure(
     (code !== undefined && isOutageCode(code))
   ) {
     return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+      ...seen,
       retryable: safeToRepeat,
       outcomeUnknown: !safeToRepeat
     })
   }
   // Not a failure of the call: this person has no profile to read, and asking again changes nothing
   if (code === MetaErrorCodes.NO_PROFILE) {
-    return new PluginError(ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE, { retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE, { ...seen, retryable: false })
   }
   // The agent can act on this one: pick another template, or wait for the approval
   if (code !== undefined && WhatsAppErrorCodes.TEMPLATE_UNAVAILABLE.some(known => known === code)) {
-    return new PluginError(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED, { retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED, { ...seen, retryable: false })
   }
   if (code !== undefined && WhatsAppErrorCodes.WINDOW_CLOSED.some(known => known === code)) {
-    return new PluginError(ErrorCodes.CHANNEL_WINDOW_EXPIRED, { retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_WINDOW_EXPIRED, { ...seen, retryable: false })
   }
   if (
     status === HttpStatusCodes.UNAUTHORIZED ||
     status === HttpStatusCodes.FORBIDDEN ||
     (code !== undefined && isCredentialsCode(code))
   ) {
-    return new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { ...seen, retryable: false })
   }
-  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { ...seen, retryable: false })
 }
 
 // The call got no answer (network, timeout). For a call that is safe to repeat that is worth another

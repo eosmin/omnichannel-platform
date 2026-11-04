@@ -5,6 +5,7 @@ export const WhatsAppApi = {
   RECIPIENT_TYPE: 'individual',
   // Edges of a phone number and of a business account
   EDGE_MESSAGES: 'messages',
+  EDGE_MEDIA: 'media', // POST /{phone-number-id}/media uploads a file and answers its id
   EDGE_TEMPLATES: 'message_templates',
   EDGE_SUBSCRIBED_APPS: 'subscribed_apps',
   EDGE_PHONE_NUMBERS: 'phone_numbers',
@@ -88,13 +89,38 @@ export const WhatsAppMediaFallback = {
   CONTENT_TYPE: 'application/octet-stream'
 } as const
 
-// The content types the Cloud API takes as each kind of media; any other file goes as a document
-export const WhatsAppMediaTypes: Readonly<Record<'image' | 'video' | 'audio', readonly string[]>> =
-  {
-    image: ['image/jpeg', 'image/png'],
-    video: ['video/mp4', 'video/3gpp'],
-    audio: ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg']
-  }
+// The content types the Cloud API takes as each kind of media. The plugin refuses any other before
+// uploading it: Meta would (error 131053)
+// (https://developers.facebook.com/documentation/business-messaging/whatsapp/business-phone-numbers/media)
+export const WhatsAppMediaTypes: Readonly<
+  Record<'image' | 'video' | 'audio' | 'document', readonly string[]>
+> = {
+  image: ['image/jpeg', 'image/png'],
+  video: ['video/mp4', 'video/3gpp'],
+  audio: ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg'],
+  // Meta takes these as a document and refuses any other type (error 131053)
+  document: [
+    'text/plain',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.ms-excel',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  ]
+}
+
+const MEGABYTE = 1024 * 1024
+// The most one upload may weigh, by kind, from the same page of Meta's documentation
+export const WhatsAppMediaMaxBytes: Readonly<
+  Record<'image' | 'video' | 'audio' | 'document', number>
+> = {
+  image: 5 * MEGABYTE,
+  video: 16 * MEGABYTE,
+  audio: 16 * MEGABYTE,
+  document: 100 * MEGABYTE
+}
 
 export const WhatsAppLimits = {
   TEXT_MAX_LENGTH: 4096,

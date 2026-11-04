@@ -24,14 +24,25 @@ export class PluginError extends PlatformException {
   // True when the call changes something at the provider and got no clear answer (a timeout, a 5xx, an
   // unreadable 2xx): the provider may have done the work. False or left out: it did not.
   readonly outcomeUnknown: boolean
+  // The numeric code and subcode of the provider's own answer, for the logs only (Meta's `code` and
+  // `error_subcode`). Numbers and nothing else, so they cannot carry a token; never sent to a client.
+  readonly providerCode: number | undefined
+  readonly providerSubcode: number | undefined
 
   constructor(
     code: PluginErrorCode,
-    options: { retryable?: boolean; outcomeUnknown?: boolean } = {}
+    options: {
+      retryable?: boolean
+      outcomeUnknown?: boolean
+      providerCode?: number
+      providerSubcode?: number
+    } = {}
   ) {
     super(code, `channel plugin failed: ${code}`)
     this.name = 'PluginError'
     this.retryable = options.retryable
     this.outcomeUnknown = options.outcomeUnknown === true
+    this.providerCode = options.providerCode
+    this.providerSubcode = options.providerSubcode
   }
 }
