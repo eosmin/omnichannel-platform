@@ -304,6 +304,8 @@ export const messageSchema = z.object({
     .nullable()
     // A server that does not send it yet (a rolling deploy) draws no card instead of failing the thread
     .default(null),
+  // A server that does not send it yet (a rolling deploy) draws the image in its bubble, as before
+  sticker: z.boolean().default(false),
   // Untrusted: drawn as a link with its host visible, never fetched
   attachmentUrl: z.string().nullable(),
   reactions: z.array(reactionSchema),

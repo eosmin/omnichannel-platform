@@ -11,6 +11,7 @@ import { knownErrorCode } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
+import { drawsWithoutBubble } from '../../lib/inbox/sticker-bubble'
 import {
   deliveryTicksOf,
   isFromCustomer,
@@ -122,6 +123,7 @@ function Bubble({
   const format = useFormatter()
   const isCustomer = isFromCustomer(message)
   const isNote = kind === 'note'
+  const bubbleless = drawsWithoutBubble(message, kind)
   const author = authorLabel(message.authorType, message.authorId)
   const ticks = deliveryTicksOf(message)
   const time = format.dateTime(new Date(message.createdAt), { timeStyle: 'short' })
@@ -168,9 +170,10 @@ function Bubble({
       >
         <div
           className={cn(
-            'flex min-w-0 flex-col gap-1 rounded-lg px-3 py-2 text-sm',
-            isCustomer && 'bg-card border',
-            !isCustomer && !isNote && 'bg-secondary text-secondary-foreground',
+            'flex min-w-0 flex-col gap-1 text-sm',
+            bubbleless ? (isCustomer ? 'items-start' : 'items-end') : 'rounded-lg px-3 py-2',
+            !bubbleless && isCustomer && 'bg-card border',
+            !bubbleless && !isCustomer && !isNote && 'bg-secondary text-secondary-foreground',
             isNote && 'bg-note text-note-foreground border-note-border border border-dashed'
           )}
         >
@@ -195,6 +198,7 @@ function Bubble({
             conversationId={conversationId}
             canResendCaption={actions.resendCaption}
             canRefetchFile={actions.refetchFile}
+            sticker={bubbleless}
           />
           {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
@@ -243,7 +247,8 @@ function Content({
   mentionNames,
   conversationId,
   canResendCaption,
-  canRefetchFile
+  canRefetchFile,
+  sticker
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
@@ -252,6 +257,7 @@ function Content({
   conversationId: string
   canResendCaption: boolean
   canRefetchFile: boolean
+  sticker: boolean
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -284,6 +290,7 @@ function Content({
           messageId={message.id}
           conversationId={conversationId}
           canRefetch={canRefetchFile}
+          sticker={sticker}
         />
       ) : null}
       {MediaIcon === null || !isMediaType(message.type) || hasFiles ? null : (

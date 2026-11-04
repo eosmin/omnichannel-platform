@@ -1,4 +1,10 @@
-import { AuthorType, MediaStatus, MessageLimits, MessageType } from '@platform/core/domain'
+import {
+  AuthorType,
+  MediaStatus,
+  MessageLimits,
+  MessageMetadataKeys,
+  MessageType
+} from '@platform/core/domain'
 
 import { messageView } from './messages.views'
 
@@ -177,6 +183,30 @@ describe('messageView captionState', () => {
     expect(
       messageView({ ...row(null), captionState: 'failed', deletedAt: new Date() }).captionState
     ).toBeNull()
+  })
+})
+
+describe('messageView sticker', () => {
+  const image = (metadata: unknown, patch: object = {}): ReturnType<typeof messageView> =>
+    messageView({ ...row(metadata), type: MessageType.IMAGE, content: null, ...patch })
+
+  it('marks an image the channel said is a sticker', () => {
+    expect(image({ [MessageMetadataKeys.STICKER]: true }).sticker).toBe(true)
+  })
+
+  it.each([
+    ['no metadata', null],
+    ['metadata without the mark', { attachmentUrl: 'https://example.com/a' }],
+    ['a mark that is not true', { [MessageMetadataKeys.STICKER]: 'yes' }]
+  ])('is false for %s', (_name, metadata) => {
+    expect(image(metadata).sticker).toBe(false)
+  })
+
+  it('is false for a deleted sticker and for any type but an image', () => {
+    const metadata = { [MessageMetadataKeys.STICKER]: true }
+
+    expect(image(metadata, { deletedAt: new Date('2026-10-30T11:00:00Z') }).sticker).toBe(false)
+    expect(messageView(row(metadata)).sticker).toBe(false)
   })
 })
 

@@ -753,7 +753,7 @@ test.describe.serial('the thread of a conversation', () => {
     await page.goto(AppPaths.store.conversation(storeId, conversationId))
 
     const bar = threadOf(page).getByRole('slider', { name: en.inbox.thread.audio.seek })
-    await expect(threadOf(page).getByText('note.ogg')).toBeVisible()
+    await expect(threadOf(page).getByText('note.ogg', { exact: true })).toBeVisible()
     await expect(bar).toHaveAttribute('aria-valuemax', '30')
     await bar.focus()
     await page.keyboard.press('ArrowRight')

@@ -1,11 +1,54 @@
+import type { Query } from '@tanstack/react-query'
+
 import { QueryKeys } from '@platform/api-client'
 import { RealtimeEvents } from '@platform/core/realtime'
 
 import {
   createInvalidationBatcher,
+  invalidationFilterOf,
   queryKeysAfterReconnect,
   queryKeysForEvent
 } from './invalidation'
+
+// The part of a query the filter reads
+const queryHolding = (data: unknown, queryKey: readonly unknown[] = LINKS): Query =>
+  ({ queryKey, state: { data } }) as unknown as Query
+const LINKS = QueryKeys.media.urls('s1', 'm1')
+
+describe('invalidationFilterOf', () => {
+  it('makes the links of the store stale only for the pictures that wait for their variants', () => {
+    const filter = invalidationFilterOf(QueryKeys.media.all('s1'), 's1')
+
+    expect(filter.queryKey).toEqual(QueryKeys.media.all('s1'))
+    // A voice note that plays keeps the signed link it started with: a new one would restart it
+    expect(filter.predicate?.(queryHolding({ processed: false }))).toBe(true)
+    expect(filter.predicate?.(queryHolding({ processed: true }))).toBe(false)
+    expect(filter.predicate?.(queryHolding('x'))).toBe(false)
+  })
+
+  it('also reads again the links whose first read has not come back, which may have gone out too early', () => {
+    const filter = invalidationFilterOf(QueryKeys.media.all('s1'), 's1')
+
+    expect(filter.predicate?.(queryHolding(undefined))).toBe(true)
+  })
+
+  it('only touches queries of signed links, not any other that sits under the media key', () => {
+    const filter = invalidationFilterOf(QueryKeys.media.all('s1'), 's1')
+
+    expect(filter.predicate?.(queryHolding(undefined, ['media', 's1', 'gallery']))).toBe(false)
+    expect(filter.predicate?.(queryHolding({ processed: false }, ['media', 's1', 'm1']))).toBe(
+      false
+    )
+  })
+
+  it('leaves every other key as it is, with no predicate', () => {
+    expect(invalidationFilterOf(QueryKeys.messages.thread('s1', 'c1'), 's1')).toEqual({
+      queryKey: QueryKeys.messages.thread('s1', 'c1')
+    })
+    // The links of another store are not this store's links
+    expect(invalidationFilterOf(QueryKeys.media.all('s2'), 's1').predicate).toBeUndefined()
+  })
+})
 
 describe('queryKeysForEvent', () => {
   it('refreshes the list and the thread when a customer writes', () => {
@@ -34,6 +77,24 @@ describe('queryKeysForEvent', () => {
     expect(
       queryKeysForEvent(RealtimeEvents.MESSAGE_DELIVERED, { conversationId: 'c1' }, 's1')
     ).toEqual([QueryKeys.messages.thread('s1', 'c1')])
+  })
+
+  // The scan announces the file as soon as it is clean and the worker announces it again once the
+  // variants exist. The signed links cached after the first one say "no variant yet": without this the
+  // picture stays a download card until the page is reloaded.
+  it('asks for the signed links of the files again when a file is processed', () => {
+    const keys = queryKeysForEvent(RealtimeEvents.MEDIA_PROCESSED, { conversationId: 'c1' }, 's1')
+
+    expect(keys).toEqual([QueryKeys.messages.thread('s1', 'c1'), QueryKeys.media.all('s1')])
+    expect(QueryKeys.media.urls('s1', 'm1').slice(0, 2)).toEqual(QueryKeys.media.all('s1'))
+  })
+
+  it('leaves the signed links alone when a file is refused', () => {
+    for (const event of [RealtimeEvents.MEDIA_INFECTED, RealtimeEvents.MEDIA_UNSCANNABLE]) {
+      expect(queryKeysForEvent(event, { conversationId: 'c1' }, 's1')).toEqual([
+        QueryKeys.messages.thread('s1', 'c1')
+      ])
+    }
   })
 
   it('refreshes the whole list when a conversation changes', () => {
@@ -97,7 +158,7 @@ describe('queryKeysAfterReconnect', () => {
     ])
   })
 
-  it('covers the list, every thread, the presence, the notifications and the exports', () => {
+  it('covers the list, every thread, the presence, the notifications, the exports and the links of pictures', () => {
     const keys = queryKeysAfterReconnect('s1')
     expect(keys).toEqual(
       expect.arrayContaining([
@@ -105,7 +166,9 @@ describe('queryKeysAfterReconnect', () => {
         QueryKeys.messages.all('s1'),
         QueryKeys.customers.all('s1'),
         QueryKeys.presence.team('s1'),
-        QueryKeys.exports.all('s1')
+        QueryKeys.exports.all('s1'),
+        // A picture that was waiting for its variants when the event was lost
+        QueryKeys.media.all('s1')
       ])
     )
     // A thread key sits under messages.all, so one invalidation reaches every thread

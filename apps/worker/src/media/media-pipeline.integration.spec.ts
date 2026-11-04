@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 
 import { getQueueToken } from '@nestjs/bullmq'
 import { Test, type TestingModule } from '@nestjs/testing'
-import type { Queue } from 'bullmq'
+import { type Queue, UnrecoverableError } from 'bullmq'
 import pg from 'pg'
 import sharp from 'sharp'
 
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls } from '@platform/core/database-testing'
 import { JobNames, QueueNames } from '@platform/core/queues'
-import { ImageVariants, StorageKeys } from '@platform/core/storage'
+import { AnimatedImage, ImageVariants, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { dropJob } from '../testing/drop-job'
@@ -155,16 +155,126 @@ describe('MediaPipeline', () => {
     expect(await size('thumb')).toEqual(['webp', 160, 160])
   })
 
-  it('leaves the image as it is when it cannot be decoded', async () => {
+  it('leaves the image as it is when it cannot be decoded, and says it is settled', async () => {
     const media = await pendingMedia('broken.png', 'image/png', Buffer.from('not an image'))
     await pipeline.scan(media.id)
     await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
-    await expect(pipeline.processImage(media.id)).rejects.toThrow('could not be processed')
+    // Unrecoverable: the queue must not try a file the decoder refuses a second time
+    const failure = await pipeline.processImage(media.id).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(UnrecoverableError)
+    expect((failure as Error).message).toContain('could not be processed')
 
     const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
     expect(row.status).toBe('clean')
     expect(row.variants).toBeNull()
+    // Settled with no variant: the thread draws a download, not a placeholder that never ends, and the
+    // hourly cleanup does not queue the same refused file again
+    expect(row.processedAt).not.toBeNull()
+  })
+
+  // A sticker or a gif: n frames of the same size, as the file a customer sends
+  const animation = (frames: number, size: number, format: 'webp' | 'gif'): Promise<Buffer> =>
+    Promise.all(
+      Array.from({ length: frames }, (_, i) =>
+        sharp({
+          // Every frame differs from the one before: an encoder merges equal neighbours into one
+          create: {
+            width: size,
+            height: size,
+            channels: 3,
+            background: { r: (i * 37) % 256, g: (i * 91) % 256, b: (i * 53) % 256 }
+          }
+        })
+          .png()
+          .toBuffer()
+      )
+    ).then(images =>
+      sharp(images, { join: { animated: true } })
+        .toFormat(format, { loop: 0, delay: Array<number>(frames).fill(80) })
+        .toBuffer()
+    )
+
+  const variantMeta = async (mediaId: string, variant: 'full' | 'medium' | 'thumb') => {
+    const bytes = await storage.read(StorageKeys.messageVariant(storeId, mediaId, variant), 5e6)
+    const meta = await sharp(bytes ?? Buffer.alloc(0)).metadata()
+    return { format: meta.format, pages: meta.pages, width: meta.width, height: meta.height }
+  }
+
+  async function processed(filename: string, contentType: string, body: Buffer) {
+    const media = await pendingMedia(filename, contentType, body)
+    await pipeline.scan(media.id)
+    await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    await pipeline.processImage(media.id)
+    return media
+  }
+
+  it.each([
+    ['sticker.webp', 'image/webp', 'webp'],
+    ['funny.gif', 'image/gif', 'gif']
+  ] as const)(
+    'keeps the animation of %s in the big variants and draws the thumb still',
+    async (filename, contentType, format) => {
+      const media = await processed(filename, contentType, await animation(12, 600, format))
+
+      expect(await variantMeta(media.id, 'full')).toMatchObject({ format: 'webp', pages: 12 })
+      expect(await variantMeta(media.id, 'medium')).toMatchObject({
+        format: 'webp',
+        pages: 12,
+        width: 600
+      })
+      expect(await variantMeta(media.id, 'thumb')).toMatchObject({ width: 160, height: 160 })
+      expect((await variantMeta(media.id, 'thumb')).pages).toBeUndefined()
+    }
+  )
+
+  it('draws an animation with more frames than the cap from its first frame, and keeps the original', async () => {
+    const media = await processed(
+      'long.gif',
+      'image/gif',
+      await animation(AnimatedImage.MAX_FRAMES + 1, 16, 'gif')
+    )
+
+    for (const variant of ['full', 'medium', 'thumb'] as const) {
+      expect((await variantMeta(media.id, variant)).pages).toBeUndefined()
+    }
+    expect(await storage.head(media.key)).not.toBeNull()
+  })
+
+  it('draws an animation whose frames hold too many pixels together from its first frame', async () => {
+    // 60 frames of 800 x 800 is 38 million pixels: under the frame cap, over the pixel budget
+    const media = await processed('big.gif', 'image/gif', await animation(60, 800, 'gif'))
+
+    expect((await variantMeta(media.id, 'full')).pages).toBeUndefined()
+    expect(await variantMeta(media.id, 'full')).toMatchObject({ format: 'webp', width: 800 })
+  })
+
+  it('draws an animation that carries a quarter-turn orientation from its first frame, not refused', async () => {
+    // The encoder cannot rotate the frames of an animation: it throws if asked to. The rule of
+    // `keepsAnimation` (unit tested) keeps it from being asked, and the still fallback of `processImage`
+    // would catch it if it were: this case proves the end result, whichever of the two did the work.
+    const rotated = await sharp(await animation(6, 40, 'webp'), { animated: true })
+      .withMetadata({ orientation: 6 })
+      .webp({ loop: 0 })
+      .toBuffer()
+    const media = await processed('turned.webp', 'image/webp', rotated)
+
+    const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+    expect(row.variants).not.toBeNull()
+    expect((await variantMeta(media.id, 'full')).pages).toBeUndefined()
+    // Turned a quarter, as a still: the frames were 40 x 40, so the shape does not tell, the pages do
+    expect(await variantMeta(media.id, 'full')).toMatchObject({ format: 'webp' })
+  })
+
+  it('does not change a still webp', async () => {
+    const still = await sharp({
+      create: { width: 300, height: 200, channels: 3, background: '#33cc66' }
+    })
+      .webp()
+      .toBuffer()
+    const media = await processed('still.webp', 'image/webp', still)
+
+    expect((await variantMeta(media.id, 'full')).pages).toBeUndefined()
   })
 
   describe('a scan with no verdict', () => {

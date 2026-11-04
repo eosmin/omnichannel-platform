@@ -16,6 +16,7 @@ import {
   MediaStatus as MediaStatuses,
   CaptionState as CaptionStates,
   MessageLimits,
+  MessageMetadataKeys,
   MessageType as MessageTypes,
   placeTextOf,
   UNAVAILABLE_FILES_KEY
@@ -139,6 +140,8 @@ export interface MessageView {
   system: SystemLineMetadata | null
   // The place of a location message, or null (not a location, deleted, or coordinates that do not hold)
   location: LocationView | null
+  // An image the customer sent as a sticker: the thread draws it without a bubble
+  sticker: boolean
   // Untrusted: drawn as a link with its host visible and never fetched by the server. A story mention
   // is a signed link that expires within about a day.
   attachmentUrl: string | null
@@ -277,6 +280,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
     location: locationOf(row, type),
+    sticker: stickerOf(row, type),
     attachmentUrl: attachmentUrlOf(row, type),
     reactions: row.reactions.map(reaction => ({
       emoji: reaction.emoji,
@@ -320,6 +324,14 @@ const locationSchema = z.object({
   name: z.string().optional().catch(undefined),
   address: z.string().optional().catch(undefined)
 })
+
+const stickerSchema = z.object({ [MessageMetadataKeys.STICKER]: z.literal(true) })
+
+// Only an image that is still there: a deleted sticker is a deleted message like any other
+function stickerOf(row: MessageRow, type: MessageType): boolean {
+  if (type !== MessageTypes.IMAGE || row.deletedAt !== null) return false
+  return stickerSchema.safeParse(row.metadata).success
+}
 
 // A deleted message keeps no content in the thread, and the place it shared is content
 function locationOf(row: MessageRow, type: MessageType): LocationView | null {

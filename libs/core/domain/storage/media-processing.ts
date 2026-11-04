@@ -16,6 +16,51 @@ export const VARIANT_CONTENT_TYPE = 'image/webp'
 // has more pixels than this, whatever the byte size of the file.
 export const MAX_IMAGE_PIXELS = 100_000_000
 
+// A sticker or a gif moves; the encoder keeps that only when every frame is decoded in memory at once,
+// so it is bounded before any frame is decoded: by the number of frames and by the pixels of all of
+// them together. At 4 bytes a pixel, the decoded frames, the resized copy and the encoder's own state
+// make the peak of one job about 12 bytes a pixel of the budget, and the heavy queue runs two jobs at
+// once: 16 million pixels is under 400 MB for both (a 512 px sticker keeps its animation up to 60
+// frames). An animation over either cap is drawn still, from its first frame; the original stays and
+// downloads as it came.
+export const AnimatedImage = {
+  CONTENT_TYPES: ['image/gif', 'image/webp'],
+  // The names the decoder gives the formats of CONTENT_TYPES
+  FORMATS: ['gif', 'webp'],
+  MAX_FRAMES: 100,
+  MAX_TOTAL_PIXELS: 16_000_000
+} as const
+
+// What the header of an image says about its frames, read without decoding them
+export interface FrameInfo {
+  // The format the decoder found in the bytes, whatever the row says
+  format?: string | undefined
+  pages?: number | undefined
+  width?: number | undefined
+  height?: number | undefined
+  // The EXIF orientation (1 to 8)
+  orientation?: number | undefined
+}
+
+const isWhole = (value: number | undefined): value is number =>
+  value !== undefined && Number.isSafeInteger(value) && value > 0
+
+// Whether the variants of an image keep its animation. The header is the file's own word: a missing
+// or odd size or count is not trusted, and the image is drawn still. So is one whose bytes are not
+// what the row says (the caps below are those of a gif or a webp), and one that carries an EXIF
+// orientation: the decoder cannot rotate the frames of an animation by a quarter turn.
+export function keepsAnimation(contentType: string, info: FrameInfo): boolean {
+  if (!(AnimatedImage.CONTENT_TYPES as readonly string[]).includes(contentType)) return false
+  const { format, pages, width, height, orientation } = info
+  if (format === undefined || !(AnimatedImage.FORMATS as readonly string[]).includes(format)) {
+    return false
+  }
+  if (orientation !== undefined && orientation !== 1) return false
+  if (!isWhole(pages) || !isWhole(width) || !isWhole(height)) return false
+  if (pages < 2 || pages > AnimatedImage.MAX_FRAMES) return false
+  return width * height * pages <= AnimatedImage.MAX_TOTAL_PIXELS
+}
+
 // The part of the scan that does not depend on the machine it runs on
 export const VirusScan = {
   // clamd reads a stream in chunks of at most this size (INSTREAM)
@@ -39,6 +84,9 @@ export interface MediaUrls {
   url: string
   filename: string
   contentType: string
+  // False while the worker still makes the variants of a picture. A picture that is processed and has
+  // none is one the decoder refused (a download); one that is not processed yet is still to come.
+  processed: boolean
   variants: Record<(typeof ImageVariants)[keyof typeof ImageVariants], string | null>
 }
 

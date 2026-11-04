@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { RealtimeConnection } from './connection'
 import {
   createInvalidationBatcher,
+  invalidationFilterOf,
   queryKeysAfterReconnect,
   queryKeysForEvent
 } from './invalidation'
@@ -20,7 +21,7 @@ export function attachRealtimeSync(
 ): () => void {
   const { socket } = connection
   const batcher = createInvalidationBatcher(
-    key => void queryClient.invalidateQueries({ queryKey: key }),
+    key => void queryClient.invalidateQueries(invalidationFilterOf(key, storeId)),
     RealtimeClientTiming.INVALIDATION_BATCH_MS
   )
 

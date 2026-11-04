@@ -1,4 +1,4 @@
-import type { QueryKey } from '@tanstack/react-query'
+import type { InvalidateQueryFilters, Query, QueryKey } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import { QueryKeys } from '@platform/api-client'
@@ -12,7 +12,8 @@ const Scopes = {
   CUSTOMERS: 'customers',
   PRESENCE: 'presence',
   NOTIFICATIONS: 'notifications',
-  EXPORTS: 'exports'
+  EXPORTS: 'exports',
+  MEDIA: 'media'
 } as const
 type Scope = (typeof Scopes)[keyof typeof Scopes]
 
@@ -33,7 +34,9 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.MESSAGE_REACTION]: [Scopes.THREAD],
   [RealtimeEvents.MESSAGE_EDITED]: [Scopes.THREAD],
   [RealtimeEvents.MESSAGE_DELETED]: [Scopes.THREAD],
-  [RealtimeEvents.MEDIA_PROCESSED]: [Scopes.THREAD],
+  // Sent twice for a picture (clean, then variants made): the links read after the first one carry no
+  // variant, so they are read again. The event holds no media id, so every link of the store is stale.
+  [RealtimeEvents.MEDIA_PROCESSED]: [Scopes.THREAD, Scopes.MEDIA],
   [RealtimeEvents.MEDIA_INFECTED]: [Scopes.THREAD],
   [RealtimeEvents.MEDIA_UNSCANNABLE]: [Scopes.THREAD],
   [RealtimeEvents.MEDIA_UNAVAILABLE]: [Scopes.THREAD],
@@ -67,6 +70,8 @@ function keysForScope(scope: Scope, storeId: string, conversationId: string | nu
       return [QueryKeys.notifications.list(storeId), QueryKeys.notifications.unread(storeId)]
     case Scopes.EXPORTS:
       return [QueryKeys.exports.all(storeId)]
+    case Scopes.MEDIA:
+      return [QueryKeys.media.all(storeId)]
   }
 }
 
@@ -81,6 +86,28 @@ export function queryKeysForEvent(event: string, payload: unknown, storeId: stri
   return scopes.flatMap(scope => keysForScope(scope, storeId, conversationId))
 }
 
+// What makes the links of a picture stale is the worker finishing its variants, so only the links of the
+// pictures that still wait are read again. The others hold links that work for ten minutes more, and
+// a new signature would change the address of a voice note that is playing and restart it.
+// A link query that has not read its links yet is one too: its first read may have gone out before the
+// variants existed, and the answer of that read would be the stale one.
+const LINKS_KEY_TAIL = QueryKeys.media.urls('', '').at(-1)
+
+const awaitsVariants = (query: Query): boolean => {
+  if (query.queryKey.at(-1) !== LINKS_KEY_TAIL) return false
+  const { data } = query.state
+  if (data === undefined) return true
+  return (
+    typeof data === 'object' && data !== null && 'processed' in data && data.processed === false
+  )
+}
+
+// The filter an invalidation of this key uses
+export function invalidationFilterOf(key: QueryKey, storeId: string): InvalidateQueryFilters {
+  const isMediaLinks = JSON.stringify(key) === JSON.stringify(QueryKeys.media.all(storeId))
+  return isMediaLinks ? { queryKey: key, predicate: awaitsVariants } : { queryKey: key }
+}
+
 // The events of the time the socket was down are lost (they are not replayed), so everything the
 // events would have touched is read again
 export function queryKeysAfterReconnect(storeId: string): QueryKey[] {
@@ -91,7 +118,9 @@ export function queryKeysAfterReconnect(storeId: string): QueryKey[] {
     QueryKeys.presence.team(storeId),
     QueryKeys.notifications.list(storeId),
     QueryKeys.notifications.unread(storeId),
-    QueryKeys.exports.all(storeId)
+    QueryKeys.exports.all(storeId),
+    // The picture that was waiting for its variants when the event was lost
+    QueryKeys.media.all(storeId)
   ]
 }
 
