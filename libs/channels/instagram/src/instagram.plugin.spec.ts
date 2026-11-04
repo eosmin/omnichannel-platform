@@ -1,6 +1,6 @@
 import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
-import { MetaGraph } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
+import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   type ChannelContext,
   type ChannelPlugin,
@@ -82,6 +82,65 @@ describe('InstagramPlugin', () => {
   })
 
   describe('connect', () => {
+    it('subscribes only to names the Instagram API accepts, as Meta does (error 100 otherwise)', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      post.mockImplementation(request => {
+        const unknown = (request.query?.subscribed_fields ?? '')
+          .split(',')
+          .filter(name => !(MetaSubscribableFields.INSTAGRAM as readonly string[]).includes(name))
+        return unknown.length === 0
+          ? Promise.resolve({ success: true })
+          : Promise.reject(new Error(`Param subscribed_fields must be valid: ${unknown.join()}`))
+      })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        connectionId: '17841400000000001'
+      })
+    })
+
+    it('trims the spaces and line breaks around a pasted token', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      post.mockResolvedValue({ success: true })
+
+      const result = await plugin.connect({
+        storeId: 's',
+        credentials: { accessToken: '  IGAA-token\n' }
+      })
+
+      expect(get.mock.calls[0]?.[0]).toMatchObject({ token: 'IGAA-token' })
+      expect(result.credentials).toEqual({ accessToken: 'IGAA-token' })
+    })
+
+    it('names the check that refused when the subscription is not confirmed', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      post.mockResolvedValue({ success: false })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        failedCheck: PluginChecks.SUBSCRIPTION_NOT_CONFIRMED
+      })
+    })
+
+    it('names the check that refused when the account id is not digits', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ user_id: 'me/accounts', username: 'tienda' })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        failedCheck: PluginChecks.ACCOUNT_ID_NOT_NUMERIC
+      })
+    })
+
+    it('names the check that refused when the credentials have no token', async () => {
+      const { plugin } = build()
+
+      await expect(
+        plugin.connect({ storeId: 's', credentials: { accessToken: '   ' } })
+      ).rejects.toMatchObject({ failedCheck: PluginChecks.CREDENTIALS_SHAPE })
+    })
+
     it('reads the account from the Instagram host and subscribes the app to it', async () => {
       const { plugin, get, post } = build()
       get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
@@ -98,7 +157,7 @@ describe('InstagramPlugin', () => {
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.INSTAGRAM_ORIGIN,
         path: ['17841400000000001', 'subscribed_apps'],
-        query: { subscribed_fields: 'messages,messaging_referrals,messaging_reactions' },
+        query: { subscribed_fields: 'messages,message_reactions,messaging_referral,message_edit' },
         idempotent: true
       })
       expect(result).toEqual({
@@ -200,7 +259,8 @@ describe('InstagramPlugin', () => {
     get.mockResolvedValue({ user_id: '999', username: 'otra' })
     await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
       code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
-      retryable: false
+      retryable: false,
+      failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
     })
   })
 

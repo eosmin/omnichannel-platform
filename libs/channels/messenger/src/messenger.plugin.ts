@@ -7,12 +7,29 @@ import {
   ChannelIds,
   ChannelSetupStepKeys,
   MessengerApi,
+  MetaErrorCodes,
   MetaGraph,
   MetaMessaging
 } from '@platform/core/domain'
-import { ChannelCapability } from '@platform/plugins/sdk'
+import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
-const pageSchema = z.object({ id: z.string(), name: z.string().min(1) })
+const pageIdSchema = z.object({ id: z.string() })
+// `name` is optional: a token without pages_read_engagement may be answered with the id alone
+const pageSchema = z.object({ id: z.string(), name: z.string().optional() })
+
+function isNameNotReadable(error: unknown): boolean {
+  if (!(error instanceof PluginError) || error.retryable === true || error.outcomeUnknown) {
+    return false
+  }
+  const code = error.providerCode
+  return (
+    code !== undefined &&
+    (code === MetaErrorCodes.INVALID_PARAMETER ||
+      code === MetaErrorCodes.PERMISSION_DENIED ||
+      (code >= MetaErrorCodes.PERMISSION_RANGE_START &&
+        code <= MetaErrorCodes.PERMISSION_RANGE_END))
+  )
+}
 
 // Facebook Messenger with the access token of the Page: it names the Page it belongs to
 @Injectable()
@@ -56,14 +73,41 @@ export class MessengerPlugin extends MetaChannelPlugin {
     return { messaging_type: MessengerApi.MESSAGING_TYPE_RESPONSE }
   }
 
-  protected async fetchAccount(token: string): Promise<MetaAccount> {
-    const page = await this.meta.get({
+  // The id first, alone: it needs no permission. The name needs `pages_read_engagement` (error 100
+  // without it), and a name is a label, not a reason to refuse a token that can receive and send; so a
+  // name that cannot be read is replaced, not required (least privilege).
+  protected override async fetchAccountId(token: string): Promise<string> {
+    const { id } = await this.meta.get({
       origin: this.origin,
       path: ['me'],
       token,
-      query: { fields: MessengerApi.PROFILE_FIELDS },
-      schema: pageSchema
+      query: { fields: MessengerApi.PROFILE_ID_FIELD },
+      schema: pageIdSchema
     })
-    return { id: page.id, displayName: page.name }
+    return id
+  }
+
+  protected async fetchAccount(token: string): Promise<MetaAccount> {
+    const id = await this.fetchAccountId(token)
+    const fallback = `${MessengerApi.FALLBACK_NAME_PREFIX} ${id}`
+    try {
+      const page = await this.meta.get({
+        origin: this.origin,
+        path: ['me'],
+        token,
+        query: { fields: MessengerApi.PROFILE_NAME_FIELDS },
+        schema: pageSchema
+      })
+      const name = page.name?.trim()
+      return {
+        id,
+        displayName: page.id === id && name !== undefined && name !== '' ? name : fallback
+      }
+    } catch (error) {
+      // Only the refusal of the field: a token revoked between the two reads, a throttle or an outage
+      // is not "no permission" and must not be stored as a name
+      if (isNameNotReadable(error)) return { id, displayName: fallback }
+      throw error
+    }
   }
 }

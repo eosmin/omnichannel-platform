@@ -1,4 +1,9 @@
-import { type ErrorCode, type ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  type ErrorCode,
+  type ErrorCodes,
+  type PluginCheck,
+  PlatformException
+} from '@platform/core/errors'
 
 // The codes a plugin may raise: what a provider can do wrong, never a platform error
 export type PluginErrorCode = Extract<
@@ -29,6 +34,8 @@ export class PluginError extends PlatformException {
   // `error_subcode`). Numbers and nothing else, so they cannot carry a token; never sent to a client.
   readonly providerCode: number | undefined
   readonly providerSubcode: number | undefined
+  // The local check that refused (see PluginChecks), for the logs only: a name, never a value
+  readonly failedCheck: PluginCheck | undefined
 
   constructor(
     code: PluginErrorCode,
@@ -37,6 +44,7 @@ export class PluginError extends PlatformException {
       outcomeUnknown?: boolean
       providerCode?: number
       providerSubcode?: number
+      failedCheck?: PluginCheck
     } = {}
   ) {
     super(code, `channel plugin failed: ${code}`)
@@ -45,5 +53,6 @@ export class PluginError extends PlatformException {
     this.outcomeUnknown = options.outcomeUnknown === true
     this.providerCode = options.providerCode
     this.providerSubcode = options.providerSubcode
+    this.failedCheck = options.failedCheck
   }
 }

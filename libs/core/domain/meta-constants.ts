@@ -54,6 +54,8 @@ export const MetaErrorCodes = {
   // The token is expired, revoked or lacks the permission: the owner has to connect again
   INVALID_TOKEN: 190,
   PERMISSION_DENIED: 10,
+  // `(#100) ...`: a field of the request that this token may not read answers it too
+  INVALID_PARAMETER: 100,
   // 200 to 299 are permission errors as well
   PERMISSION_RANGE_START: 200,
   PERMISSION_RANGE_END: 299,
@@ -106,14 +108,54 @@ export const InstagramApi = {
   PROFILE_FIELDS: 'user_id,username',
   // The customer behind a scoped id (User Profile API); `name` may come back null
   USER_PROFILE_FIELDS: 'name,username,profile_pic',
-  SUBSCRIBED_FIELDS: 'messages,messaging_referrals,messaging_reactions'
+  // The names of the SUBSCRIPTION, which are not always the names of the webhook event (`messaging_referral`
+  // arrives as `referral`, `message_reactions` as `reaction`, `message_edit` as `message_edit`).
+  // `messaging_seen` is not subscribed: no parser reads its `read` event yet (IMPLEMENTATION_PLAN, Step 7.3)
+  SUBSCRIBED_FIELDS: 'messages,message_reactions,messaging_referral,message_edit'
 } as const
 
 // Messenger Platform, with the token of the Page
 export const MessengerApi = {
   WEBHOOK_OBJECT: 'page',
-  PROFILE_FIELDS: 'id,name',
   USER_PROFILE_FIELDS: 'first_name,last_name,profile_pic',
   SUBSCRIBED_FIELDS: 'messages,message_echoes,message_reactions,message_edits,messaging_referrals',
-  MESSAGING_TYPE_RESPONSE: 'RESPONSE'
+  MESSAGING_TYPE_RESPONSE: 'RESPONSE',
+  // `/me` with a Page token: `id` needs no permission, `name` needs `pages_read_engagement`
+  PROFILE_ID_FIELD: 'id',
+  // Name of the connection when the token cannot read the name of the Page: the prefix and the Page id
+  FALLBACK_NAME_PREFIX: 'Messenger',
+  PROFILE_NAME_FIELDS: 'id,name'
+} as const
+
+// Every `subscribed_fields` value each API accepts for POST /{id}/subscribed_apps, from Meta's
+// reference (Instagram: the webhooks reference of the `instagram` object and the error text of
+// graph.instagram.com, 2026-11-05; Messenger: the webhooks reference of the `page` object). A name outside the list is answered with error 100 and the connection fails, so the
+// specs refuse it before Meta does.
+export const MetaSubscribableFields = {
+  INSTAGRAM: [
+    'agent_messages',
+    'comments',
+    'live_comments',
+    'message_edit',
+    'message_reactions',
+    'messages',
+    'messaging_handover',
+    'messaging_optins',
+    'messaging_postbacks',
+    'messaging_referral',
+    'messaging_seen',
+    'standby'
+  ],
+  MESSENGER: [
+    'message_deliveries',
+    'message_echoes',
+    'message_edits',
+    'message_reactions',
+    'message_reads',
+    'messages',
+    'messaging_handovers',
+    'messaging_optins',
+    'messaging_postbacks',
+    'messaging_referrals'
+  ]
 } as const
