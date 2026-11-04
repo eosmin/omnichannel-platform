@@ -1,7 +1,7 @@
 import { type MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
-import { ChannelSetupStepKeys, MetaGraph } from '@platform/core/domain'
+import { ChannelSetupStepKeys, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { type ChannelContext, ChannelCapability } from '@platform/plugins/sdk'
+import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
 import { MessengerPlugin } from './messenger.plugin'
 
@@ -24,6 +24,7 @@ interface GraphCall {
   token?: string
   body?: Record<string, unknown>
   query?: Record<string, string>
+  schema?: { parse: (value: unknown) => unknown }
 }
 
 function build(): {
@@ -69,16 +70,19 @@ describe('MessengerPlugin', () => {
   describe('connect', () => {
     it('reads the Page of the token and subscribes the app to it', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ id: '1090000000000001', name: 'Mi Tienda' })
+      get.mockResolvedValueOnce({ id: '1090000000000001' })
+      get.mockResolvedValueOnce({ id: '1090000000000001', name: 'Mi Tienda' })
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({ storeId: 's', credentials })
 
+      // The id first, alone: it needs no permission. The name is a second, separate read.
       expect(get.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
         path: ['me'],
-        query: { fields: 'id,name' }
+        query: { fields: 'id' }
       })
+      expect(get.mock.calls[1]?.[0]).toMatchObject({ path: ['me'], query: { fields: 'id,name' } })
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         path: ['1090000000000001', 'subscribed_apps'],
         query: {
@@ -94,6 +98,118 @@ describe('MessengerPlugin', () => {
       })
     })
 
+    it('subscribes only to names the Messenger API accepts, as Meta does (error 100 otherwise)', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValue({ id: '1090000000000001', name: 'Mi Tienda' })
+      post.mockImplementation(request => {
+        const unknown = (request.query?.subscribed_fields ?? '')
+          .split(',')
+          .filter(name => !(MetaSubscribableFields.MESSENGER as readonly string[]).includes(name))
+        return unknown.length === 0
+          ? Promise.resolve({ success: true })
+          : Promise.reject(new Error(`Param subscribed_fields must be valid: ${unknown.join()}`))
+      })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        connectionId: '1090000000000001'
+      })
+    })
+
+    it('connects with the fallback name when Meta answers the name read with an id and no name', async () => {
+      const { plugin, get, post } = build()
+      // The real client validates the answer with the schema of the call: a 200 without `name` must pass it
+      get.mockImplementation(request =>
+        Promise.resolve(request.schema?.parse({ id: '1090000000000001' }))
+      )
+      post.mockResolvedValue({ success: true })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        displayName: 'Messenger 1090000000000001'
+      })
+    })
+
+    it('connects with a fallback name when the token cannot read the name of the Page', async () => {
+      const { plugin, get, post } = build()
+      // Error 100 of a token without pages_read_engagement: the id was readable, the name was not
+      get.mockResolvedValueOnce({ id: '1090000000000001' })
+      get.mockRejectedValueOnce(
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, providerCode: 100 })
+      )
+      post.mockResolvedValue({ success: true })
+
+      const result = await plugin.connect({ storeId: 's', credentials })
+
+      expect(result).toMatchObject({
+        connectionId: '1090000000000001',
+        displayName: 'Messenger 1090000000000001'
+      })
+    })
+
+    it.each([
+      ['a throttle', { retryable: true, providerCode: 4 }],
+      ['an outage', { retryable: false, outcomeUnknown: true }],
+      ['a revoked token', { retryable: false, providerCode: 190 }]
+    ])('does not hide %s behind the fallback name', async (_label, options) => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValueOnce({ id: '1090000000000001' })
+      get.mockRejectedValueOnce(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, options))
+
+      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toBeInstanceOf(
+        PluginError
+      )
+      expect(post).not.toHaveBeenCalled()
+    })
+
+    it('uses the fallback name for a permission error too (code 200)', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValueOnce({ id: '1090000000000001' })
+      get.mockRejectedValueOnce(
+        new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+          retryable: false,
+          providerCode: 200
+        })
+      )
+      post.mockResolvedValue({ success: true })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        displayName: 'Messenger 1090000000000001'
+      })
+    })
+
+    it('uses the fallback name when the name answer belongs to another id', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValueOnce({ id: '1090000000000001' })
+      get.mockResolvedValueOnce({ id: '999', name: 'Otra' })
+      post.mockResolvedValue({ success: true })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        displayName: 'Messenger 1090000000000001'
+      })
+    })
+
+    it('uses the fallback name when the Page has an empty name', async () => {
+      const { plugin, get, post } = build()
+      get.mockResolvedValueOnce({ id: '1090000000000001' })
+      get.mockResolvedValueOnce({ id: '1090000000000001', name: '' })
+      post.mockResolvedValue({ success: true })
+
+      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
+        displayName: 'Messenger 1090000000000001'
+      })
+    })
+
+    it('refuses the token when even the id cannot be read', async () => {
+      const { plugin, get, post } = build()
+      get.mockRejectedValue(
+        new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+      )
+
+      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
+      expect(post).not.toHaveBeenCalled()
+    })
+
     it('refuses a Page id that is not digits, before it reaches a path', async () => {
       const { plugin, get, post } = build()
       get.mockResolvedValue({ id: 'me/accounts', name: 'x' })
@@ -103,6 +219,16 @@ describe('MessengerPlugin', () => {
       })
       expect(post).not.toHaveBeenCalled()
     })
+  })
+
+  it('reads only the id for the health check, which needs no permission for the name', async () => {
+    const { plugin, get } = build()
+    get.mockResolvedValueOnce({ id: ctx.connectionId })
+
+    await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(get.mock.calls[0]?.[0]).toMatchObject({ query: { fields: 'id' } })
   })
 
   describe('sends', () => {

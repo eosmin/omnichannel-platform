@@ -44,7 +44,8 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
-  type ChannelPlugin
+  type ChannelPlugin,
+  pluginFailureLog
 } from '@platform/plugins/sdk'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -352,7 +353,9 @@ export class ChannelConnectionsService {
       sealed = this.cipher.seal(result.credentials)
     } catch (error) {
       // What the provider said may echo the credentials: it is not logged nor sent back
-      this.logger.warn({ pluginId, storeId, errorName: errorName(error) }, 'connect failed')
+      // Only the name of the error, the numbers of the provider's answer and the name of the local check
+      // that refused: never the message, a value or the token (see pluginFailureLog)
+      this.logger.warn({ pluginId, storeId, ...pluginFailureLog(error) }, 'connect failed')
       throw new PlatformException(
         ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
         'the provider did not accept the connection',

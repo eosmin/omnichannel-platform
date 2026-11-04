@@ -9,7 +9,7 @@ import {
   type MetaGraphOrigin,
   MetaMessaging
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
@@ -109,12 +109,26 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     return replyToExternalId === undefined ? {} : { reply_to: { mid: replyToExternalId } }
   }
 
+  // Only the id of the account, for a check that has no use for its name; a subclass whose name costs a
+  // call or a permission reads the id alone
+  protected async fetchAccountId(token: string): Promise<string> {
+    return (await this.fetchAccount(token)).id
+  }
+
   // The id goes into the path of every call after this one: digits only, whoever the subclass is
+  private checkedId(id: string): string {
+    if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(id)) {
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+        retryable: false,
+        failedCheck: PluginChecks.ACCOUNT_ID_NOT_NUMERIC
+      })
+    }
+    return id
+  }
+
   private async readAccount(token: string): Promise<MetaAccount> {
     const account = await this.fetchAccount(token)
-    if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(account.id)) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
-    }
+    this.checkedId(account.id)
     return account
   }
 
@@ -132,7 +146,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       schema: successSchema
     })
     if (!subscribed.success) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+        retryable: false,
+        failedCheck: PluginChecks.SUBSCRIPTION_NOT_CONFIRMED
+      })
     }
     return {
       connectionId: account.id,
@@ -151,10 +168,15 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // A failure is thrown, not reported: the health service reads a PluginError as the state of the
   // connection (a revoked token is not a Meta outage)
   async healthCheck(ctx: ChannelContext): Promise<ChannelHealth> {
-    const account = await this.readAccount(parseMetaTokenCredentials(ctx.credentials).accessToken)
+    const id = this.checkedId(
+      await this.fetchAccountId(parseMetaTokenCredentials(ctx.credentials).accessToken)
+    )
     // A token of another account would read well and send under the wrong one
-    if (account.id !== ctx.connectionId) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+    if (id !== ctx.connectionId) {
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+        retryable: false,
+        failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
+      })
     }
     return { healthy: true, checkedAt: new Date().toISOString() }
   }

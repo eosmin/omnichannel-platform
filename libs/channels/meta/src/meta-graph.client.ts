@@ -11,7 +11,7 @@ import {
   MetaUpload,
   MetaWebhook
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type FetchedMedia, PluginError } from '@platform/plugins/sdk'
 
 import { graphFailure, graphFileFailure, graphUnexpected, graphUnreachable } from './graph-failure'
@@ -98,7 +98,10 @@ export class MetaGraphClient {
   // failure is worth trying again (the caller opens the file again: a stream is read once).
   async uploadMedia<T>(request: UploadRequest<T>): Promise<T> {
     if (!HEADER_TOKEN.test(request.token)) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+        retryable: false,
+        failedCheck: PluginChecks.TOKEN_NOT_HEADER_SAFE
+      })
     }
     const { contentType, size } = request.file
     // Nothing that reaches a header or a form line may carry a line break or a quote
@@ -237,7 +240,10 @@ export class MetaGraphClient {
   private async call<T>(method: 'GET' | 'POST', request: GraphRequest<T>): Promise<T> {
     // A token that cannot be a header makes fetch throw before any call, and it never will work
     if (!HEADER_TOKEN.test(request.token)) {
-      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+        retryable: false,
+        failedCheck: PluginChecks.TOKEN_NOT_HEADER_SAFE
+      })
     }
     const url = this.urlFor(request.origin ?? MetaGraph.ORIGIN, request.path, request.query)
     const safeToRepeat = method === 'GET' || request.idempotent === true
