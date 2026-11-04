@@ -102,6 +102,32 @@ describe('Notification emitters (QA Q2)', () => {
       expect(rows.map(row => row.userId)).not.toContain(ctx.viewerA.id)
     })
 
+    it('names whose conversation it is, so a text and an email can tell two of them apart', async () => {
+      const named = await mk()
+      await owner.customer.update({
+        where: { id: named.customerId },
+        data: { name: 'Lucia Prechat' }
+      })
+      const anonymous = await mk()
+      await owner.customer.update({ where: { id: anonymous.customerId }, data: { name: null } })
+      await owner.customerIdentity.update({
+        where: { id: anonymous.customerIdentityId },
+        data: { displayName: null }
+      })
+
+      await emit(Events.CONVERSATION_UNASSIGNED, unassigned(named.id))
+      await emit(Events.CONVERSATION_UNASSIGNED, unassigned(anonymous.id))
+
+      const rows = await rowsOf(NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE, ctx.agentA.id)
+      const paramsOf = (conversationId: string) =>
+        rows.find(row => row.resourceId === conversationId)?.params
+      expect(paramsOf(named.id)).toEqual({ customer: 'Lucia Prechat' })
+      // Without a name, the end of the handle, as a mention does
+      expect(paramsOf(anonymous.id)).toEqual({
+        customer: expect.stringMatching(/^····.{1,4}$/) as unknown
+      })
+    })
+
     it('leaves out the person who caused it', async () => {
       const { id } = await mk()
 

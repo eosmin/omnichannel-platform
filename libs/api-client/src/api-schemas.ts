@@ -211,7 +211,11 @@ export const memberDirectoryEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
   avatarMediaId: z.string().nullable(),
-  role: z.object({ id: z.string(), name: z.string() })
+  role: z.object({ id: z.string(), name: z.string() }),
+  // Whether their role can be given a conversation (it can open it and answer it)
+  // A server older than the page does not send it: the page then offers everyone, and the server
+  // still refuses whoever cannot be given a conversation
+  canBeAssigned: z.boolean().default(true)
 })
 export const memberDirectorySchema = z.array(memberDirectoryEntrySchema)
 export type MemberDirectoryEntryView = z.output<typeof memberDirectoryEntrySchema>

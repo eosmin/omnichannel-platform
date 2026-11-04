@@ -413,9 +413,17 @@
     "notificationDigest": {
       "subject": "Tienes notificaciones nuevas",
       "heading": "Notificaciones nuevas ({count})",
-      "open": "Abrir conversación",
+      "open": {
+        "conversation": "Abrir conversación",
+        "channels": "Revisar los canales",
+        "team": "Abrir el equipo",
+        "exports": "Abrir las exportaciones",
+        "app": "Abrir la aplicación"
+      },
       "more": "Y {count} más, esperando en la aplicación.",
-      "repeated": "{count} notificaciones como esta",
+      "repeated": "{count} notificaciones como esta; la más reciente: {at}",
+      "repeatedNoTime": "{count} notificaciones como esta",
+      "storeAt": "{store} · {at}",
       "center": "Abrir la aplicación",
       "settings": "Recibes este correo por tu configuración de notificaciones.",
       "settingsLink": "Cámbiala en tus preferencias de notificaciones"
@@ -568,7 +576,10 @@
   },
   "noAccess": {
     "title": "No tienes acceso",
-    "body": "No puedes abrir esta página, o tu cuenta no está en ninguna tienda. Pide acceso a un administrador.",
+    "body": "Tu cuenta no está en ninguna tienda. Pide acceso a un administrador.",
+    "hereTitle": "No tienes acceso a esta página",
+    "hereBody": "Tu cuenta no tiene acceso a lo que intentaste abrir. Vuelve a tu tienda, elige otra en el selector de tiendas o pide acceso a un administrador.",
+    "goToMyStore": "Ir a mi tienda",
     "checkAgain": "Revisar de nuevo",
     "suspendedTitle": "Tu acceso está suspendido",
     "suspendedBody": "Un administrador suspendió tu acceso a {stores}. Habla con un administrador para recuperarlo.",
@@ -619,7 +630,8 @@
       },
       "unassigned_queue": {
         "title": "Conversaciones sin responsable",
-        "body": "Hay conversaciones esperando que alguien las tome."
+        "body": "Hay conversaciones esperando que alguien las tome.",
+        "bodyWithCustomer": "La conversación con {customer} está esperando que alguien la tome."
       }
     },
     "count": {
@@ -1211,6 +1223,7 @@
         },
         "noMatches": "No hay coincidencias.",
         "assigned": "Asignada a {name}.",
+        "assignRefused": "No se pudo asignar: la conversación ya no está disponible, o esa persona ya no puede recibirla (dejó la tienda o su rol no puede responder conversaciones).",
         "announce": "{count, plural, one {# sugerencia} other {# sugerencias}}. Resaltada: {label}."
       },
       "replying": "Respondiendo a {author}",

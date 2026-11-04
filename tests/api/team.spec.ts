@@ -144,6 +144,7 @@ describe('The team of a store', () => {
       name: string
       avatarMediaId: string | null
       role: { id: string; name: string }
+      canBeAssigned: boolean
     }
 
     it('names the active members to an agent who may not see the team', async () => {
@@ -156,14 +157,40 @@ describe('The team of a store', () => {
       expect(ids).not.toContain(ctx.adminB.id)
     })
 
-    it('carries only the id, name, avatar and role: never an email or a permission', async () => {
+    it('carries only the id, name, avatar, role and whether they can be given a conversation: never an email or a list of permissions', async () => {
       const response = await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.members.directory)
 
       for (const row of response.body as DirectoryBody[]) {
-        expect(Object.keys(row).sort()).toEqual(['avatarMediaId', 'id', 'name', 'role'])
+        expect(Object.keys(row).sort()).toEqual([
+          'avatarMediaId',
+          'canBeAssigned',
+          'id',
+          'name',
+          'role'
+        ])
         expect(Object.keys(row.role).sort()).toEqual(['id', 'name'])
       }
       expect(JSON.stringify(response.body)).not.toContain(ctx.agentA.email)
+    })
+
+    it('says who can be given a conversation by the same rule the assignment applies', async () => {
+      const response = await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.members.directory)
+
+      const byId = new Map((response.body as DirectoryBody[]).map(row => [row.id, row]))
+      expect(byId.get(ctx.agentA.id)?.canBeAssigned).toBe(true)
+      expect(byId.get(ctx.adminA.id)?.canBeAssigned).toBe(true)
+      // A role that only reads is listed (it is named in the inbox) but cannot be given one
+      expect(byId.get(ctx.viewerA.id)?.canBeAssigned).toBe(false)
+    })
+
+    it('does not offer a role that answers but cannot open conversations', async () => {
+      const roleId = await roleWith(ctx.storeA.id, [Permissions.MESSAGES_SEND])
+      const { actor } = await member(roleId)
+
+      const response = await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.members.directory)
+
+      const row = (response.body as DirectoryBody[]).find(entry => entry.id === actor.id)
+      expect(row?.canBeAssigned).toBe(false)
     })
 
     it('leaves out a member once removed', async () => {

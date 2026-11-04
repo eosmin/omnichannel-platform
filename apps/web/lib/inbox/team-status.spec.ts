@@ -4,9 +4,9 @@ import { buildTeamRows } from './team-status'
 
 const role = { id: 'r', name: 'Agent' }
 const members = [
-  { id: 'u1', name: 'Carlos', avatarMediaId: null, role },
-  { id: 'u2', name: 'Ana', avatarMediaId: null, role },
-  { id: 'u3', name: 'Maria', avatarMediaId: null, role }
+  { id: 'u1', name: 'Carlos', avatarMediaId: null, role, canBeAssigned: true },
+  { id: 'u2', name: 'Ana', avatarMediaId: null, role, canBeAssigned: true },
+  { id: 'u3', name: 'Maria', avatarMediaId: null, role, canBeAssigned: true }
 ]
 const presence = [
   { userId: 'u1', status: PresenceStatus.ONLINE },

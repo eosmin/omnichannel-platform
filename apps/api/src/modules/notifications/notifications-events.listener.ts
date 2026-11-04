@@ -25,33 +25,8 @@ import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { type NotificationType, NotificationTypes } from '@platform/core/notifications'
 
+import { customerNameOf, textForParams } from './notification-params'
 import { NotificationsService } from './notifications.service'
-
-// The end of a handle a customer with no name is told apart by ("····ab98"): the whole handle is a
-// phone number or a random id, not something to print in a text
-const HANDLE_TAIL = 4
-
-function customerNameOf(conversation: {
-  customer: { name: string | null }
-  customerIdentity: { displayName: string | null; channelIdentity: string }
-}): string {
-  const tail = `····${conversation.customerIdentity.channelIdentity.slice(-HANDLE_TAIL)}`
-  for (const value of [conversation.customer.name, conversation.customerIdentity.displayName]) {
-    const clean = value === null ? null : textForParams(value)
-    if (clean !== null) return clean
-  }
-  return tail
-}
-
-// A name goes into the text of a notification and from there into an email: the name a customer gave
-// their profile is theirs to choose, so it is cut and stripped of control and invisible characters
-const PARAM_NAME_MAX = 80
-const UNSAFE_IN_NAME = /[\p{Cc}\p{Cf}]/gu
-
-function textForParams(value: string): string | null {
-  const clean = value.replace(UNSAFE_IN_NAME, ' ').replace(/\s+/g, ' ').trim()
-  return clean === '' ? null : Array.from(clean).slice(0, PARAM_NAME_MAX).join('')
-}
 
 // Domain events to notifications. The events carry ids only, and who may be told is decided here,
 // when the notification is made, not when the event was raised: a role may have changed in between.

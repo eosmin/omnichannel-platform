@@ -27,6 +27,7 @@ import {
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { NotificationTypes } from '@platform/core/notifications'
 
+import { customerNameOf } from './notification-params'
 import { NotificationsService } from './notifications.service'
 
 // The notifications that go to a group or to someone other than the owner of a conversation: the
@@ -83,7 +84,12 @@ export class NotificationsInboxListener {
     try {
       const conversation = await this.prisma.client.conversation.findFirst({
         where: { id: conversationId, storeId },
-        select: { status: true, assignedTo: true }
+        select: {
+          status: true,
+          assignedTo: true,
+          customer: { select: { name: true } },
+          customerIdentity: { select: { displayName: true, channelIdentity: true } }
+        }
       })
       if (
         conversation === null ||
@@ -117,6 +123,8 @@ export class NotificationsInboxListener {
         {
           storeId,
           type: NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE,
+          // Whose conversation it is: a text and an email of three of them tell them apart by it
+          params: { customer: customerNameOf(conversation) },
           resourceType: 'conversation',
           resourceId: conversationId,
           actionPath: AppPaths.store.conversation(storeId, conversationId)

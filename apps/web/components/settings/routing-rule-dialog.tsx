@@ -241,7 +241,11 @@ export function RuleDialog({
                 <p className="text-muted-foreground text-xs">{t('noMembers')}</p>
               ) : null}
               {[
-                ...members.map(member => ({ id: member.id, name: member.name })),
+                // Who can be given a conversation, plus whoever the rule already holds (a person whose
+                // role changed since stays visible, so the rule can be fixed)
+                ...members
+                  .filter(member => member.canBeAssigned || draft.userIds.includes(member.id))
+                  .map(member => ({ id: member.id, name: member.name })),
                 ...missing.map(id => ({ id, name: t('formerMember') }))
               ].map(person => (
                 <label key={person.id} className="flex items-center gap-1.5 text-sm">

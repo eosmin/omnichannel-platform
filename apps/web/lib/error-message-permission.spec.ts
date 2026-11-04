@@ -10,6 +10,21 @@ describe('missingPermissionsOf', () => {
     expect(missingPermissionsOf(error)).toEqual(['conversations:resolve', 'conversations:assign'])
   })
 
+  it('reads the same list when the api sends it as `permissions` (a change of conversation status)', () => {
+    const error = new ApiError(403, 'PERMISSION_DENIED', 'x', null, {
+      permissions: ['conversations:resolve']
+    })
+    expect(missingPermissionsOf(error)).toEqual(['conversations:resolve'])
+  })
+
+  it('prefers `required` when both come', () => {
+    const error = new ApiError(403, 'PERMISSION_DENIED', 'x', null, {
+      required: ['a:b'],
+      permissions: ['c:d']
+    })
+    expect(missingPermissionsOf(error)).toEqual(['a:b'])
+  })
+
   it('is empty for any other error, or a refusal that names nothing', () => {
     expect(missingPermissionsOf(new ApiError(403, 'PERMISSION_DENIED', 'x'))).toEqual([])
     expect(

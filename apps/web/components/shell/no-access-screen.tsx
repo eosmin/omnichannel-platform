@@ -64,6 +64,17 @@ export function NoAccessScreen(): ReactElement {
       </StatusScreen>
     )
   }
+  // An account with a store that opened a page or a store it has no access to is told that, and is
+  // offered the way back; only an account with no store at all gets the "no store" text
+  if ((profile.data?.memberships.length ?? 0) > 0) {
+    return (
+      <StatusScreen icon={ShieldOff} title={t('hereTitle')} body={t('hereBody')}>
+        {/* The profile in memory is dropped first, as in "check again": "/" reads it anew */}
+        <Button onClick={checkAgain}>{t('goToMyStore')}</Button>
+        <SignOutButton />
+      </StatusScreen>
+    )
+  }
   return (
     <StatusScreen icon={ShieldOff} title={t('title')} body={t('body')}>
       {actions}

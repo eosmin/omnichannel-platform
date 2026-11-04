@@ -7,7 +7,13 @@ import { InfraRoutes } from '@platform/core/api'
 import { REDACTED, SENSITIVE_QUERY_PARAMS } from '@platform/core/domain'
 
 import type { AuthenticatedRequest } from './authenticated-request'
-import { buildPinoHttpOptions, logLevelFor, REDACTED_PATHS, scrubRequest } from './logger-options'
+import {
+  buildPinoHttpOptions,
+  logLevelFor,
+  REDACTED_PATHS,
+  REDACTED_SECRET_KEYS,
+  scrubRequest
+} from './logger-options'
 
 describe('logLevelFor', () => {
   it('maps the status of a response to a level', () => {
@@ -79,6 +85,46 @@ describe('redaction', () => {
       expect(output).not.toContain(secret)
     }
   })
+
+  // SEC-R1-04: a secret logged alone, or under a name a provider spells another way, or a few levels
+  // down, left the log with its value. Run with the real pino, which is what decides.
+  const SECRET_KEYS = REDACTED_SECRET_KEYS
+  // The depth is the number of objects that wrap the key: 0 is the top level of what is logged
+  const wrapped = (key: string, value: string, depth: number): Record<string, unknown> => {
+    let payload: Record<string, unknown> = { [key]: value }
+    for (let level = 0; level < depth; level += 1) payload = { [`layer${level}`]: payload }
+    return payload
+  }
+
+  describe.each(SECRET_KEYS)('the secret %s', key => {
+    it.each([0, 1, 2, 3, 4])('is removed at %i levels of depth', depth => {
+      const output = logged({ ...wrapped(key, 'leak-value', depth), kept: 'still-here' })
+
+      expect(output).not.toContain('leak-value')
+      expect(output).toContain('still-here')
+    })
+  })
+
+  it.each([0, 1, 2, 3, 4])(
+    'removes the credentials of a connection at %i levels of depth',
+    depth => {
+      const output = logged(wrapped('credentials', 'leak-credentials', depth))
+
+      expect(output).not.toContain('leak-credentials')
+    }
+  )
+
+  it.each(['Authorization', 'authorization'])(
+    'removes the %s header of a call up to 4 levels down',
+    name => {
+      const output = logged({
+        a: { b: { c: { d: { headers: { [name]: 'Bearer leak-header' } } } } },
+        e: { headers: { [name]: 'Bearer leak-header-2' } }
+      })
+
+      expect(output).not.toContain('leak-header')
+    }
+  )
 
   function logged(payload: object): string {
     let output = ''

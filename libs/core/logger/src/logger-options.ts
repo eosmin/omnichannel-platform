@@ -22,6 +22,43 @@ const QUIET_PATHS: ReadonlySet<string> = new Set([
   InfraRoutes.metrics
 ])
 
+// How many objects may wrap a secret and still have it removed. A path of pino's redaction names its
+// depth (`*` stands for exactly one level), so every depth is listed; each added level makes pino
+// look at more of the logged object, which is cheap for a log line and not for a large payload.
+const REDACTION_DEPTH = 4
+
+// The path of `name` at the top level of what is logged and at each depth up to REDACTION_DEPTH
+function atEveryDepth(name: string): string[] {
+  return Array.from({ length: REDACTION_DEPTH + 1 }, (_, wrappers) =>
+    [...Array<string>(wrappers).fill('*'), name].join('.')
+  )
+}
+
+// Names that hold a secret, in the spellings the code and the providers use. Removed wherever they
+// are, alone or inside a context, a result or the error of an HTTP client.
+export const REDACTED_SECRET_KEYS: readonly string[] = [
+  'apiKey',
+  'api_key',
+  'access_token',
+  'refresh_token',
+  'token',
+  'privateKey',
+  'private_key',
+  'secret',
+  'accessToken',
+  'refreshToken',
+  'password',
+  'authorization',
+  'client_secret',
+  'clientSecret',
+  'appSecret',
+  'app_secret',
+  'verifyToken',
+  'verify_token',
+  'webhookSecret',
+  'webhook_secret'
+]
+
 // Never log secrets
 export const REDACTED_PATHS: readonly string[] = [
   'req.headers.authorization',
@@ -39,23 +76,11 @@ export const REDACTED_PATHS: readonly string[] = [
   'res.headers["set-cookie"]',
   // The decrypted credentials of a connection have the keys of each provider, so the object goes
   // whole: logged alone, inside a context, or inside a result
-  'credentials',
-  '*.credentials',
-  '*.*.credentials',
-  '*.*.*.credentials',
-  '*.apiKey',
-  '*.secret',
-  '*.accessToken',
-  '*.refreshToken',
-  '*.password',
-  '*.authorization',
+  ...atEveryDepth('credentials'),
+  ...REDACTED_SECRET_KEYS.flatMap(atEveryDepth),
   // The header of an error raised by an HTTP client carries the key of the call, a few levels down
-  '*.headers.Authorization',
-  '*.headers.authorization',
-  '*.*.headers.Authorization',
-  '*.*.headers.authorization',
-  '*.*.*.headers.Authorization',
-  '*.*.*.headers.authorization'
+  ...atEveryDepth('headers.Authorization'),
+  ...atEveryDepth('headers.authorization')
 ]
 
 // The segment that follows the invitations prefix is the secret one (see scrub-url.ts). A wildcard

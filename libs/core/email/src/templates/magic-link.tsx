@@ -31,7 +31,7 @@ export function MagicLink({
   return (
     <Html lang={locale}>
       <Head />
-      <Body style={main}>
+      <Body lang={locale} style={main}>
         <Container style={container}>
           <Text style={heading}>{t('heading')}</Text>
           <Text style={paragraph}>{t('body')}</Text>

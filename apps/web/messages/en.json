@@ -413,9 +413,17 @@
     "notificationDigest": {
       "subject": "You have new notifications",
       "heading": "New notifications ({count})",
-      "open": "Open conversation",
+      "open": {
+        "conversation": "Open conversation",
+        "channels": "Review channels",
+        "team": "Open the team",
+        "exports": "Open exports",
+        "app": "Open the app"
+      },
       "more": "And {count} more, waiting in the app.",
-      "repeated": "{count} notifications like this",
+      "repeated": "{count} notifications like this; the latest: {at}",
+      "repeatedNoTime": "{count} notifications like this",
+      "storeAt": "{store} · {at}",
       "center": "Open the app",
       "settings": "You get this email because of your notification settings.",
       "settingsLink": "Change it in your notification preferences"
@@ -568,7 +576,10 @@
   },
   "noAccess": {
     "title": "You have no access",
-    "body": "You cannot open this page, or your account is not in any store. Ask an administrator for access.",
+    "body": "Your account is not in any store. Ask an administrator for access.",
+    "hereTitle": "You have no access to this page",
+    "hereBody": "Your account has no access to what you tried to open. Go back to your store, pick another one in the store switcher, or ask an administrator for access.",
+    "goToMyStore": "Go to my store",
     "checkAgain": "Check again",
     "suspendedTitle": "Your access is suspended",
     "suspendedBody": "An administrator suspended your access to {stores}. Talk to an administrator to get it back.",
@@ -619,7 +630,8 @@
       },
       "unassigned_queue": {
         "title": "Conversations without an owner",
-        "body": "There are conversations waiting for someone to take them."
+        "body": "There are conversations waiting for someone to take them.",
+        "bodyWithCustomer": "The conversation with {customer} is waiting for someone to take it."
       }
     },
     "count": {
@@ -1211,6 +1223,7 @@
         },
         "noMatches": "Nothing matches.",
         "assigned": "Assigned to {name}.",
+        "assignRefused": "Could not assign: the conversation is no longer available, or that person can no longer be given it (they left the store or their role cannot answer conversations).",
         "announce": "{count, plural, one {# suggestion} other {# suggestions}}. Highlighted: {label}."
       },
       "replying": "Replying to {author}",

@@ -1,4 +1,4 @@
-import { NotificationLimits } from '@platform/core/notifications'
+import { bodyVariantOf, NotificationLimits } from '@platform/core/notifications'
 
 // The text of a notification is its message key plus `.title` / `.body` (`notificationMessageKey`).
 // A key this page has no text for (a server newer than the page) draws under the generic one, not as
@@ -16,13 +16,9 @@ export function notificationTextKeys(
   params: Record<string, unknown> = {}
 ): NotificationTextKeys {
   const title = `${messageKey}.title`
-  // A notification that carries who and whose (a mention) says it, where the text was written for it;
-  // an older one, saved without them, keeps the plain text
-  const withPeople = `${messageKey}.bodyWithPeople`
-  const body =
-    'author' in params && 'customer' in params && has(withPeople)
-      ? withPeople
-      : `${messageKey}.body`
+  // A notification that carries who and whose (a mention) or whose (the unassigned queue) says it,
+  // where the text was written for it; an older one, saved without them, keeps the plain text
+  const body = `${messageKey}.${bodyVariantOf(params, 1, variant => has(`${messageKey}.${variant}`))}`
   if (has(title) && has(body)) return { title, body }
   return { title: `${UNKNOWN_NOTIFICATION_KEY}.title`, body: `${UNKNOWN_NOTIFICATION_KEY}.body` }
 }

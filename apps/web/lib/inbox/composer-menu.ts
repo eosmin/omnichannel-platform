@@ -1,5 +1,6 @@
 import { SlashCommand } from '@platform/core/domain'
 
+import { assignableOnly } from './assignees'
 import {
   insertMention,
   matchCommands,
@@ -37,7 +38,7 @@ export interface MenuInput {
   // The commands this agent may use: each action needs its own permission
   commands: readonly SlashCommand[]
   snippets: readonly { id: string; shortcut: string; title: string; content: string }[]
-  members: readonly { id: string; name: string; role: { name: string } }[]
+  members: readonly { id: string; name: string; role: { name: string }; canBeAssigned: boolean }[]
   selfId: string | undefined
   // Whether the note already names as many people as one may
   isMentionFull: boolean
@@ -101,7 +102,7 @@ export function composerMenu(input: MenuInput): ComposerMenu | null {
     if (!input.commands.includes(SlashCommand.ASSIGN)) return null
     return {
       kind: 'members',
-      entries: matchMembers(input.members, slash.text).map(member => ({
+      entries: matchMembers(assignableOnly(input.members), slash.text).map(member => ({
         id: member.id,
         label: member.name,
         hint: input.roleLabel(member.role.name),

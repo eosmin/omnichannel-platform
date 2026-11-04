@@ -8,8 +8,11 @@ import { AppPaths, DigestFrequency, MembershipStatus } from '@platform/core/doma
 import type { Locale } from '@platform/core/i18n'
 import { createTranslator, hasTranslation } from '@platform/core/i18n-server'
 import {
+  bodyVariantOf,
   DIGEST_LINKS,
   DigestLimits,
+  type DigestLinkKind,
+  digestLinkKindOf,
   type DigestLinks,
   isDailyDigestHour,
   NotificationSettingsDefaults
@@ -50,6 +53,10 @@ interface DigestItem {
   count: number
   // The body already says how many they are
   saysCount: boolean
+  // Where the link goes, which decides its words
+  linkKind: DigestLinkKind
+  // When the newest of the block happened, on the clock of the person
+  at: string
 }
 
 // Notifications that say the same thing about the same place: one block with a count
@@ -154,6 +161,15 @@ export class EmailDigestService {
     }
   }
 
+  // The zone the person set for their notifications; the default one when none is known
+  private async timezoneOf(userId: string): Promise<string> {
+    const settings = await this.prisma.client.userNotificationSettings.findUnique({
+      where: { userId },
+      select: { timezone: true }
+    })
+    return settings?.timezone ?? NotificationSettingsDefaults.timezone
+  }
+
   private async frequencyOf(userId: string): Promise<DigestFrequency> {
     const settings = await this.prisma.client.userNotificationSettings.findUnique({
       where: { userId },
@@ -241,10 +257,11 @@ export class EmailDigestService {
     }
 
     const locale = pushLocale(user.locale)
+    const timezone = await this.timezoneOf(userId)
     // Ten messages of one customer are one block saying so, not ten identical ones; the limit counts blocks
     const groups = this.groupRows(unread)
     const shown = groups.slice(0, DigestLimits.MAX_ITEMS)
-    const { items, firstStoreId } = this.itemsOf(shown, locale)
+    const { items, firstStoreId } = this.itemsOf(shown, locale, timezone)
     if (items.length > 0) {
       const moreCount = unread.length - shown.reduce((sum, group) => sum + group.count, 0)
       const settingsUrl = new URL(AppPaths.account.notifications, this.links.frontendUrl).toString()
@@ -308,7 +325,8 @@ export class EmailDigestService {
   // `firstStoreId` is the store of the first row that got a text: the button must not open a store the email omits
   private itemsOf(
     groups: DigestGroup[],
-    locale: Locale
+    locale: Locale,
+    timezone: string
   ): { items: DigestItem[]; firstStoreId: string | undefined } {
     const items: DigestItem[] = []
     let firstStoreId: string | undefined
@@ -316,22 +334,20 @@ export class EmailDigestService {
       try {
         const t = createTranslator(locale, row.messageKey)
         const params = messageParams(row.params)
-        // The text that names the people is used where the notification carries them and the message
-        // exists: older rows, and the types without that text, keep the plain one
-        const named = 'author' in params && 'customer' in params
-        const variant =
-          named && count > 1 && hasTranslation(locale, `${row.messageKey}.bodyRepeated`)
-            ? 'bodyRepeated'
-            : named && hasTranslation(locale, `${row.messageKey}.bodyWithPeople`)
-              ? 'bodyWithPeople'
-              : 'body'
+        // The text that names the people (or the customer) is used where the notification carries
+        // them and the message exists: older rows, and the types without that text, keep the plain one
+        const variant = bodyVariantOf(params, count, name =>
+          hasTranslation(locale, `${row.messageKey}.${name}`)
+        )
         items.push({
           storeName: row.store.name,
           title: t('title', params),
           body: t(variant, { ...params, count }),
           url: row.actionPath === null ? null : this.urlOf(row.actionPath),
           count,
-          saysCount: variant === 'bodyRepeated'
+          saysCount: variant === 'bodyRepeated',
+          linkKind: digestLinkKindOf(row.messageKey),
+          at: this.timeOf(row.createdAt, locale, timezone)
         })
         firstStoreId ??= row.storeId
       } catch (error) {
@@ -343,6 +359,26 @@ export class EmailDigestService {
       }
     }
     return { items, firstStoreId }
+  }
+
+  // The date and time of the event on the clock of the person, such as "Nov 2, 08:05"; a zone the
+  // runtime does not know is read as the default one, like the daily hour
+  private timeOf(at: Date, locale: Locale, timezone: string): string {
+    const options: Intl.DateTimeFormatOptions = {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }
+    try {
+      return new Intl.DateTimeFormat(locale, { ...options, timeZone: timezone }).format(at)
+    } catch {
+      return new Intl.DateTimeFormat(locale, {
+        ...options,
+        timeZone: NotificationSettingsDefaults.timezone
+      }).format(at)
+    }
   }
 
   // Only a path of the app becomes a link: what is stored in the row never sets the host

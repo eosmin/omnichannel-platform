@@ -23,7 +23,11 @@ test.describe('a person sees what their permissions allow', () => {
     await page.goto(AppPaths.org.stores)
 
     await expect(page).toHaveURL(AppPaths.noAccess)
-    await expect(page.getByRole('heading', { name: en.noAccess.title })).toBeVisible()
+    // The viewer has a store: the screen does not say they have none, and offers the way back
+    await expect(page.getByRole('heading', { name: en.noAccess.hereTitle })).toBeVisible()
+    await expect(page.getByText(en.noAccess.body)).toBeHidden()
+    await page.getByRole('button', { name: en.noAccess.goToMyStore }).click()
+    await expect(page).toHaveURL(/\/s\/[^/]+\/inbox/)
   })
 
   test('a person in two stores sees both in the switcher', async ({ page }) => {
