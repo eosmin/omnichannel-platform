@@ -15,21 +15,32 @@ export const DigestLinkKinds = {
 } as const
 export type DigestLinkKind = (typeof DigestLinkKinds)[keyof typeof DigestLinkKinds]
 
-const LinkKindOfType: Partial<Record<NotificationType, DigestLinkKind>> = {
-  [NotificationTypes.CONVERSATION_ASSIGNED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.CONVERSATION_MENTIONED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.CONVERSATION_SNOOZE_EXPIRED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.CONVERSATION_REOPENED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.MESSAGE_RECEIVED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.MESSAGE_FAILED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.MEDIA_INFECTED]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.MEDIA_UNSCANNABLE]: DigestLinkKinds.CONVERSATION,
-  [NotificationTypes.CHANNEL_DISCONNECTED]: DigestLinkKinds.CHANNELS,
-  [NotificationTypes.MEMBER_JOINED]: DigestLinkKinds.TEAM,
-  [NotificationTypes.INVITATION_ACCEPTED]: DigestLinkKinds.TEAM,
-  [NotificationTypes.EXPORT_READY]: DigestLinkKinds.EXPORTS,
-  [NotificationTypes.EXPORT_FAILED]: DigestLinkKinds.EXPORTS
+// A function and not a table: a table of computed keys at the top of the module is kept by the
+// bundler as code with effects and travels to every page of the web app through the barrel, even
+// though only the worker and the email read it (it cost the inbox 0.8 KB of its budget).
+function linkKindOfType(type: NotificationType): DigestLinkKind {
+  switch (type) {
+    case NotificationTypes.CONVERSATION_ASSIGNED:
+    case NotificationTypes.CONVERSATION_MENTIONED:
+    case NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE:
+    case NotificationTypes.CONVERSATION_SNOOZE_EXPIRED:
+    case NotificationTypes.CONVERSATION_REOPENED:
+    case NotificationTypes.MESSAGE_RECEIVED:
+    case NotificationTypes.MESSAGE_FAILED:
+    case NotificationTypes.MEDIA_INFECTED:
+    case NotificationTypes.MEDIA_UNSCANNABLE:
+      return DigestLinkKinds.CONVERSATION
+    case NotificationTypes.CHANNEL_DISCONNECTED:
+      return DigestLinkKinds.CHANNELS
+    case NotificationTypes.MEMBER_JOINED:
+    case NotificationTypes.INVITATION_ACCEPTED:
+      return DigestLinkKinds.TEAM
+    case NotificationTypes.EXPORT_READY:
+    case NotificationTypes.EXPORT_FAILED:
+      return DigestLinkKinds.EXPORTS
+    default:
+      return DigestLinkKinds.APP
+  }
 }
 
 // The kind of link of a notification, from its message key; a type with no entry opens the app
@@ -37,7 +48,7 @@ export function digestLinkKindOf(messageKey: string): DigestLinkKind {
   const type = (Object.values(NotificationTypes) as NotificationType[]).find(
     known => notificationMessageKey(known) === messageKey
   )
-  return (type === undefined ? undefined : LinkKindOfType[type]) ?? DigestLinkKinds.APP
+  return type === undefined ? DigestLinkKinds.APP : linkKindOfType(type)
 }
 
 export type BodyVariant = 'bodyRepeated' | 'bodyWithPeople' | 'bodyWithCustomer' | 'body'
