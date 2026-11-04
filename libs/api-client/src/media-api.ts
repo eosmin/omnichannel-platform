@@ -27,6 +27,9 @@ const mediaUrlsSchema = z.object({
   url: z.url(),
   filename: z.string(),
   contentType: z.string(),
+  // False while the worker still makes the variants of a picture (see `MediaUrls.processed`). A server
+  // that does not send it yet (a rolling deploy) is read as processed: the picture is drawn as before.
+  processed: z.boolean().default(true),
   variants: z.object({
     [ImageVariants.FULL]: z.url().nullable(),
     [ImageVariants.MEDIUM]: z.url().nullable(),

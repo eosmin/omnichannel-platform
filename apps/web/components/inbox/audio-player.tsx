@@ -99,7 +99,7 @@ export default function AudioPlayer({ src, label }: { src: string; label: string
       <a
         href={src}
         download={label}
-        className="focus-visible:ring-ring bg-background/60 flex w-[min(260px,100%)] items-center gap-2 rounded-md border px-2 py-1.5 text-xs outline-none hover:underline focus-visible:ring-2"
+        className="focus-visible:ring-ring bg-background/60 flex w-[260px] max-w-full items-center gap-2 rounded-md border px-2 py-1.5 text-xs outline-none hover:underline focus-visible:ring-2"
       >
         <Download aria-hidden className="size-4 shrink-0" />
         <span role="status">{t('failed')}</span>
@@ -112,7 +112,7 @@ export default function AudioPlayer({ src, label }: { src: string; label: string
   const position = t('position', { elapsed: clockOf(current), total: clockOf(length) })
   return (
     <div
-      className="bg-background/60 flex w-[min(260px,100%)] items-center gap-2 rounded-full border px-2 py-1"
+      className="bg-background/60 flex w-[260px] max-w-full items-center gap-2 rounded-full border px-2 py-1"
       role="group"
       aria-label={label}
     >

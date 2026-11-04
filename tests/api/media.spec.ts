@@ -588,6 +588,8 @@ describe('Media upload', () => {
       expect(urls).toMatchObject({
         filename: 'x.html',
         contentType: 'image/png',
+        // Clean but not processed: the variants are still to come, the page keeps its placeholder
+        processed: false,
         variants: { full: null, medium: null, thumb: null }
       })
       const file = await fetch(urls.url)
@@ -596,6 +598,64 @@ describe('Media upload', () => {
       expect(file.headers.get('content-disposition')).toMatch(/^attachment; filename="x\.html"/)
       expect(Buffer.from(await file.arrayBuffer()).equals(PNG)).toBe(true)
     })
+
+    it('never says a file that has no variants to make is still being processed', async () => {
+      // Only a picture goes through the variants; a document has nothing to wait for
+      const id = randomUUID()
+      const row = await owner.media.create({
+        data: {
+          id,
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          key: StorageKeys.message(ctx.storeA.id, id, 'invoice.pdf'),
+          filename: 'invoice.pdf',
+          contentType: 'application/pdf',
+          fileSize: 10,
+          status: MediaStatus.CLEAN
+        }
+      })
+
+      const response = await read(row.id)
+
+      expect(response.status).toBe(OK)
+      expect((response.body as { processed: boolean }).processed).toBe(true)
+    })
+
+    it.each([
+      ['a gif', 'image/gif', 'moves.gif'],
+      ['a webp', 'image/webp', 'sticker.webp']
+    ])(
+      'says %s is still being processed until the worker settles it, and then that it is not',
+      async (_name, contentType, filename) => {
+        const id = randomUUID()
+        const create = (extra: object) =>
+          owner.media.create({
+            data: {
+              id,
+              storeId: ctx.storeA.id,
+              purpose: 'message',
+              key: StorageKeys.message(ctx.storeA.id, id, filename),
+              filename,
+              contentType,
+              fileSize: 10,
+              status: MediaStatus.CLEAN,
+              ...extra
+            }
+          })
+        await create({})
+        expect(((await read(id)).body as { processed: boolean }).processed).toBe(false)
+
+        // The decoder refused it: settled with no variant, which the page reads as a download and
+        // stops waiting for
+        await owner.media.update({ where: { id }, data: { processedAt: new Date() } })
+        const settled = (await read(id)).body as {
+          processed: boolean
+          variants: Record<string, string | null>
+        }
+        expect(settled.processed).toBe(true)
+        expect(settled.variants).toEqual({ full: null, medium: null, thumb: null })
+      }
+    )
 
     it('shows the variants inline, as the WebP the worker made', async () => {
       const id = randomUUID()
@@ -612,13 +672,18 @@ describe('Media upload', () => {
           contentType: 'image/png',
           fileSize: PNG.length,
           status: MediaStatus.CLEAN,
-          variants: { thumb: thumbKey, full: 12 }
+          variants: { thumb: thumbKey, full: 12 },
+          processedAt: new Date()
         }
       })
 
       const response = await read(row.id)
       expect(response.status).toBe(OK)
-      const { variants } = response.body as { variants: Record<string, string | null> }
+      const { variants, processed } = response.body as {
+        variants: Record<string, string | null>
+        processed: boolean
+      }
+      expect(processed).toBe(true)
       // A value that is not a key is no variant: the answer does not fail for it
       expect(variants['full']).toBeNull()
       const thumb = await fetch(variants['thumb'] ?? '')

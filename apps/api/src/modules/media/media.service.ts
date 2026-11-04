@@ -16,6 +16,7 @@ import { assertMediaServable } from '@platform/core/messaging'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
+  AllowedContentTypes,
   type ConfirmUploadBody,
   ImageVariants,
   type MediaPurposeType,
@@ -48,6 +49,9 @@ export interface MediaView {
   createdAt: Date
 }
 
+const isImage = (contentType: string): boolean =>
+  (AllowedContentTypes.IMAGE as readonly string[]).includes(contentType)
+
 const MEDIA_SELECT = {
   id: true,
   purpose: true,
@@ -58,6 +62,7 @@ const MEDIA_SELECT = {
   createdAt: true,
   key: true,
   variants: true,
+  processedAt: true,
   uploadedBy: true
 } as const
 
@@ -66,6 +71,7 @@ type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   status: string
   key: string
   variants: unknown
+  processedAt: Date | null
   uploadedBy: string | null
 }
 
@@ -255,6 +261,8 @@ export class MediaService {
       url,
       filename: media.filename,
       contentType: media.contentType,
+      // Only a picture goes through the variants: any other file has nothing to wait for
+      processed: !isImage(media.contentType) || media.processedAt !== null,
       variants: {
         [ImageVariants.FULL]: full,
         [ImageVariants.MEDIUM]: medium,

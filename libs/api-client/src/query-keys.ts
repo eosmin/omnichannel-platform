@@ -127,6 +127,8 @@ export const QueryKeys = {
       ['exports', storeId, type, status] as const
   },
   media: {
+    // Every signed link of the store: a file processed (its variants now exist) makes them all stale
+    all: (storeId: string) => ['media', storeId] as const,
     // The signed links of one clean file; they expire, so the query has a short life
     urls: (storeId: string, mediaId: string) => ['media', storeId, mediaId, 'urls'] as const
   },

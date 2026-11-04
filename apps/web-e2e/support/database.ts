@@ -23,7 +23,7 @@ import {
   type SystemMessageEvent
 } from '@platform/core/domain'
 import { ExportTypes } from '@platform/core/queues'
-import { MediaPurpose } from '@platform/core/storage'
+import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
@@ -112,8 +112,8 @@ export function addMessageTo(
     replyToMessageId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
-    // The channel's own data: the place of a location
-    metadata?: Record<string, string | number>
+    // The channel's own data: the place of a location, or the mark of a sticker
+    metadata?: Record<string, string | number | boolean>
     // Files of the customer the worker gave up on, as it records them in the metadata
     unavailableFiles?: { index: number; code: string }[]
   }
@@ -463,7 +463,13 @@ export function savedProfileOf(customerId: string): Promise<{
 export function addMediaTo(
   storeId: string,
   messageId: string,
-  input: { filename: string; contentType: string; status: MediaStatus }
+  input: {
+    filename: string
+    contentType: string
+    status: MediaStatus
+    // The worker made the variants of a picture, or refused it (settled, with none)
+    processed?: 'with-variants' | 'refused'
+  }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
     const id = randomUUID()
@@ -477,10 +483,41 @@ export function addMediaTo(
         filename: input.filename,
         contentType: input.contentType,
         fileSize: 2048,
-        status: input.status
+        status: input.status,
+        ...settledOf(storeId, id, input.processed)
       }
     })
     return { id }
+  })
+}
+
+// What the worker writes when it is done with a picture: the keys of the variants (the links are signed
+// from the key, the bucket is not read), or only the time when it refused the picture
+function settledOf(
+  storeId: string,
+  mediaId: string,
+  processed: 'with-variants' | 'refused' | undefined
+): { processedAt?: Date; variants?: Record<string, string> } {
+  if (processed === undefined) return {}
+  if (processed === 'refused') return { processedAt: new Date() }
+  return {
+    processedAt: new Date(),
+    // As the worker writes them: the three keys, none of them uploaded
+    variants: {
+      full: StorageKeys.messageVariant(storeId, mediaId, 'full'),
+      medium: StorageKeys.messageVariant(storeId, mediaId, 'medium'),
+      thumb: StorageKeys.messageVariant(storeId, mediaId, 'thumb')
+    }
+  }
+}
+
+// The worker finishing a picture that was waiting: the rows change, nothing announces it
+export function settleMedia(storeId: string, mediaId: string): Promise<void> {
+  return withOwner(async owner => {
+    await owner.media.update({
+      where: { id: mediaId },
+      data: settledOf(storeId, mediaId, 'with-variants')
+    })
   })
 }
 

@@ -2,6 +2,7 @@ import { cut, hasText, replyTarget, safeFilename } from '@platform/channels/meta
 import {
   InboundLimits,
   isWholeEmoji,
+  MessageMetadataKeys,
   MessageType,
   OriginKinds,
   OriginMediaTypes,
@@ -139,6 +140,10 @@ function toReceivedMessage(message: WhatsAppMessage): ReceivedMessage | null {
         ...base,
         type: MEDIA_TYPES.get(message.type) ?? MessageType.DOCUMENT,
         content: hasText(media.caption) ? (media.caption ?? null) : null,
+        // A sticker is an image to the core; the mark lets the thread draw it without a bubble
+        ...(message.type === WhatsAppMessageTypes.STICKER
+          ? { metadata: { [MessageMetadataKeys.STICKER]: true } }
+          : {}),
         media: [
           {
             ref: media.id,

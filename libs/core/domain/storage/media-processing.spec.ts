@@ -1,4 +1,77 @@
-import { attachmentDisposition, mediaVariantsSchema } from './media-processing'
+import {
+  AnimatedImage,
+  attachmentDisposition,
+  keepsAnimation,
+  mediaVariantsSchema
+} from './media-processing'
+
+describe('keepsAnimation', () => {
+  const webp = 'image/webp'
+  // What the header of a sticker says: the bytes are what the row says, with no rotation
+  const sticker = { format: 'webp', pages: 30, width: 512, height: 512 }
+
+  it('keeps the animation of a sticker and of a small gif', () => {
+    expect(keepsAnimation(webp, sticker)).toBe(true)
+    expect(keepsAnimation('image/gif', { format: 'gif', pages: 60, width: 480, height: 270 })).toBe(
+      true
+    )
+  })
+
+  it('does not treat a still image, or one with no frame count, as an animation', () => {
+    expect(keepsAnimation(webp, { ...sticker, pages: 1 })).toBe(false)
+    expect(keepsAnimation(webp, { ...sticker, pages: undefined })).toBe(false)
+  })
+
+  it('refuses to decode more frames than the cap, whatever their size', () => {
+    expect(
+      keepsAnimation(webp, {
+        ...sticker,
+        pages: AnimatedImage.MAX_FRAMES + 1,
+        width: 16,
+        height: 16
+      })
+    ).toBe(false)
+    expect(
+      keepsAnimation(webp, { ...sticker, pages: AnimatedImage.MAX_FRAMES, width: 16, height: 16 })
+    ).toBe(true)
+  })
+
+  it('refuses when the frames together hold more pixels than the budget', () => {
+    // 100 frames of 600 x 600 is 36 million pixels: over the budget although each frame is small
+    expect(keepsAnimation(webp, { ...sticker, pages: 100, width: 600, height: 600 })).toBe(false)
+    expect(keepsAnimation(webp, { ...sticker, pages: 2, width: 20_000, height: 20_000 })).toBe(
+      false
+    )
+    // Right at the budget
+    expect(keepsAnimation(webp, { ...sticker, pages: 16, width: 1000, height: 1000 })).toBe(true)
+    expect(keepsAnimation(webp, { ...sticker, pages: 16, width: 1000, height: 1001 })).toBe(false)
+  })
+
+  it('does not trust a size that is missing or not a whole positive number', () => {
+    expect(keepsAnimation(webp, { ...sticker, width: undefined })).toBe(false)
+    expect(keepsAnimation(webp, { ...sticker, height: 0 })).toBe(false)
+    expect(keepsAnimation(webp, { ...sticker, pages: 10.5 })).toBe(false)
+  })
+
+  it('only looks at the formats that can move', () => {
+    expect(keepsAnimation('image/png', { ...sticker, format: 'png' })).toBe(false)
+    expect(keepsAnimation('image/jpeg', { ...sticker, format: 'jpeg' })).toBe(false)
+  })
+
+  it('does not take the word of the row for the bytes: the decoder must find a gif or a webp', () => {
+    // A multi-page TIFF or HEIF under a row that says gif or webp has frames of any size
+    expect(keepsAnimation(webp, { ...sticker, format: 'tiff' })).toBe(false)
+    expect(keepsAnimation('image/gif', { ...sticker, format: 'heif' })).toBe(false)
+    expect(keepsAnimation(webp, { ...sticker, format: undefined })).toBe(false)
+  })
+
+  it('draws an animation with a quarter-turn orientation still: the frames cannot be rotated', () => {
+    expect(keepsAnimation(webp, { ...sticker, orientation: 1 })).toBe(true)
+    for (const orientation of [2, 3, 4, 5, 6, 7, 8]) {
+      expect(keepsAnimation(webp, { ...sticker, orientation })).toBe(false)
+    }
+  })
+})
 
 describe('attachmentDisposition', () => {
   it('quotes a plain name and repeats it encoded', () => {

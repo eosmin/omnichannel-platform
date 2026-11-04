@@ -89,6 +89,7 @@ const message = {
   system: null,
   attachmentUrl: null,
   location: null,
+  sticker: false,
   reactions: [],
   media: [],
   unavailableFiles: [],

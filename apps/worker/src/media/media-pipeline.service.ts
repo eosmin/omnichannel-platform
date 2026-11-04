@@ -18,6 +18,7 @@ import {
   ImageVariantSpecs,
   AvatarProcessing,
   AvatarUpload,
+  keepsAnimation,
   MAX_IMAGE_PIXELS,
   MediaPurpose,
   parseAvatarKey,
@@ -287,14 +288,70 @@ export class MediaPipeline {
     if (original === null) throw new Error('the image to process is not in the bucket')
 
     const storeId = media.storeId
+    // The keys put in the bucket so far: a refusal or a deleted row takes them out again
+    const written: string[] = []
+    // Whether the big variants move. The header (format, frame count, size of a frame, orientation) is
+    // read first, without decoding a frame, and the caps are checked on it: only an animation inside
+    // them is decoded whole.
+    let animated: boolean
+    try {
+      const header = await sharp(original, { limitInputPixels: MAX_IMAGE_PIXELS }).metadata()
+      animated = keepsAnimation(media.contentType, header)
+    } catch (error) {
+      return this.refuseImage(media, error, written)
+    }
+    let variantKeys: Record<ImageVariant, string>
+    try {
+      variantKeys = await this.makeVariants(original, media.id, storeId, animated, written)
+    } catch (error) {
+      if (!(error instanceof ImageNotEncoded)) throw error
+      if (!animated) return this.refuseImage(media, error.reason, written)
+      // An animation the encoder would not take whole is drawn from its first frame instead of
+      // refused: the same keys are written again, still
+      try {
+        variantKeys = await this.makeVariants(original, media.id, storeId, false, written)
+      } catch (second) {
+        if (!(second instanceof ImageNotEncoded)) throw second
+        return this.refuseImage(media, second.reason, written)
+      }
+    }
+
+    // Guarded like the refusal: a second attempt of a stalled job finds the row settled and stops, and
+    // the keys are the same ones, so there is nothing to undo
+    const settled = await this.prisma.client.media.updateMany({
+      where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+      data: { variants: variantKeys, processedAt: new Date() }
+    })
+    if (settled.count === 0) {
+      // The file was removed while its variants were made: they belong to nobody
+      if (await this.isGone(media.id)) await this.dropVariants(written)
+      return
+    }
+    // The thread draws the variants once they exist
+    await this.announce(media, Events.MEDIA_PROCESSED)
+  }
+
+  // The three WebP variants, put in the bucket under their own keys. An error of the encoder is the
+  // image's (`ImageNotEncoded`); one of the bucket is not, and propagates so that the queue retries.
+  private async makeVariants(
+    original: Buffer,
+    mediaId: string,
+    storeId: string,
+    animated: boolean,
+    written: string[]
+  ): Promise<Record<ImageVariant, string>> {
     const variantKeys = {} as Record<ImageVariant, string>
     for (const variant of Object.values(ImageVariants)) {
       const spec = ImageVariantSpecs[variant]
       let encoded: Buffer
       try {
         // rotate() applies the EXIF orientation; the metadata itself (location, camera) is not kept,
-        // because the encoder drops it unless asked to keep it
-        encoded = await sharp(original, { limitInputPixels: MAX_IMAGE_PIXELS })
+        // because the encoder drops it unless asked to keep it. The thumb is always a still: it is a
+        // square crop of 160 px that nobody watches move.
+        encoded = await sharp(original, {
+          limitInputPixels: MAX_IMAGE_PIXELS,
+          animated: animated && variant !== ImageVariants.THUMB
+        })
           .rotate()
           .resize(spec.width, spec.height, {
             fit: spec.fit,
@@ -303,23 +360,56 @@ export class MediaPipeline {
           .webp({ quality: spec.quality })
           .toBuffer()
       } catch (error) {
-        // An image the decoder refuses (corrupt, or too many pixels) is refused again on every
-        // attempt. The original stays and is served as a download, without variants.
-        throw new UnrecoverableError(
-          `the image could not be processed: ${error instanceof Error ? error.message : 'unknown'}`
-        )
+        throw new ImageNotEncoded(error)
       }
-      // A failure of the bucket is not the image's: it propagates and the queue retries
-      const key = StorageKeys.messageVariant(storeId, media.id, variant)
+      const key = StorageKeys.messageVariant(storeId, mediaId, variant)
       await this.storage.put(key, encoded, VARIANT_CONTENT_TYPE)
+      if (!written.includes(key)) written.push(key)
       variantKeys[variant] = key
     }
+    return variantKeys
+  }
 
-    await this.prisma.client.media.update({
-      where: { id: media.id },
-      data: { variants: variantKeys, processedAt: new Date() }
+  // Best effort: an object that stays is one nobody refers to, and the pass of the cleanup that looks
+  // for objects with no row finds it
+  private async dropVariants(keys: readonly string[]): Promise<void> {
+    for (const key of keys) {
+      try {
+        await this.storage.delete(key)
+      } catch (error) {
+        this.logger.warn(
+          { errorName: errorName(error) },
+          'a variant that nobody refers to was not deleted'
+        )
+      }
+    }
+  }
+
+  // An image the decoder refuses (corrupt, or too many pixels) is refused again on every attempt. The
+  // original stays and is served as a download, without variants. The row is settled (`processedAt`)
+  // and announced, so the thread stops showing its placeholder for variants that will never come and
+  // the hourly cleanup does not queue the same file again; the variants already put in the bucket go,
+  // because the row will never name them. The error still ends the job as failed.
+  private async refuseImage(
+    media: { id: string; storeId: string | null },
+    error: unknown,
+    written: readonly string[]
+  ): Promise<never> {
+    const marked = await this.prisma.client.media.updateMany({
+      where: { id: media.id, status: MediaStatus.CLEAN, processedAt: null },
+      data: { processedAt: new Date() }
     })
-    // The thread draws the variants once they exist
-    await this.announce(media, Events.MEDIA_PROCESSED)
+    if (marked.count > 0) await this.announce(media, Events.MEDIA_PROCESSED)
+    await this.dropVariants(written)
+    throw new UnrecoverableError(
+      `the image could not be processed: ${error instanceof Error ? error.message : 'unknown'}`
+    )
+  }
+}
+
+// The encoder refused the image (not the bucket): carries what it said
+class ImageNotEncoded extends Error {
+  constructor(readonly reason: unknown) {
+    super('the image could not be encoded')
   }
 }

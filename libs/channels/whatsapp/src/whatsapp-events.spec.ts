@@ -1,4 +1,4 @@
-import { MessageLimits, MessageType } from '@platform/core/domain'
+import { MessageLimits, MessageMetadataKeys, MessageType } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { webhookToEvents } from './whatsapp-events'
@@ -67,6 +67,14 @@ describe('webhookToEvents', () => {
       content: 'cap',
       media: [{ ref: '555', contentType: 'x/y', filename: 'f.bin' }]
     })
+  })
+
+  it('marks a sticker, and no other media, so the thread can draw it without a bubble', () => {
+    const [sticker] = webhookToEvents(received({ type: 'sticker', sticker: { id: '9' } }))
+    const [image] = webhookToEvents(received({ type: 'image', image: { id: '9' } }))
+
+    expect(sticker?.message?.metadata).toEqual({ [MessageMetadataKeys.STICKER]: true })
+    expect(image?.message?.metadata).toBeUndefined()
   })
 
   it('falls back to a generic content type when Meta gives none', () => {
