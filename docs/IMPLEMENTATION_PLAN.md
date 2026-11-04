@@ -1279,7 +1279,7 @@ Findings of the QA of 2026-11-03 (Steps 0.1 to 3.6, two runs, 326 cases; no P0).
 | Q6 | Security hardening found by the QA: `safeActionPath`, attachment URLs, magic bytes of images, `svix-signature` in logs (SEC-7), `providerErrorText` (SEC-8), the 429 text, permissions and routes without a counterpart | done | #169 | 2026-11-04 |
 | Q7a | Spanish vocabulary and texts in the web: the 42 points of the owner's list that live in the interface (widget, roles by key, Resolver, Correo, Fusionar, diagonal, Asignación, permission named in the refusal, field named in a validation refusal), one name for the anonymous customer, the commands in Spanish, preference switches nothing raises | done | #170 | 2026-11-04 |
 | Q7b | The server side of the texts: error codes that tell the truth (unlink an identity with conversations, delete a store with data, delete the last store), the invitation email (role named in its language, subject with the store, sender with a name), the mention in the digest naming who and whose (with Q7a, #170, Q7 is done) | done | #171 | 2026-11-04 |
-| Q8 | Development environment hygiene, the safe part: the test database, `pnpm dev`, the VAPID tooling and its steps, cache of `workspace:test`. The cleaning of the QA data and `infra:reset` are the owner's (below) | done | Q8PR | 2026-11-04 |
+| Q8 | Development environment hygiene, the safe part: the test database, `pnpm dev`, the VAPID tooling and its steps, cache of `workspace:test`. The cleaning of the QA data and `infra:reset` are the owner's (below) | done | #172 | 2026-11-04 |
 
 Findings that no QA fix PR takes, with the step that closes each:
 
