@@ -96,8 +96,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
 
   constructor(protected readonly meta: MetaGraphClient) {}
 
-  // Who the token belongs to, read from Meta with that token
-  protected abstract fetchAccount(token: string): Promise<MetaAccount>
+  // Who the token belongs to, read from Meta with that token. `expectedId` is the account a connection
+  // already has: a token that reaches several accounts answers with that one (a connection checks
+  // its own account; only a new connection has to pick, or refuse).
+  protected abstract fetchAccount(token: string, expectedId?: string): Promise<MetaAccount>
 
   // Fields of every send that only one of the two APIs wants
   protected sendFields(): Record<string, unknown> {
@@ -111,8 +113,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
 
   // Only the id of the account, for a check that has no use for its name; a subclass whose name costs a
   // call or a permission reads the id alone
-  protected async fetchAccountId(token: string): Promise<string> {
-    return (await this.fetchAccount(token)).id
+  protected async fetchAccountId(token: string, expectedId?: string): Promise<string> {
+    return (await this.fetchAccount(token, expectedId)).id
   }
 
   // The id goes into the path of every call after this one: digits only, whoever the subclass is
@@ -169,7 +171,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // connection (a revoked token is not a Meta outage)
   async healthCheck(ctx: ChannelContext): Promise<ChannelHealth> {
     const id = this.checkedId(
-      await this.fetchAccountId(parseMetaTokenCredentials(ctx.credentials).accessToken)
+      await this.fetchAccountId(
+        parseMetaTokenCredentials(ctx.credentials).accessToken,
+        ctx.connectionId
+      )
     )
     // A token of another account would read well and send under the wrong one
     if (id !== ctx.connectionId) {

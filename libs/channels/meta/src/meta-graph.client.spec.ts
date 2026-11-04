@@ -74,24 +74,13 @@ describe('MetaGraphClient', () => {
       expect(init.signal).toBeInstanceOf(AbortSignal)
     })
 
-    it('calls the host of the config in place of Facebook, and never replaces Instagram', async () => {
-      // A body is read once: each call needs its own response
+    it('calls the host of the config in place of Facebook', async () => {
       fetchMock.mockImplementation(() => Promise.resolve(json({ id: '1' })))
       const fake = new MetaGraphClient({ ...config, graphOrigin: 'http://localhost:8099' })
 
       await fake.get({ path: ['123'], token: TOKEN, schema })
-      await fake.get({
-        path: ['123'],
-        token: TOKEN,
-        schema,
-        origin: MetaGraph.INSTAGRAM_ORIGIN
-      })
 
-      const urls = fetchMock.mock.calls.map(call => call[0])
-      expect(urls).toEqual([
-        'http://localhost:8099/v23.0/123',
-        `${MetaGraph.INSTAGRAM_ORIGIN}/v23.0/123`
-      ])
+      expect(fetchMock.mock.calls.map(call => call[0])).toEqual(['http://localhost:8099/v23.0/123'])
     })
 
     it('posts the body as json', async () => {
@@ -239,17 +228,12 @@ describe('MetaGraphClient', () => {
   })
 
   describe('graph host', () => {
-    it('calls the host the request names', async () => {
+    it("calls Facebook's host when the request names none", async () => {
       fetchMock.mockResolvedValue(json({ id: '1' }))
 
-      await client.get({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
-        path: ['me'],
-        token: TOKEN,
-        schema: z.object({ id: z.string() })
-      })
+      await client.get({ path: ['me'], token: TOKEN, schema: z.object({ id: z.string() }) })
 
-      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://graph.instagram.com/v23.0/me')
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://graph.facebook.com/v23.0/me')
     })
   })
 

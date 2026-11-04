@@ -49,7 +49,7 @@ export interface GraphRequest<T> {
   body?: unknown
   // A POST that changes nothing the second time (a subscription, a read receipt) may be tried again
   idempotent?: boolean
-  // Facebook's Graph unless said otherwise. Instagram Login tokens only work on Instagram's.
+  // Facebook's Graph, the only host there is
   origin?: MetaGraphOrigin
 }
 
@@ -279,9 +279,8 @@ export class MetaGraphClient {
     if (path.length === 0 || !path.every(segment => PATH_SEGMENT.test(segment))) {
       throw graphUnexpected()
     }
-    // Only Facebook's host is replaced: Instagram's has its own token and no test stands in for it
-    const host =
-      origin === MetaGraph.ORIGIN ? (this.config.graphOrigin ?? MetaGraph.ORIGIN) : origin
+    // The config may replace the host with a fake one in a test; where it is deployed it is never set
+    const host = this.config.graphOrigin ?? origin
     const base = `${host}/${this.config.graphVersion}/${path.join('/')}`
     return query ? `${base}?${new URLSearchParams(query).toString()}` : base
   }

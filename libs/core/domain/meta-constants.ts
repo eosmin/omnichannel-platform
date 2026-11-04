@@ -19,10 +19,10 @@ export const MetaUpload = {
 } as const
 
 export const MetaGraph = {
-  // The two Graph hosts. Facebook's serves WhatsApp and Messenger; Instagram Login tokens only work on
-  // Instagram's. A call names one of these, never a url of its own.
+  // The Graph host: WhatsApp, Messenger and Instagram (unified login) all use it. Instagram Login's
+  // own host, graph.instagram.com, takes another kind of token and is not used. A call names this
+  // origin, never a url of its own.
   ORIGIN: 'https://graph.facebook.com',
-  INSTAGRAM_ORIGIN: 'https://graph.instagram.com',
   // The one host that wants the connection token to give a file. Exact on purpose: other
   // *.fbsbx.com hosts (apps.fbsbx.com) serve content of third parties.
   MEDIA_TOKEN_HOSTS: ['lookaside.fbsbx.com'],
@@ -72,7 +72,7 @@ export const MetaErrorCodes = {
   NO_PROFILE: 2018218
 } as const
 
-export type MetaGraphOrigin = typeof MetaGraph.ORIGIN | typeof MetaGraph.INSTAGRAM_ORIGIN
+export type MetaGraphOrigin = typeof MetaGraph.ORIGIN
 
 // What Instagram and Messenger share on the wire (the Messenger Platform and the Instagram messaging
 // API are the same shape on two hosts)
@@ -102,10 +102,17 @@ export const MetaMessaging = {
   REFERRAL_SOURCE_ADS: 'ADS'
 } as const
 
-// Instagram messaging with Instagram Login (https://developers.facebook.com/docs/instagram-platform)
+// Instagram messaging with the unified login (https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login):
+// graph.facebook.com and the token of a system user of the owner's business, pasted by the owner. The
+// token is not an account: `me` is its system user, and the accounts the owner shared with the app are
+// the edge below it.
 export const InstagramApi = {
   WEBHOOK_OBJECT: 'instagram',
-  PROFILE_FIELDS: 'user_id,username',
+  ACCOUNTS_EDGE: 'assigned_instagram_accounts',
+  // The id is the one of the webhooks (`entry.id`) and of every path after it
+  PROFILE_FIELDS: 'id,username',
+  // Graph pages at 25; a business shares far fewer accounts than this with one app
+  ACCOUNTS_PAGE_LIMIT: '100',
   // The customer behind a scoped id (User Profile API); `name` may come back null
   USER_PROFILE_FIELDS: 'name,username,profile_pic',
   // The names of the SUBSCRIPTION, which are not always the names of the webhook event (`messaging_referral`
