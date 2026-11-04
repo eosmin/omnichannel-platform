@@ -13,20 +13,20 @@ import { cn } from '../../lib/utils'
 // inside it: a control inside a link is read as one.
 export function RowCheckbox({
   customer,
-  channelName,
+  channelType,
   isChecked,
   isSelecting,
   onToggle
 }: {
   customer: ConversationListItemView['customer']
-  channelName: string
+  channelType: string
   isChecked: boolean
   // Something is ticked, so every row shows its checkbox
   isSelecting: boolean
   onToggle: () => void
 }): ReactElement {
   const t = useTranslations('inbox.bulk')
-  const { name } = useCustomerName(customer, channelName)
+  const { name } = useCustomerName(customer, channelType)
   return (
     <label
       className={cn(

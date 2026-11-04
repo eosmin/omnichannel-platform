@@ -13,10 +13,10 @@ import {
   RoutingActionTypes
 } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { moveBy, moveItem, sameOrder } from '../../lib/settings/routing-order'
 import type { RuleView } from '../../lib/settings/routing-requests'
 import { useDeleteRule, useReorderRules, useUpdateRule } from '../../lib/settings/use-routing'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -38,7 +38,7 @@ export function RoutingPanel({
   tags: TagView[]
 }): ReactElement {
   const t = useTranslations('settings.routing')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const canManage = can(Permissions.SETTINGS_MANAGE_ROUTING)
   const listsAvailable = can(Permissions.CONVERSATIONS_VIEW)
@@ -66,7 +66,7 @@ export function RoutingPanel({
         setAnnouncement(
           t('reorder.moved', { name: moved.name, position: next.indexOf(moved.id) + 1 })
         ),
-      onError: error => toast.error(tErrors(errorCodeOf(error)))
+      onError: error => toast.error(errorText(error))
     })
   }
 
@@ -166,7 +166,7 @@ function RuleRow({
   onEdit: () => void
 }): ReactElement {
   const t = useTranslations('settings.routing')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId } = useStore()
   const run = useDestructiveAction()
   const update = useUpdateRule(storeId)
@@ -175,7 +175,7 @@ function RuleRow({
   const toggle = (enabled: boolean): void => {
     update.mutate(
       { ruleId: rule.id, input: { enabled } },
-      { onError: error => toast.error(tErrors(errorCodeOf(error))) }
+      { onError: error => toast.error(errorText(error)) }
     )
   }
 
@@ -189,7 +189,7 @@ function RuleRow({
           await remove.mutateAsync(rule.id)
           toast.success(t('delete.done', { name: rule.name }))
         } catch (error) {
-          toast.error(tErrors(errorCodeOf(error)))
+          toast.error(errorText(error))
         }
       }
     })

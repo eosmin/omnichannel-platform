@@ -193,6 +193,19 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
   ]
 }
 
+// Types that nothing raises yet. The preferences page hides their switches (a switch that changes
+// nothing misleads) and shows each one when the step that emits it is done: Commerce (Milestone 4)
+// raises the order, inventory and shipping ones; Step 5.4 raises `webhook.auto_disabled`; the plugin
+// runtime (Step 5.6) raises `plugin.error`. The constants, texts and defaults stay: the emitter step
+// only removes its types from this list.
+export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = new Set([
+  ...NotificationGroupTypes[ORDERS],
+  ...NotificationGroupTypes[INVENTORY],
+  ...NotificationGroupTypes[SHIPPING],
+  NotificationTypes.WEBHOOK_AUTO_DISABLED,
+  NotificationTypes.PLUGIN_ERROR
+])
+
 // Realtime payload delivered to the browser (RealtimeEventMap[NOTIFICATION], TDD_02 §2).
 export interface NotificationRealtimePayload {
   id: string

@@ -6,6 +6,7 @@ import {
   NotificationGroupTypes,
   NotificationSeverity,
   NotificationTypes,
+  NotificationTypesWithoutEmitter,
   notificationMessageKey
 } from './notification-constants'
 
@@ -100,5 +101,33 @@ describe('isDailyDigestHour', () => {
     expect(isDailyDigestHour('America/El_Salvador', at)).toBe(true)
     expect(isDailyDigestHour('UTC', at)).toBe(false)
     expect(isDailyDigestHour('Europe/Madrid', at)).toBe(false)
+  })
+})
+
+describe('NotificationTypesWithoutEmitter', () => {
+  it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
+    for (const type of [
+      NotificationTypes.ORDER_CREATED,
+      NotificationTypes.INVENTORY_LOW,
+      NotificationTypes.REMITTANCE_OVERDUE,
+      NotificationTypes.WEBHOOK_AUTO_DISABLED,
+      NotificationTypes.PLUGIN_ERROR
+    ]) {
+      expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
+    }
+    for (const type of [
+      NotificationTypes.CONVERSATION_ASSIGNED,
+      NotificationTypes.MESSAGE_FAILED,
+      NotificationTypes.MEMBER_JOINED,
+      NotificationTypes.CHANNEL_DISCONNECTED,
+      NotificationTypes.EXPORT_READY
+    ]) {
+      expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
+    }
+  })
+
+  it('only names types that exist', () => {
+    const all = new Set<string>(Object.values(NotificationTypes))
+    for (const type of NotificationTypesWithoutEmitter) expect(all.has(type)).toBe(true)
   })
 })

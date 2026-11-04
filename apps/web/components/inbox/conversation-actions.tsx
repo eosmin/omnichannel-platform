@@ -8,9 +8,9 @@ import { toast } from 'sonner'
 import { Permissions } from '@platform/core/auth'
 import { ConversationStatus } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -27,7 +27,7 @@ export function ConversationActions({
   status: string
 }): ReactElement | null {
   const t = useTranslations('inbox.actions')
-  const tAll = useTranslations()
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const { reopen } = useConversationActions(storeId, conversationId)
   const { resolve: resolveFlow, openSnooze } = useConversationControls()
@@ -40,7 +40,7 @@ export function ConversationActions({
 
   const reopenNow = (): void =>
     reopen.mutate(undefined, {
-      onError: error => toast.error(tAll(`errors.${errorCodeOf(error)}`))
+      onError: error => toast.error(errorText(error))
     })
 
   const may = isResolved ? mayResolve : isSnoozed ? maySnooze : mayResolve || maySnooze

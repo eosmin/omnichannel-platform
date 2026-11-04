@@ -7,6 +7,7 @@ import {
   useQuery,
   type UseQueryResult
 } from '@tanstack/react-query'
+import { useCallback } from 'react'
 
 import {
   type ChannelDirectoryEntryView,
@@ -38,6 +39,7 @@ import {
 } from '@platform/api-client'
 
 import { apiClient } from '../api'
+import { usePluginLabel } from '../plugin-label'
 
 // The list is read page by page; a realtime event makes the whole `conversations` key of the store
 // stale (invalidation.ts), which refetches the pages that are loaded
@@ -69,9 +71,16 @@ export function useMemberDirectory(storeId: string): UseQueryResult<MemberDirect
 }
 
 export function useChannelDirectory(storeId: string): UseQueryResult<ChannelDirectoryEntryView[]> {
+  const label = usePluginLabel()
   return useQuery({
     queryKey: QueryKeys.channels.directory(storeId),
-    queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal)
+    queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal),
+    // The name of an official channel comes from the message files, not from the server
+    select: useCallback(
+      (entries: ChannelDirectoryEntryView[]) =>
+        entries.map(entry => ({ ...entry, pluginName: label(entry.pluginId, entry.pluginName) })),
+      [label]
+    )
   })
 }
 

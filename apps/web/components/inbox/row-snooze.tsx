@@ -13,15 +13,15 @@ import { useCustomerName } from '../../lib/inbox/use-customer-name'
 // on a touch screen.
 export function RowSnooze({
   customer,
-  channelName,
+  channelType,
   onSnooze
 }: {
   customer: ConversationListItemView['customer']
-  channelName: string
+  channelType: string
   onSnooze: () => void
 }): ReactElement {
   const t = useTranslations('inbox.actions')
-  const { name } = useCustomerName(customer, channelName)
+  const { name } = useCustomerName(customer, channelType)
   return (
     <button
       type="button"

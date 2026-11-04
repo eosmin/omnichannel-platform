@@ -21,7 +21,8 @@ import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { apiClient, browserSession } from '../../lib/api'
-import { errorCodeOf } from '../../lib/error-message'
+import { useRoleLabel } from '../../lib/role-label'
+import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 
 type Refusal =
@@ -50,6 +51,7 @@ function refusalOf(error: unknown): Refusal {
 // else (told to sign out). One with an account and no session is sent to sign in by the api's answer.
 export function InvitationCard({ token }: { token: string }): ReactElement {
   const t = useTranslations()
+  const errorText = useErrorText()
   const preview = useQuery({
     queryKey: QueryKeys.invitations.byToken(token),
     queryFn: ({ signal }) => fetchInvitationPreview(apiClient, token, signal)
@@ -57,12 +59,28 @@ export function InvitationCard({ token }: { token: string }): ReactElement {
   const profile = useProfile()
 
   if (preview.isError) {
+    // The link itself was refused (expired, used, unknown): nothing to retry. A failure on the way
+    // (offline, a server error, a rate limit) says nothing about the invitation: try again.
+    const isRefused =
+      preview.error instanceof ApiError &&
+      preview.error.status >= HttpStatusCodes.BAD_REQUEST &&
+      preview.error.status < HttpStatusCodes.INTERNAL_SERVER_ERROR &&
+      preview.error.status !== HttpStatusCodes.TOO_MANY_REQUESTS
     return (
       <Frame>
-        <p role="alert">{t(`errors.${errorCodeOf(preview.error)}`)}</p>
-        <Button asChild>
-          <Link href={AppPaths.login}>{t('invitation.goToLogin')}</Link>
-        </Button>
+        {isRefused ? (
+          <h1 className="text-2xl font-semibold">{t('invitation.unavailableTitle')}</h1>
+        ) : null}
+        <p role="alert" className="text-muted-foreground">
+          {errorText(preview.error)}
+        </p>
+        {isRefused ? (
+          <Button asChild variant="outline">
+            <Link href={AppPaths.login}>{t('invitation.goToLogin')}</Link>
+          </Button>
+        ) : (
+          <Button onClick={() => void preview.refetch()}>{t('common.tryAgain')}</Button>
+        )}
       </Frame>
     )
   }
@@ -72,7 +90,7 @@ export function InvitationCard({ token }: { token: string }): ReactElement {
   if (profile.isError && !isNoSession(profile.error)) {
     return (
       <Frame>
-        <p role="alert">{t(`errors.${errorCodeOf(profile.error)}`)}</p>
+        <p role="alert">{errorText(profile.error)}</p>
         <Button onClick={() => void profile.refetch()}>{t('common.tryAgain')}</Button>
       </Frame>
     )
@@ -111,6 +129,7 @@ function AcceptForm({
   signedIn: boolean
 }): ReactElement {
   const t = useTranslations()
+  const roleLabel = useRoleLabel()
   const router = useRouter()
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
@@ -145,7 +164,7 @@ function AcceptForm({
           {t('invitation.body', {
             inviter: invitation.inviterName,
             store: invitation.storeName,
-            role: invitation.roleName
+            role: roleLabel(invitation.roleName)
           })}
         </p>
         {!signedIn && (
@@ -171,6 +190,7 @@ function AcceptForm({
 
 function RefusalMessage({ refusal, email }: { refusal: Refusal; email: string }): ReactElement {
   const t = useTranslations()
+  const errorText = useErrorText()
   if (refusal.kind === 'loginRequired') {
     return (
       <div role="alert" className="flex flex-col gap-2">
@@ -182,9 +202,7 @@ function RefusalMessage({ refusal, email }: { refusal: Refusal; email: string })
     )
   }
   const message =
-    refusal.kind === 'nameRequired'
-      ? t('invitation.nameRequired')
-      : t(`errors.${errorCodeOf(refusal.error)}`)
+    refusal.kind === 'nameRequired' ? t('invitation.nameRequired') : errorText(refusal.error)
   return (
     <p role="alert" className="text-destructive text-sm">
       {message}

@@ -9,6 +9,7 @@ import { Permissions } from '@platform/core/auth'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
+import { useRoleLabel } from '../../lib/role-label'
 import {
   filterMembers,
   isSuspendedMember,
@@ -23,6 +24,7 @@ import {
   useRemoveMember,
   useSuspendMember
 } from '../../lib/settings/use-team'
+import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
@@ -93,7 +95,8 @@ export function MembersPanel({
 
 function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] }): ReactElement {
   const t = useTranslations('settings.team.members')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
+  const roleLabel = useRoleLabel()
   const format = useFormatter()
   const { storeId, can } = useStore()
   const run = useDestructiveAction()
@@ -121,7 +124,7 @@ function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] })
   const accessFailure = (error: unknown, action: 'suspend' | 'reactivate'): string =>
     errorCodeOf(error) === ErrorCodes.RESOURCE_CONFLICT
       ? t(`${action}.outOfDate`, { name: member.name })
-      : tErrors(errorCodeOf(error))
+      : errorText(error)
 
   const askToSuspend = (): void => {
     run('SUSPEND_TEAM_MEMBER', {
@@ -142,7 +145,7 @@ function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] })
   const askToReactivate = (): void => {
     run('REACTIVATE_TEAM_MEMBER', {
       title: t('reactivate.title', { name: member.name }),
-      description: t('reactivate.description', { role: member.role.name }),
+      description: t('reactivate.description', { role: roleLabel(member.role.name) }),
       confirmLabel: t('reactivate.confirm'),
       onConfirm: async () => {
         try {
@@ -165,7 +168,7 @@ function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] })
           await remove.mutateAsync(member.id)
           toast.success(t('remove.done', { name: member.name }))
         } catch (error) {
-          toast.error(tErrors(errorCodeOf(error)))
+          toast.error(errorText(error))
         }
       }
     })
@@ -198,21 +201,23 @@ function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] })
                 {
                   onSuccess: updated =>
                     toast.success(
-                      t('roleChanged', { name: updated.name, role: updated.role.name })
+                      t('roleChanged', { name: updated.name, role: roleLabel(updated.role.name) })
                     ),
-                  onError: error => toast.error(tErrors(errorCodeOf(error)))
+                  onError: error => toast.error(errorText(error))
                 }
               )
             }
           >
             {roles.map(role => (
               <option key={role.id} value={role.id} disabled={!canGrant(role, can)}>
-                {role.name}
+                {roleLabel(role.name)}
               </option>
             ))}
           </select>
         ) : (
-          <span className="bg-muted rounded-md px-2 py-1 text-sm">{member.role.name}</span>
+          <span className="bg-muted rounded-md px-2 py-1 text-sm">
+            {roleLabel(member.role.name)}
+          </span>
         )}
         {mayDecideAccess && !suspended && !isMe ? (
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={askToSuspend}>

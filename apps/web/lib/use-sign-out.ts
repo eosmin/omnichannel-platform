@@ -2,17 +2,16 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPaths } from '@platform/api-client'
 
 import { apiClient, browserSession } from './api'
-import { errorCodeOf } from './error-message'
 import { clearComposerDrafts } from './inbox/composer-drafts'
 import { readLastStoreId } from './last-store'
 import { unsubscribeFromPush } from './push/push-browser'
+import { useErrorText } from './use-error-text'
 
 // How long leaving waits for the browser to drop its push registration: leaving must not depend on it
 const PUSH_REMOVAL_WAIT_MS = 3000
@@ -24,7 +23,7 @@ export function useSignOut(redirectTo: string = AppPaths.login): {
   signOut: () => Promise<void>
   pending: boolean
 } {
-  const t = useTranslations()
+  const errorText = useErrorText()
   const router = useRouter()
   const queryClient = useQueryClient()
   const [pending, setPending] = useState(false)
@@ -39,7 +38,7 @@ export function useSignOut(redirectTo: string = AppPaths.login): {
     try {
       await browserSession.logout()
     } catch (error) {
-      toast.error(t(`errors.${errorCodeOf(error)}`))
+      toast.error(errorText(error))
       setPending(false)
       return
     }

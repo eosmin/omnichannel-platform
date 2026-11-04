@@ -15,3 +15,35 @@ export function errorCodeOf(error: unknown): ErrorCode {
 export function knownErrorCode(code: string): ErrorCode {
   return KNOWN_CODES.has(code) ? (code as ErrorCode) : ErrorCodes.INTERNAL_ERROR // Narrowed by the set
 }
+
+// The permissions an api refusal says are missing (`metadata.required`); empty when it names none
+export function missingPermissionsOf(error: unknown): string[] {
+  if (!(error instanceof ApiError) || error.code !== ErrorCodes.PERMISSION_DENIED) return []
+  const required = error.metadata['required']
+  return Array.isArray(required)
+    ? required.filter((entry): entry is string => typeof entry === 'string')
+    : []
+}
+
+export interface FieldIssue {
+  // The name of the field in the body (`phone`)
+  field: string
+  // The position inside a list field (`siteOrigins.1` is the second), or null
+  index: number | null
+}
+
+// The first field a validation refusal names (`metadata.issues[].path`), so the interface can say
+// which one to check instead of "some fields are not valid"; null when it names none
+export function firstIssueOf(error: unknown): FieldIssue | null {
+  if (!(error instanceof ApiError) || error.code !== ErrorCodes.VALIDATION_FAILED) return null
+  const issues = error.metadata['issues']
+  if (!Array.isArray(issues)) return null
+  for (const issue of issues as unknown[]) {
+    const path = (issue as { path?: unknown } | null)?.path
+    if (typeof path !== 'string' || path === '') continue
+    const [field = '', second] = path.split('.')
+    const index = second !== undefined && /^\d+$/.test(second) ? Number(second) : null
+    return { field, index }
+  }
+  return null
+}

@@ -7,6 +7,7 @@ import {
   matchSnippets,
   type Mention,
   mentionQuery,
+  nameTyped,
   slashQuery
 } from './composer-triggers'
 
@@ -42,6 +43,8 @@ export interface MenuInput {
   isMentionFull: boolean
   maxLength: number
   commandHint: (command: SlashCommand) => string
+  // The name a role shows (the system roles are stored in English)
+  roleLabel: (roleName: string) => string
 }
 
 const SNIPPET_HINT_LENGTH = 80
@@ -49,19 +52,22 @@ const SNIPPET_HINT_LENGTH = 80
 const MENU_MAX_ENTRIES = 20
 
 function commandEntries(input: MenuInput, text: string): MenuEntry[] {
-  return matchCommands(text, input.commands).map(command => ({
-    id: command,
-    label: `/${command}`,
-    hint: input.commandHint(command),
-    outcome: outcomeOfCommand(command)
-  }))
+  return matchCommands(text, input.commands).map(command => {
+    const name = nameTyped(command, text)
+    return {
+      id: command,
+      label: `/${name}`,
+      hint: input.commandHint(command),
+      outcome: outcomeOfCommand(command, name)
+    }
+  })
 }
 
-function outcomeOfCommand(command: SlashCommand): MenuOutcome {
+function outcomeOfCommand(command: SlashCommand, name: string): MenuOutcome {
   if (command === SlashCommand.SNOOZE) return { kind: 'snooze' }
   if (command === SlashCommand.RESOLVE) return { kind: 'resolve' }
   // Snippet and assign ask for more: the box now holds the command and the menu lists its choices
-  const draft = `/${command} `
+  const draft = `/${name} `
   return { kind: 'draft', draft, caret: draft.length }
 }
 
@@ -98,7 +104,7 @@ export function composerMenu(input: MenuInput): ComposerMenu | null {
       entries: matchMembers(input.members, slash.text).map(member => ({
         id: member.id,
         label: member.name,
-        hint: member.role.name,
+        hint: input.roleLabel(member.role.name),
         outcome: { kind: 'assign', member: { id: member.id, name: member.name } }
       }))
     }
@@ -119,7 +125,7 @@ export function composerMenu(input: MenuInput): ComposerMenu | null {
       return {
         id: member.id,
         label: member.name,
-        hint: member.role.name,
+        hint: input.roleLabel(member.role.name),
         outcome: {
           kind: 'draft',
           ...insertMention(input.draft, input.caret, query, mention),

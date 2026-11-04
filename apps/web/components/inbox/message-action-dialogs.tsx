@@ -7,13 +7,13 @@ import { toast } from 'sonner'
 import type { MessageView } from '@platform/api-client'
 import { InboundLimits, isWholeEmoji, MessageLimits, MessageType } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { currentNoteOf } from '../../lib/inbox/stale-note'
 import {
   useDeletedContent,
   useMessageMutations,
   useRevisions
 } from '../../lib/inbox/use-message-actions'
+import { useErrorText } from '../../lib/use-error-text'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,6 +68,7 @@ export function EditMessageDialog(props: MessageDialogProps): ReactElement {
 
 function EditForm({ message, conversationId, onOpenChange }: MessageDialogProps): ReactElement {
   const t = useTranslations('inbox.thread.actions')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const { edit } = useMessageMutations(conversationId, message.id)
   const [draft, setDraft] = useState(message.content ?? '')
@@ -123,7 +124,7 @@ function EditForm({ message, conversationId, onOpenChange }: MessageDialogProps)
         </p>
       ) : edit.isError ? (
         <p role="alert" className="text-destructive text-sm">
-          {tAll(`errors.${errorCodeOf(edit.error)}`)}
+          {errorText(edit.error)}
         </p>
       ) : null}
       <DialogFooter>
@@ -146,6 +147,7 @@ export function DeleteMessageDialog({
   onOpenChange
 }: MessageDialogProps): ReactElement {
   const t = useTranslations('inbox.thread.actions')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const { remove } = useMessageMutations(conversationId, message.id)
   return (
@@ -168,7 +170,7 @@ export function DeleteMessageDialog({
                 .mutateAsync()
                 .then(() => onOpenChange(false))
                 .catch((error: unknown) => {
-                  toast.error(tAll(`errors.${errorCodeOf(error)}`))
+                  toast.error(errorText(error))
                   onOpenChange(false)
                 })
             }}
@@ -191,6 +193,7 @@ export function RevisionsDialog({
   authorLabel: (type: string, id: string | null) => string
 }): ReactElement {
   const t = useTranslations('inbox.thread.actions')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const format = useFormatter()
   const revisions = useRevisions(message.id, open)
@@ -207,7 +210,7 @@ export function RevisionsDialog({
           </p>
         ) : revisions.isError ? (
           <p role="alert" className="text-destructive text-sm">
-            {tAll(`errors.${errorCodeOf(revisions.error)}`)}
+            {errorText(revisions.error)}
           </p>
         ) : revisions.data.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t('noRevisions')}</p>
@@ -242,6 +245,7 @@ export function DeletedContentDialog({
   onOpenChange
 }: MessageDialogProps): ReactElement {
   const t = useTranslations('inbox.thread.actions')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const content = useDeletedContent(message.id, open)
   return (
@@ -257,7 +261,7 @@ export function DeletedContentDialog({
           </p>
         ) : content.isError ? (
           <p role="alert" className="text-destructive text-sm">
-            {tAll(`errors.${errorCodeOf(content.error)}`)}
+            {errorText(content.error)}
           </p>
         ) : content.data.content === null || content.data.content === '' ? (
           <p className="text-muted-foreground text-sm">{t('noDeletedContent')}</p>
@@ -279,7 +283,7 @@ export function CustomReactionDialog({
   onOpenChange
 }: MessageDialogProps): ReactElement {
   const t = useTranslations('inbox.thread.actions')
-  const tAll = useTranslations()
+  const errorText = useErrorText()
   const { react } = useMessageMutations(conversationId, message.id)
   const [value, setValue] = useState('')
   const emoji = value.trim()
@@ -315,7 +319,7 @@ export function CustomReactionDialog({
           />
           {react.isError ? (
             <p role="alert" className="text-destructive text-sm">
-              {tAll(`errors.${errorCodeOf(react.error)}`)}
+              {errorText(react.error)}
             </p>
           ) : null}
           <DialogFooter>

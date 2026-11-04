@@ -2,6 +2,7 @@ import type { TypePreferenceView } from '@platform/api-client'
 import {
   NotificationGroups,
   NotificationGroupTypes,
+  NotificationTypesWithoutEmitter,
   type NotificationGroup
 } from '@platform/core/notifications'
 
@@ -26,13 +27,15 @@ export interface PreferenceGroup {
 }
 
 // The rows of the matrix in the order of TDD_06 §9. A type the server sends that no group lists (the
-// org-level ones, or one this page does not know yet) is left out, as the TDD says.
+// org-level ones, or one this page does not know yet) is left out, as the TDD says. So is a type
+// nothing raises yet: its switch would change nothing, and a group left empty is not drawn.
 export function groupPreferences(types: readonly TypePreferenceView[]): PreferenceGroup[] {
   const byType = new Map(types.map(row => [row.type, row]))
   return Object.values(NotificationGroups)
     .map(group => ({
       group,
       rows: NotificationGroupTypes[group].flatMap(type => {
+        if (NotificationTypesWithoutEmitter.has(type)) return []
         const row = byType.get(type)
         return row === undefined ? [] : [row]
       })

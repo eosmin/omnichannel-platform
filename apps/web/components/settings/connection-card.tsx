@@ -14,13 +14,14 @@ import {
   type DestructiveAction
 } from '@platform/core/domain'
 
-import { errorCodeOf, knownErrorCode } from '../../lib/error-message'
+import { knownErrorCode } from '../../lib/error-message'
 import type {
   ChannelConnectionView,
   PluginCatalogEntryView
 } from '../../lib/settings/channels-requests'
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
+import { useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
@@ -129,16 +130,19 @@ function Health({ connection }: { connection: ChannelConnectionView }): ReactEle
   const error = connection.lastError
   return (
     <div className="flex flex-col gap-1 text-sm">
-      <span className="text-muted-foreground">
-        {connection.lastHealthyAt === null
-          ? t('never')
-          : t('lastHealthy', {
-              date: format.dateTime(new Date(connection.lastHealthyAt), {
-                dateStyle: 'medium',
-                timeStyle: 'short'
-              })
-            })}
-      </span>
+      {/* A failed check already says what happened: "not checked yet" beside it would contradict it */}
+      {connection.lastHealthyAt === null && error !== null ? null : (
+        <span className="text-muted-foreground">
+          {connection.lastHealthyAt === null
+            ? t('never')
+            : t('lastHealthy', {
+                date: format.dateTime(new Date(connection.lastHealthyAt), {
+                  dateStyle: 'medium',
+                  timeStyle: 'short'
+                })
+              })}
+        </span>
+      )}
       {error === null ? null : (
         <p role="alert" className="text-destructive break-words">
           {HEALTH_CODES.includes(error) ? t(`errors.${error}` as 'errors.check_failed') : error}
@@ -177,11 +181,11 @@ function ProfileStatus({ connection }: { connection: ChannelConnectionView }): R
 
 function Actions({ connection }: { connection: ChannelConnectionView }): ReactElement {
   const t = useTranslations('settings.channels')
+  const errorText = useErrorText()
   const { storeId } = useStore()
   const run = useDestructiveAction()
   const test = useTestConnection(storeId, connection.id)
   const disconnect = useDisconnect(storeId)
-  const tErrors = useTranslations('errors')
   const format = useFormatter()
 
   const askToDisconnect = (): void => {
@@ -194,7 +198,7 @@ function Actions({ connection }: { connection: ChannelConnectionView }): ReactEl
           await disconnect.mutateAsync(connection.id)
           toast.success(t('disconnect.done', { name: connection.displayName }))
         } catch (error) {
-          toast.error(tErrors(errorCodeOf(error)))
+          toast.error(errorText(error))
         }
       }
     })

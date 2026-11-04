@@ -26,7 +26,6 @@ import {
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { errorCodeOf } from '../../lib/error-message'
 import { forgetLastStoreId } from '../../lib/last-store'
 import { storeFormProblems, type StoreFormValues } from '../../lib/settings/store-form'
 import {
@@ -35,6 +34,7 @@ import {
   useOrganizationStores,
   useUpdateStore
 } from '../../lib/settings/use-settings-data'
+import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 
 // Typed by the key of DestructiveActionTiers, which is where its tier (critical: a typed phrase) lives
@@ -88,7 +88,7 @@ function StoreRow({
   isOnlyStore: boolean
 }): ReactElement {
   const t = useTranslations('org')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId } = useStore()
   const run = useDestructiveAction()
   const remove = useDeleteStore(storeId)
@@ -110,7 +110,7 @@ function StoreRow({
           toast.success(t('delete.done', { name: store.name }))
         } catch (error) {
           // The api says why (the last store, a store that holds data): that is what the person reads
-          toast.error(tErrors(errorCodeOf(error)))
+          toast.error(errorText(error))
         }
       }
     })

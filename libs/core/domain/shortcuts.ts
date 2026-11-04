@@ -105,5 +105,14 @@ export enum SlashCommand {
   RESOLVE = 'resolve'
 }
 
+// The same commands in Spanish, for who writes the replies in it. The English names keep working: a
+// habit, a guide or a note written before the aliases must not break.
+export const SlashCommandAliases: Readonly<Record<SlashCommand, readonly string[]>> = {
+  [SlashCommand.SNIPPET]: ['respuesta'],
+  [SlashCommand.ASSIGN]: ['asignar'],
+  [SlashCommand.SNOOZE]: ['posponer'],
+  [SlashCommand.RESOLVE]: ['resolver']
+}
+
 export const SLASH_PREFIX = '/'
 export const MENTION_PREFIX = '@'

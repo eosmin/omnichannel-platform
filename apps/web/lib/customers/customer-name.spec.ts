@@ -1,4 +1,9 @@
-import { customerListLabel, customerDisplayName, initialsOfName } from './customer-name'
+import {
+  customerListLabel,
+  customerDisplayName,
+  initialsOfName,
+  visitorTail
+} from './customer-name'
 
 const base = { name: null, email: null, phone: null, identities: [] }
 
@@ -19,6 +24,26 @@ describe('customerDisplayName', () => {
     }
     expect(customerDisplayName({ ...base, identities: [identity] })).toBe('5037')
     expect(customerDisplayName({ ...base, name: '  ' })).toBeNull()
+  })
+})
+
+describe('a visitor of the web widget', () => {
+  const visitor = {
+    id: 'i2',
+    channelType: 'web_widget',
+    channelIdentity: '3f0c1d52-0000-4000-8000-00000000ab98',
+    displayName: null,
+    lastInboundAt: null
+  }
+
+  it('is not named by its random id', () => {
+    expect(customerDisplayName({ ...base, identities: [visitor] })).toBeNull()
+  })
+
+  it('is named by the end of the id, as the inbox does', () => {
+    expect(visitorTail({ identities: [visitor] })).toBe('ab98')
+    expect(visitorTail({ identities: [] })).toBeNull()
+    expect(visitorTail({ identities: [{ ...visitor, channelType: 'instagram' }] })).toBeNull()
   })
 })
 

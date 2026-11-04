@@ -10,18 +10,17 @@ import {
   ConversationStatus,
   MessageLimits,
   MessageType,
-  SLASH_PREFIX,
   Shortcuts,
   SlashCommand
 } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { readDraft, writeDraft } from '../../lib/inbox/composer-drafts'
 import { composerMenu, type MenuEntry } from '../../lib/inbox/composer-menu'
 import {
   type Mention,
   mentionedIds,
   mentionedPeople,
+  slashQuery,
   typedCommand,
   withMentions
 } from '../../lib/inbox/composer-triggers'
@@ -40,8 +39,10 @@ import { acceptFor, ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
 import { useAttachment } from '../../lib/media/use-attachment'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
+import { useRoleLabel } from '../../lib/role-label'
 import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
@@ -116,7 +117,7 @@ function ComposerShortcuts({
 // follows the messaging window of the channel; an internal note never does.
 export function Composer({ conversationId }: { conversationId: string }): ReactElement | null {
   const t = useTranslations('inbox.composer')
-  const tAll = useTranslations()
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const conversation = useConversation(storeId, conversationId)
   const channels = useChannelDirectory(storeId)
@@ -150,11 +151,13 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const [picked, setPicked] = useState<Mention[]>([])
   const menuId = useId()
   const tMenu = useTranslations('inbox.composer.menu')
+  const roleLabel = useRoleLabel()
   const members = useMemberDirectory(storeId)
   const profile = useProfile()
   const actions = useConversationActions(storeId, conversationId)
   const { resolve: resolveFlow, openSnooze } = useConversationControls()
-  const wantsSnippets = draft.toLowerCase().startsWith(`${SLASH_PREFIX}${SlashCommand.SNIPPET} `)
+  const slash = slashQuery(draft)
+  const wantsSnippets = slash?.kind === 'argument' && slash.command === SlashCommand.SNIPPET
   const snippets = useSnippets(storeId, wantsSnippets)
   // Only a reply that could reach the customer is announced: not a note, not a command, and not a
   // box that cannot send (a closed window sends nothing, so it shows nothing)
@@ -245,7 +248,8 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     selfId: profile.data?.id,
     isMentionFull: mentionedIds(draft, picked).length >= MessageLimits.MAX_MENTIONS,
     maxLength: MessageLimits.CONTENT_MAX_LENGTH,
-    commandHint: command => tMenu(`commands.${command}`)
+    commandHint: command => tMenu(`commands.${command}`),
+    roleLabel
   })
   const isMenuOpen = menu !== null && dismissedFor !== draft
   const entries = isMenuOpen ? menu.entries : []
@@ -318,7 +322,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
         actions.assign
           .mutateAsync(member.id)
           .then(() => toast.success(tMenu('assigned', { name: member.name })))
-          .catch((error: unknown) => toast.error(tAll(`errors.${errorCodeOf(error)}`)))
+          .catch((error: unknown) => toast.error(errorText(error)))
       }
     }
     textarea.current?.focus()
@@ -496,7 +500,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
           </p>
           {isMenuOpen && entries.length === 0 && menu.kind === 'snippets' && snippets.isError ? (
             <p role="alert" className="text-destructive px-2 text-xs">
-              {tAll(`errors.${errorCodeOf(snippets.error)}`)}
+              {errorText(snippets.error)}
             </p>
           ) : null}
           {isMenuOpen &&

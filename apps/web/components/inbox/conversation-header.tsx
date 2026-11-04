@@ -9,12 +9,12 @@ import { ApiError, AppPaths, type ConversationListItemView } from '@platform/api
 import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { isListHiddenByConversation } from '../../lib/inbox/layout'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
+import { useErrorText } from '../../lib/use-error-text'
 import { useCustomerDrawer } from '../customers/customer-drawer-context'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -27,6 +27,7 @@ import { InboxState } from './inbox-state'
 // go under it (Step 3.2, PR B2 and B3).
 export function ConversationHeader({ conversationId }: { conversationId: string }): ReactElement {
   const t = useTranslations('inbox')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const { storeId } = useStore()
   const { search } = useInboxFilters()
@@ -62,7 +63,7 @@ export function ConversationHeader({ conversationId }: { conversationId: string 
             icon={TriangleAlert}
             heading="h1"
             title={t('error.title')}
-            body={tAll(`errors.${errorCodeOf(conversation.error)}`)}
+            body={errorText(conversation.error)}
             isAlert
           >
             <Button
@@ -118,7 +119,7 @@ function LoadedHeader({
   const { openCustomer } = useCustomerDrawer()
   const t = useTranslations('inbox')
   const channelName = useChannelName(storeId, channelType)
-  const { label, name } = useCustomerName(customer, channelName)
+  const { label, name } = useCustomerName(customer, channelType)
   // On a phone the list the agent tapped is gone and the focus with it: it goes to the heading of the
   // conversation. On a desktop the list stays and keeps the focus.
   const heading = useRef<HTMLHeadingElement>(null)

@@ -4,11 +4,12 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import { toast } from 'sonner'
 
-import { errorCodeOf } from '../../lib/error-message'
+import { useRoleLabel } from '../../lib/role-label'
 import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
 import type { RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
 import { useInviteMember } from '../../lib/settings/use-team'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -33,9 +34,10 @@ export function InviteDialog({
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.team.invitations.dialog')
+  const errorText = useErrorText()
   const tInvitations = useTranslations('settings.team.invitations')
-  const tErrors = useTranslations('errors')
   const tAll = useTranslations()
+  const roleLabel = useRoleLabel()
   const { storeId, can } = useStore()
   const invite = useInviteMember(storeId)
   const idPrefix = useId()
@@ -49,9 +51,7 @@ export function InviteDialog({
   // The cooldown of inviting says how long to wait, as a resend does; any other refusal is read from its code
   const inviteFailure = (error: Error): string => {
     const seconds = retryAfterSecondsOf(error)
-    return seconds === null
-      ? tErrors(errorCodeOf(error))
-      : tInvitations('resend.cooldown', { seconds })
+    return seconds === null ? errorText(error) : tInvitations('resend.cooldown', { seconds })
   }
 
   const submit = (event: FormEvent): void => {
@@ -103,7 +103,7 @@ export function InviteDialog({
               </option>
               {offered.map(role => (
                 <option key={role.id} value={role.id}>
-                  {role.name}
+                  {roleLabel(role.name)}
                 </option>
               ))}
             </select>

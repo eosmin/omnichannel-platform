@@ -12,7 +12,6 @@ import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { errorCodeOf } from '../../lib/error-message'
 import {
   DEFAULT_REOPEN_DAYS,
   type InboxDraft,
@@ -29,6 +28,7 @@ import {
   useSavePreferences
 } from '../../lib/settings/use-content'
 import { useSnippetChoices } from '../../lib/settings/use-routing'
+import { useErrorText } from '../../lib/use-error-text'
 
 // Settings → Store → Inbox behavior (TDD_09 §3 and §13): how resolving, reopening and archiving work,
 // the load at which the team widget flags an agent, and the read-receipts switch that Step 3.1 reads.
@@ -74,7 +74,7 @@ function ReceiptsLoader(): ReactElement {
 function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactElement {
   const [saved, setSaved] = useState(loaded)
   const t = useTranslations('settings.inbox')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const mayListSnippets = can(Permissions.CONVERSATIONS_VIEW)
@@ -108,7 +108,7 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
         setSaved(view)
         toast.success(t('saved'))
       },
-      onError: error => toast.error(tErrors(errorCodeOf(error)))
+      onError: error => toast.error(errorText(error))
     })
   }
 
@@ -188,7 +188,7 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
           </p>
           {snippets.isError ? (
             <p role="alert" className="text-destructive text-sm">
-              {tErrors(errorCodeOf(snippets.error))}
+              {errorText(snippets.error)}
             </p>
           ) : null}
         </div>
@@ -267,7 +267,7 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
 function ReceiptsForm({ saved: loaded }: { saved: PreferencesView }): ReactElement {
   const [saved, setSaved] = useState(loaded)
   const t = useTranslations('settings.inbox.receipts')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const canManage = can(Permissions.SETTINGS_MANAGE_PREFERENCES)
   const save = useSavePreferences(storeId)
@@ -285,7 +285,7 @@ function ReceiptsForm({ saved: loaded }: { saved: PreferencesView }): ReactEleme
           setSaved(view)
           toast.success(t('saved'))
         },
-        onError: error => toast.error(tErrors(errorCodeOf(error)))
+        onError: error => toast.error(errorText(error))
       }
     )
   }

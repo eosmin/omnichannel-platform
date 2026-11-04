@@ -8,7 +8,7 @@ import { StorageKeys } from '@platform/api-client'
 
 import { apiClient } from '../api'
 import { webEnv } from '../env'
-import { errorCodeOf } from '../error-message'
+import { useErrorText } from '../use-error-text'
 
 import { PushSubscribeResult, pushPermission, subscribeToPush } from './push-browser'
 import { PushOffer, pushOfferFor } from './push-offer'
@@ -45,6 +45,7 @@ let syncedInThisPage = false
 // The question about notifications on this device, asked after the agent resolves a conversation
 export function usePushOffer(storeId: string): { offer: () => void } {
   const t = useTranslations('notifications.push')
+  const errorText = useErrorText()
   const tAll = useTranslations()
 
   const enable = useCallback(async (): Promise<void> => {
@@ -53,7 +54,7 @@ export function usePushOffer(storeId: string): { offer: () => void } {
       if (result === PushSubscribeResult.SUBSCRIBED) toast.success(t('enabled'))
       else if (result === PushSubscribeResult.DENIED) toast.error(t('denied'))
     } catch (error) {
-      toast.error(tAll(`errors.${errorCodeOf(error)}`))
+      toast.error(errorText(error))
     }
   }, [storeId, t, tAll])
 

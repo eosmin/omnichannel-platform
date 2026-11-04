@@ -1,11 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useId, useMemo, useState } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
+import { type FormEvent, type ReactElement, useEffect, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { AccountPreferences, AccountPreferencesPatch } from '@platform/api-client'
+import {
+  type AccountPreferences,
+  type AccountPreferencesPatch,
+  StorageKeys
+} from '@platform/api-client'
 import { UiDensity } from '@platform/core/domain'
 import { LocaleLabels, SUPPORTED_LOCALES } from '@platform/core/i18n'
 
@@ -21,6 +25,25 @@ import {
   useAccountPreferences,
   useSaveAccountPreferences
 } from '../../lib/settings/use-settings-data'
+
+function rememberLanguageSaved(locale: string): void {
+  try {
+    window.sessionStorage.setItem(StorageKeys.LANGUAGE_SAVED, locale)
+  } catch {
+    // Without storage the page just does not confirm
+  }
+}
+
+// True once, when the language saved is the one now shown
+function takeLanguageSaved(shown: string): boolean {
+  try {
+    if (window.sessionStorage.getItem(StorageKeys.LANGUAGE_SAVED) !== shown) return false
+    window.sessionStorage.removeItem(StorageKeys.LANGUAGE_SAVED)
+    return true
+  } catch {
+    return false
+  }
+}
 
 // The value of the time zone select that means "the one of this browser" (the api stores null)
 const BROWSER_ZONE = ''
@@ -59,6 +82,7 @@ function PreferencesForm({ saved }: { saved: AccountPreferences }): ReactElement
   const t = useTranslations('account.preferences')
   const tAll = useTranslations()
   const router = useRouter()
+  const locale = useLocale()
   const id = useId()
   const save = useSaveAccountPreferences()
   const [initial, setInitial] = useState(() => valuesOf(saved))
@@ -75,6 +99,11 @@ function PreferencesForm({ saved }: { saved: AccountPreferences }): ReactElement
   const hasChanges = Object.keys(patch).length > 0
   useUnsavedChanges(hasChanges)
 
+  // The page was drawn again in the language just saved: confirm in it, once
+  useEffect(() => {
+    if (takeLanguageSaved(locale)) toast.success(t('saved'))
+  }, [locale, t])
+
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (!hasChanges || save.isPending) return
@@ -83,9 +112,12 @@ function PreferencesForm({ saved }: { saved: AccountPreferences }): ReactElement
         const nextValues = valuesOf(next)
         setInitial(nextValues)
         setValues(nextValues)
-        toast.success(t('saved'))
-        if (patch.locale !== undefined) {
-          // The server renders in the language of this cookie: write it and draw the page again
+        if (patch.locale === undefined) {
+          toast.success(t('saved'))
+        } else {
+          // The server renders in the language of this cookie: write it and draw the page again. The
+          // confirmation waits for the new language: said now, it would come in the old one.
+          rememberLanguageSaved(next.locale)
           writeLocaleCookie(next.locale)
           router.refresh()
         }

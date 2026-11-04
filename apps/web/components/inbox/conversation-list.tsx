@@ -12,7 +12,6 @@ import { Permissions } from '@platform/core/auth'
 import { BulkActions, BulkLimits, ListKeyAliases, Shortcuts } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { canChangeState } from '../../lib/inbox/conversation-status'
 import { hasFilters } from '../../lib/inbox/inbox-filters'
 import {
@@ -32,15 +31,15 @@ import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
 import { useConversationPages } from '../../lib/inbox/use-inbox-data'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
 
-import { BulkBar } from './bulk-bar'
 import { CONVERSATION_ROW_HEIGHT_PX, ConversationItem } from './conversation-item'
 import { InboxState } from './inbox-state'
-import { EmptyInbox, SnoozeDialog } from './lazy-dialogs'
+import { BulkBar, EmptyInbox, SnoozeDialog } from './lazy-dialogs'
 import { RowCheckbox } from './row-checkbox'
 import { RowResolve } from './row-resolve'
 import { RowSnooze } from './row-snooze'
@@ -75,6 +74,7 @@ export function ConversationList({
   areChannelsReady: boolean
 }): ReactElement {
   const t = useTranslations('inbox')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const { conversationId } = useParams<{ conversationId?: string }>()
   const now = useNow()
@@ -162,7 +162,7 @@ export function ConversationList({
   // On the row that has the focus. With rows ticked the bar's handlers come first, and with none the
   // open conversation's come after these
   const nameOfRow = (item: (typeof items)[number]): string =>
-    nameOf(item.customer, channelNames.get(item.channelType) ?? item.channelType)
+    nameOf(item.customer, item.channelType)
   const focusedItem = (): (typeof items)[number] | undefined => {
     const id = rowIdOf(document.activeElement)
     return id === undefined ? undefined : items.find(item => item.id === id)
@@ -246,7 +246,7 @@ export function ConversationList({
       <InboxState
         icon={TriangleAlert}
         title={t('error.title')}
-        body={tAll(`errors.${errorCodeOf(pages.error)}`)}
+        body={errorText(pages.error)}
         isAlert
       >
         <Button type="button" variant="outline" size="sm" onClick={() => void pages.refetch()}>
@@ -312,7 +312,7 @@ export function ConversationList({
                   />
                   <RowCheckbox
                     customer={item.customer}
-                    channelName={channelNames.get(item.channelType) ?? item.channelType}
+                    channelType={item.channelType}
                     isChecked={selection.ids.has(item.id)}
                     isSelecting={isSelecting}
                     onToggle={() => setSelection(toggleId(selection, item.id))}
@@ -320,7 +320,7 @@ export function ConversationList({
                   {maySnooze && canChangeState(item.status) ? (
                     <RowSnooze
                       customer={item.customer}
-                      channelName={channelNames.get(item.channelType) ?? item.channelType}
+                      channelType={item.channelType}
                       onSnooze={() => setSnoozeFor(item.id)}
                     />
                   ) : null}
@@ -339,7 +339,7 @@ export function ConversationList({
             role="alert"
             className="flex items-center justify-between gap-2 border-t p-3 text-sm"
           >
-            <span>{tAll(`errors.${errorCodeOf(pages.error)}`)}</span>
+            <span>{errorText(pages.error)}</span>
             <Button type="button" variant="outline" size="sm" onClick={() => void pages.refetch()}>
               {tAll('common.tryAgain')}
             </Button>

@@ -8,10 +8,11 @@ import { type ExportView, fetchExportDownload } from '@platform/api-client'
 import { ExportStatus } from '@platform/core/exports'
 
 import { useStore } from '../../components/providers/store-context'
+import { PermissionDenied } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { apiClient } from '../../lib/api'
-import { errorCodeOf, knownErrorCode } from '../../lib/error-message'
+import { knownErrorCode } from '../../lib/error-message'
 import {
   ALL_EXPORTS,
   exportStatusFilter,
@@ -24,9 +25,11 @@ import {
   mayOpenExports
 } from '../../lib/exports/export-state'
 import { useExportList } from '../../lib/exports/use-export-data'
+import { useErrorText } from '../../lib/use-error-text'
 
 function Row({ item }: { item: ExportView }): ReactElement {
   const t = useTranslations('exports')
+  const errorText = useErrorText()
   const tErrors = useTranslations('errors')
   const format = useFormatter()
   const { storeId } = useStore()
@@ -42,7 +45,7 @@ function Row({ item }: { item: ExportView }): ReactElement {
       const link = await fetchExportDownload(apiClient, storeId, item.id)
       window.location.assign(link.url)
     } catch (error) {
-      setFailure(tErrors(errorCodeOf(error)))
+      setFailure(errorText(error))
     } finally {
       setIsAsking(false)
     }
@@ -126,11 +129,7 @@ export function ExportsPage(): ReactElement {
   const rows = exports.data?.pages.flatMap(page => page.data) ?? []
 
   if (!mayAsk) {
-    return (
-      <p role="alert" className="text-sm">
-        {t('noAccess')}
-      </p>
-    )
+    return <PermissionDenied body={t('noAccess')} />
   }
 
   return (

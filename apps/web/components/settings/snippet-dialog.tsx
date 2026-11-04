@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 
 import { SettingsLimits } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import {
   emptySnippetDraft,
   type SnippetDraft,
@@ -17,6 +16,7 @@ import {
 } from '../../lib/settings/content-form'
 import type { StoreSnippetView } from '../../lib/settings/snippets-requests'
 import { useCreateSnippet, useUpdateSnippet } from '../../lib/settings/use-content'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -41,7 +41,7 @@ export function SnippetDialog({
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.snippets.dialog')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const tCommon = useTranslations('common')
   const { storeId } = useStore()
   const create = useCreateSnippet(storeId)
@@ -141,7 +141,7 @@ export function SnippetDialog({
           ) : null}
           {failure === null ? null : (
             <p role="alert" className="text-destructive text-sm">
-              {tErrors(errorCodeOf(failure))}
+              {errorText(failure)}
             </p>
           )}
           <DialogFooter>
