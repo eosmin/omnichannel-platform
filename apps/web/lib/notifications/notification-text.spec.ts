@@ -21,6 +21,22 @@ describe('notificationTextKeys with people', () => {
   })
 })
 
+describe('notificationTextKeys with whose', () => {
+  it('names the customer of a queue notification that carries it', () => {
+    expect(
+      notificationTextKeys('notifications.conversation.unassigned_queue', () => true, {
+        customer: 'Lucia'
+      }).body
+    ).toBe('notifications.conversation.unassigned_queue.bodyWithCustomer')
+  })
+
+  it('keeps the plain text for one saved without the customer', () => {
+    expect(
+      notificationTextKeys('notifications.conversation.unassigned_queue', () => true, {}).body
+    ).toBe('notifications.conversation.unassigned_queue.body')
+  })
+})
+
 describe('notificationTextKeys', () => {
   it('uses the title and body of the key when both exist', () => {
     const keys = notificationTextKeys('notifications.export.ready', () => true)

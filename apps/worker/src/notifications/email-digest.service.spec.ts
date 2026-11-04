@@ -332,6 +332,103 @@ describe('EmailDigestService', () => {
       })
     })
 
+    describe('what each block says', () => {
+      const queue = (id: string, customer: string, overrides: Record<string, unknown> = {}) =>
+        row(id, {
+          messageKey: notificationMessageKey(NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE),
+          params: { customer },
+          actionPath: `/s/s1/inbox/${id}`,
+          ...overrides
+        })
+      const textIn = async (locale: typeof Locales.EN | typeof Locales.ES) => {
+        const queued = addEmail.mock.calls[0]?.[1] as {
+          template: typeof EmailTemplates.NOTIFICATION_DIGEST
+          data: unknown
+        }
+        return (await new TemplateRenderer().render(queued.template, locale, queued.data)).text
+      }
+
+      it('tells two conversations of the queue apart by customer and by time', async () => {
+        findNotifications.mockResolvedValue([
+          queue('c2', 'Marco Díaz', { createdAt: new Date(NOW.getTime() - 5 * 60_000) }),
+          queue('c1', 'Lucia Prechat', { createdAt: new Date(NOW.getTime() - HOUR) })
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        const en = await textIn(Locales.EN)
+        expect(en).toContain('The conversation with Marco Díaz is waiting for someone to take it.')
+        expect(en).toContain(
+          'The conversation with Lucia Prechat is waiting for someone to take it.'
+        )
+        // Times on the clock of the person (the default zone, El Salvador, UTC-6 here): 08:05 and 07:10
+        expect(en).toContain('08:05')
+        expect(en).toContain('07:10')
+
+        // The texts and the times are written in the language of the person when the email is made
+        addEmail.mockClear()
+        findUser.mockResolvedValue({ email: 'ana@example.com', locale: 'es', emailValid: true })
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+        const es = await textIn(Locales.ES)
+        expect(es).toContain('2 nov, 08:05')
+        expect(es).toContain('La conversación con Marco Díaz está esperando que alguien la tome.')
+      })
+
+      it('uses the time zone the person chose for the time', async () => {
+        findOneSettings.mockResolvedValue({
+          digestFrequency: DigestFrequency.HOURLY,
+          timezone: 'Asia/Dubai'
+        })
+        findNotifications.mockResolvedValue([queue('c1', 'Lucia Prechat')])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        // 13:10Z is 17:10 in Dubai
+        expect(await textIn(Locales.EN)).toContain('17:10')
+      })
+
+      it('says when the newest of a repeated block happened', async () => {
+        findNotifications.mockResolvedValue([
+          queue('c1', 'Lucia Prechat', { createdAt: new Date(NOW.getTime() - 5 * 60_000) }),
+          queue('c1', 'Lucia Prechat', { createdAt: new Date(NOW.getTime() - HOUR) })
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(await textIn(Locales.EN)).toContain(
+          '2 notifications like this; the latest: Nov 2, 08:05'
+        )
+      })
+
+      it('keeps the plain text for a queue notification saved before the customer was named', async () => {
+        findNotifications.mockResolvedValue([queue('c1', 'x', { params: {} })])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(await textIn(Locales.EN)).toContain(
+          'There are conversations waiting for someone to take them.'
+        )
+      })
+
+      it('words the link by where it goes: a conversation, the channels, the team, the exports', async () => {
+        const kinds: [string, string, string][] = [
+          [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE, '/s/s1/inbox/c1', 'Open conversation'],
+          [NotificationTypes.CHANNEL_DISCONNECTED, '/s/s1/settings/channels', 'Review channels'],
+          [NotificationTypes.INVITATION_ACCEPTED, '/s/s1/settings/team', 'Open the team'],
+          [NotificationTypes.EXPORT_READY, '/s/s1/exports', 'Open exports']
+        ]
+        for (const [type, actionPath, link] of kinds) {
+          addEmail.mockClear()
+          findNotifications.mockResolvedValue([
+            row('n1', { messageKey: notificationMessageKey(type as never), actionPath })
+          ])
+          await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+          const text = await textIn(Locales.EN)
+          expect(text).toContain(link)
+          for (const [, , other] of kinds) {
+            if (other !== link) expect(text).not.toContain(other)
+          }
+        }
+      })
+    })
+
     describe('a mention', () => {
       const mention = (id: string, params: Record<string, unknown>) =>
         row(id, {
@@ -379,6 +476,8 @@ describe('EmailDigestService', () => {
         expect(en).toContain('A teammate mentioned you in an internal note.')
         expect(en).toContain('Change it in your notification preferences')
         expect(en).toContain('Open conversation')
+        // A mention carries no time of its own in the params: the time comes from the row
+        expect(en).toContain('07:10')
       })
     })
 

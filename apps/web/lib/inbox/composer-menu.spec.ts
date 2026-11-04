@@ -12,8 +12,8 @@ const base: MenuInput = {
     { id: 'n2', shortcut: 'hola', title: 'Greeting', content: 'Hello' }
   ],
   members: [
-    { id: 'u1', name: 'Ana Pérez', role: { name: 'Agent' } },
-    { id: 'u2', name: 'Luis', role: { name: 'Admin' } }
+    { id: 'u1', name: 'Ana Pérez', role: { name: 'Agent' }, canBeAssigned: true },
+    { id: 'u2', name: 'Luis', role: { name: 'Admin' }, canBeAssigned: true }
   ],
   selfId: 'u2',
   isMentionFull: false,
@@ -71,6 +71,19 @@ describe('composerMenu', () => {
   it('names the role of each member as the interface shows it', () => {
     expect(menu({ draft: '/assign pe' })?.entries[0]?.hint).toBe('Agente')
     expect(menu({ draft: '/assign lu' })?.entries[0]?.hint).toBe('Admin')
+  })
+
+  it('does not offer for assign someone whose role cannot answer, but still lets a note mention them', () => {
+    const members = [
+      ...base.members,
+      { id: 'u3', name: 'Vera Solo', role: { name: 'Viewer' }, canBeAssigned: false }
+    ]
+    const assign = menu({ draft: '/assign ', members })
+    expect(assign?.entries.map(entry => entry.label)).toEqual(['Ana Pérez', 'Luis'])
+    expect(menu({ draft: '/assign vera', members })).toEqual({ kind: 'members', entries: [] })
+
+    const mention = menu({ draft: '@ve', caret: 3, isNote: true, members })
+    expect(mention?.entries.map(entry => entry.label)).toContain('Vera Solo')
   })
 
   it('gives no menu for snippet or assign to who may not use them', () => {

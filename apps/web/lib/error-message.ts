@@ -16,13 +16,21 @@ export function knownErrorCode(code: string): ErrorCode {
   return KNOWN_CODES.has(code) ? (code as ErrorCode) : ErrorCodes.INTERNAL_ERROR // Narrowed by the set
 }
 
-// The permissions an api refusal says are missing (`metadata.required`); empty when it names none
+// The metadata keys under which the api lists the permissions a refusal says are missing: `required`
+// (the permission guard) and `permissions` (the checks inside a service, such as the status of a
+// conversation or the role of a member). Both mean the same, so both are read.
+const MISSING_PERMISSIONS_KEYS = ['required', 'permissions'] as const
+
+// The permissions an api refusal says are missing; empty when it names none
 export function missingPermissionsOf(error: unknown): string[] {
   if (!(error instanceof ApiError) || error.code !== ErrorCodes.PERMISSION_DENIED) return []
-  const required = error.metadata['required']
-  return Array.isArray(required)
-    ? required.filter((entry): entry is string => typeof entry === 'string')
-    : []
+  for (const key of MISSING_PERMISSIONS_KEYS) {
+    const listed = error.metadata[key]
+    if (!Array.isArray(listed)) continue
+    const names = listed.filter((entry): entry is string => typeof entry === 'string')
+    if (names.length > 0) return names
+  }
+  return []
 }
 
 const HOLDER_NAME_MAX_LENGTH = 80

@@ -24,6 +24,51 @@ describe('TemplateRenderer', () => {
     expect(email.text).toContain('Este enlace caduca en 15 minutos.')
   })
 
+  it.each([
+    [EmailTemplates.MAGIC_LINK, data],
+    [
+      EmailTemplates.INVITATION,
+      {
+        url: 'https://app.example.com/invite?token=abc',
+        inviterName: 'Ana',
+        storeName: 'Shop',
+        roleName: 'Agent',
+        expiresInDays: 7
+      }
+    ],
+    [
+      EmailTemplates.NOTIFICATION_DIGEST,
+      {
+        items: [
+          {
+            storeName: 'Shop',
+            title: 'T',
+            body: 'B',
+            url: 'https://app.example.com/s/1/inbox/2',
+            count: 1,
+            linkKind: 'conversation',
+            at: '2 nov, 07:10'
+          }
+        ],
+        moreCount: 0,
+        appUrl: 'https://app.example.com/s/1/inbox',
+        settingsUrl: 'https://app.example.com/account/notifications'
+      }
+    ]
+  ] as const)(
+    'says the language of the email on the page, the body and its cell: %s',
+    async (template, input) => {
+      const es = await renderer.render(template, Locales.ES, input)
+      const en = await renderer.render(template, Locales.EN, input)
+
+      expect(es.html).not.toContain('lang="en"')
+      expect(es.html).toMatch(/<body[^>]*lang="es"/)
+      expect(es.html).toMatch(/<td[^>]*lang="es"/)
+      expect(en.html).not.toContain('lang="es"')
+      expect(en.html).toMatch(/<body[^>]*lang="en"/)
+    }
+  )
+
   // Golden renders of the plain-text version (TDD_07 §5.2): the html changes with every upgrade of
   // react-email, the text is what the copy of the email looks like to a person
   it('renders the same text for the magic link in English every time', async () => {
@@ -176,14 +221,18 @@ describe('TemplateRenderer: notification digest', () => {
         title: 'Conversation assigned',
         body: 'Ana assigned you a conversation.',
         url: 'https://app.example.com/s/s1/inbox/c1',
-        count: 1
+        count: 1,
+        linkKind: 'conversation',
+        at: 'Nov 2, 07:10'
       },
       {
         storeName: 'Shop',
         title: 'Export ready',
         body: 'Your file is ready.',
         url: null,
-        count: 1
+        count: 1,
+        linkKind: 'exports',
+        at: 'Nov 2, 07:12'
       }
     ],
     moreCount: 3,
@@ -201,10 +250,52 @@ describe('TemplateRenderer: notification digest', () => {
     expect(email.text).toContain('https://app.example.com/account/notifications')
   })
 
+  it('says when each one happened, and words the link by where it goes', async () => {
+    const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, {
+      ...digest,
+      items: [
+        {
+          ...digest.items[0],
+          url: 'https://app.example.com/s/s1/settings/channels',
+          linkKind: 'channels'
+        }
+      ]
+    })
+
+    expect(email.text).toContain('Shop · Nov 2, 07:10')
+    expect(email.text).toContain('Review channels')
+    expect(email.text).not.toContain('Open conversation')
+  })
+
+  it('still renders a job queued before the time and the kind of link existed', async () => {
+    const old = { ...digest.items[0] } as Record<string, unknown>
+    delete old['at']
+    delete old['linkKind']
+    const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, {
+      ...digest,
+      items: [old]
+    })
+
+    expect(email.text).toContain('Conversation assigned')
+    expect(email.text).not.toContain('·')
+  })
+
   it('renders it in Spanish', async () => {
     const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.ES, digest)
     expect(email.subject).toBe('Tienes notificaciones nuevas')
     expect(email.text).toContain('Y 3 más, esperando en la aplicación.')
+  })
+
+  it('says how many a block stands for even when the job has no time', async () => {
+    const old = { ...digest.items[0], count: 3 } as Record<string, unknown>
+    delete old['at']
+    const email = await renderer.render(EmailTemplates.NOTIFICATION_DIGEST, Locales.EN, {
+      ...digest,
+      items: [old]
+    })
+
+    expect(email.text).toContain('3 notifications like this')
+    expect(email.text).not.toContain('latest')
   })
 
   it('refuses a digest with nothing to list or a link that is not http', async () => {

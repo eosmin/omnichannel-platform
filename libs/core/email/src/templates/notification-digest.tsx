@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import type { Locale } from '@platform/core/i18n'
 import type { Translator } from '@platform/core/i18n-server'
+import { DigestLinkKinds } from '@platform/core/notifications'
 
 import { container, footer, heading, hr, link, main, paragraph } from './styles'
 
@@ -15,7 +16,12 @@ const itemSchema = z.object({
   // How many notifications the block stands for; more than one says so under the text
   count: z.number().int().min(1),
   // The text already says how many they are: the line "N notifications like this" is left out
-  saysCount: z.boolean().default(false)
+  saysCount: z.boolean().default(false),
+  // Where the link goes, which words it: a conversation, the channels, the team, the exports, the app
+  linkKind: z.enum(DigestLinkKinds).default(DigestLinkKinds.APP),
+  // When it happened (the newest of the block), already written on the clock of the reader. Optional
+  // so that a job queued before the time existed still renders.
+  at: z.string().min(1).optional()
 })
 
 export const notificationDigestSchema = z.object({
@@ -38,7 +44,7 @@ export function NotificationDigest({
   return (
     <Html lang={locale}>
       <Head />
-      <Body style={main}>
+      <Body lang={locale} style={main}>
         <Container style={container}>
           <Text style={heading}>
             {t('heading', {
@@ -54,15 +60,21 @@ export function NotificationDigest({
                 <br />
                 {item.count > 1 && !item.saysCount ? (
                   <>
-                    {t('repeated', { count: item.count })}
+                    {item.at === undefined
+                      ? t('repeatedNoTime', { count: item.count })
+                      : t('repeated', { count: item.count, at: item.at })}
                     <br />
                   </>
                 ) : null}
-                <span style={footer}>{item.storeName}</span>
+                <span style={footer}>
+                  {item.at === undefined
+                    ? item.storeName
+                    : t('storeAt', { store: item.storeName, at: item.at })}
+                </span>
               </Text>
               {item.url === null ? null : (
                 <Link style={link} href={item.url}>
-                  {t('open')}
+                  {t(`open.${item.linkKind}`)}
                 </Link>
               )}
             </Section>

@@ -6,6 +6,7 @@ import { type FormEvent, type ReactElement, useState } from 'react'
 import type { BulkOperation } from '@platform/api-client'
 import { BulkActions, RoutingLimits } from '@platform/core/domain'
 
+import { assignableOnly } from '../../lib/inbox/assignees'
 import { useMemberDirectory, useTags } from '../../lib/inbox/use-inbox-data'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -63,7 +64,7 @@ function PickForm({
   const isTag = pick === BulkPicks.ADD_TAG || pick === BulkPicks.REMOVE_TAG
   const choices: Choice[] = isTag
     ? (tags.data ?? []).map(tag => ({ id: tag.id, label: tag.name }))
-    : (members.data ?? []).map(member => ({ id: member.id, label: member.name }))
+    : assignableOnly(members.data ?? []).map(member => ({ id: member.id, label: member.name }))
   const isLoading = isTag ? tags.isPending : members.isPending
   const isFailed = isTag ? tags.isError : members.isError
 

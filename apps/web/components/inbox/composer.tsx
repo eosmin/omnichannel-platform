@@ -14,6 +14,7 @@ import {
   SlashCommand
 } from '@platform/core/domain'
 
+import { isAssigneeRefusal } from '../../lib/inbox/assignees'
 import { readDraft, writeDraft } from '../../lib/inbox/composer-drafts'
 import { composerMenu, type MenuEntry } from '../../lib/inbox/composer-menu'
 import {
@@ -340,7 +341,9 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
         actions.assign
           .mutateAsync(member.id)
           .then(() => toast.success(tMenu('assigned', { name: member.name })))
-          .catch((error: unknown) => toast.error(errorText(error)))
+          .catch((error: unknown) =>
+            toast.error(isAssigneeRefusal(error) ? tMenu('assignRefused') : errorText(error))
+          )
       }
     }
     textarea.current?.focus()

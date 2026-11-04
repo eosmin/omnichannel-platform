@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { type Permission, RoleNames } from '@platform/core/auth'
+import { AssigneePermissions, type Permission, RoleNames } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import { ConversationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
 import {
@@ -35,6 +35,10 @@ export interface MemberDirectoryEntry {
   name: string
   avatarMediaId: string | null
   role: { id: string; name: string }
+  // Whether their role holds what a conversation needs to be given to someone (`AssigneePermissions`),
+  // the rule the assignment applies; the inbox offers only these as an assignee. A yes or no, not the
+  // permissions themselves.
+  canBeAssigned: boolean
 }
 
 const ACTIVE = { status: MembershipStatus.ACTIVE, revokedAt: null } as const
@@ -101,7 +105,16 @@ export class MembersService {
       select: {
         userId: true,
         user: { select: { name: true, avatarMediaId: true } },
-        role: { select: { id: true, name: true } }
+        role: {
+          select: {
+            id: true,
+            name: true,
+            permissions: {
+              where: { name: { in: [...AssigneePermissions] } },
+              select: { name: true }
+            }
+          }
+        }
       },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     })
@@ -109,7 +122,8 @@ export class MembersService {
       id: row.userId,
       name: row.user.name,
       avatarMediaId: row.user.avatarMediaId,
-      role: { id: row.role.id, name: row.role.name }
+      role: { id: row.role.id, name: row.role.name },
+      canBeAssigned: row.role.permissions.length === AssigneePermissions.length
     }))
   }
 

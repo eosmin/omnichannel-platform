@@ -37,7 +37,7 @@ export function Invitation({
   return (
     <Html lang={locale}>
       <Head />
-      <Body style={main}>
+      <Body lang={locale} style={main}>
         <Container style={container}>
           <Text style={heading}>{t('heading', { store: storeName })}</Text>
           <Text style={paragraph}>
