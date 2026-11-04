@@ -25,6 +25,7 @@ import {
   type CursorPage,
   ChannelHealthLimits,
   isInstallationActive,
+  MembershipStatus,
   OfActiveInstallation,
   PluginInstallationStatus,
   PluginStatus
@@ -55,6 +56,16 @@ import {
   connectResultSchema,
   type ListConnectionsQuery
 } from './channel-connections.schemas'
+
+// One shape for the refusal, with the name of the holder only when the caller may be told
+function accountInUseException(storeName: string | null): PlatformException {
+  return new PlatformException(
+    ErrorCodes.CHANNEL_ACCOUNT_IN_USE,
+    'this account is connected to another store',
+    HttpStatusCodes.CONFLICT,
+    storeName === null ? undefined : { storeName }
+  )
+}
 
 type ConnectionWrite = Parameters<PrismaTransaction['channelConnection']['updateMany']>[0]['data']
 type InstallationReader = Pick<PrismaTransaction, '$queryRaw'>
@@ -362,7 +373,7 @@ export class ChannelConnectionsService {
         })
         if (existing !== null && existing.storeId !== storeId) {
           if (existing.status !== String(ChannelConnectionStatus.DISCONNECTED)) {
-            throw resourceConflict('this account is connected to another store')
+            throw await this.accountInUse(tx, existing.storeId, actor.userId)
           }
           // Its store let it go. The row stays with that store, because its conversations point at it,
           // and gives up the key (plugin, account) so that this store can have it.
@@ -375,9 +386,8 @@ export class ChannelConnectionsService {
             },
             data: { connectionId: `${existing.connectionId}~released~${existing.id}` }
           })
-          if (released.count !== 1) {
-            throw resourceConflict('this account is connected to another store')
-          }
+          if (released.count !== 1)
+            throw await this.accountInUse(tx, existing.storeId, actor.userId)
           existing = null
         }
         const data = {
@@ -436,6 +446,35 @@ export class ChannelConnectionsService {
       userAgent: actor.userAgent
     })
     return this.viewAfterWrite(storeId, connection)
+  }
+
+  // The account lives in another store, and that is a rule, not a clash of two edits. The store is
+  // named only to somebody who is an active member of it (suspended or removed does not count): to
+  // anybody else the answer is the same whatever the other store is, and carries nothing of it. The
+  // name is user text, cleaned as the text of a provider is and cut, and it is the only thing sent.
+  private async accountInUse(
+    tx: PrismaTransaction,
+    holderStoreId: string,
+    userId: string
+  ): Promise<PlatformException> {
+    const membership = await tx.membership.findFirst({
+      where: {
+        userId,
+        storeId: holderStoreId,
+        status: MembershipStatus.ACTIVE,
+        revokedAt: null
+      },
+      select: { store: { select: { name: true } } }
+    })
+    // Cut like any provider text, and no joiner is left dangling by the cut
+    const storeName =
+      membership === null
+        ? ''
+        : providerText(
+            membership.store.name,
+            ChannelConnectionLimits.DISPLAY_NAME_MAX_LENGTH
+          ).replace(/[\u200C\u200D]+$/u, '')
+    return accountInUseException(storeName === '' ? null : storeName)
   }
 
   // Tells the provider to drop an account that was connected and could not be kept, if no row holds
@@ -513,7 +552,10 @@ export class ChannelConnectionsService {
       where: { id: existing.id, storeId, connectionId: existing.connectionId },
       data
     })
-    if (updated.count !== 1) throw resourceConflict('this account is connected to another store')
+    if (updated.count !== 1) {
+      // Another store took the account meanwhile: which one is not looked up, and nothing is said of it
+      throw accountInUseException(null)
+    }
     // The owner just gave the provider new credentials or permissions: a refusal recorded before says
     // nothing about them. Forget it on the customers that wrote through this connection, and let their
     // next message ask again (a null date is a stale profile). A customer whose read succeeded keeps its date.

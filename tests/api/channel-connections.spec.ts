@@ -5,12 +5,14 @@ import type { INestApplication } from '@nestjs/common'
 import { CONNECTION_ROW_SELECT, ChannelHealthService } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { RoleNames } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { ensureMembership, type OwnerClient } from '@platform/core/database-testing'
 import {
   ChannelConnectionListStates,
   ChannelConnectionStatus,
   ChannelHealthErrors,
+  MembershipStatus,
   PaginationLimits,
   PluginInstallationStatus
 } from '@platform/core/domain'
@@ -39,7 +41,7 @@ const CONFLICT = 409
 const SECRET = 'EAAB-super-secret-token'
 
 interface ErrorBody {
-  error: { code: string; message?: string }
+  error: { code: string; message?: string; metadata?: Record<string, unknown> }
 }
 interface ConnectionBody {
   id: string
@@ -173,18 +175,98 @@ describe('The channel connections of a store', () => {
       expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(1)
     })
 
-    it('refuses an account that another store already connected, and leaves it as it was', async () => {
+    it('refuses an account that another store already connected, with its own code, and leaves it as it was', async () => {
       const { id } = register()
       const theirs = await connect(id, asAdminB)
 
       const response = await connect(id)
 
       expect(response.status).toBe(CONFLICT)
-      expect(codeOf(response.body)).toBe(ErrorCodes.RESOURCE_CONFLICT)
+      expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_ACCOUNT_IN_USE)
       const row = await owner.channelConnection.findUniqueOrThrow({
         where: { id: (theirs.body as ConnectionBody).id }
       })
       expect(row.storeId).toBe(ctx.storeB.id)
+    })
+
+    // The other store is named only to somebody who is an active member of it (and the answer is the
+    // same for everybody else, so a stranger learns nothing about where an account lives)
+    describe('who is told which store has the account', () => {
+      const storeBName = async () =>
+        (
+          await owner.store.findUniqueOrThrow({
+            where: { id: ctx.storeB.id },
+            select: { name: true }
+          })
+        ).name
+      const joinStoreB = async (status: string) =>
+        ensureMembership(owner, {
+          userId: ctx.adminA.id,
+          organizationId: ctx.orgB.id,
+          storeId: ctx.storeB.id,
+          roleId: ctx.roleIds[RoleNames.ADMIN]
+        }).then(() =>
+          owner.membership.updateMany({
+            where: { userId: ctx.adminA.id, storeId: ctx.storeB.id },
+            data: { status }
+          })
+        )
+      // Nobody else in the suites belongs to two stores
+      afterEach(async () => {
+        await owner.membership.deleteMany({
+          where: { userId: ctx.adminA.id, storeId: ctx.storeB.id }
+        })
+      })
+
+      it('names the store to an active member of it', async () => {
+        const { id } = register()
+        await connect(id, asAdminB)
+        await joinStoreB(MembershipStatus.ACTIVE)
+
+        const response = await connect(id)
+
+        expect(response.status).toBe(CONFLICT)
+        expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_ACCOUNT_IN_USE)
+        expect((response.body as ErrorBody).error.metadata).toEqual({
+          storeName: await storeBName()
+        })
+      })
+
+      it('says nothing of the store to a member whose membership was ended (revokedAt) but still reads active', async () => {
+        const { id } = register()
+        await connect(id, asAdminB)
+        await joinStoreB(MembershipStatus.ACTIVE)
+        await owner.membership.updateMany({
+          where: { userId: ctx.adminA.id, storeId: ctx.storeB.id },
+          data: { revokedAt: new Date() }
+        })
+
+        const response = await connect(id)
+
+        expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_ACCOUNT_IN_USE)
+        expect((response.body as ErrorBody).error.metadata).toEqual({})
+        expect(JSON.stringify(response.body)).not.toContain(await storeBName())
+      })
+
+      it.each([
+        ['somebody who is not a member of it', null],
+        ['a member who is suspended there', MembershipStatus.SUSPENDED],
+        ['a member who was removed from it', MembershipStatus.REVOKED]
+      ])('says nothing of the store to %s', async (_label, status) => {
+        const { id } = register()
+        await connect(id, asAdminB)
+        if (status !== null) await joinStoreB(status)
+
+        const response = await connect(id)
+
+        expect(response.status).toBe(CONFLICT)
+        expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_ACCOUNT_IN_USE)
+        expect((response.body as ErrorBody).error.metadata).toEqual({})
+        const text = JSON.stringify(response.body)
+        for (const secret of [ctx.storeB.id, ctx.orgB.id, await storeBName()]) {
+          expect(text).not.toContain(secret)
+        }
+      })
     })
 
     it('does not say what the provider said when it refuses the credentials', async () => {
@@ -619,6 +701,30 @@ describe('The channel connections of a store', () => {
       expect(afterUp).toMatchObject({ status: ChannelConnectionStatus.ACTIVE, lastError: null })
     })
 
+    it('says the credentials cannot be read when another key sealed them, with no error and no key in the answer', async () => {
+      const { id } = register()
+      const made = (await connect(id)).body as ConnectionBody
+      // As if the connection were saved under a different encryption key
+      await owner.channelConnection.update({
+        where: { id: made.id },
+        data: { credentials: new CredentialCipher(Buffer.alloc(32, 7)).seal({ token: SECRET }) }
+      })
+
+      const response = await asAdmin().post(ApiRoutes.channels.test(made.id))
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({
+        healthy: false,
+        error: ChannelHealthErrors.CREDENTIALS_UNREADABLE
+      })
+      expect(row).toMatchObject({
+        status: ChannelConnectionStatus.ERROR,
+        lastError: ChannelHealthErrors.CREDENTIALS_UNREADABLE
+      })
+      expect(JSON.stringify(response.body)).not.toMatch(/decrypt|wrong key|altered/i)
+    })
+
     it('stores the reason of a plugin without the credential it repeated', async () => {
       const { id } = register({
         healthCheck: () =>
@@ -736,7 +842,7 @@ describe('The channel connections of a store', () => {
       expect(row.status).toBe(ChannelConnectionStatus.DISCONNECTED)
     })
 
-    it('does not change a connection whose credentials cannot be opened: the fault is ours', async () => {
+    it('puts in error, with its own reason, a connection whose credentials cannot be opened, and goes on with the round', async () => {
       const { id, plugin } = register()
       // Written by a builder with bytes that this key never sealed, as after a change of key
       const installation = await ensurePluginInstallation(owner, {
@@ -758,9 +864,12 @@ describe('The channel connections of a store', () => {
         .get(ChannelHealthService, { strict: false })
         .checkAll(pluginId => (pluginId === id ? plugin : undefined))
 
-      expect(result.checked).toBeGreaterThanOrEqual(0)
+      expect(result.checked).toBeGreaterThanOrEqual(1)
       const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: row.id } })
-      expect(after).toMatchObject({ status: ChannelConnectionStatus.ACTIVE, lastError: null })
+      expect(after).toMatchObject({
+        status: ChannelConnectionStatus.ERROR,
+        lastError: ChannelHealthErrors.CREDENTIALS_UNREADABLE
+      })
     })
 
     it('starts no check when the budget of the round is spent', async () => {

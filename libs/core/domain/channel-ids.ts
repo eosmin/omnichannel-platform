@@ -66,6 +66,9 @@ export type ChannelConnectionListState =
 // says what went wrong. The settings page turns each into text in the language of the reader.
 export const ChannelHealthErrors = {
   CHECK_FAILED: 'check_failed',
+  // The credentials saved for the connection cannot be opened (another key, a damaged row): the
+  // provider is never asked, and only connecting the channel again fixes it
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable',
   INVALID_REPORT: 'invalid_report',
   UNSPECIFIED: 'unspecified'
 } as const

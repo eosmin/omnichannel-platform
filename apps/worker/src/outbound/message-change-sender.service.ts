@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   CONNECTION_ROW_SELECT,
   ChannelContextFactory,
+  CredentialsUnreadableError,
   errorName,
   withTimeout
 } from '@platform/channels/connections'
@@ -237,9 +238,20 @@ export class MessageChangeSender {
     if (plugin[method] === undefined) {
       return { refusedWith: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED }
     }
+    // Credentials that cannot be opened may be a worker with another key for a while: the retries
+    // come first, and only the last attempt gives up
+    let ctx
+    try {
+      ctx = this.contexts.contextFor(connection)
+    } catch (error) {
+      if (error instanceof CredentialsUnreadableError && isLastAttempt) {
+        return { refusedWith: ErrorCodes.CHANNEL_CREDENTIALS_INVALID }
+      }
+      throw error
+    }
     return {
       plugin,
-      ctx: this.contexts.contextFor(connection),
+      ctx,
       channelIdentity: customerIdentity.channelIdentity,
       externalId: message.channelMessageId
     }

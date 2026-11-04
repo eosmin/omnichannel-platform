@@ -431,6 +431,7 @@
     "AUTH_TOKEN_EXPIRED": "Your session expired. Sign in again",
     "AUTH_TOKEN_INVALID": "The link or session is not valid",
     "AUTH_UNAUTHORIZED": "You need to sign in",
+    "CHANNEL_ACCOUNT_IN_USE": "This account is already connected to another store. Disconnect it there first.",
     "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that action",
     "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
     "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
@@ -1465,6 +1466,7 @@
       "leave": "Leave and lose them"
     },
     "channels": {
+      "accountInUseNamed": "This account is already connected to the store {storeName}. Disconnect it there first.",
       "connect": {
         "whatsapp": {
           "phoneNumberId": "Phone number ID",
@@ -1516,6 +1518,7 @@
         "never": "It has not been checked yet.",
         "lastHealthy": "Last working: {date}",
         "errors": {
+          "credentials_unreadable": "The saved credentials cannot be read. Connect the channel again.",
           "check_failed": "The last check could not be completed.",
           "invalid_report": "The channel answered the check in an unexpected way.",
           "unspecified": "The channel reported a problem without saying which."
