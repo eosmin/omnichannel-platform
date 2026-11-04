@@ -48,7 +48,6 @@ describe('httpUrl', () => {
     ['corp name', 'https://db.corp/x'],
     ['home.arpa', 'https://router.home.arpa/x'],
     ['localdomain', 'https://nas.localdomain/x'],
-    ['reserved test name', 'https://a.test/x'],
     ['right-to-left override in the path', 'https://example.com/\u202eexe.png'],
     ['left-to-right isolate', 'https://example.com/\u2066a.png'],
     ['left-to-right mark', 'https://example.com/\u200ea.png'],

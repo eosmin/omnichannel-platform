@@ -31,10 +31,7 @@ const LOCAL_SUFFIXES: readonly string[] = [
   'lan',
   'corp',
   'home',
-  'arpa', // home.arpa, and the reverse zones
-  'test',
-  'invalid',
-  'example'
+  'arpa' // home.arpa, and the reverse zones
 ]
 const IPV4_LITERAL = /^\d{1,3}(\.\d{1,3}){3}$/
 
