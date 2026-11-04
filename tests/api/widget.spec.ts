@@ -1840,6 +1840,26 @@ describe('The web widget', () => {
       expect(queued()).toHaveLength(0)
     })
 
+    it('refuses an HTML page that a visitor declared as a picture, and queues nothing', async () => {
+      const page = Buffer.from('<html><script>alert(1)</script></html>')
+      const visitor = await enter(siteKey)
+      const upload = (await ask(visitor.visitorToken, { fileSizeBytes: page.length }).expect(OK))
+        .body as UploadBody
+      const stored = await fetch(upload.uploadUrl, {
+        method: 'PUT',
+        headers: { 'content-type': 'image/png', 'content-length': String(page.length) },
+        body: new Uint8Array(page)
+      })
+      expect(stored.status).toBe(OK)
+      queued().length = 0
+
+      const response = await sendFiles(visitor.visitorToken, [upload.uploadId])
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED)
+      expect(queued()).toHaveLength(0)
+    })
+
     it('does not let one file be the attachment of two messages', async () => {
       const visitor = await enter(siteKey)
       const uploadId = await uploaded(visitor.visitorToken)

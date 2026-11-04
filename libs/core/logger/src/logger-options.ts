@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Options } from 'pino-http'
 
 import { API_PREFIX, InfraRoutes } from '@platform/core/api'
-import { isRecord, REDACTED, scrubQuery, scrubUrl } from '@platform/core/domain'
+import { isRecord, isSecretHeader, REDACTED, scrubQuery, scrubUrl } from '@platform/core/domain'
 
 import type { AuthenticatedRequest } from './authenticated-request'
 
@@ -30,6 +30,7 @@ export const REDACTED_PATHS: readonly string[] = [
   'req.headers["proxy-authorization"]',
   'req.headers["x-hub-signature"]',
   'req.headers["x-hub-signature-256"]',
+  'req.headers["svix-signature"]',
   'req.body.password',
   'req.body.token',
   'req.body.refreshToken',
@@ -76,13 +77,9 @@ export function scrubRequest<T extends LoggedRequest>(request: T): T {
   const scrubbed: T = { ...request }
   if (typeof request.url === 'string') scrubbed.url = scrubUrl(request.url)
   if (isRecord(request.query)) scrubbed.query = scrubQuery(request.query)
-  // The page that called the api: its url can carry the same secrets
   if (isRecord(request.headers)) {
     scrubbed.headers = Object.fromEntries(
-      Object.entries(request.headers).map(([name, value]) => [
-        name,
-        name.toLowerCase() === 'referer' && typeof value === 'string' ? scrubUrl(value) : value
-      ])
+      Object.entries(request.headers).map(([name, value]) => [name, scrubHeader(name, value)])
     )
   }
   if (request.params !== undefined) {
@@ -91,6 +88,12 @@ export function scrubRequest<T extends LoggedRequest>(request: T): T {
     )
   }
   return scrubbed
+}
+
+function scrubHeader(name: string, value: unknown): unknown {
+  if (isSecretHeader(name)) return REDACTED
+  // The page that called the api: its url can carry the same secrets
+  return name.toLowerCase() === 'referer' && typeof value === 'string' ? scrubUrl(value) : value
 }
 
 function scrubParam(name: string, value: unknown): unknown {

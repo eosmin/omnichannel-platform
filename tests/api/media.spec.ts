@@ -371,6 +371,31 @@ describe('Media upload', () => {
       expect(codeOf(response.body)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED)
     })
 
+    it('refuses an HTML page named fake.png and declared image/png, and keeps nothing of it', async () => {
+      const page = Buffer.from('<html><script>alert(document.domain)</script></html>')
+      const signed = await requestUpload({ filename: 'fake.png', fileSizeBytes: page.length })
+      const upload = signed.body as UploadUrlBody
+      mediaIds.add(upload.mediaId)
+      expect((await put(upload.uploadUrl, page)).status).toBe(OK)
+
+      const response = await asAgent()
+        .post(ApiRoutes.media.confirmUpload)
+        .send(confirmBody(upload, { filename: 'fake.png', fileSizeBytes: page.length }))
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED)
+      expect(await owner.media.count({ where: { id: upload.mediaId } })).toBe(0)
+      const storage = app.get(StorageService, { strict: false })
+      expect(
+        await storage.head(StorageKeys.message(ctx.storeA.id, upload.mediaId, 'fake.png'))
+      ).toBeNull()
+      expect(
+        scans().some(job => (job.data as { mediaId: string }).mediaId === upload.mediaId)
+      ).toBe(false)
+      // The refused file is not kept for another try: its signed url is still writable
+      expect(await storage.head(upload.key)).toBeNull()
+    })
+
     it('refuses a key of another store with FILE_KEY_OUT_OF_SCOPE and writes nothing', async () => {
       const upload = await uploadFile()
       const foreignKey = StorageKeys.messageUpload(ctx.storeB.id, upload.mediaId, 'photo.png')

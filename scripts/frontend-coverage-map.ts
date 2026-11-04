@@ -39,9 +39,6 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'messages.create': { step: '3.2' },
   // PATCH edits a message, DELETE deletes it; none is read by id, the thread lists them
   'messages.byId': { step: '3.2' },
-  'messages.markRead': {
-    none: 'Has no handler on purpose: a conversation is marked read as a whole, with conversations.read (Step 2.3)'
-  },
   'messages.reaction': { step: '3.2' },
   'messages.resend': { step: '3.2' },
   // The text under a file, sent again on its own: the button of the bubble (Step 3.5 PR F4b-2)

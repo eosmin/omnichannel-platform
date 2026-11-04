@@ -33,14 +33,23 @@ function fakeRedis(): Redis & { values: Map<string, string> } {
 
 describe('WidgetUploads', () => {
   let redis: ReturnType<typeof fakeRedis>
-  let storage: { uploadUrl: jest.Mock; head: jest.Mock }
+  let storage: {
+    uploadUrl: jest.Mock
+    head: jest.Mock
+    readStart: jest.Mock
+    delete: jest.Mock
+  }
   let uploads: WidgetUploads
 
   beforeEach(() => {
     redis = fakeRedis()
     storage = {
       uploadUrl: jest.fn().mockResolvedValue('https://bucket.test/put'),
-      head: jest.fn()
+      head: jest.fn(),
+      delete: jest.fn().mockResolvedValue(undefined),
+      readStart: jest
+        .fn()
+        .mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     }
     uploads = new WidgetUploads(storage as unknown as StorageService, redis)
   })
@@ -108,7 +117,11 @@ describe('WidgetUploads', () => {
   describe('attachmentsOf', () => {
     async function signed(who = visitor): Promise<string> {
       const { uploadId } = await uploads.requestUrl(site, who, { visitorToken: 't', ...png })
-      storage.head.mockResolvedValue({ contentLength: 1000, contentType: 'image/png' })
+      storage.head.mockResolvedValue({
+        etag: '"e1"',
+        contentLength: 1000,
+        contentType: 'image/png'
+      })
       return uploadId
     }
 
@@ -174,6 +187,21 @@ describe('WidgetUploads', () => {
         code: ErrorCodes.FILE_UPLOAD_FAILED
       })
       storage.head.mockResolvedValue({ contentLength: 1000, contentType: 'text/html' })
+      await expect(uploads.attachmentsOf(site, visitor, 'm1', [id])).rejects.toMatchObject({
+        code: ErrorCodes.FILE_UPLOAD_FAILED
+      })
+    })
+
+    it('refuses bytes that are not the type that was signed, and an object with no ETag', async () => {
+      const id = await signed()
+      storage.readStart.mockResolvedValueOnce(Buffer.from('<html>'))
+      await expect(uploads.attachmentsOf(site, visitor, 'm1', [id])).rejects.toMatchObject({
+        code: ErrorCodes.FILE_TYPE_NOT_ALLOWED
+      })
+      // The refused object is not left for another try
+      expect(storage.delete).toHaveBeenCalledTimes(1)
+      expect(storage.delete).toHaveBeenCalledWith(expect.stringContaining('/'))
+      storage.head.mockResolvedValue({ contentLength: 1000, contentType: 'image/png' })
       await expect(uploads.attachmentsOf(site, visitor, 'm1', [id])).rejects.toMatchObject({
         code: ErrorCodes.FILE_UPLOAD_FAILED
       })

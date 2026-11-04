@@ -36,10 +36,37 @@ describe('safeActionPath', () => {
     expect(safeActionPath('/s/1/exports')).toBe('/s/1/exports')
   })
 
-  it.each([null, '', '//evil.test', 'https://evil.test', 'javascript:alert(1)', '/\\evil.test'])(
-    'refuses %s',
-    path => {
-      expect(safeActionPath(path)).toBeNull()
-    }
-  )
+  it('keeps a path with a query and a hash', () => {
+    expect(safeActionPath('/s/1/inbox/2?tab=notes#top')).toBe('/s/1/inbox/2?tab=notes#top')
+  })
+
+  it('keeps a path with an encoded slash in the query and one with accents', () => {
+    expect(safeActionPath('/s/1/inbox?next=%2Finbox')).toBe('/s/1/inbox?next=%2Finbox')
+    expect(safeActionPath('/s/1/tags/café')).toBe('/s/1/tags/café')
+  })
+
+  it.each([
+    ['null', null],
+    ['empty', ''],
+    ['not a path', 'inbox'],
+    ['protocol-relative', '//evil.test'],
+    ['another origin', 'https://evil.test'],
+    ['a scheme', 'javascript:alert(1)'],
+    ['a backslash', '/\\evil.test'],
+    ['a tab (the browser drops it: "//evil.test")', '/\t/evil.test'],
+    ['a line feed', '/\n/evil.test'],
+    ['a carriage return', '/\r/evil.test'],
+    ['a NUL', '/\u0000/evil.test'],
+    ['a C1 control', '/\u0085/evil.test'],
+    ['a space', '/ /evil.test'],
+    ['a zero-width space', '/\u200b/evil.test'],
+    ['a bidi override', '/s/\u202eexe'],
+    ['an encoded slash', '/%2f/evil.test'],
+    ['an encoded backslash', '/%5Cevil.test'],
+    ['a dot segment', '/s/../../evil'],
+    ['an encoded dot segment', '/s/%2e%2e/evil'],
+    ['a tab after the query mark', '/?\t//evil.test']
+  ])('refuses %s', (_name, path) => {
+    expect(safeActionPath(path)).toBeNull()
+  })
 })

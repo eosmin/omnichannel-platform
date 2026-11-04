@@ -60,11 +60,14 @@ const answer = (body: Buffer, contentType = 'image/png', contentLength: number |
   contentLength: contentLength ?? body.length
 })
 
+// The first bytes of a real file: the declared type is checked against them
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4])
+
 describe('OriginMediaFetcher', () => {
   beforeEach(() => pinnedHttpsGet.mockReset())
 
   it('keeps the thumbnail as a pending file of the origin, with no message and no customer', async () => {
-    pinnedHttpsGet.mockResolvedValue(answer(Buffer.from('pngbytes')))
+    pinnedHttpsGet.mockResolvedValue(answer(PNG))
     const { fetcher, media, storage, queue } = setup({})
     const id = originMediaId(ORIGIN, OriginMediaSlots.THUMBNAIL)
 
@@ -72,7 +75,7 @@ describe('OriginMediaFetcher', () => {
 
     expect(pinnedHttpsGet.mock.calls[0]?.[0]).toBe('https://cdn.example.com/thumb/ad-thumb.png')
     const key = `stores/${STORE}/messages/${id}/ad-thumb.png`
-    expect(storage.put).toHaveBeenCalledWith(key, Buffer.from('pngbytes'), 'image/png')
+    expect(storage.put).toHaveBeenCalledWith(key, PNG, 'image/png')
     expect(media.create).toHaveBeenCalledWith({
       data: {
         id,
@@ -84,7 +87,7 @@ describe('OriginMediaFetcher', () => {
         key,
         filename: 'ad-thumb.png',
         contentType: 'image/png',
-        fileSize: 8,
+        fileSize: PNG.length,
         status: MediaStatus.PENDING
       }
     })
@@ -123,7 +126,9 @@ describe('OriginMediaFetcher', () => {
     ['not an image', answer(Buffer.from('<html>'), 'text/html')],
     ['a type the server did not declare', answer(Buffer.from('x'), 'application/octet-stream')],
     ['too big by its header', answer(Buffer.from('x'), 'image/png', 11 * 1024 * 1024)],
-    ['empty', answer(Buffer.alloc(0))]
+    ['empty', answer(Buffer.alloc(0))],
+    ['a page declared as a picture', answer(Buffer.from('<html><script>1</script>'))],
+    ['a jpeg declared as a png', answer(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1]))]
   ])('drops a file that is %s, for good', async (_name, response) => {
     pinnedHttpsGet.mockResolvedValue(response)
     const { fetcher, storage, media, logger } = setup({})
@@ -175,7 +180,7 @@ describe('OriginMediaFetcher', () => {
   })
 
   it('names the file by its slot when the link has no name', async () => {
-    pinnedHttpsGet.mockResolvedValue(answer(Buffer.from('png')))
+    pinnedHttpsGet.mockResolvedValue(answer(PNG))
     const { fetcher, storage } = setup({
       origin: { mediaType: null, mediaUrl: null, thumbnailUrl: 'https://cdn.example.com/' }
     })

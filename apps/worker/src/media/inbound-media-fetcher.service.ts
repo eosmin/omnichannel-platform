@@ -28,6 +28,8 @@ import {
 } from '@platform/core/queues'
 import {
   AllAllowedContentTypes,
+  FILE_SIGNATURE_WINDOW_BYTES,
+  matchesDeclaredType,
   MediaPurpose,
   refuseUpload,
   sanitizeFilename,
@@ -294,6 +296,10 @@ export class InboundMediaFetcher {
             throw new FileRefused('the file is bigger than the limit')
           }
           if (body.length === 0) throw new FileRefused('the file is empty')
+          // What the bytes are, not what the provider or the webhook says they are
+          if (!matchesDeclaredType(contentType, body.subarray(0, FILE_SIGNATURE_WINDOW_BYTES))) {
+            throw new FileRefused('the file is not of the type it declares')
+          }
           return { body, contentType }
         })(),
         UploadLimits.INBOUND_FETCH_TIMEOUT_MS

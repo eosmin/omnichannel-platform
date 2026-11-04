@@ -135,6 +135,65 @@ describe('redaction', () => {
   })
 })
 
+// SEC-7: the request log dumped `svix-signature`. A header that proves who sent a request or lets
+// someone act as them is never logged, whatever its name: a provider we add later brings its own.
+describe('scrubRequest, headers', () => {
+  const secrets = {
+    'svix-signature': 'v1,Zm9vYmFy',
+    'x-signature': 'sig-1',
+    'x-hub-signature': 'sha1=sig-2',
+    'x-twilio-signature': 'sig-3',
+    'stripe-signature': 't=1,v1=sig-4',
+    'x-webhook-signature': 'sig-5',
+    Authorization: 'Bearer abc',
+    'proxy-authorization': 'Basic xyz',
+    cookie: 'sid=1',
+    'set-cookie': 'sid=2',
+    'x-api-key': 'key-1',
+    'x-plugin-api-key': 'key-2',
+    'x-auth-token': 'tok-1',
+    'x-csrf-token': 'tok-2',
+    'x-amz-security-token': 'tok-3',
+    'x-client-secret': 'sec-1'
+  }
+  const kept = {
+    'svix-id': 'msg_1',
+    'svix-timestamp': '1700000000',
+    'content-type': 'application/json',
+    'x-store-id': 'store-1',
+    'user-agent': 'curl'
+  }
+
+  it('redacts the value of every header that carries a signature or a credential', () => {
+    const { headers } = scrubRequest({ headers: { ...secrets, ...kept } })
+    for (const name of Object.keys(secrets)) {
+      expect(headers).toHaveProperty([name], REDACTED)
+    }
+    expect(headers).toMatchObject(kept)
+  })
+
+  it('keeps the name of the header, so the log still shows that one was sent', () => {
+    const { headers } = scrubRequest({ headers: { 'svix-signature': 'v1,abc' } })
+    expect(Object.keys(headers as object)).toEqual(['svix-signature'])
+  })
+
+  it('leaves no secret in the line pino writes', () => {
+    let output = ''
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        output += chunk.toString()
+        done()
+      }
+    })
+    pino(buildPinoHttpOptions({ level: 'info' }) as object, stream).info(
+      { req: scrubRequest({ headers: { ...secrets, ...kept } }) },
+      'request'
+    )
+    for (const value of Object.values(secrets)) expect(output).not.toContain(value)
+    expect(output).toContain('msg_1')
+  })
+})
+
 // The token of an invitation travels in the path (GET /invitations/:token) and is as good as a
 // password until it is used or expires: the log must never hold it
 describe('scrubRequest, query string', () => {

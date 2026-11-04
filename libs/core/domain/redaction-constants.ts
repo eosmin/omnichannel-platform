@@ -57,6 +57,15 @@ export const REPORT_REDACTED_HEADERS: readonly string[] = [
   'x-hub-signature'
 ]
 
+// A header that proves who sent a request, or lets whoever reads it act as them: a signature (svix,
+// Stripe, Meta, a plugin's), an authorization, a cookie, a key, a token or a secret. Matched by what
+// the name says, not by a list, so a provider added later is covered without anyone remembering it.
+const SECRET_HEADER = /signature|authorization|cookie|api-?key|token|secret|credential|password/i
+
+export function isSecretHeader(name: string): boolean {
+  return SECRET_HEADER.test(name)
+}
+
 // The page that called the api: its url can carry the same secrets as ours
 export const REFERER_HEADER = 'referer'
 

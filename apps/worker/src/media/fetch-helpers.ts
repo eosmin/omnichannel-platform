@@ -1,4 +1,8 @@
-import { GENERIC_CONTENT_TYPE } from '@platform/core/storage'
+import {
+  AllowedContentTypes,
+  GENERIC_CONTENT_TYPE,
+  sniffDeclarableType
+} from '@platform/core/storage'
 
 // What a file that came from outside is read with, whoever fetched it: the plugin for a file of a
 // message, the core for the picture of an ad
@@ -35,18 +39,8 @@ export const GENERIC_TYPES: ReadonlySet<string> = new Set([
   'application/x-download'
 ])
 
-const startsWith = (body: Buffer, bytes: readonly number[], at = 0): boolean =>
-  bytes.every((byte, index) => body[at + index] === byte)
-
 // The image type a file's first bytes announce, for a server that did not declare one. null when they
 // announce none of the types the platform keeps. The scan and the decoder judge the rest.
 export function sniffImageType(body: Buffer): string | null {
-  if (startsWith(body, [0xff, 0xd8, 0xff])) return 'image/jpeg'
-  if (startsWith(body, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png'
-  if (startsWith(body, [0x47, 0x49, 0x46, 0x38])) return 'image/gif'
-  // RIFF....WEBP
-  if (startsWith(body, [0x52, 0x49, 0x46, 0x46]) && startsWith(body, [0x57, 0x45, 0x42, 0x50], 8)) {
-    return 'image/webp'
-  }
-  return null
+  return sniffDeclarableType(body, AllowedContentTypes.IMAGE)
 }

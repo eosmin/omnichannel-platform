@@ -1,4 +1,5 @@
-import type { ArgumentsHost } from '@nestjs/common'
+import { type ArgumentsHost, BadRequestException, HttpException } from '@nestjs/common'
+import { ThrottlerException } from '@nestjs/throttler'
 import type { Counter } from '@prometheus-io/client'
 import * as Sentry from '@sentry/nestjs'
 import type { PinoLogger } from 'nestjs-pino'
@@ -170,5 +171,48 @@ describe('GlobalExceptionFilter, a body the parser refused', () => {
     expect(response.status).toHaveBeenCalledWith(413)
     const body = response.json.mock.calls[0]?.[0] as { error: { code: string } }
     expect(body.error.code).toBe(ErrorCodes.PAYLOAD_TOO_LARGE)
+  })
+})
+
+// SEC-429: Nest names the class in the message of its throttler error ("ThrottlerException: Too Many
+// Requests"). The answer carries the code of the contract and a message of ours, never a class name.
+describe('GlobalExceptionFilter, the message of a Nest error', () => {
+  function answer(exception: unknown) {
+    const response = {
+      headersSent: false,
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn<void, [unknown]>()
+    }
+    const request = { url: '/api/v1/x', path: '/api/v1/x', method: 'POST', correlationId: 'c-1' }
+    const logger = { error: jest.fn(), warn: jest.fn() } as unknown as PinoLogger
+    const host = {
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => response })
+    } as unknown as ArgumentsHost
+    new GlobalExceptionFilter(logger, { inc: jest.fn() } as unknown as Counter<string>).catch(
+      exception,
+      host
+    )
+    const [body] = response.json.mock.calls[0] as [{ error: { code: string; message: string } }]
+    const [status] = response.status.mock.calls[0] as [number]
+    return {
+      status,
+      body: JSON.stringify(body),
+      error: body.error
+    }
+  }
+
+  it('answers a rate limit with its code and a message that names no class', () => {
+    const { status, body, error } = answer(new ThrottlerException())
+    expect(status).toBe(429)
+    expect(error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+    expect(body).not.toMatch(/Throttler|Exception/)
+    expect(body).not.toContain('stack')
+    expect(error.message).toBe('Too many requests')
+  })
+
+  it('takes the name of a class off the message of any other Nest error', () => {
+    const { error } = answer(new HttpException('SomethingException: it broke', 400))
+    expect(error.message).toBe('it broke')
+    expect(answer(new BadRequestException('plain words')).error.message).toBe('plain words')
   })
 })
