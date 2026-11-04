@@ -1,4 +1,6 @@
-import { accountRealtimeStoreId } from './account-realtime-store'
+import { AppPaths } from '@platform/api-client'
+
+import { accountInboxPath, accountRealtimeStoreId } from './account-realtime-store'
 
 const profile = {
   memberships: [{ storeId: 'store-a' }, { storeId: 'store-b' }],
@@ -24,5 +26,18 @@ describe('accountRealtimeStoreId', () => {
 
   it('opens nothing for a person with no stores', () => {
     expect(accountRealtimeStoreId({ memberships: [] }, 'store-a')).toBeNull()
+  })
+})
+
+describe('accountInboxPath', () => {
+  it('leads to the inbox of the last store the person still belongs to', () => {
+    expect(accountInboxPath(profile, 'store-b')).toBe(AppPaths.store.inbox('store-b'))
+  })
+
+  it('has no path when there is no store the person can enter', () => {
+    expect(accountInboxPath(profile, null)).toBeNull()
+    expect(accountInboxPath(profile, 'store-gone')).toBeNull()
+    expect(accountInboxPath(profile, 'store-s')).toBeNull()
+    expect(accountInboxPath({ memberships: [] }, 'store-a')).toBeNull()
   })
 })

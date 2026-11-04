@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -23,10 +24,13 @@ import {
 export function SettingsFrame({
   area,
   entries,
+  backTo = null,
   children
 }: {
   area: SettingsArea
   entries: readonly SettingsEntry[]
+  // A way out of the area, first in the navigation (the account pages belong to no store)
+  backTo?: { href: string; label: string } | null
   children: ReactNode
 }): ReactElement {
   const t = useTranslations('settings.nav')
@@ -49,6 +53,16 @@ export function SettingsFrame({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 md:flex-row">
       {entries.length > 0 ? (
         <nav aria-label={label('label')} className="md:w-48 md:shrink-0">
+          {backTo !== null && (
+            <Link
+              href={backTo.href}
+              onClick={event => guard(event, backTo.href)}
+              className="text-muted-foreground hover:bg-accent mb-2 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm"
+            >
+              <ArrowLeft aria-hidden className="size-4" />
+              {backTo.label}
+            </Link>
+          )}
           <h2 className="text-muted-foreground mb-2 px-2 text-xs font-semibold uppercase">
             {label('title')}
           </h2>
