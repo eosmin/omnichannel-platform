@@ -37,8 +37,10 @@ import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { isOutboundMediaType } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import { PluginError } from '@platform/plugins/sdk'
 
 import { MessageStatusWriter, type StatusChange } from './message-status.writer'
+import { providerCodesOf } from './provider-codes'
 import { type Refusal, refusalOf, SendAttemptFailed } from './send-refusal'
 
 // What a plugin answers is checked: it may be a third party's. The provider may report the message
@@ -167,6 +169,8 @@ export class OutboundSender {
                 channelIdentity: customerIdentity.channelIdentity,
                 mediaUrl: file.url,
                 contentType: file.contentType,
+                fileSize: file.size,
+                openFile: file.open,
                 filename: file.filename,
                 ...(content.trim() === '' ? {} : { caption: content }),
                 ...(replyToExternalId === null ? {} : { replyToExternalId }),
@@ -187,7 +191,8 @@ export class OutboundSender {
                   // The provider that supports it never sends one message twice
                   idempotencyKey
                 }),
-          OutboundLimits.SEND_TIMEOUT_MS
+          // A file is uploaded before the message is posted: the budget is the upload's too
+          isMedia ? OutboundLimits.MEDIA_SEND_TIMEOUT_MS : OutboundLimits.SEND_TIMEOUT_MS
         )
       )
       // Sent twice would be worse than not sent: an answer that makes no sense is final
@@ -204,7 +209,9 @@ export class OutboundSender {
           pluginId: connection.pluginId,
           messageId,
           code: refused.code,
-          errorName: errorName(error)
+          errorName: errorName(error),
+          // What the provider answered, as numbers: why Meta refused, without the token or the text
+          ...providerCodesOf(error)
         },
         'sending a reply failed'
       )
@@ -354,10 +361,23 @@ export class OutboundSender {
   private async fileOf(
     storeId: string,
     messageId: string
-  ): Promise<{ url: string; contentType: string; filename: string } | null> {
+  ): Promise<{
+    url: string
+    contentType: string
+    filename: string
+    size: number
+    open: () => Promise<NodeJS.ReadableStream>
+  } | null> {
     const files = await this.prisma.client.media.findMany({
       where: { storeId, messageId },
-      select: { key: true, filename: true, contentType: true, status: true }
+      select: {
+        id: true,
+        key: true,
+        filename: true,
+        contentType: true,
+        status: true,
+        fileSize: true
+      }
     })
     const [file] = files
     if (files.length !== 1 || file === undefined || file.status !== String(MediaStatus.CLEAN)) {
@@ -372,7 +392,30 @@ export class OutboundSender {
       contentType: file.contentType,
       filename: file.filename
     })
-    return { url, contentType: file.contentType, filename: file.filename }
+    return {
+      url,
+      contentType: file.contentType,
+      filename: file.filename,
+      // The size recorded when the file was checked: a plugin holds the upload to it
+      size: file.fileSize,
+      // Only the object of this clean row, read from the platform's own storage; opened by the plugin
+      // when it is about to send, one stream for each attempt
+      open: async () => {
+        // Checked again at the moment the bytes are read: a file marked infected or deleted since the
+        // message was picked up must not be uploaded to anybody
+        const stillClean = await this.prisma.client.media.count({
+          where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
+        })
+        if (stillClean !== 1) {
+          throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+        }
+        const stream = await this.storage.stream(file.key)
+        if (stream === null) {
+          throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+        }
+        return stream
+      }
+    }
   }
 
   private async externalIdOf(storeId: string, messageId: string | null): Promise<string | null> {

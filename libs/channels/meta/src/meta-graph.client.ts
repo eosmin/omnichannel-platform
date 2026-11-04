@@ -1,9 +1,16 @@
+import { randomBytes } from 'node:crypto'
 import { Readable } from 'node:stream'
 
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { MetaGraph, type MetaGraphOrigin, MetaLimits, MetaWebhook } from '@platform/core/domain'
+import {
+  MetaGraph,
+  type MetaGraphOrigin,
+  MetaLimits,
+  MetaUpload,
+  MetaWebhook
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type FetchedMedia, PluginError } from '@platform/plugins/sdk'
 
@@ -22,6 +29,10 @@ const REDIRECT_CLASS = 3
 const MEDIA_ID = /^\d+$/
 // What can go into a header value: printable ASCII
 const HEADER_TOKEN = /^[\x21-\x7E]+$/
+// `image/png`: the type of an upload goes into a header line and a form field
+const MIME_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/
+// A form field name: letters, digits, underscore
+const FIELD_NAME = /^[A-Za-z0-9_]+$/
 
 const mediaInfoSchema = z.object({
   url: z.url(),
@@ -39,6 +50,19 @@ export interface GraphRequest<T> {
   // A POST that changes nothing the second time (a subscription, a read receipt) may be tried again
   idempotent?: boolean
   // Facebook's Graph unless said otherwise. Instagram Login tokens only work on Instagram's.
+  origin?: MetaGraphOrigin
+}
+
+export interface UploadRequest<T> {
+  path: readonly string[]
+  token: string
+  // The text fields of the form, sent before the file (`messaging_product`, `type`)
+  fields: Record<string, string>
+  // The stored bytes, opened by the client only after everything refusable was refused, so that a
+  // refusal leaves no stream open. `size` is what was recorded when the file was checked: the upload
+  // is cut off if the stream holds more, and fails if it ends short. `contentType` is that record too.
+  file: { open: () => Promise<NodeJS.ReadableStream>; contentType: string; size: number }
+  schema: z.ZodType<T>
   origin?: MetaGraphOrigin
 }
 
@@ -66,6 +90,87 @@ export class MetaGraphClient {
 
   async post<T>(request: GraphRequest<T>): Promise<T> {
     return this.call('POST', request)
+  }
+
+  // Uploads one file as multipart/form-data and answers what Meta answers (the id of the media). The
+  // body is streamed with an exact content-length, so a file of 100 MB never sits in memory, and the
+  // stream is held to the size recorded for the file. An upload changes nothing the customer sees, so a
+  // failure is worth trying again (the caller opens the file again: a stream is read once).
+  async uploadMedia<T>(request: UploadRequest<T>): Promise<T> {
+    if (!HEADER_TOKEN.test(request.token)) {
+      throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+    }
+    const { contentType, size } = request.file
+    // Nothing that reaches a header or a form line may carry a line break or a quote
+    if (
+      !MIME_TYPE.test(contentType) ||
+      !Number.isSafeInteger(size) ||
+      size <= 0 ||
+      size > MetaLimits.MEDIA_MAX_BYTES ||
+      Object.entries(request.fields).some(
+        ([name, value]) => !FIELD_NAME.test(name) || /[\r\n]/.test(value)
+      )
+    ) {
+      throw graphUnexpected()
+    }
+    const url = this.urlFor(request.origin ?? MetaGraph.ORIGIN, request.path, undefined)
+    const boundary = `${MetaUpload.BOUNDARY_PREFIX}${randomBytes(16).toString('hex')}`
+    const head = Buffer.from(
+      [
+        ...Object.entries(request.fields).map(
+          ([name, value]) =>
+            `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+        ),
+        `--${boundary}\r\nContent-Disposition: form-data; name="${MetaUpload.FILE_FIELD}"; ` +
+          `filename="${MetaUpload.FILE_NAME}"\r\nContent-Type: ${contentType}\r\n\r\n`
+      ].join('')
+    )
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`)
+    // Opened only now, after every refusal above
+    const opened = await request.file.open()
+    const source = opened instanceof Readable ? opened : Readable.from(opened)
+    const limited = limitBytes(source, size, size)
+    // Why the limiter stopped the stream, if it did: fetch only says that the call failed, and a file
+    // that is not the size recorded is no network error to be tried again
+    let stopped: unknown
+    limited.on('error', error => {
+      stopped = error
+    })
+    async function* multipart(): AsyncGenerator<Buffer> {
+      yield head
+      for await (const chunk of limited) {
+        yield Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array)
+      }
+      yield tail
+    }
+    try {
+      let response: Response
+      try {
+        response = await this.fetchOrFail(url, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${request.token}`,
+            'content-type': `${MetaUpload.FORM_CONTENT_TYPE}; boundary=${boundary}`,
+            'content-length': String(head.length + size + tail.length)
+          },
+          body: Readable.toWeb(Readable.from(multipart())),
+          duplex: 'half',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(MetaLimits.UPLOAD_TIMEOUT_MS)
+        })
+      } catch (error) {
+        throw stopped instanceof PluginError ? stopped : error
+      }
+      const body = await readJson(response)
+      if (!response.ok) throw graphFailure(response.status, body, { safeToRepeat: true })
+      const parsed = request.schema.safeParse(body)
+      if (!parsed.success) throw graphUnexpected()
+      return parsed.data
+    } finally {
+      // On every way out: Meta may have answered before it read the whole body, and the object in the
+      // bucket must not stay open
+      limited.destroy()
+    }
   }
 
   // GET /{media-id} answers a short-lived url; the file is behind it and wants the same token. The url

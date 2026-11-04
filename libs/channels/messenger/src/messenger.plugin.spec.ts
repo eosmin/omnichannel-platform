@@ -5,6 +5,10 @@ import { type ChannelContext, ChannelCapability } from '@platform/plugins/sdk'
 
 import { MessengerPlugin } from './messenger.plugin'
 
+// These channels send by link: the file is never opened
+const sendsByLink = (): Promise<NodeJS.ReadableStream> =>
+  Promise.reject(new Error('this channel sends by link'))
+
 const credentials = { accessToken: 'EAAB-page-token' }
 const ctx: ChannelContext = {
   storeId: 's',
@@ -129,6 +133,8 @@ describe('MessengerPlugin', () => {
       await plugin.sendMedia(ctx, {
         channelIdentity: '99',
         mediaUrl: 'https://files.example.com/a.mp4',
+        fileSize: 1,
+        openFile: sendsByLink,
         contentType: 'video/mp4',
         filename: null,
         ...key

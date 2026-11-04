@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream'
+
 import { MetaGraphClient } from '@platform/channels/meta'
 import { DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -31,6 +33,7 @@ function buildMeta() {
   const meta = {
     get: asyncMock(),
     post: asyncMock(),
+    uploadMedia: jest.fn<Promise<unknown>, [Record<string, unknown>]>(),
     downloadMedia: asyncMock(),
     isValidSignature: jest.fn<boolean, []>(),
     verifyHubChallenge: jest.fn<string | null, []>()
@@ -173,11 +176,14 @@ describe('WhatsAppPlugin', () => {
       const { plugin, meta } = build()
       meta.post.mockResolvedValue({ messages: [{ id: 'wamid.2' }] })
       const to = '15550001111'
+      meta.uploadMedia.mockResolvedValue({ id: '777' })
       await plugin.sendMedia(ctx, {
         channelIdentity: to,
-        mediaUrl: 'https://x.test/a.png',
+        mediaUrl: 'http://localhost:9000/a.png?signature=x',
         contentType: 'image/png',
         filename: null,
+        fileSize: 3,
+        openFile: () => Promise.resolve(Readable.from([Buffer.from('abc')])),
         ...key
       })
       await plugin.sendTemplate(ctx, {
@@ -386,6 +392,88 @@ describe('WhatsAppPlugin over the Meta client', () => {
       .mockResolvedValueOnce(answer({ error: { code: 190 } }, 401))
     await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
       code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+    })
+  })
+
+  describe('sendMedia', () => {
+    const to = '15550001111'
+    const file = (over: Record<string, unknown> = {}) => ({
+      channelIdentity: to,
+      // A signed link to a private bucket: the plugin never fetches or forwards it
+      mediaUrl: 'http://localhost:9000/bucket/a.png?X-Amz-Signature=sig',
+      contentType: 'image/png',
+      filename: 'a.png',
+      fileSize: 3,
+      openFile: jest.fn(() => Promise.resolve(Readable.from([Buffer.from('abc')]))),
+      ...key,
+      ...over
+    })
+
+    it('uploads the bytes of the stored file to Meta and sends the message by the id it answers', async () => {
+      const { plugin, meta } = build()
+      meta.uploadMedia.mockResolvedValue({ id: '777' })
+      meta.post.mockResolvedValue({ messages: [{ id: 'wamid.9' }] })
+      const params = file({ caption: 'look' })
+
+      const result = await plugin.sendMedia(ctx, params)
+
+      expect(meta.uploadMedia).toHaveBeenCalledTimes(1)
+      expect(meta.uploadMedia).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: ['111', 'media'],
+          token: 'tok',
+          fields: { messaging_product: 'whatsapp', type: 'image/png' },
+          file: { open: params.openFile, contentType: 'image/png', size: 3 }
+        })
+      )
+      expect(meta.post.mock.calls[0]?.[0]).toMatchObject({
+        path: ['111', 'messages'],
+        body: { type: 'image', image: { id: '777', caption: 'look' } }
+      })
+      expect(JSON.stringify(meta.post.mock.calls)).not.toContain('X-Amz-Signature')
+      expect(result.externalId).toBe('wamid.9')
+    })
+
+    it('does not touch the file, Meta or the signed link when the type or the size is refused', async () => {
+      const { plugin, meta } = build()
+      const tooBig = file({ fileSize: 6 * 1024 * 1024 })
+      const badType = file({ contentType: 'application/zip' })
+
+      await expect(plugin.sendMedia(ctx, tooBig)).rejects.toBeInstanceOf(PluginError)
+      await expect(plugin.sendMedia(ctx, badType)).rejects.toBeInstanceOf(PluginError)
+
+      expect(tooBig.openFile).not.toHaveBeenCalled()
+      expect(badType.openFile).not.toHaveBeenCalled()
+      expect(meta.uploadMedia).not.toHaveBeenCalled()
+      expect(meta.post).not.toHaveBeenCalled()
+    })
+
+    it('sends no message when the upload fails, and lets the error through as it is', async () => {
+      const { plugin, meta } = build()
+      const failure = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false })
+      meta.uploadMedia.mockRejectedValue(failure)
+
+      await expect(plugin.sendMedia(ctx, file())).rejects.toBe(failure)
+      expect(meta.post).not.toHaveBeenCalled()
+    })
+
+    it('refuses with a name, and retries nothing, a host that gives no way to read the file', async () => {
+      const { plugin, meta } = build()
+
+      await expect(plugin.sendMedia(ctx, file({ openFile: undefined }))).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+        retryable: false
+      })
+      expect(meta.uploadMedia).not.toHaveBeenCalled()
+    })
+
+    it('does not upload an audio that has a caption: the reply would lose its text', async () => {
+      const { plugin, meta } = build()
+
+      await expect(
+        plugin.sendMedia(ctx, file({ contentType: 'audio/ogg', caption: 'x' }))
+      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED })
+      expect(meta.uploadMedia).not.toHaveBeenCalled()
     })
   })
 })

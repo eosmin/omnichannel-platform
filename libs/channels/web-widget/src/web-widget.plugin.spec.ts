@@ -19,6 +19,10 @@ import { WebWidgetPlugin } from './web-widget.plugin'
 import { isSiteKey } from './widget-site'
 import { signVisitorToken, widgetTokenKey } from './widget-token'
 
+// These channels send by link: the file is never opened
+const sendsByLink = (): Promise<NodeJS.ReadableStream> =>
+  Promise.reject(new Error('this channel sends by link'))
+
 const tokenKey = widgetTokenKey('s'.repeat(32))
 const storage = {
   list: jest.fn(),
@@ -249,6 +253,8 @@ describe('WebWidgetPlugin', () => {
         .sendMedia(ctx, {
           channelIdentity: visitorId,
           mediaUrl: 'https://bucket.test/a.mp4?signed',
+          fileSize: 1,
+          openFile: sendsByLink,
           contentType: 'video/mp4',
           filename: 'a.mp4',
           idempotencyKey: 'm3'
@@ -262,6 +268,8 @@ describe('WebWidgetPlugin', () => {
       const result = await plugin.sendMedia(ctx, {
         channelIdentity: visitorId,
         mediaUrl: 'https://bucket.test/a.png?signed',
+        fileSize: 1,
+        openFile: sendsByLink,
         contentType: 'image/png',
         filename: 'a.png',
         caption: 'tu comprobante',

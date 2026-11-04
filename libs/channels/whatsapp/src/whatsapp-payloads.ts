@@ -4,6 +4,7 @@ import {
   WhatsAppApi,
   WhatsAppInteractiveTypes,
   WhatsAppLimits,
+  WhatsAppMediaMaxBytes,
   WhatsAppMediaTypes,
   WhatsAppMessageTypes,
   WhatsAppTemplateComponents
@@ -81,37 +82,51 @@ const MEDIA_KINDS = [
   WhatsAppMessageTypes.AUDIO
 ] as const
 
-function mediaKind(contentType: string): 'image' | 'video' | 'audio' | 'document' {
-  const type = contentType.split(';')[0]?.trim().toLowerCase() ?? ''
+type MediaKind = 'image' | 'video' | 'audio' | 'document'
+
+function mediaKind(contentType: string): MediaKind {
   for (const kind of MEDIA_KINDS) {
-    if (WhatsAppMediaTypes[kind].includes(type)) return kind
+    if (WhatsAppMediaTypes[kind].includes(contentType)) return kind
   }
   return 'document'
 }
 
-export function mediaPayload(params: SendMediaParams): object {
-  const kind = mediaKind(params.contentType)
+// `Image/PNG; charset=binary` is `image/png`
+function bareType(contentType: string): string {
+  return contentType.split(';')[0]?.trim().toLowerCase() ?? ''
+}
+
+// Everything that can be refused about a file before a byte of it is read or uploaded: the type Meta
+// has no message for, a size over what Meta takes for that kind, and the caption and filename rules.
+// The type and the size are the ones stored when the file was checked, never a client's word.
+export function checkMedia(params: SendMediaParams): { kind: MediaKind; contentType: string } {
+  const contentType = bareType(params.contentType)
+  const kind = mediaKind(contentType)
+  // Meta refuses any other type (error 131053): better said here than after an upload
+  if (!WhatsAppMediaTypes[kind].includes(contentType)) {
+    refuse(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+  }
+  if (!Number.isSafeInteger(params.fileSize) || params.fileSize <= 0) refuse()
+  if (params.fileSize > WhatsAppMediaMaxBytes[kind])
+    refuse(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
   // A blank caption is no caption, for every kind
   const caption = params.caption?.trim() ? params.caption : undefined
-  let url: URL
-  try {
-    url = new URL(params.mediaUrl)
-  } catch {
-    return refuse()
-  }
-  // Meta fetches the file itself, and only over https
-  // And a url with a user or a password would hand them to Meta
-  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') refuse()
   if (size(caption ?? '') > WhatsAppLimits.CAPTION_MAX_LENGTH) refuse()
   // An audio has no caption: dropping the text would lose part of the reply, so it is refused
   if (kind === 'audio' && caption) refuse(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
   if (size(params.filename ?? '') > WhatsAppLimits.FILENAME_MAX_LENGTH) refuse()
+  return { kind, contentType }
+}
 
+// The message that sends a file already uploaded to Meta, by the id Meta gave it
+export function mediaPayload(params: SendMediaParams, mediaId: string): object {
+  const { kind } = checkMedia(params)
+  const caption = params.caption?.trim() ? params.caption : undefined
   return {
     ...envelope(params.channelIdentity, params.replyToExternalId),
     type: kind,
     [kind]: {
-      link: url.toString(),
+      id: mediaId,
       ...(kind === 'audio' || !caption ? {} : { caption }),
       ...(kind === 'document' && params.filename ? { filename: params.filename } : {})
     }

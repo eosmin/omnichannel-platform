@@ -4,6 +4,7 @@ import { PluginError } from '@platform/plugins/sdk'
 import {
   buttonsPayload,
   locationPayload,
+  checkMedia,
   mediaPayload,
   reactionPayload,
   readReceiptPayload,
@@ -97,70 +98,104 @@ describe('whatsapp payloads', () => {
       mediaUrl: 'https://files.example.com/a.jpg',
       contentType: 'image/jpeg',
       filename: null,
+      fileSize: 1024,
+      openFile: () => Promise.reject(new Error('not read by the payload')),
       ...key
     }
+    const MB = 1024 * 1024
 
     it.each([
-      ['image/webp', 'document'],
-      ['image/gif', 'document'],
-      ['video/webm', 'document'],
-      ['audio/wav', 'document'],
       ['Image/PNG', 'image'],
       ['image/jpeg; charset=binary', 'image'],
       ['video/mp4', 'video'],
-      ['audio/ogg', 'audio']
+      ['audio/ogg', 'audio'],
+      ['application/pdf', 'document']
     ])('sends %s as a %s, the kinds Meta takes', (contentType, kind) => {
-      expect(mediaPayload({ ...media, contentType })).toMatchObject({ type: kind })
+      expect(mediaPayload({ ...media, contentType }, '99')).toMatchObject({ type: kind })
     })
 
-    it('sends an image by link with its caption', () => {
-      expect(mediaPayload({ ...media, caption: 'look' })).toMatchObject({
+    it('sends an image by the id Meta gave when the file was uploaded, with its caption', () => {
+      expect(mediaPayload({ ...media, caption: 'look' }, '99')).toMatchObject({
         type: 'image',
-        image: { link: 'https://files.example.com/a.jpg', caption: 'look' }
+        image: { id: '99', caption: 'look' }
       })
+      expect(mediaPayload(media, '99')).not.toHaveProperty('image.link')
     })
 
     it('sends what it has no player for as a document with its filename', () => {
       expect(
-        mediaPayload({ ...media, contentType: 'application/pdf', filename: 'invoice.pdf' })
-      ).toMatchObject({ type: 'document', document: { filename: 'invoice.pdf' } })
+        mediaPayload({ ...media, contentType: 'application/pdf', filename: 'invoice.pdf' }, '99')
+      ).toMatchObject({ type: 'document', document: { id: '99', filename: 'invoice.pdf' } })
     })
 
     it('does not put a filename on an image', () => {
-      expect(mediaPayload({ ...media, filename: 'a.jpg' })).not.toHaveProperty('image.filename')
-    })
-
-    it('refuses a url that is not https', () => {
-      expect(
-        refusalOf(() => mediaPayload({ ...media, mediaUrl: 'http://x.test/a.jpg' })).retryable
-      ).toBe(false)
-      expect(refusalOf(() => mediaPayload({ ...media, mediaUrl: 'not a url' })).retryable).toBe(
-        false
+      expect(mediaPayload({ ...media, filename: 'a.jpg' }, '99')).not.toHaveProperty(
+        'image.filename'
       )
     })
 
-    it('refuses a url that carries credentials', () => {
-      expect(() =>
-        mediaPayload({ ...media, mediaUrl: 'https://user:pw@files.example.com/a.jpg' })
-      ).toThrow(PluginError)
-    })
-
     it('refuses a caption that is too long instead of cutting the reply', () => {
-      expect(() => mediaPayload({ ...media, caption: 'x'.repeat(1025) })).toThrow(PluginError)
+      expect(() => mediaPayload({ ...media, caption: 'x'.repeat(1025) }, '99')).toThrow(PluginError)
     })
 
     it('drops a blank caption the same way for every kind, audio included', () => {
-      expect(mediaPayload({ ...media, caption: '   ' })).not.toHaveProperty('image.caption')
+      expect(mediaPayload({ ...media, caption: '   ' }, '99')).not.toHaveProperty('image.caption')
       expect(() =>
-        mediaPayload({ ...media, contentType: 'audio/ogg', caption: '   ' })
+        mediaPayload({ ...media, contentType: 'audio/ogg', caption: '   ' }, '99')
       ).not.toThrow()
     })
 
     it('refuses a caption on audio, which cannot carry one', () => {
       const error = refusalOf(() =>
-        mediaPayload({ ...media, contentType: 'audio/ogg', caption: 'x' })
+        mediaPayload({ ...media, contentType: 'audio/ogg', caption: 'x' }, '99')
       )
       expect(error.code).toBe(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+    })
+
+    describe('checkMedia, before anything is uploaded', () => {
+      it.each([
+        ['image/jpeg', 5 * MB + 1],
+        ['video/mp4', 16 * MB + 1],
+        ['audio/mpeg', 16 * MB + 1],
+        ['application/pdf', 100 * MB + 1]
+      ])('refuses a %s of %i bytes, over what Meta takes', (contentType, fileSize) => {
+        const error = refusalOf(() => checkMedia({ ...media, contentType, fileSize }))
+        expect(error.code).toBe(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+        expect(error.retryable).toBe(false)
+      })
+
+      it.each([
+        ['image/jpeg', 5 * MB],
+        ['video/mp4', 16 * MB],
+        ['application/pdf', 100 * MB]
+      ])('takes a %s of exactly %i bytes', (contentType, fileSize) => {
+        expect(() => checkMedia({ ...media, contentType, fileSize })).not.toThrow()
+      })
+
+      it.each([
+        'image/webp',
+        'image/gif',
+        'video/webm',
+        'audio/wav',
+        'application/zip',
+        'text/html'
+      ])('refuses %s: Meta has no message for it', contentType => {
+        expect(refusalOf(() => checkMedia({ ...media, contentType })).code).toBe(
+          ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+        )
+      })
+
+      it('refuses an empty or a negative size', () => {
+        expect(() => checkMedia({ ...media, fileSize: 0 })).toThrow(PluginError)
+        expect(() => checkMedia({ ...media, fileSize: -1 })).toThrow(PluginError)
+      })
+
+      it('says which kind and which type to upload as', () => {
+        expect(checkMedia({ ...media, contentType: 'Image/PNG; x=y' })).toEqual({
+          kind: 'image',
+          contentType: 'image/png'
+        })
+      })
     })
   })
 
