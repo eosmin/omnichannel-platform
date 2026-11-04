@@ -1,11 +1,20 @@
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui'
 import type { ComponentProps, ReactElement } from 'react'
 
+import { useCloseOnBack } from '../../lib/use-close-on-back'
 import { cn } from '../../lib/utils'
 
 import { buttonVariants } from './button'
 
-export const AlertDialog = AlertDialogPrimitive.Root
+// Closes on the browser's Back, like `Dialog`
+export function AlertDialog({
+  open,
+  onOpenChange,
+  ...props
+}: ComponentProps<typeof AlertDialogPrimitive.Root>): ReactElement {
+  useCloseOnBack(open === true, onOpenChange)
+  return <AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />
+}
 
 export function AlertDialogContent({
   className,

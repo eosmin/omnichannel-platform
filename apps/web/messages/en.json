@@ -1202,6 +1202,7 @@
       "sendClosing": "Send a closing message",
       "windowClosed": "The messaging window has expired, so no closing message can be sent.",
       "noSnippets": "There are no saved replies to send.",
+      "manageSnippets": "Create saved replies",
       "snippet": "Saved reply",
       "reason": "Reason (optional)",
       "confirm": "Resolve",

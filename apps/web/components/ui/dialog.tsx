@@ -1,9 +1,18 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import type { ComponentProps, ReactElement } from 'react'
 
+import { useCloseOnBack } from '../../lib/use-close-on-back'
 import { cn } from '../../lib/utils'
 
-export const Dialog = DialogPrimitive.Root
+// Controlled (`open`), because that is what the Back listener reads. Closes on the browser's Back, so it is never left open over a page it does not belong to
+export function Dialog({
+  open,
+  onOpenChange,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Root>): ReactElement {
+  useCloseOnBack(open === true, onOpenChange)
+  return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />
+}
 export const DialogTrigger = DialogPrimitive.Trigger
 export const DialogClose = DialogPrimitive.Close
 

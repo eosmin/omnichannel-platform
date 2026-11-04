@@ -6,6 +6,8 @@
 @source '../../../libs/core/domain';
 
 @custom-variant dark (&:is(.dark *));
+/* The person's density (Account → Preferences): `compact:` classes apply under `<html data-density="compact">` */
+@custom-variant compact (&:is([data-density="compact"] *));
 
 @theme inline {
   --color-background: var(--background);
