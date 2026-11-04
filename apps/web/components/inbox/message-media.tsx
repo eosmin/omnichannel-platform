@@ -9,10 +9,10 @@ import type { MessageView } from '@platform/api-client'
 import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/domain'
 import { mediaMessageTypeOf } from '@platform/core/storage'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrls } from '../../lib/media/use-media-urls'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
@@ -96,7 +96,7 @@ function UnavailableItem({
   canRefetch: boolean
 }): ReactElement {
   const t = useTranslations('inbox.thread.media.notKept')
-  const tAll = useTranslations()
+  const errorText = useErrorText()
   const { refetchFile } = useMessageMutations(conversationId, messageId)
   return (
     <Frame>
@@ -113,7 +113,7 @@ function UnavailableItem({
             refetchFile
               .mutateAsync(file.index)
               .then(() => toast.success(t('refetchRequested')))
-              .catch((error: unknown) => toast.error(tAll(`errors.${errorCodeOf(error)}`)))
+              .catch((error: unknown) => toast.error(errorText(error)))
           }}
         >
           {t('refetch')}

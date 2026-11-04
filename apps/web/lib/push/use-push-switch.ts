@@ -11,6 +11,7 @@ import {
   hasPushSubscription,
   PushSubscribeResult,
   type PushSubscribeResultType,
+  isPushConfigured,
   pushPermission,
   subscribeToPush,
   unsubscribeFromPush
@@ -28,6 +29,8 @@ function setTurnedOff(value: boolean): void {
 export const PushSwitchState = {
   // Not read yet (the server render, or the first effect)
   UNKNOWN: 'unknown',
+  // The environment has no server key: nothing to do with the browser
+  NOT_CONFIGURED: 'not_configured',
   UNSUPPORTED: 'unsupported',
   // The browser blocked notifications: only its site settings can undo it
   BLOCKED: 'blocked',
@@ -58,6 +61,8 @@ export function usePushSwitch(storeId: string): {
   const read = useCallback(async (): Promise<void> => {
     latestRead.current += 1
     const mine = latestRead.current
+    if (!isPushConfigured(webEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY))
+      return setState(PushSwitchState.NOT_CONFIGURED)
     const permission = pushPermission(webEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
     if (permission === null) return setState(PushSwitchState.UNSUPPORTED)
     if (permission === 'denied') return setState(PushSwitchState.BLOCKED)

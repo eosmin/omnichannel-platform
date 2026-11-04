@@ -12,7 +12,6 @@ import {
   RoutingLimits
 } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import type { RuleView } from '../../lib/settings/routing-requests'
 import {
   type ActionType,
@@ -25,6 +24,7 @@ import {
   ruleProblems
 } from '../../lib/settings/rule-form'
 import { useChannelChoices, useCreateRule, useUpdateRule } from '../../lib/settings/use-routing'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -66,8 +66,8 @@ export function RuleDialog({
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.routing.dialog')
+  const errorText = useErrorText()
   const tChannels = useTranslations('settings.routing.channelNames')
-  const tErrors = useTranslations('errors')
   const tCommon = useTranslations('common')
   const { storeId } = useStore()
   const create = useCreateRule(storeId)
@@ -276,7 +276,7 @@ export function RuleDialog({
           ) : null}
           {failure === null ? null : (
             <p role="alert" className="text-destructive text-sm">
-              {tErrors(errorCodeOf(failure))}
+              {errorText(failure)}
             </p>
           )}
           <DialogFooter>

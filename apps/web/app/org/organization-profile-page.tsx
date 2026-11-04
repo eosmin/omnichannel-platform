@@ -87,7 +87,16 @@ function ProfileForm({ organization }: { organization: OrganizationView }): Reac
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`${id}-slug`}>{t('slug')}</Label>
-          <Input id={`${id}-slug`} value={organization.slug} readOnly />
+          <Input
+            id={`${id}-slug`}
+            value={organization.slug}
+            readOnly
+            disabled
+            aria-describedby={`${id}-slug-hint`}
+          />
+          <p id={`${id}-slug-hint`} className="text-muted-foreground text-xs">
+            {t('slugHint')}
+          </p>
         </div>
         <MutationError error={rename.error} />
         {canEdit ? (

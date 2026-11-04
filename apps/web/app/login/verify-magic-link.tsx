@@ -15,6 +15,9 @@ import { errorCodeOf } from '../../lib/error-message'
 
 const TOKEN_PARAM = 'token'
 
+// What expired is the link, not a session: the generic text for these codes would say otherwise
+const EXPIRED_LINK_CODES: ReadonlySet<ErrorCode> = new Set([ErrorCodes.AUTH_TOKEN_EXPIRED])
+
 // The token is in the fragment of the address (#token=...), which the browser never sends to a
 // server. It is read once, taken out of the address bar and the history, and traded for a session:
 // a link works once, so a second attempt (React runs effects twice in development) would fail.
@@ -60,7 +63,9 @@ export function VerifyMagicLink(): ReactElement {
   return (
     <div className="flex flex-col gap-4" role="alert">
       <h1 className="text-2xl font-semibold">{t('loginVerify.failedTitle')}</h1>
-      <p className="text-muted-foreground">{t(`errors.${errorCode}`)}</p>
+      <p className="text-muted-foreground">
+        {EXPIRED_LINK_CODES.has(errorCode) ? t('loginVerify.expired') : t(`errors.${errorCode}`)}
+      </p>
       <Button asChild>
         <Link href={AppPaths.login}>{t('loginVerify.requestNew')}</Link>
       </Button>

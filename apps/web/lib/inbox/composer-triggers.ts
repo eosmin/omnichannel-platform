@@ -1,4 +1,9 @@
-import { MENTION_PREFIX, SLASH_PREFIX, SlashCommand } from '@platform/core/domain'
+import {
+  MENTION_PREFIX,
+  SLASH_PREFIX,
+  SlashCommand,
+  SlashCommandAliases
+} from '@platform/core/domain'
 
 // What the text of the composer is asking for while the agent types: the command menu after a `/`
 // at the start, the list of snippets or members after `/snippet ` or `/assign `, the list of
@@ -13,8 +18,18 @@ export type SlashQuery =
 const MENTION_MAX_QUERY_LENGTH = 40
 const MENTION_MAX_WORDS = 3
 
+// The command a name stands for: its English name or one of its aliases in Spanish
 export function commandOf(value: string): SlashCommand | undefined {
-  return Object.values(SlashCommand).find(command => String(command) === value)
+  return Object.values(SlashCommand).find(
+    command => String(command) === value || SlashCommandAliases[command].includes(value)
+  )
+}
+
+// How a command is called in the menu: by the name that starts like what was typed, so an agent who
+// writes `/resp` sees `/respuesta`, and the English name for everything else
+export function nameTyped(command: SlashCommand, text: string): string {
+  if (command.startsWith(text)) return command
+  return SlashCommandAliases[command].find(alias => alias.startsWith(text)) ?? command
 }
 
 // The command a text starts with, whether or not the agent may use it: `/assign ana` is a command
@@ -43,7 +58,10 @@ export function slashQuery(draft: string): SlashQuery | null {
 }
 
 export function matchCommands(text: string, allowed: readonly SlashCommand[]): SlashCommand[] {
-  return allowed.filter(command => command.startsWith(text))
+  return allowed.filter(
+    command =>
+      command.startsWith(text) || SlashCommandAliases[command].some(alias => alias.startsWith(text))
+  )
 }
 
 interface Named {

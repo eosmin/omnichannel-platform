@@ -10,7 +10,7 @@ import { BulkActions, ConversationStatus, Shortcuts } from '@platform/core/domai
 import { canChangeState } from '../../lib/inbox/conversation-status'
 import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
-import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
+import { useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useMountedOnce } from '../../lib/use-mounted-once'
@@ -42,7 +42,6 @@ export function ConversationShortcuts({
   const isPickMounted = useMountedOnce(pick !== null)
 
   const detail = conversation.data
-  const channelName = useChannelName(storeId, detail?.channelType ?? '')
   const isLoaded = detail !== undefined
   const mayChange = isLoaded && canChangeState(detail.status)
   const mayAssign = can(Permissions.CONVERSATIONS_RESOLVE) || can(Permissions.CONVERSATIONS_ASSIGN)
@@ -54,7 +53,7 @@ export function ConversationShortcuts({
       operation,
       { conversationIds: [conversationId] },
       [detail],
-      nameOf(detail.customer, channelName)
+      nameOf(detail.customer, detail.channelType)
     )
   }
   const keyboard = { priority: ShortcutPriority.OPEN_CONVERSATION }

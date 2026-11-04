@@ -9,7 +9,6 @@ import { DigestFrequency } from '@platform/core/domain'
 
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
-import { errorCodeOf } from '../../lib/error-message'
 import { readLastStoreId } from '../../lib/last-store'
 import {
   groupPreferences,
@@ -21,6 +20,7 @@ import {
 import { usePreferences, useSavePreferences } from '../../lib/notifications/use-notification-data'
 import { PushSubscribeResult } from '../../lib/push/push-browser'
 import { PushSwitchState, usePushSwitch } from '../../lib/push/use-push-switch'
+import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
@@ -62,7 +62,7 @@ export function NotificationPreferencesPage(): ReactElement | null {
 
 function Preferences({ storeId, storeName }: { storeId: string; storeName: string }): ReactElement {
   const t = useTranslations('account.notifications')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const prefs = usePreferences(storeId)
   const save = useSavePreferences(storeId, () => toast.error(t('saveFailed')))
@@ -81,7 +81,7 @@ function Preferences({ storeId, storeName }: { storeId: string; storeName: strin
       <section className="mx-auto max-w-3xl">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
         <p role="alert" className="text-destructive mt-2 text-sm">
-          {tErrors(errorCodeOf(prefs.error))}
+          {errorText(prefs.error)}
         </p>
       </section>
     )
@@ -300,7 +300,7 @@ function QuietHours({
 // this device receives any.
 function PushDeviceSwitch({ storeId }: { storeId: string }): ReactElement {
   const t = useTranslations('account.notifications.push')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { state, isBusy, turnOn, turnOff } = usePushSwitch(storeId)
 
   async function run(action: () => Promise<unknown>): Promise<void> {
@@ -308,7 +308,7 @@ function PushDeviceSwitch({ storeId }: { storeId: string }): ReactElement {
       const result = await action()
       if (result === PushSubscribeResult.DENIED) toast.error(t('blocked'))
     } catch (error) {
-      toast.error(tErrors(errorCodeOf(error)))
+      toast.error(errorText(error))
     }
   }
 
@@ -317,6 +317,9 @@ function PushDeviceSwitch({ storeId }: { storeId: string }): ReactElement {
       <h2 id="push-title" className="text-base font-semibold">
         {t('title')}
       </h2>
+      {state === PushSwitchState.NOT_CONFIGURED && (
+        <p className="text-muted-foreground text-sm">{t('notConfigured')}</p>
+      )}
       {state === PushSwitchState.UNSUPPORTED && (
         <p className="text-muted-foreground text-sm">{t('unsupported')}</p>
       )}

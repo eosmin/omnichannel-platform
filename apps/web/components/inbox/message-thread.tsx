@@ -12,14 +12,12 @@ import {
   useState
 } from 'react'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { messageActionsOf } from '../../lib/inbox/message-actions'
 import { buildThreadItems, memberIdsOf } from '../../lib/inbox/thread-items'
 import { useAuthorLabel } from '../../lib/inbox/use-author-label'
 import { useComposerQueue } from '../../lib/inbox/use-composer-queue'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import {
-  useChannelName,
   useConversation,
   useMemberDirectory,
   useOrigins,
@@ -28,6 +26,7 @@ import {
 import { useMarkRead } from '../../lib/inbox/use-mark-read'
 import { useActionViewer } from '../../lib/inbox/use-message-actions'
 import { useConversationRoom } from '../../lib/realtime/use-conversation-room'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -46,13 +45,13 @@ const NEAR_END_PX = 80
 // per conversation, so every conversation starts at its end with nothing carried over.
 export function MessageThread({ conversationId }: { conversationId: string }): ReactElement | null {
   const t = useTranslations('inbox.thread')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const format = useFormatter()
   const { storeId } = useStore()
   const conversation = useConversation(storeId, conversationId)
   const thread = useThread(storeId, conversationId)
   const origins = useOrigins(storeId, conversationId)
-  const channelName = useChannelName(storeId, conversation.data?.channelType ?? '')
   const { name: customerName } = useCustomerName(
     conversation.data?.customer ?? {
       id: '',
@@ -61,7 +60,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       username: null,
       avatarUrl: null
     },
-    channelName
+    conversation.data?.channelType ?? ''
   )
   useMarkRead(conversationId, conversation.data?.unreadCount)
   // Typing and the read marks of the open conversation come through its room
@@ -225,7 +224,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       <InboxState
         icon={TriangleAlert}
         title={t('error.title')}
-        body={tAll(`errors.${errorCodeOf(thread.error)}`)}
+        body={errorText(thread.error)}
         isAlert
       >
         <Button type="button" variant="outline" size="sm" onClick={() => void thread.refetch()}>

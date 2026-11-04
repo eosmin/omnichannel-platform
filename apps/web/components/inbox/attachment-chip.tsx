@@ -4,6 +4,8 @@ import { LoaderCircle, Paperclip, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
+import { ErrorCodes } from '@platform/core/errors'
+
 import { formatBytes } from '../../lib/media/attachment-rules'
 import type { AttachmentState } from '../../lib/media/use-attachment'
 import { Button } from '../ui/button'
@@ -66,8 +68,9 @@ export function AttachmentChip({
       </p>
       {problem === null ? null : (
         <p role="alert" className="text-destructive text-xs">
-          {state.kind === 'failed' ? `${t('failed', { name: file.name })}: ` : ''}
-          {tAll(`errors.${problem}`)}
+          {problem === ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+            ? `${file.name}: ${t('unsupported')}`
+            : `${state.kind === 'failed' ? `${t('failed', { name: file.name })}: ` : ''}${tAll(`errors.${problem}`)}`}
         </p>
       )}
     </div>

@@ -12,7 +12,7 @@ import { paramsFromFilters } from '../../lib/inbox/inbox-filters'
 import { relativeTime } from '../../lib/inbox/relative-time'
 import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
-import { useChannelDirectory, useConversationPages } from '../../lib/inbox/use-inbox-data'
+import { useConversationPages } from '../../lib/inbox/use-inbox-data'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -29,7 +29,6 @@ export function UnassignedQueueWidget(): ReactElement {
   const locale = useLocale()
   const { storeId, can } = useStore()
   const queue = useConversationPages(storeId, QUEUE_FILTERS)
-  const channels = useChannelDirectory(storeId)
   const runner = useBulkRunner()
   const nameOf = useCustomerNamer()
   const [now] = useState(() => new Date())
@@ -49,14 +48,12 @@ export function UnassignedQueueWidget(): ReactElement {
   const items = first?.data.slice(0, SHOWN) ?? []
   if (items.length === 0) return <p className="text-muted-foreground text-sm">{t('empty')}</p>
   const hasMore = (first?.data.length ?? 0) > SHOWN || first?.hasMore === true
-  const channelNameOf = (channelType: string): string =>
-    channels.data?.find(channel => channel.pluginId === channelType)?.pluginName ?? channelType
 
   return (
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2">
         {items.map(item => {
-          const name = nameOf(item.customer, channelNameOf(item.channelType))
+          const name = nameOf(item.customer, item.channelType)
           return (
             <li key={item.id} className="flex items-center gap-2 text-sm">
               <Link

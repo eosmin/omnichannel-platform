@@ -18,7 +18,8 @@ import { BulkActions } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
-import { errorCodeOf, knownErrorCode } from '../error-message'
+import { knownErrorCode } from '../error-message'
+import { useErrorText } from '../use-error-text'
 
 import { BulkOutcomes, type PreviousState, singleResultKey, summaryOf, undoStepsOf } from './bulk'
 
@@ -49,6 +50,7 @@ export interface BulkRunner {
 // as well; reading it again here covers a socket that is down.
 export function useBulkRunner(): BulkRunner {
   const t = useTranslations('inbox.bulk.result')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const { storeId } = useStore()
   const queryClient = useQueryClient()
@@ -106,7 +108,7 @@ export function useBulkRunner(): BulkRunner {
       try {
         result = await bulkConversations(apiClient, storeId, operation, target)
       } catch (error) {
-        toast.error(tAll(`errors.${errorCodeOf(error)}`))
+        toast.error(errorText(error))
         return null
       } finally {
         setPending(count => count - 1)

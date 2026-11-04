@@ -10,9 +10,9 @@ import type { ActiveSession } from '@platform/api-client'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { deviceLabel, rawDeviceText } from '../../lib/account/device-label'
-import { errorCodeOf } from '../../lib/error-message'
 import { relativeTime } from '../../lib/inbox/relative-time'
 import { useActiveSessions, useRevokeSession } from '../../lib/settings/use-settings-data'
+import { useErrorText } from '../../lib/use-error-text'
 
 // Account → Security: where the person is signed in, with a way to close each of the other devices.
 // The device in use has no button: leaving it is "Sign out" in the account menu.
@@ -44,7 +44,7 @@ export function SecurityPage(): ReactElement {
 
 function SessionRow({ session }: { session: ActiveSession }): ReactElement {
   const t = useTranslations('account.security')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const locale = useLocale()
   const revoke = useRevokeSession()
   const label = deviceLabel(session.userAgent)
@@ -57,7 +57,7 @@ function SessionRow({ session }: { session: ActiveSession }): ReactElement {
   const close = (): void => {
     revoke.mutate(session.id, {
       onSuccess: () => toast.success(t('revoked')),
-      onError: error => toast.error(tErrors(errorCodeOf(error)))
+      onError: error => toast.error(errorText(error))
     })
   }
 

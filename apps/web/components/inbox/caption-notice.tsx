@@ -8,8 +8,8 @@ import { toast } from 'sonner'
 import type { MessageView } from '@platform/api-client'
 import { CaptionState } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
+import { useErrorText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
 
 const NOTICE_KEYS = {
@@ -39,7 +39,7 @@ function Notice({
   canResend: boolean
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
-  const tAll = useTranslations()
+  const errorText = useErrorText()
   const { resendCaption } = useMessageMutations(conversationId, message.id)
   const state = message.captionState
   if (state === null) return null
@@ -56,9 +56,7 @@ function Notice({
           size="sm"
           disabled={resendCaption.isPending}
           onClick={() => {
-            resendCaption
-              .mutateAsync()
-              .catch((error: unknown) => toast.error(tAll(`errors.${errorCodeOf(error)}`)))
+            resendCaption.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
           }}
         >
           {t('resendCaption')}

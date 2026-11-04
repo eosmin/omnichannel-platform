@@ -9,9 +9,10 @@ import { ApiError } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { errorCodeOf } from '../../lib/error-message'
+import { useRoleLabel } from '../../lib/role-label'
 import type { RoleView } from '../../lib/settings/team-requests'
 import { useDeleteRole } from '../../lib/settings/use-team'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -78,7 +79,8 @@ function RoleRow({
   onOpen: () => void
 }): ReactElement {
   const t = useTranslations('settings.team.roles')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
+  const roleLabel = useRoleLabel()
   const { storeId } = useStore()
   const run = useDestructiveAction()
   const remove = useDeleteRole(storeId)
@@ -99,7 +101,7 @@ function RoleRow({
           toast.error(
             error instanceof ApiError && error.code === ErrorCodes.RESOURCE_CONFLICT
               ? t('delete.inUse', { name: role.name })
-              : tErrors(errorCodeOf(error))
+              : errorText(error)
           )
         }
       }
@@ -110,7 +112,7 @@ function RoleRow({
     <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
       <div className="flex min-w-0 flex-col gap-0.5">
         <h2 className="flex items-center gap-2 font-medium">
-          {role.name}
+          {roleLabel(role.name)}
           {role.isSystem ? (
             <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-normal">
               <Lock aria-hidden className="size-3" />
@@ -129,7 +131,7 @@ function RoleRow({
         <Button type="button" variant="outline" size="sm" onClick={onOpen}>
           {editable ? <Pencil aria-hidden className="size-4" /> : null}
           {editable ? t('edit') : t('view')}
-          <span className="sr-only"> {role.name}</span>
+          <span className="sr-only"> {roleLabel(role.name)}</span>
         </Button>
         {editable ? (
           <Button
@@ -141,7 +143,7 @@ function RoleRow({
           >
             <Trash2 aria-hidden className="size-4" />
             {t('delete.action')}
-            <span className="sr-only"> {role.name}</span>
+            <span className="sr-only"> {roleLabel(role.name)}</span>
           </Button>
         ) : null}
       </div>

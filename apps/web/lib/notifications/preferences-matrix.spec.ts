@@ -28,6 +28,22 @@ describe('groupPreferences', () => {
     ])
   })
 
+  it('hides the switches of types nothing raises and the groups left empty', () => {
+    const groups = groupPreferences([
+      row(NotificationTypes.CONVERSATION_ASSIGNED),
+      row(NotificationTypes.ORDER_CREATED),
+      row(NotificationTypes.INVENTORY_LOW),
+      row(NotificationTypes.PICKUP_MANUAL_REQUIRED),
+      row(NotificationTypes.PLUGIN_ERROR),
+      row(NotificationTypes.WEBHOOK_AUTO_DISABLED),
+      row(NotificationTypes.CHANNEL_DISCONNECTED)
+    ])
+    expect(groups.map(entry => entry.group)).toEqual(['conversations', 'system'])
+    expect(groups[1]?.rows.map(entry => entry.type)).toEqual([
+      NotificationTypes.CHANNEL_DISCONNECTED
+    ])
+  })
+
   it('draws nothing for an empty answer', () => {
     expect(groupPreferences([])).toEqual([])
   })

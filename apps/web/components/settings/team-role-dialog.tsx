@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { Permissions } from '@platform/core/auth'
 
+import { useRoleLabel } from '../../lib/role-label'
 import { permissionGroups, toggled } from '../../lib/settings/permission-groups'
 import type { RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
@@ -39,6 +40,7 @@ export function RoleDialog({
 }): ReactElement {
   const t = useTranslations('settings.team.roles.dialog')
   const tAll = useTranslations()
+  const roleLabel = useRoleLabel()
   const { storeId, can } = useStore()
   const create = useCreateRole(storeId)
   const update = useUpdateRole(storeId)
@@ -80,8 +82,8 @@ export function RoleDialog({
             {role === null
               ? t('createTitle')
               : readOnly
-                ? t('viewTitle', { name: role.name })
-                : t('editTitle', { name: role.name })}
+                ? t('viewTitle', { name: roleLabel(role.name) })
+                : t('editTitle', { name: roleLabel(role.name) })}
           </DialogTitle>
           <DialogDescription>
             {role?.isSystem === true

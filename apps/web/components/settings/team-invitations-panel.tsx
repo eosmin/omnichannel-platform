@@ -7,11 +7,12 @@ import { toast } from 'sonner'
 
 import { Permissions } from '@platform/core/auth'
 
-import { errorCodeOf } from '../../lib/error-message'
+import { useRoleLabel } from '../../lib/role-label'
 import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
 import type { InvitationView, RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
 import { useResendInvitation, useRevokeInvitation } from '../../lib/settings/use-team'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -76,7 +77,8 @@ function InvitationRow({
   roles: RoleView[]
 }): ReactElement {
   const t = useTranslations('settings.team.invitations')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
+  const roleLabel = useRoleLabel()
   const format = useFormatter()
   const { storeId, can } = useStore()
   const run = useDestructiveAction()
@@ -93,9 +95,7 @@ function InvitationRow({
       onError: error => {
         // The cooldown of inviting says how long to wait; any other refusal is read from its code
         const seconds = retryAfterSecondsOf(error)
-        toast.error(
-          seconds === null ? tErrors(errorCodeOf(error)) : t('resend.cooldown', { seconds })
-        )
+        toast.error(seconds === null ? errorText(error) : t('resend.cooldown', { seconds }))
       }
     })
   }
@@ -110,7 +110,7 @@ function InvitationRow({
           await revoke.mutateAsync(invitation.id)
           toast.success(t('revoke.done', { email: invitation.email }))
         } catch (error) {
-          toast.error(tErrors(errorCodeOf(error)))
+          toast.error(errorText(error))
         }
       }
     })
@@ -121,7 +121,7 @@ function InvitationRow({
       <div className="flex min-w-0 flex-col gap-0.5">
         <h2 className="truncate font-medium">{invitation.email}</h2>
         <span className="text-muted-foreground text-sm">
-          {invitation.role.name} · {t('invitedBy', { name: invitation.invitedBy })}
+          {roleLabel(invitation.role.name)} · {t('invitedBy', { name: invitation.invitedBy })}
         </span>
         <span
           className={

@@ -108,7 +108,8 @@
         "label": "Send push notifications to this browser",
         "hint": "The Push column above chooses which notifications use it.",
         "blocked": "This browser blocked notifications. Allow them in its site settings to turn push on.",
-        "unsupported": "This browser cannot receive push notifications."
+        "unsupported": "This browser cannot receive push notifications.",
+        "notConfigured": "Push notifications are not set up in this environment."
       },
       "quietHours": {
         "title": "Quiet hours",
@@ -151,7 +152,8 @@
         "removed": "Picture removed.",
         "processing": "Getting your picture ready...",
         "refused": "This picture could not be used. Try another one.",
-        "hint": "JPEG, PNG or WebP, up to {size} MB. It is resized to a small square, and its metadata is removed."
+        "hint": "JPEG, PNG or WebP, up to {size} MB. It is resized to a small square, and its metadata is removed.",
+        "tooMany": "You already have several pictures in progress. Wait for them to finish and try again."
       }
     },
     "preferences": {
@@ -236,7 +238,7 @@
       "media": "Files",
       "title": "Customer profile",
       "description": "The customer's identities, figures, tags, addresses and activity.",
-      "unnamed": "Unnamed customer",
+      "unnamed": "Visitor",
       "caution": "Marked with caution.",
       "identities": "Identities",
       "noIdentities": "No channel linked yet.",
@@ -254,7 +256,8 @@
       "noAddresses": "No addresses saved.",
       "defaultAddress": "Default",
       "failed": "The profile could not be loaded.",
-      "noAccess": "You do not have access to customer profiles."
+      "noAccess": "You do not have access to customer profiles.",
+      "anonymous": "Visitor ····{digits}"
     },
     "panel": {
       "title": "Customer",
@@ -326,7 +329,7 @@
       "export": "Export CSV",
       "exportQueued": "The customers file is being prepared. It will be ready in the exports.",
       "viewExports": "View exports",
-      "unnamed": "Unnamed customer",
+      "unnamed": "Visitor",
       "caution": "Caution",
       "failed": "The customers could not be loaded.",
       "empty": "No customers yet.",
@@ -362,7 +365,7 @@
       "searchPlaceholder": "Search by name, e-mail or phone",
       "searchFailed": "The customers could not be loaded.",
       "noMatches": "No customer matches the search.",
-      "unnamed": "Unnamed customer",
+      "unnamed": "Visitor",
       "summary": "{absorbed} will join {survivor}.",
       "counts": {
         "conversations": "Conversations",
@@ -384,7 +387,8 @@
       "confirmWord": "MERGE",
       "confirmIntro": "{name} will be merged into this customer. You can undo it from the activity for 30 days.",
       "confirmLabel": "Type {word} to confirm",
-      "confirm": "Merge the customers"
+      "confirm": "Merge the customers",
+      "searchHint": "Type a name, email or phone number to find the duplicate."
     }
   },
   "email": {
@@ -475,7 +479,7 @@
     "ORDER_PRICE_REASON_REQUIRED": "Say why you are changing the price",
     "ORDER_PRICE_SELF_APPROVAL": "You cannot approve your own price change",
     "ORDER_STATUS_DRIVEN_BY_SHIPMENT": "The shipment decides the status of this order",
-    "PERMISSION_DENIED": "You do not have permission for this",
+    "PERMISSION_DENIED": "You do not have permission for this. Ask an administrator to give it to you.",
     "PICKUP_CUTOFF_PASSED": "The pickup cutoff has passed",
     "PLUGIN_ALREADY_INSTALLED": "The plugin is already installed",
     "PLUGIN_ALREADY_REGISTERED": "The plugin is already registered",
@@ -537,7 +541,8 @@
     "loginRequired": "An account already exists for {email}. Sign in with that address, then open this link again.",
     "goToLogin": "Sign in",
     "mismatchTitle": "This invitation is for another address",
-    "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again."
+    "mismatchBody": "You are signed in as {current}, and the invitation is for {invited}. Sign out and open the link again.",
+    "unavailableTitle": "This invitation is not available"
   },
   "login": {
     "title": "Sign in",
@@ -552,7 +557,8 @@
   "loginVerify": {
     "verifying": "Signing you in",
     "failedTitle": "This link did not work",
-    "requestNew": "Request a new link"
+    "requestNew": "Request a new link",
+    "expired": "Your link has expired. Ask for a new one."
   },
   "noAccess": {
     "title": "You have no access",
@@ -884,7 +890,6 @@
     "tagsLabel": "Tags",
     "withCount": "{label} ({count})",
     "clearFilters": "Clear filters",
-    "customerOnChannel": "{channel} customer ····{digits}",
     "youPrefix": "You: {text}",
     "notePrefix": "Note: {text}",
     "noMessages": "No messages yet",
@@ -1066,7 +1071,7 @@
         "unmarked_spam": "{actorKind, select, user {Unmarked as spam by {actor}} other {Unmarked as spam automatically}}",
         "snoozed": "{actorKind, select, user {Snoozed by {actor}} other {Snoozed automatically}}",
         "snoozedUntil": "until {until}",
-        "woken": "{actorKind, select, user {Woken by {actor}} other {Woken automatically}}",
+        "woken": "{actorKind, select, user {Reopened by {actor}} other {Reopened automatically}}",
         "assigned": "{actorKind, select, user {{actor} assigned it to {assignee}} other {Assigned to {assignee}}}",
         "unassigned": "{actorKind, select, user {{actor} left it unassigned} other {Left unassigned}}",
         "unknown": "The conversation changed",
@@ -1075,7 +1080,7 @@
           "snooze_expired": "the snooze ended",
           "auto_archived": "it was inactive",
           "customer_replied": "the customer replied",
-          "agent_replied": "an agent replied"
+          "agent_replied": "a message was sent"
         }
       },
       "loadEarlierFailed": "The earlier messages could not be loaded",
@@ -1134,7 +1139,8 @@
         "checking": "Checking {name}",
         "ready": "{name} is ready to send",
         "captionHint": "The text you write is sent with the file",
-        "failed": "{name} was not attached"
+        "failed": "{name} was not attached",
+        "unsupported": "This channel does not accept audio or video."
       },
       "window": {
         "closing": "The messaging window closes in {hours}h {minutes}m",
@@ -1344,7 +1350,7 @@
           "SHOW_HELP": "Show this help"
         },
         "conversation": {
-          "CLOSE": "Close the conversation",
+          "CLOSE": "Close the panel",
           "FOCUS_REPLY": "Write a reply",
           "INTERNAL_NOTE": "Write an internal note",
           "ASSIGN_TO_ME": "Assign to me",
@@ -1397,7 +1403,9 @@
         "findCustomer": "Find customer",
         "none": "No actions available."
       }
-    }
+    },
+    "anonymousCustomer": "Visitor ····{digits}",
+    "unnamedCustomer": "Customer ····{digits}"
   },
   "exports": {
     "title": "Exports",
@@ -1621,9 +1629,10 @@
       "description": "The name of your organization.",
       "readOnly": "You can see the organization but not change it.",
       "name": "Organization name",
-      "slug": "Address name",
+      "slug": "Identifier in the URL",
       "nameInvalid": "Enter a name of up to 100 characters.",
-      "saved": "Organization saved."
+      "saved": "Organization saved.",
+      "slugHint": "Lowercase letters, numbers and hyphens. It cannot be changed."
     },
     "plugins": {
       "title": "Plugins",
@@ -1903,6 +1912,12 @@
           "rolePlaceholder": "Choose a role",
           "noRole": "No role is available to you: every role holds permissions you do not have."
         }
+      },
+      "roleNames": {
+        "Admin": "Admin",
+        "Supervisor": "Supervisor",
+        "Agent": "Agent",
+        "Viewer": "Viewer"
       }
     },
     "routing": {
@@ -2071,7 +2086,8 @@
           "nameInvalid": "The name has a character that cannot be used.",
           "colorInvalid": "Pick a colour.",
           "descriptionTooLong": "The description is too long (255 characters at most).",
-          "descriptionInvalid": "The description has a character that cannot be used."
+          "descriptionInvalid": "The description has a character that cannot be used.",
+          "nameTaken": "There is already a tag with that name."
         }
       }
     },
@@ -2178,6 +2194,27 @@
     "permissionDenied": {
       "title": "You do not have access to this",
       "body": "Ask an administrator to grant the required permission."
+    }
+  },
+  "permissionDenied": {
+    "named": "You do not have the permission \"{permission}\" for this. Ask an administrator to give it to you."
+  },
+  "validation": {
+    "check": "Check {field}.",
+    "checkLine": "Check {field} on line {line}.",
+    "fields": {
+      "name": "the name",
+      "email": "the email",
+      "phone": "the phone number",
+      "siteOrigins": "the site",
+      "description": "the description",
+      "color": "the color",
+      "title": "the title",
+      "content": "the content",
+      "shortcut": "the shortcut",
+      "timezone": "the time zone",
+      "currency": "the currency",
+      "locale": "the language"
     }
   }
 }

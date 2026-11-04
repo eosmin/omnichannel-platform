@@ -10,10 +10,12 @@ import {
   useQueryClient,
   type UseQueryResult
 } from '@tanstack/react-query'
+import { useCallback } from 'react'
 
 import type { ChannelConnectionListState } from '@platform/core/domain'
 
 import { apiClient } from '../api'
+import { usePluginLabel } from '../plugin-label'
 
 import { ChannelKeys } from './channel-keys'
 import {
@@ -54,9 +56,15 @@ export function useConnections(
 }
 
 export function usePluginCatalog(storeId: string): UseQueryResult<PluginCatalogEntryView[]> {
+  const label = usePluginLabel()
   return useQuery({
     queryKey: ChannelKeys.plugins(storeId),
-    queryFn: ({ signal }) => fetchPluginCatalog(apiClient, storeId, signal)
+    queryFn: ({ signal }) => fetchPluginCatalog(apiClient, storeId, signal),
+    select: useCallback(
+      (entries: PluginCatalogEntryView[]) =>
+        entries.map(entry => ({ ...entry, name: label(entry.id, entry.name) })),
+      [label]
+    )
   })
 }
 

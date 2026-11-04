@@ -9,7 +9,7 @@ import type { CustomerDetailView } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 
 import { conversationCount } from '../../lib/customers/conversation-count'
-import { customerDisplayName, initialsOfName } from '../../lib/customers/customer-name'
+import { customerDisplayName, initialsOfName, visitorTail } from '../../lib/customers/customer-name'
 import { tagDotColor } from '../../lib/customers/tag-color'
 import {
   useCustomerConversations,
@@ -144,6 +144,8 @@ export function CustomerDetails({
   const [merge, setMerge] = useState<MergeRequest | null>(null)
   const format = useFormatter()
   const name = customerDisplayName(customer)
+  const tail = visitorTail(customer)
+  const anonymousName = tail === null ? t('unnamed') : t('anonymous', { digits: tail })
   const since = new Date(customer.createdAt)
   const contact = [customer.email, customer.phone].filter(
     (value): value is string => value !== null && value !== name
@@ -158,7 +160,7 @@ export function CustomerDetails({
         <div className="flex items-center gap-3">
           <CustomerAvatar avatarUrl={null} initials={initialsOfName(name)} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <p className="truncate font-semibold">{name ?? t('unnamed')}</p>
+            <p className="truncate font-semibold">{name ?? anonymousName}</p>
             {contact.map(line => (
               <p key={line} className="text-muted-foreground truncate text-xs">
                 {line}

@@ -18,7 +18,8 @@ const base: MenuInput = {
   selfId: 'u2',
   isMentionFull: false,
   maxLength: 20,
-  commandHint: command => `hint ${command}`
+  commandHint: command => `hint ${command}`,
+  roleLabel: roleName => (roleName === 'Agent' ? 'Agente' : roleName)
 }
 
 const menu = (changes: Partial<MenuInput>) => composerMenu({ ...base, ...changes })
@@ -65,6 +66,11 @@ describe('composerMenu', () => {
     expect(result?.entries.map(entry => entry.outcome)).toEqual([
       { kind: 'assign', member: { id: 'u1', name: 'Ana Pérez' } }
     ])
+  })
+
+  it('names the role of each member as the interface shows it', () => {
+    expect(menu({ draft: '/assign pe' })?.entries[0]?.hint).toBe('Agente')
+    expect(menu({ draft: '/assign lu' })?.entries[0]?.hint).toBe('Admin')
   })
 
   it('gives no menu for snippet or assign to who may not use them', () => {

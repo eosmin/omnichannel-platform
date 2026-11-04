@@ -12,13 +12,13 @@ import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
 import { useDestructiveAction } from '../../components/shared/destructive-action'
 import { Button } from '../../components/ui/button'
-import { errorCodeOf } from '../../lib/error-message'
 import type { PluginCatalogEntryView } from '../../lib/settings/channels-requests'
 import {
   useInstallPlugin,
   usePluginCatalog,
   useUninstallPlugin
 } from '../../lib/settings/use-channels'
+import { useErrorText } from '../../lib/use-error-text'
 
 // Uninstalling disconnects every account of the plugin, which is the high tier of a disconnect
 const UNINSTALL_ACTION: DestructiveAction = 'DISCONNECT_CHANNEL'
@@ -66,7 +66,7 @@ function PluginsBody({ entries }: { entries: PluginCatalogEntryView[] }): ReactE
 
 function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
   const t = useTranslations('settings.plugins')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const run = useDestructiveAction()
   const install = useInstallPlugin(storeId)
@@ -87,7 +87,7 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
           await uninstall.mutateAsync(installationId)
           toast.success(t('uninstall.done', { name: entry.name }))
         } catch (error) {
-          toast.error(tErrors(errorCodeOf(error)))
+          toast.error(errorText(error))
         }
       }
     })
@@ -96,7 +96,7 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
   const doInstall = (): void => {
     install.mutate(entry.id, {
       onSuccess: () => toast.success(t('install.done', { name: entry.name })),
-      onError: error => toast.error(tErrors(errorCodeOf(error)))
+      onError: error => toast.error(errorText(error))
     })
   }
 

@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 
 import { ConversationLimits } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import {
   DAY_MS,
   parseLocalDateTime,
@@ -16,6 +15,7 @@ import {
 } from '../../lib/inbox/snooze-presets'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import { useInboxBehavior } from '../../lib/inbox/use-inbox-data'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -55,6 +55,7 @@ export function SnoozeDialog(props: SnoozeDialogProps): ReactElement {
 
 function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactElement {
   const t = useTranslations('inbox.snooze')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const locale = useLocale()
   const { storeId } = useStore()
@@ -74,7 +75,7 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
     return (
       <div className="flex flex-col gap-3">
         <p role="alert" className="text-destructive text-sm">
-          {tAll(`errors.${errorCodeOf(behavior.error)}`)}
+          {errorText(behavior.error)}
         </p>
         <Button type="button" variant="outline" size="sm" onClick={() => void behavior.refetch()}>
           {tAll('common.tryAgain')}
@@ -156,7 +157,7 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
       </form>
       {snooze.isError ? (
         <p role="alert" className="text-destructive text-sm">
-          {tAll(`errors.${errorCodeOf(snooze.error)}`)}
+          {errorText(snooze.error)}
         </p>
       ) : null}
     </div>

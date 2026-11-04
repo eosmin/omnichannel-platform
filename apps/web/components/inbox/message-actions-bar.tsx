@@ -9,9 +9,9 @@ import { toast } from 'sonner'
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, QUICK_REACTIONS } from '@platform/core/domain'
 
-import { errorCodeOf } from '../../lib/error-message'
 import type { MessageActions } from '../../lib/inbox/message-actions'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
+import { useErrorText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import {
@@ -64,7 +64,7 @@ export function MessageActionsBar({
   authorLabel: (type: string, id: string | null) => string
 }): ReactElement {
   const t = useTranslations('inbox.thread.actions')
-  const tAll = useTranslations()
+  const errorText = useErrorText()
   const [dialog, setDialog] = useState<OpenDialog>(null)
   const { react, resend } = useMessageMutations(conversationId, message.id)
   const dialogProps = {
@@ -83,7 +83,7 @@ export function MessageActionsBar({
         )?.emoji
 
   const tell = (promise: Promise<unknown>): void => {
-    promise.catch((error: unknown) => toast.error(tAll(`errors.${errorCodeOf(error)}`)))
+    promise.catch((error: unknown) => toast.error(errorText(error)))
   }
   const hasMore =
     actions.resend || actions.edit || actions.remove || actions.revisions || actions.viewDeleted

@@ -14,7 +14,6 @@ import { LoadFailed, PageLoading, PermissionDenied } from '../../components/sett
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
-import { errorCodeOf } from '../../lib/error-message'
 import { useInboxBehavior } from '../../lib/inbox/use-inbox-data'
 import {
   closedWeek,
@@ -30,6 +29,7 @@ import {
   useSaveBusinessHours,
   useSnippetChoices
 } from '../../lib/settings/use-routing'
+import { useErrorText } from '../../lib/use-error-text'
 
 // Settings → Store → Business hours (TDD_09 §13): the weekly schedule, its time zone, and the saved
 // reply sent to a customer who writes outside it. Opening needs SETTINGS_VIEW and saving
@@ -62,7 +62,7 @@ function startingHours(timezone: string): BusinessHoursView {
 
 function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement {
   const t = useTranslations('settings.hours')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const { storeId, can } = useStore()
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const mayListSnippets = can(Permissions.CONVERSATIONS_VIEW)
@@ -109,7 +109,7 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
           ) : null}
           {storeBehavior.isError ? (
             <p role="alert" className="text-destructive text-sm">
-              {tErrors(errorCodeOf(storeBehavior.error))}
+              {errorText(storeBehavior.error)}
             </p>
           ) : null}
         </div>
@@ -135,7 +135,7 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
         setDraft(stored)
         toast.success(t('saved'))
       },
-      onError: error => toast.error(tErrors(errorCodeOf(error)))
+      onError: error => toast.error(errorText(error))
     })
   }
 
@@ -192,7 +192,7 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
           </p>
           {snippets.isError ? (
             <p role="alert" className="text-destructive text-sm">
-              {tErrors(errorCodeOf(snippets.error))}
+              {errorText(snippets.error)}
             </p>
           ) : null}
         </div>

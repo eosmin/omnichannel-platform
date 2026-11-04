@@ -8,6 +8,7 @@ import {
   mentionedIds,
   mentionedPeople,
   mentionQuery,
+  nameTyped,
   slashQuery,
   typedCommand,
   withMentions
@@ -150,5 +151,39 @@ describe('withMentions', () => {
       ana,
       { id: 'u2', name: 'Luis' }
     ])
+  })
+})
+
+describe('the commands in Spanish', () => {
+  it('are the same commands: typed, argument and menu', () => {
+    expect(typedCommand('/respuesta gracias')).toBe(SlashCommand.SNIPPET)
+    expect(typedCommand('/Asignar ana')).toBe(SlashCommand.ASSIGN)
+    expect(typedCommand('/posponer')).toBe(SlashCommand.SNOOZE)
+    expect(typedCommand('/resolver')).toBe(SlashCommand.RESOLVE)
+    expect(typedCommand('/resolve')).toBe(SlashCommand.RESOLVE)
+    expect(slashQuery('/respuesta gra')).toEqual({
+      kind: 'argument',
+      command: SlashCommand.SNIPPET,
+      text: 'gra'
+    })
+    expect(slashQuery('/asignar an')).toEqual({
+      kind: 'argument',
+      command: SlashCommand.ASSIGN,
+      text: 'an'
+    })
+    expect(matchCommands('res', Object.values(SlashCommand))).toEqual([
+      SlashCommand.SNIPPET,
+      SlashCommand.RESOLVE
+    ])
+    expect(matchCommands('pos', Object.values(SlashCommand))).toEqual([SlashCommand.SNOOZE])
+  })
+
+  it('shows the name the agent is typing', () => {
+    expect(nameTyped(SlashCommand.RESOLVE, 'res')).toBe('resolve')
+    expect(nameTyped(SlashCommand.RESOLVE, 'resolv')).toBe('resolve')
+    expect(nameTyped(SlashCommand.RESOLVE, 'resolve')).toBe('resolve')
+    expect(nameTyped(SlashCommand.RESOLVE, 'resolver')).toBe('resolver')
+    expect(nameTyped(SlashCommand.SNIPPET, 'resp')).toBe('respuesta')
+    expect(nameTyped(SlashCommand.SNOOZE, '')).toBe('snooze')
   })
 })

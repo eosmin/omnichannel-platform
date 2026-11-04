@@ -34,10 +34,15 @@ function sameKey(current: ArrayBuffer | null, expected: Uint8Array): boolean {
   return bytes.length === expected.length && bytes.every((byte, i) => byte === expected[i])
 }
 
+// The server key is set for this environment. Without it no browser can subscribe, so the page says
+// the environment lacks the setup instead of blaming a browser that may well support push.
+export function isPushConfigured(publicKey: string | undefined): boolean {
+  return publicKey !== undefined && publicKey !== ''
+}
+
 export function isPushSupported(publicKey: string | undefined): boolean {
   return (
-    publicKey !== undefined &&
-    publicKey !== '' &&
+    isPushConfigured(publicKey) &&
     typeof window !== 'undefined' &&
     'serviceWorker' in navigator &&
     'PushManager' in window &&

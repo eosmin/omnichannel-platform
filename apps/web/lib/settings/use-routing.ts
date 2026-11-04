@@ -7,6 +7,7 @@ import {
   useQueryClient,
   type UseQueryResult
 } from '@tanstack/react-query'
+import { useCallback } from 'react'
 
 import {
   ApiError,
@@ -23,6 +24,7 @@ import {
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { apiClient } from '../api'
+import { usePluginLabel } from '../plugin-label'
 
 import { type BusinessHoursView, fetchBusinessHours, saveBusinessHours } from './hours-requests'
 import { RoutingKeys } from './routing-keys'
@@ -104,9 +106,15 @@ export function useChannelChoices(
   storeId: string,
   enabled: boolean
 ): UseQueryResult<ChannelDirectoryEntryView[]> {
+  const label = usePluginLabel()
   return useQuery({
     queryKey: QueryKeys.channels.directory(storeId),
     queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal),
+    select: useCallback(
+      (entries: ChannelDirectoryEntryView[]) =>
+        entries.map(entry => ({ ...entry, pluginName: label(entry.pluginId, entry.pluginName) })),
+      [label]
+    ),
     enabled
   })
 }

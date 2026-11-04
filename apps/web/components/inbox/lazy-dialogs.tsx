@@ -5,6 +5,11 @@ import { ConversationPaneLoading } from './conversation-pane-loading'
 // The dialogs and panes of the inbox, loaded the first time one is rendered. The inbox has a script budget
 // (apps/web-e2e/lighthouse/budgets.ts) and none of these is on screen when the page loads. Render
 // each one only once it is wanted (useMountedOnce), or it is downloaded with the page anyway.
+// The bar over the list exists only while rows are ticked
+export const BulkBar = dynamic(() => import('./bulk-bar').then(module => module.BulkBar), {
+  ssr: false
+})
+
 export const BulkPickDialog = dynamic(
   () => import('./bulk-pick-dialog').then(module => module.BulkPickDialog),
   { ssr: false }

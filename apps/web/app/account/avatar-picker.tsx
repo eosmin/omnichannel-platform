@@ -5,6 +5,8 @@ import { useTranslations } from 'next-intl'
 import { type ChangeEvent, type ReactElement, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { ApiError } from '@platform/api-client'
+import { ErrorCodes } from '@platform/core/errors'
 import { AvatarUpload, MediaPurpose } from '@platform/core/storage'
 
 import { MutationError } from '../../components/customers/mutation-error'
@@ -49,6 +51,9 @@ export function AvatarPicker({ name, avatarMediaId, avatarUrl }: AvatarPickerPro
   }, [avatarUrl])
   const processing = avatarMediaId !== null && avatarUrl === null
   const refused = expecting && avatarMediaId === null && !upload.isPending
+  // The api bounds the pictures one person holds at once: waiting is the answer, not retrying
+  const isTooMany =
+    upload.error instanceof ApiError && upload.error.code === ErrorCodes.RATE_LIMIT_EXCEEDED
 
   const choose = (event: ChangeEvent<HTMLInputElement>): void => {
     const file = event.target.files?.[0]
@@ -136,7 +141,14 @@ export function AvatarPicker({ name, avatarMediaId, avatarUrl }: AvatarPickerPro
             {refusal}
           </p>
         )}
-        <MutationError error={upload.error ?? remove.error} />
+        {isTooMany ? (
+          <p role="alert" className="text-destructive text-sm">
+            {t('tooMany')}
+          </p>
+        ) : (
+          <MutationError error={upload.error} />
+        )}
+        <MutationError error={remove.error} />
       </div>
     </div>
   )

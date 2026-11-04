@@ -17,7 +17,7 @@
       "channels": {
         "inApp": "En la app",
         "push": "Push",
-        "email": "Email",
+        "email": "Correo",
         "sound": "Sonido"
       },
       "groups": {
@@ -34,7 +34,7 @@
           "assigned": "Asignada a mí",
           "mentioned": "Mencionado en una nota",
           "unassigned_queue": "Nueva conversación sin asignar",
-          "snooze_expired": "Pausa terminada",
+          "snooze_expired": "Fin de la posposición",
           "reopened": "Reabierta"
         },
         "message": {
@@ -50,7 +50,7 @@
           "price_overridden": "Precio modificado"
         },
         "inventory": {
-          "low": "Stock bajo"
+          "low": "Existencias bajas"
         },
         "transfer": {
           "dispatched": "Transferencia despachada"
@@ -108,7 +108,8 @@
         "label": "Enviar notificaciones push a este navegador",
         "hint": "La columna Push de arriba elige cuáles notificaciones lo usan.",
         "blocked": "Este navegador bloqueó las notificaciones. Permítelas en la configuración del sitio para activar el push.",
-        "unsupported": "Este navegador no puede recibir notificaciones push."
+        "unsupported": "Este navegador no puede recibir notificaciones push.",
+        "notConfigured": "Las notificaciones push no están configuradas en este entorno."
       },
       "quietHours": {
         "title": "Horas de silencio",
@@ -121,7 +122,7 @@
       },
       "digest": {
         "title": "Resumen por correo",
-        "hint": "Cada cuánto se envían los correos de la columna Email.",
+        "hint": "Cada cuánto se envían los correos de la columna Correo.",
         "options": {
           "immediate": "Inmediato",
           "hourly": "Cada hora",
@@ -151,7 +152,8 @@
         "removed": "Foto quitada.",
         "processing": "Preparando tu foto...",
         "refused": "No se pudo usar esta foto. Prueba con otra.",
-        "hint": "JPEG, PNG o WebP, hasta {size} MB. Se reduce a un cuadrado pequeño y se le quitan los metadatos."
+        "hint": "JPEG, PNG o WebP, hasta {size} MB. Se reduce a un cuadrado pequeño y se le quitan los metadatos.",
+        "tooMany": "Ya tienes varias fotos en proceso. Espera a que terminen e inténtalo de nuevo."
       }
     },
     "preferences": {
@@ -236,7 +238,7 @@
       "media": "Archivos",
       "title": "Perfil del cliente",
       "description": "Las identidades, cifras, etiquetas, direcciones y actividad del cliente.",
-      "unnamed": "Cliente sin nombre",
+      "unnamed": "Visitante",
       "caution": "Marcado con precaución.",
       "identities": "Identidades",
       "noIdentities": "Aún no hay un canal vinculado.",
@@ -254,7 +256,8 @@
       "noAddresses": "No hay direcciones guardadas.",
       "defaultAddress": "Predeterminada",
       "failed": "No se pudo cargar el perfil.",
-      "noAccess": "No tienes acceso a los perfiles de clientes."
+      "noAccess": "No tienes acceso a los perfiles de clientes.",
+      "anonymous": "Visitante ····{digits}"
     },
     "panel": {
       "title": "Cliente",
@@ -272,18 +275,18 @@
       "openConversation": "Abrir la conversación",
       "note": "Nota",
       "noteBy": "Nota de {name}",
-      "merged": "Combinado con otro cliente",
-      "unmerged": "Combinación deshecha",
+      "merged": "Fusionado con otro cliente",
+      "unmerged": "Fusión deshecha",
       "mergedBy": "Por {name}",
       "empty": "Aún no hay actividad.",
       "failed": "No se pudo cargar la actividad.",
       "loadMore": "Cargar más",
       "deleteNote": "Eliminar la nota",
-      "undoMerge": "Deshacer la combinación",
+      "undoMerge": "Deshacer la fusión",
       "undoUntil": "Se puede deshacer hasta el {date}",
-      "undoTitle": "¿Deshacer la combinación?",
-      "undoDescription": "El otro cliente vuelve con sus conversaciones, notas, direcciones, etiquetas y canales, como estaban antes de combinarlos.",
-      "undoConfirm": "Deshacer la combinación"
+      "undoTitle": "¿Deshacer la fusión?",
+      "undoDescription": "El otro cliente vuelve con sus conversaciones, notas, direcciones, etiquetas y canales, como estaban antes de fusionarlos.",
+      "undoConfirm": "Deshacer la fusión"
     },
     "edit": {
       "editProfile": "Editar los datos de contacto",
@@ -326,7 +329,7 @@
       "export": "Exportar CSV",
       "exportQueued": "El archivo de clientes se está preparando. Estará listo en las exportaciones.",
       "viewExports": "Ver exportaciones",
-      "unnamed": "Cliente sin nombre",
+      "unnamed": "Visitante",
       "caution": "Precaución",
       "failed": "No se pudieron cargar los clientes.",
       "empty": "Aún no hay clientes.",
@@ -347,22 +350,22 @@
       "link": "Vincular",
       "unlink": "Desvincular {handle} en {channel}",
       "taken": "Este dato ya pertenece a otro cliente.",
-      "mergeInstead": "Combinar en su lugar"
+      "mergeInstead": "Fusionar en su lugar"
     },
     "merge": {
-      "title": "Combinar con otro cliente",
+      "title": "Fusionar con otro cliente",
       "moreActions": "Más acciones",
-      "open": "Combinar con otro cliente",
+      "open": "Fusionar con otro cliente",
       "steps": {
         "pick": "Paso 1 de 3. Busca el duplicado: este cliente se queda y el que elijas se une a él.",
-        "review": "Paso 2 de 3. Revisa lo que da la combinación y elige los datos que se conservan.",
-        "confirm": "Paso 3 de 3. Confirma la combinación."
+        "review": "Paso 2 de 3. Revisa lo que da la fusión y elige los datos que se conservan.",
+        "confirm": "Paso 3 de 3. Confirma la fusión."
       },
       "searchLabel": "Buscar el duplicado",
       "searchPlaceholder": "Buscar por nombre, correo o teléfono",
       "searchFailed": "No se pudieron cargar los clientes.",
       "noMatches": "Ningún cliente coincide con la búsqueda.",
-      "unnamed": "Cliente sin nombre",
+      "unnamed": "Visitante",
       "summary": "{absorbed} se unirá a {survivor}.",
       "counts": {
         "conversations": "Conversaciones",
@@ -381,10 +384,11 @@
       },
       "back": "Atrás",
       "continue": "Continuar",
-      "confirmWord": "COMBINAR",
-      "confirmIntro": "{name} se combinará con este cliente. Puedes deshacerlo desde la actividad durante 30 días.",
+      "confirmWord": "FUSIONAR",
+      "confirmIntro": "{name} se fusionará con este cliente. Puedes deshacerlo desde la actividad durante 30 días.",
       "confirmLabel": "Escribe {word} para confirmar",
-      "confirm": "Combinar los clientes"
+      "confirm": "Fusionar los clientes",
+      "searchHint": "Escribe un nombre, correo o teléfono para buscar el duplicado."
     }
   },
   "email": {
@@ -475,7 +479,7 @@
     "ORDER_PRICE_REASON_REQUIRED": "Indica por qué cambias el precio",
     "ORDER_PRICE_SELF_APPROVAL": "No puedes aprobar tu propio cambio de precio",
     "ORDER_STATUS_DRIVEN_BY_SHIPMENT": "El envío decide el estado de este pedido",
-    "PERMISSION_DENIED": "No tienes permiso para esto",
+    "PERMISSION_DENIED": "No tienes permiso para esto. Pide a un administrador que te lo dé.",
     "PICKUP_CUTOFF_PASSED": "Ya pasó la hora límite de recolección",
     "PLUGIN_ALREADY_INSTALLED": "El plugin ya está instalado",
     "PLUGIN_ALREADY_REGISTERED": "El plugin ya está registrado",
@@ -491,7 +495,7 @@
     "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",
     "REMITTANCE_IMPORT_INVALID": "El archivo de la remesa no es válido",
     "REMITTANCE_INVALID_STATUS_TRANSITION": "La remesa no puede pasar a ese estado",
-    "RESOURCE_ALREADY_EXISTS": "Eso ya existe",
+    "RESOURCE_ALREADY_EXISTS": "Ya hay un elemento con ese nombre.",
     "RESOURCE_CONFLICT": "Alguien lo cambió al mismo tiempo. Recarga e inténtalo de nuevo",
     "RESOURCE_NOT_FOUND": "No existe o no puedes abrirlo",
     "RETURN_INVALID_STATUS_TRANSITION": "La devolución no puede pasar a ese estado",
@@ -513,7 +517,7 @@
     "TENANT_CANNOT_REMOVE_LAST_ADMIN": "La tienda necesita al menos un administrador",
     "TENANT_HEADER_MISSING": "Elige una tienda primero",
     "TENANT_INVITATION_EMAIL_MISMATCH": "La invitación es para otro correo",
-    "TENANT_INVITATION_EXPIRED": "La invitación caducó",
+    "TENANT_INVITATION_EXPIRED": "La invitación caducó. Pídele a quien te invitó que te envíe una nueva.",
     "TENANT_INVITATION_INVALID": "La invitación no es válida",
     "TENANT_MEMBER_ALREADY_EXISTS": "Esa persona ya está en el equipo",
     "TENANT_INVITEE_SUSPENDED": "Esa persona está suspendida en esta tienda. Reactívala en lugar de invitarla",
@@ -523,8 +527,8 @@
     "VALIDATION_INVALID_INPUT": "Revisa lo que escribiste",
     "VALIDATION_URL_NOT_ALLOWED": "Esa dirección no está permitida",
     "PAYLOAD_TOO_LARGE": "La solicitud es demasiado grande",
-    "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el widget",
-    "WIDGET_TOKEN_INVALID": "La sesión del widget no es válida"
+    "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el Widget web",
+    "WIDGET_TOKEN_INVALID": "La sesión del Widget web no es válida"
   },
   "invitation": {
     "title": "Te invitaron",
@@ -537,7 +541,8 @@
     "loginRequired": "Ya existe una cuenta para {email}. Inicia sesión con ese correo y abre este enlace de nuevo.",
     "goToLogin": "Iniciar sesión",
     "mismatchTitle": "Esta invitación es para otro correo",
-    "mismatchBody": "Iniciaste sesión como {current} y la invitación es para {invited}. Cierra la sesión y abre el enlace de nuevo."
+    "mismatchBody": "Iniciaste sesión como {current} y la invitación es para {invited}. Cierra la sesión y abre el enlace de nuevo.",
+    "unavailableTitle": "Esta invitación no está disponible"
   },
   "login": {
     "title": "Iniciar sesión",
@@ -552,7 +557,8 @@
   "loginVerify": {
     "verifying": "Iniciando tu sesión",
     "failedTitle": "Este enlace no funcionó",
-    "requestNew": "Pedir un enlace nuevo"
+    "requestNew": "Pedir un enlace nuevo",
+    "expired": "Tu enlace caducó. Pide uno nuevo."
   },
   "noAccess": {
     "title": "No tienes acceso",
@@ -884,7 +890,6 @@
     "tagsLabel": "Etiquetas",
     "withCount": "{label} ({count})",
     "clearFilters": "Quitar filtros",
-    "customerOnChannel": "Cliente de {channel} ····{digits}",
     "youPrefix": "Tú: {text}",
     "notePrefix": "Nota: {text}",
     "noMessages": "Aún no hay mensajes",
@@ -971,9 +976,9 @@
         "sent": "Enviado",
         "delivered": "Entregado",
         "read": "Leído",
-        "failed": "No entregado"
+        "failed": "No se entregó"
       },
-      "failedWithReason": "No entregado: {reason}",
+      "failedWithReason": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
       "mediaLabel": {
         "IMAGE": "Imagen",
         "VIDEO": "Video",
@@ -1066,7 +1071,7 @@
         "unmarked_spam": "{actorKind, select, user {{actor} quitó la marca de spam} other {Se quitó la marca de spam automáticamente}}",
         "snoozed": "{actorKind, select, user {Pospuesta por {actor}} other {Pospuesta automáticamente}}",
         "snoozedUntil": "hasta {until}",
-        "woken": "{actorKind, select, user {Reactivada por {actor}} other {Reactivada automáticamente}}",
+        "woken": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta automáticamente}}",
         "assigned": "{actorKind, select, user {{actor} la asignó a {assignee}} other {Asignada a {assignee}}}",
         "unassigned": "{actorKind, select, user {{actor} la dejó sin asignar} other {Quedó sin asignar}}",
         "unknown": "La conversación cambió",
@@ -1075,7 +1080,7 @@
           "snooze_expired": "terminó la pausa",
           "auto_archived": "estuvo inactiva",
           "customer_replied": "el cliente respondió",
-          "agent_replied": "un agente respondió"
+          "agent_replied": "se envió un mensaje"
         }
       },
       "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores",
@@ -1134,7 +1139,8 @@
         "checking": "Revisando {name}",
         "ready": "{name} está listo para enviar",
         "captionHint": "El texto que escribas se envía junto con el archivo",
-        "failed": "No se adjuntó {name}"
+        "failed": "No se adjuntó {name}",
+        "unsupported": "Este canal no admite audios ni videos."
       },
       "window": {
         "closing": "La ventana de mensajería se cierra en {hours} h {minutes} min",
@@ -1168,7 +1174,7 @@
           "snippet": "Insertar una respuesta guardada",
           "assign": "Asignar la conversación",
           "snooze": "Ocultarla hasta más tarde",
-          "resolve": "Marcarla como resuelta"
+          "resolve": "Resolver la conversación"
         },
         "label": {
           "commands": "Comandos",
@@ -1202,7 +1208,7 @@
       "sendClosing": "Enviar un mensaje de cierre",
       "windowClosed": "La ventana de mensajes expiró, así que no se puede enviar un mensaje de cierre.",
       "noSnippets": "No hay respuestas guardadas para enviar.",
-      "manageSnippets": "Crear respuestas guardadas",
+      "manageSnippets": "Crea una en Ajustes > Respuestas guardadas",
       "snippet": "Respuesta guardada",
       "reason": "Motivo (opcional)",
       "confirm": "Resolver",
@@ -1340,18 +1346,18 @@
           "TOGGLE_SELECTION": "Seleccionar o quitar",
           "SELECT_ALL_VISIBLE": "Seleccionar todas las cargadas",
           "ASSIGN_TO_ME": "Asignármela",
-          "MARK_RESOLVED": "Marcar como resuelta",
+          "MARK_RESOLVED": "Resolver la conversación",
           "SHOW_HELP": "Mostrar esta ayuda"
         },
         "conversation": {
-          "CLOSE": "Cerrar la conversación",
+          "CLOSE": "Cerrar el panel",
           "FOCUS_REPLY": "Escribir una respuesta",
           "INTERNAL_NOTE": "Escribir una nota interna",
           "ASSIGN_TO_ME": "Asignármela",
           "ASSIGN_TO_OTHER": "Asignar a otra persona",
           "ADD_TAG": "Agregar una etiqueta",
           "MARK_PENDING": "Marcar como pendiente",
-          "MARK_RESOLVED": "Marcar como resuelta",
+          "MARK_RESOLVED": "Resolver la conversación",
           "SNOOZE": "Posponer",
           "OPEN_CUSTOMER": "Abrir el perfil del cliente"
         },
@@ -1364,7 +1370,7 @@
     },
     "sidebar": {
       "label": "Cliente, equipo y cola",
-      "add": "Añadir {widget}",
+      "add": "Agregar {widget}",
       "hide": "Ocultar {widget}",
       "moveUp": "Subir {widget}",
       "moveDown": "Bajar {widget}",
@@ -1397,12 +1403,14 @@
         "findCustomer": "Buscar cliente",
         "none": "No hay acciones disponibles."
       }
-    }
+    },
+    "anonymousCustomer": "Visitante ····{digits}",
+    "unnamedCustomer": "Cliente ····{digits}"
   },
   "exports": {
     "title": "Exportaciones",
     "intro": "Los archivos que pediste. Cada uno se guarda 7 días.",
-    "noAccess": "Tu rol no puede ver exportaciones.",
+    "noAccess": "Tu rol no puede ver exportaciones. Pide a un administrador que te dé el permiso.",
     "failed": "No se pudieron cargar las exportaciones.",
     "empty": "Todavía no pediste ninguna exportación.",
     "noMatch": "Ninguna exportación coincide con estos filtros.",
@@ -1500,9 +1508,9 @@
       },
       "health": {
         "never": "Todavía no se ha comprobado.",
-        "lastHealthy": "Último funcionamiento: {date}",
+        "lastHealthy": "Última vez que funcionó: {date}",
         "errors": {
-          "check_failed": "No se pudo completar la última comprobación.",
+          "check_failed": "No se pudo completar la última comprobación. Revisa las credenciales o vuelve a probar.",
           "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
           "unspecified": "El canal informó de un problema sin decir cuál."
         }
@@ -1514,7 +1522,7 @@
         "action": "Probar conexión",
         "running": "Probando",
         "healthy": "La conexión funciona.",
-        "unhealthy": "La conexión no funciona."
+        "unhealthy": "La conexión no funciona. Revisa las credenciales del canal o conéctalo de nuevo."
       },
       "disconnect": {
         "action": "Desconectar",
@@ -1540,7 +1548,7 @@
         "connected": "{name} está conectado."
       },
       "widget": {
-        "toggle": "Configuración del chat web",
+        "toggle": "Configuración del widget web",
         "snippet": {
           "title": "Código para insertar",
           "hint": "Pégalo antes de la etiqueta de cierre del body en cada página donde debe aparecer el chat."
@@ -1621,9 +1629,10 @@
       "description": "El nombre de tu organización.",
       "readOnly": "Puedes ver la organización, pero no cambiarla.",
       "name": "Nombre de la organización",
-      "slug": "Nombre en la dirección",
+      "slug": "Identificador en la URL",
       "nameInvalid": "Escribe un nombre de hasta 100 caracteres.",
-      "saved": "Organización guardada."
+      "saved": "Organización guardada.",
+      "slugHint": "Letras minúsculas, números y guiones. No se puede cambiar."
     },
     "plugins": {
       "title": "Plugins",
@@ -1761,7 +1770,7 @@
           "manage_webhooks": "Gestionar webhooks",
           "manage_api_keys": "Gestionar claves de API",
           "manage_retention": "Gestionar la retención de datos",
-          "manage_routing": "Gestionar el enrutamiento",
+          "manage_routing": "Gestionar la asignación",
           "manage_carriers": "Gestionar transportistas",
           "manage_order_templates": "Gestionar plantillas de pedidos",
           "manage_preferences": "Gestionar preferencias"
@@ -1903,6 +1912,12 @@
           "rolePlaceholder": "Elige un rol",
           "noRole": "No hay ningún rol disponible para ti: todos tienen permisos que tú no tienes."
         }
+      },
+      "roleNames": {
+        "Admin": "Administrador",
+        "Supervisor": "Supervisor",
+        "Agent": "Agente",
+        "Viewer": "Solo lectura"
       }
     },
     "routing": {
@@ -2037,7 +2052,7 @@
     },
     "tags": {
       "title": "Etiquetas",
-      "description": "Etiquetas para clientes y conversaciones. Sirven para filtrar la bandeja y en las reglas de enrutamiento.",
+      "description": "Etiquetas para clientes y conversaciones. Sirven para filtrar la bandeja y en las reglas de asignación.",
       "create": "Nueva etiqueta",
       "edit": "Editar",
       "listLabel": "Etiquetas",
@@ -2051,7 +2066,7 @@
         "description": "Se quita de todos los clientes y conversaciones que la tienen. No se puede deshacer.",
         "confirm": "Eliminar etiqueta",
         "done": "Etiqueta {name} eliminada",
-        "inUse": "Una regla de enrutamiento usa esta etiqueta. Cambia la regla primero."
+        "inUse": "Una regla de asignación usa esta etiqueta. Cambia la regla primero."
       },
       "dialog": {
         "createTitle": "Nueva etiqueta",
@@ -2071,7 +2086,8 @@
           "nameInvalid": "El nombre tiene un carácter que no se puede usar.",
           "colorInvalid": "Elige un color.",
           "descriptionTooLong": "La descripción es demasiado larga (255 caracteres como máximo).",
-          "descriptionInvalid": "La descripción tiene un carácter que no se puede usar."
+          "descriptionInvalid": "La descripción tiene un carácter que no se puede usar.",
+          "nameTaken": "Ya hay una etiqueta con ese nombre."
         }
       }
     },
@@ -2128,7 +2144,7 @@
       "saving": "Guardando…",
       "saved": "Comportamiento de la bandeja guardado",
       "resolve": {
-        "legend": "Al marcar una conversación como resuelta",
+        "legend": "Al resolver una conversación",
         "showOptions": "Mostrar opciones",
         "showOptionsHint": "Preguntar por el mensaje de cierre y el motivo antes de resolver.",
         "immediately": "Resolver de inmediato",
@@ -2178,6 +2194,27 @@
     "permissionDenied": {
       "title": "No tienes acceso a esto",
       "body": "Pide a un administrador que te dé el permiso necesario."
+    }
+  },
+  "permissionDenied": {
+    "named": "No tienes el permiso «{permission}» para esto. Pide a un administrador que te lo dé."
+  },
+  "validation": {
+    "check": "Revisa {field}.",
+    "checkLine": "Revisa {field} de la línea {line}.",
+    "fields": {
+      "name": "el nombre",
+      "email": "el correo",
+      "phone": "el teléfono",
+      "siteOrigins": "el sitio",
+      "description": "la descripción",
+      "color": "el color",
+      "title": "el título",
+      "content": "el contenido",
+      "shortcut": "el atajo",
+      "timezone": "la zona horaria",
+      "currency": "la moneda",
+      "locale": "el idioma"
     }
   }
 }

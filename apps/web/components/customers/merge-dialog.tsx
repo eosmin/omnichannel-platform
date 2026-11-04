@@ -124,6 +124,9 @@ function PickStep({
         value={text}
         onChange={event => setText(event.target.value)}
       />
+      {text.trim() === '' ? (
+        <p className="text-muted-foreground text-sm">{t('searchHint')}</p>
+      ) : null}
       {customers.isPending ? (
         <p role="status" className="text-muted-foreground text-sm">
           {tAll('common.loading')}

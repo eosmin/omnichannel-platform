@@ -8,11 +8,11 @@ import { QueryKeys, sendTemplate } from '@platform/api-client'
 import { MessageType, TemplateStatuses } from '@platform/core/domain'
 
 import { apiClient } from '../../lib/api'
-import { errorCodeOf } from '../../lib/error-message'
 import { fillTemplate, variableCountOf } from '../../lib/inbox/template-variables'
 import { useChannelTemplates } from '../../lib/inbox/use-inbox-data'
 import { ConnectionStatuses } from '../../lib/realtime/connection-status'
 import { useConnectionStatus } from '../../lib/realtime/use-connection-status'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -69,6 +69,7 @@ function TemplateForm({
   connectionId
 }: TemplateDialogProps & { onSendingChange: (isSending: boolean) => void }): ReactElement {
   const t = useTranslations('inbox.composer.template')
+  const errorText = useErrorText()
   const tAll = useTranslations()
   const { storeId } = useStore()
   const queryClient = useQueryClient()
@@ -136,7 +137,7 @@ function TemplateForm({
     return (
       <div className="flex flex-col gap-3">
         <p role="alert" className="text-destructive text-sm">
-          {tAll(`errors.${errorCodeOf(templates.error)}`)}
+          {errorText(templates.error)}
         </p>
         <Button type="button" variant="outline" size="sm" onClick={() => void templates.refetch()}>
           {tAll('common.tryAgain')}
@@ -218,7 +219,7 @@ function TemplateForm({
       ) : null}
       {send.isError ? (
         <p role="alert" className="text-destructive text-sm">
-          {tAll(`errors.${errorCodeOf(send.error)}`)}
+          {errorText(send.error)}
         </p>
       ) : null}
 

@@ -4,9 +4,10 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import { toast } from 'sonner'
 
+import { ApiError } from '@platform/api-client'
 import { SettingsLimits } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 
-import { errorCodeOf } from '../../lib/error-message'
 import {
   emptyTagDraft,
   type TagDraft,
@@ -17,6 +18,7 @@ import {
 } from '../../lib/settings/content-form'
 import type { StoreTagView } from '../../lib/settings/tags-requests'
 import { useCreateTag, useUpdateTag } from '../../lib/settings/use-content'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -40,7 +42,7 @@ export function TagDialog({
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.tags.dialog')
-  const tErrors = useTranslations('errors')
+  const errorText = useErrorText()
   const tCommon = useTranslations('common')
   const { storeId } = useStore()
   const create = useCreateTag(storeId)
@@ -127,7 +129,9 @@ export function TagDialog({
           ) : null}
           {failure === null ? null : (
             <p role="alert" className="text-destructive text-sm">
-              {tErrors(errorCodeOf(failure))}
+              {failure instanceof ApiError && failure.code === ErrorCodes.RESOURCE_ALREADY_EXISTS
+                ? t('problems.nameTaken')
+                : errorText(failure)}
             </p>
           )}
           <DialogFooter>
