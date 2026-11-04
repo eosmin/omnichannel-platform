@@ -15,9 +15,12 @@ import {
 } from '@platform/core/domain'
 import { enumValueOf } from '@platform/core/messaging'
 import type { SendOutboundTypingJob } from '@platform/core/queues'
+import { readStorePreferences } from '@platform/core/store-preferences'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
+import { providerCodesOf } from './provider-codes'
 import { refusalOf } from './send-refusal'
+import { lastInboundOf, lastInboundQuery } from './typing-inbound'
 
 // The worker half of "an agent is typing": asks the plugin of the channel to show it to the customer.
 // It stores nothing and is never repeated, so a failure is only logged. The memory of the newest job of
@@ -56,7 +59,12 @@ export class TypingSender {
       // database or of the plugin is only logged. The message of an error may hold a token: only its
       // name is.
       this.logger.debug(
-        { conversationId, code: refusalOf(error).code, errorName: errorName(error) },
+        {
+          conversationId,
+          code: refusalOf(error).code,
+          errorName: errorName(error),
+          ...providerCodesOf(error)
+        },
         'sending a typing indicator failed'
       )
     }
@@ -90,13 +98,29 @@ export class TypingSender {
     // A plugin that does not declare TYPING_INDICATOR has no sendTypingIndicator: nobody to tell
     const plugin = this.registry.find(connection.pluginId)
     if (plugin?.sendTypingIndicator === undefined) return
+    // Only a start has a message to answer. The read comes after the check of the plugin, so a channel
+    // that needs none costs no query; the switch of the store decides whether the indicator may mark
+    // the message as read (WhatsApp shows it through the read receipt).
+    const lastInbound = active ? await this.lastInbound(storeId, conversationId) : undefined
     await withTimeout(
       plugin.sendTypingIndicator(this.contexts.contextFor(connection), {
         channelIdentity: customerIdentity.channelIdentity,
-        active
+        active,
+        ...(lastInbound === undefined ? {} : { lastInbound })
       }),
       OutboundLimits.SEND_TIMEOUT_MS
     )
+  }
+
+  private async lastInbound(storeId: string, conversationId: string) {
+    const [row, settings] = await Promise.all([
+      this.prisma.client.message.findFirst(lastInboundQuery(storeId, conversationId)),
+      this.prisma.client.storeSettings.findUnique({
+        where: { storeId },
+        select: { preferences: true }
+      })
+    ])
+    return lastInboundOf(row, readStorePreferences(settings?.preferences ?? {}).sendReadReceipts)
   }
 
   // `seenAt` is the clock of this process, so insertion order is time order and the old ones are in front

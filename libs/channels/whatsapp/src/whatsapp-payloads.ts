@@ -225,6 +225,16 @@ export function readReceiptPayload(externalId: string): object {
   }
 }
 
+// Meta shows "typing" through the receipt of the last message of the customer: the same call that marks
+// it as read carries `typing_indicator`. It ends when the agent answers or after about 25 seconds.
+// https://developers.facebook.com/documentation/business-messaging/whatsapp/typing-indicators
+export function typingIndicatorPayload(externalId: string): object {
+  return {
+    ...readReceiptPayload(externalId),
+    typing_indicator: { type: WhatsAppApi.TYPING_INDICATOR_TYPE }
+  }
+}
+
 // An empty emoji takes the reaction back
 export function reactionPayload(params: SendReactionParams): object {
   const { targetExternalId, emoji } = params
