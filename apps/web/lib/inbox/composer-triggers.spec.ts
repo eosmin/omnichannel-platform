@@ -6,6 +6,7 @@ import {
   matchMembers,
   matchSnippets,
   mentionedIds,
+  mentionedPeople,
   mentionQuery,
   slashQuery,
   typedCommand,
@@ -110,6 +111,17 @@ describe('typedCommand', () => {
 
   it.each(['hello', '/unknown x', 'a /assign', ''])('is none for %p', draft => {
     expect(typedCommand(draft)).toBeUndefined()
+  })
+})
+
+describe('mentionedPeople', () => {
+  it('gives the people still named, with their names', () => {
+    const picked = [
+      { id: 'u1', name: 'Ana' },
+      { id: 'u2', name: 'Luis' }
+    ]
+
+    expect(mentionedPeople('ping @Ana', picked)).toEqual([{ id: 'u1', name: 'Ana' }])
   })
 })
 

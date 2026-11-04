@@ -236,6 +236,65 @@ test.describe.serial('the inbox list', () => {
     await expect.poll(() => focusedRow(page)).toBe(conversationId)
   })
 
+  test('the reply box keeps its draft: Escape does not leave, a reload brings it back, sending clears it', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const box = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+    await box.fill('Still writing this')
+
+    // With text, Escape leaves the box and stays in the conversation
+    await page.keyboard.press('Escape')
+    await expect(box).not.toBeFocused()
+    await expect(page).toHaveURL(new RegExp(`/inbox/${conversationId}`))
+    await expect(box).toHaveValue('Still writing this')
+
+    await page.reload()
+    await expect(page.getByRole('textbox', { name: en.inbox.composer.replyLabel })).toHaveValue(
+      'Still writing this'
+    )
+
+    // Sending empties the box and lets go of the keyboard, so the next key is a shortcut
+    const reloaded = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+    await reloaded.focus()
+    await page.keyboard.press('Enter')
+    await expect(reloaded).toHaveValue('')
+    await expect(reloaded).not.toBeFocused()
+    await page.reload()
+    await expect(page.getByRole('textbox', { name: en.inbox.composer.replyLabel })).toHaveValue('')
+  })
+
+  test('a shortcut works right after Escape closes a dialog', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    // Only the open one: the closed dialog stays in the page while it animates out
+    const snooze = page
+      .getByRole('dialog', { name: en.inbox.snooze.title })
+      .and(page.locator('[data-state="open"]'))
+
+    await page.keyboard.press('s')
+    await expect(snooze).toBeVisible()
+    await page.keyboard.press('Escape')
+    // No wait for the animation
+    await page.keyboard.press('s')
+    await expect(snooze).toBeVisible()
+  })
+
+  test('the browser Back closes an open dialog on the same page', async () => {
+    await page.goto(AppPaths.store.inbox(storeId))
+    await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
+    // A history entry of the same page, so Back does not unmount it: only the dialog can react
+    await page.evaluate(() => window.history.pushState(null, '', `${window.location.href}#back`))
+    await page.keyboard.press('?')
+    const sheet = page
+      .getByRole('dialog', { name: en.inbox.shortcuts.title })
+      .and(page.locator('[data-state="open"]'))
+    await expect(sheet).toBeVisible()
+
+    await page.goBack()
+    await expect(sheet).toBeHidden()
+  })
+
   test('shortcuts: e on a focused row asks the questions of the store before resolving', async () => {
     const conversationId = await newConversationIn(storeId)
     await page.goto(AppPaths.store.inbox(storeId))

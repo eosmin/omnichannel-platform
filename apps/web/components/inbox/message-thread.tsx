@@ -275,7 +275,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
         {items.length === 0 && waiting.length === 0 ? (
           <InboxState icon={MessageSquare} title={t('empty.title')} body={t('empty.body')} />
         ) : (
-          <ol aria-label={t('label')} className="flex flex-col p-3">
+          <ol aria-label={t('label')} className="compact:p-2 flex flex-col p-3">
             {items.map(item =>
               item.kind === 'day' ? (
                 <li
@@ -287,7 +287,10 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                   </time>
                 </li>
               ) : (
-                <li key={item.message.id} className={item.showAuthor ? 'mt-3' : 'mt-1'}>
+                <li
+                  key={item.message.id}
+                  className={item.showAuthor ? 'compact:mt-1.5 mt-3' : 'compact:mt-0.5 mt-1'}
+                >
                   <MessageBubble
                     message={item.message}
                     showAuthor={item.showAuthor}

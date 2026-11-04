@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
 import { ConversationLimits, ResolveUndo, SLASH_PREFIX } from '@platform/core/domain'
 
@@ -117,6 +119,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
               defaults={settings}
               canSendClosing={canSendClosing}
               onDone={() => setDialogOpen(false)}
+              onCancel={() => setDialogOpen(false)}
             />
           ) : null}
         </DialogContent>
@@ -129,16 +132,18 @@ function ResolveForm({
   conversationId,
   defaults,
   canSendClosing,
-  onDone
+  onDone,
+  onCancel
 }: {
   conversationId: string
   defaults: { sendClosingMessage: boolean; closingSnippetId: string | null }
   canSendClosing: boolean
   onDone: () => void
+  onCancel: () => void
 }): ReactElement {
   const t = useTranslations('inbox.resolve')
   const tAll = useTranslations()
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
   const snippets = useSnippets(storeId, true)
   const { resolve } = useConversationActions(storeId, conversationId)
   const { offer: offerPush } = usePushOffer(storeId)
@@ -197,7 +202,17 @@ function ResolveForm({
               {tAll('common.loading')}
             </p>
           ) : list.length === 0 ? (
-            <p className="text-muted-foreground text-sm">{t('noSnippets')}</p>
+            <div className="flex flex-col items-start gap-1">
+              <p className="text-muted-foreground text-sm">{t('noSnippets')}</p>
+              {can(Permissions.SETTINGS_VIEW) ? (
+                <Link
+                  href={AppPaths.store.settings(storeId, StoreSettingsSections.SNIPPETS)}
+                  className="text-sm underline underline-offset-2"
+                >
+                  {t('manageSnippets')}
+                </Link>
+              ) : null}
+            </div>
           ) : (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="resolve-snippet">{t('snippet')}</Label>
@@ -236,6 +251,9 @@ function ResolveForm({
         </p>
       ) : null}
       <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={resolve.isPending}>
+          {tAll('common.cancel')}
+        </Button>
         <Button type="submit" disabled={resolve.isPending || isMissingClosing}>
           {resolve.isPending ? t('resolving') : t('confirm')}
         </Button>

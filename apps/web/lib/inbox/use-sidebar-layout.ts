@@ -2,22 +2,25 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
-import { StorageKeys } from '@platform/api-client'
+import { useStore } from '../../components/providers/store-context'
+import { useProfile } from '../use-profile'
 
 import {
+  DEFAULT_SIDEBAR_LAYOUT,
   moveWidget,
   parseSidebarLayout,
   setWidgetHidden,
+  sidebarLayoutKey,
   type SidebarLayout,
   type SidebarWidgetId
 } from './sidebar-widgets'
 
 const listeners = new Set<() => void>()
 
-function subscribe(listener: () => void): () => void {
+function subscribe(key: string | null, listener: () => void): () => void {
   listeners.add(listener)
   const onStorage = (event: StorageEvent): void => {
-    if (event.key === null || event.key === StorageKeys.SIDEBAR_WIDGETS) listener()
+    if (event.key === null || event.key === key) listener()
   }
   window.addEventListener('storage', onStorage)
   return () => {
@@ -26,9 +29,10 @@ function subscribe(listener: () => void): () => void {
   }
 }
 
-function readRaw(): string | null {
+function readRaw(key: string | null): string | null {
+  if (key === null) return null
   try {
-    return window.localStorage.getItem(StorageKeys.SIDEBAR_WIDGETS)
+    return window.localStorage.getItem(key)
   } catch {
     return null // Storage blocked: the default layout, not kept
   }
@@ -40,29 +44,45 @@ export interface SidebarLayoutControls {
   setHidden: (id: SidebarWidgetId, isHidden: boolean) => void
 }
 
-// The order and visibility of the widgets, kept per user in the browser and followed across tabs
+// The order and visibility of the widgets, kept per user and store in the browser and followed across
+// tabs. Until the person is known there is nothing to key by: the default layout, and no saving.
 export function useSidebarLayout(): SidebarLayoutControls {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => null)
-  const layout = useMemo(() => parseSidebarLayout(raw), [raw])
+  const { storeId } = useStore()
+  const userId = useProfile().data?.id
+  const key = userId === undefined ? null : sidebarLayoutKey(userId, storeId)
+  const subscribeToKey = useCallback((listener: () => void) => subscribe(key, listener), [key])
+  const raw = useSyncExternalStore(
+    subscribeToKey,
+    () => readRaw(key),
+    () => null
+  )
+  const layout = useMemo(
+    () => (key === null ? DEFAULT_SIDEBAR_LAYOUT : parseSidebarLayout(raw)),
+    [key, raw]
+  )
 
-  const save = useCallback((next: SidebarLayout): void => {
-    try {
-      window.localStorage.setItem(StorageKeys.SIDEBAR_WIDGETS, JSON.stringify(next))
-    } catch {
-      return // Storage full or blocked: the change is not kept
-    }
-    for (const listener of listeners) listener()
-  }, [])
+  const save = useCallback(
+    (next: SidebarLayout): void => {
+      if (key === null) return
+      try {
+        window.localStorage.setItem(key, JSON.stringify(next))
+      } catch {
+        return // Storage full or blocked: the change is not kept
+      }
+      for (const listener of listeners) listener()
+    },
+    [key]
+  )
 
   const move = useCallback(
     (id: SidebarWidgetId, direction: -1 | 1) =>
-      save(moveWidget(parseSidebarLayout(readRaw()), id, direction)),
-    [save]
+      save(moveWidget(parseSidebarLayout(readRaw(key)), id, direction)),
+    [save, key]
   )
   const setHidden = useCallback(
     (id: SidebarWidgetId, isHidden: boolean) =>
-      save(setWidgetHidden(parseSidebarLayout(readRaw()), id, isHidden)),
-    [save]
+      save(setWidgetHidden(parseSidebarLayout(readRaw(key)), id, isHidden)),
+    [save, key]
   )
   return { layout, move, setHidden }
 }

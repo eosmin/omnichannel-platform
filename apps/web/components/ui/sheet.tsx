@@ -1,9 +1,18 @@
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import type { ComponentProps, ReactElement } from 'react'
 
+import { useCloseOnBack } from '../../lib/use-close-on-back'
 import { cn } from '../../lib/utils'
 
-export const Sheet = DialogPrimitive.Root
+// Closes on the browser's Back, like `Dialog`
+export function Sheet({
+  open,
+  onOpenChange,
+  ...props
+}: ComponentProps<typeof DialogPrimitive.Root>): ReactElement {
+  useCloseOnBack(open === true, onOpenChange)
+  return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />
+}
 export const SheetTrigger = DialogPrimitive.Trigger
 export const SheetClose = DialogPrimitive.Close
 

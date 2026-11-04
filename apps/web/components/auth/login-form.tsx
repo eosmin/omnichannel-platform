@@ -1,13 +1,14 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import { requestMagicLink } from '@platform/api-client'
 import type { ErrorCode } from '@platform/core/errors'
 
 import { apiClient } from '../../lib/api'
 import { errorCodeOf } from '../../lib/error-message'
+import { clearComposerDrafts } from '../../lib/inbox/composer-drafts'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
@@ -18,6 +19,8 @@ export function LoginForm(): ReactElement {
   const t = useTranslations()
   const [email, setEmail] = useState('')
   const [step, setStep] = useState<Step>({ name: 'form', errorCode: null })
+  // Arriving here means no session: whatever was being written in this tab does not wait for the next person
+  useEffect(() => clearComposerDrafts(window.sessionStorage), [])
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()

@@ -16,10 +16,12 @@ import {
 } from '@platform/core/domain'
 
 import { errorCodeOf } from '../../lib/error-message'
+import { readDraft, writeDraft } from '../../lib/inbox/composer-drafts'
 import { composerMenu, type MenuEntry } from '../../lib/inbox/composer-menu'
 import {
   type Mention,
   mentionedIds,
+  mentionedPeople,
   typedCommand,
   withMentions
 } from '../../lib/inbox/composer-triggers'
@@ -135,6 +137,11 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const [draft, setDraft] = useState('')
   const textarea = useRef<HTMLTextAreaElement>(null)
   const [isTemplateOpen, setTemplateOpen] = useState(false)
+  const [isDraftLoaded, setDraftLoaded] = useState(false)
+  // Whether the agent has written in this box since it opened: a restored draft is not typing
+  const [hasTyped, setHasTyped] = useState(false)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
   const isTemplateMounted = useMountedOnce(isTemplateOpen)
   const [caret, setCaret] = useState(0)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -154,10 +161,41 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   useAgentTyping(
     conversationId,
     draft,
-    allowedMode(chosenMode, mayReply, mayNote) === MessageType.TEXT &&
+    hasTyped &&
+      allowedMode(chosenMode, mayReply, mayNote) === MessageType.TEXT &&
       typedCommand(draft.trim()) === undefined &&
       windowState.kind !== 'closed'
   )
+
+  // The unsent text comes back when the agent returns to the conversation (the pane is rebuilt for each
+  // one). It waits for the person's id: a draft belongs to who wrote it. Text typed before it arrives wins.
+  const userId = profile.data?.id
+  useEffect(() => {
+    if (userId === undefined || isDraftLoaded) return
+    setDraftLoaded(true)
+    const saved = readDraft(window.sessionStorage, { userId, storeId, conversationId })
+    if (saved === null) return
+    // Text typed before the person was known wins, and then the kind and the people go with that text
+    if (draftRef.current !== '') return
+    setDraft(saved.text)
+    setMode(saved.isNote ? MessageType.INTERNAL_NOTE : MessageType.TEXT)
+    setPicked(withMentions([], saved.mentions))
+  }, [userId, storeId, conversationId, isDraftLoaded])
+  // Only after the saved text was read: an empty box must not erase it first. The mode kept is the one
+  // the box shows, so a note never comes back as a reply.
+  const keptMode = allowedMode(chosenMode, mayReply, mayNote)
+  useEffect(() => {
+    if (userId === undefined || !isDraftLoaded) return
+    writeDraft(
+      window.sessionStorage,
+      { userId, storeId, conversationId },
+      {
+        text: draft,
+        isNote: keptMode === MessageType.INTERNAL_NOTE,
+        mentions: mentionedPeople(draft, picked)
+      }
+    )
+  }, [draft, picked, keptMode, userId, storeId, conversationId, isDraftLoaded])
 
   // The dialog belongs to the closed window: when the customer writes and it reopens, the dialog
   // goes, and it must not come back by itself the next time the window closes
@@ -238,6 +276,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
         if (sent) {
           setDraft(current => (current.trim() === content ? '' : current))
           setActiveIndex(0)
+          releaseBox()
         }
       })
       return
@@ -247,6 +286,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     setText('')
     setCaret(0)
     setPicked([])
+    releaseBox()
+  }
+  // After a send the box lets go of the keyboard, so the next key is a shortcut ("e" resolves) and not a
+  // letter in an empty box; `r` or a click brings the cursor back
+  function releaseBox(): void {
+    if (document.activeElement === textarea.current) textarea.current?.blur()
   }
 
   const pick = (entry: MenuEntry): void => {
@@ -294,9 +339,16 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
         return
       }
     }
-    if (event.key === 'Escape' && isMenuOpen) {
+    if (event.key === 'Escape' && isMenuOpen && !event.nativeEvent.isComposing) {
       event.preventDefault()
       setDismissedFor(draft)
+      return
+    }
+    // Escape with text leaves the box and keeps the text: it must not close the conversation under a
+    // draft. With an empty box it closes, as the shortcut says.
+    if (event.key === 'Escape' && !event.nativeEvent.isComposing && draft.trim() !== '') {
+      event.preventDefault()
+      event.currentTarget.blur()
       return
     }
     // Enter sends and Shift+Enter breaks the line; Enter that picks a character of an input method
@@ -340,7 +392,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   }
 
   return (
-    <div className={cn('flex flex-col gap-2 border-t p-3', isNote && 'bg-note/40')}>
+    <div
+      className={cn(
+        'compact:gap-1 compact:p-2 flex flex-col gap-2 border-t p-3',
+        isNote && 'bg-note/40'
+      )}
+    >
       <ComposerShortcuts
         mayReply={mayReply}
         mayNote={mayNote}
@@ -488,6 +545,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               {...{ [SHORTCUT_FIELD_ATTRIBUTE]: '' }}
               value={draft}
               onChange={event => {
+                setHasTyped(true)
                 setText(event.target.value)
                 setCaret(event.target.selectionStart)
               }}

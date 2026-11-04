@@ -10,6 +10,7 @@ import { AppPaths } from '@platform/api-client'
 
 import { apiClient, browserSession } from './api'
 import { errorCodeOf } from './error-message'
+import { clearComposerDrafts } from './inbox/composer-drafts'
 import { readLastStoreId } from './last-store'
 import { unsubscribeFromPush } from './push/push-browser'
 
@@ -42,6 +43,8 @@ export function useSignOut(redirectTo: string = AppPaths.login): {
       setPending(false)
       return
     }
+    // What the person was writing does not stay in the browser for the next one
+    clearComposerDrafts(window.sessionStorage)
     queryClient.clear()
     router.replace(redirectTo)
   }

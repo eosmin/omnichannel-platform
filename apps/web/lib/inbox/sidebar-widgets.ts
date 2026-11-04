@@ -1,5 +1,8 @@
 // The widgets of the right sidebar (TDD_09 §8): which ones there are, in which order, and which the
-// agent hid. The layout is kept per user in the browser (`StorageKeys.SIDEBAR_WIDGETS`).
+// agent hid. The layout is kept per user and store in the browser (`sidebarLayoutKey`): two people on
+// one browser, or two stores of one person, do not share an order.
+import { StorageKeys } from '@platform/api-client'
+
 export const SidebarWidgets = {
   QUICK_ACTIONS: 'quickActions',
   TEAM_STATUS: 'teamStatus',
@@ -13,6 +16,10 @@ export interface SidebarWidgetEntry {
 }
 
 export type SidebarLayout = readonly SidebarWidgetEntry[]
+
+export function sidebarLayoutKey(userId: string, storeId: string): string {
+  return `${StorageKeys.SIDEBAR_WIDGETS}:${userId}:${storeId}`
+}
 
 const KNOWN: readonly SidebarWidgetId[] = Object.values(SidebarWidgets)
 

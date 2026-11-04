@@ -1202,6 +1202,7 @@
       "sendClosing": "Enviar un mensaje de cierre",
       "windowClosed": "La ventana de mensajes expiró, así que no se puede enviar un mensaje de cierre.",
       "noSnippets": "No hay respuestas guardadas para enviar.",
+      "manageSnippets": "Crear respuestas guardadas",
       "snippet": "Respuesta guardada",
       "reason": "Motivo (opcional)",
       "confirm": "Resolver",

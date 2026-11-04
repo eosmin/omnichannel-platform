@@ -57,25 +57,32 @@ export function TeamStatusWidget(): ReactElement {
   return (
     <ul className="flex flex-col gap-2">
       {rows.map(row => (
-        <li key={row.userId} className="flex items-center gap-2 text-sm">
-          <span
-            aria-hidden
-            className={cn('size-2 shrink-0 rounded-full', DOT_COLORS[row.status])}
-          />
-          <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
-          <span className="text-muted-foreground text-xs">{t(`status.${row.status}`)}</span>
-          {row.active === null ? null : (
+        <li key={row.userId} className="flex flex-col gap-0.5 text-sm">
+          {/* The name has the whole line: beside the state and the load it was left with a few letters */}
+          <div className="flex items-center gap-2">
             <span
-              className={cn(
-                'text-muted-foreground text-xs tabular-nums',
-                row.isOverThreshold && 'font-semibold text-amber-700 dark:text-amber-400'
-              )}
-            >
-              {row.isOverThreshold
-                ? t('loadOver', { count: row.active })
-                : t('load', { count: row.active })}
+              aria-hidden
+              className={cn('size-2 shrink-0 rounded-full', DOT_COLORS[row.status])}
+            />
+            <span className="min-w-0 flex-1 truncate font-medium" title={row.name}>
+              {row.name}
             </span>
-          )}
+          </div>
+          <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 pl-4 text-xs">
+            <span>{t(`status.${row.status}`)}</span>
+            {row.active === null ? null : (
+              <span
+                className={cn(
+                  'tabular-nums',
+                  row.isOverThreshold && 'font-semibold text-amber-700 dark:text-amber-400'
+                )}
+              >
+                {row.isOverThreshold
+                  ? t('loadOver', { count: row.active })
+                  : t('load', { count: row.active })}
+              </span>
+            )}
+          </div>
         </li>
       ))}
     </ul>

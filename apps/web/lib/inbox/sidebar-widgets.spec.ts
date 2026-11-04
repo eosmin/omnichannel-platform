@@ -3,6 +3,7 @@ import {
   moveWidget,
   parseSidebarLayout,
   setWidgetHidden,
+  sidebarLayoutKey,
   SidebarWidgets
 } from './sidebar-widgets'
 
@@ -73,5 +74,15 @@ describe('setWidgetHidden', () => {
     expect(setWidgetHidden(hidden, SidebarWidgets.TEAM_STATUS, false)).toEqual(
       DEFAULT_SIDEBAR_LAYOUT.map(entry => ({ ...entry, isHidden: false }))
     )
+  })
+})
+
+describe('sidebarLayoutKey', () => {
+  it('is different for each person and each store', () => {
+    const base = sidebarLayoutKey('u1', 's1')
+
+    expect(sidebarLayoutKey('u2', 's1')).not.toBe(base)
+    expect(sidebarLayoutKey('u1', 's2')).not.toBe(base)
+    expect(sidebarLayoutKey('u1', 's1')).toBe(base)
   })
 })

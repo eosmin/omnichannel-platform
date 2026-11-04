@@ -6,6 +6,7 @@ import type { ReactElement, ReactNode } from 'react'
 import type { AccountProfile } from '@platform/api-client'
 
 import { ConnectionIndicator } from './connection-indicator'
+import { DensitySync } from './density-sync'
 import { LocaleSync } from './locale-sync'
 import { TopBar } from './top-bar'
 
@@ -26,8 +27,9 @@ export function AppFrame({
     <div className="flex min-h-dvh flex-col">
       <TopBar profile={profile} currentStoreId={currentStoreId} appTitle={t('title')} nav={nav} />
       <LocaleSync savedLocale={profile.locale} />
+      <DensitySync density={profile.density} />
       <ConnectionIndicator />
-      <main className="flex-1 p-4">{children}</main>
+      <main className="compact:p-2 flex-1 p-4">{children}</main>
     </div>
   )
 }

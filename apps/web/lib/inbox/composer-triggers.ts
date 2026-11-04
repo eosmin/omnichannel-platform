@@ -133,14 +133,19 @@ export function withMentions(current: readonly Mention[], more: readonly Mention
 // The people the note still names: one the agent picked and then deleted from the text is not
 // notified
 export function mentionedIds(content: string, picked: readonly Mention[]): string[] {
-  const ids = new Set<string>()
+  return mentionedPeople(content, picked).map(mention => mention.id)
+}
+
+// The same people with their names, to keep them with a draft
+export function mentionedPeople(content: string, picked: readonly Mention[]): Mention[] {
+  const people = new Map<string, Mention>()
   for (const mention of picked) {
     // The name must end there: "@Anabel" does not name Ana
     const named = new RegExp(
       `${escapeRegExp(MENTION_PREFIX + mention.name)}(?![\\p{L}\\p{N}_])`,
       'u'
     )
-    if (named.test(content)) ids.add(mention.id)
+    if (named.test(content)) people.set(mention.id, mention)
   }
-  return [...ids]
+  return [...people.values()]
 }

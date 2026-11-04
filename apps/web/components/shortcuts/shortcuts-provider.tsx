@@ -54,7 +54,11 @@ const REPEATABLE = new Set<string>([
 
 // Anything open on top of the page owns the keyboard (a dialog, a menu): the page behind it must not
 // react to a key meant for it
-const OVERLAY_SELECTOR = KeyboardOverlayRoles.map(role => `[role="${role}"]`).join(', ')
+// A dialog that was closed stays in the page while it animates out (`data-state="closed"`): it no longer
+// owns the keyboard
+const OVERLAY_SELECTOR = KeyboardOverlayRoles.map(
+  role => `[role="${role}"]:not([data-state="closed"])`
+).join(', ')
 
 // Read once: the platform does not change while the page is open
 let isMac: boolean | undefined
