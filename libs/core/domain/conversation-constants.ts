@@ -67,9 +67,16 @@ export type TemplateStatus = (typeof TemplateStatuses)[keyof typeof TemplateStat
 // a provider says
 export const MisleadingTextPattern = /[\u200B\u200E\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/u
 
+// Where the button of a location card opens. The link is built from the coordinates alone.
+export const LocationLinks = {
+  MAP_SEARCH_URL: 'https://www.google.com/maps/search/'
+} as const
+
 export const MessageLimits = {
   // The longest text WhatsApp takes in one message; the other channels take less or the same
   CONTENT_MAX_LENGTH: 4096,
+  // The name and the address of a place a customer shared, as the thread draws them
+  LOCATION_TEXT_MAX_LENGTH: 200,
   IDEMPOTENCY_KEY_MAX_LENGTH: 128,
   MAX_MENTIONS: 10,
   // A template of WhatsApp: its name, its language code and the values of its numbered variables

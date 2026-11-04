@@ -433,6 +433,7 @@
     "AUTH_UNAUTHORIZED": "You need to sign in",
     "CHANNEL_ACCOUNT_IN_USE": "This account is already connected to another store. Disconnect it there first.",
     "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that action",
+    "CHANNEL_FILE_TYPE_UNSUPPORTED": "WhatsApp does not accept this type of file",
     "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
     "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
     "CHANNEL_MESSAGE_FAILED": "The channel did not accept the message",
@@ -1029,7 +1030,10 @@
         "unknown": "A message this version cannot show"
       },
       "quote": {
-        "label": "In reply to {author}",
+        "label": {
+          "customer": "In reply to {author} (customer)",
+          "team": "In reply to {author} (team)"
+        },
         "deleted": "The original message was deleted",
         "unavailable": "The original message is not in this conversation",
         "type": {
@@ -1126,7 +1130,23 @@
         "noDeletedContent": "The text of this message is no longer kept.",
         "customReactionTitle": "React with another emoji",
         "customReactionDescription": "Type or paste one emoji.",
-        "customReactionLabel": "Emoji"
+        "customReactionLabel": "Emoji",
+        "reply": "Reply"
+      },
+      "location": {
+        "untitled": "Shared location",
+        "openMap": "Open on the map",
+        "openMapAria": "Open on the map: {place}",
+        "coordinates": "Coordinates {latitude}, {longitude}"
+      },
+      "audio": {
+        "play": "Play audio",
+        "pause": "Pause audio",
+        "seek": "Audio position",
+        "position": "{elapsed} of {total}",
+        "speed": "Playback speed: {speed}x",
+        "failed": "This browser cannot play the audio. Download it to listen.",
+        "download": "Download the audio"
       }
     },
     "composer": {
@@ -1192,7 +1212,9 @@
         "noMatches": "Nothing matches.",
         "assigned": "Assigned to {name}.",
         "announce": "{count, plural, one {# suggestion} other {# suggestions}}. Highlighted: {label}."
-      }
+      },
+      "replying": "Replying to {author}",
+      "cancelReply": "Cancel the quoted reply"
     },
     "snooze": {
       "title": "Snooze the conversation",

@@ -5,6 +5,7 @@ import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
 
+import { quoteSideOf } from '../../lib/inbox/quote-side'
 import { cn } from '../../lib/utils'
 
 type Quote = NonNullable<MessageView['replyTo']>
@@ -20,7 +21,7 @@ const KNOWN_TYPES = [
   'TEMPLATE',
   'INTERNAL_NOTE'
 ] as const
-const typeKeyOf = (type: string): (typeof KNOWN_TYPES)[number] | 'unknown' =>
+export const typeKeyOf = (type: string): (typeof KNOWN_TYPES)[number] | 'unknown' =>
   KNOWN_TYPES.find(known => known === type) ?? 'unknown'
 
 // The message a reply answers, above the text: who wrote it and the start of what it said, or its type
@@ -57,8 +58,10 @@ export function QuotedMessage({
   )
   const content = (
     <>
-      {authorName === null ? null : (
-        <span className="font-medium">{t('label', { author: authorName })}</span>
+      {authorName === null || quote === null ? null : (
+        <span className="font-medium">
+          {t(`label.${quoteSideOf(quote.authorType)}`, { author: authorName })}
+        </span>
       )}
       {body}
     </>

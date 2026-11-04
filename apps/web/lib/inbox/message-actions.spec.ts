@@ -20,6 +20,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   deliveryError: null,
   system: null,
   attachmentUrl: null,
+  location: null,
   reactions: [],
   media: [],
   unavailableFiles: [],
@@ -111,6 +112,7 @@ describe('messageActionsOf', () => {
     const theirs = message({ authorType: 'customer', authorId: null, deliveryStatus: null })
     expect(messageActionsOf(theirs, viewer(AGENT, ALL_CAPABILITIES))).toEqual({
       react: true,
+      reply: false,
       edit: false,
       remove: false,
       resend: false,
@@ -147,6 +149,7 @@ describe('messageActionsOf', () => {
     const note = message({ type: 'INTERNAL_NOTE', deliveryStatus: null })
     expect(messageActionsOf(note, viewer(AGENT))).toEqual({
       react: false,
+      reply: false,
       edit: true,
       remove: true,
       resend: false,
@@ -234,5 +237,56 @@ describe('messageActionsOf', () => {
     it('leaves the message alone from the moment it is queued: it cannot be deleted', () => {
       expect(messageActionsOf(file('queued'), viewer(AGENT, ALL_CAPABILITIES)).remove).toBe(false)
     })
+  })
+})
+
+describe('messageActionsOf reply', () => {
+  const QUOTING = [ChannelCapability.REPLY_TO]
+  const customer = (over: Partial<MessageView> = {}): MessageView =>
+    message({ authorType: 'customer', authorId: null, deliveryStatus: null, ...over })
+
+  it('offers to answer a message of the customer on a channel that quotes', () => {
+    expect(messageActionsOf(customer(), viewer(AGENT, QUOTING)).reply).toBe(true)
+  })
+
+  it('offers it for a reply of the team only once it reached the channel', () => {
+    expect(messageActionsOf(message({}), viewer(AGENT, QUOTING)).reply).toBe(true)
+    expect(
+      messageActionsOf(message({ deliveryStatus: 'queued' }), viewer(AGENT, QUOTING)).reply
+    ).toBe(false)
+    expect(
+      messageActionsOf(message({ deliveryStatus: 'failed' }), viewer(AGENT, QUOTING)).reply
+    ).toBe(false)
+  })
+
+  it('offers it for a file and for a location', () => {
+    expect(messageActionsOf(customer({ type: 'IMAGE' }), viewer(AGENT, QUOTING)).reply).toBe(true)
+    expect(
+      messageActionsOf(
+        customer({
+          type: 'LOCATION',
+          location: { latitude: 1, longitude: 2, name: null, address: null }
+        }),
+        viewer(AGENT, QUOTING)
+      ).reply
+    ).toBe(true)
+  })
+
+  it.each([
+    ['a channel that does not quote', customer(), viewer(AGENT, [])],
+    ['a person who may not send', customer(), viewer([Permissions.MESSAGES_VIEW], QUOTING)],
+    ['an internal note', message({ type: 'INTERNAL_NOTE' }), viewer(AGENT, QUOTING)],
+    [
+      'a deleted message',
+      customer({ deletedAt: '2026-10-30T11:00:00.000Z' }),
+      viewer(AGENT, QUOTING)
+    ],
+    ['a system line', message({ type: 'SYSTEM' }), viewer(AGENT, QUOTING)]
+  ])('does not offer it on %s', (_name, target, who) => {
+    expect(messageActionsOf(target, who).reply).toBe(false)
+  })
+
+  it('counts as an action of the bar', () => {
+    expect(hasAnyAction(messageActionsOf(customer(), viewer(AGENT, QUOTING)))).toBe(true)
   })
 })

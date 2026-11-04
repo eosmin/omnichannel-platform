@@ -20,6 +20,8 @@ export interface ActionViewer {
 
 export interface MessageActions {
   react: boolean
+  // Answer this message: it is quoted in the reply, in the channels that quote
+  reply: boolean
   edit: boolean
   remove: boolean
   resend: boolean
@@ -35,6 +37,7 @@ export interface MessageActions {
 
 const NONE: MessageActions = {
   react: false,
+  reply: false,
   edit: false,
   remove: false,
   resend: false,
@@ -88,10 +91,13 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
     !needsDelivery ||
     (message.deliveryStatus !== null && REACHED_THE_CHANNEL.includes(message.deliveryStatus))
   const react = maySend && reached && supports(ChannelCapability.REACTIONS)
+  // Only a message the channel has can be quoted in it
+  const reply = maySend && reached && supports(ChannelCapability.REPLY_TO)
   if (!isReplyOfTeam) {
     return {
       ...NONE,
       react,
+      reply,
       refetchFile: maySend && message.authorType === String(AuthorType.CUSTOMER)
     }
   }
@@ -102,6 +108,7 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
   return {
     ...NONE,
     react,
+    reply,
     edit:
       maySend &&
       isOwn &&
@@ -134,6 +141,7 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
 // Whether the bar beside the bubble has anything to offer; the caption button lives in the bubble
 export const hasAnyAction = (actions: MessageActions): boolean =>
   actions.react ||
+  actions.reply ||
   actions.edit ||
   actions.remove ||
   actions.resend ||

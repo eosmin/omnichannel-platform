@@ -1,4 +1,4 @@
-import { type BrowserContext, type Locator, type Page } from '@playwright/test'
+import { type BrowserContext, type Locator, type Page, devices } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
 import {
@@ -19,16 +19,20 @@ import {
   addMessageTo,
   addOriginTo,
   addSnippetTo,
+  firstMessageIdOf,
   mentionsOf,
   newConversationIn,
   messagesOf,
   newConversationWithUnread,
+  newWhatsAppConversationWrittenAgo,
+  quotedByReplyIn,
   setResolveBehavior,
   statusOf,
   timelineOf,
   storeIdNamed,
   unreadCountOf
 } from '../support/database'
+import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -51,6 +55,59 @@ const threadOf = (page: Page) => page.getByRole('list', { name: en.inbox.thread.
 
 const minutesAgo = (minutes: number): Date => new Date(Date.now() - minutes * MINUTE_MS)
 
+// A silent WAV of the given length: 8 kHz, 8 bits, mono. The bucket does not hold the files of the
+// fixtures, so the cases that play an audio answer its signed link with this.
+function silentWav(seconds: number): Buffer {
+  const rate = 8000
+  const data = Buffer.alloc(rate * seconds, 128)
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + data.length, 4)
+  header.write('WAVEfmt ', 8)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(rate, 24)
+  header.writeUInt32LE(rate, 28)
+  header.writeUInt16LE(1, 32)
+  header.writeUInt16LE(8, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(data.length, 40)
+  return Buffer.concat([header, data])
+}
+
+// Answers the signed link of an audio the way a bucket does, with ranges: a browser asks for the start of
+// the file to read its length, and wants a 206 for it
+async function serveAudio(page: Page, seconds: number): Promise<void> {
+  const wav = silentWav(seconds)
+  await page.route(`${STORAGE_URL}/**`, route => {
+    const range = /bytes=(\d+)-(\d*)/.exec(route.request().headers()['range'] ?? '')
+    if (range === null) {
+      return route.fulfill({
+        status: 200,
+        headers: { 'accept-ranges': 'bytes' },
+        contentType: 'audio/wav',
+        body: wav
+      })
+    }
+    const start = Number(range[1])
+    const end = range[2] === '' ? wav.length - 1 : Math.min(Number(range[2]), wav.length - 1)
+    return route.fulfill({
+      status: 206,
+      headers: {
+        'accept-ranges': 'bytes',
+        'content-range': `bytes ${start}-${end}/${wav.length}`
+      },
+      contentType: 'audio/wav',
+      body: wav.subarray(start, end + 1)
+    })
+  })
+}
+
+// The element of a message in the thread, by its text
+const messageWith = (page: Page, text: string): Locator =>
+  page.locator('[id^="message-"]').filter({ hasText: text })
+
 // One session for the cases: the magic link is limited for each address
 test.describe.serial('the thread of a conversation', () => {
   let context: BrowserContext
@@ -70,6 +127,10 @@ test.describe.serial('the thread of a conversation', () => {
     })
     await signIn(page, AGENT)
     storeId = await storeIdNamed(FIRST_STORE)
+  })
+  // A route of one case (the audio of the bucket) must not answer the next one if the case failed
+  test.afterEach(async () => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
   test.afterAll(async () => {
     await context.close()
@@ -530,5 +591,218 @@ test.describe.serial('the thread of a conversation', () => {
     await expect(
       page.getByRole('alert').filter({ hasText: en.errors.FILE_TYPE_NOT_ALLOWED })
     ).toHaveCount(0)
+  })
+
+  test('answers a message: the action quotes it, the composer shows it and the reply carries it', async () => {
+    const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
+    const quotedId = await firstMessageIdOf(conversationId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const message = messageWith(page, 'Hello, is my order on its way?')
+    await expect(message).toBeVisible()
+
+    await message.hover()
+    await message.getByRole('button', { name: en.inbox.thread.actions.reply }).click()
+
+    const chip = page.getByText(/^Replying to /)
+    await expect(chip).toBeVisible()
+    await expect(page.getByRole('textbox', { name: en.inbox.composer.replyLabel })).toBeFocused()
+    await page.getByRole('textbox', { name: en.inbox.composer.replyLabel }).fill('On its way')
+    await page.keyboard.press('Enter')
+
+    await expect(chip).toHaveCount(0)
+    await expect.poll(() => quotedByReplyIn(conversationId, 'On its way')).toBe(quotedId)
+  })
+
+  test('cancels the quote with its button and sends the next reply without it', async () => {
+    const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const message = messageWith(page, 'Hello, is my order on its way?')
+    await message.hover()
+    await message.getByRole('button', { name: en.inbox.thread.actions.reply }).click()
+    await page.getByRole('button', { name: en.inbox.composer.cancelReply }).click()
+    await expect(page.getByRole('button', { name: en.inbox.composer.cancelReply })).toHaveCount(0)
+
+    await page.getByRole('textbox', { name: en.inbox.composer.replyLabel }).fill('Hi again')
+    await page.keyboard.press('Enter')
+
+    await expect.poll(() => quotedByReplyIn(conversationId, 'Hi again')).toBeNull()
+  })
+
+  test('says whether a quote of the customer points at the customer or at the team', async () => {
+    const conversationId = await newConversationIn(storeId)
+    const own = await addMessageTo(storeId, conversationId, {
+      content: 'My first question',
+      createdAt: minutesAgo(30)
+    })
+    const team = await addMessageTo(storeId, conversationId, {
+      content: 'Our first answer',
+      authorType: AuthorType.AGENT,
+      deliveryStatus: DeliveryStatus.READ,
+      createdAt: minutesAgo(20)
+    })
+    await addMessageTo(storeId, conversationId, {
+      content: 'Following up on my own',
+      replyToMessageId: own.id,
+      createdAt: minutesAgo(10)
+    })
+    await addMessageTo(storeId, conversationId, {
+      content: 'Following up on yours',
+      replyToMessageId: team.id,
+      createdAt: minutesAgo(5)
+    })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    await expect(messageWith(page, 'Following up on my own')).toContainText(/\(customer\)/)
+    await expect(messageWith(page, 'Following up on yours')).toContainText(/\(team\)/)
+  })
+
+  test('draws a location as a card with its place and a button to the map, and no map', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, {
+      type: MessageType.LOCATION,
+      content: 'Main Square - Street 1',
+      metadata: {
+        latitude: 19.4326,
+        longitude: -99.1332,
+        name: 'Main Square',
+        address: 'Street 1'
+      },
+      createdAt: minutesAgo(1)
+    })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const card = messageWith(page, 'Main Square')
+    await expect(card.getByText('Street 1')).toBeVisible()
+    await expect(card.getByText('19.4326, -99.1332')).toBeVisible()
+    const link = card.getByRole('link', { name: /Open on the map/ })
+    await expect(link).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=19.4326%2C-99.1332'
+    )
+    await expect(link).toHaveAttribute('target', '_blank')
+    await expect(link).toHaveAttribute('rel', /noopener/)
+    await expect(card.locator('iframe')).toHaveCount(0)
+    await expect(threadOf(page).getByText(en.inbox.thread.neutral.LOCATION)).toHaveCount(0)
+  })
+
+  test('keeps the line of a location whose coordinates do not hold, with no link', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, {
+      type: MessageType.LOCATION,
+      content: 'Nowhere',
+      metadata: { latitude: 400, longitude: 2 },
+      createdAt: minutesAgo(1)
+    })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    await expect(threadOf(page).getByText(en.inbox.thread.neutral.LOCATION)).toBeVisible()
+    await expect(threadOf(page).getByRole('link', { name: /Open on the map/ })).toHaveCount(0)
+  })
+
+  test('calls a file with no name by its kind and plays an audio in a player of fixed width', async () => {
+    const conversationId = await newConversationIn(storeId)
+    const voice = await addMessageTo(storeId, conversationId, {
+      type: MessageType.AUDIO,
+      content: '',
+      createdAt: minutesAgo(2)
+    })
+    await addMediaTo(storeId, voice.id, {
+      filename: 'file',
+      contentType: 'audio/ogg',
+      status: MediaStatus.CLEAN
+    })
+    await serveAudio(page, 3)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const player = threadOf(page).getByRole('group', { name: en.inbox.thread.mediaLabel.AUDIO })
+    await expect(player).toBeVisible()
+    const box = await player.boundingBox()
+    expect(box?.width).toBeLessThanOrEqual(260.5)
+    await expect(player.getByRole('slider', { name: en.inbox.thread.audio.seek })).toHaveAttribute(
+      'aria-valuemax',
+      '3'
+    )
+    await expect(player.getByText('0:00/0:03')).toBeVisible()
+    await expect(threadOf(page).getByText('file', { exact: true })).toHaveCount(0)
+
+    await player
+      .getByRole('button', { name: en.inbox.thread.audio.speed.replace('{speed}', '1') })
+      .click()
+    await expect(
+      player.getByRole('button', { name: en.inbox.thread.audio.speed.replace('{speed}', '1.5') })
+    ).toHaveText('1.5x')
+    await player.getByRole('button', { name: en.inbox.thread.audio.play }).click()
+    await expect(player.getByRole('button', { name: en.inbox.thread.audio.pause })).toBeVisible()
+    await player.getByRole('button', { name: en.inbox.thread.audio.pause }).click()
+    await expect(player.getByRole('button', { name: en.inbox.thread.audio.play })).toBeVisible()
+  })
+
+  test('moves an audio with the keys of the bar', async () => {
+    const conversationId = await newConversationIn(storeId)
+    const voice = await addMessageTo(storeId, conversationId, {
+      type: MessageType.AUDIO,
+      content: '',
+      createdAt: minutesAgo(2)
+    })
+    await addMediaTo(storeId, voice.id, {
+      filename: 'note.ogg',
+      contentType: 'audio/ogg',
+      status: MediaStatus.CLEAN
+    })
+    await serveAudio(page, 30)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const bar = threadOf(page).getByRole('slider', { name: en.inbox.thread.audio.seek })
+    await expect(threadOf(page).getByText('note.ogg')).toBeVisible()
+    await expect(bar).toHaveAttribute('aria-valuemax', '30')
+    await bar.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(bar).toHaveAttribute('aria-valuenow', '5')
+    await page.keyboard.press('End')
+    await expect(bar).toHaveAttribute('aria-valuenow', '30')
+  })
+
+  test('says that WhatsApp does not accept a type of file when a reply failed for it', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, { content: 'Hello', createdAt: minutesAgo(3) })
+    await addMessageTo(storeId, conversationId, {
+      content: 'Here is the file',
+      authorType: AuthorType.AGENT,
+      deliveryStatus: DeliveryStatus.FAILED,
+      deliveryError: 'CHANNEL_FILE_TYPE_UNSUPPORTED',
+      createdAt: minutesAgo(2)
+    })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    await expect(threadOf(page).getByText(en.errors.CHANNEL_FILE_TYPE_UNSUPPORTED)).toBeVisible()
+    await expect(threadOf(page).getByText(en.errors.CHANNEL_CAPABILITY_UNSUPPORTED)).toHaveCount(0)
+  })
+
+  test('shows the actions of a message on a touch screen without hover, with room to tap', async ({
+    browser
+  }) => {
+    const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
+    // The same session on a device whose pointer is coarse, wide enough to be past the narrow-screen rule
+    const touch = await browser.newContext({
+      ...devices['Pixel 7'],
+      viewport: { width: 1100, height: 800 },
+      storageState: await context.storageState()
+    })
+    await reachServicesFromOwnAddress(touch)
+    const tapPage = await touch.newPage()
+    try {
+      await tapPage.goto(AppPaths.store.conversation(storeId, conversationId))
+      const message = messageWith(tapPage, 'Hello, is my order on its way?')
+      await expect(message).toBeVisible()
+
+      const reply = message.getByRole('button', { name: en.inbox.thread.actions.reply })
+      await expect(reply).toBeVisible()
+      await expect(reply.locator('..')).toHaveCSS('opacity', '1')
+      await expect
+        .poll(async () => (await reply.boundingBox())?.width ?? 0)
+        .toBeGreaterThanOrEqual(40)
+    } finally {
+      await touch.close()
+    }
   })
 })

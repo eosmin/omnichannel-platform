@@ -433,6 +433,7 @@
     "AUTH_UNAUTHORIZED": "Necesitas iniciar sesión",
     "CHANNEL_ACCOUNT_IN_USE": "Esta cuenta ya está conectada a otra tienda. Desconéctala allí primero.",
     "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite esa acción",
+    "CHANNEL_FILE_TYPE_UNSUPPORTED": "WhatsApp no acepta este tipo de archivo",
     "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
     "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
     "CHANNEL_MESSAGE_FAILED": "El canal no aceptó el mensaje",
@@ -1029,7 +1030,10 @@
         "unknown": "Un mensaje que esta versión no puede mostrar"
       },
       "quote": {
-        "label": "En respuesta a {author}",
+        "label": {
+          "customer": "En respuesta a {author} (cliente)",
+          "team": "En respuesta a {author} (equipo)"
+        },
         "deleted": "El mensaje original fue eliminado",
         "unavailable": "El mensaje original no está en esta conversación",
         "type": {
@@ -1126,7 +1130,23 @@
         "noDeletedContent": "El texto de este mensaje ya no se conserva.",
         "customReactionTitle": "Reaccionar con otro emoji",
         "customReactionDescription": "Escribe o pega un emoji.",
-        "customReactionLabel": "Emoji"
+        "customReactionLabel": "Emoji",
+        "reply": "Responder"
+      },
+      "location": {
+        "untitled": "Ubicación compartida",
+        "openMap": "Abrir en el mapa",
+        "openMapAria": "Abrir en el mapa: {place}",
+        "coordinates": "Coordenadas {latitude}, {longitude}"
+      },
+      "audio": {
+        "play": "Reproducir audio",
+        "pause": "Pausar audio",
+        "seek": "Posición del audio",
+        "position": "{elapsed} de {total}",
+        "speed": "Velocidad de reproducción: {speed}x",
+        "failed": "Este navegador no puede reproducir el audio. Descárgalo para escucharlo.",
+        "download": "Descargar el audio"
       }
     },
     "composer": {
@@ -1192,7 +1212,9 @@
         "noMatches": "No hay coincidencias.",
         "assigned": "Asignada a {name}.",
         "announce": "{count, plural, one {# sugerencia} other {# sugerencias}}. Resaltada: {label}."
-      }
+      },
+      "replying": "Respondiendo a {author}",
+      "cancelReply": "Cancelar la respuesta citada"
     },
     "snooze": {
       "title": "Posponer la conversación",

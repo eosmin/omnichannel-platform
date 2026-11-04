@@ -17,6 +17,7 @@ import {
   CaptionState as CaptionStates,
   MessageLimits,
   MessageType as MessageTypes,
+  placeTextOf,
   UNAVAILABLE_FILES_KEY
 } from '@platform/core/domain'
 
@@ -110,6 +111,15 @@ export interface UnavailableFileView {
   canRetry: boolean
 }
 
+// The place a customer shared. The coordinates are checked here, so the thread never builds a map link
+// from anything else; the name and the address are text of the customer, cut and shown as plain text.
+export interface LocationView {
+  latitude: number
+  longitude: number
+  name: string | null
+  address: string | null
+}
+
 // What the thread shows of a message. The metadata of the channel is not part of it, except the link
 // above; a system line carries its own, which is what the thread draws it from.
 export interface MessageView {
@@ -127,6 +137,8 @@ export interface MessageView {
   deliveryError: string | null
   mentions: string[]
   system: SystemLineMetadata | null
+  // The place of a location message, or null (not a location, deleted, or coordinates that do not hold)
+  location: LocationView | null
   // Untrusted: drawn as a link with its host visible and never fetched by the server. A story mention
   // is a signed link that expires within about a day.
   attachmentUrl: string | null
@@ -264,6 +276,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     mentions: row.mentions,
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
+    location: locationOf(row, type),
     attachmentUrl: attachmentUrlOf(row, type),
     reactions: row.reactions.map(reaction => ({
       emoji: reaction.emoji,
@@ -298,6 +311,26 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     deleteStatus: deliveryOrNull(row.deleteStatus, 'delete delivery'),
     deleteError: row.deleteError,
     createdAt: row.createdAt
+  }
+}
+
+const locationSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  name: z.string().optional().catch(undefined),
+  address: z.string().optional().catch(undefined)
+})
+
+// A deleted message keeps no content in the thread, and the place it shared is content
+function locationOf(row: MessageRow, type: MessageType): LocationView | null {
+  if (type !== MessageTypes.LOCATION || row.deletedAt !== null) return null
+  const parsed = locationSchema.safeParse(row.metadata)
+  if (!parsed.success) return null
+  return {
+    latitude: parsed.data.latitude,
+    longitude: parsed.data.longitude,
+    name: placeTextOf(parsed.data.name),
+    address: placeTextOf(parsed.data.address)
   }
 }
 

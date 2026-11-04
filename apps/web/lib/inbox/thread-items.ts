@@ -10,7 +10,8 @@ export type ThreadItem =
 
 // How a message is drawn. `message` is a bubble with text; `media` a bubble that names the file (the
 // file itself waits for the storage of Step 3.4); `neutral` is a line, for a type with no bubble yet.
-export type MessageKind = 'system' | 'deleted' | 'note' | 'message' | 'media' | 'neutral'
+export type MessageKind =
+  'system' | 'deleted' | 'note' | 'message' | 'media' | 'location' | 'neutral'
 
 const MEDIA_TYPES: readonly string[] = [
   MessageType.IMAGE,
@@ -25,6 +26,8 @@ export function messageKindOf(message: MessageView): MessageKind {
   if (message.deletedAt !== null) return 'deleted'
   if (message.type === String(MessageType.INTERNAL_NOTE)) return 'note'
   if (MEDIA_TYPES.includes(message.type)) return 'media'
+  // A location whose place did not hold (no valid coordinates) is a line, never a card with a made-up place
+  if (message.type === String(MessageType.LOCATION) && message.location !== null) return 'location'
   if (TEXT_TYPES.includes(message.type)) return 'message'
   return 'neutral'
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { FileText, LoaderCircle, Mic, Play, ShieldAlert, TriangleAlert } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
@@ -9,6 +10,7 @@ import type { MessageView } from '@platform/api-client'
 import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/domain'
 import { mediaMessageTypeOf } from '@platform/core/storage'
 
+import { displayFileNameOf } from '../../lib/inbox/file-label'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrls } from '../../lib/media/use-media-urls'
@@ -16,6 +18,16 @@ import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
+
+// The player loads when the first voice note is drawn: the inbox has a script budget
+// (apps/web-e2e/lighthouse/budgets.ts) and most threads have none. The placeholder has the size of the
+// player, so the thread does not jump when it arrives.
+const AudioPlayer = dynamic(() => import('./audio-player'), {
+  ssr: false,
+  loading: () => (
+    <div aria-hidden className="bg-background/60 h-10 w-[min(260px,100%)] rounded-full border" />
+  )
+})
 
 type MediaFile = MessageView['media'][number]
 type UnavailableFile = MessageView['unavailableFiles'][number]
@@ -54,6 +66,16 @@ export function MessageMedia({
       <MediaLightbox file={open} onClose={() => setOpen(null)} />
     </div>
   )
+}
+
+const KIND_LABELS = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'] as const
+
+// The label of a kind of file; a kind the page has no label for reads as a document
+function labelOf(
+  t: ReturnType<typeof useTranslations<'inbox.thread.mediaLabel'>>,
+  type: string
+): string {
+  return t(KIND_LABELS.find(label => label === type) ?? 'DOCUMENT')
 }
 
 function Frame({ children }: { children: ReactNode }): ReactElement {
@@ -135,13 +157,17 @@ function MediaItem({
   const isClean = file.status === MediaStatus.CLEAN
   const urls = useMediaUrls(storeId, file.id, isClean)
   const kind = mediaMessageTypeOf(file.contentType)
+  const tKind = useTranslations('inbox.thread.mediaLabel')
+  // A file with no name of its own is called by its kind (Audio, Imagen, Documento), not "file"
+  const shown = displayFileNameOf(file.filename, kind ?? '')
+  const name = shown.kind === 'name' ? shown.name : labelOf(tKind, shown.type)
 
   if (file.status === MediaStatus.INFECTED) {
     return (
       <Frame>
         <ShieldAlert aria-hidden className="text-destructive size-4 shrink-0" />
         <span role="status" className="min-w-0 break-words">
-          {t('infected', { name: file.filename })}
+          {t('infected', { name })}
         </span>
       </Frame>
     )
@@ -151,7 +177,7 @@ function MediaItem({
       <Frame>
         <TriangleAlert aria-hidden className="text-destructive size-4 shrink-0" />
         <span role="status" className="min-w-0 break-words">
-          {t('unscannable', { name: file.filename })}
+          {t('unscannable', { name })}
         </span>
       </Frame>
     )
@@ -161,7 +187,7 @@ function MediaItem({
       <Frame>
         <LoaderCircle aria-hidden className="size-4 shrink-0 animate-spin" />
         <span role="status" className="min-w-0 break-words">
-          {t('checking', { name: file.filename })}
+          {t('checking', { name })}
         </span>
       </Frame>
     )
@@ -171,7 +197,7 @@ function MediaItem({
       <Frame>
         <TriangleAlert aria-hidden className="size-4 shrink-0" />
         <span role="status" className="min-w-0 break-words">
-          {t('unavailable', { name: file.filename })}
+          {t('unavailable', { name })}
         </span>
         <button
           type="button"
@@ -187,7 +213,7 @@ function MediaItem({
     return (
       <Frame>
         <LoaderCircle aria-hidden className="size-4 shrink-0 animate-spin" />
-        <span className="min-w-0 break-words">{t('loading', { name: file.filename })}</span>
+        <span className="min-w-0 break-words">{t('loading', { name })}</span>
       </Frame>
     )
   }
@@ -202,16 +228,21 @@ function MediaItem({
       return (
         <button
           type="button"
-          aria-label={t('open', { name: file.filename })}
+          aria-label={t('open', { name })}
           className="focus-visible:ring-ring overflow-hidden rounded-md outline-none focus-visible:ring-2"
           onClick={() =>
-            onOpen({ kind: 'image', src: large, downloadUrl: data.url, filename: file.filename })
+            onOpen({
+              kind: 'image',
+              src: large,
+              downloadUrl: data.url,
+              filename: file.filename
+            })
           }
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- a signed link on the bucket host */}
           <img
             src={preview}
-            alt={file.filename}
+            alt={name}
             loading="lazy"
             referrerPolicy="no-referrer"
             className="max-h-64 w-full object-cover"
@@ -224,14 +255,19 @@ function MediaItem({
     return (
       <button
         type="button"
-        aria-label={t('play', { name: file.filename })}
+        aria-label={t('play', { name })}
         className="bg-muted focus-visible:ring-ring flex items-center gap-2 rounded-md border px-3 py-3 text-xs outline-none focus-visible:ring-2"
         onClick={() =>
-          onOpen({ kind: 'video', src: data.url, downloadUrl: data.url, filename: file.filename })
+          onOpen({
+            kind: 'video',
+            src: data.url,
+            downloadUrl: data.url,
+            filename: file.filename
+          })
         }
       >
         <Play aria-hidden className="size-5 shrink-0" />
-        <span className="min-w-0 truncate">{file.filename}</span>
+        <span className="min-w-0 truncate">{name}</span>
         <span className="text-muted-foreground shrink-0">{formatBytes(file.fileSize)}</span>
       </button>
     )
@@ -241,15 +277,9 @@ function MediaItem({
       <div className="flex flex-col gap-1">
         <p className="flex items-center gap-1.5 text-xs">
           <Mic aria-hidden className="size-3.5" />
-          <span className="min-w-0 truncate">{file.filename}</span>
+          <span className="min-w-0 truncate">{name}</span>
         </p>
-        <audio
-          src={data.url}
-          controls
-          preload="none"
-          aria-label={file.filename}
-          className="w-full"
-        />
+        <AudioPlayer src={data.url} label={name} />
       </div>
     )
   }
@@ -262,9 +292,9 @@ function MediaItem({
       className="focus-visible:ring-ring bg-background/60 flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs outline-none hover:underline focus-visible:ring-2"
     >
       <FileText aria-hidden className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate">{file.filename}</span>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
       <span className="text-muted-foreground shrink-0">{formatBytes(file.fileSize)}</span>
-      <span className="sr-only">{t('downloadFile', { name: file.filename })}</span>
+      <span className="sr-only">{t('downloadFile', { name })}</span>
     </a>
   )
 }

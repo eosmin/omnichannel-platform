@@ -88,6 +88,7 @@ const message = {
   deliveryError: null,
   system: null,
   attachmentUrl: null,
+  location: null,
   reactions: [],
   media: [],
   unavailableFiles: [],

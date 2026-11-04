@@ -12,7 +12,7 @@ import {
   slugify
 } from '@platform/core/database-testing'
 import {
-  type AuthorType,
+  AuthorType,
   ChannelConnectionStatus,
   ChannelType,
   type DeliveryStatus,
@@ -110,15 +110,22 @@ export function addMessageTo(
     deliveryStatus?: DeliveryStatus
     system?: { event: SystemMessageEvent; actorType: 'user' | 'system' }
     replyToMessageId?: string
+    // The code a reply failed with, shown beside it
+    deliveryError?: string
+    // The channel's own data: the place of a location
+    metadata?: Record<string, string | number>
     // Files of the customer the worker gave up on, as it records them in the metadata
     unavailableFiles?: { index: number; code: string }[]
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
     const { id } = await createMessage(owner, { storeId, conversationId, ...input })
-    const { deliveryStatus, system, replyToMessageId, unavailableFiles } = input
+    const { deliveryStatus, system, replyToMessageId, unavailableFiles, deliveryError } = input
     if (unavailableFiles !== undefined) {
       await owner.message.update({ where: { id }, data: { metadata: { unavailableFiles } } })
+    }
+    if (deliveryError !== undefined) {
+      await owner.message.update({ where: { id }, data: { deliveryError } })
     }
     if (deliveryStatus !== undefined || system !== undefined || replyToMessageId !== undefined) {
       await owner.message.update({
@@ -146,6 +153,35 @@ export function addMessageTo(
     }
     return { id }
   })
+}
+
+// The first message of a conversation, the one of the customer that the fixtures write
+export function firstMessageIdOf(conversationId: string): Promise<string> {
+  return withOwner(async owner => {
+    const row = await owner.message.findFirstOrThrow({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true }
+    })
+    return row.id
+  })
+}
+
+// The message the reply of the team with this text quotes, or null when it quotes none; undefined while
+// that reply does not exist
+export function quotedByReplyIn(
+  conversationId: string,
+  content: string
+): Promise<string | null | undefined> {
+  return withOwner(
+    async owner =>
+      (
+        await owner.message.findFirst({
+          where: { conversationId, authorType: AuthorType.AGENT, content },
+          select: { replyToMessageId: true }
+        })
+      )?.replyToMessageId
+  )
 }
 
 // Many messages in one go, one a minute apart and the last one a minute ago, for the cases that need

@@ -25,6 +25,8 @@ export interface SendMessageInput {
   content: string
   idempotencyKey: string
   mentions?: string[]
+  // The message this one answers (the channel quotes it when it can)
+  replyToMessageId?: string
 }
 
 // A file with its text under it: one message, one key. The file was uploaded and confirmed first

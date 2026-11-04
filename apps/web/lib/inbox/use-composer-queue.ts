@@ -20,6 +20,8 @@ export interface ComposerQueue {
     type: MessageType.TEXT | MessageType.INTERNAL_NOTE
     content: string
     mentions?: string[]
+    // The message this one answers
+    replyToMessageId?: string
   }) => void
   discard: (id: string) => void
   // The agent confirms a message that waited too long

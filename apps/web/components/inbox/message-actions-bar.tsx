@@ -1,6 +1,15 @@
 'use client'
 
-import { Ellipsis, Eye, History, Pencil, RotateCcw, SmilePlus, Trash2 } from 'lucide-react'
+import {
+  CornerUpLeft,
+  Ellipsis,
+  Eye,
+  History,
+  Pencil,
+  RotateCcw,
+  SmilePlus,
+  Trash2
+} from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
@@ -21,6 +30,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
+
+import { useReplyTarget } from './reply-target'
 
 // The dialogs load when one is first opened: the inbox has a script budget
 // (apps/web-e2e/lighthouse/budgets.ts) and most messages are never edited or deleted
@@ -67,6 +78,7 @@ export function MessageActionsBar({
   const errorText = useErrorText()
   const [dialog, setDialog] = useState<OpenDialog>(null)
   const { react, resend } = useMessageMutations(conversationId, message.id)
+  const { start: startReply } = useReplyTarget()
   const dialogProps = {
     message,
     conversationId,
@@ -89,7 +101,26 @@ export function MessageActionsBar({
     actions.resend || actions.edit || actions.remove || actions.revisions || actions.viewDeleted
 
   return (
-    <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
+    <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 pointer-coarse:opacity-100">
+      {actions.reply ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7 pointer-coarse:size-10"
+          aria-label={t('reply')}
+          onClick={() =>
+            startReply({
+              messageId: message.id,
+              type: message.type,
+              content: message.content,
+              author: authorLabel(message.authorType, message.authorId)
+            })
+          }
+        >
+          <CornerUpLeft aria-hidden className="size-4" />
+        </Button>
+      ) : null}
       {actions.react ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -97,7 +128,7 @@ export function MessageActionsBar({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7"
+              className="size-7 pointer-coarse:size-10"
               aria-label={t('react')}
             >
               <SmilePlus aria-hidden className="size-4" />
@@ -135,7 +166,7 @@ export function MessageActionsBar({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-7"
+              className="size-7 pointer-coarse:size-10"
               aria-label={t('more')}
             >
               <Ellipsis aria-hidden className="size-4" />

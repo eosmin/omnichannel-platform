@@ -180,9 +180,9 @@ describe('whatsapp payloads', () => {
         'audio/wav',
         'application/zip',
         'text/html'
-      ])('refuses %s: Meta has no message for it', contentType => {
+      ])('refuses %s: Meta has no message for it, and says it is the type', contentType => {
         expect(refusalOf(() => checkMedia({ ...media, contentType })).code).toBe(
-          ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+          ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED
         )
       })
 

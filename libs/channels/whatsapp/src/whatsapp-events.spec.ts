@@ -1,4 +1,4 @@
-import { MessageType } from '@platform/core/domain'
+import { MessageLimits, MessageType } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { webhookToEvents } from './whatsapp-events'
@@ -86,8 +86,41 @@ describe('webhookToEvents', () => {
     expect(event?.message).toMatchObject({
       type: MessageType.LOCATION,
       content: 'Shop - Street 1',
-      metadata: { latitude: 19.4, longitude: -99.1 }
+      metadata: { latitude: 19.4, longitude: -99.1, name: 'Shop', address: 'Street 1' }
     })
+  })
+
+  it('cuts the name and the address of a location, so one long text never costs the message', () => {
+    const [event] = webhookToEvents(
+      received({
+        type: 'location',
+        location: { latitude: 1, longitude: 2, name: 'n'.repeat(5000), address: '🏠'.repeat(300) }
+      })
+    )
+    const { metadata, content } = event?.message ?? {}
+    expect((metadata?.['name'] as string).length).toBe(MessageLimits.LOCATION_TEXT_MAX_LENGTH)
+    // 300 emoji are 600 units: 100 whole emoji fit, with no half of one at the end
+    expect(metadata?.['address']).toBe('🏠'.repeat(MessageLimits.LOCATION_TEXT_MAX_LENGTH / 2))
+    expect(content?.length).toBeLessThan(2 * MessageLimits.LOCATION_TEXT_MAX_LENGTH + 4)
+    expect(JSON.stringify(metadata).length).toBeLessThan(2048)
+  })
+
+  it('takes the characters that reorder or hide text out of the place, and drops blank parts', () => {
+    const [event] = webhookToEvents(
+      received({
+        type: 'location',
+        location: { latitude: 1, longitude: 2, name: 'Bank\u202E gnihsihp', address: '   ' }
+      })
+    )
+    expect(event?.message?.metadata).toEqual({ latitude: 1, longitude: 2, name: 'Bank gnihsihp' })
+    expect(event?.message?.content).toBe('Bank gnihsihp')
+  })
+
+  it('keeps no name or address a location did not come with', () => {
+    const [event] = webhookToEvents(
+      received({ type: 'location', location: { latitude: 19.4, longitude: -99.1 } })
+    )
+    expect(event?.message?.metadata).toEqual({ latitude: 19.4, longitude: -99.1 })
   })
 
   it('reads the choice of a button or a list as text, keeping its id', () => {

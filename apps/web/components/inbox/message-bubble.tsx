@@ -22,6 +22,7 @@ import { cn } from '../../lib/utils'
 import { CaptionNotice } from './caption-notice'
 import { CustomerAvatar } from './customer-avatar'
 import { DeliveryTicksIcon } from './delivery-ticks'
+import { LocationCard } from './location-card'
 import { MessageActionsBar } from './message-actions-bar'
 import { MessageMedia } from './message-media'
 import { QuotedMessage } from './quoted-message'
@@ -264,11 +265,18 @@ function Content({
             : t('deletedGeneric')
     return <p className="text-muted-foreground italic">{who}</p>
   }
-  const text = message.content === null || message.content === '' ? null : message.content
+  // The text of a location is its name and address joined, which the card already shows
+  const text =
+    message.content === null || message.content === '' || message.location !== null
+      ? null
+      : message.content
   const MediaIcon = isMediaType(message.type) ? MEDIA_ICONS[message.type] : null
   const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
   return (
     <>
+      {message.location === null ? null : (
+        <LocationCard location={message.location} content={message.content} />
+      )}
       {hasFiles ? (
         <MessageMedia
           files={message.media}

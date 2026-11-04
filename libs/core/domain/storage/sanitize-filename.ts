@@ -1,6 +1,7 @@
 const MAX_FILENAME_LENGTH = 120
 const MAX_EXTENSION_LENGTH = 16
-const FALLBACK_FILENAME = 'file'
+// What a file with no usable name is called; the thread shows the label of its kind instead
+export const UNNAMED_FILE_NAME = 'file'
 
 // The name of a file that came from outside (a customer's, an agent's browser) before it is part of
 // an object key, a database row or a `Content-Disposition` header (TDD_07 §6.3). Only letters,
@@ -15,7 +16,7 @@ export function sanitizeFilename(filename: string): string {
     .replaceAll(/\p{M}+/gu, '')
     .replaceAll(/[^A-Za-z0-9._-]+/g, '_')
     .replace(/^\.+/, '_')
-  if (cleaned === '' || /^_*$/.test(cleaned)) return FALLBACK_FILENAME
+  if (cleaned === '' || /^_*$/.test(cleaned)) return UNNAMED_FILE_NAME
   if (cleaned.length <= MAX_FILENAME_LENGTH) return cleaned
 
   const dot = cleaned.lastIndexOf('.')
