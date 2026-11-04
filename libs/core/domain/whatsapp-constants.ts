@@ -11,7 +11,9 @@ export const WhatsAppApi = {
   EDGE_PHONE_NUMBERS: 'phone_numbers',
   PHONE_FIELDS: 'display_phone_number,verified_name',
   TEMPLATE_FIELDS: 'name,language,status,components',
-  READ_STATUS: 'read'
+  READ_STATUS: 'read',
+  // `typing_indicator.type` of a read receipt: Meta takes only this one
+  TYPING_INDICATOR_TYPE: 'text'
 } as const
 
 // `object` of a webhook, and the one field the plugin subscribes to

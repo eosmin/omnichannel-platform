@@ -219,6 +219,10 @@ export interface SendLocationParams {
 export interface TypingParams {
   channelIdentity: string
   active: boolean
+  // The newest message of the customer that the provider knows, for a channel that shows the indicator
+  // through the receipt of that message (WhatsApp). Left out when the customer has none. `receivedAt` is
+  // an ISO time: a plugin with a messaging window does not show the indicator once it is closed.
+  lastInbound?: { externalId: string; receivedAt: string }
 }
 
 export interface MarkReadParams {

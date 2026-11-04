@@ -31,7 +31,8 @@ import {
   type SendMediaParams,
   type SendMessageParams,
   type SendReactionParams,
-  type SendTemplateParams
+  type SendTemplateParams,
+  type TypingParams
 } from '@platform/plugins/sdk'
 
 import { parseWhatsAppCredentials, type WhatsAppCredentials } from './whatsapp-credentials'
@@ -44,7 +45,8 @@ import {
   reactionPayload,
   readReceiptPayload,
   templatePayload,
-  textPayload
+  textPayload,
+  typingIndicatorPayload
 } from './whatsapp-payloads'
 
 const MESSAGING_WINDOW_HOURS = 24
@@ -184,6 +186,7 @@ export class WhatsAppPlugin implements ChannelPlugin {
     ChannelCapability.DELIVERY_RECEIPTS,
     ChannelCapability.REPLY_TO,
     ChannelCapability.REACTIONS,
+    ChannelCapability.TYPING_INDICATOR,
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
@@ -285,14 +288,22 @@ export class WhatsAppPlugin implements ChannelPlugin {
   }
 
   async markAsRead(ctx: ChannelContext, params: MarkReadParams): Promise<void> {
-    const credentials = parseWhatsAppCredentials(ctx.credentials)
-    await this.meta.post({
-      path: [credentials.phoneNumberId, WhatsAppApi.EDGE_MESSAGES],
-      token: credentials.accessToken,
-      body: readReceiptPayload(params.externalId),
-      idempotent: true,
-      schema: successSchema
-    })
+    await this.postReceipt(ctx, readReceiptPayload(params.externalId))
+  }
+
+  // Meta has no call to take the indicator away: it ends when we answer or after about 25 seconds, so a
+  // stop calls nothing. It rides on the read receipt of the newest message of the customer, which also
+  // marks that message as read (what the agent opening the conversation already did). Nothing to answer
+  // (no message, or the window closed, so no free reply could follow) shows nothing. Meta's refusal is
+  // thrown for the worker to log by its codes; the call is safe to repeat.
+  async sendTypingIndicator(ctx: ChannelContext, params: TypingParams): Promise<void> {
+    const { active, lastInbound } = params
+    if (!active || lastInbound === undefined) return
+    const received = Date.parse(lastInbound.receivedAt)
+    if (Number.isNaN(received) || Date.now() - received >= MESSAGING_WINDOW_HOURS * 3_600_000) {
+      return
+    }
+    await this.postReceipt(ctx, typingIndicatorPayload(lastInbound.externalId))
   }
 
   async sendReaction(ctx: ChannelContext, params: SendReactionParams): Promise<void> {
@@ -377,6 +388,18 @@ export class WhatsAppPlugin implements ChannelPlugin {
       token: credentials.accessToken,
       query: { fields: WhatsAppApi.PHONE_FIELDS },
       schema: phoneSchema
+    })
+  }
+
+  // The read receipt and the typing indicator are one call; safe to repeat
+  private async postReceipt(ctx: ChannelContext, body: object): Promise<void> {
+    const credentials = parseWhatsAppCredentials(ctx.credentials)
+    await this.meta.post({
+      path: [credentials.phoneNumberId, WhatsAppApi.EDGE_MESSAGES],
+      token: credentials.accessToken,
+      body,
+      idempotent: true,
+      schema: successSchema
     })
   }
 

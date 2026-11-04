@@ -9,7 +9,8 @@ import {
   reactionPayload,
   readReceiptPayload,
   templatePayload,
-  textPayload
+  textPayload,
+  typingIndicatorPayload
 } from './whatsapp-payloads'
 
 const to = '15550001111'
@@ -325,6 +326,20 @@ describe('whatsapp payloads', () => {
       messaging_product: 'whatsapp',
       status: 'read',
       message_id: 'wamid.1'
+    })
+  })
+
+  it.each(['', '   ', 'w'.repeat(300)])('refuses to show typing on %j', id => {
+    expect(() => typingIndicatorPayload(id)).toThrow(PluginError)
+  })
+
+  // https://developers.facebook.com/documentation/business-messaging/whatsapp/typing-indicators
+  it('marks the message as read and asks for the typing indicator in the same body', () => {
+    expect(typingIndicatorPayload('wamid.1')).toEqual({
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: 'wamid.1',
+      typing_indicator: { type: 'text' }
     })
   })
 

@@ -3,7 +3,7 @@ import { Readable } from 'node:stream'
 import { MetaGraphClient } from '@platform/channels/meta'
 import { DeliveryStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { type ChannelContext, PluginError } from '@platform/plugins/sdk'
+import { ChannelCapability, type ChannelContext, PluginError } from '@platform/plugins/sdk'
 
 import { whatsAppCredentialsSchema } from './whatsapp-credentials'
 import { WhatsAppPlugin } from './whatsapp.plugin'
@@ -215,6 +215,96 @@ describe('WhatsAppPlugin', () => {
       expect(meta.post.mock.calls[0]?.[0]).toMatchObject({
         body: { status: 'read', message_id: 'wamid.3' }
       })
+    })
+  })
+
+  describe('sendTypingIndicator', () => {
+    const now = Date.now()
+    const hoursAgo = (hours: number): string => new Date(now - hours * 3_600_000).toISOString()
+    const start = { channelIdentity: '15550001111', active: true }
+
+    it('declares the capability it implements', () => {
+      const { plugin } = build()
+      expect(plugin.capabilities).toContain(ChannelCapability.TYPING_INDICATOR)
+      expect(typeof plugin.sendTypingIndicator).toBe('function')
+    })
+
+    it('reads the last message of the customer and asks for the indicator in the same call', async () => {
+      const { plugin, meta } = build()
+      meta.post.mockResolvedValue({ success: true })
+      await plugin.sendTypingIndicator(ctx, {
+        ...start,
+        lastInbound: { externalId: 'wamid.9', receivedAt: hoursAgo(1) }
+      })
+      expect(meta.post).toHaveBeenCalledTimes(1)
+      expect(meta.post.mock.calls[0]?.[0]).toMatchObject({
+        path: ['111', 'messages'],
+        token: 'tok',
+        idempotent: true,
+        body: {
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: 'wamid.9',
+          typing_indicator: { type: 'text' }
+        }
+      })
+    })
+
+    it('still shows it just inside the window', async () => {
+      const { plugin, meta } = build()
+      meta.post.mockResolvedValue({ success: true })
+      await plugin.sendTypingIndicator(ctx, {
+        ...start,
+        lastInbound: { externalId: 'wamid.9', receivedAt: hoursAgo(23.9) }
+      })
+      expect(meta.post).toHaveBeenCalledTimes(1)
+    })
+
+    it('calls nothing when there is no message of the customer to answer', async () => {
+      const { plugin, meta } = build()
+      await plugin.sendTypingIndicator(ctx, start)
+      expect(meta.post).not.toHaveBeenCalled()
+    })
+
+    it('calls nothing once the 24 hour window is closed: no reply could follow', async () => {
+      const { plugin, meta } = build()
+      await plugin.sendTypingIndicator(ctx, {
+        ...start,
+        lastInbound: { externalId: 'wamid.9', receivedAt: hoursAgo(25) }
+      })
+      expect(meta.post).not.toHaveBeenCalled()
+    })
+
+    it('calls nothing for a time that is not a time', async () => {
+      const { plugin, meta } = build()
+      await plugin.sendTypingIndicator(ctx, {
+        ...start,
+        lastInbound: { externalId: 'wamid.9', receivedAt: 'yesterday' }
+      })
+      expect(meta.post).not.toHaveBeenCalled()
+    })
+
+    it('has nothing to take away: Meta ends the indicator by itself, so a stop calls nothing', async () => {
+      const { plugin, meta } = build()
+      await plugin.sendTypingIndicator(ctx, {
+        channelIdentity: '15550001111',
+        active: false,
+        lastInbound: { externalId: 'wamid.9', receivedAt: hoursAgo(1) }
+      })
+      expect(meta.post).not.toHaveBeenCalled()
+    })
+
+    it('lets the error of Graph through for the worker to log by its code', async () => {
+      const { plugin, meta } = build()
+      meta.post.mockRejectedValue(
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+      )
+      await expect(
+        plugin.sendTypingIndicator(ctx, {
+          ...start,
+          lastInbound: { externalId: 'wamid.9', receivedAt: hoursAgo(1) }
+        })
+      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_MESSAGE_FAILED })
     })
   })
 
