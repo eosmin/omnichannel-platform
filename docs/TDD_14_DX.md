@@ -874,7 +874,7 @@ S3_FORCE_PATH_STYLE=true
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=
 RESEND_WEBHOOK_SECRET=
-EMAIL_FROM="Omnichannel Platform <noreply@platform.local>"
+EMAIL_FROM=noreply@platform.local
 
 # Observability
 SENTRY_DSN=
