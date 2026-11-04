@@ -431,6 +431,7 @@
     "AUTH_TOKEN_EXPIRED": "Tu sesión caducó. Inicia sesión de nuevo",
     "AUTH_TOKEN_INVALID": "El enlace o la sesión no es válido",
     "AUTH_UNAUTHORIZED": "Necesitas iniciar sesión",
+    "CHANNEL_ACCOUNT_IN_USE": "Esta cuenta ya está conectada a otra tienda. Desconéctala allí primero.",
     "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite esa acción",
     "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
     "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
@@ -1465,6 +1466,7 @@
       "leave": "Salir y perderlos"
     },
     "channels": {
+      "accountInUseNamed": "Esta cuenta ya está conectada a la tienda {storeName}. Desconéctala allí primero.",
       "connect": {
         "whatsapp": {
           "phoneNumberId": "ID del número de teléfono",
@@ -1516,6 +1518,7 @@
         "never": "Todavía no se ha comprobado.",
         "lastHealthy": "Última vez que funcionó: {date}",
         "errors": {
+          "credentials_unreadable": "Las credenciales guardadas no se pueden leer. Vuelve a conectar el canal.",
           "check_failed": "No se pudo completar la última comprobación. Revisa las credenciales o vuelve a probar.",
           "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
           "unspecified": "El canal informó de un problema sin decir cuál."

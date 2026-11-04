@@ -16,7 +16,8 @@ import type { ChannelPlugin } from '@platform/plugins/sdk'
 import {
   CONNECTION_ROW_SELECT,
   ChannelContextFactory,
-  type ConnectionRow
+  type ConnectionRow,
+  CredentialsUnreadableError
 } from './channel-context.factory'
 import { providerErrorText } from './provider-text'
 import { errorName, withTimeout } from './timeout'
@@ -44,11 +45,23 @@ export class ChannelHealthService {
   }
 
   // Asks the plugin. A plugin that fails, or answers nonsense, is an unhealthy one and this does not
-  // throw for it. The context is built first and outside of that: if the credentials cannot be opened
-  // (a key that is not the one that sealed them, a corrupt row) the fault is ours, the provider was
-  // never asked, and the state of the connection must not change because of it.
+  // throw for it. Neither does a connection whose credentials cannot be opened (a key that is not the
+  // one that sealed them, a corrupt row): the provider is never asked, and the verdict is its own,
+  // `credentials_unreadable`. It is recoverable: once the credentials open again the next check puts
+  // the connection back to active, and connecting the channel again replaces them.
   async check(row: ConnectionRow, plugin: ChannelPlugin): Promise<CheckedHealth> {
-    const context = this.contexts.contextFor(row)
+    let context
+    try {
+      context = this.contexts.contextFor(row)
+    } catch (error) {
+      if (!(error instanceof CredentialsUnreadableError)) throw error
+      // The key is never logged, nor the text of the cipher's error
+      this.logger.warn(
+        { pluginId: row.pluginId, connection: row.id, errorName: errorName(error) },
+        'the credentials of a connection cannot be read'
+      )
+      return { healthy: false, error: ChannelHealthErrors.CREDENTIALS_UNREADABLE }
+    }
     try {
       const report = reportSchema.safeParse(
         await withTimeout(plugin.healthCheck(context), ChannelHealthLimits.CHECK_TIMEOUT_MS)

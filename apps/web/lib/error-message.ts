@@ -25,6 +25,18 @@ export function missingPermissionsOf(error: unknown): string[] {
     : []
 }
 
+const HOLDER_NAME_MAX_LENGTH = 80
+
+// The store the api says holds a channel account (`metadata.storeName` of CHANNEL_ACCOUNT_IN_USE).
+// The api sends it only to a member of that store; it is user text, so it is cut here and shown as
+// plain text (React and the message formatter never read it as markup). Null when none came.
+export function accountHolderOf(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.code !== ErrorCodes.CHANNEL_ACCOUNT_IN_USE) return null
+  const name = error.metadata['storeName']
+  if (typeof name !== 'string' || name.trim() === '') return null
+  return Array.from(name.trim()).slice(0, HOLDER_NAME_MAX_LENGTH).join('')
+}
+
 export interface FieldIssue {
   // The name of the field in the body (`phone`)
   field: string

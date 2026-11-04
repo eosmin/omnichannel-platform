@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   CONNECTION_ROW_SELECT,
   ChannelContextFactory,
+  CredentialsUnreadableError,
   errorName,
   providerText,
   withTimeout
@@ -184,6 +185,14 @@ export class ChannelTemplatesService {
         { pluginId: row.pluginId, errorName: errorName(error) },
         'listing templates failed'
       )
+      // Ours, not the provider's: the saved credentials cannot be opened, and only connecting again fixes it
+      if (error instanceof CredentialsUnreadableError) {
+        throw new PlatformException(
+          ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+          'the saved credentials of the connection cannot be read',
+          HttpStatusCodes.CONFLICT
+        )
+      }
       throw new PlatformException(
         ErrorCodes.CHANNEL_MESSAGE_FAILED,
         'the channel did not list its templates',

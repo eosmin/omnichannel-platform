@@ -1,6 +1,6 @@
 import { ApiError } from '@platform/api-client'
 
-import { firstIssueOf, missingPermissionsOf } from './error-message'
+import { accountHolderOf, firstIssueOf, missingPermissionsOf } from './error-message'
 
 describe('missingPermissionsOf', () => {
   it('reads the permissions a refusal says are missing', () => {
@@ -49,5 +49,32 @@ describe('firstIssueOf', () => {
     expect(firstIssueOf(refusal([{ path: '' }]))).toBeNull()
     expect(firstIssueOf(refusal('nope'))).toBeNull()
     expect(firstIssueOf(new ApiError(409, 'RESOURCE_CONFLICT', 'x'))).toBeNull()
+  })
+})
+
+describe('accountHolderOf', () => {
+  const inUse = (metadata: Record<string, unknown>): ApiError =>
+    new ApiError(409, 'CHANNEL_ACCOUNT_IN_USE', 'x', null, metadata)
+
+  it('reads the store the api named', () => {
+    expect(accountHolderOf(inUse({ storeName: 'Tienda Sur' }))).toBe('Tienda Sur')
+  })
+
+  it('names nothing when the api did not, or the value is not text', () => {
+    expect(accountHolderOf(inUse({}))).toBeNull()
+    expect(accountHolderOf(inUse({ storeName: 7 }))).toBeNull()
+    expect(accountHolderOf(inUse({ storeName: '  ' }))).toBeNull()
+  })
+
+  it('reads it only from this refusal, never from another code or a plain error', () => {
+    expect(
+      accountHolderOf(new ApiError(409, 'RESOURCE_CONFLICT', 'x', null, { storeName: 'Sur' }))
+    ).toBeNull()
+    expect(accountHolderOf(new TypeError('boom'))).toBeNull()
+  })
+
+  it('cuts a very long name', () => {
+    const name = accountHolderOf(inUse({ storeName: 'a'.repeat(500) }))
+    expect(Array.from(name ?? '').length).toBeLessThanOrEqual(80)
   })
 })
