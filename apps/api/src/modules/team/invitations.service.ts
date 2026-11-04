@@ -23,6 +23,7 @@ import {
   PlatformException
 } from '@platform/core/errors'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
+import { roleLabelOf } from '@platform/core/i18n-server'
 import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
 
 import { normalizeEmail } from '../auth/magic-link.service'
@@ -189,7 +190,7 @@ export class InvitationsService {
           url: this.linkFor(token),
           inviterName: inviter.name,
           storeName: store.name,
-          roleName: role.name,
+          roleName: roleLabelOf(destination, role.name),
           expiresInDays: INVITATION_TTL_DAYS
         },
         tags: { template: EmailTemplates.INVITATION }

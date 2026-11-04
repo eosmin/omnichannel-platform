@@ -380,6 +380,10 @@ describe('The customers of a store', () => {
       const freed = await asAdmin().delete(ApiRoutes.customers.identityById(ana.id, identity.id))
 
       expect(blocked.status).toBe(CONFLICT)
+      // A rule, not a race: the interface must not tell the agent that someone changed it
+      expect((blocked.body as ErrorBody).error.code).toBe(
+        ErrorCodes.CUSTOMER_IDENTITY_HAS_CONVERSATIONS
+      )
       expect(freed.status).toBe(NO_CONTENT)
     })
   })

@@ -137,6 +137,48 @@ describe('Notifications raised by events', () => {
       })
     })
 
+    it('names who wrote the note and whose conversation it is, for the texts', async () => {
+      const { id, customerId } = await mk()
+      await owner.customer.update({ where: { id: customerId }, data: { name: 'Lucia Prechat' } })
+
+      await mention(id, ctx.agentA.id)
+      const rows = await waitForRows(NotificationTypes.CONVERSATION_MENTIONED, 1)
+
+      const author = await owner.user.findUniqueOrThrow({ where: { id: ctx.adminA.id } })
+      expect(rows[0]?.params).toEqual({ author: author.name, customer: 'Lucia Prechat' })
+    })
+
+    it('cuts and cleans a name the customer chose before it goes into a text', async () => {
+      const { id, customerId } = await mk()
+      await owner.customer.update({
+        where: { id: customerId },
+        data: { name: `Soporte\u202E\n${'x'.repeat(300)}` }
+      })
+
+      await mention(id, ctx.agentA.id)
+      const rows = await waitForRows(NotificationTypes.CONVERSATION_MENTIONED, 1)
+
+      const { customer } = rows[0]?.params as { customer: string }
+      expect(Array.from(customer)).toHaveLength(80)
+      expect(customer).toMatch(/^Soporte x+$/)
+    })
+
+    it('names a customer with no name by the end of the handle, never by the whole handle', async () => {
+      const { id, customerId, customerIdentityId } = await mk()
+      await owner.customer.update({ where: { id: customerId }, data: { name: null } })
+      await owner.customerIdentity.update({
+        where: { id: customerIdentityId },
+        data: { displayName: null, channelIdentity: 'visitor-0000-ab98' }
+      })
+
+      await mention(id, ctx.agentA.id)
+      const rows = await waitForRows(NotificationTypes.CONVERSATION_MENTIONED, 1)
+
+      const params = rows[0]?.params as { customer: string }
+      expect(params.customer).toBe('····ab98')
+      expect(params.customer).toMatch(/^····\S{1,4}$/)
+    })
+
     it('does not tell the author of a note who mentions themselves', async () => {
       const { id } = await mk()
 

@@ -12,7 +12,6 @@ import {
 } from '@platform/core/database'
 import { MembershipStatus } from '@platform/core/domain'
 import {
-  resourceConflict,
   ErrorCodes,
   HttpStatusCodes,
   resourceNotFound,
@@ -240,14 +239,23 @@ export class OrganizationsService {
       // while its stores are counted
       await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${organizationId} FOR UPDATE`
       if ((await tx.store.count({ where: { organizationId } })) === 1) {
-        throw resourceConflict('the last store of an organization cannot be deleted')
+        throw new PlatformException(
+          ErrorCodes.ORG_STORE_IS_LAST,
+          'the last store of an organization cannot be deleted',
+          HttpStatusCodes.CONFLICT
+        )
       }
       // Waits for the writes of data of the store that are in flight; the ones that come later find no
       // store. The tables are looked at only after this, so a row written before it is seen.
       await lockStoreForDelete(tx, storeId)
       const holding = await storesTablesWithRows(tx, storeId)
       if (holding.length > 0) {
-        throw resourceConflict('a store that holds data cannot be deleted', { tables: holding })
+        throw new PlatformException(
+          ErrorCodes.ORG_STORE_HAS_DATA,
+          'a store that holds data cannot be deleted',
+          HttpStatusCodes.CONFLICT,
+          { tables: holding }
+        )
       }
       await tx.store.deleteMany({ where: { id: storeId, organizationId } })
     })

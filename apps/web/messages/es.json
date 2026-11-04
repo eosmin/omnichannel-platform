@@ -402,7 +402,7 @@
       "ignore": "Si no lo solicitaste, puedes ignorar este correo."
     },
     "invitation": {
-      "subject": "Te invitaron a unirte a un equipo",
+      "subject": "Te invitaron a unirte a {store}",
       "heading": "Te invitan a unirte a {store}",
       "body": "{inviter} te invitó a unirte a {store} como {role}. Nada cambia hasta que aceptes.",
       "cta": "Revisar la invitación",
@@ -413,11 +413,12 @@
     "notificationDigest": {
       "subject": "Tienes notificaciones nuevas",
       "heading": "Notificaciones nuevas ({count})",
-      "open": "Abrir",
+      "open": "Abrir conversación",
       "more": "Y {count} más, esperando en la aplicación.",
       "repeated": "{count} notificaciones como esta",
       "center": "Abrir la aplicación",
-      "settings": "Recibes este correo por tu configuración de notificaciones. Cámbiala en"
+      "settings": "Recibes este correo por tu configuración de notificaciones.",
+      "settingsLink": "Cámbiala en tus preferencias de notificaciones"
     }
   },
   "errorPage": {
@@ -528,7 +529,10 @@
     "VALIDATION_URL_NOT_ALLOWED": "Esa dirección no está permitida",
     "PAYLOAD_TOO_LARGE": "La solicitud es demasiado grande",
     "WIDGET_ORIGIN_NOT_ALLOWED": "Este sitio no puede usar el Widget web",
-    "WIDGET_TOKEN_INVALID": "La sesión del Widget web no es válida"
+    "WIDGET_TOKEN_INVALID": "La sesión del Widget web no es válida",
+    "CUSTOMER_IDENTITY_HAS_CONVERSATIONS": "Esta identidad tiene conversaciones y no se puede desvincular.",
+    "ORG_STORE_HAS_DATA": "No se puede borrar una tienda que tiene datos.",
+    "ORG_STORE_IS_LAST": "No se puede borrar la última tienda de la organización."
   },
   "invitation": {
     "title": "Te invitaron",
@@ -599,7 +603,9 @@
       },
       "mentioned": {
         "title": "Te mencionaron en una nota",
-        "body": "Un compañero te mencionó en una nota interna."
+        "body": "Un compañero te mencionó en una nota interna.",
+        "bodyWithPeople": "{author} te mencionó en una nota de la conversación con {customer}.",
+        "bodyRepeated": "{author} te mencionó {count} veces en una nota (conversación con {customer})."
       },
       "reopened": {
         "title": "Conversación reabierta",

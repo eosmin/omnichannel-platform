@@ -13,7 +13,9 @@ const itemSchema = z.object({
   // Absolute, or null when the notification points nowhere
   url: z.url({ protocol: /^https?$/ }).nullable(),
   // How many notifications the block stands for; more than one says so under the text
-  count: z.number().int().min(1)
+  count: z.number().int().min(1),
+  // The text already says how many they are: the line "N notifications like this" is left out
+  saysCount: z.boolean().default(false)
 })
 
 export const notificationDigestSchema = z.object({
@@ -50,7 +52,7 @@ export function NotificationDigest({
                 <br />
                 {item.body}
                 <br />
-                {item.count > 1 ? (
+                {item.count > 1 && !item.saysCount ? (
                   <>
                     {t('repeated', { count: item.count })}
                     <br />
@@ -73,7 +75,7 @@ export function NotificationDigest({
           <Text style={footer}>
             {t('settings')}{' '}
             <Link style={link} href={settingsUrl}>
-              {settingsUrl}
+              {t('settingsLink')}
             </Link>
           </Text>
         </Container>

@@ -402,7 +402,7 @@
       "ignore": "If you did not ask for it, you can ignore this email."
     },
     "invitation": {
-      "subject": "You have been invited to join a team",
+      "subject": "You have been invited to join {store}",
       "heading": "You are invited to join {store}",
       "body": "{inviter} invited you to join {store} as {role}. Nothing changes until you accept.",
       "cta": "Review the invitation",
@@ -413,11 +413,12 @@
     "notificationDigest": {
       "subject": "You have new notifications",
       "heading": "New notifications ({count})",
-      "open": "Open",
+      "open": "Open conversation",
       "more": "And {count} more, waiting in the app.",
       "repeated": "{count} notifications like this",
       "center": "Open the app",
-      "settings": "You get this email because of your notification settings. Change them at"
+      "settings": "You get this email because of your notification settings.",
+      "settingsLink": "Change it in your notification preferences"
     }
   },
   "errorPage": {
@@ -528,7 +529,10 @@
     "VALIDATION_URL_NOT_ALLOWED": "That address is not allowed",
     "PAYLOAD_TOO_LARGE": "That request is too big",
     "WIDGET_ORIGIN_NOT_ALLOWED": "This site is not allowed to use the widget",
-    "WIDGET_TOKEN_INVALID": "The widget session is not valid"
+    "WIDGET_TOKEN_INVALID": "The widget session is not valid",
+    "CUSTOMER_IDENTITY_HAS_CONVERSATIONS": "This identity has conversations and cannot be unlinked.",
+    "ORG_STORE_HAS_DATA": "A store that has data cannot be deleted.",
+    "ORG_STORE_IS_LAST": "The last store of an organization cannot be deleted."
   },
   "invitation": {
     "title": "You are invited",
@@ -599,7 +603,9 @@
       },
       "mentioned": {
         "title": "You were mentioned in a note",
-        "body": "A teammate mentioned you in an internal note."
+        "body": "A teammate mentioned you in an internal note.",
+        "bodyWithPeople": "{author} mentioned you in a note on the conversation with {customer}.",
+        "bodyRepeated": "{author} mentioned you {count} times in a note (conversation with {customer})."
       },
       "reopened": {
         "title": "Conversation reopened",

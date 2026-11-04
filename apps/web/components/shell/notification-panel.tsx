@@ -137,7 +137,7 @@ function NotificationRow({
   // The key comes from the server: `has` checks it exists before it is used, so the cast to the
   // typed key narrows nothing that was not checked
   type MessageKey = Parameters<typeof t>[0]
-  const keys = notificationTextKeys(item.messageKey, key => t.has(key as MessageKey))
+  const keys = notificationTextKeys(item.messageKey, key => t.has(key as MessageKey), item.params)
   const unread = item.readAt === null
   const target = safeActionPath(item.actionPath)
 

@@ -417,7 +417,7 @@ describe('Organizations and stores', () => {
       const response = await asAdmin().delete(ApiRoutes.organizations.storeById(store.id))
 
       expect(response.status).toBe(409)
-      expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.RESOURCE_CONFLICT)
+      expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.ORG_STORE_HAS_DATA)
       expect((response.body as ErrorBody).error.metadata?.tables).toEqual(['tags'])
       expect(await owner.store.findUnique({ where: { id: store.id } })).not.toBeNull()
     })
@@ -428,6 +428,7 @@ describe('Organizations and stores', () => {
       )
 
       expect(response.status).toBe(409)
+      expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.ORG_STORE_IS_LAST)
       expect(await owner.store.findUnique({ where: { id: ctx.storeB.id } })).not.toBeNull()
     })
 

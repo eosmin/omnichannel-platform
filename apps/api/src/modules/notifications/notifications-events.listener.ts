@@ -27,6 +27,32 @@ import { type NotificationType, NotificationTypes } from '@platform/core/notific
 
 import { NotificationsService } from './notifications.service'
 
+// The end of a handle a customer with no name is told apart by ("····ab98"): the whole handle is a
+// phone number or a random id, not something to print in a text
+const HANDLE_TAIL = 4
+
+function customerNameOf(conversation: {
+  customer: { name: string | null }
+  customerIdentity: { displayName: string | null; channelIdentity: string }
+}): string {
+  const tail = `····${conversation.customerIdentity.channelIdentity.slice(-HANDLE_TAIL)}`
+  for (const value of [conversation.customer.name, conversation.customerIdentity.displayName]) {
+    const clean = value === null ? null : textForParams(value)
+    if (clean !== null) return clean
+  }
+  return tail
+}
+
+// A name goes into the text of a notification and from there into an email: the name a customer gave
+// their profile is theirs to choose, so it is cut and stripped of control and invisible characters
+const PARAM_NAME_MAX = 80
+const UNSAFE_IN_NAME = /[\p{Cc}\p{Cf}]/gu
+
+function textForParams(value: string): string | null {
+  const clean = value.replace(UNSAFE_IN_NAME, ' ').replace(/\s+/g, ' ').trim()
+  return clean === '' ? null : Array.from(clean).slice(0, PARAM_NAME_MAX).join('')
+}
+
 // Domain events to notifications. The events carry ids only, and who may be told is decided here,
 // when the notification is made, not when the event was raised: a role may have changed in between.
 // MEDIA_INFECTED comes from the worker through the bridge, so this runs on one api instance only.
@@ -47,23 +73,37 @@ export class NotificationsEventsListener {
       const { storeId, conversationId, messageId, mentionedUserId } = payload
       const conversation = await this.prisma.client.conversation.findFirst({
         where: { id: conversationId, storeId },
-        select: { status: true, assignedTo: true }
-      })
-      if (conversation === null) return
-      const reader = await this.prisma.client.membership.count({
-        where: {
-          userId: mentionedUserId,
-          ...conversationReaders(
-            { hidden: isHiddenStatus(conversation.status), assignedTo: conversation.assignedTo },
-            { storeId, notes: true }
-          )
+        select: {
+          status: true,
+          assignedTo: true,
+          customer: { select: { name: true } },
+          customerIdentity: { select: { displayName: true, channelIdentity: true } }
         }
       })
+      if (conversation === null) return
+      const [reader, author] = await Promise.all([
+        this.prisma.client.membership.count({
+          where: {
+            userId: mentionedUserId,
+            ...conversationReaders(
+              { hidden: isHiddenStatus(conversation.status), assignedTo: conversation.assignedTo },
+              { storeId, notes: true }
+            )
+          }
+        }),
+        this.nameOfUser(payload.authorId)
+      ])
       if (reader === 0) return
       await this.notifications.send({
         userId: mentionedUserId,
         storeId,
         type: NotificationTypes.CONVERSATION_MENTIONED,
+        // Who wrote the note and whose conversation it is: the texts say it, in the language of the reader
+        // The author is left out when it is not known: the plain text then reads right
+        params: {
+          ...(author === null ? {} : { author }),
+          customer: customerNameOf(conversation)
+        },
         resourceType: 'message',
         resourceId: messageId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)
@@ -74,6 +114,14 @@ export class NotificationsEventsListener {
         'a mention could not be notified'
       )
     }
+  }
+
+  private async nameOfUser(userId: string): Promise<string | null> {
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { name: true }
+    })
+    return user === null ? null : textForParams(user.name)
   }
 
   // To the person who is given the conversation, unless they took it themselves. It comes from the

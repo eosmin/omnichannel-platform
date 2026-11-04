@@ -1514,7 +1514,7 @@ const envSchema = z.object({
   EMAIL_PROVIDER: z.enum(['resend']).default('resend'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
-  EMAIL_FROM: senderAddress.default('noreply@platform.local'),   // A bare address or "Name <address>"; senderAddress is a z.string().refine() that accepts either form
+  EMAIL_FROM: senderAddress.default('Omnichannel Platform <noreply@platform.local>'),   // A bare address or "Name <address>"; senderAddress is a z.string().refine() that accepts either form
 
   // Observability
   SENTRY_DSN: z.url().optional(),

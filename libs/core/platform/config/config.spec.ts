@@ -188,7 +188,8 @@ describe('email transport', () => {
 
 describe('EMAIL_FROM', () => {
   it('accepts a bare address and the "Name <address>" form', () => {
-    expect(parseEnv(validEnv).EMAIL_FROM).toBe('noreply@platform.local')
+    // Out of the box the sender has the name of the product: a bare address is shown as a stranger
+    expect(parseEnv(validEnv).EMAIL_FROM).toBe('Omnichannel Platform <noreply@platform.local>')
     expect(parseEnv({ ...validEnv, EMAIL_FROM: 'ventas@mitienda.com' }).EMAIL_FROM).toBe(
       'ventas@mitienda.com'
     )

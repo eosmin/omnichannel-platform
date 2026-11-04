@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
-import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceConflict,
+  resourceNotFound
+} from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { lockCustomerForWrite } from '@platform/core/messaging'
@@ -93,9 +99,12 @@ export class IdentitiesService {
         where: { storeId, customerIdentityId: identityId }
       })
       if (conversations > 0) {
-        throw resourceConflict('an identity with conversations cannot be unlinked', {
-          conversations
-        })
+        throw new PlatformException(
+          ErrorCodes.CUSTOMER_IDENTITY_HAS_CONVERSATIONS,
+          'an identity with conversations cannot be unlinked',
+          HttpStatusCodes.CONFLICT,
+          { conversations }
+        )
       }
       await tx.customerIdentity.delete({ where: { id: identityId } })
     })

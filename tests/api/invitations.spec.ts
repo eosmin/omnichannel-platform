@@ -129,7 +129,8 @@ describe('Inviting to a store', () => {
         data: {
           inviterName: 'adminA',
           storeName: `${prefix}-store-a`,
-          roleName: RoleNames.AGENT,
+          // The system roles are stored in English; the email names them in the language it speaks
+          roleName: 'Agente',
           expiresInDays: INVITATION_TTL_DAYS
         }
       })
