@@ -1,4 +1,4 @@
-import { wantsSound } from './chime'
+import { wantsSound } from './wants-sound'
 
 describe('wantsSound', () => {
   it('is true only for a payload that says so', () => {

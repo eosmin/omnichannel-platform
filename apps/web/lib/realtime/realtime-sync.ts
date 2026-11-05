@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import { RealtimeEvents } from '@platform/core/realtime'
 
-import { playChime, wantsSound } from '../notifications/chime'
+import { wantsSound } from '../notifications/wants-sound'
 
 import type { RealtimeConnection } from './connection'
 import {
@@ -12,6 +12,12 @@ import {
   queryKeysForEvent
 } from './invalidation'
 import { RealtimeClientTiming } from './realtime-config'
+
+// The tone is loaded the first time a notification asks for it: most sessions never hear one, and the
+// pages should not carry the code (the inbox is close to its script ceiling)
+function playChimeWhenFirstNeeded(): void {
+  void import('../notifications/chime').then(({ playChime }) => playChime()).catch(() => undefined)
+}
 
 // Keeps the cache of the store in step with what the server tells: an event makes the queries it
 // touches stale (one refetch for a burst), and a connection that may have missed events makes
@@ -23,7 +29,7 @@ export function attachRealtimeSync(
   queryClient: QueryClient,
   storeId: string,
   // Plays the sound of a notification that asks for one; a test passes its own
-  onSound: () => void = playChime
+  onSound: () => void = playChimeWhenFirstNeeded
 ): () => void {
   const { socket } = connection
   const batcher = createInvalidationBatcher(
