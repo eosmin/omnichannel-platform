@@ -1,4 +1,8 @@
+import { createHmac } from 'node:crypto'
+
 import { Test } from '@nestjs/testing'
+
+import { MetaWebhookApps } from '@platform/core/domain'
 
 import { MetaAppConfig } from './meta-app-config'
 import { MetaGraphClient } from './meta-graph.client'
@@ -22,6 +26,8 @@ describe('MetaPlatformModule', () => {
       graphOrigin: undefined,
       instagramAppSecret: undefined
     })
+    // `toEqual` ignores a missing key: the slot must exist, empty
+    expect(Object.keys(moduleRef.get(MetaAppConfig))).toContain('instagramAppSecret')
     expect(moduleRef.get(MetaGraphClient)).toBeInstanceOf(MetaGraphClient)
     jest.dontMock('@platform/core/config/env')
   })
@@ -43,6 +49,16 @@ describe('MetaPlatformModule', () => {
       appSecret: 'sec',
       instagramAppSecret: 'ig-sec'
     })
+    // And through the client the module builds, each secret signs its own app and not the other
+    const client = moduleRef.get(MetaGraphClient)
+    const body = '{"object":"instagram"}'
+    const signed = (secret: string): Record<string, string> => ({
+      'x-hub-signature-256': `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
+    })
+    expect(client.isValidSignature(body, signed('ig-sec'), MetaWebhookApps.INSTAGRAM)).toBe(true)
+    expect(client.isValidSignature(body, signed('sec'), MetaWebhookApps.INSTAGRAM)).toBe(false)
+    expect(client.isValidSignature(body, signed('sec'), MetaWebhookApps.MAIN)).toBe(true)
+    expect(client.isValidSignature(body, signed('ig-sec'), MetaWebhookApps.MAIN)).toBe(false)
     jest.dontMock('@platform/core/config/env')
   })
 

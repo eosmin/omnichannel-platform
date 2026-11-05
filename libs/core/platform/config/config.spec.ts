@@ -154,6 +154,15 @@ describe('deployed environments', () => {
         ).toBe(instagram)
       })
 
+      it('takes 16 characters and refuses 15, the same boundary as the main secret', () => {
+        expect(() =>
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'i'.repeat(16) })
+        ).not.toThrow()
+        expect(() =>
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'i'.repeat(15) })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
       it('refuses a short one, which would sign nothing worth trusting', () => {
         expect(() =>
           parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'short' })
@@ -180,8 +189,15 @@ describe('deployed environments', () => {
         ).toThrow(/META_INSTAGRAM_APP_SECRET/)
       })
 
-      it('is not checked on a laptop', () => {
+      it('is not checked on a laptop, whatever it holds', () => {
         expect(() => parseEnv({ ...validEnv, META_INSTAGRAM_APP_SECRET: 'short' })).not.toThrow()
+        expect(() =>
+          parseEnv({
+            ...validEnv,
+            ...metaApp,
+            META_INSTAGRAM_APP_SECRET: metaApp.META_APP_SECRET
+          })
+        ).not.toThrow()
       })
     })
 

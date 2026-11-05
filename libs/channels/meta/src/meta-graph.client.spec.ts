@@ -79,6 +79,26 @@ describe('MetaGraphClient', () => {
         ).toBe(false)
       })
 
+      it('checks Instagram with its own secret when the main one is missing', () => {
+        const only = new MetaGraphClient({
+          ...config,
+          appSecret: undefined,
+          instagramAppSecret: 'instagram-secret'
+        })
+        expect(
+          only.isValidSignature(body, signed('instagram-secret'), MetaWebhookApps.INSTAGRAM)
+        ).toBe(true)
+        expect(only.isValidSignature(body, signed('secret'), MetaWebhookApps.MAIN)).toBe(false)
+      })
+
+      it('does not fall back to the main secret when the Instagram one is empty: it refuses everything', () => {
+        const empty = new MetaGraphClient({ ...config, instagramAppSecret: '' })
+        expect(empty.isValidSignature(body, signed('secret'), MetaWebhookApps.INSTAGRAM)).toBe(
+          false
+        )
+        expect(empty.isValidSignature(body, signed(''), MetaWebhookApps.INSTAGRAM)).toBe(false)
+      })
+
       it('refuses an Instagram signature when neither secret is set', () => {
         const none = new MetaGraphClient({ ...config, appSecret: undefined })
         expect(none.isValidSignature(body, signed(''), MetaWebhookApps.INSTAGRAM)).toBe(false)

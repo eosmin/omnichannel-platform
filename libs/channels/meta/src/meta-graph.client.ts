@@ -79,11 +79,22 @@ export class MetaGraphClient {
   // what the other signs. Every other channel answers to the main key alone. The app is a required
   // argument: a channel that forgets to name its app does not compile instead of verifying with the wrong key.
   isValidSignature(rawBody: string, headers: Record<string, string>, app: MetaWebhookApp): boolean {
-    const secret =
-      app === MetaWebhookApps.INSTAGRAM
-        ? (this.config.instagramAppSecret ?? this.config.appSecret)
-        : this.config.appSecret
+    const secret = this.signingSecretOf(app)
     return isValidMetaSignature(rawBody, headers[MetaWebhook.SIGNATURE_HEADER], secret)
+  }
+
+  // One case per app, and a new app that is not handled here does not compile
+  private signingSecretOf(app: MetaWebhookApp): string | undefined {
+    switch (app) {
+      case MetaWebhookApps.INSTAGRAM:
+        return this.config.instagramAppSecret ?? this.config.appSecret
+      case MetaWebhookApps.MAIN:
+        return this.config.appSecret
+      default: {
+        const unhandled: never = app
+        throw new Error(`unhandled Meta app: ${String(unhandled)}`)
+      }
+    }
   }
 
   verifyHubChallenge(query: Record<string, string>): string | null {
