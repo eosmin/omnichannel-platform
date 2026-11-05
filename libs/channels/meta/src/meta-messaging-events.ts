@@ -2,6 +2,7 @@ import {
   httpUrl,
   InboundLimits,
   isWholeEmoji,
+  MessageMetadataKeys,
   MessageType,
   MetaGraph,
   MetaMessaging,
@@ -142,7 +143,12 @@ function toReceivedMessage(
   const providerType = shared && PROVIDER_TYPE.test(shared.type) ? shared.type : UNSUPPORTED_TYPE
   // A shared post or reel keeps its link beside the text or the file, so the team can open it
   const link = shared?.url
-    ? { metadata: { attachmentType: providerType, attachmentUrl: shared.url } }
+    ? {
+        metadata: {
+          [MessageMetadataKeys.ATTACHMENT_TYPE]: providerType,
+          attachmentUrl: shared.url
+        }
+      }
     : {}
   if (files) return { ...base, type: files.type, content: text, media: files.media, ...link }
   if (text !== null) return { ...base, type: MessageType.TEXT, content: text, ...link }
@@ -151,7 +157,8 @@ function toReceivedMessage(
     type: MessageType.TEXT,
     content: `[${providerType}]`,
     metadata: {
-      attachmentType: providerType,
+      [MessageMetadataKeys.ATTACHMENT_TYPE]: providerType,
+      [MessageMetadataKeys.UNSUPPORTED_TYPE]: providerType,
       ...(shared?.url ? { attachmentUrl: shared.url } : {})
     }
   }

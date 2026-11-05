@@ -93,6 +93,12 @@ function previewOf(text: string | null): string | null {
 // link leaves, and anything else in the metadata is no link.
 const attachmentUrlSchema = z.object({ attachmentUrl: httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH) })
 
+// The provider's name for a type a channel could not read, kept beside the `[name]` text it stored for
+// it. Only a plain name leaves (what the channel plugins accept), so nothing else of the metadata does.
+const providerTypeSchema = z.object({
+  [MessageMetadataKeys.UNSUPPORTED_TYPE]: z.string().regex(/^[A-Za-z0-9_]{1,64}$/)
+})
+
 // A file of a message, as the thread lists it: never a link or a key. The signed link is asked from
 // `GET /media/:id` when the bubble is drawn, and only once `status` is `clean`.
 export interface MessageMediaView {
@@ -145,6 +151,9 @@ export interface MessageView {
   // Untrusted: drawn as a link with its host visible and never fetched by the server. A story mention
   // is a signed link that expires within about a day.
   attachmentUrl: string | null
+  // The type a channel could not read when `content` is only its `[type]` marker (English, the provider's
+  // name): the thread writes its own translated sentence instead of drawing it. Null for any real text.
+  unsupportedType: string | null
   reactions: ReactionView[]
   // The files of the message (inbound, or sent with `mediaIds`); empty for a deleted message
   media: MessageMediaView[]
@@ -282,6 +291,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     location: locationOf(row, type),
     sticker: stickerOf(row, type),
     attachmentUrl: attachmentUrlOf(row, type),
+    unsupportedType: unsupportedTypeOf(row, type),
     reactions: row.reactions.map(reaction => ({
       emoji: reaction.emoji,
       authorType: enumValueOf(AuthorTypes, reaction.authorType, 'reaction author'),
@@ -351,6 +361,16 @@ function locationOf(row: MessageRow, type: MessageType): LocationView | null {
 function attachmentUrlOf(row: MessageRow, type: MessageType): string | null {
   if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return null
   return attachmentUrlSchema.safeParse(row.metadata).data?.attachmentUrl ?? null
+}
+
+// The channel marks the message when its whole text is the marker `[name]` for a type it cannot read; a
+// customer who types the same words, or shares a link and types them, has no such mark
+function unsupportedTypeOf(row: MessageRow, type: MessageType): string | null {
+  if (row.deletedAt !== null || row.metadata === null || type !== MessageTypes.TEXT) return null
+  const name = providerTypeSchema.safeParse(row.metadata).data?.[
+    MessageMetadataKeys.UNSUPPORTED_TYPE
+  ]
+  return name !== undefined && row.content === `[${name}]` ? name : null
 }
 
 // Same rule as the link: a deleted message and a system line show none

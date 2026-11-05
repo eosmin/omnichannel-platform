@@ -8,6 +8,7 @@ const sticker = {
   content: null,
   replyToMessageId: null,
   attachmentUrl: null,
+  unsupportedType: null,
   media: [file],
   unavailableFiles: []
 }

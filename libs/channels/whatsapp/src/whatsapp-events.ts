@@ -210,13 +210,14 @@ function toReceivedMessage(message: WhatsAppMessage): ReceivedMessage | null {
   }
 
   // The core refuses a text with no text. The marker is the provider's name for the type, not a
-  // sentence: the interface can draw it as it likes from `metadata.whatsappType`.
+  // sentence: the thread reads `metadata.unsupportedType` (`unsupportedType` of the message view) and draws
+  // its own, translated one.
   const providerType = PROVIDER_TYPE.test(message.type) ? message.type : 'unknown'
   return {
     ...base,
     type: MessageType.TEXT,
     content: `[${providerType}]`,
-    metadata: { whatsappType: providerType }
+    metadata: { [MessageMetadataKeys.UNSUPPORTED_TYPE]: providerType }
   }
 }
 

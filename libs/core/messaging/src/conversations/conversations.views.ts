@@ -11,6 +11,7 @@ import {
   ConversationLimits,
   CustomerLimits,
   httpUrl,
+  MessageMetadataKeys,
   MessageType as MessageTypes
 } from '@platform/core/domain'
 
@@ -167,7 +168,11 @@ export async function listItemsOf(
     FROM unnest(${rows.map(row => row.id)}::text[]) AS page(id)
     CROSS JOIN LATERAL (
       SELECT id, conversation_id, author_type, type,
-             left(CASE WHEN deleted_at IS NULL THEN content END, ${ConversationLimits.PREVIEW_MAX_LENGTH}) AS preview,
+             left(
+               CASE WHEN deleted_at IS NULL
+                     AND content IS DISTINCT FROM '[' || (metadata ->> ${MessageMetadataKeys.UNSUPPORTED_TYPE}) || ']'
+                    THEN content END,
+               ${ConversationLimits.PREVIEW_MAX_LENGTH}) AS preview,
              created_at
       FROM messages
       WHERE store_id = ${storeId}
