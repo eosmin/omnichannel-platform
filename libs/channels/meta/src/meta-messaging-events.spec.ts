@@ -186,7 +186,24 @@ describe('messagingToEvents', () => {
 
   it('keeps a message with nothing readable as an unsupported marker', () => {
     const [event] = messagingToEvents(wrap(inbound({ mid: 'm1', is_unsupported: true })), OBJECT)
-    expect(event?.message).toMatchObject({ content: '[unsupported]' })
+    expect(event?.message).toMatchObject({
+      content: '[unsupported]',
+      metadata: { unsupportedType: 'unsupported' }
+    })
+  })
+
+  it('does not mark as unsupported a text that comes with a shared link', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          text: '[ig_post]',
+          attachments: [{ type: 'ig_post', payload: { url: 'https://www.instagram.com/p/abc/' } }]
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message?.metadata).not.toHaveProperty('unsupportedType')
   })
 
   it('does not take an attachment with a url that is not http', () => {

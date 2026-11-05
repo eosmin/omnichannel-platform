@@ -595,7 +595,9 @@ describe('Media upload', () => {
       const file = await fetch(urls.url)
       expect(file.status).toBe(OK)
       expect(file.headers.get('content-type')).toBe('image/png')
-      expect(file.headers.get('content-disposition')).toMatch(/^attachment; filename="x\.html"/)
+      expect(file.headers.get('content-disposition')).toMatch(
+        /^attachment; filename="x\.html\.png"/
+      )
       expect(Buffer.from(await file.arrayBuffer()).equals(PNG)).toBe(true)
     })
 

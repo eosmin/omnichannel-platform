@@ -15,6 +15,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   deliveryError: null,
   system: null,
   attachmentUrl: null,
+  unsupportedType: null,
   location: null,
   sticker: false,
   reactions: [],

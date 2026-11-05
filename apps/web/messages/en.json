@@ -1006,6 +1006,13 @@
         "DOCUMENT": "Document"
       },
       "templateLabel": "Template message",
+      "unsupportedKind": {
+        "storyMention": "The customer mentioned your account in a story; this channel does not let you see the story",
+        "share": "The customer shared a post; this channel does not let you see its content",
+        "location": "The customer shared a location that this channel does not let you see",
+        "media": "The customer sent a file that could not be fetched",
+        "other": "The customer sent something this channel cannot show"
+      },
       "captionFailed": "The file was sent, but the text under it was not",
       "captionUnconfirmed": "The file was sent, but the text under it may not have been. Check the chat before sending the text again",
       "captionQueued": "Sending the text under the file",
