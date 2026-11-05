@@ -129,6 +129,52 @@ describe('deployed environments', () => {
       ).toThrow(/META_WEBHOOK_VERIFY_TOKEN/)
     })
 
+    describe('the secret of a separate Instagram app', () => {
+      const instagram = 'i'.repeat(32)
+
+      it('is optional: a deployed environment boots without it', () => {
+        expect(() => parseEnv({ ...deployed, ...metaApp })).not.toThrow()
+        expect(
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: undefined })
+            .META_INSTAGRAM_APP_SECRET
+        ).toBeUndefined()
+      })
+
+      it('counts an empty value as not set, as a .env line with nothing after the equal sign is', () => {
+        expect(
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: '' })
+            .META_INSTAGRAM_APP_SECRET
+        ).toBeUndefined()
+      })
+
+      it('is read when set', () => {
+        expect(
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: instagram })
+            .META_INSTAGRAM_APP_SECRET
+        ).toBe(instagram)
+      })
+
+      it('refuses a short one, which would sign nothing worth trusting', () => {
+        expect(() =>
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'short' })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
+      it('refuses the verify token as its value: that one is shown to Meta in a form', () => {
+        expect(() =>
+          parseEnv({
+            ...deployed,
+            ...metaApp,
+            META_INSTAGRAM_APP_SECRET: metaApp.META_WEBHOOK_VERIFY_TOKEN
+          })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
+      it('is not checked on a laptop', () => {
+        expect(() => parseEnv({ ...validEnv, META_INSTAGRAM_APP_SECRET: 'short' })).not.toThrow()
+      })
+    })
+
     it('does not ask for them on a laptop', () => {
       expect(() => parseEnv(validEnv)).not.toThrow()
     })

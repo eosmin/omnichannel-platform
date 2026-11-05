@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 
 import { MetaGraphClient } from '@platform/channels/meta'
+import { type MetaWebhookApp, MetaWebhookApps } from '@platform/core/domain'
 import { channelEventSchema } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
@@ -20,6 +21,9 @@ export interface MetaMessagingContract {
   create: (meta: MetaGraphClient) => ChannelPlugin
   webhookObject: string
   accountId: string
+  // The app whose secret signs this channel's webhooks: Messenger's is the main one; Instagram's is its
+  // own when the platform has one
+  webhookApp: MetaWebhookApp
 }
 
 // The send of the contract suite goes to Meta: the answer is a captured one
@@ -56,6 +60,30 @@ export function testMetaMessagingContract(contract: MetaMessagingContract): void
   const rawBody = JSON.stringify(body)
 
   stubMeta()
+
+  describe(`${name} webhook signature key`, () => {
+    const MAIN = 'main-app-secret-of-the-contract'
+    const INSTAGRAM = 'instagram-app-secret-of-the-contract'
+    const sign = (secret: string): Record<string, string> => ({
+      'x-hub-signature-256': `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`
+    })
+    // The platform has a second app for Instagram: each channel must still answer to its own key
+    const plugin = contract.create(
+      new MetaGraphClient({
+        appSecret: MAIN,
+        instagramAppSecret: INSTAGRAM,
+        verifyToken: 'verify',
+        graphVersion: 'v23.0'
+      })
+    )
+    const own = contract.webhookApp === MetaWebhookApps.INSTAGRAM ? INSTAGRAM : MAIN
+    const other = contract.webhookApp === MetaWebhookApps.INSTAGRAM ? MAIN : INSTAGRAM
+
+    it('accepts the key of its own app and refuses the key of the other one', () => {
+      expect(plugin.validateWebhookSignature(rawBody, sign(own))).toBe(true)
+      expect(plugin.validateWebhookSignature(rawBody, sign(other))).toBe(false)
+    })
+  })
 
   testChannelPluginContract(
     create,

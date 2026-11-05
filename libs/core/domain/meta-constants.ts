@@ -18,6 +18,16 @@ export const MetaUpload = {
   FORM_CONTENT_TYPE: 'multipart/form-data'
 } as const
 
+// The Meta app whose secret signs the webhooks of a channel. WhatsApp and Messenger always answer to the
+// main app. Instagram answers to its own app when the platform has one (`META_INSTAGRAM_APP_SECRET`)
+// and to the main one when it does not, which is how the three channels are one app again later.
+export const MetaWebhookApps = {
+  MAIN: 'main',
+  INSTAGRAM: 'instagram'
+} as const
+
+export type MetaWebhookApp = (typeof MetaWebhookApps)[keyof typeof MetaWebhookApps]
+
 export const MetaGraph = {
   // The Graph host: WhatsApp, Messenger and Instagram (unified login) all use it. Instagram Login's
   // own host, graph.instagram.com, takes another kind of token and is not used. A call names this

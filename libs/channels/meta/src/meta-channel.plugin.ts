@@ -7,7 +7,9 @@ import {
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
-  MetaMessaging
+  MetaMessaging,
+  type MetaWebhookApp,
+  MetaWebhookApps
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
@@ -86,6 +88,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     extendedHoursAfterAd: AD_WINDOW_HOURS
   }
 
+  // The Meta app that signs this channel's webhooks; Instagram says its own (see MetaWebhookApps)
+  protected readonly webhookApp: MetaWebhookApp = MetaWebhookApps.MAIN
   protected abstract readonly origin: MetaGraphOrigin
   protected abstract readonly webhookObject: string
   protected abstract readonly subscribedFields: string
@@ -324,7 +328,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 
   validateWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
-    return this.meta.isValidSignature(rawBody, headers)
+    return this.meta.isValidSignature(rawBody, headers, this.webhookApp)
   }
 
   async handleWebhook(payload: unknown): Promise<ChannelEvent[]> {

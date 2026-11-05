@@ -3,7 +3,7 @@ import { Readable } from 'node:stream'
 
 import { z } from 'zod'
 
-import { MetaGraph, MetaLimits } from '@platform/core/domain'
+import { MetaGraph, MetaLimits, MetaWebhookApps } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
@@ -42,6 +42,48 @@ describe('MetaGraphClient', () => {
       const signature = `sha256=${createHmac('sha256', 'secret').update(body).digest('hex')}`
       expect(client.isValidSignature(body, { 'x-hub-signature-256': signature })).toBe(true)
       expect(client.isValidSignature(body, {})).toBe(false)
+    })
+
+    describe('the signature by app', () => {
+      const body = '{"a":1}'
+      const signed = (secret: string): Record<string, string> => ({
+        'x-hub-signature-256': `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
+      })
+      const both = (): MetaGraphClient =>
+        new MetaGraphClient({ ...config, instagramAppSecret: 'instagram-secret' })
+
+      it('checks Instagram with its own secret alone when it has one: the main one no longer passes', () => {
+        const two = both()
+        expect(
+          two.isValidSignature(body, signed('instagram-secret'), MetaWebhookApps.INSTAGRAM)
+        ).toBe(true)
+        expect(two.isValidSignature(body, signed('secret'), MetaWebhookApps.INSTAGRAM)).toBe(false)
+      })
+
+      it('keeps the main secret for the other channels, and refuses the Instagram one there', () => {
+        const two = both()
+        expect(two.isValidSignature(body, signed('secret'))).toBe(true)
+        expect(two.isValidSignature(body, signed('secret'), MetaWebhookApps.MAIN)).toBe(true)
+        expect(two.isValidSignature(body, signed('instagram-secret'))).toBe(false)
+        expect(two.isValidSignature(body, signed('instagram-secret'), MetaWebhookApps.MAIN)).toBe(
+          false
+        )
+      })
+
+      it('checks Instagram with the main secret when it has none of its own', () => {
+        expect(client.isValidSignature(body, signed('secret'), MetaWebhookApps.INSTAGRAM)).toBe(
+          true
+        )
+        expect(
+          client.isValidSignature(body, signed('instagram-secret'), MetaWebhookApps.INSTAGRAM)
+        ).toBe(false)
+      })
+
+      it('refuses an Instagram signature when neither secret is set', () => {
+        const none = new MetaGraphClient({ ...config, appSecret: undefined })
+        expect(none.isValidSignature(body, signed(''), MetaWebhookApps.INSTAGRAM)).toBe(false)
+        expect(none.isValidSignature(body, {}, MetaWebhookApps.INSTAGRAM)).toBe(false)
+      })
     })
 
     it('answers the handshake with the verify token', () => {

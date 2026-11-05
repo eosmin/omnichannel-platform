@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto'
+
 import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
@@ -820,5 +822,38 @@ describe('InstagramPlugin', () => {
     })
     await expect(plugin.handleWebhook(body('instagram'))).resolves.toHaveLength(1)
     await expect(plugin.handleWebhook(body('page'))).resolves.toEqual([])
+  })
+
+  describe('the webhook signature', () => {
+    const body = '{"object":"instagram","entry":[]}'
+    const signed = (secret: string): Record<string, string> => ({
+      'x-hub-signature-256': `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
+    })
+    const plugin = (instagramAppSecret?: string): InstagramPlugin =>
+      new InstagramPlugin(
+        new MetaGraphClient({
+          appSecret: 'main-secret',
+          verifyToken: 'verify',
+          graphVersion: 'v23.0',
+          ...(instagramAppSecret === undefined ? {} : { instagramAppSecret })
+        })
+      )
+
+    it('is the one of the Instagram app when the platform has it, and only that one', () => {
+      const own = plugin('instagram-app-secret')
+      expect(own.validateWebhookSignature(body, signed('instagram-app-secret'))).toBe(true)
+      expect(own.validateWebhookSignature(body, signed('main-secret'))).toBe(false)
+    })
+
+    it('is the one of the main app when the platform has no other (one app for the three)', () => {
+      const shared = plugin()
+      expect(shared.validateWebhookSignature(body, signed('main-secret'))).toBe(true)
+      expect(shared.validateWebhookSignature(body, signed('instagram-app-secret'))).toBe(false)
+    })
+
+    it('still answers the handshake with the one verify token of the platform', () => {
+      const query = { 'hub.mode': 'subscribe', 'hub.verify_token': 'verify', 'hub.challenge': '7' }
+      expect(plugin('instagram-app-secret').verifyWebhook(query)).toBe('7')
+    })
   })
 })

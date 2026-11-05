@@ -19,9 +19,30 @@ describe('MetaPlatformModule', () => {
       appSecret: 'sec',
       verifyToken: 'ver',
       graphVersion: 'v24.0',
-      graphOrigin: undefined
+      graphOrigin: undefined,
+      instagramAppSecret: undefined
     })
     expect(moduleRef.get(MetaGraphClient)).toBeInstanceOf(MetaGraphClient)
+    jest.dontMock('@platform/core/config/env')
+  })
+
+  it('reads the secret of the separate Instagram app when the env has one', async () => {
+    // The first test left its env in the registry: the factory must read this one
+    jest.resetModules()
+    jest.doMock('@platform/core/config/env', () => ({
+      env: {
+        META_APP_SECRET: 'sec',
+        META_INSTAGRAM_APP_SECRET: 'ig-sec',
+        META_WEBHOOK_VERIFY_TOKEN: 'ver',
+        META_GRAPH_API_VERSION: 'v24.0'
+      }
+    }))
+    const moduleRef = await Test.createTestingModule({ imports: [MetaPlatformModule] }).compile()
+
+    expect(moduleRef.get(MetaAppConfig)).toMatchObject({
+      appSecret: 'sec',
+      instagramAppSecret: 'ig-sec'
+    })
     jest.dontMock('@platform/core/config/env')
   })
 
