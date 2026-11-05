@@ -60,3 +60,54 @@ describe('the vocabulary of the failed connection texts in Spanish', () => {
     expect(texts.filter(text => pattern.test(text))).toEqual([])
   })
 })
+
+const flatten = (value: unknown, path: string[] = []): Array<[string, string]> => {
+  if (typeof value === 'string') return [[path.join('.'), value]]
+  if (value === null || typeof value !== 'object') return []
+  return Object.entries(value).flatMap(([key, child]) => flatten(child, [...path, key]))
+}
+
+const allTexts = (locale: string): Array<[string, string]> => flatten(messages(locale))
+
+// Every text in the app, not only the connection ones: one verb for what runs out, no jargon on
+// screen, and one style of ellipsis for a wait
+describe('the vocabulary of every Spanish text', () => {
+  const texts = allTexts('es')
+
+  it('has texts to check', () => {
+    expect(texts.length).toBeGreaterThan(1000)
+  })
+
+  it('says "expira", never "caduca" or "vence"', () => {
+    expect(
+      texts
+        .filter(([, text]) => /caduc|\bvence\b|\bvenció(?![\p{L}])/iu.test(text))
+        .map(([key]) => key)
+    ).toEqual([])
+  })
+})
+
+describe.each(['en', 'es'])('the texts in %s', locale => {
+  it('name the webhook only once, where a person pastes the address in the provider panel', () => {
+    expect(
+      allTexts(locale)
+        .filter(([, text]) => /webhook/i.test(text))
+        .map(([key]) => key)
+    ).toEqual(['settings.channels.callbackUrl.hint'])
+  })
+
+  it('write a wait with the ellipsis character, never three dots', () => {
+    expect(
+      allTexts(locale)
+        .filter(([, text]) => text.includes('...'))
+        .map(([key]) => key)
+    ).toEqual([])
+  })
+
+  it('tell a failed test of a connection with a token about the action that updates the token', () => {
+    const { channels } = messages(locale).settings
+    const test = channels['test'] as Record<string, string>
+    const updateToken = channels['updateToken'] as Record<string, string>
+    expect(test['unhealthyWithToken']).toContain(updateToken['action'])
+  })
+})

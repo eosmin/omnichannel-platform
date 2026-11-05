@@ -236,6 +236,7 @@ function Actions({
           onClick={() => test.mutate()}
         >
           {test.isPending ? t('test.running') : t('test.action')}
+          <span className="sr-only"> {connection.displayName}</span>
         </Button>
         {onUpdateToken === undefined ? null : (
           // Always there, and the main action when the failure is one that a new token fixes
@@ -262,7 +263,9 @@ function Actions({
       </div>
       {test.data === undefined ? null : (
         <p role="status" className={test.data.healthy ? 'text-sm' : 'text-destructive text-sm'}>
-          {test.data.healthy ? t('test.healthy') : t('test.unhealthy')}{' '}
+          {test.data.healthy
+            ? t('test.healthy')
+            : t(onUpdateToken === undefined ? 'test.unhealthy' : 'test.unhealthyWithToken')}{' '}
           <span className="text-muted-foreground">
             {format.dateTime(new Date(test.data.checkedAt), { timeStyle: 'short' })}
           </span>

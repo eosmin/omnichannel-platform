@@ -10,7 +10,7 @@
       "title": "Notifications",
       "forStore": "Your choices for {store}.",
       "noStore": "You do not belong to any store yet.",
-      "loading": "Loading...",
+      "loading": "Loading…",
       "saveFailed": "The change could not be saved.",
       "type": "Notification",
       "cell": "{type}: {channel}",
@@ -89,7 +89,7 @@
           "disconnected": "Channel disconnected"
         },
         "webhook": {
-          "auto_disabled": "Webhook disabled"
+          "auto_disabled": "Outgoing integration disabled"
         },
         "plugin": {
           "error": "Plugin error"
@@ -147,10 +147,10 @@
         "choose": "Choose a picture",
         "change": "Change picture",
         "remove": "Remove",
-        "uploading": "Uploading...",
+        "uploading": "Uploading…",
         "uploaded": "Picture uploaded.",
         "removed": "Picture removed.",
-        "processing": "Getting your picture ready...",
+        "processing": "Getting your picture ready…",
         "refused": "This picture could not be used. Try another one.",
         "hint": "JPEG, PNG or WebP, up to {size} MB. It is resized to a small square, and its metadata is removed.",
         "tooMany": "You already have several pictures in progress. Wait for them to finish and try again."
@@ -781,8 +781,8 @@
     },
     "webhook": {
       "auto_disabled": {
-        "title": "A webhook was turned off",
-        "body": "A webhook failed too many times and was disabled."
+        "title": "An outgoing integration was turned off",
+        "body": "An outgoing integration failed too many times and was disabled."
       }
     },
     "unknown": {
@@ -848,7 +848,7 @@
     "settings": "Settings"
   },
   "realtime": {
-    "reconnecting": "Reconnecting...",
+    "reconnecting": "Reconnecting…",
     "disconnected": "No connection. New messages will not arrive. What you write is kept and sent when the connection returns; after a long wait, you will be asked first."
   },
   "shell": {
@@ -1277,16 +1277,16 @@
         "label": "Assign",
         "toMe": "Assign to me",
         "unassign": "Unassign",
-        "toAgent": "Assign to an agent...",
-        "roundRobin": "Round-robin to the team..."
+        "toAgent": "Assign to an agent…",
+        "roundRobin": "Round-robin to the team…"
       },
       "status": {
         "label": "Status"
       },
       "tag": {
         "label": "Tag",
-        "add": "Add a tag...",
-        "remove": "Remove a tag..."
+        "add": "Add a tag…",
+        "remove": "Remove a tag…"
       },
       "more": {
         "label": "More",
@@ -1569,9 +1569,10 @@
       },
       "test": {
         "action": "Test connection",
-        "running": "Testing",
+        "running": "Testing…",
         "healthy": "The connection works.",
-        "unhealthy": "The connection is not working."
+        "unhealthy": "The connection is not working.",
+        "unhealthyWithToken": "The connection is not working. If the token expired or was revoked, use Update token; otherwise disconnect the channel and connect it again."
       },
       "disconnect": {
         "action": "Disconnect",
@@ -1581,8 +1582,8 @@
         "done": "{name} was disconnected."
       },
       "callbackUrl": {
-        "label": "Callback URL",
-        "hint": "Paste this address in the webhook settings of the provider so that it can send you messages."
+        "label": "Receiving address",
+        "hint": "Paste this address in the provider's panel, in the field that asks for the address to receive messages (callback or webhook), so that it can send you messages."
       },
       "copy": "Copy",
       "copied": "Copied",
@@ -1592,7 +1593,7 @@
         "description": "Enter what the channel asks for. Secrets are stored encrypted and are never shown again.",
         "optional": "(optional)",
         "secretHint": "It is a key to the messages of your account: do not share it or paste it in chats. It is stored encrypted and will not be shown again.",
-        "connecting": "Connecting",
+        "connecting": "Connecting…",
         "submit": "Connect",
         "connected": "{name} is connected."
       },
@@ -1840,7 +1841,7 @@
           "view": "View settings",
           "edit": "Edit settings",
           "manage_plugins": "Manage plugins",
-          "manage_webhooks": "Manage webhooks",
+          "manage_webhooks": "Manage outgoing integrations",
           "manage_api_keys": "Manage API keys",
           "manage_retention": "Manage data retention",
           "manage_routing": "Manage routing",
