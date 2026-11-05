@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react'
 
 import { LoginForm } from '../../components/auth/login-form'
+import { pageTitle } from '../../lib/page-titles'
+
+export const generateMetadata = pageTitle('login')
 
 export default function LoginPage(): ReactElement {
   return (
