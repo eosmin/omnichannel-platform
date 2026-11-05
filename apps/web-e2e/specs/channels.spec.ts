@@ -37,6 +37,9 @@ function storeIdOf(page: Page): string {
   return storeId ?? ''
 }
 
+// The name the channels screen shows for the Messenger plugin (CI page text: "Messenger")
+const MESSENGER_NAME = 'Messenger'
+
 test.describe('Settings → Channels and Plugins', () => {
   test('an administrator installs the widget, connects it, sets it up and disconnects it', async ({
     page
@@ -170,7 +173,7 @@ test.describe('Settings → Channels and Plugins', () => {
 
         await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS))
         const connectButton = page.getByRole('button', {
-          name: `${channels.add.connect} Facebook Messenger`,
+          name: `${channels.add.connect} ${MESSENGER_NAME}`,
           exact: false
         })
         // When the button is missing, the log says what the page showed instead
@@ -186,7 +189,7 @@ test.describe('Settings → Channels and Plugins', () => {
           .toBe(true)
         await connectButton.click()
         const dialog = page.getByRole('dialog', {
-          name: channels.connectDialog.title.replace('{name}', 'Facebook Messenger')
+          name: channels.connectDialog.title.replace('{name}', MESSENGER_NAME)
         })
         const field = dialog.getByLabel(channels.connect.messenger.accessToken)
 
