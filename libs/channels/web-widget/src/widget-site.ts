@@ -37,6 +37,9 @@ export function originOf(value: string): string | null {
   // be silently dropped. A trailing slash is the same origin.
   if (url.username || url.password || url.search || url.hash) return null
   if (url.pathname !== '/') return null
+  // `https://*.shop.test` parses, but a browser sends the exact origin and the match is an exact
+  // comparison: a wildcard would be saved and never allow anything, and the owner would not know why
+  if (url.hostname.includes('*')) return null
   return url.origin
 }
 

@@ -1612,7 +1612,7 @@
         },
         "origins": {
           "label": "Sitios que pueden cargar el chat",
-          "hint": "Una dirección por línea, por ejemplo https://www.ejemplo.com. Hasta {max}.",
+          "hint": "Una dirección exacta por línea, por ejemplo https://www.ejemplo.com. No se admiten comodines (*): escribe cada subdominio. Hasta {max}.",
           "tooMany": "Usa como máximo {max} sitios.",
           "save": "Guardar sitios"
         },

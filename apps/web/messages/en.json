@@ -1612,7 +1612,7 @@
         },
         "origins": {
           "label": "Sites that may load the chat",
-          "hint": "One address per line, for example https://www.example.com. Up to {max}.",
+          "hint": "One exact address per line, for example https://www.example.com. Wildcards (*) are not accepted: write each subdomain. Up to {max}.",
           "tooMany": "Use at most {max} sites.",
           "save": "Save sites"
         },
