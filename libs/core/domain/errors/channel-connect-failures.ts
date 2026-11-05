@@ -24,6 +24,12 @@ export const ChannelConnectFailureReasons = {
   // The provider answered something that is not what its API says
   PROVIDER_ANSWER_UNEXPECTED: 'provider_answer_unexpected',
   SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
+  // Instagram, through the Page: the account the Page links could not be read
+  ACCOUNT_UNREADABLE: 'account_unreadable',
+  // The provider did not let the Page be subscribed to messages
+  SUBSCRIPTION_REFUSED: 'subscription_refused',
+  // The subscription of the Page could not be checked: trying again is the whole advice
+  SUBSCRIPTION_UNREADABLE: 'subscription_unreadable',
   // The provider asks to wait, or did not answer: trying again later is the whole advice
   PROVIDER_BUSY: 'provider_busy',
   PROVIDER_UNAVAILABLE: 'provider_unavailable'

@@ -163,6 +163,9 @@ export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefi
     case ChannelConnectFailureReasons.ACCOUNT_AMBIGUOUS:
     case ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED:
     case ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED:
+    case ChannelConnectFailureReasons.ACCOUNT_UNREADABLE:
+    case ChannelConnectFailureReasons.SUBSCRIPTION_REFUSED:
+    case ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE:
     case ChannelConnectFailureReasons.PROVIDER_BUSY:
     case ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE:
       return ChannelHealthErrors.CHECK_FAILED

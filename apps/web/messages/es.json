@@ -1638,7 +1638,10 @@
         "provider_answer_unexpected": "Meta respondió algo inesperado. Prueba otra vez; si sigue, genera el token de nuevo.",
         "subscription_not_confirmed": "Meta no confirmó la suscripción a los mensajes. Revisa que el token tenga permisos de mensajes y que el webhook de la app esté configurado.",
         "provider_busy": "Meta pide esperar. Prueba otra vez en unos minutos.",
-        "provider_unavailable": "Meta no respondió a tiempo. Prueba otra vez en unos minutos."
+        "provider_unavailable": "Meta no respondió a tiempo. Prueba otra vez en unos minutos.",
+        "account_unreadable": "No se pudo leer la cuenta de Instagram de la Página: comprueba que el token sea el de la Página y que la cuenta siga enlazada.",
+        "subscription_refused": "Meta no permitió suscribir la Página a los mensajes: reintenta; si se repite, revisa los permisos de la app.",
+        "subscription_unreadable": "No se pudo comprobar la suscripción de la Página a los mensajes. Prueba otra vez en unos minutos."
       },
       "reconnect": "Conectar de nuevo"
     },
