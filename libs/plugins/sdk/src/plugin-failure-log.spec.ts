@@ -1,4 +1,4 @@
-import { ErrorCodes, PluginChecks } from '@platform/core/errors'
+import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 
 import { PluginError } from './plugin-error'
 import { pluginFailureLog } from './plugin-failure-log'
@@ -17,8 +17,19 @@ describe('pluginFailureLog', () => {
       errorCode: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
       providerCode: 100,
       providerSubcode: 33,
-      failedCheck: PluginChecks.SUBSCRIPTION_NOT_CONFIRMED
+      failedCheck: PluginChecks.SUBSCRIPTION_NOT_CONFIRMED,
+      reason: ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED
     })
+  })
+
+  it('gives the reason of the closed list, and drops one that is not of it', () => {
+    const error = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+      reason: ChannelConnectFailureReasons.TOKEN_REJECTED
+    })
+    expect(pluginFailureLog(error).reason).toBe(ChannelConnectFailureReasons.TOKEN_REJECTED)
+    const forged = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+    Object.defineProperty(forged, 'reason', { value: 'Bearer secret' })
+    expect(pluginFailureLog(forged)).not.toHaveProperty('reason')
   })
 
   it('leaves out what is not there', () => {

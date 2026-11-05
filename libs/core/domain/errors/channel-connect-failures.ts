@@ -1,0 +1,68 @@
+import { type PluginCheck, PluginChecks } from './plugin-checks'
+
+// Why connecting a channel failed, in words the owner can act on. A closed list of names that carry no
+// value: it travels from the plugin to the person (`metadata.reason` of the refusal and the `lastError`
+// of a connection), and only a name of this list is ever believed, so a plugin cannot put text of its
+// own on the screen. The texts are in the catalogs of the web app, under the same names.
+export const ChannelConnectFailureReasons = {
+  // Nothing was pasted
+  TOKEN_MISSING: 'token_missing',
+  // What was pasted is not a token (spaces, line breaks, other text)
+  TOKEN_MALFORMED: 'token_malformed',
+  // The provider refused the token: invalid, expired or revoked
+  TOKEN_REJECTED: 'token_rejected',
+  // The token lacks a permission, or the person lacks the task on the Page or account
+  PERMISSION_MISSING: 'permission_missing',
+  // The provider refused the request (often a token of a kind that is not the expected one)
+  REQUEST_REJECTED: 'request_rejected',
+  // The token reaches no account of the channel
+  ACCOUNT_NOT_LINKED: 'account_not_linked',
+  // The token is of another account than the connected one
+  OTHER_ACCOUNT: 'other_account',
+  // The token reaches several accounts and a connection is one
+  ACCOUNT_AMBIGUOUS: 'account_ambiguous',
+  // The provider answered something that is not what its API says
+  PROVIDER_ANSWER_UNEXPECTED: 'provider_answer_unexpected',
+  SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
+  // The provider asks to wait, or did not answer: trying again later is the whole advice
+  PROVIDER_BUSY: 'provider_busy',
+  PROVIDER_UNAVAILABLE: 'provider_unavailable'
+} as const
+
+export type ChannelConnectFailureReason =
+  (typeof ChannelConnectFailureReasons)[keyof typeof ChannelConnectFailureReasons]
+
+const KNOWN_REASONS: readonly unknown[] = Object.values(ChannelConnectFailureReasons)
+
+// Narrows what came from outside the process (a plugin of a third party, the metadata of an answer)
+export function isChannelConnectFailureReason(
+  value: unknown
+): value is ChannelConnectFailureReason {
+  return KNOWN_REASONS.includes(value)
+}
+
+// The reason of a local check of a plugin. One case for each check: a check that is added and has no
+// reason does not compile (a switch, and not a table, so that it ships only where it is used).
+export function connectReasonOfCheck(check: PluginCheck): ChannelConnectFailureReason {
+  switch (check) {
+    case PluginChecks.CREDENTIALS_SHAPE:
+      return ChannelConnectFailureReasons.TOKEN_MISSING
+    case PluginChecks.TOKEN_NOT_HEADER_SAFE:
+      return ChannelConnectFailureReasons.TOKEN_MALFORMED
+    case PluginChecks.ACCOUNT_ID_NOT_NUMERIC:
+    case PluginChecks.ACCOUNT_SHAPE_INVALID:
+      return ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
+    case PluginChecks.ACCOUNT_ID_MISMATCH:
+      return ChannelConnectFailureReasons.OTHER_ACCOUNT
+    case PluginChecks.ACCOUNT_NOT_FOUND:
+      return ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED
+    case PluginChecks.ACCOUNT_AMBIGUOUS:
+      return ChannelConnectFailureReasons.ACCOUNT_AMBIGUOUS
+    case PluginChecks.SUBSCRIPTION_NOT_CONFIRMED:
+      return ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED
+    default: {
+      const unhandled: never = check
+      throw new Error(`a plugin check has no reason: ${String(unhandled)}`)
+    }
+  }
+}

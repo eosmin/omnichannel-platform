@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto'
 
 import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
-import { ErrorCodes, PluginChecks } from '@platform/core/errors'
+import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   type ChannelContext,
   type ChannelPlugin,
@@ -855,5 +855,56 @@ describe('InstagramPlugin', () => {
       const query = { 'hub.mode': 'subscribe', 'hub.verify_token': 'verify', 'hub.challenge': '7' }
       expect(plugin('instagram-app-secret').verifyWebhook(query)).toBe('7')
     })
+  })
+})
+
+// What the owner reads when connecting fails: a name of a closed list, chosen from the numbers of Meta's
+// answer, never from its words (which can echo the token)
+describe('InstagramPlugin, the reason a connection fails', () => {
+  const realPlugin = (): InstagramPlugin =>
+    new InstagramPlugin(
+      new MetaGraphClient({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
+    )
+  const answer = (status: number, code: number): Response =>
+    new Response(
+      JSON.stringify({
+        error: { message: 'Invalid token EAAB-page-token', code, type: 'OAuthException' }
+      }),
+      { status, headers: { 'content-type': 'application/json' } }
+    )
+  afterEach(() => jest.restoreAllMocks())
+
+  it.each([
+    [400, 190, ChannelConnectFailureReasons.TOKEN_REJECTED],
+    [400, 200, ChannelConnectFailureReasons.PERMISSION_MISSING],
+    [400, 100, ChannelConnectFailureReasons.REQUEST_REJECTED],
+    [400, 4, ChannelConnectFailureReasons.PROVIDER_BUSY],
+    [500, 1, ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE]
+  ])(
+    'says it for Meta answering HTTP %i with the code %i, and nothing of its words',
+    async (status, code, reason) => {
+      jest
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(() => Promise.resolve(answer(status, code)))
+
+      const failure: unknown = await realPlugin()
+        .connect({ storeId: 's', credentials })
+        .catch((error: unknown) => error)
+
+      expect(failure).toBeInstanceOf(PluginError)
+      expect(failure).toMatchObject({ reason })
+      expect(
+        JSON.stringify([(failure as PluginError).message, (failure as PluginError).reason])
+      ).not.toContain('EAAB-page-token')
+    }
+  )
+
+  it('says the token is missing when none was pasted, without asking Meta', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch')
+
+    await expect(
+      realPlugin().connect({ storeId: 's', credentials: { accessToken: '   ' } })
+    ).rejects.toMatchObject({ reason: ChannelConnectFailureReasons.TOKEN_MISSING })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

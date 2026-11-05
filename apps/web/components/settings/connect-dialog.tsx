@@ -1,9 +1,10 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useId, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { connectFailureReasonOf, isTokenFailure } from '../../lib/error-message'
 import type { PluginCatalogEntryView } from '../../lib/settings/channels-requests'
 import {
   ChannelMessagePrefix,
@@ -72,6 +73,14 @@ function ConnectForm({
   const fields = plugin.channel?.connectFields ?? []
   const [values, setValues] = useState<ConnectValues>(() => emptyValues(fields))
   const canSubmit = missingFields(fields, values).length === 0 && !connect.isPending
+  // When the refusal is about the token (not the account, not Meta being away), the person is taken back to
+  // the field to paste another, and the field says it is the one that failed
+  const tokenKey = fields.find(field => field.secret)?.key
+  const tokenInput = useRef<HTMLInputElement>(null)
+  const tokenFailed = isTokenFailure(connectFailureReasonOf(connect.error))
+  useEffect(() => {
+    if (tokenFailed) tokenInput.current?.focus()
+  }, [tokenFailed, connect.submittedAt])
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -118,6 +127,8 @@ function ConnectForm({
             ) : (
               <Input
                 id={id}
+                ref={field.key === tokenKey ? tokenInput : undefined}
+                aria-invalid={field.key === tokenKey && tokenFailed ? true : undefined}
                 // A token or a password: masked (a secret is always one line, so it can always be masked), and the browser is told not to keep it
                 type={field.secret ? 'password' : 'text'}
                 // `off` is ignored for a password field: this one is not offered for saving

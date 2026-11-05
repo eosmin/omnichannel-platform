@@ -16,7 +16,7 @@ import {
   PaginationLimits,
   PluginInstallationStatus
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
@@ -280,6 +280,68 @@ describe('The channel connections of a store', () => {
       expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
       expect(JSON.stringify(response.body)).not.toContain(SECRET)
       expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(0)
+    })
+
+    describe('the reason it gives when the provider does not accept the connection', () => {
+      const reasonOf = (body: unknown): unknown =>
+        (body as { error: { metadata: Record<string, unknown> } }).error.metadata['reason']
+
+      it.each(Object.values(ChannelConnectFailureReasons))(
+        'says %s as a name of the list, and still the same code, so an older page shows its generic message',
+        async reason => {
+          const { id } = register({
+            connect: () =>
+              Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { reason }))
+          })
+
+          const response = await connect(id)
+
+          expect(response.status).toBe(BAD_REQUEST)
+          expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+          expect(reasonOf(response.body)).toBe(reason)
+          expect(JSON.stringify(response.body)).not.toContain(SECRET)
+        }
+      )
+
+      it('says the reason of the local check that refused', async () => {
+        const { id } = register({
+          connect: () =>
+            Promise.reject(
+              new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+                failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
+              })
+            )
+        })
+
+        const response = await connect(id)
+
+        expect(reasonOf(response.body)).toBe(ChannelConnectFailureReasons.OTHER_ACCOUNT)
+      })
+
+      it.each([
+        ['an error that is not of a plugin and holds the token', new Error(`Bearer ${SECRET}`)],
+        ['a plugin error with no reason', new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)]
+      ])('says no reason for %s, and nothing of its text', async (_name, failure) => {
+        const { id } = register({ connect: () => Promise.reject(failure) })
+
+        const response = await connect(id)
+
+        expect(response.status).toBe(BAD_REQUEST)
+        expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+        expect(reasonOf(response.body)).toBeUndefined()
+        expect(JSON.stringify(response.body)).not.toContain(SECRET)
+      })
+
+      it('does not carry a reason a plugin made up, nor its text', async () => {
+        const forged = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+        Object.defineProperty(forged, 'reason', { value: `Bearer ${SECRET}` })
+        const { id } = register({ connect: () => Promise.reject(forged) })
+
+        const response = await connect(id)
+
+        expect(reasonOf(response.body)).toBeUndefined()
+        expect(JSON.stringify(response.body)).not.toContain(SECRET)
+      })
     })
 
     it('gives the same new account to one of two stores that ask at the same moment, never a 500', async () => {
@@ -759,6 +821,28 @@ describe('The channel connections of a store', () => {
       expect(JSON.stringify([first.body, second.body])).not.toContain(SECRET)
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: a.id } })
       expect(row.lastError ?? '').not.toContain(SECRET)
+    })
+
+    it("keeps what the owner has to fix as a name of the list, and nothing of the provider's text", async () => {
+      const refused = register({
+        healthCheck: () =>
+          Promise.reject(
+            new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+              reason: ChannelConnectFailureReasons.TOKEN_REJECTED,
+              providerCode: 190
+            })
+          )
+      })
+      const made = (await connect(refused.id)).body as ConnectionBody
+
+      const checked = await asAdmin().post(ApiRoutes.channels.test(made.id))
+
+      expect(checked.body).toMatchObject({ healthy: false })
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: made.id } })
+      expect(row.lastError).toBe('token_rejected')
+      const listed = (await allConnections()).find(item => item.id === made.id)
+      expect(listed).toMatchObject({ status: 'error', lastError: 'token_rejected' })
+      expect(JSON.stringify([checked.body, listed])).not.toContain(SECRET)
     })
 
     it('keeps the code too when the reason is only invisible characters', async () => {

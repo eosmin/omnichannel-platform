@@ -3,9 +3,23 @@ import { randomUUID } from 'node:crypto'
 import type { Page } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
+import { ChannelIds } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { deleteStoreIfThere, signInByApi, uninstallWidget } from '../support/api'
+import {
+  deleteStoreIfThere,
+  installChannel,
+  signInByApi,
+  uninstallChannel,
+  uninstallWidget
+} from '../support/api'
+import {
+  FAKE_PAGE_NAME,
+  FAKE_PAGE_TOKEN,
+  FAKE_REJECTED_TOKEN,
+  type FakeGraph,
+  startFakeGraph
+} from '../support/fake-graph'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -127,6 +141,59 @@ test.describe('Settings → Channels and Plugins', () => {
     } finally {
       if (storeId !== undefined) await uninstallWidget(token, storeId)
     }
+  })
+
+  // Connecting a Meta channel against a Graph that refuses a token the way Meta does (code 190)
+  test.describe('connecting Messenger', () => {
+    let graph: FakeGraph
+    test.beforeAll(async () => {
+      graph = await startFakeGraph()
+    })
+    test.afterAll(async () => {
+      await graph.close()
+    })
+
+    test('says what to do when Meta refuses the token, goes back to the field, and connects with a good one', async ({
+      page
+    }) => {
+      const token = await signInByApi(ADMIN)
+      let storeId: string | undefined
+      try {
+        await signIn(page, ADMIN)
+        await page.waitForURL(/\/s\/[^/]+\/inbox/)
+        storeId = storeIdOf(page)
+        await installChannel(token, storeId, ChannelIds.MESSENGER)
+
+        await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS))
+        await page
+          .getByRole('button', { name: `${channels.add.connect} Facebook Messenger`, exact: false })
+          .click()
+        const dialog = page.getByRole('dialog', {
+          name: channels.connectDialog.title.replace('{name}', 'Facebook Messenger')
+        })
+        const field = dialog.getByLabel(channels.connect.messenger.accessToken)
+
+        // A token Meta refuses: the message says what happened and what to do, not "invalid credentials"
+        await field.fill(FAKE_REJECTED_TOKEN)
+        await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+        await expect(dialog.getByRole('alert')).toHaveText(channels.connectFailure.token_rejected)
+        await expect(field).toBeFocused()
+        await expect(field).toHaveAttribute('aria-invalid', 'true')
+        // Nothing the person pasted is shown back, nor anything of Meta's answer
+        await expect(dialog).not.toContainText(FAKE_REJECTED_TOKEN)
+        await expect(dialog).not.toContainText('Invalid OAuth')
+
+        // The right one connects, and the card names the Page
+        await field.fill(FAKE_PAGE_TOKEN)
+        await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+        await expect(
+          page.getByText(channels.connectDialog.connected.replace('{name}', FAKE_PAGE_NAME))
+        ).toBeVisible()
+        await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toBeVisible()
+      } finally {
+        if (storeId !== undefined) await uninstallChannel(token, storeId, ChannelIds.MESSENGER)
+      }
+    })
   })
 
   test('a viewer is told it has no access to channels or plugins', async ({ page }) => {

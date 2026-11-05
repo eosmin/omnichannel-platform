@@ -1,4 +1,11 @@
-import { ErrorCodes, errorName, PluginChecks, type PluginCheck } from '@platform/core/errors'
+import {
+  type ChannelConnectFailureReason,
+  ErrorCodes,
+  errorName,
+  isChannelConnectFailureReason,
+  PluginChecks,
+  type PluginCheck
+} from '@platform/core/errors'
 
 import { PluginError } from './plugin-error'
 
@@ -21,6 +28,7 @@ export function pluginFailureLog(error: unknown): {
   providerCode?: number
   providerSubcode?: number
   failedCheck?: PluginCheck
+  reason?: ChannelConnectFailureReason
 } {
   if (!(error instanceof PluginError)) return { errorName: safeName(error) }
   return {
@@ -30,6 +38,7 @@ export function pluginFailureLog(error: unknown): {
     // Checked at run time too: a plugin can be a third party's, and a type does not stop a string
     ...(Number.isInteger(error.providerCode) ? { providerCode: error.providerCode } : {}),
     ...(Number.isInteger(error.providerSubcode) ? { providerSubcode: error.providerSubcode } : {}),
-    ...(KNOWN_CHECKS.includes(error.failedCheck) ? { failedCheck: error.failedCheck } : {})
+    ...(KNOWN_CHECKS.includes(error.failedCheck) ? { failedCheck: error.failedCheck } : {}),
+    ...(isChannelConnectFailureReason(error.reason) ? { reason: error.reason } : {})
   }
 }

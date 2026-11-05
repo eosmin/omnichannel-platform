@@ -1556,7 +1556,11 @@
           "credentials_unreadable": "Las credenciales guardadas no se pueden leer. Vuelve a conectar el canal.",
           "check_failed": "No se pudo completar la última comprobación. Revisa las credenciales o vuelve a probar.",
           "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
-          "unspecified": "El canal informó de un problema sin decir cuál."
+          "unspecified": "El canal informó de un problema sin decir cuál.",
+          "token_rejected": "Meta ya no acepta el token: caducó o se revocó. Conecta el canal otra vez con uno nuevo.",
+          "permission_missing": "Al token le falta un permiso o una tarea en la Página o cuenta. Revísalos y conecta el canal otra vez.",
+          "other_account": "El token ahora es de otra cuenta distinta de la conectada. Conecta el canal otra vez con el token correcto.",
+          "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o conecta el canal con otro token."
         }
       },
       "profile": {
@@ -1586,7 +1590,7 @@
         "title": "Conectar {name}",
         "description": "Escribe lo que pide el canal. Los secretos se guardan cifrados y no se vuelven a mostrar.",
         "optional": "(opcional)",
-        "secretHint": "No se volverá a mostrar.",
+        "secretHint": "Es una clave de acceso a los mensajes de tu cuenta: no la compartas ni la pegues en chats. Se guarda cifrada y no se volverá a mostrar.",
         "connecting": "Conectando",
         "submit": "Conectar",
         "connected": "{name} está conectado."
@@ -1621,7 +1625,22 @@
           "pending": "Pendiente de aprobación",
           "rejected": "Rechazada"
         }
-      }
+      },
+      "connectFailure": {
+        "token_missing": "Falta el token. Pégalo en el campo.",
+        "token_malformed": "El token tiene espacios, saltos de línea o texto que no es parte de él. Cópialo otra vez: solo el token.",
+        "token_rejected": "Meta rechazó el token: no es válido, caducó o se revocó. Genera uno nuevo y vuelve a conectar.",
+        "permission_missing": "El token no tiene un permiso. Revisa que incluya los permisos de mensajes, que tengas la tarea de moderar o de mensajes en la Página o cuenta, y que \"Permitir acceso a los mensajes\" esté activo.",
+        "request_rejected": "Meta rechazó la solicitud. Suele significar que el token no es del tipo esperado (por ejemplo, de usuario en vez de el de la Página) o que falta un permiso. Genera el token de la Página y prueba otra vez.",
+        "account_not_linked": "El token no llega a ninguna cuenta profesional de Instagram. Comprueba que la cuenta esté vinculada a la Página y que el token sea el de esa Página.",
+        "other_account": "El token es de otra cuenta o Página distinta de la conectada. Usa el token de la misma.",
+        "account_ambiguous": "El token llega a varias cuentas. Usa un token que llegue solo a la que quieres conectar.",
+        "provider_answer_unexpected": "Meta respondió algo inesperado. Prueba otra vez; si sigue, genera el token de nuevo.",
+        "subscription_not_confirmed": "Meta no confirmó la suscripción a los mensajes. Revisa que el token tenga permisos de mensajes y que el webhook de la app esté configurado.",
+        "provider_busy": "Meta pide esperar. Prueba otra vez en unos minutos.",
+        "provider_unavailable": "Meta no respondió a tiempo. Prueba otra vez en unos minutos."
+      },
+      "reconnect": "Conectar de nuevo"
     },
     "nav": {
       "backToInbox": "Volver a la bandeja",

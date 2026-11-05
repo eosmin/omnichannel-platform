@@ -136,6 +136,7 @@ function ChannelsBody({
               key={connection.id}
               connection={connection}
               plugin={pluginOf(connection.pluginId)}
+              onReconnect={setConnecting}
             />
           ))}
         </ul>

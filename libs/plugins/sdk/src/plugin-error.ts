@@ -1,4 +1,6 @@
 import {
+  type ChannelConnectFailureReason,
+  connectReasonOfCheck,
   type ErrorCode,
   type ErrorCodes,
   type PluginCheck,
@@ -36,6 +38,10 @@ export class PluginError extends PlatformException {
   readonly providerSubcode: number | undefined
   // The local check that refused (see PluginChecks), for the logs only: a name, never a value
   readonly failedCheck: PluginCheck | undefined
+  // Why a connection failed, in the closed list of ChannelConnectFailureReasons: the one thing about a
+  // failure that may reach the person, because it is a name that holds no value. Left out, it is the reason
+  // of `failedCheck` when there is one.
+  readonly reason: ChannelConnectFailureReason | undefined
 
   constructor(
     code: PluginErrorCode,
@@ -45,6 +51,7 @@ export class PluginError extends PlatformException {
       providerCode?: number
       providerSubcode?: number
       failedCheck?: PluginCheck
+      reason?: ChannelConnectFailureReason
     } = {}
   ) {
     super(code, `channel plugin failed: ${code}`)
@@ -54,5 +61,8 @@ export class PluginError extends PlatformException {
     this.providerCode = options.providerCode
     this.providerSubcode = options.providerSubcode
     this.failedCheck = options.failedCheck
+    this.reason =
+      options.reason ??
+      (options.failedCheck === undefined ? undefined : connectReasonOfCheck(options.failedCheck))
   }
 }

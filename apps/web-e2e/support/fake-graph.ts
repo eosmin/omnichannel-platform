@@ -15,6 +15,12 @@ export const FAKE_PHONE_NUMBER_ID = '100000000000001'
 export const FAKE_BUSINESS_ACCOUNT_ID = '100000000000002'
 export const FAKE_ACCESS_TOKEN = 'e2e-access-token'
 
+// The Page of a Messenger connection: the token that Meta accepts, one that it refuses, and the name
+export const FAKE_PAGE_ID = '109000000000001'
+export const FAKE_PAGE_TOKEN = 'e2e-page-token'
+export const FAKE_REJECTED_TOKEN = 'e2e-rejected-token'
+export const FAKE_PAGE_NAME = 'E2E Page'
+
 export const TEMPLATE_NAME = 'order_update'
 export const TEMPLATE_LANGUAGE = 'en_US'
 export const TEMPLATE_BODY = 'Hello {{1}}, your order {{2}} is on its way.'
@@ -107,6 +113,28 @@ export async function startFakeGraph(): Promise<FakeGraph> {
           authorization: request.headers.authorization
         })
         reply(response, HttpStatusCodes.OK, { messages: [{ id: `wamid.e2e-${sent.length}` }] })
+        return
+      }
+      // Connecting a Messenger Page: its id and name by `me`, and the subscription of the app to it. Any
+      // token but the good one is refused with Meta's code 190, as an invalid or expired one is.
+      const bearer = request.headers.authorization
+      if (request.method === 'GET' && id === 'me') {
+        if (bearer === `Bearer ${FAKE_PAGE_TOKEN}`) {
+          reply(response, HttpStatusCodes.OK, { id: FAKE_PAGE_ID, name: FAKE_PAGE_NAME })
+        } else {
+          reply(response, HttpStatusCodes.BAD_REQUEST, {
+            error: { message: 'Invalid OAuth access token.', type: 'OAuthException', code: 190 }
+          })
+        }
+        return
+      }
+      if (
+        request.method === 'POST' &&
+        id === FAKE_PAGE_ID &&
+        edge === 'subscribed_apps' &&
+        bearer === `Bearer ${FAKE_PAGE_TOKEN}`
+      ) {
+        reply(response, HttpStatusCodes.OK, { success: true })
         return
       }
       reply(response, HttpStatusCodes.NOT_FOUND, { error: { message: 'not served', code: 100 } })
