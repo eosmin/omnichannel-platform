@@ -75,7 +75,7 @@ function WidgetBody({
 
   return (
     <div className="flex flex-col gap-5 border-t pt-4">
-      <section className="grid gap-1.5">
+      <section className="grid grid-cols-1 gap-1.5">
         <h3 className="text-sm font-semibold">{t('snippet.title')}</h3>
         <p className="text-muted-foreground text-xs">{t('snippet.hint')}</p>
         <pre className="bg-muted overflow-x-auto rounded-md p-3 text-xs whitespace-pre-wrap">
@@ -86,7 +86,7 @@ function WidgetBody({
         </div>
       </section>
 
-      <form onSubmit={submit} className="grid gap-1.5">
+      <form onSubmit={submit} className="grid grid-cols-1 gap-1.5">
         <Label htmlFor={`origins-${connectionId}`} className="text-sm font-semibold">
           {t('origins.label')}
         </Label>
@@ -121,7 +121,7 @@ function WidgetBody({
         ) : null}
       </form>
 
-      <section className="grid gap-1.5">
+      <section className="grid grid-cols-1 gap-1.5">
         <div className="flex items-center gap-2">
           <input
             id={`prechat-${connectionId}`}
@@ -140,7 +140,7 @@ function WidgetBody({
       </section>
 
       {widget.connectSrc.length > 0 ? (
-        <section className="grid gap-1.5" aria-label={t('connectSrc.title')}>
+        <section className="grid grid-cols-1 gap-1.5" aria-label={t('connectSrc.title')}>
           <h3 className="text-sm font-semibold">{t('connectSrc.title')}</h3>
           <p className="text-muted-foreground text-xs">{t('connectSrc.hint')}</p>
           <code className="bg-muted rounded-md px-2 py-1.5 text-xs break-all">

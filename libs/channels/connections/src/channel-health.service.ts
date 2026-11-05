@@ -98,8 +98,11 @@ export class ChannelHealthService {
       const payload = { storeId: row.storeId, channelConnectionId: row.id, pluginId: row.pluginId }
       if (!health.healthy) {
         const lastError = health.error ?? ChannelHealthErrors.UNSPECIFIED
+        // A failure is about the credentials that were asked with: if they were replaced while the provider
+        // answered (a new token), the failure of the old one says nothing about the connection any more
+        const asked = { ...where, credentials: Uint8Array.from(row.credentials) }
         const down = await tx.channelConnection.updateMany({
-          where: { ...where, status: ChannelConnectionStatus.ACTIVE },
+          where: { ...asked, status: ChannelConnectionStatus.ACTIVE },
           data: { status: ChannelConnectionStatus.ERROR, lastError }
         })
         if (down.count === 1) {
@@ -110,7 +113,7 @@ export class ChannelHealthService {
           return
         }
         await tx.channelConnection.updateMany({
-          where: { ...where, status: ChannelConnectionStatus.ERROR },
+          where: { ...asked, status: ChannelConnectionStatus.ERROR },
           data: { lastError }
         })
         return

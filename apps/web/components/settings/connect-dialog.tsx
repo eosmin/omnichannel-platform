@@ -4,7 +4,11 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { PluginCatalogEntryView } from '../../lib/settings/channels-requests'
+import type {
+  ChannelConnectionView,
+  ConnectFieldView,
+  PluginCatalogEntryView
+} from '../../lib/settings/channels-requests'
 import { connectFailureReasonOf, isTokenFailure } from '../../lib/settings/connect-failure'
 import {
   ChannelMessagePrefix,
@@ -52,25 +56,43 @@ export function ConnectDialog({
           <DialogTitle>{t('title', { name: plugin.name })}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
-        <ConnectForm plugin={plugin} connect={connect} onClose={onClose} />
+        <ConnectForm
+          fields={plugin.channel?.connectFields ?? []}
+          callbackUrl={plugin.channel?.callbackUrl ?? null}
+          connect={connect}
+          texts={{ submit: t('submit'), pending: t('connecting') }}
+          onDone={connection => {
+            toast.success(t('connected', { name: connection.displayName }))
+            onClose()
+          }}
+          onClose={onClose}
+        />
       </DialogContent>
     </Dialog>
   )
 }
 
-function ConnectForm({
-  plugin,
+// The form of what the plugin asks for, and what happens with it. It serves to connect a channel and to
+// replace the token of a connection (then `fields` are only the secret ones): the request is the caller's.
+export function ConnectForm({
+  fields,
+  callbackUrl,
   connect,
+  texts,
+  onDone,
   onClose
 }: {
-  plugin: PluginCatalogEntryView
-  connect: ReturnType<typeof useConnect>
+  fields: readonly ConnectFieldView[]
+  // The address the owner pastes at the provider; only when connecting a channel for the first time
+  callbackUrl: string | null
+  connect: Pick<ReturnType<typeof useConnect>, 'mutate' | 'isPending' | 'error'>
+  texts: { submit: string; pending: string }
+  onDone: (connection: ChannelConnectionView) => void
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.channels.connectDialog')
   const tAll = useTranslations()
   const idPrefix = useId()
-  const fields = plugin.channel?.connectFields ?? []
   const [values, setValues] = useState<ConnectValues>(() => emptyValues(fields))
   const canSubmit = missingFields(fields, values).length === 0 && !connect.isPending
   // When the refusal is about the token (not the account, not Meta being away), the person is taken back to
@@ -89,10 +111,7 @@ function ConnectForm({
     event.preventDefault()
     if (!canSubmit) return
     connect.mutate(credentialsOf(fields, values), {
-      onSuccess: connection => {
-        toast.success(t('connected', { name: connection.displayName }))
-        onClose()
-      }
+      onSuccess: onDone
     })
   }
 
@@ -109,7 +128,7 @@ function ConnectForm({
         const id = `${idPrefix}-${field.key}`
         const label = labelOf(field.key, field.labelKey)
         return (
-          <div key={field.key} className="grid gap-1.5">
+          <div key={field.key} className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={id}>
               {label}
               {field.required ? null : (
@@ -150,16 +169,14 @@ function ConnectForm({
           </div>
         )
       })}
-      {plugin.channel?.callbackUrl != null ? (
-        <CallbackUrl url={plugin.channel.callbackUrl} />
-      ) : null}
+      {callbackUrl === null ? null : <CallbackUrl url={callbackUrl} />}
       <ConnectError error={connect.error} id={errorId} />
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose} disabled={connect.isPending}>
           {tAll('common.cancel')}
         </Button>
         <Button type="submit" disabled={!canSubmit}>
-          {connect.isPending ? t('connecting') : t('submit')}
+          {connect.isPending ? texts.pending : texts.submit}
         </Button>
       </DialogFooter>
     </form>

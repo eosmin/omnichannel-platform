@@ -96,7 +96,7 @@ export function RoleDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-name`}>{t('name')}</Label>
             <Input
               id={`${idPrefix}-name`}
@@ -107,7 +107,7 @@ export function RoleDialog({
               required
             />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-description`}>
               {t('descriptionLabel')}
               <span className="text-muted-foreground font-normal"> {t('optional')}</span>
@@ -120,14 +120,14 @@ export function RoleDialog({
               disabled={readOnly || pending}
             />
           </div>
-          <fieldset className="grid gap-3" disabled={readOnly || pending}>
+          <fieldset className="grid grid-cols-1 gap-3" disabled={readOnly || pending}>
             <legend className="text-sm font-medium">{t('permissions')}</legend>
             {GROUPS.map(({ group, permissions }) => (
-              <div key={group} className="grid gap-1.5 rounded-md border p-3">
+              <div key={group} className="grid grid-cols-1 gap-1.5 rounded-md border p-3">
                 <h3 className="text-sm font-medium">
                   {tAll(`settings.team.permissionGroups.${group}` as Parameters<typeof tAll>[0])}
                 </h3>
-                <ul className="grid gap-1 sm:grid-cols-2">
+                <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                   {permissions.map(({ permission, action }) => {
                     const id = `${idPrefix}-${group}-${action}`
                     const checked = selected.includes(permission)

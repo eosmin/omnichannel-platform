@@ -73,6 +73,20 @@ export class ChannelConnectionsController {
     return this.connections.connect(store.id, pluginId, body, actorOf(user, store, req))
   }
 
+  // The token of a connection that exists, checked against the account it already has
+  @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @Post(ApiRoutes.channels.updateToken(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  updateToken(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) connectionId: string,
+    @Body(new ZodValidationPipe(connectChannelSchema)) body: ConnectChannelBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<ChannelConnectionView> {
+    return this.connections.updateToken(store.id, connectionId, body, actorOf(user, store, req))
+  }
+
   @RequirePermissions(Permissions.SETTINGS_EDIT)
   @Post(ApiRoutes.channels.test(':id'))
   @HttpCode(HttpStatusCodes.OK)

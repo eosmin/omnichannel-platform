@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { ChannelIds } from '@platform/core/domain'
@@ -15,8 +15,11 @@ import {
 } from '../support/api'
 import {
   FAKE_BUSY_TOKEN,
+  FAKE_OTHER_PAGE_TOKEN,
+  FAKE_PAGE_ID,
   FAKE_PAGE_NAME,
   FAKE_PAGE_TOKEN,
+  FAKE_PAGE_TOKEN_RENEWED,
   FAKE_REJECTED_TOKEN,
   type FakeGraph,
   startFakeGraph
@@ -35,6 +38,65 @@ function storeIdOf(page: Page): string {
   const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1]
   expect(storeId).toBeDefined()
   return storeId ?? ''
+}
+
+// A dialog holds its content: nothing is wider or taller than the box, and its buttons are inside it, on a phone
+// and on a desktop (a long address or a wide field must not push the box wider than the screen)
+const SCREENS = [
+  { width: 390, height: 844 },
+  { width: 1280, height: 800 }
+]
+async function expectDialogHoldsItsContent(page: Page, dialog: Locator): Promise<void> {
+  const original = page.viewportSize()
+  try {
+    for (const screen of SCREENS) {
+      await page.setViewportSize(screen)
+      // Everything is measured in one go, after the layout of the new size has settled
+      const box = await dialog.evaluate(
+        element =>
+          new Promise<{
+            scrollWidth: number
+            clientWidth: number
+            scrollHeight: number
+            clientHeight: number
+            left: number
+            right: number
+            stray: number
+          }>(resolve =>
+            requestAnimationFrame(() => {
+              const frame = element.getBoundingClientRect()
+              // Controls and text that stick out of the box on either side
+              const stray = Array.from(element.querySelectorAll('button, input, code, p')).filter(
+                item => {
+                  const rect = item.getBoundingClientRect()
+                  return rect.left < frame.left - 1 || rect.right > frame.right + 1
+                }
+              ).length
+              resolve({
+                scrollWidth: element.scrollWidth,
+                clientWidth: element.clientWidth,
+                scrollHeight: element.scrollHeight,
+                clientHeight: element.clientHeight,
+                left: frame.left,
+                right: frame.right,
+                stray
+              })
+            })
+          )
+      )
+      expect(box.scrollWidth, `no horizontal scroll at ${screen.width}px`).toBeLessThanOrEqual(
+        box.clientWidth
+      )
+      expect(box.scrollHeight, `no vertical scroll at ${screen.width}px`).toBeLessThanOrEqual(
+        box.clientHeight
+      )
+      expect(box.left).toBeGreaterThanOrEqual(0)
+      expect(box.right).toBeLessThanOrEqual(screen.width)
+      expect(box.stray, `nothing sticks out of the box at ${screen.width}px`).toBe(0)
+    }
+  } finally {
+    if (original !== null) await page.setViewportSize(original)
+  }
 }
 
 // The name the channels screen shows for the Messenger plugin (CI page text: "Messenger")
@@ -192,6 +254,8 @@ test.describe('Settings → Channels and Plugins', () => {
           name: channels.connectDialog.title.replace('{name}', MESSENGER_NAME)
         })
         const field = dialog.getByLabel(channels.connect.messenger.accessToken)
+        // The dialog with the callback address (the widest thing in it) fits a phone and a desktop
+        await expectDialogHoldsItsContent(page, dialog)
 
         // A token Meta refuses: the message says what happened and what to do, not "invalid credentials"
         await field.fill(FAKE_REJECTED_TOKEN)
@@ -221,6 +285,36 @@ test.describe('Settings → Channels and Plugins', () => {
           page.getByText(channels.connectDialog.connected.replace('{name}', FAKE_PAGE_NAME))
         ).toBeVisible()
         await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toBeVisible()
+        expect(graph.subscriptions()).toEqual([FAKE_PAGE_ID])
+
+        // The token is replaced in the card itself, tied to this connection
+        await page
+          .getByRole('button', { name: `${channels.updateToken.action} ${FAKE_PAGE_NAME}` })
+          .click()
+        const update = page.getByRole('dialog', {
+          name: channels.updateToken.title.replace('{name}', FAKE_PAGE_NAME)
+        })
+        await expectDialogHoldsItsContent(page, update)
+        const newField = update.getByLabel(channels.connect.messenger.accessToken)
+
+        // The token of another Page is refused, says so without naming it, and subscribes nothing
+        await newField.fill(FAKE_OTHER_PAGE_TOKEN)
+        await update.getByRole('button', { name: channels.updateToken.submit }).click()
+        await expect(update.getByRole('alert')).toHaveText(channels.connectFailure.other_account)
+        // Nothing of the other Page, anywhere on the page (the dialog, a toast, the list)
+        await expect(page.locator('body')).not.toContainText('E2E Other Page')
+        await expect(page.locator('body')).not.toContainText(FAKE_OTHER_PAGE_TOKEN)
+        expect(graph.subscriptions()).toEqual([FAKE_PAGE_ID])
+
+        // A new token of the same Page replaces it: same card, same name, no second connection
+        await newField.fill(FAKE_PAGE_TOKEN_RENEWED)
+        await update.getByRole('button', { name: channels.updateToken.submit }).click()
+        await expect(
+          page.getByText(channels.updateToken.done.replace('{name}', FAKE_PAGE_NAME))
+        ).toBeVisible()
+        await expect(update).toHaveCount(0)
+        await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toHaveCount(1)
+        expect(graph.subscriptions()).toEqual([FAKE_PAGE_ID, FAKE_PAGE_ID])
       } finally {
         if (storeId !== undefined) await uninstallChannel(token, storeId, ChannelIds.MESSENGER)
       }

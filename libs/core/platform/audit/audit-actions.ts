@@ -109,6 +109,7 @@ export const AuditAction = {
   PLUGIN_REVOKED: 'plugin.revoked',
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
+  CHANNEL_TOKEN_UPDATED: 'channel.token_updated',
   WIDGET_ORIGINS_CHANGED: 'channel.widget_origins_changed',
   WIDGET_PRE_CHAT_CHANGED: 'channel.widget_pre_chat_changed',
   SETTINGS_CHANGED: 'settings.changed',

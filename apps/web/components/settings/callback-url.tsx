@@ -10,7 +10,7 @@ import { CopyButton } from './copy-button'
 export function CallbackUrl({ url }: { url: string }): ReactElement {
   const t = useTranslations('settings.channels')
   return (
-    <div className="grid gap-1.5">
+    <div className="grid grid-cols-1 gap-1.5">
       <span className="text-sm font-medium">{t('callbackUrl.label')}</span>
       <div className="flex items-center gap-2">
         <code className="bg-muted min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-xs">

@@ -1,13 +1,6 @@
 'use client'
 
-import {
-  CircleAlert,
-  CircleCheck,
-  ChevronDown,
-  ChevronRight,
-  RefreshCw,
-  Unplug
-} from 'lucide-react'
+import { CircleAlert, CircleCheck, ChevronDown, ChevronRight, KeyRound, Unplug } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useId, useState } from 'react'
 import { toast } from 'sonner'
@@ -48,13 +41,13 @@ const HEALTH_CODES: readonly string[] = Object.values(ChannelHealthErrors)
 export function ConnectionCard({
   connection,
   plugin,
-  onReconnect
+  onUpdateToken
 }: {
   connection: ChannelConnectionView
   // The catalog entry of its plugin; absent while the catalog could not be read
   plugin: PluginCatalogEntryView | undefined
-  // Opens the connect form of the channel again, for the failures that another token fixes
-  onReconnect?: (plugin: PluginCatalogEntryView) => void
+  // Opens the dialog that replaces the token of THIS connection (not the form to connect a new one)
+  onUpdateToken?: (connection: ChannelConnectionView, plugin: PluginCatalogEntryView) => void
 }): ReactElement {
   const t = useTranslations('settings.channels')
   const { can } = useStore()
@@ -81,19 +74,23 @@ export function ConnectionCard({
         <p className="text-muted-foreground text-sm">{t('disconnectedNote')}</p>
       ) : (
         <>
-          <Health
-            connection={connection}
-            onReconnect={
-              canEdit && plugin !== undefined && onReconnect !== undefined
-                ? () => onReconnect(plugin)
-                : undefined
-            }
-          />
+          <Health connection={connection} />
           <ProfileStatus connection={connection} />
           {plugin?.channel?.callbackUrl != null ? (
             <CallbackUrl url={plugin.channel.callbackUrl} />
           ) : null}
-          {canEdit ? <Actions connection={connection} /> : null}
+          {canEdit ? (
+            <Actions
+              connection={connection}
+              onUpdateToken={
+                plugin !== undefined &&
+                onUpdateToken !== undefined &&
+                plugin.channel?.connectFields.some(field => field.secret) === true
+                  ? () => onUpdateToken(connection, plugin)
+                  : undefined
+              }
+            />
+          ) : null}
           {connection.pluginId === ChannelIds.WEB_WIDGET ? (
             <Disclosure label={t('widget.toggle')}>
               <WidgetCard connectionId={connection.id} canEdit={canEdit} />
@@ -142,15 +139,8 @@ function StatusBadge({ status }: { status: string }): ReactElement {
 
 // When it last answered and, if it does not, why. The reasons the platform itself gives are codes; any
 // other text is the provider's, shown as text and nothing else.
-function Health({
-  connection,
-  onReconnect
-}: {
-  connection: ChannelConnectionView
-  onReconnect: (() => void) | undefined
-}): ReactElement {
+function Health({ connection }: { connection: ChannelConnectionView }): ReactElement {
   const t = useTranslations('settings.channels.health')
-  const tChannels = useTranslations('settings.channels')
   const format = useFormatter()
   const error = connection.lastError
   return (
@@ -173,18 +163,6 @@ function Health({
           {HEALTH_CODES.includes(error) ? t(`errors.${error}` as 'errors.check_failed') : error}
         </p>
       )}
-      {error !== null && onReconnect !== undefined && needsNewToken(error) ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="self-start"
-          onClick={onReconnect}
-        >
-          <RefreshCw aria-hidden />
-          {tChannels('reconnect')}
-        </Button>
-      ) : null}
     </div>
   )
 }
@@ -216,7 +194,13 @@ function ProfileStatus({ connection }: { connection: ChannelConnectionView }): R
   )
 }
 
-function Actions({ connection }: { connection: ChannelConnectionView }): ReactElement {
+function Actions({
+  connection,
+  onUpdateToken
+}: {
+  connection: ChannelConnectionView
+  onUpdateToken: (() => void) | undefined
+}): ReactElement {
   const t = useTranslations('settings.channels')
   const errorText = useErrorText()
   const { storeId } = useStore()
@@ -253,6 +237,23 @@ function Actions({ connection }: { connection: ChannelConnectionView }): ReactEl
         >
           {test.isPending ? t('test.running') : t('test.action')}
         </Button>
+        {onUpdateToken === undefined ? null : (
+          // Always there, and the main action when the failure is one that a new token fixes
+          <Button
+            type="button"
+            variant={
+              connection.lastError !== null && needsNewToken(connection.lastError)
+                ? 'default'
+                : 'outline'
+            }
+            size="sm"
+            onClick={onUpdateToken}
+          >
+            <KeyRound aria-hidden />
+            {t('updateToken.action')}
+            <span className="sr-only"> {connection.displayName}</span>
+          </Button>
+        )}
         <Button type="button" variant="outline" size="sm" onClick={askToDisconnect}>
           <Unplug aria-hidden />
           {t('disconnect.action')}

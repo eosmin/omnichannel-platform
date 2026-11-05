@@ -32,4 +32,31 @@ describe.each(['en', 'es'])('the texts of a failed connection in %s', locale => 
     expect(typeof text).toBe('string')
     expect(String(text).trim()).not.toBe('')
   })
+
+  it('has the texts of the dialog that updates a token', () => {
+    const texts: Record<string, unknown> = channels['updateToken'] ?? {}
+    for (const key of ['action', 'title', 'description', 'submit', 'submitting', 'done']) {
+      expect(typeof texts[key]).toBe('string')
+      expect((texts[key] as string).trim()).not.toBe('')
+    }
+  })
+})
+
+// The owner chose "expira" for what a token does, and no jargon: "caduca"/"vence", "webhook" and
+// "enlazada" (the Spanish says "vinculada") must not come back into what a person reads when a connection fails
+describe('the vocabulary of the failed connection texts in Spanish', () => {
+  const { channels } = messages('es').settings
+  const texts = [
+    ...Object.values(channels['connectFailure'] ?? {}),
+    ...Object.values(((channels['health'] ?? {})['errors'] ?? {}) as Record<string, unknown>),
+    ...Object.values(channels['updateToken'] ?? {})
+  ].map(String)
+
+  it('has texts to check', () => {
+    expect(texts.length).toBeGreaterThan(10)
+  })
+
+  it.each([/caduc/i, /venc/i, /webhook/i, /enlazad/i])('never uses %s', pattern => {
+    expect(texts.filter(text => pattern.test(text))).toEqual([])
+  })
 })

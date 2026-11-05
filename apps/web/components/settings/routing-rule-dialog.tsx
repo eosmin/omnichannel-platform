@@ -122,7 +122,7 @@ export function RuleDialog({
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-name`}>{t('name')}</Label>
             <Input
               id={`${idPrefix}-name`}
@@ -187,7 +187,7 @@ export function RuleDialog({
                 ))
               )}
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid grid-cols-1 gap-1.5">
               <Label htmlFor={`${idPrefix}-keywords`}>{t('keywords')}</Label>
               <Textarea
                 id={`${idPrefix}-keywords`}
@@ -209,7 +209,7 @@ export function RuleDialog({
             </label>
           </fieldset>
 
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-action`}>{t('action')}</Label>
             <select
               id={`${idPrefix}-action`}

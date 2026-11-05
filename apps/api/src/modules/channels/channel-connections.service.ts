@@ -5,6 +5,7 @@ import {
   CONNECTION_ROW_SELECT,
   ChannelContextFactory,
   ChannelHealthService,
+  CredentialsUnreadableError,
   errorName,
   ProviderTimeoutError,
   providerText,
@@ -48,6 +49,7 @@ import {
   type ChannelCapabilityType,
   type ChannelPlugin,
   connectFailureReasonOf,
+  PluginError,
   pluginFailureLog
 } from '@platform/plugins/sdk'
 
@@ -355,25 +357,7 @@ export class ChannelConnectionsService {
       // refused as what it is, a plugin that answered badly
       sealed = this.cipher.seal(result.credentials)
     } catch (error) {
-      // What the provider said may echo the credentials: it is not logged nor sent back
-      // Only the name of the error, the numbers of the provider's answer and the name of the local check
-      // that refused: never the message, a value or the token (see pluginFailureLog)
-      this.logger.warn({ pluginId, storeId, ...pluginFailureLog(error) }, 'connect failed')
-      // The code stays one, so a page older than the server shows its generic message. The reason is a
-      // name of a closed list (never the provider's words, a value or an id) that says what to do; the
-      // page that knows it shows it.
-      // A call that took longer than the time given to it is the provider being slow, not a bad token
-      const reason =
-        connectFailureReasonOf(error) ??
-        (error instanceof ProviderTimeoutError
-          ? ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
-          : undefined)
-      throw new PlatformException(
-        ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
-        'the provider did not accept the connection',
-        HttpStatusCodes.BAD_REQUEST,
-        reason === undefined ? undefined : { reason }
-      )
+      throw this.providerRefusal(error, pluginId, storeId)
     }
 
     const store = () =>
@@ -462,6 +446,213 @@ export class ChannelConnectionsService {
       userAgent: actor.userAgent
     })
     return this.viewAfterWrite(storeId, connection)
+  }
+
+  // What the provider said may echo the credentials: it is not logged nor sent back.
+  // Only the name of the error, the numbers of the provider's answer and the name of the local check
+  // that refused: never the message, a value or the token (see pluginFailureLog)
+  private providerRefusal(
+    error: unknown,
+    pluginId: string,
+    storeId: string,
+    operation = 'connect failed'
+  ): PlatformException {
+    this.logger.warn({ pluginId, storeId, ...pluginFailureLog(error) }, operation)
+    // The code stays one, so a page older than the server shows its generic message. The reason is a
+    // name of a closed list (never the provider's words, a value or an id) that says what to do; the
+    // page that knows it shows it.
+    // A call that took longer than the time given to it is the provider being slow, not a bad token
+    const reason =
+      connectFailureReasonOf(error) ??
+      (error instanceof ProviderTimeoutError
+        ? ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
+        : undefined)
+    return new PlatformException(
+      ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+      'the provider did not accept the connection',
+      HttpStatusCodes.BAD_REQUEST,
+      reason === undefined ? undefined : { reason }
+    )
+  }
+
+  // A new token for a connection that exists, in this order:
+  // 1. Who the token belongs to is READ, with the plugin's health check run on the credentials the
+  //    connection would have (the new secret over what it already holds). Nothing is subscribed and
+  //    nothing is written yet, so the token of another account or Page leaves no trace on that account.
+  // 2. Only when it is the same account, `connect` runs (it subscribes the app again) and the sealed
+  //    credentials of THIS row are replaced in one transaction under the store lock.
+  // The row, its name, its account id and its conversations are the ones it had. Another store's
+  // connection, or none, is the same 404.
+  async updateToken(
+    storeId: string,
+    connectionId: string,
+    body: ConnectChannelBody,
+    actor: Actor
+  ): Promise<ChannelConnectionView> {
+    const row = await this.rowOf(storeId, connectionId)
+    if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
+      throw resourceConflict('the connection is disconnected')
+    }
+    const working = await this.prisma.client.channelConnection.count({
+      where: { id: connectionId, storeId, ...OfActiveInstallation }
+    })
+    if (working === 0) throw resourceConflict('the plugin is not installed in this store')
+    const plugin = this.registry.find(row.pluginId)
+    if (plugin === undefined) throw resourceNotFound('channel')
+    const fields = this.registry.connectManifestOf(row.pluginId)?.connectFields ?? []
+    const secretKeys = fields.filter(field => field.secret).map(field => field.key)
+    if (secretKeys.length === 0) throw resourceConflict('this channel has no token to replace')
+
+    // What the connection already holds that is not secret stays; of what arrives only the secret
+    // fields count, so this cannot be used to change the account the connection points at
+    let held: Record<string, unknown> = {}
+    // The metadata is plain JSON and is read whatever the state of the sealed credentials: a plugin may
+    // compare it (Instagram keeps its Page id there), and without it the right token would look foreign
+    const metadata: Record<string, unknown> =
+      typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? Object.fromEntries(Object.entries(row.metadata))
+        : {}
+    try {
+      held = this.contexts.contextFor(row).credentials
+    } catch (error) {
+      // Only credentials that cannot be opened: that is the very case this fixes, and nothing is kept from
+      // them. Any other failure is a defect and must not pass as one
+      if (!(error instanceof CredentialsUnreadableError)) throw error
+      this.logger.warn(
+        { pluginId: row.pluginId, storeId, errorName: errorName(error) },
+        'the credentials of a connection cannot be read'
+      )
+    }
+    const credentials: Record<string, unknown> = {}
+    for (const field of fields) {
+      if (!field.secret && field.key in held) credentials[field.key] = held[field.key]
+    }
+    // A secret that is not sent is kept, but at least one must be: nothing is replaced by sending nothing
+    if (!secretKeys.some(key => key in body.credentials)) {
+      throw new PlatformException(
+        ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        'the provider did not accept the connection',
+        HttpStatusCodes.BAD_REQUEST,
+        { reason: ChannelConnectFailureReasons.TOKEN_MALFORMED }
+      )
+    }
+    for (const key of secretKeys) {
+      if (key in body.credentials) credentials[key] = body.credentials[key]
+      else if (key in held) credentials[key] = held[key]
+    }
+
+    let result
+    let sealed
+    try {
+      const report = await withTimeout(
+        plugin.healthCheck({
+          storeId,
+          connectionId: row.connectionId,
+          credentials,
+          metadata
+        }),
+        ChannelHealthLimits.CHECK_TIMEOUT_MS
+      )
+      // A plugin may be a third party's: only a true boolean says the account is the one held
+      if (report.healthy !== true) throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      result = connectResultSchema.parse(
+        await withTimeout(
+          plugin.connect({ storeId, credentials }),
+          ChannelHealthLimits.PROVIDER_TIMEOUT_MS
+        )
+      )
+      sealed = this.cipher.seal(result.credentials)
+    } catch (error) {
+      throw this.providerRefusal(error, row.pluginId, storeId, 'token update refused')
+    }
+    // The read said it is the account of the connection; a plugin that now names another is refused
+    // and nothing is written; what it subscribed on the account it named is let go if no row holds it
+    if (result.connectionId !== row.connectionId) {
+      await this.releaseAccount(plugin, storeId, row.pluginId, result, sealed)
+      throw new PlatformException(
+        ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        'the provider did not accept the connection',
+        HttpStatusCodes.BAD_REQUEST,
+        { reason: ChannelConnectFailureReasons.OTHER_ACCOUNT }
+      )
+    }
+
+    const saved = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      await this.installationOf(tx, storeId, row.pluginId)
+      // Named by the account it read: a connection released or disconnected meanwhile is not written
+      // and still holding the credentials it had when it was read: a disconnect and a reconnect with another
+      // token while the provider answered must not be overwritten by this older one
+      const where = {
+        id: row.id,
+        storeId,
+        connectionId: row.connectionId,
+        credentials: row.credentials
+      }
+      const data = {
+        credentials: sealed,
+        metadata: result.metadata,
+        lastError: null,
+        lastHealthyAt: new Date()
+      }
+      const restored = await tx.channelConnection.updateMany({
+        where: { ...where, status: ChannelConnectionStatus.ERROR },
+        data: { ...data, status: ChannelConnectionStatus.ACTIVE }
+      })
+      const stayed =
+        restored.count === 1
+          ? 0
+          : (
+              await tx.channelConnection.updateMany({
+                where: { ...where, status: ChannelConnectionStatus.ACTIVE },
+                data
+              })
+            ).count
+      if (restored.count + stayed !== 1) {
+        throw resourceConflict('the connection changed while the token was being checked')
+      }
+      if (restored.count === 1) {
+        this.events.publish(tx, Events.CHANNEL_HEALTH_RESTORED, {
+          storeId,
+          channelConnectionId: row.id,
+          pluginId: row.pluginId
+        })
+      }
+      await this.forgetProfileRefusals(tx, storeId, row.id)
+      return tx.channelConnection.findFirstOrThrow({
+        where: { id: row.id, storeId },
+        select: VIEW_SELECT
+      })
+    })
+    this.audit.log({
+      action: AuditAction.CHANNEL_TOKEN_UPDATED,
+      actor: { userId: actor.userId },
+      storeId,
+      resourceType: 'channel_connection',
+      resourceId: row.id,
+      metadata: { pluginId: row.pluginId },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return this.viewAfterWrite(storeId, saved)
+  }
+
+  // The owner just gave the provider new credentials or permissions: a refusal recorded before says
+  // nothing about them. Forget it on the customers that wrote through this connection, and let their
+  // next message ask again (a null date is a stale profile). A customer whose read succeeded keeps its date.
+  private async forgetProfileRefusals(
+    tx: PrismaTransaction,
+    storeId: string,
+    rowId: string
+  ): Promise<void> {
+    await tx.customerIdentity.updateMany({
+      where: {
+        storeId,
+        profileFetchError: { not: null },
+        conversations: { some: { storeId, channelConnectionId: rowId } }
+      },
+      data: { profileFetchError: null, profileFetchedAt: null, profileRetryAfter: null }
+    })
   }
 
   // The account lives in another store, and that is a rule, not a clash of two edits. The store is
@@ -572,17 +763,7 @@ export class ChannelConnectionsService {
       // Another store took the account meanwhile: which one is not looked up, and nothing is said of it
       throw accountInUseException(null)
     }
-    // The owner just gave the provider new credentials or permissions: a refusal recorded before says
-    // nothing about them. Forget it on the customers that wrote through this connection, and let their
-    // next message ask again (a null date is a stale profile). A customer whose read succeeded keeps its date.
-    await tx.customerIdentity.updateMany({
-      where: {
-        storeId,
-        profileFetchError: { not: null },
-        conversations: { some: { storeId, channelConnectionId: existing.id } }
-      },
-      data: { profileFetchError: null, profileFetchedAt: null, profileRetryAfter: null }
-    })
+    await this.forgetProfileRefusals(tx, storeId, existing.id)
     return tx.channelConnection.findUniqueOrThrow({
       where: { id: existing.id },
       select: VIEW_SELECT
