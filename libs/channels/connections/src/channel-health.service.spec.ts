@@ -83,6 +83,7 @@ describe('ChannelHealthService.check', () => {
       ChannelConnectFailureReasons.PROVIDER_BUSY,
       ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE,
       ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED,
+      ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED,
       ChannelConnectFailureReasons.ACCOUNT_UNREADABLE,
       ChannelConnectFailureReasons.SUBSCRIPTION_FAILED,
       ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE

@@ -14,6 +14,7 @@ import {
   uninstallWidget
 } from '../support/api'
 import {
+  FAKE_BUSY_TOKEN,
   FAKE_PAGE_NAME,
   FAKE_PAGE_TOKEN,
   FAKE_REJECTED_TOKEN,
@@ -179,9 +180,20 @@ test.describe('Settings → Channels and Plugins', () => {
         await expect(dialog.getByRole('alert')).toHaveText(channels.connectFailure.token_rejected)
         await expect(field).toBeFocused()
         await expect(field).toHaveAttribute('aria-invalid', 'true')
+        // The field points at the message, so the reason is read together with the field
+        const alertId = await dialog.getByRole('alert').getAttribute('id')
+        expect(alertId).not.toBeNull()
+        await expect(field).toHaveAttribute('aria-describedby', alertId ?? '')
         // Nothing the person pasted is shown back, nor anything of Meta's answer
         await expect(dialog).not.toContainText(FAKE_REJECTED_TOKEN)
         await expect(dialog).not.toContainText('Invalid OAuth')
+
+        // Meta asking to wait is not about the token: the message says so and the field is left alone
+        await field.fill(FAKE_BUSY_TOKEN)
+        await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+        await expect(dialog.getByRole('alert')).toHaveText(channels.connectFailure.provider_busy)
+        await expect(field).not.toBeFocused()
+        await expect(field).not.toHaveAttribute('aria-invalid', 'true')
 
         // The right one connects, and the card names the Page
         await field.fill(FAKE_PAGE_TOKEN)

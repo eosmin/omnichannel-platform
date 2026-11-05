@@ -31,6 +31,14 @@ describe('the reasons a channel does not connect', () => {
     )
   })
 
+  it("says an answer of Meta that is not shaped as documented is Meta's oddity, not a wrong token", () => {
+    for (const check of [PluginChecks.ACCOUNT_ID_NOT_NUMERIC, PluginChecks.ACCOUNT_SHAPE_INVALID]) {
+      expect(connectReasonOfCheck(check)).toBe(
+        ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
+      )
+    }
+  })
+
   it('gives the checks of the Page the reasons the owner can act on', () => {
     expect(connectReasonOfCheck(PluginChecks.PAGE_ID_MISMATCH)).toBe(
       ChannelConnectFailureReasons.OTHER_ACCOUNT

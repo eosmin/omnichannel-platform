@@ -251,4 +251,28 @@ describe('the reason a Graph failure gives', () => {
       'secret-token-echo'
     )
   })
+
+  describe('which answer wins when the status and the code disagree', () => {
+    it('reads a refused token for HTTP 403 with the code 190: the code is the token', () => {
+      expect(graphFailure(403, graphError(190)).reason).toBe(
+        ChannelConnectFailureReasons.TOKEN_REJECTED
+      )
+    })
+
+    it('reads a throttle for HTTP 401 with a throttle code: Meta did not do the work, wait', () => {
+      expect(graphFailure(401, graphError(4)).reason).toBe(
+        ChannelConnectFailureReasons.PROVIDER_BUSY
+      )
+    })
+
+    it('reads an outage for HTTP 500 with the code 190: the server side is read before the credentials', () => {
+      expect(graphFailure(500, graphError(190)).reason).toBe(
+        ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
+      )
+    })
+
+    it.each([199, 300])('has no reason for the code %i, outside the permission range', code => {
+      expect(graphFailure(400, graphError(code)).reason).toBeUndefined()
+    })
+  })
 })

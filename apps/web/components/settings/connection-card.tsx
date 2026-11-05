@@ -27,6 +27,7 @@ import type {
   PluginCatalogEntryView
 } from '../../lib/settings/channels-requests'
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
+import { needsNewToken } from '../../lib/settings/health-reconnect'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
 import { useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
@@ -40,15 +41,6 @@ import { WidgetCard } from './widget-card'
 
 const DISCONNECT_ACTION: DestructiveAction = 'DISCONNECT_CHANNEL'
 const HEALTH_CODES: readonly string[] = Object.values(ChannelHealthErrors)
-// What the owner fixes by connecting again with another token (the others are for waiting or for Meta)
-const RECONNECT_ERRORS: readonly string[] = [
-  ChannelHealthErrors.TOKEN_REJECTED,
-  ChannelHealthErrors.PERMISSION_MISSING,
-  ChannelHealthErrors.OTHER_ACCOUNT,
-  ChannelHealthErrors.ACCOUNT_NOT_LINKED,
-  ChannelHealthErrors.REQUEST_REJECTED,
-  ChannelHealthErrors.CREDENTIALS_UNREADABLE
-]
 
 // One account of a channel with its health and what the owner may do with it (TDD_09 §13). Nothing
 // here is specific to one channel: the widget is the one card that exists only for the web widget,
@@ -181,7 +173,7 @@ function Health({
           {HEALTH_CODES.includes(error) ? t(`errors.${error}` as 'errors.check_failed') : error}
         </p>
       )}
-      {error !== null && onReconnect !== undefined && RECONNECT_ERRORS.includes(error) ? (
+      {error !== null && onReconnect !== undefined && needsNewToken(error) ? (
         <Button
           type="button"
           variant="outline"
