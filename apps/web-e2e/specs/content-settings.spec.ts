@@ -41,8 +41,21 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
     await dialog.getByRole('button', { name: tags.dialog.save }).click()
     await expect(dialog.getByText(tags.dialog.problems.nameRequired)).toBeVisible()
 
+    // Five submits in the same tick (the Enter key repeating, a double click) send one request, and the
+    // dialog closes (QA TRX-01: it used to send five, four of them refused as duplicates, and stay open
+    // saying the name was taken). They are dispatched in one script so that none waits for an answer.
+    const posts: string[] = []
+    await page.route(/\/settings\/tags(\?.*)?$/, route => {
+      if (route.request().method() === 'POST') posts.push(route.request().url())
+      void route.continue()
+    })
     await dialog.getByLabel(tags.dialog.name, { exact: true }).fill(name)
-    await dialog.getByRole('button', { name: tags.dialog.save }).click()
+    await dialog.locator('form').evaluate((form: HTMLFormElement) => {
+      for (let send = 0; send < 5; send += 1) form.requestSubmit()
+    })
+    await expect(dialog).toBeHidden()
+    expect(posts).toHaveLength(1)
+    await page.unroute(/\/settings\/tags(\?.*)?$/)
     const row = rowsOf(page, tags.listLabel).filter({ hasText: name })
     await expect(row).toBeVisible()
 

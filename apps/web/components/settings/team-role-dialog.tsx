@@ -11,6 +11,7 @@ import { permissionGroups, toggled } from '../../lib/settings/permission-groups'
 import type { RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
 import { useCreateRole, useUpdateRole } from '../../lib/settings/use-team'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -56,9 +57,10 @@ export function RoleDialog({
     !can(Permissions.TEAM_MANAGE_ROLES) || (role !== null && (role.isSystem || !fullyHeld))
   const canSubmit = !readOnly && name.trim() !== '' && !pending
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (!canSubmit) return
+    if (!canSubmit || !guard.enter()) return
     // No description is null on the role, never an empty text
     const text = description.trim()
     const input = {
@@ -70,8 +72,8 @@ export function RoleDialog({
       toast.success(t('saved', { name: input.name }))
       onClose()
     }
-    if (role === null) create.mutate(input, { onSuccess: done })
-    else update.mutate({ roleId: role.id, input }, { onSuccess: done })
+    if (role === null) create.mutate(input, { onSuccess: done, onSettled: guard.leave })
+    else update.mutate({ roleId: role.id, input }, { onSuccess: done, onSettled: guard.leave })
   }
 
   return (

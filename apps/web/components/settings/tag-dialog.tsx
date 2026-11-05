@@ -18,6 +18,7 @@ import {
 } from '../../lib/settings/content-form'
 import type { StoreTagView } from '../../lib/settings/tags-requests'
 import { useCreateTag, useUpdateTag } from '../../lib/settings/use-content'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -57,6 +58,7 @@ export function TagDialog({
   const failure = create.error ?? update.error
   const set = (patch: Partial<TagDraft>): void => setDraft(current => ({ ...current, ...patch }))
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (saving) return
@@ -70,13 +72,15 @@ export function TagDialog({
       onClose()
     }
     if (tag === null) {
-      create.mutate(tagInputOf(draft), { onSuccess: done })
+      if (guard.enter())
+        create.mutate(tagInputOf(draft), { onSuccess: done, onSettled: guard.leave })
       return
     }
     const changes = tagChanges(tag, draft)
     // Nothing changed: the api refuses an empty patch, and there is nothing to save
     if (Object.keys(changes).length === 0) onClose()
-    else update.mutate({ tagId: tag.id, input: changes }, { onSuccess: done })
+    else if (guard.enter())
+      update.mutate({ tagId: tag.id, input: changes }, { onSuccess: done, onSettled: guard.leave })
   }
 
   return (

@@ -18,6 +18,7 @@ import {
   missingFields
 } from '../../lib/settings/connect-form'
 import { useConnect } from '../../lib/settings/use-channels'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -107,11 +108,13 @@ export function ConnectForm({
   }, [tokenFailed, connect.error])
   const errorId = `${idPrefix}-connect-error`
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (!canSubmit) return
+    if (!canSubmit || !guard.enter()) return
     connect.mutate(credentialsOf(fields, values), {
-      onSuccess: onDone
+      onSuccess: onDone,
+      onSettled: guard.leave
     })
   }
 
