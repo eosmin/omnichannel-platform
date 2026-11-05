@@ -1,10 +1,11 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useId, useState } from 'react'
+import { type FormEvent, type ReactElement, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useRoleLabel } from '../../lib/role-label'
+import { isInvitableEmail } from '../../lib/settings/invite-email'
 import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
 import type { RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
@@ -46,7 +47,10 @@ export function InviteDialog({
   // No role is chosen for the person: the first one in the list is the most powerful, and an
   // invitation sent without looking would hand it out
   const [roleId, setRoleId] = useState('')
+  const [showEmailProblem, setShowEmailProblem] = useState(false)
   const canSubmit = email.trim() !== '' && roleId !== '' && !invite.isPending
+  const emailProblemId = `${idPrefix}-email-problem`
+  const emailField = useRef<HTMLInputElement>(null)
 
   // The cooldown of inviting says how long to wait, as a resend does; any other refusal is read from its code
   const inviteFailure = (error: Error): string => {
@@ -57,6 +61,12 @@ export function InviteDialog({
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (!canSubmit) return
+    // The browser's own check would answer in its language and let through what the api refuses
+    if (!isInvitableEmail(email)) {
+      setShowEmailProblem(true)
+      emailField.current?.focus()
+      return
+    }
     invite.mutate(
       { email: email.trim(), roleId },
       {
@@ -75,19 +85,31 @@ export function InviteDialog({
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-email`}>{t('email')}</Label>
             <Input
               id={`${idPrefix}-email`}
+              ref={emailField}
               type="email"
               autoComplete="off"
               value={email}
               maxLength={254}
-              onChange={event => setEmail(event.target.value)}
+              onChange={event => {
+                setEmail(event.target.value)
+                // The problem stays until the address is one the api takes
+                if (isInvitableEmail(event.target.value)) setShowEmailProblem(false)
+              }}
               disabled={invite.isPending}
+              aria-invalid={showEmailProblem}
+              aria-describedby={showEmailProblem ? emailProblemId : undefined}
               required
             />
+            {showEmailProblem ? (
+              <p id={emailProblemId} role="alert" className="text-destructive text-sm">
+                {t('emailInvalid')}
+              </p>
+            ) : null}
           </div>
           <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-role`}>{t('role')}</Label>

@@ -96,6 +96,12 @@ export class ChatLog {
     this.emit()
   }
 
+  // Whether a message of the server is one this log holds. A message the visitor sent in this session has
+  // no id of the server until the history is read again, so the id an agent read up to may not be here.
+  holds(messageId: string): boolean {
+    return this.items.some(item => item.serverId === messageId)
+  }
+
   // An agent read the conversation up to this message of the visitor: it and every earlier one of theirs
   // are seen. An id this log does not hold is newer than all it knows (it came by the socket before the
   // history did), so every message of the visitor it knows is earlier.

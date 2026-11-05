@@ -8,7 +8,7 @@ import { RealtimeClientTiming } from './realtime-config'
 import { attachRealtimeSync } from './realtime-sync'
 
 // The socket and the cache, as far as the sync reads them
-function setup() {
+function setup(onSound: () => void = () => undefined) {
   let onAny: (event: string, payload: unknown) => void = () => undefined
   let onConnect: (mayHaveMissedEvents: boolean) => void = () => undefined
   const invalidateQueries = jest.fn()
@@ -27,7 +27,8 @@ function setup() {
   const detach = attachRealtimeSync(
     connection,
     { invalidateQueries } as unknown as QueryClient,
-    's1'
+    's1',
+    onSound
   )
   return {
     detach,
@@ -78,5 +79,18 @@ describe('attachRealtimeSync', () => {
     flush()
 
     expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+
+  it('plays the sound once for each notification that asks for it, and for no other event', () => {
+    const onSound = jest.fn()
+    const { emit } = setup(onSound)
+
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n1', sound: true })
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n2', sound: false })
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n3' })
+    emit(RealtimeEvents.MESSAGE_RECEIVED, { conversationId: 'c1', sound: true })
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n4', sound: true })
+
+    expect(onSound).toHaveBeenCalledTimes(2)
   })
 })

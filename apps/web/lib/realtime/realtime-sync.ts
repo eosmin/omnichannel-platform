@@ -1,5 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query'
 
+import { RealtimeEvents } from '@platform/core/realtime'
+
+import { playChime, wantsSound } from '../notifications/chime'
+
 import type { RealtimeConnection } from './connection'
 import {
   createInvalidationBatcher,
@@ -17,7 +21,9 @@ import { RealtimeClientTiming } from './realtime-config'
 export function attachRealtimeSync(
   connection: RealtimeConnection,
   queryClient: QueryClient,
-  storeId: string
+  storeId: string,
+  // Plays the sound of a notification that asks for one; a test passes its own
+  onSound: () => void = playChime
 ): () => void {
   const { socket } = connection
   const batcher = createInvalidationBatcher(
@@ -27,6 +33,8 @@ export function attachRealtimeSync(
 
   const onEvent = (event: string, payload: unknown): void => {
     batcher.add(queryKeysForEvent(event, payload, storeId))
+    // Once for each notification the server sends with the sound on
+    if (event === RealtimeEvents.NOTIFICATION && wantsSound(payload)) onSound()
   }
   socket.onAny(onEvent)
   const stopListening = connection.onConnect(mayHaveMissedEvents => {

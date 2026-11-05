@@ -260,6 +260,70 @@ describe('Session', () => {
       session.stop()
     })
 
+    // A message sent in this session has no id of the server until the history is read again, so the
+    // pointer of the agent names one the log does not hold (QA WW-17: "seen" appeared only after a reload)
+    it('reads the history again when the agent read a message it does not know yet, and marks it', async () => {
+      const stored: ServerMessage = {
+        id: 'srv-1',
+        from: 'visitor',
+        content: 'hola',
+        attachments: [],
+        createdAt: '2026-01-01T00:00:00.000Z'
+      }
+      const bootstrap = jest
+        .fn()
+        .mockResolvedValueOnce(boot('t1'))
+        .mockResolvedValue(boot('t2', { messages: [stored], readUpToMessageId: 'srv-1' }))
+      const { session, log, socket } = setup({
+        bootstrap,
+        send: jest.fn().mockResolvedValue(undefined)
+      })
+      await session.start()
+      await session.send('hola')
+      expect(log.messages.map(message => message.seen)).toEqual([false])
+
+      socket.receive(WidgetSocketEvents.READ, { messageId: 'srv-1' })
+      await jest.advanceTimersByTimeAsync(0)
+
+      expect(bootstrap).toHaveBeenCalledTimes(2)
+      expect(log.messages.map(message => message.seen)).toEqual([true])
+      session.stop()
+    })
+
+    it('asks again at most once for a message that never shows up, however often it is read', async () => {
+      const bootstrap = jest.fn().mockResolvedValue(boot('t1'))
+      const { session, socket } = setup({ bootstrap })
+      await session.start()
+
+      for (let read = 0; read < 6; read += 1) {
+        socket.receive(WidgetSocketEvents.READ, { messageId: 'older-than-the-window' })
+        await jest.advanceTimersByTimeAsync(0)
+      }
+
+      // The start, and two more
+      expect(bootstrap).toHaveBeenCalledTimes(3)
+      session.stop()
+    })
+
+    it('does not read the history again for a message it already holds', async () => {
+      const held: ServerMessage = {
+        id: 'a',
+        from: 'visitor',
+        content: '1',
+        attachments: [],
+        createdAt: '2026-01-01T00:00:00.000Z'
+      }
+      const bootstrap = jest.fn().mockResolvedValue(boot('t1', { messages: [held] }))
+      const { session, socket } = setup({ bootstrap })
+      await session.start()
+
+      socket.receive(WidgetSocketEvents.READ, { messageId: 'a' })
+      await jest.advanceTimersByTimeAsync(0)
+
+      expect(bootstrap).toHaveBeenCalledTimes(1)
+      session.stop()
+    })
+
     it('marks nothing when the message that was read is older than the history it loaded', async () => {
       const history: ServerMessage[] = [
         {

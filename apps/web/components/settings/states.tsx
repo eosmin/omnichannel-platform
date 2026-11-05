@@ -4,18 +4,32 @@ import { Lock, TriangleAlert } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
+import { permissionNameKey } from '../../lib/permission-name'
 import { useErrorText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
 
 // "You do not have access to this" (TDD_09 §18): a page reached by a link, or by a role that changed
-// `body` says what this page needs when the general line is too vague
-export function PermissionDenied({ body }: { body?: string }): ReactElement {
+// `permission` is the one the page needs, said by the name the team settings give it ("Gestionar el
+// equipo"); `body` is a line of its own for a page that has a better one
+export function PermissionDenied({
+  body,
+  permission
+}: {
+  body?: string
+  permission?: string
+}): ReactElement {
   const t = useTranslations('emptyStates.permissionDenied')
+  const tAll = useTranslations()
+  const key = permission === undefined ? null : permissionNameKey(permission)
+  const named =
+    key !== null && tAll.has(key as 'errors.INTERNAL_ERROR')
+      ? tAll('permissionDenied.named', { permission: tAll(key as 'errors.INTERNAL_ERROR') })
+      : null
   return (
     <section className="flex flex-col items-center gap-2 py-12 text-center">
       <Lock aria-hidden className="text-muted-foreground size-8" />
       <h1 className="text-lg font-semibold">{t('title')}</h1>
-      <p className="text-muted-foreground max-w-sm text-sm">{body ?? t('body')}</p>
+      <p className="text-muted-foreground max-w-sm text-sm">{body ?? named ?? t('body')}</p>
     </section>
   )
 }

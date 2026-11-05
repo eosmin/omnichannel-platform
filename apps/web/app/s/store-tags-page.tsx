@@ -14,7 +14,11 @@ import { useStoreTags } from '../../lib/settings/use-content'
 // SETTINGS_EDIT change them; the panel draws its actions only for who holds that.
 export function StoreTagsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.CONVERSATIONS_VIEW) ? <TagsLoader /> : <PermissionDenied />
+  return can(Permissions.CONVERSATIONS_VIEW) ? (
+    <TagsLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.CONVERSATIONS_VIEW} />
+  )
 }
 
 function TagsLoader(): ReactElement {

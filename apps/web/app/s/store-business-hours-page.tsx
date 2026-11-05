@@ -36,7 +36,11 @@ import { useErrorText } from '../../lib/use-error-text'
 // SETTINGS_EDIT, as the api asks.
 export function StoreBusinessHoursPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? <HoursLoader /> : <PermissionDenied />
+  return can(Permissions.SETTINGS_VIEW) ? (
+    <HoursLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+  )
 }
 
 function HoursLoader(): ReactElement {

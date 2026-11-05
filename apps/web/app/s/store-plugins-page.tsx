@@ -27,7 +27,11 @@ const UNINSTALL_ACTION: DestructiveAction = 'DISCONNECT_CHANNEL'
 // install and uninstall per store. Registering a remote plugin by its manifest is Step 5.6.
 export function StorePluginsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? <PluginsLoader /> : <PermissionDenied />
+  return can(Permissions.SETTINGS_VIEW) ? (
+    <PluginsLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+  )
 }
 
 function PluginsLoader(): ReactElement {

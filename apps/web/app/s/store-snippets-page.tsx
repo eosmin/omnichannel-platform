@@ -14,7 +14,11 @@ import { useStoreSnippets } from '../../lib/settings/use-content'
 // changing them SETTINGS_EDIT, as the api asks. There is no "approved for AI" choice: the MVP has no AI.
 export function StoreSnippetsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.CONVERSATIONS_VIEW) ? <SnippetsLoader /> : <PermissionDenied />
+  return can(Permissions.CONVERSATIONS_VIEW) ? (
+    <SnippetsLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.CONVERSATIONS_VIEW} />
+  )
 }
 
 function SnippetsLoader(): ReactElement {

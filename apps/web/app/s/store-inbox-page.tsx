@@ -36,7 +36,11 @@ import { useErrorText } from '../../lib/use-error-text'
 // SETTINGS_MANAGE_PREFERENCES, as the api asks. The rest of the preferences is Step 4.14; no CSAT.
 export function StoreInboxPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? <InboxLoader /> : <PermissionDenied />
+  return can(Permissions.SETTINGS_VIEW) ? (
+    <InboxLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+  )
 }
 
 function InboxLoader(): ReactElement {

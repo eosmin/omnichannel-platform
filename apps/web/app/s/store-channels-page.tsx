@@ -26,7 +26,11 @@ import { useConnections, usePluginCatalog } from '../../lib/settings/use-channel
 // plugin adds needs no change here. The inbox sends the owner here when it has nothing to show.
 export function StoreChannelsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? <ChannelsLoader /> : <PermissionDenied />
+  return can(Permissions.SETTINGS_VIEW) ? (
+    <ChannelsLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+  )
 }
 
 function ChannelsLoader(): ReactElement {

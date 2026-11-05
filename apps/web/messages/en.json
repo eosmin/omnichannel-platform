@@ -291,7 +291,7 @@
     "edit": {
       "editProfile": "Edit the contact data",
       "name": "Name",
-      "email": "E-mail",
+      "email": "Email",
       "phone": "Phone",
       "save": "Save",
       "tags": {
@@ -325,7 +325,7 @@
       "title": "Customers",
       "noAccess": "You do not have access to customers.",
       "searchLabel": "Search customers",
-      "searchPlaceholder": "Search by name, e-mail or phone",
+      "searchPlaceholder": "Search by name, email or phone",
       "export": "Export CSV",
       "exportQueued": "The customers file is being prepared. It will be ready in the exports.",
       "viewExports": "View exports",
@@ -362,7 +362,7 @@
         "confirm": "Step 3 of 3. Confirm the merge."
       },
       "searchLabel": "Search the duplicate",
-      "searchPlaceholder": "Search by name, e-mail or phone",
+      "searchPlaceholder": "Search by name, email or phone",
       "searchFailed": "The customers could not be loaded.",
       "noMatches": "No customer matches the search.",
       "unnamed": "Visitor",
@@ -379,7 +379,7 @@
       "conflictsTitle": "Both have different data. Choose which to keep:",
       "fields": {
         "name": "Name",
-        "email": "E-mail",
+        "email": "Email",
         "phone": "Phone"
       },
       "back": "Back",
@@ -1478,7 +1478,7 @@
       "status": "State",
       "file": "File",
       "rows": "Rows",
-      "created": "Asked",
+      "created": "Requested",
       "expires": "Kept until",
       "actions": "Actions"
     },
@@ -1618,7 +1618,7 @@
         },
         "originsSaved": "Sites saved.",
         "preChat": {
-          "label": "Ask for name, e-mail and phone before the first message",
+          "label": "Ask for name, email and phone before the first message",
           "hint": "The visitor fills a short form before they start the chat."
         },
         "connectSrc": {
@@ -1637,7 +1637,7 @@
       },
       "connectFailure": {
         "token_malformed": "The token is missing, too long, or has spaces, line breaks or text that is not part of it. Copy it again: only the token.",
-        "token_rejected": "Meta refused the token: it is not valid, it expired or it was revoked. Generate a new one and connect again.",
+        "token_rejected": "Meta refused the token: it is not valid, it expired or it was revoked. Generate a new one and paste it again.",
         "permission_missing": "The token lacks a permission. Check that it includes the permissions the channel needs and that you have the required task on the account, then generate it again.",
         "request_rejected": "Meta refused the request. Often the token is not the kind the channel needs, or a permission is missing. Generate the token the channel asks for (for Messenger and Instagram, the token of the Page) and try again.",
         "account_not_linked": "The token does not reach any professional Instagram account. Check that the account is linked to the Page and that the token is that Page's.",
@@ -1996,6 +1996,7 @@
           "title": "Invite someone",
           "description": "They receive an email with a link to join this store with the role you choose.",
           "email": "Email",
+          "emailInvalid": "Enter a valid email, for example name@domain.com. Addresses with accents or ñ before the @ are not accepted yet.",
           "role": "Role",
           "send": "Send invitation",
           "sending": "Sending",
