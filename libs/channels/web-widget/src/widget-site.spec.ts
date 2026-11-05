@@ -42,6 +42,13 @@ describe('origins', () => {
       'https://shop.test/?',
       'https://shop.test/#',
       'http://shop.test',
+      // A wildcard would be stored and never match the exact origin that a browser sends
+      'https://*.shop.test',
+      'https://shop.*',
+      'https://*',
+      'https://*.shop.test:8443',
+      'https://%2A.shop.test',
+      'https://＊.shop.test',
       ''
     ]) {
       expect(originOf(value)).toBeNull()

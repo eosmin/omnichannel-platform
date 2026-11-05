@@ -253,6 +253,12 @@ test.describe('Settings → Channels and Plugins', () => {
         const dialog = page.getByRole('dialog', {
           name: channels.connectDialog.title.replace('{name}', MESSENGER_NAME)
         })
+        // Escape closes it and the focus goes back to the button that opened it, not to the page body (CAN-17)
+        await expect(dialog).toBeVisible()
+        await page.keyboard.press('Escape')
+        await expect(dialog).toBeHidden()
+        await expect(connectButton).toBeFocused()
+        await connectButton.click()
         const field = dialog.getByLabel(channels.connect.messenger.accessToken)
         // The dialog with the callback address (the widest thing in it) fits a phone and a desktop
         await expectDialogHoldsItsContent(page, dialog)

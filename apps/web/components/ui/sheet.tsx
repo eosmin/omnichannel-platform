@@ -2,6 +2,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import type { ComponentProps, ReactElement } from 'react'
 
 import { useCloseOnBack } from '../../lib/use-close-on-back'
+import { useFocusReturn } from '../../lib/use-focus-return'
 import { cn } from '../../lib/utils'
 
 // Closes on the browser's Back, like `Dialog`
@@ -21,8 +22,11 @@ export const SheetClose = DialogPrimitive.Close
 // focus is trapped and Escape closes it.
 export function SheetContent({
   className,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content>): ReactElement {
+  const focus = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus })
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
@@ -32,6 +36,8 @@ export function SheetContent({
           className
         )}
         {...props}
+        onOpenAutoFocus={focus.onOpenAutoFocus}
+        onCloseAutoFocus={focus.onCloseAutoFocus}
       />
     </DialogPrimitive.Portal>
   )
