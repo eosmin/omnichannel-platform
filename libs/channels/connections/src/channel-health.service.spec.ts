@@ -64,7 +64,10 @@ describe('ChannelHealthService.check', () => {
       [ChannelConnectFailureReasons.TOKEN_REJECTED, ChannelHealthErrors.TOKEN_REJECTED],
       [ChannelConnectFailureReasons.PERMISSION_MISSING, ChannelHealthErrors.PERMISSION_MISSING],
       [ChannelConnectFailureReasons.OTHER_ACCOUNT, ChannelHealthErrors.OTHER_ACCOUNT],
-      [ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED, ChannelHealthErrors.ACCOUNT_NOT_LINKED]
+      [ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED, ChannelHealthErrors.ACCOUNT_NOT_LINKED],
+      [ChannelConnectFailureReasons.REQUEST_REJECTED, ChannelHealthErrors.REQUEST_REJECTED],
+      // A token that is saved and no longer reads as a token: only connecting again fixes it
+      [ChannelConnectFailureReasons.TOKEN_MALFORMED, ChannelHealthErrors.CREDENTIALS_UNREADABLE]
     ])(
       'says what is wrong for the reason %s, so the owner knows what to fix',
       async (reason, error) => {
@@ -80,7 +83,9 @@ describe('ChannelHealthService.check', () => {
       ChannelConnectFailureReasons.PROVIDER_BUSY,
       ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE,
       ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED,
-      ChannelConnectFailureReasons.REQUEST_REJECTED
+      ChannelConnectFailureReasons.ACCOUNT_UNREADABLE,
+      ChannelConnectFailureReasons.SUBSCRIPTION_FAILED,
+      ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE
     ])(
       'keeps the plain failure for the reason %s: it does not say the owner must act',
       async reason => {

@@ -1560,7 +1560,8 @@
           "token_rejected": "Meta no longer accepts the token: it expired or was revoked. Connect the channel again with a new one.",
           "permission_missing": "The token lacks a permission or a task on the Page or account. Check them and connect the channel again.",
           "other_account": "The token is now of another account than the connected one. Connect the channel again with the right token.",
-          "account_not_linked": "The account is no longer linked to the Page of the token. Link it again or connect the channel with another token."
+          "account_not_linked": "The account is no longer linked to the Page of the token. Link it again or connect the channel with another token.",
+          "request_rejected": "Meta no longer accepts what it accepted before: a permission or the link of the Page may have been taken away. Connect the channel again with a new token."
         }
       },
       "profile": {
@@ -1627,17 +1628,16 @@
         }
       },
       "connectFailure": {
-        "token_missing": "The token is missing. Paste it in the field.",
-        "token_malformed": "The token has spaces, line breaks or text that is not part of it. Copy it again: only the token.",
+        "token_malformed": "The token is missing, too long, or has spaces, line breaks or text that is not part of it. Copy it again: only the token.",
         "token_rejected": "Meta refused the token: it is not valid, it expired or it was revoked. Generate a new one and connect again.",
-        "permission_missing": "The token lacks a permission. Check that it includes the messaging permissions, that you have the moderate or messages task on the Page or account, and that \"Allow access to messages\" is on.",
-        "request_rejected": "Meta refused the request. It usually means the token is not the expected kind (for example a user token instead of the Page's) or a permission is missing. Generate the Page token and try again.",
+        "permission_missing": "The token lacks a permission. Check that it includes the permissions the channel needs and that you have the required task on the account, then generate it again.",
+        "request_rejected": "Meta refused the request. Often the token is not the kind the channel needs, or a permission is missing. Generate the token the channel asks for (for Messenger and Instagram, the token of the Page) and try again.",
         "account_not_linked": "The token does not reach any professional Instagram account. Check that the account is linked to the Page and that the token is that Page's.",
         "other_account": "The token belongs to another account or Page than the connected one. Use the token of the same one.",
         "provider_answer_unexpected": "Meta answered something unexpected. Try again; if it persists, generate the token again.",
         "subscription_not_confirmed": "Meta did not confirm the subscription to messages. Check that the token has messaging permissions and that the webhook of the app is set up.",
         "provider_busy": "Meta asks to wait. Try again in a few minutes.",
-        "provider_unavailable": "Meta did not answer in time. Try again in a few minutes.",
+        "provider_unavailable": "Meta did not answer in time or answered badly. Try again in a few minutes.",
         "account_unreadable": "The Instagram account of the Page could not be read: check that the token is the Page's and that the account is still linked.",
         "subscription_failed": "The Page could not be subscribed to messages: try again; if it repeats, check the permissions of the app.",
         "subscription_unreadable": "The subscription of the Page to messages could not be checked. Try again in a few minutes."

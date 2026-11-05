@@ -1560,7 +1560,8 @@
           "token_rejected": "Meta ya no acepta el token: caducó o se revocó. Conecta el canal otra vez con uno nuevo.",
           "permission_missing": "Al token le falta un permiso o una tarea en la Página o cuenta. Revísalos y conecta el canal otra vez.",
           "other_account": "El token ahora es de otra cuenta distinta de la conectada. Conecta el canal otra vez con el token correcto.",
-          "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o conecta el canal con otro token."
+          "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o conecta el canal con otro token.",
+          "request_rejected": "Meta ya no acepta lo que aceptaba antes: puede que se haya quitado un permiso o el vínculo de la Página. Conecta el canal otra vez con un token nuevo."
         }
       },
       "profile": {
@@ -1627,17 +1628,16 @@
         }
       },
       "connectFailure": {
-        "token_missing": "Falta el token. Pégalo en el campo.",
-        "token_malformed": "El token tiene espacios, saltos de línea o texto que no es parte de él. Cópialo otra vez: solo el token.",
+        "token_malformed": "Falta el token, es demasiado largo o tiene espacios, saltos de línea o texto que no es parte de él. Cópialo otra vez: solo el token.",
         "token_rejected": "Meta rechazó el token: no es válido, caducó o se revocó. Genera uno nuevo y vuelve a conectar.",
-        "permission_missing": "El token no tiene un permiso. Revisa que incluya los permisos de mensajes, que tengas la tarea de moderar o de mensajes en la Página o cuenta, y que \"Permitir acceso a los mensajes\" esté activo.",
-        "request_rejected": "Meta rechazó la solicitud. Suele significar que el token no es del tipo esperado (por ejemplo, de usuario en vez de el de la Página) o que falta un permiso. Genera el token de la Página y prueba otra vez.",
+        "permission_missing": "Al token le falta un permiso. Revisa que incluya los permisos que el canal necesita y que tengas la tarea requerida en la cuenta, y genéralo de nuevo.",
+        "request_rejected": "Meta rechazó la solicitud. A menudo el token no es del tipo que el canal necesita, o falta un permiso. Genera el token que pide el canal (en Messenger e Instagram, el de la Página) y prueba otra vez.",
         "account_not_linked": "El token no llega a ninguna cuenta profesional de Instagram. Comprueba que la cuenta esté vinculada a la Página y que el token sea el de esa Página.",
         "other_account": "El token es de otra cuenta o Página distinta de la conectada. Usa el token de la misma.",
         "provider_answer_unexpected": "Meta respondió algo inesperado. Prueba otra vez; si sigue, genera el token de nuevo.",
         "subscription_not_confirmed": "Meta no confirmó la suscripción a los mensajes. Revisa que el token tenga permisos de mensajes y que el webhook de la app esté configurado.",
         "provider_busy": "Meta pide esperar. Prueba otra vez en unos minutos.",
-        "provider_unavailable": "Meta no respondió a tiempo. Prueba otra vez en unos minutos.",
+        "provider_unavailable": "Meta no respondió a tiempo o respondió mal. Prueba otra vez en unos minutos.",
         "account_unreadable": "No se pudo leer la cuenta de Instagram de la Página: comprueba que el token sea el de la Página y que la cuenta siga enlazada.",
         "subscription_failed": "No se pudo suscribir la Página a los mensajes: reintenta; si se repite, revisa los permisos de la app.",
         "subscription_unreadable": "No se pudo comprobar la suscripción de la Página a los mensajes. Prueba otra vez en unos minutos."

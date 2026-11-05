@@ -21,7 +21,6 @@ export function connectFailureReasonOf(error: unknown): ChannelConnectFailureRea
 // The reasons that are about what was pasted or what it may do: the focus goes back to the token field
 export function isTokenFailure(reason: ChannelConnectFailureReason | null): boolean {
   switch (reason) {
-    case ChannelConnectFailureReasons.TOKEN_MISSING:
     case ChannelConnectFailureReasons.TOKEN_MALFORMED:
     case ChannelConnectFailureReasons.TOKEN_REJECTED:
     case ChannelConnectFailureReasons.PERMISSION_MISSING:

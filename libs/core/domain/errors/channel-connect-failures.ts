@@ -5,9 +5,7 @@ import { type PluginCheck, PluginChecks } from './plugin-checks'
 // of a connection), and only a name of this list is ever believed, so a plugin cannot put text of its
 // own on the screen. The texts are in the catalogs of the web app, under the same names.
 export const ChannelConnectFailureReasons = {
-  // Nothing was pasted
-  TOKEN_MISSING: 'token_missing',
-  // What was pasted is not a token (spaces, line breaks, other text)
+  // What was pasted is not a token (nothing, too long, spaces, line breaks, other text)
   TOKEN_MALFORMED: 'token_malformed',
   // The provider refused the token: invalid, expired or revoked
   TOKEN_REJECTED: 'token_rejected',
@@ -50,7 +48,6 @@ export function isChannelConnectFailureReason(
 export function connectReasonOfCheck(check: PluginCheck): ChannelConnectFailureReason {
   switch (check) {
     case PluginChecks.CREDENTIALS_SHAPE:
-      return ChannelConnectFailureReasons.TOKEN_MISSING
     case PluginChecks.TOKEN_NOT_HEADER_SAFE:
       return ChannelConnectFailureReasons.TOKEN_MALFORMED
     case PluginChecks.ACCOUNT_ID_NOT_NUMERIC:

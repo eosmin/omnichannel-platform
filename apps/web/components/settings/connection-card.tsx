@@ -46,6 +46,7 @@ const RECONNECT_ERRORS: readonly string[] = [
   ChannelHealthErrors.PERMISSION_MISSING,
   ChannelHealthErrors.OTHER_ACCOUNT,
   ChannelHealthErrors.ACCOUNT_NOT_LINKED,
+  ChannelHealthErrors.REQUEST_REJECTED,
   ChannelHealthErrors.CREDENTIALS_UNREADABLE
 ]
 

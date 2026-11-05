@@ -36,7 +36,6 @@ describe('connectFailureReasonOf', () => {
 
 describe('isTokenFailure', () => {
   it.each([
-    ChannelConnectFailureReasons.TOKEN_MISSING,
     ChannelConnectFailureReasons.TOKEN_MALFORMED,
     ChannelConnectFailureReasons.TOKEN_REJECTED,
     ChannelConnectFailureReasons.PERMISSION_MISSING,

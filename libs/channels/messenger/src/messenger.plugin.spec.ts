@@ -488,12 +488,12 @@ describe('MessengerPlugin, the reason a connection fails', () => {
     }
   )
 
-  it('says the token is missing when none was pasted, without asking Meta', async () => {
+  it('says the token is not one when nothing usable was pasted, without asking Meta', async () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch')
 
     await expect(
       realPlugin().connect({ storeId: 's', credentials: { accessToken: '   ' } })
-    ).rejects.toMatchObject({ reason: ChannelConnectFailureReasons.TOKEN_MISSING })
+    ).rejects.toMatchObject({ reason: ChannelConnectFailureReasons.TOKEN_MALFORMED })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 
-import { CONNECTION_ROW_SELECT, ChannelHealthService } from '@platform/channels/connections'
+import {
+  CONNECTION_ROW_SELECT,
+  ChannelHealthService,
+  ProviderTimeoutError
+} from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { RoleNames } from '@platform/core/auth'
@@ -330,6 +334,16 @@ describe('The channel connections of a store', () => {
         expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
         expect(reasonOf(response.body)).toBeUndefined()
         expect(JSON.stringify(response.body)).not.toContain(SECRET)
+      })
+
+      it('says the provider is unavailable when the whole call to it timed out', async () => {
+        const { id } = register({ connect: () => Promise.reject(new ProviderTimeoutError()) })
+
+        const response = await connect(id)
+
+        expect(response.status).toBe(BAD_REQUEST)
+        expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+        expect(reasonOf(response.body)).toBe(ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE)
       })
 
       it('does not carry a reason a plugin made up, nor its text', async () => {

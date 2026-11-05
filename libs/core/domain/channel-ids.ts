@@ -81,7 +81,9 @@ export const ChannelHealthErrors = {
   TOKEN_REJECTED: 'token_rejected',
   PERMISSION_MISSING: 'permission_missing',
   OTHER_ACCOUNT: 'other_account',
-  ACCOUNT_NOT_LINKED: 'account_not_linked'
+  ACCOUNT_NOT_LINKED: 'account_not_linked',
+  // The provider refuses what it accepted before (often a permission or the link of the Page was taken away)
+  REQUEST_REJECTED: 'request_rejected'
 } as const
 
 // The most text one message may hold on each official channel (TDD_10 §5). `POST /messages` caps at
@@ -156,10 +158,12 @@ export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefi
       return ChannelHealthErrors.OTHER_ACCOUNT
     case ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED:
       return ChannelHealthErrors.ACCOUNT_NOT_LINKED
-    case undefined:
-    case ChannelConnectFailureReasons.TOKEN_MISSING:
-    case ChannelConnectFailureReasons.TOKEN_MALFORMED:
     case ChannelConnectFailureReasons.REQUEST_REJECTED:
+      return ChannelHealthErrors.REQUEST_REJECTED
+    // A saved credential that no longer reads as a token: only connecting again fixes it
+    case ChannelConnectFailureReasons.TOKEN_MALFORMED:
+      return ChannelHealthErrors.CREDENTIALS_UNREADABLE
+    case undefined:
     case ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED:
     case ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED:
     case ChannelConnectFailureReasons.ACCOUNT_UNREADABLE:

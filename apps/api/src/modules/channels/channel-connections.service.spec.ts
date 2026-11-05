@@ -13,6 +13,7 @@ jest.mock('@platform/channels/connections', () => ({
   ChannelHealthService: class {},
   errorName: (error: unknown) => (error instanceof Error ? error.name : 'unknown'),
   providerText: () => '',
+  ProviderTimeoutError: class ProviderTimeoutError extends Error {},
   withTimeout: <T>(work: Promise<T>) => work
 }))
 

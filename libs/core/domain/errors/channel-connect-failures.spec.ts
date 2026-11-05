@@ -13,8 +13,9 @@ describe('the reasons a channel does not connect', () => {
   })
 
   it('says which reason each check has, so a change of wording of the owner is a change of code', () => {
+    // Empty, too long or not text: the form blocks an empty one, so what reaches the check is "not a token"
     expect(connectReasonOfCheck(PluginChecks.CREDENTIALS_SHAPE)).toBe(
-      ChannelConnectFailureReasons.TOKEN_MISSING
+      ChannelConnectFailureReasons.TOKEN_MALFORMED
     )
     expect(connectReasonOfCheck(PluginChecks.TOKEN_NOT_HEADER_SAFE)).toBe(
       ChannelConnectFailureReasons.TOKEN_MALFORMED
