@@ -47,7 +47,7 @@ export function HoursEditor({
           <li key={day} className="flex flex-col gap-2 rounded-lg border p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-medium">{dayName}</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {!disabled && day === Weekdays[0] ? (
                   <Button
                     type="button"

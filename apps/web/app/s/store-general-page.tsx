@@ -33,7 +33,11 @@ const valuesOf = (store: StoreView): StoreFormValues => ({
 // of that route, not only the right to look at settings.
 export function StoreGeneralPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.ORG_MANAGE_STORES) ? <GeneralLoader /> : <PermissionDenied />
+  return can(Permissions.ORG_MANAGE_STORES) ? (
+    <GeneralLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.ORG_MANAGE_STORES} />
+  )
 }
 
 function GeneralLoader(): ReactElement {

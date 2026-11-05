@@ -158,7 +158,7 @@
     },
     "preferences": {
       "title": "Preferencias",
-      "description": "Cómo se ve y habla la aplicación para ti, en todos tus dispositivos.",
+      "description": "Cómo se ve y en qué idioma se muestra la aplicación para ti, en todos tus dispositivos.",
       "language": "Idioma",
       "timezone": "Zona horaria",
       "browserZone": "Usar la zona horaria de este navegador",
@@ -1637,7 +1637,7 @@
       },
       "connectFailure": {
         "token_malformed": "Falta el token, es demasiado largo o tiene espacios, saltos de línea o texto que no es parte de él. Cópialo otra vez: solo el token.",
-        "token_rejected": "Meta rechazó el token: no es válido, expiró o se revocó. Genera uno nuevo y vuelve a conectar.",
+        "token_rejected": "Meta rechazó el token: no es válido, expiró o se revocó. Genera uno nuevo y pégalo otra vez.",
         "permission_missing": "Al token le falta un permiso. Revisa que incluya los permisos que el canal necesita y que tengas la tarea requerida en la cuenta, y genéralo de nuevo.",
         "request_rejected": "Meta rechazó la solicitud. A menudo el token no es del tipo que el canal necesita, o falta un permiso. Genera el token que pide el canal (en Messenger e Instagram, el de la Página) y prueba otra vez.",
         "account_not_linked": "El token no llega a ninguna cuenta profesional de Instagram. Comprueba que la cuenta esté vinculada a la Página y que el token sea el de esa Página.",
@@ -1996,6 +1996,7 @@
           "title": "Invitar a alguien",
           "description": "Recibirá un correo con un enlace para unirse a esta tienda con el rol que elijas.",
           "email": "Correo",
+          "emailInvalid": "Escribe un correo válido, por ejemplo nombre@dominio.com. Aún no se aceptan direcciones con acentos o ñ antes de la @.",
           "role": "Rol",
           "send": "Enviar invitación",
           "sending": "Enviando",

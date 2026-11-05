@@ -21,7 +21,11 @@ import { useOrganization, useRenameOrganization } from '../../lib/settings/use-s
 // changing it needs the right to edit them.
 export function OrganizationProfilePage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? <ProfileLoader /> : <PermissionDenied />
+  return can(Permissions.SETTINGS_VIEW) ? (
+    <ProfileLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+  )
 }
 
 function ProfileLoader(): ReactElement {

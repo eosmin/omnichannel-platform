@@ -1,16 +1,16 @@
-import { bubbleTextOf, UnsupportedKinds, unsupportedKindOf } from './unsupported-kind'
+import { bubbleTextOf, unsupportedKindOf } from './unsupported-kind'
 
 describe('unsupportedKindOf', () => {
   it.each([
-    ['story_mention', UnsupportedKinds.STORY_MENTION],
-    ['share', UnsupportedKinds.SHARE],
-    ['ig_post', UnsupportedKinds.SHARE],
-    ['location', UnsupportedKinds.LOCATION],
-    ['image', UnsupportedKinds.MEDIA],
-    ['audio', UnsupportedKinds.MEDIA],
-    ['unsupported', UnsupportedKinds.OTHER],
-    ['order', UnsupportedKinds.OTHER],
-    ['something_new', UnsupportedKinds.OTHER]
+    ['story_mention', 'storyMention'],
+    ['share', 'share'],
+    ['ig_post', 'share'],
+    ['location', 'location'],
+    ['image', 'media'],
+    ['audio', 'media'],
+    ['unsupported', 'other'],
+    ['order', 'other'],
+    ['something_new', 'other']
   ])('names %s as %s', (type, kind) => {
     expect(unsupportedKindOf(type)).toBe(kind)
   })

@@ -37,15 +37,16 @@ export function plainText(text: string): string {
 // built with the second); every other invisible format character and the four blank filler letters go,
 // together with the braille blank.
 const NAME_INVISIBLE = /(?![\u200C\u200D])[\p{Cf}\u115F\u1160\u3164\uFFA0\u2800]/u
-const NAME_INVISIBLE_ALL = new RegExp(NAME_INVISIBLE.source, 'gu')
+const NAME_INVISIBLE_ALL = /(?![\u200C\u200D])[\p{Cf}\u115F\u1160\u3164\uFFA0\u2800]/gu
 // A joiner at an end, next to a space or next to another joiner joins nothing and draws nothing
 const STRAY_JOINER = /(^|[\s\u200C\u200D])[\u200C\u200D]|[\u200C\u200D](?=$|[\s\u200C\u200D])/u
 const STRAY_JOINERS_ALL =
   /(^|\s)[\u200C\u200D]+|[\u200C\u200D]+(?=\s|$)|([\u200C\u200D])[\u200C\u200D]+/gu
 // A letter with a pile of combining marks smears over the rows around it (zalgo text)
-const MARK_RUN_LENGTH = 5
-const MARK_RUN = new RegExp(`\\p{M}{${MARK_RUN_LENGTH},}`, 'u')
-const MARK_RUN_ALL = new RegExp(`(\\p{M}{${MARK_RUN_LENGTH - 1}})\\p{M}+`, 'gu')
+// Regex literals, not `new RegExp`: a call at the top of a module is never dropped by the bundler, and the
+// pages that do not use these rules would carry them
+const MARK_RUN = /\p{M}{5,}/u
+const MARK_RUN_ALL = /(\p{M}{4})\p{M}+/gu
 
 // True when a name has a line break or other control character, a line or paragraph separator, an
 // invisible character, a joiner that joins nothing or a pile of combining marks

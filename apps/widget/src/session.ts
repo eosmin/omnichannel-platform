@@ -33,6 +33,9 @@ const MS_PER_SECOND = 1000
 // The token is renewed this long before it ends, so that a send never meets an expired one
 const RENEW_BEFORE_EXPIRY_MS = 60 * MS_PER_SECOND
 const MIN_RENEW_DELAY_MS = 10 * MS_PER_SECOND
+// Reads of a message the log does not hold: how many are remembered, and how often each is asked for
+const MAX_UNKNOWN_READS = 20
+const MAX_READ_REFRESHES = 2
 const RETRY_DELAYS_MS = [1, 2, 4, 8, 16].map(seconds => seconds * MS_PER_SECOND)
 
 export interface SessionDeps {
@@ -70,6 +73,7 @@ export class Session {
   private socket: VisitorSocket | undefined
   private stopped = false
   private renewing: Promise<Bootstrap> | undefined
+  private readonly unknownReads = new Map<string, number>()
   private lastTypingAt = 0
   private typingListener: ((active: boolean) => void) | undefined
   private typingLapse: ReturnType<typeof setTimeout> | undefined
@@ -234,6 +238,22 @@ export class Session {
     }
   }
 
+  // The message that an agent read may be one the visitor sent a moment ago, which has no id here yet: the
+  // history says which stored message is which, and where the agent read up to (QA WW-17). An id is asked
+  // for at most twice (the first answer may be one that was already on its way, from before the message was
+  // stored), so an id that is older than the history and never shows up does not make a request at every read.
+  private refreshForUnknownRead(messageId: string): void {
+    const attempts = this.unknownReads.get(messageId) ?? 0
+    if (attempts >= MAX_READ_REFRESHES) return
+    if (this.unknownReads.size >= MAX_UNKNOWN_READS) this.unknownReads.clear()
+    this.unknownReads.set(messageId, attempts + 1)
+    void this.renew()
+      .then(() => {
+        if (this.deps.log.holds(messageId)) this.unknownReads.delete(messageId)
+      })
+      .catch(() => undefined)
+  }
+
   // Concurrent callers share one request
   private renew(): Promise<Bootstrap> {
     this.renewing ??= this.requestToken().finally(() => {
@@ -310,7 +330,12 @@ export class Session {
     })
     socket.on(WidgetSocketEvents.READ, (payload: unknown) => {
       const messageId = (payload as { messageId?: unknown } | null)?.messageId
-      if (typeof messageId === 'string') this.deps.log.markSeenUpTo(messageId)
+      if (typeof messageId !== 'string') return
+      if (this.deps.log.holds(messageId)) {
+        this.deps.log.markSeenUpTo(messageId)
+        return
+      }
+      this.refreshForUnknownRead(messageId)
     })
     // A server that closes the socket on purpose (the token ended) is not retried by the library, and
     // neither is a handshake it refused: both are asked for a new token and connected again here

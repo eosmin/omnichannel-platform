@@ -45,7 +45,11 @@ const DELETE_STORE_ACTION: DestructiveAction = 'DELETE_STORE'
 // Everything here needs ORG_MANAGE_STORES; the api checks it on every call.
 export function StoresList(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.ORG_MANAGE_STORES) ? <Stores /> : <PermissionDenied />
+  return can(Permissions.ORG_MANAGE_STORES) ? (
+    <Stores />
+  ) : (
+    <PermissionDenied permission={Permissions.ORG_MANAGE_STORES} />
+  )
 }
 
 function Stores(): ReactElement {

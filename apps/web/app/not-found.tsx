@@ -15,7 +15,7 @@ export default async function NotFound(): Promise<ReactElement> {
   const t = await getTranslations()
   return (
     <StatusScreen icon={SearchX} title={t('notFound.title')} body={t('notFound.body')}>
-      <Link href={AppPaths.login} className={buttonVariants()}>
+      <Link href={AppPaths.home} className={buttonVariants()}>
         {t('common.backToStart')}
       </Link>
     </StatusScreen>

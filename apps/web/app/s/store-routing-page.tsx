@@ -15,7 +15,11 @@ import { useMemberChoices, useRules, useTagChoices } from '../../lib/settings/us
 // person without it still sees the rules, with those names left out.
 export function StoreRoutingPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? <RoutingLoader /> : <PermissionDenied />
+  return can(Permissions.SETTINGS_VIEW) ? (
+    <RoutingLoader />
+  ) : (
+    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+  )
 }
 
 function RoutingLoader(): ReactElement {
