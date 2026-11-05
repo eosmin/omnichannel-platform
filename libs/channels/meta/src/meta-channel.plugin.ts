@@ -165,7 +165,13 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 
   private async readAccount(token: string): Promise<MetaAccount> {
-    const account = await this.fetchAccount(token)
+    let account: MetaAccount
+    try {
+      account = await this.fetchAccount(token)
+    } catch (error) {
+      // Which call failed, for the log: a check the plugin already named stays
+      throw withCheck(error, PluginChecks.ACCOUNT_READ_FAILED)
+    }
     this.checkedId(account.id)
     return account
   }
@@ -179,14 +185,18 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     const fields = await this.fieldsToSubscribe(owner, accessToken)
     // Webhooks only reach the app for an account that subscribed it. This also proves that the token
     // can act on the account it names.
-    const subscribed = await this.meta.post({
-      origin: this.origin,
-      path: [owner, MetaMessaging.EDGE_SUBSCRIBED_APPS],
-      token: accessToken,
-      query: { subscribed_fields: fields },
-      idempotent: true,
-      schema: successSchema
-    })
+    const subscribed = await this.meta
+      .post({
+        origin: this.origin,
+        path: [owner, MetaMessaging.EDGE_SUBSCRIBED_APPS],
+        token: accessToken,
+        query: { subscribed_fields: fields },
+        idempotent: true,
+        schema: successSchema
+      })
+      .catch((error: unknown) => {
+        throw withCheck(error, PluginChecks.SUBSCRIBE_FAILED)
+      })
     if (!subscribed.success) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
         retryable: false,

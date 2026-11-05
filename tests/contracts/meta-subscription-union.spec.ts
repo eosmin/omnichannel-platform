@@ -30,10 +30,8 @@ interface World {
   appBody: unknown
 }
 
-const VALID = new Set<string>([
-  ...MetaSubscribableFields.INSTAGRAM,
-  ...MetaSubscribableFields.MESSENGER
-])
+// The Page edge is what both channels reach: its enum is the one that accepts or refuses a name
+const VALID = new Set<string>(MetaSubscribableFields.PAGE)
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), {
