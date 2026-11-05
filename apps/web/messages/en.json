@@ -1553,15 +1553,15 @@
         "never": "It has not been checked yet.",
         "lastHealthy": "Last working: {date}",
         "errors": {
-          "credentials_unreadable": "The saved credentials cannot be read. Connect the channel again.",
+          "credentials_unreadable": "The saved credentials cannot be read. Update the token of this connection.",
           "check_failed": "The last check could not be completed.",
           "invalid_report": "The channel answered the check in an unexpected way.",
           "unspecified": "The channel reported a problem without saying which.",
-          "token_rejected": "Meta no longer accepts the token: it expired or was revoked. Connect the channel again with a new one.",
-          "permission_missing": "The token lacks a permission or a task on the Page or account. Check them and connect the channel again.",
-          "other_account": "The token is now of another account than the connected one. Connect the channel again with the right token.",
-          "account_not_linked": "The account is no longer linked to the Page of the token. Link it again or connect the channel with another token.",
-          "request_rejected": "Meta no longer accepts what it accepted before: a permission or the link of the Page may have been taken away. Connect the channel again with a new token."
+          "token_rejected": "Meta no longer accepts the token: it expired or was revoked. Update the token of this connection.",
+          "permission_missing": "The token lacks a permission or a task on the Page or account. Check them and update the token of this connection.",
+          "other_account": "The token is now of another account than the connected one. Update the token with the one of that same account.",
+          "account_not_linked": "The account is no longer linked to the Page of the token. Link it again or update the token.",
+          "request_rejected": "Meta no longer accepts what it accepted before: a permission or the link of the Page may have been taken away. Update the token of this connection."
         }
       },
       "profile": {
@@ -1635,14 +1635,21 @@
         "account_not_linked": "The token does not reach any professional Instagram account. Check that the account is linked to the Page and that the token is that Page's.",
         "other_account": "The token belongs to another account or Page than the connected one. Use the token of the same one.",
         "provider_answer_unexpected": "Meta answered something unexpected. Try again; if it persists, generate the token again.",
-        "subscription_not_confirmed": "Meta did not confirm the subscription to messages. Check that the token has messaging permissions and that the webhook of the app is set up.",
+        "subscription_not_confirmed": "Meta did not confirm the subscription to messages. Check that the token has messaging permissions and that messaging is turned on for the app in its Meta dashboard.",
         "provider_busy": "Meta asks to wait. Try again in a few minutes.",
         "provider_unavailable": "Meta did not answer in time or answered badly. Try again in a few minutes.",
         "account_unreadable": "The Instagram account of the Page could not be read: check that the token is the Page's and that the account is still linked.",
         "subscription_failed": "The Page could not be subscribed to messages: try again; if it repeats, check the permissions of the app.",
         "subscription_unreadable": "The subscription of the Page to messages could not be checked. Try again in a few minutes."
       },
-      "reconnect": "Connect again"
+      "updateToken": {
+        "action": "Update token",
+        "title": "Update the token of {name}",
+        "description": "Paste the new token of the same account. The connection, its conversations and its name do not change.",
+        "submit": "Update token",
+        "submitting": "Updating…",
+        "done": "Token of {name} updated."
+      }
     },
     "nav": {
       "backToInbox": "Back to inbox",

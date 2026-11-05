@@ -4,12 +4,10 @@ import {
   isChannelConnectFailureReason,
   type ErrorCode,
   type ErrorCodes,
+  isPluginCheck,
   type PluginCheck,
-  PluginChecks,
   PlatformException
 } from '@platform/core/errors'
-
-const KNOWN_CHECKS: readonly unknown[] = Object.values(PluginChecks)
 
 // The codes a plugin may raise: what a provider can do wrong, never a platform error
 export type PluginErrorCode = Extract<
@@ -70,7 +68,7 @@ export class PluginError extends PlatformException {
     // A reason outside the list is not kept (it would hide the one of the check), for the same reason
     this.reason = isChannelConnectFailureReason(options.reason)
       ? options.reason
-      : options.failedCheck !== undefined && KNOWN_CHECKS.includes(options.failedCheck)
+      : isPluginCheck(options.failedCheck)
         ? connectReasonOfCheck(options.failedCheck)
         : undefined
   }

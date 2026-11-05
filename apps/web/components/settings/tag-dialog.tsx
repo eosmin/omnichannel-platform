@@ -87,7 +87,7 @@ export function TagDialog({
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-name`}>{t('name')}</Label>
             <Input
               id={`${idPrefix}-name`}
@@ -98,7 +98,7 @@ export function TagDialog({
               required
             />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-color`}>{t('color')}</Label>
             <input
               id={`${idPrefix}-color`}
@@ -109,7 +109,7 @@ export function TagDialog({
               className="h-9 w-16 cursor-pointer rounded-md border p-1"
             />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-description`}>{t('descriptionLabel')}</Label>
             <Input
               id={`${idPrefix}-description`}

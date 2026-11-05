@@ -78,7 +78,7 @@ export function HoursEditor({
             ) : (
               ranges.map((range, index) => (
                 <div key={index} className="flex flex-wrap items-end gap-2">
-                  <div className="grid gap-1">
+                  <div className="grid grid-cols-1 gap-1">
                     <Label htmlFor={`${idPrefix}-${day}-${index}-from`}>
                       {t('from')}
                       <span className="sr-only"> {dayName}</span>
@@ -101,7 +101,7 @@ export function HoursEditor({
                       ))}
                     </select>
                   </div>
-                  <div className="grid gap-1">
+                  <div className="grid grid-cols-1 gap-1">
                     <Label htmlFor={`${idPrefix}-${day}-${index}-to`}>
                       {t('to')}
                       <span className="sr-only"> {dayName}</span>

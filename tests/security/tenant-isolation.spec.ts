@@ -1066,6 +1066,35 @@ describe('Tenant isolation', () => {
     })
   })
 
+  describe('replacing the token of a connection', () => {
+    it('is answered as a connection that does not exist when it belongs to another store, and leaves its credentials alone', async () => {
+      const connectionA = await createChannelConnection(owner, {
+        storeId: ctx.storeA.id,
+        channelType: 'test_channel'
+      })
+      const before = await owner.channelConnection.findUniqueOrThrow({
+        where: { id: connectionA.id }
+      })
+
+      const foreign = await api(app, ctx.adminB, ctx.storeB)
+        .post(ApiRoutes.channels.updateToken(connectionA.id))
+        .send({ credentials: { token: 'EAAB-from-the-other-store' } })
+      const missing = await api(app, ctx.adminB, ctx.storeB)
+        .post(ApiRoutes.channels.updateToken(randomUUID()))
+        .send({ credentials: { token: 'EAAB-from-the-other-store' } })
+
+      expect(foreign.status).toBe(404)
+      expect(missing.status).toBe(404)
+      expect((foreign.body as { error: unknown }).error).toEqual(
+        (missing.body as { error: unknown }).error
+      )
+      const after = await owner.channelConnection.findUniqueOrThrow({
+        where: { id: connectionA.id }
+      })
+      expect(Buffer.from(after.credentials).equals(Buffer.from(before.credentials))).toBe(true)
+    })
+  })
+
   describe('the directory of channels', () => {
     it('lists the connections of the store of the caller, with none of another store in it', async () => {
       const connectionA = await createChannelConnection(owner, {

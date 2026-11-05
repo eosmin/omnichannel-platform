@@ -32,11 +32,14 @@ describe('graphFailure', () => {
     expect(graphFailure(status, null).code).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
   })
 
-  it.each([4, 17, 32, 613, 80008])('asks to try again after the throttle code %i', code => {
-    const error = graphFailure(400, graphError(code))
-    expect(error.code).toBe(ErrorCodes.CHANNEL_MESSAGE_FAILED)
-    expect(error.retryable).toBe(true)
-  })
+  it.each([4, 17, 32, 613, 80007, 80008, 80010, 80011, 80012, 80013])(
+    'asks to try again after the throttle code %i',
+    code => {
+      const error = graphFailure(400, graphError(code))
+      expect(error.code).toBe(ErrorCodes.CHANNEL_MESSAGE_FAILED)
+      expect(error.retryable).toBe(true)
+    }
+  )
 
   it.each([408, 425])('asks to try again a read after HTTP %i', status => {
     expect(graphFailure(status, null).retryable).toBe(true)
@@ -207,8 +210,23 @@ describe('the reason a Graph failure gives', () => {
     )
   })
 
-  it('says a permission is missing for HTTP 403 with no readable answer', () => {
-    expect(graphFailure(403, null).reason).toBe(ChannelConnectFailureReasons.PERMISSION_MISSING)
+  // A 403 that Meta did not explain may come from anything between us and Meta: it is still a refusal of the
+  // credentials, but it must not tell the owner to fix a permission
+  it('gives no reason for HTTP 403 with no readable answer, nor with a code that is not a permission one', () => {
+    expect(graphFailure(403, null).reason).toBeUndefined()
+    expect(graphFailure(403, graphError(3)).reason).toBeUndefined()
+    expect(graphFailure(403, null).code).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+  })
+
+  it.each([200, 299])('still says a permission is missing for HTTP 403 with the code %i', code => {
+    expect(graphFailure(403, graphError(code)).reason).toBe(
+      ChannelConnectFailureReasons.PERMISSION_MISSING
+    )
+  })
+
+  // The edges of the range 200 to 299 (and the code 10): one off either side is not a permission
+  it.each([9, 11, 199, 300])('gives no reason for HTTP 403 with the code %i', code => {
+    expect(graphFailure(403, graphError(code)).reason).toBeUndefined()
   })
 
   it('says the request was refused for the Graph code 100', () => {

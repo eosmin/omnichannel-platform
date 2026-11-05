@@ -505,6 +505,489 @@ describe('The channel connections of a store', () => {
     })
   })
 
+  describe('updating the token of a connection', () => {
+    const NEW_SECRET = 'EAAB-the-new-token'
+    const update = (connectionId: string, credentials: Record<string, unknown>, agent = asAdmin) =>
+      agent().post(ApiRoutes.channels.updateToken(connectionId)).send({ credentials })
+    const reasonOf = (body: unknown): unknown =>
+      (body as { error: { metadata?: Record<string, unknown> } }).error.metadata?.['reason']
+    const openCredentials = async (rowId: string) =>
+      app
+        .get(CredentialCipher, { strict: false })
+        .open(
+          (await owner.channelConnection.findUniqueOrThrow({ where: { id: rowId } })).credentials
+        )
+
+    // A plugin that records what it was asked, in order, and tells the account a token belongs to
+    function recording(accountOf: (token: string) => string, connectionId: string) {
+      const calls: string[] = []
+      const credentialsSeen: Record<string, unknown>[] = []
+      const { id } = register(
+        {
+          healthCheck: ctx => {
+            calls.push('healthCheck')
+            credentialsSeen.push(ctx.credentials)
+            if (accountOf(String(ctx.credentials['token'])) !== ctx.connectionId) {
+              return Promise.reject(
+                new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+                  failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
+                })
+              )
+            }
+            return Promise.resolve({ healthy: true, checkedAt: new Date().toISOString() })
+          },
+          connect: input => {
+            calls.push('connect')
+            return Promise.resolve({
+              connectionId: accountOf(String(input.credentials['token'])),
+              displayName: 'Renamed by the provider',
+              credentials: input.credentials,
+              metadata: { region: 'sv' }
+            })
+          }
+        },
+        connectionId
+      )
+      return { id, calls, credentialsSeen }
+    }
+
+    it('replaces the credentials of the same connection, keeps its name and conversations, and audits it', async () => {
+      const mine = recording(() => 'acct-same', 'acct-same')
+      const first = (await connect(mine.id)).body as ConnectionBody
+      mine.calls.length = 0
+      // The plugin names the account differently now: the connection keeps the name it has
+      await owner.channelConnection.update({
+        where: { id: first.id },
+        data: { displayName: 'My own name' }
+      })
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(OK)
+      const body = response.body as ConnectionBody
+      expect(body).toMatchObject({ id: first.id, displayName: 'My own name', status: 'active' })
+      expect(mine.calls).toEqual(['healthCheck', 'connect'])
+      expect(JSON.stringify(response.body)).not.toContain(NEW_SECRET)
+      expect(await openCredentials(first.id)).toEqual({ token: NEW_SECRET })
+      expect(await owner.channelConnection.count({ where: { pluginId: mine.id } })).toBe(1)
+      expect(await auditCount(AuditAction.CHANNEL_TOKEN_UPDATED, first.id, 1)).toBe(1)
+      const audit = await owner.auditLog.findFirstOrThrow({
+        where: { action: AuditAction.CHANNEL_TOKEN_UPDATED, resourceId: first.id }
+      })
+      expect(JSON.stringify(audit)).not.toContain(NEW_SECRET)
+      expect(JSON.stringify(audit)).not.toContain(SECRET)
+    })
+
+    it('brings a connection in error back to active and forgets the error', async () => {
+      const mine = recording(() => 'acct-err', 'acct-err')
+      const first = (await connect(mine.id)).body as ConnectionBody
+      await owner.channelConnection.update({
+        where: { id: first.id },
+        data: {
+          status: ChannelConnectionStatus.ERROR,
+          lastError: ChannelHealthErrors.TOKEN_REJECTED
+        }
+      })
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({ status: 'active', lastError: null })
+    })
+
+    it('reads who the new token belongs to before it subscribes or writes anything, and refuses another account', async () => {
+      const mine = recording(
+        token => (token === NEW_SECRET ? 'acct-other' : 'acct-mine'),
+        'acct-mine'
+      )
+      const first = (await connect(mine.id)).body as ConnectionBody
+      mine.calls.length = 0
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      expect(reasonOf(response.body)).toBe(ChannelConnectFailureReasons.OTHER_ACCOUNT)
+      // The read-only check ran, the one that subscribes did not
+      expect(mine.calls).toEqual(['healthCheck'])
+      expect(JSON.stringify(response.body)).not.toContain('acct-other')
+      expect(JSON.stringify(response.body)).not.toContain(NEW_SECRET)
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+      expect(await owner.channelConnection.count({ where: { pluginId: mine.id } })).toBe(1)
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.CHANNEL_TOKEN_UPDATED, resourceId: first.id }
+        })
+      ).toBe(0)
+    })
+
+    it('refuses an account that the subscribing call names differently, and leaves the row as it was', async () => {
+      // Not reachable with an honest plugin (the read says the same), but the write is guarded all the same
+      let answers = 'acct-guard'
+      const { id } = register(
+        {
+          connect: input =>
+            Promise.resolve({
+              connectionId: answers,
+              displayName: 'x',
+              credentials: input.credentials,
+              metadata: {}
+            })
+        },
+        'acct-guard'
+      )
+      const first = (await connect(id)).body as ConnectionBody
+      answers = 'acct-somebody-else'
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(reasonOf(response.body)).toBe(ChannelConnectFailureReasons.OTHER_ACCOUNT)
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+      // What it subscribed on the account it named is let go, since no row holds that account
+      expect(disconnected).toContain(id)
+    })
+
+    it('does not go on to subscribe when the check answers something that is not a plain healthy report', async () => {
+      const calls: string[] = []
+      const { id } = register(
+        {
+          healthCheck: () => Promise.resolve({ healthy: 'false', checkedAt: 'now' } as never),
+          connect: input => {
+            calls.push('connect')
+            return Promise.resolve({
+              connectionId: 'acct-report',
+              displayName: 'x',
+              credentials: input.credentials,
+              metadata: {}
+            })
+          }
+        },
+        'acct-report'
+      )
+      const first = (await connect(id)).body as ConnectionBody
+      calls.length = 0
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(calls).toEqual([])
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+    })
+
+    it.each([
+      ChannelConnectFailureReasons.TOKEN_REJECTED,
+      ChannelConnectFailureReasons.PERMISSION_MISSING,
+      ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
+    ])('says %s when the read fails that way, and keeps the old token', async reason => {
+      const { id } = register({
+        healthCheck: () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { reason }))
+      })
+      const first = (await connect(id)).body as ConnectionBody
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(reasonOf(response.body)).toBe(reason)
+      expect(JSON.stringify(response.body)).not.toContain(NEW_SECRET)
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+    })
+
+    it('says no reason for a failure that holds the token, and nothing of its text', async () => {
+      const { id } = register({
+        healthCheck: () => Promise.reject(new Error(`Bearer ${NEW_SECRET}`))
+      })
+      const first = (await connect(id)).body as ConnectionBody
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      expect(reasonOf(response.body)).toBeUndefined()
+      expect(JSON.stringify(response.body)).not.toContain(NEW_SECRET)
+    })
+
+    it('asks only for what is secret: the rest of the credentials stay, and a field that is not secret is ignored', async () => {
+      const seen: Record<string, unknown>[] = []
+      const { id } = register(
+        {
+          connectFields: [
+            {
+              key: 'token',
+              labelKey: 'settings.channels.connect.test_channel.token',
+              secret: true,
+              required: true,
+              multiple: false
+            },
+            {
+              key: 'phoneId',
+              labelKey: 'settings.channels.connect.test_channel.token',
+              secret: false,
+              required: true,
+              multiple: false
+            }
+          ],
+          connect: input => {
+            seen.push(input.credentials)
+            return Promise.resolve({
+              connectionId: 'acct-fields',
+              displayName: 'Acme account',
+              credentials: input.credentials,
+              metadata: {}
+            })
+          }
+        },
+        'acct-fields'
+      )
+      await ensurePluginInstallation(owner, { storeId: ctx.storeA.id, pluginId: id })
+      const first = (
+        await asAdmin()
+          .post(ApiRoutes.channels.connect(id))
+          .send({ credentials: { token: SECRET, phoneId: '111' } })
+      ).body as ConnectionBody
+
+      const response = await update(first.id, { token: NEW_SECRET, phoneId: '999' })
+
+      expect(response.status).toBe(OK)
+      expect(seen.at(-1)).toEqual({ token: NEW_SECRET, phoneId: '111' })
+      expect(await openCredentials(first.id)).toEqual({ token: NEW_SECRET, phoneId: '111' })
+    })
+
+    it('is refused for a channel that has no token to replace', async () => {
+      const { id } = register({ connectFields: [] })
+      const first = (await connect(id)).body as ConnectionBody
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(CONFLICT)
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+    })
+
+    it('is refused for a connection that was disconnected', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as ConnectionBody
+      await asAdmin().post(ApiRoutes.channels.disconnect(first.id)).send({})
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(CONFLICT)
+    })
+
+    it('answers a connection of another store exactly as one that does not exist, and changes nothing', async () => {
+      const { id } = register()
+      const theirs = (await connect(id, asAdminB)).body as ConnectionBody
+
+      const foreign = await update(theirs.id, { token: NEW_SECRET })
+      const missing = await update(randomUUID(), { token: NEW_SECRET })
+
+      expect(foreign.status).toBe(NOT_FOUND)
+      expect(foreign.status).toBe(missing.status)
+      expect((foreign.body as ErrorBody).error).toEqual((missing.body as ErrorBody).error)
+      expect(await openCredentials(theirs.id)).toEqual({ token: SECRET })
+    })
+
+    it('needs the permission to change settings', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as ConnectionBody
+
+      const response = await update(first.id, { token: NEW_SECRET }, asAgent)
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+    })
+
+    it('keeps one row and one of the two tokens when two updates arrive at once', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as ConnectionBody
+
+      const [a, b] = await Promise.all([
+        update(first.id, { token: 'EAAB-token-a' }),
+        update(first.id, { token: 'EAAB-token-b' })
+      ])
+
+      // One of them is certain to win; the other either wins after it or is told the connection changed
+      expect([a.status, b.status]).toContain(OK)
+      expect([OK, CONFLICT]).toContain(a.status)
+      expect([OK, CONFLICT]).toContain(b.status)
+      expect(['EAAB-token-a', 'EAAB-token-b']).toContain((await openCredentials(first.id))['token'])
+      expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(1)
+    })
+
+    it('does not overwrite credentials that were replaced while the provider answered', async () => {
+      let release: () => void = () => undefined
+      const gate = new Promise<void>(resolve => {
+        release = resolve
+      })
+      const { id } = register({
+        healthCheck: async () => {
+          await gate
+          return { healthy: true, checkedAt: new Date().toISOString() }
+        }
+      })
+      const first = (await connect(id)).body as ConnectionBody
+
+      const pending = update(first.id, { token: 'EAAB-the-slow-one' }).then(response => response)
+      await new Promise(resolve => setTimeout(resolve, 200))
+      // Meanwhile somebody disconnects it and connects the same account again with another token
+      await asAdmin().post(ApiRoutes.channels.disconnect(first.id)).send({})
+      await asAdmin()
+        .post(ApiRoutes.channels.connect(id))
+        .send({ credentials: { token: 'EAAB-the-reconnect' } })
+      release()
+      const response = await pending
+
+      expect(response.status).toBe(CONFLICT)
+      expect(await openCredentials(first.id)).toEqual({ token: 'EAAB-the-reconnect' })
+    })
+
+    it('keeps the metadata when the saved credentials cannot be read, so the right token is not called foreign', async () => {
+      // Instagram keeps its Page id in the metadata and compares it in the check
+      const { id } = register({
+        healthCheck: ctx =>
+          ctx.metadata['pageId'] === 'page-1'
+            ? Promise.resolve({ healthy: true, checkedAt: new Date().toISOString() })
+            : Promise.reject(
+                new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+                  failedCheck: PluginChecks.PAGE_ID_MISMATCH
+                })
+              ),
+        connect: input =>
+          Promise.resolve({
+            connectionId: 'acct-unreadable',
+            displayName: 'Acme account',
+            credentials: input.credentials,
+            metadata: { pageId: 'page-1' }
+          })
+      })
+      const installation = await ensurePluginInstallation(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: id
+      })
+      const row = await owner.channelConnection.create({
+        data: {
+          storeId: ctx.storeA.id,
+          pluginId: id,
+          installationId: installation.id,
+          connectionId: 'acct-unreadable',
+          displayName: 'Acme account',
+          // Not something the cipher can open
+          credentials: Buffer.from('garbage'),
+          metadata: { pageId: 'page-1' },
+          status: ChannelConnectionStatus.ERROR,
+          lastError: ChannelHealthErrors.CREDENTIALS_UNREADABLE
+        },
+        select: { id: true }
+      })
+
+      const response = await update(row.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({ status: 'active', lastError: null })
+      expect(await openCredentials(row.id)).toEqual({ token: NEW_SECRET })
+    })
+
+    it('does not let a health check that asked with the old token put the fixed connection back in error', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as ConnectionBody
+      const stale = await owner.channelConnection.findUniqueOrThrow({
+        where: { id: first.id },
+        select: CONNECTION_ROW_SELECT
+      })
+
+      await update(first.id, { token: NEW_SECRET })
+      await app
+        .get(ChannelHealthService, { strict: false })
+        .record(stale, { healthy: false, error: ChannelHealthErrors.TOKEN_REJECTED })
+
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })
+      expect(row.status).toBe(ChannelConnectionStatus.ACTIVE)
+      expect(row.lastError).toBeNull()
+    })
+
+    it('keeps a secret that is not sent, and refuses a request that sends none of them', async () => {
+      const seen: Record<string, unknown>[] = []
+      const secret = (key: string) => ({
+        key,
+        labelKey: 'settings.channels.connect.test_channel.token',
+        secret: true,
+        required: true,
+        multiple: false
+      })
+      const { id } = register(
+        {
+          connectFields: [secret('token'), secret('appSecret')],
+          connect: input => {
+            seen.push(input.credentials)
+            return Promise.resolve({
+              connectionId: 'acct-two-secrets',
+              displayName: 'Acme account',
+              credentials: input.credentials,
+              metadata: {}
+            })
+          }
+        },
+        'acct-two-secrets'
+      )
+      await ensurePluginInstallation(owner, { storeId: ctx.storeA.id, pluginId: id })
+      const first = (
+        await asAdmin()
+          .post(ApiRoutes.channels.connect(id))
+          .send({ credentials: { token: SECRET, appSecret: 'the-app-secret' } })
+      ).body as ConnectionBody
+
+      const replaced = await update(first.id, { token: NEW_SECRET })
+      const nothing = await update(first.id, {})
+
+      expect(replaced.status).toBe(OK)
+      expect(seen.at(-1)).toEqual({ token: NEW_SECRET, appSecret: 'the-app-secret' })
+      expect(nothing.status).toBe(BAD_REQUEST)
+      expect(reasonOf(nothing.body)).toBe(ChannelConnectFailureReasons.TOKEN_MALFORMED)
+      expect(await openCredentials(first.id)).toEqual({
+        token: NEW_SECRET,
+        appSecret: 'the-app-secret'
+      })
+    })
+
+    it('is refused when the plugin is no longer installed in the store, and changes nothing', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as ConnectionBody
+      await owner.pluginInstallation.updateMany({
+        where: { storeId: ctx.storeA.id, pluginId: id },
+        data: { status: PluginInstallationStatus.REVOKED }
+      })
+
+      const response = await update(first.id, { token: NEW_SECRET })
+
+      expect(response.status).toBe(CONFLICT)
+      expect(await openCredentials(first.id)).toEqual({ token: SECRET })
+    })
+
+    it('does not bring back a connection that was disconnected while the provider answered', async () => {
+      let release: () => void = () => undefined
+      const gate = new Promise<void>(resolve => {
+        release = resolve
+      })
+      const { id } = register({
+        healthCheck: async () => {
+          await gate
+          return { healthy: true, checkedAt: new Date().toISOString() }
+        }
+      })
+      const first = (await connect(id)).body as ConnectionBody
+
+      const pending = update(first.id, { token: NEW_SECRET }).then(response => response)
+      await new Promise(resolve => setTimeout(resolve, 200))
+      await asAdmin().post(ApiRoutes.channels.disconnect(first.id)).send({})
+      release()
+      const response = await pending
+
+      expect(response.status).toBe(CONFLICT)
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })
+      expect(row.status).toBe(ChannelConnectionStatus.DISCONNECTED)
+    })
+  })
+
   describe('seeing them', () => {
     it('lists those of the store only, with no credentials', async () => {
       const mine = register()

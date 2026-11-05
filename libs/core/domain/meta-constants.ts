@@ -72,8 +72,8 @@ export const MetaErrorCodes = {
   // Throttling: Meta did not do the work, so trying again later is safe. 130429 and 131056 are the
   // WhatsApp Cloud API ones (throughput and pair rate limit)
   RATE_LIMITS: [
-    4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80008, 80009, 80014, 130429,
-    131056
+    4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80007, 80008, 80009, 80010,
+    80011, 80012, 80013, 80014, 130429, 131056
   ],
   // Failure on Meta's side (131000 and 131016 are WhatsApp's): the work may or may not have been done
   TEMPORARY: [1, 2, 131000, 131016],

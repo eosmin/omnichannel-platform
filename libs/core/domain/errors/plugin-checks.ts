@@ -29,3 +29,9 @@ export const PluginChecks = {
 } as const
 
 export type PluginCheck = (typeof PluginChecks)[keyof typeof PluginChecks]
+
+// Narrows what came from outside the process (a plugin of a third party) to a name of the list. Inside the
+// function: a top-level call would keep this module in every bundle that imports the barrel.
+export function isPluginCheck(value: unknown): value is PluginCheck {
+  return Object.values<unknown>(PluginChecks).includes(value)
+}

@@ -85,7 +85,7 @@ export function SnippetDialog({
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-shortcut`}>{t('shortcut')}</Label>
             <div className="flex items-center gap-1.5">
               <span aria-hidden className="text-muted-foreground text-sm">
@@ -104,7 +104,7 @@ export function SnippetDialog({
             </div>
             <p className="text-muted-foreground text-xs">{t('shortcutHint')}</p>
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-title`}>{t('titleLabel')}</Label>
             <Input
               id={`${idPrefix}-title`}
@@ -115,7 +115,7 @@ export function SnippetDialog({
               required
             />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-content`}>{t('content')}</Label>
             <Textarea
               id={`${idPrefix}-content`}

@@ -13,6 +13,7 @@ import { useStore } from '../../components/providers/store-context'
 import { ConnectDialog } from '../../components/settings/connect-dialog'
 import { ConnectionCard } from '../../components/settings/connection-card'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
+import { UpdateTokenDialog } from '../../components/settings/update-token-dialog'
 import { Button } from '../../components/ui/button'
 import type {
   ChannelConnectionView,
@@ -69,6 +70,10 @@ function ChannelsBody({
   const t = useTranslations('settings.channels')
   const { storeId, can } = useStore()
   const [connecting, setConnecting] = useState<PluginCatalogEntryView | null>(null)
+  const [updating, setUpdating] = useState<{
+    connection: ChannelConnectionView
+    plugin: PluginCatalogEntryView
+  } | null>(null)
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const pluginOf = (id: string): PluginCatalogEntryView | undefined =>
     catalog?.find(entry => entry.id === id)
@@ -136,7 +141,9 @@ function ChannelsBody({
               key={connection.id}
               connection={connection}
               plugin={pluginOf(connection.pluginId)}
-              onReconnect={setConnecting}
+              onUpdateToken={(target, targetPlugin) =>
+                setUpdating({ connection: target, plugin: targetPlugin })
+              }
             />
           ))}
         </ul>
@@ -161,6 +168,13 @@ function ChannelsBody({
 
       <PastChannels pluginOf={pluginOf} />
 
+      {updating === null ? null : (
+        <UpdateTokenDialog
+          connection={updating.connection}
+          plugin={updating.plugin}
+          onClose={() => setUpdating(null)}
+        />
+      )}
       {connecting === null ? null : (
         <ConnectDialog plugin={connecting} onClose={() => setConnecting(null)} />
       )}

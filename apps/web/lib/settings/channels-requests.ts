@@ -98,6 +98,21 @@ export function fetchConnections(
   })
 }
 
+// The token of a connection that exists: the api checks that it is of the same account
+export function updateConnectionToken(
+  client: ApiClient,
+  storeId: string,
+  connectionId: string,
+  credentials: Record<string, unknown>
+): Promise<ChannelConnectionView> {
+  return client.request(ApiRoutes.channels.updateToken(enc(connectionId)), {
+    method: 'POST',
+    body: { credentials },
+    schema: connectionSchema,
+    storeId
+  })
+}
+
 export function connectChannel(
   client: ApiClient,
   storeId: string,

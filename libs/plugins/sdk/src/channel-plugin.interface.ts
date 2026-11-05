@@ -51,6 +51,12 @@ export interface ChannelPlugin {
   // Credentials are supplied by the core, encrypted at rest by the core
   connect(input: ConnectInput): Promise<ConnectResult>
   disconnect(ctx: ChannelContext): Promise<void>
+  // READ-ONLY: it must not subscribe, write or change anything at the provider. The core also runs it on the
+  // credentials of a NEW token before accepting it, to learn whether the token is of the account the
+  // connection already has, so that a token of another account leaves no trace on that account.
+  // Throws a PluginError (with a `failedCheck` or a `reason`) when the account is not the same.
+  // The core trusts it to tell the account (it cannot know what a provider calls one), so `connect` must also be
+  // harmless for an account that is not the one the connection holds: it runs only after this says it is the same.
   healthCheck(ctx: ChannelContext): Promise<ChannelHealth>
 
   sendMessage(ctx: ChannelContext, params: SendMessageParams): Promise<ChannelMessageResult>

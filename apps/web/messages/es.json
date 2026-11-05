@@ -1509,7 +1509,7 @@
           "accessToken": "Token de acceso"
         },
         "instagram": {
-          "accessToken": "Token de acceso de la Página de Facebook enlazada a la cuenta de Instagram (de larga duración)"
+          "accessToken": "Token de acceso de la Página de Facebook vinculada a la cuenta de Instagram (de larga duración)"
         },
         "messenger": {
           "accessToken": "Token de acceso de la Página"
@@ -1553,15 +1553,15 @@
         "never": "Todavía no se ha comprobado.",
         "lastHealthy": "Última vez que funcionó: {date}",
         "errors": {
-          "credentials_unreadable": "Las credenciales guardadas no se pueden leer. Vuelve a conectar el canal.",
+          "credentials_unreadable": "Las credenciales guardadas no se pueden leer. Actualiza el token de esta conexión.",
           "check_failed": "No se pudo completar la última comprobación. Revisa las credenciales o vuelve a probar.",
           "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
           "unspecified": "El canal informó de un problema sin decir cuál.",
-          "token_rejected": "Meta ya no acepta el token: caducó o se revocó. Conecta el canal otra vez con uno nuevo.",
-          "permission_missing": "Al token le falta un permiso o una tarea en la Página o cuenta. Revísalos y conecta el canal otra vez.",
-          "other_account": "El token ahora es de otra cuenta distinta de la conectada. Conecta el canal otra vez con el token correcto.",
-          "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o conecta el canal con otro token.",
-          "request_rejected": "Meta ya no acepta lo que aceptaba antes: puede que se haya quitado un permiso o el vínculo de la Página. Conecta el canal otra vez con un token nuevo."
+          "token_rejected": "Meta ya no acepta el token: expiró o se revocó. Actualiza el token de esta conexión.",
+          "permission_missing": "Al token le falta un permiso o una tarea en la Página o cuenta. Revísalos y actualiza el token de esta conexión.",
+          "other_account": "El token ahora es de otra cuenta distinta de la conectada. Actualiza el token con el de esa misma cuenta.",
+          "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o actualiza el token.",
+          "request_rejected": "Meta ya no acepta lo que aceptaba antes: puede que se haya quitado un permiso o el vínculo de la Página. Actualiza el token de esta conexión."
         }
       },
       "profile": {
@@ -1629,20 +1629,27 @@
       },
       "connectFailure": {
         "token_malformed": "Falta el token, es demasiado largo o tiene espacios, saltos de línea o texto que no es parte de él. Cópialo otra vez: solo el token.",
-        "token_rejected": "Meta rechazó el token: no es válido, caducó o se revocó. Genera uno nuevo y vuelve a conectar.",
+        "token_rejected": "Meta rechazó el token: no es válido, expiró o se revocó. Genera uno nuevo y vuelve a conectar.",
         "permission_missing": "Al token le falta un permiso. Revisa que incluya los permisos que el canal necesita y que tengas la tarea requerida en la cuenta, y genéralo de nuevo.",
         "request_rejected": "Meta rechazó la solicitud. A menudo el token no es del tipo que el canal necesita, o falta un permiso. Genera el token que pide el canal (en Messenger e Instagram, el de la Página) y prueba otra vez.",
         "account_not_linked": "El token no llega a ninguna cuenta profesional de Instagram. Comprueba que la cuenta esté vinculada a la Página y que el token sea el de esa Página.",
         "other_account": "El token es de otra cuenta o Página distinta de la conectada. Usa el token de la misma.",
         "provider_answer_unexpected": "Meta respondió algo inesperado. Prueba otra vez; si sigue, genera el token de nuevo.",
-        "subscription_not_confirmed": "Meta no confirmó la suscripción a los mensajes. Revisa que el token tenga permisos de mensajes y que el webhook de la app esté configurado.",
+        "subscription_not_confirmed": "Meta no confirmó la suscripción a los mensajes. Revisa que el token tenga permisos de mensajes y que la app tenga activados los mensajes en su panel de Meta.",
         "provider_busy": "Meta pide esperar. Prueba otra vez en unos minutos.",
         "provider_unavailable": "Meta no respondió a tiempo o respondió mal. Prueba otra vez en unos minutos.",
-        "account_unreadable": "No se pudo leer la cuenta de Instagram de la Página: comprueba que el token sea el de la Página y que la cuenta siga enlazada.",
+        "account_unreadable": "No se pudo leer la cuenta de Instagram de la Página: comprueba que el token sea el de la Página y que la cuenta siga vinculada.",
         "subscription_failed": "No se pudo suscribir la Página a los mensajes: reintenta; si se repite, revisa los permisos de la app.",
         "subscription_unreadable": "No se pudo comprobar la suscripción de la Página a los mensajes. Prueba otra vez en unos minutos."
       },
-      "reconnect": "Conectar de nuevo"
+      "updateToken": {
+        "action": "Actualizar token",
+        "title": "Actualizar el token de {name}",
+        "description": "Pega el token nuevo de la misma cuenta. La conexión, sus conversaciones y su nombre no cambian.",
+        "submit": "Actualizar token",
+        "submitting": "Actualizando…",
+        "done": "Token de {name} actualizado."
+      }
     },
     "nav": {
       "backToInbox": "Volver a la bandeja",

@@ -283,6 +283,8 @@ export const ApiRoutes = {
     connectionById: (id: string) => `/channels/connections/${id}`,
     test: (id: string) => `/channels/connections/${id}/test`,
     disconnect: (id: string) => `/channels/connections/${id}/disconnect`,
+    // Replaces the token of one connection, checked against the account it already has
+    updateToken: (id: string) => `/channels/connections/${id}/token`,
     templates: (pluginId: string) => `/channels/${pluginId}/templates`,
     // The web widget's own settings: the sites that may load it and the snippet to paste
     widgetEmbed: (id: string) => `/channels/connections/${id}/widget`,

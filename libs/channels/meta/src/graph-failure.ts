@@ -104,16 +104,21 @@ export function graphFailure(
 }
 
 // A token Meta refused (190, or any 401: the status says the token, whatever number goes with it) is one to
-// generate again; a permission it denied (10, 200 to 299, or a 403) is one to grant
+// generate again; a permission it denied (10 or 200 to 299) is one to grant. Any other refusal, such as a 403
+// that comes with no code of Meta, says nothing about which: the generic message shows.
 function credentialsReasonOf(
   status: number,
   code: number | undefined
 ):
   | typeof ChannelConnectFailureReasons.TOKEN_REJECTED
-  | typeof ChannelConnectFailureReasons.PERMISSION_MISSING {
-  return code === MetaErrorCodes.INVALID_TOKEN || status === HttpStatusCodes.UNAUTHORIZED
-    ? ChannelConnectFailureReasons.TOKEN_REJECTED
-    : ChannelConnectFailureReasons.PERMISSION_MISSING
+  | typeof ChannelConnectFailureReasons.PERMISSION_MISSING
+  | undefined {
+  if (code === MetaErrorCodes.INVALID_TOKEN || status === HttpStatusCodes.UNAUTHORIZED) {
+    return ChannelConnectFailureReasons.TOKEN_REJECTED
+  }
+  return code !== undefined && isCredentialsCode(code)
+    ? ChannelConnectFailureReasons.PERMISSION_MISSING
+    : undefined
 }
 
 // The call got no answer (network, timeout). For a call that is safe to repeat that is worth another

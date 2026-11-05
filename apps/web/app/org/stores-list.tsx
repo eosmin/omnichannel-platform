@@ -180,7 +180,7 @@ function RenameDialog({ store, onClose }: { store: StoreView; onClose: () => voi
   return (
     <Dialog open onOpenChange={next => (next ? undefined : onClose())}>
       <DialogContent>
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4">
           <DialogHeader>
             <DialogTitle>{t('title')}</DialogTitle>
             <DialogDescription>{t('description')}</DialogDescription>
@@ -273,7 +273,7 @@ function NewStoreDialog({
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent>
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4">
           <DialogHeader>
             <DialogTitle>{t('title')}</DialogTitle>
             <DialogDescription>{t('description')}</DialogDescription>

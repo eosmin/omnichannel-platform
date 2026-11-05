@@ -76,7 +76,7 @@ export function InviteDialog({
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-email`}>{t('email')}</Label>
             <Input
               id={`${idPrefix}-email`}
@@ -89,7 +89,7 @@ export function InviteDialog({
               required
             />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-role`}>{t('role')}</Label>
             <select
               id={`${idPrefix}-role`}

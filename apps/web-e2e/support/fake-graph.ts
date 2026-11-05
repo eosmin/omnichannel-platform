@@ -18,11 +18,16 @@ export const FAKE_ACCESS_TOKEN = 'e2e-access-token'
 // The Page of a Messenger connection: the token that Meta accepts, one that it refuses, and the name
 export const FAKE_PAGE_ID = '109000000000001'
 export const FAKE_PAGE_TOKEN = 'e2e-page-token'
+// Another token of the SAME Page (the owner generated a new one), and a token of ANOTHER Page
+export const FAKE_PAGE_TOKEN_RENEWED = 'e2e-page-token-renewed'
+export const FAKE_OTHER_PAGE_ID = '109000000000002'
+export const FAKE_OTHER_PAGE_TOKEN = 'e2e-other-page-token'
 export const FAKE_REJECTED_TOKEN = 'e2e-rejected-token'
 // A token for which Meta answers with its throttle code (4): the page is asked to wait
 export const FAKE_BUSY_TOKEN = 'e2e-busy-token'
 // The app of the token (`GET app?fields=id`), whose entry is picked among the apps of the Page
-export const FAKE_APP_ID = '1804256354142951'
+// An invented id, not one of a real Meta app: the repository is public
+export const FAKE_APP_ID = '100000000000001'
 export const FAKE_PAGE_NAME = 'E2E Page'
 
 export const TEMPLATE_NAME = 'order_update'
@@ -43,6 +48,8 @@ export interface FakeGraph {
   templateListings: () => number
   // The next `count` lists of templates fail with a server error
   failNextTemplateListings: (count: number) => void
+  // The ids of the nodes that something tried to subscribe the app to (POST subscribed_apps), in order
+  subscriptions: () => string[]
   close: () => Promise<void>
 }
 
@@ -71,6 +78,7 @@ export async function startFakeGraph(): Promise<FakeGraph> {
   const sent: SentToGraph[] = []
   let listings = 0
   let failures = 0
+  const subscriptions: string[] = []
 
   const server = createServer((request, response) => {
     void (async () => {
@@ -122,9 +130,13 @@ export async function startFakeGraph(): Promise<FakeGraph> {
       // Connecting a Messenger Page: its id and name by `me`, and the subscription of the app to it. Any
       // token but the good one is refused with Meta's code 190, as an invalid or expired one is.
       const bearer = request.headers.authorization
+      const isGoodPageToken =
+        bearer === `Bearer ${FAKE_PAGE_TOKEN}` || bearer === `Bearer ${FAKE_PAGE_TOKEN_RENEWED}`
       if (request.method === 'GET' && id === 'me') {
-        if (bearer === `Bearer ${FAKE_PAGE_TOKEN}`) {
+        if (isGoodPageToken) {
           reply(response, HttpStatusCodes.OK, { id: FAKE_PAGE_ID, name: FAKE_PAGE_NAME })
+        } else if (bearer === `Bearer ${FAKE_OTHER_PAGE_TOKEN}`) {
+          reply(response, HttpStatusCodes.OK, { id: FAKE_OTHER_PAGE_ID, name: 'E2E Other Page' })
         } else if (bearer === `Bearer ${FAKE_BUSY_TOKEN}`) {
           reply(response, HttpStatusCodes.BAD_REQUEST, {
             error: { message: 'Application request limit reached', type: 'OAuthException', code: 4 }
@@ -138,7 +150,7 @@ export async function startFakeGraph(): Promise<FakeGraph> {
       }
       // What the plugin reads before it subscribes (nothing is subscribed blind): the app of the token, and
       // the apps that already have fields on the Page (none here)
-      if (request.method === 'GET' && id === 'app' && bearer === `Bearer ${FAKE_PAGE_TOKEN}`) {
+      if (request.method === 'GET' && id === 'app' && isGoodPageToken) {
         reply(response, HttpStatusCodes.OK, { id: FAKE_APP_ID })
         return
       }
@@ -146,16 +158,18 @@ export async function startFakeGraph(): Promise<FakeGraph> {
         request.method === 'GET' &&
         id === FAKE_PAGE_ID &&
         edge === 'subscribed_apps' &&
-        bearer === `Bearer ${FAKE_PAGE_TOKEN}`
+        isGoodPageToken
       ) {
         reply(response, HttpStatusCodes.OK, { data: [] })
         return
       }
+      // Whatever the token, a subscription attempt is counted: a case proves that none was made
+      if (request.method === 'POST' && edge === 'subscribed_apps') subscriptions.push(id ?? '')
       if (
         request.method === 'POST' &&
         id === FAKE_PAGE_ID &&
         edge === 'subscribed_apps' &&
-        bearer === `Bearer ${FAKE_PAGE_TOKEN}`
+        isGoodPageToken
       ) {
         reply(response, HttpStatusCodes.OK, { success: true })
         return
@@ -170,6 +184,7 @@ export async function startFakeGraph(): Promise<FakeGraph> {
   return {
     sent,
     templateListings: () => listings,
+    subscriptions: () => [...subscriptions],
     failNextTemplateListings: count => {
       failures = count
     },

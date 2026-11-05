@@ -33,6 +33,7 @@ import {
   saveWidgetPreChat,
   testConnection,
   uninstallPlugin,
+  updateConnectionToken,
   type WidgetEmbedView
 } from './channels-requests'
 
@@ -87,6 +88,20 @@ export function useConnect(
     mutationFn: (credentials: Record<string, unknown>) =>
       connectChannel(apiClient, storeId, pluginId, credentials),
     // The variables hold the secrets the person typed: the cache must not keep them once the dialog is closed
+    gcTime: 0,
+    onSuccess: refresh
+  })
+}
+
+export function useUpdateToken(
+  storeId: string,
+  connectionId: string
+): UseMutationResult<ChannelConnectionView, Error, Record<string, unknown>> {
+  const refresh = useRefreshChannels(storeId)
+  return useMutation({
+    mutationFn: (credentials: Record<string, unknown>) =>
+      updateConnectionToken(apiClient, storeId, connectionId, credentials),
+    // The variables hold the secret the person typed: the cache must not keep it once the dialog is closed
     gcTime: 0,
     onSuccess: refresh
   })
