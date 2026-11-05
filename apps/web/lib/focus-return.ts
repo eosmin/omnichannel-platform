@@ -15,11 +15,9 @@ interface FocusableEvent {
 
 // The element that holds the focus when the dialog opens, if it is something that can take it back
 export function openerOf(active: unknown): FocusTarget | null {
-  if (typeof active !== 'object' || active === null) return null
-  const candidate = active as Partial<FocusTarget> & { tagName?: unknown }
+  const candidate = active as (Partial<FocusTarget> & { tagName?: unknown }) | null
   // `<body>` holds the focus when nothing does: returning there is what Radix already does
-  if (candidate.tagName === 'BODY') return null
-  return typeof candidate.focus === 'function' && candidate.isConnected !== undefined
+  return typeof candidate?.focus === 'function' && candidate.tagName !== 'BODY'
     ? (candidate as FocusTarget)
     : null
 }
