@@ -4,7 +4,6 @@ import { useTranslations } from 'next-intl'
 import { useCallback } from 'react'
 
 import { accountHolderOf, errorCodeOf, firstIssueOf, missingPermissionsOf } from './error-message'
-import { permissionNameKey } from './permission-name'
 
 // The words to show for an error: the text of its code, and for a refusal for lack of permission the
 // permission that is missing, by the name the team settings give it, so the person knows what to ask
@@ -16,7 +15,7 @@ export function useErrorText(): (error: unknown) => string {
       const missing = missingPermissionsOf(error)
       if (missing.length > 0) {
         const names = missing.map(permission => {
-          const key = permissionNameKey(permission)
+          const key = `settings.team.permissions.${permission.replace(':', '.')}`
           return t.has(key as 'errors.INTERNAL_ERROR')
             ? t(key as 'errors.INTERNAL_ERROR')
             : permission
