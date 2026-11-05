@@ -7,7 +7,8 @@ import { getTranslations } from 'next-intl/server'
 // message paths that are joined with ` · `.
 export const PageTitles = {
   login: ['login.title'],
-  loginVerify: ['loginVerify.verifying'],
+  // The name of the page, not "Iniciando tu sesión": the page stays on the screen when the link fails
+  loginVerify: ['login.title'],
   invitation: ['invitation.title'],
   noAccess: ['noAccess.title'],
   notFound: ['notFound.title'],

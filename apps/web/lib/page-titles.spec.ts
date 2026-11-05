@@ -32,30 +32,61 @@ function filesNamed(directory: string, name: string): string[] {
 // second is the redirect of /account to its first tab. Neither is ever on the screen long enough to be read.
 const REDIRECT_ONLY = new Set(['page.tsx', 'account/page.tsx'])
 
+// The title each route must have. Written out, so that a page copied with the wrong name fails here
+const TITLE_OF_PAGE: Record<string, string> = {
+  'login/page.tsx': 'login',
+  'login/verify/page.tsx': 'loginVerify',
+  'invitations/[token]/page.tsx': 'invitation',
+  'no-access/page.tsx': 'noAccess',
+  'not-found.tsx': 'notFound',
+  's/[storeId]/inbox/page.tsx': 'inbox',
+  's/[storeId]/inbox/[conversationId]/page.tsx': 'inbox',
+  's/[storeId]/customers/page.tsx': 'customers',
+  's/[storeId]/exports/page.tsx': 'exports',
+  's/[storeId]/settings/page.tsx': 'settings',
+  's/[storeId]/settings/general/page.tsx': 'settingsGeneral',
+  's/[storeId]/settings/channels/page.tsx': 'settingsChannels',
+  's/[storeId]/settings/plugins/page.tsx': 'settingsPlugins',
+  's/[storeId]/settings/team/page.tsx': 'settingsTeam',
+  's/[storeId]/settings/routing/page.tsx': 'settingsRouting',
+  's/[storeId]/settings/business-hours/page.tsx': 'settingsBusinessHours',
+  's/[storeId]/settings/tags/page.tsx': 'settingsTags',
+  's/[storeId]/settings/snippets/page.tsx': 'settingsSnippets',
+  's/[storeId]/settings/inbox/page.tsx': 'settingsInbox',
+  'account/profile/page.tsx': 'accountProfile',
+  'account/preferences/page.tsx': 'accountPreferences',
+  'account/notifications/page.tsx': 'accountNotifications',
+  'account/security/page.tsx': 'accountSecurity',
+  'org/page.tsx': 'org',
+  'org/profile/page.tsx': 'orgProfile',
+  'org/stores/page.tsx': 'orgStores'
+}
+
 // WCAG 2.4.2: every page has its own title, or all the tabs of a browser read the same (QA F2-T12)
 describe('the title of each page', () => {
   const pages = filesNamed(APP_DIR, 'page.tsx')
     .concat(resolve(APP_DIR, 'not-found.tsx'))
     .map(path => ({ path, name: relative(APP_DIR, path) }))
 
-  it('has pages to check', () => {
-    expect(pages.length).toBeGreaterThan(25)
+  it('knows every page of the app, so that a new one has to be given a title', () => {
+    const titled = pages.filter(page => !REDIRECT_ONLY.has(page.name)).map(page => page.name)
+    expect(titled.sort()).toEqual(Object.keys(TITLE_OF_PAGE).sort())
   })
 
-  it.each(pages.filter(page => !REDIRECT_ONLY.has(page.name)))(
-    '$name names itself with pageTitle',
-    ({ path }) => {
-      expect(readFileSync(path, 'utf8')).toMatch(
-        /export const generateMetadata = pageTitle\('\w+'\)/
-      )
-    }
-  )
+  it.each([...REDIRECT_ONLY])('%s really is a redirect', name => {
+    expect(readFileSync(resolve(APP_DIR, name), 'utf8')).toMatch(/redirect|Redirect/)
+  })
 
-  it('uses every title it defines, and only the ones it defines', () => {
-    const used = pages.flatMap(({ path }) =>
-      [...readFileSync(path, 'utf8').matchAll(/pageTitle\('(\w+)'\)/g)].map(match => match[1])
+  it.each(Object.entries(TITLE_OF_PAGE))('%s is titled %s', (name, title) => {
+    expect(readFileSync(resolve(APP_DIR, name), 'utf8')).toContain(
+      `export const generateMetadata = pageTitle('${title}')`
     )
-    expect([...new Set(used)].sort()).toEqual(Object.keys(PageTitles).sort())
+  })
+
+  it('defines the titles it uses and no others', () => {
+    expect([...new Set(Object.values(TITLE_OF_PAGE))].sort()).toEqual(
+      Object.keys(PageTitles).sort()
+    )
   })
 })
 
