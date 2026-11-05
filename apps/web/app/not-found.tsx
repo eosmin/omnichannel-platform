@@ -7,6 +7,9 @@ import { AppPaths } from '@platform/api-client'
 
 import { StatusScreen } from '../components/shared/status-screen'
 import { buttonVariants } from '../components/ui/button'
+import { pageTitle } from '../lib/page-titles'
+
+export const generateMetadata = pageTitle('notFound')
 
 export default async function NotFound(): Promise<ReactElement> {
   const t = await getTranslations()
