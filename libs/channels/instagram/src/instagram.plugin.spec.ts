@@ -1,5 +1,5 @@
 import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
-import { MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
+import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   type ChannelContext,
@@ -14,7 +14,7 @@ import { InstagramPlugin } from './instagram.plugin'
 const sendsByLink = (): Promise<NodeJS.ReadableStream> =>
   Promise.reject(new Error('this channel sends by link'))
 
-const credentials = { accessToken: 'IGAA-token' }
+const credentials = { accessToken: 'SUAT-token' }
 const ctx: ChannelContext = {
   storeId: 's',
   connectionId: '17841400000000001',
@@ -29,6 +29,95 @@ interface GraphCall {
   token?: string
   body?: Record<string, unknown>
   query?: Record<string, string>
+}
+
+const ACCOUNT = '17841400000000001'
+
+// What `me/assigned_instagram_accounts` answers: the accounts the owner shared with the app
+function accounts(...list: { id: string; username: string }[]): { data: typeof list } {
+  return { data: list }
+}
+
+// The names Meta accepts for the object `instagram`, the same list the connect spec refuses by
+const VALID_FIELDS = new Set<string>(MetaSubscribableFields.INSTAGRAM)
+
+const json = (status: number, body: unknown): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  })
+
+const graphError = (status: number, code: number): Response =>
+  json(status, { error: { code, type: 'OAuthException', message: 'x' } })
+
+// A Graph that is as strict as the real one for what this plugin calls, and no kinder: only
+// Facebook's host, only the routes of the unified login, only field names of the reference, and the
+// token of the pair. Whatever else is asked is recorded in `rejected` and answered with an error.
+function strictGraph(options: { token: string }): {
+  requests: string[]
+  calls: string[]
+  rejected: string[]
+  bodies: unknown[]
+  restore: () => void
+} {
+  const requests: string[] = []
+  const calls: string[] = []
+  const rejected: string[] = []
+  const bodies: unknown[] = []
+  const spy = jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    )
+    const method = init?.method ?? 'GET'
+    const line = `${method} ${url.origin}${url.pathname}${url.search}`
+    requests.push(line)
+    const refuse = (): Response => {
+      rejected.push(line)
+      return graphError(400, 100)
+    }
+    if (url.origin !== 'https://graph.facebook.com') return Promise.resolve(refuse())
+    const bearer = new Headers(init?.headers).get('authorization')
+    if (bearer !== `Bearer ${options.token}`) return Promise.resolve(graphError(401, 190))
+    const route = url.pathname.replace(/^\/v\d+\.\d+\//, '')
+
+    if (method === 'GET' && route === 'me/assigned_instagram_accounts') {
+      if (
+        url.searchParams.get('fields') !== 'id,username' ||
+        url.searchParams.get('limit') !== '100'
+      ) {
+        return Promise.resolve(refuse())
+      }
+      calls.push(line)
+      return Promise.resolve(json(200, accounts({ id: ACCOUNT, username: 'tienda' })))
+    }
+    if (method === 'POST' && route === `${ACCOUNT}/subscribed_apps`) {
+      const fields = (url.searchParams.get('subscribed_fields') ?? '').split(',')
+      if (fields.some(field => !VALID_FIELDS.has(field))) return Promise.resolve(refuse())
+      calls.push(line)
+      return Promise.resolve(json(200, { success: true }))
+    }
+    if (method === 'POST' && route === `${ACCOUNT}/messages`) {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+        recipient?: { id?: string }
+        message?: { text?: string }
+      }
+      if (typeof body.recipient?.id !== 'string' || typeof body.message?.text !== 'string') {
+        return Promise.resolve(refuse())
+      }
+      calls.push(line)
+      bodies.push(body)
+      return Promise.resolve(json(200, { recipient_id: body.recipient.id, message_id: 'mid.1' }))
+    }
+    return Promise.resolve(refuse())
+  })
+  return { requests, calls, rejected, bodies, restore: () => spy.mockRestore() }
+}
+
+// The plugin with the real client, for the tests that read what the client checks
+function buildReal(): InstagramPlugin {
+  return new InstagramPlugin(
+    new MetaGraphClient({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
+  )
 }
 
 function build(): {
@@ -46,6 +135,9 @@ function build(): {
 }
 
 describe('InstagramPlugin', () => {
+  // A failed assertion must not leave fetch replaced for the tests that follow
+  afterEach(() => jest.restoreAllMocks())
+
   it('asks, in its connect form, for the one token its credentials need, as a secret', () => {
     const { plugin } = build()
     expect(plugin.connectFields.map(field => field.key)).toEqual(
@@ -84,7 +176,7 @@ describe('InstagramPlugin', () => {
   describe('connect', () => {
     it('subscribes only to names the Instagram API accepts, as Meta does (error 100 otherwise)', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
       post.mockImplementation(request => {
         const unknown = (request.query?.subscribed_fields ?? '')
           .split(',')
@@ -99,23 +191,33 @@ describe('InstagramPlugin', () => {
       })
     })
 
+    it('subscribes to exactly the fields the unified login documents, and not to message_edit', () => {
+      expect(InstagramApi.SUBSCRIBED_FIELDS.split(',')).toEqual([
+        'messages',
+        'message_reactions',
+        'messaging_referral'
+      ])
+      // A valid name of Meta all the same: the strict fake accepts it, the plugin does not ask for it
+      expect(MetaSubscribableFields.INSTAGRAM).toContain('message_edit')
+    })
+
     it('trims the spaces and line breaks around a pasted token', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({
         storeId: 's',
-        credentials: { accessToken: '  IGAA-token\n' }
+        credentials: { accessToken: '  SUAT-token\n' }
       })
 
-      expect(get.mock.calls[0]?.[0]).toMatchObject({ token: 'IGAA-token' })
-      expect(result.credentials).toEqual({ accessToken: 'IGAA-token' })
+      expect(get.mock.calls[0]?.[0]).toMatchObject({ token: 'SUAT-token' })
+      expect(result.credentials).toEqual({ accessToken: 'SUAT-token' })
     })
 
     it('names the check that refused when the subscription is not confirmed', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
       post.mockResolvedValue({ success: false })
 
       await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
@@ -126,7 +228,7 @@ describe('InstagramPlugin', () => {
 
     it('names the check that refused when the account id is not digits', async () => {
       const { plugin, get } = build()
-      get.mockResolvedValue({ user_id: 'me/accounts', username: 'tienda' })
+      get.mockResolvedValue(accounts({ id: 'me/accounts', username: 'tienda' }))
 
       await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
         failedCheck: PluginChecks.ACCOUNT_ID_NOT_NUMERIC
@@ -141,23 +243,24 @@ describe('InstagramPlugin', () => {
       ).rejects.toMatchObject({ failedCheck: PluginChecks.CREDENTIALS_SHAPE })
     })
 
-    it('reads the account from the Instagram host and subscribes the app to it', async () => {
+    it("reads the account of the token from Facebook's host and subscribes the app to it", async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ user_id: '17841400000000001', username: 'tienda' })
+      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({ storeId: 's', credentials })
 
+      // `me` is the system user of the token, not the account: the accounts are one edge below it
       expect(get.mock.calls[0]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
-        path: ['me'],
-        token: 'IGAA-token',
-        query: { fields: 'user_id,username' }
+        origin: MetaGraph.ORIGIN,
+        path: ['me', 'assigned_instagram_accounts'],
+        token: 'SUAT-token',
+        query: { fields: 'id,username', limit: '100' }
       })
       expect(post.mock.calls[0]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        origin: MetaGraph.ORIGIN,
         path: ['17841400000000001', 'subscribed_apps'],
-        query: { subscribed_fields: 'messages,message_reactions,messaging_referral,message_edit' },
+        query: { subscribed_fields: 'messages,message_reactions,messaging_referral' },
         idempotent: true
       })
       expect(result).toEqual({
@@ -168,71 +271,75 @@ describe('InstagramPlugin', () => {
       })
     })
 
-    it('reads the profile when Meta wraps it in a list', async () => {
+    it.each([
+      ['no account at all', { data: [] }, PluginChecks.ACCOUNT_NOT_FOUND],
+      [
+        'more than one account: the connection is one account, and the owner picks it by the token',
+        accounts({ id: '1', username: 'a' }, { id: '2', username: 'b' }),
+        PluginChecks.ACCOUNT_AMBIGUOUS
+      ],
+      [
+        'an id that is not digits',
+        accounts({ id: '../x', username: 'tienda' }),
+        PluginChecks.ACCOUNT_ID_NOT_NUMERIC
+      ],
+      [
+        'the one account with no username',
+        { data: [{ id: '1' }] },
+        PluginChecks.ACCOUNT_SHAPE_INVALID
+      ]
+    ])('refuses %s, naming the check, and subscribes nothing', async (_name, answer, check) => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ data: [{ user_id: '12345', username: 'tienda' }] })
-      post.mockResolvedValue({ success: true })
+      get.mockResolvedValue(answer)
 
-      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
-        connectionId: '12345'
+      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        retryable: false,
+        failedCheck: check
       })
-    })
-
-    it.each([['an id that is not digits', { user_id: '../x', username: 'tienda' }]])(
-      'refuses %s',
-      async (_name, profile) => {
-        const { plugin, get, post } = build()
-        get.mockResolvedValue(profile)
-
-        await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
-          code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
-        })
-        expect(post).not.toHaveBeenCalled()
-      }
-    )
-
-    it('reads the flat profile even when a data key comes beside it', async () => {
-      const { plugin, get, post } = build()
-      get.mockResolvedValue({ user_id: '777', username: 'tienda', data: [] })
-      post.mockResolvedValue({ success: true })
-
-      await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
-        connectionId: '777'
-      })
+      expect(post).not.toHaveBeenCalled()
     })
 
     it('refuses an id that arrives as a number: 17 digits do not fit one exactly', async () => {
       // Through the real client, which is the one that checks what Meta answers
       const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response('{"user_id":17841400000000001,"username":"tienda"}', {
+        new Response('{"data":[{"id":17841400000000001,"username":"tienda"}]}', {
           headers: { 'content-type': 'application/json' }
         })
       )
-      const real = new InstagramPlugin(
-        new MetaGraphClient({ appSecret: 's', verifyToken: 'v', graphVersion: 'v23.0' })
-      )
+      const real = buildReal()
 
-      await expect(real.connect({ storeId: 's', credentials })).rejects.toBeInstanceOf(PluginError)
+      await expect(real.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
       expect(fetchMock).toHaveBeenCalledTimes(1)
       fetchMock.mockRestore()
     })
 
-    it('checks the id of the account when the health is checked too', async () => {
-      const { plugin, get } = build()
-      get.mockResolvedValue({ user_id: '../x', username: 'tienda' })
-      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+    it('treats the answer of the old login, which is not a list of accounts, as an unexpected answer', async () => {
+      const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('{"user_id":"1","username":"tienda"}', {
+          headers: { 'content-type': 'application/json' }
+        })
+      )
+      const real = buildReal()
+
+      await expect(real.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_MESSAGE_FAILED
       })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      fetchMock.mockRestore()
     })
 
     it('refuses a subscription Meta did not make', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ user_id: '1', username: 'tienda' })
+      get.mockResolvedValue(accounts({ id: '1', username: 'tienda' }))
       post.mockResolvedValue({ success: false })
 
-      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toBeInstanceOf(
-        PluginError
-      )
+      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        retryable: false
+      })
     })
 
     it.each([[{}], [{ accessToken: '' }], [{ accessToken: 5 }]])(
@@ -248,19 +355,144 @@ describe('InstagramPlugin', () => {
     )
   })
 
-  it('reports a healthy connection after reading the account', async () => {
-    const { plugin, get } = build()
-    get.mockResolvedValue({ user_id: ctx.connectionId, username: 'tienda' })
-    await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+  describe('health', () => {
+    it('reports a healthy connection when the token still reaches the account', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(accounts({ id: ctx.connectionId, username: 'tienda' }))
+      await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+    })
+
+    it('finds its account among several: a token that gained one later is not a broken one', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(
+        accounts({ id: '999', username: 'otra' }, { id: ctx.connectionId, username: 'tienda' })
+      )
+      await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+    })
+
+    it('does not let an account that is not its own, and is badly shaped, break its health', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({
+        data: [{ id: '999' }, { id: ctx.connectionId, username: 'tienda' }, 'junk']
+      })
+      await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
+    })
+
+    it('does not call healthy a token that belongs to another account', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(accounts({ id: '999', username: 'otra' }))
+      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        retryable: false,
+        failedCheck: PluginChecks.ACCOUNT_NOT_FOUND
+      })
+    })
+
+    it('checks the id of the account when the health is checked too', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(accounts({ id: '../x', username: 'tienda' }))
+      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
+    })
+
+    it('tells a legacy token to reconnect, through the real client and a strict Graph', async () => {
+      // A token of Instagram Login is not a token of Facebook's host: Meta answers 190
+      const graph = strictGraph({ token: 'SUAT-ok' })
+      const real = buildReal()
+
+      await expect(
+        real.healthCheck({ ...ctx, credentials: { accessToken: 'IGAA-legacy' } })
+      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID, retryable: false })
+      // The call was made, to Facebook's host and the route of the accounts, and Meta refused the token
+      expect(graph.requests).toEqual([
+        'GET https://graph.facebook.com/v23.0/me/assigned_instagram_accounts?fields=id%2Cusername&limit=100'
+      ])
+      expect(graph.rejected).toEqual([])
+      graph.restore()
+    })
+
+    it('reports healthy through the real client and a strict Graph', async () => {
+      const graph = strictGraph({ token: 'SUAT-ok' })
+
+      await expect(
+        buildReal().healthCheck({
+          ...ctx,
+          connectionId: ACCOUNT,
+          credentials: { accessToken: 'SUAT-ok' }
+        })
+      ).resolves.toMatchObject({ healthy: true })
+      expect(graph.rejected).toEqual([])
+      expect(graph.requests).toHaveLength(1)
+      graph.restore()
+    })
   })
 
-  it('does not call healthy a token that belongs to another account', async () => {
-    const { plugin, get } = build()
-    get.mockResolvedValue({ user_id: '999', username: 'otra' })
-    await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
-      code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
-      retryable: false,
-      failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
+  describe('against a strict Graph', () => {
+    // VALID_FIELDS is `MetaSubscribableFields.INSTAGRAM`; the routes are the ones of the unified login
+    // pages (webhooks/setup, get-started step 6).
+    // The fake answers like Meta: a wrong host, a wrong route or a field that does not exist is an
+    // error, never a success, so a name that is wrong cannot pass the test
+    it('connects with the routes, host and field names of the unified login', async () => {
+      const graph = strictGraph({ token: 'SUAT-ok' })
+      const real = buildReal()
+
+      await expect(
+        real.connect({ storeId: 's', credentials: { accessToken: 'SUAT-ok' } })
+      ).resolves.toMatchObject({ connectionId: ACCOUNT, displayName: 'tienda' })
+      expect(graph.rejected).toEqual([])
+      expect(graph.calls).toEqual([
+        `GET https://graph.facebook.com/v23.0/me/assigned_instagram_accounts?fields=id%2Cusername&limit=100`,
+        `POST https://graph.facebook.com/v23.0/${ACCOUNT}/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referral`
+      ])
+      graph.restore()
+    })
+
+    it('sends a text on the route of the account, with the customer in the body', async () => {
+      const graph = strictGraph({ token: 'SUAT-ok' })
+      const real = buildReal()
+
+      await real.sendMessage(
+        { ...ctx, connectionId: ACCOUNT, credentials: { accessToken: 'SUAT-ok' } },
+        { channelIdentity: '5551234', content: 'Hola', ...key }
+      )
+
+      expect(graph.rejected).toEqual([])
+      expect(graph.calls).toEqual([`POST https://graph.facebook.com/v23.0/${ACCOUNT}/messages`])
+      expect(graph.bodies).toEqual([{ recipient: { id: '5551234' }, message: { text: 'Hola' } }])
+      graph.restore()
+    })
+
+    it.each([
+      ['the host of the old login', 'POST', 'https://graph.instagram.com/v23.0/1/subscribed_apps'],
+      ['a route it does not have', 'GET', 'https://graph.facebook.com/v23.0/me'],
+      [
+        'the accounts without the fields',
+        'GET',
+        'https://graph.facebook.com/v23.0/me/assigned_instagram_accounts'
+      ],
+      ['a send with no recipient', 'POST', `https://graph.facebook.com/v23.0/${ACCOUNT}/messages`]
+    ])('is refused by the fake itself: %s', async (_name, method, url) => {
+      const graph = strictGraph({ token: 'SUAT-ok' })
+      const response = await fetch(url, {
+        method,
+        headers: { authorization: 'Bearer SUAT-ok' },
+        ...(method === 'POST' ? { body: '{}' } : {})
+      })
+      expect(response.status).toBe(400)
+      expect(graph.rejected).toHaveLength(1)
+      graph.restore()
+    })
+
+    it('would be told by the fake, and so by the test, of a name Meta does not know', async () => {
+      const graph = strictGraph({ token: 'SUAT-ok' })
+      const response = await fetch(
+        `https://graph.facebook.com/v23.0/${ACCOUNT}/subscribed_apps?subscribed_fields=messages,messaging_referrals`,
+        { method: 'POST', headers: { authorization: 'Bearer SUAT-ok' } }
+      )
+      expect(response.status).toBe(400)
+      expect(graph.rejected).toHaveLength(1)
+      graph.restore()
     })
   })
 
@@ -276,9 +508,9 @@ describe('InstagramPlugin', () => {
       const profile = await plugin.fetchProfile(ctx, '17841400000000099')
 
       expect(get.mock.calls[0]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        origin: MetaGraph.ORIGIN,
         path: ['17841400000000099'],
-        token: 'IGAA-token',
+        token: 'SUAT-token',
         query: { fields: 'name,username,profile_pic' }
       })
       expect(profile).toEqual({
@@ -341,9 +573,9 @@ describe('InstagramPlugin', () => {
       })
 
       expect(post.mock.calls[0]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        origin: MetaGraph.ORIGIN,
         path: ['17841400000000001', 'messages'],
-        token: 'IGAA-token',
+        token: 'SUAT-token',
         body: { recipient: { id: '99' }, message: { text: 'hola' } }
       })
       expect(post.mock.calls[0]?.[0].body).not.toHaveProperty('reply_to')
@@ -497,7 +729,7 @@ describe('InstagramPlugin', () => {
       })
 
       expect(post.mock.calls[0]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        origin: MetaGraph.ORIGIN,
         path: ['17841400000000001', 'messages'],
         idempotent: true,
         body: {
@@ -523,13 +755,13 @@ describe('InstagramPlugin', () => {
       await plugin.markAsRead(ctx, { channelIdentity: '99', externalId: 'mid.1' })
 
       expect(post.mock.calls[0]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        origin: MetaGraph.ORIGIN,
         path: ['17841400000000001', 'messages'],
         idempotent: true,
         body: { recipient: { id: '99' }, sender_action: 'typing_on' }
       })
       expect(post.mock.calls[1]?.[0]).toMatchObject({
-        origin: MetaGraph.INSTAGRAM_ORIGIN,
+        origin: MetaGraph.ORIGIN,
         path: ['17841400000000001', 'messages'],
         idempotent: true,
         body: { recipient: { id: '99' }, sender_action: 'mark_seen' }

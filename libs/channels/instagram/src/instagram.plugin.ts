@@ -9,19 +9,26 @@ import {
   MetaGraph,
   MetaMessaging
 } from '@platform/core/domain'
-import { ChannelCapability } from '@platform/plugins/sdk'
+import { ErrorCodes, PluginChecks, type PluginCheck } from '@platform/core/errors'
+import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
 // A string: the id has 17 digits, more than a JSON number holds exactly, so a number would already
 // be a different id by the time it is read
-const profileSchema = z.object({ user_id: z.string(), username: z.string().min(1) })
-// Meta's reference shows the profile alone and, in its sample answer, inside a list
-const answerSchema = z.union([
-  profileSchema,
-  z.object({ data: z.tuple([profileSchema], z.unknown()) })
-])
+const accountSchema = z.object({ id: z.string(), username: z.string().min(1) })
+// Only the account that is picked is read in full: the others belong to the business, and a badly
+// shaped one must not break the connection of another
+const accountsSchema = z.object({ data: z.array(z.unknown()) })
+const idOnlySchema = z.object({ id: z.unknown() })
 
-// Instagram Direct through Instagram API with Instagram Login: its own host, and the token of the
-// Instagram professional account. The account id of the webhooks is the `user_id` of the profile.
+// The refusal names the check, never the value: the log says why a token was not taken
+function refused(failedCheck: PluginCheck): PluginError {
+  return new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { retryable: false, failedCheck })
+}
+
+// Instagram Direct through the Instagram API with Unified Login: Facebook's host and the token of a
+// system user of the owner's business, which the owner pastes (there is no login flow). The token
+// belongs to the business, not to an account: the account is read from the ones it was shared with,
+// and its id is the one the webhooks carry in `entry.id`.
 @Injectable()
 export class InstagramPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.INSTAGRAM
@@ -47,23 +54,35 @@ export class InstagramPlugin extends MetaChannelPlugin {
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
-  protected readonly origin = MetaGraph.INSTAGRAM_ORIGIN
+  protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = InstagramApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = InstagramApi.SUBSCRIBED_FIELDS
   // Meta's reference sends a file under `attachments`
   protected readonly attachmentKey = MetaMessaging.ATTACHMENTS_KEY
   protected readonly userProfileFields = InstagramApi.USER_PROFILE_FIELDS
 
-  protected async fetchAccount(token: string): Promise<MetaAccount> {
+  // A new connection is one account: a token that reaches none, or several (well shaped or not), is
+  // refused, because the owner would otherwise connect an account by the order Meta lists them in. A
+  // connection that exists asks for its own account among the ones the token reaches, and the others
+  // are not read, so a badly shaped one cannot break it.
+  protected async fetchAccount(token: string, expectedId?: string): Promise<MetaAccount> {
     const answer = await this.meta.get({
       origin: this.origin,
-      path: ['me'],
+      path: ['me', InstagramApi.ACCOUNTS_EDGE],
       token,
-      query: { fields: InstagramApi.PROFILE_FIELDS },
-      schema: answerSchema
+      query: { fields: InstagramApi.PROFILE_FIELDS, limit: InstagramApi.ACCOUNTS_PAGE_LIMIT },
+      schema: accountsSchema
     })
-    // The flat profile is the one with the id; a `data` key beside it must not take its place
-    const profile = 'user_id' in answer ? answer : answer.data[0]
-    return { id: profile.user_id, displayName: profile.username }
+    const candidates = answer.data.filter(entry => {
+      if (expectedId === undefined) return true
+      const named = idOnlySchema.safeParse(entry)
+      return named.success && named.data.id === expectedId
+    })
+    if (candidates.length === 0) throw refused(PluginChecks.ACCOUNT_NOT_FOUND)
+    if (candidates.length > 1) throw refused(PluginChecks.ACCOUNT_AMBIGUOUS)
+    const parsed = accountSchema.safeParse(candidates[0])
+    if (!parsed.success) throw refused(PluginChecks.ACCOUNT_SHAPE_INVALID)
+    const account = parsed.data
+    return { id: account.id, displayName: account.username }
   }
 }
