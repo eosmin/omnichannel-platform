@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
   // app imports sit outside apps/web, so the trace starts at the repository root
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../..'),
+  // Next.js would answer every dynamic page with `X-Powered-By: Next.js`, naming the framework
+  poweredByHeader: false,
   // The Content-Security-Policy is set per request in proxy.ts, because it carries a nonce
   headers: () => Promise.resolve([{ source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] }])
 }

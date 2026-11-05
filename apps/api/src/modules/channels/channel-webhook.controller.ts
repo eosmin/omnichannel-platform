@@ -7,10 +7,11 @@ import {
   Post,
   type RawBodyRequest,
   Query,
-  Req
+  Req,
+  Res
 } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
-import type { Request } from 'express'
+import type { Request, Response } from 'express'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -29,6 +30,10 @@ import { InjectMetric } from '@platform/core/metrics-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
 import { InboundEventQueue } from './inbound-event-queue.service'
+
+// The challenge of the handshake is a bare token that Meta compares with what it sent; plain text
+// keeps a browser from ever reading it as a page
+const CHALLENGE_CONTENT_TYPE = 'text/plain; charset=utf-8'
 
 // Only the strings of the headers: the plugin verifies a signature, not a list
 function stringHeaders(headers: Request['headers']): Record<string, string> {
@@ -61,7 +66,8 @@ export class ChannelWebhookController {
   @Get(ApiRoutes.webhooks.channel(':pluginId'))
   verifyWebhook(
     @Param('pluginId') pluginId: string,
-    @Query() query: Record<string, string>
+    @Query() query: Record<string, string>,
+    @Res({ passthrough: true }) res: Response
   ): string {
     const plugin = this.pluginOf(pluginId)
     const challenge = plugin.verifyWebhook?.(stringQuery(query)) ?? null
@@ -72,6 +78,8 @@ export class ChannelWebhookController {
         HttpStatusCodes.FORBIDDEN
       )
     }
+    // Only the challenge is plain text: a refusal above stays the JSON envelope of every error
+    res.type(CHALLENGE_CONTENT_TYPE)
     return challenge
   }
 
