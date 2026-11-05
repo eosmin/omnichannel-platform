@@ -23,6 +23,7 @@ import {
   type MediaUrls,
   mediaVariantsSchema,
   type RequestUploadUrlBody,
+  downloadFilename,
   sanitizeFilename,
   StorageKeys,
   type UploadUrlResult,
@@ -251,7 +252,9 @@ export class MediaService {
       this.storage.downloadUrl({
         key: media.key,
         contentType: media.contentType,
-        filename: media.filename
+        // The name is the sender's, the type was read from the bytes: the person who downloads gets a name
+        // that opens as the type (`x.exe` holding a PDF is offered as `x.exe.pdf`)
+        filename: downloadFilename(media.filename, media.contentType)
       }),
       sign(ImageVariants.FULL),
       sign(ImageVariants.MEDIUM),

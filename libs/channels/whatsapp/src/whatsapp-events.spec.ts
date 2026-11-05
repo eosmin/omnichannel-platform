@@ -153,7 +153,7 @@ describe('webhookToEvents', () => {
     expect(event?.message).toMatchObject({
       type: MessageType.TEXT,
       content: '[order]',
-      metadata: { whatsappType: 'order' }
+      metadata: { unsupportedType: 'order' }
     })
   })
 

@@ -427,6 +427,29 @@ describe('The conversations of a store', () => {
       expect((await preview(adminOfB))?.contentPreview).toBe('private note')
     })
 
+    it('names a message by its type, not by the English marker a channel stores for what it cannot read', async () => {
+      const adminOfB = api(app, ctx.adminB, ctx.storeB)
+      const named = async (content: string, metadata: unknown) => {
+        const conversation = await createConversationOf(owner, {
+          storeId: ctx.storeB.id,
+          lastMessageAt: minutesAgo(1)
+        })
+        await createMessage(owner, {
+          storeId: ctx.storeB.id,
+          conversationId: conversation.id,
+          content,
+          metadata: metadata as never
+        })
+        const response = await adminOfB.get(ApiRoutes.conversations.byId(conversation.id))
+        return (response.body as ItemBody).lastMessage?.contentPreview
+      }
+
+      expect(await named('[story_mention]', { unsupportedType: 'story_mention' })).toBeNull()
+      // Text that only looks like the marker is text
+      expect(await named('[OK]', null)).toBe('[OK]')
+      expect(await named('[image]', { attachmentType: 'image' })).toBe('[image]')
+    })
+
     it('cuts the preview by characters, never in the middle of an emoji', async () => {
       const adminOfB = api(app, ctx.adminB, ctx.storeB)
       const conversation = await createConversationOf(owner, {

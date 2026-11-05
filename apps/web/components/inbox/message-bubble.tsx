@@ -18,6 +18,7 @@ import {
   type MessageKind,
   messageKindOf
 } from '../../lib/inbox/thread-items'
+import { bubbleTextOf, unsupportedKindOf } from '../../lib/inbox/unsupported-kind'
 import { cn } from '../../lib/utils'
 
 import { CaptionNotice } from './caption-notice'
@@ -272,10 +273,11 @@ function Content({
     return <p className="text-muted-foreground italic">{who}</p>
   }
   // The text of a location is its name and address joined, which the card already shows
-  const text =
-    message.content === null || message.content === '' || message.location !== null
-      ? null
-      : message.content
+  const text = bubbleTextOf({
+    content: message.content,
+    hasLocation: message.location !== null,
+    unsupportedType: message.unsupportedType
+  })
   const MediaIcon = isMediaType(message.type) ? MEDIA_ICONS[message.type] : null
   const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
   return (
@@ -297,6 +299,11 @@ function Content({
         <p className="flex items-center gap-1.5 text-xs font-medium">
           <MediaIcon aria-hidden className="size-4" />
           {t(`mediaLabel.${message.type}`)}
+        </p>
+      )}
+      {message.unsupportedType === null ? null : (
+        <p className="text-muted-foreground text-xs italic">
+          {t(`unsupportedKind.${unsupportedKindOf(message.unsupportedType)}`)}
         </p>
       )}
       {message.type === String(MessageType.TEMPLATE) ? (

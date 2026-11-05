@@ -288,3 +288,61 @@ describe('messageView location', () => {
     expect(JSON.stringify(view)).not.toContain('secret')
   })
 })
+
+// The text a channel stores for a type it cannot read is `[type]`, the provider's English name for it.
+// The thread must not draw that: the view says which type it was and the interface writes the sentence.
+describe('messageView unsupportedType', () => {
+  const marker = (type: string, metadata: unknown, content = `[${type}]`) =>
+    messageView({ ...row(metadata), content })
+
+  it.each([
+    [
+      'Instagram or Messenger',
+      'story_mention',
+      { [MessageMetadataKeys.UNSUPPORTED_TYPE]: 'story_mention' }
+    ],
+    ['WhatsApp', 'unsupported', { [MessageMetadataKeys.UNSUPPORTED_TYPE]: 'unsupported' }]
+  ])('names the type of a marker from %s', (_channel, type, metadata) => {
+    expect(marker(type, metadata).unsupportedType).toBe(type)
+  })
+
+  it.each([
+    [
+      'a text that only looks like a marker',
+      { [MessageMetadataKeys.UNSUPPORTED_TYPE]: 'image' },
+      '[location]'
+    ],
+    ['no metadata', null, '[image]'],
+    [
+      'a marker with more text',
+      { [MessageMetadataKeys.UNSUPPORTED_TYPE]: 'image' },
+      '[image] hola'
+    ],
+    [
+      'a type that is not a plain name',
+      { [MessageMetadataKeys.UNSUPPORTED_TYPE]: '<b>x</b>' },
+      '[<b>x</b>]'
+    ],
+    [
+      'a customer who typed it with a link only',
+      { attachmentUrl: 'https://example.com/a' },
+      '[image]'
+    ]
+  ])('is null for %s', (_name, metadata, content) => {
+    expect(messageView({ ...row(metadata), content }).unsupportedType).toBeNull()
+  })
+
+  it('is null for a deleted message and for any type but a text', () => {
+    const metadata = { [MessageMetadataKeys.UNSUPPORTED_TYPE]: 'image' }
+    expect(
+      messageView({
+        ...row(metadata),
+        content: '[image]',
+        deletedAt: new Date('2026-10-30T11:00:00Z')
+      }).unsupportedType
+    ).toBeNull()
+    expect(
+      messageView({ ...row(metadata), content: '[image]', type: MessageType.IMAGE }).unsupportedType
+    ).toBeNull()
+  })
+})

@@ -312,6 +312,9 @@ export const messageSchema = z.object({
   sticker: z.boolean().default(false),
   // Untrusted: drawn as a link with its host visible, never fetched
   attachmentUrl: z.string().nullable(),
+  // The type a channel could not read, when the text is only its English `[type]` marker; a server that
+  // does not send it yet (a rolling deploy) draws the text as before
+  unsupportedType: z.string().nullable().default(null),
   reactions: z.array(reactionSchema),
   // Never a link: the signed one is asked from `GET /media/:id` once the file is clean
   media: z.array(
