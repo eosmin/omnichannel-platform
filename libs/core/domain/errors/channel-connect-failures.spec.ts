@@ -30,6 +30,22 @@ describe('the reasons a channel does not connect', () => {
     )
   })
 
+  it('gives the checks of the Page the reasons the owner can act on', () => {
+    expect(connectReasonOfCheck(PluginChecks.PAGE_ID_MISMATCH)).toBe(
+      ChannelConnectFailureReasons.OTHER_ACCOUNT
+    )
+    expect(connectReasonOfCheck(PluginChecks.PAGE_ID_NOT_NUMERIC)).toBe(
+      ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
+    )
+    for (const check of [
+      PluginChecks.SUBSCRIPTION_READ_FAILED,
+      PluginChecks.SUBSCRIPTION_SHAPE_INVALID,
+      PluginChecks.SUBSCRIPTION_APP_UNKNOWN
+    ]) {
+      expect(connectReasonOfCheck(check)).toBe(ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE)
+    }
+  })
+
   it('has names made of lowercase letters and underscores, each once', () => {
     const names = Object.values(ChannelConnectFailureReasons)
     expect(new Set(names).size).toBe(names.length)

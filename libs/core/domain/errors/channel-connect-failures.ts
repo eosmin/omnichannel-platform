@@ -56,15 +56,21 @@ export function connectReasonOfCheck(check: PluginCheck): ChannelConnectFailureR
       return ChannelConnectFailureReasons.TOKEN_MALFORMED
     case PluginChecks.ACCOUNT_ID_NOT_NUMERIC:
     case PluginChecks.ACCOUNT_SHAPE_INVALID:
+    case PluginChecks.PAGE_ID_NOT_NUMERIC:
       return ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
     case PluginChecks.ACCOUNT_ID_MISMATCH:
+    case PluginChecks.PAGE_ID_MISMATCH:
       return ChannelConnectFailureReasons.OTHER_ACCOUNT
     case PluginChecks.ACCOUNT_NOT_FOUND:
       return ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED
-    case PluginChecks.ACCOUNT_AMBIGUOUS:
-      return ChannelConnectFailureReasons.ACCOUNT_AMBIGUOUS
     case PluginChecks.SUBSCRIPTION_NOT_CONFIRMED:
       return ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED
+    // The subscription of the Page is read before it is changed: whichever step of that read failed, the
+    // owner can only try again
+    case PluginChecks.SUBSCRIPTION_READ_FAILED:
+    case PluginChecks.SUBSCRIPTION_SHAPE_INVALID:
+    case PluginChecks.SUBSCRIPTION_APP_UNKNOWN:
+      return ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE
     default: {
       const unhandled: never = check
       throw new Error(`a plugin check has no reason: ${String(unhandled)}`)
