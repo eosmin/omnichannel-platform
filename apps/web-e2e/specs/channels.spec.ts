@@ -324,12 +324,19 @@ test.describe('Settings → Channels and Plugins', () => {
 
         // The owner names the connection: the card, and nothing else of it, takes the new name
         const MY_NAME = 'Messenger principal'
-        await page
-          .getByRole('button', { name: `${channels.rename.action} ${FAKE_PAGE_NAME}` })
-          .click()
+        const renameButton = page.getByRole('button', {
+          name: `${channels.rename.action} ${FAKE_PAGE_NAME}`
+        })
+        await renameButton.click()
         const naming = page.getByRole('dialog', {
           name: channels.rename.title.replace('{name}', FAKE_PAGE_NAME)
         })
+        // The field of this dialog takes the focus when it opens; Escape still gives it back to the button
+        await expect(naming.getByLabel(channels.rename.label)).toBeFocused()
+        await page.keyboard.press('Escape')
+        await expect(naming).toBeHidden()
+        await expect(renameButton).toBeFocused()
+        await renameButton.click()
         await expectDialogHoldsItsContent(page, naming)
         // Nothing to save until the text changes
         await expect(naming.getByRole('button', { name: channels.rename.submit })).toBeDisabled()

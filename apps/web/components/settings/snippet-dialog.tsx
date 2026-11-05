@@ -16,6 +16,7 @@ import {
 } from '../../lib/settings/content-form'
 import type { StoreSnippetView } from '../../lib/settings/snippets-requests'
 import { useCreateSnippet, useUpdateSnippet } from '../../lib/settings/use-content'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -57,6 +58,7 @@ export function SnippetDialog({
   const set = (patch: Partial<SnippetDraft>): void =>
     setDraft(current => ({ ...current, ...patch }))
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (saving) return
@@ -69,12 +71,17 @@ export function SnippetDialog({
       onClose()
     }
     if (snippet === null) {
-      create.mutate(snippetInputOf(draft), { onSuccess: done })
+      if (guard.enter())
+        create.mutate(snippetInputOf(draft), { onSuccess: done, onSettled: guard.leave })
       return
     }
     const changes = snippetChanges(snippet, draft)
     if (Object.keys(changes).length === 0) onClose()
-    else update.mutate({ snippetId: snippet.id, input: changes }, { onSuccess: done })
+    else if (guard.enter())
+      update.mutate(
+        { snippetId: snippet.id, input: changes },
+        { onSuccess: done, onSettled: guard.leave }
+      )
   }
 
   return (

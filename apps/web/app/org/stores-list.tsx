@@ -34,6 +34,7 @@ import {
   useOrganizationStores,
   useUpdateStore
 } from '../../lib/settings/use-settings-data'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 
@@ -248,6 +249,7 @@ function NewStoreDialog({
   const [values, setValues] = useState(initial)
   const problems = storeFormProblems(values)
   const canCreate = Object.keys(problems).length === 0 && !create.isPending
+  const guard = useSubmitGuard()
 
   const close = (next: boolean): void => {
     if (!next) {
@@ -258,7 +260,7 @@ function NewStoreDialog({
   }
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (!canCreate) return
+    if (!canCreate || !guard.enter()) return
     create.mutate(
       {
         name: values.name.trim(),
@@ -270,7 +272,8 @@ function NewStoreDialog({
         onSuccess: created => {
           toast.success(t('done', { name: created.name }))
           close(false)
-        }
+        },
+        onSettled: guard.leave
       }
     )
   }

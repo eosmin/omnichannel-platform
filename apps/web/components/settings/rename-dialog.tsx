@@ -8,6 +8,7 @@ import { ChannelConnectionLimits } from '@platform/core/domain'
 
 import type { ChannelConnectionView } from '../../lib/settings/channels-requests'
 import { useRenameConnection } from '../../lib/settings/use-channels'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -51,14 +52,16 @@ export function RenameDialog({
   const label = value.trim()
   const unchanged = label === (connection.label ?? '')
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (unchanged || rename.isPending) return
+    if (unchanged || rename.isPending || !guard.enter()) return
     rename.mutate(label === '' ? null : label, {
       onSuccess: renamed => {
         toast.success(t('done', { name: renamed.displayName }))
         onClose()
-      }
+      },
+      onSettled: guard.leave
     })
   }
 

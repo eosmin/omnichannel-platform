@@ -10,6 +10,7 @@ import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
 import type { RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
 import { useInviteMember } from '../../lib/settings/use-team'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -58,6 +59,7 @@ export function InviteDialog({
     return seconds === null ? errorText(error) : tInvitations('resend.cooldown', { seconds })
   }
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (!canSubmit) return
@@ -67,13 +69,16 @@ export function InviteDialog({
       emailField.current?.focus()
       return
     }
+    // After the checks that send nothing: the guard is set only for a request that will end
+    if (!guard.enter()) return
     invite.mutate(
       { email: email.trim(), roleId },
       {
         onSuccess: sent => {
           toast.success(t('sent', { email: sent.email }))
           onClose()
-        }
+        },
+        onSettled: guard.leave
       }
     )
   }

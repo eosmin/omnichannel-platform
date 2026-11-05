@@ -16,10 +16,15 @@ export function useFocusReturn({
   onCloseAutoFocus
 }: AutoFocusProps): Required<AutoFocusProps> {
   const opener = useRef<FocusTarget | null>(null)
+  // Read while the content renders for the first time, which is before anything is mounted: a field
+  // with `autoFocus` takes the focus when it mounts, earlier than Radix's `onOpenAutoFocus`, and would
+  // be taken for the opener (and be gone when the dialog closes). The content exists only while the
+  // dialog is open, so this runs once per opening. Nothing to read on the server.
+  if (opener.current === null && typeof document !== 'undefined') {
+    opener.current = openerOf(document.activeElement)
+  }
   return {
     onOpenAutoFocus: event => {
-      // Radix has not moved the focus yet: this is still the button that was pressed
-      opener.current = openerOf(document.activeElement)
       onOpenAutoFocus?.(event)
     },
     onCloseAutoFocus: event => {

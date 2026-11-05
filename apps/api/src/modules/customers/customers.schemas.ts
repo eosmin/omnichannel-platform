@@ -7,7 +7,8 @@ import {
   LOCALE_TAG_PATTERN,
   MergeableFields,
   MergeFieldSources,
-  PaginationLimits
+  PaginationLimits,
+  singleLineText
 } from '@platform/core/domain'
 import { normalizeChannelIdentity, normalizePhone } from '@platform/core/messaging'
 import { galleryTypeSchema, GalleryTypes, gallerySearchSchema } from '@platform/core/storage'
@@ -23,7 +24,9 @@ const text = () =>
     .trim()
     .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
 
-const name = text().min(1).max(CustomerLimits.NAME_MAX_LENGTH)
+// One visible line, like the names of tags and snippets: no line break, no invisible or
+// direction-changing character, NFC (QA TRX-04)
+const name = singleLineText(CustomerLimits.NAME_MAX_LENGTH, 1)
 const email = z
   .string()
   .trim()

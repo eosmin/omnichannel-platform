@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { MessageLimits } from './conversation-constants'
 import { SettingsLimits } from './settings-constants'
+import { hasMisleadingCharacters, plainName } from './text'
 import { canonicalTimezone } from './timezone'
 
 export const uuidSchema = z.uuid()
@@ -86,14 +87,10 @@ export const httpUrl = (maxLength: number): z.ZodPipe<z.ZodString, z.ZodURL> =>
         .refine(hasPublicHostName, { message: 'a link points to a public host name' })
     )
 
-// Control characters (line breaks included) and the invisible format ones (zero-width space, bidi
-// overrides) make two names that look the same or draw a name backwards. The joiner U+200D stays: emoji
-// are built with it.
-const INVISIBLE = /[\p{Cc}\p{Cf}]/u
-const JOINER = '‍'
-
-// A name or a title: one visible line, in NFC so that "é" typed two ways is one name. Postgres text
-// cannot hold a NUL character: it is a 400 here and not a 500 there.
+// A name or a title: one visible line, in NFC so that "é" typed two ways is one name. No control
+// character or line break, no line or paragraph separator, no invisible or direction-changing character
+// (the joiners that emoji and Persian need stay), no pile of combining marks. Postgres text cannot hold a
+// NUL character: it is a 400 here and not a 500 there.
 export function singleLineText(
   maxLength: number,
   minLength = 0
@@ -103,9 +100,9 @@ export function singleLineText(
     .trim()
     .min(minLength)
     .max(maxLength)
-    .transform(value => value.normalize('NFC'))
+    .transform(plainName)
     .pipe(
-      z.string().refine(value => !INVISIBLE.test(value.replaceAll(JOINER, '')), {
+      z.string().refine(value => !hasMisleadingCharacters(value), {
         message: 'contains a control or invisible character'
       })
     )
