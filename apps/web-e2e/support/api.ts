@@ -151,6 +151,16 @@ export async function installChannel(
       throw error
     }
   })
+  // A 409 also answers "this plugin cannot be installed yet": the store must hold it at the end
+  const catalog = catalogSchema.parse(
+    await call(ApiRoutes.plugins.available, { headers: storeHeaders(token, storeId) })
+  )
+  const entry = catalog.find(candidate => candidate.id === pluginId)
+  if (entry?.installed !== true) {
+    throw new Error(
+      `${pluginId} is not installed after the install: ${JSON.stringify(entry ?? null)}`
+    )
+  }
 }
 
 export async function uninstallChannel(

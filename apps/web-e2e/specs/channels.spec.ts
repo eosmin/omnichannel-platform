@@ -146,6 +146,8 @@ test.describe('Settings → Channels and Plugins', () => {
 
   // Connecting a Meta channel against a Graph that refuses a token the way Meta does (code 190)
   test.describe('connecting Messenger', () => {
+    // The trace of a failure shows the page the case saw
+    test.use({ trace: 'retain-on-failure' })
     let graph: FakeGraph
     test.beforeAll(async () => {
       graph = await startFakeGraph()
