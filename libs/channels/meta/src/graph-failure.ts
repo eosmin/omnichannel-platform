@@ -103,16 +103,15 @@ export function graphFailure(
   })
 }
 
-// A token Meta refused (190, or a 401) is one to generate again; a permission it denied (10, 200 to 299, or a
-// 403) is one to grant
+// A token Meta refused (190, or any 401: the status says the token, whatever number goes with it) is one to
+// generate again; a permission it denied (10, 200 to 299, or a 403) is one to grant
 function credentialsReasonOf(
   status: number,
   code: number | undefined
 ):
   | typeof ChannelConnectFailureReasons.TOKEN_REJECTED
   | typeof ChannelConnectFailureReasons.PERMISSION_MISSING {
-  return code === MetaErrorCodes.INVALID_TOKEN ||
-    (code === undefined && status === HttpStatusCodes.UNAUTHORIZED)
+  return code === MetaErrorCodes.INVALID_TOKEN || status === HttpStatusCodes.UNAUTHORIZED
     ? ChannelConnectFailureReasons.TOKEN_REJECTED
     : ChannelConnectFailureReasons.PERMISSION_MISSING
 }

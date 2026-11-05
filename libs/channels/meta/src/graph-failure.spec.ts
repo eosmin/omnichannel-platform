@@ -188,6 +188,15 @@ describe('the reason a Graph failure gives', () => {
     )
   })
 
+  it.each([102, 104, 3])(
+    'says the token was refused for HTTP 401 with the code %i: a 401 is the token',
+    code => {
+      expect(graphFailure(401, graphError(code)).reason).toBe(
+        ChannelConnectFailureReasons.TOKEN_REJECTED
+      )
+    }
+  )
+
   it('says the token was refused for HTTP 401 with no readable answer', () => {
     expect(graphFailure(401, null).reason).toBe(ChannelConnectFailureReasons.TOKEN_REJECTED)
   })

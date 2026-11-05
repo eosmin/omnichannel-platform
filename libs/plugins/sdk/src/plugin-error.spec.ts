@@ -40,6 +40,18 @@ describe('PluginError', () => {
       expect(error.reason).toBe(ChannelConnectFailureReasons.PERMISSION_MISSING)
     })
 
+    it("does not throw for a check name that is not of the list, nor put it in a message: a plugin can be a third party's", () => {
+      const made = (): PluginError =>
+        new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+          failedCheck: 'x-Bearer-SECRET' as never,
+          retryable: false
+        })
+      expect(made).not.toThrow()
+      expect(made().reason).toBeUndefined()
+      expect(made().code).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+      expect(made().message).not.toContain('SECRET')
+    })
+
     it('is none when nothing says it', () => {
       expect(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID).reason).toBeUndefined()
     })

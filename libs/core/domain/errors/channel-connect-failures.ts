@@ -19,8 +19,6 @@ export const ChannelConnectFailureReasons = {
   ACCOUNT_NOT_LINKED: 'account_not_linked',
   // The token is of another account than the connected one
   OTHER_ACCOUNT: 'other_account',
-  // The token reaches several accounts and a connection is one
-  ACCOUNT_AMBIGUOUS: 'account_ambiguous',
   // The provider answered something that is not what its API says
   PROVIDER_ANSWER_UNEXPECTED: 'provider_answer_unexpected',
   SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
@@ -73,7 +71,9 @@ export function connectReasonOfCheck(check: PluginCheck): ChannelConnectFailureR
       return ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE
     default: {
       const unhandled: never = check
-      throw new Error(`a plugin check has no reason: ${String(unhandled)}`)
+      // The name is not in the message: it can come from a plugin of a third party
+      void unhandled
+      throw new Error('a plugin check has no reason')
     }
   }
 }

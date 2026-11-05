@@ -4,8 +4,11 @@ import {
   type ErrorCode,
   type ErrorCodes,
   type PluginCheck,
+  PluginChecks,
   PlatformException
 } from '@platform/core/errors'
+
+const KNOWN_CHECKS: readonly unknown[] = Object.values(PluginChecks)
 
 // The codes a plugin may raise: what a provider can do wrong, never a platform error
 export type PluginErrorCode = Extract<
@@ -61,8 +64,12 @@ export class PluginError extends PlatformException {
     this.providerCode = options.providerCode
     this.providerSubcode = options.providerSubcode
     this.failedCheck = options.failedCheck
+    // A check name outside the list (a plugin can be a third party's, and a type does not stop a string) gives
+    // no reason, and never makes the construction fail
     this.reason =
       options.reason ??
-      (options.failedCheck === undefined ? undefined : connectReasonOfCheck(options.failedCheck))
+      (options.failedCheck !== undefined && KNOWN_CHECKS.includes(options.failedCheck)
+        ? connectReasonOfCheck(options.failedCheck)
+        : undefined)
   }
 }

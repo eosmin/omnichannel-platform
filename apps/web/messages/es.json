@@ -1634,7 +1634,6 @@
         "request_rejected": "Meta rechazó la solicitud. Suele significar que el token no es del tipo esperado (por ejemplo, de usuario en vez de el de la Página) o que falta un permiso. Genera el token de la Página y prueba otra vez.",
         "account_not_linked": "El token no llega a ninguna cuenta profesional de Instagram. Comprueba que la cuenta esté vinculada a la Página y que el token sea el de esa Página.",
         "other_account": "El token es de otra cuenta o Página distinta de la conectada. Usa el token de la misma.",
-        "account_ambiguous": "El token llega a varias cuentas. Usa un token que llegue solo a la que quieres conectar.",
         "provider_answer_unexpected": "Meta respondió algo inesperado. Prueba otra vez; si sigue, genera el token de nuevo.",
         "subscription_not_confirmed": "Meta no confirmó la suscripción a los mensajes. Revisa que el token tenga permisos de mensajes y que el webhook de la app esté configurado.",
         "provider_busy": "Meta pide esperar. Prueba otra vez en unos minutos.",

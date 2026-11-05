@@ -78,9 +78,12 @@ function ConnectForm({
   const tokenKey = fields.find(field => field.secret)?.key
   const tokenInput = useRef<HTMLInputElement>(null)
   const tokenFailed = isTokenFailure(connectFailureReasonOf(connect.error))
+  // Once for each failure (a new error object), not for each submit: someone who retries from the button is
+  // not pulled away while the request runs
   useEffect(() => {
     if (tokenFailed) tokenInput.current?.focus()
-  }, [tokenFailed, connect.submittedAt])
+  }, [tokenFailed, connect.error])
+  const errorId = `${idPrefix}-connect-error`
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -129,6 +132,7 @@ function ConnectForm({
                 id={id}
                 ref={field.key === tokenKey ? tokenInput : undefined}
                 aria-invalid={field.key === tokenKey && tokenFailed ? true : undefined}
+                aria-describedby={field.key === tokenKey && tokenFailed ? errorId : undefined}
                 // A token or a password: masked (a secret is always one line, so it can always be masked), and the browser is told not to keep it
                 type={field.secret ? 'password' : 'text'}
                 // `off` is ignored for a password field: this one is not offered for saving
@@ -149,7 +153,7 @@ function ConnectForm({
       {plugin.channel?.callbackUrl != null ? (
         <CallbackUrl url={plugin.channel.callbackUrl} />
       ) : null}
-      <ConnectError error={connect.error} />
+      <ConnectError error={connect.error} id={errorId} />
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose} disabled={connect.isPending}>
           {tAll('common.cancel')}

@@ -160,7 +160,6 @@ export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefi
     case ChannelConnectFailureReasons.TOKEN_MISSING:
     case ChannelConnectFailureReasons.TOKEN_MALFORMED:
     case ChannelConnectFailureReasons.REQUEST_REJECTED:
-    case ChannelConnectFailureReasons.ACCOUNT_AMBIGUOUS:
     case ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED:
     case ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED:
     case ChannelConnectFailureReasons.ACCOUNT_UNREADABLE:

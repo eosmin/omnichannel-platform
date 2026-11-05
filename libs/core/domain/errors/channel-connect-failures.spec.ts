@@ -61,4 +61,15 @@ describe('the reasons a channel does not connect', () => {
   ])('believes %p only when it is a name of the list (%p)', (value, expected) => {
     expect(isChannelConnectFailureReason(value)).toBe(expected)
   })
+
+  it('does not put a check it does not know in the message of its error', () => {
+    expect(() => connectReasonOfCheck('Bearer-SECRET' as never)).toThrow(
+      'a plugin check has no reason'
+    )
+    try {
+      connectReasonOfCheck('Bearer-SECRET' as never)
+    } catch (error) {
+      expect((error as Error).message).not.toContain('SECRET')
+    }
+  })
 })
