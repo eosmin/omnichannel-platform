@@ -204,6 +204,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'channels.test': { step: '3.6' },
   'channels.disconnect': { step: '3.6' },
   'channels.updateToken': { step: '3.6' },
+  'channels.label': { step: '3.6' },
   'channels.widgetEmbed': { step: '3.6' },
   'channels.widgetOrigins': { step: '3.6' },
   'channels.widgetPreChat': { step: '3.6' },

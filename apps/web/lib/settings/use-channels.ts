@@ -29,6 +29,7 @@ import {
   fetchWidget,
   installPlugin,
   type PluginCatalogEntryView,
+  renameConnection,
   saveWidgetOrigins,
   saveWidgetPreChat,
   testConnection,
@@ -89,6 +90,17 @@ export function useConnect(
       connectChannel(apiClient, storeId, pluginId, credentials),
     // The variables hold the secrets the person typed: the cache must not keep them once the dialog is closed
     gcTime: 0,
+    onSuccess: refresh
+  })
+}
+
+export function useRenameConnection(
+  storeId: string,
+  connectionId: string
+): UseMutationResult<ChannelConnectionView, Error, string | null> {
+  const refresh = useRefreshChannels(storeId)
+  return useMutation({
+    mutationFn: (label: string | null) => renameConnection(apiClient, storeId, connectionId, label),
     onSuccess: refresh
   })
 }

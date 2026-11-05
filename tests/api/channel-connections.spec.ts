@@ -988,6 +988,218 @@ describe('The channel connections of a store', () => {
     })
   })
 
+  describe('naming a connection', () => {
+    const rename = (connectionId: string, label: unknown, agent = asAdmin) =>
+      agent().put(ApiRoutes.channels.label(connectionId)).send({ label })
+    interface Named extends ConnectionBody {
+      label: string | null
+      accountName: string
+    }
+    const NEW_SECRET = 'EAAB-after-the-rename'
+
+    it('shows the label as the name, keeps the name of the account, and audits it', async () => {
+      const { id, connectionId } = register()
+      const first = (await connect(id)).body as Named
+
+      const response = await rename(first.id, '  Instagram principal  ')
+
+      expect(response.status).toBe(OK)
+      const body = response.body as Named
+      expect(body).toMatchObject({
+        id: first.id,
+        displayName: 'Instagram principal',
+        label: 'Instagram principal',
+        accountName: 'Acme account'
+      })
+      // The id of the account at the provider is not touched
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })
+      expect(row.label).toBe('Instagram principal')
+      expect(row.displayName).toBe('Acme account')
+      expect(row.connectionId).toBe(connectionId)
+      expect(await auditCount(AuditAction.CHANNEL_RENAMED, first.id, 1)).toBe(1)
+      // The list, the one connection and the directory of the inbox all name it the same
+      const listed = (await allConnections()).find(item => item.id === first.id) as Named
+      expect(listed).toMatchObject({
+        displayName: 'Instagram principal',
+        label: 'Instagram principal'
+      })
+      const one = await asAdmin().get(ApiRoutes.channels.connectionById(first.id))
+      expect((one.body as Named).displayName).toBe('Instagram principal')
+      const directory = await asAgent().get(ApiRoutes.channels.directory)
+      expect(
+        (directory.body as { id: string; displayName: string }[]).find(item => item.id === first.id)
+          ?.displayName
+      ).toBe('Instagram principal')
+    })
+
+    it('goes back to the name of the account when the label is cleared', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+      await rename(first.id, 'Main')
+
+      const response = await rename(first.id, null)
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({ displayName: 'Acme account', label: null })
+      expect(
+        (await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })).label
+      ).toBeNull()
+    })
+
+    it('is kept by a connect of the same account and by a new token', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+      await rename(first.id, 'My own name')
+
+      const again = await connect(id)
+      const updated = await asAdmin()
+        .post(ApiRoutes.channels.updateToken(first.id))
+        .send({ credentials: { token: NEW_SECRET } })
+
+      expect((again.body as Named).id).toBe(first.id)
+      expect((again.body as Named).displayName).toBe('My own name')
+      expect(updated.status).toBe(OK)
+      expect((updated.body as Named).displayName).toBe('My own name')
+      expect(
+        (await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })).label
+      ).toBe('My own name')
+    })
+
+    it.each([
+      ['empty', ''],
+      ['only spaces', '   '],
+      ['a line break', 'two\nlines'],
+      ['an invisible character', 'sneaky\u200bname'],
+      ['a NUL character', 'nul\u0000name'],
+      ['more than the limit', 'x'.repeat(81)],
+      ['not text', 7]
+    ])('refuses a label that is %s, and keeps the one it had', async (_name, label) => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+      await rename(first.id, 'Kept')
+
+      const response = await rename(first.id, label)
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(
+        (await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })).label
+      ).toBe('Kept')
+    })
+
+    it('refuses a field it does not know, so nothing else of the connection can be written through it', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+
+      const response = await asAdmin()
+        .put(ApiRoutes.channels.label(first.id))
+        .send({ label: 'Fine', connectionId: 'someone-else', status: 'disconnected' })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })
+      expect(row.label).toBeNull()
+      expect(row.status).toBe(ChannelConnectionStatus.ACTIVE)
+    })
+
+    it('keeps text that looks like markup as plain text, to be drawn escaped', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+
+      const response = await rename(first.id, '<b>Ventas</b> & co')
+
+      expect(response.status).toBe(OK)
+      expect((response.body as Named).label).toBe('<b>Ventas</b> & co')
+    })
+
+    it('is refused for a connection that was disconnected', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+      await asAdmin().post(ApiRoutes.channels.disconnect(first.id)).send({})
+
+      const response = await rename(first.id, 'Too late')
+
+      expect(response.status).toBe(CONFLICT)
+    })
+
+    it('audits what the name was and what it is, once for a change and not at all for the same name', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+
+      await rename(first.id, 'Ventas')
+      await rename(first.id, 'Ventas')
+      await rename(first.id, null)
+
+      expect(await auditCount(AuditAction.CHANNEL_RENAMED, first.id, 2)).toBe(2)
+      const rows = await owner.auditLog.findMany({
+        where: { action: AuditAction.CHANNEL_RENAMED, resourceId: first.id },
+        orderBy: { timestamp: 'asc' }
+      })
+      expect(rows.map(row => row.metadata)).toEqual([
+        { pluginId: id, label: 'Ventas', previousLabel: null },
+        { pluginId: id, label: null, previousLabel: 'Ventas' }
+      ])
+    })
+
+    it('writes no audit row for a name that is refused, and leaves the label of a disconnected connection as it was', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+      await rename(first.id, 'Kept')
+      await rename(first.id, 'x'.repeat(81))
+      await rename(first.id, 'Nope', asAgent)
+      await asAdmin().post(ApiRoutes.channels.disconnect(first.id)).send({})
+
+      const late = await rename(first.id, 'Too late')
+
+      expect(late.status).toBe(CONFLICT)
+      expect(
+        (await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })).label
+      ).toBe('Kept')
+      expect(await auditCount(AuditAction.CHANNEL_RENAMED, first.id, 1)).toBe(1)
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.CHANNEL_RENAMED, resourceId: first.id }
+        })
+      ).toBe(1)
+    })
+
+    it('is still there when the same account is connected again after it was disconnected', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+      await rename(first.id, 'Ventas')
+      await asAdmin().post(ApiRoutes.channels.disconnect(first.id)).send({})
+
+      const again = await connect(id)
+
+      expect((again.body as Named).id).toBe(first.id)
+      expect((again.body as Named).displayName).toBe('Ventas')
+    })
+
+    it('answers a connection of another store exactly as one that does not exist, and changes nothing', async () => {
+      const { id } = register()
+      const theirs = (await connect(id, asAdminB)).body as Named
+
+      const foreign = await rename(theirs.id, 'Mine now')
+      const missing = await rename(randomUUID(), 'Mine now')
+
+      expect(foreign.status).toBe(NOT_FOUND)
+      expect((foreign.body as ErrorBody).error).toEqual((missing.body as ErrorBody).error)
+      expect(
+        (await owner.channelConnection.findUniqueOrThrow({ where: { id: theirs.id } })).label
+      ).toBeNull()
+    })
+
+    it('needs the permission to change settings', async () => {
+      const { id } = register()
+      const first = (await connect(id)).body as Named
+
+      const response = await rename(first.id, 'Agent was here', asAgent)
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(
+        (await owner.channelConnection.findUniqueOrThrow({ where: { id: first.id } })).label
+      ).toBeNull()
+    })
+  })
+
   describe('seeing them', () => {
     it('lists those of the store only, with no credentials', async () => {
       const mine = register()

@@ -80,7 +80,12 @@ type InstallationReader = Pick<PrismaTransaction, '$queryRaw'>
 export interface ChannelConnectionView {
   id: string
   pluginId: string
+  // What is shown as the name: the label the owner gave, or the name of the account while there is none
   displayName: string
+  // The label the owner gave, if any, and the name of the account at the provider (what `displayName` is
+  // without a label), so that the form that names it can say what it goes back to
+  label: string | null
+  accountName: string
   status: ChannelConnectionStatus
   lastHealthyAt: Date | null
   lastError: string | null
@@ -130,13 +135,17 @@ const VIEW_SELECT = {
   id: true,
   pluginId: true,
   displayName: true,
+  label: true,
   status: true,
   lastHealthyAt: true,
   lastError: true,
   createdAt: true
 } as const
 
-type ConnectionRow = Omit<ChannelConnectionView, 'status' | 'capabilities' | 'profile'> & {
+type ConnectionRow = Omit<
+  ChannelConnectionView,
+  'status' | 'capabilities' | 'profile' | 'accountName'
+> & {
   status: string
 }
 
@@ -165,7 +174,9 @@ export class ChannelConnectionsService {
     return {
       id: row.id,
       pluginId: row.pluginId,
-      displayName: row.displayName,
+      displayName: row.label ?? row.displayName,
+      label: row.label,
+      accountName: row.displayName,
       status: enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status'),
       lastHealthyAt: row.lastHealthyAt,
       lastError: row.lastError,
@@ -289,6 +300,7 @@ export class ChannelConnectionsService {
         id: true,
         pluginId: true,
         displayName: true,
+        label: true,
         status: true,
         installation: { select: { status: true, plugin: { select: { status: true } } } }
       },
@@ -298,7 +310,7 @@ export class ChannelConnectionsService {
       id: row.id,
       pluginId: row.pluginId,
       pluginName: this.pluginNameOf(row.pluginId),
-      displayName: row.displayName,
+      displayName: row.label ?? row.displayName,
       status: isInstallationActive(row.installation)
         ? enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
         : ChannelConnectionStatus.ERROR,
@@ -768,6 +780,52 @@ export class ChannelConnectionsService {
       where: { id: existing.id },
       select: VIEW_SELECT
     })
+  }
+
+  // The name the owner gives to a connection, or none (null) to go back to the name of the account. Only that
+  // column is written, and only for a connection of this store that is not disconnected: the account id, the
+  // credentials and the status are not reachable from here.
+  async rename(
+    storeId: string,
+    connectionId: string,
+    label: string | null,
+    actor: Actor
+  ): Promise<ChannelConnectionView> {
+    // Only what is needed: the credentials of the row are not read to name it
+    const row = await this.prisma.client.channelConnection.findFirst({
+      where: { id: connectionId, storeId },
+      select: { pluginId: true, status: true, label: true }
+    })
+    if (row === null) throw resourceNotFound('channel connection')
+    if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
+      throw resourceConflict('the connection is disconnected')
+    }
+    if (row.label !== label) {
+      const changed = await this.prisma.client.channelConnection.updateMany({
+        where: { id: connectionId, storeId, status: { not: ChannelConnectionStatus.DISCONNECTED } },
+        data: { label }
+      })
+      // Disconnected while it was being named: nothing was written
+      if (changed.count !== 1) throw resourceConflict('the connection is disconnected')
+      // The label is the owner's own text, not a secret: what it was and what it is stay in the trail
+      this.audit.log({
+        action: AuditAction.CHANNEL_RENAMED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: 'channel_connection',
+        resourceId: connectionId,
+        metadata: { pluginId: row.pluginId, label, previousLabel: row.label },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+    }
+    // The answer of a write that happened must not fail because the profile errors could not be counted
+    const saved = await this.prisma.client.channelConnection.findFirst({
+      where: { id: connectionId, storeId },
+      select: VIEW_SELECT
+    })
+    if (saved === null) throw resourceNotFound('channel connection')
+    return this.viewAfterWrite(storeId, saved)
   }
 
   // Asks the plugin now and writes the answer, as the scheduler would

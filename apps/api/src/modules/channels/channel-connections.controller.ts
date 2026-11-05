@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
@@ -14,7 +14,9 @@ import {
   type ConnectChannelBody,
   connectChannelSchema,
   type ListConnectionsQuery,
-  listConnectionsQuerySchema
+  listConnectionsQuerySchema,
+  type RenameConnectionBody,
+  renameConnectionSchema
 } from './channel-connections.schemas'
 import {
   type ChannelConnectionView,
@@ -85,6 +87,20 @@ export class ChannelConnectionsController {
     @Req() req: AuthenticatedRequest
   ): Promise<ChannelConnectionView> {
     return this.connections.updateToken(store.id, connectionId, body, actorOf(user, store, req))
+  }
+
+  // The name the owner gives to one connection (null: back to the name of the account)
+  @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @Put(ApiRoutes.channels.label(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  rename(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) connectionId: string,
+    @Body(new ZodValidationPipe(renameConnectionSchema)) body: RenameConnectionBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<ChannelConnectionView> {
+    return this.connections.rename(store.id, connectionId, body.label, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.SETTINGS_EDIT)
