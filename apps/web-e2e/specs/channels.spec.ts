@@ -146,8 +146,6 @@ test.describe('Settings → Channels and Plugins', () => {
 
   // Connecting a Meta channel against a Graph that refuses a token the way Meta does (code 190)
   test.describe('connecting Messenger', () => {
-    // The trace of a failure shows the page the case saw
-    test.use({ trace: 'retain-on-failure' })
     let graph: FakeGraph
     test.beforeAll(async () => {
       graph = await startFakeGraph()
@@ -171,9 +169,22 @@ test.describe('Settings → Channels and Plugins', () => {
         await installChannel(token, storeId, ChannelIds.MESSENGER)
 
         await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS))
-        await page
-          .getByRole('button', { name: `${channels.add.connect} Facebook Messenger`, exact: false })
-          .click()
+        const connectButton = page.getByRole('button', {
+          name: `${channels.add.connect} Facebook Messenger`,
+          exact: false
+        })
+        // When the button is missing, the log says what the page showed instead
+        await expect
+          .poll(
+            async () =>
+              (await connectButton.count()) > 0 || (await page.locator('main').innerText()),
+            {
+              message: 'the Messenger connect button is not on the page',
+              timeout: 30_000
+            }
+          )
+          .toBe(true)
+        await connectButton.click()
         const dialog = page.getByRole('dialog', {
           name: channels.connectDialog.title.replace('{name}', 'Facebook Messenger')
         })
