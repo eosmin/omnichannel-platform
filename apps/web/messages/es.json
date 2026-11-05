@@ -1509,7 +1509,7 @@
           "accessToken": "Token de acceso"
         },
         "instagram": {
-          "accessToken": "Token de acceso de Instagram (usuario del sistema, del panel de la app)"
+          "accessToken": "Token de acceso de la Página de Facebook enlazada a la cuenta de Instagram (de larga duración)"
         },
         "messenger": {
           "accessToken": "Token de acceso de la Página"

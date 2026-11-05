@@ -8,6 +8,7 @@ import {
   isPlainHttpsUrl,
   type MetaGraphOrigin,
   MetaMessaging,
+  MetaSubscription,
   type MetaWebhookApp
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
@@ -35,13 +36,16 @@ import {
 
 import { MetaGraphClient } from './meta-graph.client'
 import { messagingToEvents } from './meta-messaging-events'
+import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
 import { parseMetaTokenCredentials } from './meta-token-credentials'
+import { withCheck } from './with-check'
 
 const MESSAGING_WINDOW_HOURS = 24
 // Meta: up to 7 days from the first message after a Click-to-Message ad (changelog of 2026-09-28)
 const AD_WINDOW_HOURS = 168
 
 const successSchema = z.object({ success: z.boolean() })
+const appIdSchema = z.object({ id: z.string() })
 // The Send API answers with the ids of the recipient and the message
 const sentSchema = z.object({ message_id: z.string().min(1) })
 // What the User Profile API of either host answers; a person who keeps it private gets an empty object
@@ -59,6 +63,8 @@ export interface MetaAccount {
   // The Page or the Instagram account that receives the webhooks: `entry.id`
   id: string
   displayName: string
+  // What the connection keeps beside its id (the Instagram connection keeps its Page)
+  metadata?: Record<string, unknown>
 }
 
 // The Graph API messaging that Instagram and Messenger share: one webhook shape and one Send API on
@@ -100,9 +106,36 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   constructor(protected readonly meta: MetaGraphClient) {}
 
   // Who the token belongs to, read from Meta with that token. `expectedId` is the account a connection
-  // already has: a token that reaches several accounts answers with that one (a connection checks
-  // its own account; only a new connection has to pick, or refuse).
+  // already has, for a plugin whose token can reach more than one (it answers with that one); a plugin
+  // whose token is of a single account ignores it, and the health check compares the id afterwards.
   protected abstract fetchAccount(token: string, expectedId?: string): Promise<MetaAccount>
+
+  // The node of the paths that belong to the token and not to the account's id: where the app is
+  // subscribed and where a message is sent. By default the id of the connection.
+  protected subscribeOwner(account: MetaAccount): string {
+    return account.id
+  }
+
+  protected sendOwner(ctx: ChannelContext): string {
+    return ctx.connectionId
+  }
+
+  // What the health check reads: by default only the id (a subclass whose name costs a call or a
+  // permission reads the id alone); a subclass that keeps more than the id of the account returns it
+  protected async fetchHealthAccount(
+    token: string,
+    ctx: ChannelContext
+  ): Promise<Pick<MetaAccount, 'id' | 'metadata'>> {
+    return { id: await this.fetchAccountId(token, ctx.connectionId) }
+  }
+
+  // A check beyond the id of the account, thrown as a PluginError; none by default
+  protected verifyBinding(
+    _account: Pick<MetaAccount, 'id' | 'metadata'>,
+    _ctx: ChannelContext
+  ): void {
+    // The id of the account is the whole binding
+  }
 
   // Fields of every send that only one of the two APIs wants
   protected sendFields(): Record<string, unknown> {
@@ -140,13 +173,17 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   async connect(input: ConnectInput): Promise<ConnectResult> {
     const { accessToken } = parseMetaTokenCredentials(input.credentials)
     const account = await this.readAccount(accessToken)
+    const owner = this.subscribeOwner(account)
+    // Messenger and Instagram share the Page and the app, and the fields of the app on the Page are one
+    // list: this channel's fields are added to the ones the app already has, never posted over them
+    const fields = await this.fieldsToSubscribe(owner, accessToken)
     // Webhooks only reach the app for an account that subscribed it. This also proves that the token
     // can act on the account it names.
     const subscribed = await this.meta.post({
       origin: this.origin,
-      path: [account.id, MetaMessaging.EDGE_SUBSCRIBED_APPS],
+      path: [owner, MetaMessaging.EDGE_SUBSCRIBED_APPS],
       token: accessToken,
-      query: { subscribed_fields: this.subscribedFields },
+      query: { subscribed_fields: fields },
       idempotent: true,
       schema: successSchema
     })
@@ -160,7 +197,54 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       connectionId: account.id,
       displayName: account.displayName,
       credentials: { accessToken },
-      metadata: {}
+      metadata: account.metadata ?? {}
+    }
+  }
+
+  // What the app has on the node plus what this channel asks for. Nothing is subscribed blind: if the
+  // app of the token cannot be told, or what it has cannot be read, the connection is refused with the
+  // check that failed (and whether it may be tried again, which is the provider's word).
+  private async fieldsToSubscribe(owner: string, token: string): Promise<string> {
+    const appId = await this.appIdOf(token)
+    let answer: unknown
+    try {
+      answer = await this.meta.get({
+        origin: this.origin,
+        path: [owner, MetaMessaging.EDGE_SUBSCRIBED_APPS],
+        token,
+        schema: z.unknown()
+      })
+    } catch (error) {
+      throw withCheck(error, PluginChecks.SUBSCRIPTION_READ_FAILED)
+    }
+    const current = readSubscribedFields(answer, appId)
+    if (current === null) {
+      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+        retryable: false,
+        failedCheck: PluginChecks.SUBSCRIPTION_SHAPE_INVALID
+      })
+    }
+    return mergeSubscribedFields(current, this.subscribedFields)
+  }
+
+  // The app the token belongs to (`GET app?fields=id`), to pick its entry among the apps of the node. If
+  // Meta does not answer it for a token like this one, the connection is refused rather than guessing
+  // which entry is ours (IMPLEMENTATION_PLAN, Step 7.3: `META_APP_ID` is the fallback to add then).
+  private async appIdOf(token: string): Promise<string> {
+    try {
+      const { id } = await this.meta.get({
+        origin: this.origin,
+        path: [MetaSubscription.APP_EDGE],
+        token,
+        query: { fields: MetaSubscription.APP_ID_FIELD },
+        schema: appIdSchema
+      })
+      if (!MetaSubscription.APP_ID_PATTERN.test(id)) {
+        throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+      }
+      return id
+    } catch (error) {
+      throw withCheck(error, PluginChecks.SUBSCRIPTION_APP_UNKNOWN)
     }
   }
 
@@ -173,12 +257,11 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // A failure is thrown, not reported: the health service reads a PluginError as the state of the
   // connection (a revoked token is not a Meta outage)
   async healthCheck(ctx: ChannelContext): Promise<ChannelHealth> {
-    const id = this.checkedId(
-      await this.fetchAccountId(
-        parseMetaTokenCredentials(ctx.credentials).accessToken,
-        ctx.connectionId
-      )
+    const account = await this.fetchHealthAccount(
+      parseMetaTokenCredentials(ctx.credentials).accessToken,
+      ctx
     )
+    const id = this.checkedId(account.id)
     // A token of another account would read well and send under the wrong one
     if (id !== ctx.connectionId) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
@@ -186,6 +269,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
         failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
       })
     }
+    this.verifyBinding(account, ctx)
     return { healthy: true, checkedAt: new Date().toISOString() }
   }
 
@@ -250,7 +334,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     // The same reaction twice is the same reaction: the call is safe to repeat
     await this.meta.post({
       origin: this.origin,
-      path: [ctx.connectionId, MetaMessaging.EDGE_MESSAGES],
+      path: [this.sendOwner(ctx), MetaMessaging.EDGE_MESSAGES],
       token: accessToken,
       body: {
         recipient: { id: params.channelIdentity },
@@ -349,7 +433,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
     await this.meta.post({
       origin: this.origin,
-      path: [ctx.connectionId, MetaMessaging.EDGE_MESSAGES],
+      path: [this.sendOwner(ctx), MetaMessaging.EDGE_MESSAGES],
       token: accessToken,
       body: { recipient: { id: recipientId }, sender_action: action },
       idempotent: true,
@@ -365,7 +449,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
     const response = await this.meta.post({
       origin: this.origin,
-      path: [ctx.connectionId, MetaMessaging.EDGE_MESSAGES],
+      path: [this.sendOwner(ctx), MetaMessaging.EDGE_MESSAGES],
       token: accessToken,
       body: { recipient: { id: recipientId }, ...this.sendFields(), ...body },
       schema: sentSchema

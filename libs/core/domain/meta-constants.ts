@@ -29,7 +29,7 @@ export const MetaWebhookApps = {
 export type MetaWebhookApp = (typeof MetaWebhookApps)[keyof typeof MetaWebhookApps]
 
 export const MetaGraph = {
-  // The Graph host: WhatsApp, Messenger and Instagram (unified login) all use it. Instagram Login's
+  // The Graph host: WhatsApp, Messenger and Instagram (with the token of its Page) all use it. Instagram Login's
   // own host, graph.instagram.com, takes another kind of token and is not used. A call names this
   // origin, never a url of its own.
   ORIGIN: 'https://graph.facebook.com',
@@ -112,24 +112,34 @@ export const MetaMessaging = {
   REFERRAL_SOURCE_ADS: 'ADS'
 } as const
 
-// Instagram messaging with the unified login (https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login):
-// graph.facebook.com and the token of a system user of the owner's business, pasted by the owner. The
-// token is not an account: `me` is its system user, and the accounts the owner shared with the app are
-// the edge below it.
+// Instagram messaging through the Messenger Platform with Facebook Login (Meta: "Get started with Instagram
+// Messaging", developers.facebook.com/documentation/business-messaging/instagram-messaging/get-started):
+// graph.facebook.com and the token of the Facebook Page linked to the account, pasted by the owner. The
+// token is the Page's: `me` is the Page, and the account is the one it links. The connection is the
+// account (its id is `entry.id` of the webhooks); the Page is kept in the connection's metadata.
 export const InstagramApi = {
   WEBHOOK_OBJECT: 'instagram',
-  ACCOUNTS_EDGE: 'assigned_instagram_accounts',
-  // The id is the one of the webhooks (`entry.id`) and of every path after it
-  PROFILE_FIELDS: 'id,username',
-  // Graph pages at 25; a business shares far fewer accounts than this with one app
-  ACCOUNTS_PAGE_LIMIT: '100',
+  // `me` with the Page token: the Page and the one Instagram account it links
+  PAGE_ACCOUNT_FIELDS: 'id,instagram_business_account{id,username}',
+  PAGE_ACCOUNT_KEY: 'instagram_business_account',
+  // The Page behind the connection, in `ChannelConnection.metadata`: a token of another Page that
+  // links the same account would otherwise pass as the connection's own
+  METADATA_PAGE_ID: 'pageId',
+  // The subscription belongs to the Page the token is of, and the id of the connection is the
+  // account's, so the Page is addressed as `me`
+  SUBSCRIBE_OWNER: 'me',
+  // NOT VERIFIED against Meta's pages: the send guide of this variant could not be read. `me/messages`
+  // with the Page token is the route Messenger uses and the historic one of Messenger API support for
+  // Instagram. If the real send refuses it, the alternative is `<pageId>/messages` (the id is in the
+  // metadata): this is the one place to change (IMPLEMENTATION_PLAN, Step 7.3, owner's real test).
+  SEND_OWNER: 'me',
   // The customer behind a scoped id (User Profile API); `name` may come back null
   USER_PROFILE_FIELDS: 'name,username,profile_pic',
   // The names of the SUBSCRIPTION, which are not always the names of the webhook event (`messaging_referral`
   // arrives as `referral`, `message_reactions` as `reaction`).
-  // Only what the unified login documents (webhooks/fields: each needs `instagram_manage_messages`).
+  // Only what the Messenger Platform setup documents (webhooks/fields: each needs `instagram_manage_messages`).
   // `messaging_seen` is not subscribed: no parser reads its `read` event yet; `message_edit` is not
-  // either: the unified login does not list it, and a name Meta refuses fails the connection
+  // either: that setup does not list it, and a name Meta refuses fails the connection
   // (IMPLEMENTATION_PLAN, Step 7.3)
   SUBSCRIBED_FIELDS: 'messages,message_reactions,messaging_referral'
 } as const
@@ -178,4 +188,19 @@ export const MetaSubscribableFields = {
     'messaging_postbacks',
     'messaging_referrals'
   ]
+} as const
+
+// The subscription of an app to the webhooks of a Page (`<page>/subscribed_apps`). One POST sets the
+// fields of the app on that Page and Messenger and Instagram share the Page, so a connection reads
+// what the app already has and posts the union (Meta does not say whether a POST replaces or adds).
+export const MetaSubscription = {
+  // `GET app?fields=id` with the token: the app the token belongs to
+  APP_EDGE: 'app',
+  APP_ID_FIELD: 'id',
+  // A field name that goes back to Meta in a URL: lowercase words, digits and underscores
+  FIELD_NAME_PATTERN: /^[a-z][a-z0-9_]{0,63}$/,
+  // The id of an app, as the Graph writes it
+  APP_ID_PATTERN: /^\d{1,32}$/,
+  // No Page has near this many fields; a longer list is not what Meta answers
+  MAX_FIELDS: 64
 } as const

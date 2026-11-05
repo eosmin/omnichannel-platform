@@ -16,12 +16,14 @@ import { InstagramPlugin } from './instagram.plugin'
 const sendsByLink = (): Promise<NodeJS.ReadableStream> =>
   Promise.reject(new Error('this channel sends by link'))
 
-const credentials = { accessToken: 'SUAT-token' }
+const credentials = { accessToken: 'PAGE-token' }
+const PAGE = '110000000000001'
+const ACCOUNT = '17841400000000001'
 const ctx: ChannelContext = {
   storeId: 's',
-  connectionId: '17841400000000001',
+  connectionId: ACCOUNT,
   credentials,
-  metadata: {}
+  metadata: { pageId: PAGE }
 }
 const key = { idempotencyKey: 'k' }
 
@@ -33,11 +35,36 @@ interface GraphCall {
   query?: Record<string, string>
 }
 
-const ACCOUNT = '17841400000000001'
+// What `me` answers with the token of a Page: the Page, and the one account it links
+function page(
+  account: unknown = { id: ACCOUNT, username: 'tienda' },
+  id: string = PAGE
+): Record<string, unknown> {
+  return { id, instagram_business_account: account }
+}
 
-// What `me/assigned_instagram_accounts` answers: the accounts the owner shared with the app
-function accounts(...list: { id: string; username: string }[]): { data: typeof list } {
-  return { data: list }
+// A Page that links no account: Meta leaves the field out
+function pageWithoutAccount(): Record<string, unknown> {
+  return { id: PAGE }
+}
+
+const APP = '1804256354142951'
+
+// What a connect reads: the Page of the token, then the app of the token and what that app has on the
+// Page (nothing yet), whatever order the reads come in
+function connectReads(
+  get: jest.Mock<Promise<unknown>, [GraphCall]>,
+  me: Record<string, unknown> = page()
+): void {
+  get.mockImplementation(request =>
+    Promise.resolve(
+      request.path?.[0] === 'app'
+        ? { id: APP }
+        : request.path?.[1] === 'subscribed_apps'
+          ? { data: [] }
+          : me
+    )
+  )
 }
 
 // The names Meta accepts for the object `instagram`, the same list the connect spec refuses by
@@ -53,9 +80,10 @@ const graphError = (status: number, code: number): Response =>
   json(status, { error: { code, type: 'OAuthException', message: 'x' } })
 
 // A Graph that is as strict as the real one for what this plugin calls, and no kinder: only
-// Facebook's host, only the routes of the unified login, only field names of the reference, and the
+// Facebook's host, only the routes of the Page token, only field names of the reference, and the
 // token of the pair. Whatever else is asked is recorded in `rejected` and answered with an error.
-function strictGraph(options: { token: string }): {
+// `me` answers as the Page `options.me` says.
+function strictGraph(options: { token: string; me?: Record<string, unknown> }): {
   requests: string[]
   calls: string[]
   rejected: string[]
@@ -66,6 +94,7 @@ function strictGraph(options: { token: string }): {
   const calls: string[] = []
   const rejected: string[] = []
   const bodies: unknown[] = []
+  const me = options.me ?? page()
   const spy = jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const url = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -78,27 +107,34 @@ function strictGraph(options: { token: string }): {
       return graphError(400, 100)
     }
     if (url.origin !== 'https://graph.facebook.com') return Promise.resolve(refuse())
+    // The token travels in the header, never in the URL
+    if (url.searchParams.has('access_token')) return Promise.resolve(refuse())
     const bearer = new Headers(init?.headers).get('authorization')
     if (bearer !== `Bearer ${options.token}`) return Promise.resolve(graphError(401, 190))
     const route = url.pathname.replace(/^\/v\d+\.\d+\//, '')
 
-    if (method === 'GET' && route === 'me/assigned_instagram_accounts') {
-      if (
-        url.searchParams.get('fields') !== 'id,username' ||
-        url.searchParams.get('limit') !== '100'
-      ) {
+    if (method === 'GET' && route === 'me') {
+      if (url.searchParams.get('fields') !== 'id,instagram_business_account{id,username}') {
         return Promise.resolve(refuse())
       }
       calls.push(line)
-      return Promise.resolve(json(200, accounts({ id: ACCOUNT, username: 'tienda' })))
+      return Promise.resolve(json(200, me))
     }
-    if (method === 'POST' && route === `${ACCOUNT}/subscribed_apps`) {
+    if (method === 'GET' && route === 'app') {
+      calls.push(line)
+      return Promise.resolve(json(200, { id: APP }))
+    }
+    if (method === 'GET' && route === 'me/subscribed_apps') {
+      calls.push(line)
+      return Promise.resolve(json(200, { data: [] }))
+    }
+    if (method === 'POST' && route === 'me/subscribed_apps') {
       const fields = (url.searchParams.get('subscribed_fields') ?? '').split(',')
       if (fields.some(field => !VALID_FIELDS.has(field))) return Promise.resolve(refuse())
       calls.push(line)
       return Promise.resolve(json(200, { success: true }))
     }
-    if (method === 'POST' && route === `${ACCOUNT}/messages`) {
+    if (method === 'POST' && route === 'me/messages') {
       const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
         recipient?: { id?: string }
         message?: { text?: string }
@@ -178,7 +214,7 @@ describe('InstagramPlugin', () => {
   describe('connect', () => {
     it('subscribes only to names the Instagram API accepts, as Meta does (error 100 otherwise)', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
+      connectReads(get)
       post.mockImplementation(request => {
         const unknown = (request.query?.subscribed_fields ?? '')
           .split(',')
@@ -189,11 +225,11 @@ describe('InstagramPlugin', () => {
       })
 
       await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
-        connectionId: '17841400000000001'
+        connectionId: ACCOUNT
       })
     })
 
-    it('subscribes to exactly the fields the unified login documents, and not to message_edit', () => {
+    it('subscribes to exactly the fields the Messenger Platform setup documents, and not to message_edit', () => {
       expect(InstagramApi.SUBSCRIBED_FIELDS.split(',')).toEqual([
         'messages',
         'message_reactions',
@@ -205,35 +241,26 @@ describe('InstagramPlugin', () => {
 
     it('trims the spaces and line breaks around a pasted token', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
+      connectReads(get)
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({
         storeId: 's',
-        credentials: { accessToken: '  SUAT-token\n' }
+        credentials: { accessToken: '  PAGE-token\n' }
       })
 
-      expect(get.mock.calls[0]?.[0]).toMatchObject({ token: 'SUAT-token' })
-      expect(result.credentials).toEqual({ accessToken: 'SUAT-token' })
+      expect(get.mock.calls[0]?.[0]).toMatchObject({ token: 'PAGE-token' })
+      expect(result.credentials).toEqual({ accessToken: 'PAGE-token' })
     })
 
     it('names the check that refused when the subscription is not confirmed', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
+      connectReads(get)
       post.mockResolvedValue({ success: false })
 
       await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
         code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
         failedCheck: PluginChecks.SUBSCRIPTION_NOT_CONFIRMED
-      })
-    })
-
-    it('names the check that refused when the account id is not digits', async () => {
-      const { plugin, get } = build()
-      get.mockResolvedValue(accounts({ id: 'me/accounts', username: 'tienda' }))
-
-      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
-        failedCheck: PluginChecks.ACCOUNT_ID_NOT_NUMERIC
       })
     })
 
@@ -245,50 +272,70 @@ describe('InstagramPlugin', () => {
       ).rejects.toMatchObject({ failedCheck: PluginChecks.CREDENTIALS_SHAPE })
     })
 
-    it("reads the account of the token from Facebook's host and subscribes the app to it", async () => {
+    it('reads the Page and its account with the token, and subscribes the app on `me`', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
+      connectReads(get)
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({ storeId: 's', credentials })
 
-      // `me` is the system user of the token, not the account: the accounts are one edge below it
+      // `me` is the Page of the token; the account is the field below it
       expect(get.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
-        path: ['me', 'assigned_instagram_accounts'],
-        token: 'SUAT-token',
-        query: { fields: 'id,username', limit: '100' }
+        path: ['me'],
+        token: 'PAGE-token',
+        query: { fields: 'id,instagram_business_account{id,username}' }
       })
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
-        path: ['17841400000000001', 'subscribed_apps'],
+        path: ['me', 'subscribed_apps'],
         query: { subscribed_fields: 'messages,message_reactions,messaging_referral' },
         idempotent: true
       })
+      // The connection is the account (entry.id of the webhooks); the Page is kept beside it
       expect(result).toEqual({
-        connectionId: '17841400000000001',
+        connectionId: ACCOUNT,
         displayName: 'tienda',
         credentials,
-        metadata: {}
+        metadata: { pageId: PAGE }
       })
     })
 
     it.each([
-      ['no account at all', { data: [] }, PluginChecks.ACCOUNT_NOT_FOUND],
+      ['a Page that links no account', pageWithoutAccount(), PluginChecks.ACCOUNT_NOT_FOUND],
+      ['an account that is null', page(null), PluginChecks.ACCOUNT_NOT_FOUND],
       [
-        'more than one account: the connection is one account, and the owner picks it by the token',
-        accounts({ id: '1', username: 'a' }, { id: '2', username: 'b' }),
-        PluginChecks.ACCOUNT_AMBIGUOUS
+        'an account that is an id and nothing else',
+        page({ id: ACCOUNT }),
+        PluginChecks.ACCOUNT_SHAPE_INVALID
       ],
       [
-        'an id that is not digits',
-        accounts({ id: '../x', username: 'tienda' }),
+        'a list of accounts, which a Page does not answer with',
+        page([
+          { id: '1', username: 'a' },
+          { id: '2', username: 'b' }
+        ]),
+        PluginChecks.ACCOUNT_SHAPE_INVALID
+      ],
+      [
+        'an account whose id is a number: 17 digits do not fit one exactly',
+        page({ id: Number(ACCOUNT), username: 'tienda' }),
+        PluginChecks.ACCOUNT_SHAPE_INVALID
+      ],
+      [
+        'an account id that is not digits',
+        page({ id: '../x', username: 'tienda' }),
         PluginChecks.ACCOUNT_ID_NOT_NUMERIC
       ],
       [
-        'the one account with no username',
-        { data: [{ id: '1' }] },
-        PluginChecks.ACCOUNT_SHAPE_INVALID
+        'a Page id that is not digits',
+        page({ id: ACCOUNT, username: 'tienda' }, '../x'),
+        PluginChecks.PAGE_ID_NOT_NUMERIC
+      ],
+      [
+        'a Page id that is not digits, whatever the account looks like',
+        page({ id: '1' }, '../x'),
+        PluginChecks.PAGE_ID_NOT_NUMERIC
       ]
     ])('refuses %s, naming the check, and subscribes nothing', async (_name, answer, check) => {
       const { plugin, get, post } = build()
@@ -302,28 +349,12 @@ describe('InstagramPlugin', () => {
       expect(post).not.toHaveBeenCalled()
     })
 
-    it('refuses an id that arrives as a number: 17 digits do not fit one exactly', async () => {
-      // Through the real client, which is the one that checks what Meta answers
-      const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response('{"data":[{"id":17841400000000001,"username":"tienda"}]}', {
-          headers: { 'content-type': 'application/json' }
-        })
-      )
-      const real = buildReal()
-
-      await expect(real.connect({ storeId: 's', credentials })).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
-      })
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      fetchMock.mockRestore()
-    })
-
-    it('treats the answer of the old login, which is not a list of accounts, as an unexpected answer', async () => {
-      const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response('{"user_id":"1","username":"tienda"}', {
-          headers: { 'content-type': 'application/json' }
-        })
-      )
+    it('treats an answer that is not a Page, as an unexpected answer, through the real client', async () => {
+      const fetchMock = jest
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response('{"data":[]}', { headers: { 'content-type': 'application/json' } })
+        )
       const real = buildReal()
 
       await expect(real.connect({ storeId: 's', credentials })).rejects.toMatchObject({
@@ -331,17 +362,6 @@ describe('InstagramPlugin', () => {
       })
       expect(fetchMock).toHaveBeenCalledTimes(1)
       fetchMock.mockRestore()
-    })
-
-    it('refuses a subscription Meta did not make', async () => {
-      const { plugin, get, post } = build()
-      get.mockResolvedValue(accounts({ id: '1', username: 'tienda' }))
-      post.mockResolvedValue({ success: false })
-
-      await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
-        retryable: false
-      })
     })
 
     it.each([[{}], [{ accessToken: '' }], [{ accessToken: 5 }]])(
@@ -358,127 +378,179 @@ describe('InstagramPlugin', () => {
   })
 
   describe('health', () => {
-    it('reports a healthy connection when the token still reaches the account', async () => {
+    it('reports a healthy connection when the token is still of the same Page and account', async () => {
       const { plugin, get } = build()
-      get.mockResolvedValue(accounts({ id: ctx.connectionId, username: 'tienda' }))
+      get.mockResolvedValue(page())
       await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
     })
 
-    it('finds its account among several: a token that gained one later is not a broken one', async () => {
+    it('does not call healthy a token of another Page that links the same account', async () => {
       const { plugin, get } = build()
-      get.mockResolvedValue(
-        accounts({ id: '999', username: 'otra' }, { id: ctx.connectionId, username: 'tienda' })
-      )
-      await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
-    })
-
-    it('does not let an account that is not its own, and is badly shaped, break its health', async () => {
-      const { plugin, get } = build()
-      get.mockResolvedValue({
-        data: [{ id: '999' }, { id: ctx.connectionId, username: 'tienda' }, 'junk']
-      })
-      await expect(plugin.healthCheck(ctx)).resolves.toMatchObject({ healthy: true })
-    })
-
-    it('does not call healthy a token that belongs to another account', async () => {
-      const { plugin, get } = build()
-      get.mockResolvedValue(accounts({ id: '999', username: 'otra' }))
+      get.mockResolvedValue(page({ id: ACCOUNT, username: 'tienda' }, '110000000000002'))
       await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
         code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
         retryable: false,
+        failedCheck: PluginChecks.PAGE_ID_MISMATCH
+      })
+    })
+
+    it('does not call healthy a token of the same Page that now links another account', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(page({ id: '17841400000000999', username: 'otra' }))
+      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        failedCheck: PluginChecks.ACCOUNT_ID_MISMATCH
+      })
+    })
+
+    it('does not call healthy a connection that has no Page on record', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(page())
+      await expect(plugin.healthCheck({ ...ctx, metadata: {} })).rejects.toMatchObject({
+        failedCheck: PluginChecks.PAGE_ID_MISMATCH
+      })
+    })
+
+    it('says so when the Page no longer links an account', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue(pageWithoutAccount())
+      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
         failedCheck: PluginChecks.ACCOUNT_NOT_FOUND
       })
     })
 
-    it('checks the id of the account when the health is checked too', async () => {
-      const { plugin, get } = build()
-      get.mockResolvedValue(accounts({ id: '../x', username: 'tienda' }))
-      await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
-      })
-    })
-
-    it('tells a legacy token to reconnect, through the real client and a strict Graph', async () => {
-      // A token of Instagram Login is not a token of Facebook's host: Meta answers 190
-      const graph = strictGraph({ token: 'SUAT-ok' })
+    it('tells a revoked token to reconnect (error 190), through the real client and a strict Graph', async () => {
+      const graph = strictGraph({ token: 'PAGE-ok' })
       const real = buildReal()
 
       await expect(
-        real.healthCheck({ ...ctx, credentials: { accessToken: 'IGAA-legacy' } })
-      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID, retryable: false })
-      // The call was made, to Facebook's host and the route of the accounts, and Meta refused the token
+        real.healthCheck({ ...ctx, credentials: { accessToken: 'PAGE-revoked' } })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        retryable: false,
+        providerCode: 190
+      })
+      // The call was made, to Facebook's host and the route of the Page, and Meta refused the token
       expect(graph.requests).toEqual([
-        'GET https://graph.facebook.com/v23.0/me/assigned_instagram_accounts?fields=id%2Cusername&limit=100'
+        'GET https://graph.facebook.com/v23.0/me?fields=id%2Cinstagram_business_account%7Bid%2Cusername%7D'
       ])
       expect(graph.rejected).toEqual([])
       graph.restore()
     })
 
     it('reports healthy through the real client and a strict Graph', async () => {
-      const graph = strictGraph({ token: 'SUAT-ok' })
+      const graph = strictGraph({ token: 'PAGE-ok' })
 
       await expect(
-        buildReal().healthCheck({
-          ...ctx,
-          connectionId: ACCOUNT,
-          credentials: { accessToken: 'SUAT-ok' }
-        })
+        buildReal().healthCheck({ ...ctx, credentials: { accessToken: 'PAGE-ok' } })
       ).resolves.toMatchObject({ healthy: true })
       expect(graph.rejected).toEqual([])
       expect(graph.requests).toHaveLength(1)
       graph.restore()
     })
+
+    it('refuses, through the real client, a token of another Page', async () => {
+      const graph = strictGraph({
+        token: 'PAGE-ok',
+        me: page({ id: ACCOUNT, username: 'tienda' }, '110000000000002')
+      })
+
+      await expect(
+        buildReal().healthCheck({ ...ctx, credentials: { accessToken: 'PAGE-ok' } })
+      ).rejects.toMatchObject({ failedCheck: PluginChecks.PAGE_ID_MISMATCH })
+      graph.restore()
+    })
   })
 
   describe('against a strict Graph', () => {
-    // VALID_FIELDS is `MetaSubscribableFields.INSTAGRAM`; the routes are the ones of the unified login
-    // pages (webhooks/setup, get-started step 6).
+    // VALID_FIELDS is `MetaSubscribableFields.INSTAGRAM`; the routes are the ones of the Page token
+    // (get-started steps 2 to 5, webhooks/setup).
     // The fake answers like Meta: a wrong host, a wrong route or a field that does not exist is an
     // error, never a success, so a name that is wrong cannot pass the test
-    it('connects with the routes, host and field names of the unified login', async () => {
-      const graph = strictGraph({ token: 'SUAT-ok' })
+    it('connects with the routes, host and field names of the Page token', async () => {
+      const graph = strictGraph({ token: 'PAGE-ok' })
       const real = buildReal()
 
       await expect(
-        real.connect({ storeId: 's', credentials: { accessToken: 'SUAT-ok' } })
-      ).resolves.toMatchObject({ connectionId: ACCOUNT, displayName: 'tienda' })
+        real.connect({ storeId: 's', credentials: { accessToken: 'PAGE-ok' } })
+      ).resolves.toMatchObject({
+        connectionId: ACCOUNT,
+        displayName: 'tienda',
+        metadata: { pageId: PAGE }
+      })
       expect(graph.rejected).toEqual([])
       expect(graph.calls).toEqual([
-        `GET https://graph.facebook.com/v23.0/me/assigned_instagram_accounts?fields=id%2Cusername&limit=100`,
-        `POST https://graph.facebook.com/v23.0/${ACCOUNT}/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referral`
+        'GET https://graph.facebook.com/v23.0/me?fields=id%2Cinstagram_business_account%7Bid%2Cusername%7D',
+        'GET https://graph.facebook.com/v23.0/app?fields=id',
+        'GET https://graph.facebook.com/v23.0/me/subscribed_apps',
+        'POST https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referral'
       ])
       graph.restore()
     })
 
-    it('sends a text on the route of the account, with the customer in the body', async () => {
-      const graph = strictGraph({ token: 'SUAT-ok' })
+    it('refuses, through the real client, a Page with no account, and subscribes nothing', async () => {
+      const graph = strictGraph({ token: 'PAGE-ok', me: pageWithoutAccount() })
+
+      await expect(
+        buildReal().connect({ storeId: 's', credentials: { accessToken: 'PAGE-ok' } })
+      ).rejects.toMatchObject({ failedCheck: PluginChecks.ACCOUNT_NOT_FOUND })
+      expect(graph.calls).toHaveLength(1)
+      graph.restore()
+    })
+
+    it('never puts the token in a URL, in an error or in what it keeps', async () => {
+      const graph = strictGraph({ token: 'PAGE-ok' })
+      const real = buildReal()
+
+      const connected = await real.connect({
+        storeId: 's',
+        credentials: { accessToken: 'PAGE-ok' }
+      })
+      expect(JSON.stringify(graph.requests)).not.toContain('PAGE-ok')
+      expect(JSON.stringify(connected.metadata)).not.toContain('PAGE-ok')
+      graph.restore()
+
+      const refused = strictGraph({ token: 'PAGE-ok' })
+      const failure = await real
+        .connect({ storeId: 's', credentials: { accessToken: 'PAGE-secret-wrong' } })
+        .catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(PluginError)
+      expect(String(failure)).not.toContain('PAGE-secret-wrong')
+      expect(JSON.stringify(failure)).not.toContain('PAGE-secret-wrong')
+      expect(JSON.stringify(refused.requests)).not.toContain('PAGE-secret-wrong')
+      refused.restore()
+    })
+
+    it('sends a text on `me/messages`, with the customer in the body', async () => {
+      const graph = strictGraph({ token: 'PAGE-ok' })
       const real = buildReal()
 
       await real.sendMessage(
-        { ...ctx, connectionId: ACCOUNT, credentials: { accessToken: 'SUAT-ok' } },
+        { ...ctx, credentials: { accessToken: 'PAGE-ok' } },
         { channelIdentity: '5551234', content: 'Hola', ...key }
       )
 
       expect(graph.rejected).toEqual([])
-      expect(graph.calls).toEqual([`POST https://graph.facebook.com/v23.0/${ACCOUNT}/messages`])
+      expect(graph.calls).toEqual(['POST https://graph.facebook.com/v23.0/me/messages'])
       expect(graph.bodies).toEqual([{ recipient: { id: '5551234' }, message: { text: 'Hola' } }])
       graph.restore()
     })
 
     it.each([
-      ['the host of the old login', 'POST', 'https://graph.instagram.com/v23.0/1/subscribed_apps'],
-      ['a route it does not have', 'GET', 'https://graph.facebook.com/v23.0/me'],
+      ['the host of the old login', 'POST', 'https://graph.instagram.com/v23.0/me/subscribed_apps'],
       [
-        'the accounts without the fields',
+        'the edge of the unified login',
         'GET',
         'https://graph.facebook.com/v23.0/me/assigned_instagram_accounts'
       ],
-      ['a send with no recipient', 'POST', `https://graph.facebook.com/v23.0/${ACCOUNT}/messages`]
+      ['the Page without the fields', 'GET', 'https://graph.facebook.com/v23.0/me'],
+      ['a send by the account id', 'POST', `https://graph.facebook.com/v23.0/${ACCOUNT}/messages`],
+      ['a send with no recipient', 'POST', 'https://graph.facebook.com/v23.0/me/messages']
     ])('is refused by the fake itself: %s', async (_name, method, url) => {
-      const graph = strictGraph({ token: 'SUAT-ok' })
+      const graph = strictGraph({ token: 'PAGE-ok' })
       const response = await fetch(url, {
         method,
-        headers: { authorization: 'Bearer SUAT-ok' },
+        headers: { authorization: 'Bearer PAGE-ok' },
         ...(method === 'POST' ? { body: '{}' } : {})
       })
       expect(response.status).toBe(400)
@@ -487,10 +559,10 @@ describe('InstagramPlugin', () => {
     })
 
     it('would be told by the fake, and so by the test, of a name Meta does not know', async () => {
-      const graph = strictGraph({ token: 'SUAT-ok' })
+      const graph = strictGraph({ token: 'PAGE-ok' })
       const response = await fetch(
-        `https://graph.facebook.com/v23.0/${ACCOUNT}/subscribed_apps?subscribed_fields=messages,messaging_referrals`,
-        { method: 'POST', headers: { authorization: 'Bearer SUAT-ok' } }
+        'https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages,messaging_referrals',
+        { method: 'POST', headers: { authorization: 'Bearer PAGE-ok' } }
       )
       expect(response.status).toBe(400)
       expect(graph.rejected).toHaveLength(1)
@@ -512,7 +584,7 @@ describe('InstagramPlugin', () => {
       expect(get.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
         path: ['17841400000000099'],
-        token: 'SUAT-token',
+        token: 'PAGE-token',
         query: { fields: 'name,username,profile_pic' }
       })
       expect(profile).toEqual({
@@ -576,8 +648,8 @@ describe('InstagramPlugin', () => {
 
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
-        path: ['17841400000000001', 'messages'],
-        token: 'SUAT-token',
+        path: ['me', 'messages'],
+        token: 'PAGE-token',
         body: { recipient: { id: '99' }, message: { text: 'hola' } }
       })
       expect(post.mock.calls[0]?.[0].body).not.toHaveProperty('reply_to')
@@ -732,7 +804,7 @@ describe('InstagramPlugin', () => {
 
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
-        path: ['17841400000000001', 'messages'],
+        path: ['me', 'messages'],
         idempotent: true,
         body: {
           recipient: { id: '99' },
@@ -758,13 +830,13 @@ describe('InstagramPlugin', () => {
 
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
-        path: ['17841400000000001', 'messages'],
+        path: ['me', 'messages'],
         idempotent: true,
         body: { recipient: { id: '99' }, sender_action: 'typing_on' }
       })
       expect(post.mock.calls[1]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
-        path: ['17841400000000001', 'messages'],
+        path: ['me', 'messages'],
         idempotent: true,
         body: { recipient: { id: '99' }, sender_action: 'mark_seen' }
       })

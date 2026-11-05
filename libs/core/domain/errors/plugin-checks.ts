@@ -6,12 +6,21 @@ export const PluginChecks = {
   TOKEN_NOT_HEADER_SAFE: 'token_not_header_safe',
   ACCOUNT_ID_NOT_NUMERIC: 'account_id_not_numeric',
   ACCOUNT_ID_MISMATCH: 'account_id_mismatch',
-  // Instagram, unified login: the token reaches no account (or not the connection's own), or several
-  // for a new connection, or the account it names is not shaped as Meta documents
+  // Instagram, token of a Page: the Page links no account, or the account it names is not shaped as
+  // Meta documents
   ACCOUNT_NOT_FOUND: 'account_not_found',
-  ACCOUNT_AMBIGUOUS: 'account_ambiguous',
   ACCOUNT_SHAPE_INVALID: 'account_shape_invalid',
-  SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed'
+  // The id of the Page the token is of is not digits
+  PAGE_ID_NOT_NUMERIC: 'page_id_not_numeric',
+  // The token is not of the Page recorded for the connection, or none is recorded
+  PAGE_ID_MISMATCH: 'page_id_mismatch',
+  SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
+  // The subscription is merged with the one the app already has on the Page: the read of it failed, its
+  // answer is not shaped as Meta documents, or the app of the token cannot be told. Nothing is
+  // subscribed blind.
+  SUBSCRIPTION_READ_FAILED: 'subscription_read_failed',
+  SUBSCRIPTION_SHAPE_INVALID: 'subscription_shape_invalid',
+  SUBSCRIPTION_APP_UNKNOWN: 'subscription_app_unknown'
 } as const
 
 export type PluginCheck = (typeof PluginChecks)[keyof typeof PluginChecks]
