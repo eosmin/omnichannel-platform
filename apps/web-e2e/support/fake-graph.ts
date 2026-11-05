@@ -15,6 +15,16 @@ export const FAKE_PHONE_NUMBER_ID = '100000000000001'
 export const FAKE_BUSINESS_ACCOUNT_ID = '100000000000002'
 export const FAKE_ACCESS_TOKEN = 'e2e-access-token'
 
+// The Page of a Messenger connection: the token that Meta accepts, one that it refuses, and the name
+export const FAKE_PAGE_ID = '109000000000001'
+export const FAKE_PAGE_TOKEN = 'e2e-page-token'
+export const FAKE_REJECTED_TOKEN = 'e2e-rejected-token'
+// A token for which Meta answers with its throttle code (4): the page is asked to wait
+export const FAKE_BUSY_TOKEN = 'e2e-busy-token'
+// The app of the token (`GET app?fields=id`), whose entry is picked among the apps of the Page
+export const FAKE_APP_ID = '1804256354142951'
+export const FAKE_PAGE_NAME = 'E2E Page'
+
 export const TEMPLATE_NAME = 'order_update'
 export const TEMPLATE_LANGUAGE = 'en_US'
 export const TEMPLATE_BODY = 'Hello {{1}}, your order {{2}} is on its way.'
@@ -107,6 +117,47 @@ export async function startFakeGraph(): Promise<FakeGraph> {
           authorization: request.headers.authorization
         })
         reply(response, HttpStatusCodes.OK, { messages: [{ id: `wamid.e2e-${sent.length}` }] })
+        return
+      }
+      // Connecting a Messenger Page: its id and name by `me`, and the subscription of the app to it. Any
+      // token but the good one is refused with Meta's code 190, as an invalid or expired one is.
+      const bearer = request.headers.authorization
+      if (request.method === 'GET' && id === 'me') {
+        if (bearer === `Bearer ${FAKE_PAGE_TOKEN}`) {
+          reply(response, HttpStatusCodes.OK, { id: FAKE_PAGE_ID, name: FAKE_PAGE_NAME })
+        } else if (bearer === `Bearer ${FAKE_BUSY_TOKEN}`) {
+          reply(response, HttpStatusCodes.BAD_REQUEST, {
+            error: { message: 'Application request limit reached', type: 'OAuthException', code: 4 }
+          })
+        } else {
+          reply(response, HttpStatusCodes.BAD_REQUEST, {
+            error: { message: 'Invalid OAuth access token.', type: 'OAuthException', code: 190 }
+          })
+        }
+        return
+      }
+      // What the plugin reads before it subscribes (nothing is subscribed blind): the app of the token, and
+      // the apps that already have fields on the Page (none here)
+      if (request.method === 'GET' && id === 'app' && bearer === `Bearer ${FAKE_PAGE_TOKEN}`) {
+        reply(response, HttpStatusCodes.OK, { id: FAKE_APP_ID })
+        return
+      }
+      if (
+        request.method === 'GET' &&
+        id === FAKE_PAGE_ID &&
+        edge === 'subscribed_apps' &&
+        bearer === `Bearer ${FAKE_PAGE_TOKEN}`
+      ) {
+        reply(response, HttpStatusCodes.OK, { data: [] })
+        return
+      }
+      if (
+        request.method === 'POST' &&
+        id === FAKE_PAGE_ID &&
+        edge === 'subscribed_apps' &&
+        bearer === `Bearer ${FAKE_PAGE_TOKEN}`
+      ) {
+        reply(response, HttpStatusCodes.OK, { success: true })
         return
       }
       reply(response, HttpStatusCodes.NOT_FOUND, { error: { message: 'not served', code: 100 } })

@@ -14,7 +14,11 @@ export default defineConfig({
   reporter: isCi
     ? [['github'], ['html', { open: 'never', outputFolder: './playwright-report' }]]
     : 'list',
-  use: { baseURL: WEB_URL, trace: 'on-first-retry', storageState: englishLocale },
+  use: {
+    baseURL: WEB_URL,
+    trace: isCi ? 'retain-on-failure' : 'on-first-retry',
+    storageState: englishLocale
+  },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer
 })

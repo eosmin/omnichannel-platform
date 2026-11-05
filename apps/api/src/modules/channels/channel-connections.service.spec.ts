@@ -1,6 +1,7 @@
 import type { PinoLogger } from 'nestjs-pino'
 
-import { ErrorCodes, PluginChecks } from '@platform/core/errors'
+import { ProviderTimeoutError } from '@platform/channels/connections'
+import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
 import { ChannelConnectionsService } from './channel-connections.service'
@@ -13,6 +14,7 @@ jest.mock('@platform/channels/connections', () => ({
   ChannelHealthService: class {},
   errorName: (error: unknown) => (error instanceof Error ? error.name : 'unknown'),
   providerText: () => '',
+  ProviderTimeoutError: class ProviderTimeoutError extends Error {},
   withTimeout: <T>(work: Promise<T>) => work
 }))
 
@@ -98,5 +100,49 @@ describe('ChannelConnectionsService.connect, a refused connection', () => {
       errorName: 'TypeError'
     })
     expect(JSON.stringify(warn.mock.calls)).not.toContain(TOKEN)
+  })
+
+  describe('the reason the person reads', () => {
+    const refused = async (failure: Error): Promise<{ metadata?: Record<string, unknown> }> => {
+      const { service } = build(() => Promise.reject(failure))
+      return service
+        .connect(STORE, PLUGIN, { credentials: { accessToken: TOKEN } }, actor)
+        .then(() => ({}))
+        .catch((error: unknown) => error as { metadata?: Record<string, unknown> })
+    }
+
+    it('is the name of the list the plugin gave, and the only thing in the metadata', async () => {
+      const error = await refused(
+        new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+          reason: ChannelConnectFailureReasons.TOKEN_REJECTED,
+          providerCode: 190,
+          providerSubcode: 1
+        })
+      )
+      expect(error.metadata).toEqual({ reason: ChannelConnectFailureReasons.TOKEN_REJECTED })
+    })
+
+    it('is the one of the check that refused', async () => {
+      const error = await refused(
+        new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+          failedCheck: PluginChecks.ACCOUNT_NOT_FOUND
+        })
+      )
+      expect(error.metadata).toEqual({ reason: ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED })
+    })
+
+    it('says the provider is unavailable when the call took longer than it was given', async () => {
+      const error = await refused(new ProviderTimeoutError())
+      expect(error.metadata).toEqual({ reason: ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE })
+    })
+
+    it.each([
+      ['an error that is not of a plugin', new TypeError(`bad ${TOKEN}`)],
+      ['a plugin error with no reason', new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)]
+    ])('says no reason for %s, and nothing of its text', async (_name, failure) => {
+      const error = await refused(failure)
+      expect(error.metadata).toBeUndefined()
+      expect(JSON.stringify(error)).not.toContain(TOKEN)
+    })
   })
 })

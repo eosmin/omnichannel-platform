@@ -1,3 +1,4 @@
+export * from './channel-connect-failures'
 export * from './error-codes'
 export * from './error-factories'
 export * from './error-name'

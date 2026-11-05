@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { MetaErrorCodes, MetaTransientStatuses, WhatsAppErrorCodes } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ChannelConnectFailureReasons, ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
 const graphErrorSchema = z.object({
@@ -53,7 +53,11 @@ export function graphFailure(
     status === HttpStatusCodes.TOO_MANY_REQUESTS ||
     (code !== undefined && isRateLimitCode(code))
   ) {
-    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { ...seen, retryable: true })
+    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+      ...seen,
+      retryable: true,
+      reason: ChannelConnectFailureReasons.PROVIDER_BUSY
+    })
   }
   if (
     status >= HttpStatusCodes.INTERNAL_SERVER_ERROR ||
@@ -63,7 +67,8 @@ export function graphFailure(
     return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
       ...seen,
       retryable: safeToRepeat,
-      outcomeUnknown: !safeToRepeat
+      outcomeUnknown: !safeToRepeat,
+      reason: ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
     })
   }
   // Not a failure of the call: this person has no profile to read, and asking again changes nothing
@@ -82,9 +87,33 @@ export function graphFailure(
     status === HttpStatusCodes.FORBIDDEN ||
     (code !== undefined && isCredentialsCode(code))
   ) {
-    return new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { ...seen, retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+      ...seen,
+      retryable: false,
+      reason: credentialsReasonOf(status, code)
+    })
   }
-  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { ...seen, retryable: false })
+  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+    ...seen,
+    retryable: false,
+    // Meta answers 100 for a field, a permission or a kind of token that it does not take
+    ...(code === MetaErrorCodes.INVALID_PARAMETER
+      ? { reason: ChannelConnectFailureReasons.REQUEST_REJECTED }
+      : {})
+  })
+}
+
+// A token Meta refused (190, or any 401: the status says the token, whatever number goes with it) is one to
+// generate again; a permission it denied (10, 200 to 299, or a 403) is one to grant
+function credentialsReasonOf(
+  status: number,
+  code: number | undefined
+):
+  | typeof ChannelConnectFailureReasons.TOKEN_REJECTED
+  | typeof ChannelConnectFailureReasons.PERMISSION_MISSING {
+  return code === MetaErrorCodes.INVALID_TOKEN || status === HttpStatusCodes.UNAUTHORIZED
+    ? ChannelConnectFailureReasons.TOKEN_REJECTED
+    : ChannelConnectFailureReasons.PERMISSION_MISSING
 }
 
 // The call got no answer (network, timeout). For a call that is safe to repeat that is worth another
@@ -94,13 +123,17 @@ export function graphUnreachable(
 ): PluginError {
   return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
     retryable: safeToRepeat,
-    outcomeUnknown: !safeToRepeat
+    outcomeUnknown: !safeToRepeat,
+    reason: ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
   })
 }
 
 // Meta answered something that is not what its API says: the same call would answer the same
 export function graphUnexpected(): PluginError {
-  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+  return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+    retryable: false,
+    reason: ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
+  })
 }
 
 // The file behind a media url failed. The url is short-lived, so a 401, 403, 404 or 410 says the url

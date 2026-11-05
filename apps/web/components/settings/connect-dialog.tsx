@@ -1,10 +1,11 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useId, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { PluginCatalogEntryView } from '../../lib/settings/channels-requests'
+import { connectFailureReasonOf, isTokenFailure } from '../../lib/settings/connect-failure'
 import {
   ChannelMessagePrefix,
   type ConnectValues,
@@ -13,7 +14,6 @@ import {
   missingFields
 } from '../../lib/settings/connect-form'
 import { useConnect } from '../../lib/settings/use-channels'
-import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -29,6 +29,7 @@ import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
 import { CallbackUrl } from './callback-url'
+import { ConnectError } from './connect-error'
 
 // Connect a channel (TDD_09 §13, TDD_10 §10): the form is what the plugin asks for, nothing here knows
 // a channel by name. A secret is typed in a masked field and is never shown again; the plugin checks
@@ -72,6 +73,17 @@ function ConnectForm({
   const fields = plugin.channel?.connectFields ?? []
   const [values, setValues] = useState<ConnectValues>(() => emptyValues(fields))
   const canSubmit = missingFields(fields, values).length === 0 && !connect.isPending
+  // When the refusal is about the token (not the account, not Meta being away), the person is taken back to
+  // the field to paste another, and the field says it is the one that failed
+  const tokenKey = fields.find(field => field.secret)?.key
+  const tokenInput = useRef<HTMLInputElement>(null)
+  const tokenFailed = isTokenFailure(connectFailureReasonOf(connect.error))
+  // Once for each failure (a new error object), not for each submit: someone who retries from the button is
+  // not pulled away while the request runs
+  useEffect(() => {
+    if (tokenFailed) tokenInput.current?.focus()
+  }, [tokenFailed, connect.error])
+  const errorId = `${idPrefix}-connect-error`
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -118,6 +130,9 @@ function ConnectForm({
             ) : (
               <Input
                 id={id}
+                ref={field.key === tokenKey ? tokenInput : undefined}
+                aria-invalid={field.key === tokenKey && tokenFailed ? true : undefined}
+                aria-describedby={field.key === tokenKey && tokenFailed ? errorId : undefined}
                 // A token or a password: masked (a secret is always one line, so it can always be masked), and the browser is told not to keep it
                 type={field.secret ? 'password' : 'text'}
                 // `off` is ignored for a password field: this one is not offered for saving
@@ -138,7 +153,7 @@ function ConnectForm({
       {plugin.channel?.callbackUrl != null ? (
         <CallbackUrl url={plugin.channel.callbackUrl} />
       ) : null}
-      <MutationError error={connect.error} />
+      <ConnectError error={connect.error} id={errorId} />
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose} disabled={connect.isPending}>
           {tAll('common.cancel')}

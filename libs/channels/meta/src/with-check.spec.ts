@@ -1,4 +1,4 @@
-import { ErrorCodes, PluginChecks } from '@platform/core/errors'
+import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
 import { withCheck } from './with-check'
@@ -52,5 +52,24 @@ describe('withCheck', () => {
     expect(named.outcomeUnknown).toBe(false)
     expect(named.providerCode).toBeUndefined()
     expect(named.providerSubcode).toBeUndefined()
+  })
+
+  it('keeps the reason the provider failure came with, which is more exact than the one of the check', () => {
+    const original = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+      retryable: false,
+      providerCode: 190,
+      reason: ChannelConnectFailureReasons.TOKEN_REJECTED
+    })
+    const named = withCheck(original, PluginChecks.SUBSCRIPTION_READ_FAILED) as PluginError
+    expect(named.reason).toBe(ChannelConnectFailureReasons.TOKEN_REJECTED)
+    expect(named.failedCheck).toBe(PluginChecks.SUBSCRIPTION_READ_FAILED)
+  })
+
+  it('gives the reason of the check when the failure had none', () => {
+    const named = withCheck(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED),
+      PluginChecks.SUBSCRIPTION_READ_FAILED
+    ) as PluginError
+    expect(named.reason).toBe(ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE)
   })
 })

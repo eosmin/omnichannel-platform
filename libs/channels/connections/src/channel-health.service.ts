@@ -7,11 +7,12 @@ import {
   ChannelConnectionStatus,
   ChannelHealthErrors,
   ChannelHealthLimits,
+  healthErrorOfReason,
   OfActiveInstallation
 } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
-import type { ChannelPlugin } from '@platform/plugins/sdk'
+import { type ChannelPlugin, connectFailureReasonOf } from '@platform/plugins/sdk'
 
 import {
   CONNECTION_ROW_SELECT,
@@ -82,7 +83,8 @@ export class ChannelHealthService {
         { pluginId: row.pluginId, connection: row.id, errorName: errorName(error) },
         'health check failed'
       )
-      return { healthy: false, error: ChannelHealthErrors.CHECK_FAILED }
+      // What the owner can fix is said as a name of a closed list (never the text of the failure)
+      return { healthy: false, error: healthErrorOfReason(connectFailureReasonOf(error)) }
     }
   }
 

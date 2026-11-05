@@ -2,7 +2,9 @@ import {
   CHANNEL_ID_PATTERN,
   channelIdSchema,
   ChannelIds,
+  ChannelHealthErrors,
   ChannelType,
+  healthErrorOfReason,
   isOfficialChannelId,
   officialChannelSchema
 } from './channel-ids'
@@ -47,5 +49,19 @@ describe('channel ids', () => {
   it('officialChannelSchema takes the official ids only', () => {
     expect(officialChannelSchema.safeParse('whatsapp').success).toBe(true)
     expect(officialChannelSchema.safeParse('telegram').success).toBe(false)
+  })
+})
+
+describe('healthErrorOfReason', () => {
+  it('keeps what the owner can fix as a verdict, and the plain failure for the rest', () => {
+    expect(healthErrorOfReason('token_rejected')).toBe(ChannelHealthErrors.TOKEN_REJECTED)
+    expect(healthErrorOfReason('provider_busy')).toBe(ChannelHealthErrors.CHECK_FAILED)
+    expect(healthErrorOfReason(undefined)).toBe(ChannelHealthErrors.CHECK_FAILED)
+  })
+
+  it('never throws for a name it does not know: it is called from the catch of a health check', () => {
+    expect(healthErrorOfReason('a_reason_of_a_newer_plugin' as never)).toBe(
+      ChannelHealthErrors.CHECK_FAILED
+    )
   })
 })

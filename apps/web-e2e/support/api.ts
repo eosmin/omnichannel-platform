@@ -132,9 +132,45 @@ const catalogSchema = z.array(
 // For the end of a spec that must leave the shared database as it found it: a store that is not
 // installed is left as it is.
 export async function uninstallWidget(token: string, storeId: string): Promise<void> {
+  await uninstallChannel(token, storeId, ChannelIds.WEB_WIDGET)
+}
+
+// The same for any channel plugin: installing is the Plugins page's step before connecting
+export async function installChannel(
+  token: string,
+  storeId: string,
+  pluginId: string
+): Promise<void> {
+  await call(ApiRoutes.plugins.install, {
+    method: 'POST',
+    headers: storeHeaders(token, storeId),
+    body: JSON.stringify({ pluginId })
+  }).catch((error: unknown) => {
+    // The laptop keeps its database between runs, so the channel may already be installed
+    if (!(error instanceof Error) || !error.message.endsWith(`${HttpStatusCodes.CONFLICT}`)) {
+      throw error
+    }
+  })
+  // A 409 also answers "this plugin cannot be installed yet": the store must hold it at the end
+  const catalog = catalogSchema.parse(
+    await call(ApiRoutes.plugins.available, { headers: storeHeaders(token, storeId) })
+  )
+  const entry = catalog.find(candidate => candidate.id === pluginId)
+  if (entry?.installed !== true) {
+    throw new Error(
+      `${pluginId} is not installed after the install: ${JSON.stringify(entry ?? null)}`
+    )
+  }
+}
+
+export async function uninstallChannel(
+  token: string,
+  storeId: string,
+  pluginId: string
+): Promise<void> {
   const headers = storeHeaders(token, storeId)
   const catalog = catalogSchema.parse(await call(ApiRoutes.plugins.available, { headers }))
-  const installationId = catalog.find(entry => entry.id === ChannelIds.WEB_WIDGET)?.installationId
+  const installationId = catalog.find(entry => entry.id === pluginId)?.installationId
   if (installationId === null || installationId === undefined) return
   await call(ApiRoutes.plugins.revoke(installationId), { method: 'POST', headers })
 }

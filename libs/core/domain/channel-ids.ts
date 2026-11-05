@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+import {
+  type ChannelConnectFailureReason,
+  ChannelConnectFailureReasons
+} from './errors/channel-connect-failures'
 import { MessageType } from './status-enums'
 import { WhatsAppLimits } from './whatsapp-constants'
 import { WidgetLimits } from './widget-constants'
@@ -70,7 +74,16 @@ export const ChannelHealthErrors = {
   // provider is never asked, and only connecting the channel again fixes it
   CREDENTIALS_UNREADABLE: 'credentials_unreadable',
   INVALID_REPORT: 'invalid_report',
-  UNSPECIFIED: 'unspecified'
+  UNSPECIFIED: 'unspecified',
+  // What the plugin says the owner has to fix (see ChannelConnectFailureReasons, same names): the token
+  // no longer works, a permission or task is missing, the token is of another account than the
+  // connected one, or the account is no longer linked
+  TOKEN_REJECTED: 'token_rejected',
+  PERMISSION_MISSING: 'permission_missing',
+  OTHER_ACCOUNT: 'other_account',
+  ACCOUNT_NOT_LINKED: 'account_not_linked',
+  // The provider refuses what it accepted before (often a permission or the link of the Page was taken away)
+  REQUEST_REJECTED: 'request_rejected'
 } as const
 
 // The most text one message may hold on each official channel (TDD_10 §5). `POST /messages` caps at
@@ -131,3 +144,40 @@ export const OutboundLimits = {
   // A typing job that waited longer than this in the queue is dropped: it would show the wrong thing
   TYPING_STALE_MS: 10_000
 } as const
+
+// What `lastError` says for a failure of a plugin that has a reason: only the ones the owner can fix.
+// A busy or unavailable provider, or an answer that was not expected, stays the plain `check_failed`:
+// it is not a verdict about the connection. One case for each reason, so a new one must be placed.
+export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefined): string {
+  switch (reason) {
+    case ChannelConnectFailureReasons.TOKEN_REJECTED:
+      return ChannelHealthErrors.TOKEN_REJECTED
+    case ChannelConnectFailureReasons.PERMISSION_MISSING:
+      return ChannelHealthErrors.PERMISSION_MISSING
+    case ChannelConnectFailureReasons.OTHER_ACCOUNT:
+      return ChannelHealthErrors.OTHER_ACCOUNT
+    case ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED:
+      return ChannelHealthErrors.ACCOUNT_NOT_LINKED
+    case ChannelConnectFailureReasons.REQUEST_REJECTED:
+      return ChannelHealthErrors.REQUEST_REJECTED
+    // A saved credential that no longer reads as a token: only connecting again fixes it
+    case ChannelConnectFailureReasons.TOKEN_MALFORMED:
+      return ChannelHealthErrors.CREDENTIALS_UNREADABLE
+    case undefined:
+    case ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED:
+    case ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED:
+    case ChannelConnectFailureReasons.ACCOUNT_UNREADABLE:
+    case ChannelConnectFailureReasons.SUBSCRIPTION_FAILED:
+    case ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE:
+    case ChannelConnectFailureReasons.PROVIDER_BUSY:
+    case ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE:
+      return ChannelHealthErrors.CHECK_FAILED
+    default: {
+      // The compiler makes a new reason name its case; at run time (a core older than the plugin) it is the
+      // plain failure and never a throw, because the caller is the `catch` of the health check
+      const unhandled: never = reason
+      void unhandled
+      return ChannelHealthErrors.CHECK_FAILED
+    }
+  }
+}

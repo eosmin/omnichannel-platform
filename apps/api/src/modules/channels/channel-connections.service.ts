@@ -6,6 +6,7 @@ import {
   ChannelContextFactory,
   ChannelHealthService,
   errorName,
+  ProviderTimeoutError,
   providerText,
   withTimeout
 } from '@platform/channels/connections'
@@ -31,6 +32,7 @@ import {
   PluginStatus
 } from '@platform/core/domain'
 import {
+  ChannelConnectFailureReasons,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
@@ -45,6 +47,7 @@ import {
   ChannelCapability,
   type ChannelCapabilityType,
   type ChannelPlugin,
+  connectFailureReasonOf,
   pluginFailureLog
 } from '@platform/plugins/sdk'
 
@@ -356,10 +359,20 @@ export class ChannelConnectionsService {
       // Only the name of the error, the numbers of the provider's answer and the name of the local check
       // that refused: never the message, a value or the token (see pluginFailureLog)
       this.logger.warn({ pluginId, storeId, ...pluginFailureLog(error) }, 'connect failed')
+      // The code stays one, so a page older than the server shows its generic message. The reason is a
+      // name of a closed list (never the provider's words, a value or an id) that says what to do; the
+      // page that knows it shows it.
+      // A call that took longer than the time given to it is the provider being slow, not a bad token
+      const reason =
+        connectFailureReasonOf(error) ??
+        (error instanceof ProviderTimeoutError
+          ? ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
+          : undefined)
       throw new PlatformException(
         ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
         'the provider did not accept the connection',
-        HttpStatusCodes.BAD_REQUEST
+        HttpStatusCodes.BAD_REQUEST,
+        reason === undefined ? undefined : { reason }
       )
     }
 

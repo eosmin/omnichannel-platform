@@ -1,9 +1,15 @@
 import {
+  type ChannelConnectFailureReason,
+  connectReasonOfCheck,
+  isChannelConnectFailureReason,
   type ErrorCode,
   type ErrorCodes,
   type PluginCheck,
+  PluginChecks,
   PlatformException
 } from '@platform/core/errors'
+
+const KNOWN_CHECKS: readonly unknown[] = Object.values(PluginChecks)
 
 // The codes a plugin may raise: what a provider can do wrong, never a platform error
 export type PluginErrorCode = Extract<
@@ -36,6 +42,10 @@ export class PluginError extends PlatformException {
   readonly providerSubcode: number | undefined
   // The local check that refused (see PluginChecks), for the logs only: a name, never a value
   readonly failedCheck: PluginCheck | undefined
+  // Why a connection failed, in the closed list of ChannelConnectFailureReasons: the one thing about a
+  // failure that may reach the person, because it is a name that holds no value. Left out, it is the reason
+  // of `failedCheck` when there is one.
+  readonly reason: ChannelConnectFailureReason | undefined
 
   constructor(
     code: PluginErrorCode,
@@ -45,6 +55,7 @@ export class PluginError extends PlatformException {
       providerCode?: number
       providerSubcode?: number
       failedCheck?: PluginCheck
+      reason?: ChannelConnectFailureReason
     } = {}
   ) {
     super(code, `channel plugin failed: ${code}`)
@@ -54,5 +65,13 @@ export class PluginError extends PlatformException {
     this.providerCode = options.providerCode
     this.providerSubcode = options.providerSubcode
     this.failedCheck = options.failedCheck
+    // A check name outside the list (a plugin can be a third party's, and a type does not stop a string) gives
+    // no reason, and never makes the construction fail
+    // A reason outside the list is not kept (it would hide the one of the check), for the same reason
+    this.reason = isChannelConnectFailureReason(options.reason)
+      ? options.reason
+      : options.failedCheck !== undefined && KNOWN_CHECKS.includes(options.failedCheck)
+        ? connectReasonOfCheck(options.failedCheck)
+        : undefined
   }
 }

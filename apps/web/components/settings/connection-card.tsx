@@ -1,6 +1,13 @@
 'use client'
 
-import { CircleAlert, CircleCheck, ChevronDown, ChevronRight, Unplug } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleCheck,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  Unplug
+} from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useId, useState } from 'react'
 import { toast } from 'sonner'
@@ -20,6 +27,7 @@ import type {
   PluginCatalogEntryView
 } from '../../lib/settings/channels-requests'
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
+import { needsNewToken } from '../../lib/settings/health-reconnect'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
 import { useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
@@ -39,11 +47,14 @@ const HEALTH_CODES: readonly string[] = Object.values(ChannelHealthErrors)
 // because its snippet and sites are not something a provider holds.
 export function ConnectionCard({
   connection,
-  plugin
+  plugin,
+  onReconnect
 }: {
   connection: ChannelConnectionView
   // The catalog entry of its plugin; absent while the catalog could not be read
   plugin: PluginCatalogEntryView | undefined
+  // Opens the connect form of the channel again, for the failures that another token fixes
+  onReconnect?: (plugin: PluginCatalogEntryView) => void
 }): ReactElement {
   const t = useTranslations('settings.channels')
   const { can } = useStore()
@@ -70,7 +81,14 @@ export function ConnectionCard({
         <p className="text-muted-foreground text-sm">{t('disconnectedNote')}</p>
       ) : (
         <>
-          <Health connection={connection} />
+          <Health
+            connection={connection}
+            onReconnect={
+              canEdit && plugin !== undefined && onReconnect !== undefined
+                ? () => onReconnect(plugin)
+                : undefined
+            }
+          />
           <ProfileStatus connection={connection} />
           {plugin?.channel?.callbackUrl != null ? (
             <CallbackUrl url={plugin.channel.callbackUrl} />
@@ -124,8 +142,15 @@ function StatusBadge({ status }: { status: string }): ReactElement {
 
 // When it last answered and, if it does not, why. The reasons the platform itself gives are codes; any
 // other text is the provider's, shown as text and nothing else.
-function Health({ connection }: { connection: ChannelConnectionView }): ReactElement {
+function Health({
+  connection,
+  onReconnect
+}: {
+  connection: ChannelConnectionView
+  onReconnect: (() => void) | undefined
+}): ReactElement {
   const t = useTranslations('settings.channels.health')
+  const tChannels = useTranslations('settings.channels')
   const format = useFormatter()
   const error = connection.lastError
   return (
@@ -148,6 +173,18 @@ function Health({ connection }: { connection: ChannelConnectionView }): ReactEle
           {HEALTH_CODES.includes(error) ? t(`errors.${error}` as 'errors.check_failed') : error}
         </p>
       )}
+      {error !== null && onReconnect !== undefined && needsNewToken(error) ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={onReconnect}
+        >
+          <RefreshCw aria-hidden />
+          {tChannels('reconnect')}
+        </Button>
+      ) : null}
     </div>
   )
 }
