@@ -59,6 +59,14 @@ export function connectReasonOfCheck(check: PluginCheck): ChannelConnectFailureR
       return ChannelConnectFailureReasons.OTHER_ACCOUNT
     case PluginChecks.ACCOUNT_NOT_FOUND:
       return ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED
+    // The Page's account could not be read, or the Page could not be subscribed: a token of the Page that
+    // is right, a permission taken away or a hiccup of Meta all look alike here, and the advice is to try
+    // again and then check the token and the permissions. A provider answer that says more (a refused
+    // token, a missing permission, a wait) keeps its own reason.
+    case PluginChecks.ACCOUNT_READ_FAILED:
+      return ChannelConnectFailureReasons.ACCOUNT_UNREADABLE
+    case PluginChecks.SUBSCRIBE_FAILED:
+      return ChannelConnectFailureReasons.SUBSCRIPTION_FAILED
     case PluginChecks.SUBSCRIPTION_NOT_CONFIRMED:
       return ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED
     // The subscription of the Page is read before it is changed: whichever step of that read failed, the

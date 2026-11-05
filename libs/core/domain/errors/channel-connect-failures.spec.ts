@@ -39,6 +39,15 @@ describe('the reasons a channel does not connect', () => {
     }
   })
 
+  it('says the Page account and the Page subscription that failed are things to try again and then check', () => {
+    expect(connectReasonOfCheck(PluginChecks.ACCOUNT_READ_FAILED)).toBe(
+      ChannelConnectFailureReasons.ACCOUNT_UNREADABLE
+    )
+    expect(connectReasonOfCheck(PluginChecks.SUBSCRIBE_FAILED)).toBe(
+      ChannelConnectFailureReasons.SUBSCRIPTION_FAILED
+    )
+  })
+
   it('gives the checks of the Page the reasons the owner can act on', () => {
     expect(connectReasonOfCheck(PluginChecks.PAGE_ID_MISMATCH)).toBe(
       ChannelConnectFailureReasons.OTHER_ACCOUNT
