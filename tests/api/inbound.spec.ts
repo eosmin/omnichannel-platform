@@ -199,6 +199,29 @@ describe('Messages that a channel delivers', () => {
       const response = await anonymousApi(app).get(ApiRoutes.webhooks.channel(TEST_CHANNEL_ID))
 
       expect(response.status).toBe(FORBIDDEN)
+      // The plain text type is for the challenge only: a refusal stays the JSON envelope
+      expect(response.headers['content-type']).toMatch(/^application\/json/)
+      expect((response.body as ErrorBody).error.code).toBe(
+        ErrorCodes.CHANNEL_WEBHOOK_SIGNATURE_INVALID
+      )
+    })
+
+    it('answers the handshake with the challenge as plain text, so a browser never reads it as a page', async () => {
+      app.get(PluginRegistry, { strict: false }).register(
+        buildChannelPlugin({
+          id: 'handshake_channel',
+          verifyWebhook: query => query['hub.challenge'] ?? null
+        })
+      )
+
+      const response = await anonymousApi(app).get(
+        `${ApiRoutes.webhooks.channel('handshake_channel')}?hub.challenge=12345`
+      )
+
+      expect(response.status).toBe(OK)
+      expect(response.text).toBe('12345')
+      expect(response.headers['content-type']).toMatch(/^text\/plain/)
+      expect(response.headers['x-content-type-options']).toBe('nosniff')
     })
 
     it('leaves out an event that a plugin made up, such as a system line, and keeps the rest', async () => {
