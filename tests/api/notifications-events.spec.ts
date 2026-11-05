@@ -546,11 +546,16 @@ describe('Notifications raised by events', () => {
       expect(told).not.toContain(ctx.adminB.id)
       expect(new Set(told).size).toBe(told.length)
       expect(
-        await waitForAuditEntries(owner, {
-          storeId: ctx.storeA.id,
-          action: AuditAction.MEDIA_UNSCANNABLE,
-          resourceId: message.id
-        })
+        // The audit write is fire-and-forget: wait for both rows, not for the first one
+        await waitForAuditEntries(
+          owner,
+          {
+            storeId: ctx.storeA.id,
+            action: AuditAction.MEDIA_UNSCANNABLE,
+            resourceId: message.id
+          },
+          2
+        )
       ).toHaveLength(2)
     })
   })
