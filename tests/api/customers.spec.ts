@@ -126,6 +126,29 @@ describe('The customers of a store', () => {
       }
     })
 
+    it('refuses a name that is not one visible line, however the customer is written', async () => {
+      const customer = await create({ name: 'Una linea' })
+      const names = [
+        'dos\nlineas',
+        'Zero\u200bwidth',
+        'Ana \u202egnirpS',
+        'dos\u2028lineas',
+        'dos\tcolumnas'
+      ]
+
+      for (const name of names) {
+        const attempts = [
+          asAdmin().post(ApiRoutes.customers.list).send({ name }),
+          asAdmin().patch(ApiRoutes.customers.byId(customer.id)).send({ name })
+        ]
+        for (const response of await Promise.all(attempts)) {
+          expect(response.status).toBe(BAD_REQUEST)
+        }
+      }
+      const kept = await asAdmin().get(ApiRoutes.customers.byId(customer.id))
+      expect((kept.body as { name: string }).name).toBe('Una linea')
+    })
+
     it('keeps the e-mail in lower case and clears a field with null', async () => {
       const customer = await create({ name: 'Eva', email: 'Eva@Example.COM', phone: '7000-1119' })
       expect(customer.email).toBe('eva@example.com')

@@ -3,7 +3,7 @@ import {
   type PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { LONE_SURROGATE } from '@platform/core/domain'
+import { cleanName } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 // Postgres LIKE treats _ and % as wildcards, and Prisma's `contains` does not escape them: a search
@@ -33,14 +33,13 @@ export async function lockCustomerForWrite(
 // one, the client otherwise
 export type Db = PrismaService['client']
 
-// Text that a channel sends, made storable: Postgres text cannot hold a NUL character, and the
-// engine of Prisma rejects half of an emoji, which cutting by UTF-16 units can leave. It is cut by
-// characters, and an empty result is no value.
+// Text that a channel sends, made storable: a name it reports is drawn as it comes in the inbox, so it is
+// made one visible line (`cleanName`: breaks and spaces are one space, invisible characters and
+// direction overrides go, the joiners of emoji and Persian stay). Postgres text cannot hold a NUL
+// character, and the engine of Prisma rejects half of an emoji, which cutting by UTF-16 units can leave:
+// it is cut by characters, and a cut that leaves a joiner at the end loses it. An empty result is no value.
 export function cleanText(raw: string | undefined, maxLength: number): string | undefined {
   if (raw === undefined) return undefined
-  const text = Array.from(raw.replaceAll('\0', '').replace(LONE_SURROGATE, '').trim())
-    .slice(0, maxLength)
-    .join('')
-    .trim()
+  const text = cleanName(Array.from(cleanName(raw)).slice(0, maxLength).join(''))
   return text === '' ? undefined : text
 }

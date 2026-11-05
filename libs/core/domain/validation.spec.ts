@@ -1,4 +1,4 @@
-import { httpUrl } from './validation'
+import { httpUrl, singleLineText } from './validation'
 
 const schema = httpUrl(2048)
 
@@ -66,5 +66,36 @@ describe('httpUrl', () => {
 
   it('refuses a link over the limit', () => {
     expect(httpUrl(30).safeParse(`https://example.com/${'a'.repeat(40)}`).success).toBe(false)
+  })
+})
+
+describe('singleLineText', () => {
+  const line = singleLineText(20, 1)
+
+  it('keeps a name with accents, emoji and a joiner, and writes it in NFC', () => {
+    expect(line.parse('  Jose\u0301 👩\u200d👩\u200d👧 ')).toBe('José 👩\u200d👩\u200d👧')
+  })
+
+  it('keeps the joiner that spells a word in Persian, and the spaces written with a non-breaking one as one', () => {
+    expect(line.parse('می\u200cخواهم')).toBe('می\u200cخواهم')
+    expect(line.parse('Ana\u00a0\u00a0Pérez')).toBe('Ana Pérez')
+    expect(line.parse(`x${'\u0300'.repeat(4)}`)).toBe(`x${'\u0300'.repeat(4)}`)
+  })
+
+  it.each([
+    ['a line break', 'dos\nlineas'],
+    ['a tab', 'dos\tcolumnas'],
+    ['a zero-width space', 'Zero\u200bwidth'],
+    ['a direction override', 'Ana \u202egnirpS'],
+    ['a line separator', 'dos\u2028lineas'],
+    ['a paragraph separator', 'dos\u2029lineas'],
+    ['a Hangul filler that draws blank', 'Ana\u3164Pérez'],
+    ['a braille blank', 'Ana\u2800Pérez'],
+    ['a joiner that joins nothing', 'Ana\u200d'],
+    ['a name that is only a joiner', '\u200d'],
+    ['two joiners in a row', 'Ana\u200d\u200dPérez'],
+    ['a pile of combining marks', `A${'\u0300'.repeat(8)}`]
+  ])('refuses %s', (_name, value) => {
+    expect(line.safeParse(value).success).toBe(false)
   })
 })
