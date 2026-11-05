@@ -4,7 +4,8 @@ import {
   ChannelConnectionLimits,
   ChannelConnectionListStates,
   InboundLimits,
-  PaginationLimits
+  PaginationLimits,
+  singleLineText
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -29,6 +30,13 @@ export const connectChannelSchema = z.strictObject({
   credentials: boundedJson(z.record(z.string(), z.unknown()))
 })
 export type ConnectChannelBody = z.output<typeof connectChannelSchema>
+
+// The name the owner gives to a connection: one visible line, cut to a short length, or null to go back to
+// the name of the account. Nothing else is accepted, so the body cannot reach any other column.
+export const renameConnectionSchema = z.strictObject({
+  label: singleLineText(ChannelConnectionLimits.LABEL_MAX_LENGTH, 1).nullable()
+})
+export type RenameConnectionBody = z.output<typeof renameConnectionSchema>
 
 // What a plugin answers to connect(): checked before it is stored or shown. The credentials it returns
 // may differ from the input (an exchanged long-lived token) and are what is kept.

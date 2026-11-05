@@ -20,7 +20,10 @@ export type ConnectionProfileView = z.output<typeof profileStatusSchema>
 const connectionSchema = z.object({
   id: z.string(),
   pluginId: z.string(),
+  // What is shown as the name: the label the owner gave, or the name of the account while there is none
   displayName: z.string(),
+  label: z.string().nullable(),
+  accountName: z.string(),
   status: z.string(),
   lastHealthyAt: z.string().nullable(),
   lastError: z.string().nullable(),
@@ -108,6 +111,21 @@ export function updateConnectionToken(
   return client.request(ApiRoutes.channels.updateToken(enc(connectionId)), {
     method: 'POST',
     body: { credentials },
+    schema: connectionSchema,
+    storeId
+  })
+}
+
+// The name the owner gives to a connection; null goes back to the name of the account
+export function renameConnection(
+  client: ApiClient,
+  storeId: string,
+  connectionId: string,
+  label: string | null
+): Promise<ChannelConnectionView> {
+  return client.request(ApiRoutes.channels.label(enc(connectionId)), {
+    method: 'PUT',
+    body: { label },
     schema: connectionSchema,
     storeId
   })

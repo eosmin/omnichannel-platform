@@ -1642,6 +1642,16 @@
         "subscription_failed": "The Page could not be subscribed to messages: try again; if it repeats, check the permissions of the app.",
         "subscription_unreadable": "The subscription of the Page to messages could not be checked. Try again in a few minutes."
       },
+      "rename": {
+        "action": "Rename",
+        "title": "Rename {name}",
+        "description": "You will see the account with this name in your settings and in the inbox.",
+        "label": "Name",
+        "hint": "Leave it empty to use the name of the account ({name}). The name does not change the connection.",
+        "submit": "Save name",
+        "submitting": "Saving…",
+        "done": "It is now called {name}."
+      },
       "updateToken": {
         "action": "Update token",
         "title": "Update the token of {name}",

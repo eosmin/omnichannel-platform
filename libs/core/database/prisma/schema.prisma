@@ -852,6 +852,9 @@ model ChannelConnection {
   pluginId       String    @map("plugin_id") // ChannelType / plugin id
   connectionId   String    @map("connection_id")
   displayName    String    @map("display_name") // "+503 2222-3333", "Mi Empresa (Page)"
+  // The name the owner gave to this connection ("Instagram principal"); null while it has none, and then the
+  // name of the account (`displayName`) is shown. A connect, a reconnect or a new token never write it.
+  label          String?
   status         String    @default("active") // ChannelConnectionStatus
   credentials    Bytes // AES-256-GCM ciphertext (libs/core/crypto)
   metadata       Json?

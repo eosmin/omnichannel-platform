@@ -1642,6 +1642,16 @@
         "subscription_failed": "No se pudo suscribir la Página a los mensajes: reintenta; si se repite, revisa los permisos de la app.",
         "subscription_unreadable": "No se pudo comprobar la suscripción de la Página a los mensajes. Prueba otra vez en unos minutos."
       },
+      "rename": {
+        "action": "Cambiar nombre",
+        "title": "Cambiar el nombre de {name}",
+        "description": "Con este nombre verás la cuenta en tus ajustes y en la bandeja.",
+        "label": "Nombre",
+        "hint": "Déjalo vacío para usar el nombre de la cuenta ({name}). El nombre no cambia la conexión.",
+        "submit": "Guardar nombre",
+        "submitting": "Guardando…",
+        "done": "Ahora se llama {name}."
+      },
       "updateToken": {
         "action": "Actualizar token",
         "title": "Actualizar el token de {name}",

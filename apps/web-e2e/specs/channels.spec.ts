@@ -315,6 +315,39 @@ test.describe('Settings → Channels and Plugins', () => {
         await expect(update).toHaveCount(0)
         await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toHaveCount(1)
         expect(graph.subscriptions()).toEqual([FAKE_PAGE_ID, FAKE_PAGE_ID])
+
+        // The owner names the connection: the card, and nothing else of it, takes the new name
+        const MY_NAME = 'Messenger principal'
+        await page
+          .getByRole('button', { name: `${channels.rename.action} ${FAKE_PAGE_NAME}` })
+          .click()
+        const naming = page.getByRole('dialog', {
+          name: channels.rename.title.replace('{name}', FAKE_PAGE_NAME)
+        })
+        await expectDialogHoldsItsContent(page, naming)
+        // Nothing to save until the text changes
+        await expect(naming.getByRole('button', { name: channels.rename.submit })).toBeDisabled()
+        await naming.getByLabel(channels.rename.label).fill(`  ${MY_NAME}  `)
+        await naming.getByRole('button', { name: channels.rename.submit }).click()
+        await expect(page.getByText(channels.rename.done.replace('{name}', MY_NAME))).toBeVisible()
+        await expect(page.getByRole('heading', { name: MY_NAME })).toHaveCount(1)
+        // The name of the account is still what the hint says it goes back to
+        await page.getByRole('button', { name: `${channels.rename.action} ${MY_NAME}` }).click()
+        const again = page.getByRole('dialog', {
+          name: channels.rename.title.replace('{name}', MY_NAME)
+        })
+        await expect(again.getByText(FAKE_PAGE_NAME, { exact: false })).toBeVisible()
+        await again.getByLabel(channels.rename.label).fill('')
+        await again.getByRole('button', { name: channels.rename.submit }).click()
+        await expect(
+          page.getByText(channels.rename.done.replace('{name}', FAKE_PAGE_NAME))
+        ).toBeVisible()
+        await expect(again).toHaveCount(0)
+        await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toHaveCount(1)
+        // It was saved, not only drawn: the same after the page is read again
+        await page.reload()
+        await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toHaveCount(1)
+        await expect(page.getByRole('heading', { name: MY_NAME })).toHaveCount(0)
       } finally {
         if (storeId !== undefined) await uninstallChannel(token, storeId, ChannelIds.MESSENGER)
       }
