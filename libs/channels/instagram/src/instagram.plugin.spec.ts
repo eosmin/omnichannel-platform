@@ -272,6 +272,30 @@ describe('InstagramPlugin', () => {
       })
     })
 
+    it('names the call that Meta refused, with the numbers of its answer and nothing else', async () => {
+      const refusal = (): PluginError =>
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, providerCode: 100 })
+
+      const reading = build()
+      reading.get.mockRejectedValue(refusal())
+      await expect(reading.plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        failedCheck: PluginChecks.ACCOUNT_READ_FAILED,
+        providerCode: 100,
+        retryable: false
+      })
+
+      const subscribing = build()
+      connectReads(subscribing.get)
+      subscribing.post.mockRejectedValue(refusal())
+      await expect(subscribing.plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject(
+        {
+          failedCheck: PluginChecks.SUBSCRIBE_FAILED,
+          providerCode: 100,
+          retryable: false
+        }
+      )
+    })
+
     it('names the check that refused when the credentials have no token', async () => {
       const { plugin } = build()
 
@@ -471,7 +495,7 @@ describe('InstagramPlugin', () => {
   })
 
   describe('against a strict Graph', () => {
-    // VALID_FIELDS is `MetaSubscribableFields.INSTAGRAM`; the routes are the ones of the Page token
+    // VALID_FIELDS is `MetaSubscribableFields.PAGE`; the routes are the ones of the Page token
     // (get-started steps 2 to 5, webhooks/setup).
     // The fake answers like Meta: a wrong host, a wrong route or a field that does not exist is an
     // error, never a success, so a name that is wrong cannot pass the test

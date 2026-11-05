@@ -5,7 +5,7 @@ import {
   MetaGraph,
   MetaSubscribableFields
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
 import { MessengerPlugin } from './messenger.plugin'
@@ -88,6 +88,31 @@ describe('MessengerPlugin', () => {
   })
 
   describe('connect', () => {
+    it('names the call that failed, with the numbers of the answer and nothing else, and stops there', async () => {
+      const refusal = (): PluginError =>
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, providerCode: 100 })
+
+      const reading = build()
+      reading.get.mockRejectedValue(refusal())
+      await expect(reading.plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        failedCheck: PluginChecks.ACCOUNT_READ_FAILED,
+        providerCode: 100
+      })
+      expect(reading.post).not.toHaveBeenCalled()
+
+      const subscribing = build()
+      subscribing.get.mockResolvedValueOnce({ id: '1090000000000001' })
+      subscribing.get.mockResolvedValueOnce({ id: '1090000000000001', name: 'Mi Tienda' })
+      subscriptionReads(subscribing.get)
+      subscribing.post.mockRejectedValue(refusal())
+      await expect(subscribing.plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject(
+        {
+          failedCheck: PluginChecks.SUBSCRIBE_FAILED,
+          providerCode: 100
+        }
+      )
+    })
+
     it('asks for names the Page edge accepts', () => {
       for (const name of MessengerApi.SUBSCRIBED_FIELDS.split(',')) {
         expect(MetaSubscribableFields.PAGE).toContain(name)

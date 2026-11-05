@@ -158,16 +158,15 @@ export const MessengerApi = {
   PROFILE_NAME_FIELDS: 'id,name'
 } as const
 
-// Every `subscribed_fields` value each API accepts for POST /{id}/subscribed_apps, from Meta's
-// reference (Instagram: the webhooks reference of the `instagram` object and the error text of
-// graph.instagram.com, 2026-11-05; Messenger: the webhooks reference of the `page` object). A name outside the list is answered with error 100 and the connection fails, so the
-// specs refuse it before Meta does.
+// The `subscribed_fields` values the Page edge accepts for POST <page>/subscribed_apps, for Messenger and for
+// Instagram with a Page token alike: the messaging names of the enum in Meta's reference of the edge
+// (graph-api/reference/page/subscribed_apps, "Creating > Parameters", read 2026-11-05). A name outside the
+// list is answered with error 100 and the connection fails, so the specs refuse it before Meta does. The
+// list is copied by hand from that page and NOT checked against a live call: the owner's real test
+// (IMPLEMENTATION_PLAN, Step 7.3) is what confirms it. The names of the `instagram` object
+// (`messaging_referral`, `messaging_seen`, `message_edit`) are not in it, and no list of them is kept:
+// nothing here calls that edge, and a list of the wrong edge is how the first Page connect failed.
 export const MetaSubscribableFields = {
-  // The messaging names of the `subscribed_fields` enum of the Page edge (`POST <page>/subscribed_apps`),
-  // from Meta's reference of it (graph-api/reference/page/subscribed_apps, "Creating > Parameters"): the
-  // list the call really validates against, for Messenger and for Instagram with a Page token alike.
-  // The names of the `instagram` object (`messaging_referral`, `messaging_seen`, `message_edit`) are
-  // not in it: they are the names of the INSTAGRAM list below, which is for the account's own edge.
   PAGE: [
     'standby',
     'messages',
@@ -184,32 +183,6 @@ export const MetaSubscribableFields = {
     'messaging_policy_enforcement',
     'response_feedback',
     'messaging_feedback'
-  ],
-  INSTAGRAM: [
-    'agent_messages',
-    'comments',
-    'live_comments',
-    'message_edit',
-    'message_reactions',
-    'messages',
-    'messaging_handover',
-    'messaging_optins',
-    'messaging_postbacks',
-    'messaging_referral',
-    'messaging_seen',
-    'standby'
-  ],
-  MESSENGER: [
-    'message_deliveries',
-    'message_echoes',
-    'message_edits',
-    'message_reactions',
-    'message_reads',
-    'messages',
-    'messaging_handovers',
-    'messaging_optins',
-    'messaging_postbacks',
-    'messaging_referrals'
   ]
 } as const
 
