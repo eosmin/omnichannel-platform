@@ -8,6 +8,7 @@ import {
   isPlainHttpsUrl,
   type MetaGraphOrigin,
   MetaMessaging,
+  MetaSubscription,
   type MetaWebhookApp
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
@@ -35,13 +36,16 @@ import {
 
 import { MetaGraphClient } from './meta-graph.client'
 import { messagingToEvents } from './meta-messaging-events'
+import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
 import { parseMetaTokenCredentials } from './meta-token-credentials'
+import { withCheck } from './with-check'
 
 const MESSAGING_WINDOW_HOURS = 24
 // Meta: up to 7 days from the first message after a Click-to-Message ad (changelog of 2026-09-28)
 const AD_WINDOW_HOURS = 168
 
 const successSchema = z.object({ success: z.boolean() })
+const appIdSchema = z.object({ id: z.string() })
 // The Send API answers with the ids of the recipient and the message
 const sentSchema = z.object({ message_id: z.string().min(1) })
 // What the User Profile API of either host answers; a person who keeps it private gets an empty object
@@ -169,13 +173,17 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   async connect(input: ConnectInput): Promise<ConnectResult> {
     const { accessToken } = parseMetaTokenCredentials(input.credentials)
     const account = await this.readAccount(accessToken)
+    const owner = this.subscribeOwner(account)
+    // Messenger and Instagram share the Page and the app, and the fields of the app on the Page are one
+    // list: this channel's fields are added to the ones the app already has, never posted over them
+    const fields = await this.fieldsToSubscribe(owner, accessToken)
     // Webhooks only reach the app for an account that subscribed it. This also proves that the token
     // can act on the account it names.
     const subscribed = await this.meta.post({
       origin: this.origin,
-      path: [this.subscribeOwner(account), MetaMessaging.EDGE_SUBSCRIBED_APPS],
+      path: [owner, MetaMessaging.EDGE_SUBSCRIBED_APPS],
       token: accessToken,
-      query: { subscribed_fields: this.subscribedFields },
+      query: { subscribed_fields: fields },
       idempotent: true,
       schema: successSchema
     })
@@ -190,6 +198,53 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       displayName: account.displayName,
       credentials: { accessToken },
       metadata: account.metadata ?? {}
+    }
+  }
+
+  // What the app has on the node plus what this channel asks for. Nothing is subscribed blind: if the
+  // app of the token cannot be told, or what it has cannot be read, the connection is refused with the
+  // check that failed (and whether it may be tried again, which is the provider's word).
+  private async fieldsToSubscribe(owner: string, token: string): Promise<string> {
+    const appId = await this.appIdOf(token)
+    let answer: unknown
+    try {
+      answer = await this.meta.get({
+        origin: this.origin,
+        path: [owner, MetaMessaging.EDGE_SUBSCRIBED_APPS],
+        token,
+        schema: z.unknown()
+      })
+    } catch (error) {
+      throw withCheck(error, PluginChecks.SUBSCRIPTION_READ_FAILED)
+    }
+    const current = readSubscribedFields(answer, appId)
+    if (current === null) {
+      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+        retryable: false,
+        failedCheck: PluginChecks.SUBSCRIPTION_SHAPE_INVALID
+      })
+    }
+    return mergeSubscribedFields(current, this.subscribedFields)
+  }
+
+  // The app the token belongs to (`GET app?fields=id`), to pick its entry among the apps of the node. If
+  // Meta does not answer it for a token like this one, the connection is refused rather than guessing
+  // which entry is ours (IMPLEMENTATION_PLAN, Step 7.3: `META_APP_ID` is the fallback to add then).
+  private async appIdOf(token: string): Promise<string> {
+    try {
+      const { id } = await this.meta.get({
+        origin: this.origin,
+        path: [MetaSubscription.APP_EDGE],
+        token,
+        query: { fields: MetaSubscription.APP_ID_FIELD },
+        schema: appIdSchema
+      })
+      if (!MetaSubscription.APP_ID_PATTERN.test(id)) {
+        throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+      }
+      return id
+    } catch (error) {
+      throw withCheck(error, PluginChecks.SUBSCRIPTION_APP_UNKNOWN)
     }
   }
 

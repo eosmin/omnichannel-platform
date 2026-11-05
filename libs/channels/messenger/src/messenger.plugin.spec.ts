@@ -27,6 +27,21 @@ interface GraphCall {
   schema?: { parse: (value: unknown) => unknown }
 }
 
+const APP = '1804256354142951'
+
+// The two reads a connect makes after the account: the app of the token, and the fields that app has on
+// the Page (none yet). Answered by route, so the order of the reads does not matter; the reads of the
+// account a test queues with `mockResolvedValueOnce` come first.
+function subscriptionReads(get: jest.Mock<Promise<unknown>, [GraphCall]>): void {
+  get.mockImplementation(request =>
+    request.path?.[0] === 'app'
+      ? Promise.resolve({ id: APP })
+      : request.path?.[1] === 'subscribed_apps'
+        ? Promise.resolve({ data: [] })
+        : Promise.reject(new Error('a read the test did not queue'))
+  )
+}
+
 function build(): {
   plugin: MessengerPlugin
   get: jest.Mock<Promise<unknown>, [GraphCall]>
@@ -72,6 +87,7 @@ describe('MessengerPlugin', () => {
       const { plugin, get, post } = build()
       get.mockResolvedValueOnce({ id: '1090000000000001' })
       get.mockResolvedValueOnce({ id: '1090000000000001', name: 'Mi Tienda' })
+      subscriptionReads(get)
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({ storeId: 's', credentials })
@@ -83,6 +99,11 @@ describe('MessengerPlugin', () => {
         query: { fields: 'id' }
       })
       expect(get.mock.calls[1]?.[0]).toMatchObject({ path: ['me'], query: { fields: 'id,name' } })
+      // Then what the app already has on the Page, to add to it and not post over it
+      expect(get.mock.calls[2]?.[0]).toMatchObject({ path: ['app'], query: { fields: 'id' } })
+      expect(get.mock.calls[3]?.[0]).toMatchObject({
+        path: ['1090000000000001', 'subscribed_apps']
+      })
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         path: ['1090000000000001', 'subscribed_apps'],
         query: {
@@ -100,7 +121,15 @@ describe('MessengerPlugin', () => {
 
     it('subscribes only to names the Messenger API accepts, as Meta does (error 100 otherwise)', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue({ id: '1090000000000001', name: 'Mi Tienda' })
+      get.mockImplementation(request =>
+        Promise.resolve(
+          request.path?.[0] === 'app'
+            ? { id: APP }
+            : request.path?.[1] === 'subscribed_apps'
+              ? { data: [] }
+              : { id: '1090000000000001', name: 'Mi Tienda' }
+        )
+      )
       post.mockImplementation(request => {
         const unknown = (request.query?.subscribed_fields ?? '')
           .split(',')
@@ -119,7 +148,13 @@ describe('MessengerPlugin', () => {
       const { plugin, get, post } = build()
       // The real client validates the answer with the schema of the call: a 200 without `name` must pass it
       get.mockImplementation(request =>
-        Promise.resolve(request.schema?.parse({ id: '1090000000000001' }))
+        Promise.resolve(
+          request.path?.[0] === 'app'
+            ? { id: APP }
+            : request.path?.[1] === 'subscribed_apps'
+              ? { data: [] }
+              : request.schema?.parse({ id: '1090000000000001' })
+        )
       )
       post.mockResolvedValue({ success: true })
 
@@ -135,6 +170,7 @@ describe('MessengerPlugin', () => {
       get.mockRejectedValueOnce(
         new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, providerCode: 100 })
       )
+      subscriptionReads(get)
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({ storeId: 's', credentials })
@@ -169,6 +205,7 @@ describe('MessengerPlugin', () => {
           providerCode: 200
         })
       )
+      subscriptionReads(get)
       post.mockResolvedValue({ success: true })
 
       await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
@@ -180,6 +217,7 @@ describe('MessengerPlugin', () => {
       const { plugin, get, post } = build()
       get.mockResolvedValueOnce({ id: '1090000000000001' })
       get.mockResolvedValueOnce({ id: '999', name: 'Otra' })
+      subscriptionReads(get)
       post.mockResolvedValue({ success: true })
 
       await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
@@ -191,6 +229,7 @@ describe('MessengerPlugin', () => {
       const { plugin, get, post } = build()
       get.mockResolvedValueOnce({ id: '1090000000000001' })
       get.mockResolvedValueOnce({ id: '1090000000000001', name: '' })
+      subscriptionReads(get)
       post.mockResolvedValue({ success: true })
 
       await expect(plugin.connect({ storeId: 's', credentials })).resolves.toMatchObject({
