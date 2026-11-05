@@ -4,23 +4,16 @@
 // refused), not that the channel cannot show images.
 export type UnsupportedKind = 'storyMention' | 'share' | 'location' | 'media' | 'other'
 
-const KINDS = new Map<string, UnsupportedKind>([
-  ['story_mention', 'storyMention'],
-  ['location', 'location'],
-  ['share', 'share'],
-  ['ig_post', 'share'],
-  ['ig_reel', 'share'],
-  ['reel', 'share'],
-  ['post', 'share'],
-  ['image', 'media'],
-  ['video', 'media'],
-  ['audio', 'media'],
-  ['file', 'media'],
-  ['document', 'media'],
-  ['sticker', 'media']
-])
-
-export const unsupportedKindOf = (type: string): UnsupportedKind => KINDS.get(type) ?? 'other'
+export const unsupportedKindOf = (type: string): UnsupportedKind =>
+  type === 'story_mention'
+    ? 'storyMention'
+    : type === 'location'
+      ? 'location'
+      : /^(share|ig_post|ig_reel|reel|post)$/.test(type)
+        ? 'share'
+        : /^(image|video|audio|file|document|sticker)$/.test(type)
+          ? 'media'
+          : 'other'
 
 // The text a bubble draws as the words of the message, or null when it draws something else in their
 // place: a deleted message has none, a location is drawn as its card, and a marker is a sentence

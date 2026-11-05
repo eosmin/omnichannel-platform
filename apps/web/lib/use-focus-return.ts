@@ -9,12 +9,12 @@ interface AutoFocusProps {
   onCloseAutoFocus?: (event: Event) => void
 }
 
-// The two handlers a Radix dialog content takes, to remember who held the focus before it opened and to
-// give it back when it closes. The handlers the caller passes run first and may keep the default.
+// What a Radix dialog content takes to give the focus back, when it closes, to who held it before it
+// opened. The handlers the caller passes run first and may keep the default.
 export function useFocusReturn({
   onOpenAutoFocus,
   onCloseAutoFocus
-}: AutoFocusProps): Required<AutoFocusProps> {
+}: AutoFocusProps): AutoFocusProps {
   const opener = useRef<FocusTarget | null>(null)
   // Read while the content renders for the first time, which is before anything is mounted: a field
   // with `autoFocus` takes the focus when it mounts, earlier than Radix's `onOpenAutoFocus`, and would
@@ -24,13 +24,10 @@ export function useFocusReturn({
     opener.current = openerOf(document.activeElement)
   }
   return {
-    onOpenAutoFocus: event => {
-      onOpenAutoFocus?.(event)
-    },
+    onOpenAutoFocus,
     onCloseAutoFocus: event => {
       onCloseAutoFocus?.(event)
       returnFocus(event, opener.current, target => (document.activeElement as unknown) === target)
-      opener.current = null
     }
   }
 }
