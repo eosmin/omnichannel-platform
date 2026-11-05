@@ -32,13 +32,12 @@ export const ChannelConnectFailureReasons = {
 export type ChannelConnectFailureReason =
   (typeof ChannelConnectFailureReasons)[keyof typeof ChannelConnectFailureReasons]
 
-const KNOWN_REASONS: readonly unknown[] = Object.values(ChannelConnectFailureReasons)
-
 // Narrows what came from outside the process (a plugin of a third party, the metadata of an answer)
 export function isChannelConnectFailureReason(
   value: unknown
 ): value is ChannelConnectFailureReason {
-  return KNOWN_REASONS.includes(value)
+  // Inside the function: a top-level call would keep this module in every bundle that imports the barrel
+  return Object.values<unknown>(ChannelConnectFailureReasons).includes(value)
 }
 
 // The reason of a local check of a plugin. One case for each check: a check that is added and has no

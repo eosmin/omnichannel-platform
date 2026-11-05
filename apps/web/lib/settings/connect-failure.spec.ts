@@ -1,7 +1,7 @@
 import { ApiError } from '@platform/api-client'
 import { ChannelConnectFailureReasons } from '@platform/core/errors'
 
-import { connectFailureReasonOf, isTokenFailure } from './error-message'
+import { connectFailureReasonOf, isTokenFailure } from './connect-failure'
 
 const refusal = (
   metadata: Record<string, unknown>,

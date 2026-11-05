@@ -4,8 +4,8 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import { connectFailureReasonOf, isTokenFailure } from '../../lib/error-message'
 import type { PluginCatalogEntryView } from '../../lib/settings/channels-requests'
+import { connectFailureReasonOf, isTokenFailure } from '../../lib/settings/connect-failure'
 import {
   ChannelMessagePrefix,
   type ConnectValues,
@@ -14,7 +14,6 @@ import {
   missingFields
 } from '../../lib/settings/connect-form'
 import { useConnect } from '../../lib/settings/use-channels'
-import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -30,6 +29,7 @@ import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
 import { CallbackUrl } from './callback-url'
+import { ConnectError } from './connect-error'
 
 // Connect a channel (TDD_09 §13, TDD_10 §10): the form is what the plugin asks for, nothing here knows
 // a channel by name. A secret is typed in a masked field and is never shown again; the plugin checks
@@ -149,7 +149,7 @@ function ConnectForm({
       {plugin.channel?.callbackUrl != null ? (
         <CallbackUrl url={plugin.channel.callbackUrl} />
       ) : null}
-      <MutationError error={connect.error} />
+      <ConnectError error={connect.error} />
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose} disabled={connect.isPending}>
           {tAll('common.cancel')}

@@ -3,13 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { useCallback } from 'react'
 
-import {
-  accountHolderOf,
-  connectFailureReasonOf,
-  errorCodeOf,
-  firstIssueOf,
-  missingPermissionsOf
-} from './error-message'
+import { accountHolderOf, errorCodeOf, firstIssueOf, missingPermissionsOf } from './error-message'
 
 // The words to show for an error: the text of its code, and for a refusal for lack of permission the
 // permission that is missing, by the name the team settings give it, so the person knows what to ask
@@ -40,10 +34,6 @@ export function useErrorText(): (error: unknown) => string {
       }
       const holder = accountHolderOf(error)
       if (holder !== null) return t('settings.channels.accountInUseNamed', { storeName: holder })
-      // What went wrong and what to do about it, when the api says why a channel did not connect; a reason
-      // this page has no text for shows the generic message of the code
-      const reason = connectFailureReasonOf(error)
-      if (reason !== null) return t(`settings.channels.connectFailure.${reason}`)
       return t(`errors.${errorCodeOf(error)}`)
     },
     [t]
