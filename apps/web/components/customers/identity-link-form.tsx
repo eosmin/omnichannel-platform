@@ -8,6 +8,7 @@ import { CustomerLimits } from '@platform/core/domain'
 import { handleOwnerOf } from '../../lib/customers/merge-form'
 import { useCustomerIdentityEdits } from '../../lib/customers/use-customer-data'
 import { useChannelDirectory } from '../../lib/inbox/use-inbox-data'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import { SELECT_CLASS } from '../ui/field-classes'
@@ -43,10 +44,14 @@ export function IdentityLinkForm({
   const selected = channelType === '' ? (channels[0]?.[0] ?? '') : channelType
   const ownerId = handleOwnerOf(link.error)
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (selected === '' || handle.trim() === '') return
-    link.mutate({ channelType: selected, channelIdentity: handle.trim() }, { onSuccess: onDone })
+    if (selected === '' || handle.trim() === '' || !guard.enter()) return
+    link.mutate(
+      { channelType: selected, channelIdentity: handle.trim() },
+      { onSuccess: onDone, onSettled: guard.leave }
+    )
   }
 
   return (

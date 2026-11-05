@@ -20,6 +20,7 @@ import {
   useMergePreview
 } from '../../lib/customers/use-customer-data'
 import { phraseMatches } from '../../lib/destructive-action'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useDebouncedValue } from '../../lib/use-debounced-value'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -214,6 +215,7 @@ function Merge({
   const { storeId } = useStore()
   const preview = useMergePreview(storeId, survivorId, absorbedId)
   const [typed, setTyped] = useState('')
+  const guard = useSubmitGuard()
 
   if (preview.isPending) {
     return (
@@ -239,10 +241,10 @@ function Merge({
   const word = t('confirmWord')
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (!phraseMatches(typed, word)) return
+    if (!phraseMatches(typed, word) || !guard.enter()) return
     merge.mutate(
       { absorbedId, fieldChoices: fieldChoicesOf(conflicts, picks) },
-      { onSuccess: onDone }
+      { onSuccess: onDone, onSettled: guard.leave }
     )
   }
 

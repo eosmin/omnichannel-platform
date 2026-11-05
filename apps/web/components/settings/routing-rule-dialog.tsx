@@ -24,6 +24,7 @@ import {
   ruleProblems
 } from '../../lib/settings/rule-form'
 import { useChannelChoices, useCreateRule, useUpdateRule } from '../../lib/settings/use-routing'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -82,6 +83,7 @@ export function RuleDialog({
   const failure = create.error ?? update.error
   const set = (patch: Partial<RuleDraft>): void => setDraft(current => ({ ...current, ...patch }))
 
+  const guard = useSubmitGuard()
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (saving) return
@@ -94,8 +96,9 @@ export function RuleDialog({
       onClose()
     }
     const input = inputOf(draft)
-    if (rule === null) create.mutate(input, { onSuccess: done })
-    else update.mutate({ ruleId: rule.id, input }, { onSuccess: done })
+    if (!guard.enter()) return
+    if (rule === null) create.mutate(input, { onSuccess: done, onSettled: guard.leave })
+    else update.mutate({ ruleId: rule.id, input }, { onSuccess: done, onSettled: guard.leave })
   }
 
   // The channels the store has, not the four official ones: a rule for a channel that is not

@@ -6,6 +6,7 @@ import { type FormEvent, type ReactElement, useState } from 'react'
 import { CustomerLimits } from '@platform/core/domain'
 
 import { useCustomerEdits } from '../../lib/customers/use-customer-data'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import { Label } from '../ui/label'
@@ -20,11 +21,12 @@ export function NoteBox({ customerId }: { customerId: string }): ReactElement {
   const { addNote } = useCustomerEdits(storeId, customerId)
   const [content, setContent] = useState('')
   const text = content.trim()
+  const guard = useSubmitGuard()
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (text === '') return
-    addNote.mutate(text, { onSuccess: () => setContent('') })
+    if (text === '' || !guard.enter()) return
+    addNote.mutate(text, { onSuccess: () => setContent(''), onSettled: guard.leave })
   }
   return (
     <form onSubmit={submit} className="flex flex-col gap-2">
