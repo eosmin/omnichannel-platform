@@ -1,6 +1,7 @@
 import {
   type ChannelConnectFailureReason,
   connectReasonOfCheck,
+  isChannelConnectFailureReason,
   type ErrorCode,
   type ErrorCodes,
   type PluginCheck,
@@ -66,10 +67,11 @@ export class PluginError extends PlatformException {
     this.failedCheck = options.failedCheck
     // A check name outside the list (a plugin can be a third party's, and a type does not stop a string) gives
     // no reason, and never makes the construction fail
-    this.reason =
-      options.reason ??
-      (options.failedCheck !== undefined && KNOWN_CHECKS.includes(options.failedCheck)
+    // A reason outside the list is not kept (it would hide the one of the check), for the same reason
+    this.reason = isChannelConnectFailureReason(options.reason)
+      ? options.reason
+      : options.failedCheck !== undefined && KNOWN_CHECKS.includes(options.failedCheck)
         ? connectReasonOfCheck(options.failedCheck)
-        : undefined)
+        : undefined
   }
 }

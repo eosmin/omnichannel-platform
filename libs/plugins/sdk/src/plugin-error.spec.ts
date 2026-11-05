@@ -52,6 +52,18 @@ describe('PluginError', () => {
       expect(made().message).not.toContain('SECRET')
     })
 
+    it('does not keep a reason that is not of the list, and falls to the one of the check', () => {
+      const error = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+        reason: 'call 555' as never,
+        failedCheck: PluginChecks.ACCOUNT_NOT_FOUND
+      })
+      expect(error.reason).toBe(ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED)
+      expect(
+        new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { reason: 'call 555' as never })
+          .reason
+      ).toBeUndefined()
+    })
+
     it('is none when nothing says it', () => {
       expect(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID).reason).toBeUndefined()
     })

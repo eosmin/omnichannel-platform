@@ -173,8 +173,11 @@ export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefi
     case ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE:
       return ChannelHealthErrors.CHECK_FAILED
     default: {
+      // The compiler makes a new reason name its case; at run time (a core older than the plugin) it is the
+      // plain failure and never a throw, because the caller is the `catch` of the health check
       const unhandled: never = reason
-      throw new Error(`a connect failure reason has no health text: ${String(unhandled)}`)
+      void unhandled
+      return ChannelHealthErrors.CHECK_FAILED
     }
   }
 }
