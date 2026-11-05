@@ -1639,7 +1639,7 @@
         "provider_busy": "Meta asks to wait. Try again in a few minutes.",
         "provider_unavailable": "Meta did not answer in time. Try again in a few minutes.",
         "account_unreadable": "The Instagram account of the Page could not be read: check that the token is the Page's and that the account is still linked.",
-        "subscription_refused": "Meta did not allow the Page to be subscribed to messages: try again; if it repeats, check the permissions of the app.",
+        "subscription_failed": "The Page could not be subscribed to messages: try again; if it repeats, check the permissions of the app.",
         "subscription_unreadable": "The subscription of the Page to messages could not be checked. Try again in a few minutes."
       },
       "reconnect": "Connect again"
