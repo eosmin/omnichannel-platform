@@ -170,6 +170,16 @@ describe('deployed environments', () => {
         ).toThrow(/META_INSTAGRAM_APP_SECRET/)
       })
 
+      it('refuses the value of the main secret: two apps cannot share a key, and then neither isolates the other', () => {
+        expect(() =>
+          parseEnv({
+            ...deployed,
+            ...metaApp,
+            META_INSTAGRAM_APP_SECRET: metaApp.META_APP_SECRET
+          })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
       it('is not checked on a laptop', () => {
         expect(() => parseEnv({ ...validEnv, META_INSTAGRAM_APP_SECRET: 'short' })).not.toThrow()
       })

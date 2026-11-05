@@ -9,7 +9,9 @@ import {
   MessengerApi,
   MetaErrorCodes,
   MetaGraph,
-  MetaMessaging
+  MetaMessaging,
+  type MetaWebhookApp,
+  MetaWebhookApps
 } from '@platform/core/domain'
 import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
@@ -63,6 +65,8 @@ export class MessengerPlugin extends MetaChannelPlugin {
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
+  // Messenger belongs to the main app, always
+  protected readonly webhookApp: MetaWebhookApp = MetaWebhookApps.MAIN
   protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = MessengerApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = MessengerApi.SUBSCRIBED_FIELDS

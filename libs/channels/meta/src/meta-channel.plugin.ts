@@ -8,8 +8,7 @@ import {
   isPlainHttpsUrl,
   type MetaGraphOrigin,
   MetaMessaging,
-  type MetaWebhookApp,
-  MetaWebhookApps
+  type MetaWebhookApp
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
@@ -88,8 +87,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     extendedHoursAfterAd: AD_WINDOW_HOURS
   }
 
-  // The Meta app that signs this channel's webhooks; Instagram says its own (see MetaWebhookApps)
-  protected readonly webhookApp: MetaWebhookApp = MetaWebhookApps.MAIN
+  // The Meta app that signs this channel's webhooks; every channel says it (see MetaWebhookApps)
+  protected abstract readonly webhookApp: MetaWebhookApp
   protected abstract readonly origin: MetaGraphOrigin
   protected abstract readonly webhookObject: string
   protected abstract readonly subscribedFields: string

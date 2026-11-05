@@ -248,6 +248,16 @@ export const envSchema = z
           input: env.META_INSTAGRAM_APP_SECRET
         })
       }
+      if (env.META_INSTAGRAM_APP_SECRET === env.META_APP_SECRET) {
+        // Two apps never share a secret: the same value means the main one was copied, and then a leak of
+        // either key forges both channels
+        ctx.issues.push({
+          code: 'custom',
+          message: 'META_INSTAGRAM_APP_SECRET must not be the same value as META_APP_SECRET',
+          path: ['META_INSTAGRAM_APP_SECRET'],
+          input: env.META_INSTAGRAM_APP_SECRET
+        })
+      }
       if (env.META_INSTAGRAM_APP_SECRET === env.META_WEBHOOK_VERIFY_TOKEN) {
         ctx.issues.push({
           code: 'custom',

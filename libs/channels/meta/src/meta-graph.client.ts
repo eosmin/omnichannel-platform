@@ -76,12 +76,9 @@ export class MetaGraphClient {
 
   // The secret is the one of the app that sends the webhook. Instagram's own app, when there is one, is
   // the only key for Instagram: the main key does not also pass there, or a leak of either would forge
-  // what the other signs. Every other channel answers to the main key alone.
-  isValidSignature(
-    rawBody: string,
-    headers: Record<string, string>,
-    app: MetaWebhookApp = MetaWebhookApps.MAIN
-  ): boolean {
+  // what the other signs. Every other channel answers to the main key alone. The app is a required
+  // argument: a channel that forgets to name its app does not compile instead of verifying with the wrong key.
+  isValidSignature(rawBody: string, headers: Record<string, string>, app: MetaWebhookApp): boolean {
     const secret =
       app === MetaWebhookApps.INSTAGRAM
         ? (this.config.instagramAppSecret ?? this.config.appSecret)

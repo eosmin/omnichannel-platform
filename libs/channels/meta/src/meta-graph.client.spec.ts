@@ -40,8 +40,10 @@ describe('MetaGraphClient', () => {
     it('validates the signature header with the app secret', () => {
       const body = '{"a":1}'
       const signature = `sha256=${createHmac('sha256', 'secret').update(body).digest('hex')}`
-      expect(client.isValidSignature(body, { 'x-hub-signature-256': signature })).toBe(true)
-      expect(client.isValidSignature(body, {})).toBe(false)
+      expect(
+        client.isValidSignature(body, { 'x-hub-signature-256': signature }, MetaWebhookApps.MAIN)
+      ).toBe(true)
+      expect(client.isValidSignature(body, {}, MetaWebhookApps.MAIN)).toBe(false)
     })
 
     describe('the signature by app', () => {
@@ -62,9 +64,7 @@ describe('MetaGraphClient', () => {
 
       it('keeps the main secret for the other channels, and refuses the Instagram one there', () => {
         const two = both()
-        expect(two.isValidSignature(body, signed('secret'))).toBe(true)
         expect(two.isValidSignature(body, signed('secret'), MetaWebhookApps.MAIN)).toBe(true)
-        expect(two.isValidSignature(body, signed('instagram-secret'))).toBe(false)
         expect(two.isValidSignature(body, signed('instagram-secret'), MetaWebhookApps.MAIN)).toBe(
           false
         )

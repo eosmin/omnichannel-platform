@@ -6,6 +6,7 @@ import {
   ChannelConnectFieldKeys,
   ChannelIds,
   DeliveryStatus,
+  MetaWebhookApps,
   WhatsAppApi,
   WhatsAppLimits,
   WhatsAppTemplateComponents,
@@ -344,7 +345,8 @@ export class WhatsAppPlugin implements ChannelPlugin {
   }
 
   validateWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
-    return this.meta.isValidSignature(rawBody, headers)
+    // WhatsApp belongs to the main app, always
+    return this.meta.isValidSignature(rawBody, headers, MetaWebhookApps.MAIN)
   }
 
   async handleWebhook(payload: unknown): Promise<ChannelEvent[]> {

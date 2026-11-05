@@ -57,7 +57,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
   ] as const
 
   // Instagram can have an app of its own: its webhooks are then signed by that app's secret
-  protected override readonly webhookApp: MetaWebhookApp = MetaWebhookApps.INSTAGRAM
+  protected readonly webhookApp: MetaWebhookApp = MetaWebhookApps.INSTAGRAM
   protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = InstagramApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = InstagramApi.SUBSCRIBED_FIELDS

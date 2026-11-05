@@ -53,6 +53,8 @@ export const REDACTED_SECRET_KEYS: readonly string[] = [
   'clientSecret',
   'appSecret',
   'app_secret',
+  'instagramAppSecret',
+  'instagram_app_secret',
   'verifyToken',
   'verify_token',
   'webhookSecret',
