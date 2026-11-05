@@ -135,13 +135,14 @@ export const InstagramApi = {
   SEND_OWNER: 'me',
   // The customer behind a scoped id (User Profile API); `name` may come back null
   USER_PROFILE_FIELDS: 'name,username,profile_pic',
-  // The names of the SUBSCRIPTION, which are not always the names of the webhook event (`messaging_referral`
-  // arrives as `referral`, `message_reactions` as `reaction`).
-  // Only what the Messenger Platform setup documents (webhooks/fields: each needs `instagram_manage_messages`).
-  // `messaging_seen` is not subscribed: no parser reads its `read` event yet; `message_edit` is not
-  // either: that setup does not list it, and a name Meta refuses fails the connection
-  // (IMPLEMENTATION_PLAN, Step 7.3)
-  SUBSCRIBED_FIELDS: 'messages,message_reactions,messaging_referral'
+  // The names of the SUBSCRIPTION on the Page edge (`POST me/subscribed_apps` with the Page token), which
+  // are the names of the `MetaSubscribableFields.PAGE` enum and not those of the `instagram` object:
+  // the singular `messaging_referral` is refused there with error 100, the plural is the Page's name
+  // (Meta's reference of the edge). The webhook event is still `referral`, whatever the name.
+  // `messaging_seen` and `message_edit` are not names of the Page edge, and no parser reads `read`
+  // yet (IMPLEMENTATION_PLAN, Step 7.3). The fields are the same three that Messenger asks for, so
+  // the two channels share them on the Page.
+  SUBSCRIBED_FIELDS: 'messages,message_reactions,messaging_referrals'
 } as const
 
 // Messenger Platform, with the token of the Page
@@ -162,6 +163,28 @@ export const MessengerApi = {
 // graph.instagram.com, 2026-11-05; Messenger: the webhooks reference of the `page` object). A name outside the list is answered with error 100 and the connection fails, so the
 // specs refuse it before Meta does.
 export const MetaSubscribableFields = {
+  // The messaging names of the `subscribed_fields` enum of the Page edge (`POST <page>/subscribed_apps`),
+  // from Meta's reference of it (graph-api/reference/page/subscribed_apps, "Creating > Parameters"): the
+  // list the call really validates against, for Messenger and for Instagram with a Page token alike.
+  // The names of the `instagram` object (`messaging_referral`, `messaging_seen`, `message_edit`) are
+  // not in it: they are the names of the INSTAGRAM list below, which is for the account's own edge.
+  PAGE: [
+    'standby',
+    'messages',
+    'message_reactions',
+    'message_echoes',
+    'message_edits',
+    'message_deliveries',
+    'message_reads',
+    'message_context',
+    'messaging_optins',
+    'messaging_postbacks',
+    'messaging_referrals',
+    'messaging_handovers',
+    'messaging_policy_enforcement',
+    'response_feedback',
+    'messaging_feedback'
+  ],
   INSTAGRAM: [
     'agent_messages',
     'comments',

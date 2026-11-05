@@ -1,5 +1,10 @@
 import { type MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
-import { ChannelSetupStepKeys, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
+import {
+  ChannelSetupStepKeys,
+  MessengerApi,
+  MetaGraph,
+  MetaSubscribableFields
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
@@ -68,6 +73,12 @@ describe('MessengerPlugin', () => {
   })
 
   describe('connect', () => {
+    it('asks for names the Page edge accepts', () => {
+      for (const name of MessengerApi.SUBSCRIBED_FIELDS.split(',')) {
+        expect(MetaSubscribableFields.PAGE).toContain(name)
+      }
+    })
+
     it('reads the Page of the token and subscribes the app to it', async () => {
       const { plugin, get, post } = build()
       get.mockResolvedValueOnce({ id: '1090000000000001' })
@@ -104,7 +115,7 @@ describe('MessengerPlugin', () => {
       post.mockImplementation(request => {
         const unknown = (request.query?.subscribed_fields ?? '')
           .split(',')
-          .filter(name => !(MetaSubscribableFields.MESSENGER as readonly string[]).includes(name))
+          .filter(name => !(MetaSubscribableFields.PAGE as readonly string[]).includes(name))
         return unknown.length === 0
           ? Promise.resolve({ success: true })
           : Promise.reject(new Error(`Param subscribed_fields must be valid: ${unknown.join()}`))
