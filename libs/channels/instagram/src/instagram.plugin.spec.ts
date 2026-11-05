@@ -68,7 +68,8 @@ function connectReads(
 }
 
 // The names Meta accepts for the object `instagram`, the same list the connect spec refuses by
-const VALID_FIELDS = new Set<string>(MetaSubscribableFields.INSTAGRAM)
+// The Page edge is what these calls reach, so its list is the one that must accept the names
+const VALID_FIELDS = new Set<string>(MetaSubscribableFields.PAGE)
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), {
@@ -218,7 +219,7 @@ describe('InstagramPlugin', () => {
       post.mockImplementation(request => {
         const unknown = (request.query?.subscribed_fields ?? '')
           .split(',')
-          .filter(name => !(MetaSubscribableFields.INSTAGRAM as readonly string[]).includes(name))
+          .filter(name => !(MetaSubscribableFields.PAGE as readonly string[]).includes(name))
         return unknown.length === 0
           ? Promise.resolve({ success: true })
           : Promise.reject(new Error(`Param subscribed_fields must be valid: ${unknown.join()}`))
@@ -233,10 +234,17 @@ describe('InstagramPlugin', () => {
       expect(InstagramApi.SUBSCRIBED_FIELDS.split(',')).toEqual([
         'messages',
         'message_reactions',
-        'messaging_referral'
+        'messaging_referrals'
       ])
-      // A valid name of Meta all the same: the strict fake accepts it, the plugin does not ask for it
-      expect(MetaSubscribableFields.INSTAGRAM).toContain('message_edit')
+      // A name of the `instagram` object, not of the Page edge: the Page refuses it with error 100
+      expect(MetaSubscribableFields.PAGE).not.toContain('messaging_referral')
+      expect(MetaSubscribableFields.PAGE).not.toContain('message_edit')
+    })
+
+    it('asks for names the Page edge accepts, which is the edge this call reaches', () => {
+      for (const name of InstagramApi.SUBSCRIBED_FIELDS.split(',')) {
+        expect(MetaSubscribableFields.PAGE).toContain(name)
+      }
     })
 
     it('trims the spaces and line breaks around a pasted token', async () => {
@@ -264,6 +272,30 @@ describe('InstagramPlugin', () => {
       })
     })
 
+    it('names the call that Meta refused, with the numbers of its answer and nothing else', async () => {
+      const refusal = (): PluginError =>
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, providerCode: 100 })
+
+      const reading = build()
+      reading.get.mockRejectedValue(refusal())
+      await expect(reading.plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
+        failedCheck: PluginChecks.ACCOUNT_READ_FAILED,
+        providerCode: 100,
+        retryable: false
+      })
+
+      const subscribing = build()
+      connectReads(subscribing.get)
+      subscribing.post.mockRejectedValue(refusal())
+      await expect(subscribing.plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject(
+        {
+          failedCheck: PluginChecks.SUBSCRIBE_FAILED,
+          providerCode: 100,
+          retryable: false
+        }
+      )
+    })
+
     it('names the check that refused when the credentials have no token', async () => {
       const { plugin } = build()
 
@@ -289,7 +321,7 @@ describe('InstagramPlugin', () => {
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
         path: ['me', 'subscribed_apps'],
-        query: { subscribed_fields: 'messages,message_reactions,messaging_referral' },
+        query: { subscribed_fields: 'messages,message_reactions,messaging_referrals' },
         idempotent: true
       })
       // The connection is the account (entry.id of the webhooks); the Page is kept beside it
@@ -463,7 +495,7 @@ describe('InstagramPlugin', () => {
   })
 
   describe('against a strict Graph', () => {
-    // VALID_FIELDS is `MetaSubscribableFields.INSTAGRAM`; the routes are the ones of the Page token
+    // VALID_FIELDS is `MetaSubscribableFields.PAGE`; the routes are the ones of the Page token
     // (get-started steps 2 to 5, webhooks/setup).
     // The fake answers like Meta: a wrong host, a wrong route or a field that does not exist is an
     // error, never a success, so a name that is wrong cannot pass the test
@@ -483,7 +515,7 @@ describe('InstagramPlugin', () => {
         'GET https://graph.facebook.com/v23.0/me?fields=id%2Cinstagram_business_account%7Bid%2Cusername%7D',
         'GET https://graph.facebook.com/v23.0/app?fields=id',
         'GET https://graph.facebook.com/v23.0/me/subscribed_apps',
-        'POST https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referral'
+        'POST https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referrals'
       ])
       graph.restore()
     })
@@ -561,7 +593,7 @@ describe('InstagramPlugin', () => {
     it('would be told by the fake, and so by the test, of a name Meta does not know', async () => {
       const graph = strictGraph({ token: 'PAGE-ok' })
       const response = await fetch(
-        'https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages,messaging_referrals',
+        'https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages,messaging_referral',
         { method: 'POST', headers: { authorization: 'Bearer PAGE-ok' } }
       )
       expect(response.status).toBe(400)

@@ -14,6 +14,11 @@ export const PluginChecks = {
   PAGE_ID_NOT_NUMERIC: 'page_id_not_numeric',
   // The token is not of the Page recorded for the connection, or none is recorded
   PAGE_ID_MISMATCH: 'page_id_mismatch',
+  // Which call of a connect failed: the read of the account (the token's own node) or the subscription of
+  // the app (the POST). It does not say Meta refused: a timeout or a 5xx is named the same, and the numbers of
+  // Meta's answer (`providerCode`), when there is one, go with it.
+  ACCOUNT_READ_FAILED: 'account_read_failed',
+  SUBSCRIBE_FAILED: 'subscribe_failed',
   SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
   // The subscription is merged with the one the app already has on the Page: the read of it failed, its
   // answer is not shaped as Meta documents, or the app of the token cannot be told. Nothing is
