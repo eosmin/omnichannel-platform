@@ -48,6 +48,25 @@ function pageWithoutAccount(): Record<string, unknown> {
   return { id: PAGE }
 }
 
+const APP = '1804256354142951'
+
+// What a connect reads: the Page of the token, then the app of the token and what that app has on the
+// Page (nothing yet), whatever order the reads come in
+function connectReads(
+  get: jest.Mock<Promise<unknown>, [GraphCall]>,
+  me: Record<string, unknown> = page()
+): void {
+  get.mockImplementation(request =>
+    Promise.resolve(
+      request.path?.[0] === 'app'
+        ? { id: APP }
+        : request.path?.[1] === 'subscribed_apps'
+          ? { data: [] }
+          : me
+    )
+  )
+}
+
 // The names Meta accepts for the object `instagram`, the same list the connect spec refuses by
 // The Page edge is what these calls reach, so its list is the one that must accept the names
 const VALID_FIELDS = new Set<string>(MetaSubscribableFields.PAGE)
@@ -101,6 +120,14 @@ function strictGraph(options: { token: string; me?: Record<string, unknown> }): 
       }
       calls.push(line)
       return Promise.resolve(json(200, me))
+    }
+    if (method === 'GET' && route === 'app') {
+      calls.push(line)
+      return Promise.resolve(json(200, { id: APP }))
+    }
+    if (method === 'GET' && route === 'me/subscribed_apps') {
+      calls.push(line)
+      return Promise.resolve(json(200, { data: [] }))
     }
     if (method === 'POST' && route === 'me/subscribed_apps') {
       const fields = (url.searchParams.get('subscribed_fields') ?? '').split(',')
@@ -188,7 +215,7 @@ describe('InstagramPlugin', () => {
   describe('connect', () => {
     it('subscribes only to names the Instagram API accepts, as Meta does (error 100 otherwise)', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(page())
+      connectReads(get)
       post.mockImplementation(request => {
         const unknown = (request.query?.subscribed_fields ?? '')
           .split(',')
@@ -222,7 +249,7 @@ describe('InstagramPlugin', () => {
 
     it('trims the spaces and line breaks around a pasted token', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(page())
+      connectReads(get)
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({
@@ -236,7 +263,7 @@ describe('InstagramPlugin', () => {
 
     it('names the check that refused when the subscription is not confirmed', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(page())
+      connectReads(get)
       post.mockResolvedValue({ success: false })
 
       await expect(plugin.connect({ storeId: 's', credentials })).rejects.toMatchObject({
@@ -255,7 +282,7 @@ describe('InstagramPlugin', () => {
 
     it('reads the Page and its account with the token, and subscribes the app on `me`', async () => {
       const { plugin, get, post } = build()
-      get.mockResolvedValue(page())
+      connectReads(get)
       post.mockResolvedValue({ success: true })
 
       const result = await plugin.connect({ storeId: 's', credentials })
@@ -462,6 +489,8 @@ describe('InstagramPlugin', () => {
       expect(graph.rejected).toEqual([])
       expect(graph.calls).toEqual([
         'GET https://graph.facebook.com/v23.0/me?fields=id%2Cinstagram_business_account%7Bid%2Cusername%7D',
+        'GET https://graph.facebook.com/v23.0/app?fields=id',
+        'GET https://graph.facebook.com/v23.0/me/subscribed_apps',
         'POST https://graph.facebook.com/v23.0/me/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referrals'
       ])
       graph.restore()

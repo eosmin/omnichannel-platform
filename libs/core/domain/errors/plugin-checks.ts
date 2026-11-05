@@ -14,7 +14,13 @@ export const PluginChecks = {
   PAGE_ID_NOT_NUMERIC: 'page_id_not_numeric',
   // The token is not of the Page recorded for the connection, or none is recorded
   PAGE_ID_MISMATCH: 'page_id_mismatch',
-  SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed'
+  SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
+  // The subscription is merged with the one the app already has on the Page: the read of it failed, its
+  // answer is not shaped as Meta documents, or the app of the token cannot be told. Nothing is
+  // subscribed blind.
+  SUBSCRIPTION_READ_FAILED: 'subscription_read_failed',
+  SUBSCRIPTION_SHAPE_INVALID: 'subscription_shape_invalid',
+  SUBSCRIPTION_APP_UNKNOWN: 'subscription_app_unknown'
 } as const
 
 export type PluginCheck = (typeof PluginChecks)[keyof typeof PluginChecks]

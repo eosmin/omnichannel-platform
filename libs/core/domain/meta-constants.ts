@@ -212,3 +212,18 @@ export const MetaSubscribableFields = {
     'messaging_referrals'
   ]
 } as const
+
+// The subscription of an app to the webhooks of a Page (`<page>/subscribed_apps`). One POST sets the
+// fields of the app on that Page and Messenger and Instagram share the Page, so a connection reads
+// what the app already has and posts the union (Meta does not say whether a POST replaces or adds).
+export const MetaSubscription = {
+  // `GET app?fields=id` with the token: the app the token belongs to
+  APP_EDGE: 'app',
+  APP_ID_FIELD: 'id',
+  // A field name that goes back to Meta in a URL: lowercase words, digits and underscores
+  FIELD_NAME_PATTERN: /^[a-z][a-z0-9_]{0,63}$/,
+  // The id of an app, as the Graph writes it
+  APP_ID_PATTERN: /^\d{1,32}$/,
+  // No Page has near this many fields; a longer list is not what Meta answers
+  MAX_FIELDS: 64
+} as const
