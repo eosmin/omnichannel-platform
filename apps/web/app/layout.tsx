@@ -11,7 +11,8 @@ import './globals.css'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('app')
-  return { title: t('title') }
+  // A page names itself and the app follows it (`Canales · Ajustes · Plataforma omnicanal`); without a name of its own the title is the app's
+  return { title: { default: t('title'), template: `%s · ${t('title')}` } }
 }
 
 export default async function RootLayout({

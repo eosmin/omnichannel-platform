@@ -1,6 +1,9 @@
 import type { ReactElement } from 'react'
 
+import { pageTitle } from '../page-title'
 import { VerifyMagicLink } from '../verify-magic-link'
+
+export const generateMetadata = pageTitle('loginVerify')
 
 export default function VerifyPage(): ReactElement {
   return (
