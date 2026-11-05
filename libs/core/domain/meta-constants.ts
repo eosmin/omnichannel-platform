@@ -116,9 +116,12 @@ export const InstagramApi = {
   // The customer behind a scoped id (User Profile API); `name` may come back null
   USER_PROFILE_FIELDS: 'name,username,profile_pic',
   // The names of the SUBSCRIPTION, which are not always the names of the webhook event (`messaging_referral`
-  // arrives as `referral`, `message_reactions` as `reaction`, `message_edit` as `message_edit`).
-  // `messaging_seen` is not subscribed: no parser reads its `read` event yet (IMPLEMENTATION_PLAN, Step 7.3)
-  SUBSCRIBED_FIELDS: 'messages,message_reactions,messaging_referral,message_edit'
+  // arrives as `referral`, `message_reactions` as `reaction`).
+  // Only what the unified login documents (webhooks/fields: each needs `instagram_manage_messages`).
+  // `messaging_seen` is not subscribed: no parser reads its `read` event yet; `message_edit` is not
+  // either: the unified login does not list it, and a name Meta refuses fails the connection
+  // (IMPLEMENTATION_PLAN, Step 7.3)
+  SUBSCRIBED_FIELDS: 'messages,message_reactions,messaging_referral'
 } as const
 
 // Messenger Platform, with the token of the Page

@@ -1,5 +1,5 @@
 import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
-import { MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
+import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   type ChannelContext,
@@ -191,6 +191,16 @@ describe('InstagramPlugin', () => {
       })
     })
 
+    it('subscribes to exactly the fields the unified login documents, and not to message_edit', () => {
+      expect(InstagramApi.SUBSCRIBED_FIELDS.split(',')).toEqual([
+        'messages',
+        'message_reactions',
+        'messaging_referral'
+      ])
+      // A valid name of Meta all the same: the strict fake accepts it, the plugin does not ask for it
+      expect(MetaSubscribableFields.INSTAGRAM).toContain('message_edit')
+    })
+
     it('trims the spaces and line breaks around a pasted token', async () => {
       const { plugin, get, post } = build()
       get.mockResolvedValue(accounts({ id: '17841400000000001', username: 'tienda' }))
@@ -250,7 +260,7 @@ describe('InstagramPlugin', () => {
       expect(post.mock.calls[0]?.[0]).toMatchObject({
         origin: MetaGraph.ORIGIN,
         path: ['17841400000000001', 'subscribed_apps'],
-        query: { subscribed_fields: 'messages,message_reactions,messaging_referral,message_edit' },
+        query: { subscribed_fields: 'messages,message_reactions,messaging_referral' },
         idempotent: true
       })
       expect(result).toEqual({
@@ -433,7 +443,7 @@ describe('InstagramPlugin', () => {
       expect(graph.rejected).toEqual([])
       expect(graph.calls).toEqual([
         `GET https://graph.facebook.com/v23.0/me/assigned_instagram_accounts?fields=id%2Cusername&limit=100`,
-        `POST https://graph.facebook.com/v23.0/${ACCOUNT}/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referral%2Cmessage_edit`
+        `POST https://graph.facebook.com/v23.0/${ACCOUNT}/subscribed_apps?subscribed_fields=messages%2Cmessage_reactions%2Cmessaging_referral`
       ])
       graph.restore()
     })
