@@ -1006,6 +1006,13 @@
         "DOCUMENT": "Documento"
       },
       "templateLabel": "Mensaje de plantilla",
+      "unsupportedKind": {
+        "storyMention": "El cliente mencionó tu cuenta en una historia; este canal no deja ver la historia",
+        "share": "El cliente compartió una publicación; este canal no deja ver su contenido",
+        "location": "El cliente compartió una ubicación que este canal no deja ver",
+        "media": "El cliente envió un archivo que no se pudo traer",
+        "other": "El cliente envió algo que este canal no permite mostrar"
+      },
       "captionFailed": "El archivo se envió, pero el texto que lo acompaña no",
       "captionUnconfirmed": "El archivo se envió, pero puede que el texto que lo acompaña no. Revisa el chat antes de volver a enviar el texto",
       "captionQueued": "Enviando el texto que acompaña al archivo",
