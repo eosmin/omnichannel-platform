@@ -10,7 +10,7 @@
       "title": "Notificaciones",
       "forStore": "Tus preferencias para {store}.",
       "noStore": "Todavía no perteneces a ninguna tienda.",
-      "loading": "Cargando...",
+      "loading": "Cargando…",
       "saveFailed": "No se pudo guardar el cambio.",
       "type": "Notificación",
       "cell": "{type}: {channel}",
@@ -89,7 +89,7 @@
           "disconnected": "Canal desconectado"
         },
         "webhook": {
-          "auto_disabled": "Webhook desactivado"
+          "auto_disabled": "Integración saliente desactivada"
         },
         "plugin": {
           "error": "Error de plugin"
@@ -147,10 +147,10 @@
         "choose": "Elegir una foto",
         "change": "Cambiar foto",
         "remove": "Quitar",
-        "uploading": "Subiendo...",
+        "uploading": "Subiendo…",
         "uploaded": "Foto subida.",
         "removed": "Foto quitada.",
-        "processing": "Preparando tu foto...",
+        "processing": "Preparando tu foto…",
         "refused": "No se pudo usar esta foto. Prueba con otra.",
         "hint": "JPEG, PNG o WebP, hasta {size} MB. Se reduce a un cuadrado pequeño y se le quitan los metadatos.",
         "tooMany": "Ya tienes varias fotos en proceso. Espera a que terminen e inténtalo de nuevo."
@@ -398,7 +398,7 @@
       "body": "Usa el botón de abajo para iniciar sesión. Funciona una sola vez.",
       "cta": "Iniciar sesión",
       "fallback": "Si el botón no funciona, copia este enlace en tu navegador:",
-      "expiry": "Este enlace caduca en {minutes} minutos.",
+      "expiry": "Este enlace expira en {minutes} minutos.",
       "ignore": "Si no lo solicitaste, puedes ignorar este correo."
     },
     "invitation": {
@@ -407,7 +407,7 @@
       "body": "{inviter} te invitó a unirte a {store} como {role}. Nada cambia hasta que aceptes.",
       "cta": "Revisar la invitación",
       "fallback": "Si el botón no funciona, copia este enlace en tu navegador:",
-      "expiry": "Esta invitación caduca en {days} días.",
+      "expiry": "Esta invitación expira en {days} días.",
       "ignore": "Si no la esperabas, puedes ignorar este correo."
     },
     "notificationDigest": {
@@ -436,7 +436,7 @@
   "errors": {
     "AUTH_EMAIL_ALREADY_EXISTS": "Este correo ya tiene una cuenta",
     "AUTH_REFRESH_TOKEN_REUSED": "Cerramos tu sesión por seguridad. Inicia sesión de nuevo",
-    "AUTH_TOKEN_EXPIRED": "Tu sesión caducó. Inicia sesión de nuevo",
+    "AUTH_TOKEN_EXPIRED": "Tu sesión expiró. Inicia sesión de nuevo",
     "AUTH_TOKEN_INVALID": "El enlace o la sesión no es válido",
     "AUTH_UNAUTHORIZED": "Necesitas iniciar sesión",
     "CHANNEL_ACCOUNT_IN_USE": "Esta cuenta ya está conectada a otra tienda. Desconéctala allí primero.",
@@ -528,7 +528,7 @@
     "TENANT_CANNOT_REMOVE_LAST_ADMIN": "La tienda necesita al menos un administrador",
     "TENANT_HEADER_MISSING": "Elige una tienda primero",
     "TENANT_INVITATION_EMAIL_MISMATCH": "La invitación es para otro correo",
-    "TENANT_INVITATION_EXPIRED": "La invitación caducó. Pídele a quien te invitó que te envíe una nueva.",
+    "TENANT_INVITATION_EXPIRED": "La invitación expiró. Pídele a quien te invitó que te envíe una nueva.",
     "TENANT_INVITATION_INVALID": "La invitación no es válida",
     "TENANT_MEMBER_ALREADY_EXISTS": "Esa persona ya está en el equipo",
     "TENANT_INVITEE_SUSPENDED": "Esa persona está suspendida en esta tienda. Reactívala en lugar de invitarla",
@@ -565,14 +565,14 @@
     "submit": "Enviar enlace",
     "sending": "Enviando",
     "sentTitle": "Revisa tu correo",
-    "sentBody": "Si {email} tiene una cuenta, un enlace de acceso va en camino. Funciona una sola vez y vence pronto.",
+    "sentBody": "Si {email} tiene una cuenta, un enlace de acceso va en camino. Funciona una sola vez y expira pronto.",
     "useAnother": "Usar otro correo"
   },
   "loginVerify": {
     "verifying": "Iniciando tu sesión",
     "failedTitle": "Este enlace no funcionó",
     "requestNew": "Pedir un enlace nuevo",
-    "expired": "Tu enlace caducó. Pide uno nuevo."
+    "expired": "Tu enlace expiró. Pide uno nuevo."
   },
   "noAccess": {
     "title": "No tienes acceso",
@@ -781,8 +781,8 @@
     },
     "webhook": {
       "auto_disabled": {
-        "title": "Se desactivó un webhook",
-        "body": "Un webhook falló demasiadas veces y se desactivó."
+        "title": "Se desactivó una integración saliente",
+        "body": "Una integración saliente falló demasiadas veces y se desactivó."
       }
     },
     "unknown": {
@@ -848,7 +848,7 @@
     "settings": "Ajustes"
   },
   "realtime": {
-    "reconnecting": "Reconectando...",
+    "reconnecting": "Reconectando…",
     "disconnected": "Sin conexión. No llegarán mensajes nuevos. Lo que escribas se guarda y se envía al volver la conexión; si tarda mucho, se te preguntará antes."
   },
   "shell": {
@@ -1277,16 +1277,16 @@
         "label": "Asignar",
         "toMe": "Asignarme",
         "unassign": "Quitar la asignación",
-        "toAgent": "Asignar a un agente...",
-        "roundRobin": "Repartir entre el equipo..."
+        "toAgent": "Asignar a un agente…",
+        "roundRobin": "Repartir entre el equipo…"
       },
       "status": {
         "label": "Estado"
       },
       "tag": {
         "label": "Etiqueta",
-        "add": "Agregar una etiqueta...",
-        "remove": "Quitar una etiqueta..."
+        "add": "Agregar una etiqueta…",
+        "remove": "Quitar una etiqueta…"
       },
       "more": {
         "label": "Más",
@@ -1569,9 +1569,10 @@
       },
       "test": {
         "action": "Probar conexión",
-        "running": "Probando",
+        "running": "Probando…",
         "healthy": "La conexión funciona.",
-        "unhealthy": "La conexión no funciona. Revisa las credenciales del canal o conéctalo de nuevo."
+        "unhealthy": "La conexión no funciona. Revisa las credenciales del canal o conéctalo de nuevo.",
+        "unhealthyWithToken": "La conexión no funciona. Si el token expiró o se revocó, usa Actualizar token; si no, desconecta el canal y conéctalo de nuevo."
       },
       "disconnect": {
         "action": "Desconectar",
@@ -1581,8 +1582,8 @@
         "done": "{name} se desconectó."
       },
       "callbackUrl": {
-        "label": "URL de callback",
-        "hint": "Pega esta dirección en la configuración de webhooks del proveedor para que pueda enviarte mensajes."
+        "label": "Dirección de recepción",
+        "hint": "Pega esta dirección en el panel del proveedor, en el campo donde pide la dirección para recibir mensajes (callback o webhook), para que pueda enviarte mensajes."
       },
       "copy": "Copiar",
       "copied": "Copiado",
@@ -1592,7 +1593,7 @@
         "description": "Escribe lo que pide el canal. Los secretos se guardan cifrados y no se vuelven a mostrar.",
         "optional": "(opcional)",
         "secretHint": "Es una clave de acceso a los mensajes de tu cuenta: no la compartas ni la pegues en chats. Se guarda cifrada y no se volverá a mostrar.",
-        "connecting": "Conectando",
+        "connecting": "Conectando…",
         "submit": "Conectar",
         "connected": "{name} está conectado."
       },
@@ -1850,7 +1851,7 @@
           "view": "Ver ajustes",
           "edit": "Editar ajustes",
           "manage_plugins": "Gestionar plugins",
-          "manage_webhooks": "Gestionar webhooks",
+          "manage_webhooks": "Gestionar integraciones salientes",
           "manage_api_keys": "Gestionar claves de API",
           "manage_retention": "Gestionar la retención de datos",
           "manage_routing": "Gestionar la asignación",
@@ -1970,8 +1971,8 @@
           "body": "Invita a alguien por correo y aparecerá aquí hasta que acepte."
         },
         "invitedBy": "invitó {name}",
-        "expires": "Vence el {date}",
-        "expired": "Venció el {date}",
+        "expires": "Expira el {date}",
+        "expired": "Expiró el {date}",
         "resend": {
           "action": "Reenviar",
           "done": "Se envió una nueva invitación a {email}.",

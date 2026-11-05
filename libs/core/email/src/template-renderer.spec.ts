@@ -21,7 +21,7 @@ describe('TemplateRenderer', () => {
     const email = await renderer.render(EmailTemplates.MAGIC_LINK, Locales.ES, data)
     expect(email.subject).toBe('Tu enlace para iniciar sesión')
     expect(email.html).toContain('lang="es"')
-    expect(email.text).toContain('Este enlace caduca en 15 minutos.')
+    expect(email.text).toContain('Este enlace expira en 15 minutos.')
   })
 
   it.each([
@@ -107,7 +107,7 @@ describe('TemplateRenderer', () => {
 
       ----------------------------------------
 
-      Este enlace caduca en 15 minutos.
+      Este enlace expira en 15 minutos.
 
       Si no lo solicitaste, puedes ignorar este correo."
     `)
@@ -175,7 +175,7 @@ describe('TemplateRenderer', () => {
 
         ----------------------------------------
 
-        Esta invitación caduca en 7 días.
+        Esta invitación expira en 7 días.
 
         Si no la esperabas, puedes ignorar este correo."
       `)
