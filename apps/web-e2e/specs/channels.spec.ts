@@ -157,6 +157,9 @@ test.describe('Settings → Channels and Plugins', () => {
     test('says what to do when Meta refuses the token, goes back to the field, and connects with a good one', async ({
       page
     }) => {
+      // Two sessions of the administrator: each waits for the magic link budget of that address,
+      // which the earlier specs have spent (support/link-budget.ts)
+      test.setTimeout(120_000)
       const token = await signInByApi(ADMIN)
       let storeId: string | undefined
       try {
