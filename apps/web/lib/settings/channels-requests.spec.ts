@@ -4,6 +4,8 @@ import { TenantHeaders } from '@platform/core/auth'
 import {
   connectChannel,
   disconnectConnection,
+  renameConnection,
+  updateConnectionToken,
   fetchConnections,
   fetchPluginCatalog,
   fetchWidget,
@@ -33,10 +35,18 @@ function setup(body: unknown, status = 200) {
   return { client, call }
 }
 
+// The JSON the client sent
+const bodyOf = (init: unknown): unknown => {
+  const body = (init as RequestInit | undefined)?.body
+  return typeof body === 'string' ? (JSON.parse(body) as unknown) : undefined
+}
+
 const connection = {
   id: 'c1',
   pluginId: 'whatsapp',
   displayName: '+57 300 0000000',
+  label: null,
+  accountName: '+57 300 0000000',
   status: 'active',
   lastHealthyAt: '2026-11-02T10:00:00.000Z',
   lastError: null,
@@ -114,6 +124,37 @@ describe('the channel requests', () => {
     const result = await disconnectConnection(client, 's1', 'c1')
     expect(call()[0]).toBe('https://api.example.com/api/v1/channels/connections/c1/disconnect')
     expect(result.status).toBe('disconnected')
+  })
+
+  it('names a connection with a PUT of the label, and sends null to clear it', async () => {
+    const named = setup({ ...connection, label: 'Main', displayName: 'Main' })
+    const result = await renameConnection(named.client, 's1', 'c1', 'Main')
+    expect(named.call()[0]).toBe('https://api.example.com/api/v1/channels/connections/c1/label')
+    expect((named.call()[1] as RequestInit).method).toBe('PUT')
+    expect(bodyOf(named.call()[1])).toEqual({ label: 'Main' })
+    expect(result).toMatchObject({ label: 'Main', accountName: '+57 300 0000000' })
+
+    const cleared = setup(connection)
+    await renameConnection(cleared.client, 's1', 'c1', null)
+    expect(bodyOf(cleared.call()[1])).toEqual({ label: null })
+  })
+
+  it('replaces a token with a POST to the connection, the secret in the body and never in the url', async () => {
+    const { client, call } = setup(connection)
+    await updateConnectionToken(client, 's1', 'c1', { accessToken: 'secret-new' })
+    const [url, init] = call()
+    expect(url).toBe('https://api.example.com/api/v1/channels/connections/c1/token')
+    expect(String(url)).not.toContain('secret-new')
+    expect((init as RequestInit).method).toBe('POST')
+    expect(bodyOf(init)).toEqual({ credentials: { accessToken: 'secret-new' } })
+  })
+
+  it('refuses an answer of a connection with no label or account name (an api older than the page)', async () => {
+    const old: Record<string, unknown> = { ...connection }
+    delete old['label']
+    delete old['accountName']
+    const { client } = setup(old)
+    await expect(renameConnection(client, 's1', 'c1', 'x')).rejects.toBeDefined()
   })
 
   it('asks for the page the cursor names, and for the state of the list', async () => {

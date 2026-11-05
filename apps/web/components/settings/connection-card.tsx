@@ -1,6 +1,14 @@
 'use client'
 
-import { CircleAlert, CircleCheck, ChevronDown, ChevronRight, KeyRound, Unplug } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleCheck,
+  ChevronDown,
+  ChevronRight,
+  KeyRound,
+  Pencil,
+  Unplug
+} from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useId, useState } from 'react'
 import { toast } from 'sonner'
@@ -29,6 +37,7 @@ import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
 
 import { CallbackUrl } from './callback-url'
+import { RenameDialog } from './rename-dialog'
 import { TemplatesList } from './templates-list'
 import { WidgetCard } from './widget-card'
 
@@ -51,6 +60,7 @@ export function ConnectionCard({
 }): ReactElement {
   const t = useTranslations('settings.channels')
   const { can } = useStore()
+  const [renaming, setRenaming] = useState(false)
   const isDown = connection.status === String(ChannelConnectionStatus.DISCONNECTED)
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const canSeeTemplates =
@@ -82,6 +92,7 @@ export function ConnectionCard({
           {canEdit ? (
             <Actions
               connection={connection}
+              onRename={() => setRenaming(true)}
               onUpdateToken={
                 plugin !== undefined &&
                 onUpdateToken !== undefined &&
@@ -103,6 +114,9 @@ export function ConnectionCard({
           ) : null}
         </>
       )}
+      {renaming && !isDown ? (
+        <RenameDialog connection={connection} onClose={() => setRenaming(false)} />
+      ) : null}
     </li>
   )
 }
@@ -196,9 +210,11 @@ function ProfileStatus({ connection }: { connection: ChannelConnectionView }): R
 
 function Actions({
   connection,
+  onRename,
   onUpdateToken
 }: {
   connection: ChannelConnectionView
+  onRename: () => void
   onUpdateToken: (() => void) | undefined
 }): ReactElement {
   const t = useTranslations('settings.channels')
@@ -255,6 +271,11 @@ function Actions({
             <span className="sr-only"> {connection.displayName}</span>
           </Button>
         )}
+        <Button type="button" variant="outline" size="sm" onClick={onRename}>
+          <Pencil aria-hidden />
+          {t('rename.action')}
+          <span className="sr-only"> {connection.displayName}</span>
+        </Button>
         <Button type="button" variant="outline" size="sm" onClick={askToDisconnect}>
           <Unplug aria-hidden />
           {t('disconnect.action')}

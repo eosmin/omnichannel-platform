@@ -57,6 +57,8 @@ export const ChannelHealthLimits = {
 export const ChannelConnectionLimits = {
   MAX_JSON_BYTES: 8192,
   DISPLAY_NAME_MAX_LENGTH: 200,
+  // The name the owner gives to a connection: a short one, to be read in a list and in the inbox
+  LABEL_MAX_LENGTH: 80,
   // The name of a plugin in the inbox: a third-party plugin chose it and nothing bounds it at registration
   PLUGIN_NAME_MAX_LENGTH: 60
 } as const
