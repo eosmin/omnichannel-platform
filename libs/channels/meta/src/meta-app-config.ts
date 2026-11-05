@@ -3,6 +3,9 @@
 // refuse everything.
 export abstract class MetaAppConfig {
   abstract readonly appSecret: string | undefined
+  // The secret of a second Meta app that serves Instagram alone. Set, it signs Instagram's webhooks and the
+  // main one does not; unset, the main one signs them. The verify token is one for both apps.
+  abstract readonly instagramAppSecret?: string | undefined
   abstract readonly verifyToken: string | undefined
   // 'v23.0'
   abstract readonly graphVersion: string

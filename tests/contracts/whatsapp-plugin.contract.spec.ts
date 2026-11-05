@@ -144,3 +144,24 @@ describe('WhatsApp events against the schema of the core', () => {
     expect(events.map(event => channelEventSchema.safeParse(event).success)).toEqual([true])
   })
 })
+
+// A separate Instagram app does not change what signs WhatsApp: its webhooks are the main app's alone
+describe('WhatsApp webhook signature key', () => {
+  const INSTAGRAM = 'instagram-app-secret-of-the-contract'
+  const sign = (secret: string): Record<string, string> => ({
+    'x-hub-signature-256': `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`
+  })
+  const plugin = new WhatsAppPlugin(
+    new MetaGraphClient({
+      appSecret: APP_SECRET,
+      instagramAppSecret: INSTAGRAM,
+      verifyToken: 'verify',
+      graphVersion: 'v23.0'
+    })
+  )
+
+  it('accepts the main app key and refuses the Instagram app key', () => {
+    expect(plugin.validateWebhookSignature(rawBody, sign(APP_SECRET))).toBe(true)
+    expect(plugin.validateWebhookSignature(rawBody, sign(INSTAGRAM))).toBe(false)
+  })
+})

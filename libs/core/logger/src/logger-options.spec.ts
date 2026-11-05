@@ -61,6 +61,15 @@ describe('buildPinoHttpOptions', () => {
 })
 
 describe('redaction', () => {
+  // The secret of the second Meta app signs Instagram's webhooks: it must never reach a log under the
+  // name the config gives it
+  it.each(['appSecret', 'instagramAppSecret', 'instagram_app_secret'])(
+    'lists %s among the secret keys',
+    name => {
+      expect(REDACTED_SECRET_KEYS).toContain(name)
+    }
+  )
+
   it('removes the decrypted credentials of a connection, whatever their keys', () => {
     const output = logged({
       credentials: { token: 'secret-1' },

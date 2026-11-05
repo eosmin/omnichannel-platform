@@ -9,7 +9,9 @@ import {
   type MetaGraphOrigin,
   MetaLimits,
   MetaUpload,
-  MetaWebhook
+  MetaWebhook,
+  type MetaWebhookApp,
+  MetaWebhookApps
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type FetchedMedia, PluginError } from '@platform/plugins/sdk'
@@ -72,12 +74,27 @@ export interface UploadRequest<T> {
 export class MetaGraphClient {
   constructor(private readonly config: MetaAppConfig) {}
 
-  isValidSignature(rawBody: string, headers: Record<string, string>): boolean {
-    return isValidMetaSignature(
-      rawBody,
-      headers[MetaWebhook.SIGNATURE_HEADER],
-      this.config.appSecret
-    )
+  // The secret is the one of the app that sends the webhook. Instagram's own app, when there is one, is
+  // the only key for Instagram: the main key does not also pass there, or a leak of either would forge
+  // what the other signs. Every other channel answers to the main key alone. The app is a required
+  // argument: a channel that forgets to name its app does not compile instead of verifying with the wrong key.
+  isValidSignature(rawBody: string, headers: Record<string, string>, app: MetaWebhookApp): boolean {
+    const secret = this.signingSecretOf(app)
+    return isValidMetaSignature(rawBody, headers[MetaWebhook.SIGNATURE_HEADER], secret)
+  }
+
+  // One case per app, and a new app that is not handled here does not compile
+  private signingSecretOf(app: MetaWebhookApp): string | undefined {
+    switch (app) {
+      case MetaWebhookApps.INSTAGRAM:
+        return this.config.instagramAppSecret ?? this.config.appSecret
+      case MetaWebhookApps.MAIN:
+        return this.config.appSecret
+      default: {
+        const unhandled: never = app
+        throw new Error(`unhandled Meta app: ${String(unhandled)}`)
+      }
+    }
   }
 
   verifyHubChallenge(query: Record<string, string>): string | null {

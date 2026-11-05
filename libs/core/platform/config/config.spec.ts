@@ -129,6 +129,78 @@ describe('deployed environments', () => {
       ).toThrow(/META_WEBHOOK_VERIFY_TOKEN/)
     })
 
+    describe('the secret of a separate Instagram app', () => {
+      const instagram = 'i'.repeat(32)
+
+      it('is optional: a deployed environment boots without it', () => {
+        expect(() => parseEnv({ ...deployed, ...metaApp })).not.toThrow()
+        expect(
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: undefined })
+            .META_INSTAGRAM_APP_SECRET
+        ).toBeUndefined()
+      })
+
+      it('counts an empty value as not set, as a .env line with nothing after the equal sign is', () => {
+        expect(
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: '' })
+            .META_INSTAGRAM_APP_SECRET
+        ).toBeUndefined()
+      })
+
+      it('is read when set', () => {
+        expect(
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: instagram })
+            .META_INSTAGRAM_APP_SECRET
+        ).toBe(instagram)
+      })
+
+      it('takes 16 characters and refuses 15, the same boundary as the main secret', () => {
+        expect(() =>
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'i'.repeat(16) })
+        ).not.toThrow()
+        expect(() =>
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'i'.repeat(15) })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
+      it('refuses a short one, which would sign nothing worth trusting', () => {
+        expect(() =>
+          parseEnv({ ...deployed, ...metaApp, META_INSTAGRAM_APP_SECRET: 'short' })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
+      it('refuses the verify token as its value: that one is shown to Meta in a form', () => {
+        expect(() =>
+          parseEnv({
+            ...deployed,
+            ...metaApp,
+            META_INSTAGRAM_APP_SECRET: metaApp.META_WEBHOOK_VERIFY_TOKEN
+          })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
+      it('refuses the value of the main secret: two apps cannot share a key, and then neither isolates the other', () => {
+        expect(() =>
+          parseEnv({
+            ...deployed,
+            ...metaApp,
+            META_INSTAGRAM_APP_SECRET: metaApp.META_APP_SECRET
+          })
+        ).toThrow(/META_INSTAGRAM_APP_SECRET/)
+      })
+
+      it('is not checked on a laptop, whatever it holds', () => {
+        expect(() => parseEnv({ ...validEnv, META_INSTAGRAM_APP_SECRET: 'short' })).not.toThrow()
+        expect(() =>
+          parseEnv({
+            ...validEnv,
+            ...metaApp,
+            META_INSTAGRAM_APP_SECRET: metaApp.META_APP_SECRET
+          })
+        ).not.toThrow()
+      })
+    })
+
     it('does not ask for them on a laptop', () => {
       expect(() => parseEnv(validEnv)).not.toThrow()
     })

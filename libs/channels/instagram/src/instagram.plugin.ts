@@ -7,7 +7,9 @@ import {
   ChannelIds,
   InstagramApi,
   MetaGraph,
-  MetaMessaging
+  MetaMessaging,
+  type MetaWebhookApp,
+  MetaWebhookApps
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks, type PluginCheck } from '@platform/core/errors'
 import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
@@ -54,6 +56,8 @@ export class InstagramPlugin extends MetaChannelPlugin {
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
+  // Instagram can have an app of its own: its webhooks are then signed by that app's secret
+  protected readonly webhookApp: MetaWebhookApp = MetaWebhookApps.INSTAGRAM
   protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = InstagramApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = InstagramApi.SUBSCRIBED_FIELDS

@@ -107,6 +107,10 @@ export const envSchema = z
     META_APP_ID: z.string().optional(),
     META_APP_SECRET: z.string().optional(), // Webhook HMAC + OAuth
     META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+    // Optional: the secret of a second Meta app that serves Instagram alone (the account of the owner
+    // cannot live in the portfolio that owns the main app). Set, it is the only key that signs Instagram's
+    // webhooks; unset, the main app's does. The verify token is the same one for both apps.
+    META_INSTAGRAM_APP_SECRET: emptyAsUnset,
     // Goes into the url of every Graph call, so its shape is checked
     META_GRAPH_API_VERSION: z
       .string()
@@ -234,6 +238,35 @@ export const envSchema = z
         path: ['META_WEBHOOK_VERIFY_TOKEN'],
         input: env.META_WEBHOOK_VERIFY_TOKEN
       })
+    }
+    if (env.META_INSTAGRAM_APP_SECRET !== undefined) {
+      if (env.META_INSTAGRAM_APP_SECRET.length < MIN_META_SECRET_LENGTH) {
+        ctx.issues.push({
+          code: 'custom',
+          message: `META_INSTAGRAM_APP_SECRET needs at least ${MIN_META_SECRET_LENGTH} characters when it is set`,
+          path: ['META_INSTAGRAM_APP_SECRET'],
+          input: env.META_INSTAGRAM_APP_SECRET
+        })
+      }
+      if (env.META_INSTAGRAM_APP_SECRET === env.META_APP_SECRET) {
+        // Two apps never share a secret: the same value means the main one was copied, and then a leak of
+        // either key forges both channels
+        ctx.issues.push({
+          code: 'custom',
+          message: 'META_INSTAGRAM_APP_SECRET must not be the same value as META_APP_SECRET',
+          path: ['META_INSTAGRAM_APP_SECRET'],
+          input: env.META_INSTAGRAM_APP_SECRET
+        })
+      }
+      if (env.META_INSTAGRAM_APP_SECRET === env.META_WEBHOOK_VERIFY_TOKEN) {
+        ctx.issues.push({
+          code: 'custom',
+          message:
+            'META_INSTAGRAM_APP_SECRET must not be the same value as META_WEBHOOK_VERIFY_TOKEN',
+          path: ['META_INSTAGRAM_APP_SECRET'],
+          input: env.META_INSTAGRAM_APP_SECRET
+        })
+      }
     }
     if (env.TRUST_PROXY_HOPS === undefined) {
       // Behind a proxy a missing value is not an error anywhere else: every client would share the

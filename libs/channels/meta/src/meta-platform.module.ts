@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common'
 import { MetaAppConfig } from './meta-app-config'
 import { MetaGraphClient } from './meta-graph.client'
 
-// The platform's one Meta app, configured from the validated env. The client stays free of the
+// The platform's Meta app (and, optionally, a second one for Instagram), configured from the validated env. The client stays free of the
 // environment; this is the only place that reads it. A deployed environment cannot boot without the
 // secret and the verify token (env-schema), so the webhook never refuses everything in silence there.
 //
@@ -17,6 +17,7 @@ import { MetaGraphClient } from './meta-graph.client'
         const { env } = await import('@platform/core/config/env')
         return {
           appSecret: env.META_APP_SECRET,
+          instagramAppSecret: env.META_INSTAGRAM_APP_SECRET,
           verifyToken: env.META_WEBHOOK_VERIFY_TOKEN,
           graphVersion: env.META_GRAPH_API_VERSION,
           graphOrigin: env.META_GRAPH_ORIGIN
