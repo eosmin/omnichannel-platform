@@ -266,7 +266,7 @@ test.describe.serial('the inbox list', () => {
   test('opening a conversation does not make the page scroll: the thread has its own scroll (W2)', async () => {
     const conversationId = await newConversationIn(storeId)
     try {
-      for (const width of [1280, 485]) {
+      for (const width of [1280, 485, 390]) {
         await page.setViewportSize({ width, height: 800 })
         await page.goto(AppPaths.store.conversation(storeId, conversationId))
         await expect(
@@ -283,12 +283,30 @@ test.describe.serial('the inbox list', () => {
         // The page is as tall as the window and stays at the top: no gap under the thread, no header lost
         expect(page_.scrollHeight, `at ${width} px`).toBe(page_.clientHeight)
         expect(page_.scrollTop, `at ${width} px`).toBe(0)
-        // And nothing is cut off: the top bar and the box to write in are inside the window
+        // And nothing is cut off: the top bar, the box to write in, and every control of the top bar that
+        // the page clips if it overflows (the store and the account menus) are inside the window
         await expect(page.getByRole('banner')).toBeInViewport()
         await expect(
           page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
         ).toBeInViewport({ ratio: 1 })
+        for (const name of [en.shell.switchStore, en.shell.accountMenu]) {
+          const box = await page.getByRole('button', { name }).boundingBox()
+          expect(box, `${name} at ${width} px`).not.toBeNull()
+          expect((box?.x ?? 0) + (box?.width ?? 0), `${name} at ${width} px`).toBeLessThanOrEqual(
+            width
+          )
+          expect(box?.x ?? -1, `${name} at ${width} px`).toBeGreaterThanOrEqual(0)
+        }
       }
+      // The page of customers had the same header and overflowed sideways at 485 px
+      await page.setViewportSize({ width: 485, height: 800 })
+      await page.goto(AppPaths.store.customers(storeId))
+      await expect(page.getByRole('banner')).toBeVisible()
+      const sideways = await page.evaluate(() => {
+        const root = document.scrollingElement ?? document.documentElement
+        return { scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
+      })
+      expect(sideways.scrollWidth, 'customers at 485 px').toBeLessThanOrEqual(sideways.clientWidth)
     } finally {
       await page.setViewportSize({ width: 1280, height: 720 })
     }
