@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { Readable } from 'node:stream'
 
 import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
@@ -12,9 +13,8 @@ import {
 
 import { InstagramPlugin } from './instagram.plugin'
 
-// These channels send by link: the file is never opened
-const sendsByLink = (): Promise<NodeJS.ReadableStream> =>
-  Promise.reject(new Error('this channel sends by link'))
+// The plugin hands the opener to the client, which opens the file only after everything refusable was refused
+const opensTheFile = (): Promise<NodeJS.ReadableStream> => Promise.resolve(Readable.from([]))
 
 const credentials = { accessToken: 'PAGE-token' }
 const PAGE = '110000000000001'
@@ -26,6 +26,18 @@ const ctx: ChannelContext = {
   metadata: { pageId: PAGE }
 }
 const key = { idempotencyKey: 'k' }
+
+// What the plugin asks the client to upload and send
+interface UploadCall {
+  origin?: string
+  path: string[]
+  token: string
+  fields: Record<string, string>
+  fileField?: string
+  fileName?: string
+  safeToRepeat?: boolean
+  file: { open: () => Promise<NodeJS.ReadableStream>; contentType: string; size: number }
+}
 
 interface GraphCall {
   origin?: string
@@ -163,14 +175,16 @@ function build(): {
   plugin: InstagramPlugin
   get: jest.Mock<Promise<unknown>, [GraphCall]>
   post: jest.Mock<Promise<unknown>, [GraphCall]>
+  upload: jest.Mock<Promise<unknown>, [UploadCall]>
   downloadMediaUrl: jest.Mock<Promise<unknown>, [string]>
 } {
   const get = jest.fn<Promise<unknown>, [GraphCall]>()
   const post = jest.fn<Promise<unknown>, [GraphCall]>()
+  const upload = jest.fn<Promise<unknown>, [UploadCall]>()
   const downloadMediaUrl = jest.fn<Promise<unknown>, [string]>()
   // The plugin only calls these methods of the client, and each one is replaced here
-  const meta = { get, post, downloadMediaUrl } as unknown as MetaGraphClient
-  return { plugin: new InstagramPlugin(meta), get, post, downloadMediaUrl }
+  const meta = { get, post, uploadMedia: upload, downloadMediaUrl } as unknown as MetaGraphClient
+  return { plugin: new InstagramPlugin(meta), get, post, upload, downloadMediaUrl }
 }
 
 describe('InstagramPlugin', () => {
@@ -702,92 +716,194 @@ describe('InstagramPlugin', () => {
       expect(post.mock.calls[0]?.[0].body).toMatchObject({ reply_to: { mid: 'mid.0' } })
     })
 
-    it('sends a file by its url under the key Instagram writes', async () => {
-      const { plugin, post } = build()
-      post.mockResolvedValue({ message_id: 'mid.2' })
+    const media = (overrides: Record<string, unknown> = {}) => ({
+      channelIdentity: '99',
+      // Never read: the file is uploaded from the platform's storage, not fetched from a link
+      mediaUrl: 'http://localhost:8333/a.png',
+      fileSize: 1000,
+      openFile: opensTheFile,
+      contentType: 'image/png',
+      filename: 'a.png',
+      ...key,
+      ...overrides
+    })
 
-      await plugin.sendMedia(ctx, {
-        channelIdentity: '99',
-        mediaUrl: 'https://files.example.com/a.png',
-        fileSize: 1,
-        openFile: sendsByLink,
-        contentType: 'image/png',
-        filename: 'a.png',
-        ...key
-      })
+    it('uploads the file and sends it in one call, from the host of the connection', async () => {
+      const { plugin, post, upload } = build()
+      upload.mockResolvedValue({ message_id: 'mid.2' })
 
-      expect(post).toHaveBeenCalledTimes(1)
-      expect(post.mock.calls[0]?.[0].body).toMatchObject({
-        message: {
-          attachments: { type: 'image', payload: { url: 'https://files.example.com/a.png' } }
-        }
+      const result = await plugin.sendMedia(ctx, media({ replyToExternalId: 'mid.1' }))
+
+      expect(post).not.toHaveBeenCalled()
+      expect(upload).toHaveBeenCalledTimes(1)
+      const call = upload.mock.calls[0]?.[0]
+      expect(call).toMatchObject({
+        origin: MetaGraph.ORIGIN,
+        path: ['me', 'messages'],
+        token: 'PAGE-token',
+        fileField: 'filedata',
+        safeToRepeat: false,
+        file: { contentType: 'image/png', size: 1000, open: opensTheFile }
       })
+      // The fields of the form are text: the objects travel as JSON
+      expect(call?.fields).toEqual({
+        recipient: '{"id":"99"}',
+        message: '{"attachment":{"type":"image","payload":{}}}',
+        reply_to: '{"mid":"mid.1"}'
+      })
+      expect(result).toMatchObject({ externalId: 'mid.2', status: 'sent' })
+    })
+
+    it("never gives Meta the link: a signed url of the storage is nobody else's business", async () => {
+      const { plugin, upload } = build()
+      upload.mockResolvedValue({ message_id: 'mid.2' })
+
+      await plugin.sendMedia(ctx, media({ mediaUrl: 'https://user:pw@files.example.com/a.png' }))
+
+      expect(JSON.stringify(upload.mock.calls[0]?.[0].fields)).not.toContain('files.example.com')
+    })
+
+    it('takes the type from what the platform recorded, without its parameters or case', async () => {
+      const { plugin, upload } = build()
+      upload.mockResolvedValue({ message_id: 'mid.2' })
+
+      await plugin.sendMedia(ctx, media({ contentType: 'Image/PNG; charset=binary' }))
+
+      expect(upload.mock.calls[0]?.[0].file.contentType).toBe('image/png')
     })
 
     it.each([
-      ['a voice note', 'audio/ogg'],
-      ['a pdf', 'application/pdf']
-    ])('refuses %s: the channel does not declare it', async (_name, contentType) => {
-      const { plugin, post } = build()
+      ['a pdf', 'application/pdf', 'file'],
+      ['a video', 'video/mp4', 'video'],
+      ['a voice note', 'audio/wav', 'audio']
+    ])('sends %s with the kind Instagram names for it', async (_name, contentType, type) => {
+      const { plugin, upload } = build()
+      upload.mockResolvedValue({ message_id: 'mid.2' })
 
-      await expect(
-        plugin.sendMedia(ctx, {
-          channelIdentity: '99',
-          mediaUrl: 'https://files.example.com/a',
-          fileSize: 1,
-          openFile: sendsByLink,
-          contentType,
-          filename: null,
-          ...key
-        })
-      ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, retryable: false })
-      expect(post).not.toHaveBeenCalled()
+      await plugin.sendMedia(ctx, media({ contentType }))
+
+      expect(upload.mock.calls[0]?.[0].fields['message']).toBe(
+        `{"attachment":{"type":"${type}","payload":{}}}`
+      )
     })
 
     it.each([
-      ['plain http', 'http://files.example.com/a.png'],
-      ['credentials in the url', 'https://user:pw@files.example.com/a.png'],
-      ['text that is not a url', 'not a url']
-    ])('refuses a file at %s without calling Meta', async (_name, mediaUrl) => {
-      const { plugin, post } = build()
+      ['a docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['a text file', 'text/plain'],
+      ['a spreadsheet', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+    ])('refuses %s: Instagram takes a pdf and no other file', async (_name, contentType) => {
+      const { plugin, upload } = build()
 
-      await expect(
-        plugin.sendMedia(ctx, {
-          channelIdentity: '99',
-          mediaUrl,
-          fileSize: 1,
-          openFile: sendsByLink,
-          contentType: 'image/png',
-          filename: null,
-          ...key
-        })
-      ).rejects.toMatchObject({ retryable: false })
-      expect(post).not.toHaveBeenCalled()
+      await expect(plugin.sendMedia(ctx, media({ contentType }))).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED,
+        retryable: false
+      })
+      expect(upload).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['an mp3', 'audio/mpeg'],
+      ['an ogg voice note', 'audio/ogg'],
+      ['a webp picture', 'image/webp'],
+      ['a 3gp video', 'video/3gpp']
+    ])('refuses %s: not in the list Instagram publishes', async (_name, contentType) => {
+      const { plugin, upload } = build()
+
+      await expect(plugin.sendMedia(ctx, media({ contentType }))).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED
+      })
+      expect(upload).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['a picture over 8 MB', 'image/png', 8 * 1024 * 1024 + 1],
+      ['a video over 25 MB', 'video/mp4', 25 * 1024 * 1024 + 1],
+      ['a pdf over 25 MB', 'application/pdf', 25 * 1024 * 1024 + 1]
+    ])(
+      'refuses %s with its own code, before opening the file',
+      async (_name, contentType, size) => {
+        const { plugin, upload } = build()
+        const open = jest.fn(opensTheFile)
+
+        await expect(
+          plugin.sendMedia(ctx, media({ contentType, fileSize: size, openFile: open }))
+        ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_FILE_TOO_LARGE, retryable: false })
+
+        expect(open).not.toHaveBeenCalled()
+        expect(upload).not.toHaveBeenCalled()
+      }
+    )
+
+    it('takes a picture of exactly 8 MB and a video of exactly 25 MB', async () => {
+      const { plugin, upload } = build()
+      upload.mockResolvedValue({ message_id: 'mid.2' })
+
+      await plugin.sendMedia(ctx, media({ fileSize: 8 * 1024 * 1024 }))
+      await plugin.sendMedia(ctx, media({ contentType: 'video/mp4', fileSize: 25 * 1024 * 1024 }))
+
+      expect(upload).toHaveBeenCalledTimes(2)
+    })
+
+    it.each([0, -1, 1.5, Number.NaN])('refuses a recorded size of %p', async size => {
+      const { plugin, upload } = build()
+
+      await expect(plugin.sendMedia(ctx, media({ fileSize: size }))).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_MESSAGE_FAILED,
+        retryable: false
+      })
+      expect(upload).not.toHaveBeenCalled()
+    })
+
+    it('refuses a host that gives no file instead of letting the queue retry a TypeError', async () => {
+      const { plugin, upload } = build()
+
+      await expect(plugin.sendMedia(ctx, media({ openFile: undefined }))).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+        retryable: false
+      })
+      expect(upload).not.toHaveBeenCalled()
+    })
+
+    it('names a document by its file name with plain characters, and an image without one', async () => {
+      const { plugin, upload } = build()
+      upload.mockResolvedValue({ message_id: 'm_2' })
+
+      await plugin.sendMedia(
+        ctx,
+        media({ contentType: 'application/pdf', filename: 'Factura "2026"\r\n/ñ.pdf' })
+      )
+      await plugin.sendMedia(ctx, media({ contentType: 'image/png', filename: 'foto.png' }))
+
+      expect(upload.mock.calls[0]?.[0].fileName).toBe('Factura _2026_____.pdf')
+      expect(upload.mock.calls[1]?.[0].fileName).toBeUndefined()
     })
 
     it('sends the caption as its own message after the file', async () => {
-      const { plugin, post } = build()
-      post
-        .mockResolvedValueOnce({ message_id: 'mid.2' })
-        .mockResolvedValueOnce({ message_id: 'mid.3' })
+      const { plugin, post, upload } = build()
+      upload.mockResolvedValue({ message_id: 'mid.2' })
+      post.mockResolvedValueOnce({ message_id: 'mid.3' })
 
-      const result = await plugin.sendMedia(ctx, {
-        channelIdentity: '99',
-        mediaUrl: 'https://files.example.com/a.png',
-        fileSize: 1,
-        openFile: sendsByLink,
-        contentType: 'image/png',
-        filename: 'a.png',
-        caption: 'tu factura',
-        ...key
-      })
+      const result = await plugin.sendMedia(ctx, media({ caption: 'tu factura' }))
 
-      expect(post.mock.calls[0]?.[0].body).toMatchObject({
-        message: { attachments: { type: 'image' } }
-      })
-      expect(post.mock.calls[1]?.[0].body).toMatchObject({ message: { text: 'tu factura' } })
+      expect(post.mock.calls[0]?.[0].body).toMatchObject({ message: { text: 'tu factura' } })
       expect(result.externalId).toBe('mid.2')
       expect(result.metadata).toEqual({ captionExternalId: 'mid.3' })
+    })
+
+    it('does not send the file again when the upload may have reached Meta', async () => {
+      const { plugin, post, upload } = build()
+      upload.mockRejectedValue(
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+          retryable: false,
+          outcomeUnknown: true
+        })
+      )
+
+      await expect(plugin.sendMedia(ctx, media({ caption: 'mira' }))).rejects.toMatchObject({
+        outcomeUnknown: true
+      })
+      // No caption goes after a file that may not have gone
+      expect(post).not.toHaveBeenCalled()
     })
 
     it.each([
@@ -797,25 +913,16 @@ describe('InstagramPlugin', () => {
     ])(
       'answers with the file and the caption state when only the caption failed: %s',
       async (_name, options, state) => {
-        const { plugin, post } = build()
-        post
-          .mockResolvedValueOnce({ message_id: 'mid.2' })
-          .mockRejectedValueOnce(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, options))
+        const { plugin, post, upload } = build()
+        upload.mockResolvedValue({ message_id: 'mid.2' })
+        post.mockRejectedValueOnce(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, options))
 
-        const result = await plugin.sendMedia(ctx, {
-          channelIdentity: '99',
-          mediaUrl: 'https://files.example.com/a.png',
-          fileSize: 1,
-          openFile: sendsByLink,
-          contentType: 'image/png',
-          filename: null,
-          caption: 'mira',
-          ...key
-        })
+        const result = await plugin.sendMedia(ctx, media({ caption: 'mira' }))
 
         expect(result.externalId).toBe('mid.2')
         expect(result.metadata).toEqual({ captionState: state })
-        expect(post).toHaveBeenCalledTimes(2)
+        expect(upload).toHaveBeenCalledTimes(1)
+        expect(post).toHaveBeenCalledTimes(1)
       }
     )
 
@@ -1010,5 +1117,81 @@ describe('InstagramPlugin, the reason a connection fails', () => {
       realPlugin().connect({ storeId: 's', credentials: { accessToken: '   ' } })
     ).rejects.toMatchObject({ reason: ChannelConnectFailureReasons.TOKEN_MALFORMED })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+// The whole path with the real client and a fake Graph: what Meta would receive
+describe('InstagramPlugin, a file over the wire', () => {
+  let fetchMock: jest.SpyInstance<Promise<Response>, Parameters<typeof fetch>>
+  let received: { url: string; headers: Record<string, string>; body: string } | undefined
+
+  beforeEach(() => {
+    received = undefined
+    fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const reader = (init?.body as ReadableStream<Uint8Array>).getReader()
+      const chunks: Buffer[] = []
+      for (;;) {
+        const part = await reader.read()
+        if (part.done) break
+        chunks.push(Buffer.from(part.value))
+      }
+      received = {
+        url: typeof url === 'string' ? url : url instanceof URL ? url.href : url.url,
+        headers: init?.headers as Record<string, string>,
+        body: Buffer.concat(chunks).toString('latin1')
+      }
+      return new Response(JSON.stringify({ recipient_id: '99', message_id: 'mid.9' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    })
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  const request = (contentType: string, bytes: string, fileSize = Buffer.byteLength(bytes)) => ({
+    channelIdentity: '99',
+    // A development link: Meta must never be given it, and it must not stop the send
+    mediaUrl: 'http://localhost:8333/signed?X-Amz-Signature=secret',
+    fileSize,
+    openFile: () => Promise.resolve(Readable.from([Buffer.from(bytes)])),
+    contentType,
+    filename: 'factura.pdf',
+    idempotencyKey: 'k'
+  })
+
+  it('uploads a pdf as a file in one call to the account of the Page token', async () => {
+    const result = await buildReal().sendMedia(ctx, request('application/pdf', '%PDF-1.4 body'))
+
+    expect(result).toMatchObject({ externalId: 'mid.9', status: 'sent' })
+    expect(received?.url).toBe('https://graph.facebook.com/v23.0/me/messages')
+    expect(received?.headers['authorization']).toBe('Bearer PAGE-token')
+    expect(received?.headers['content-type']).toMatch(/^multipart\/form-data; boundary=/)
+    expect(received?.body).toContain('name="recipient"\r\n\r\n{"id":"99"}')
+    expect(received?.body).toContain(
+      'name="message"\r\n\r\n{"attachment":{"type":"file","payload":{}}}'
+    )
+    expect(received?.body).toContain(
+      'name="filedata"; filename="factura.pdf"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4 body'
+    )
+    // Nothing of the development link or of the token reaches the form; the name of the file does, in plain characters
+    expect(received?.body).not.toContain('localhost')
+    expect(received?.body).not.toContain('X-Amz-Signature')
+    expect(received?.body).not.toContain('PAGE-token')
+  })
+
+  it('does not call Meta for a file the channel does not take', async () => {
+    await expect(
+      buildReal().sendMedia(
+        ctx,
+        request('application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'x')
+      )
+    ).rejects.toMatchObject({ code: ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('stops a file that is not the size that was recorded', async () => {
+    await expect(
+      buildReal().sendMedia(ctx, request('application/pdf', 'abcdef', 3))
+    ).rejects.toBeInstanceOf(PluginError)
   })
 })

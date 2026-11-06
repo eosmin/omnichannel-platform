@@ -7,6 +7,7 @@ import {
   ChannelIds,
   InstagramApi,
   MetaGraph,
+  InstagramMediaRules,
   MetaMessaging,
   type MetaWebhookApp,
   MetaWebhookApps
@@ -49,6 +50,8 @@ export class InstagramPlugin extends MetaChannelPlugin {
     ChannelCapability.TEXT,
     ChannelCapability.IMAGE,
     ChannelCapability.VIDEO,
+    ChannelCapability.AUDIO,
+    ChannelCapability.DOCUMENT,
     ChannelCapability.REACTIONS,
     ChannelCapability.REPLY_TO,
     ChannelCapability.CUSTOMER_PROFILE,
@@ -62,8 +65,8 @@ export class InstagramPlugin extends MetaChannelPlugin {
   protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = InstagramApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = InstagramApi.SUBSCRIBED_FIELDS
-  // Meta's reference sends a file under `attachments`
-  protected readonly attachmentKey = MetaMessaging.ATTACHMENTS_KEY
+  // Meta takes png, jpeg and gif images, a few audio and video formats and only pdf as a file
+  protected readonly mediaRules = InstagramMediaRules
   protected readonly userProfileFields = InstagramApi.USER_PROFILE_FIELDS
 
   protected override subscribeOwner(): string {
