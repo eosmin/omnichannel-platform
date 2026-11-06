@@ -21,7 +21,9 @@ import {
   idSchema,
   type UpdateOrganizationBody,
   updateOrganizationSchema,
+  type DeleteStoreBody,
   type UpdateStoreBody,
+  deleteStoreSchema,
   updateStoreSchema
 } from './organizations.schemas'
 import {
@@ -112,8 +114,9 @@ export class OrganizationsController {
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', new ZodValidationPipe(idSchema)) id: string,
+    @Body(new ZodValidationPipe(deleteStoreSchema)) body: DeleteStoreBody,
     @Req() req: AuthenticatedRequest
   ): Promise<void> {
-    await this.organizations.deleteStore(organization.id, id, actorOf(user, store, req))
+    await this.organizations.deleteStore(organization.id, id, body, actorOf(user, store, req))
   }
 }

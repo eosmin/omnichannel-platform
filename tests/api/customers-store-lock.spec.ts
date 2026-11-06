@@ -121,6 +121,15 @@ describe('Writing data of a store while the store is deleted', () => {
     return (response.body as { id: string }).id
   }
 
+  // The api asks for the name of the store to delete it (ORG-03)
+  async function deleteStore(storeId: string) {
+    const { name } = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { name: true }
+    })
+    return asAdmin().delete(ApiRoutes.organizations.storeById(storeId)).send({ confirmation: name })
+  }
+
   // Every transaction held open is released after the test, whatever the test did: a failed
   // assertion must not leave a lock behind that hangs the clean-up
   const holds: (() => void)[] = []
@@ -155,7 +164,7 @@ describe('Writing data of a store while the store is deleted', () => {
     })
     const holderPid = await opened(writer.started, writing)
 
-    const deleting = asAdmin().delete(ApiRoutes.organizations.storeById(storeId))
+    const deleting = deleteStore(storeId)
     const blocked = await isBlocked(deleting, holderPid)
     writer.release()
     await writing
@@ -316,7 +325,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
   it('answers 404 to the second of two deletes of the same store', async () => {
     const storeId = await createStore()
-    const remove = () => asAdmin().delete(ApiRoutes.organizations.storeById(storeId))
+    const remove = () => deleteStore(storeId)
 
     const [one, other] = await Promise.all([remove(), remove()])
 
@@ -326,7 +335,7 @@ describe('Writing data of a store while the store is deleted', () => {
   it('deletes an empty store when nothing is writing', async () => {
     const storeId = await createStore()
 
-    const response = await asAdmin().delete(ApiRoutes.organizations.storeById(storeId))
+    const response = await deleteStore(storeId)
 
     expect(response.status).toBe(NO_CONTENT)
   })

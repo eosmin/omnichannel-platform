@@ -1,4 +1,4 @@
-import { plainText } from './text'
+import { phraseMatches, plainText } from './text'
 
 describe('plainText', () => {
   it('lowers the case and takes the accents off', () => {
@@ -34,5 +34,15 @@ describe('plainText', () => {
 
   it('keeps the rest as it is', () => {
     expect(plainText('¿cuánto? 2x1!')).toBe('¿cuanto? 2x1!')
+  })
+})
+
+describe('phraseMatches', () => {
+  it('ignores the space around either text and nothing else', () => {
+    expect(phraseMatches('  My shop ', 'My shop')).toBe(true)
+    expect(phraseMatches('My shop', 'My shop ')).toBe(true)
+    expect(phraseMatches('my shop', 'My shop')).toBe(false)
+    expect(phraseMatches('', 'My shop')).toBe(false)
+    expect(phraseMatches('My  shop', 'My shop')).toBe(false)
   })
 })

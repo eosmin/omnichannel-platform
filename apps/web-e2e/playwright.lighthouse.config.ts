@@ -15,7 +15,7 @@ export default defineConfig({
   // Three runs of two pages, each one a navigation of several seconds
   timeout: 180_000,
   reporter: isCi
-    ? [['github'], ['html', { open: 'never', outputFolder: './lighthouse-report' }]]
+    ? [['github'], ['line'], ['html', { open: 'never', outputFolder: './lighthouse-report' }]]
     : 'list',
   // Never a server that was already up: a dev server or an old build would be what gets measured
   webServer: webServer.map(server => ({ ...server, reuseExistingServer: false }))

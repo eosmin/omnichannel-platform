@@ -84,3 +84,10 @@ export function cleanName(raw: string): string {
     )
     .trim()
 }
+
+// A confirmation phrase typed by a person against the name it asks for (a store being deleted). Space
+// around either text is not an error (a name can end in one); the case is, because the phrase is a name
+// the person has to read and copy. The screen and the api use this one rule.
+export function phraseMatches(typed: string, phrase: string): boolean {
+  return typed.trim() === phrase.trim()
+}

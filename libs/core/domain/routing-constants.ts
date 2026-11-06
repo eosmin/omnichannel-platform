@@ -10,6 +10,9 @@ export type RoutingActionType = (typeof RoutingActionTypes)[keyof typeof Routing
 export const RoutingLimits = {
   // The rules of a store are read whole by the settings page and by every new conversation
   MAX_RULES_PER_STORE: 50,
+  // The same person asking again for the same rule inside this window gets the rule that exists:
+  // a retry after a lost answer or a double send makes one rule, not two (AJU-13)
+  RETRY_WINDOW_MS: 60_000,
   NAME_MAX_LENGTH: 100,
   MAX_CHANNEL_TYPES: 5,
   MAX_TAGS: 20,

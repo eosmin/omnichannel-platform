@@ -393,6 +393,60 @@ describe('The routing rules of a store', () => {
       )
     })
 
+    it('answers a retry of the same rule with the rule it already made (AJU-13)', async () => {
+      const first = await create({ name: 'Retried' })
+      const retry = await create({ name: 'Retried' })
+      const together = await Promise.all([create({ name: 'Twice' }), create({ name: 'Twice' })])
+
+      expect(retry.status).toBe(CREATED)
+      expect((retry.body as RuleBody).id).toBe((first.body as RuleBody).id)
+      expect((together[0]?.body as RuleBody).id).toBe((together[1]?.body as RuleBody).id)
+      expect((await rulesOf()).map(rule => rule.name)).toEqual(['Retried', 'Twice'])
+      // One audit entry, not two
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.ROUTING_RULE_CHANGED,
+        resourceId: (first.body as RuleBody).id
+      })
+      expect(entries).toHaveLength(1)
+    })
+
+    it('still makes a second rule when anything but the name is different', async () => {
+      const tag = await createTag(owner, { storeId: storeId() })
+      await create({ name: 'Same name' })
+      const other = await create({ name: 'Same name', conditions: { tagIds: [tag.id] } })
+      const disabled = await create({ name: 'Same name', enabled: false })
+
+      expect(other.status).toBe(CREATED)
+      expect(disabled.status).toBe(CREATED)
+      expect(await rulesOf()).toHaveLength(3)
+    })
+
+    it('answers the retry of the request that made the last rule allowed, not with the limit', async () => {
+      for (let i = 0; i < 49; i += 1)
+        await createRoutingRule(owner, { storeId: storeId(), name: `r${i}`, priority: i + 1 })
+      const last = await create({ name: 'The fiftieth' })
+      const retry = await create({ name: 'The fiftieth' })
+      const over = await create({ name: 'The fifty-first' })
+
+      expect(last.status).toBe(CREATED)
+      expect(retry.status).toBe(CREATED)
+      expect((retry.body as RuleBody).id).toBe((last.body as RuleBody).id)
+      expect(over.status).toBe(409)
+    })
+
+    it('makes the rule again once the retry window has passed', async () => {
+      const first = await create({ name: 'Old' })
+      await owner.routingRule.update({
+        where: { id: (first.body as RuleBody).id },
+        data: { createdAt: new Date(Date.now() - 10 * 60_000) }
+      })
+
+      const again = await create({ name: 'Old' })
+
+      expect((again.body as RuleBody).id).not.toBe((first.body as RuleBody).id)
+      expect(await rulesOf()).toHaveLength(2)
+    })
+
     it('gives distinct priorities to rules created together', async () => {
       const answers = await Promise.all(
         Array.from({ length: 6 }, (_, i) => create({ name: `r${i}` }))

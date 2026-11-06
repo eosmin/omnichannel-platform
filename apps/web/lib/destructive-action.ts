@@ -32,7 +32,9 @@ export function needsDestructiveButton(action: DestructiveAction): boolean {
 }
 
 // Whitespace around either text is not an error (a store name can end in a space); the case is,
-// because the phrase is a name the user has to read and copy
+// because the phrase is a name the user has to read and copy. The api applies the same rule
+// (`phraseMatches` in libs/core/domain/text.ts); it is written here too because the web bundle of the
+// inbox has 0.16 KB of room under its ceiling and the domain barrel is not worth the bytes.
 export function phraseMatches(typed: string, phrase: string): boolean {
   return typed.trim() === phrase.trim()
 }
