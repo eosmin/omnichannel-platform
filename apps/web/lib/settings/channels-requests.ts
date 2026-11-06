@@ -264,16 +264,26 @@ const assetSchema = z.object({
 })
 export type OAuthAssetView = z.output<typeof assetSchema>
 
-const assetsSchema = z.object({ pluginId: z.string(), assets: z.array(assetSchema) })
+const assetsSchema = z.object({
+  pluginId: z.string(),
+  // The connection this login repairs, when it was started from one
+  connectionId: z.string().nullable().catch(null),
+  // The account that connection is (the id of its Page, or of its Instagram account), to show which Page it is
+  repairAccountId: z.string().nullable().catch(null),
+  assets: z.array(assetSchema)
+})
 export type OAuthAssetsView = z.output<typeof assetsSchema>
 
 export function startFacebookLogin(
   client: ApiClient,
   storeId: string,
-  pluginId: string
+  pluginId: string,
+  // The connection to repair, when the login is started from its card: the api keeps it with the state
+  connectionId?: string
 ): Promise<{ authorizeUrl: string }> {
   return client.request(ApiRoutes.channels.oauthStart(enc(pluginId)), {
     method: 'POST',
+    body: connectionId === undefined ? undefined : { connectionId },
     schema: startSchema,
     storeId
   })

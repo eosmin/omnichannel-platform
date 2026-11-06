@@ -1700,7 +1700,11 @@
           "connected": "{name} is connected.",
           "missingIntro": "When you gave access you cleared these permissions:",
           "missingHelp": "Connect with Facebook again and leave every permission it asks for ticked.",
-          "noneSelectable": "None of these Pages has a linked Instagram account. Link one in the Page settings, or type the number of another Page."
+          "noneSelectable": "None of these Pages has a linked Instagram account. Link one in the Page settings, or type the number of another Page.",
+          "repairHint": "You are reconnecting an existing connection: choose the same Page it already had.",
+          "otherAccount": "That is a different Page from the one you are reconnecting. Choose the Page this connection already uses.",
+          "repaired": "{name} is connected again.",
+          "currentPage": "The Page of the connection"
         }
       }
     },

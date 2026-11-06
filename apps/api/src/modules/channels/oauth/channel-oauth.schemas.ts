@@ -10,6 +10,11 @@ export const STATE_PATTERN = opaque(ChannelOAuthLimits.STATE_BYTES)
 export const SESSION_ID_PATTERN = opaque(ChannelOAuthLimits.SESSION_ID_BYTES)
 export const oauthSessionIdSchema = z.string().regex(SESSION_ID_PATTERN)
 
+// Starting a login: nothing, or the connection to repair (a uuid; the store and the plugin are checked against it)
+// No body at all is a login that repairs nothing (the framework leaves the body undefined)
+export const startOAuthSchema = z.strictObject({ connectionId: z.uuid().optional() }).optional()
+export type StartOAuthBody = z.output<typeof startOAuthSchema>
+
 // The Page the person chose, or the number of the Page they typed: only digits, because it goes into a path
 export const completeOAuthSchema = z.strictObject({
   assetId: z.string().regex(MetaOAuth.ASSET_ID_PATTERN)

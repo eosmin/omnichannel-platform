@@ -345,6 +345,22 @@ export class ChannelConnectionsService {
   // The call to the provider happens before the transaction: it can be slow, and a row lock held
   // across a network call would block the store. A connection that belongs to another store is a
   // conflict, never a takeover; one that its store disconnected is released first (see below).
+  // The connection a login is meant to repair: it is this store's, of this plugin, and not disconnected. One
+  // answer for another store's connection, another plugin's or none, as everywhere. It gives the account the
+  // connection is (the id of its Page, or of its Instagram account), so that the login can show which one.
+  async assertRepairable(
+    storeId: string,
+    connectionId: string,
+    pluginId: string
+  ): Promise<{ accountId: string }> {
+    const row = await this.rowOf(storeId, connectionId)
+    if (row.pluginId !== pluginId) throw resourceNotFound('channel connection')
+    if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
+      throw resourceConflict('the connection is disconnected')
+    }
+    return { accountId: row.connectionId }
+  }
+
   // The plugin must be installed in the store: it is how the login checks it before sending the person to
   // the provider, and how `connect` checks it before the provider hears of anything
   async ensureInstalled(storeId: string, pluginId: string): Promise<void> {
@@ -507,8 +523,11 @@ export class ChannelConnectionsService {
     storeId: string,
     connectionId: string,
     body: ConnectChannelBody,
-    actor: Actor
+    actor: Actor,
+    // How the new credentials were obtained, kept in the metadata when the login says it (as in `connect`)
+    options: { authMethod?: ChannelAuthMethod } = {}
   ): Promise<ChannelConnectionView> {
+    const { authMethod } = options
     const row = await this.rowOf(storeId, connectionId)
     if (row.status === String(ChannelConnectionStatus.DISCONNECTED)) {
       throw resourceConflict('the connection is disconnected')
@@ -611,7 +630,8 @@ export class ChannelConnectionsService {
       }
       const data = {
         credentials: sealed,
-        metadata: result.metadata,
+        // Last, so that a plugin cannot say how it was connected through the login
+        metadata: authMethod === undefined ? result.metadata : { ...result.metadata, authMethod },
         lastError: null,
         lastHealthyAt: new Date()
       }
@@ -650,7 +670,10 @@ export class ChannelConnectionsService {
       storeId,
       resourceType: 'channel_connection',
       resourceId: row.id,
-      metadata: { pluginId: row.pluginId },
+      metadata:
+        authMethod === undefined
+          ? { pluginId: row.pluginId }
+          : { pluginId: row.pluginId, authMethod },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

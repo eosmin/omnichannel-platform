@@ -25,9 +25,11 @@ import type { ChannelConnectionView } from '../channel-connections.service'
 import {
   type CompleteOAuthBody,
   completeOAuthSchema,
-  oauthSessionIdSchema
+  oauthSessionIdSchema,
+  type StartOAuthBody,
+  startOAuthSchema
 } from './channel-oauth.schemas'
-import { ChannelOAuthService, type OAuthAssetView } from './channel-oauth.service'
+import { ChannelOAuthService, type OAuthAssetsView } from './channel-oauth.service'
 
 type Store = ResolvedTenant['store']
 
@@ -46,9 +48,10 @@ export class ChannelOAuthController {
   start(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
-    @Param('pluginId') pluginId: string
+    @Param('pluginId') pluginId: string,
+    @Body(new ZodValidationPipe(startOAuthSchema)) body: StartOAuthBody
   ): Promise<{ authorizeUrl: string }> {
-    return this.oauth.start(store.id, user.id, pluginId)
+    return this.oauth.start(store.id, user.id, pluginId, body?.connectionId)
   }
 
   @RequirePermissions(Permissions.SETTINGS_EDIT)
@@ -62,7 +65,7 @@ export class ChannelOAuthController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('sessionId', session()) sessionId: string
-  ): Promise<{ pluginId: string; assets: OAuthAssetView[] }> {
+  ): Promise<OAuthAssetsView> {
     return this.oauth.assets(store.id, user.id, sessionId)
   }
 

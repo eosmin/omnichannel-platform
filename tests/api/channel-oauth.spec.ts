@@ -10,7 +10,11 @@ import { RoleNames } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import { CredentialCipher, hashToken } from '@platform/core/crypto'
 import { ensureMembership, type OwnerClient } from '@platform/core/database-testing'
-import { ChannelAuthMethods, ChannelOAuthLimits } from '@platform/core/domain'
+import {
+  ChannelAuthMethods,
+  ChannelConnectionStatus,
+  ChannelOAuthLimits
+} from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes } from '@platform/core/errors'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -45,6 +49,8 @@ interface ErrorBody {
 }
 interface SessionBody {
   pluginId: string
+  connectionId: string | null
+  repairAccountId: string | null
   assets: { id: string; name: string; linkedAccount: unknown }[]
 }
 
@@ -500,6 +506,8 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(response.status).toBe(OK)
       expect(response.body as SessionBody).toEqual({
         pluginId: id,
+        connectionId: null,
+        repairAccountId: null,
         assets: [{ id: '1100', name: 'Page A', linkedAccount: { id: '1800', username: 'shop' } }]
       })
       expect(JSON.stringify(response.body)).not.toContain('LEAK')
@@ -802,6 +810,174 @@ describe('"Connect with Facebook": the login of a channel', () => {
       const response = await asAdmin().post(ApiRoutes.channels.oauthComplete(session)).send(body)
       expect(response.status).toBe(BAD_REQUEST)
     })
+  })
+
+  describe('repairing a connection', () => {
+    // The account of a connection is the Page whose token it holds, so that another Page is another account
+    async function registerByPage(oauth: ChannelOAuth) {
+      counter += 1
+      const id = `oa_${counter}`
+      registry.register(
+        buildChannelPlugin({
+          id,
+          oauth,
+          connect: input =>
+            Promise.resolve({
+              connectionId: `acct-${String(input.credentials['token'])}`,
+              displayName: 'Acme page',
+              credentials: input.credentials,
+              metadata: { region: 'sv' }
+            })
+        })
+      )
+      registered.push(id)
+      for (const store of [ctx.storeA, ctx.storeB]) {
+        await ensurePluginInstallation(owner, { storeId: store.id, pluginId: id })
+      }
+      return id
+    }
+    // A connection made through the login, then left in error as a token that expired would leave it
+    async function brokenConnection(pluginId: string) {
+      const session = await sessionOf(pluginId)
+      const made = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '1100' })
+      expect(made.status).toBe(CREATED)
+      const row = await owner.channelConnection.findFirstOrThrow({
+        where: { pluginId, storeId: ctx.storeA.id }
+      })
+      await owner.channelConnection.update({
+        where: { id: row.id },
+        data: { status: ChannelConnectionStatus.ERROR, lastError: 'token_rejected' }
+      })
+      return row
+    }
+    const startFor = (pluginId: string, body: Record<string, unknown>) =>
+      asAdmin().post(ApiRoutes.channels.oauthStart(pluginId)).send(body)
+    async function repairSession(pluginId: string, connectionId: string): Promise<string> {
+      const started = await startFor(pluginId, { connectionId })
+      expect(started.status).toBe(OK)
+      const state = stateOf((started.body as { authorizeUrl: string }).authorizeUrl)
+      const location = locationOf(await callback({ code: GOOD_CODE, state }))
+      // The connection travels in the state in Redis, never in the address
+      expect([...location.searchParams.keys()]).toEqual(['oauth'])
+      expect(location.href).not.toContain(connectionId)
+      return location.searchParams.get('oauth') ?? ''
+    }
+
+    it('repairs the connection it was started from with the same Page, in the same row', async () => {
+      const id = await registerByPage(login().oauth)
+      const row = await brokenConnection(id)
+      const session = await repairSession(id, row.id)
+      const listed = await asAdmin().get(ApiRoutes.channels.oauthAssets(session))
+      expect((listed.body as { connectionId: string | null }).connectionId).toBe(row.id)
+      // And which account that connection is, so that the screen can mark its Page
+      expect((listed.body as { repairAccountId: string | null }).repairAccountId).toBe(
+        row.connectionId
+      )
+
+      const response = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '1100' })
+      expect(response.status).toBe(CREATED)
+      expect((response.body as { id: string }).id).toBe(row.id)
+      const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: row.id } })
+      expect(after.status).toBe(ChannelConnectionStatus.ACTIVE)
+      expect(after.lastError).toBeNull()
+      expect(after.metadata).toEqual({
+        region: 'sv',
+        authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
+      })
+      expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(1)
+      const audit = await owner.auditLog.findFirstOrThrow({
+        where: { resourceId: row.id, action: AuditAction.CHANNEL_TOKEN_UPDATED }
+      })
+      expect(audit.metadata).toEqual({
+        pluginId: id,
+        authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
+      })
+      // Used up
+      expect((await asAdmin().get(ApiRoutes.channels.oauthAssets(session))).status).toBe(NOT_FOUND)
+    })
+
+    it('refuses another Page as another account, writes nothing and leaves the session for another try', async () => {
+      const id = await registerByPage(login().oauth)
+      const row = await brokenConnection(id)
+      const session = await repairSession(id, row.id)
+
+      const refused = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '1200' })
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect((refused.body as ErrorBody).error.metadata).toEqual({
+        reason: ChannelConnectFailureReasons.OTHER_ACCOUNT
+      })
+      const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: row.id } })
+      expect(Buffer.from(after.credentials).equals(Buffer.from(row.credentials))).toBe(true)
+      expect(after.status).toBe(ChannelConnectionStatus.ERROR)
+      expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(1)
+      expect((await asAdmin().get(ApiRoutes.channels.oauthAssets(session))).status).toBe(OK)
+      const retried = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '1100' })
+      expect(retried.status).toBe(CREATED)
+    })
+
+    it('is a 404 to repair a connection of another store, of another plugin or that does not exist', async () => {
+      const id = await registerByPage(login().oauth)
+      const other = await registerByPage(login().oauth)
+      const row = await brokenConnection(id)
+      const saved = jest.spyOn(app.get(ChannelOAuthStore, { strict: false }), 'saveState')
+      try {
+        const foreign = await api(app, ctx.adminB, ctx.storeB)
+          .post(ApiRoutes.channels.oauthStart(id))
+          .send({ connectionId: row.id })
+        const elsewhere = await startFor(other, { connectionId: row.id })
+        const missing = await startFor(id, { connectionId: randomUUID() })
+        for (const answer of [foreign, elsewhere, missing]) {
+          expect(answer.status).toBe(NOT_FOUND)
+          expect((answer.body as ErrorBody).error).toEqual((foreign.body as ErrorBody).error)
+        }
+        expect(saved).not.toHaveBeenCalled()
+      } finally {
+        saved.mockRestore()
+      }
+    })
+
+    it('refuses to finish a repair when the connection was disconnected meanwhile, and writes nothing', async () => {
+      const id = await registerByPage(login().oauth)
+      const row = await brokenConnection(id)
+      const session = await repairSession(id, row.id)
+      await owner.channelConnection.update({
+        where: { id: row.id },
+        data: { status: ChannelConnectionStatus.DISCONNECTED }
+      })
+      const response = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '1100' })
+      expect(response.status).toBe(CONFLICT)
+      const after = await owner.channelConnection.findUniqueOrThrow({ where: { id: row.id } })
+      expect(after.status).toBe(ChannelConnectionStatus.DISCONNECTED)
+      expect(Buffer.from(after.credentials).equals(Buffer.from(row.credentials))).toBe(true)
+    })
+
+    it('refuses to repair a connection that was disconnected', async () => {
+      const id = await registerByPage(login().oauth)
+      const row = await brokenConnection(id)
+      await owner.channelConnection.update({
+        where: { id: row.id },
+        data: { status: ChannelConnectionStatus.DISCONNECTED }
+      })
+      expect((await startFor(id, { connectionId: row.id })).status).toBe(CONFLICT)
+    })
+
+    it.each([[{ connectionId: 'not-a-uuid' }], [{ connectionId: 1 }], [{ other: 'x' }]])(
+      'refuses the body %j',
+      async body => {
+        const id = await registerByPage(login().oauth)
+        expect((await startFor(id, body)).status).toBe(BAD_REQUEST)
+      }
+    )
   })
 
   describe('the routes', () => {

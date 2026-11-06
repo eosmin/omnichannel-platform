@@ -7,11 +7,14 @@ import { hashToken } from '@platform/core/crypto'
 import { ChannelOAuthLimits } from '@platform/core/domain'
 import { REDIS_CLIENT } from '@platform/core/redis'
 
-// Who started a login: the user, the store of the request that started it and the plugin. Nothing secret.
+// Who started a login: the user, the store of the request that started it, the plugin and, for a repair, the
+// connection. Nothing secret.
 const stateSchema = z.strictObject({
   userId: z.string().min(1),
   storeId: z.string().min(1),
-  pluginId: z.string().min(1)
+  pluginId: z.string().min(1),
+  // The connection this login repairs, when it was started from one: it travels here and never in an address
+  connectionId: z.uuid().optional()
 })
 export type OAuthStateRecord = z.output<typeof stateSchema>
 
