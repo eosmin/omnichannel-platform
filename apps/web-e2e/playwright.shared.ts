@@ -1,7 +1,7 @@
 import type { PlaywrightTestConfig } from '@playwright/test'
 
 import { LOCALE_COOKIE } from '@platform/api-client'
-import { InfraRoutes } from '@platform/core/api'
+import { API_PREFIX, ApiRoutes, InfraRoutes } from '@platform/core/api'
 import { Locales } from '@platform/core/i18n'
 
 import {
@@ -12,6 +12,7 @@ import {
   WEB_URL,
   WORKER_PORT
 } from './support/env'
+import { FAKE_APP_ID, FAKE_APP_SECRET } from './support/fake-graph'
 
 const STARTUP_TIMEOUT_MS = 120_000
 const ROOT = '../..'
@@ -22,7 +23,9 @@ const ROOT = '../..'
 // usually the owner's `pnpm dev`, connected to the development database, and the specs would write
 // their fixtures and their stores to it through that server. With the flag set, the servers must have
 // been started with the test database (`pnpm db:test:prepare`, TEST_DATABASE_NAME) and with
-// META_GRAPH_ORIGIN pointing at the fake Graph of the templates spec (support/fake-graph.ts).
+// META_GRAPH_ORIGIN pointing at the fake Graph of the templates spec (support/fake-graph.ts), and with the
+// login with Facebook configured as the api below is (META_APP_ID, META_APP_SECRET, META_OAUTH_REDIRECT_URI):
+// without it the dialog of a channel shows the token field at once and the specs of the login find no button.
 export const webServer: Extract<PlaywrightTestConfig['webServer'], unknown[]> = [
   {
     name: 'api',
@@ -35,7 +38,11 @@ export const webServer: Extract<PlaywrightTestConfig['webServer'], unknown[]> = 
       NODE_ENV: 'test',
       DATABASE_URL: databaseUrls.app,
       TRUST_PROXY_HOPS: '1',
-      META_GRAPH_ORIGIN: GRAPH_URL
+      META_GRAPH_ORIGIN: GRAPH_URL,
+      // "Connect with Facebook": the app, its secret and the callback of this api, as a deployment sets them
+      META_APP_ID: FAKE_APP_ID,
+      META_APP_SECRET: FAKE_APP_SECRET,
+      META_OAUTH_REDIRECT_URI: `${API_URL}${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
     }
   },
   {

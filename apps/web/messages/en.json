@@ -1602,7 +1602,11 @@
         "secretHint": "It is a key to the messages of your account: do not share it or paste it in chats. It is stored encrypted and will not be shown again.",
         "connecting": "Connecting…",
         "submit": "Connect",
-        "connected": "{name} is connected."
+        "connected": "{name} is connected.",
+        "descriptionFacebook": "Connect with your Facebook account and choose the Page. You do not have to copy a token.",
+        "facebook": "Connect with Facebook",
+        "facebookHint": "We take you to Facebook to give your permission, and you come back here to choose the Page.",
+        "useToken": "Use a manual token"
       },
       "widget": {
         "toggle": "Chat widget settings",
@@ -1671,6 +1675,33 @@
         "submit": "Update token",
         "submitting": "Updating…",
         "done": "Token of {name} updated."
+      },
+      "oauth": {
+        "opening": "Opening Facebook…",
+        "badAddress": "The address we got to go to Facebook is not the expected one, so we did not send you there. Try again or use a manual token.",
+        "reconnect": "Reconnect with Facebook",
+        "dismiss": "Dismiss",
+        "failedGeneric": "The access with Facebook could not be completed. Try again.",
+        "pick": {
+          "title": "Choose the Page",
+          "description": "These are the Pages your Facebook account gives access to.",
+          "loading": "Loading your Pages…",
+          "close": "Close",
+          "legend": "Available Pages",
+          "none": "Facebook did not show any Page. Type the ID number of your Page.",
+          "noInstagram": "No Instagram account linked",
+          "instagram": "Instagram: @{username}",
+          "typedLabel": "ID number of the Page",
+          "typedHint": "You find it in the information of your Facebook Page. It is only digits.",
+          "notListed": "My Page is not listed",
+          "backToList": "Back to the list",
+          "submit": "Connect",
+          "connecting": "Connecting…",
+          "connected": "{name} is connected.",
+          "missingIntro": "When you gave access you cleared these permissions:",
+          "missingHelp": "Connect with Facebook again and leave every permission it asks for ticked.",
+          "noneSelectable": "None of these Pages has a linked Instagram account. Link one in the Page settings, or type the number of another Page."
+        }
       }
     },
     "nav": {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
+import { ChannelOAuthConfig } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -48,6 +49,9 @@ export interface ChannelConnectManifest {
   // carries no secret; the verify token of Meta is one value for the app, in the environment, and no
   // route returns it (owner decision, 2026-10-29).
   callbackUrl: string | null
+  // "Connect with Facebook" can be offered for this channel: the plugin declares a login and the api has the
+  // address Facebook sends the browser back to. A flag and nothing else: no address, scope or app id.
+  facebookLogin: boolean
 }
 
 const CATALOG_SELECT = {
@@ -67,7 +71,8 @@ export class PluginInstallationsService {
     private readonly registry: PluginRegistry,
     private readonly connections: ChannelConnectionsService,
     private readonly publicApi: PublicApiConfig,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly login: ChannelOAuthConfig
   ) {}
 
   // The approved plugins this store may see: the official ones and the private ones the registry
@@ -244,7 +249,9 @@ export class PluginInstallationsService {
     if (manifest === null) return null
     return {
       connectFields: manifest.connectFields.map(field => ({ ...field })),
-      callbackUrl: manifest.receivesProviderWebhooks ? this.callbackUrlOf(pluginId) : null
+      callbackUrl: manifest.receivesProviderWebhooks ? this.callbackUrlOf(pluginId) : null,
+      facebookLogin:
+        this.registry.oauthOf(pluginId) !== null && this.login.redirectUri !== undefined
     }
   }
 

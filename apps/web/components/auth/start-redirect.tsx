@@ -23,7 +23,13 @@ export function StartRedirect(): ReactElement {
   const profile = useProfile()
 
   const target =
-    profile.data === undefined ? null : chooseStartPath(profile.data.memberships, readLastStoreId())
+    profile.data === undefined
+      ? null
+      : chooseStartPath(
+          profile.data.memberships,
+          readLastStoreId(),
+          typeof window === 'undefined' ? '' : window.location.search
+        )
   const unauthorized =
     profile.error instanceof ApiError && profile.error.status === HttpStatusCodes.UNAUTHORIZED
 

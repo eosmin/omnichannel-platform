@@ -35,6 +35,7 @@ import { Textarea } from '../ui/textarea'
 
 import { CallbackUrl } from './callback-url'
 import { ConnectError } from './connect-error'
+import { FacebookLoginButton } from './facebook-login-button'
 
 // Connect a channel (TDD_09 §13, TDD_10 §10): the form is what the plugin asks for, nothing here knows
 // a channel by name. A secret is typed in a masked field and is never shown again; the plugin checks
@@ -49,25 +50,50 @@ export function ConnectDialog({
   const t = useTranslations('settings.channels.connectDialog')
   const { storeId } = useStore()
   const connect = useConnect(storeId, plugin.id)
+  // "Connect with Facebook" is the way in where the channel has it; the pasted token stays one link away, always
+  const facebook = plugin.channel?.facebookLogin === true
+  const [manual, setManual] = useState(!facebook)
   // The request is not abandoned half way: its answer (the toast, the error) needs this dialog open
   return (
     <Dialog open onOpenChange={open => (open || connect.isPending ? undefined : onClose())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('title', { name: plugin.name })}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
+          <DialogDescription>
+            {t(facebook ? 'descriptionFacebook' : 'description')}
+          </DialogDescription>
         </DialogHeader>
-        <ConnectForm
-          fields={plugin.channel?.connectFields ?? []}
-          callbackUrl={plugin.channel?.callbackUrl ?? null}
-          connect={connect}
-          texts={{ submit: t('submit'), pending: t('connecting') }}
-          onDone={connection => {
-            toast.success(t('connected', { name: connection.displayName }))
-            onClose()
-          }}
-          onClose={onClose}
-        />
+        {facebook ? (
+          <div className="flex flex-col items-start gap-2">
+            <FacebookLoginButton pluginId={plugin.id} idleLabel={t('facebook')} />
+            <p className="text-muted-foreground text-xs">{t('facebookHint')}</p>
+            {manual ? null : (
+              <Button
+                type="button"
+                variant="ghost"
+                className="px-0 underline"
+                onClick={() => setManual(true)}
+              >
+                {t('useToken')}
+              </Button>
+            )}
+          </div>
+        ) : null}
+        {manual ? (
+          <ConnectForm
+            fields={plugin.channel?.connectFields ?? []}
+            // The form appears only because the person asked for it when the login is the way in
+            autoFocusFirst={facebook && manual}
+            callbackUrl={plugin.channel?.callbackUrl ?? null}
+            connect={connect}
+            texts={{ submit: t('submit'), pending: t('connecting') }}
+            onDone={connection => {
+              toast.success(t('connected', { name: connection.displayName }))
+              onClose()
+            }}
+            onClose={onClose}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   )
@@ -77,6 +103,7 @@ export function ConnectDialog({
 // replace the token of a connection (then `fields` are only the secret ones): the request is the caller's.
 export function ConnectForm({
   fields,
+  autoFocusFirst = false,
   callbackUrl,
   connect,
   texts,
@@ -84,6 +111,8 @@ export function ConnectForm({
   onClose
 }: {
   fields: readonly ConnectFieldView[]
+  // The first field takes the focus when the form appears because the person asked for it
+  autoFocusFirst?: boolean
   // The address the owner pastes at the provider; only when connecting a channel for the first time
   callbackUrl: string | null
   connect: Pick<ReturnType<typeof useConnect>, 'mutate' | 'isPending' | 'error'>
@@ -127,8 +156,9 @@ export function ConnectForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      {fields.map(field => {
+      {fields.map((field, index) => {
         const id = `${idPrefix}-${field.key}`
+        const focusIt = autoFocusFirst && index === 0
         const label = labelOf(field.key, field.labelKey)
         return (
           <div key={field.key} className="grid grid-cols-1 gap-1.5">
@@ -141,6 +171,7 @@ export function ConnectForm({
             {field.multiple && !field.secret ? (
               <Textarea
                 id={id}
+                autoFocus={focusIt}
                 rows={3}
                 autoComplete="off"
                 spellCheck={false}
@@ -152,6 +183,7 @@ export function ConnectForm({
             ) : (
               <Input
                 id={id}
+                autoFocus={focusIt}
                 ref={field.key === tokenKey ? tokenInput : undefined}
                 aria-invalid={field.key === tokenKey && tokenFailed ? true : undefined}
                 aria-describedby={field.key === tokenKey && tokenFailed ? errorId : undefined}

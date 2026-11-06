@@ -1602,7 +1602,11 @@
         "secretHint": "Es una clave de acceso a los mensajes de tu cuenta: no la compartas ni la pegues en chats. Se guarda cifrada y no se volverá a mostrar.",
         "connecting": "Conectando…",
         "submit": "Conectar",
-        "connected": "{name} está conectado."
+        "connected": "{name} está conectado.",
+        "descriptionFacebook": "Conecta con tu cuenta de Facebook y elige la Página. No tienes que copiar ningún token.",
+        "facebook": "Conectar con Facebook",
+        "facebookHint": "Te llevamos a Facebook para que des tu permiso, y vuelves aquí a elegir la Página.",
+        "useToken": "Usar un token manual"
       },
       "widget": {
         "toggle": "Configuración del widget web",
@@ -1671,6 +1675,33 @@
         "submit": "Actualizar token",
         "submitting": "Actualizando…",
         "done": "Token de {name} actualizado."
+      },
+      "oauth": {
+        "opening": "Abriendo Facebook…",
+        "badAddress": "La dirección que recibimos para ir a Facebook no es la esperada, así que no te enviamos allí. Prueba otra vez o usa un token manual.",
+        "reconnect": "Reconectar con Facebook",
+        "dismiss": "Cerrar aviso",
+        "failedGeneric": "No se pudo completar el acceso con Facebook. Prueba otra vez.",
+        "pick": {
+          "title": "Elige la Página",
+          "description": "Estas son las Páginas a las que tu cuenta de Facebook da acceso.",
+          "loading": "Cargando tus Páginas…",
+          "close": "Cerrar",
+          "legend": "Páginas disponibles",
+          "none": "Facebook no mostró ninguna Página. Escribe el número de identificación de tu Página.",
+          "noInstagram": "Sin Instagram vinculado",
+          "instagram": "Instagram: @{username}",
+          "typedLabel": "Número de identificación de la Página",
+          "typedHint": "Lo encuentras en la información de tu Página de Facebook. Son solo dígitos.",
+          "notListed": "Mi Página no aparece",
+          "backToList": "Volver a la lista",
+          "submit": "Conectar",
+          "connecting": "Conectando…",
+          "connected": "{name} quedó conectada.",
+          "missingIntro": "Al dar el acceso desmarcaste estos permisos:",
+          "missingHelp": "Vuelve a conectar con Facebook y deja marcados todos los permisos que pide.",
+          "noneSelectable": "Ninguna de estas Páginas tiene una cuenta de Instagram vinculada. Vincúlala en los ajustes de la Página, o escribe el número de otra Página."
+        }
       }
     },
     "nav": {

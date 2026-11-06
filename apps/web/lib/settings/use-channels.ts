@@ -19,19 +19,24 @@ import { usePluginLabel } from '../plugin-label'
 
 import { ChannelKeys } from './channel-keys'
 import {
+  cancelOAuth,
   type ChannelConnectionPageView,
   type ChannelConnectionView,
   type ChannelTestView,
+  completeOAuth,
   connectChannel,
   disconnectConnection,
   fetchConnections,
+  fetchOAuthAssets,
   fetchPluginCatalog,
   fetchWidget,
   installPlugin,
+  type OAuthAssetsView,
   type PluginCatalogEntryView,
   renameConnection,
   saveWidgetOrigins,
   saveWidgetPreChat,
+  startFacebookLogin,
   testConnection,
   uninstallPlugin,
   updateConnectionToken,
@@ -193,4 +198,50 @@ export function useUninstallPlugin(
     mutationFn: (installationId: string) => uninstallPlugin(apiClient, storeId, installationId),
     onSettled: refresh
   })
+}
+
+// "Connect with Facebook" (Step 7.8). Starting it makes the state on the server and answers the address of the
+// dialog; leaving the page is the caller's.
+export function useStartFacebookLogin(
+  storeId: string,
+  pluginId: string
+): UseMutationResult<{ authorizeUrl: string }, Error, void> {
+  return useMutation({
+    mutationFn: () => startFacebookLogin(apiClient, storeId, pluginId),
+    // The answer holds the state of the login: it is used once and not kept
+    gcTime: 0
+  })
+}
+
+// The Pages of a session. The id of the session is in the key and in memory, never anywhere that outlives
+// the page; a session is read again only when the person asks (it holds a token that is listed from)
+export function useOAuthAssets(
+  storeId: string,
+  sessionId: string
+): UseQueryResult<OAuthAssetsView> {
+  return useQuery({
+    queryKey: ChannelKeys.loginAssets(storeId, sessionId),
+    queryFn: ({ signal }) => fetchOAuthAssets(apiClient, storeId, sessionId, signal),
+    gcTime: 0,
+    staleTime: Infinity,
+    retry: false
+  })
+}
+
+export function useCompleteOAuth(
+  storeId: string,
+  sessionId: string
+): UseMutationResult<ChannelConnectionView, Error, string> {
+  const refresh = useRefreshChannels(storeId)
+  return useMutation({
+    mutationFn: (assetId: string) => completeOAuth(apiClient, storeId, sessionId, assetId),
+    gcTime: 0,
+    onSuccess: refresh
+  })
+}
+
+// Dropping a session that was not finished. Best effort: a session that cannot be dropped expires on the
+// server by itself.
+export function dropOAuthSession(storeId: string, sessionId: string): void {
+  void cancelOAuth(apiClient, storeId, sessionId).catch(() => undefined)
 }

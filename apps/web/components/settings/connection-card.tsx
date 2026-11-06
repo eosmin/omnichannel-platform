@@ -36,6 +36,7 @@ import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
 
 import { CallbackUrl } from './callback-url'
+import { FacebookLoginButton } from './facebook-login-button'
 import { RenameDialog } from './rename-dialog'
 import { TemplatesList } from './templates-list'
 import { WidgetCard } from './widget-card'
@@ -92,6 +93,10 @@ export function ConnectionCard({
             <Actions
               connection={connection}
               onRename={() => setRenaming(true)}
+              reconnectWithFacebook={
+                plugin?.channel?.facebookLogin === true &&
+                connection.status === String(ChannelConnectionStatus.ERROR)
+              }
               onUpdateToken={
                 plugin !== undefined &&
                 onUpdateToken !== undefined &&
@@ -211,11 +216,14 @@ function ProfileStatus({ connection }: { connection: ChannelConnectionView }): R
 function Actions({
   connection,
   onRename,
-  onUpdateToken
+  onUpdateToken,
+  reconnectWithFacebook
 }: {
   connection: ChannelConnectionView
   onRename: () => void
   onUpdateToken: (() => void) | undefined
+  // The connection is in error and its channel has the login: it can be made again from Facebook
+  reconnectWithFacebook: boolean
 }): ReactElement {
   const t = useTranslations('settings.channels')
   const errorText = useErrorText()
@@ -254,6 +262,15 @@ function Actions({
           {test.isPending ? t('test.running') : t('test.action')}
           <span className="sr-only"> {connection.displayName}</span>
         </Button>
+        {reconnectWithFacebook ? (
+          <FacebookLoginButton
+            pluginId={connection.pluginId}
+            variant="outline"
+            size="sm"
+            idleLabel={t('oauth.reconnect')}
+            accessibleSuffix={connection.displayName}
+          />
+        ) : null}
         {onUpdateToken === undefined ? null : (
           // Always there, and the main action when the failure is one that a new token fixes
           <Button
