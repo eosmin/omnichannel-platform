@@ -51,6 +51,22 @@ export function digestLinkKindOf(messageKey: string): DigestLinkKind {
   return type === undefined ? DigestLinkKinds.APP : linkKindOfType(type)
 }
 
+// A code and nothing else, so that a reason can never build a path into other messages
+const REASON_CODE = /^[A-Z][A-Z0-9_]*$/
+
+// The text written for why a notification came (NOT-06, MED-11), as the name under the message key
+// (`reason.<CODE>`), or null: no reason, a value that is not a code, or a reason with no sentence. The
+// web page, the email digest and the push read it, so the three say the same thing.
+export function reasonNameOf(
+  params: Readonly<Record<string, unknown>>,
+  hasName: (name: string) => boolean
+): string | null {
+  const reason = params['reason']
+  if (typeof reason !== 'string' || !REASON_CODE.test(reason)) return null
+  const name = `reason.${reason}`
+  return hasName(name) ? name : null
+}
+
 export type BodyVariant = 'bodyRepeated' | 'bodyWithPeople' | 'bodyWithCustomer' | 'body'
 
 // Which text of a notification to show. A notification that carries who and whose (a mention) says

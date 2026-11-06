@@ -1,12 +1,13 @@
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
-import { createTranslator } from '@platform/core/i18n-server'
+import { createTranslator, hasTranslation } from '@platform/core/i18n-server'
 import {
   clipPushText,
   type NotificationSeverityType,
   type NotificationType,
   PushLimits,
   type PushPayload,
-  pushTag
+  pushTag,
+  reasonNameOf
 } from '@platform/core/notifications'
 
 export interface PushNotificationRow {
@@ -43,7 +44,13 @@ export function buildPushPayload(row: PushNotificationRow, locale: Locale): Push
   return {
     notificationId: row.id,
     title: clipPushText(t('title', params), PushLimits.MAX_TITLE_LENGTH),
-    body: clipPushText(t('body', params), PushLimits.MAX_BODY_LENGTH),
+    body: clipPushText(
+      t(
+        reasonNameOf(params, name => hasTranslation(locale, `${row.messageKey}.${name}`)) ?? 'body',
+        params
+      ),
+      PushLimits.MAX_BODY_LENGTH
+    ),
     tag: pushTag(row.type, row.resourceId, row.id),
     severity: row.severity,
     actionPath: row.actionPath
