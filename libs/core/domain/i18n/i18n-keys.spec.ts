@@ -1,6 +1,10 @@
 import { ChannelConnectFieldKeys, ChannelSetupStepKeys } from '../channel-connect-constants'
 import { ErrorCodes } from '../errors/error-codes'
-import { notificationMessageKey, NotificationTypes } from '../notifications/notification-constants'
+import {
+  type NotificationType,
+  notificationMessageKey,
+  NotificationTypes
+} from '../notifications/notification-constants'
 import { OrderCancellationReasons } from '../order-constants'
 import { OrderReturnReasons } from '../shipping-constants'
 import {
@@ -10,7 +14,7 @@ import {
   OrderStatusI18nKeys
 } from '../status-enums'
 
-import { generatedI18nKeys } from './i18n-keys'
+import { generatedI18nKeys, NotificationFailureReasons } from './i18n-keys'
 
 describe('generatedI18nKeys', () => {
   const keys = generatedI18nKeys()
@@ -44,7 +48,10 @@ describe('generatedI18nKeys', () => {
       ...Object.values(NotificationTypes).flatMap(type => [
         `${notificationMessageKey(type)}.title`,
         `${notificationMessageKey(type)}.body`
-      ])
+      ]),
+      ...Object.entries(NotificationFailureReasons).flatMap(([type, codes]) =>
+        codes.map(code => `${notificationMessageKey(type as NotificationType)}.reason.${code}`)
+      )
     ]
     expect(keys).toHaveLength(generated.length)
     expect(keys).toEqual([...keys].sort())

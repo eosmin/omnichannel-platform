@@ -1,4 +1,4 @@
-import { bodyVariantOf, NotificationLimits } from '@platform/core/notifications'
+import { bodyVariantOf, NotificationLimits, reasonNameOf } from '@platform/core/notifications'
 
 // The text of a notification is its message key plus `.title` / `.body` (`notificationMessageKey`).
 // A key this page has no text for (a server newer than the page) draws under the generic one, not as
@@ -19,6 +19,9 @@ export function notificationTextKeys(
   // A notification that carries who and whose (a mention) or whose (the unassigned queue) says it,
   // where the text was written for it; an older one, saved without them, keeps the plain text
   const body = `${messageKey}.${bodyVariantOf(params, 1, variant => has(`${messageKey}.${variant}`))}`
+  // Why it failed (NOT-06, MED-11): the text written for that reason when there is one
+  const reason = reasonNameOf(params, name => has(`${messageKey}.${name}`))
+  if (reason !== null && has(title)) return { title, body: `${messageKey}.${reason}` }
   if (has(title) && has(body)) return { title, body }
   return { title: `${UNKNOWN_NOTIFICATION_KEY}.title`, body: `${UNKNOWN_NOTIFICATION_KEY}.body` }
 }

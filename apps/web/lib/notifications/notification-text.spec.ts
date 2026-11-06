@@ -37,6 +37,36 @@ describe('notificationTextKeys with whose', () => {
   })
 })
 
+describe('notificationTextKeys with a reason', () => {
+  const written = (key: string) =>
+    key.endsWith('.reason.EXPORT_TOO_LARGE') || !key.includes('.reason.')
+
+  it('uses the text written for the reason the notification carries', () => {
+    expect(
+      notificationTextKeys('notifications.export.failed', written, { reason: 'EXPORT_TOO_LARGE' })
+        .body
+    ).toBe('notifications.export.failed.reason.EXPORT_TOO_LARGE')
+  })
+
+  it('keeps the plain text for a reason with no text, no reason, or a value that is not a code', () => {
+    const plain = 'notifications.export.failed.body'
+    expect(
+      notificationTextKeys('notifications.export.failed', written, { reason: 'SOMETHING_NEW' }).body
+    ).toBe(plain)
+    expect(notificationTextKeys('notifications.export.failed', written, {}).body).toBe(plain)
+    expect(
+      notificationTextKeys('notifications.export.failed', () => true, { reason: '../body' }).body
+    ).toBe(plain)
+    expect(
+      notificationTextKeys('notifications.export.failed', () => true, { reason: 7 }).body
+    ).toBe(plain)
+    // A code with a digit is a code
+    expect(
+      notificationTextKeys('notifications.export.failed', () => true, { reason: 'E2E_REASON' }).body
+    ).toBe('notifications.export.failed.reason.E2E_REASON')
+  })
+})
+
 describe('notificationTextKeys', () => {
   it('uses the title and body of the key when both exist', () => {
     const keys = notificationTextKeys('notifications.export.ready', () => true)
