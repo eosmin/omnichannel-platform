@@ -798,6 +798,148 @@ describe('MetaGraphClient', () => {
       await expect(upload()).rejects.toBeInstanceOf(PluginError)
     })
 
+    describe('as a send (the file goes with the message in one call)', () => {
+      const send = (file = fileOf('abc')) =>
+        client.uploadMedia({
+          path: ['222', 'messages'],
+          token: TOKEN,
+          fields: {
+            recipient: '{"id":"99"}',
+            message: '{"attachment":{"type":"image","payload":{}}}'
+          },
+          fileField: 'filedata',
+          safeToRepeat: false,
+          file,
+          schema: z.object({ message_id: z.string() })
+        })
+
+      it('names the field of the file as the Send API wants and posts to the messages edge', async () => {
+        answerAfterReading(json({ recipient_id: '99', message_id: 'mid.1' }))
+
+        await expect(send()).resolves.toMatchObject({ message_id: 'mid.1' })
+
+        expect(captured?.body).toContain('name="recipient"\r\n\r\n{"id":"99"}')
+        expect(captured?.body).toContain(
+          'name="filedata"; filename="upload"\r\nContent-Type: image/png'
+        )
+        expect(captured?.body).not.toContain('name="file";')
+        expect(fetchMock.mock.calls[0]?.[0]).toBe('https://graph.facebook.com/v23.0/222/messages')
+      })
+
+      it('refuses a name for the field that could break the form, before calling Meta', async () => {
+        await expect(
+          client.uploadMedia({
+            path: ['222', 'messages'],
+            token: TOKEN,
+            fields: {},
+            fileField: 'file"\r\nX: 1',
+            file: fileOf('abc'),
+            schema
+          })
+        ).rejects.toBeInstanceOf(PluginError)
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(opened).toHaveLength(0)
+      })
+
+      it('does not try again after a server error: the message may have gone', async () => {
+        answerAfterReading(json({ error: { code: 2 } }, 500))
+        await expect(send()).rejects.toMatchObject({ retryable: false, outcomeUnknown: true })
+      })
+
+      it('does not try again when the connection drops', async () => {
+        fetchMock.mockRejectedValue(new Error('socket hang up'))
+        await expect(send()).rejects.toMatchObject({ retryable: false, outcomeUnknown: true })
+      })
+
+      it('does not call a 2xx that cannot be read or does not fit a refusal: it may have gone', async () => {
+        answerAfterReading(new Response('not json', { status: 200 }))
+        await expect(send()).rejects.toMatchObject({ outcomeUnknown: true })
+
+        fetchMock.mockReset()
+        answerAfterReading(json({ nope: true }))
+        await expect(send()).rejects.toMatchObject({ outcomeUnknown: true })
+      })
+
+      it('names the file as asked, and refuses a name that could break the form', async () => {
+        answerAfterReading(json({ message_id: 'mid.1' }))
+        await client.uploadMedia({
+          path: ['222', 'messages'],
+          token: TOKEN,
+          fields: {},
+          fileField: 'filedata',
+          fileName: 'Factura 2026 (1).pdf',
+          safeToRepeat: false,
+          file: fileOf('abc'),
+          schema: z.object({ message_id: z.string() })
+        })
+        expect(captured?.body).toContain('filename="Factura 2026 (1).pdf"')
+
+        for (const fileName of ['a"b.pdf', 'a\r\nX: 1.pdf', 'a/b.pdf', '', 'x'.repeat(121)]) {
+          fetchMock.mockClear()
+          await expect(
+            client.uploadMedia({
+              path: ['222', 'messages'],
+              token: TOKEN,
+              fields: {},
+              fileName,
+              file: fileOf('abc'),
+              schema
+            })
+          ).rejects.toBeInstanceOf(PluginError)
+          expect(fetchMock).not.toHaveBeenCalled()
+        }
+      })
+
+      it('says a storage that cannot open the file is a plain failure that can be tried again, with none of its text', async () => {
+        const failing = {
+          ...fileOf('abc'),
+          open: () => Promise.reject(new Error('NoSuchKey: bucket b key k X-Amz-Signature=s'))
+        }
+
+        const error = await send(failing).catch((caught: unknown) => caught)
+
+        expect(error).toBeInstanceOf(PluginError)
+        expect(error).toMatchObject({ retryable: true })
+        expect(JSON.stringify(error)).not.toContain('Amz')
+        expect(fetchMock).not.toHaveBeenCalled()
+      })
+
+      it('can be tried again when the storage breaks half way, even if fetch reports its abort first', async () => {
+        const broken = {
+          ...fileOf('abc'),
+          open: () => {
+            const stream = new Readable({
+              read() {
+                // nothing to give: the test destroys it
+              }
+            })
+            process.nextTick(() => stream.destroy(new Error('storage reset')))
+            return Promise.resolve(stream)
+          }
+        }
+        // fetch gives up at once, before the stream's own error has been handled
+        fetchMock.mockImplementation(() => Promise.reject(new Error('aborted')))
+
+        await expect(send(broken)).rejects.toMatchObject({ retryable: true, outcomeUnknown: false })
+      })
+
+      it('says a refusal of Meta is a refusal: no id of the answer is read from it', async () => {
+        answerAfterReading(
+          json({ error: { message: `bad ${TOKEN}`, code: 100, error_subcode: 2018047 } }, 400)
+        )
+
+        const error = await send().catch((caught: unknown) => caught)
+
+        expect(error).toBeInstanceOf(PluginError)
+        expect(error).toMatchObject({
+          providerCode: 100,
+          providerSubcode: 2018047,
+          retryable: false
+        })
+        expect(JSON.stringify(error)).not.toContain(TOKEN)
+      })
+    })
+
     it('refuses a token that cannot be a header, without calling Meta', async () => {
       await expect(
         client.uploadMedia({

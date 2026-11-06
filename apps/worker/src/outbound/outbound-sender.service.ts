@@ -146,7 +146,7 @@ export class OutboundSender {
       await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
       return
     }
-    // A file is sent by a signed link the provider fetches; the caption is the text under it
+    // A file is uploaded to the provider from the platform's storage (`openFile`); the caption is the text under it
     const isMedia = isOutboundMediaType(message.type)
     if (isMedia && plugin.sendMedia === undefined) {
       await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)

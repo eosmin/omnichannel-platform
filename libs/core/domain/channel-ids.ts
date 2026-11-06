@@ -113,10 +113,11 @@ export const ChannelCaptionRules: Readonly<
 // The send of a reply is one call to the provider, from a job: bounded like the other calls to it
 export const OutboundLimits = {
   SEND_TIMEOUT_MS: 20_000,
-  // A send that uploads its file first (up to 100 MB) and then posts the message: the budget of the
-  // upload (`MetaLimits.UPLOAD_TIMEOUT_MS`, 180 s) and the post. Shorter, a slow upload times out here
-  // while it goes on in the background and the retry would send the message twice.
-  MEDIA_SEND_TIMEOUT_MS: 200_000,
+  // A send that uploads its file (up to 100 MB) and then posts a message: the budget of the upload
+  // (`MetaLimits.UPLOAD_TIMEOUT_MS`, 180 s), the post that follows it (the caption of Messenger and Instagram,
+  // `MetaLimits.REQUEST_TIMEOUT_MS`, 15 s) and a margin. Shorter, a slow upload times out here while it goes on
+  // in the background and the retry would send the message twice.
+  MEDIA_SEND_TIMEOUT_MS: 205_000,
   // The sweep queues again a reply that has been `queued` this long: its job was never added, or it
   // failed for good without the message being marked. Past the 75 seconds of the five attempts.
   REQUEUE_AFTER_MS: 120_000,

@@ -41,6 +41,8 @@ const HEADER_TOKEN = /^[\x21-\x7E]+$/
 const MIME_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/
 // A form field name: letters, digits, underscore
 const FIELD_NAME = /^[A-Za-z0-9_]+$/
+// The name of the file in the form: plain characters only, so it can never close the quotes or add a line
+const FILE_NAME = /^[A-Za-z0-9._ ()-]{1,120}$/
 
 // The statuses that split a refusal of the caller from a failure of Meta
 const HTTP_CLIENT_ERROR_MIN = 400
@@ -79,6 +81,14 @@ export interface UploadRequest<T> {
   file: { open: () => Promise<NodeJS.ReadableStream>; contentType: string; size: number }
   schema: z.ZodType<T>
   origin?: MetaGraphOrigin
+  // The name of the form field that holds the file: `file` for the media edge of WhatsApp, `filedata`
+  // when the file is uploaded and sent in one call
+  fileField?: string
+  // False when the call changes something the customer sees (the Send API): a failure that may have
+  // reached Meta is then not tried again. True (the default) for an upload that only makes an id.
+  safeToRepeat?: boolean
+  // The name Meta shows for the file; `upload` when left out. Only plain characters go (checked here too).
+  fileName?: string
 }
 
 // The calls and checks the three Meta plugins share. The token is the connection's and arrives per
@@ -188,7 +198,8 @@ export class MetaGraphClient {
   // Uploads one file as multipart/form-data and answers what Meta answers (the id of the media). The
   // body is streamed with an exact content-length, so a file of 100 MB never sits in memory, and the
   // stream is held to the size recorded for the file. An upload changes nothing the customer sees, so a
-  // failure is worth trying again (the caller opens the file again: a stream is read once).
+  // failure is worth trying again (the caller opens the file again: a stream is read once), unless the request
+  // says `safeToRepeat: false` because the upload is also a send.
   async uploadMedia<T>(request: UploadRequest<T>): Promise<T> {
     if (!HEADER_TOKEN.test(request.token)) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
@@ -197,9 +208,14 @@ export class MetaGraphClient {
       })
     }
     const { contentType, size } = request.file
+    const fileField = request.fileField ?? MetaUpload.FILE_FIELD
+    const safeToRepeat = request.safeToRepeat ?? true
+    const fileName = request.fileName ?? MetaUpload.FILE_NAME
     // Nothing that reaches a header or a form line may carry a line break or a quote
     if (
       !MIME_TYPE.test(contentType) ||
+      !FIELD_NAME.test(fileField) ||
+      !FILE_NAME.test(fileName) ||
       !Number.isSafeInteger(size) ||
       size <= 0 ||
       size > MetaLimits.MEDIA_MAX_BYTES ||
@@ -217,13 +233,17 @@ export class MetaGraphClient {
           ([name, value]) =>
             `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
         ),
-        `--${boundary}\r\nContent-Disposition: form-data; name="${MetaUpload.FILE_FIELD}"; ` +
-          `filename="${MetaUpload.FILE_NAME}"\r\nContent-Type: ${contentType}\r\n\r\n`
+        `--${boundary}\r\nContent-Disposition: form-data; name="${fileField}"; ` +
+          `filename="${fileName}"\r\nContent-Type: ${contentType}\r\n\r\n`
       ].join('')
     )
     const tail = Buffer.from(`\r\n--${boundary}--\r\n`)
     // Opened only now, after every refusal above
-    const opened = await request.file.open()
+    // A storage that cannot give the file says so before anything reached Meta: a plain, repeatable failure
+    // that carries nothing of the storage's own message (it may name the bucket or a signed link)
+    const opened = await request.file.open().catch(() => {
+      throw graphUnreachable({ safeToRepeat: true })
+    })
     const source = opened instanceof Readable ? opened : Readable.from(opened)
     const limited = limitBytes(source, size, size)
     // Why the limiter stopped the stream, if it did: fetch only says that the call failed, and a file
@@ -242,25 +262,38 @@ export class MetaGraphClient {
     try {
       let response: Response
       try {
-        response = await this.fetchOrFail(url, {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${request.token}`,
-            'content-type': `${MetaUpload.FORM_CONTENT_TYPE}; boundary=${boundary}`,
-            'content-length': String(head.length + size + tail.length)
+        response = await this.fetchOrFail(
+          url,
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${request.token}`,
+              'content-type': `${MetaUpload.FORM_CONTENT_TYPE}; boundary=${boundary}`,
+              'content-length': String(head.length + size + tail.length)
+            },
+            body: Readable.toWeb(Readable.from(multipart())),
+            duplex: 'half',
+            redirect: 'manual',
+            signal: AbortSignal.timeout(MetaLimits.UPLOAD_TIMEOUT_MS)
           },
-          body: Readable.toWeb(Readable.from(multipart())),
-          duplex: 'half',
-          redirect: 'manual',
-          signal: AbortSignal.timeout(MetaLimits.UPLOAD_TIMEOUT_MS)
-        })
+          safeToRepeat
+        )
       } catch (error) {
-        throw stopped instanceof PluginError ? stopped : error
+        // The stream failing on our side (the storage, a file not of the size recorded) means the body was
+        // never complete, so nothing was sent. fetch can report its own abort before the stream's error
+        // event has been handled: one turn of the loop settles which of the two came first.
+        await new Promise<void>(resolve => setImmediate(resolve))
+        const local = limited.errored ?? stopped
+        throw local instanceof PluginError ? local : error
       }
       const body = await readJson(response)
-      if (!response.ok) throw graphFailure(response.status, body, { safeToRepeat: true })
+      if (!response.ok) throw graphFailure(response.status, body, { safeToRepeat })
+      // A 2xx that cannot be read or does not fit: an upload that only makes an id can be asked again, a
+      // send may already have gone out
+      if (body === undefined && !safeToRepeat) throw graphUnreachable({ safeToRepeat })
       const parsed = request.schema.safeParse(body)
-      if (!parsed.success) throw graphUnexpected()
+      if (!parsed.success)
+        throw safeToRepeat ? graphUnexpected() : graphUnreachable({ safeToRepeat })
       return parsed.data
     } finally {
       // On every way out: Meta may have answered before it read the whole body, and the object in the
