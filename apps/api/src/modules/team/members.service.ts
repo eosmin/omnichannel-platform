@@ -12,6 +12,9 @@ import {
   resourceNotFound,
   PlatformException
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import { isHiddenStatus } from '@platform/core/messaging'
 
 import { RealtimeService } from '../realtime/realtime.service'
 import { type Actor, isPermission, missingPermissions, TenantContextService } from '../tenancy'
@@ -81,13 +84,21 @@ function view(row: {
 
 // The members of the store of the request. Every query is filtered by that store (TenantGuard), so a
 // membership of another store is one that does not exist.
+// The conversations a person is still working on: the ones that go back to the queue when they leave
+const WORKED_STATUSES = [
+  ConversationStatus.OPEN,
+  ConversationStatus.PENDING,
+  ConversationStatus.SNOOZED
+]
+
 @Injectable()
 export class MembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly tenants: TenantContextService,
-    private readonly realtime: RealtimeService
+    private readonly realtime: RealtimeService,
+    private readonly events: DomainEvents
   ) {}
 
   async list(storeId: string): Promise<MemberView[]> {
@@ -200,6 +211,9 @@ export class MembersService {
       })
       // Whoever leaves the team leaves their conversations unassigned: nobody is waiting for an
       // answer from someone who can no longer give it
+      await this.backToTheQueue(tx, storeId, found.userId, actor)
+      // The finished ones (resolved, archived, spam) leave with them too, without an event: nobody
+      // waits on them, and a member who worked for years has thousands
       await tx.conversation.updateMany({
         where: { storeId, assignedTo: found.userId },
         data: { assignedTo: null }
@@ -250,16 +264,7 @@ export class MembersService {
       // nobody is waiting for an answer from someone who cannot give it, and the others may pick
       // them up. The finished ones (resolved, archived, spam) keep who handled them: the person
       // comes back, and the record of the work does not change.
-      await tx.conversation.updateMany({
-        where: {
-          storeId,
-          assignedTo: found.userId,
-          status: {
-            in: [ConversationStatus.OPEN, ConversationStatus.PENDING, ConversationStatus.SNOOZED]
-          }
-        },
-        data: { assignedTo: null }
-      })
+      await this.backToTheQueue(tx, storeId, found.userId, actor)
       return found
     })
     // After the commit, so that nothing re-caches the old answer from a row that is still active
@@ -302,6 +307,36 @@ export class MembersService {
       role: member.role.name
     })
     return view({ ...member, status: MembershipStatus.ACTIVE })
+  }
+
+  // The conversations of the member that are still being worked go back to the queue and say so the
+  // way an unassignment says it (EQ-14, EQ-15): the sockets of the others learn that they are free,
+  // and the people who can take them are told that they wait. Only the rows this update really
+  // changed are announced (a conversation handed to someone else a moment earlier keeps its owner and
+  // is not announced). The one who leaves is not told: their membership is already out of reach of
+  // the readers when the notification is made. Inside the transaction, so the events leave only if the
+  // change commits.
+  private async backToTheQueue(
+    tx: PrismaTransaction,
+    storeId: string,
+    previousAssignee: string,
+    actor: Actor
+  ): Promise<void> {
+    const freed = await tx.conversation.updateManyAndReturn({
+      where: { assignedTo: previousAssignee, status: { in: WORKED_STATUSES }, storeId },
+      data: { assignedTo: null },
+      select: { id: true, status: true }
+    })
+    for (const conversation of freed) {
+      this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
+        storeId,
+        conversationId: conversation.id,
+        assignedTo: null,
+        previousAssignee,
+        assignedBy: { type: 'user', id: actor.userId },
+        visibility: { hidden: isHiddenStatus(conversation.status), assignedTo: null }
+      })
+    }
   }
 
   // A member of the team of the store, active or suspended; a revoked one is not found
