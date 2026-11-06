@@ -3,7 +3,7 @@
 import { Plug } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { type ReactElement, useState } from 'react'
+import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
@@ -12,6 +12,7 @@ import { ChannelConnectionListStates } from '@platform/core/domain'
 import { useStore } from '../../components/providers/store-context'
 import { ConnectDialog } from '../../components/settings/connect-dialog'
 import { ConnectionCard } from '../../components/settings/connection-card'
+import { OAuthAssetDialog } from '../../components/settings/oauth-asset-dialog'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
 import { UpdateTokenDialog } from '../../components/settings/update-token-dialog'
 import { Button } from '../../components/ui/button'
@@ -19,21 +20,34 @@ import type {
   ChannelConnectionView,
   PluginCatalogEntryView
 } from '../../lib/settings/channels-requests'
+import { OAUTH_GENERIC_FAILURE, type OAuthReturnFailure } from '../../lib/settings/oauth-return'
 import { useConnections, usePluginCatalog } from '../../lib/settings/use-channels'
+import { useOAuthReturn } from '../../lib/settings/use-oauth-return'
+
+type LoginReturn = ReturnType<typeof useOAuthReturn>
 
 // Settings → Store → Channels (TDD_09 §13, TDD_10 §10): the accounts of the store with their health,
 // connect, test and disconnect. It is drawn from the manifest of each plugin, so a channel that a
 // plugin adds needs no change here. The inbox sends the owner here when it has nothing to show.
 export function StoreChannelsPage(): ReactElement {
   const { can } = useStore()
+  // What Facebook sent the person back with is read here, before anything that can keep the page from drawing
+  // (no permission, a list that loads or fails): the id of the session must leave the address in every case
+  const login = useOAuthReturn()
+  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const { session, clear } = login
+  // Without the right to connect there is nothing to pick a Page for: the id is let go (the session expires)
+  useEffect(() => {
+    if (session !== null && !canEdit) clear()
+  }, [session, canEdit, clear])
   return can(Permissions.SETTINGS_VIEW) ? (
-    <ChannelsLoader />
+    <ChannelsLoader login={login} />
   ) : (
     <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
   )
 }
 
-function ChannelsLoader(): ReactElement {
+function ChannelsLoader({ login }: { login: LoginReturn }): ReactElement {
   const { storeId } = useStore()
   const live = useConnections(storeId, ChannelConnectionListStates.LIVE)
   const catalog = usePluginCatalog(storeId)
@@ -43,6 +57,7 @@ function ChannelsLoader(): ReactElement {
   if (live.data === undefined) return <PageLoading />
   return (
     <ChannelsBody
+      login={login}
       live={live.data.pages.flatMap(page => page.data)}
       hasMoreLive={live.hasNextPage}
       loadingMoreLive={live.isFetchingNextPage}
@@ -55,6 +70,7 @@ function ChannelsLoader(): ReactElement {
 }
 
 function ChannelsBody({
+  login,
   live,
   hasMoreLive,
   loadingMoreLive,
@@ -63,6 +79,7 @@ function ChannelsBody({
   catalog,
   catalogFailed
 }: {
+  login: LoginReturn
   live: ChannelConnectionView[]
   hasMoreLive: boolean
   loadingMoreLive: boolean
@@ -79,6 +96,12 @@ function ChannelsBody({
     plugin: PluginCatalogEntryView
   } | null>(null)
   const canEdit = can(Permissions.SETTINGS_EDIT)
+  // Where the focus goes when the dialog of the Pages closes or the notice is dismissed: both leave it on
+  // nothing, because neither was opened from a control
+  const heading = useRef<HTMLHeadingElement>(null)
+  const focusHeading = (): void => {
+    setTimeout(() => heading.current?.focus(), 0)
+  }
   const pluginOf = (id: string): PluginCatalogEntryView | undefined =>
     catalog?.find(entry => entry.id === id)
   // A channel can be connected once it is installed in the store (Settings → Plugins)
@@ -87,9 +110,21 @@ function ChannelsBody({
   return (
     <section className="flex max-w-3xl flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+          {t('title')}
+        </h1>
         <p className="text-muted-foreground text-sm">{t('description')}</p>
       </header>
+
+      {login.failure === null ? null : (
+        <LoginFailed
+          failure={login.failure}
+          onDismiss={() => {
+            login.clear()
+            focusHeading()
+          }}
+        />
+      )}
 
       {/* Before the list: with hundreds of accounts it would sit below all of them */}
       <section aria-labelledby="add-channel" className="flex flex-col gap-3">
@@ -182,7 +217,42 @@ function ChannelsBody({
       {connecting === null ? null : (
         <ConnectDialog plugin={connecting} onClose={() => setConnecting(null)} />
       )}
+      {login.session === null || !canEdit ? null : (
+        <OAuthAssetDialog
+          sessionId={login.session}
+          onClose={() => {
+            login.clear()
+            focusHeading()
+          }}
+        />
+      )}
     </section>
+  )
+}
+
+// Why a login with Facebook ended with nothing to connect: the text of a reason of the closed list, or the
+// generic one. The reason is mapped by a table and never painted as it came.
+function LoginFailed({
+  failure,
+  onDismiss
+}: {
+  failure: OAuthReturnFailure
+  onDismiss: () => void
+}): ReactElement {
+  const t = useTranslations('settings.channels')
+  const tReason = useTranslations('settings.channels.connectFailure')
+  return (
+    <div
+      role="alert"
+      className="border-destructive/40 flex flex-wrap items-start gap-3 rounded-lg border p-3 text-sm"
+    >
+      <p className="min-w-0 flex-1">
+        {failure === OAUTH_GENERIC_FAILURE ? t('oauth.failedGeneric') : tReason(failure)}
+      </p>
+      <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+        {t('oauth.dismiss')}
+      </Button>
+    </div>
   )
 }
 

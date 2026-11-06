@@ -66,7 +66,12 @@ const catalogEntrySchema = z.object({
   installationId: z.string().nullable(),
   activeConnections: z.number().int(),
   channel: z
-    .object({ connectFields: z.array(connectFieldSchema), callbackUrl: z.string().nullable() })
+    .object({
+      connectFields: z.array(connectFieldSchema),
+      callbackUrl: z.string().nullable(),
+      // "Connect with Facebook" is offered for this channel; false from a server older than the page
+      facebookLogin: z.boolean().catch(false)
+    })
     .nullable()
 })
 export type PluginCatalogEntryView = z.output<typeof catalogEntrySchema>
@@ -243,6 +248,72 @@ export function uninstallPlugin(
   return client.request(ApiRoutes.plugins.revoke(enc(installationId)), {
     method: 'POST',
     schema: catalogEntrySchema,
+    storeId
+  })
+}
+
+// "Connect with Facebook" (Step 7.8). The api makes the state and answers the address of the dialog; the
+// browser goes there, and comes back with the id of a session that holds the person's token on the server:
+// the page only ever holds that id, and only in memory.
+const startSchema = z.object({ authorizeUrl: z.string() })
+
+const assetSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  linkedAccount: z.object({ id: z.string(), username: z.string().nullable() }).nullable()
+})
+export type OAuthAssetView = z.output<typeof assetSchema>
+
+const assetsSchema = z.object({ pluginId: z.string(), assets: z.array(assetSchema) })
+export type OAuthAssetsView = z.output<typeof assetsSchema>
+
+export function startFacebookLogin(
+  client: ApiClient,
+  storeId: string,
+  pluginId: string
+): Promise<{ authorizeUrl: string }> {
+  return client.request(ApiRoutes.channels.oauthStart(enc(pluginId)), {
+    method: 'POST',
+    schema: startSchema,
+    storeId
+  })
+}
+
+export function fetchOAuthAssets(
+  client: ApiClient,
+  storeId: string,
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<OAuthAssetsView> {
+  return client.request(ApiRoutes.channels.oauthAssets(enc(sessionId)), {
+    schema: assetsSchema,
+    storeId,
+    signal
+  })
+}
+
+export function completeOAuth(
+  client: ApiClient,
+  storeId: string,
+  sessionId: string,
+  assetId: string
+): Promise<ChannelConnectionView> {
+  return client.request(ApiRoutes.channels.oauthComplete(enc(sessionId)), {
+    method: 'POST',
+    body: { assetId },
+    schema: connectionSchema,
+    storeId
+  })
+}
+
+export function cancelOAuth(
+  client: ApiClient,
+  storeId: string,
+  sessionId: string
+): Promise<undefined> {
+  return client.request(ApiRoutes.channels.oauthSession(enc(sessionId)), {
+    method: 'DELETE',
+    schema: z.undefined(),
     storeId
   })
 }

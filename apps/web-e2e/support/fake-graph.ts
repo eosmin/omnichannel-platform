@@ -30,6 +30,26 @@ export const FAKE_BUSY_TOKEN = 'e2e-busy-token'
 export const FAKE_APP_ID = '100000000000001'
 export const FAKE_PAGE_NAME = 'E2E Page'
 
+// "Connect with Facebook": the secret of the app (the api is started with it, playwright.shared.ts), the codes the
+// dialog sends back, and the tokens of the person they are traded for. One login grants everything the Messenger
+// login asks for; the other leaves out `pages_read_engagement`, as a person who clears that box does. The
+// portfolio holds the Page, and `me/accounts` is empty, as for the owner's own account (measured 2026-11-06).
+export const FAKE_APP_SECRET = 'e2e-app-secret-of-more-than-16-characters'
+export const FAKE_LOGIN_CODE = 'e2e-login-code'
+export const FAKE_LOGIN_CODE_CLEARED = 'e2e-login-code-cleared'
+const FAKE_USER_SHORT = 'e2e-user-short'
+const FAKE_USER_SHORT_CLEARED = 'e2e-user-short-cleared'
+export const FAKE_USER_TOKEN = 'e2e-user-token'
+const FAKE_USER_TOKEN_CLEARED = 'e2e-user-token-cleared'
+export const FAKE_BUSINESS_ID = '200000000000001'
+const LOGIN_PERMISSIONS = [
+  'pages_show_list',
+  'pages_messaging',
+  'pages_manage_metadata',
+  'pages_read_engagement',
+  'business_management'
+]
+
 export const TEMPLATE_NAME = 'order_update'
 export const TEMPLATE_LANGUAGE = 'en_US'
 export const TEMPLATE_BODY = 'Hello {{1}}, your order {{2}} is on its way.'
@@ -53,10 +73,14 @@ export interface FakeGraph {
   close: () => Promise<void>
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+async function readText(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk as Uint8Array))
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null')
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function readJson(request: IncomingMessage): Promise<unknown> {
+  return JSON.parse((await readText(request)) || 'null')
 }
 
 function reply(response: ServerResponse, status: number, body: unknown): void {
@@ -125,6 +149,67 @@ export async function startFakeGraph(): Promise<FakeGraph> {
           authorization: request.headers.authorization
         })
         reply(response, HttpStatusCodes.OK, { messages: [{ id: `wamid.e2e-${sent.length}` }] })
+        return
+      }
+      // The login with Facebook. The code of the dialog for a short token, and that one for a long-lived token,
+      // proved with the secret of the app in the body (never in the address)
+      if (request.method === 'POST' && id === 'oauth' && edge === 'access_token') {
+        const form = new URLSearchParams(await readText(request))
+        const proved =
+          form.get('client_secret') === FAKE_APP_SECRET && form.get('client_id') === FAKE_APP_ID
+        const code = form.get('code')
+        const short = form.get('fb_exchange_token')
+        if (!proved || request.headers.authorization !== undefined) {
+          reply(response, HttpStatusCodes.BAD_REQUEST, { error: { message: 'bad app', code: 101 } })
+        } else if (code === FAKE_LOGIN_CODE) {
+          reply(response, HttpStatusCodes.OK, { access_token: FAKE_USER_SHORT })
+        } else if (code === FAKE_LOGIN_CODE_CLEARED) {
+          reply(response, HttpStatusCodes.OK, { access_token: FAKE_USER_SHORT_CLEARED })
+        } else if (form.get('grant_type') === 'fb_exchange_token' && short === FAKE_USER_SHORT) {
+          reply(response, HttpStatusCodes.OK, { access_token: FAKE_USER_TOKEN })
+        } else if (
+          form.get('grant_type') === 'fb_exchange_token' &&
+          short === FAKE_USER_SHORT_CLEARED
+        ) {
+          reply(response, HttpStatusCodes.OK, { access_token: FAKE_USER_TOKEN_CLEARED })
+        } else {
+          reply(response, HttpStatusCodes.BAD_REQUEST, {
+            error: { message: 'bad code', code: 100 }
+          })
+        }
+        return
+      }
+      const userBearer = request.headers.authorization
+      const isUser =
+        userBearer === `Bearer ${FAKE_USER_TOKEN}` ||
+        userBearer === `Bearer ${FAKE_USER_TOKEN_CLEARED}`
+      if (request.method === 'GET' && isUser) {
+        if (id === 'me' && edge === 'permissions') {
+          const cleared = userBearer === `Bearer ${FAKE_USER_TOKEN_CLEARED}`
+          reply(response, HttpStatusCodes.OK, {
+            data: LOGIN_PERMISSIONS.map(permission => ({
+              permission,
+              status: cleared && permission === 'pages_read_engagement' ? 'declined' : 'granted'
+            }))
+          })
+        } else if (id === 'me' && edge === 'accounts') {
+          reply(response, HttpStatusCodes.OK, { data: [] })
+        } else if (id === 'me' && edge === 'businesses') {
+          reply(response, HttpStatusCodes.OK, {
+            data: [{ id: FAKE_BUSINESS_ID, name: 'E2E portfolio' }]
+          })
+        } else if (id === FAKE_BUSINESS_ID && edge === 'owned_pages') {
+          reply(response, HttpStatusCodes.OK, {
+            data: [{ id: FAKE_PAGE_ID, name: FAKE_PAGE_NAME }]
+          })
+        } else if (id === FAKE_PAGE_ID && edge === undefined) {
+          // The token of the Page, read with the token of the person
+          reply(response, HttpStatusCodes.OK, { id: FAKE_PAGE_ID, access_token: FAKE_PAGE_TOKEN })
+        } else {
+          reply(response, HttpStatusCodes.NOT_FOUND, {
+            error: { message: 'not served', code: 100 }
+          })
+        }
         return
       }
       // Connecting a Messenger Page: its id and name by `me`, and the subscription of the app to it. Any

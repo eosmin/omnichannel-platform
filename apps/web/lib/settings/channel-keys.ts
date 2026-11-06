@@ -20,5 +20,9 @@ export const ChannelKeys = {
     'widget',
     connectionId
   ],
-  plugins: (storeId: string) => ['plugins', storeId, 'available'] as const
+  plugins: (storeId: string) => ['plugins', storeId, 'available'] as const,
+  // The Pages of a login with Facebook. Outside the channels root on purpose: refreshing the channels must not
+  // list them again, nor ask for a session that was just used.
+  loginAssets: (storeId: string, sessionId: string) =>
+    ['channel-login', storeId, 'assets', sessionId] as const
 }

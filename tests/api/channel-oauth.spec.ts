@@ -822,6 +822,20 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(codeOf(begin.body)).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
     })
 
+    it('says in the catalog which channels can offer the login, and no more than a flag', async () => {
+      const withLogin = await register(login().oauth)
+      const without = await register(undefined)
+      const response = await asAdmin().get(ApiRoutes.plugins.available)
+      expect(response.status).toBe(OK)
+      const entries = response.body as { id: string; channel: { facebookLogin?: boolean } | null }[]
+      expect(entries.find(entry => entry.id === withLogin.id)?.channel?.facebookLogin).toBe(true)
+      expect(entries.find(entry => entry.id === without.id)?.channel?.facebookLogin).toBe(false)
+      // Nothing about the app, the scopes or the address travels with it
+      const text = JSON.stringify(response.body)
+      expect(text).not.toContain(REDIRECT_URI)
+      expect(text).not.toContain('pages_show_list')
+    })
+
     it('is off, as if it did not exist, where no redirect address is set', async () => {
       const off = await createTestApp([], builder =>
         builder

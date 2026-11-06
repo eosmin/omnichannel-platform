@@ -183,6 +183,7 @@ describe('The plugin catalog and the installations of a store', () => {
         channel: {
           connectFields: Record<string, unknown>[]
           callbackUrl: string | null
+          facebookLogin: boolean
         } | null
       }
       const apiUrl = () => app.get(PublicApiConfig, { strict: false }).apiUrl
@@ -241,7 +242,13 @@ describe('The plugin catalog and the installations of a store', () => {
         for (const entry of ((await catalogOf()) as ManifestBody[]).filter(
           e => e.channel !== null
         )) {
-          expect(Object.keys(entry.channel ?? {}).sort()).toEqual(['callbackUrl', 'connectFields'])
+          // `facebookLogin` is a flag and nothing more: no address, scope or app id
+          expect(Object.keys(entry.channel ?? {}).sort()).toEqual([
+            'callbackUrl',
+            'connectFields',
+            'facebookLogin'
+          ])
+          expect(entry.channel?.facebookLogin).toBe(false)
           for (const field of entry.channel?.connectFields ?? []) {
             expect(Object.keys(field).sort()).toEqual([
               'key',
@@ -272,7 +279,8 @@ describe('The plugin catalog and the installations of a store', () => {
           connectFields: [
             expect.objectContaining({ key: 'apiKey', secret: true, required: false })
           ],
-          callbackUrl: `${apiUrl()}/api/v1/webhooks/channels/${id}`
+          callbackUrl: `${apiUrl()}/api/v1/webhooks/channels/${id}`,
+          facebookLogin: false
         })
       })
 

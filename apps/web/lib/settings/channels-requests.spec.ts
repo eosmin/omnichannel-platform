@@ -8,10 +8,14 @@ import {
   updateConnectionToken,
   fetchConnections,
   fetchPluginCatalog,
+  cancelOAuth,
+  completeOAuth,
+  fetchOAuthAssets,
   fetchWidget,
   installPlugin,
   saveWidgetOrigins,
   saveWidgetPreChat,
+  startFacebookLogin,
   testConnection,
   uninstallPlugin
 } from './channels-requests'
@@ -234,5 +238,87 @@ describe('the plugin requests', () => {
     const result = await uninstallPlugin(revoke.client, 's1', 'i1')
     expect(revoke.call()[0]).toBe('https://api.example.com/api/v1/plugins/i1/revoke')
     expect(result.installed).toBe(false)
+  })
+})
+
+describe('the login with Facebook requests', () => {
+  const entry = {
+    id: 'messenger',
+    name: 'Messenger',
+    authorName: 'Platform',
+    type: 'channel',
+    isOfficial: true,
+    installed: true,
+    installationId: 'i1',
+    activeConnections: 0
+  }
+
+  it('reads whether a channel has the login, and takes a server that does not say as having none', async () => {
+    const on = setup([
+      { ...entry, channel: { connectFields: [], callbackUrl: null, facebookLogin: true } }
+    ])
+    expect((await fetchPluginCatalog(on.client, 'store-1'))[0]?.channel?.facebookLogin).toBe(true)
+    const older = setup([{ ...entry, channel: { connectFields: [], callbackUrl: null } }])
+    expect((await fetchPluginCatalog(older.client, 'store-1'))[0]?.channel?.facebookLogin).toBe(
+      false
+    )
+  })
+
+  it('starts with a POST to the plugin and reads the address back', async () => {
+    const { client, call } = setup({ authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth' })
+    await expect(startFacebookLogin(client, 'store-1', 'messenger')).resolves.toEqual({
+      authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth'
+    })
+    expect(call()[0]).toBe(
+      'https://api.example.com/api/v1/channels/connections/oauth/messenger/start'
+    )
+    expect((call()[1] as RequestInit).method).toBe('POST')
+  })
+
+  it('reads the Pages of a session and keeps only the three fields it draws', async () => {
+    const { client, call } = setup({
+      pluginId: 'instagram',
+      assets: [{ id: '1', name: 'Page', linkedAccount: { id: '2', username: null }, token: 'LEAK' }]
+    })
+    const answer = await fetchOAuthAssets(client, 'store-1', 'S'.repeat(43))
+    expect(answer.assets[0]).toEqual({
+      id: '1',
+      name: 'Page',
+      linkedAccount: { id: '2', username: null }
+    })
+    expect(call()[0]).toBe(
+      `https://api.example.com/api/v1/channels/connections/oauth/sessions/${'S'.repeat(43)}/assets`
+    )
+    expect(new Headers((call()[1] as RequestInit).headers).get(TenantHeaders.STORE_ID)).toBe(
+      'store-1'
+    )
+  })
+
+  it('completes with the number of the Page in the body, never in the address', async () => {
+    const { client, call } = setup(connection)
+    await completeOAuth(client, 'store-1', 'S'.repeat(43), '1100')
+    expect(bodyOf(call()[1])).toEqual({ assetId: '1100' })
+    expect(call()[0]).not.toContain('1100')
+    expect((call()[1] as RequestInit).method).toBe('POST')
+  })
+
+  it('drops a session with a DELETE', async () => {
+    const fetchImpl = jest
+      .fn<Promise<Response>, [string, RequestInit]>()
+      .mockResolvedValue(new Response(null, { status: 204 }))
+    const client = createApiClient({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'token',
+      refreshAccessToken: () => Promise.resolve('token'),
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+    await expect(cancelOAuth(client, 'store-1', 'S'.repeat(43))).resolves.toBeUndefined()
+    expect(fetchImpl.mock.calls[0]?.[1].method).toBe('DELETE')
+  })
+
+  it('encodes the id of a session it puts in a path', async () => {
+    const { client, call } = setup({ pluginId: 'messenger', assets: [] })
+    await fetchOAuthAssets(client, 'store-1', 'a/b?c')
+    expect(call()[0]).toContain('a%2Fb%3Fc')
   })
 })

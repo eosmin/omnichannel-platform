@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Locator, Page } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { ChannelIds } from '@platform/core/domain'
@@ -13,6 +13,7 @@ import {
   uninstallChannel,
   uninstallWidget
 } from '../support/api'
+import { expectDialogHoldsItsContent } from '../support/dialog-fit'
 import {
   FAKE_BUSY_TOKEN,
   FAKE_OTHER_PAGE_TOKEN,
@@ -38,65 +39,6 @@ function storeIdOf(page: Page): string {
   const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1]
   expect(storeId).toBeDefined()
   return storeId ?? ''
-}
-
-// A dialog holds its content: nothing is wider or taller than the box, and its buttons are inside it, on a phone
-// and on a desktop (a long address or a wide field must not push the box wider than the screen)
-const SCREENS = [
-  { width: 390, height: 844 },
-  { width: 1280, height: 800 }
-]
-async function expectDialogHoldsItsContent(page: Page, dialog: Locator): Promise<void> {
-  const original = page.viewportSize()
-  try {
-    for (const screen of SCREENS) {
-      await page.setViewportSize(screen)
-      // Everything is measured in one go, after the layout of the new size has settled
-      const box = await dialog.evaluate(
-        element =>
-          new Promise<{
-            scrollWidth: number
-            clientWidth: number
-            scrollHeight: number
-            clientHeight: number
-            left: number
-            right: number
-            stray: number
-          }>(resolve =>
-            requestAnimationFrame(() => {
-              const frame = element.getBoundingClientRect()
-              // Controls and text that stick out of the box on either side
-              const stray = Array.from(element.querySelectorAll('button, input, code, p')).filter(
-                item => {
-                  const rect = item.getBoundingClientRect()
-                  return rect.left < frame.left - 1 || rect.right > frame.right + 1
-                }
-              ).length
-              resolve({
-                scrollWidth: element.scrollWidth,
-                clientWidth: element.clientWidth,
-                scrollHeight: element.scrollHeight,
-                clientHeight: element.clientHeight,
-                left: frame.left,
-                right: frame.right,
-                stray
-              })
-            })
-          )
-      )
-      expect(box.scrollWidth, `no horizontal scroll at ${screen.width}px`).toBeLessThanOrEqual(
-        box.clientWidth
-      )
-      expect(box.scrollHeight, `no vertical scroll at ${screen.width}px`).toBeLessThanOrEqual(
-        box.clientHeight
-      )
-      expect(box.left).toBeGreaterThanOrEqual(0)
-      expect(box.right).toBeLessThanOrEqual(screen.width)
-      expect(box.stray, `nothing sticks out of the box at ${screen.width}px`).toBe(0)
-    }
-  } finally {
-    if (original !== null) await page.setViewportSize(original)
-  }
 }
 
 // The name the channels screen shows for the Messenger plugin (CI page text: "Messenger")
@@ -259,6 +201,8 @@ test.describe('Settings → Channels and Plugins', () => {
         await expect(dialog).toBeHidden()
         await expect(connectButton).toBeFocused()
         await connectButton.click()
+        // Where the channel has the login with Facebook it comes first, and the pasted token is one link away
+        await dialog.getByRole('button', { name: channels.connectDialog.useToken }).click()
         const field = dialog.getByLabel(channels.connect.messenger.accessToken)
         // The dialog with the callback address (the widest thing in it) fits a phone and a desktop
         await expectDialogHoldsItsContent(page, dialog)
