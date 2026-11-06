@@ -27,6 +27,9 @@ export const WORKER_PORT = 8081
 export const STORAGE_URL = process.env['S3_ENDPOINT'] ?? 'http://localhost:8333'
 export const MAILPIT_URL = 'http://localhost:8025'
 
+// The file GitHub shows as the summary of a run; unset on a laptop
+export const githubStepSummary = process.env['GITHUB_STEP_SUMMARY']
+
 // Each service connects with its own role, as it does where it is deployed
 export const databaseUrls = connectionUrls()
 

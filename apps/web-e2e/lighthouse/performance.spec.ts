@@ -12,6 +12,7 @@ import { storeIdNamed } from '../support/database'
 import { WEB_URL } from '../support/env'
 import { measure, type PageMetrics } from '../support/lighthouse'
 import { signIn } from '../support/login'
+import { reportMetrics } from '../support/metrics-report'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 import { Budgets, ScriptCeilingsKb } from './budgets'
@@ -28,8 +29,9 @@ async function freePort(): Promise<number> {
   return address.port
 }
 
-// The numbers go to the report of the run, so a budget that is close can be seen before it breaks
-function expectWithinBudgets(metrics: PageMetrics, scriptCeilingKb: number): void {
+// The numbers go to the log, the summary and the report of the run, so a budget that is close can be seen before it breaks
+function expectWithinBudgets(label: string, metrics: PageMetrics, scriptCeilingKb: number): void {
+  reportMetrics(label, metrics, scriptCeilingKb)
   test.info().annotations.push({ type: 'metrics', description: JSON.stringify(metrics) })
   expect.soft(metrics.firstContentfulPaintMs).toBeLessThan(Budgets.FIRST_CONTENTFUL_PAINT_MS)
   expect.soft(metrics.largestContentfulPaintMs).toBeLessThan(Budgets.LARGEST_CONTENTFUL_PAINT_MS)
@@ -75,6 +77,7 @@ test.describe('performance budgets', () => {
       await context.addCookies([englishLocaleCookie])
     }
     expectWithinBudgets(
+      'login',
       await measure(`${WEB_URL}${AppPaths.login}`, debuggingPort, signOut),
       ScriptCeilingsKb.LOGIN
     )
@@ -97,6 +100,7 @@ test.describe('performance budgets', () => {
       await page.goto('about:blank')
     }
     expectWithinBudgets(
+      'inbox',
       await measure(`${WEB_URL}${AppPaths.store.inbox(storeId)}`, debuggingPort, signInAfresh),
       ScriptCeilingsKb.INBOX
     )
