@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
@@ -8,6 +9,8 @@ import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ConversationStatus, MembershipStatus } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
+import { NotificationTypes } from '@platform/core/notifications'
 
 import { MembersService } from '../../apps/api/src/modules/team/members.service'
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
@@ -85,6 +88,54 @@ describe('The team of a store', () => {
       where: { userId: actor.id, storeId: store.id }
     })
     return { actor, membershipId: membership.id }
+  }
+
+  // What the team hears when someone leaves with conversations (EQ-14, EQ-15): the reassignment events
+  // that the sockets and the queue notification listen to, and the notification itself. The events are
+  // announced after the commit and the notifications are written after them, one person at a time: the
+  // rows are read until two reads in a row agree.
+  async function leaving(leave: () => Promise<unknown>, conversationIds: string[]) {
+    const events: {
+      conversationId: string
+      assignedTo: string | null
+      previousAssignee: string | null
+    }[] = []
+    const emitter = app.get(EventEmitter2)
+    const listener = (payload: (typeof events)[number]) => events.push(payload)
+    emitter.on(Events.CONVERSATION_ASSIGNED, listener)
+    try {
+      await leave()
+      const told = async (conversationId: string) =>
+        (
+          await owner.notification.findMany({
+            where: {
+              storeId: ctx.storeA.id,
+              type: NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE,
+              resourceId: conversationId
+            },
+            select: { userId: true }
+          })
+        )
+          .map(row => row.userId)
+          .sort()
+      const result: Record<string, string[]> = {}
+      for (const id of conversationIds) {
+        let previous = await told(id)
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          const now = await told(id)
+          if (now.length > 0 && now.join() === previous.join()) break
+          previous = now
+        }
+        result[id] = previous
+      }
+      return {
+        events: events.filter(event => conversationIds.includes(event.conversationId)),
+        told: result
+      }
+    } finally {
+      emitter.off(Events.CONVERSATION_ASSIGNED, listener)
+    }
   }
 
   // The manager may manage roles and remove members, and nothing else of the team
@@ -413,6 +464,41 @@ describe('The team of a store', () => {
       expect(await auditEntry(AuditAction.MEMBER_REMOVED, membershipId)).not.toBeNull()
     })
 
+    it('puts their conversations back in the queue and tells the team, not them (EQ-14, EQ-15)', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      const mine = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: actor.id,
+        status: ConversationStatus.OPEN
+      })
+      const finished = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        assignedTo: actor.id,
+        status: ConversationStatus.RESOLVED
+      })
+
+      const heard = await leaving(
+        () => asAdmin().delete(ApiRoutes.settings.memberById(membershipId)),
+        [mine.id, finished.id]
+      )
+
+      expect(heard.events).toEqual([
+        expect.objectContaining({
+          conversationId: mine.id,
+          assignedTo: null,
+          previousAssignee: actor.id
+        })
+      ])
+      // Who can take it hears of it; the person who left does not
+      expect(heard.told[mine.id]).toContain(ctx.agentA.id)
+      expect(heard.told[mine.id]).not.toContain(actor.id)
+      expect(heard.told[finished.id]).toEqual([])
+      // Both leave with them: a finished one is nobody's, and is announced to nobody
+      expect(
+        (await owner.conversation.findUniqueOrThrow({ where: { id: finished.id } })).assignedTo
+      ).toBeNull()
+    })
+
     it('answers 404 when the member was already removed', async () => {
       const { membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
       await asAdmin().delete(ApiRoutes.settings.memberById(membershipId))
@@ -539,6 +625,48 @@ describe('The team of a store', () => {
       expect(after).toMatchObject({ assignedTo: null, status: ConversationStatus.OPEN })
       const others = await owner.conversation.findUniqueOrThrow({ where: { id: theirs.id } })
       expect(others.assignedTo).toBe(ctx.agentA.id)
+    })
+
+    it('puts their worked conversations back in the queue and tells the team, not them (EQ-14, EQ-15)', async () => {
+      const { actor, membershipId } = await member(ctx.roleIds[RoleNames.AGENT])
+      const make = (status: ConversationStatus, storeId = ctx.storeA.id) =>
+        createConversationOf(owner, { storeId, assignedTo: actor.id, status })
+      const open = await make(ConversationStatus.OPEN)
+      const pending = await make(ConversationStatus.PENDING)
+      const snoozed = await make(ConversationStatus.SNOOZED)
+      const finished = await make(ConversationStatus.RESOLVED)
+      await owner.membership.create({
+        data: {
+          userId: actor.id,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          roleId: ctx.roleIds[RoleNames.AGENT],
+          status: MembershipStatus.ACTIVE
+        }
+      })
+      const elsewhere = await make(ConversationStatus.OPEN, ctx.storeA2.id)
+
+      const heard = await leaving(
+        () => suspend(membershipId),
+        [open.id, pending.id, snoozed.id, finished.id, elsewhere.id]
+      )
+
+      expect(heard.events.map(event => event.conversationId).sort()).toEqual(
+        [open.id, pending.id, snoozed.id].sort()
+      )
+      for (const event of heard.events) {
+        expect(event).toMatchObject({ assignedTo: null, previousAssignee: actor.id })
+      }
+      // Only an open one waits in the queue for the team; the person who left is told of none
+      expect(heard.told[open.id]).toContain(ctx.agentA.id)
+      for (const told of Object.values(heard.told)) expect(told).not.toContain(actor.id)
+      expect(heard.told[finished.id]).toEqual([])
+      // What was resolved stays with them, and so does what they hold in their other store
+      const assignee = async (id: string) =>
+        (await owner.conversation.findUniqueOrThrow({ where: { id } })).assignedTo
+      expect(await assignee(finished.id)).toBe(actor.id)
+      expect(await assignee(elsewhere.id)).toBe(actor.id)
+      expect(await assignee(open.id)).toBeNull()
     })
 
     it('leaves their other stores as they were', async () => {
