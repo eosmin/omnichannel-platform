@@ -3,7 +3,6 @@
 import { Trash2, Upload } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ChangeEvent, type ReactElement, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
 import { ClientErrorCodes } from '@platform/core/errors'
@@ -13,6 +12,7 @@ import { MutationError } from '../../components/customers/mutation-error'
 import { Button } from '../../components/ui/button'
 import { refuseAttachment, refusalCode } from '../../lib/media/attachment-rules'
 import { useRemoveAvatar, useUploadAvatar } from '../../lib/settings/use-avatar'
+import { toast } from '../../lib/toast'
 
 const ACCEPT = AvatarUpload.CONTENT_TYPES.join(',')
 const MEGABYTE = 1024 * 1024

@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
 import { ChannelIds, MetaOAuth } from '@platform/core/domain'
@@ -13,6 +12,7 @@ import { connectFailureReasonOf } from '../../lib/settings/connect-failure'
 import { missingPermissionsOf } from '../../lib/settings/oauth-return'
 import { dropOAuthSession, useCompleteOAuth, useOAuthAssets } from '../../lib/settings/use-channels'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {

@@ -2,7 +2,6 @@
 
 import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { MessageView } from '@platform/api-client'
 import { InboundLimits, isWholeEmoji, MessageLimits, MessageType } from '@platform/core/domain'
@@ -13,6 +12,7 @@ import {
   useMessageMutations,
   useRevisions
 } from '../../lib/inbox/use-message-actions'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import {
   AlertDialog,
