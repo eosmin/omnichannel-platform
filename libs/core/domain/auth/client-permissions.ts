@@ -1,0 +1,37 @@
+// The permissions that the web app checks. The full table (`Permissions`) belongs to the server and to the
+// roles screen: an object is one binding for the bundler, so reading one permission from it anywhere in the
+// browser ships all of them to every page (about 1 KB gzip of the script budget of the inbox). The browser
+// reads these, and a spec checks that each one is a permission the api knows, spelled the same
+// (`client-permissions.spec.ts`). The roles screen reads the full table through `permission-groups.ts`.
+export const ClientPermissions = {
+  CONVERSATIONS_ARCHIVE: 'conversations:archive',
+  CONVERSATIONS_ASSIGN: 'conversations:assign',
+  CONVERSATIONS_EXPORT: 'conversations:export',
+  CONVERSATIONS_RESOLVE: 'conversations:resolve',
+  CONVERSATIONS_SNOOZE: 'conversations:snooze',
+  CONVERSATIONS_VIEW: 'conversations:view',
+  CONVERSATIONS_VIEW_ALL: 'conversations:view_all',
+  CUSTOMERS_DELETE: 'customers:delete',
+  CUSTOMERS_EDIT: 'customers:edit',
+  CUSTOMERS_EXPORT: 'customers:export',
+  CUSTOMERS_MERGE: 'customers:merge',
+  CUSTOMERS_VIEW: 'customers:view',
+  MEDIA_DOWNLOAD_ALL: 'media:download_all',
+  MEDIA_VIEW: 'media:view',
+  MESSAGES_DELETE: 'messages:delete',
+  MESSAGES_INTERNAL_NOTE: 'messages:internal_note',
+  MESSAGES_SEND: 'messages:send',
+  MESSAGES_SEND_TEMPLATE: 'messages:send_template',
+  MESSAGES_VIEW: 'messages:view',
+  MESSAGES_VIEW_DELETED: 'messages:view_deleted',
+  ORG_MANAGE_STORES: 'org:manage_stores',
+  SETTINGS_EDIT: 'settings:edit',
+  SETTINGS_MANAGE_PLUGINS: 'settings:manage_plugins',
+  SETTINGS_MANAGE_PREFERENCES: 'settings:manage_preferences',
+  SETTINGS_MANAGE_ROUTING: 'settings:manage_routing',
+  SETTINGS_VIEW: 'settings:view',
+  TEAM_INVITE: 'team:invite',
+  TEAM_MANAGE_ROLES: 'team:manage_roles',
+  TEAM_REMOVE: 'team:remove',
+  TEAM_VIEW: 'team:view'
+} as const

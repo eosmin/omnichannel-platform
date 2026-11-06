@@ -1,5 +1,5 @@
 import type { MessageView } from '@platform/api-client'
-import { Permissions, type Permission } from '@platform/core/auth'
+import { ClientPermissions, type Permission } from '@platform/core/auth'
 import {
   AuthorType,
   CaptionState,
@@ -61,12 +61,12 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
   if (kind === 'system' || kind === 'neutral') return NONE
   const supports = (capability: string): boolean => viewer.capabilities.includes(capability)
   const isNote = message.type === String(MessageType.INTERNAL_NOTE)
-  const mayReadNotes = viewer.can(Permissions.MESSAGES_INTERNAL_NOTE)
+  const mayReadNotes = viewer.can(ClientPermissions.MESSAGES_INTERNAL_NOTE)
 
   if (kind === 'deleted') {
     return {
       ...NONE,
-      viewDeleted: viewer.can(Permissions.MESSAGES_VIEW_DELETED) && (!isNote || mayReadNotes)
+      viewDeleted: viewer.can(ClientPermissions.MESSAGES_VIEW_DELETED) && (!isNote || mayReadNotes)
     }
   }
   // A deletion on its way to the channel: nothing else is asked of the message until it settles
@@ -77,12 +77,13 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
     return {
       ...NONE,
       edit: mayReadNotes,
-      remove: mayReadNotes && (isOwn || viewer.can(Permissions.MESSAGES_DELETE)),
-      revisions: message.editedAt !== null && mayReadNotes && viewer.can(Permissions.MESSAGES_VIEW)
+      remove: mayReadNotes && (isOwn || viewer.can(ClientPermissions.MESSAGES_DELETE)),
+      revisions:
+        message.editedAt !== null && mayReadNotes && viewer.can(ClientPermissions.MESSAGES_VIEW)
     }
   }
 
-  const maySend = viewer.can(Permissions.MESSAGES_SEND)
+  const maySend = viewer.can(ClientPermissions.MESSAGES_SEND)
   const isReplyOfTeam = message.authorType === String(AuthorType.AGENT)
   // A reply of the team or of a plugin has a copy in the channel only once it was sent; a message of
   // the customer or of the owner's own phone came from the channel
@@ -117,7 +118,7 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
       message.type === String(MessageType.TEXT) &&
       supports(ChannelCapability.EDIT_MESSAGE),
     remove:
-      ((maySend && isOwn) || viewer.can(Permissions.MESSAGES_DELETE)) &&
+      ((maySend && isOwn) || viewer.can(ClientPermissions.MESSAGES_DELETE)) &&
       reached &&
       !isEditPending &&
       !isCaptionQueued &&
@@ -132,8 +133,8 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
       message.deliveryStatus === String(DeliveryStatus.FAILED) &&
       viewer.can(
         message.type === String(MessageType.TEMPLATE)
-          ? Permissions.MESSAGES_SEND_TEMPLATE
-          : Permissions.MESSAGES_SEND
+          ? ClientPermissions.MESSAGES_SEND_TEMPLATE
+          : ClientPermissions.MESSAGES_SEND
       )
   }
 }

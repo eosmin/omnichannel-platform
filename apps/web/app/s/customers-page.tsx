@@ -7,7 +7,7 @@ import { type ReactElement, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPaths, type CustomerListItemView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { CustomerLimits } from '@platform/core/domain'
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
@@ -107,7 +107,7 @@ function Page(): ReactElement {
   const searchRef = useRef<HTMLInputElement>(null)
   const [text, setText] = useState('')
   const q = useDebouncedValue(text.trim(), SEARCH_DELAY_MS)
-  const customers = useCustomerList(storeId, q, can(Permissions.CUSTOMERS_VIEW))
+  const customers = useCustomerList(storeId, q, can(ClientPermissions.CUSTOMERS_VIEW))
   const router = useRouter()
   const exportCsv = useExportCustomers(storeId)
   const rows = customers.data?.pages.flatMap(page => page.data) ?? []
@@ -117,7 +117,7 @@ function Page(): ReactElement {
     searchRef.current?.focus()
   }, [])
 
-  if (!can(Permissions.CUSTOMERS_VIEW)) {
+  if (!can(ClientPermissions.CUSTOMERS_VIEW)) {
     return (
       <div className="flex flex-col gap-2">
         <h1 className="text-xl font-semibold">{t('title')}</h1>
@@ -132,7 +132,7 @@ function Page(): ReactElement {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="flex-1 text-xl font-semibold">{t('title')}</h1>
-        {can(Permissions.CUSTOMERS_EXPORT) ? (
+        {can(ClientPermissions.CUSTOMERS_EXPORT) ? (
           <Button
             variant="outline"
             size="sm"

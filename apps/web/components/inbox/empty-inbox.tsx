@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ChannelConnectionStatus } from '@platform/core/domain'
 
 import { useChannelDirectory } from '../../lib/inbox/use-inbox-data'
@@ -29,7 +29,7 @@ export function EmptyInbox(): ReactElement {
     directory.data.every(channel => channel.status === String(ChannelConnectionStatus.DISCONNECTED))
   return (
     <InboxState icon={Inbox} title={t('title')} body={t('body')}>
-      {hasNone && can(Permissions.SETTINGS_VIEW) ? (
+      {hasNone && can(ClientPermissions.SETTINGS_VIEW) ? (
         <Button asChild variant="outline" size="sm">
           <Link href={AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS)}>
             {t('connectChannel')}

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 
 import { AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { Shortcuts } from '@platform/core/domain'
 
 import { useStore } from '../providers/store-context'
@@ -23,7 +23,7 @@ export function useGoToShortcuts(inboxSearch = ''): void {
     Shortcuts.global.GO_TO_CUSTOMERS,
     () => router.push(AppPaths.store.customers(storeId)),
     {
-      enabled: can(Permissions.CUSTOMERS_VIEW)
+      enabled: can(ClientPermissions.CUSTOMERS_VIEW)
     }
   )
 }

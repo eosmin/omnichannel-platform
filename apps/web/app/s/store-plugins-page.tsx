@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import type { DestructiveAction } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
@@ -27,10 +27,10 @@ const UNINSTALL_ACTION: DestructiveAction = 'DISCONNECT_CHANNEL'
 // install and uninstall per store. Registering a remote plugin by its manifest is Step 5.6.
 export function StorePluginsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? (
+  return can(ClientPermissions.SETTINGS_VIEW) ? (
     <PluginsLoader />
   ) : (
-    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.SETTINGS_VIEW} />
   )
 }
 
@@ -75,7 +75,7 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
   const run = useDestructiveAction()
   const install = useInstallPlugin(storeId)
   const uninstall = useUninstallPlugin(storeId)
-  const canManage = can(Permissions.SETTINGS_MANAGE_PLUGINS)
+  const canManage = can(ClientPermissions.SETTINGS_MANAGE_PLUGINS)
   // Only a channel plugin can be installed today; the others are registered in Step 5.6
   const installable = entry.channel !== null
 

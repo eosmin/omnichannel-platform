@@ -5,7 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
@@ -110,14 +110,14 @@ function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] })
   const suspended = isSuspendedMember(member)
   // The api needs the person to hold the role the member has now and the one they get
   const canChangeRole =
-    can(Permissions.TEAM_MANAGE_ROLES) &&
+    can(ClientPermissions.TEAM_MANAGE_ROLES) &&
     current !== undefined &&
     canGrant(current, can) &&
     !isSuspendedMember(member)
   const busy = change.isPending || remove.isPending || suspend.isPending || reactivate.isPending
   // The api needs the person to hold what the member's role holds, and refuses oneself
   const mayDecideAccess =
-    can(Permissions.TEAM_REMOVE) && current !== undefined && canGrant(current, can)
+    can(ClientPermissions.TEAM_REMOVE) && current !== undefined && canGrant(current, can)
   // Until the profile is read nobody can be told apart from oneself, and the api refuses oneself
   const isMe = profile.data === undefined || profile.data.id === member.userId
   // A conflict is a list that was out of date (someone else got there first), and it is read again

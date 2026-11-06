@@ -5,7 +5,7 @@ import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { OrganizationView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { OrganizationLimits } from '@platform/core/domain'
 
 import { MutationError } from '../../components/customers/mutation-error'
@@ -21,10 +21,10 @@ import { useOrganization, useRenameOrganization } from '../../lib/settings/use-s
 // changing it needs the right to edit them.
 export function OrganizationProfilePage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? (
+  return can(ClientPermissions.SETTINGS_VIEW) ? (
     <ProfileLoader />
   ) : (
-    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.SETTINGS_VIEW} />
   )
 }
 
@@ -44,7 +44,7 @@ function ProfileForm({ organization }: { organization: OrganizationView }): Reac
   const { storeId, can } = useStore()
   const id = useId()
   const rename = useRenameOrganization(storeId)
-  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   const [saved, setSaved] = useState(organization.name)
   const [name, setName] = useState(organization.name)
   const trimmed = name.trim()

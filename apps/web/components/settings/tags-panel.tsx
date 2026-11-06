@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
@@ -26,7 +26,7 @@ export function TagsPanel({ tags }: { tags: StoreTagView[] }): ReactElement {
   const t = useTranslations('settings.tags')
   const codeText = useCodeText()
   const { storeId, can } = useStore()
-  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   const run = useDestructiveAction()
   const remove = useDeleteTag(storeId)
   const [editing, setEditing] = useState<Editing>(null)

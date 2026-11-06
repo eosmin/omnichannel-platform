@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { type SidebarWidgetId, SidebarWidgets } from '../../lib/inbox/sidebar-widgets'
 import { useHasRoomForSidebar } from '../../lib/inbox/use-is-wide'
@@ -35,7 +35,7 @@ export function InboxSidebar(): ReactElement | null {
   const { conversationId } = useParams<{ conversationId?: string }>()
   // Both widgets read what CONVERSATIONS_VIEW opens
   // Under the width the column is not drawn, and its widgets do not read anything
-  if (!hasRoom || !can(Permissions.CONVERSATIONS_VIEW)) return null
+  if (!hasRoom || !can(ClientPermissions.CONVERSATIONS_VIEW)) return null
   const shown = layout.filter(entry => !entry.isHidden)
   const hidden = layout.filter(entry => entry.isHidden)
 

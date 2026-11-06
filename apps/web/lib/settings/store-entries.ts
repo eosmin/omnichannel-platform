@@ -1,5 +1,5 @@
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
-import { type Permission, Permissions } from '@platform/core/auth'
+import { type Permission, ClientPermissions } from '@platform/core/auth'
 
 // One page of a settings area (TDD_09 §13). `permission` is what the api asks for the page's own
 // read; null is a page of the person's own account, which needs none. The list holds only pages that
@@ -21,59 +21,59 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'general',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.GENERAL),
       // The page reads and writes the store through organizations.storeById
-      permission: Permissions.ORG_MANAGE_STORES
+      permission: ClientPermissions.ORG_MANAGE_STORES
     },
     {
       id: StoreSettingsSections.CHANNELS,
       labelKey: 'channels',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS),
-      permission: Permissions.SETTINGS_VIEW
+      permission: ClientPermissions.SETTINGS_VIEW
     },
     {
       id: StoreSettingsSections.PLUGINS,
       labelKey: 'plugins',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS),
-      permission: Permissions.SETTINGS_VIEW
+      permission: ClientPermissions.SETTINGS_VIEW
     },
     {
       id: StoreSettingsSections.TEAM,
       labelKey: 'team',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.TEAM),
-      permission: Permissions.TEAM_VIEW
+      permission: ClientPermissions.TEAM_VIEW
     },
     {
       id: StoreSettingsSections.ROUTING,
       labelKey: 'routing',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.ROUTING),
-      permission: Permissions.SETTINGS_VIEW
+      permission: ClientPermissions.SETTINGS_VIEW
     },
     {
       id: StoreSettingsSections.BUSINESS_HOURS,
       labelKey: 'businessHours',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.BUSINESS_HOURS),
-      permission: Permissions.SETTINGS_VIEW
+      permission: ClientPermissions.SETTINGS_VIEW
     },
     {
       id: StoreSettingsSections.TAGS,
       labelKey: 'tags',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.TAGS),
-      permission: Permissions.SETTINGS_VIEW,
+      permission: ClientPermissions.SETTINGS_VIEW,
       // The api lists them for who may see conversations
-      also: Permissions.CONVERSATIONS_VIEW
+      also: ClientPermissions.CONVERSATIONS_VIEW
     },
     {
       id: StoreSettingsSections.SNIPPETS,
       labelKey: 'snippets',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.SNIPPETS),
-      permission: Permissions.SETTINGS_VIEW,
+      permission: ClientPermissions.SETTINGS_VIEW,
       // The api lists them for who may see conversations
-      also: Permissions.CONVERSATIONS_VIEW
+      also: ClientPermissions.CONVERSATIONS_VIEW
     },
     {
       id: StoreSettingsSections.INBOX,
       labelKey: 'inbox',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.INBOX),
-      permission: Permissions.SETTINGS_VIEW
+      permission: ClientPermissions.SETTINGS_VIEW
     }
   ]
 }

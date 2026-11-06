@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { type ReactElement, useState } from 'react'
 
 import { type BulkOperation, AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { BulkActions, ConversationStatus, Shortcuts } from '@platform/core/domain'
 
 import { canChangeState } from '../../lib/inbox/conversation-status'
@@ -44,8 +44,9 @@ export function ConversationShortcuts({
   const detail = conversation.data
   const isLoaded = detail !== undefined
   const mayChange = isLoaded && canChangeState(detail.status)
-  const mayAssign = can(Permissions.CONVERSATIONS_RESOLVE) || can(Permissions.CONVERSATIONS_ASSIGN)
-  const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
+  const mayAssign =
+    can(ClientPermissions.CONVERSATIONS_RESOLVE) || can(ClientPermissions.CONVERSATIONS_ASSIGN)
+  const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
 
   const run = (operation: BulkOperation): void => {
     if (detail === undefined || !runner.claim()) return
@@ -73,7 +74,7 @@ export function ConversationShortcuts({
   )
   useShortcut(Shortcuts.conversation.ASSIGN_TO_OTHER, () => setPick(BulkPicks.AGENT), {
     ...keyboard,
-    enabled: isLoaded && can(Permissions.CONVERSATIONS_ASSIGN)
+    enabled: isLoaded && can(ClientPermissions.CONVERSATIONS_ASSIGN)
   })
   useShortcut(Shortcuts.conversation.ADD_TAG, () => setPick(BulkPicks.ADD_TAG), {
     ...keyboard,
@@ -98,11 +99,11 @@ export function ConversationShortcuts({
     () => {
       if (detail !== undefined) openCustomer(detail.customer.id)
     },
-    { ...keyboard, enabled: isLoaded && can(Permissions.CUSTOMERS_VIEW) }
+    { ...keyboard, enabled: isLoaded && can(ClientPermissions.CUSTOMERS_VIEW) }
   )
   useShortcut(Shortcuts.conversation.SNOOZE, openSnooze, {
     ...keyboard,
-    enabled: mayChange && can(Permissions.CONVERSATIONS_SNOOZE)
+    enabled: mayChange && can(ClientPermissions.CONVERSATIONS_SNOOZE)
   })
 
   return isPickMounted ? (

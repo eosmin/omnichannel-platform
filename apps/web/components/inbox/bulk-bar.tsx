@@ -11,7 +11,7 @@ import {
   type ConversationFilters,
   type ConversationListItemView
 } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { BulkActions, BulkLimits, ConversationStatus, Shortcuts } from '@platform/core/domain'
 
 import { BulkConfirmations, confirmationOf, targetCountOf } from '../../lib/inbox/bulk'
@@ -88,10 +88,10 @@ export function BulkBar({
   const pickMounted = useMountedOnce(pick !== null)
   const confirmMounted = useMountedOnce(confirm !== null)
 
-  const mayAssign = can(Permissions.CONVERSATIONS_ASSIGN)
-  const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
-  const mayArchive = can(Permissions.CONVERSATIONS_ARCHIVE)
-  const mayExport = can(Permissions.CONVERSATIONS_EXPORT)
+  const mayAssign = can(ClientPermissions.CONVERSATIONS_ASSIGN)
+  const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
+  const mayArchive = can(ClientPermissions.CONVERSATIONS_ARCHIVE)
+  const mayExport = can(ClientPermissions.CONVERSATIONS_EXPORT)
 
   const count = selection.ids.size
   const isOverLimit = !selection.isAllMatching && count > BulkLimits.MAX_ITEMS

@@ -8,7 +8,7 @@ import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } 
 
 import type { ChannelDirectoryEntryView, ConversationFilters } from '@platform/api-client'
 import { ApiError } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { BulkActions, BulkLimits, ListKeyAliases, Shortcuts } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
@@ -167,9 +167,10 @@ export function ConversationList({
     const id = rowIdOf(document.activeElement)
     return id === undefined ? undefined : items.find(item => item.id === id)
   }
-  const mayAssign = can(Permissions.CONVERSATIONS_RESOLVE) || can(Permissions.CONVERSATIONS_ASSIGN)
-  const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
-  const maySnooze = can(Permissions.CONVERSATIONS_SNOOZE)
+  const mayAssign =
+    can(ClientPermissions.CONVERSATIONS_RESOLVE) || can(ClientPermissions.CONVERSATIONS_ASSIGN)
+  const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
+  const maySnooze = can(ClientPermissions.CONVERSATIONS_SNOOZE)
   useShortcut(
     Shortcuts.list.ASSIGN_TO_ME,
     () => {
