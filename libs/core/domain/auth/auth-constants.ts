@@ -58,5 +58,12 @@ export const SessionRevokedReasons = {
 export type SessionRevokedReason =
   (typeof SessionRevokedReasons)[keyof typeof SessionRevokedReasons]
 
+// A refresh token that was already used is accepted ONE more time when it comes back within this many
+// seconds of being used and its successor has not been used (TDD_01 section 7). It covers the answer
+// of a refresh that never reached the browser (a reload with the request in flight); past it, or a
+// second time, the login is revoked as a leak. Keep it short: for these seconds a copy of the old
+// token is worth as much as the original.
+export const REFRESH_REUSE_GRACE_SECONDS = 10
+
 // The name under which the per-email limit of the magic link is counted in the throttler storage
 export const MAGIC_LINK_EMAIL_THROTTLER = 'magic-link-email'
