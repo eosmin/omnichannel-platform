@@ -1354,7 +1354,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 7.5 | Load validation | deferred (Phase 2) | | |
 | 7.6 | Internal admin console (core) | deferred (Phase 2) | | |
 | 7.7 | Visual polish | todo | | |
-| 7.8 | Connect with Facebook (OAuth) for Messenger and Instagram | in progress | #202 (PR 1, foundations), #203 (PR 2, server) | |
+| 7.8 | Connect with Facebook (OAuth) for Messenger and Instagram | in progress | #202 (PR 1, foundations), #203 (PR 2, server), #204 (PR 3, screen) | |
 | **Milestone 8: Optional enhancements** | | | | |
 | 8.1 | AI assist | deferred (Phase 2) | | |
 | 8.2 | Autonomous chatbot (Scale) | deferred (Phase 2) | | |
