@@ -245,7 +245,8 @@ export async function startFakeGraph(): Promise<FakeGraph> {
       const bearer = request.headers.authorization
       const isGoodPageToken =
         bearer === `Bearer ${FAKE_PAGE_TOKEN}` || bearer === `Bearer ${FAKE_PAGE_TOKEN_RENEWED}`
-      if (request.method === 'GET' && id === 'me') {
+      // `me` itself, not its edges: `me/subscribed_apps` is Instagram's, and is answered further down
+      if (request.method === 'GET' && id === 'me' && edge === undefined) {
         if (isGoodPageToken && !pageTokenBroken) {
           // The Page, and the account it links when the plugin asks for it (Instagram does)
           reply(response, HttpStatusCodes.OK, {
