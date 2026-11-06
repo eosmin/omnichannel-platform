@@ -73,3 +73,13 @@ export class PluginError extends PlatformException {
         : undefined
   }
 }
+
+// A link to a file that the plugin will not follow because it is not where its provider keeps files
+// (not its CDN, plain http, a port). The same answer on every try: the worker marks the file
+// `unsafe_link`, as it does for a link it refuses itself, and does not ask again.
+export class UnsafeMediaLinkError extends Error {
+  constructor() {
+    super('the link of a file is not one of the provider')
+    this.name = 'UnsafeMediaLinkError'
+  }
+}
