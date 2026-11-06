@@ -11,6 +11,7 @@ import {
   ConversationStatusReasons,
   MembershipStatus
 } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import {
   type ConversationAssignedPayload,
   type ConversationReopenedPayload,
@@ -335,7 +336,7 @@ export class NotificationsEventsListener {
       }
       const row = await this.prisma.client.export.findFirst({
         where: { id: exportId, storeId, requestedBy },
-        select: { status: true, key: true }
+        select: { status: true, key: true, error: true }
       })
       const expected =
         type === NotificationTypes.EXPORT_READY ? ExportStatus.READY : ExportStatus.FAILED
@@ -358,7 +359,10 @@ export class NotificationsEventsListener {
         params:
           type === NotificationTypes.EXPORT_READY
             ? { filename, type: exportType }
-            : { type: exportType },
+            : // Why it failed, when the worker said (too large, nothing to export): a code the page draws
+              row.error === null || row.error === ErrorCodes.EXPORT_FAILED
+              ? { type: exportType }
+              : { type: exportType, reason: row.error },
         resourceType: 'export',
         resourceId: exportId,
         actionPath: AppPaths.store.exports(storeId)

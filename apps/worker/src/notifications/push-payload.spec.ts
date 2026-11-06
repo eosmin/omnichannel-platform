@@ -28,6 +28,21 @@ describe('buildPushPayload', () => {
     expect(buildPushPayload(row(), Locales.ES).title).toBe('Conversación asignada a ti')
   })
 
+  it('says why a reply failed when the notification carries a reason that has a sentence', () => {
+    const failed = row({
+      type: NotificationTypes.MESSAGE_FAILED,
+      messageKey: notificationMessageKey(NotificationTypes.MESSAGE_FAILED),
+      params: { reason: 'CHANNEL_WINDOW_EXPIRED' }
+    })
+
+    expect(buildPushPayload(failed, Locales.EN).body).toContain('reply window')
+    expect(buildPushPayload(failed, Locales.ES).body).toContain('ventana')
+    // A reason with no sentence keeps the plain text
+    expect(
+      buildPushPayload({ ...failed, params: { reason: 'SOMETHING_NEW' } }, Locales.EN).body
+    ).toBe('The channel did not accept a message you sent.')
+  })
+
   it('carries what the service worker needs to open it and to replace an older one', () => {
     expect(buildPushPayload(row(), Locales.EN)).toMatchObject({
       notificationId: 'n1',

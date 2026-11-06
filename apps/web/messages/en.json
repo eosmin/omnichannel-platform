@@ -657,7 +657,11 @@
       },
       "failed": {
         "title": "Export failed",
-        "body": "Your export could not be made. Try asking for it again."
+        "body": "Your export could not be made. Try asking for it again.",
+        "reason": {
+          "EXPORT_TOO_LARGE": "The export is too large. Narrow the filters or the dates and ask for it again.",
+          "EXPORT_EMPTY": "There was nothing to export with those filters."
+        }
       }
     },
     "media": {
@@ -698,7 +702,16 @@
     "message": {
       "failed": {
         "title": "A message was not delivered",
-        "body": "The channel did not accept a message you sent."
+        "body": "The channel did not accept a message you sent.",
+        "reason": {
+          "CHANNEL_WINDOW_EXPIRED": "The reply window with this customer closed. Wait for them to write again.",
+          "CHANNEL_CREDENTIALS_INVALID": "The channel connection needs attention. Update its token in Settings.",
+          "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that kind of message.",
+          "CHANNEL_FILE_TYPE_UNSUPPORTED": "The channel does not accept that type of file.",
+          "CHANNEL_TEMPLATE_NOT_APPROVED": "The template is not approved yet.",
+          "CHANNEL_NOT_CONNECTED": "The channel is not connected.",
+          "RATE_LIMIT_EXCEEDED": "The channel is limiting sends. Try again in a moment."
+        }
       },
       "received": {
         "title": "New message",

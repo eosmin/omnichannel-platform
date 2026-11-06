@@ -657,7 +657,11 @@
       },
       "failed": {
         "title": "Exportación fallida",
-        "body": "No se pudo generar tu exportación. Intenta pedirla de nuevo."
+        "body": "No se pudo generar tu exportación. Intenta pedirla de nuevo.",
+        "reason": {
+          "EXPORT_TOO_LARGE": "La exportación es demasiado grande. Acota los filtros o las fechas y pídela de nuevo.",
+          "EXPORT_EMPTY": "No había nada que exportar con esos filtros."
+        }
       }
     },
     "media": {
@@ -698,7 +702,16 @@
     "message": {
       "failed": {
         "title": "No se entregó un mensaje",
-        "body": "El canal no aceptó un mensaje que enviaste."
+        "body": "El canal no aceptó un mensaje que enviaste.",
+        "reason": {
+          "CHANNEL_WINDOW_EXPIRED": "La ventana para responder a este cliente se cerró. Espera a que vuelva a escribir.",
+          "CHANNEL_CREDENTIALS_INVALID": "La conexión del canal necesita atención. Actualiza su token en Ajustes.",
+          "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite ese tipo de mensaje.",
+          "CHANNEL_FILE_TYPE_UNSUPPORTED": "El canal no acepta ese tipo de archivo.",
+          "CHANNEL_TEMPLATE_NOT_APPROVED": "La plantilla aún no está aprobada.",
+          "CHANNEL_NOT_CONNECTED": "El canal no está conectado.",
+          "RATE_LIMIT_EXCEEDED": "El canal está limitando los envíos. Intenta de nuevo en un momento."
+        }
       },
       "received": {
         "title": "Mensaje nuevo",

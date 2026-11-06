@@ -373,6 +373,19 @@ describe('EmailDigestService', () => {
         expect(es).toContain('La conversación con Marco Díaz está esperando que alguien la tome.')
       })
 
+      it('says why an export failed when the row carries a reason with a sentence', async () => {
+        findNotifications.mockResolvedValue([
+          row('x1', {
+            messageKey: notificationMessageKey(NotificationTypes.EXPORT_FAILED),
+            params: { type: 'media_zip', reason: 'EXPORT_TOO_LARGE' },
+            actionPath: '/s/s1/exports'
+          })
+        ])
+        await service().sendDigest(USER, DigestFrequency.HOURLY, NOW)
+
+        expect(await textIn(Locales.EN)).toContain('The export is too large.')
+      })
+
       it('uses the time zone the person chose for the time', async () => {
         findOneSettings.mockResolvedValue({
           digestFrequency: DigestFrequency.HOURLY,
