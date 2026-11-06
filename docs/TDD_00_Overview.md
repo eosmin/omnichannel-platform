@@ -69,7 +69,7 @@ Frontend    Next.js 16.4 (App Router) + React 19.2 + Tailwind 4.3 + shadcn/ui
 Backend     NestJS 12 + Prisma 7.10 (pg driver adapter) + PostgreSQL 18.6 + Redis 8.10 (ioredis) + BullMQ 6.3
 Realtime    Socket.io 4.8 + Redis Adapter
 Deployment  Railway (v1.2 MVP) → Google Cloud Run (SaaS phase) → Kubernetes (migration path, MATURE)
-Monorepo    Nx 23.2 workspace
+Monorepo    Nx 24.0 workspace
 Package mgr pnpm 11.25
 Language    TypeScript 5.9 (strict mode) — 7.x deferred until typescript-eslint, ts-jest and Nx support it
 Logger      Pino 10.3 (not Winston)
