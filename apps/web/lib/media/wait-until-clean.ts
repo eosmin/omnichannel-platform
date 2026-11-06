@@ -1,5 +1,5 @@
 import { ApiError } from '@platform/api-client'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 export const CLEAN_POLL_INTERVAL_MS = 1500
 // Scanning and the variants of a large file take seconds; a minute without a verdict is a failure
@@ -29,11 +29,11 @@ export async function waitUntilClean(
       await check()
       return
     } catch (error) {
-      if (!(error instanceof ApiError) || !error.is(ErrorCodes.FILE_NOT_READY)) throw error
+      if (!(error instanceof ApiError) || !error.is(ClientErrorCodes.FILE_NOT_READY)) throw error
     }
     if (attempt < maxTries) await sleep(intervalMs, signal)
   }
-  throw new ApiError(409, ErrorCodes.FILE_NOT_READY, 'The file has no verdict yet')
+  throw new ApiError(409, ClientErrorCodes.FILE_NOT_READY, 'The file has no verdict yet')
 }
 
 function sleepFor(ms: number, signal: AbortSignal): Promise<void> {

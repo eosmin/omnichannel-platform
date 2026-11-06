@@ -1,4 +1,4 @@
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import type { ErrorBody } from './api-schemas'
 
@@ -27,7 +27,7 @@ export class ApiError extends Error {
   }
 
   static unreadable(status: number): ApiError {
-    return new ApiError(status, ErrorCodes.INTERNAL_ERROR, `Unreadable answer (${status})`)
+    return new ApiError(status, ClientErrorCodes.INTERNAL_ERROR, `Unreadable answer (${status})`)
   }
 
   is(code: string): boolean {

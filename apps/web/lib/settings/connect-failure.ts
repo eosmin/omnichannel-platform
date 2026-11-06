@@ -2,7 +2,7 @@ import { ApiError } from '@platform/api-client'
 import {
   type ChannelConnectFailureReason,
   ChannelConnectFailureReasons,
-  ErrorCodes,
+  ClientErrorCodes,
   isChannelConnectFailureReason
 } from '@platform/core/errors'
 
@@ -11,7 +11,7 @@ import {
 // a value that is not text, or any other error is null, and the generic message of the code shows.
 // Only the settings pages import this file: the inbox must not carry it (its script budget has no room).
 export function connectFailureReasonOf(error: unknown): ChannelConnectFailureReason | null {
-  if (!(error instanceof ApiError) || error.code !== ErrorCodes.CHANNEL_CREDENTIALS_INVALID) {
+  if (!(error instanceof ApiError) || error.code !== ClientErrorCodes.CHANNEL_CREDENTIALS_INVALID) {
     return null
   }
   const reason = error.metadata['reason']

@@ -1,5 +1,5 @@
 import { ApiError } from '@platform/api-client'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 // The people a conversation can be given to: those whose role can open it and answer it, which is the
 // rule the api applies when it assigns (a refusal of anyone else reads "assignee not found"). The
@@ -12,5 +12,5 @@ export function assignableOnly<T extends { canBeAssigned: boolean }>(members: re
 // when the conversation is gone and when the person cannot be given it (they left the store, or their
 // role cannot answer), so as not to tell which. The interface says both.
 export function isAssigneeRefusal(error: unknown): boolean {
-  return error instanceof ApiError && error.code === ErrorCodes.RESOURCE_NOT_FOUND
+  return error instanceof ApiError && error.code === ClientErrorCodes.RESOURCE_NOT_FOUND
 }

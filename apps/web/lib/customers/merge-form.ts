@@ -5,7 +5,7 @@ import {
   type MergeableField,
   type MergeFieldSource
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 // The conflicts this page can draw: the api may name a field a newer server added
 export function knownConflicts(conflicts: readonly string[]): MergeableField[] {
@@ -26,7 +26,7 @@ export function fieldChoicesOf(
 // "Merge instead" (TDD_09 §6): linking a handle that belongs to another customer is refused with the
 // id of its owner. Null for any other answer, and for an owner this page cannot use.
 export function handleOwnerOf(error: unknown): string | null {
-  if (!(error instanceof ApiError) || !error.is(ErrorCodes.RESOURCE_CONFLICT)) return null
+  if (!(error instanceof ApiError) || !error.is(ClientErrorCodes.RESOURCE_CONFLICT)) return null
   const owner = error.metadata['customerId']
   return typeof owner === 'string' && owner !== '' ? owner : null
 }

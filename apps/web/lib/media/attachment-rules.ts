@@ -1,4 +1,4 @@
-import { type ErrorCode, ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 import {
   AllowedContentTypes,
   CapabilityOfMediaType,
@@ -61,7 +61,11 @@ export function formatBytes(bytes: number): string {
 }
 
 // The error code the interface shows for a refusal (the same ones the api answers with)
-export function refusalCode(refusal: AttachmentRefusal): ErrorCode {
-  if (refusal === UploadRefusals.TYPE_NOT_ALLOWED) return ErrorCodes.FILE_TYPE_NOT_ALLOWED
-  return refusal === 'too_large' ? ErrorCodes.FILE_TOO_LARGE : ErrorCodes.FILE_UPLOAD_FAILED
+export function refusalCode(
+  refusal: AttachmentRefusal
+): (typeof ClientErrorCodes)[keyof typeof ClientErrorCodes] {
+  if (refusal === UploadRefusals.TYPE_NOT_ALLOWED) return ClientErrorCodes.FILE_TYPE_NOT_ALLOWED
+  return refusal === 'too_large'
+    ? ClientErrorCodes.FILE_TOO_LARGE
+    : ClientErrorCodes.FILE_UPLOAD_FAILED
 }

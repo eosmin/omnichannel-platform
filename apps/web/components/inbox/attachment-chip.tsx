@@ -4,10 +4,11 @@ import { LoaderCircle, Paperclip, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { formatBytes } from '../../lib/media/attachment-rules'
 import type { AttachmentState } from '../../lib/media/use-attachment'
+import { useCodeText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
 
 // The file the agent is about to send: its name and size, how far the upload is, whether the scan is
@@ -20,7 +21,7 @@ export function AttachmentChip({
   onRemove: () => void
 }): ReactElement {
   const t = useTranslations('inbox.composer.attach')
-  const tAll = useTranslations()
+  const codeText = useCodeText()
   const { file } = state
   const percent = state.kind === 'uploading' ? Math.round(state.progress * 100) : null
   const problem =
@@ -68,9 +69,9 @@ export function AttachmentChip({
       </p>
       {problem === null ? null : (
         <p role="alert" className="text-destructive text-xs">
-          {problem === ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+          {problem === ClientErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
             ? `${file.name}: ${t('unsupported')}`
-            : `${state.kind === 'failed' ? `${t('failed', { name: file.name })}: ` : ''}${tAll(`errors.${problem}`)}`}
+            : `${state.kind === 'failed' ? `${t('failed', { name: file.name })}: ` : ''}${codeText(problem)}`}
         </p>
       )}
     </div>

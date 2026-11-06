@@ -1,21 +1,15 @@
 import { ApiError } from '@platform/api-client'
 
-import { errorCodeOf, knownErrorCode } from './error-message'
+import { errorCodeOf } from './error-message'
 
 describe('errorCodeOf', () => {
-  it('keeps the code of an api error the page knows', () => {
+  it('keeps the code of an api error', () => {
     expect(errorCodeOf(new ApiError(401, 'AUTH_TOKEN_INVALID', 'x'))).toBe('AUTH_TOKEN_INVALID')
   })
 
-  it('falls to the generic code for an unknown code and for any other error', () => {
-    expect(errorCodeOf(new ApiError(400, 'SOMETHING_NEW', 'x'))).toBe('INTERNAL_ERROR')
+  // The page holds no table of the codes: a code of a newer server is kept, and the message shows the generic text
+  it('keeps a code the page may not know, and is the generic code for any other error', () => {
+    expect(errorCodeOf(new ApiError(400, 'SOMETHING_NEW', 'x'))).toBe('SOMETHING_NEW')
     expect(errorCodeOf(new TypeError('boom'))).toBe('INTERNAL_ERROR')
-  })
-})
-
-describe('knownErrorCode', () => {
-  it('keeps a code the page knows and turns any other text into the generic code', () => {
-    expect(knownErrorCode('CHANNEL_WINDOW_EXPIRED')).toBe('CHANNEL_WINDOW_EXPIRED')
-    expect(knownErrorCode('timeout')).toBe('INTERNAL_ERROR')
   })
 })

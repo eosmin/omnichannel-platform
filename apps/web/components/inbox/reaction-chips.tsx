@@ -7,7 +7,7 @@ import { type ReactElement, useId, useState } from 'react'
 import type { ReactionView } from '@platform/api-client'
 import { DeliveryStatus } from '@platform/core/domain'
 
-import { knownErrorCode } from '../../lib/error-message'
+import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 
 interface EmojiGroup {
@@ -37,7 +37,7 @@ export function ReactionChips({
   authorLabel: (type: string, id: string | null) => string
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
-  const tAll = useTranslations()
+  const codeText = useCodeText()
   const [openEmoji, setOpenEmoji] = useState<string | null>(null)
   const detailId = useId()
   if (reactions.length === 0) return null
@@ -47,7 +47,7 @@ export function ReactionChips({
     if (reaction.deliveryStatus !== String(DeliveryStatus.FAILED)) return null
     return reaction.deliveryError === null
       ? t('reactions.failed')
-      : `${t('reactions.failed')}: ${tAll(`errors.${knownErrorCode(reaction.deliveryError)}`)}`
+      : `${t('reactions.failed')}: ${codeText(reaction.deliveryError)}`
   }
 
   return (

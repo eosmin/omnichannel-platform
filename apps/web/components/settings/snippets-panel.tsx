@@ -6,11 +6,12 @@ import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Permissions } from '@platform/core/auth'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
 import type { StoreSnippetView } from '../../lib/settings/snippets-requests'
 import { useDeleteSnippet } from '../../lib/settings/use-content'
+import { useCodeText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -24,7 +25,7 @@ type Editing = { kind: 'new' } | { kind: 'snippet'; snippet: StoreSnippetView } 
 // a reply that the closing message or the away message uses, and the page says which.
 export function SnippetsPanel({ snippets }: { snippets: StoreSnippetView[] }): ReactElement {
   const t = useTranslations('settings.snippets')
-  const tErrors = useTranslations('errors')
+  const codeText = useCodeText()
   const { storeId, can } = useStore()
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const run = useDestructiveAction()
@@ -43,7 +44,9 @@ export function SnippetsPanel({ snippets }: { snippets: StoreSnippetView[] }): R
         } catch (error) {
           // The api answers a conflict when the closing or the away message uses the snippet
           const code = errorCodeOf(error)
-          toast.error(code === ErrorCodes.RESOURCE_CONFLICT ? t('delete.inUse') : tErrors(code))
+          toast.error(
+            code === ClientErrorCodes.RESOURCE_CONFLICT ? t('delete.inUse') : codeText(code)
+          )
         }
       }
     })

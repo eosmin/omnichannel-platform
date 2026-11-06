@@ -1,4 +1,4 @@
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import { ApiError } from './api-error'
 import {
@@ -58,7 +58,7 @@ export function createBrowserSession({
         body: body === undefined ? undefined : JSON.stringify(body)
       })
     } catch {
-      throw new ApiError(0, ErrorCodes.NETWORK_UNAVAILABLE, 'The server cannot be reached')
+      throw new ApiError(0, ClientErrorCodes.NETWORK_UNAVAILABLE, 'The server cannot be reached')
     }
   }
 
@@ -103,7 +103,7 @@ export function createBrowserSession({
       if (!response.ok) {
         const error = await readError(response)
         // The access token may have expired while the page was open: one new one, one more try
-        if (accessToken === null || !error.is(ErrorCodes.AUTH_TOKEN_EXPIRED)) throw error
+        if (accessToken === null || !error.is(ClientErrorCodes.AUTH_TOKEN_EXPIRED)) throw error
         response = await post(SessionRoutes.accept, body, await rotateLocked())
         if (!response.ok) throw await readError(response)
       }

@@ -6,11 +6,12 @@ import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Permissions } from '@platform/core/auth'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
 import type { StoreTagView } from '../../lib/settings/tags-requests'
 import { useDeleteTag } from '../../lib/settings/use-content'
+import { useCodeText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -23,7 +24,7 @@ type Editing = { kind: 'new' } | { kind: 'tag'; tag: StoreTagView } | null
 // Who may see conversations can read the list; SETTINGS_EDIT creates, edits and deletes.
 export function TagsPanel({ tags }: { tags: StoreTagView[] }): ReactElement {
   const t = useTranslations('settings.tags')
-  const tErrors = useTranslations('errors')
+  const codeText = useCodeText()
   const { storeId, can } = useStore()
   const canEdit = can(Permissions.SETTINGS_EDIT)
   const run = useDestructiveAction()
@@ -42,7 +43,9 @@ export function TagsPanel({ tags }: { tags: StoreTagView[] }): ReactElement {
         } catch (error) {
           // The api answers a conflict when a routing rule names the tag / a message uses the reply
           const code = errorCodeOf(error)
-          toast.error(code === ErrorCodes.RESOURCE_CONFLICT ? t('delete.inUse') : tErrors(code))
+          toast.error(
+            code === ClientErrorCodes.RESOURCE_CONFLICT ? t('delete.inUse') : codeText(code)
+          )
         }
       }
     })

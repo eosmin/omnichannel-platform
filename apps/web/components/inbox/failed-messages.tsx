@@ -3,8 +3,8 @@
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { knownErrorCode } from '../../lib/error-message'
 import { OfflineQueueErrors, type PendingMessage } from '../../lib/realtime/offline-queue'
+import { useCodeText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
 
 // What did not go: the api refused it (the reason, translated) or it waited too long to go out on its
@@ -28,7 +28,7 @@ export function FailedMessages({
   onResend: (id: string) => void
 }): ReactElement | null {
   const t = useTranslations('inbox.composer.failed')
-  const tAll = useTranslations()
+  const codeText = useCodeText()
   // The live region is always there: one that appears with its content is often not announced
   return (
     <div role="status" aria-atomic="false">
@@ -37,9 +37,7 @@ export function FailedMessages({
           {messages.map(message => {
             const isExpired = message.lastError === OfflineQueueErrors.EXPIRED
             const editState = canEdit(message)
-            const reason = isExpired
-              ? t('expired')
-              : tAll(`errors.${knownErrorCode(message.lastError ?? '')}`)
+            const reason = isExpired ? t('expired') : codeText(message.lastError ?? '')
             return (
               <li
                 key={message.id}

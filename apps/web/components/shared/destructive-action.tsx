@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner'
 
 import type { DestructiveAction } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import {
   ConfirmationStyles,
@@ -87,7 +87,7 @@ export function DestructiveActionProvider({ children }: { children: ReactNode })
         await work()
         return true
       } catch {
-        toast.error(t(`errors.${ErrorCodes.INTERNAL_ERROR}`))
+        toast.error(t(`errors.${ClientErrorCodes.INTERNAL_ERROR}`))
         return false
       }
     },

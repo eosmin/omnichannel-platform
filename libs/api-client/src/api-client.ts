@@ -2,7 +2,7 @@ import type { z } from 'zod'
 
 import { API_PREFIX } from '@platform/core/api'
 import { TenantHeaders } from '@platform/core/auth'
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import { ApiError } from './api-error'
 import { errorResponseSchema } from './api-schemas'
@@ -58,7 +58,7 @@ export function createApiClient({
       })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error
-      throw new ApiError(0, ErrorCodes.NETWORK_UNAVAILABLE, 'The api cannot be reached')
+      throw new ApiError(0, ClientErrorCodes.NETWORK_UNAVAILABLE, 'The api cannot be reached')
     }
   }
 

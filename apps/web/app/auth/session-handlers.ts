@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import { isProduction } from '../../lib/env'
 import { refreshCookie, refreshCookieName } from '../../lib/refresh-cookie'
@@ -82,13 +82,13 @@ function crossSite(request: NextRequest): NextResponse | null {
     request.headers.get('x-forwarded-host')
   )
     ? null
-    : failure(HttpStatusCodes.FORBIDDEN, ErrorCodes.PERMISSION_DENIED, 'Cross-site request')
+    : failure(HttpStatusCodes.FORBIDDEN, ClientErrorCodes.PERMISSION_DENIED, 'Cross-site request')
 }
 
 const unreachable = (): NextResponse =>
   failure(
     HttpStatusCodes.INTERNAL_SERVER_ERROR,
-    ErrorCodes.INTERNAL_ERROR,
+    ClientErrorCodes.INTERNAL_ERROR,
     'The api cannot be reached'
   )
 
@@ -100,7 +100,7 @@ export async function consumeSession(request: NextRequest): Promise<NextResponse
   if (!body.success) {
     return failure(
       HttpStatusCodes.BAD_REQUEST,
-      ErrorCodes.VALIDATION_INVALID_INPUT,
+      ClientErrorCodes.VALIDATION_INVALID_INPUT,
       'A token is required'
     )
   }
@@ -122,7 +122,7 @@ export async function refreshSession(request: NextRequest): Promise<NextResponse
   if (refreshToken === undefined) {
     return failure(
       HttpStatusCodes.UNAUTHORIZED,
-      ErrorCodes.AUTH_UNAUTHORIZED,
+      ClientErrorCodes.AUTH_UNAUTHORIZED,
       'There is no session'
     )
   }
@@ -178,7 +178,7 @@ export async function acceptInvitation(request: NextRequest): Promise<NextRespon
   if (!body.success) {
     return failure(
       HttpStatusCodes.BAD_REQUEST,
-      ErrorCodes.VALIDATION_INVALID_INPUT,
+      ClientErrorCodes.VALIDATION_INVALID_INPUT,
       'A token is required'
     )
   }

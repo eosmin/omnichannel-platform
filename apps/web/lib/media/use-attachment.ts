@@ -10,7 +10,7 @@ import {
   requestUploadUrl,
   sendMessage
 } from '@platform/api-client'
-import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { apiClient } from '../api'
 import { errorCodeOf } from '../error-message'
@@ -36,8 +36,8 @@ export type AttachmentState =
   | { kind: 'idle' }
   | { kind: 'uploading'; file: AttachmentFile; progress: number }
   | { kind: 'checking'; file: AttachmentFile }
-  | { kind: 'ready'; file: AttachmentFile; sendError: ErrorCode | null; isSending: boolean }
-  | { kind: 'failed'; file: AttachmentFile; code: ErrorCode }
+  | { kind: 'ready'; file: AttachmentFile; sendError: string | null; isSending: boolean }
+  | { kind: 'failed'; file: AttachmentFile; code: string }
 
 export interface Attachment {
   state: AttachmentState
@@ -91,7 +91,11 @@ export function useAttachment(
       }
       if (capabilities !== undefined && !channelTakesFile(capabilities, file.type)) {
         run.current = null
-        setState({ kind: 'failed', file: meta, code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED })
+        setState({
+          kind: 'failed',
+          file: meta,
+          code: ClientErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+        })
         return
       }
       const controller = new AbortController()
@@ -147,7 +151,7 @@ export function useAttachment(
             file: meta,
             code:
               error instanceof UploadFailedError
-                ? ErrorCodes.FILE_UPLOAD_FAILED
+                ? ClientErrorCodes.FILE_UPLOAD_FAILED
                 : errorCodeOf(error)
           })
         }

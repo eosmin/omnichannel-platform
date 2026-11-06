@@ -13,7 +13,7 @@ import {
   type InvitationPreview,
   QueryKeys
 } from '@platform/api-client'
-import { ErrorCodes, HttpStatusCodes, RefusalReasons } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes, RefusalReasons } from '@platform/core/errors'
 
 import { SignOutButton } from '../../components/auth/sign-out-button'
 import { LoadingScreen } from '../../components/shell/session-gate'
@@ -40,7 +40,7 @@ function refusalOf(error: unknown): Refusal {
     ) {
       return { kind: 'loginRequired' }
     }
-    if (error.is(ErrorCodes.VALIDATION_FAILED)) return { kind: 'nameRequired' }
+    if (error.is(ClientErrorCodes.VALIDATION_FAILED)) return { kind: 'nameRequired' }
   }
   return { kind: 'error', error }
 }

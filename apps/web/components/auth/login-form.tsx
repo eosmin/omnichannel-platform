@@ -4,19 +4,20 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import { requestMagicLink } from '@platform/api-client'
-import type { ErrorCode } from '@platform/core/errors'
 
 import { apiClient } from '../../lib/api'
 import { errorCodeOf } from '../../lib/error-message'
 import { clearComposerDrafts } from '../../lib/inbox/composer-drafts'
+import { useCodeText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 
-type Step = { name: 'form'; errorCode: ErrorCode | null } | { name: 'sending' } | { name: 'sent' }
+type Step = { name: 'form'; errorCode: string | null } | { name: 'sending' } | { name: 'sent' }
 
 export function LoginForm(): ReactElement {
   const t = useTranslations()
+  const codeText = useCodeText()
   const [email, setEmail] = useState('')
   const [step, setStep] = useState<Step>({ name: 'form', errorCode: null })
   // Arriving here means no session: whatever was being written in this tab does not wait for the next person
@@ -70,7 +71,7 @@ export function LoginForm(): ReactElement {
         />
         {errorCode !== null && (
           <p id="login-error" role="alert" className="text-destructive text-sm">
-            {t(`errors.${errorCode}`)}
+            {codeText(errorCode)}
           </p>
         )}
       </div>
