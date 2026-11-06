@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaGraphClient } from '@platform/channels/meta'
+import { WhatsAppMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
@@ -9,7 +10,6 @@ import {
   MetaWebhookApps,
   WhatsAppApi,
   WhatsAppLimits,
-  WhatsAppMedia,
   WhatsAppTemplateComponents,
   WhatsAppTemplateStatuses
 } from '@platform/core/domain'

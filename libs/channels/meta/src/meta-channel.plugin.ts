@@ -2,15 +2,17 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  type ChannelMediaCapabilities,
+  type ChannelMediaKind,
+  ChannelMediaKinds,
+  MetaAttachmentOfKind
+} from '@platform/core/channel-media'
+import {
   CaptionState,
   ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
-  type ChannelMediaCapabilities,
-  type ChannelMediaKind,
-  ChannelMediaKinds,
-  MetaAttachmentOfKind,
   MetaMessaging,
   MetaUpload,
   MetaSubscription,

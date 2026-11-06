@@ -1,12 +1,7 @@
 import type { PinoLogger } from 'nestjs-pino'
 
-import {
-  CapabilityOfMediaKind,
-  CHANNEL_ID_PATTERN,
-  ChannelMediaKinds,
-  DeliveryStatus,
-  MessageType
-} from '@platform/core/domain'
+import { CapabilityOfMediaKind, ChannelMediaKinds } from '@platform/core/channel-media'
+import { CHANNEL_ID_PATTERN, DeliveryStatus, MessageType } from '@platform/core/domain'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
   ChannelCapability,

@@ -1,4 +1,4 @@
-import type { ChannelMediaCapabilities } from '@platform/core/domain'
+import { type ChannelMediaCapabilities } from '@platform/core/channel-media'
 
 import type { ChannelCapabilityType } from './channel-capability'
 import type { ChannelOAuth } from './channel-oauth'

@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
-  ChannelConnectFieldKeys,
-  ChannelIds,
   type ChannelMediaCapabilities,
   ChannelMediaKinds,
-  frozenMedia,
+  frozenMedia
+} from '@platform/core/channel-media'
+import {
+  ChannelConnectFieldKeys,
+  ChannelIds,
   DeliveryStatus,
   MessageType,
   WIDGET_TOKEN_HEADER,

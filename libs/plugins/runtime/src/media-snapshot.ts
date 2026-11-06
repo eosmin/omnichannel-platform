@@ -1,11 +1,11 @@
 import {
   CapabilityOfMediaKind,
-  type ChannelCapabilityType,
   type ChannelMediaKind,
   ChannelMediaKinds,
   ChannelMediaLimits,
   type ChannelMediaRule
-} from '@platform/core/domain'
+} from '@platform/core/channel-media'
+import { type ChannelCapabilityType } from '@platform/core/domain'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
 import { contractViolation, printable } from './contract-rules'

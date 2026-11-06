@@ -1,10 +1,11 @@
+import { MetaMessaging } from '../meta-constants'
+
 import {
   type ChannelMediaCapabilities,
   type ChannelMediaKind,
   ChannelMediaKinds,
   frozenMedia
 } from './channel-media-rules'
-import { MetaMessaging } from './meta-constants'
 
 const MEGABYTE = 1024 * 1024
 

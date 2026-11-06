@@ -2,12 +2,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 
 import { z } from 'zod'
 
-import {
-  CapabilityOfMediaKind,
-  ChannelMediaKinds,
-  DeliveryStatus,
-  MessageType
-} from '@platform/core/domain'
+import { CapabilityOfMediaKind, ChannelMediaKinds } from '@platform/core/channel-media'
+import { DeliveryStatus, MessageType } from '@platform/core/domain'
 import {
   ChannelCapability,
   type ChannelContext,

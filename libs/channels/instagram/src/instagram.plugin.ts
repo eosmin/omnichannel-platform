@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
+import { InstagramMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
   InstagramApi,
   MetaGraph,
-  InstagramMedia,
   MetaMessaging,
   type MetaWebhookApp,
   MetaWebhookApps

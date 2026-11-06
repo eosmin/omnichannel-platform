@@ -1,4 +1,4 @@
-import { ChannelCapability, type ChannelCapabilityType } from './channel-capability'
+import { ChannelCapability, type ChannelCapabilityType } from '../channel-capability'
 
 // The kinds of file a channel may take in a message, by the name the platform uses for them
 export const ChannelMediaKinds = {

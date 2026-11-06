@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
+import { MessengerMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
@@ -9,7 +10,6 @@ import {
   MessengerApi,
   MetaErrorCodes,
   MetaGraph,
-  MessengerMedia,
   type MetaWebhookApp,
   MetaWebhookApps
 } from '@platform/core/domain'
