@@ -17,7 +17,7 @@ import {
   MembershipStatus,
   StoreSettingsSections
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { type ErrorCode, ErrorCodes } from '@platform/core/errors'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { NotificationLimits, NotificationTypes } from '@platform/core/notifications'
 
@@ -476,12 +476,16 @@ describe('Notification emitters (QA Q2)', () => {
       })
       return id
     }
-    const failed = (conversationId: string, messageId: string) => ({
+    const failed = (
+      conversationId: string,
+      messageId: string,
+      errorCode: ErrorCode = ErrorCodes.CHANNEL_MESSAGE_FAILED
+    ) => ({
       storeId: ctx.storeA.id,
       conversationId,
       messageId,
       visibility: { hidden: false, assignedTo: null },
-      errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      errorCode
     })
 
     it('tells who wrote it, not the owner of the conversation, with its path', async () => {
@@ -502,6 +506,19 @@ describe('Notification emitters (QA Q2)', () => {
         resourceId: messageId,
         actionPath: AppPaths.store.conversation(ctx.storeA.id, id)
       })
+    })
+
+    it('carries why the channel refused the reply (NOT-06)', async () => {
+      const { id } = await mk({ assignedTo: ctx.agentA.id })
+      const messageId = await failedReply(id, {
+        authorType: AuthorType.AGENT,
+        authorId: ctx.adminA.id
+      })
+
+      await emit(Events.MESSAGE_FAILED, failed(id, messageId, ErrorCodes.CHANNEL_WINDOW_EXPIRED))
+
+      const rows = await rowsOf(NotificationTypes.MESSAGE_FAILED)
+      expect(rows[0]).toMatchObject({ params: { reason: ErrorCodes.CHANNEL_WINDOW_EXPIRED } })
     })
 
     it('tells the owner of the conversation when nobody on the team wrote the reply', async () => {

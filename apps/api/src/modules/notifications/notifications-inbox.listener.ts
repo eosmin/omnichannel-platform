@@ -174,6 +174,8 @@ export class NotificationsInboxListener {
       await this.notifications.sendToUsersOnce([recipient], {
         storeId,
         type: NotificationTypes.MESSAGE_FAILED,
+        // Why the channel refused it: a code, drawn as a sentence by the page (NOT-06)
+        params: { reason: payload.errorCode },
         resourceType: 'message',
         resourceId: messageId,
         actionPath: AppPaths.store.conversation(storeId, conversationId)

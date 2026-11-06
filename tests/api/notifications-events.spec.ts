@@ -8,6 +8,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AppPaths, ConversationStatus, MembershipStatus, MessageType } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import {
   type ConversationAssignedPayload,
   type ConversationSnoozeExpiredPayload,
@@ -561,7 +562,12 @@ describe('Notifications raised by events', () => {
   })
 
   describe('an export that settled', () => {
-    const exportOf = (requestedBy: string, status: string, type: string = ExportTypes.CUSTOMERS) =>
+    const exportOf = (
+      requestedBy: string,
+      status: string,
+      type: string = ExportTypes.CUSTOMERS,
+      error: string | null = null
+    ) =>
       owner.export.create({
         data: {
           storeId: ctx.storeA.id,
@@ -570,6 +576,7 @@ describe('Notifications raised by events', () => {
           format: ExportFormats.CSV,
           status,
           key: status === ExportStatus.READY ? `exports/${ctx.storeA.id}/x/customers.csv` : null,
+          error,
           expiresAt: new Date(Date.now() + 86_400_000)
         }
       })
@@ -616,14 +623,36 @@ describe('Notifications raised by events', () => {
     })
 
     it('tells who asked for it that the export failed', async () => {
-      const row = await exportOf(ctx.adminA.id, ExportStatus.FAILED)
+      const row = await exportOf(
+        ctx.adminA.id,
+        ExportStatus.FAILED,
+        ExportTypes.CUSTOMERS,
+        ErrorCodes.EXPORT_FAILED
+      )
 
       await app.get(EventEmitter2).emitAsync(Events.EXPORT_FAILED, settled(row))
 
       const rows = await rowsOf(NotificationTypes.EXPORT_FAILED, ctx.adminA.id)
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ params: { type: ExportTypes.CUSTOMERS } })
+      // The generic failure is what the worker writes when it has no better reason: no reason is carried
+      expect(rows[0]?.params).not.toHaveProperty('reason')
     })
+
+    it.each([ErrorCodes.EXPORT_TOO_LARGE, ErrorCodes.EXPORT_EMPTY])(
+      'says why the export failed when the row holds %s (MED-11)',
+      async code => {
+        const row = await exportOf(ctx.adminA.id, ExportStatus.FAILED, ExportTypes.MEDIA_ZIP, code)
+
+        await app.get(EventEmitter2).emitAsync(Events.EXPORT_FAILED, settled(row))
+
+        const rows = (await rowsOf(NotificationTypes.EXPORT_FAILED, ctx.adminA.id)).filter(
+          notification => notification.resourceId === row.id
+        )
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({ params: { type: ExportTypes.MEDIA_ZIP, reason: code } })
+      }
+    )
 
     it('tells nobody when the row is not in the state of the event, is not theirs or is of a kind their role lost', async () => {
       const events = app.get(EventEmitter2)

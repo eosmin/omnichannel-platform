@@ -9,6 +9,7 @@ import type { Locale } from '@platform/core/i18n'
 import { createTranslator, hasTranslation } from '@platform/core/i18n-server'
 import {
   bodyVariantOf,
+  reasonNameOf,
   DIGEST_LINKS,
   DigestLimits,
   type DigestLinkKind,
@@ -336,9 +337,8 @@ export class EmailDigestService {
         const params = messageParams(row.params)
         // The text that names the people (or the customer) is used where the notification carries
         // them and the message exists: older rows, and the types without that text, keep the plain one
-        const variant = bodyVariantOf(params, count, name =>
-          hasTranslation(locale, `${row.messageKey}.${name}`)
-        )
+        const has = (name: string): boolean => hasTranslation(locale, `${row.messageKey}.${name}`)
+        const variant = reasonNameOf(params, has) ?? bodyVariantOf(params, count, has)
         items.push({
           storeName: row.store.name,
           title: t('title', params),
