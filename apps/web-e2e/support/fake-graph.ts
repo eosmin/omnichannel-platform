@@ -42,12 +42,21 @@ const FAKE_USER_SHORT_CLEARED = 'e2e-user-short-cleared'
 export const FAKE_USER_TOKEN = 'e2e-user-token'
 const FAKE_USER_TOKEN_CLEARED = 'e2e-user-token-cleared'
 export const FAKE_BUSINESS_ID = '200000000000001'
+// The Instagram account that the Page links, and a second Page of the portfolio that links none (for the channel
+// that needs an account, it is shown and cannot be chosen)
+export const FAKE_IG_ID = '17841400000000001'
+export const FAKE_IG_USERNAME = 'e2e_ig'
+export const FAKE_NO_IG_PAGE_ID = '109000000000003'
+export const FAKE_NO_IG_PAGE_NAME = 'E2E Page without Instagram'
 const LOGIN_PERMISSIONS = [
   'pages_show_list',
   'pages_messaging',
   'pages_manage_metadata',
   'pages_read_engagement',
-  'business_management'
+  'business_management',
+  // The two of Instagram, so that one login serves both channels
+  'instagram_basic',
+  'instagram_manage_messages'
 ]
 
 export const TEMPLATE_NAME = 'order_update'
@@ -70,6 +79,8 @@ export interface FakeGraph {
   failNextTemplateListings: (count: number) => void
   // The ids of the nodes that something tried to subscribe the app to (POST subscribed_apps), in order
   subscriptions: () => string[]
+  // While it is on, Meta refuses the token of the Page (code 190), as it does once the person removes the app
+  breakPageToken: (broken: boolean) => void
   close: () => Promise<void>
 }
 
@@ -103,12 +114,16 @@ export async function startFakeGraph(): Promise<FakeGraph> {
   let listings = 0
   let failures = 0
   const subscriptions: string[] = []
+  let pageTokenBroken = false
 
   const server = createServer((request, response) => {
     void (async () => {
-      const segments = new URL(request.url ?? '/', 'http://fake').pathname
-        .split('/')
-        .filter(Boolean)
+      const url = new URL(request.url ?? '/', 'http://fake')
+      const segments = url.pathname.split('/').filter(Boolean)
+      // The Instagram account is read only when the call asks for it, as Meta does (it needs a permission)
+      const asksInstagram = (url.searchParams.get('fields') ?? '').includes(
+        'instagram_business_account'
+      )
       // /v23.0/{id}/{edge}
       const [, id, edge] = segments
       if (
@@ -200,11 +215,24 @@ export async function startFakeGraph(): Promise<FakeGraph> {
           })
         } else if (id === FAKE_BUSINESS_ID && edge === 'owned_pages') {
           reply(response, HttpStatusCodes.OK, {
-            data: [{ id: FAKE_PAGE_ID, name: FAKE_PAGE_NAME }]
+            data: [
+              {
+                id: FAKE_PAGE_ID,
+                name: FAKE_PAGE_NAME,
+                ...(asksInstagram
+                  ? { instagram_business_account: { id: FAKE_IG_ID, username: FAKE_IG_USERNAME } }
+                  : {})
+              },
+              { id: FAKE_NO_IG_PAGE_ID, name: FAKE_NO_IG_PAGE_NAME }
+            ]
           })
         } else if (id === FAKE_PAGE_ID && edge === undefined) {
           // The token of the Page, read with the token of the person
-          reply(response, HttpStatusCodes.OK, { id: FAKE_PAGE_ID, access_token: FAKE_PAGE_TOKEN })
+          reply(response, HttpStatusCodes.OK, {
+            id: FAKE_PAGE_ID,
+            access_token: FAKE_PAGE_TOKEN,
+            ...(asksInstagram ? { instagram_business_account: { id: FAKE_IG_ID } } : {})
+          })
         } else {
           reply(response, HttpStatusCodes.NOT_FOUND, {
             error: { message: 'not served', code: 100 }
@@ -217,9 +245,17 @@ export async function startFakeGraph(): Promise<FakeGraph> {
       const bearer = request.headers.authorization
       const isGoodPageToken =
         bearer === `Bearer ${FAKE_PAGE_TOKEN}` || bearer === `Bearer ${FAKE_PAGE_TOKEN_RENEWED}`
-      if (request.method === 'GET' && id === 'me') {
-        if (isGoodPageToken) {
-          reply(response, HttpStatusCodes.OK, { id: FAKE_PAGE_ID, name: FAKE_PAGE_NAME })
+      // `me` itself, not its edges: `me/subscribed_apps` is Instagram's, and is answered further down
+      if (request.method === 'GET' && id === 'me' && edge === undefined) {
+        if (isGoodPageToken && !pageTokenBroken) {
+          // The Page, and the account it links when the plugin asks for it (Instagram does)
+          reply(response, HttpStatusCodes.OK, {
+            id: FAKE_PAGE_ID,
+            name: FAKE_PAGE_NAME,
+            ...(asksInstagram
+              ? { instagram_business_account: { id: FAKE_IG_ID, username: FAKE_IG_USERNAME } }
+              : {})
+          })
         } else if (bearer === `Bearer ${FAKE_OTHER_PAGE_TOKEN}`) {
           reply(response, HttpStatusCodes.OK, { id: FAKE_OTHER_PAGE_ID, name: 'E2E Other Page' })
         } else if (bearer === `Bearer ${FAKE_BUSY_TOKEN}`) {
@@ -241,7 +277,7 @@ export async function startFakeGraph(): Promise<FakeGraph> {
       }
       if (
         request.method === 'GET' &&
-        id === FAKE_PAGE_ID &&
+        (id === FAKE_PAGE_ID || id === 'me') &&
         edge === 'subscribed_apps' &&
         isGoodPageToken
       ) {
@@ -252,7 +288,7 @@ export async function startFakeGraph(): Promise<FakeGraph> {
       if (request.method === 'POST' && edge === 'subscribed_apps') subscriptions.push(id ?? '')
       if (
         request.method === 'POST' &&
-        id === FAKE_PAGE_ID &&
+        (id === FAKE_PAGE_ID || id === 'me') &&
         edge === 'subscribed_apps' &&
         isGoodPageToken
       ) {
@@ -270,6 +306,9 @@ export async function startFakeGraph(): Promise<FakeGraph> {
     sent,
     templateListings: () => listings,
     subscriptions: () => [...subscriptions],
+    breakPageToken: broken => {
+      pageTokenBroken = broken
+    },
     failNextTemplateListings: count => {
       failures = count
     },

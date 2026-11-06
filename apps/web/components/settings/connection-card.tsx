@@ -265,6 +265,7 @@ function Actions({
         {reconnectWithFacebook ? (
           <FacebookLoginButton
             pluginId={connection.pluginId}
+            connectionId={connection.id}
             variant="outline"
             size="sm"
             idleLabel={t('oauth.reconnect')}

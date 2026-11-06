@@ -204,10 +204,11 @@ export function useUninstallPlugin(
 // dialog; leaving the page is the caller's.
 export function useStartFacebookLogin(
   storeId: string,
-  pluginId: string
+  pluginId: string,
+  connectionId?: string
 ): UseMutationResult<{ authorizeUrl: string }, Error, void> {
   return useMutation({
-    mutationFn: () => startFacebookLogin(apiClient, storeId, pluginId),
+    mutationFn: () => startFacebookLogin(apiClient, storeId, pluginId, connectionId),
     // The answer holds the state of the login: it is used once and not kept
     gcTime: 0
   })

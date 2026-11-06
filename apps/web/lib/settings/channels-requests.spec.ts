@@ -275,6 +275,35 @@ describe('the login with Facebook requests', () => {
     expect((call()[1] as RequestInit).method).toBe('POST')
   })
 
+  it('starts a repair with the connection in the body and never in the address', async () => {
+    const { client, call } = setup({ authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth' })
+    await startFacebookLogin(client, 'store-1', 'messenger', 'c1')
+    expect(bodyOf(call()[1])).toEqual({ connectionId: 'c1' })
+    expect(call()[0]).not.toContain('c1')
+  })
+
+  it('sends no body to start a login that repairs nothing', async () => {
+    const { client, call } = setup({ authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth' })
+    await startFacebookLogin(client, 'store-1', 'messenger')
+    expect(bodyOf(call()[1])).toBeUndefined()
+  })
+
+  it('reads the connection a session repairs and its account, and none from an api that does not say', async () => {
+    const bound = setup({
+      pluginId: 'messenger',
+      connectionId: 'c1',
+      repairAccountId: '1100',
+      assets: []
+    })
+    const view = await fetchOAuthAssets(bound.client, 'store-1', 'S'.repeat(43))
+    expect(view.connectionId).toBe('c1')
+    expect(view.repairAccountId).toBe('1100')
+    const older = setup({ pluginId: 'messenger', assets: [] })
+    const none = await fetchOAuthAssets(older.client, 'store-1', 'S'.repeat(43))
+    expect(none.connectionId).toBeNull()
+    expect(none.repairAccountId).toBeNull()
+  })
+
   it('reads the Pages of a session and keeps only the three fields it draws', async () => {
     const { client, call } = setup({
       pluginId: 'instagram',

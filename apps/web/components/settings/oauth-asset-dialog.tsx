@@ -6,8 +6,10 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
 import { ChannelIds, MetaOAuth } from '@platform/core/domain'
+import { ChannelConnectFailureReasons } from '@platform/core/errors'
 
 import type { OAuthAssetView } from '../../lib/settings/channels-requests'
+import { connectFailureReasonOf } from '../../lib/settings/connect-failure'
 import { missingPermissionsOf } from '../../lib/settings/oauth-return'
 import { dropOAuthSession, useCompleteOAuth, useOAuthAssets } from '../../lib/settings/use-channels'
 import { useSubmitGuard } from '../../lib/submit-guard'
@@ -89,11 +91,15 @@ export function OAuthAssetDialog({
         ) : (
           <PickForm
             pluginId={assets.data.pluginId}
+            repairing={assets.data.connectionId !== null}
+            repairAccountId={assets.data.repairAccountId}
             assets={assets.data.assets}
             complete={complete}
-            onDone={connection => {
+            onDone={(connection, repaired) => {
               finished.current = true
-              toast.success(t('connected', { name: cut(connection.displayName) }))
+              toast.success(
+                t(repaired ? 'repaired' : 'connected', { name: cut(connection.displayName) })
+              )
               onClose()
             }}
             onClose={onClose}
@@ -135,15 +141,21 @@ function LoadFailure({ error, onClose }: { error: Error; onClose: () => void }):
 
 function PickForm({
   pluginId,
+  repairing,
+  repairAccountId,
   assets,
   complete,
   onDone,
   onClose
 }: {
   pluginId: string
+  // The login repairs a connection: only the Page it already is will do
+  repairing: boolean
+  // The account the connection is, to mark the Page that is its own
+  repairAccountId: string | null
   assets: readonly OAuthAssetView[]
   complete: ReturnType<typeof useCompleteOAuth>
-  onDone: (connection: { displayName: string }) => void
+  onDone: (connection: { displayName: string }, repaired: boolean) => void
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.channels.oauth.pick')
@@ -153,8 +165,17 @@ function PickForm({
   const selectable = (asset: OAuthAssetView): boolean =>
     !needsInstagram || asset.linkedAccount !== null
   const onlyChoice = assets.filter(selectable)
+  // The Page that is the account of the connection being repaired: the only one that will do
+  const isCurrent = (asset: OAuthAssetView): boolean =>
+    repairAccountId !== null &&
+    (asset.id === repairAccountId || asset.linkedAccount?.id === repairAccountId)
+  const current = assets.find(isCurrent)
   const [choice, setChoice] = useState<string | null>(
-    onlyChoice.length === 1 ? (onlyChoice[0]?.id ?? null) : null
+    current !== undefined && selectable(current)
+      ? current.id
+      : onlyChoice.length === 1
+        ? (onlyChoice[0]?.id ?? null)
+        : null
   )
   // Nothing was found, or the person does not see theirs: they type the number of the Page
   const [typing, setTyping] = useState(assets.length === 0)
@@ -167,11 +188,15 @@ function PickForm({
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (assetId === null || complete.isPending || !guard.enter()) return
-    complete.mutate(assetId, { onSuccess: onDone, onSettled: guard.leave })
+    complete.mutate(assetId, {
+      onSuccess: connection => onDone(connection, repairing),
+      onSettled: guard.leave
+    })
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
+      {repairing ? <p className="text-sm">{t('repairHint')}</p> : null}
       {assets.length === 0 ? <p className="text-sm">{t('none')}</p> : null}
       {assets.length > 0 && !typing ? (
         <fieldset className="grid grid-cols-1 gap-2" disabled={complete.isPending}>
@@ -198,6 +223,11 @@ function PickForm({
                   />
                   <span className="grid min-w-0 grid-cols-1 gap-0.5">
                     <span className="truncate font-medium">{cut(asset.name)}</span>
+                    {isCurrent(asset) ? (
+                      <span className="text-muted-foreground truncate text-sm">
+                        {t('currentPage')}
+                      </span>
+                    ) : null}
                     {needsInstagram ? (
                       <span className="text-muted-foreground truncate text-sm">
                         {asset.linkedAccount === null
@@ -249,7 +279,15 @@ function PickForm({
           {typing ? t('backToList') : t('notListed')}
         </Button>
       ) : null}
-      <ConnectError error={complete.error} id={errorId} />
+      {repairing &&
+      connectFailureReasonOf(complete.error) === ChannelConnectFailureReasons.OTHER_ACCOUNT ? (
+        // The text of the pasted token talks of a token: here the person picked another Page
+        <p id={errorId} role="alert" className="text-destructive text-sm">
+          {t('otherAccount')}
+        </p>
+      ) : (
+        <ConnectError error={complete.error} id={errorId} />
+      )}
       <DialogFooter>
         <Button type="button" variant="ghost" onClick={onClose} disabled={complete.isPending}>
           {tCommon('cancel')}

@@ -21,6 +21,7 @@ const LEAVE_WAIT_MS = 10_000
 // stays "opening" once the window is leaving, because the page is about to be gone.
 export function FacebookLoginButton({
   pluginId,
+  connectionId,
   variant = 'default',
   size = 'default',
   idleLabel,
@@ -28,6 +29,8 @@ export function FacebookLoginButton({
   className
 }: {
   pluginId: string
+  // The connection the login repairs, when it starts from its card
+  connectionId?: string
   variant?: 'default' | 'outline'
   size?: 'default' | 'sm'
   idleLabel: string
@@ -37,7 +40,7 @@ export function FacebookLoginButton({
 }): ReactElement {
   const t = useTranslations('settings.channels.oauth')
   const { storeId } = useStore()
-  const start = useStartFacebookLogin(storeId, pluginId)
+  const start = useStartFacebookLogin(storeId, pluginId, connectionId)
   const guard = useSubmitGuard()
   const errorId = useId()
   const [leaving, setLeaving] = useState(false)

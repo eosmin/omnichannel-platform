@@ -26,6 +26,7 @@ import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
+import { ChannelOAuthStore } from '../../apps/api/src/modules/channels/oauth/channel-oauth.store'
 import {
   buildChannelPlugin,
   createCustomer,
@@ -1209,6 +1210,39 @@ describe('Tenant isolation', () => {
         ApiRoutes.channels.oauthAssets(session)
       )
       expect(own.status).toBe(200)
+    })
+
+    it('cannot repair a connection of another store: it is answered as one that does not exist, and no state is kept', async () => {
+      const connectionA = await createChannelConnection(owner, {
+        storeId: ctx.storeA.id,
+        channelType: LOGIN_PLUGIN
+      })
+      const saved = jest.spyOn(app.get(ChannelOAuthStore, { strict: false }), 'saveState')
+      try {
+        // The same call from the store that owns the connection is accepted: the 404 below is the store, not the plugin
+        const own = await api(app, ctx.adminA, ctx.storeA)
+          .post(ApiRoutes.channels.oauthStart(LOGIN_PLUGIN))
+          .send({ connectionId: connectionA.id })
+        expect(own.status).toBe(200)
+        saved.mockClear()
+        const foreign = await api(app, ctx.adminB, ctx.storeB)
+          .post(ApiRoutes.channels.oauthStart(LOGIN_PLUGIN))
+          .send({ connectionId: connectionA.id })
+        const missing = await api(app, ctx.adminB, ctx.storeB)
+          .post(ApiRoutes.channels.oauthStart(LOGIN_PLUGIN))
+          .send({ connectionId: randomUUID() })
+        expect(foreign.status).toBe(404)
+        expect(missing.status).toBe(404)
+        expect((foreign.body as { error: unknown }).error).toEqual(
+          (missing.body as { error: unknown }).error
+        )
+        expect(saved).not.toHaveBeenCalled()
+      } finally {
+        saved.mockRestore()
+      }
+      // The connection of the other store is as it was
+      const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: connectionA.id } })
+      expect(row.storeId).toBe(ctx.storeA.id)
     })
 
     it('cannot be started or finished for a store the person does not belong to', async () => {

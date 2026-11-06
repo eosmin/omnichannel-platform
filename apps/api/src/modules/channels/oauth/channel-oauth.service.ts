@@ -48,6 +48,15 @@ export interface OAuthAssetView {
   linkedAccount: { id: string; username: string | null } | null
 }
 
+// The Pages of a session. When the login repairs a connection it says which one and what account it is, so
+// that the screen can show which Page is the connection's.
+export interface OAuthAssetsView {
+  pluginId: string
+  connectionId: string | null
+  repairAccountId: string | null
+  assets: OAuthAssetView[]
+}
+
 const MAX_ASSETS = 200
 // The `code` of the provider: printable ASCII, and no longer than any code is
 const CODE_PATTERN = /^[\x21-\x7E]{1,2048}$/
@@ -77,7 +86,8 @@ export class ChannelOAuthService {
   async start(
     storeId: string,
     userId: string,
-    pluginId: string
+    pluginId: string,
+    connectionId?: string
   ): Promise<{ authorizeUrl: string }> {
     const oauth = this.oauthFor(pluginId, storeId)
     const redirectUri = this.config.redirectUri
@@ -85,6 +95,11 @@ export class ChannelOAuthService {
     if (oauth === null || redirectUri === undefined) throw resourceNotFound('channel login')
     // Before the person leaves for the provider: a plugin the store has not installed cannot be connected
     await this.connections.ensureInstalled(storeId, pluginId)
+    // A login that repairs a connection says which one in the record of its state, after the connection was
+    // found in this store and for this plugin
+    if (connectionId !== undefined) {
+      await this.connections.assertRepairable(storeId, connectionId, pluginId)
+    }
     const state = generateToken(ChannelOAuthLimits.STATE_BYTES)
     // The plugin builds the address, so the core checks it keeps what the core gave: an address that is not
     // https, or that carries another state or callback, would send the state somewhere else or make it useless
@@ -103,7 +118,12 @@ export class ChannelOAuthService {
         { reason: ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED }
       )
     }
-    await this.store.saveState(state, { userId, storeId, pluginId })
+    await this.store.saveState(state, {
+      userId,
+      storeId,
+      pluginId,
+      ...(connectionId === undefined ? {} : { connectionId })
+    })
     return { authorizeUrl }
   }
 
@@ -184,16 +204,13 @@ export class ChannelOAuthService {
       userId: record.userId,
       storeId,
       pluginId,
+      ...(record.connectionId === undefined ? {} : { connectionId: record.connectionId }),
       sealed: this.cipher.seal({ userToken }).toString('base64')
     })
     return this.back(storeId, { session: sessionId })
   }
 
-  async assets(
-    storeId: string,
-    userId: string,
-    sessionId: string
-  ): Promise<{ pluginId: string; assets: OAuthAssetView[] }> {
+  async assets(storeId: string, userId: string, sessionId: string): Promise<OAuthAssetsView> {
     const { session, oauth, userToken } = await this.open(storeId, userId, sessionId)
     await this.requireScopes(session, oauth, userToken)
     const found = await this.guarded(
@@ -203,6 +220,9 @@ export class ChannelOAuthService {
     )
     return {
       pluginId: session.pluginId,
+      // Set when the login repairs a connection, so that the screen can say so and show which Page it is
+      connectionId: session.connectionId ?? null,
+      repairAccountId: await this.repairAccountOf(session),
       assets: found.slice(0, MAX_ASSETS).map(asset => ({
         id: asset.id,
         name: asset.name,
@@ -229,9 +249,24 @@ export class ChannelOAuthService {
     const credentials = await this.guarded(session, () =>
       oauth.credentialsFor({ userToken, assetId })
     )
-    const view = await this.connections.connect(storeId, session.pluginId, { credentials }, actor, {
-      authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
-    })
+    // The connection is checked again where its credentials are written, not only when the login started: it
+    // may have been disconnected meanwhile, and the plugin of the row must still be the plugin of the session
+    if (session.connectionId !== undefined) {
+      await this.connections.assertRepairable(storeId, session.connectionId, session.pluginId)
+    }
+    const options = { authMethod: ChannelAuthMethods.FACEBOOK_LOGIN }
+    // A login that repairs a connection takes only the Page that connection already is: another Page is
+    // `other_account` and nothing is written, as for a pasted token. Any other login makes or finds its own.
+    const view =
+      session.connectionId === undefined
+        ? await this.connections.connect(storeId, session.pluginId, { credentials }, actor, options)
+        : await this.connections.updateToken(
+            storeId,
+            session.connectionId,
+            { credentials },
+            actor,
+            options
+          )
     // The connection is made: a session that cannot be removed now (Redis down) is not a failure of it, and it
     // expires by itself. Answering an error would make the person connect the same Page twice.
     try {
@@ -243,6 +278,30 @@ export class ChannelOAuthService {
       )
     }
     return view
+  }
+
+  // The account of the connection a session repairs, for the screen; nothing when it repairs none or the connection
+  // is gone (the screen then has no Page to mark, and `complete` says why)
+  private async repairAccountOf(session: OAuthSessionRecord): Promise<string | null> {
+    if (session.connectionId === undefined) return null
+    try {
+      return (
+        await this.connections.assertRepairable(
+          session.storeId,
+          session.connectionId,
+          session.pluginId
+        )
+      ).accountId
+    } catch (error) {
+      // A connection that is gone or disconnected is expected; anything else is a failure to be seen
+      if (!(error instanceof PlatformException)) {
+        this.logger.warn(
+          { pluginId: session.pluginId, storeId: session.storeId, ...pluginFailureLog(error) },
+          'the connection a login repairs could not be read'
+        )
+      }
+      return null
+    }
   }
 
   // Dropping a session needs only to be its owner: no token is opened and no plugin is looked up, so one whose

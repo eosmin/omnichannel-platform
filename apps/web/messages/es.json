@@ -1700,7 +1700,11 @@
           "connected": "{name} quedó conectada.",
           "missingIntro": "Al dar el acceso desmarcaste estos permisos:",
           "missingHelp": "Vuelve a conectar con Facebook y deja marcados todos los permisos que pide.",
-          "noneSelectable": "Ninguna de estas Páginas tiene una cuenta de Instagram vinculada. Vincúlala en los ajustes de la Página, o escribe el número de otra Página."
+          "noneSelectable": "Ninguna de estas Páginas tiene una cuenta de Instagram vinculada. Vincúlala en los ajustes de la Página, o escribe el número de otra Página.",
+          "repairHint": "Estás reconectando una conexión existente: elige la misma Página que ya tenía.",
+          "otherAccount": "Esa no es la Página que estás reconectando. Elige la misma Página de la conexión.",
+          "repaired": "{name} se reconectó.",
+          "currentPage": "La Página de la conexión"
         }
       }
     },

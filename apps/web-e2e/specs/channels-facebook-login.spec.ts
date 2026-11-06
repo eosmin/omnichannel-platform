@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
@@ -13,9 +13,11 @@ import { API_URL, WEB_URL } from '../support/env'
 import {
   FAKE_APP_ID,
   FAKE_LOGIN_CODE,
+  FAKE_IG_USERNAME,
   FAKE_LOGIN_CODE_CLEARED,
   FAKE_PAGE_ID,
   FAKE_PAGE_NAME,
+  FAKE_NO_IG_PAGE_NAME,
   FAKE_PAGE_TOKEN,
   FAKE_USER_TOKEN,
   type FakeGraph,
@@ -30,6 +32,12 @@ const ADMIN = 'multi-store@test.com'
 const channels = en.settings.channels
 const CALLBACK = `${API_URL}${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
 const MESSENGER_NAME = 'Messenger'
+const INSTAGRAM_NAME = 'Instagram'
+
+// A name as a pattern, with nothing in it taken for a metacharacter
+function exactly(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 function storeIdOf(page: Page): string {
   const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1]
@@ -140,11 +148,14 @@ test.describe('Connect with Facebook', () => {
         JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } })
       )
       expect(stored).not.toContain(sessionId ?? 'x')
-      // The only Page is chosen already, and it names no token or secret
-      await expect(pick.getByRole('radio', { name: new RegExp(FAKE_PAGE_NAME) })).toBeChecked()
+      // Messenger takes either Page of the portfolio, so none is chosen until the person chooses; the list holds
+      // no token or secret
+      const pageRadio = pick.getByRole('radio', { name: FAKE_PAGE_NAME, exact: true })
+      await expect(pageRadio).not.toBeChecked()
       await expect(pick).not.toContainText(FAKE_PAGE_TOKEN)
       await expect(pick).not.toContainText(FAKE_USER_TOKEN)
       await expectDialogHoldsItsContent(page, pick)
+      await pageRadio.check()
       await pick.getByRole('button', { name: channels.oauth.pick.submit, exact: true }).click()
       await expect(
         page.getByText(channels.oauth.pick.connected.replace('{name}', FAKE_PAGE_NAME))
@@ -237,6 +248,136 @@ test.describe('Connect with Facebook', () => {
       await expect(page.locator('body')).not.toContainText('boom')
     } finally {
       if (storeId !== undefined) await uninstallChannel(token, storeId, ChannelIds.MESSENGER)
+    }
+  })
+
+  test('connects Messenger and Instagram on one Page in both orders, and offers no Instagram on a Page that has none', async ({
+    page
+  }) => {
+    // The same two sessions of the administrator as above, and four logins
+    test.setTimeout(300_000)
+    const token = await signInByApi(ADMIN)
+    let storeId: string | undefined
+    try {
+      await signIn(page, ADMIN)
+      await page.waitForURL(/\/s\/[^/]+\/inbox/)
+      storeId = storeIdOf(page)
+      const channelsPage = AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS)
+      const install = async () => {
+        await installChannel(token, storeId ?? '', ChannelIds.MESSENGER)
+        await installChannel(token, storeId ?? '', ChannelIds.INSTAGRAM)
+      }
+      await install()
+      await facebookSays(page, state => `${CALLBACK}?code=${FAKE_LOGIN_CODE}&state=${state}`)
+
+      // The Pages dialog of a login started from the connect dialog of a channel
+      const openPages = async (name: string): Promise<Locator> => {
+        await page.goto(channelsPage)
+        const button = page.getByRole('button', {
+          name: `${channels.add.connect} ${name}`,
+          exact: false
+        })
+        await expect(button).toBeVisible({ timeout: 30_000 })
+        await button.click()
+        const dialog = page.getByRole('dialog', {
+          name: channels.connectDialog.title.replace('{name}', name)
+        })
+        await dialog.getByRole('button', { name: channels.connectDialog.facebook }).click()
+        const pick = page.getByRole('dialog', { name: channels.oauth.pick.title })
+        await expect(pick).toBeVisible({ timeout: 30_000 })
+        return pick
+      }
+      const submit = (pick: Locator) =>
+        pick.getByRole('button', { name: channels.oauth.pick.submit, exact: true }).click()
+
+      const connectMessenger = async () => {
+        const pick = await openPages(MESSENGER_NAME)
+        // Messenger has no use for an Instagram account: both Pages can be chosen
+        await expect(pick.getByRole('radio', { name: FAKE_NO_IG_PAGE_NAME })).toBeEnabled()
+        await pick.getByRole('radio', { name: FAKE_PAGE_NAME, exact: true }).check()
+        await submit(pick)
+        await expect(
+          page.getByText(channels.oauth.pick.connected.replace('{name}', FAKE_PAGE_NAME))
+        ).toBeVisible()
+      }
+      const connectInstagram = async () => {
+        const pick = await openPages(INSTAGRAM_NAME)
+        // The Page that links an account is the one choice, and says which account; the other is shown, says
+        // it has none, and cannot be chosen
+        const linked = pick.getByRole('radio', {
+          name: new RegExp(`^${exactly(FAKE_PAGE_NAME)}\\s+Instagram: @`)
+        })
+        await expect(linked).toBeChecked()
+        await expect(linked).toBeEnabled()
+        await expect(pick.getByText(`Instagram: @${FAKE_IG_USERNAME}`)).toBeVisible()
+        await expect(
+          pick.getByRole('radio', { name: new RegExp(FAKE_NO_IG_PAGE_NAME) })
+        ).toBeDisabled()
+        await expect(pick.getByText(channels.oauth.pick.noInstagram)).toBeVisible()
+        await submit(pick)
+        await expect(
+          page.getByText(channels.oauth.pick.connected.replace('{name}', FAKE_IG_USERNAME))
+        ).toBeVisible()
+      }
+      const bothAreThere = async () => {
+        await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME, exact: true })).toBeVisible()
+        await expect(
+          page.getByRole('heading', { name: FAKE_IG_USERNAME, exact: true })
+        ).toBeVisible()
+      }
+
+      // Messenger first, then Instagram on the Page it shares
+      await connectMessenger()
+      await connectInstagram()
+      await page.goto(channelsPage)
+      await bothAreThere()
+
+      // Instagram first, then Messenger: the other order, from a store with neither
+      await uninstallChannel(token, storeId, ChannelIds.MESSENGER)
+      await uninstallChannel(token, storeId, ChannelIds.INSTAGRAM)
+      await install()
+      await connectInstagram()
+      await connectMessenger()
+      await page.goto(channelsPage)
+      await bothAreThere()
+
+      // A connection that broke is repaired from its own card, and stays one card: Meta refuses its token (the
+      // person removed the app), the card says so, and the login takes the Page the connection already is
+      graph.breakPageToken(true)
+      await page
+        .getByRole('button', { name: `${channels.test.action} ${FAKE_PAGE_NAME}`, exact: true })
+        .click()
+      const reconnect = page.getByRole('button', {
+        name: `${channels.oauth.reconnect} ${FAKE_PAGE_NAME}`,
+        exact: true
+      })
+      await expect(reconnect).toBeVisible({ timeout: 30_000 })
+      graph.breakPageToken(false)
+      await reconnect.click()
+      const repair = page.getByRole('dialog', { name: channels.oauth.pick.title })
+      await expect(repair).toBeVisible({ timeout: 30_000 })
+      await expect(repair.getByText(channels.oauth.pick.repairHint)).toBeVisible()
+      // The Page of the connection is marked and chosen, and the other one is not
+      const current = repair.getByRole('radio', {
+        name: new RegExp(
+          `^${exactly(FAKE_PAGE_NAME)}\\s+${exactly(channels.oauth.pick.currentPage)}`
+        )
+      })
+      await expect(current).toBeChecked()
+      await submit(repair)
+      await expect(
+        page.getByText(channels.oauth.pick.repaired.replace('{name}', FAKE_PAGE_NAME))
+      ).toBeVisible()
+      await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME, exact: true })).toHaveCount(1)
+      await expect(reconnect).toHaveCount(0)
+    } finally {
+      // Whatever failed above is what the report shows: a cleanup that cannot run must not replace it
+      if (storeId !== undefined) {
+        await Promise.allSettled([
+          uninstallChannel(token, storeId, ChannelIds.MESSENGER),
+          uninstallChannel(token, storeId, ChannelIds.INSTAGRAM)
+        ])
+      }
     }
   })
 })
