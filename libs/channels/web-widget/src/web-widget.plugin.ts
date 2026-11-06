@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  type ChannelMediaCapabilities,
+  ChannelMediaKinds,
+  frozenMedia
+} from '@platform/core/channel-media'
+import {
   ChannelConnectFieldKeys,
   ChannelIds,
   DeliveryStatus,
@@ -10,7 +15,12 @@ import {
   WidgetMetadataKeys
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { AllowedContentTypes, GENERIC_CONTENT_TYPE, StorageKeys } from '@platform/core/storage'
+import {
+  AllowedContentTypes,
+  GENERIC_CONTENT_TYPE,
+  StorageKeys,
+  UploadLimits
+} from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import {
   ChannelCapability,
@@ -100,6 +110,22 @@ export class WebWidgetPlugin implements ChannelPlugin {
     ChannelCapability.READ_RECEIPTS
   ] as const
 
+  // The platform's own rules for an upload: the visitor is given a link to the stored file, so what it takes
+  // is what the platform lets be stored
+  readonly media: ChannelMediaCapabilities = frozenMedia({
+    maxFilesPerMessage: 1,
+    kinds: {
+      [ChannelMediaKinds.IMAGE]: {
+        types: AllowedContentTypes.IMAGE,
+        maxBytes: UploadLimits.MAX_FILE_SIZE_BYTES
+      },
+      [ChannelMediaKinds.DOCUMENT]: {
+        types: AllowedContentTypes.DOCUMENT,
+        maxBytes: UploadLimits.MAX_FILE_SIZE_BYTES
+      }
+    }
+  })
+
   constructor(
     private readonly config: WidgetConfig,
     private readonly storage: StorageService
@@ -185,6 +211,26 @@ export class WebWidgetPlugin implements ChannelPlugin {
     if (kind !== MessageType.IMAGE && kind !== MessageType.DOCUMENT) {
       return Promise.reject(
         new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+      )
+    }
+    // And held to what it declares as its own rules (`media`), so the two cannot drift apart
+    const rule =
+      this.media.kinds[
+        kind === MessageType.IMAGE ? ChannelMediaKinds.IMAGE : ChannelMediaKinds.DOCUMENT
+      ]
+    if (rule === undefined || (rule.types !== null && !rule.types.includes(params.contentType))) {
+      return Promise.reject(
+        new PluginError(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED, { retryable: false })
+      )
+    }
+    if (!Number.isSafeInteger(params.fileSize) || params.fileSize <= 0) {
+      return Promise.reject(
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+      )
+    }
+    if (params.fileSize > rule.maxBytes) {
+      return Promise.reject(
+        new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false })
       )
     }
     return Promise.resolve({

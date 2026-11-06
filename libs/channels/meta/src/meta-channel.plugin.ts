@@ -2,13 +2,17 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  type ChannelMediaCapabilities,
+  type ChannelMediaKind,
+  ChannelMediaKinds,
+  MetaAttachmentOfKind
+} from '@platform/core/channel-media'
+import {
   CaptionState,
   ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
-  type MetaMediaKind,
-  type MetaMediaRules,
   MetaMessaging,
   MetaUpload,
   MetaSubscription,
@@ -16,7 +20,6 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
-  ChannelCapability,
   type ChannelCapabilityType,
   type ChannelContext,
   type ChannelCustomerProfile,
@@ -103,8 +106,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   protected abstract readonly origin: MetaGraphOrigin
   protected abstract readonly webhookObject: string
   protected abstract readonly subscribedFields: string
-  // What the channel takes for each kind of file: the types and the largest size
-  protected abstract readonly mediaRules: MetaMediaRules
+  // What the channel takes for each kind of file: the types and the largest size (the SDK's `media`)
+  abstract readonly media: ChannelMediaCapabilities
   // The `fields` of the User Profile API on this host
   protected abstract readonly userProfileFields: string
 
@@ -310,8 +313,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // the owner's) and the message is not sent again, which would send the file twice.
   //
   // The file is uploaded and sent in one call, from the platform's storage: Meta is never given a link,
-  // because the storage is private (and a signed link to it is no business of a provider) and a link in
-  // development points at localhost. `mediaUrl` is never read. The content type is the one the platform
+  // because the storage is private and a link in development points at localhost (the core signs none). The content type is the one the platform
   // recorded when it checked the file, never the client's, and everything refusable is refused before the
   // file is opened. The send is not repeated after a failure that may have reached Meta (no idempotency key).
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
@@ -321,12 +323,14 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
     }
     const contentType = bareType(params.contentType)
-    const kind = attachmentKind(contentType)
-    // A kind of file the channel does not declare is refused here, not left to Meta
-    if (!this.capabilities.includes(kind.capability)) {
+    const kind = mediaKindOf(contentType)
+    // A kind of file the channel does not declare has no rule (the registry ties the rules to the capabilities):
+    // refused here, not left to Meta
+    const rule = this.media.kinds[kind.kind]
+    // A kind the channel has no rule for is a kind it does not take (the registry ties rules to capabilities)
+    if (rule === undefined) {
       throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
     }
-    const rule = this.mediaRules[kind.type]
     if (rule.types !== null && !rule.types.includes(contentType)) {
       throw new PluginError(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED, { retryable: false })
     }
@@ -341,7 +345,9 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     const fields: Record<string, unknown> = {
       recipient: { id: params.channelIdentity },
       ...this.sendFields(),
-      message: { [MetaMessaging.ATTACHMENT_KEY]: { type: kind.type, payload: {} } },
+      message: {
+        [MetaMessaging.ATTACHMENT_KEY]: { type: MetaAttachmentOfKind[kind.kind], payload: {} }
+      },
       ...this.replyFields(params.replyToExternalId)
     }
     const response = await this.meta.uploadMedia({
@@ -355,7 +361,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       ),
       // Messenger names a document by the name of the part; the name is the agent's file name with
       // anything but plain characters replaced, so it can never break the form
-      ...(kind.type === MetaMessaging.ATTACHMENT_FILE && params.filename
+      ...(kind.kind === ChannelMediaKinds.DOCUMENT && params.filename
         ? { fileName: plainFileName(params.filename) }
         : {}),
       fileField: MetaUpload.SEND_FILE_FIELD,
@@ -528,22 +534,16 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
 
 const MAX_FORM_FILE_NAME = 120
 
-// The kind of file the Send API wants, from its content type, and the capability that allows it;
-// anything else goes as a file
-function attachmentKind(contentType: string): {
-  type: MetaMediaKind
-  capability: ChannelCapabilityType
-} {
-  if (contentType.startsWith('image/')) {
-    return { type: MetaMessaging.ATTACHMENT_IMAGE, capability: ChannelCapability.IMAGE }
-  }
-  if (contentType.startsWith('video/')) {
-    return { type: MetaMessaging.ATTACHMENT_VIDEO, capability: ChannelCapability.VIDEO }
-  }
-  if (contentType.startsWith('audio/')) {
-    return { type: MetaMessaging.ATTACHMENT_AUDIO, capability: ChannelCapability.AUDIO }
-  }
-  return { type: MetaMessaging.ATTACHMENT_FILE, capability: ChannelCapability.DOCUMENT }
+// The kind of file, from its content type; anything else goes as a document
+function mediaKindOf(contentType: string): { kind: ChannelMediaKind } {
+  const kind = contentType.startsWith('image/')
+    ? ChannelMediaKinds.IMAGE
+    : contentType.startsWith('video/')
+      ? ChannelMediaKinds.VIDEO
+      : contentType.startsWith('audio/')
+        ? ChannelMediaKinds.AUDIO
+        : ChannelMediaKinds.DOCUMENT
+  return { kind }
 }
 
 // The name of a file as the form carries it: letters, digits and a few marks, at most 120 characters, and

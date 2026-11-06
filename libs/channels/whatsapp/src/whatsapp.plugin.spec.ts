@@ -179,7 +179,6 @@ describe('WhatsAppPlugin', () => {
       meta.uploadMedia.mockResolvedValue({ id: '777' })
       await plugin.sendMedia(ctx, {
         channelIdentity: to,
-        mediaUrl: 'http://localhost:9000/a.png?signature=x',
         contentType: 'image/png',
         filename: null,
         fileSize: 3,
@@ -490,7 +489,6 @@ describe('WhatsAppPlugin over the Meta client', () => {
     const file = (over: Record<string, unknown> = {}) => ({
       channelIdentity: to,
       // A signed link to a private bucket: the plugin never fetches or forwards it
-      mediaUrl: 'http://localhost:9000/bucket/a.png?X-Amz-Signature=sig',
       contentType: 'image/png',
       filename: 'a.png',
       fileSize: 3,

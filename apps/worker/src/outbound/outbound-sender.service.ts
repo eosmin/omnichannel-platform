@@ -167,7 +167,6 @@ export class OutboundSender {
           file !== null && plugin.sendMedia !== undefined
             ? plugin.sendMedia(this.contexts.contextFor(connection), {
                 channelIdentity: customerIdentity.channelIdentity,
-                mediaUrl: file.url,
                 contentType: file.contentType,
                 fileSize: file.size,
                 openFile: file.open,
@@ -356,13 +355,12 @@ export class OutboundSender {
     return null
   }
 
-  // The one file of a media message, with the link the provider will fetch. Only a clean file goes: a
+  // The one file of a media message, and a way to open its bytes. Only a clean file goes: a
   // file that was infected or deleted since the message was written is a failed message.
   private async fileOf(
     storeId: string,
     messageId: string
   ): Promise<{
-    url: string
     contentType: string
     filename: string
     size: number
@@ -387,13 +385,9 @@ export class OutboundSender {
       )
       return null
     }
-    const url = await this.storage.downloadUrl({
-      key: file.key,
-      contentType: file.contentType,
-      filename: file.filename
-    })
+    // No link is signed: a plugin gets the bytes through `open`, and a signed link nobody reads is only one more
+    // live credential to the storage in memory and in logs
     return {
-      url,
       contentType: file.contentType,
       filename: file.filename,
       // The size recorded when the file was checked: a plugin holds the upload to it

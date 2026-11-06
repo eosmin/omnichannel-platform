@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
+import { MessengerMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
@@ -9,7 +10,6 @@ import {
   MessengerApi,
   MetaErrorCodes,
   MetaGraph,
-  MessengerMediaRules,
   type MetaWebhookApp,
   MetaWebhookApps
 } from '@platform/core/domain'
@@ -70,7 +70,7 @@ export class MessengerPlugin extends MetaChannelPlugin {
   protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = MessengerApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = MessengerApi.SUBSCRIBED_FIELDS
-  protected readonly mediaRules = MessengerMediaRules
+  readonly media = MessengerMedia
   protected readonly userProfileFields = MessengerApi.USER_PROFILE_FIELDS
 
   protected override sendFields(): Record<string, unknown> {

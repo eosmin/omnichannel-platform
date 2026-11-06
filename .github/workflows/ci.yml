@@ -38,6 +38,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
+      # Production dependencies of every workspace package (dependencies, not devDependencies). A new high advisory in a
+      # production dependency fails every pull request until it is fixed: on purpose. An advisory with
+      # no fix goes to auditConfig.ignoreGhsas in pnpm-workspace.yaml with the reason, and to Step 7.1
+      - name: Audit production dependencies
+        timeout-minutes: 3
+        run: pnpm audit --prod --audit-level=high
       - run: pnpm format:check
       # The commits of the pull request and its title (it becomes the squash commit on main)
       - name: Commit messages follow Conventional Commits
