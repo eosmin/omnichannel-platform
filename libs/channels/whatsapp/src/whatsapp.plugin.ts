@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaGraphClient } from '@platform/channels/meta'
+import { WhatsAppMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
@@ -191,6 +192,9 @@ export class WhatsAppPlugin implements ChannelPlugin {
     ChannelCapability.MESSAGING_WINDOW
   ] as const
 
+  // The files WhatsApp takes (the same tables `checkMedia` holds a file to before it is uploaded)
+  readonly media = WhatsAppMedia
+
   constructor(private readonly meta: MetaGraphClient) {}
 
   async connect(input: ConnectInput): Promise<ConnectResult> {
@@ -249,7 +253,7 @@ export class WhatsAppPlugin implements ChannelPlugin {
 
   // The file goes to Meta first, from the platform's storage, and the message carries the id Meta
   // gives it. Meta cannot be asked to fetch a link: the platform's storage is private (and a signed
-  // link to it is no business of a provider), so `mediaUrl` is never read and nothing is fetched from
+  // link to it is no business of a provider), so the core signs no link and nothing is fetched from
   // a url here. Everything refusable is refused before the file is opened. A retry uploads again, which
   // makes another id and no other effect; the message itself is sent once.
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
