@@ -1,7 +1,7 @@
 'use client'
 
 import { FileText, Image as ImageIcon, Mic, Video } from 'lucide-react'
-import { useFormatter, useTranslations } from 'next-intl'
+import { useFormatter, useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
@@ -10,6 +10,7 @@ import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
+import { messageTimeOptions } from '../../lib/inbox/message-time'
 import { drawsWithoutBubble } from '../../lib/inbox/sticker-bubble'
 import {
   deliveryTicksOf,
@@ -122,12 +123,13 @@ function Bubble({
   const t = useTranslations('inbox.thread')
   const codeText = useCodeText()
   const format = useFormatter()
+  const locale = useLocale()
   const isCustomer = isFromCustomer(message)
   const isNote = kind === 'note'
   const bubbleless = drawsWithoutBubble(message, kind)
   const author = authorLabel(message.authorType, message.authorId)
   const ticks = deliveryTicksOf(message)
-  const time = format.dateTime(new Date(message.createdAt), { timeStyle: 'short' })
+  const time = format.dateTime(new Date(message.createdAt), messageTimeOptions(locale))
   const reason = (code: string | null): string | null => (code === null ? null : codeText(code))
 
   const problems = [

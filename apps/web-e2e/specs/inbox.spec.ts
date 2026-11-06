@@ -256,11 +256,19 @@ test.describe.serial('the inbox list', () => {
     const restored = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
     await expect(restored).toHaveValue('Still writing this')
 
-    // Sending empties the box and lets go of the keyboard, so the next key is a shortcut
+    // Sending empties the box and keeps the keyboard in it: the next letters are text, never a shortcut
     await restored.focus()
     await page.keyboard.press('Enter')
     await expect(restored).toHaveValue('')
-    await expect(restored).not.toBeFocused()
+    await expect(restored).toBeFocused()
+    await page.keyboard.type('er')
+    await expect(restored).toHaveValue('er')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+
+    // A click on Send keeps it too (the button turns off with the box empty and would drop the focus)
+    await page.getByRole('button', { name: en.inbox.composer.send }).click()
+    await expect(restored).toHaveValue('')
+    await expect(restored).toBeFocused()
   })
 
   test('a dialog opens right after Escape closed one, and the browser Back closes it', async () => {
