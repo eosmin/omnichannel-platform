@@ -4,8 +4,11 @@ import { Inject, Injectable } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { PinoLogger } from 'nestjs-pino'
 
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import {
   type AccessTokenClaims,
+  REFRESH_REUSE_GRACE_SECONDS,
   type SessionRevokedReason,
   SessionRevokedReasons
 } from '@platform/core/auth'
@@ -52,10 +55,35 @@ export interface ActiveSession {
 
 type Database = PrismaService['client']
 
+// Why a consumed token that came back was judged a leak, for the log: it tells a real replay (long
+// after) from the cases the grace window is meant to measure
+type ReuseCause =
+  | 'outside_window'
+  | 'no_successor'
+  | 'grace_not_available'
+  | 'successor_used'
+  | 'grace_context_mismatch'
+
+// A Session row with its user, as refresh() reads it
+interface ConsumedSession {
+  id: string
+  userId: string
+  familyId: string
+  expiresAt: Date
+  familyExpiresAt: Date
+  consumedAt: Date | null
+  replacedById: string | null
+  userAgent: string | null
+  ipAddress: string | null
+  user: SessionUser
+}
+
 // Access tokens are stateless JWTs; the refresh token is an opaque secret whose hash is the
 // Session row. Using it rotates it: the row is marked consumed and the next one joins the same
 // family. Presenting a consumed token means it leaked, so the whole family is revoked
-// (TDD_01 section 7). The code that issues the pair is here so that any way of logging in, the
+// (TDD_01 section 7), unless it comes back once within REFRESH_REUSE_GRACE_SECONDS of being used
+// while its successor is still unused: that is the answer of a refresh that got lost on the way to
+// the browser, not a leak. The code that issues the pair is here so that any way of logging in, the
 // magic link today and the invitation accept of Step 1.4, goes through the same door.
 @Injectable()
 export class SessionService {
@@ -63,7 +91,8 @@ export class SessionService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     @Inject(AUTH_SETTINGS) private readonly settings: AuthSettings,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly audit: AuditService
   ) {
     this.logger.setContext(SessionService.name)
   }
@@ -95,7 +124,7 @@ export class SessionService {
     })
     // Unknown, or from a family that was revoked (logout, a reuse, the list of sessions)
     if (session === null || session.revokedAt !== null) throw invalidToken()
-    if (session.consumedAt !== null) return this.reuseDetected(session.familyId, session.userId)
+    if (session.consumedAt !== null) return this.graceOrReuse(session, context)
     // The row expires with the cap too (createSession), but the cap is checked on its own: it is the
     // end of the login, and a shortened cap in the data must hold even for rows that outlive it
     if (
@@ -108,7 +137,6 @@ export class SessionService {
         HttpStatusCodes.UNAUTHORIZED
       )
     }
-
     const rotated = await this.prisma.transaction(async tx => {
       // The claim is the one atomic step: of two requests with the same token, only one gets count 1
       const claim = await tx.session.updateMany({
@@ -130,7 +158,97 @@ export class SessionService {
       return next.issued
     })
     // Outside the transaction, so that revoking the family is not rolled back with it
-    return rotated ?? this.reuseDetected(session.familyId, session.userId)
+    if (rotated !== null) return rotated
+    // Lost the claim: another request with the same token rotated it a moment ago. Read it again,
+    // now consumed, and judge it like any consumed token that came back.
+    const current = await this.prisma.client.session.findUnique({
+      where: { id: session.id },
+      include: { user: { select: { id: true, email: true } } }
+    })
+    if (current === null || current.revokedAt !== null) throw invalidToken()
+    return this.graceOrReuse(current, context)
+  }
+
+  // A consumed token came back. Inside the window, once, and only while the token that replaced it
+  // has not been used, it gets the next pair on the same family; anything else is a leak. The claim
+  // of the grace is one atomic step like the claim of the rotation, so two requests cannot both take
+  // it. Of the two branches that result (the successor and the grace's pair) each lives only until
+  // the family's cap, and a branch used after the other keeps working: this is the price of the
+  // window (TDD_01 section 7).
+  private async graceOrReuse(
+    session: ConsumedSession,
+    context: SessionContext
+  ): Promise<IssuedSession> {
+    const { consumedAt } = session
+    const ageMs = consumedAt === null ? Number.POSITIVE_INFINITY : Date.now() - consumedAt.getTime()
+    if (
+      consumedAt === null ||
+      session.replacedById === null ||
+      session.expiresAt.getTime() <= Date.now() ||
+      session.familyExpiresAt.getTime() <= Date.now() ||
+      ageMs > REFRESH_REUSE_GRACE_SECONDS * MS_PER_SECOND
+    ) {
+      return this.reuseDetected(
+        session.familyId,
+        session.userId,
+        session.replacedById === null ? 'no_successor' : 'outside_window'
+      )
+    }
+    // Same browser or nothing: a copy of the token in other hands (another user agent) gets no grace.
+    // The address may change (a phone moving between networks), so it is granted and recorded.
+    const userAgent = context.userAgent?.slice(0, MAX_USER_AGENT_LENGTH) ?? null
+    if (userAgent !== session.userAgent) {
+      return this.reuseDetected(session.familyId, session.userId, 'grace_context_mismatch')
+    }
+    const ipChanged = (context.ipAddress ?? null) !== session.ipAddress
+    const successorId = session.replacedById
+    const granted = await this.prisma.transaction(async tx => {
+      const claim = await tx.session.updateMany({
+        where: {
+          id: session.id,
+          consumedAt: { gte: new Date(Date.now() - REFRESH_REUSE_GRACE_SECONDS * MS_PER_SECOND) },
+          graceUsedAt: null,
+          revokedAt: null
+        },
+        data: { graceUsedAt: new Date() }
+      })
+      if (claim.count === 0) return 'grace_not_available' as const
+      // The successor must be alive and unused: if it was used, the login has moved on and this
+      // token coming back is somebody holding a copy. This read does not serialize with a request
+      // that rotates the successor at this very moment: the worst case is two live branches, which
+      // a grace creates anyway, so it is left as a plain read.
+      const successor = await tx.session.findFirst({
+        where: { id: successorId, consumedAt: null, revokedAt: null }
+      })
+      if (successor === null) return 'successor_used' as const
+      return (
+        await this.createSession(
+          session.user,
+          session.familyId,
+          session.familyExpiresAt,
+          context,
+          tx
+        )
+      ).issued
+    })
+    if (typeof granted === 'string') {
+      return this.reuseDetected(session.familyId, session.userId, granted)
+    }
+    const log = ipChanged ? this.logger.warn.bind(this.logger) : this.logger.info.bind(this.logger)
+    log(
+      { familyId: session.familyId, userId: session.userId, ageMs, ipChanged },
+      'a used refresh token came back inside the grace window: next pair issued'
+    )
+    this.audit.log({
+      action: AuditAction.SESSION_REFRESH_GRACE,
+      actor: { userId: session.userId },
+      resourceType: 'session',
+      resourceId: session.familyId,
+      metadata: { ageMs, ipChanged },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent
+    })
+    return granted
   }
 
   // Ends a login. Idempotent: a family that is already over stays over. The user is part of the
@@ -152,7 +270,12 @@ export class SessionService {
       },
       orderBy: { createdAt: 'desc' }
     })
-    return rows.map(row => ({
+    // A grace leaves two live tokens in one family (TDD_01 section 7): one login, one entry. The rows
+    // come newest first, so the newest of each family is the one that shows.
+    const newestOfFamily = [
+      ...new Map(rows.reverse().map(row => [row.familyId, row])).values()
+    ].reverse()
+    return newestOfFamily.map(row => ({
       id: row.familyId,
       userAgent: row.userAgent,
       ipAddress: row.ipAddress,
@@ -172,10 +295,14 @@ export class SessionService {
     }
   }
 
-  private async reuseDetected(familyId: string, userId: string): Promise<never> {
+  private async reuseDetected(
+    familyId: string,
+    userId: string,
+    cause: ReuseCause | 'consumed_token' = 'consumed_token'
+  ): Promise<never> {
     await this.revokeFamily({ familyId }, SessionRevokedReasons.REUSE_DETECTED)
     this.logger.warn(
-      { familyId, userId },
+      { familyId, userId, cause },
       'a refresh token that was already used came back: login revoked'
     )
     throw new PlatformException(

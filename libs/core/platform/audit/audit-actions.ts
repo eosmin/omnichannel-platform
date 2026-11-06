@@ -9,6 +9,7 @@ export const AuditAction = {
   MAGIC_LINK_REQUESTED: 'user.magic_link_requested',
   MAGIC_LINK_CONSUMED: 'user.magic_link_consumed',
   SESSION_FAMILY_REVOKED: 'user.session_family_revoked',
+  SESSION_REFRESH_GRACE: 'user.session_refresh_grace',
   ACCOUNT_PROFILE_UPDATED: 'user.profile_updated',
   ACCOUNT_PREFERENCES_UPDATED: 'user.preferences_updated',
 
