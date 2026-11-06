@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 
+import { ChannelOAuthConfig } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
 import { RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -23,8 +24,10 @@ import {
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+import { PluginRegistry } from '@platform/plugins/runtime'
 
 import {
+  buildChannelPlugin,
   createCustomer,
   createCustomerIdentity,
   createCustomerMerge,
@@ -114,6 +117,8 @@ const setPreferencePush = async (
     update: { push }
   })
 }
+
+const LOGIN_REDIRECT_URI = 'https://api.example.com/api/v1/channels/oauth/callback'
 
 const resources: IsolationResource[] = [
   {
@@ -670,7 +675,12 @@ describe('Tenant isolation', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    // The login of the channels is on for the suite, so that its sessions can be tried against another store
+    app = await createTestApp([], builder =>
+      builder
+        .overrideProvider(ChannelOAuthConfig)
+        .useValue({ redirectUri: LOGIN_REDIRECT_URI, frontendUrl: 'https://app.example.com' })
+    )
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
@@ -1118,6 +1128,93 @@ describe('Tenant isolation', () => {
         where: { id: connectionA.id }
       })
       expect(Buffer.from(after.credentials).equals(Buffer.from(before.credentials))).toBe(true)
+    })
+  })
+
+  // Step 7.8, rule 3 of CLAUDE.md: a login session is not a table but it is tenant data (it holds the token of
+  // a person for one store), so it has its case here. The callback is public and knows no store: the store is
+  // in the state that the authenticated start made, and every later step compares it with the store of the call.
+  describe('the login session of a channel', () => {
+    const LOGIN_PLUGIN = 'iso_login'
+    let registry: PluginRegistry
+
+    beforeAll(async () => {
+      registry = app.get(PluginRegistry, { strict: false })
+      registry.register(
+        buildChannelPlugin({
+          id: LOGIN_PLUGIN,
+          oauth: {
+            kind: 'meta-facebook-login',
+            scopes: ['pages_show_list'],
+            authorizationUrl: ({ state, redirectUri }) =>
+              `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+            exchangeCode: () => Promise.resolve('USER-TOKEN-OF-A'),
+            grantedScopes: () => Promise.resolve(['pages_show_list']),
+            listAssets: () =>
+              Promise.resolve([{ id: '1100', name: 'Page of A', linkedAccount: null }]),
+            credentialsFor: ({ assetId }) => Promise.resolve({ token: `PAGE-${assetId}` })
+          }
+        })
+      )
+      for (const store of [ctx.storeA, ctx.storeB]) {
+        await ensurePluginInstallation(owner, { storeId: store.id, pluginId: LOGIN_PLUGIN })
+      }
+    })
+    afterAll(() => {
+      registry.unregister(LOGIN_PLUGIN)
+    })
+
+    it('is answered as a session that does not exist when it belongs to another store, and makes no connection there', async () => {
+      const started = await api(app, ctx.adminA, ctx.storeA).post(
+        ApiRoutes.channels.oauthStart(LOGIN_PLUGIN)
+      )
+      const state = new URL(
+        (started.body as { authorizeUrl: string }).authorizeUrl
+      ).searchParams.get('state')
+      const back = await anonymousApi(app)
+        .get(ApiRoutes.channels.oauthCallback)
+        .query({ code: 'a-code', state })
+        .redirects(0)
+      const session = new URL(String(back.headers['location'])).searchParams.get('oauth') ?? ''
+      const never = 'z'.repeat(43)
+      const before = await owner.channelConnection.count({ where: { pluginId: LOGIN_PLUGIN } })
+
+      const asB = (): ReturnType<typeof api> => api(app, ctx.adminB, ctx.storeB)
+      const answers = [
+        [
+          await asB().get(ApiRoutes.channels.oauthAssets(session)),
+          await asB().get(ApiRoutes.channels.oauthAssets(never))
+        ],
+        [
+          await asB().post(ApiRoutes.channels.oauthComplete(session)).send({ assetId: '1100' }),
+          await asB().post(ApiRoutes.channels.oauthComplete(never)).send({ assetId: '1100' })
+        ],
+        [
+          await asB().delete(ApiRoutes.channels.oauthSession(session)),
+          await asB().delete(ApiRoutes.channels.oauthSession(never))
+        ]
+      ]
+      for (const [foreign, missing] of answers) {
+        expect(foreign?.status).toBe(404)
+        expect(missing?.status).toBe(404)
+        expect((foreign?.body as { error: unknown }).error).toEqual(
+          (missing?.body as { error: unknown }).error
+        )
+      }
+      expect(await owner.channelConnection.count({ where: { pluginId: LOGIN_PLUGIN } })).toBe(
+        before
+      )
+      // The owner of the session still has it: the other store changed nothing
+      const own = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.channels.oauthAssets(session)
+      )
+      expect(own.status).toBe(200)
+    })
+
+    it('cannot be started or finished for a store the person does not belong to', async () => {
+      const intruder = api(app, ctx.adminA, ctx.storeB)
+      const start = await intruder.post(ApiRoutes.channels.oauthStart(LOGIN_PLUGIN))
+      expect(start.status).toBe(403)
     })
   })
 

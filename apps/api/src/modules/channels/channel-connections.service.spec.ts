@@ -8,15 +8,30 @@ import { ChannelConnectionsService } from './channel-connections.service'
 
 // The barrel of the connections lib loads the environment (env.ts), which a unit spec has no business
 // reading: only the helpers the service calls are replaced, with the behavior the connect path needs
-jest.mock('@platform/channels/connections', () => ({
-  CONNECTION_ROW_SELECT: {},
-  ChannelContextFactory: class {},
-  ChannelHealthService: class {},
-  errorName: (error: unknown) => (error instanceof Error ? error.name : 'unknown'),
-  providerText: () => '',
-  ProviderTimeoutError: class ProviderTimeoutError extends Error {},
-  withTimeout: <T>(work: Promise<T>) => work
-}))
+jest.mock('@platform/channels/connections', () => {
+  class ProviderTimeoutError extends Error {}
+  const sdk = jest.requireActual<{
+    connectFailureReasonOf: (error: unknown) => string | undefined
+  }>('@platform/plugins/sdk')
+  const errors = jest.requireActual<{
+    ChannelConnectFailureReasons: { PROVIDER_UNAVAILABLE: string }
+  }>('@platform/core/errors')
+  return {
+    CONNECTION_ROW_SELECT: {},
+    ChannelContextFactory: class {},
+    ChannelHealthService: class {},
+    // The same rule as connect-failure-reason.ts: the reason the plugin named, or the provider being slow
+    connectReasonOfError: (error: unknown) =>
+      sdk.connectFailureReasonOf(error) ??
+      (error instanceof ProviderTimeoutError
+        ? errors.ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
+        : undefined),
+    errorName: (error: unknown) => (error instanceof Error ? error.name : 'unknown'),
+    providerText: () => '',
+    ProviderTimeoutError,
+    withTimeout: <T>(work: Promise<T>) => work
+  }
+})
 
 const TOKEN = 'EAAB-secret-token-value'
 const STORE = '00000000-0000-4000-8000-000000000001'

@@ -12,6 +12,12 @@ import { ChannelTemplatesController } from './channel-templates.controller'
 import { ChannelTemplatesService } from './channel-templates.service'
 import { ChannelWebhookController } from './channel-webhook.controller'
 import { InboundEventQueue } from './inbound-event-queue.service'
+import {
+  ChannelOAuthCallbackController,
+  ChannelOAuthController
+} from './oauth/channel-oauth.controller'
+import { ChannelOAuthService } from './oauth/channel-oauth.service'
+import { ChannelOAuthStore } from './oauth/channel-oauth.store'
 
 // The public door of the channels (the webhook) and their management from Settings. The registry
 // comes from the registry module, the inbound queue from the queues module and the cipher of the
@@ -23,8 +29,20 @@ import { InboundEventQueue } from './inbound-event-queue.service'
     ChannelConnectionsLibModule,
     TenancyModule
   ],
-  controllers: [ChannelWebhookController, ChannelConnectionsController, ChannelTemplatesController],
-  providers: [ChannelConnectionsService, ChannelTemplatesService, InboundEventQueue],
+  controllers: [
+    ChannelWebhookController,
+    ChannelConnectionsController,
+    ChannelOAuthController,
+    ChannelOAuthCallbackController,
+    ChannelTemplatesController
+  ],
+  providers: [
+    ChannelConnectionsService,
+    ChannelTemplatesService,
+    InboundEventQueue,
+    ChannelOAuthStore,
+    ChannelOAuthService
+  ],
   exports: [ChannelConnectionsService, ChannelTemplatesService, InboundEventQueue]
 })
 export class ChannelsModule {}

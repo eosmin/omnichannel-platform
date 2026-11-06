@@ -29,6 +29,14 @@ export interface ChannelOAuth {
   // The permissions the dialog asks for, as the provider names them. Checked by the registry: a list, no
   // repeats, each a plain permission name, because the list ends up in an address.
   readonly scopes: readonly string[]
+  // The address of the provider's dialog for this `state`. Pure: it reads the plugin's own app id and
+  // calls nothing. The core made `state` (256 random bits) and `redirectUri` (its callback), and the
+  // plugin only places them, so it cannot weaken the state.
+  authorizationUrl(ctx: { readonly state: string; readonly redirectUri: string }): string
+  // The token of the PERSON for the `code` the provider sent back to the callback, exchanged with the
+  // plugin's app secret and, when the provider has one, made long lived (a token of an account taken
+  // from a short one dies with it). Throws a PluginError. The code and the token are never logged.
+  exchangeCode(ctx: { readonly code: string; readonly redirectUri: string }): Promise<string>
   // READ-ONLY. The scopes the person actually granted: the dialog lets them clear any box, so the core
   // compares this with `scopes` and says which one is missing instead of failing later with the
   // provider's own error.

@@ -28,6 +28,13 @@ export const ChannelConnectFailureReasons = {
   // The subscription of the Page could not be checked: trying again is the whole advice
   SUBSCRIPTION_UNREADABLE: 'subscription_unreadable',
   // The provider asks to wait, or did not answer: trying again later is the whole advice
+  // "Connect with Facebook" (Step 7.8): the login ended with nothing the person can connect, with a Page
+  // that links no Instagram account for the channel that needs one, with the person cancelling in the
+  // dialog, or with a state that was reused, expired or never made here
+  NO_ASSETS: 'no_assets',
+  PAGE_WITHOUT_INSTAGRAM: 'page_without_instagram',
+  OAUTH_CANCELLED: 'oauth_cancelled',
+  OAUTH_EXPIRED: 'oauth_expired',
   PROVIDER_BUSY: 'provider_busy',
   PROVIDER_UNAVAILABLE: 'provider_unavailable'
 } as const

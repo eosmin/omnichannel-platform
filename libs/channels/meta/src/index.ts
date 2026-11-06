@@ -1,6 +1,7 @@
 export * from './inbound-text'
 export * from './meta-app-config'
 export * from './meta-graph.client'
+export * from './meta-login'
 export * from './meta-platform.module'
 export * from './meta-channel.plugin'
 export * from './meta-token-credentials'

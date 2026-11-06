@@ -80,3 +80,29 @@ describe('scrubUrl, credentials and encoded values', () => {
     expect(scrubUrl('/x?next=%E0%A4%A')).toBe('/x?next=%E0%A4%A')
   })
 })
+
+describe('scrubUrl, the login of the channels (Step 7.8)', () => {
+  const callback = '/api/v1/channels/oauth/callback'
+
+  it('hides the code and the state of the callback, which the request log would otherwise keep', () => {
+    expect(scrubUrl(`${callback}?code=AQD-the-code&state=the-state-of-256-bits`)).toBe(
+      `${callback}?code=${REDACTED}&state=${REDACTED}`
+    )
+    // And on an absolute address, as a proxy may forward it
+    expect(scrubUrl(`https://api.example.com${callback}?state=s&code=c&error=access_denied`)).toBe(
+      `https://api.example.com${callback}?state=${REDACTED}&code=${REDACTED}&error=access_denied`
+    )
+  })
+
+  it('hides the id of the session that the web app receives in its address', () => {
+    expect(scrubUrl('/s/abc/settings/channels?oauth=the-opaque-session-id')).toBe(
+      `/s/abc/settings/channels?oauth=${REDACTED}`
+    )
+  })
+
+  it('hides a token in the body-like names a client may put in a query', () => {
+    expect(scrubUrl('/x?userToken=t&access_token=a&client_secret=s')).toBe(
+      `/x?userToken=${REDACTED}&access_token=${REDACTED}&client_secret=${REDACTED}`
+    )
+  })
+})

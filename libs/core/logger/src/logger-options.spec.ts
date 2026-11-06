@@ -147,6 +147,17 @@ describe('redaction', () => {
     return output
   }
 
+  it('removes the address a redirect sends the browser to, which can carry the id of a login session', () => {
+    const output = logged({
+      res: {
+        statusCode: 302,
+        headers: { location: 'https://app.example.com/s/1/settings/channels?oauth=the-session-id' }
+      }
+    })
+    expect(output).not.toContain('the-session-id')
+    expect(output).toContain('302')
+  })
+
   it('removes credentials and secrets from what is logged', () => {
     const output = logged({
       req: {

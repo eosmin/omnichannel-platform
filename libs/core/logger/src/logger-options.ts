@@ -76,6 +76,8 @@ export const REDACTED_PATHS: readonly string[] = [
   'req.body.credentials',
   'req.body.credentials.*',
   'res.headers["set-cookie"]',
+  // The callback of the login redirects with the id of a session in the address
+  'res.headers.location',
   // The decrypted credentials of a connection have the keys of each provider, so the object goes
   // whole: logged alone, inside a context, or inside a result
   ...atEveryDepth('credentials'),

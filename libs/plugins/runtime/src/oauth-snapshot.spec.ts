@@ -7,6 +7,8 @@ function oauth(overrides: Partial<ChannelOAuth> = {}): ChannelOAuth {
   return {
     kind: ChannelOAuthKinds.META_FACEBOOK_LOGIN,
     scopes: ['pages_show_list', 'pages_messaging'],
+    authorizationUrl: () => 'https://dialog.example/x',
+    exchangeCode: () => Promise.resolve('user-token'),
     grantedScopes: () => Promise.resolve(['pages_show_list']),
     listAssets: () => Promise.resolve([]),
     credentialsFor: () => Promise.resolve({ accessToken: 'page-token' }),
@@ -85,10 +87,13 @@ describe('snapshotChannelOAuth', () => {
     expect(refuses({ ...oauth(), scopes })).toMatch(/scopes/)
   })
 
-  it.each(['grantedScopes', 'listAssets', 'credentialsFor'])('refuses a login without %s', name => {
-    expect(refuses({ ...oauth(), [name]: undefined })).toMatch(new RegExp(name))
-    expect(refuses({ ...oauth(), [name]: 'not a function' })).toMatch(new RegExp(name))
-  })
+  it.each(['authorizationUrl', 'exchangeCode', 'grantedScopes', 'listAssets', 'credentialsFor'])(
+    'refuses a login without %s',
+    name => {
+      expect(refuses({ ...oauth(), [name]: undefined })).toMatch(new RegExp(name))
+      expect(refuses({ ...oauth(), [name]: 'not a function' })).toMatch(new RegExp(name))
+    }
+  )
 
   it('names the plugin by a printable id and never prints the declaration', () => {
     const message = refuses({ ...oauth(), scopes: ['pages_show_list&secret=abc'] })

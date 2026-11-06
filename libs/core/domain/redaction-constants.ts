@@ -24,6 +24,8 @@ export const SENSITIVE_QUERY_PARAMS: readonly string[] = [
   'jwt',
   'bearer',
   'session',
+  // The opaque id of a login session, which the web app receives in its address (ChannelOAuthQuery.SESSION)
+  'oauth',
   'sid',
   'credential',
   'credentials'

@@ -165,6 +165,8 @@ export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefi
     // A saved credential that no longer reads as a token: only connecting again fixes it
     case ChannelConnectFailureReasons.TOKEN_MALFORMED:
       return ChannelHealthErrors.CREDENTIALS_UNREADABLE
+    // The login (NO_ASSETS to OAUTH_EXPIRED) ends before a connection exists, so none of its reasons is the
+    // state of one
     case undefined:
     case ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED:
     case ChannelConnectFailureReasons.SUBSCRIPTION_NOT_CONFIRMED:
@@ -173,6 +175,10 @@ export function healthErrorOfReason(reason: ChannelConnectFailureReason | undefi
     case ChannelConnectFailureReasons.SUBSCRIPTION_UNREADABLE:
     case ChannelConnectFailureReasons.PROVIDER_BUSY:
     case ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE:
+    case ChannelConnectFailureReasons.NO_ASSETS:
+    case ChannelConnectFailureReasons.PAGE_WITHOUT_INSTAGRAM:
+    case ChannelConnectFailureReasons.OAUTH_CANCELLED:
+    case ChannelConnectFailureReasons.OAUTH_EXPIRED:
       return ChannelHealthErrors.CHECK_FAILED
     default: {
       // The compiler makes a new reason name its case; at run time (a core older than the plugin) it is the

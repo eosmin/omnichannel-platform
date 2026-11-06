@@ -402,6 +402,8 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
   const login = {
     kind: 'meta-facebook-login',
     scopes: ['pages_show_list'],
+    authorizationUrl: () => 'https://dialog.example/x',
+    exchangeCode: () => Promise.resolve('user-token'),
     grantedScopes: () => Promise.resolve(['pages_show_list']),
     listAssets: () => Promise.resolve([]),
     credentialsFor: () => Promise.resolve({ accessToken: 'page-token' })

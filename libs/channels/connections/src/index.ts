@@ -1,4 +1,6 @@
 export * from './channel-connections-lib.module'
+export * from './channel-oauth-config'
+export * from './connect-failure-reason'
 export * from './channel-context.factory'
 export * from './channel-health.service'
 export * from './provider-text'

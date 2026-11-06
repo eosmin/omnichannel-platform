@@ -20,6 +20,7 @@ import {
   type ChannelEvent,
   type ChannelHealth,
   type ChannelMessageResult,
+  type ChannelOAuth,
   type ChannelPlugin,
   type ConnectField,
   type ConnectInput,
@@ -35,6 +36,7 @@ import {
 } from '@platform/plugins/sdk'
 
 import { MetaGraphClient } from './meta-graph.client'
+import { MetaLogin } from './meta-login'
 import { messagingToEvents } from './meta-messaging-events'
 import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
 import { parseMetaTokenCredentials } from './meta-token-credentials'
@@ -104,6 +106,14 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   protected abstract readonly userProfileFields: string
 
   constructor(protected readonly meta: MetaGraphClient) {}
+
+  // "Connect with Facebook" (Step 7.8). A getter, because `id` belongs to the subclass and is not set while the
+  // base is built; the registry reads it once.
+  private login: MetaLogin | undefined
+  get oauth(): ChannelOAuth {
+    this.login ??= new MetaLogin(this.id, this.meta)
+    return this.login
+  }
 
   // Who the token belongs to, read from Meta with that token. `expectedId` is the account a connection
   // already has, for a plugin whose token can reach more than one (it answers with that one); a plugin
