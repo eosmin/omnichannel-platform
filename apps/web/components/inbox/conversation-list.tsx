@@ -282,7 +282,7 @@ export function ConversationList({
           hasMore={hasNextPage}
         />
       ) : null}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <ul
           aria-label={t('listLabel')}
           className="relative w-full"

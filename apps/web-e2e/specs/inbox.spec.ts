@@ -1,9 +1,11 @@
 import { type BrowserContext, type Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
+import { AuthorType, DeliveryStatus } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import {
+  addMessageTo,
   newConversationIn,
   newTaggedConversationIn,
   statusOf,
@@ -265,8 +267,17 @@ test.describe.serial('the inbox list', () => {
 
   test('opening a conversation does not make the page scroll: the thread has its own scroll (W2)', async () => {
     const conversationId = await newConversationIn(storeId)
+    // Sent replies carry a hidden text each ("Sent", `sr-only`, absolute): they must stay inside the thread
+    for (let index = 0; index < 14; index += 1) {
+      await addMessageTo(storeId, conversationId, {
+        content: `Reply number ${index + 1}`,
+        authorType: AuthorType.AGENT,
+        deliveryStatus: DeliveryStatus.SENT,
+        createdAt: new Date(Date.now() - (14 - index) * 60_000)
+      })
+    }
     try {
-      for (const width of [1280, 485, 390]) {
+      for (const width of [1536, 1280, 485, 390]) {
         await page.setViewportSize({ width, height: 800 })
         await page.goto(AppPaths.store.conversation(storeId, conversationId))
         await expect(
@@ -283,6 +294,22 @@ test.describe.serial('the inbox list', () => {
         // The page is as tall as the window and stays at the top: no gap under the thread, no header lost
         expect(page_.scrollHeight, `at ${width} px`).toBe(page_.clientHeight)
         expect(page_.scrollTop, `at ${width} px`).toBe(0)
+        // The wheel to the end of the thread, and past it, does not go on to the page
+        await page.mouse.move(width / 2, 300)
+        await page.mouse.wheel(0, 5000)
+        await page.mouse.wheel(0, 5000)
+        const afterWheel = await page.evaluate(() => {
+          const root = document.scrollingElement ?? document.documentElement
+          return {
+            scrollTop: root.scrollTop,
+            scrollHeight: root.scrollHeight,
+            clientHeight: root.clientHeight
+          }
+        })
+        expect(afterWheel.scrollTop, `after the wheel at ${width} px`).toBe(0)
+        expect(afterWheel.scrollHeight, `after the wheel at ${width} px`).toBe(
+          afterWheel.clientHeight
+        )
         // And nothing is cut off: the top bar, the box to write in, and every control of the top bar that
         // the page clips if it overflows (the store and the account menus) are inside the window
         await expect(page.getByRole('banner')).toBeInViewport()

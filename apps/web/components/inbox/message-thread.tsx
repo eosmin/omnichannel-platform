@@ -258,7 +258,10 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       ref={setScroller}
       // The browser keeps what is in view when something goes in above; the thread does it itself
       onScroll={keepAnchorCurrent}
-      className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
+      // `relative`: the hidden texts inside (`sr-only` is absolute) take the thread as their container and are clipped
+      // by it; without it they escape and make the whole page taller. `overscroll-contain`: the wheel at the
+      // end of the thread does not go on to scroll the page
+      className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
     >
       <div ref={setTop} />
       <div ref={setContent}>
