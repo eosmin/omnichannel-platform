@@ -62,6 +62,16 @@ export function testChannelPluginContract(
       ).not.toThrow()
     })
 
+    // The login of Step 7.8 is optional: a plugin without one passes with nothing, and one that declares it
+    // is held to the same shape as at boot, and the core keeps exactly the scopes it declared
+    it('keeps the login it declares, if any, exactly as declared', () => {
+      const logger = new Proxy({}, { get: () => jest.fn() }) as unknown as PinoLogger
+      const registry = new PluginRegistry(logger)
+      registry.register(plugin, { official: options.official === true })
+      expect(registry.oauthOf(plugin.id)?.scopes ?? []).toEqual(plugin.oauth?.scopes ?? [])
+      expect(registry.oauthOf(plugin.id)?.kind).toBe(plugin.oauth?.kind)
+    })
+
     it('rejects an invalid webhook signature', () => {
       expect(
         plugin.validateWebhookSignature(

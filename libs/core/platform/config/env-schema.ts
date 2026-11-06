@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { API_PREFIX, ApiRoutes } from '@platform/core/api'
+import { MetaOAuth } from '@platform/core/domain'
 import { isBase64UrlOfBytes, PushLimits } from '@platform/core/notifications'
 
 import { DURATION_PATTERN, durationToSeconds } from './duration'
@@ -24,6 +26,15 @@ const emptyAsUnset = z
   .string()
   .optional()
   .transform(value => (value === '' ? undefined : value))
+
+// `new URL` throws on what is not an address; the checks below want a value to ask about
+function urlOrNull(value: string): URL | null {
+  try {
+    return new URL(value)
+  } catch {
+    return null
+  }
+}
 
 const senderAddress = z.string().refine(value => {
   const trimmed = value.trim()
@@ -111,6 +122,11 @@ export const envSchema = z
     // cannot live in the portfolio that owns the main app). Set, it is the only key that signs Instagram's
     // webhooks; unset, the main app's does. The verify token is the same one for both apps.
     META_INSTAGRAM_APP_SECRET: emptyAsUnset,
+    // Optional: the address Facebook sends the browser back to after "Connect with Facebook", which is the
+    // callback of this api and must be registered, exactly as written, in the app's list of valid OAuth
+    // redirect URIs. Set, the button exists (it needs META_APP_ID and META_APP_SECRET); unset, channels are
+    // connected with a pasted token only. Checked below.
+    META_OAUTH_REDIRECT_URI: emptyAsUnset,
     // Goes into the url of every Graph call, so its shape is checked
     META_GRAPH_API_VERSION: z
       .string()
@@ -189,6 +205,55 @@ export const envSchema = z
         path: ['META_GRAPH_ORIGIN'],
         input: env.META_GRAPH_ORIGIN
       })
+    }
+    if (env.META_OAUTH_REDIRECT_URI !== undefined) {
+      const fail = (message: string, path: string, input?: string): void => {
+        ctx.issues.push({ code: 'custom', message, path: [path], input })
+      }
+      const redirect = urlOrNull(env.META_OAUTH_REDIRECT_URI)
+      const callbackPath = `${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
+      if (redirect === null || (redirect.protocol !== 'https:' && redirect.protocol !== 'http:')) {
+        fail('META_OAUTH_REDIRECT_URI must be an http or https address', 'META_OAUTH_REDIRECT_URI')
+      } else {
+        if (
+          redirect.pathname !== callbackPath ||
+          redirect.search !== '' ||
+          redirect.hash !== '' ||
+          // Meta compares the string it is sent, and the URL parser lowercases the host, drops a default port and
+          // resolves dot segments: only an address already written in that form is the one that was checked
+          redirect.href !== env.META_OAUTH_REDIRECT_URI ||
+          redirect.username !== '' ||
+          redirect.password !== ''
+        ) {
+          // Meta compares the address with the registered one byte by byte, and the api answers on one path
+          fail(
+            `META_OAUTH_REDIRECT_URI must be the callback of this api, ${callbackPath}, with no query, fragment or credentials`,
+            'META_OAUTH_REDIRECT_URI'
+          )
+        }
+        if (
+          isDeployed &&
+          (redirect.protocol !== 'https:' || LOCAL_HOSTNAMES.includes(redirect.hostname))
+        ) {
+          // The browser comes back to it from Facebook with a code that is worth a token
+          fail(
+            'a deployed environment needs the public https address of the callback in META_OAUTH_REDIRECT_URI',
+            'META_OAUTH_REDIRECT_URI'
+          )
+        }
+      }
+      if (env.META_APP_ID === undefined || !MetaOAuth.ASSET_ID_PATTERN.test(env.META_APP_ID)) {
+        fail('META_OAUTH_REDIRECT_URI needs META_APP_ID, the number of the Meta app', 'META_APP_ID')
+      }
+      if (
+        env.META_APP_SECRET === undefined ||
+        env.META_APP_SECRET.length < MIN_META_SECRET_LENGTH
+      ) {
+        fail(
+          `META_OAUTH_REDIRECT_URI needs META_APP_SECRET (at least ${MIN_META_SECRET_LENGTH} characters) to exchange the code for a token`,
+          'META_APP_SECRET'
+        )
+      }
     }
     // One key without the other: the push would be off with nothing saying why
     if ((env.VAPID_PUBLIC_KEY === undefined) !== (env.VAPID_PRIVATE_KEY === undefined)) {

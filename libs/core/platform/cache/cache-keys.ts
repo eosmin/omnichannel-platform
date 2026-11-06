@@ -96,7 +96,14 @@ export const CacheKeys = {
   channel: {
     connection: (pluginId: string, connectionId: string) =>
       `channel:${pluginId}:conn:${connectionId}`, // -> storeId + connection row
-    capabilities: (pluginId: string) => `channel:${pluginId}:capabilities`
+    capabilities: (pluginId: string) => `channel:${pluginId}:capabilities`,
+    // "Connect with Facebook" (Step 7.8). Not tenant keys: the callback arrives from the provider with no
+    // store, so the store, the user and the plugin are in the VALUE, read once from here and removed. The
+    // arguments are the SHA-256 (hex) of the state and of the session id, never the values themselves:
+    // a copy of Redis must not hold an address that still works. The prefix is `oauth:`, not `channel:`, because
+    // every `channel:<pluginId>:*` key belongs to a plugin and a plugin may be called `oauth`.
+    oauthState: (stateDigest: string) => `oauth:channel:state:${stateDigest}`,
+    oauthSession: (sessionDigest: string) => `oauth:channel:session:${sessionDigest}`
   },
 
   plugin: {

@@ -31,6 +31,22 @@ describe('CacheKeys', () => {
     ).toBe(true)
   })
 
+  it('keeps the keys of the channel login out of the pattern that clears a store', () => {
+    const digest = 'a'.repeat(64)
+    for (const key of [
+      CacheKeys.channel.oauthState(digest),
+      CacheKeys.channel.oauthSession(digest)
+    ]) {
+      expect(key.startsWith('oauth:channel:')).toBe(true)
+      // Not under `store:` at all (a store purge never reaches it) and not under `channel:<pluginId>:`, where a
+      // plugin called `oauth` would share the namespace
+      expect(key.startsWith('store:')).toBe(false)
+      expect(key.startsWith('channel:')).toBe(false)
+    }
+    // The state and the session never share a key, even for the same digest
+    expect(CacheKeys.channel.oauthState(digest)).not.toBe(CacheKeys.channel.oauthSession(digest))
+  })
+
   it('has no billing, AI or platform groups', () => {
     expect(Object.keys(CacheKeys)).not.toEqual(expect.arrayContaining(['billing']))
     expect(Object.keys(CacheKeys)).not.toEqual(expect.arrayContaining(['ai']))

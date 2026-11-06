@@ -1538,6 +1538,7 @@ const envSchema = z.object({
   // Meta (WhatsApp Cloud API, Instagram, Messenger) — one app for all three
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),               // Webhook HMAC + OAuth
+  META_OAUTH_REDIRECT_URI: z.string().optional(),       // Connect with Facebook (Step 7.8): the api callback; needs META_APP_ID (numeric) and META_APP_SECRET; public https when deployed
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   META_GRAPH_API_VERSION: z.string().default('v23.0'),
 

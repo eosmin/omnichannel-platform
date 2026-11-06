@@ -121,7 +121,12 @@ same checks and the merge waits for it.
 5. **Every new endpoint** has `AuthGuard` + `TenantGuard` + a
    `@RequirePermissions()` decorator, unless it is explicitly public
    (magic-link auth endpoints, invitation preview and accept, channel webhooks,
-   widget endpoints, carrier webhooks, the Resend webhook, health checks), or it is the agents' websocket gateway, which checks the token, the store and the permissions itself (`events.gateway.ts`), or it is a plugin route under
+   widget endpoints, carrier webhooks, the Resend webhook, health checks, and the OAuth callback of the
+   channels of Meta, `GET /channels/oauth/callback`, which the browser reaches coming back from Facebook
+   with none of our headers: it is public only because it does nothing without a `state` of 256 bits, read
+   once and removed, tied to the user and the store that started it, and it never creates a connection, it
+   only exchanges the code and keeps an encrypted session that an authenticated call with permissions
+   finishes; owner, 2026-11-05), or it is the agents' websocket gateway, which checks the token, the store and the permissions itself (`events.gateway.ts`), or it is a plugin route under
    `/api/v1/plugin-api/*`, which uses `PluginApiKeyGuard` instead, or it is a route of the person's own account (`@SkipTenant`; the id always comes from the token, never from the body). The Stripe
    webhook joins the public list in Phase 2.
 6. **No user-facing string is hardcoded in any language.** Always an i18n key.

@@ -49,6 +49,39 @@ describe('ApiRoutes', () => {
     )
   })
 
+  it('puts the login of the channels under /channels and keeps its callback a fixed path', () => {
+    // The provider is given this address in the dashboard, so it cannot take a parameter
+    expect(ApiRoutes.channels.oauthCallback).toBe('/channels/oauth/callback')
+    expect(ApiRoutes.channels.oauthStart(':pluginId')).toBe(
+      '/channels/connections/oauth/:pluginId/start'
+    )
+    expect(ApiRoutes.channels.oauthAssets(':id')).toBe(
+      '/channels/connections/oauth/sessions/:id/assets'
+    )
+    expect(ApiRoutes.channels.oauthComplete(':id')).toBe(
+      '/channels/connections/oauth/sessions/:id/complete'
+    )
+    expect(ApiRoutes.channels.oauthSession(':id')).toBe('/channels/connections/oauth/sessions/:id')
+  })
+
+  it('gives the login routes paths that no other route of the api can capture', () => {
+    // A path with a parameter in a segment that is a word here (`/channels/connections/:id/...`) would answer
+    // for `oauth` as if it were an id: compare each login path with the pattern of every other route
+    const login = routes.filter(([name]) => name.startsWith('channels.oauth'))
+    const others = routes.filter(([name]) => !name.startsWith('channels.oauth'))
+    expect(login).toHaveLength(5)
+    for (const [, path] of login) {
+      const concrete = path.replace(/:p/g, 'abc')
+      for (const [otherName, other] of others) {
+        const pattern = new RegExp(`^${other.replace(/:p/g, '[^/]+')}$`)
+        expect({ otherName, captures: pattern.test(concrete) }).toEqual({
+          otherName,
+          captures: false
+        })
+      }
+    }
+  })
+
   it('keeps the infrastructure routes outside the versioned groups', () => {
     expect(InfraRoutes.healthReady).toBe('/health/ready')
     expect(InfraRoutes.queues).toBe('/admin/queues')

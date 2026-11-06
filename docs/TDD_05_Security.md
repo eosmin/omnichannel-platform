@@ -467,7 +467,7 @@ jobs:
 - [ ] X-Store-Id spoofing without a membership
 - [ ] Password reset token reuse and prediction
 - [ ] Invitation token reuse; accepting with a different email
-- [ ] OAuth redirect URI manipulation
+- [ ] OAuth redirect URI manipulation (from Step 7.8 on, for the login of the Meta channels: the callback is public and rests on a `state` of 256 bits, read once, tied to user and store; test a state reused, expired, of another user and of another store, a `redirect_uri` with a query or another path, and that a code or token never reaches a log or the browser)
 - [ ] Impersonation token used after expiry / after the customer ended the session
 - [ ] Write while impersonating in read-only mode
 
