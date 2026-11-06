@@ -91,13 +91,16 @@ export function updateOrganizationStore(
   })
 }
 
+// The api asks for what the person typed to confirm: the name of the store (ORG-03)
 export function deleteOrganizationStore(
   client: ApiClient,
   storeId: string,
-  id: string
+  id: string,
+  confirmation: string
 ): Promise<void> {
   return client.request(ApiRoutes.organizations.storeById(encodeURIComponent(id)), {
     method: 'DELETE',
+    body: { confirmation },
     schema: z.undefined(),
     storeId
   })

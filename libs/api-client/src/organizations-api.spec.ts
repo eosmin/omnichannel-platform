@@ -77,11 +77,12 @@ describe('the stores of the organization', () => {
     for (const call of calls) expect(storeHeaderOf(call[1])).toBe('s1')
   })
 
-  it('deletes by id and answers nothing', async () => {
+  it('deletes by id, sends what the person typed to confirm and answers nothing', async () => {
     const { client, fetchImpl } = setup(null, 204)
-    await expect(deleteOrganizationStore(client, 's1', 's2')).resolves.toBeUndefined()
+    await expect(deleteOrganizationStore(client, 's1', 's2', 'My shop')).resolves.toBeUndefined()
     const [url, init] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe('https://api.example.com/api/v1/organizations/current/stores/s2')
     expect(init?.method).toBe('DELETE')
+    expect(JSON.parse(init?.body as string)).toEqual({ confirmation: 'My shop' })
   })
 })

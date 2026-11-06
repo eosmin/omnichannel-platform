@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util'
+
 import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
@@ -123,7 +125,7 @@ export class RoutingRulesService {
   }
 
   async create(storeId: string, body: CreateRuleBody, actor: Actor): Promise<RoutingRuleView> {
-    const rule = await this.prisma.transaction(async tx => {
+    const { rule, replay } = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await lockStoreScope(tx, storeId, SCOPE)
       const last = await tx.routingRule.aggregate({
@@ -131,6 +133,26 @@ export class RoutingRulesService {
         _count: true,
         _max: { priority: true }
       })
+      // A retry of the same request (a lost answer, a double send) gets the rule it already made. It
+      // is looked for before the limit: the retry of the request that made the last rule is a retry,
+      // not a rule over the limit.
+      const recent = await tx.routingRule.findMany({
+        where: {
+          storeId,
+          name: body.name,
+          enabled: body.enabled,
+          createdBy: actor.userId,
+          createdAt: { gte: new Date(Date.now() - RoutingLimits.RETRY_WINDOW_MS) }
+        },
+        select: RULE_SELECT,
+        orderBy: { createdAt: 'desc' }
+      })
+      const retried = recent.find(
+        candidate =>
+          isDeepStrictEqual(candidate.conditions, body.conditions) &&
+          isDeepStrictEqual(candidate.action, body.action)
+      )
+      if (retried !== undefined) return { rule: retried, replay: true }
       if (last._count >= RoutingLimits.MAX_RULES_PER_STORE) {
         throw resourceConflict(
           `a store holds at most ${RoutingLimits.MAX_RULES_PER_STORE} routing rules`,
@@ -139,7 +161,7 @@ export class RoutingRulesService {
       }
       this.channels.require(storeId, body.conditions.channelTypes ?? [])
       await this.requireReferences(tx, storeId, body.conditions, body.action)
-      return tx.routingRule.create({
+      const made = await tx.routingRule.create({
         data: {
           storeId,
           name: body.name,
@@ -151,8 +173,11 @@ export class RoutingRulesService {
         },
         select: RULE_SELECT
       })
+      return { rule: made, replay: false }
     })
-    this.record(storeId, actor, 'routing_rule', rule.id, { change: 'created', ...describe(rule) })
+    if (!replay) {
+      this.record(storeId, actor, 'routing_rule', rule.id, { change: 'created', ...describe(rule) })
+    }
     return view(rule)
   }
 

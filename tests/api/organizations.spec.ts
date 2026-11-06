@@ -68,6 +68,13 @@ describe('Organizations and stores', () => {
     return response.body as StoreBody
   }
 
+  // The api asks for the name of the store, as the screen does (ORG-03)
+  const remove = (id: string, confirmation: string, as = asAdmin()) =>
+    as.delete(ApiRoutes.organizations.storeById(id)).send({ confirmation })
+
+  const nameOf = async (id: string): Promise<string> =>
+    (await owner.store.findUniqueOrThrow({ where: { id }, select: { name: true } })).name
+
   // The audit log is written after the answer: wait for the entry instead of guessing a delay
   async function auditEntry(action: string, resourceId: string) {
     for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -308,9 +315,10 @@ describe('Organizations and stores', () => {
 
       const read = await asAdmin().get(url)
       const change = await asAdmin().patch(url).send({ name: 'hacked' })
-      const remove = await asAdmin().delete(url)
+      // A wrong phrase on a store the caller cannot see is a 404 too: the phrase is no way to probe it
+      const removed = await remove(ctx.storeA2.id, 'a wrong phrase')
 
-      expect([read.status, change.status, remove.status]).toEqual([404, 404, 404])
+      expect([read.status, change.status, removed.status]).toEqual([404, 404, 404])
       const untouched = await owner.store.findUniqueOrThrow({ where: { id: ctx.storeA2.id } })
       expect(untouched.name).not.toBe('hacked')
     })
@@ -360,6 +368,25 @@ describe('Organizations and stores', () => {
       })
     })
 
+    it('answers 200 when the cache cannot be dropped: the change is written (redis down)', async () => {
+      const store = await createStore()
+      const tenants = app.get(TenantContextService, { strict: false })
+      const down = jest
+        .spyOn(tenants, 'invalidateStore')
+        .mockRejectedValueOnce(new Error('redis down'))
+
+      const response = await asAdmin()
+        .patch(ApiRoutes.organizations.storeById(store.id))
+        .send({ name: `${store.name} renamed` })
+
+      expect(down).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(200)
+      expect(response.body).toMatchObject({ name: `${store.name} renamed` })
+      expect((await owner.store.findUniqueOrThrow({ where: { id: store.id } })).name).toBe(
+        `${store.name} renamed`
+      )
+    })
+
     it('is seen at once by the guards, not after the cache expires', async () => {
       const store = await createStore()
       const tenants = app.get(TenantContextService, { strict: false })
@@ -401,7 +428,7 @@ describe('Organizations and stores', () => {
       const tenants = app.get(TenantContextService, { strict: false })
       expect(await tenants.resolve(ctx.adminA.id, store.id)).not.toBeNull()
 
-      const response = await asAdmin().delete(ApiRoutes.organizations.storeById(store.id))
+      const response = await remove(store.id, store.name)
 
       expect(response.status).toBe(NO_CONTENT)
       expect(await owner.store.findUnique({ where: { id: store.id } })).toBeNull()
@@ -410,11 +437,27 @@ describe('Organizations and stores', () => {
       expect(await auditEntry(AuditAction.STORE_DELETED, store.id)).not.toBeNull()
     })
 
+    it('asks for the name of the store, as the screen does (ORG-03)', async () => {
+      const store = await createStore('A store to keep')
+
+      const wrong = await remove(store.id, 'another name')
+      const empty = await remove(store.id, '')
+      const missing = await asAdmin().delete(ApiRoutes.organizations.storeById(store.id))
+      const lowerCase = await remove(store.id, 'a store to keep')
+
+      expect([wrong.status, empty.status, missing.status, lowerCase.status]).toEqual([
+        400, 400, 400, 400
+      ])
+      expect(await owner.store.findUnique({ where: { id: store.id } })).not.toBeNull()
+      // The space around the name is not an error, as on the screen
+      expect((await remove(store.id, '  A store to keep ')).status).toBe(NO_CONTENT)
+    })
+
     it('keeps a store that holds data, and says where', async () => {
       const store = await createStore()
       await createTag(owner, { storeId: store.id })
 
-      const response = await asAdmin().delete(ApiRoutes.organizations.storeById(store.id))
+      const response = await remove(store.id, store.name)
 
       expect(response.status).toBe(409)
       expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.ORG_STORE_HAS_DATA)
@@ -423,8 +466,10 @@ describe('Organizations and stores', () => {
     })
 
     it('keeps the last store of an organization', async () => {
-      const response = await api(app, ctx.adminB, ctx.storeB).delete(
-        ApiRoutes.organizations.storeById(ctx.storeB.id)
+      const response = await remove(
+        ctx.storeB.id,
+        await nameOf(ctx.storeB.id),
+        api(app, ctx.adminB, ctx.storeB)
       )
 
       expect(response.status).toBe(409)
@@ -451,20 +496,22 @@ describe('Organizations and stores', () => {
         storeId: second.id,
         roleId: ctx.roleIds[RoleNames.ADMIN]
       })
-      const remove = (id: string) =>
-        api(app, admin, first).delete(ApiRoutes.organizations.storeById(id))
+      const removeAs = (id: string, name: string) => remove(id, name, api(app, admin, first))
 
-      const statuses = await Promise.all([remove(first.id), remove(second.id)]).then(answers =>
-        answers.map(answer => answer.status)
-      )
+      const statuses = await Promise.all([
+        removeAs(first.id, await nameOf(first.id)),
+        removeAs(second.id, await nameOf(second.id))
+      ]).then(answers => answers.map(answer => answer.status))
 
       expect(statuses.sort()).toEqual([204, 409])
       expect(await owner.store.count({ where: { organizationId: organization.id } })).toBe(1)
     })
 
     it('is refused to a member without the permission', async () => {
-      const response = await api(app, ctx.agentA, ctx.storeA).delete(
-        ApiRoutes.organizations.storeById(ctx.storeA2.id)
+      const response = await remove(
+        ctx.storeA2.id,
+        await nameOf(ctx.storeA2.id),
+        api(app, ctx.agentA, ctx.storeA)
       )
 
       expect(response.status).toBe(403)
@@ -477,9 +524,9 @@ describe('Organizations and stores', () => {
       const change = await asAdmin()
         .patch(ApiRoutes.organizations.storeById(ctx.storeB.id))
         .send({ name: 'hacked' })
-      const remove = await asAdmin().delete(ApiRoutes.organizations.storeById(ctx.storeB.id))
+      const removed = await remove(ctx.storeB.id, await nameOf(ctx.storeB.id))
 
-      expect([read.status, change.status, remove.status]).toEqual([404, 404, 404])
+      expect([read.status, change.status, removed.status]).toEqual([404, 404, 404])
       const untouched = await owner.store.findUniqueOrThrow({ where: { id: ctx.storeB.id } })
       expect(untouched.name).not.toBe('hacked')
     })
