@@ -7,7 +7,6 @@ import type { ReactElement } from 'react'
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
-import { knownErrorCode } from '../../lib/error-message'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
@@ -19,6 +18,7 @@ import {
   messageKindOf
 } from '../../lib/inbox/thread-items'
 import { bubbleTextOf, unsupportedKindOf } from '../../lib/inbox/unsupported-kind'
+import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 
 import { CaptionNotice } from './caption-notice'
@@ -120,7 +120,7 @@ function Bubble({
   mentionNames
 }: MessageBubbleProps & { kind: Exclude<MessageKind, 'system' | 'neutral'> }): ReactElement {
   const t = useTranslations('inbox.thread')
-  const tAll = useTranslations()
+  const codeText = useCodeText()
   const format = useFormatter()
   const isCustomer = isFromCustomer(message)
   const isNote = kind === 'note'
@@ -128,8 +128,7 @@ function Bubble({
   const author = authorLabel(message.authorType, message.authorId)
   const ticks = deliveryTicksOf(message)
   const time = format.dateTime(new Date(message.createdAt), { timeStyle: 'short' })
-  const reason = (code: string | null): string | null =>
-    code === null ? null : tAll(`errors.${knownErrorCode(code)}`)
+  const reason = (code: string | null): string | null => (code === null ? null : codeText(code))
 
   const problems = [
     message.deleteStatus === String(DeliveryStatus.QUEUED) ? t('deleting') : null,
@@ -145,7 +144,7 @@ function Bubble({
     ticks === DeliveryStatus.FAILED
       ? message.deliveryError === null
         ? t('ticks.failed')
-        : t('failedWithReason', { reason: tAll(`errors.${knownErrorCode(message.deliveryError)}`) })
+        : t('failedWithReason', { reason: codeText(message.deliveryError) })
       : null
   ].filter((text): text is string => text !== null)
 

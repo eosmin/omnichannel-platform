@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
 import { Permissions } from '@platform/core/auth'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { useRoleLabel } from '../../lib/role-label'
 import type { RoleView } from '../../lib/settings/team-requests'
@@ -99,7 +99,7 @@ function RoleRow({
           // A role that members or invitations still hold is refused with RESOURCE_CONFLICT, which the
           // generic text calls a race: here it means something else
           toast.error(
-            error instanceof ApiError && error.code === ErrorCodes.RESOURCE_CONFLICT
+            error instanceof ApiError && error.code === ClientErrorCodes.RESOURCE_CONFLICT
               ? t('delete.inUse', { name: role.name })
               : errorText(error)
           )

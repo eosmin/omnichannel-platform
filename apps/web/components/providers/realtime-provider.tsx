@@ -7,7 +7,7 @@ import { type ReactElement, type ReactNode, useEffect, useRef, useState } from '
 import { toast } from 'sonner'
 
 import { AppPaths, QueryKeys, sendMessage } from '@platform/api-client'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { apiClient, browserSession } from '../../lib/api'
 import { webEnv } from '../../lib/env'
@@ -107,7 +107,7 @@ export function RealtimeProvider({
       // A suspension is told to the person where they are; "/" then picks a store they can still
       // enter, or the screen that explains the suspension. Their sessions elsewhere are not touched.
       // The id keeps a second call (StrictMode runs the effect twice) from showing it twice.
-      if (connection.endedBy() === ErrorCodes.TENANT_MEMBER_SUSPENDED) {
+      if (connection.endedBy() === ClientErrorCodes.TENANT_MEMBER_SUSPENDED) {
         toast.error(tRef.current('suspendedGeneric'), { id: `suspended-${storeId}` })
       }
       router.replace(AppPaths.home)

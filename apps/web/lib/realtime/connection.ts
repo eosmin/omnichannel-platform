@@ -2,7 +2,7 @@ import { io, type Socket } from 'socket.io-client'
 import { z } from 'zod'
 
 import { ApiError } from '@platform/api-client'
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import {
   type ClientToServerEvents,
   RealtimeEvents,
@@ -194,12 +194,15 @@ export function openRealtimeConnection(options: RealtimeConnectionOptions): Real
   socket.on('connect_error', error => {
     const code = handshakeErrorCode(error)
     // Removed or suspended: no new token and no retry fixes it, and their other stores are untouched
-    if (code === ErrorCodes.TENANT_ACCESS_DENIED || code === ErrorCodes.TENANT_MEMBER_SUSPENDED) {
+    if (
+      code === ClientErrorCodes.TENANT_ACCESS_DENIED ||
+      code === ClientErrorCodes.TENANT_MEMBER_SUSPENDED
+    ) {
       sessionEnded(code)
       return
     }
-    if (code === ErrorCodes.AUTH_TOKEN_EXPIRED) refreshNext = true
-    if (code === ErrorCodes.AUTH_TOKEN_INVALID) {
+    if (code === ClientErrorCodes.AUTH_TOKEN_EXPIRED) refreshNext = true
+    if (code === ClientErrorCodes.AUTH_TOKEN_INVALID) {
       // A token that came from the refresh and is still invalid is not going to get better
       if (lastTokenWasFresh) {
         sessionEnded()

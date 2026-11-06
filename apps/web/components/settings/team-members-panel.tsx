@@ -6,7 +6,7 @@ import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Permissions } from '@platform/core/auth'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
 import { useRoleLabel } from '../../lib/role-label'
@@ -122,7 +122,7 @@ function MemberRow({ member, roles }: { member: MemberView; roles: RoleView[] })
   const isMe = profile.data === undefined || profile.data.id === member.userId
   // A conflict is a list that was out of date (someone else got there first), and it is read again
   const accessFailure = (error: unknown, action: 'suspend' | 'reactivate'): string =>
-    errorCodeOf(error) === ErrorCodes.RESOURCE_CONFLICT
+    errorCodeOf(error) === ClientErrorCodes.RESOURCE_CONFLICT
       ? t(`${action}.outOfDate`, { name: member.name })
       : errorText(error)
 

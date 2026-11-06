@@ -6,7 +6,7 @@ import { type ChangeEvent, type ReactElement, useEffect, useRef, useState } from
 import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 import { AvatarUpload, MediaPurpose } from '@platform/core/storage'
 
 import { MutationError } from '../../components/customers/mutation-error'
@@ -53,7 +53,7 @@ export function AvatarPicker({ name, avatarMediaId, avatarUrl }: AvatarPickerPro
   const refused = expecting && avatarMediaId === null && !upload.isPending
   // The api bounds the pictures one person holds at once: waiting is the answer, not retrying
   const isTooMany =
-    upload.error instanceof ApiError && upload.error.code === ErrorCodes.RATE_LIMIT_EXCEEDED
+    upload.error instanceof ApiError && upload.error.code === ClientErrorCodes.RATE_LIMIT_EXCEEDED
 
   const choose = (event: ChangeEvent<HTMLInputElement>): void => {
     const file = event.target.files?.[0]

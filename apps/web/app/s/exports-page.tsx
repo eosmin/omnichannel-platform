@@ -12,7 +12,6 @@ import { PermissionDenied } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { apiClient } from '../../lib/api'
-import { knownErrorCode } from '../../lib/error-message'
 import {
   ALL_EXPORTS,
   exportStatusFilter,
@@ -25,12 +24,12 @@ import {
   mayOpenExports
 } from '../../lib/exports/export-state'
 import { useExportList } from '../../lib/exports/use-export-data'
-import { useErrorText } from '../../lib/use-error-text'
+import { useCodeText, useErrorText } from '../../lib/use-error-text'
 
 function Row({ item }: { item: ExportView }): ReactElement {
   const t = useTranslations('exports')
   const errorText = useErrorText()
-  const tErrors = useTranslations('errors')
+  const codeText = useCodeText()
   const format = useFormatter()
   const { storeId } = useStore()
   const [isAsking, setIsAsking] = useState(false)
@@ -71,7 +70,7 @@ function Row({ item }: { item: ExportView }): ReactElement {
           </div>
         ) : null}
         {item.status === ExportStatus.FAILED && item.error !== null ? (
-          <p className="text-destructive text-xs">{tErrors(knownErrorCode(item.error))}</p>
+          <p className="text-destructive text-xs">{codeText(item.error)}</p>
         ) : null}
       </td>
       <td className="text-muted-foreground py-2 pr-3 text-sm break-all">{item.filename ?? '-'}</td>

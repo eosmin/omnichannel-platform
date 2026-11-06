@@ -22,7 +22,6 @@ import {
   type DestructiveAction
 } from '@platform/core/domain'
 
-import { knownErrorCode } from '../../lib/error-message'
 import type {
   ChannelConnectionView,
   PluginCatalogEntryView
@@ -30,7 +29,7 @@ import type {
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
 import { needsNewToken } from '../../lib/settings/health-reconnect'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
-import { useErrorText } from '../../lib/use-error-text'
+import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
@@ -184,6 +183,7 @@ function Health({ connection }: { connection: ChannelConnectionView }): ReactEle
 // Step 2.8 (1c-2): customers whose name and photo could not be read, and what the owner does about it
 function ProfileStatus({ connection }: { connection: ChannelConnectionView }): ReactElement | null {
   const t = useTranslations()
+  const codeText = useCodeText()
   const profile = connection.profile
   if (profile === null || profile.failedIdentities === 0) return null
   const setupKey = profile.setupKey
@@ -195,7 +195,7 @@ function ProfileStatus({ connection }: { connection: ChannelConnectionView }): R
       <ul className="list-disc pl-5">
         {profile.errors.map(item => (
           <li key={item.code}>
-            {t(`errors.${knownErrorCode(item.code)}`)} ({item.identities})
+            {codeText(item.code)} ({item.identities})
           </li>
         ))}
       </ul>

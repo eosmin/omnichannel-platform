@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
 import { SettingsLimits } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import {
   emptyTagDraft,
@@ -133,7 +133,8 @@ export function TagDialog({
           ) : null}
           {failure === null ? null : (
             <p role="alert" className="text-destructive text-sm">
-              {failure instanceof ApiError && failure.code === ErrorCodes.RESOURCE_ALREADY_EXISTS
+              {failure instanceof ApiError &&
+              failure.code === ClientErrorCodes.RESOURCE_ALREADY_EXISTS
                 ? t('problems.nameTaken')
                 : errorText(failure)}
             </p>

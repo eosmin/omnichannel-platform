@@ -18,8 +18,7 @@ import { BulkActions } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
-import { knownErrorCode } from '../error-message'
-import { useErrorText } from '../use-error-text'
+import { useCodeText, useErrorText } from '../use-error-text'
 
 import { BulkOutcomes, type PreviousState, singleResultKey, summaryOf, undoStepsOf } from './bulk'
 
@@ -52,6 +51,7 @@ export function useBulkRunner(): BulkRunner {
   const t = useTranslations('inbox.bulk.result')
   const errorText = useErrorText()
   const tAll = useTranslations()
+  const codeText = useCodeText()
   const { storeId } = useStore()
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -65,9 +65,7 @@ export function useBulkRunner(): BulkRunner {
   const reasonsOf = useCallback(
     (summary: ReturnType<typeof summaryOf>): string =>
       summary.reasons
-        .map(({ code, count }) =>
-          t('reason', { reason: tAll(`errors.${knownErrorCode(code)}`), count })
-        )
+        .map(({ code, count }) => t('reason', { reason: codeText(code), count }))
         .join('; '),
     [t, tAll]
   )
