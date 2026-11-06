@@ -57,7 +57,12 @@ type Database = PrismaService['client']
 
 // Why a consumed token that came back was judged a leak, for the log: it tells a real replay (long
 // after) from the cases the grace window is meant to measure
-type ReuseCause = 'outside_window' | 'no_successor' | 'grace_not_available' | 'successor_used'
+type ReuseCause =
+  | 'outside_window'
+  | 'no_successor'
+  | 'grace_not_available'
+  | 'successor_used'
+  | 'grace_context_mismatch'
 
 // A Session row with its user, as refresh() reads it
 interface ConsumedSession {
@@ -68,6 +73,8 @@ interface ConsumedSession {
   familyExpiresAt: Date
   consumedAt: Date | null
   replacedById: string | null
+  userAgent: string | null
+  ipAddress: string | null
   user: SessionUser
 }
 
@@ -187,6 +194,13 @@ export class SessionService {
         session.replacedById === null ? 'no_successor' : 'outside_window'
       )
     }
+    // Same browser or nothing: a copy of the token in other hands (another user agent) gets no grace.
+    // The address may change (a phone moving between networks), so it is granted and recorded.
+    const userAgent = context.userAgent?.slice(0, MAX_USER_AGENT_LENGTH) ?? null
+    if (userAgent !== session.userAgent) {
+      return this.reuseDetected(session.familyId, session.userId, 'grace_context_mismatch')
+    }
+    const ipChanged = (context.ipAddress ?? null) !== session.ipAddress
     const successorId = session.replacedById
     const granted = await this.prisma.transaction(async tx => {
       const claim = await tx.session.updateMany({
@@ -200,7 +214,9 @@ export class SessionService {
       })
       if (claim.count === 0) return 'grace_not_available' as const
       // The successor must be alive and unused: if it was used, the login has moved on and this
-      // token coming back is somebody holding a copy
+      // token coming back is somebody holding a copy. This read does not serialize with a request
+      // that rotates the successor at this very moment: the worst case is two live branches, which
+      // a grace creates anyway, so it is left as a plain read.
       const successor = await tx.session.findFirst({
         where: { id: successorId, consumedAt: null, revokedAt: null }
       })
@@ -218,8 +234,9 @@ export class SessionService {
     if (typeof granted === 'string') {
       return this.reuseDetected(session.familyId, session.userId, granted)
     }
-    this.logger.info(
-      { familyId: session.familyId, userId: session.userId, ageMs },
+    const log = ipChanged ? this.logger.warn.bind(this.logger) : this.logger.info.bind(this.logger)
+    log(
+      { familyId: session.familyId, userId: session.userId, ageMs, ipChanged },
       'a used refresh token came back inside the grace window: next pair issued'
     )
     this.audit.log({
@@ -227,7 +244,7 @@ export class SessionService {
       actor: { userId: session.userId },
       resourceType: 'session',
       resourceId: session.familyId,
-      metadata: { ageMs },
+      metadata: { ageMs, ipChanged },
       ipAddress: context.ipAddress,
       userAgent: context.userAgent
     })

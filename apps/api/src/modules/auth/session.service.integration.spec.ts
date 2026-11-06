@@ -275,6 +275,44 @@ describe('SessionService', () => {
         expect(await codeOf(test.sessions.refresh(graced.refreshToken))).toBe('AUTH_TOKEN_INVALID')
       })
 
+      it('gives no grace to another user agent: it is a reuse', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user, { userAgent: 'Firefox' })
+        await test.sessions.refresh(first.refreshToken, { userAgent: 'Firefox' })
+
+        expect(
+          await codeOf(test.sessions.refresh(first.refreshToken, { userAgent: 'curl/8' }))
+        ).toBe('AUTH_REFRESH_TOKEN_REUSED')
+
+        const rows = await rowsOf(user.id)
+        expect(rows.rows.every(row => row.revoked_at !== null)).toBe(true)
+      })
+
+      it('gives the grace to the same user agent from another address and records the change', async () => {
+        const user = await test.createUser()
+        const context = { userAgent: 'Firefox', ipAddress: '203.0.113.1' }
+        const first = await test.sessions.issue(user, context)
+        await test.sessions.refresh(first.refreshToken, context)
+
+        await expect(
+          test.sessions.refresh(first.refreshToken, { ...context, ipAddress: '198.51.100.9' })
+        ).resolves.toBeDefined()
+
+        const query = () =>
+          test.asOwner(client =>
+            client.query<{ metadata: { ipChanged: boolean } }>(
+              `SELECT metadata FROM audit_logs WHERE action = 'user.session_refresh_grace' AND user_id = $1`,
+              [user.id]
+            )
+          )
+        let rows = await query()
+        for (let i = 0; i < 50 && rows.rowCount === 0; i += 1) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          rows = await query()
+        }
+        expect(rows.rows[0]?.metadata.ipChanged).toBe(true)
+      })
+
       it('shows one login, not two, in the list of sessions after a grace', async () => {
         const user = await test.createUser()
         const first = await test.sessions.issue(user)

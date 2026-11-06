@@ -2482,7 +2482,7 @@ Reuse detection: presenting a token whose consumedAt is set revokes EVERY row in
 (revokedReason = 'reuse_detected') and returns AUTH_REFRESH_TOKEN_REUSED, except for the grace below.
 Grace (owner, 2026-11-07): a consumed token is accepted ONE more time when ALL hold: it was consumed
 at most REFRESH_REUSE_GRACE_SECONDS (10) ago, graceUsedAt is null, the family is not revoked, no
-expiry has passed, and the token that replaced it (replacedById) is neither consumed nor revoked.
+expiry has passed, the request carries the same user agent as the consumed session (another one is a reuse), and the token that replaced it (replacedById) is neither consumed nor revoked. A different IP address is allowed (networks change) and is recorded: warn log and metadata.ipChanged in the audit entry.
 The grace issues a new pair in the same family and sets graceUsedAt (a conditional update, so two
 simultaneous requests cannot both take it). Anything else is a reuse as above. It exists because a
 page that is unloaded (a reload) with POST /auth/refresh in flight loses the answer: the api already
