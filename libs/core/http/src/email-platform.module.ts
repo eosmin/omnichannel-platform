@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common'
 
 import { env } from '@platform/core/config/env'
-import { EmailModule } from '@platform/core/email'
+import { EmailModule, senderOf } from '@platform/core/email'
 
 // Sending email, configured from the validated env: Resend when RESEND_API_KEY is set, Mailpit
 // through SMTP_URL otherwise.
 @Module({
   imports: [
     EmailModule.forRoot({
-      from: env.EMAIL_FROM,
+      from: senderOf(env.EMAIL_FROM, env.EMAIL_FROM_NAME),
       resendApiKey: env.RESEND_API_KEY,
       resendWebhookSecret: env.RESEND_WEBHOOK_SECRET,
       smtpUrl: env.SMTP_URL

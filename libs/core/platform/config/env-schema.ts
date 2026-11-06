@@ -42,6 +42,15 @@ const senderAddress = z.string().refine(value => {
   return z.email().safeParse(address).success
 }, 'must be an email address or "Name <email>"')
 
+// A display name that is safe inside quotes in a header (`senderOf` quotes it): no quote, backslash,
+// angle bracket, @ (it would read as an address) or control character
+const senderName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(70)
+  .regex(/^[^<>"\\@\p{Cc}]+$/u, 'a name with no < > " @ \\ or control characters')
+
 const duration = (
   fallback: string
 ): z.ZodPipe<z.ZodDefault<z.ZodString>, z.ZodTransform<number, string>> =>
@@ -105,6 +114,9 @@ export const envSchema = z
     SMTP_URL: z.url().optional(),
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
     EMAIL_FROM: senderAddress.default('Omnichannel Platform <noreply@platform.local>'),
+    // The name shown with a bare EMAIL_FROM (ignored when EMAIL_FROM has its own): a value that
+    // `source` and `docker --env-file` read without quotes cannot hold the `Name <address>` form
+    EMAIL_FROM_NAME: senderName.optional(),
 
     // Observability
     SENTRY_DSN: z.url().optional(),

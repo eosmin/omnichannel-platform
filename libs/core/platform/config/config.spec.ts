@@ -277,6 +277,32 @@ describe('EMAIL_FROM', () => {
   })
 })
 
+describe('EMAIL_FROM_NAME', () => {
+  it('is optional and trimmed', () => {
+    expect(parseEnv(validEnv).EMAIL_FROM_NAME).toBeUndefined()
+    expect(parseEnv({ ...validEnv, EMAIL_FROM_NAME: '  Mi Tienda ' }).EMAIL_FROM_NAME).toBe(
+      'Mi Tienda'
+    )
+    expect(parseEnv({ ...validEnv, EMAIL_FROM_NAME: 'Acme Inc., SA' }).EMAIL_FROM_NAME).toBe(
+      'Acme Inc., SA'
+    )
+  })
+
+  it('refuses a name that would need quoting in a header, or an empty one', () => {
+    for (const value of [
+      '',
+      '   ',
+      'Mi <Tienda>',
+      'Mi "Tienda"',
+      'a@b.com',
+      'back\\slash',
+      'a\r\nBcc: x'
+    ]) {
+      expect(() => parseEnv({ ...validEnv, EMAIL_FROM_NAME: value })).toThrow(/EMAIL_FROM_NAME/)
+    }
+  })
+})
+
 describe('VAPID keys', () => {
   it('are set together or not at all', () => {
     expect(parseEnv(validEnv).VAPID_PUBLIC_KEY).toBeUndefined()

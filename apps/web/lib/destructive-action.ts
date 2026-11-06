@@ -31,8 +31,4 @@ export function needsDestructiveButton(action: DestructiveAction): boolean {
   return tier === DestructiveActionTierLevels.CRITICAL || tier === DestructiveActionTierLevels.HIGH
 }
 
-// Whitespace around either text is not an error (a store name can end in a space); the case is,
-// because the phrase is a name the user has to read and copy
-export function phraseMatches(typed: string, phrase: string): boolean {
-  return typed.trim() === phrase.trim()
-}
+export { phraseMatches } from '@platform/core/domain'
