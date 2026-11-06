@@ -1,5 +1,5 @@
 import type { ExportView } from '@platform/api-client'
-import { Permissions, type Permission } from '@platform/core/auth'
+import { ClientPermissions, type Permission } from '@platform/core/auth'
 import {
   ExportStatus,
   type ExportStatusType,
@@ -33,9 +33,9 @@ export function isExportReady(item: Pick<ExportView, 'status'>): boolean {
 // One of these is enough to open the exports center (the api lists only what the member asked for,
 // of the kinds the role may still make)
 export const ExportPermissions: readonly Permission[] = [
-  Permissions.CONVERSATIONS_EXPORT,
-  Permissions.CUSTOMERS_EXPORT,
-  Permissions.MEDIA_DOWNLOAD_ALL
+  ClientPermissions.CONVERSATIONS_EXPORT,
+  ClientPermissions.CUSTOMERS_EXPORT,
+  ClientPermissions.MEDIA_DOWNLOAD_ALL
 ]
 
 export function mayOpenExports(can: (permission: Permission) => boolean): boolean {

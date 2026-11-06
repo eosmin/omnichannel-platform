@@ -6,7 +6,7 @@ import { type DragEvent, type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import {
   isOfficialChannelId,
   type OfficialChannelId,
@@ -40,8 +40,8 @@ export function RoutingPanel({
   const t = useTranslations('settings.routing')
   const errorText = useErrorText()
   const { storeId, can } = useStore()
-  const canManage = can(Permissions.SETTINGS_MANAGE_ROUTING)
-  const listsAvailable = can(Permissions.CONVERSATIONS_VIEW)
+  const canManage = can(ClientPermissions.SETTINGS_MANAGE_ROUTING)
+  const listsAvailable = can(ClientPermissions.CONVERSATIONS_VIEW)
   const reorder = useReorderRules(storeId)
   const [editing, setEditing] = useState<Editing>(null)
   const [dragging, setDragging] = useState<string | null>(null)

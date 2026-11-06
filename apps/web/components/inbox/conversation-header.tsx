@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef } from 'react'
 
 import { ApiError, AppPaths, type ConversationListItemView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { initialsOf } from '../../lib/inbox/customer-label'
@@ -137,7 +137,7 @@ function LoadedHeader({
         <p className="text-muted-foreground truncate text-xs">{channelName}</p>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        {can(Permissions.CUSTOMERS_VIEW) ? (
+        {can(ClientPermissions.CUSTOMERS_VIEW) ? (
           <Button
             type="button"
             variant="ghost"

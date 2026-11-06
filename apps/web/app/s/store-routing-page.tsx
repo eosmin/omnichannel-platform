@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../../components/providers/store-context'
 import { RoutingPanel } from '../../components/settings/routing-panel'
@@ -15,17 +15,17 @@ import { useMemberChoices, useRules, useTagChoices } from '../../lib/settings/us
 // person without it still sees the rules, with those names left out.
 export function StoreRoutingPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? (
+  return can(ClientPermissions.SETTINGS_VIEW) ? (
     <RoutingLoader />
   ) : (
-    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.SETTINGS_VIEW} />
   )
 }
 
 function RoutingLoader(): ReactElement {
   const t = useTranslations('settings.routing')
   const { storeId, can } = useStore()
-  const mayList = can(Permissions.CONVERSATIONS_VIEW)
+  const mayList = can(ClientPermissions.CONVERSATIONS_VIEW)
   const rules = useRules(storeId)
   const members = useMemberChoices(storeId, mayList)
   const tags = useTagChoices(storeId, mayList)

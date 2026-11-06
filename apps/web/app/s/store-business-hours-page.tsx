@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { Weekdays } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
@@ -36,10 +36,10 @@ import { useErrorText } from '../../lib/use-error-text'
 // SETTINGS_EDIT, as the api asks.
 export function StoreBusinessHoursPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? (
+  return can(ClientPermissions.SETTINGS_VIEW) ? (
     <HoursLoader />
   ) : (
-    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.SETTINGS_VIEW} />
   )
 }
 
@@ -68,8 +68,8 @@ function HoursBody({ saved }: { saved: BusinessHoursView | null }): ReactElement
   const t = useTranslations('settings.hours')
   const errorText = useErrorText()
   const { storeId, can } = useStore()
-  const canEdit = can(Permissions.SETTINGS_EDIT)
-  const mayListSnippets = can(Permissions.CONVERSATIONS_VIEW)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
+  const mayListSnippets = can(ClientPermissions.CONVERSATIONS_VIEW)
   const snippets = useSnippetChoices(storeId, mayListSnippets)
   // The time zone of the store comes with the inbox behavior (CONVERSATIONS_VIEW, as the snippets);
   // without that permission the page can only offer the one of the browser

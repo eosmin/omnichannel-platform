@@ -6,7 +6,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { AppPaths, type CustomerTimelineEntryView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { CustomerTimelineTypes } from '@platform/core/domain'
 
 import { canUnmerge } from '../../lib/customers/merge-form'
@@ -89,8 +89,8 @@ function NoteEntry({
   const profile = useProfile()
   const { removeNote } = useCustomerEdits(storeId, customerId)
   const mayDelete =
-    can(Permissions.CUSTOMERS_EDIT) &&
-    (can(Permissions.CUSTOMERS_DELETE) || profile.data?.id === entry.authorId)
+    can(ClientPermissions.CUSTOMERS_EDIT) &&
+    (can(ClientPermissions.CUSTOMERS_DELETE) || profile.data?.id === entry.authorId)
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ function MergeEntry({
   const { storeId, can } = useStore()
   const { unmerge } = useCustomerMerges(storeId, customerId)
   const [isAsking, setAsking] = useState(false)
-  const mayUndo = can(Permissions.CUSTOMERS_MERGE) && canUnmerge(entry, new Date())
+  const mayUndo = can(ClientPermissions.CUSTOMERS_MERGE) && canUnmerge(entry, new Date())
   const until = new Date(entry.unmergeUntil)
   return (
     <div className="flex flex-col gap-1">
@@ -235,7 +235,8 @@ export function CustomerTimeline({
         <TabsList aria-label={t('filterLabel')}>
           {FILTERS.filter(
             item =>
-              item !== CustomerTimelineTypes.CONVERSATION || can(Permissions.CONVERSATIONS_VIEW)
+              item !== CustomerTimelineTypes.CONVERSATION ||
+              can(ClientPermissions.CONVERSATIONS_VIEW)
           ).map(item => (
             <TabsTrigger key={item} value={item}>
               {t(`filters.${item}`)}

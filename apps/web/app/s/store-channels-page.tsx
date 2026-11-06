@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ChannelConnectionListStates } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
@@ -34,16 +34,16 @@ export function StoreChannelsPage(): ReactElement {
   // What Facebook sent the person back with is read here, before anything that can keep the page from drawing
   // (no permission, a list that loads or fails): the id of the session must leave the address in every case
   const login = useOAuthReturn()
-  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   const { session, clear } = login
   // Without the right to connect there is nothing to pick a Page for: the id is let go (the session expires)
   useEffect(() => {
     if (session !== null && !canEdit) clear()
   }, [session, canEdit, clear])
-  return can(Permissions.SETTINGS_VIEW) ? (
+  return can(ClientPermissions.SETTINGS_VIEW) ? (
     <ChannelsLoader login={login} />
   ) : (
-    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.SETTINGS_VIEW} />
   )
 }
 
@@ -95,7 +95,7 @@ function ChannelsBody({
     connection: ChannelConnectionView
     plugin: PluginCatalogEntryView
   } | null>(null)
-  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   // Where the focus goes when the dialog of the Pages closes or the notice is dismissed: both leave it on
   // nothing, because neither was opened from a control
   const heading = useRef<HTMLHeadingElement>(null)

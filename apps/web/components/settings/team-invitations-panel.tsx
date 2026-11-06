@@ -5,7 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useRoleLabel } from '../../lib/role-label'
 import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
@@ -31,7 +31,7 @@ export function InvitationsPanel({
   const t = useTranslations('settings.team.invitations')
   const { can } = useStore()
   const [inviting, setInviting] = useState(false)
-  const canInvite = can(Permissions.TEAM_INVITE)
+  const canInvite = can(ClientPermissions.TEAM_INVITE)
 
   return (
     <div className="flex flex-col gap-4">

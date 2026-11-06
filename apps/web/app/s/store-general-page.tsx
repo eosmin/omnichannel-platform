@@ -5,7 +5,7 @@ import { type FormEvent, type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { StoreView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { MutationError } from '../../components/customers/mutation-error'
 import { useStore } from '../../components/providers/store-context'
@@ -33,10 +33,10 @@ const valuesOf = (store: StoreView): StoreFormValues => ({
 // of that route, not only the right to look at settings.
 export function StoreGeneralPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.ORG_MANAGE_STORES) ? (
+  return can(ClientPermissions.ORG_MANAGE_STORES) ? (
     <GeneralLoader />
   ) : (
-    <PermissionDenied permission={Permissions.ORG_MANAGE_STORES} />
+    <PermissionDenied permission={ClientPermissions.ORG_MANAGE_STORES} />
   )
 }
 

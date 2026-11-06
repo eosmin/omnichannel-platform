@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { PresenceStatus } from '@platform/core/realtime'
 
 import { buildTeamRows } from '../../lib/inbox/team-status'
@@ -31,7 +31,7 @@ export function TeamStatusWidget(): ReactElement {
   const presence = useTeamPresence(storeId)
   const counts = useConversationCounts(storeId)
   const behavior = useInboxBehavior(storeId)
-  const showLoad = can(Permissions.CONVERSATIONS_VIEW_ALL)
+  const showLoad = can(ClientPermissions.CONVERSATIONS_VIEW_ALL)
 
   if (members.isError || presence.isError) {
     return (

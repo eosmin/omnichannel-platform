@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useRoleLabel } from '../../lib/role-label'
 import { permissionGroups, toggled } from '../../lib/settings/permission-groups'
@@ -54,7 +54,7 @@ export function RoleDialog({
   const pending = mutation.isPending
   const fullyHeld = role === null || canGrant(role, can)
   const readOnly =
-    !can(Permissions.TEAM_MANAGE_ROLES) || (role !== null && (role.isSystem || !fullyHeld))
+    !can(ClientPermissions.TEAM_MANAGE_ROLES) || (role !== null && (role.isSystem || !fullyHeld))
   const canSubmit = !readOnly && name.trim() !== '' && !pending
 
   const guard = useSubmitGuard()

@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { errorCodeOf } from '../../lib/error-message'
@@ -27,7 +27,7 @@ export function SnippetsPanel({ snippets }: { snippets: StoreSnippetView[] }): R
   const t = useTranslations('settings.snippets')
   const codeText = useCodeText()
   const { storeId, can } = useStore()
-  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   const run = useDestructiveAction()
   const remove = useDeleteSnippet(storeId)
   const [editing, setEditing] = useState<Editing>(null)

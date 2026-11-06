@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../../components/providers/store-context'
 import { SnippetsPanel } from '../../components/settings/snippets-panel'
@@ -14,10 +14,10 @@ import { useStoreSnippets } from '../../lib/settings/use-content'
 // changing them SETTINGS_EDIT, as the api asks. There is no "approved for AI" choice: the MVP has no AI.
 export function StoreSnippetsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.CONVERSATIONS_VIEW) ? (
+  return can(ClientPermissions.CONVERSATIONS_VIEW) ? (
     <SnippetsLoader />
   ) : (
-    <PermissionDenied permission={Permissions.CONVERSATIONS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.CONVERSATIONS_VIEW} />
   )
 }
 

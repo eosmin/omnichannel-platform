@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { mayOpenExports } from '../../lib/exports/export-state'
 import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
@@ -23,12 +23,12 @@ export function StoreNav(): ReactElement {
     {
       href: AppPaths.store.inbox(storeId),
       label: t('inbox'),
-      isShown: can(Permissions.CONVERSATIONS_VIEW)
+      isShown: can(ClientPermissions.CONVERSATIONS_VIEW)
     },
     {
       href: AppPaths.store.customers(storeId),
       label: t('customers'),
-      isShown: can(Permissions.CUSTOMERS_VIEW)
+      isShown: can(ClientPermissions.CUSTOMERS_VIEW)
     },
     {
       href: AppPaths.store.exports(storeId),

@@ -13,7 +13,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useId, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import {
   ChannelCapability,
   ChannelConnectionStatus,
@@ -62,10 +62,10 @@ export function ConnectionCard({
   const { can } = useStore()
   const [renaming, setRenaming] = useState(false)
   const isDown = connection.status === String(ChannelConnectionStatus.DISCONNECTED)
-  const canEdit = can(Permissions.SETTINGS_EDIT)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
   const canSeeTemplates =
-    can(Permissions.CONVERSATIONS_VIEW) &&
-    can(Permissions.MESSAGES_SEND_TEMPLATE) &&
+    can(ClientPermissions.CONVERSATIONS_VIEW) &&
+    can(ClientPermissions.MESSAGES_SEND_TEMPLATE) &&
     connection.capabilities.includes(ChannelCapability.TEMPLATES)
 
   return (

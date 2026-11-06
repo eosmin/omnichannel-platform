@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { BulkActions, ConversationAssignedFilters, ConversationStatus } from '@platform/core/domain'
 
 import { paramsFromFilters } from '../../lib/inbox/inbox-filters'
@@ -32,7 +32,8 @@ export function UnassignedQueueWidget(): ReactElement {
   const runner = useBulkRunner()
   const nameOf = useCustomerNamer()
   const [now] = useState(() => new Date())
-  const mayTake = can(Permissions.CONVERSATIONS_RESOLVE) || can(Permissions.CONVERSATIONS_ASSIGN)
+  const mayTake =
+    can(ClientPermissions.CONVERSATIONS_RESOLVE) || can(ClientPermissions.CONVERSATIONS_ASSIGN)
 
   if (queue.isError) {
     return (

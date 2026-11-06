@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { type ReactElement, type ReactNode, useEffect } from 'react'
 
 import { AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { StoreProvider, useStore } from '../../components/providers/store-context'
 import { SettingsFrame } from '../../components/settings/settings-frame'
@@ -27,9 +27,11 @@ export function OrgShell({ children }: { children: ReactNode }): ReactElement {
       {profile => {
         const membership =
           profile.memberships.find(item =>
-            item.permissions.includes(Permissions.ORG_MANAGE_STORES)
+            item.permissions.includes(ClientPermissions.ORG_MANAGE_STORES)
           ) ??
-          profile.memberships.find(item => item.permissions.includes(Permissions.SETTINGS_VIEW))
+          profile.memberships.find(item =>
+            item.permissions.includes(ClientPermissions.SETTINGS_VIEW)
+          )
         return membership === undefined ? (
           <NoAccess />
         ) : (

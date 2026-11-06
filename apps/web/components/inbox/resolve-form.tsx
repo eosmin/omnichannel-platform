@@ -6,7 +6,7 @@ import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ConversationLimits, SLASH_PREFIX } from '@platform/core/domain'
 
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
@@ -99,7 +99,7 @@ export function ResolveForm({
           ) : list.length === 0 ? (
             <div className="flex flex-col items-start gap-1">
               <p className="text-muted-foreground text-sm">{t('noSnippets')}</p>
-              {can(Permissions.SETTINGS_VIEW) ? (
+              {can(ClientPermissions.SETTINGS_VIEW) ? (
                 <Link
                   href={AppPaths.store.settings(storeId, StoreSettingsSections.SNIPPETS)}
                   className="text-sm underline underline-offset-2"

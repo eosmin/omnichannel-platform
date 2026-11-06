@@ -1,4 +1,5 @@
 export * from './auth-constants'
+export * from './client-permissions'
 export * from './permissions'
 export * from './tenant-access'
 export * from './tenant-headers'

@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ResolveUndo } from '@platform/core/domain'
 
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
@@ -55,7 +55,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   const [isDialogOpen, setDialogOpen] = useState(false)
 
   // The closing message is a reply: it needs the window open and the permission to reply
-  const canSendClosing = windowState.kind !== 'closed' && can(Permissions.MESSAGES_SEND)
+  const canSendClosing = windowState.kind !== 'closed' && can(ClientPermissions.MESSAGES_SEND)
   const settings = behavior.data
 
   const start = (): void => {
