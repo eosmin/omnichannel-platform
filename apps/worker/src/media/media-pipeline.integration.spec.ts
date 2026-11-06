@@ -196,6 +196,45 @@ describe('MediaPipeline', () => {
       expect(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)).toBeUndefined()
     })
 
+    // The scan comes first, on the bytes that were sent. The test string is detected only at the start
+    // of a file (ClamAV anchors it), so it stands for the whole file here: were the decoder first, a
+    // file that is not a picture would be refused as `unscannable` and the virus would go unreported.
+    it('reports a virus before the decoder sees the file', async () => {
+      for (const [filename, contentType] of [
+        ['virus.jpg', 'image/jpeg'],
+        ['virus.png', 'image/png'],
+        ['virus.webp', 'image/webp']
+      ] as const) {
+        const media = await pendingMedia(filename, contentType, Buffer.from(EICAR))
+
+        await pipeline.scan(media.id)
+
+        const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+        expect([filename, row.status]).toEqual([filename, 'infected'])
+        expect(row.scanResult).toEqual({ viruses: [expect.stringContaining('Eicar')] })
+        expect(await storage.head(media.key)).toBeNull()
+        expect(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)).toBeUndefined()
+      }
+    })
+
+    it('keeps the picture pending, never served, until it is cleaned', async () => {
+      const media = await pendingMedia('photo.jpg', 'image/jpeg', await phonePhoto())
+      let seenWhileCleaning: string | undefined
+      const put = storage.put.bind(storage)
+      const spy = jest.spyOn(storage, 'put').mockImplementation(async (...args) => {
+        seenWhileCleaning = (
+          await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+        ).status
+        await put(...args)
+      })
+
+      await pipeline.scan(media.id)
+
+      spy.mockRestore()
+      expect(seenWhileCleaning).toBe('pending')
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    })
+
     it('refuses a decompression bomb before decoding it', async () => {
       const bomb = await sharp({
         create: { width: 12000, height: 12000, channels: 3, background: '#000' }

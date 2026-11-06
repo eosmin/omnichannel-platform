@@ -70,13 +70,6 @@ export class MediaPipeline {
     }
     if (media.status !== String(MediaStatus.PENDING)) return
 
-    // A picture is cleaned of its metadata (location, camera) before it is scanned or served, whoever
-    // sent it: the scan then looks at the file that is kept. The picture of a person is re-encoded
-    // later, by its own processing.
-    if (isSanitizedType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
-      if (!(await this.sanitize(media))) return
-    }
-
     const body = await this.storage.stream(media.key)
     if (body === null) {
       // A picture replaced or removed while its job waited: the row and file went together
@@ -116,6 +109,15 @@ export class MediaPipeline {
       return
     }
 
+    // The verdict came on the bytes that were sent, so a payload hidden after the end of a picture is
+    // seen and reported. Only then is a picture cleaned of its metadata (location, camera), whoever
+    // sent it, and only a decoder-safe file (a clean one) reaches the decoder. It is not scanned again:
+    // what comes out is made of the pixels. The row stays `pending`, never served, until it is done.
+    // The picture of a person is re-encoded later, by its own processing.
+    if (isSanitizedType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
+      if (!(await this.sanitize(media))) return
+    }
+
     const marked = await this.prisma.client.media.updateMany({
       where: { id: media.id, status: MediaStatus.PENDING },
       data: { status: MediaStatus.CLEAN, scannedAt: new Date() }
@@ -126,9 +128,9 @@ export class MediaPipeline {
   }
 
   // Replaces the uploaded picture with the same picture, upright and without metadata (see
-  // `sanitizeImage`), and keeps the size of the row true. Safe to run twice: a retry of the scan
-  // encodes the clean file again, which changes nothing that matters. Returns false when the picture
-  // was refused or the row moved on, and the scan must stop.
+  // `sanitizeImage`), and keeps the size of the row true. Safe to run twice: the mark in `scanResult`
+  // keeps a retry from encoding it again. Returns false when the picture was refused or the row moved
+  // on, and the scan must stop.
   private async sanitize(media: {
     id: string
     key: string
@@ -136,8 +138,8 @@ export class MediaPipeline {
     storeId: string | null
     scanResult: unknown
   }): Promise<boolean> {
-    // Cleaned by an earlier attempt of this scan (the daemon was down): encoding again would only
-    // lose quality
+    // Cleaned by an earlier attempt of this scan (it died before the row was marked clean): encoding
+    // again would only lose quality
     if (hasSanitizedMark(media.scanResult)) return true
     const original = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
     if (original === null) {
