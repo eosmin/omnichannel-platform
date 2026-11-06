@@ -18,6 +18,7 @@ import {
   printable,
   snapshotCapabilities
 } from './contract-rules'
+import { type ChannelMediaSnapshot, snapshotChannelMedia } from './media-snapshot'
 import { type ChannelOAuthSnapshot, snapshotChannelOAuth } from './oauth-snapshot'
 
 const METHODS_BY_CAPABILITY = [
@@ -59,6 +60,8 @@ interface Entry {
   manifest: ConnectManifest
   // The provider's login, checked and copied at registration; null when the plugin has none
   oauth: ChannelOAuthSnapshot | null
+  // The files the plugin takes, checked and copied at registration; null when it declares no kind of file
+  media: ChannelMediaSnapshot | null
   storeIds: ReadonlySet<string> | null
 }
 
@@ -93,6 +96,7 @@ export class PluginRegistry {
       capabilities: new Set(capabilities),
       manifest: snapshotConnectManifest(plugin, id, capabilities),
       oauth: snapshotChannelOAuth(plugin, id),
+      media: snapshotChannelMedia(plugin, id, capabilities),
       storeIds
     })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
@@ -155,6 +159,12 @@ export class PluginRegistry {
   // the provider calls the api, and the owner step for the profile. Null for a plugin not registered.
   connectManifestOf(pluginId: string): ConnectManifest | null {
     return this.entries.get(pluginId)?.manifest ?? null
+  }
+
+  // The files the plugin takes as it declared them when it registered (types and largest size by kind, files
+  // per message), or null when it takes none or is not registered
+  mediaOf(pluginId: string): ChannelMediaSnapshot | null {
+    return this.entries.get(pluginId)?.media ?? null
   }
 
   // The login of the plugin as it was when it registered (Step 7.8), or null when it has none or is not

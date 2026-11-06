@@ -18,3 +18,10 @@ overrides:
   # @nestjs/platform-socket.io 12.0.1 asks for socket.io 4.8.3. A 4.8.4 beside it installs a second copy
   # and the types of the two servers clash. Remove this when Nest depends on a later 4.8.
   socket.io: 4.8.3
+
+  # @serwist/build and @serwist/turbopack 9.5.13 ask for zod ^4.6.5 and resolved 4.6.5, which has
+  # GHSA-mrhx-c7xc-m3w5 (memory exhaustion on oversized collections, fixed in 4.6.6). The direct pin is
+  # 4.6.7, so this makes both packages use that same copy. Remove this when they resolve to 4.6.6 or
+  # later by themselves.
+  '@serwist/build>zod': 4.6.7
+  '@serwist/turbopack>zod': 4.6.7

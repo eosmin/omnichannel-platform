@@ -96,7 +96,6 @@ describe('whatsapp payloads', () => {
   describe('media', () => {
     const media = {
       channelIdentity: to,
-      mediaUrl: 'https://files.example.com/a.jpg',
       contentType: 'image/jpeg',
       filename: null,
       fileSize: 1024,
