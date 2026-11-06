@@ -478,3 +478,87 @@ describe('FRONTEND_URL in a deployed environment', () => {
     ).not.toThrow()
   })
 })
+
+describe('META_OAUTH_REDIRECT_URI (Connect with Facebook)', () => {
+  const callback = '/api/v1/channels/oauth/callback'
+  const login = {
+    ...validEnv,
+    ...metaApp,
+    META_APP_ID: '950161111253304',
+    META_OAUTH_REDIRECT_URI: `http://localhost:8080${callback}`
+  }
+  const deployed = {
+    ...validEnv,
+    ...metaApp,
+    NODE_ENV: 'production',
+    RESEND_API_KEY: 're_key',
+    FRONTEND_URL: 'https://app.example.com',
+    WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+    TRUST_PROXY_HOPS: '1',
+    META_APP_ID: '950161111253304'
+  }
+
+  it('is off when it is not set, which is how the button stays hidden', () => {
+    expect(parseEnv(validEnv).META_OAUTH_REDIRECT_URI).toBeUndefined()
+    expect(parseEnv({ ...validEnv, META_OAUTH_REDIRECT_URI: '' }).META_OAUTH_REDIRECT_URI).toBe(
+      undefined
+    )
+  })
+
+  it('accepts the callback of the api on a laptop', () => {
+    expect(parseEnv(login).META_OAUTH_REDIRECT_URI).toBe(`http://localhost:8080${callback}`)
+  })
+
+  it('accepts an https callback in a deployed environment', () => {
+    expect(() =>
+      parseEnv({ ...deployed, META_OAUTH_REDIRECT_URI: `https://api.example.com${callback}` })
+    ).not.toThrow()
+  })
+
+  it.each([
+    ['not an address', 'callback'],
+    ['another scheme', `ftp://api.example.com${callback}`],
+    ['the wrong path', 'https://api.example.com/api/v1/channels/oauth/other'],
+    ['no version prefix', 'https://api.example.com/channels/oauth/callback'],
+    ['a trailing slash', `https://api.example.com${callback}/`],
+    ['a query, which Meta compares byte by byte', `https://api.example.com${callback}?a=1`],
+    ['a fragment', `https://api.example.com${callback}#x`],
+    ['credentials in the address', `https://user:pw@api.example.com${callback}`],
+    ['a host in capitals, which Meta would not match', `https://API.example.com${callback}`],
+    ['a default port written out', `https://api.example.com:443${callback}`],
+    ['a dot segment', 'https://api.example.com/api/v1/x/../channels/oauth/callback']
+  ])('refuses %s', (_why, value) => {
+    expect(() => parseEnv({ ...login, META_OAUTH_REDIRECT_URI: value })).toThrow(
+      /META_OAUTH_REDIRECT_URI/
+    )
+  })
+
+  it.each([
+    ['http', `http://api.example.com${callback}`],
+    ['localhost', `https://localhost${callback}`],
+    ['a loopback address', `https://127.0.0.1${callback}`],
+    ['the unspecified address', `https://0.0.0.0${callback}`],
+    ['the IPv6 loopback', `https://[::1]${callback}`]
+  ])(
+    'refuses %s in a deployed environment, where Meta must reach a public https address',
+    (_w, v) => {
+      expect(() => parseEnv({ ...deployed, META_OAUTH_REDIRECT_URI: v })).toThrow(
+        /META_OAUTH_REDIRECT_URI/
+      )
+    }
+  )
+
+  it('needs the app id, a number, because the dialog names the app by it', () => {
+    expect(() => parseEnv({ ...login, META_APP_ID: undefined })).toThrow(/META_APP_ID/)
+    expect(() => parseEnv({ ...login, META_APP_ID: 'omni' })).toThrow(/META_APP_ID/)
+  })
+
+  it('needs the app secret, which exchanges the code for a token', () => {
+    expect(() => parseEnv({ ...login, META_APP_SECRET: undefined })).toThrow(/META_APP_SECRET/)
+    expect(() => parseEnv({ ...login, META_APP_SECRET: 'short' })).toThrow(/META_APP_SECRET/)
+  })
+
+  it('does not ask for the app id when the login is off, as before', () => {
+    expect(() => parseEnv({ ...validEnv, META_APP_ID: 'omni' })).not.toThrow()
+  })
+})

@@ -292,7 +292,17 @@ export const ApiRoutes = {
     widgetEmbed: (id: string) => `/channels/connections/${id}/widget`,
     widgetOrigins: (id: string) => `/channels/connections/${id}/widget/origins`,
     // Turns the pre-chat form of the widget on or off
-    widgetPreChat: (id: string) => `/channels/connections/${id}/widget/pre-chat`
+    widgetPreChat: (id: string) => `/channels/connections/${id}/widget/pre-chat`,
+    // "Connect with Facebook" (Step 7.8). `oauthStart` makes the state and returns the address of the
+    // dialog; `oauthCallback` is where the provider sends the browser back (PUBLIC: it carries no
+    // headers of ours, so everything it may do rests on the state); the rest list the Pages of one
+    // session, finish it with the chosen one, or drop it
+    oauthStart: (pluginId: string) => `/channels/connections/oauth/${pluginId}/start`,
+    oauthCallback: '/channels/oauth/callback',
+    oauthAssets: (sessionId: string) => `/channels/connections/oauth/sessions/${sessionId}/assets`,
+    oauthComplete: (sessionId: string) =>
+      `/channels/connections/oauth/sessions/${sessionId}/complete`,
+    oauthSession: (sessionId: string) => `/channels/connections/oauth/sessions/${sessionId}`
   },
 
   // Who of the team is connected to the store of the request, read once when the inbox opens; the

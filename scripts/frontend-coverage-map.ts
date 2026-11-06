@@ -208,6 +208,14 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'channels.widgetEmbed': { step: '3.6' },
   'channels.widgetOrigins': { step: '3.6' },
   'channels.widgetPreChat': { step: '3.6' },
+  // "Connect with Facebook": the button and the dialog that picks the Page are drawn by PR 3 of Step 7.8
+  'channels.oauthStart': { step: '7.8' },
+  'channels.oauthCallback': {
+    none: 'Called by the browser coming back from Facebook, which the api answers with a redirect: no screen draws it'
+  },
+  'channels.oauthAssets': { step: '7.8' },
+  'channels.oauthComplete': { step: '7.8' },
+  'channels.oauthSession': { step: '7.8' },
   'channels.templates': { step: '3.2' },
   'settings.inbox': { step: '3.6' },
   'settings.inboxBehavior': { step: '3.2' },

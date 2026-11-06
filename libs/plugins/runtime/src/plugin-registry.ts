@@ -18,6 +18,7 @@ import {
   printable,
   snapshotCapabilities
 } from './contract-rules'
+import { type ChannelOAuthSnapshot, snapshotChannelOAuth } from './oauth-snapshot'
 
 const METHODS_BY_CAPABILITY = [
   [ChannelCapability.TEMPLATES, 'sendTemplate'],
@@ -56,6 +57,8 @@ interface Entry {
   // A copy taken when the plugin passed its contract: what it declares later does not count
   capabilities: ReadonlySet<ChannelCapabilityType>
   manifest: ConnectManifest
+  // The provider's login, checked and copied at registration; null when the plugin has none
+  oauth: ChannelOAuthSnapshot | null
   storeIds: ReadonlySet<string> | null
 }
 
@@ -89,6 +92,7 @@ export class PluginRegistry {
       plugin,
       capabilities: new Set(capabilities),
       manifest: snapshotConnectManifest(plugin, id, capabilities),
+      oauth: snapshotChannelOAuth(plugin, id),
       storeIds
     })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
@@ -151,6 +155,12 @@ export class PluginRegistry {
   // the provider calls the api, and the owner step for the profile. Null for a plugin not registered.
   connectManifestOf(pluginId: string): ConnectManifest | null {
     return this.entries.get(pluginId)?.manifest ?? null
+  }
+
+  // The login of the plugin as it was when it registered (Step 7.8), or null when it has none or is not
+  // registered. The scopes are never sent to the browser: only the core builds the address of the dialog.
+  oauthOf(pluginId: string): ChannelOAuthSnapshot | null {
+    return this.entries.get(pluginId)?.oauth ?? null
   }
 
   hasCapability(pluginId: string, capability: ChannelPlugin['capabilities'][number]): boolean {

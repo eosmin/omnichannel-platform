@@ -397,3 +397,40 @@ describe('registeredChannelSchema', () => {
     ).toBe(false)
   })
 })
+
+describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
+  const login = {
+    kind: 'meta-facebook-login',
+    scopes: ['pages_show_list'],
+    grantedScopes: () => Promise.resolve(['pages_show_list']),
+    listAssets: () => Promise.resolve([]),
+    credentialsFor: () => Promise.resolve({ accessToken: 'page-token' })
+  } as const
+
+  it('keeps the login of a plugin that declares one, and none for one that does not', () => {
+    const registry = build()
+    registry.register(channel({ id: 'telegram', oauth: login }))
+    registry.register(channel({ id: 'signal' }))
+    expect(registry.oauthOf('telegram')?.scopes).toEqual(['pages_show_list'])
+    expect(registry.oauthOf('signal')).toBeNull()
+    expect(registry.oauthOf('nobody')).toBeNull()
+  })
+
+  it('refuses at boot a plugin whose login is malformed', () => {
+    const registry = build()
+    const bad = channel({ id: 'telegram', oauth: { ...login, scopes: ['a&b'] } })
+    expect(codeOf(() => registry.register(bad))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    expect(registry.has('telegram')).toBe(false)
+  })
+
+  it('does not follow a login the plugin changes after it registered', () => {
+    const registry = build()
+    const plugin = channel({ id: 'telegram', oauth: { ...login, scopes: ['pages_show_list'] } })
+    registry.register(plugin)
+    ;(plugin as { oauth: unknown }).oauth = {
+      ...login,
+      scopes: ['pages_show_list', 'ads_management']
+    }
+    expect(registry.oauthOf('telegram')?.scopes).toEqual(['pages_show_list'])
+  })
+})

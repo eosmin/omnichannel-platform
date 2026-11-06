@@ -1,4 +1,5 @@
 import type { ChannelCapabilityType } from './channel-capability'
+import type { ChannelOAuth } from './channel-oauth'
 import type {
   ChannelContext,
   ChannelCustomerProfile,
@@ -47,6 +48,10 @@ export interface ChannelPlugin {
   // Message key of a step the owner takes on the provider's side so that the profile (name, photo) of
   // a customer can be read, shown when the provider refuses it. Only for CUSTOMER_PROFILE channels.
   readonly profileSetupKey?: string
+  // The provider's own login, in place of a pasted token (Step 7.8). Only an in-process plugin can declare
+  // it (it is code, not a manifest); the core runs the flow and the plugin answers about its provider.
+  // Absent for a channel that has no such login.
+  readonly oauth?: ChannelOAuth
 
   // Credentials are supplied by the core, encrypted at rest by the core
   connect(input: ConnectInput): Promise<ConnectResult>

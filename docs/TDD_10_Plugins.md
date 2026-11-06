@@ -200,6 +200,10 @@ and `httpClient` (axios instance with timeouts) — nothing else from `libs/core
 
 ---
 
+### 2.x Optional login (`ChannelPlugin.oauth`, Step 7.8)
+
+A channel whose provider has its own login may declare `oauth`: `kind` (a `ChannelOAuthKinds` constant), `scopes` (the permissions the dialog asks for), `grantedScopes(ctx)`, `listAssets(ctx)` and `credentialsFor(ctx)`, each given the token of the PERSON and never the `state`, the redirect or the session. The core runs the flow (the `state` of 256 bits kept in Redis and read once, the exchange of the code with the app secret, the encrypted session, the check of the granted scopes against `scopes`, the choice of the account) and ends in the same `connect` as a pasted token, with the credentials `credentialsFor` returns. The registry checks the block at boot, copies it (`PluginRegistry.oauthOf`) and refuses a malformed one; only an in-process plugin can declare it, because a remote plugin (§6.7) is a manifest and carries no code. A plugin without it connects with pasted credentials only, as before.
+
 ## 3. Plugin registry
 
 ```typescript
