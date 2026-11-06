@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
@@ -36,10 +36,10 @@ import { useErrorText } from '../../lib/use-error-text'
 // SETTINGS_MANAGE_PREFERENCES, as the api asks. The rest of the preferences is Step 4.14; no CSAT.
 export function StoreInboxPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.SETTINGS_VIEW) ? (
+  return can(ClientPermissions.SETTINGS_VIEW) ? (
     <InboxLoader />
   ) : (
-    <PermissionDenied permission={Permissions.SETTINGS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.SETTINGS_VIEW} />
   )
 }
 
@@ -80,8 +80,8 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
   const t = useTranslations('settings.inbox')
   const errorText = useErrorText()
   const { storeId, can } = useStore()
-  const canEdit = can(Permissions.SETTINGS_EDIT)
-  const mayListSnippets = can(Permissions.CONVERSATIONS_VIEW)
+  const canEdit = can(ClientPermissions.SETTINGS_EDIT)
+  const mayListSnippets = can(ClientPermissions.CONVERSATIONS_VIEW)
   const snippets = useSnippetChoices(storeId, mayListSnippets)
   const save = useSaveInboxSettings(storeId)
   const idPrefix = useId()
@@ -273,7 +273,7 @@ function ReceiptsForm({ saved: loaded }: { saved: PreferencesView }): ReactEleme
   const t = useTranslations('settings.inbox.receipts')
   const errorText = useErrorText()
   const { storeId, can } = useStore()
-  const canManage = can(Permissions.SETTINGS_MANAGE_PREFERENCES)
+  const canManage = can(ClientPermissions.SETTINGS_MANAGE_PREFERENCES)
   const save = useSavePreferences(storeId)
   const [value, setValue] = useState(saved.sendReadReceipts)
   const disabled = !canManage || save.isPending

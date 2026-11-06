@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ConversationStatus } from '@platform/core/domain'
 
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
@@ -32,8 +32,8 @@ export function ConversationActions({
   const { reopen } = useConversationActions(storeId, conversationId)
   const { resolve: resolveFlow, openSnooze } = useConversationControls()
 
-  const mayResolve = can(Permissions.CONVERSATIONS_RESOLVE)
-  const maySnooze = can(Permissions.CONVERSATIONS_SNOOZE)
+  const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
+  const maySnooze = can(ClientPermissions.CONVERSATIONS_SNOOZE)
   const known = conversationStatusOf(status)
   const isResolved = known === ConversationStatus.RESOLVED
   const isSnoozed = known === ConversationStatus.SNOOZED

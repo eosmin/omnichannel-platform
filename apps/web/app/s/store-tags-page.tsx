@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
@@ -14,10 +14,10 @@ import { useStoreTags } from '../../lib/settings/use-content'
 // SETTINGS_EDIT change them; the panel draws its actions only for who holds that.
 export function StoreTagsPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.CONVERSATIONS_VIEW) ? (
+  return can(ClientPermissions.CONVERSATIONS_VIEW) ? (
     <TagsLoader />
   ) : (
-    <PermissionDenied permission={Permissions.CONVERSATIONS_VIEW} />
+    <PermissionDenied permission={ClientPermissions.CONVERSATIONS_VIEW} />
   )
 }
 

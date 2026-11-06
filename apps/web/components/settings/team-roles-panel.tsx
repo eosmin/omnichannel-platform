@@ -1,12 +1,13 @@
 'use client'
 
 import { Lock, Pencil, Plus, Trash2 } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { ApiError } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { useRoleLabel } from '../../lib/role-label'
@@ -17,7 +18,11 @@ import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
 
-import { RoleDialog } from './team-role-dialog'
+// The dialog holds the whole table of permissions (the matrix of a role), which the inbox must not
+// carry: it is its own chunk, loaded when a role is opened
+const RoleDialog = dynamic(() => import('./team-role-dialog').then(module => module.RoleDialog), {
+  ssr: false
+})
 
 // What the dialog is open on: nothing, a new role, or an existing one (read-only when it is a system role)
 type Editing = { kind: 'new' } | { kind: 'role'; role: RoleView } | null
@@ -28,7 +33,7 @@ export function RolesPanel({ roles }: { roles: RoleView[] }): ReactElement {
   const t = useTranslations('settings.team.roles')
   const { can } = useStore()
   const [editing, setEditing] = useState<Editing>(null)
-  const canManage = can(Permissions.TEAM_MANAGE_ROLES)
+  const canManage = can(ClientPermissions.TEAM_MANAGE_ROLES)
   const custom = roles.filter(role => !role.isSystem)
 
   return (

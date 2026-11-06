@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { type AccountMembership, AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { Button } from '../ui/button'
 import {
@@ -34,7 +34,7 @@ export function StoreSwitcher({
   if (memberships.length === 0 && suspendedStores.length === 0) return null
   const current = memberships.find(membership => membership.storeId === currentStoreId)
   const canManageStores = memberships.some(membership =>
-    membership.permissions.includes(Permissions.ORG_MANAGE_STORES)
+    membership.permissions.includes(ClientPermissions.ORG_MANAGE_STORES)
   )
   return (
     <DropdownMenu>

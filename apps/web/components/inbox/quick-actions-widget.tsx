@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { AppPaths } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -16,7 +16,7 @@ import { Button } from '../ui/button'
 export function QuickActionsWidget(): ReactElement {
   const t = useTranslations('inbox.sidebar.quick')
   const { storeId, can } = useStore()
-  const mayFind = can(Permissions.CUSTOMERS_VIEW)
+  const mayFind = can(ClientPermissions.CUSTOMERS_VIEW)
   if (!mayFind) return <p className="text-muted-foreground text-sm">{t('none')}</p>
   return (
     <div className="flex flex-wrap gap-2">

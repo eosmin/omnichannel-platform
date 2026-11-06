@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useCustomer } from '../../lib/customers/use-customer-data'
 import { useStore } from '../providers/store-context'
@@ -49,8 +49,8 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
   const tAll = useTranslations()
   const { storeId, can } = useStore()
   const customer = useCustomer(storeId, customerId)
-  const mayView = can(Permissions.CUSTOMERS_VIEW)
-  const mayOpenMedia = mayView && can(Permissions.MEDIA_VIEW)
+  const mayView = can(ClientPermissions.CUSTOMERS_VIEW)
+  const mayOpenMedia = mayView && can(ClientPermissions.MEDIA_VIEW)
   const [isGalleryOpen, setGalleryOpen] = useState(false)
 
   return (
@@ -95,7 +95,7 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
                   {t('media')}
                 </Button>
               ) : null}
-              {can(Permissions.CUSTOMERS_EDIT) ? <NoteBox customerId={customerId} /> : null}
+              {can(ClientPermissions.CUSTOMERS_EDIT) ? <NoteBox customerId={customerId} /> : null}
               <CustomerTimeline customerId={customerId} onNavigate={onClose} />
             </div>
           </>

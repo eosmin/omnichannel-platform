@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 import { markConversationRead, QueryKeys } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
@@ -31,7 +31,7 @@ export function useMarkRead(conversationId: string, unreadCount: number | undefi
   const queryClient = useQueryClient()
   const isVisible = useIsTabVisible()
   const isInFlight = useRef(false)
-  const mayMark = can(Permissions.CONVERSATIONS_RESOLVE)
+  const mayMark = can(ClientPermissions.CONVERSATIONS_RESOLVE)
 
   useEffect(() => {
     if (!mayMark || !isVisible || unreadCount === undefined || unreadCount === 0) return

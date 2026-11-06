@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { permissionNameKey } from './permission-name'
 
@@ -39,9 +39,9 @@ describe('the name of a permission', () => {
       filesIn(APP_DIR).flatMap(path =>
         [
           ...readFileSync(path, 'utf8').matchAll(
-            /<PermissionDenied\s+permission=\{Permissions\.(\w+)\}/g
+            /<PermissionDenied\s+permission=\{ClientPermissions\.(\w+)\}/g
           )
-        ].map(match => Permissions[match[1] as keyof typeof Permissions])
+        ].map(match => ClientPermissions[match[1] as keyof typeof ClientPermissions])
       )
     )
   ]
