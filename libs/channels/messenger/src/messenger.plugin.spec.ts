@@ -351,8 +351,6 @@ describe('MessengerPlugin', () => {
 
     const media = (overrides: Record<string, unknown> = {}) => ({
       channelIdentity: '99',
-      // Never read: the file is uploaded from the platform's storage, not fetched from a link
-      mediaUrl: 'http://localhost:8333/a.mp4',
       fileSize: 1000,
       openFile: opensTheFile,
       contentType: 'video/mp4',
@@ -384,15 +382,6 @@ describe('MessengerPlugin', () => {
         reply_to: '{"mid":"m_0"}'
       })
       expect(result).toMatchObject({ externalId: 'm_2', status: 'sent' })
-    })
-
-    it('never gives Meta the link of the storage', async () => {
-      const { plugin, upload } = build()
-      upload.mockResolvedValue({ message_id: 'm_2' })
-
-      await plugin.sendMedia(ctx, media({ mediaUrl: 'https://files.example.com/a.mp4?X-Sig=abc' }))
-
-      expect(JSON.stringify(upload.mock.calls[0]?.[0].fields)).not.toContain('files.example.com')
     })
 
     it.each([
@@ -716,8 +705,6 @@ describe('MessengerPlugin, a file over the wire', () => {
 
   const request = (contentType: string, bytes: string, fileSize = Buffer.byteLength(bytes)) => ({
     channelIdentity: '99',
-    // A development link: Meta must never be given it, and it must not stop the send
-    mediaUrl: 'http://localhost:8333/signed?X-Amz-Signature=secret',
     fileSize,
     openFile: () => Promise.resolve(Readable.from([Buffer.from(bytes)])),
     contentType,
@@ -739,9 +726,7 @@ describe('MessengerPlugin, a file over the wire', () => {
     expect(received?.body).toContain(
       'name="filedata"; filename="factura.pdf"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4 body'
     )
-    // Nothing of the development link or of the token reaches the form; the name of the file does, in plain characters
-    expect(received?.body).not.toContain('localhost')
-    expect(received?.body).not.toContain('X-Amz-Signature')
+    // Nothing of the token reaches the form; the name of the file does, in plain characters
     expect(received?.body).not.toContain('EAAB-page-token')
   })
 

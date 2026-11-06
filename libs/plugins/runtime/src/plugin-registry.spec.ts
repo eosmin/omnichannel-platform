@@ -436,3 +436,52 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     expect(registry.oauthOf('telegram')?.scopes).toEqual(['pages_show_list'])
   })
 })
+
+describe('PluginRegistry, the files a channel takes', () => {
+  const media = {
+    maxFilesPerMessage: 1,
+    kinds: { image: { types: ['image/png'], maxBytes: 1024 } }
+  } as const
+  const withImages = { capabilities: [ChannelCapability.TEXT, ChannelCapability.IMAGE] }
+
+  it('keeps the rules of a channel that takes files, and none for one that does not', () => {
+    const registry = build()
+    registry.register(channel({ id: 'telegram', ...withImages, media }))
+    registry.register(channel({ id: 'signal' }))
+    expect(registry.mediaOf('telegram')?.kinds.image).toEqual({
+      types: ['image/png'],
+      maxBytes: 1024
+    })
+    expect(registry.mediaOf('signal')).toBeNull()
+    expect(registry.mediaOf('nobody')).toBeNull()
+  })
+
+  it('refuses at boot a channel with a kind of file as a capability and no rule for it', () => {
+    const registry = build()
+    expect(codeOf(() => registry.register(channel({ id: 'telegram', ...withImages })))).toBe(
+      ErrorCodes.PLUGIN_CONTRACT_VIOLATION
+    )
+    expect(registry.has('telegram')).toBe(false)
+  })
+
+  it('refuses at boot a rule for a kind the channel does not declare', () => {
+    const registry = build()
+    expect(codeOf(() => registry.register(channel({ id: 'telegram', media })))).toBe(
+      ErrorCodes.PLUGIN_CONTRACT_VIOLATION
+    )
+  })
+
+  it('does not follow a limit the plugin raises after it registered', () => {
+    const registry = build()
+    const kinds = { image: { types: ['image/png'], maxBytes: 1024 } }
+    registry.register(
+      channel({ id: 'telegram', ...withImages, media: { maxFilesPerMessage: 1, kinds } })
+    )
+    kinds.image.maxBytes = 50 * 1024 * 1024
+    kinds.image.types.push('image/svg+xml')
+    expect(registry.mediaOf('telegram')?.kinds.image).toEqual({
+      types: ['image/png'],
+      maxBytes: 1024
+    })
+  })
+})

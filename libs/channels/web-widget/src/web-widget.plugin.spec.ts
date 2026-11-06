@@ -252,7 +252,6 @@ describe('WebWidgetPlugin', () => {
       const error: unknown = await plugin
         .sendMedia(ctx, {
           channelIdentity: visitorId,
-          mediaUrl: 'https://bucket.test/a.mp4?signed',
           fileSize: 1,
           openFile: sendsByLink,
           contentType: 'video/mp4',
@@ -267,7 +266,6 @@ describe('WebWidgetPlugin', () => {
     it('accepts a file with the id we gave it: the visitor asks for the link when they open it', async () => {
       const result = await plugin.sendMedia(ctx, {
         channelIdentity: visitorId,
-        mediaUrl: 'https://bucket.test/a.png?signed',
         fileSize: 1,
         openFile: sendsByLink,
         contentType: 'image/png',
@@ -276,6 +274,35 @@ describe('WebWidgetPlugin', () => {
         idempotencyKey: 'm2'
       })
       expect(result).toMatchObject({ externalId: 'm2', status: DeliveryStatus.SENT })
+    })
+
+    it('holds a file to what it declares: a size over the limit and a size that makes no sense', async () => {
+      const file = (fileSize: number) => ({
+        channelIdentity: visitorId,
+        fileSize,
+        openFile: sendsByLink,
+        contentType: 'image/png',
+        filename: 'a.png',
+        idempotencyKey: 'm5'
+      })
+
+      await expect(plugin.sendMedia(ctx, file(10 * 1024 * 1024 + 1))).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_FILE_TOO_LARGE
+      })
+      for (const size of [0, -1, 1.5, Number.NaN]) {
+        await expect(plugin.sendMedia(ctx, file(size))).rejects.toMatchObject({
+          code: ErrorCodes.CHANNEL_MESSAGE_FAILED
+        })
+      }
+      await expect(plugin.sendMedia(ctx, file(10 * 1024 * 1024))).resolves.toMatchObject({
+        externalId: 'm5'
+      })
+    })
+
+    it('declares its rules frozen, the same ones the platform uses for an upload', () => {
+      expect(Object.isFrozen(plugin.media)).toBe(true)
+      expect(Object.isFrozen(plugin.media.kinds.image?.types)).toBe(true)
+      expect(plugin.media.kinds.image?.maxBytes).toBe(10 * 1024 * 1024)
     })
   })
 })
