@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { MetaGraph, MetaLimits, MetaWebhookApps } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { PluginError } from '@platform/plugins/sdk'
+import { PluginError, UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { MetaGraphClient } from './meta-graph.client'
 
@@ -332,7 +332,7 @@ describe('MetaGraphClient', () => {
       ).resolves.toBeDefined()
       await expect(
         client.downloadMediaUrl('https://apps.fbsbx.com/instagram_graph_api/x')
-      ).rejects.toBeInstanceOf(PluginError)
+      ).rejects.toBeInstanceOf(UnsafeMediaLinkError)
     })
 
     it('uses plain bytes when the server declares no usable type', async () => {
@@ -347,7 +347,7 @@ describe('MetaGraphClient', () => {
       ['an internal address', 'https://169.254.169.254/latest'],
       ['text that is not a url', 'not a url']
     ])('refuses %s without calling it', async (_name, url) => {
-      await expect(client.downloadMediaUrl(url)).rejects.toBeInstanceOf(PluginError)
+      await expect(client.downloadMediaUrl(url)).rejects.toBeInstanceOf(UnsafeMediaLinkError)
       expect(fetchMock).not.toHaveBeenCalled()
     })
   })

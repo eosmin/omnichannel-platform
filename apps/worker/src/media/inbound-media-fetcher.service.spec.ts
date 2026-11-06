@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream'
 
-import { PluginError } from '@platform/plugins/sdk'
+import { UnsafeMediaLinkError, PluginError } from '@platform/plugins/sdk'
 
 // The barrel of connections loads the environment of the app, which a unit run does not have
 jest.mock('@platform/channels/connections', () => ({
@@ -216,6 +216,17 @@ describe('InboundMediaFetcher', () => {
       expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
     }
   )
+
+  it('marks the file unsafe_link when the plugin will not follow a link that is not its provider’s (MS-04)', async () => {
+    const plugin = { fetchMedia: jest.fn().mockRejectedValue(new UnsafeMediaLinkError()) }
+    const { fetcher, marker } = setup({ plugin })
+
+    await fetcher.fetch({ ...job, mediaRef: 'https://example.com/a.jpg' }, false)
+
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
+    // The same answer on every try: no retry, no offer to fetch it again
+    expect(marker.mark).toHaveBeenCalledTimes(1)
+  })
 
   it('refuses a link to a private address before the plugin is asked', async () => {
     const plugin = { fetchMedia: jest.fn() }

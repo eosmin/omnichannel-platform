@@ -146,6 +146,98 @@ describe('messagingToEvents', () => {
     })
   })
 
+  it('keeps the link of the story an Instagram customer replied to, beside the text (IG-07)', () => {
+    const story = 'https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1'
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({ mid: 'm1', text: 'me encanta', reply_to: { story: { url: story, id: '9' } } })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({
+      content: 'me encanta',
+      metadata: { attachmentType: 'story_reply', attachmentUrl: story }
+    })
+    // No reply to a message: the story is not one
+    expect(event?.message).toMatchObject({ replyToExternalId: undefined })
+  })
+
+  it('reads a reply to both a message and a story, and a story without a link as a plain reply', () => {
+    const [both] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          text: 'hola',
+          reply_to: { mid: 'm0', story: { url: 'https://lookaside.fbsbx.com/x' } }
+        })
+      ),
+      OBJECT
+    )
+    expect(both?.message).toMatchObject({ replyToExternalId: 'm0' })
+    const [noLink] = messagingToEvents(
+      wrap(inbound({ mid: 'm2', text: 'hola', reply_to: { story: { id: '9' } } })),
+      OBJECT
+    )
+    expect(noLink?.message).not.toHaveProperty('metadata')
+  })
+
+  it('prefers what the customer shared over the story they replied to', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          attachments: [{ type: 'ig_reel', payload: { url: 'https://www.instagram.com/reel/a/' } }],
+          reply_to: { story: { url: 'https://lookaside.fbsbx.com/x' } }
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({
+      metadata: { attachmentUrl: 'https://www.instagram.com/reel/a/' }
+    })
+  })
+
+  it.each(['https://127.0.0.1/a.jpg', 'https://10.0.0.5/a.jpg', 'http://localhost/a.jpg'])(
+    'keeps a file whose link is not a public address (%s), for the worker to refuse with a notice (MS-04)',
+    url => {
+      const [event] = messagingToEvents(
+        wrap(inbound({ mid: 'm1', attachments: [{ type: 'image', payload: { url } }] })),
+        OBJECT
+      )
+      expect(event?.message).toMatchObject({
+        type: MessageType.IMAGE,
+        media: [{ ref: url }]
+      })
+    }
+  )
+
+  it.each(['1234567890', 'abc-1', '   ', ''])(
+    'does not hand a customer text that could pass for an id of the provider to the worker (%j)',
+    url => {
+      const [event] = messagingToEvents(
+        wrap(inbound({ mid: 'm1', attachments: [{ type: 'image', payload: { url } }] })),
+        OBJECT
+      )
+      expect(event?.message?.media).toBeUndefined()
+      expect(event?.message).toMatchObject({ content: '[image]' })
+    }
+  )
+
+  it('keeps the photo, not the story link, when the customer replies to a story with a file', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          attachments: [{ type: 'image', payload: { url: CDN } }],
+          reply_to: { story: { url: 'https://lookaside.fbsbx.com/x' } }
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({ type: MessageType.IMAGE, media: [{ ref: CDN }] })
+    expect(event?.message).not.toHaveProperty('metadata')
+  })
+
   it('does not put the type name of a sender into the metadata when it is not plain', () => {
     const [event] = messagingToEvents(
       wrap(
@@ -206,15 +298,15 @@ describe('messagingToEvents', () => {
     expect(event?.message?.metadata).not.toHaveProperty('unsupportedType')
   })
 
-  it('does not take an attachment with a url that is not http', () => {
+  it('hands an attachment with a url that is not http to the worker, which refuses it with a notice', () => {
     const [event] = messagingToEvents(
       wrap(
         inbound({ mid: 'm1', attachments: [{ type: 'image', payload: { url: 'javascript:1' } }] })
       ),
       OBJECT
     )
-    expect(event?.message).toMatchObject({ content: '[image]' })
-    expect(event?.message?.media).toBeUndefined()
+    // Never fetched from here: the worker checks every link and marks the file `unsafe_link`
+    expect(event?.message).toMatchObject({ media: [{ ref: 'javascript:1' }] })
   })
 
   it('does not name a type that could be taken for text', () => {
