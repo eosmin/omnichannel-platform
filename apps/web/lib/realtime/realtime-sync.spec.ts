@@ -8,7 +8,7 @@ import { RealtimeClientTiming } from './realtime-config'
 import { attachRealtimeSync } from './realtime-sync'
 
 // The socket and the cache, as far as the sync reads them
-function setup() {
+function setup(playTone = jest.fn()) {
   let onAny: (event: string, payload: unknown) => void = () => undefined
   let onConnect: (mayHaveMissedEvents: boolean) => void = () => undefined
   const invalidateQueries = jest.fn()
@@ -27,7 +27,8 @@ function setup() {
   const detach = attachRealtimeSync(
     connection,
     { invalidateQueries } as unknown as QueryClient,
-    's1'
+    's1',
+    playTone
   )
   return {
     detach,
@@ -78,5 +79,27 @@ describe('attachRealtimeSync', () => {
     flush()
 
     expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+
+  it('plays the tone once for a notification that asks for sound', () => {
+    const playTone = jest.fn()
+    const { emit } = setup(playTone)
+
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n1', sound: true })
+
+    expect(playTone).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays quiet for a notification without sound, for a malformed one and for other events', () => {
+    const playTone = jest.fn()
+    const { emit } = setup(playTone)
+
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n1', sound: false })
+    emit(RealtimeEvents.NOTIFICATION, { id: 'n2', sound: 'true' })
+    emit(RealtimeEvents.NOTIFICATION, null)
+    emit(RealtimeEvents.NOTIFICATION, 'sound')
+    emit(RealtimeEvents.MEDIA_PROCESSED, { conversationId: 'c1', messageId: 'm1', sound: true })
+
+    expect(playTone).not.toHaveBeenCalled()
   })
 })
