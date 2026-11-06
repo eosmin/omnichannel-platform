@@ -9,6 +9,7 @@ import { MediaStatus } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { ImageNotSanitizable, isSanitizedType, sanitizeImage } from '@platform/core/image-sanitizer'
 import { publishMessageChanged } from '@platform/core/messaging'
 import { JobNames, type ProcessImageJob, QueueNames } from '@platform/core/queues'
 import {
@@ -21,6 +22,7 @@ import {
   keepsAnimation,
   MAX_IMAGE_PIXELS,
   MediaPurpose,
+  MediaRejectionReasons,
   parseAvatarKey,
   StorageKeys,
   UploadLimits,
@@ -29,6 +31,12 @@ import {
 import { StorageService } from '@platform/core/storage-module'
 
 import { ClamavClient } from './clamav.client'
+
+// Media.scanResult of a pending picture that was already cleaned of its metadata
+const hasSanitizedMark = (scanResult: unknown): boolean =>
+  typeof scanResult === 'object' &&
+  scanResult !== null &&
+  (scanResult as { sanitized?: unknown }).sanitized === true
 
 const isImage = (contentType: string): boolean =>
   (AllowedContentTypes.IMAGE as readonly string[]).includes(contentType)
@@ -61,6 +69,13 @@ export class MediaPipeline {
       return
     }
     if (media.status !== String(MediaStatus.PENDING)) return
+
+    // A picture is cleaned of its metadata (location, camera) before it is scanned or served, whoever
+    // sent it: the scan then looks at the file that is kept. The picture of a person is re-encoded
+    // later, by its own processing.
+    if (isSanitizedType(media.contentType) && media.purpose !== String(MediaPurpose.AVATAR)) {
+      if (!(await this.sanitize(media))) return
+    }
 
     const body = await this.storage.stream(media.key)
     if (body === null) {
@@ -108,6 +123,81 @@ export class MediaPipeline {
     if (marked.count === 0) return
     await this.announce(media, Events.MEDIA_PROCESSED)
     if (isImage(media.contentType)) await this.queueVariants(media.id)
+  }
+
+  // Replaces the uploaded picture with the same picture, upright and without metadata (see
+  // `sanitizeImage`), and keeps the size of the row true. Safe to run twice: a retry of the scan
+  // encodes the clean file again, which changes nothing that matters. Returns false when the picture
+  // was refused or the row moved on, and the scan must stop.
+  private async sanitize(media: {
+    id: string
+    key: string
+    contentType: string
+    storeId: string | null
+    scanResult: unknown
+  }): Promise<boolean> {
+    // Cleaned by an earlier attempt of this scan (the daemon was down): encoding again would only
+    // lose quality
+    if (hasSanitizedMark(media.scanResult)) return true
+    const original = await this.storage.read(media.key, UploadLimits.MAX_FILE_SIZE_BYTES)
+    if (original === null) {
+      if (await this.isGone(media.id)) return false
+      throw new Error('the file to clean is not in the bucket')
+    }
+    let cleaned
+    try {
+      cleaned = await sanitizeImage(original, media.contentType)
+    } catch (error) {
+      if (!(error instanceof ImageNotSanitizable)) throw error
+      await this.rejectImage(media, error)
+      return false
+    }
+    if (cleaned.kind === 'untouched') return true
+    // A failure of the bucket is not the image's: it propagates and the queue retries
+    await this.storage.put(media.key, cleaned.body, media.contentType)
+    const moved = await this.prisma.client.media.updateMany({
+      where: { id: media.id, status: MediaStatus.PENDING },
+      data: { fileSize: cleaned.body.length, scanResult: { sanitized: true } }
+    })
+    return moved.count > 0
+  }
+
+  // A picture that cannot be decoded cannot be cleaned: it is never kept. The row is written first
+  // (the gate for serving), then the file goes, as for an infected file; it ends as `unscannable`
+  // with its own reason, and the team is told so that the thread stops showing a placeholder.
+  private async rejectImage(
+    media: { id: string; key: string; storeId: string | null },
+    error: ImageNotSanitizable
+  ): Promise<void> {
+    const marked = await this.prisma.client.media.updateMany({
+      where: { id: media.id, status: MediaStatus.PENDING },
+      data: {
+        status: MediaStatus.UNSCANNABLE,
+        scanResult: { reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE },
+        scannedAt: new Date()
+      }
+    })
+    if (marked.count === 0) return
+    this.logger.warn(
+      {
+        mediaId: media.id,
+        storeId: media.storeId,
+        reason: MediaRejectionReasons.IMAGE_NOT_SANITIZABLE,
+        errorName: errorName(error.reason)
+      },
+      'a picture could not be cleaned of its metadata and was refused'
+    )
+    // The team is told first (it never throws). A delete that fails leaves the original in the bucket,
+    // unserved: the hourly cleanup deletes the file of an unscannable row.
+    await this.announce(media, Events.MEDIA_UNSCANNABLE)
+    try {
+      await this.storage.delete(media.key)
+    } catch (deleteError) {
+      this.logger.warn(
+        { mediaId: media.id, errorName: errorName(deleteError) },
+        'a refused picture was not deleted'
+      )
+    }
   }
 
   // The daemon gave no verdict on any try. The row goes to a terminal state the cleanup does not look

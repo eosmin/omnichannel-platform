@@ -100,3 +100,24 @@ export function attachmentDisposition(filename: string): string {
   )
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`
 }
+
+// What the sanitizing of an uploaded picture does (TDD_07 §6.5). A photo from a phone carries where it
+// was taken, the camera and the time: a static JPEG, PNG or WebP is decoded, turned upright and
+// encoded again without any of it, before it is scanned or served. The original bytes are not kept.
+export const ImageSanitizing = {
+  // The qualities of the new encoding, tried in order until the file fits UploadLimits: high first,
+  // because this is the file that goes to the customer
+  QUALITIES: [92, 80, 70],
+  // The pixels a picture may have to be cleaned. Under the 100 million of the variants: the picture is
+  // decoded whole, unscanned, and the worker runs jobs side by side (50 million is a 48 MP camera)
+  MAX_INPUT_PIXELS: 50_000_000,
+  // The types that are re-encoded. A gif or an animated webp or png is left as it came (see the plan,
+  // Step 7.1): the encoder would flatten it, and #181 keeps stickers moving.
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
+} as const
+
+// Media.scanResult.reason of a file that was refused before the scan because it cannot be decoded and
+// so cannot be cleaned of its metadata: it is never stored, never served
+export const MediaRejectionReasons = {
+  IMAGE_NOT_SANITIZABLE: 'image_not_sanitizable'
+} as const

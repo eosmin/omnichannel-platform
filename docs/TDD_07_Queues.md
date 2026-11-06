@@ -1139,6 +1139,22 @@ async confirmUpload(
 }
 ```
 
+**Metadata of pictures (owner, 2026-11-07).** A photo from a phone carries where it was taken, the camera
+and the time, and an agent's photo goes to the customer (and a customer's photo is kept by us). The scan job
+therefore begins by cleaning every static JPEG, PNG and WebP of a message, an ad or a product (not the
+picture of a person, which is re-encoded later): `sanitizeImage` (`libs/core/storage/src/image-sanitizer.ts`,
+the only place) checks the declared type against the bytes, bounds the pixels (`MAX_IMAGE_PIXELS`) before
+decoding, applies the EXIF orientation to the pixels, encodes again at high quality keeping the colour profile
+and nothing else, and refuses a result that still holds EXIF, XMP or IPTC. The new bytes replace the object
+under the same key, `Media.fileSize` is rewritten, and ClamAV then scans the file that is kept. The original,
+bit for bit, is not kept (accepted). Both ways go through this one scan: the file an agent uploads and the
+file the inbound fetcher keeps. A picture that cannot be cleaned (corrupt, a bomb, bytes that are not its type)
+is never kept: the row ends `unscannable` with `scanResult.reason = 'image_not_sanitizable'`, the object is
+deleted, `media.unscannable` is announced. Limits: a gif, an animated WebP and an animated PNG are not
+re-encoded (the encoder would flatten them; stickers keep moving), so their metadata stays; the metadata of
+PDF and Office files is out of scope (plan, Step 7.1). The re-encoding is lossy for JPEG and WebP, and a
+retry of the scan encodes the clean file again.
+
 **Virus scanning (ClamAV), then image processing:**
 ```typescript
 // apps/worker/src/processors/heavy-processing.processor.ts
