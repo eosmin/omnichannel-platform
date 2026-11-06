@@ -81,6 +81,12 @@ export interface ChannelPlugin {
   // Declared messaging-window policy, applied by the CORE (§4) — the plugin has no database
   readonly messagingWindow: MessagingWindowPolicy | null
 
+  // The files the channel takes (Step 7.8 follow-up, media capability map): the types and the largest size of each
+  // kind, and the files per message. Required for exactly the kinds declared as capabilities (image, video,
+  // audio, document); the registry copies and freezes it at registration. The core signs no download link for
+  // a plugin: `SendMediaParams.openFile` gives the bytes.
+  readonly media?: ChannelMediaCapabilities
+
   // Connection lifecycle (credentials are supplied by the core, encrypted at rest by the core)
   connect(input: ConnectInput): Promise<ConnectResult>
   disconnect(ctx: ChannelContext): Promise<void>

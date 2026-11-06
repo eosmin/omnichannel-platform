@@ -1,6 +1,12 @@
 import type { PinoLogger } from 'nestjs-pino'
 
-import { CHANNEL_ID_PATTERN, DeliveryStatus, MessageType } from '@platform/core/domain'
+import {
+  CapabilityOfMediaKind,
+  CHANNEL_ID_PATTERN,
+  ChannelMediaKinds,
+  DeliveryStatus,
+  MessageType
+} from '@platform/core/domain'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
@@ -70,6 +76,20 @@ export function testChannelPluginContract(
       registry.register(plugin, { official: options.official === true })
       expect(registry.oauthOf(plugin.id)?.scopes ?? []).toEqual(plugin.oauth?.scopes ?? [])
       expect(registry.oauthOf(plugin.id)?.kind).toBe(plugin.oauth?.kind)
+    })
+
+    // The files a channel takes are declared once for the platform and for the plugin: a channel with a kind of
+    // file as a capability has a rule for it, the registry keeps exactly that, and the plugin that sends a file
+    // holds itself to it
+    it('declares the files it takes for exactly the kinds of file it has as capabilities', () => {
+      const logger = new Proxy({}, { get: () => jest.fn() }) as unknown as PinoLogger
+      const registry = new PluginRegistry(logger)
+      registry.register(plugin, { official: options.official === true })
+      const kinds = Object.keys(registry.mediaOf(plugin.id)?.kinds ?? {}).sort()
+      const expected = Object.values(ChannelMediaKinds)
+        .filter(kind => plugin.capabilities.includes(CapabilityOfMediaKind[kind]))
+        .sort()
+      expect(kinds).toEqual(expected)
     })
 
     it('rejects an invalid webhook signature', () => {

@@ -168,10 +168,6 @@ export interface SendMessageParams {
 
 export interface SendMediaParams {
   channelIdentity: string
-  // A signed link to the file, for a provider that fetches it itself. It is short-lived and points at
-  // the platform's storage, which a provider cannot always reach (development): a plugin that uploads
-  // the file to its provider uses `openFile` instead and never fetches or forwards this link.
-  mediaUrl: string
   // The type and the size stored when the file was checked and scanned: never what a client said.
   // Only a clean file reaches a plugin.
   contentType: string

@@ -1,3 +1,9 @@
+import {
+  type ChannelMediaCapabilities,
+  ChannelMediaKinds,
+  frozenMedia
+} from './channel-media-rules'
+
 // The WhatsApp Cloud API as the WhatsApp plugin speaks it. The shared Meta pieces (origin, signature,
 // error codes) are in meta-constants.ts.
 export const WhatsAppApi = {
@@ -123,6 +129,29 @@ export const WhatsAppMediaMaxBytes: Readonly<
   audio: 16 * MEGABYTE,
   document: 100 * MEGABYTE
 }
+
+// What the platform declares of the files WhatsApp takes: the two tables above, by kind of file
+export const WhatsAppMedia: ChannelMediaCapabilities = frozenMedia({
+  maxFilesPerMessage: 1,
+  kinds: {
+    [ChannelMediaKinds.IMAGE]: {
+      types: WhatsAppMediaTypes.image,
+      maxBytes: WhatsAppMediaMaxBytes.image
+    },
+    [ChannelMediaKinds.VIDEO]: {
+      types: WhatsAppMediaTypes.video,
+      maxBytes: WhatsAppMediaMaxBytes.video
+    },
+    [ChannelMediaKinds.AUDIO]: {
+      types: WhatsAppMediaTypes.audio,
+      maxBytes: WhatsAppMediaMaxBytes.audio
+    },
+    [ChannelMediaKinds.DOCUMENT]: {
+      types: WhatsAppMediaTypes.document,
+      maxBytes: WhatsAppMediaMaxBytes.document
+    }
+  }
+})
 
 export const WhatsAppLimits = {
   TEXT_MAX_LENGTH: 4096,

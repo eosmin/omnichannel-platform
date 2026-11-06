@@ -2,7 +2,12 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 
 import { z } from 'zod'
 
-import { DeliveryStatus, MessageType } from '@platform/core/domain'
+import {
+  CapabilityOfMediaKind,
+  ChannelMediaKinds,
+  DeliveryStatus,
+  MessageType
+} from '@platform/core/domain'
 import {
   ChannelCapability,
   type ChannelContext,
@@ -107,7 +112,23 @@ export function buildChannelPlugin(overrides: Partial<ChannelPlugin> = {}): Chan
       )
     }
   }
-  return { ...base, ...overrides }
+  const plugin = { ...base, ...overrides }
+  // A kind of file as a capability needs its rule (the registry holds the plugin to it): the suite's channel
+  // takes any type up to 10 MB unless a test says otherwise
+  const kinds = Object.values(ChannelMediaKinds).filter(kind =>
+    plugin.capabilities.includes(CapabilityOfMediaKind[kind])
+  )
+  return plugin.media !== undefined || kinds.length === 0
+    ? plugin
+    : {
+        ...plugin,
+        media: {
+          maxFilesPerMessage: 1,
+          kinds: Object.fromEntries(
+            kinds.map(kind => [kind, { types: null, maxBytes: 10 * 1024 * 1024 }])
+          )
+        }
+      }
 }
 
 const inboundBody = {

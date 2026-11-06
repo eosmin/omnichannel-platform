@@ -9,7 +9,7 @@ import {
   MessengerApi,
   MetaErrorCodes,
   MetaGraph,
-  MessengerMediaRules,
+  MessengerMedia,
   type MetaWebhookApp,
   MetaWebhookApps
 } from '@platform/core/domain'
@@ -70,7 +70,7 @@ export class MessengerPlugin extends MetaChannelPlugin {
   protected readonly origin = MetaGraph.ORIGIN
   protected readonly webhookObject = MessengerApi.WEBHOOK_OBJECT
   protected readonly subscribedFields = MessengerApi.SUBSCRIBED_FIELDS
-  protected readonly mediaRules = MessengerMediaRules
+  readonly media = MessengerMedia
   protected readonly userProfileFields = MessengerApi.USER_PROFILE_FIELDS
 
   protected override sendFields(): Record<string, unknown> {

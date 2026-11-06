@@ -718,8 +718,6 @@ describe('InstagramPlugin', () => {
 
     const media = (overrides: Record<string, unknown> = {}) => ({
       channelIdentity: '99',
-      // Never read: the file is uploaded from the platform's storage, not fetched from a link
-      mediaUrl: 'http://localhost:8333/a.png',
       fileSize: 1000,
       openFile: opensTheFile,
       contentType: 'image/png',
@@ -752,15 +750,6 @@ describe('InstagramPlugin', () => {
         reply_to: '{"mid":"mid.1"}'
       })
       expect(result).toMatchObject({ externalId: 'mid.2', status: 'sent' })
-    })
-
-    it("never gives Meta the link: a signed url of the storage is nobody else's business", async () => {
-      const { plugin, upload } = build()
-      upload.mockResolvedValue({ message_id: 'mid.2' })
-
-      await plugin.sendMedia(ctx, media({ mediaUrl: 'https://user:pw@files.example.com/a.png' }))
-
-      expect(JSON.stringify(upload.mock.calls[0]?.[0].fields)).not.toContain('files.example.com')
     })
 
     it('takes the type from what the platform recorded, without its parameters or case', async () => {
@@ -1150,8 +1139,6 @@ describe('InstagramPlugin, a file over the wire', () => {
 
   const request = (contentType: string, bytes: string, fileSize = Buffer.byteLength(bytes)) => ({
     channelIdentity: '99',
-    // A development link: Meta must never be given it, and it must not stop the send
-    mediaUrl: 'http://localhost:8333/signed?X-Amz-Signature=secret',
     fileSize,
     openFile: () => Promise.resolve(Readable.from([Buffer.from(bytes)])),
     contentType,
@@ -1173,9 +1160,7 @@ describe('InstagramPlugin, a file over the wire', () => {
     expect(received?.body).toContain(
       'name="filedata"; filename="factura.pdf"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4 body'
     )
-    // Nothing of the development link or of the token reaches the form; the name of the file does, in plain characters
-    expect(received?.body).not.toContain('localhost')
-    expect(received?.body).not.toContain('X-Amz-Signature')
+    // Nothing of the token reaches the form; the name of the file does, in plain characters
     expect(received?.body).not.toContain('PAGE-token')
   })
 

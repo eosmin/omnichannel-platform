@@ -811,7 +811,9 @@ describe('Replies on their way to a channel', () => {
         caption: 'look at this',
         idempotencyKey: reply.id
       })
-      expect(sentMedia[0]?.mediaUrl).toContain('photo.png')
+      // The core signs no link for a plugin: the bytes come through `openFile`
+      expect(sentMedia[0]).not.toHaveProperty('mediaUrl')
+      expect(typeof sentMedia[0]?.openFile).toBe('function')
       expect(sent).toHaveLength(0)
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
