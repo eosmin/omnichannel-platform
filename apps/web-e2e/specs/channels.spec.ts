@@ -81,7 +81,7 @@ test.describe('Settings → Channels and Plugins', () => {
         name: channels.connectDialog.title.replace('{name}', WIDGET_NAME)
       })
       await dialog.getByLabel(channels.connect.web_widget.siteOrigins).fill(`https://${host}`)
-      await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+      await dialog.getByRole('button', { name: channels.connectDialog.submit, exact: true }).click()
 
       const card = page
         .getByRole('listitem')
@@ -209,7 +209,9 @@ test.describe('Settings → Channels and Plugins', () => {
 
         // A token Meta refuses: the message says what happened and what to do, not "invalid credentials"
         await field.fill(FAKE_REJECTED_TOKEN)
-        await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+        await dialog
+          .getByRole('button', { name: channels.connectDialog.submit, exact: true })
+          .click()
         await expect(dialog.getByRole('alert')).toHaveText(channels.connectFailure.token_rejected)
         await expect(field).toBeFocused()
         await expect(field).toHaveAttribute('aria-invalid', 'true')
@@ -223,14 +225,18 @@ test.describe('Settings → Channels and Plugins', () => {
 
         // Meta asking to wait is not about the token: the message says so and the field is left alone
         await field.fill(FAKE_BUSY_TOKEN)
-        await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+        await dialog
+          .getByRole('button', { name: channels.connectDialog.submit, exact: true })
+          .click()
         await expect(dialog.getByRole('alert')).toHaveText(channels.connectFailure.provider_busy)
         await expect(field).not.toBeFocused()
         await expect(field).not.toHaveAttribute('aria-invalid', 'true')
 
         // The right one connects, and the card names the Page
         await field.fill(FAKE_PAGE_TOKEN)
-        await dialog.getByRole('button', { name: channels.connectDialog.submit }).click()
+        await dialog
+          .getByRole('button', { name: channels.connectDialog.submit, exact: true })
+          .click()
         await expect(
           page.getByText(channels.connectDialog.connected.replace('{name}', FAKE_PAGE_NAME))
         ).toBeVisible()

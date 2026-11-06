@@ -24,7 +24,9 @@ import {
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin@test.com'
+// An administrator of two stores, with a magic link budget of his own: admin@test.com is the one the specs that
+// follow this one sign in as, and a spec that spends its budget makes the next ones wait
+const ADMIN = 'multi-store@test.com'
 const channels = en.settings.channels
 const CALLBACK = `${API_URL}${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
 const MESSENGER_NAME = 'Messenger'
@@ -176,8 +178,13 @@ test.describe('Connect with Facebook', () => {
       await expectDialogHoldsItsContent(page, pick)
       await pick.getByRole('button', { name: channels.oauth.pick.close }).click()
       await expect(pick).toBeHidden()
-      // The list is drawn (it says it is empty) and the Page is not in it: nothing was connected
-      await expect(page.getByRole('heading', { name: channels.empty.title })).toBeVisible()
+      // The list is drawn (the store may hold other connections, so it is the list or the empty notice) and the
+      // Page is not in it: nothing was connected
+      await expect(
+        page
+          .getByRole('list', { name: channels.listLabel })
+          .or(page.getByRole('heading', { name: channels.empty.title }))
+      ).toBeVisible()
       await expect(page.getByRole('heading', { name: FAKE_PAGE_NAME })).toHaveCount(0)
 
       // 4. The person says no in the dialog of Facebook: a plain message, and the address stays clean
