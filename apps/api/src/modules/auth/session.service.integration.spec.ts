@@ -1,6 +1,6 @@
 import { JwtService } from '@nestjs/jwt'
 
-import { SessionRevokedReasons } from '@platform/core/auth'
+import { REFRESH_REUSE_GRACE_SECONDS, SessionRevokedReasons } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import { PlatformException } from '@platform/core/errors'
 
@@ -18,6 +18,18 @@ async function codeOf(promise: Promise<unknown>): Promise<string | undefined> {
 describe('SessionService', () => {
   let test: AuthTestApp
   let jwt: JwtService
+
+  // Makes a token that was just used look as if it was used `seconds` ago
+  async function usedAgo(token: string, seconds: number): Promise<void> {
+    await test.asOwner(client =>
+      client.query(
+        `UPDATE sessions SET consumed_at = now() AT TIME ZONE 'UTC' - make_interval(secs => $2)
+         WHERE refresh_token_hash = $1`,
+        [hashToken(token), seconds]
+      )
+    )
+  }
+  const pastGrace = REFRESH_REUSE_GRACE_SECONDS + 5
 
   beforeAll(async () => {
     test = await startAuthTestApp()
@@ -131,6 +143,7 @@ describe('SessionService', () => {
       const user = await test.createUser()
       const first = await test.sessions.issue(user)
       const second = await test.sessions.refresh(first.refreshToken)
+      await usedAgo(first.refreshToken, pastGrace)
 
       expect(await codeOf(test.sessions.refresh(first.refreshToken))).toBe(
         'AUTH_REFRESH_TOKEN_REUSED'
@@ -155,34 +168,225 @@ describe('SessionService', () => {
       const phone = await test.sessions.issue(user)
       const laptop = await test.sessions.issue(user)
       await test.sessions.refresh(laptop.refreshToken)
+      await usedAgo(laptop.refreshToken, pastGrace)
 
       await codeOf(test.sessions.refresh(laptop.refreshToken)) // The laptop token is replayed
 
       await expect(test.sessions.refresh(phone.refreshToken)).resolves.toBeDefined()
     })
 
-    it('lets only one of two requests with the same token through, and revokes the login', async () => {
-      const user = await test.createUser()
-      const issued = await test.sessions.issue(user)
+    describe('grace window', () => {
+      const rowsOf = (userId: string) =>
+        test.asOwner(client =>
+          client.query<{
+            revoked_at: Date | null
+            consumed_at: Date | null
+            grace_used_at: Date | null
+          }>('SELECT revoked_at, consumed_at, grace_used_at FROM sessions WHERE user_id = $1', [
+            userId
+          ])
+        )
 
-      const results = await Promise.allSettled([
-        test.sessions.refresh(issued.refreshToken),
-        test.sessions.refresh(issued.refreshToken)
-      ])
+      it('lets two simultaneous requests with the same token both through and keeps the login', async () => {
+        const user = await test.createUser()
+        const issued = await test.sessions.issue(user)
 
-      const winners = results.flatMap(result =>
-        result.status === 'fulfilled' ? [result.value] : []
-      )
-      const losers = results.flatMap(result =>
-        result.status === 'rejected' ? [result.reason as unknown] : []
-      )
-      expect(winners).toHaveLength(1)
-      expect(losers).toHaveLength(1)
-      expect(losers[0]).toMatchObject({ code: 'AUTH_REFRESH_TOKEN_REUSED', statusCode: 401 })
-      // The login was revoked: not even the winner's new token works
-      expect(await codeOf(test.sessions.refresh(winners[0]?.refreshToken ?? ''))).toBe(
-        'AUTH_TOKEN_INVALID'
-      )
+        const results = await Promise.allSettled([
+          test.sessions.refresh(issued.refreshToken),
+          test.sessions.refresh(issued.refreshToken)
+        ])
+
+        const pairs = results.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []))
+        expect(pairs).toHaveLength(2)
+        expect(pairs[0]?.refreshToken).not.toBe(pairs[1]?.refreshToken)
+        const rows = await rowsOf(user.id)
+        expect(rows.rows.every(row => row.revoked_at === null)).toBe(true)
+        // Either pair keeps working
+        await expect(test.sessions.refresh(pairs[0]?.refreshToken ?? '')).resolves.toBeDefined()
+        await expect(test.sessions.refresh(pairs[1]?.refreshToken ?? '')).resolves.toBeDefined()
+      })
+
+      it('lets a used token come back once inside the window, as after a lost answer', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken) // The answer never reached the browser
+        await usedAgo(first.refreshToken, REFRESH_REUSE_GRACE_SECONDS - 5)
+
+        const again = await test.sessions.refresh(first.refreshToken)
+
+        const claims = jwt.decode<{ sid: string }>(again.accessToken)
+        expect(claims.sid).toBe(jwt.decode<{ sid: string }>(first.accessToken).sid)
+        const rows = await rowsOf(user.id)
+        expect(rows.rowCount).toBe(3)
+        expect(rows.rows.filter(row => row.grace_used_at !== null)).toHaveLength(1)
+        expect(rows.rows.every(row => row.revoked_at === null)).toBe(true)
+      })
+
+      it('writes an audit entry and no secret when it grants the grace', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken)
+
+        await test.sessions.refresh(first.refreshToken, { ipAddress: '203.0.113.7' })
+
+        // The entry is written in the background: wait for it
+        const query = () =>
+          test.asOwner(client =>
+            client.query<{ metadata: unknown; ip_address: string | null }>(
+              `SELECT metadata, ip_address FROM audit_logs WHERE action = 'user.session_refresh_grace' AND user_id = $1`,
+              [user.id]
+            )
+          )
+        let rows = await query()
+        for (let i = 0; i < 50 && rows.rowCount === 0; i += 1) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          rows = await query()
+        }
+        expect(rows.rowCount).toBe(1)
+        expect(rows.rows[0]?.ip_address).toBe('203.0.113.7')
+        expect(JSON.stringify(rows.rows)).not.toContain(first.refreshToken)
+      })
+
+      it('revokes the login when the token comes back after the window', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        const second = await test.sessions.refresh(first.refreshToken)
+        await usedAgo(first.refreshToken, pastGrace)
+
+        expect(await codeOf(test.sessions.refresh(first.refreshToken))).toBe(
+          'AUTH_REFRESH_TOKEN_REUSED'
+        )
+
+        expect(await codeOf(test.sessions.refresh(second.refreshToken))).toBe('AUTH_TOKEN_INVALID')
+        const rows = await rowsOf(user.id)
+        expect(rows.rows.every(row => row.revoked_at !== null)).toBe(true)
+      })
+
+      it('gives the grace only once per token: the second time is a reuse', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken)
+        const graced = await test.sessions.refresh(first.refreshToken)
+
+        expect(await codeOf(test.sessions.refresh(first.refreshToken))).toBe(
+          'AUTH_REFRESH_TOKEN_REUSED'
+        )
+
+        expect(await codeOf(test.sessions.refresh(graced.refreshToken))).toBe('AUTH_TOKEN_INVALID')
+      })
+
+      it('shows one login, not two, in the list of sessions after a grace', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken)
+        await test.sessions.refresh(first.refreshToken) // The grace: two live tokens in the family
+
+        const live = await test.sessions.listActive(user.id, '')
+
+        expect(live).toHaveLength(1)
+      })
+
+      it('revokes the login at the third request with the same token: a known limit', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+
+        const results = await Promise.allSettled([
+          test.sessions.refresh(first.refreshToken),
+          test.sessions.refresh(first.refreshToken),
+          test.sessions.refresh(first.refreshToken)
+        ])
+
+        // One rotates, one takes the grace, the third is a reuse. The web serializes the refreshes
+        // (Web Lock), so three at once is not a case the browser produces.
+        expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(2)
+        const rows = await rowsOf(user.id)
+        expect(rows.rows.every(row => row.revoked_at !== null)).toBe(true)
+      })
+
+      it('does not give the grace twice to two simultaneous requests on a used token', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken)
+
+        const results = await Promise.allSettled([
+          test.sessions.refresh(first.refreshToken),
+          test.sessions.refresh(first.refreshToken)
+        ])
+
+        expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1)
+        const rejected = results.find(r => r.status === 'rejected')
+        expect((rejected as PromiseRejectedResult).reason).toMatchObject({
+          code: 'AUTH_REFRESH_TOKEN_REUSED'
+        })
+      })
+
+      it('revokes the login when the successor was already used, even inside the window', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        const second = await test.sessions.refresh(first.refreshToken)
+        await test.sessions.refresh(second.refreshToken) // The login moved on
+
+        expect(await codeOf(test.sessions.refresh(first.refreshToken))).toBe(
+          'AUTH_REFRESH_TOKEN_REUSED'
+        )
+
+        const rows = await rowsOf(user.id)
+        expect(rows.rows.every(row => row.revoked_at !== null)).toBe(true)
+      })
+
+      it('does not bring back a login that was ended, inside the window', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        const second = await test.sessions.refresh(first.refreshToken)
+        const family = jwt.decode<{ sid: string }>(second.accessToken).sid
+        await test.sessions.logout(user.id, family)
+
+        expect(await codeOf(test.sessions.refresh(first.refreshToken))).toBe('AUTH_TOKEN_INVALID')
+        expect(await codeOf(test.sessions.refresh(second.refreshToken))).toBe('AUTH_TOKEN_INVALID')
+      })
+
+      it('does not give the grace past the end of the login', async () => {
+        const user = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken)
+        await test.asOwner(client =>
+          client.query(
+            `UPDATE sessions SET family_expires_at = now() - interval '1 minute' WHERE user_id = $1`,
+            [user.id]
+          )
+        )
+
+        expect(await codeOf(test.sessions.refresh(first.refreshToken))).toBe(
+          'AUTH_REFRESH_TOKEN_REUSED'
+        )
+      })
+
+      it('leaves the other logins of the user and the logins of others alone', async () => {
+        const user = await test.createUser()
+        const stranger = await test.createUser()
+        const phone = await test.sessions.issue(user)
+        const strangerLogin = await test.sessions.issue(stranger)
+        const laptop = await test.sessions.issue(user)
+        await test.sessions.refresh(laptop.refreshToken)
+        await usedAgo(laptop.refreshToken, pastGrace)
+
+        await codeOf(test.sessions.refresh(laptop.refreshToken)) // A reuse past the window
+
+        await expect(test.sessions.refresh(phone.refreshToken)).resolves.toBeDefined()
+        await expect(test.sessions.refresh(strangerLogin.refreshToken)).resolves.toBeDefined()
+      })
+
+      it('gives the pair of the grace to the owner of the token, not to anyone else', async () => {
+        const user = await test.createUser()
+        const stranger = await test.createUser()
+        const first = await test.sessions.issue(user)
+        await test.sessions.refresh(first.refreshToken)
+        await test.sessions.issue(stranger)
+
+        const again = await test.sessions.refresh(first.refreshToken)
+
+        expect(jwt.decode<{ sub: string }>(again.accessToken).sub).toBe(user.id)
+      })
     })
 
     it('still treats a used token as a leak once it has expired, and revokes the login', async () => {

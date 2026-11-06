@@ -2479,7 +2479,20 @@ Tokens:
 Rotation: using a refresh token marks it consumedAt, creates the next Session row in the same
 familyId with replacedById linking them, and returns a new pair.
 Reuse detection: presenting a token whose consumedAt is set revokes EVERY row in the family
-(revokedReason = 'reuse_detected') and returns AUTH_REFRESH_TOKEN_REUSED.
+(revokedReason = 'reuse_detected') and returns AUTH_REFRESH_TOKEN_REUSED, except for the grace below.
+Grace (owner, 2026-11-07): a consumed token is accepted ONE more time when ALL hold: it was consumed
+at most REFRESH_REUSE_GRACE_SECONDS (10) ago, graceUsedAt is null, the family is not revoked, no
+expiry has passed, and the token that replaced it (replacedById) is neither consumed nor revoked.
+The grace issues a new pair in the same family and sets graceUsedAt (a conditional update, so two
+simultaneous requests cannot both take it). Anything else is a reuse as above. It exists because a
+page that is unloaded (a reload) with POST /auth/refresh in flight loses the answer: the api already
+rotated and the browser still holds the consumed token. Two simultaneous requests with the same
+token are the same case. What it costs: for those 10 seconds a copy of the consumed token is worth
+what the original is, ONCE, and only while the person has not yet used the newer token; the thief
+gets no more than the person (the same family, the same cap in familyExpiresAt, revocable like any
+session) and the person's next use after the window of either branch still works. Both branches stay
+valid, each rotating on its own, until the family ends. The grace is logged (info) and audited
+(user.session_refresh_grace, never the token). Not applied to magic links or invitations.
 Logout: revokes the family. Password reset: revokes all families of the user.
 
 Verification tokens (email verification 24h, password reset 1h, DSR 7d) are

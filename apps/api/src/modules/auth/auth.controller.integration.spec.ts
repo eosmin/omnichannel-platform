@@ -1,7 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto'
 
 import { ApiRoutes, API_PREFIX } from '@platform/core/api'
-import { MagicLinkThrottle, Permissions } from '@platform/core/auth'
+import { MagicLinkThrottle, Permissions, REFRESH_REUSE_GRACE_SECONDS } from '@platform/core/auth'
+import { hashToken } from '@platform/core/crypto'
 
 import { type AuthTestApp, startAuthTestApp } from '../../testing/auth-test-app'
 
@@ -300,6 +301,24 @@ describe('AuthController', () => {
   })
 
   describe('refresh', () => {
+    it('answers a used token that comes back at once with the next pair, and only once', async () => {
+      const { refreshToken } = await login()
+      const rotated = await call<{ refreshToken: string }>('POST', ApiRoutes.auth.refresh, {
+        body: { refreshToken }
+      })
+
+      // The answer of the first call never reached the browser: it asks again with the same token
+      const again = await call<{ refreshToken: string }>('POST', ApiRoutes.auth.refresh, {
+        body: { refreshToken }
+      })
+      expect(again.status).toBe(200)
+      expect(again.body.refreshToken).not.toBe(rotated.body.refreshToken)
+
+      const third = await call('POST', ApiRoutes.auth.refresh, { body: { refreshToken } })
+      expect(third.status).toBe(401)
+      expect(errorCode(third)).toBe('AUTH_REFRESH_TOKEN_REUSED')
+    })
+
     it('rotates the token, and the old one then revokes the login', async () => {
       const { refreshToken, accessToken } = await login()
 
@@ -308,6 +327,14 @@ describe('AuthController', () => {
       })
       expect(rotated.status).toBe(200)
       expect(rotated.body.refreshToken).not.toBe(refreshToken)
+      // Past the grace window, so that the token coming back is a leak
+      await test.asOwner(client =>
+        client.query(
+          `UPDATE sessions SET consumed_at = now() AT TIME ZONE 'UTC' - make_interval(secs => $2)
+           WHERE refresh_token_hash = $1`,
+          [hashToken(refreshToken), REFRESH_REUSE_GRACE_SECONDS + 5]
+        )
+      )
 
       const replay = await call('POST', ApiRoutes.auth.refresh, { body: { refreshToken } })
       expect(replay.status).toBe(401)
