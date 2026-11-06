@@ -263,6 +263,37 @@ test.describe.serial('the inbox list', () => {
     await expect(restored).not.toBeFocused()
   })
 
+  test('opening a conversation does not make the page scroll: the thread has its own scroll (W2)', async () => {
+    const conversationId = await newConversationIn(storeId)
+    try {
+      for (const width of [1280, 485]) {
+        await page.setViewportSize({ width, height: 800 })
+        await page.goto(AppPaths.store.conversation(storeId, conversationId))
+        await expect(
+          page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+        ).toBeVisible()
+        const page_ = await page.evaluate(() => {
+          const root = document.scrollingElement ?? document.documentElement
+          return {
+            scrollHeight: root.scrollHeight,
+            clientHeight: root.clientHeight,
+            scrollTop: root.scrollTop
+          }
+        })
+        // The page is as tall as the window and stays at the top: no gap under the thread, no header lost
+        expect(page_.scrollHeight, `at ${width} px`).toBe(page_.clientHeight)
+        expect(page_.scrollTop, `at ${width} px`).toBe(0)
+        // And nothing is cut off: the top bar and the box to write in are inside the window
+        await expect(page.getByRole('banner')).toBeInViewport()
+        await expect(
+          page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+        ).toBeInViewport({ ratio: 1 })
+      }
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 720 })
+    }
+  })
+
   test('a dialog opens right after Escape closed one, and the browser Back closes it', async () => {
     const conversationId = await newConversationIn(storeId)
     await page.goto(AppPaths.store.conversation(storeId, conversationId))

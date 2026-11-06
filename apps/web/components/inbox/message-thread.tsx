@@ -210,11 +210,23 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
     return () => observer.disconnect()
   }, [scroller, content, wasAtEnd])
 
-  const jumpTo = useCallback((messageId: string): void => {
-    const target = document.getElementById(messageDomId(messageId))
-    target?.scrollIntoView({ block: 'center' })
-    target?.focus({ preventScroll: true })
-  }, [])
+  const jumpTo = useCallback(
+    (messageId: string): void => {
+      const target = document.getElementById(messageDomId(messageId))
+      if (target === null) return
+      // The thread is moved, and only the thread: `scrollIntoView` moves every scrollable ancestor,
+      // the page included, which left the header out of sight and a white gap under the thread
+      if (scroller !== null) {
+        const box = scroller.getBoundingClientRect()
+        const at = target.getBoundingClientRect()
+        // Centred, or by its top when it is taller than the thread (its beginning is what is looked for)
+        const offset = Math.max(0, (box.height - at.height) / 2)
+        scroller.scrollTo({ top: scroller.scrollTop + at.top - box.top - offset })
+      }
+      target.focus({ preventScroll: true })
+    },
+    [scroller]
+  )
 
   // The header says why a conversation cannot be read; the thread waits for it
   if (conversation.data === undefined) return null
