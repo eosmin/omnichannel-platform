@@ -1,3 +1,5 @@
+import { type ChannelMediaCapabilities } from '@platform/core/channel-media'
+
 import type { ChannelCapabilityType } from './channel-capability'
 import type { ChannelOAuth } from './channel-oauth'
 import type {
@@ -52,6 +54,12 @@ export interface ChannelPlugin {
   // it (it is code, not a manifest); the core runs the flow and the plugin answers about its provider.
   // Absent for a channel that has no such login.
   readonly oauth?: ChannelOAuth
+  // The files the channel takes: the types and the largest size of each kind, and how many go in a message.
+  // Required exactly for the kinds of file the channel declares as a capability (`IMAGE`, `VIDEO`, `AUDIO`,
+  // `DOCUMENT`), and absent for a channel with none; the registry checks both ways. The plugin refuses a file the channel
+  // does not take before opening it; the API will refuse it before queueing once it reads the declaration (the
+  // PR of several files per message).
+  readonly media?: ChannelMediaCapabilities
 
   // Credentials are supplied by the core, encrypted at rest by the core
   connect(input: ConnectInput): Promise<ConnectResult>
