@@ -52,3 +52,10 @@ export const updateStoreSchema = z
 export type UpdateOrganizationBody = z.output<typeof updateOrganizationSchema>
 export type CreateStoreBody = z.output<typeof createStoreSchema>
 export type UpdateStoreBody = z.output<typeof updateStoreSchema>
+
+// What a person typed to confirm: the name of the store, as the screen asks for it. The api asks for it
+// too, because the screen is not the only thing that can send a delete (ORG-03).
+export const deleteStoreSchema = z.strictObject({
+  confirmation: z.string().max(OrganizationLimits.NAME_MAX_LENGTH * 2)
+})
+export type DeleteStoreBody = z.output<typeof deleteStoreSchema>

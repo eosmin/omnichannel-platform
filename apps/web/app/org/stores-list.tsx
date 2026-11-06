@@ -110,7 +110,8 @@ function StoreRow({
       phrase: store.name,
       onConfirm: async () => {
         try {
-          await remove.mutateAsync(store.id)
+          // The dialog already made the person type the name; the api asks for it too (ORG-03)
+          await remove.mutateAsync({ id: store.id, confirmation: store.name })
           forgetLastStoreId(store.id)
           toast.success(t('delete.done', { name: store.name }))
         } catch (error) {

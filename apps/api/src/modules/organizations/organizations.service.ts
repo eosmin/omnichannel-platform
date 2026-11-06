@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -10,7 +10,7 @@ import {
   type PrismaTransaction,
   slugify
 } from '@platform/core/database'
-import { MembershipStatus } from '@platform/core/domain'
+import { MembershipStatus, phraseMatches } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -23,6 +23,7 @@ import { type Actor, isPermission, missingPermissions, TenantContextService } fr
 import type {
   CreateStoreBody,
   UpdateOrganizationBody,
+  DeleteStoreBody,
   UpdateStoreBody
 } from './organizations.schemas'
 
@@ -82,6 +83,8 @@ const managedBy = (userId: string) => ({
 // caller names: a store of another organization is a store that does not exist.
 @Injectable()
 export class OrganizationsService {
+  private readonly logger = new Logger(OrganizationsService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -218,7 +221,7 @@ export class OrganizationsService {
     })
     if (count === 0) throw resourceNotFound('store')
     // The name of the store is part of what the guards cache
-    await this.tenants.invalidateStore(storeId)
+    await this.forgetStore(storeId)
     this.logStore(AuditAction.STORE_UPDATED, organizationId, storeId, actor, {
       fields: Object.keys(changes)
     })
@@ -228,13 +231,26 @@ export class OrganizationsService {
   // The last store of an organization stays: with none, nobody could sign in to it. A store that
   // holds data (conversations, customers, orders, whatever a later step adds) is not deleted: that
   // is the owner's decision to take with the data in hand, not a click.
-  async deleteStore(organizationId: string, storeId: string, actor: Actor): Promise<void> {
+  async deleteStore(
+    organizationId: string,
+    storeId: string,
+    body: DeleteStoreBody,
+    actor: Actor
+  ): Promise<void> {
     await this.prisma.transaction(async tx => {
       const target = await tx.store.findFirst({
         where: { id: storeId, organizationId, ...managedBy(actor.userId) },
-        select: { id: true }
+        select: { id: true, name: true }
       })
       if (target === null) throw resourceNotFound('store')
+      // The phrase of the screen, asked of whoever sends the delete (ORG-03)
+      if (!phraseMatches(body.confirmation, target.name)) {
+        throw new PlatformException(
+          ErrorCodes.VALIDATION_FAILED,
+          'the confirmation does not match the name of the store',
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
       // Two deletes at once would each see the other store still there: the organization is locked
       // while its stores are counted
       await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${organizationId} FOR UPDATE`
@@ -259,8 +275,21 @@ export class OrganizationsService {
       }
       await tx.store.deleteMany({ where: { id: storeId, organizationId } })
     })
-    await this.tenants.invalidateStore(storeId)
+    await this.forgetStore(storeId)
     this.logStore(AuditAction.STORE_DELETED, organizationId, storeId, actor, {})
+  }
+
+  // The change is already written: a cache that cannot be reached must not turn it into a 500 (the
+  // entry has its own expiry). The failure is logged and the answer stays the truth.
+  private async forgetStore(storeId: string): Promise<void> {
+    try {
+      await this.tenants.invalidateStore(storeId)
+    } catch (error) {
+      this.logger.warn(
+        { storeId, err: String(error) },
+        'the cache of a store could not be dropped; it expires on its own'
+      )
+    }
   }
 
   private logStore(

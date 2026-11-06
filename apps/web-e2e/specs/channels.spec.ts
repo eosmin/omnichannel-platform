@@ -359,7 +359,7 @@ test.describe('Settings → Channels and Plugins', () => {
       await confirm.getByRole('button', { name: en.org.delete.confirm }).click()
       await expect(page.getByText(name, { exact: true })).toHaveCount(0)
     } finally {
-      if (storeId !== undefined) await deleteStoreIfThere(token, storeId)
+      if (storeId !== undefined) await deleteStoreIfThere(token, storeId, name)
     }
   })
 })

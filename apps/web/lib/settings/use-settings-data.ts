@@ -166,12 +166,15 @@ export function useUpdateStore(
   })
 }
 
-export function useDeleteStore(storeId: string): UseMutationResult<void, Error, string> {
+export function useDeleteStore(
+  storeId: string
+): UseMutationResult<void, Error, { id: string; confirmation: string }> {
   const queryClient = useQueryClient()
   const refresh = useRefreshStores(storeId)
   return useMutation({
-    mutationFn: (id: string) => deleteOrganizationStore(apiClient, storeId, id),
-    onSuccess: async (_, id) => {
+    mutationFn: ({ id, confirmation }) =>
+      deleteOrganizationStore(apiClient, storeId, id, confirmation),
+    onSuccess: async (_, { id }) => {
       if (id !== storeId) {
         refresh()
         return

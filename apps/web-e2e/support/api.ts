@@ -178,11 +178,17 @@ export async function uninstallChannel(
 // Deletes a store that holds nothing, through the same route as the organization page. The request
 // goes through the first store of the person, as the page does; a store that is already gone is
 // not an error, so a spec can call it from a `finally` after the page deleted the store itself.
-export async function deleteStoreIfThere(token: string, storeId: string): Promise<void> {
+// The api asks for the name of the store, as the page does (ORG-03).
+export async function deleteStoreIfThere(
+  token: string,
+  storeId: string,
+  name: string
+): Promise<void> {
   const through = (await profileOf(token)).memberships[0]
   if (through === undefined) throw new Error('the person belongs to no store')
   await call(ApiRoutes.organizations.storeById(storeId), {
     method: 'DELETE',
+    body: JSON.stringify({ confirmation: name }),
     headers: storeHeaders(token, through.storeId)
   }).catch((error: unknown) => {
     if (!(error instanceof Error) || !error.message.endsWith(`${HttpStatusCodes.NOT_FOUND}`)) {
