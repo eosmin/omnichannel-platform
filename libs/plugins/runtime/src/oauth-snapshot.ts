@@ -15,7 +15,13 @@ const KINDS: readonly unknown[] = Object.values(ChannelOAuthKinds)
 const SCOPES_BY_KIND: Readonly<Record<string, readonly string[]>> = {
   [ChannelOAuthKinds.META_FACEBOOK_LOGIN]: Object.values(MetaOAuthScopes)
 }
-const FUNCTIONS = ['grantedScopes', 'listAssets', 'credentialsFor'] as const
+const FUNCTIONS = [
+  'authorizationUrl',
+  'exchangeCode',
+  'grantedScopes',
+  'listAssets',
+  'credentialsFor'
+] as const
 
 // What the core keeps of a plugin's login: a copy of the DECLARATION taken once, when the plugin passed its
 // contract. The scopes are frozen and the functions are the ones seen then, so a plugin that swaps them or
@@ -24,7 +30,13 @@ const FUNCTIONS = ['grantedScopes', 'listAssets', 'credentialsFor'] as const
 // plugin is code the owner reviews, not a sandbox.
 export type ChannelOAuthSnapshot = Pick<
   ChannelOAuth,
-  'kind' | 'scopes' | 'grantedScopes' | 'listAssets' | 'credentialsFor'
+  | 'kind'
+  | 'scopes'
+  | 'authorizationUrl'
+  | 'exchangeCode'
+  | 'grantedScopes'
+  | 'listAssets'
+  | 'credentialsFor'
 >
 
 // A plugin with no login is the normal case (null). One that declares a login badly is refused at boot, like
@@ -65,6 +77,8 @@ export function snapshotChannelOAuth(
   return Object.freeze({
     kind: kind as ChannelOAuth['kind'],
     scopes: Object.freeze([...(scopes as string[])]),
+    authorizationUrl: functions.authorizationUrl as ChannelOAuth['authorizationUrl'],
+    exchangeCode: functions.exchangeCode as ChannelOAuth['exchangeCode'],
     grantedScopes: functions.grantedScopes as ChannelOAuth['grantedScopes'],
     listAssets: functions.listAssets as ChannelOAuth['listAssets'],
     credentialsFor: functions.credentialsFor as ChannelOAuth['credentialsFor']

@@ -3,7 +3,9 @@
 // `ChannelPlugin.oauth` in the SDK).
 
 // How the credentials of a connection were obtained, kept in `ChannelConnection.metadata.authMethod` so
-// that support knows which connections are worth moving to the login and nothing else reads it
+// that support knows which connections are worth moving to the login and nothing else reads it. Only the
+// login writes it (`facebook_login`); a connection with none was made with what the person pasted or typed,
+// which is `manual_token` for whoever reads it
 export const ChannelAuthMethods = {
   MANUAL_TOKEN: 'manual_token',
   FACEBOOK_LOGIN: 'facebook_login'
@@ -34,17 +36,36 @@ export const ChannelOAuthLimits = {
   SESSION_TTL_SECONDS: 15 * 60,
   // The callback is public (the browser comes back from Facebook without our headers), so it is limited
   // per client address like the webhooks are
-  CALLBACK_LIMIT_PER_MINUTE: 20
+  CALLBACK_LIMIT_PER_MINUTE: 20,
+  CALLBACK_WINDOW_MS: 60_000,
+  // The routes that call the provider for a person (listing the Pages, finishing) share the app's own limits
+  // with every store, so each person gets a few a minute
+  SESSION_LIMIT_PER_MINUTE: 30,
+  // The provider calls of the login take longer than one: the exchange is two calls in a row (the code for a
+  // short token, that one for a long-lived token) and the list asks about every portfolio of the person
+  EXCHANGE_TIMEOUT_MS: 35_000,
+  LIST_TIMEOUT_MS: 30_000
 } as const
 
-// The names the provider puts in the query of the address it sends the browser back to, and the one
+// What the provider may put in `error` when it sends the browser back without a code (RFC 6749 section 4.1.2.1).
+// Only `access_denied` is the person saying no; the others are the provider or the app failing.
+export const OAuthProviderErrors = {
+  ACCESS_DENIED: 'access_denied',
+  SERVER_ERROR: 'server_error',
+  TEMPORARILY_UNAVAILABLE: 'temporarily_unavailable'
+} as const
+
+// The names the provider puts in the query of the address it sends the browser back to, and the ones
 // we put on our own redirect to the web app. Constants, because the callback reads them from the outside.
 export const ChannelOAuthQuery = {
   CODE: 'code',
   STATE: 'state',
+  REDIRECT_URI: 'redirect_uri',
   ERROR: 'error',
   // The web app receives only this: the opaque id of the session, never a token or a code
-  SESSION: 'oauth'
+  SESSION: 'oauth',
+  // Or this, when the login did not end in a session: a reason of the closed list, never what Meta said
+  FAILURE: 'oauth_error'
 } as const
 
 // Meta's login: classic Facebook Login with `response_type=code`, so the token never passes through the
@@ -70,8 +91,20 @@ export const MetaOAuth = {
   EDGE_BUSINESSES: 'me/businesses',
   EDGE_OWNED_PAGES: 'owned_pages',
   BUSINESS_FIELDS: 'id,name',
+  // What the list shows of a Page: never its token, which is read once, for the Page that was chosen. The
+  // linked Instagram account is asked only by the channel that needs it (it needs `instagram_basic`).
+  PAGE_FIELDS: 'id,name',
+  PAGE_FIELDS_WITH_INSTAGRAM: 'id,name,instagram_business_account{id,username}',
   // `access_token` is the token OF THE PAGE, the credential a connection keeps
-  PAGE_FIELDS: 'id,name,access_token,instagram_business_account{id,username}',
+  PAGE_TOKEN_FIELDS: 'id,access_token',
+  PAGE_TOKEN_FIELDS_WITH_INSTAGRAM: 'id,access_token,instagram_business_account{id}',
+  // A page of a list, and how many portfolios are asked about: no person has near this many, and a larger
+  // number would be a call for every one of them
+  LIST_LIMIT: '100',
+  MAX_BUSINESSES: 25,
+  ASSET_NAME_MAX_LENGTH: 200,
+  // The portfolios asked about at the same time, so that a person with many does not cost a call after another
+  OWNED_PAGES_CONCURRENCY: 5,
   // The id of a Page or a portfolio, as the Graph writes it
   ASSET_ID_PATTERN: /^\d{1,32}$/,
   // A permission name: lowercase words (digits allowed) joined by single underscores, 64 characters at most;

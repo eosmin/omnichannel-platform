@@ -8,12 +8,18 @@ import {
   MetaGraph,
   type MetaGraphOrigin,
   MetaLimits,
+  MetaOAuth,
   MetaUpload,
   MetaWebhook,
   type MetaWebhookApp,
   MetaWebhookApps
 } from '@platform/core/domain'
-import { ErrorCodes, PluginChecks } from '@platform/core/errors'
+import {
+  ChannelConnectFailureReasons,
+  ErrorCodes,
+  HttpStatusCodes,
+  PluginChecks
+} from '@platform/core/errors'
 import { type FetchedMedia, PluginError } from '@platform/plugins/sdk'
 
 import { graphFailure, graphFileFailure, graphUnexpected, graphUnreachable } from './graph-failure'
@@ -35,6 +41,13 @@ const HEADER_TOKEN = /^[\x21-\x7E]+$/
 const MIME_TYPE = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/
 // A form field name: letters, digits, underscore
 const FIELD_NAME = /^[A-Za-z0-9_]+$/
+
+// The statuses that split a refusal of the caller from a failure of Meta
+const HTTP_CLIENT_ERROR_MIN = 400
+const HTTP_SERVER_ERROR_MIN = 500
+const HTTP_TOO_MANY_REQUESTS = HttpStatusCodes.TOO_MANY_REQUESTS
+
+const tokenAnswerSchema = z.object({ access_token: z.string().min(1).max(4096) })
 
 const mediaInfoSchema = z.object({
   url: z.url(),
@@ -105,8 +118,71 @@ export class MetaGraphClient {
     return this.call('GET', request)
   }
 
+  // The address of the login dialog of the app, for a `state` and a callback the core chose
+  loginDialogUrl(params: { state: string; redirectUri: string; scope: string }): string {
+    const { appId, graphVersion } = this.config
+    if (appId === undefined) throw graphUnexpected()
+    const query = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: params.redirectUri,
+      state: params.state,
+      scope: params.scope,
+      response_type: MetaOAuth.RESPONSE_TYPE
+    })
+    return `${MetaOAuth.DIALOG_ORIGIN}/${graphVersion}/${MetaOAuth.DIALOG_PATH}?${query.toString()}`
+  }
+
   async post<T>(request: GraphRequest<T>): Promise<T> {
     return this.call('POST', request)
+  }
+
+  // The token endpoint of the login: the code of the dialog for the token of the person, and that one for a
+  // token of about 60 days (`grant_type=fb_exchange_token`). It has no token to send, it proves the app with
+  // its secret. The secret travels in the body of a POST, never in the address, which a proxy or a log may
+  // keep. A code is good once, so a call that may have reached Meta is never repeated, and what Meta
+  // answers is read for `access_token` alone: the rest, and the text of a refusal, are dropped.
+  async exchangeToken(grant: Record<string, string>): Promise<string> {
+    const { appId, appSecret } = this.config
+    if (appId === undefined || appSecret === undefined) throw graphUnexpected()
+    const response = await this.fetchOrFail(
+      this.urlFor(MetaGraph.ORIGIN, MetaOAuth.TOKEN_EDGE.split('/'), undefined),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          ...grant,
+          client_id: appId,
+          client_secret: appSecret
+        }).toString(),
+        redirect: 'manual',
+        signal: AbortSignal.timeout(MetaLimits.REQUEST_TIMEOUT_MS)
+      },
+      false
+    )
+    const body = await readJson(response)
+    if (!response.ok) {
+      const failure = graphFailure(response.status, body, { safeToRepeat: false })
+      // A refusal of this endpoint (a code that was used, an app id or a secret that is wrong) never changes by
+      // trying again: Meta words some of them with the codes it uses for its own outages, and the person must
+      // not be told to wait for what is a setting
+      const refused =
+        response.status >= HTTP_CLIENT_ERROR_MIN &&
+        response.status < HTTP_SERVER_ERROR_MIN &&
+        response.status !== HTTP_TOO_MANY_REQUESTS
+      if (refused && failure.reason === ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE) {
+        throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+          retryable: false,
+          providerCode: failure.providerCode,
+          providerSubcode: failure.providerSubcode,
+          reason: ChannelConnectFailureReasons.REQUEST_REJECTED
+        })
+      }
+      throw failure
+    }
+    if (body === undefined) throw graphUnreachable({ safeToRepeat: false })
+    const parsed = tokenAnswerSchema.safeParse(body)
+    if (!parsed.success) throw graphUnreachable({ safeToRepeat: false })
+    return parsed.data.access_token
   }
 
   // Uploads one file as multipart/form-data and answers what Meta answers (the id of the media). The

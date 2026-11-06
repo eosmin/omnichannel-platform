@@ -5,9 +5,9 @@ import {
   CONNECTION_ROW_SELECT,
   ChannelContextFactory,
   ChannelHealthService,
+  connectReasonOfError,
   CredentialsUnreadableError,
   errorName,
-  ProviderTimeoutError,
   providerText,
   withTimeout
 } from '@platform/channels/connections'
@@ -21,6 +21,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  type ChannelAuthMethod,
   ChannelConnectionLimits,
   ChannelConnectionListStates,
   ChannelConnectionStatus,
@@ -48,7 +49,6 @@ import {
   ChannelCapability,
   type ChannelCapabilityType,
   type ChannelPlugin,
-  connectFailureReasonOf,
   PluginError,
   pluginFailureLog
 } from '@platform/plugins/sdk'
@@ -345,12 +345,23 @@ export class ChannelConnectionsService {
   // The call to the provider happens before the transaction: it can be slow, and a row lock held
   // across a network call would block the store. A connection that belongs to another store is a
   // conflict, never a takeover; one that its store disconnected is released first (see below).
+  // The plugin must be installed in the store: it is how the login checks it before sending the person to
+  // the provider, and how `connect` checks it before the provider hears of anything
+  async ensureInstalled(storeId: string, pluginId: string): Promise<void> {
+    await this.installationOf(this.prisma.client, storeId, pluginId)
+  }
+
   async connect(
     storeId: string,
     pluginId: string,
     body: ConnectChannelBody,
-    actor: Actor
+    actor: Actor,
+    // How the credentials were obtained, kept in the metadata of the connection when the login says it. A
+    // connection with none was made with what the person pasted or typed (a token, a phone number, the sites
+    // of a widget): there is nothing to say of it.
+    options: { authMethod?: ChannelAuthMethod } = {}
   ): Promise<ChannelConnectionView> {
+    const { authMethod } = options
     if (!this.registry.isVisibleTo(pluginId, storeId)) throw resourceNotFound('channel')
     const plugin = this.registry.get(pluginId)
     // Before the provider hears of it: connecting a plugin the store has not installed is refused
@@ -409,7 +420,8 @@ export class ChannelConnectionsService {
             result.connectionId,
           status: ChannelConnectionStatus.ACTIVE,
           credentials: sealed,
-          metadata: result.metadata,
+          // Last, so that a plugin cannot say how it was connected through the login
+          metadata: authMethod === undefined ? result.metadata : { ...result.metadata, authMethod },
           lastError: null,
           lastHealthyAt: new Date(),
           installationId
@@ -453,7 +465,7 @@ export class ChannelConnectionsService {
       storeId,
       resourceType: 'channel_connection',
       resourceId: connection.id,
-      metadata: { pluginId },
+      metadata: authMethod === undefined ? { pluginId } : { pluginId, authMethod },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -474,11 +486,7 @@ export class ChannelConnectionsService {
     // name of a closed list (never the provider's words, a value or an id) that says what to do; the
     // page that knows it shows it.
     // A call that took longer than the time given to it is the provider being slow, not a bad token
-    const reason =
-      connectFailureReasonOf(error) ??
-      (error instanceof ProviderTimeoutError
-        ? ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE
-        : undefined)
+    const reason = connectReasonOfError(error)
     return new PlatformException(
       ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
       'the provider did not accept the connection',

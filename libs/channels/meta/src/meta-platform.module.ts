@@ -17,6 +17,7 @@ import { MetaGraphClient } from './meta-graph.client'
         const { env } = await import('@platform/core/config/env')
         return {
           appSecret: env.META_APP_SECRET,
+          appId: env.META_APP_ID,
           instagramAppSecret: env.META_INSTAGRAM_APP_SECRET,
           verifyToken: env.META_WEBHOOK_VERIFY_TOKEN,
           graphVersion: env.META_GRAPH_API_VERSION,
