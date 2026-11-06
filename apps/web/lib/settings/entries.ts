@@ -1,5 +1,5 @@
 import { AppPaths } from '@platform/api-client'
-import { type Permission, Permissions } from '@platform/core/auth'
+import { type Permission, ClientPermissions } from '@platform/core/auth'
 
 import { type SettingsEntry, visibleEntries } from './store-entries'
 
@@ -15,13 +15,13 @@ export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     id: 'stores',
     labelKey: 'stores',
     href: AppPaths.org.stores,
-    permission: Permissions.ORG_MANAGE_STORES
+    permission: ClientPermissions.ORG_MANAGE_STORES
   },
   {
     id: 'profile',
     labelKey: 'profile',
     href: AppPaths.org.profile,
-    permission: Permissions.SETTINGS_VIEW
+    permission: ClientPermissions.SETTINGS_VIEW
   }
 ]
 

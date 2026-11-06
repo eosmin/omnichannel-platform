@@ -8,7 +8,7 @@ import { type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPaths, type GalleryCountsView, type GalleryItemView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { GalleryTypes, type GalleryType } from '@platform/core/storage'
 
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
@@ -221,7 +221,7 @@ export function MediaGallery({
   const [counts, setCounts] = useState<GalleryCountsView | null>(fresh)
   if (fresh !== null && fresh !== counts) setCounts(fresh)
 
-  const maySeeAll = can(Permissions.MEDIA_DOWNLOAD_ALL)
+  const maySeeAll = can(ClientPermissions.MEDIA_DOWNLOAD_ALL)
   const isEmpty = gallery.data !== undefined && items.length === 0
 
   const requestZip = (): void => {

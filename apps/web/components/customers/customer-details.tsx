@@ -6,7 +6,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
 
 import type { CustomerDetailView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { conversationCount } from '../../lib/customers/conversation-count'
 import { customerDisplayName, initialsOfName, visitorTail } from '../../lib/customers/customer-name'
@@ -99,7 +99,7 @@ function ConversationsStat({ customerId }: { customerId: string }): ReactElement
   const t = useTranslations('customers.profile')
   const tCommon = useTranslations('common')
   const { storeId, can } = useStore()
-  const mayRead = can(Permissions.CONVERSATIONS_VIEW)
+  const mayRead = can(ClientPermissions.CONVERSATIONS_VIEW)
   const conversations = useCustomerConversations(storeId, customerId, mayRead)
   if (!mayRead) return null
   if (conversations.data === undefined) {
@@ -136,8 +136,8 @@ export function CustomerDetails({
   const tEdit = useTranslations('customers.edit')
   const tIdentity = useTranslations('customers.identity')
   const { can } = useStore()
-  const mayEdit = editable && can(Permissions.CUSTOMERS_EDIT)
-  const mayMerge = editable && can(Permissions.CUSTOMERS_MERGE)
+  const mayEdit = editable && can(ClientPermissions.CUSTOMERS_EDIT)
+  const mayMerge = editable && can(ClientPermissions.CUSTOMERS_MERGE)
   const [isEditing, setEditing] = useState(false)
   const [isLinking, setLinking] = useState(false)
   // `absorbedId` is set by "Merge instead", which skips the search for the duplicate

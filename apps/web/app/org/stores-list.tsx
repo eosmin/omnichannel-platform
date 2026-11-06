@@ -7,7 +7,7 @@ import { type FormEvent, type ReactElement, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AppPaths, type StoreView } from '@platform/api-client'
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import { type DestructiveAction, OrganizationLimits } from '@platform/core/domain'
 
 import { MutationError } from '../../components/customers/mutation-error'
@@ -45,10 +45,10 @@ const DELETE_STORE_ACTION: DestructiveAction = 'DELETE_STORE'
 // Everything here needs ORG_MANAGE_STORES; the api checks it on every call.
 export function StoresList(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.ORG_MANAGE_STORES) ? (
+  return can(ClientPermissions.ORG_MANAGE_STORES) ? (
     <Stores />
   ) : (
-    <PermissionDenied permission={Permissions.ORG_MANAGE_STORES} />
+    <PermissionDenied permission={ClientPermissions.ORG_MANAGE_STORES} />
   )
 }
 

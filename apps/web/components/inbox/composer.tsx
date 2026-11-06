@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 import {
   ConversationStatus,
   MessageLimits,
@@ -137,8 +137,8 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const tQuote = useTranslations('inbox.thread.quote.type')
   const fileInput = useRef<HTMLInputElement>(null)
 
-  const mayReply = can(Permissions.MESSAGES_SEND)
-  const mayNote = can(Permissions.MESSAGES_INTERNAL_NOTE)
+  const mayReply = can(ClientPermissions.MESSAGES_SEND)
+  const mayNote = can(ClientPermissions.MESSAGES_INTERNAL_NOTE)
   const [chosenMode, setMode] = useState<Mode>(MessageType.TEXT)
   const [draft, setDraft] = useState('')
   const textarea = useRef<HTMLTextAreaElement>(null)
@@ -228,7 +228,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const pluginId =
     channels.data?.find(channel => channel.id === conversation.data.channelConnectionId)
       ?.pluginId ?? conversation.data.channelType
-  const mayTemplate = can(Permissions.MESSAGES_SEND_TEMPLATE)
+  const mayTemplate = can(ClientPermissions.MESSAGES_SEND_TEMPLATE)
   // Only what the channel takes; empty is a channel that takes no file, which has no paperclip. Until the
   // directory loads the picker offers every allowed type and the check is left to the api.
   const acceptedFiles =
@@ -244,9 +244,9 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     status !== ConversationStatus.RESOLVED && status !== ConversationStatus.SNOOZED
   const commands = [
     SlashCommand.SNIPPET,
-    ...(can(Permissions.CONVERSATIONS_ASSIGN) ? [SlashCommand.ASSIGN] : []),
-    ...(can(Permissions.CONVERSATIONS_SNOOZE) && canChangeState ? [SlashCommand.SNOOZE] : []),
-    ...(can(Permissions.CONVERSATIONS_RESOLVE) && canChangeState && resolveFlow.isReady
+    ...(can(ClientPermissions.CONVERSATIONS_ASSIGN) ? [SlashCommand.ASSIGN] : []),
+    ...(can(ClientPermissions.CONVERSATIONS_SNOOZE) && canChangeState ? [SlashCommand.SNOOZE] : []),
+    ...(can(ClientPermissions.CONVERSATIONS_RESOLVE) && canChangeState && resolveFlow.isReady
       ? [SlashCommand.RESOLVE]
       : [])
   ]

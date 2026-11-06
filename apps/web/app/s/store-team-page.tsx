@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
@@ -21,10 +21,10 @@ type TeamTab = (typeof TeamTabs)[keyof typeof TeamTabs]
 // invitations. The page needs TEAM_VIEW, which is what the api asks for the three lists.
 export function StoreTeamPage(): ReactElement {
   const { can } = useStore()
-  return can(Permissions.TEAM_VIEW) ? (
+  return can(ClientPermissions.TEAM_VIEW) ? (
     <TeamLoader />
   ) : (
-    <PermissionDenied permission={Permissions.TEAM_VIEW} />
+    <PermissionDenied permission={ClientPermissions.TEAM_VIEW} />
   )
 }
 

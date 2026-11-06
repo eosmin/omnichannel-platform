@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { Permissions } from '@platform/core/auth'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { useCustomer } from '../../lib/customers/use-customer-data'
 import { useConversation } from '../../lib/inbox/use-inbox-data'
@@ -21,7 +21,7 @@ export function CustomerPanel({ conversationId }: { conversationId: string }): R
   const { openCustomer } = useCustomerDrawer()
   const conversation = useConversation(storeId, conversationId)
   const customerId = conversation.data?.customer.id ?? null
-  const mayView = can(Permissions.CUSTOMERS_VIEW)
+  const mayView = can(ClientPermissions.CUSTOMERS_VIEW)
   const customer = useCustomer(storeId, mayView ? customerId : null)
   if (!mayView || conversation.data === undefined) return null
 
