@@ -7,7 +7,10 @@ import {
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
+  type MetaMediaKind,
+  type MetaMediaRules,
   MetaMessaging,
+  MetaUpload,
   MetaSubscription,
   type MetaWebhookApp
 } from '@platform/core/domain'
@@ -100,8 +103,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   protected abstract readonly origin: MetaGraphOrigin
   protected abstract readonly webhookObject: string
   protected abstract readonly subscribedFields: string
-  // The key that holds the file of a media message in the Send API
-  protected abstract readonly attachmentKey: string
+  // What the channel takes for each kind of file: the types and the largest size
+  protected abstract readonly mediaRules: MetaMediaRules
   // The `fields` of the User Profile API on this host
   protected abstract readonly userProfileFields: string
 
@@ -305,25 +308,66 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // the echoes has to know it. If the second call fails the file is already with the customer: the answer
   // is the file's, carrying a `CAPTION_STATE`, so that the id of the file is kept (its echo is not stored as
   // the owner's) and the message is not sent again, which would send the file twice.
+  //
+  // The file is uploaded and sent in one call, from the platform's storage: Meta is never given a link,
+  // because the storage is private (and a signed link to it is no business of a provider) and a link in
+  // development points at localhost. `mediaUrl` is never read. The content type is the one the platform
+  // recorded when it checked the file, never the client's, and everything refusable is refused before the
+  // file is opened. The send is not repeated after a failure that may have reached Meta (no idempotency key).
   async sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult> {
-    // Meta fetches the file itself, and only over https; a url with a user or a password would hand
-    // them to Meta. And a kind of file the channel does not declare is refused here, not left to Meta.
-    const kind = attachmentKind(params.contentType)
+    // A host that does not give the file (a build of the core older than this contract) is a refusal
+    // with a name, not a TypeError that the queue would retry
+    if (typeof params.openFile !== 'function') {
+      throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+    }
+    const contentType = bareType(params.contentType)
+    const kind = attachmentKind(contentType)
+    // A kind of file the channel does not declare is refused here, not left to Meta
     if (!this.capabilities.includes(kind.capability)) {
       throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
     }
-    if (!isPlainHttpsUrl(params.mediaUrl)) {
+    const rule = this.mediaRules[kind.type]
+    if (rule.types !== null && !rule.types.includes(contentType)) {
+      throw new PluginError(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED, { retryable: false })
+    }
+    if (!Number.isSafeInteger(params.fileSize) || params.fileSize <= 0) {
       throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
     }
-    const sent = await this.send(ctx, params.channelIdentity, {
-      message: {
-        [this.attachmentKey]: {
-          type: kind.type,
-          payload: { url: params.mediaUrl }
-        }
-      },
+    if (params.fileSize > rule.maxBytes) {
+      throw new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false })
+    }
+    const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
+    // The fields of a form are text: the objects the JSON body would hold go as JSON
+    const fields: Record<string, unknown> = {
+      recipient: { id: params.channelIdentity },
+      ...this.sendFields(),
+      message: { [MetaMessaging.ATTACHMENT_KEY]: { type: kind.type, payload: {} } },
       ...this.replyFields(params.replyToExternalId)
+    }
+    const response = await this.meta.uploadMedia({
+      origin: this.origin,
+      path: [this.sendOwner(ctx), MetaMessaging.EDGE_MESSAGES],
+      token: accessToken,
+      fields: Object.fromEntries(
+        Object.entries(fields)
+          .filter(([, value]) => value !== undefined)
+          .map(([name, value]) => [name, typeof value === 'string' ? value : JSON.stringify(value)])
+      ),
+      // Messenger names a document by the name of the part; the name is the agent's file name with
+      // anything but plain characters replaced, so it can never break the form
+      ...(kind.type === MetaMessaging.ATTACHMENT_FILE && params.filename
+        ? { fileName: plainFileName(params.filename) }
+        : {}),
+      fileField: MetaUpload.SEND_FILE_FIELD,
+      safeToRepeat: false,
+      file: { open: params.openFile, contentType, size: params.fileSize },
+      schema: sentSchema
     })
+    const sent: ChannelMessageResult = {
+      externalId: response.message_id,
+      status: DeliveryStatus.SENT,
+      sentAt: new Date().toISOString()
+    }
     if (!params.caption) return sent
     try {
       const caption = await this.send(ctx, params.channelIdentity, {
@@ -482,9 +526,14 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 }
 
+const MAX_FORM_FILE_NAME = 120
+
 // The kind of file the Send API wants, from its content type, and the capability that allows it;
 // anything else goes as a file
-function attachmentKind(contentType: string): { type: string; capability: ChannelCapabilityType } {
+function attachmentKind(contentType: string): {
+  type: MetaMediaKind
+  capability: ChannelCapabilityType
+} {
   if (contentType.startsWith('image/')) {
     return { type: MetaMessaging.ATTACHMENT_IMAGE, capability: ChannelCapability.IMAGE }
   }
@@ -495,6 +544,22 @@ function attachmentKind(contentType: string): { type: string; capability: Channe
     return { type: MetaMessaging.ATTACHMENT_AUDIO, capability: ChannelCapability.AUDIO }
   }
   return { type: MetaMessaging.ATTACHMENT_FILE, capability: ChannelCapability.DOCUMENT }
+}
+
+// The name of a file as the form carries it: letters, digits and a few marks, at most 120 characters, and
+// the extension kept when the name is cut
+function plainFileName(name: string): string {
+  const plain = name.replace(/[^A-Za-z0-9._ ()-]/g, '_').trim()
+  if (plain === '' || /^[._ ]+$/.test(plain)) return MetaUpload.FILE_NAME
+  if (plain.length <= MAX_FORM_FILE_NAME) return plain
+  const dot = plain.lastIndexOf('.')
+  const extension = dot > 0 && plain.length - dot <= 10 ? plain.slice(dot) : ''
+  return plain.slice(0, MAX_FORM_FILE_NAME - extension.length) + extension
+}
+
+// `image/jpeg; charset=binary` is `image/jpeg`
+function bareType(contentType: string): string {
+  return contentType.split(';')[0]?.trim().toLowerCase() ?? ''
 }
 
 function present(value: string | null | undefined): string | undefined {

@@ -12,6 +12,8 @@ export const MetaWebhook = {
 // The form of a file upload to the Graph API
 export const MetaUpload = {
   FILE_FIELD: 'file',
+  // The field that carries the file when it is uploaded and sent in one call (Send API)
+  SEND_FILE_FIELD: 'filedata',
   // The name sent with the bytes is fixed: the real name of a document travels in the message
   FILE_NAME: 'upload',
   BOUNDARY_PREFIX: '----platform',
@@ -101,9 +103,8 @@ export const MetaMessaging = {
   RECIPIENT_ID_PATTERN: /^\d{1,32}$/,
   // The largest time a Date can hold is 8.64e15; a message is never dated that far ahead
   MAX_EPOCH_MS: 1e14,
-  // The key that holds a file in the Send API: Instagram's reference writes it in the plural
+  // The key that holds a file in the Send API
   ATTACHMENT_KEY: 'attachment',
-  ATTACHMENTS_KEY: 'attachments',
   ATTACHMENT_IMAGE: 'image',
   ATTACHMENT_VIDEO: 'video',
   ATTACHMENT_AUDIO: 'audio',

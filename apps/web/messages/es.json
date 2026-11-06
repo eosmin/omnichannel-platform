@@ -441,7 +441,8 @@
     "AUTH_UNAUTHORIZED": "Necesitas iniciar sesión",
     "CHANNEL_ACCOUNT_IN_USE": "Esta cuenta ya está conectada a otra tienda. Desconéctala allí primero.",
     "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite esa acción",
-    "CHANNEL_FILE_TYPE_UNSUPPORTED": "WhatsApp no acepta este tipo de archivo",
+    "CHANNEL_FILE_TYPE_UNSUPPORTED": "El canal no acepta este tipo de archivo",
+    "CHANNEL_FILE_TOO_LARGE": "El archivo es más grande de lo que acepta el canal",
     "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
     "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
     "CHANNEL_MESSAGE_FAILED": "El canal no aceptó el mensaje",
@@ -708,6 +709,7 @@
           "CHANNEL_CREDENTIALS_INVALID": "La conexión del canal necesita atención. Actualiza su token en Ajustes.",
           "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite ese tipo de mensaje.",
           "CHANNEL_FILE_TYPE_UNSUPPORTED": "El canal no acepta ese tipo de archivo.",
+          "CHANNEL_FILE_TOO_LARGE": "El archivo es más grande de lo que acepta el canal.",
           "CHANNEL_TEMPLATE_NOT_APPROVED": "La plantilla aún no está aprobada.",
           "CHANNEL_NOT_CONNECTED": "El canal no está conectado.",
           "RATE_LIMIT_EXCEEDED": "El canal está limitando los envíos. Intenta de nuevo en un momento."
