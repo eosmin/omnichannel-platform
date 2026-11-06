@@ -13,12 +13,30 @@ const epochMillis = z.number().int().min(0).max(MetaMessaging.MAX_EPOCH_MS)
 const tolerant = <T extends z.ZodType>(schema: T): z.ZodCatch<z.ZodOptional<T>> =>
   schema.optional().catch(undefined)
 
+const PLAIN_ID = /^[\w-]+$/
+
 const optionalText = z.string().optional().catch(undefined)
 const optionalUrl = httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined)
+
+// The text of the link as Meta sent it, bounded: a file whose link does not pass `optionalUrl` (a literal
+// IP, a name that is not public) is still a file the customer sent, and the worker refuses its link
+// with a notice on the message instead of the attachment vanishing (MS-04)
+const rawLink = z
+  .string()
+  .max(InboundLimits.MEDIA_REF_MAX_LENGTH)
+  // Not blank, and never a plain id of the provider (`123`, `abc-1`): the worker reads a ref of that
+  // shape as an id to ask Graph for, and this one is text the customer chose
+  .refine(value => value.trim() !== '' && !PLAIN_ID.test(value))
+  .optional()
+  .catch(undefined)
 
 export const metaAttachmentSchema = z.object({
   type: z.string().min(1),
   payload: tolerant(z.object({ url: optionalUrl }))
+})
+
+export const metaAttachmentRawLinkSchema = z.object({
+  payload: tolerant(z.object({ url: rawLink }))
 })
 
 // What a Click-to-Message ad sends with the first message. Every part is read alone; the raw
@@ -45,7 +63,14 @@ export const metaMessageSchema = z.object({
   mid: boundedId,
   text: optionalText,
   attachments: tolerant(z.array(z.unknown())),
-  reply_to: tolerant(z.object({ mid: z.string() })),
+  // A reply to a message carries its `mid`; an Instagram reply to a story carries the story (IG-07),
+  // whose link expires within a day. Each part is read alone.
+  reply_to: tolerant(
+    z.object({
+      mid: z.string().optional().catch(undefined),
+      story: tolerant(z.object({ url: optionalUrl }))
+    })
+  ),
   // The page or account itself wrote it, in this app or in its own inbox
   is_echo: tolerant(z.boolean()),
   // The customer took it back; there is nothing new to store

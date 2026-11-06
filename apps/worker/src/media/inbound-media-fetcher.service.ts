@@ -39,6 +39,7 @@ import {
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import { UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { refusalOf } from '../outbound/send-refusal'
 
@@ -149,7 +150,11 @@ export class InboundMediaFetcher {
     try {
       fetched = await this.download(plugin.fetchMedia.bind(plugin), connection, job)
     } catch (error) {
-      if (error instanceof FileRefused || error instanceof UnsafeUrlError) {
+      if (
+        error instanceof FileRefused ||
+        error instanceof UnsafeUrlError ||
+        error instanceof UnsafeMediaLinkError
+      ) {
         // The same answer on every try: the message keeps no file
         this.logger.warn(
           { messageId, index, reason: error.message },
@@ -159,7 +164,7 @@ export class InboundMediaFetcher {
           storeId,
           messageId,
           index,
-          error instanceof UnsafeUrlError
+          error instanceof UnsafeUrlError || error instanceof UnsafeMediaLinkError
             ? MediaUnavailableCodes.UNSAFE_LINK
             : MediaUnavailableCodes.REFUSED
         )

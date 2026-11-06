@@ -14,6 +14,7 @@ import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platf
 
 import { cut, hasText, replyTarget } from './inbound-text'
 import {
+  metaAttachmentRawLinkSchema,
   metaAttachmentSchema,
   type MetaMessageEdit,
   type MetaMessage,
@@ -77,15 +78,19 @@ function originOf(raw: Record<string, unknown> | undefined): ChannelOrigin | und
 interface ParsedAttachment {
   type: string
   url: string | undefined
+  // The link as it came, when it did not pass as one: a file is still a file (MS-04)
+  rawUrl: string | undefined
 }
 
 // Each attachment is read once; one that does not have the shape is the same as one that is not there
 function parseAttachments(raw: unknown[]): ParsedAttachment[] {
   return raw.flatMap(item => {
     const attachment = metaAttachmentSchema.safeParse(item)
-    return attachment.success
-      ? [{ type: attachment.data.type, url: attachment.data.payload?.url }]
-      : []
+    if (!attachment.success) return []
+    const url = attachment.data.payload?.url
+    const rawUrl =
+      url === undefined ? metaAttachmentRawLinkSchema.parse(item).payload?.url : undefined
+    return [{ type: attachment.data.type, url, rawUrl }]
   })
 }
 
@@ -96,8 +101,10 @@ function mediaOf(attachments: ParsedAttachment[]): {
 } | null {
   const media: NonNullable<ReceivedMessage['media']>[number][] = []
   let type: MessageType | undefined
-  for (const { type: attachmentType, url } of attachments) {
+  for (const { type: attachmentType, url: checked, rawUrl } of attachments) {
     const kind = MEDIA_ATTACHMENTS.get(attachmentType)
+    // A link that is not a public web address is not dropped: the worker refuses it with the notice
+    const url = checked ?? rawUrl
     if (!kind || !url) continue
     type ??= kind
     // Meta does not say the type of the file in the webhook: the fetch reads it from the file
@@ -124,6 +131,9 @@ function sharedOf(attachments: ParsedAttachment[]): ParsedAttachment | null {
 // What a message says, in the shape the core stores. A message with neither text nor a file we can
 // fetch is kept as a text with no content and the provider's type in the metadata, so the customer's
 // message is never lost and the interface decides how to show it.
+// The type name of a message that answers a story
+const STORY_REPLY = 'story_reply'
+
 function toReceivedMessage(
   message: MetaMessage,
   timestamp: string,
@@ -141,7 +151,9 @@ function toReceivedMessage(
   const shared = message.is_unsupported ? null : sharedOf(attachments)
   // The name of a type is the sender's, and it goes into the metadata and the content: only a plain one
   const providerType = shared && PROVIDER_TYPE.test(shared.type) ? shared.type : UNSUPPORTED_TYPE
-  // A shared post or reel keeps its link beside the text or the file, so the team can open it
+  // A shared post or reel keeps its link beside the text or the file, so the team can open it; so does
+  // the story an Instagram customer replied to (IG-07), when nothing else was shared
+  const storyUrl = message.reply_to?.story?.url
   const link = shared?.url
     ? {
         metadata: {
@@ -149,7 +161,11 @@ function toReceivedMessage(
           attachmentUrl: shared.url
         }
       }
-    : {}
+    : storyUrl && !files
+      ? {
+          metadata: { [MessageMetadataKeys.ATTACHMENT_TYPE]: STORY_REPLY, attachmentUrl: storyUrl }
+        }
+      : {}
   if (files) return { ...base, type: files.type, content: text, media: files.media, ...link }
   if (text !== null) return { ...base, type: MessageType.TEXT, content: text, ...link }
   return {

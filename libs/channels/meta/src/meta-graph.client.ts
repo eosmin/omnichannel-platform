@@ -20,7 +20,7 @@ import {
   HttpStatusCodes,
   PluginChecks
 } from '@platform/core/errors'
-import { type FetchedMedia, PluginError } from '@platform/plugins/sdk'
+import { type FetchedMedia, PluginError, UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { graphFailure, graphFileFailure, graphUnexpected, graphUnreachable } from './graph-failure'
 import { limitBytes } from './limit-bytes'
@@ -316,6 +316,11 @@ export class MetaGraphClient {
   // that needs no token, so none is sent; the type is the one the file server declares, because Meta
   // does not vouch for it here.
   async downloadMediaUrl(url: string): Promise<FetchedMedia> {
+    // The link is the customer's: one that is not a Meta CDN is refused as any other unsafe link, not
+    // counted as a failure of the fetch. (The url that Graph itself answers for a media id keeps the
+    // check below, where a foreign host is an unexpected answer.)
+    const target = parseUrl(url)
+    if (!target || !isMetaMediaUrl(target)) throw new UnsafeMediaLinkError()
     return this.downloadFile(url, undefined, undefined, undefined)
   }
 
