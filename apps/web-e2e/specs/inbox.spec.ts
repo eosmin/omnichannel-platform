@@ -276,36 +276,38 @@ test.describe.serial('the inbox list', () => {
         createdAt: new Date(Date.now() - (14 - index) * 60_000)
       })
     }
+    const measure = (): Promise<{
+      scrollHeight: number
+      clientHeight: number
+      scrollTop: number
+    }> =>
+      page.evaluate(() => {
+        const root = document.scrollingElement ?? document.documentElement
+        return {
+          scrollHeight: root.scrollHeight,
+          clientHeight: root.clientHeight,
+          scrollTop: root.scrollTop
+        }
+      })
     try {
+      // The conversation is opened once and the window is resized under it: the api limits what a
+      // person asks for in a minute, and the layout answers to the width without a new load
+      await page.setViewportSize({ width: 1536, height: 800 })
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+      const box = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+      await expect(box).toBeVisible()
       for (const width of [1536, 1280, 485, 390]) {
         await page.setViewportSize({ width, height: 800 })
-        await page.goto(AppPaths.store.conversation(storeId, conversationId))
-        await expect(
-          page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
-        ).toBeVisible()
-        const page_ = await page.evaluate(() => {
-          const root = document.scrollingElement ?? document.documentElement
-          return {
-            scrollHeight: root.scrollHeight,
-            clientHeight: root.clientHeight,
-            scrollTop: root.scrollTop
-          }
-        })
+        await expect(box).toBeVisible()
         // The page is as tall as the window and stays at the top: no gap under the thread, no header lost
-        expect(page_.scrollHeight, `at ${width} px`).toBe(page_.clientHeight)
-        expect(page_.scrollTop, `at ${width} px`).toBe(0)
+        const opened = await measure()
+        expect(opened.scrollHeight, `at ${width} px`).toBe(opened.clientHeight)
+        expect(opened.scrollTop, `at ${width} px`).toBe(0)
         // The wheel to the end of the thread, and past it, does not go on to the page
         await page.mouse.move(width / 2, 300)
         await page.mouse.wheel(0, 5000)
         await page.mouse.wheel(0, 5000)
-        const afterWheel = await page.evaluate(() => {
-          const root = document.scrollingElement ?? document.documentElement
-          return {
-            scrollTop: root.scrollTop,
-            scrollHeight: root.scrollHeight,
-            clientHeight: root.clientHeight
-          }
-        })
+        const afterWheel = await measure()
         expect(afterWheel.scrollTop, `after the wheel at ${width} px`).toBe(0)
         expect(afterWheel.scrollHeight, `after the wheel at ${width} px`).toBe(
           afterWheel.clientHeight
@@ -313,22 +315,21 @@ test.describe.serial('the inbox list', () => {
         // And nothing is cut off: the top bar, the box to write in, and every control of the top bar that
         // the page clips if it overflows (the store and the account menus) are inside the window
         await expect(page.getByRole('banner')).toBeInViewport()
-        await expect(
-          page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
-        ).toBeInViewport({ ratio: 1 })
+        await expect(box).toBeInViewport({ ratio: 1 })
         for (const name of [en.shell.switchStore, en.shell.accountMenu]) {
-          const box = await page.getByRole('button', { name }).boundingBox()
-          expect(box, `${name} at ${width} px`).not.toBeNull()
-          expect((box?.x ?? 0) + (box?.width ?? 0), `${name} at ${width} px`).toBeLessThanOrEqual(
-            width
-          )
-          expect(box?.x ?? -1, `${name} at ${width} px`).toBeGreaterThanOrEqual(0)
+          const control = await page.getByRole('button', { name }).boundingBox()
+          expect(control, `${name} at ${width} px`).not.toBeNull()
+          expect(
+            (control?.x ?? 0) + (control?.width ?? 0),
+            `${name} at ${width} px`
+          ).toBeLessThanOrEqual(width)
+          expect(control?.x ?? -1, `${name} at ${width} px`).toBeGreaterThanOrEqual(0)
         }
       }
-      // The page of customers had the same header and overflowed sideways at 485 px
+      // The page of customers had the same header and overflowed sideways at 485 px (by the app's own link)
       await page.setViewportSize({ width: 485, height: 800 })
-      await page.goto(AppPaths.store.customers(storeId))
-      await expect(page.getByRole('banner')).toBeVisible()
+      await page.getByRole('link', { name: en.shell.nav.customers }).click()
+      await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}`))
       const sideways = await page.evaluate(() => {
         const root = document.scrollingElement ?? document.documentElement
         return { scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
