@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type {
   AuthorType,
   CaptionState,
+  ContactCard,
   DeliveryStatus,
   MediaStatus,
   MediaUnavailableCode,
@@ -19,6 +20,7 @@ import {
   MessageMetadataKeys,
   MessageType as MessageTypes,
   placeTextOf,
+  sanitizeContactCards,
   UNAVAILABLE_FILES_KEY
 } from '@platform/core/domain'
 
@@ -157,6 +159,9 @@ export interface MessageView {
   system: SystemLineMetadata | null
   // The place of a location message, or null (not a location, deleted, or coordinates that do not hold)
   location: LocationView | null
+  // The contact cards a customer shared (a CONTACTS message), cleaned and bounded; null for any other message, a
+  // deleted one, or cards that do not hold
+  contacts: ContactCard[] | null
   // An image the customer sent as a sticker: the thread draws it without a bubble
   sticker: boolean
   // Untrusted: drawn as a link with its host visible and never fetched by the server. A story mention
@@ -348,6 +353,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
     location: locationOf(row, type),
+    contacts: contactsOf(row, type),
     sticker: stickerOf(row, type),
     attachmentUrl: attachmentUrlOf(row, type),
     unsupportedType: unsupportedTypeOf(row, type),
@@ -396,6 +402,19 @@ const locationSchema = z.object({
   name: z.string().optional().catch(undefined),
   address: z.string().optional().catch(undefined)
 })
+
+// The cards of a shared contact, read again here though the channel already bounded them: the metadata is a
+// column anyone with the database could have written, and the thread draws it as it comes. The same cleaning
+// and caps as the channel's (`sanitizeContactCards`), one card at a time. A deleted message keeps none.
+function contactsOf(row: MessageRow, type: MessageType): ContactCard[] | null {
+  if (type !== MessageTypes.CONTACTS || row.deletedAt !== null) return null
+  const metadata = row.metadata
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null
+  const cards = sanitizeContactCards(
+    (metadata as Record<string, unknown>)[MessageMetadataKeys.CONTACTS]
+  )
+  return cards.length === 0 ? null : cards
+}
 
 const stickerSchema = z.object({ [MessageMetadataKeys.STICKER]: z.literal(true) })
 

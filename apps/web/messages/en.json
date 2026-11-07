@@ -1191,6 +1191,19 @@
         "openMapAria": "Open on the map: {place}",
         "coordinates": "Coordinates {latitude}, {longitude}"
       },
+      "contacts": {
+        "list": "Shared contacts",
+        "copyAria": "Copy {value}",
+        "copied": "Copied",
+        "copyFailed": "Could not copy",
+        "kind": {
+          "CELL": "Mobile",
+          "MAIN": "Main",
+          "IPHONE": "iPhone",
+          "HOME": "Home",
+          "WORK": "Work"
+        }
+      },
       "audio": {
         "play": "Play audio",
         "pause": "Pause audio",

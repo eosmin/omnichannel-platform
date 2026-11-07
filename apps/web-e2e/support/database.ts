@@ -35,6 +35,7 @@ import {
   createCustomerIdentity,
   createMessage,
   createSnippet,
+  type MetadataValue,
   createRole,
   createTag,
   ensurePluginInstallation
@@ -116,7 +117,7 @@ export function addMessageTo(
     // For a reply that failed: true when it is known not to have gone out, false or null when it may have
     failureDefinitive?: boolean | null
     // The channel's own data: the place of a location, or the mark of a sticker
-    metadata?: Record<string, string | number | boolean>
+    metadata?: Record<string, MetadataValue>
     // Files of the customer the worker gave up on, as it records them in the metadata
     unavailableFiles?: { index: number; code: string }[]
   }

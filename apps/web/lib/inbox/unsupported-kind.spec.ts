@@ -34,4 +34,23 @@ describe('bubbleTextOf', () => {
   ])('draws no words for %s', (_name, over) => {
     expect(bubbleTextOf({ ...message, ...over })).toBeNull()
   })
+
+  it('does not repeat the names of a shared contact, which its cards show', () => {
+    expect(
+      bubbleTextOf({
+        content: 'Ana, Beto',
+        hasLocation: false,
+        hasContacts: true,
+        unsupportedType: null
+      })
+    ).toBeNull()
+    expect(
+      bubbleTextOf({
+        content: 'Ana, Beto',
+        hasLocation: false,
+        hasContacts: false,
+        unsupportedType: null
+      })
+    ).toBe('Ana, Beto')
+  })
 })

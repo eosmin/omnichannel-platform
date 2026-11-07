@@ -1,5 +1,6 @@
 import {
   AuthorType,
+  ContactCardLimits,
   MediaStatus,
   MessageLimits,
   MessageMetadataKeys,
@@ -427,5 +428,81 @@ describe('messageView edited and then deleted (W3a)', () => {
     // What says it was deleted, and by whom, stays
     expect(view.deletedAt).toEqual(new Date('2026-10-30T10:10:00Z'))
     expect(view.version).toBe(2)
+  })
+})
+
+describe('messageView location from Messenger and Instagram', () => {
+  it('lists the place with the metadata the Meta plugin stores, the same as one from WhatsApp', () => {
+    const view = messageView({
+      ...row({ latitude: 13.6929, longitude: -89.2182, name: 'Ana location' }),
+      type: 'LOCATION'
+    })
+    expect(view.location).toEqual({
+      latitude: 13.6929,
+      longitude: -89.2182,
+      name: 'Ana location',
+      address: null
+    })
+  })
+})
+
+describe('messageView contacts', () => {
+  const cards = {
+    contacts: [
+      {
+        name: 'Ana',
+        phones: [{ number: '+52 55 1234 5678', kind: 'CELL' }],
+        emails: [{ address: 'ana@example.com' }]
+      }
+    ]
+  }
+  const of = (type: string, metadata: unknown, over: object = {}) =>
+    messageView({ ...row(metadata), type, ...over })
+
+  it('lists the cards of a CONTACTS message, and only them', () => {
+    const view = of('CONTACTS', { ...cards, secret: 'x' })
+    expect(view.contacts).toEqual(cards.contacts)
+    expect(JSON.stringify(view)).not.toContain('secret')
+  })
+
+  it('has none for another type, a deleted message, or metadata that does not hold', () => {
+    expect(of('TEXT', cards).contacts).toBeNull()
+    expect(of('CONTACTS', cards, { deletedAt: new Date() }).contacts).toBeNull()
+    for (const metadata of [
+      null,
+      {},
+      { contacts: 'x' },
+      { contacts: [{ name: 1 }] },
+      { contacts: [] }
+    ]) {
+      expect(of('CONTACTS', metadata).contacts).toBeNull()
+    }
+  })
+
+  it('bounds and cleans what a column anyone could have written holds', () => {
+    const many = Array.from({ length: 50 }, (_, index) => ({
+      name: `C${index}\u0000\n`,
+      phones: Array.from({ length: 20 }, () => ({ number: '5'.repeat(500) })),
+      emails: Array.from({ length: 20 }, () => ({ address: 'e'.repeat(500) }))
+    }))
+    const view = of('CONTACTS', { contacts: many })
+    expect(view.contacts).toHaveLength(ContactCardLimits.MAX_CONTACTS)
+    const [first] = view.contacts ?? []
+    expect(first?.name).toBe('C0')
+    expect(first?.phones).toHaveLength(ContactCardLimits.MAX_PHONES)
+    expect(first?.phones[0]?.number).toHaveLength(ContactCardLimits.PHONE_MAX_LENGTH)
+    expect(first?.emails).toHaveLength(ContactCardLimits.MAX_EMAILS)
+    expect(first?.emails[0]?.address).toHaveLength(ContactCardLimits.EMAIL_MAX_LENGTH)
+  })
+
+  it('names a card by its first phone or email when its name is empty, and drops one with nothing', () => {
+    const view = of('CONTACTS', {
+      contacts: [
+        { name: '\u200F', phones: [{ number: '555' }], emails: [] },
+        { name: '', phones: [], emails: [{ address: 'x@example.com' }] },
+        { name: '', phones: [{ number: '\u0000' }], emails: [] }
+      ]
+    })
+    expect(view.contacts?.map(card => card.name)).toEqual(['555', 'x@example.com'])
   })
 })

@@ -685,6 +685,68 @@ test.describe.serial('the thread of a conversation', () => {
     await expect(threadOf(page).getByText(en.inbox.thread.neutral.LOCATION)).toHaveCount(0)
   })
 
+  test('draws the contacts a customer shared as cards with their phones and emails, and copies a value', async () => {
+    // Only this case may use the clipboard
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    test.info().annotations.push({ type: 'clipboard', description: 'granted to this case' })
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, {
+      type: MessageType.CONTACTS,
+      content: 'Ana Pérez, Beto Ruiz',
+      metadata: {
+        contacts: [
+          {
+            name: 'Ana Pérez',
+            phones: [{ number: '+52 55 1234 5678', kind: 'CELL' }, { number: '+52 55 8765 4321' }],
+            emails: [{ address: 'ana@example.com', kind: 'WORK' }]
+          },
+          { name: 'Beto Ruiz', phones: [{ number: '+503 7000 0000' }], emails: [] }
+        ]
+      },
+      createdAt: minutesAgo(1)
+    })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const cards = threadOf(page).getByRole('list', { name: en.inbox.thread.contacts.list })
+    await expect(cards.getByText('Ana Pérez')).toBeVisible()
+    await expect(cards.getByText('+52 55 1234 5678')).toBeVisible()
+    // A kind WhatsApp names from its short list is drawn translated
+    await expect(cards.getByText('Mobile')).toBeVisible()
+    await expect(cards.getByText('ana@example.com')).toBeVisible()
+    await expect(cards.getByText('Beto Ruiz')).toBeVisible()
+    // The names are drawn once, in the cards, not again as the text of the bubble
+    await expect(threadOf(page).getByText('Ana Pérez, Beto Ruiz')).toHaveCount(0)
+    // Nothing is a link: the values are text of the customer
+    await expect(cards.getByRole('link')).toHaveCount(0)
+    await expect(threadOf(page).getByText(en.inbox.thread.neutral.unknown)).toHaveCount(0)
+
+    try {
+      await cards.getByRole('button', { name: 'Copy Work ana@example.com' }).click()
+      await expect(
+        page.locator('[data-sonner-toast]').getByText(en.inbox.thread.contacts.copied)
+      ).toBeVisible()
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('ana@example.com')
+    } finally {
+      await context.clearPermissions()
+    }
+  })
+
+  test('keeps the line of a shared contact whose cards do not hold', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await addMessageTo(storeId, conversationId, {
+      type: MessageType.CONTACTS,
+      content: 'Nobody',
+      metadata: { contacts: 'not a list' },
+      createdAt: minutesAgo(1)
+    })
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    await expect(threadOf(page).getByText(en.inbox.thread.neutral.unknown)).toBeVisible()
+    await expect(
+      threadOf(page).getByRole('list', { name: en.inbox.thread.contacts.list })
+    ).toHaveCount(0)
+  })
+
   test('keeps the line of a location whose coordinates do not hold, with no link', async () => {
     const conversationId = await newConversationIn(storeId)
     await addMessageTo(storeId, conversationId, {
