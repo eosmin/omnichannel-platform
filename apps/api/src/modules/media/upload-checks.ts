@@ -1,5 +1,6 @@
 import type { Redis } from 'ioredis'
 
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import {
   FILE_SIGNATURE_WINDOW_BYTES,
@@ -55,14 +56,24 @@ const COUNT_SCRIPT = `
   return used
 `
 
-// Counts one signed url against a counter of the hour and refuses the one past `limit`
-export async function countWithinQuota(redis: Redis, key: string, limit: number): Promise<void> {
+// Counts one signed url against the counter of an hour and refuses the one past `limit`, saying how
+// many seconds are left of that hour, as every other refusal of a limit does. `bucket` is the hour the
+// key was built with (`Math.floor(Date.now() / QUOTA_WINDOW_MS)`), so the time left is the one of the
+// counter that refused, even when the clock crossed the hour between building the key and counting.
+export async function countWithinQuota(
+  redis: Redis,
+  key: string,
+  limit: number,
+  bucket: number
+): Promise<void> {
   const used = Number(await redis.eval(COUNT_SCRIPT, 1, key, QUOTA_TTL_SECONDS))
   if (used > limit) {
+    const msLeft = Math.max((bucket + 1) * QUOTA_WINDOW_MS - Date.now(), 1000)
     throw new PlatformException(
       ErrorCodes.RATE_LIMIT_EXCEEDED,
       'Too many upload urls requested',
-      HttpStatusCodes.TOO_MANY_REQUESTS
+      HttpStatusCodes.TOO_MANY_REQUESTS,
+      { [RETRY_AFTER_METADATA_KEY]: Math.ceil(msLeft / 1000) }
     )
   }
 }
