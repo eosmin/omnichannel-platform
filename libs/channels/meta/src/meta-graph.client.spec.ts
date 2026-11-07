@@ -136,6 +136,31 @@ describe('MetaGraphClient', () => {
       expect(init.signal).toBeInstanceOf(AbortSignal)
     })
 
+    it('ends the request when the signal of the caller aborts, before its own time is up', async () => {
+      let sent: AbortSignal | undefined
+      fetchMock.mockImplementation((_url, init) => {
+        sent = init?.signal ?? undefined
+        return new Promise<Response>((_resolve, reject) => {
+          sent?.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+      })
+      const caller = new AbortController()
+
+      const pending = client.get({ path: ['123'], token: TOKEN, schema, signal: caller.signal })
+      expect(sent?.aborted).toBe(false)
+      caller.abort()
+
+      await expect(pending).rejects.toBeInstanceOf(PluginError)
+      expect(sent?.aborted).toBe(true)
+    })
+
+    it('keeps its own time limit when the caller gives no signal', async () => {
+      fetchMock.mockResolvedValue(json({ id: '1' }))
+      await client.get({ path: ['123'], token: TOKEN, schema })
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(init.signal?.aborted).toBe(false)
+    })
+
     it('calls the host of the config in place of Facebook', async () => {
       fetchMock.mockImplementation(() => Promise.resolve(json({ id: '1' })))
       const fake = new MetaGraphClient({ ...config, graphOrigin: 'http://localhost:8099' })

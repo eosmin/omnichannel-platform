@@ -89,6 +89,8 @@ export interface GraphRequest<T> {
   idempotent?: boolean
   // Facebook's Graph, the only host there is
   origin?: MetaGraphOrigin
+  // The caller's own reason to stop waiting; the request still ends by itself after `REQUEST_TIMEOUT_MS`
+  signal?: AbortSignal
 }
 
 export interface UploadRequest<T> {
@@ -502,7 +504,10 @@ export class MetaGraphClient {
         },
         body: request.body === undefined ? undefined : JSON.stringify(request.body),
         redirect: 'manual',
-        signal: AbortSignal.timeout(MetaLimits.REQUEST_TIMEOUT_MS)
+        signal:
+          request.signal === undefined
+            ? AbortSignal.timeout(MetaLimits.REQUEST_TIMEOUT_MS)
+            : AbortSignal.any([AbortSignal.timeout(MetaLimits.REQUEST_TIMEOUT_MS), request.signal])
       },
       safeToRepeat
     )

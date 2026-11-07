@@ -6,7 +6,7 @@ import { ChannelContextFactory } from '@platform/channels/connections'
 import type { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { DAY_MS, HOUR_MS } from '@platform/core/domain'
+import { CustomerProfileFetch, DAY_MS, HOUR_MS } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   ChannelConnectionResolver,
@@ -45,7 +45,7 @@ describe('The name and photo of a customer', () => {
   let ctx: TestContext
   let fetcher: ProfileFetcher
   let requester: ProfileRequester
-  let calls: { ctx: ChannelContext; channelIdentity: string }[] = []
+  let calls: { ctx: ChannelContext; channelIdentity: string; signal?: AbortSignal }[] = []
   let answer: () => Promise<ChannelCustomerProfile | null>
 
   beforeAll(async () => {
@@ -61,8 +61,8 @@ describe('The name and photo of a customer', () => {
     registry.register(
       buildChannelPlugin({
         capabilities: [ChannelCapability.TEXT, ChannelCapability.CUSTOMER_PROFILE],
-        fetchProfile: (c, channelIdentity) => {
-          calls.push({ ctx: c, channelIdentity })
+        fetchProfile: (c, channelIdentity, signal) => {
+          calls.push({ ctx: c, channelIdentity, signal })
           return answer()
         }
       })
@@ -162,6 +162,22 @@ describe('The name and photo of a customer', () => {
     })
 
   describe('reading it', () => {
+    it('tells the plugin to stop when the read takes longer than its time', async () => {
+      const t = await setup({ customerName: null })
+      answer = () => new Promise<never>(() => undefined) // a provider that never answers
+      // The constant is a literal type; as a plain number it can be shortened for the case
+      const limits: { TIMEOUT_MS: number } = CustomerProfileFetch
+      jest.replaceProperty(limits, 'TIMEOUT_MS', 50)
+
+      try {
+        await fetcher.fetch(t, true)
+      } finally {
+        jest.restoreAllMocks()
+      }
+
+      expect(calls[0]?.signal?.aborted).toBe(true)
+    })
+
     it('stores what the channel answers, asking with the id of the person', async () => {
       const t = await setup({ customerName: null })
 
@@ -169,6 +185,9 @@ describe('The name and photo of a customer', () => {
 
       expect(calls).toHaveLength(1)
       expect(calls[0]?.channelIdentity).toBe(t.handle)
+      // The plugin is given a signal that ends with the time of the read, so its request can end with it
+      expect(calls[0]?.signal).toBeInstanceOf(AbortSignal)
+      expect(calls[0]?.signal?.aborted).toBe(false)
       const row = await identityRow(t.identityId)
       expect(row).toMatchObject({
         displayName: 'Peter Chang',
