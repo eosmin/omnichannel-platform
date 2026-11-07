@@ -1,9 +1,9 @@
 import { type BrowserContext, type Locator, type Page } from '@playwright/test'
 
-import { AppPaths } from '@platform/api-client'
+import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { newConversationIn, storeIdNamed } from '../support/database'
+import { newConversationIn, storeIdNamed, withWhatsAppChannel } from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -53,6 +53,28 @@ test.describe.serial('touch targets on a phone', () => {
     await expect(filters).toBeVisible()
     await expectTouchable(filters.getByRole('button'))
     await expectTouchable(page.locator('select:visible'))
+  })
+
+  test('a row of the list: its snooze button and the area of its checkbox', async () => {
+    await page.goto(AppPaths.store.inbox(storeId))
+    const row = page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('link') })
+      .first()
+    await expect(row).toBeVisible()
+    await expectTouchable(
+      row.getByRole('button', {
+        name: new RegExp(`^${en.inbox.actions.snoozeRow.split('{')[0] ?? ''}`)
+      })
+    )
+    // The checkbox glyph is drawn small on purpose; the control a finger hits is the label around it (40 px)
+    await expectTouchable(row.locator('label:has(input[type="checkbox"])'))
+  })
+
+  test('the toggle of the message templates of a connection', async () => {
+    await withWhatsAppChannel(storeId)
+    await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS))
+    await expectTouchable(page.getByRole('button', { name: en.settings.channels.templates.toggle }))
   })
 
   test('the conversation: back, actions and the reply and note tabs', async () => {
