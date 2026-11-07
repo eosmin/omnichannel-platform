@@ -506,7 +506,7 @@
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
     "PLUGIN_SCOPE_DENIED": "The plugin has no access to that",
-    "RATE_LIMIT_EXCEEDED": "Too many attempts. Wait a moment",
+    "RATE_LIMIT_EXCEEDED": "Too many requests. Wait a moment",
     "RECEPTION_ALREADY_RECEIVED": "That package was already received",
     "RECEPTION_SHIPMENT_NOT_FOUND": "No shipment matches that code",
     "REMITTANCE_ALREADY_CONFIRMED": "The remittance is already confirmed",

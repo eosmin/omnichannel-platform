@@ -122,6 +122,14 @@ export const OutboundLimits = {
   // failed for good without the message being marked. Past the 75 seconds of the five attempts.
   REQUEUE_AFTER_MS: 120_000,
   REQUEUE_BATCH: 100,
+  // The wait before the second attempt of a send that fails, doubling on each later one (5 s, 10 s,
+  // 20 s, 40 s: the 75 s of the five attempts that the other limits here speak of)
+  FAILURE_BACKOFF_MS: 5000,
+  // The same for a send the provider throttled: 15 s, 30 s, 60 s, 120 s, 225 s in all. A throttle lasts
+  // minutes, so the 5 s of any other failure would spend the attempts before it lifts. The total stays
+  // under RECEIPT_WAIT_MS, so that the receipt of the last attempt still finds its message, and the
+  // sweep (REQUEUE_AFTER_MS) adds nothing while the job waits: it keeps its id
+  THROTTLE_BACKOFF_MS: 15_000,
   // An echo settles an `unconfirmed` caption only this long after the reply was written: the provider
   // echoes within seconds, and a later identical text is the owner typing it again, not that caption
   UNCONFIRMED_CAPTION_MS: 3_600_000,

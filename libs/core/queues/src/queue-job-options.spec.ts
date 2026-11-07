@@ -1,6 +1,7 @@
+import { OutboundLimits } from '@platform/core/domain'
 import { QueueNames } from '@platform/core/queues'
 
-import { QueueJobOptions } from './queue-job-options'
+import { OUTBOUND_BACKOFF_TYPE, QueueJobOptions } from './queue-job-options'
 
 describe('QueueJobOptions', () => {
   it('has a policy for every queue', () => {
@@ -11,6 +12,13 @@ describe('QueueJobOptions', () => {
     expect(QueueJobOptions[QueueNames.EMAIL]).toMatchObject({
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 }
+    })
+  })
+
+  it('retries a reply 5 times with the backoff of the worker, which waits longer after a throttle', () => {
+    expect(QueueJobOptions[QueueNames.OUTBOUND]).toMatchObject({
+      attempts: 5,
+      backoff: { type: OUTBOUND_BACKOFF_TYPE, delay: OutboundLimits.FAILURE_BACKOFF_MS }
     })
   })
 
