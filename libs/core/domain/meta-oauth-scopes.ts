@@ -4,7 +4,7 @@ import { ChannelOAuthLimits, MetaOAuth, MetaOAuthScopes } from './channel-oauth-
 // Pure helpers over the permissions of "Connect with Facebook". No call to Meta is made here: the plugin
 // asks the Graph, and these decide what to ask for and what is missing from the answer.
 
-// What a login for each channel asks for. Messenger needs the Page ones and the portfolio one; Instagram,
+// What a login for each channel asks for. Messenger needs the Page ones; Instagram,
 // which goes through the same Page, adds its own two. Any other id (WhatsApp, the widget, a third party's)
 // has no login, so it asks for nothing.
 export function metaOAuthScopesFor(pluginId: string): readonly string[] {
@@ -12,8 +12,7 @@ export function metaOAuthScopesFor(pluginId: string): readonly string[] {
     MetaOAuthScopes.PAGES_SHOW_LIST,
     MetaOAuthScopes.PAGES_MESSAGING,
     MetaOAuthScopes.PAGES_MANAGE_METADATA,
-    MetaOAuthScopes.PAGES_READ_ENGAGEMENT,
-    MetaOAuthScopes.BUSINESS_MANAGEMENT
+    MetaOAuthScopes.PAGES_READ_ENGAGEMENT
   ]
   if (pluginId === ChannelIds.MESSENGER) return page
   if (pluginId === ChannelIds.INSTAGRAM) {
