@@ -78,9 +78,11 @@ export function TagsPanel({ tags }: { tags: StoreTagView[] }): ReactElement {
                 style={{ backgroundColor: tag.color }}
               />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <h2 className="font-medium">{tag.name}</h2>
+                <h2 className="font-medium [overflow-wrap:anywhere]">{tag.name}</h2>
                 {tag.description === null ? null : (
-                  <span className="text-muted-foreground text-sm">{tag.description}</span>
+                  <span className="text-muted-foreground text-sm [overflow-wrap:anywhere]">
+                    {tag.description}
+                  </span>
                 )}
               </div>
               {canEdit ? (

@@ -1,7 +1,7 @@
 'use client'
 
 import { Lock, TriangleAlert } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { permissionNameKey } from '../../lib/permission-name'
@@ -10,16 +10,29 @@ import { Button } from '../ui/button'
 
 // "You do not have access to this" (TDD_09 §18): a page reached by a link, or by a role that changed
 // `permission` is the one the page needs, said by the name the team settings give it ("Gestionar el
-// equipo"); `body` is a line of its own for a page that has a better one
+// equipo"); `anyOf` is for a page that opens with any one of several permissions (all are named); `body` is a
+// line of its own for a page that has a better one, and wins over the names
 export function PermissionDenied({
   body,
-  permission
+  permission,
+  anyOf
 }: {
   body?: string
   permission?: string
+  // For a page that opens with any one of several permissions: all of them are named
+  anyOf?: readonly string[]
 }): ReactElement {
   const t = useTranslations('emptyStates.permissionDenied')
   const tAll = useTranslations()
+  const format = useFormatter()
+  const names = (anyOf ?? []).flatMap(item => {
+    const itemKey = permissionNameKey(item)
+    return tAll.has(itemKey as 'errors.INTERNAL_ERROR')
+      ? [tAll(itemKey as 'errors.INTERNAL_ERROR')]
+      : []
+  })
+  const oneOf =
+    names.length > 0 ? tAll('permissionDenied.oneOf', { permissions: format.list(names) }) : null
   const key = permission === undefined ? null : permissionNameKey(permission)
   const named =
     key !== null && tAll.has(key as 'errors.INTERNAL_ERROR')
@@ -29,7 +42,9 @@ export function PermissionDenied({
     <section className="flex flex-col items-center gap-2 py-12 text-center">
       <Lock aria-hidden className="text-muted-foreground size-8" />
       <h1 className="text-lg font-semibold">{t('title')}</h1>
-      <p className="text-muted-foreground max-w-sm text-sm">{body ?? named ?? t('body')}</p>
+      <p className="text-muted-foreground max-w-sm text-sm">
+        {body ?? oneOf ?? named ?? t('body')}
+      </p>
     </section>
   )
 }
