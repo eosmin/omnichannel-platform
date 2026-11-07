@@ -30,6 +30,10 @@ async function measureDialog(
   try {
     for (const screen of screens) {
       await page.setViewportSize(screen)
+      // A sheet slides in and a dialog zooms in: measured half way, the box is still out of place
+      await dialog.evaluate(element =>
+        Promise.all(element.getAnimations().map(animation => animation.finished))
+      )
       // Everything is measured in one go, after the layout of the new size has settled
       const box = await dialog.evaluate(
         element =>
