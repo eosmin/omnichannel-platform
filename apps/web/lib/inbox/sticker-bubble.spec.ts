@@ -25,6 +25,18 @@ describe('drawsWithoutBubble', () => {
     ).toBe(true)
   })
 
+  it('draws a sticker whose file is not stored yet alone, so its box does not change when it arrives', () => {
+    const pending = { ...sticker, media: [] }
+    expect(drawsWithoutBubble(pending, 'media', true)).toBe(true)
+    // Not awaiting: no file and no word to explain it keeps the bubble, as before
+    expect(drawsWithoutBubble(pending, 'media')).toBe(false)
+    // Awaiting does not widen anything else: words, a quote and a note still need their bubble
+    expect(drawsWithoutBubble({ ...pending, content: 'look' }, 'media', true)).toBe(false)
+    expect(drawsWithoutBubble({ ...pending, replyToMessageId: 'm0' }, 'media', true)).toBe(false)
+    expect(drawsWithoutBubble(pending, 'note', true)).toBe(false)
+    expect(drawsWithoutBubble({ ...pending, sticker: false }, 'media', true)).toBe(false)
+  })
+
   it('keeps the bubble of anything that is not a plain sticker', () => {
     expect(drawsWithoutBubble({ ...sticker, sticker: false }, 'media')).toBe(false)
     expect(drawsWithoutBubble({ ...sticker, content: 'look' }, 'media')).toBe(false)

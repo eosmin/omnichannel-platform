@@ -1,6 +1,5 @@
 'use client'
 
-import { FileText, Image as ImageIcon, Mic, Video } from 'lucide-react'
 import { useFormatter, useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
@@ -20,6 +19,7 @@ import {
   messageKindOf
 } from '../../lib/inbox/thread-items'
 import { bubbleTextOf, unsupportedKindOf } from '../../lib/inbox/unsupported-kind'
+import { useAwaitingFiles } from '../../lib/inbox/use-awaiting-files'
 import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 
@@ -29,21 +29,11 @@ import { CustomerAvatar } from './customer-avatar'
 import { DeliveryTicksIcon } from './delivery-ticks'
 import { LocationCard } from './location-card'
 import { MessageActionsBar } from './message-actions-bar'
-import { MessageMedia } from './message-media'
+import { MessageMedia, PendingMedia } from './message-media'
 import { QuotedMessage } from './quoted-message'
 import { ReactionChips } from './reaction-chips'
 import { SharedLink } from './shared-link'
 import { SystemLineView } from './system-line'
-
-const MEDIA_ICONS = {
-  [MessageType.IMAGE]: ImageIcon,
-  [MessageType.VIDEO]: Video,
-  [MessageType.AUDIO]: Mic,
-  [MessageType.DOCUMENT]: FileText
-} as const
-type MediaType = keyof typeof MEDIA_ICONS
-
-const isMediaType = (type: string): type is MediaType => Object.hasOwn(MEDIA_ICONS, type)
 
 // The id the page gives the element of a message, so that a quote can scroll to it
 export const messageDomId = (messageId: string): string => `message-${messageId}`
@@ -128,7 +118,8 @@ function Bubble({
   const locale = useLocale()
   const isCustomer = isFromCustomer(message)
   const isNote = kind === 'note'
-  const bubbleless = drawsWithoutBubble(message, kind)
+  const awaitingFiles = useAwaitingFiles(message)
+  const bubbleless = drawsWithoutBubble(message, kind, awaitingFiles)
   const author = authorLabel(message.authorType, message.authorId)
   const ticks = deliveryTicksOf(message)
   const time = format.dateTime(new Date(message.createdAt), messageTimeOptions(locale))
@@ -211,6 +202,7 @@ function Bubble({
             canResendCaption={actions.resendCaption}
             canRefetchFile={actions.refetchFile}
             sticker={bubbleless}
+            awaitingFiles={awaitingFiles}
           />
           {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
@@ -269,7 +261,8 @@ function Content({
   conversationId,
   canResendCaption,
   canRefetchFile,
-  sticker
+  sticker,
+  awaitingFiles
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
@@ -279,6 +272,8 @@ function Content({
   canResendCaption: boolean
   canRefetchFile: boolean
   sticker: boolean
+  // A customer's file that has not been stored yet (the window of `useAwaitingFiles` is open)
+  awaitingFiles: boolean
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -299,7 +294,6 @@ function Content({
     hasContacts: message.contacts !== null,
     unsupportedType: message.unsupportedType
   })
-  const MediaIcon = isMediaType(message.type) ? MEDIA_ICONS[message.type] : null
   const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
   return (
     <>
@@ -318,11 +312,8 @@ function Content({
           messageType={message.type}
         />
       ) : null}
-      {MediaIcon === null || !isMediaType(message.type) || hasFiles ? null : (
-        <p className="flex items-center gap-1.5 text-xs font-medium">
-          <MediaIcon aria-hidden className="size-4" />
-          {t(`mediaLabel.${message.type}`)}
-        </p>
+      {hasFiles ? null : (
+        <PendingMedia type={message.type} awaiting={awaitingFiles} sticker={sticker} />
       )}
       {message.unsupportedType === null ? null : (
         <p className="text-muted-foreground text-xs italic">

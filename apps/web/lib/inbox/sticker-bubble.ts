@@ -13,20 +13,23 @@ export function drawsWithoutBubble(
     media: readonly Pick<MessageView['media'][number], 'status' | 'contentType'>[]
     unavailableFiles: readonly unknown[]
   },
-  kind: MessageKind
+  kind: MessageKind,
+  // The file of the sticker has not been stored yet: its box is already the one of a sticker
+  awaiting = false
 ): boolean {
   return (
     message.sticker &&
     kind !== 'deleted' &&
     kind !== 'note' &&
-    message.media.length > 0 &&
-    message.media.every(
-      file =>
-        file.status !== MediaStatus.INFECTED &&
-        file.status !== MediaStatus.UNSCANNABLE &&
-        mediaMessageTypeOf(file.contentType) === MessageType.IMAGE
-    ) &&
-    message.unavailableFiles.length === 0 &&
+    (awaiting ||
+      (message.media.length > 0 &&
+        message.media.every(
+          file =>
+            file.status !== MediaStatus.INFECTED &&
+            file.status !== MediaStatus.UNSCANNABLE &&
+            mediaMessageTypeOf(file.contentType) === MessageType.IMAGE
+        ) &&
+        message.unavailableFiles.length === 0)) &&
     message.replyToMessageId === null &&
     message.attachmentUrl === null &&
     (message.content === null || message.content === '')

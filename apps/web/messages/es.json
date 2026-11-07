@@ -1070,7 +1070,8 @@
         "fileQueued": "Enviando",
         "fileFailed": "No enviado",
         "fileFailedWithReason": "No enviado: {reason}",
-        "retryOnlyFailed": "Al enviar de nuevo solo se reenvían los archivos que no se enviaron"
+        "retryOnlyFailed": "Al enviar de nuevo solo se reenvían los archivos que no se enviaron",
+        "arriving": "El archivo está llegando"
       },
       "neutral": {
         "LOCATION": "El cliente compartió una ubicación",
