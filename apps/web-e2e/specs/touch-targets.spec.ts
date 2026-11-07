@@ -1,4 +1,4 @@
-import { type BrowserContext, type Locator, type Page } from '@playwright/test'
+import { type BrowserContext, type Locator, type Page, type Route } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
@@ -98,5 +98,41 @@ test.describe.serial('touch targets on a phone', () => {
     await expectTouchable(
       page.getByRole('navigation', { name: en.settings.nav.store.label }).getByRole('link')
     )
+  })
+
+  // A finger that lands while the conversation loads must hit the back link as well: the link of the loading header
+  // is another element than the one of the loaded header, and it has to be 40 px too. This is also why the case
+  // of the loaded header waits for its heading: without it, it would measure whichever of the two is there.
+  test('the back link of the loading header is 40 px too', async () => {
+    const isDetail = (url: URL): boolean =>
+      url.pathname.endsWith(`/conversations/${conversationId}`)
+    let wasHeld = false
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const handler = async (route: Route): Promise<void> => {
+      wasHeld = true
+      await held
+      await route.fallback()
+    }
+    await page.route(isDetail, handler)
+    const answered = page.waitForResponse(response => isDetail(new URL(response.url())), {
+      timeout: 10_000
+    })
+    try {
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+      // The request of the detail is held: the page is the loading one, with no heading with the customer's name
+      await expect.poll(() => wasHeld).toBe(true)
+      await expect(page.getByRole('status').filter({ hasText: en.common.loading })).toBeVisible()
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(0)
+      await expectTouchable(page.getByRole('link', { name: inbox.backToList }))
+    } finally {
+      release()
+      // The held request is answered before the route goes (a request cut by what comes next would be reported as
+      // handled twice); nothing here depends on what the page shows, and a request that never came is let go
+      await answered.catch(() => undefined)
+      await page.unroute(isDetail, handler)
+    }
   })
 })
