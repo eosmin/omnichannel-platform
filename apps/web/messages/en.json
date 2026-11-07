@@ -195,7 +195,9 @@
     "loading": "Loading",
     "save": "Save",
     "discard": "Discard changes",
-    "close": "Close"
+    "close": "Close",
+    "charsLeft": "{count, plural, one {# character left} other {# characters left}}",
+    "charLimitReached": "You reached the limit of characters"
   },
   "confirm": {
     "typePhrase": "Type \"{phrase}\" to confirm",
