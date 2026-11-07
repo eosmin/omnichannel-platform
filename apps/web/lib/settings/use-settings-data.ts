@@ -160,9 +160,14 @@ export function useUpdateStore(
   id: string
 ): UseMutationResult<StoreView, Error, StorePatch> {
   const refresh = useRefreshStores(storeId)
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (patch: StorePatch) => updateOrganizationStore(apiClient, storeId, id, patch),
-    onSuccess: refresh
+    onSuccess: () => {
+      refresh()
+      // Its zone is the one every hour of that store is shown in
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.inboxBehavior.store(id) })
+    }
   })
 }
 

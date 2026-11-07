@@ -31,6 +31,18 @@ export async function readLimited(
   return Buffer.concat(chunks)
 }
 
+// The host of a link, and nothing else of it: no path, query, fragment, port or credentials. For the
+// diagnostic of a link that was refused, which must never keep the link itself (it can carry a signature
+// that opens the file). Null when the reference is not a link or the host is not a plain name or IPv4.
+export function linkHostOf(link: string): string | null {
+  try {
+    const { hostname } = new URL(link)
+    return /^[a-z0-9._-]{1,253}$/.test(hostname) ? hostname : null
+  } catch {
+    return null
+  }
+}
+
 // What a file server says when it does not know the type: the declared one of the webhook, or the
 // bytes themselves, then decide
 export const GENERIC_TYPES: ReadonlySet<string> = new Set([

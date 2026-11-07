@@ -114,6 +114,7 @@ export class InboundMessageService {
       )
     })
 
+    this.warnIfQuoteLost(pluginId, stored.replyUnresolved)
     await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     if (event.message.origin !== undefined) await this.queueOriginFetches(storeId, stored.messageId)
     if (stored.duplicate) return InboundOutcomes.DUPLICATE
@@ -123,6 +124,13 @@ export class InboundMessageService {
     // After the routing, so that the team already has the conversation; once for each closed stretch
     await this.awayReply.replyIfClosed(storeId, stored.conversationId, receivedAt)
     return InboundOutcomes.STORED
+  }
+
+  // Permanent, safe diagnostic: a quote that points at a message this thread does not have is stored as a plain
+  // message. Only the channel is logged, never an id, so the owner can tell "target not found" from a screen bug.
+  private warnIfQuoteLost(pluginId: string, unresolved: boolean): void {
+    if (unresolved)
+      this.logger.info({ pluginId }, 'an inbound message quotes a message that is not here')
   }
 
   // The owner wrote to the customer from the provider's own app and the provider echoes it to us. It is
@@ -165,6 +173,7 @@ export class InboundMessageService {
     })
     // A message of the platform that comes back has its files already; the owner's is fetched, again
     // after a failure here (the job id makes it one)
+    this.warnIfQuoteLost(pluginId, stored.replyUnresolved)
     if (stored.fetchMedia) await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     return stored.duplicate ? InboundOutcomes.DUPLICATE : InboundOutcomes.STORED
   }
@@ -175,7 +184,12 @@ export class InboundMessageService {
     event: InboundEvent,
     receivedAt: Date,
     isLastAttempt: boolean
-  ): Promise<{ messageId: string; duplicate: boolean; fetchMedia: boolean }> {
+  ): Promise<{
+    messageId: string
+    duplicate: boolean
+    fetchMedia: boolean
+    replyUnresolved: boolean
+  }> {
     const { storeId, connectionRowId, identityId } = where
     const identity = await tx.customerIdentity.findFirst({
       where: { id: identityId, storeId },
@@ -215,6 +229,7 @@ export class InboundMessageService {
       return {
         messageId: known.id,
         duplicate: true,
+        replyUnresolved: false,
         // The files of the owner's own message, if a failed first try left some out
         fetchMedia:
           known.authorType === String(AuthorType.EXTERNAL) &&
@@ -286,7 +301,12 @@ export class InboundMessageService {
         visibility: visibilityOf(conversation)
       })
     }
-    return { messageId: message.id, duplicate: false, fetchMedia: true }
+    return {
+      messageId: message.id,
+      duplicate: false,
+      fetchMedia: true,
+      replyUnresolved: message.replyUnresolved
+    }
   }
 
   private async messageOfFile(
@@ -435,6 +455,7 @@ export class InboundMessageService {
     conversationId: string
     duplicate: boolean
     needsRouting: boolean
+    replyUnresolved: boolean
   }> {
     const { storeId, connectionRowId, identityId } = where
     // Read after the lock: a merge may have moved the identity to another customer meanwhile
@@ -465,7 +486,8 @@ export class InboundMessageService {
         messageId: known.id,
         conversationId: known.conversationId,
         duplicate: true,
-        needsRouting: false
+        needsRouting: false,
+        replyUnresolved: false
       }
     }
 
@@ -550,7 +572,8 @@ export class InboundMessageService {
       messageId: message.id,
       conversationId: placement.conversationId,
       duplicate: false,
-      needsRouting: placement.needsRouting
+      needsRouting: placement.needsRouting,
+      replyUnresolved: message.replyUnresolved
     }
   }
 

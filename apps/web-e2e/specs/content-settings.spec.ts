@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test'
 import { AppPaths, type StoreSettingsSection, StoreSettingsSections } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -38,6 +39,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
     // A tag with no name is refused before the request
     await page.getByRole('button', { name: tags.create }).click()
     const dialog = page.getByRole('dialog', { name: tags.dialog.createTitle })
+    await expectDialogFitsThePhoneWidth(page, dialog)
     await dialog.getByRole('button', { name: tags.dialog.save }).click()
     await expect(dialog.getByText(tags.dialog.problems.nameRequired)).toBeVisible()
 
@@ -97,6 +99,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
 
     await page.getByRole('button', { name: snippets.create }).click()
     const dialog = page.getByRole('dialog', { name: snippets.dialog.createTitle })
+    await expectDialogFitsThePhoneWidth(page, dialog)
     await dialog.getByRole('button', { name: snippets.dialog.save }).click()
     await expect(dialog.getByText(snippets.dialog.problems.shortcutRequired)).toBeVisible()
     await dialog.getByLabel(snippets.dialog.shortcut).fill(`/E2E-${suffix}`)

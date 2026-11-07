@@ -300,16 +300,22 @@ describe('InboundMediaFetcher', () => {
     }
   )
 
-  it.each([' https://169.254.169.254/a', '//127.0.0.1/a', 'file:///etc/passwd', 'a b'])(
-    'treats %j as a link and refuses it',
-    async mediaRef => {
-      const plugin = { fetchMedia: jest.fn() }
-      const { fetcher, marker } = setup({ plugin })
-      await fetcher.fetch({ ...job, mediaRef }, false)
-      expect(plugin.fetchMedia).not.toHaveBeenCalled()
-      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
-    }
-  )
+  it.each([
+    [' https://169.254.169.254/a', '169.254.169.254'],
+    ['//127.0.0.1/a', null],
+    ['file:///etc/passwd', null],
+    ['a b', null]
+  ])('treats %j as a link and refuses it', async (mediaRef, host) => {
+    const plugin = { fetchMedia: jest.fn() }
+    const { fetcher, marker } = setup({ plugin })
+    await fetcher.fetch({ ...job, mediaRef }, false)
+    expect(plugin.fetchMedia).not.toHaveBeenCalled()
+    expect(marker.mark.mock.calls).toEqual([
+      host === null
+        ? [STORE, MESSAGE, 1, 'unsafe_link']
+        : [STORE, MESSAGE, 1, 'unsafe_link', undefined, { host }]
+    ])
+  })
 
   it('marks the file unsafe_link when the plugin will not follow a link that is not its provider’s (MS-04)', async () => {
     const plugin = { fetchMedia: jest.fn().mockRejectedValue(new UnsafeMediaLinkError()) }
@@ -317,7 +323,9 @@ describe('InboundMediaFetcher', () => {
 
     await fetcher.fetch({ ...job, mediaRef: 'https://example.com/a.jpg' }, false)
 
-    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link', undefined, {
+      host: 'example.com'
+    })
     // The same answer on every try: no retry, no offer to fetch it again
     expect(marker.mark).toHaveBeenCalledTimes(1)
   })
@@ -365,11 +373,11 @@ describe('InboundMediaFetcher', () => {
 
   // QA MS-19: the list of hosts of the channel runs first, so a foreign host is never looked up from here
   it.each([
-    ['a host that is not a CDN of the channel', 'https://evil.example/x.jpg'],
-    ['a link with a port', 'https://scontent.xx.fbcdn.net:8443/x.jpg'],
-    ['a plain http link', 'http://scontent.xx.fbcdn.net/x.jpg'],
-    ['a literal address', 'https://169.254.169.254/x.jpg']
-  ])('refuses %s as an unsafe link without resolving its host', async (_name, mediaRef) => {
+    ['a host that is not a CDN of the channel', 'https://evil.example/x.jpg', 'evil.example'],
+    ['a link with a port', 'https://scontent.xx.fbcdn.net:8443/x.jpg', 'scontent.xx.fbcdn.net'],
+    ['a plain http link', 'http://scontent.xx.fbcdn.net/x.jpg', 'scontent.xx.fbcdn.net'],
+    ['a literal address', 'https://169.254.169.254/x.jpg', '169.254.169.254']
+  ])('refuses %s as an unsafe link without resolving its host', async (_name, mediaRef, host) => {
     const lookups = jest.mocked(lookup)
     lookups.mockClear()
     lookups.mockRejectedValue(new Error('the host was looked up'))
@@ -384,7 +392,11 @@ describe('InboundMediaFetcher', () => {
 
       expect(lookups).not.toHaveBeenCalled()
       expect(plugin.fetchMedia).not.toHaveBeenCalled()
-      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
+      expect(marker.mark.mock.calls).toEqual([
+        host === null
+          ? [STORE, MESSAGE, 1, 'unsafe_link']
+          : [STORE, MESSAGE, 1, 'unsafe_link', undefined, { host }]
+      ])
     } finally {
       lookups.mockReset()
       lookups.mockImplementation((...args) => actualLookup(...args))
@@ -403,7 +415,9 @@ describe('InboundMediaFetcher', () => {
 
       expect(lookups).toHaveBeenCalledTimes(1)
       expect(plugin.fetchMedia).not.toHaveBeenCalled()
-      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link', undefined, {
+        host: 'scontent.xx.fbcdn.net'
+      })
     } finally {
       lookups.mockReset()
       lookups.mockImplementation((...args) => actualLookup(...args))
@@ -435,6 +449,33 @@ describe('InboundMediaFetcher', () => {
     await expect(
       fetcher.fetch({ ...job, mediaRef: 'https://x.example/a.jpg' }, false)
     ).resolves.toBeUndefined()
+
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link', undefined, {
+      host: 'x.example'
+    })
+  })
+
+  // IG-STK: a refused link says which host it was, and nothing else of the link
+  it('logs and records only the host of a refused link, never its path, query or credentials', async () => {
+    const plugin = { fetchMedia: jest.fn(), acceptsMediaLink: () => false }
+    const { fetcher, marker, logger } = setup({ plugin })
+    const secret = 'https://user:pw@Media.Example.com/private/path.jpg?token=SECRETVALUE'
+
+    await fetcher.fetch({ ...job, mediaRef: secret }, false)
+
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link', undefined, {
+      host: 'media.example.com'
+    })
+    const logged = JSON.stringify(logger.warn.mock.calls)
+    expect(logged).toContain('media.example.com')
+    expect(logged).not.toMatch(/SECRETVALUE|private\/path|pw@/)
+  })
+
+  it('records no host for a reference that is not a link with a plain host', async () => {
+    const plugin = { fetchMedia: jest.fn(), acceptsMediaLink: () => false }
+    const { fetcher, marker } = setup({ plugin })
+
+    await fetcher.fetch({ ...job, mediaRef: 'file:///etc/passwd' }, false)
 
     expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
   })

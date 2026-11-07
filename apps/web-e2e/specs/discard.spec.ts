@@ -5,6 +5,7 @@ import { AuthorType, DeliveryStatus } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { addMessageTo, newConversationIn, storeIdNamed } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -69,6 +70,7 @@ test.describe.serial('a reply that failed', () => {
     await page.getByRole('menuitem', { name: actions.discard }).click()
     const dialog = page.getByRole('alertdialog', { name: actions.discardTitle })
     await expect(dialog).toBeVisible()
+    await expectDialogFitsThePhoneWidth(page, dialog)
     await dialog.getByRole('button', { name: actions.discard }).click()
 
     // The reply is gone, and nothing says that a message was deleted
