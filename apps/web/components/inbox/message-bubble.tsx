@@ -8,7 +8,7 @@ import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
 import { initialsOf } from '../../lib/inbox/customer-label'
-import { failureStateOf } from '../../lib/inbox/failure-state'
+import { failureNotesOf, failureStateOf } from '../../lib/inbox/failure-state'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
@@ -148,16 +148,15 @@ function Bubble({
     message.editStatus === String(DeliveryStatus.FAILED)
       ? { text: joinReason(t('editFailed'), reason(message.editError)), tone: 'red' as const }
       : null,
-    failure === 'definitive'
-      ? {
-          text:
-            message.deliveryError === null
-              ? t('ticks.failed')
-              : t('failedWithReason', { reason: codeText(message.deliveryError) }),
-          tone: 'red' as const
-        }
-      : null,
-    failure === 'unconfirmed' ? { text: t('ticks.unconfirmedNote'), tone: 'amber' as const } : null
+    ...failureNotesOf(message).map(note => ({
+      text:
+        note.kind === 'unconfirmed'
+          ? t('ticks.unconfirmedNote')
+          : note.kind === 'failed'
+            ? t('ticks.failed')
+            : t('failedWithReason', { reason: codeText(message.deliveryError ?? '') }),
+      tone: note.tone
+    }))
   ].filter((problem): problem is { text: string; tone: 'red' | 'amber' } => problem !== null)
 
   return (
