@@ -17,6 +17,7 @@ import { useGoToShortcuts } from '../../components/shortcuts/use-go-to'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { customerListLabel } from '../../lib/customers/customer-name'
+import { takeSearchFocus } from '../../lib/customers/search-focus'
 import { tagDotColor } from '../../lib/customers/tag-color'
 import { useCustomerList } from '../../lib/customers/use-customer-data'
 import { useExportCustomers } from '../../lib/customers/use-customer-export'
@@ -112,9 +113,10 @@ function Page(): ReactElement {
   const exportCsv = useExportCustomers(storeId)
   const rows = customers.data?.pages.flatMap(page => page.data) ?? []
 
-  // The search is where the hand goes first, and the Find customer action of the inbox lands here
+  // The cursor goes to the search only for who asked for it (`Mod+K`, the Find customer action of the
+  // inbox). After `g c` it stays out of the box: in a text field the shortcuts are off and `g i` would not work
   useEffect(() => {
-    searchRef.current?.focus()
+    if (takeSearchFocus()) searchRef.current?.focus()
   }, [])
 
   if (!can(ClientPermissions.CUSTOMERS_VIEW)) {

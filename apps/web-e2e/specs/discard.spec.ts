@@ -9,6 +9,8 @@ import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
+// The first frame of Socket.IO that the server sends once the connection is accepted
+const SOCKET_IO_CONNECTED = '40'
 const thread = en.inbox.thread
 const actions = thread.actions
 
@@ -77,6 +79,42 @@ test.describe.serial('a reply that failed', () => {
       thread.deletedByOwner
     ]) {
       await expect(page.getByText(deleted)).toHaveCount(0)
+    }
+  })
+
+  test('another tab loses the preview of the row when the reply is discarded', async () => {
+    const conversationId = await newConversationIn(storeId)
+    const text = `Preview gone ${Date.now()}`
+    await failedReply(conversationId, text, true)
+    // The list in a second tab shows the reply as the preview of the conversation
+    const other = await context.newPage()
+    try {
+      // The live connection of that tab must be up before the discard: events are not replayed
+      const connected = new Promise<void>(resolve => {
+        other.on('websocket', socket => {
+          socket.on('framereceived', frame => {
+            if (String(frame.payload).startsWith(SOCKET_IO_CONNECTED)) resolve()
+          })
+        })
+      })
+      await other.goto(AppPaths.store.inbox(storeId))
+      const otherRow = other.getByRole('listitem').filter({ hasText: text })
+      await expect(otherRow).toBeVisible({ timeout: 15_000 })
+      await connected
+
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+      await rowOf(text).getByRole('button', { name: actions.more }).click()
+      await page.getByRole('menuitem', { name: actions.discard }).click()
+      await page
+        .getByRole('alertdialog', { name: actions.discardTitle })
+        .getByRole('button', { name: actions.discard })
+        .click()
+      await expect(page.getByText(text)).toHaveCount(0)
+
+      // No reload in the other tab: the event reads the list again
+      await expect(otherRow).toHaveCount(0)
+    } finally {
+      await other.close()
     }
   })
 
