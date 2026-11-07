@@ -30,6 +30,31 @@ test.describe('a person sees what their permissions allow', () => {
     await expect(page).toHaveURL(/\/s\/[^/]+\/inbox/)
   })
 
+  test('the address of a store goes to its inbox, and a refused page names what it needs', async ({
+    page
+  }) => {
+    await signIn(page, 'viewer@test.com')
+    await expect(page).toHaveURL(/\/s\/([^/]+)\/inbox/)
+    const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1] ?? ''
+
+    // `/s/<id>` is no page of its own: it used to answer "not found"
+    await page.goto(`/s/${storeId}`)
+    await expect(page).toHaveURL(new RegExp(`/s/${storeId}/inbox`))
+
+    // The exports center opens with any of three permissions: the refusal names all three
+    await page.goto(AppPaths.store.exports(storeId))
+    const names = en.settings.team.permissions
+    const refusal = page.getByText(/one of these permissions/i)
+    await expect(refusal).toBeVisible()
+    for (const name of [
+      names.conversations.export,
+      names.customers.export,
+      names.media.download_all
+    ]) {
+      await expect(refusal).toContainText(name)
+    }
+  })
+
   test('a person in two stores sees both in the switcher', async ({ page }) => {
     await signIn(page, MULTI_STORE_USER)
     await page.goto(AppPaths.org.stores)
