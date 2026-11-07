@@ -1,4 +1,4 @@
-import type { CursorPage } from '@platform/core/domain'
+import type { CursorPage, DuplicateMatch } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 import { type Db } from '@platform/core/messaging'
 
@@ -55,6 +55,19 @@ export interface CustomerDetail {
 }
 
 export type CustomerPage = CursorPage<CustomerListItem>
+
+// A customer of the store that shares the e-mail or the phone of one just created (a hint: the new
+// customer exists whatever it looks like)
+export interface PossibleDuplicate {
+  id: string
+  name: string | null
+  email: string | null
+  phone: string | null
+  matchedOn: DuplicateMatch[]
+}
+
+// What `POST /customers` answers
+export type CreatedCustomer = CustomerDetail & { possibleDuplicates: PossibleDuplicate[] }
 
 export const TAG_SELECT = { id: true, name: true, color: true } as const
 export const IDENTITY_SELECT = {
