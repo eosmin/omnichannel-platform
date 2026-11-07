@@ -18,6 +18,11 @@ const REACHABLE_FROM: Readonly<
   [DeliveryStatus.FAILED]: [DeliveryStatus.QUEUED, DeliveryStatus.SENT]
 }
 
+// The states a message (or a file of it) may be in for a receipt to take it to `to`
+export const statesBefore = (
+  to: Exclude<DeliveryStatus, DeliveryStatus.QUEUED>
+): DeliveryStatus[] => REACHABLE_FROM[to]
+
 export interface StatusChange {
   storeId: string
   messageId: string

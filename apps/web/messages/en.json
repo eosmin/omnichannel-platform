@@ -446,6 +446,7 @@
     "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that action",
     "CHANNEL_FILE_TYPE_UNSUPPORTED": "The channel does not accept this type of file",
     "CHANNEL_FILE_TOO_LARGE": "The file is larger than the channel accepts",
+    "CHANNEL_TOO_MANY_FILES": "The channel does not accept that many files in one message",
     "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
     "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
     "CHANNEL_MESSAGE_FAILED": "The channel did not accept the message",

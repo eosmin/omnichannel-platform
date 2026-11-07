@@ -37,7 +37,7 @@ import type { SendOutboundMessageJob } from '@platform/core/queues'
 import { isOutboundMediaType } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import { PluginError } from '@platform/plugins/sdk'
+import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
 import { MessageStatusWriter, type StatusChange } from './message-status.writer'
 import { providerCodesOf } from './provider-codes'
@@ -56,6 +56,22 @@ const resultSchema = z.object({
     })
     .optional()
 })
+
+// A file of a media message as the worker sends it
+interface AttachmentToSend {
+  id: string
+  // Its place among the files of the message that are listed, from 0
+  index: number
+  // The place the agent gave it
+  position: number
+  contentType: string
+  filename: string
+  size: number
+  isClean: boolean
+  wasSent: boolean
+  channelMessageId: string | null
+  open: () => Promise<NodeJS.ReadableStream>
+}
 
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -146,52 +162,51 @@ export class OutboundSender {
       await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
       return
     }
-    // A file is uploaded to the provider from the platform's storage (`openFile`); the caption is the text under it
+    // The files are uploaded to the provider from the platform's storage (`openFile`), one message each, in order;
+    // the caption is the text under the first
     const isMedia = isOutboundMediaType(message.type)
     if (isMedia && plugin.sendMedia === undefined) {
       await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
       return
     }
-    // Outside the try below: a database error here is ours, not the provider's
-    const file = isMedia ? await this.fileOf(storeId, messageId) : null
-    if (isMedia && file === null) {
-      await this.fail(storeId, messageId, ErrorCodes.FILE_UNAVAILABLE)
+    const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
+    if (isMedia && plugin.sendMedia !== undefined) {
+      await this.sendFiles({
+        storeId,
+        messageId,
+        connectionRowId: connection.id,
+        pluginId: connection.pluginId,
+        context: this.contexts.contextFor(connection),
+        sendMedia: plugin.sendMedia.bind(plugin),
+        channelIdentity: customerIdentity.channelIdentity,
+        content,
+        replyToExternalId,
+        resentAt: message.resentAt,
+        isLastAttempt
+      })
       return
     }
-    const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
 
     let accepted: z.infer<typeof resultSchema>
     try {
       const result = resultSchema.safeParse(
         await withTimeout(
-          file !== null && plugin.sendMedia !== undefined
-            ? plugin.sendMedia(this.contexts.contextFor(connection), {
+          template?.success === true && plugin.sendTemplate !== undefined
+            ? plugin.sendTemplate(this.contexts.contextFor(connection), {
                 channelIdentity: customerIdentity.channelIdentity,
-                contentType: file.contentType,
-                fileSize: file.size,
-                openFile: file.open,
-                filename: file.filename,
-                ...(content.trim() === '' ? {} : { caption: content }),
-                ...(replyToExternalId === null ? {} : { replyToExternalId }),
+                templateName: template.data.template.name,
+                language: template.data.template.language,
+                variables: template.data.template.variables,
                 idempotencyKey
               })
-            : template?.success === true && plugin.sendTemplate !== undefined
-              ? plugin.sendTemplate(this.contexts.contextFor(connection), {
-                  channelIdentity: customerIdentity.channelIdentity,
-                  templateName: template.data.template.name,
-                  language: template.data.template.language,
-                  variables: template.data.template.variables,
-                  idempotencyKey
-                })
-              : plugin.sendMessage(this.contexts.contextFor(connection), {
-                  channelIdentity: customerIdentity.channelIdentity,
-                  content,
-                  ...(replyToExternalId === null ? {} : { replyToExternalId }),
-                  // The provider that supports it never sends one message twice
-                  idempotencyKey
-                }),
-          // A file is uploaded before the message is posted: the budget is the upload's too
-          isMedia ? OutboundLimits.MEDIA_SEND_TIMEOUT_MS : OutboundLimits.SEND_TIMEOUT_MS
+            : plugin.sendMessage(this.contexts.contextFor(connection), {
+                channelIdentity: customerIdentity.channelIdentity,
+                content,
+                ...(replyToExternalId === null ? {} : { replyToExternalId }),
+                // The provider that supports it never sends one message twice
+                idempotencyKey
+              }),
+          OutboundLimits.SEND_TIMEOUT_MS
         )
       )
       // Sent twice would be worse than not sent: an answer that makes no sense is final
@@ -268,7 +283,10 @@ export class OutboundSender {
     storeId: string,
     messageId: string,
     connectionRowId: string,
-    accepted: z.infer<typeof resultSchema>
+    accepted: z.infer<typeof resultSchema>,
+    // Set when some file of the message did not go: the first one did, so its id and its text are written,
+    // and the message is failed with this code
+    failedWith?: ErrorCode
   ): Promise<void> {
     const taken = await this.prisma.client.message.count({
       where: {
@@ -288,7 +306,9 @@ export class OutboundSender {
     const withoutId: StatusChange = {
       storeId,
       messageId,
-      to: accepted.status,
+      ...(failedWith === undefined
+        ? { to: accepted.status }
+        : { to: DeliveryStatus.FAILED, errorCode: failedWith }),
       ...(captionExternalId === undefined ? {} : { captionExternalId }),
       ...(captionState === undefined ? {} : { captionState })
     }
@@ -355,18 +375,10 @@ export class OutboundSender {
     return null
   }
 
-  // The one file of a media message, and a way to open its bytes. Only a clean file goes: a
-  // file that was infected or deleted since the message was written is a failed message.
-  private async fileOf(
-    storeId: string,
-    messageId: string
-  ): Promise<{
-    contentType: string
-    filename: string
-    size: number
-    open: () => Promise<NodeJS.ReadableStream>
-  } | null> {
-    const files = await this.prisma.client.media.findMany({
+  // The files of a media message in the order the agent gave, each with its own state and a way to open its
+  // bytes. A message sent before each file had a state has one file with none: it counts as queued.
+  private async filesOf(storeId: string, messageId: string): Promise<AttachmentToSend[]> {
+    const rows = await this.prisma.client.media.findMany({
       where: { storeId, messageId },
       select: {
         id: true,
@@ -374,26 +386,27 @@ export class OutboundSender {
         filename: true,
         contentType: true,
         status: true,
-        fileSize: true
-      }
+        fileSize: true,
+        position: true,
+        deliveryStatus: true,
+        channelMessageId: true
+      },
+      orderBy: [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
     })
-    const [file] = files
-    if (files.length !== 1 || file === undefined || file.status !== String(MediaStatus.CLEAN)) {
-      this.logger.warn(
-        { storeId, messageId, files: files.map(item => item.status) },
-        'the file of a media message is missing, not clean or not alone'
-      )
-      return null
-    }
-    // No link is signed: a plugin gets the bytes through `open`, and a signed link nobody reads is only one more
-    // live credential to the storage in memory and in logs
-    return {
+    return rows.map((file, index) => ({
+      id: file.id,
+      index,
+      position: file.position ?? index,
       contentType: file.contentType,
       filename: file.filename,
       // The size recorded when the file was checked: a plugin holds the upload to it
       size: file.fileSize,
-      // Only the object of this clean row, read from the platform's own storage; opened by the plugin
-      // when it is about to send, one stream for each attempt
+      isClean: file.status === String(MediaStatus.CLEAN),
+      wasSent: file.deliveryStatus === String(DeliveryStatus.SENT),
+      channelMessageId: file.channelMessageId,
+      // No link is signed: a plugin gets the bytes through `open`, and a signed link nobody reads is only one
+      // more live credential to the storage in memory and in logs. Only the object of this row, read from the
+      // platform's own storage, when the plugin is about to send: one stream for each attempt.
       open: async () => {
         // Checked again at the moment the bytes are read: a file marked infected or deleted since the
         // message was picked up must not be uploaded to anybody
@@ -408,6 +421,162 @@ export class OutboundSender {
           throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
         }
         return stream
+      }
+    }))
+  }
+
+  // Sends the files that the channel has not taken, one after the other: the next goes out when the provider has
+  // answered for the previous, so they reach the customer in order. A file that fails is marked and the others
+  // still go; a failure that may be repeated stops here while there are attempts left, and the next attempt skips
+  // the files already sent. The message is sent when every file is, and failed when one is not.
+  private async sendFiles(args: {
+    storeId: string
+    messageId: string
+    connectionRowId: string
+    pluginId: string
+    context: ReturnType<ChannelContextFactory['contextFor']>
+    sendMedia: NonNullable<ChannelPlugin['sendMedia']>
+    channelIdentity: string
+    content: string
+    replyToExternalId: string | null
+    resentAt: Date | null
+    isLastAttempt: boolean
+  }): Promise<void> {
+    const { storeId, messageId } = args
+    // Outside the try below: a database error here is ours, not the provider's
+    const files = await this.filesOf(storeId, messageId)
+    if (files.length === 0) {
+      this.logger.warn({ storeId, messageId }, 'a media message has no file')
+      await this.fail(storeId, messageId, ErrorCodes.FILE_UNAVAILABLE)
+      return
+    }
+    const failures: ErrorCode[] = []
+    // What the first file got, from this attempt; the caption goes with it
+    let firstAccepted: z.infer<typeof resultSchema> | null = null
+    for (const file of files) {
+      if (file.wasSent) continue
+      if (!file.isClean) {
+        this.logger.warn(
+          { storeId, messageId, position: file.position },
+          'a file of a media message is not clean'
+        )
+        await this.markFile(storeId, messageId, file.id, {
+          failedWith: ErrorCodes.FILE_UNAVAILABLE
+        })
+        failures.push(ErrorCodes.FILE_UNAVAILABLE)
+        continue
+      }
+      // The first attempt is keyed by the message and the place of the file; one the agent asked for again is
+      // another attempt, or a provider that dedupes on the key would answer with the result of the first. A
+      // message of one file keeps the key it always had.
+      const base = files.length === 1 ? messageId : `${messageId}-${file.position}`
+      const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
+      try {
+        const result = resultSchema.safeParse(
+          await withTimeout(
+            args.sendMedia(args.context, {
+              channelIdentity: args.channelIdentity,
+              contentType: file.contentType,
+              fileSize: file.size,
+              openFile: file.open,
+              filename: file.filename,
+              // The text goes with the first file, and only while that one is still to be sent
+              ...(file.index !== 0 || args.content.trim() === '' ? {} : { caption: args.content }),
+              ...(args.replyToExternalId === null || file.index !== 0
+                ? {}
+                : { replyToExternalId: args.replyToExternalId }),
+              idempotencyKey
+            }),
+            // A file is uploaded before the message is posted: the budget is the upload's too
+            OutboundLimits.MEDIA_SEND_TIMEOUT_MS
+          )
+        )
+        // Sent twice would be worse than not sent: an answer that makes no sense is final for this file
+        if (!result.success) {
+          await this.markFile(storeId, messageId, file.id, {
+            failedWith: ErrorCodes.CHANNEL_MESSAGE_FAILED
+          })
+          failures.push(ErrorCodes.CHANNEL_MESSAGE_FAILED)
+          continue
+        }
+        await this.markFile(storeId, messageId, file.id, { sent: result.data })
+        if (file.index === 0) firstAccepted = result.data
+      } catch (error) {
+        const refused = refusalOf(error)
+        // The message of the error may hold a token: only its name is logged, and none of it is stored
+        this.logger.warn(
+          {
+            pluginId: args.pluginId,
+            messageId,
+            position: file.position,
+            code: refused.code,
+            errorName: errorName(error),
+            // What the provider answered, as numbers: why Meta refused, without the token or the text
+            ...providerCodesOf(error)
+          },
+          'sending a reply failed'
+        )
+        // Not `error` itself: the retry machinery logs it whole and keeps its text in Redis
+        if (refused.retryable && !args.isLastAttempt)
+          throw new SendAttemptFailed(refused.code, error)
+        await this.markFile(storeId, messageId, file.id, { failedWith: refused.code })
+        failures.push(refused.code)
+      }
+    }
+    // The id of the message is the first file's, whichever attempt sent it: receipts and echoes find it there
+    const first = files[0]
+    const firstId =
+      firstAccepted?.externalId ?? (first?.wasSent === true ? first.channelMessageId : null)
+    const [failure] = failures
+    // What the provider answered for the first file, or the id it gave on an earlier attempt
+    const accepted =
+      firstAccepted ??
+      (firstId === null ? null : { externalId: firstId, status: DeliveryStatus.SENT as const })
+    if (accepted === null) {
+      // Nothing to record about the first file (it never went, or went with no id kept): only the state
+      if (failure === undefined) {
+        await this.status.apply({ storeId, messageId, to: DeliveryStatus.SENT })
+      } else {
+        await this.fail(storeId, messageId, failure)
+      }
+      return
+    }
+    await this.recordAccepted(storeId, messageId, args.connectionRowId, accepted, failure)
+  }
+
+  // What happened to one file, written on its row. The provider has the file when `sent` is given: nothing here
+  // may make it be sent again, so a write that fails is tried a few times before the job fails.
+  private async markFile(
+    storeId: string,
+    messageId: string,
+    mediaId: string,
+    outcome: { sent: z.infer<typeof resultSchema> } | { failedWith: ErrorCode }
+  ): Promise<void> {
+    const data =
+      'sent' in outcome
+        ? {
+            deliveryStatus: DeliveryStatus.SENT,
+            channelMessageId: outcome.sent.externalId,
+            sentAt: new Date(),
+            sendErrorCode: null
+          }
+        : { deliveryStatus: DeliveryStatus.FAILED, sendErrorCode: outcome.failedWith }
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.prisma.client.media.updateMany({
+          // A file that is already `sent` is never taken back
+          where: {
+            id: mediaId,
+            storeId,
+            messageId,
+            OR: [{ deliveryStatus: null }, { deliveryStatus: { not: DeliveryStatus.SENT } }]
+          },
+          data
+        })
+        return
+      } catch (error) {
+        if (attempt >= OutboundLimits.WRITE_ATTEMPTS) throw error
+        await delay(OutboundLimits.WRITE_RETRY_DELAY_MS * attempt)
       }
     }
   }

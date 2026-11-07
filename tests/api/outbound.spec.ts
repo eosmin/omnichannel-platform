@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory, ChannelHealthService } from '@platform/channels/connections'
 import { ApiRoutes } from '@platform/core/api'
+import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -25,8 +26,10 @@ import {
   ChannelConnectionResolver,
   CLOSING_MESSAGE_METADATA,
   ConversationsService,
+  MessagesService,
   MessagingWindowService,
-  OutboundQueue
+  OutboundQueue,
+  viewerOf
 } from '@platform/core/messaging'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { StorageService } from '@platform/core/storage-module'
@@ -41,6 +44,7 @@ import {
   type SendTemplateParams
 } from '@platform/plugins/sdk'
 
+import { channelFileLimits } from '../../apps/api/src/modules/messages/channel-file-limits'
 import { ChannelReceipts } from '../../apps/worker/src/outbound/channel-receipts.service'
 import { MessageChangeStatusWriter } from '../../apps/worker/src/outbound/message-change-status.writer'
 import { MessageStatusWriter } from '../../apps/worker/src/outbound/message-status.writer'
@@ -66,6 +70,8 @@ const OK = 200
 const INSTAGRAM_LIMIT = 1000
 const TEMPLATE_CHANNEL_ID = 'template_channel'
 const MEDIA_CHANNEL_ID = 'media_channel'
+// Takes up to three small pngs in one message, when sending several is on
+const MULTI_MEDIA_CHANNEL_ID = 'multi_media_channel'
 const CONFLICT = 409
 const BAD_REQUEST = 400
 const NOT_FOUND = 404
@@ -88,6 +94,8 @@ describe('Replies on their way to a channel', () => {
   let sentTemplates: SendTemplateParams[] = []
   let sentMedia: SendMediaParams[] = []
   let mediaResult: { metadata?: Record<string, unknown> } = {}
+  // Makes the send of some files fail: given the params, an error to throw or null to accept
+  let mediaFailure: (params: SendMediaParams) => Error | null = () => null
   let heard: { event: string; payload: Record<string, unknown> }[] = []
   let sendMessage: (ctx: ChannelContext, params: SendMessageParams) => ReturnType<ChannelSend>
   let externalCount = 0
@@ -100,6 +108,18 @@ describe('Replies on their way to a channel', () => {
       externalId: `ext-${(externalCount += 1)}`,
       status: DeliveryStatus.SENT,
       sentAt: new Date().toISOString()
+    })
+  }
+
+  const sendMediaOf = (_ctx: ChannelContext, params: SendMediaParams) => {
+    sentMedia.push(params)
+    const failure = mediaFailure(params)
+    if (failure !== null) return Promise.reject(failure)
+    return Promise.resolve({
+      externalId: `media-${params.idempotencyKey}`,
+      status: DeliveryStatus.SENT,
+      sentAt: new Date().toISOString(),
+      ...mediaResult
     })
   }
 
@@ -136,15 +156,22 @@ describe('Replies on their way to a channel', () => {
           ChannelCapability.DOCUMENT,
           ChannelCapability.MESSAGING_WINDOW
         ],
-        sendMedia: (_ctx, params) => {
-          sentMedia.push(params)
-          return Promise.resolve({
-            externalId: `media-${params.idempotencyKey}`,
-            status: DeliveryStatus.SENT,
-            sentAt: new Date().toISOString(),
-            ...mediaResult
-          })
-        }
+        sendMedia: sendMediaOf
+      })
+    )
+    registry.register(
+      buildChannelPlugin({
+        id: MULTI_MEDIA_CHANNEL_ID,
+        capabilities: [
+          ChannelCapability.TEXT,
+          ChannelCapability.IMAGE,
+          ChannelCapability.MESSAGING_WINDOW
+        ],
+        media: {
+          maxFilesPerMessage: 3,
+          kinds: { image: { types: ['image/png'], maxBytes: 100 } }
+        },
+        sendMedia: sendMediaOf
       })
     )
     // Instagram is an official plugin of the app now: its send is the only thing the suite replaces
@@ -200,6 +227,7 @@ describe('Replies on their way to a channel', () => {
     sentTemplates = []
     sentMedia = []
     mediaResult = {}
+    mediaFailure = () => null
     heard = []
     sendMessage = accept
   })
@@ -774,7 +802,14 @@ describe('Replies on their way to a channel', () => {
     // A file of the message, written the way the confirmation leaves it
     const fileOf = async (
       storeId: string,
-      over: { messageId?: string; status?: string; contentType?: string; uploadedBy?: string } = {}
+      over: {
+        messageId?: string
+        status?: string
+        contentType?: string
+        uploadedBy?: string
+        fileSize?: number
+        position?: number
+      } = {}
     ) => {
       const id = randomUUID()
       return owner.media.create({
@@ -785,8 +820,11 @@ describe('Replies on their way to a channel', () => {
           key: `stores/${storeId}/messages/${id}/photo.png`,
           filename: 'photo.png',
           contentType: over.contentType ?? 'image/png',
-          fileSize: 10,
+          fileSize: over.fileSize ?? 10,
           status: over.status ?? 'clean',
+          ...(over.position === undefined
+            ? {}
+            : { position: over.position, deliveryStatus: 'queued' }),
           ...(over.messageId === undefined ? {} : { messageId: over.messageId }),
           ...(over.uploadedBy === undefined ? {} : { uploadedBy: over.uploadedBy })
         },
@@ -1105,17 +1143,358 @@ describe('Replies on their way to a channel', () => {
         })
       })
 
-      it('needs the file, one file at most, and the key', async () => {
+      it('needs the files and the key', async () => {
         const conversation = await conversationOnMediaChannel()
         const base = { type: MessageType.IMAGE, conversationId: conversation.id }
         await post({ ...base, idempotencyKey: randomUUID() }).expect(BAD_REQUEST)
         await post({ ...base, mediaIds: [], idempotencyKey: randomUUID() }).expect(BAD_REQUEST)
-        await post({
-          ...base,
-          mediaIds: [randomUUID(), randomUUID()],
-          idempotencyKey: randomUUID()
-        }).expect(BAD_REQUEST)
         await post({ ...base, mediaIds: [randomUUID()] }).expect(BAD_REQUEST)
+      })
+
+      it('takes one file while several are off, whatever the channel declares, and says how many', async () => {
+        const conversation = await createConversationOf(owner, {
+          storeId: ctx.storeA.id,
+          channelType: MULTI_MEDIA_CHANNEL_ID
+        })
+        await owner.customerIdentity.update({
+          where: { id: conversation.customerIdentityId },
+          data: { lastInboundAt: new Date() }
+        })
+        const files = [
+          await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id }),
+          await fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id })
+        ]
+
+        const response = await post({
+          type: MessageType.IMAGE,
+          conversationId: conversation.id,
+          mediaIds: files.map(file => file.id),
+          idempotencyKey: randomUUID()
+        }).expect(CONFLICT)
+
+        expect(response.body).toMatchObject({
+          error: { code: ErrorCodes.CHANNEL_TOO_MANY_FILES }
+        })
+        // Nothing was linked: the files can still be attached
+        expect(
+          await owner.media.count({ where: { id: { in: files.map(f => f.id) }, messageId: null } })
+        ).toBe(2)
+      })
+    })
+  })
+
+  describe('several files in one message', () => {
+    const fileOf = (
+      storeId: string,
+      over: {
+        messageId?: string
+        status?: string
+        contentType?: string
+        uploadedBy?: string
+        fileSize?: number
+        position?: number
+      } = {}
+    ) => {
+      const id = randomUUID()
+      return owner.media.create({
+        data: {
+          id,
+          storeId,
+          purpose: 'message',
+          key: `stores/${storeId}/messages/${id}/photo.png`,
+          filename: 'photo.png',
+          contentType: over.contentType ?? 'image/png',
+          fileSize: over.fileSize ?? 10,
+          status: over.status ?? 'clean',
+          createdAt: new Date(Date.now() + (over.position ?? 0)),
+          ...(over.position === undefined
+            ? {}
+            : { position: over.position, deliveryStatus: DeliveryStatus.QUEUED }),
+          ...(over.messageId === undefined ? {} : { messageId: over.messageId }),
+          ...(over.uploadedBy === undefined ? {} : { uploadedBy: over.uploadedBy })
+        },
+        select: { id: true }
+      })
+    }
+    const rowsOf = (messageId: string) =>
+      owner.media.findMany({
+        where: { messageId },
+        orderBy: { position: 'asc' },
+        select: {
+          position: true,
+          deliveryStatus: true,
+          channelMessageId: true,
+          sendErrorCode: true,
+          sentAt: true
+        }
+      })
+
+    describe('creating the message, with sending several switched on', () => {
+      const create = async (
+        mediaIds: string[],
+        over: { conversationId?: string; viewer?: string } = {}
+      ) => {
+        const registry = app.get(PluginRegistry, { strict: false })
+        const conversation =
+          over.conversationId === undefined
+            ? await createConversationOf(owner, {
+                storeId: ctx.storeA.id,
+                channelType: MULTI_MEDIA_CHANNEL_ID
+              })
+            : { id: over.conversationId }
+        await owner.conversation.update({
+          where: { id: conversation.id },
+          data: { customerIdentity: { update: { lastInboundAt: new Date() } } }
+        })
+        return app.get(MessagesService, { strict: false }).create(
+          ctx.storeA.id,
+          {
+            type: MessageType.IMAGE,
+            conversationId: conversation.id,
+            mediaIds,
+            idempotencyKey: randomUUID()
+          },
+          viewerOf(ctx.agentA.id, Object.values(Permissions)),
+          undefined,
+          (channel, capability) => registry.hasCapability(channel, capability),
+          channelFileLimits(registry, true)
+        )
+      }
+      const mine = (over: Parameters<typeof fileOf>[1] = {}) =>
+        fileOf(ctx.storeA.id, { uploadedBy: ctx.agentA.id, ...over })
+
+      it('links the files in the order the agent gave, each queued, and lists them in that order', async () => {
+        const [a, b, c] = [await mine(), await mine(), await mine()]
+
+        const { message } = await create([c.id, a.id, b.id])
+
+        expect(message.media.map(file => [file.id, file.position, file.delivery])).toEqual([
+          [c.id, 0, 'queued'],
+          [a.id, 1, 'queued'],
+          [b.id, 2, 'queued']
+        ])
+        expect((await rowsOf(message.id)).map(row => row.position)).toEqual([0, 1, 2])
+      })
+
+      it('refuses more files than the channel takes, a type it does not take and a file that is too big', async () => {
+        const files = [await mine(), await mine(), await mine(), await mine()]
+        await expect(create(files.map(file => file.id))).rejects.toMatchObject({
+          code: ErrorCodes.CHANNEL_TOO_MANY_FILES
+        })
+        const gif = await mine({ contentType: 'image/gif' })
+        await expect(create([gif.id])).rejects.toMatchObject({
+          code: ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED
+        })
+        const big = await mine({ fileSize: 101 })
+        await expect(create([big.id])).rejects.toMatchObject({
+          code: ErrorCodes.CHANNEL_FILE_TOO_LARGE
+        })
+        // Nothing was linked by any of them
+        expect(
+          await owner.media.count({
+            where: { id: { in: [...files, gif, big].map(file => file.id) }, messageId: null }
+          })
+        ).toBe(6)
+      })
+
+      it("refuses the whole message, linking none, when one of the files is another store's or not clean", async () => {
+        const ok = await mine()
+        const foreign = await fileOf(ctx.storeB.id, { uploadedBy: ctx.agentA.id })
+        await expect(create([ok.id, foreign.id])).rejects.toThrow('media not found')
+        const pending = await mine({ status: 'pending' })
+        await expect(create([ok.id, pending.id])).rejects.toMatchObject({
+          code: ErrorCodes.FILE_NOT_READY
+        })
+        expect(await owner.media.count({ where: { id: ok.id, messageId: null } })).toBe(1)
+      })
+    })
+
+    describe('sending them', () => {
+      const replyWithFiles = async (count: number, content = 'look') => {
+        const reply = await queuedReply({
+          pluginId: MULTI_MEDIA_CHANNEL_ID,
+          type: MessageType.IMAGE,
+          content
+        })
+        const files = []
+        for (let position = 0; position < count; position += 1) {
+          files.push(await fileOf(reply.storeId, { messageId: reply.id, position }))
+        }
+        return { reply, files }
+      }
+
+      it('sends them one after the other, the text under the first, and marks each', async () => {
+        const { reply } = await replyWithFiles(3)
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia.map(params => params.idempotencyKey)).toEqual([
+          `${reply.id}-0`,
+          `${reply.id}-1`,
+          `${reply.id}-2`
+        ])
+        expect(sentMedia.map(params => params.caption)).toEqual(['look', undefined, undefined])
+        const rows = await rowsOf(reply.id)
+        expect(rows.map(row => row.deliveryStatus)).toEqual(['sent', 'sent', 'sent'])
+        expect(rows.map(row => row.channelMessageId)).toEqual([
+          `media-${reply.id}-0`,
+          `media-${reply.id}-1`,
+          `media-${reply.id}-2`
+        ])
+        const message = await stored(reply.id)
+        expect(message.deliveryStatus).toBe(DeliveryStatus.SENT)
+        // The id of the message is the first file's
+        expect(message.channelMessageId).toBe(`media-${reply.id}-0`)
+      })
+
+      it('waits for the answer of a file before the next one goes', async () => {
+        const { reply } = await replyWithFiles(2)
+        const order: string[] = []
+        mediaFailure = params => {
+          order.push(`start-${params.idempotencyKey}`)
+          return null
+        }
+        await sender.send(job(reply), false)
+        // Each started once, in order: the second never started before the first had been answered
+        expect(order).toEqual([`start-${reply.id}-0`, `start-${reply.id}-1`])
+      })
+
+      it('marks the file that failed, sends the others, fails the message, and sends again only that file', async () => {
+        const { reply } = await replyWithFiles(3)
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-1`
+            ? new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false })
+            : null
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia).toHaveLength(3)
+        expect(
+          (await rowsOf(reply.id)).map(row => [row.deliveryStatus, row.sendErrorCode])
+        ).toEqual([
+          ['sent', null],
+          ['failed', ErrorCodes.CHANNEL_FILE_TOO_LARGE],
+          ['sent', null]
+        ])
+        const failed = await stored(reply.id)
+        expect(failed.deliveryStatus).toBe(DeliveryStatus.FAILED)
+        expect(failed.deliveryError).toBe(ErrorCodes.CHANNEL_FILE_TOO_LARGE)
+        // The first file's id is kept even though the message failed: its receipts and echo find it
+        expect(failed.channelMessageId).toBe(`media-${reply.id}-0`)
+
+        mediaFailure = () => null
+        sentMedia = []
+        // The agent sends it again, through the service: only the file that failed goes back to queued
+        const conversation = await owner.conversation.findUniqueOrThrow({
+          where: { id: reply.conversationId },
+          select: { customerIdentityId: true }
+        })
+        await owner.customerIdentity.update({
+          where: { id: conversation.customerIdentityId },
+          data: { lastInboundAt: new Date() }
+        })
+        await app
+          .get(MessagesService, { strict: false })
+          .resend(reply.storeId, reply.id, viewerOf(ctx.agentA.id, Object.values(Permissions)))
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual([
+          'sent',
+          'queued',
+          'sent'
+        ])
+        const { resentAt } = await owner.message.findUniqueOrThrow({
+          where: { id: reply.id },
+          select: { resentAt: true }
+        })
+        if (resentAt === null) throw new Error('the message was not marked as sent again')
+        await sender.send(job(reply), false)
+
+        expect(sentMedia.map(params => params.idempotencyKey)).toEqual([
+          `${reply.id}-1-${resentAt.getTime()}`
+        ])
+        // The text went with the first file, which is not sent again
+        expect(sentMedia[0]).not.toHaveProperty('caption')
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual([
+          'sent',
+          'sent',
+          'sent'
+        ])
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      })
+
+      it('stops at a failure that may be repeated while there are attempts, and the next attempt skips what went', async () => {
+        const { reply } = await replyWithFiles(3)
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-1`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
+            : null
+
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+
+        expect(sentMedia).toHaveLength(2)
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual([
+          'sent',
+          'queued',
+          'queued'
+        ])
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
+
+        mediaFailure = () => null
+        sentMedia = []
+        await sender.send(job(reply), true)
+
+        // The first is not sent twice; the other two go, in order
+        expect(sentMedia.map(params => params.idempotencyKey)).toEqual([
+          `${reply.id}-1`,
+          `${reply.id}-2`
+        ])
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      })
+
+      it('fails the file that is not clean and sends the rest', async () => {
+        const { reply, files } = await replyWithFiles(3)
+        await owner.media.update({
+          where: { id: files[2]?.id ?? '' },
+          data: { status: 'infected' }
+        })
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia).toHaveLength(2)
+        expect(
+          (await rowsOf(reply.id)).map(row => [row.deliveryStatus, row.sendErrorCode])
+        ).toEqual([
+          ['sent', null],
+          ['sent', null],
+          ['failed', ErrorCodes.FILE_UNAVAILABLE]
+        ])
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+      })
+
+      it('fails the message when its first file failed and none went, with no id to keep', async () => {
+        const { reply } = await replyWithFiles(2)
+        mediaFailure = () =>
+          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+
+        await sender.send(job(reply), false)
+
+        const message = await stored(reply.id)
+        expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+        expect(message.channelMessageId).toBeNull()
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual([
+          'failed',
+          'failed'
+        ])
+      })
+
+      it('sends a message of files written before each had a state as it always did', async () => {
+        const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+        await fileOf(reply.storeId, { messageId: reply.id })
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia.map(params => params.idempotencyKey)).toEqual([reply.id])
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual(['sent'])
       })
     })
   })
@@ -1146,6 +1525,58 @@ describe('Replies on their way to a channel', () => {
       heard = []
       return { ...reply, externalId: channelMessageId ?? '' }
     }
+
+    it('moves the message and only the file it names when the receipt is about a file after the first', async () => {
+      const reply = await queuedReply({ pluginId: MULTI_MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      for (let position = 0; position < 3; position += 1) {
+        const id = randomUUID()
+        await owner.media.create({
+          data: {
+            id,
+            storeId: reply.storeId,
+            purpose: 'message',
+            messageId: reply.id,
+            key: `stores/${reply.storeId}/messages/${id}/p.png`,
+            filename: 'p.png',
+            contentType: 'image/png',
+            fileSize: 10,
+            status: 'clean',
+            position,
+            deliveryStatus: 'queued',
+            createdAt: new Date(Date.now() + position)
+          }
+        })
+      }
+      await sender.send(job(reply), false)
+
+      const aboutFile = (type: 'message_delivered' | 'message_read') =>
+        receipts.handleReceipt(
+          MULTI_MEDIA_CHANNEL_ID,
+          {
+            type,
+            connectionId: reply.connectionId,
+            channelIdentity: '50370000000',
+            status: { externalId: `media-${reply.id}-2` },
+            timestamp: new Date().toISOString()
+          },
+          false
+        )
+      await aboutFile('message_read')
+
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.READ)
+      const files = await owner.media.findMany({
+        where: { messageId: reply.id },
+        orderBy: { position: 'asc' },
+        select: { deliveryStatus: true }
+      })
+      expect(files.map(file => file.deliveryStatus)).toEqual(['sent', 'sent', 'read'])
+      // A receipt that arrives late for an earlier state never takes a file back
+      await aboutFile('message_delivered')
+      expect(
+        (await owner.media.findFirstOrThrow({ where: { messageId: reply.id, position: 2 } }))
+          .deliveryStatus
+      ).toBe('read')
+    })
 
     it('moves a sent reply to delivered and then read, and says each once', async () => {
       const reply = await sentReply()

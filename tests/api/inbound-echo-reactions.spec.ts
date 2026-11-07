@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
@@ -325,6 +327,86 @@ describe('Echoes and reactions that a channel delivers', () => {
 
       expect(outcome).toBe(InboundOutcomes.DUPLICATE)
       expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(2)
+    })
+
+    it('is not stored again when it is a later file of a message the platform sent with several', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-multi'))
+      const { conversation } = await threadOf(ctx.storeA.id, from)
+      const sent = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: 'file-multi-0'
+        }
+      })
+      for (const [position, id] of ['file-multi-0', 'file-multi-1', 'file-multi-2'].entries()) {
+        const mediaId = randomUUID()
+        await owner.media.create({
+          data: {
+            id: mediaId,
+            storeId: ctx.storeA.id,
+            purpose: 'message',
+            messageId: sent.id,
+            key: `stores/${ctx.storeA.id}/messages/${mediaId}/a.png`,
+            filename: 'a.png',
+            contentType: 'image/png',
+            fileSize: 10,
+            status: 'clean',
+            position,
+            deliveryStatus: 'sent',
+            channelMessageId: id
+          }
+        })
+      }
+
+      expect(await echo(connectionId, from, 'file-multi-2')).toBe(InboundOutcomes.DUPLICATE)
+      expect(await echo(connectionId, from, 'file-multi-1')).toBe(InboundOutcomes.DUPLICATE)
+      expect((await threadOf(ctx.storeA.id, from)).messages).toHaveLength(2)
+    })
+
+    it('does not take the id of a file of another conversation for an echo of this one', async () => {
+      const connectionId = await connectionOf(ctx.storeA.id)
+      const from = handleOf()
+      const other = handleOf()
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'in-x1'))
+      await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, other, 'in-x2'))
+      const { conversation } = await threadOf(ctx.storeA.id, other)
+      const sent = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.IMAGE,
+          authorType: AuthorType.AGENT,
+          deliveryStatus: DeliveryStatus.SENT,
+          channelMessageId: 'file-x-0'
+        }
+      })
+      const mediaId = randomUUID()
+      await owner.media.create({
+        data: {
+          id: mediaId,
+          storeId: ctx.storeA.id,
+          purpose: 'message',
+          messageId: sent.id,
+          key: `stores/${ctx.storeA.id}/messages/${mediaId}/a.png`,
+          filename: 'a.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          status: 'clean',
+          position: 1,
+          deliveryStatus: 'sent',
+          channelMessageId: 'file-x-1'
+        }
+      })
+
+      expect(await echo(connectionId, from, 'file-x-1', 'typed by the owner')).not.toBe(
+        InboundOutcomes.DUPLICATE
+      )
     })
 
     it('settles a caption sent again with its echo, even when the reply is old', async () => {
