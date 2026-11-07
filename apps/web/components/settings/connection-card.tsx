@@ -374,7 +374,7 @@ function Disclosure({ label, children }: { label: string; children: ReactNode })
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => setOpen(!open)}
-        className="hover:bg-accent flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-sm font-medium"
+        className="hover:bg-accent flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-sm font-medium pointer-coarse:min-h-10 pointer-coarse:min-w-10"
       >
         <Icon aria-hidden className="size-4" />
         {label}

@@ -6,7 +6,7 @@ import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import { ConversationLimits, SLASH_PREFIX } from '@platform/core/domain'
+import { ConversationLimits, ResolveUndo, SLASH_PREFIX } from '@platform/core/domain'
 
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import { useSnippets } from '../../lib/inbox/use-inbox-data'
@@ -41,7 +41,7 @@ export function ResolveForm({
   const tAll = useTranslations()
   const { storeId, can } = useStore()
   const snippets = useSnippets(storeId, true)
-  const { resolve } = useConversationActions(storeId, conversationId)
+  const { resolve, reopen } = useConversationActions(storeId, conversationId)
   const { offer: offerPush } = usePushOffer(storeId)
   const [wantsClosing, setWantsClosing] = useState(defaults.sendClosingMessage)
   const [snippetId, setSnippetId] = useState(defaults.closingSnippetId ?? '')
@@ -66,20 +66,38 @@ export function ResolveForm({
   // now would drop it without a word, so the agent unchecks it or waits
   const isMissingClosing = wantsClosing && canSendClosing && chosenId === ''
 
+  // Set at once, not with the render: two presses that land in the same cycle of render would both see a form that
+  // is not pending yet, and the conversation would be resolved twice
+  const isSubmitting = useRef(false)
   const submit = (): void => {
+    if (isSubmitting.current) return
+    isSubmitting.current = true
     const trimmed = reason.trim()
     resolve
       .mutateAsync({
         ...(trimmed === '' ? {} : { reason: trimmed }),
         ...(sendsClosing ? { closingSnippetId: chosenId } : {})
       })
-      .then(() => {
-        toast.success(t('resolved'))
-        offerPush()
-        onDone()
-      })
-      // The error shows in the dialog, from the state of the mutation
-      .catch(() => undefined)
+      .then(
+        () => {
+          // The same Undo as the way with no dialog: the closing message waits for it on the server
+          toast(t('resolved'), {
+            duration: ResolveUndo.DURATION_MS,
+            action: {
+              label: tAll('common.undo'),
+              onClick: () =>
+                void reopen.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
+            }
+          })
+          offerPush()
+          onDone()
+        },
+        // The error shows in the dialog, from the state of the mutation, and the form can be sent again.
+        // Only a refused resolve opens the lock: what happens after a good one must not
+        () => {
+          isSubmitting.current = false
+        }
+      )
   }
 
   return (
@@ -88,7 +106,7 @@ export function ResolveForm({
       className="flex flex-col gap-4"
       onSubmit={event => {
         event.preventDefault()
-        if (!resolve.isPending) submit()
+        if (!resolve.isPending && !isMissingClosing) submit()
       }}
       // Cmd/Ctrl+Enter confirms from any field, as it sends in the composer: `e` then the pair resolves
       // without the four Tab to the button (the Enter of the box of the reason stays a line break)
