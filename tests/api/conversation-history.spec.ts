@@ -56,6 +56,7 @@ describe('The history of a conversation and of a message', () => {
 
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
   const asViewer = () => api(app, ctx.viewerA, ctx.storeA)
+  const asAgent = () => api(app, ctx.agentA, ctx.storeA)
 
   // A conversation whose customer wrote from the given ads, oldest first
   async function conversationFromAds(
@@ -292,6 +293,24 @@ describe('The history of a conversation and of a message', () => {
 
       expect(response.status).toBe(OK)
       expect((response.body as RevisionBody[]).map(item => item.content)).toEqual([null])
+    })
+
+    it('leave no trace of the edits of a deleted message to who may not view deleted content (W3a)', async () => {
+      const revision = await createMessageRevisionOf(owner, {
+        storeId: ctx.storeA.id,
+        userId: ctx.adminA.id
+      })
+      const { messageId } = await owner.messageRevision.findUniqueOrThrow({
+        where: { id: revision.id },
+        select: { messageId: true }
+      })
+      await owner.message.update({ where: { id: messageId }, data: { deletedAt: new Date() } })
+
+      const agent = await asAgent().get(ApiRoutes.messages.revisions(messageId))
+
+      // Who edited and when is not given either: the deletion wins, as it does in the thread
+      expect(agent.status).toBe(OK)
+      expect(agent.body).toEqual([])
     })
 
     it('are a 404 for a message that does not exist', async () => {

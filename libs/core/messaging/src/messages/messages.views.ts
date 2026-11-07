@@ -300,6 +300,32 @@ interface MessageRow {
   createdAt: Date
 }
 
+function editFieldsOf(
+  row: MessageRow
+): Pick<
+  MessageView,
+  'editedAt' | 'editedByType' | 'editedById' | 'pendingEdit' | 'editStatus' | 'editError'
+> {
+  if (row.deletedAt !== null) {
+    return {
+      editedAt: null,
+      editedByType: null,
+      editedById: null,
+      pendingEdit: false,
+      editStatus: null,
+      editError: null
+    }
+  }
+  return {
+    editedAt: row.editedAt,
+    editedByType: authorOrNull(row.editedByType, 'message editor'),
+    editedById: row.editedById,
+    pendingEdit: row.pendingContent !== null,
+    editStatus: deliveryOrNull(row.editStatus, 'edit delivery'),
+    editError: row.editError
+  }
+}
+
 export function messageView(row: MessageRow, replyTo: QuotedMessage | null = null): MessageView {
   const type = enumValueOf(MessageTypes, row.type, 'message type')
   return {
@@ -352,12 +378,9 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     unavailableFiles: unavailableFilesOf(row, type),
     captionState: row.deletedAt === null ? captionStateOf(row.captionState) : null,
     version: row.version,
-    editedAt: row.editedAt,
-    editedByType: authorOrNull(row.editedByType, 'message editor'),
-    editedById: row.editedById,
-    pendingEdit: row.pendingContent !== null,
-    editStatus: deliveryOrNull(row.editStatus, 'edit delivery'),
-    editError: row.editError,
+    // A message edited and then deleted is a deleted message: the deletion wins, so it carries no
+    // "edited", no editor and no edit waiting or failed (its text is already hidden above)
+    ...editFieldsOf(row),
     deletedAt: row.deletedAt,
     deletedByType: authorOrNull(row.deletedByType, 'message deleter'),
     deletedById: row.deletedById,
