@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useId, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import {
@@ -29,6 +28,7 @@ import type {
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
 import { needsNewToken } from '../../lib/settings/health-reconnect'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
+import { toast } from '../../lib/toast'
 import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'

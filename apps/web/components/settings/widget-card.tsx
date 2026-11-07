@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { WidgetLimits } from '@platform/core/domain'
 
@@ -13,6 +12,7 @@ import {
   useSaveWidgetPreChat,
   useWidget
 } from '../../lib/settings/use-channels'
+import { toast } from '../../lib/toast'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

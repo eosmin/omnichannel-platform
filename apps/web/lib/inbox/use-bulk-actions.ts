@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useCallback, useState } from 'react'
-import { toast } from 'sonner'
 
 import {
   AppPaths,
@@ -18,6 +17,7 @@ import { BulkActions } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { apiClient } from '../api'
+import { toast } from '../toast'
 import { useCodeText, useErrorText } from '../use-error-text'
 
 import { BulkOutcomes, type PreviousState, singleResultKey, summaryOf, undoStepsOf } from './bulk'

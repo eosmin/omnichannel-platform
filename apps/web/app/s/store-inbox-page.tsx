@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 
@@ -28,6 +27,7 @@ import {
   useSavePreferences
 } from '../../lib/settings/use-content'
 import { useSnippetChoices } from '../../lib/settings/use-routing'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 
 // Settings → Store → Inbox behavior (TDD_09 §3 and §13): how resolving, reopening and archiving work,

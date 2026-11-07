@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useId, useMemo } from 'react'
-import { toast } from 'sonner'
 
 import type { NotificationSettingsView, TypePreferenceView } from '@platform/api-client'
 import { DigestFrequency } from '@platform/core/domain'
@@ -20,6 +19,7 @@ import {
 import { usePreferences, useSavePreferences } from '../../lib/notifications/use-notification-data'
 import { PushSubscribeResult } from '../../lib/push/push-browser'
 import { PushSwitchState, usePushSwitch } from '../../lib/push/use-push-switch'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 

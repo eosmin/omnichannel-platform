@@ -3,7 +3,6 @@
 import { ChevronDown, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import {
   type BulkOperation,
@@ -24,6 +23,7 @@ import {
 } from '../../lib/inbox/selection'
 import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { toast } from '../../lib/toast'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'

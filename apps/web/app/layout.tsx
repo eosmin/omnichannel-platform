@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 import { AppProviders } from '../components/providers/app-providers'
 import { DestructiveActionProvider } from '../components/shared/destructive-action'
-import { Toaster } from '../components/ui/sonner'
+import { ToasterHost } from '../components/ui/toaster-host'
 
 import './globals.css'
 
@@ -28,7 +28,7 @@ export default async function RootLayout({
           <AppProviders>
             <DestructiveActionProvider>{children}</DestructiveActionProvider>
           </AppProviders>
-          <Toaster />
+          <ToasterHost />
         </NextIntlClientProvider>
       </body>
     </html>
