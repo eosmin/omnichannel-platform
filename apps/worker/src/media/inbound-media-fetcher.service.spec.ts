@@ -169,6 +169,51 @@ describe('InboundMediaFetcher', () => {
     expect(logger.warn).toHaveBeenCalled()
   })
 
+  describe('an audio clip of Instagram', () => {
+    const M4A = Buffer.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20, 0, 0])
+    const audioJob = { ...job, pluginId: 'instagram', contentType: 'audio/mp4', filename: null }
+
+    it.each(['video/mp4', 'audio/mp4', 'audio/x-m4a', 'application/octet-stream'])(
+      'is kept as audio/mp4 when the server calls it %s and the webhook said audio',
+      async declared => {
+        const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(M4A, declared)) }
+        const { fetcher, media, storage, queue, marker } = setup({ plugin })
+
+        await fetcher.fetch(audioJob, false)
+
+        expect(storage.put).toHaveBeenCalledWith(expect.any(String), M4A, 'audio/mp4')
+        expect(media.create).toHaveBeenCalledTimes(1)
+        const created = media.create.mock.calls[0] as [
+          { data: { contentType: string; fileSize: number } }
+        ]
+        expect(created[0].data).toMatchObject({ contentType: 'audio/mp4', fileSize: M4A.length })
+        expect(queue.add).toHaveBeenCalledTimes(1)
+        expect(marker.mark).not.toHaveBeenCalled()
+      }
+    )
+
+    it('keeps a video as a video when the webhook did not say audio', async () => {
+      const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(M4A, 'video/mp4')) }
+      const { fetcher, storage } = setup({ plugin })
+
+      await fetcher.fetch({ ...audioJob, contentType: 'application/octet-stream' }, false)
+
+      expect(storage.put).toHaveBeenCalledWith(expect.any(String), M4A, 'video/mp4')
+    })
+
+    it('refuses bytes that are not an mp4 container, whatever the type said', async () => {
+      const html = Buffer.from('<html><script>alert(1)</script></html>')
+      const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(html, 'audio/mp4')) }
+      const { fetcher, storage, media, marker } = setup({ plugin })
+
+      await fetcher.fetch(audioJob, false)
+
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(media.create).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
+    })
+  })
+
   it('cuts a body that grows past the limit', async () => {
     const big = Readable.from([Buffer.alloc(6 * 1024 * 1024), Buffer.alloc(6 * 1024 * 1024)])
     const plugin = {

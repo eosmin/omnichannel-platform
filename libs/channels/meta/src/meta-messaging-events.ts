@@ -8,6 +8,7 @@ import {
   MetaMessaging,
   OriginKinds,
   OriginMediaTypes,
+  placeTextOf,
   ReactionActors
 } from '@platform/core/domain'
 import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
@@ -78,6 +79,9 @@ function originOf(raw: Record<string, unknown> | undefined): ChannelOrigin | und
 interface ParsedAttachment {
   type: string
   url: string | undefined
+  title: string | undefined
+  stickerId: string | undefined
+  coordinates: { lat: number; long: number } | undefined
   // The link as it came, when it did not pass as one: a file is still a file (MS-04)
   rawUrl: string | undefined
 }
@@ -90,7 +94,17 @@ function parseAttachments(raw: unknown[]): ParsedAttachment[] {
     const url = attachment.data.payload?.url
     const rawUrl =
       url === undefined ? metaAttachmentRawLinkSchema.parse(item).payload?.url : undefined
-    return [{ type: attachment.data.type, url, rawUrl }]
+    const { title, payload } = attachment.data
+    return [
+      {
+        type: attachment.data.type,
+        url,
+        title,
+        stickerId: payload?.sticker_id,
+        coordinates: payload?.coordinates,
+        rawUrl
+      }
+    ]
   })
 }
 
@@ -100,15 +114,28 @@ function mediaOf(attachments: ParsedAttachment[]): {
   media: NonNullable<ReceivedMessage['media']>
 } | null {
   const media: NonNullable<ReceivedMessage['media']>[number][] = []
+  const seen = new Set<string>()
   let type: MessageType | undefined
   for (const { type: attachmentType, url: checked, rawUrl } of attachments) {
     const kind = MEDIA_ATTACHMENTS.get(attachmentType)
     // A link that is not a public web address is not dropped: the worker refuses it with the notice
     const url = checked ?? rawUrl
     if (!kind || !url) continue
+    // A sticker comes with an image of the same link (Meta sends both until 2026-08-30): one file
+    if (seen.has(url)) continue
+    seen.add(url)
     type ??= kind
-    // Meta does not say the type of the file in the webhook: the fetch reads it from the file
-    media.push({ ref: url, contentType: MetaGraph.FALLBACK_CONTENT_TYPE, filename: null })
+    // Meta does not say the type of the file in the webhook: the fetch reads it from the file. An
+    // audio is a clip in an mp4 container, and the hint lets the fetch keep it as audio when the
+    // server of the file calls it video/mp4.
+    media.push({
+      ref: url,
+      contentType:
+        kind === MessageType.AUDIO
+          ? MetaGraph.AUDIO_HINT_CONTENT_TYPE
+          : MetaGraph.FALLBACK_CONTENT_TYPE,
+      filename: null
+    })
     if (media.length === InboundLimits.MAX_MEDIA_PER_MESSAGE) break
   }
   return type ? { type, media } : null
@@ -128,6 +155,38 @@ function sharedOf(attachments: ParsedAttachment[]): ParsedAttachment | null {
   return first
 }
 
+function likeOf(attachments: ParsedAttachment[]): ParsedAttachment | undefined {
+  return attachments.find(attachment => attachment.stickerId === MetaMessaging.LIKE_STICKER_ID)
+}
+
+// The like itself, or the image Meta sends with it (the same link, no id of its own)
+function isPartOfLike(attachment: ParsedAttachment, like: ParsedAttachment): boolean {
+  return attachment === like || (attachment.url !== undefined && attachment.url === like.url)
+}
+
+// A place the customer shared: its coordinates, and the name Meta gives it. The shared pin of the app has
+// no link to a file, so it is not read as media. A pin with no usable coordinates is a shared thing like
+// any other, kept as the marker.
+function placeOf(attachments: ParsedAttachment[]): {
+  name: string | null
+  metadata: Record<string, unknown>
+} | null {
+  const found = attachments.find(
+    attachment =>
+      attachment.type === MetaMessaging.ATTACHMENT_LOCATION && attachment.coordinates !== undefined
+  )
+  if (!found?.coordinates) return null
+  const name = placeTextOf(found.title)
+  return {
+    name,
+    metadata: {
+      latitude: found.coordinates.lat,
+      longitude: found.coordinates.long,
+      ...(name === null ? {} : { name })
+    }
+  }
+}
+
 // What a message says, in the shape the core stores. A message with neither text nor a file we can
 // fetch is kept as a text with no content and the provider's type in the metadata, so the customer's
 // message is never lost and the interface decides how to show it.
@@ -145,10 +204,26 @@ function toReceivedMessage(
     timestamp,
     ...(origin ? { origin } : {})
   }
-  const text = hasText(message.text) ? message.text : null
   const attachments = parseAttachments(message.attachments ?? [])
-  const files = message.is_unsupported ? null : mediaOf(attachments)
-  const shared = message.is_unsupported ? null : sharedOf(attachments)
+  const rawText = hasText(message.text) ? message.text : null
+  const unsupported = message.is_unsupported === true
+  // The like button: a sticker with a known id (and the image of the same link). It is a thumbs up,
+  // so it is stored as that text and nothing is fetched.
+  const like = unsupported ? undefined : likeOf(attachments)
+  if (like && rawText === null && attachments.every(attachment => isPartOfLike(attachment, like))) {
+    return { ...base, type: MessageType.TEXT, content: MetaMessaging.LIKE_TEXT }
+  }
+  const files = unsupported ? null : mediaOf(attachments)
+  // The placeholder beside a photo is not the customer's text; kept when there is no file to explain it
+  const text =
+    files && rawText !== null && MetaMessaging.PLACEHOLDER_TEXTS.includes(rawText.trim())
+      ? null
+      : rawText
+  const place = unsupported ? null : placeOf(attachments)
+  if (place) {
+    return { ...base, type: MessageType.LOCATION, content: place.name, metadata: place.metadata }
+  }
+  const shared = unsupported ? null : sharedOf(attachments)
   // The name of a type is the sender's, and it goes into the metadata and the content: only a plain one
   const providerType = shared && PROVIDER_TYPE.test(shared.type) ? shared.type : UNSUPPORTED_TYPE
   // A shared post or reel keeps its link beside the text or the file, so the team can open it; so does

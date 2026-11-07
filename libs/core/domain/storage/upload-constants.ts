@@ -31,7 +31,7 @@ export const UploadLimits = {
 export const AllowedContentTypes = {
   IMAGE: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
   VIDEO: ['video/mp4', 'video/quicktime'],
-  AUDIO: ['audio/mpeg', 'audio/ogg', 'audio/wav'],
+  AUDIO: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/mp4', 'audio/aac'],
   DOCUMENT: [
     'application/pdf',
     'text/plain',

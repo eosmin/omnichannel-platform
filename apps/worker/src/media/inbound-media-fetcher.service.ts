@@ -43,7 +43,7 @@ import { UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { refusalOf } from '../outbound/send-refusal'
 
-import { bareType, FileRefused, GENERIC_TYPES, readLimited } from './fetch-helpers'
+import { bareType, FileRefused, keptContentType, readLimited } from './fetch-helpers'
 import { inboundMediaId } from './inbound-media-id'
 import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
@@ -286,8 +286,7 @@ export class InboundMediaFetcher {
             open.destroy?.()
             throw new FileRefused('the fetch took too long')
           }
-          const declared = bareType(file.contentType)
-          const contentType = GENERIC_TYPES.has(declared) ? bareType(job.contentType) : declared
+          const contentType = keptContentType(bareType(file.contentType), job.contentType)
           if (!AllAllowedContentTypes.has(contentType)) {
             throw new FileRefused('the type of the file is not allowed')
           }

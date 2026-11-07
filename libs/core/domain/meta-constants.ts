@@ -39,6 +39,8 @@ export const MetaGraph = {
   // *.fbsbx.com hosts (apps.fbsbx.com) serve content of third parties.
   MEDIA_TOKEN_HOSTS: ['lookaside.fbsbx.com'],
   FALLBACK_CONTENT_TYPE: 'application/octet-stream',
+  // What an audio of the webhook is taken to be until the file says otherwise (a clip in an mp4 container)
+  AUDIO_HINT_CONTENT_TYPE: 'audio/mp4',
   // CDNs a media url may point to. They are followed without the token. A media url outside both
   // lists is refused, so a forged answer cannot make the worker call an internal address.
   MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com'],
@@ -110,7 +112,17 @@ export const MetaMessaging = {
   ATTACHMENT_AUDIO: 'audio',
   ATTACHMENT_FILE: 'file',
   // `referral.source` of a Click-to-Message ad
-  REFERRAL_SOURCE_ADS: 'ADS'
+  REFERRAL_SOURCE_ADS: 'ADS',
+  // The attachment of a place the customer shared: `payload.coordinates` holds `{ lat, long }`
+  ATTACHMENT_LOCATION: 'location',
+  // The like button of Messenger arrives as a sticker with this id (and, until Meta stops sending the
+  // pair, as an image with the same link). It is the thumbs up, not a file worth fetching.
+  LIKE_STICKER_ID: '369239263222822',
+  LIKE_TEXT: '\u{1F44D}',
+  // The texts Messenger puts beside a photo sent from the camera roll: a placeholder, not something the
+  // customer wrote. An exact list and not a pattern, because "[ok]" with a photo can be a customer's
+  // words and dropping it loses them; a new one is added when a real payload shows it.
+  PLACEHOLDER_TEXTS: ['[Adjuntar foto]'] as readonly string[]
 } as const
 
 // Instagram messaging through the Messenger Platform with Facebook Login (Meta: "Get started with Instagram
