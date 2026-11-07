@@ -256,4 +256,16 @@ describe('isServerMessage', () => {
     expect(isServerMessage({ ...base, attachments: [{ ...file, size: '3' }] })).toBe(false)
     expect(isServerMessage(base)).toBe(false)
   })
+
+  // A site that is not listed gets a 403 with no CORS header: the browser hides the answer and `fetch`
+  // rejects, so it reaches the session as a call that got no answer, the same as a CSP block
+  it('turns a call the browser refused to show (a CORS refusal, a CSP block) into no answer', async () => {
+    const request = jest.fn(() =>
+      Promise.reject(new TypeError('Failed to fetch'))
+    ) as unknown as typeof fetch
+
+    await expect(
+      new WidgetApi('https://api.test/api/v1', request).bootstrap('pk_x', 'visitor')
+    ).rejects.toMatchObject({ status: 0, permanent: false })
+  })
 })

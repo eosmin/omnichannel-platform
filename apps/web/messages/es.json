@@ -9,6 +9,7 @@
     "notifications": {
       "title": "Notificaciones",
       "forStore": "Tus preferencias para {store}.",
+      "hint": "Toda notificación se guarda en tu lista. Estos interruptores solo eligen cómo te llega cada una: un aviso en vivo mientras trabajas, una notificación push en tus dispositivos, un correo o un sonido.",
       "noStore": "Todavía no perteneces a ninguna tienda.",
       "loading": "Cargando…",
       "saveFailed": "No se pudo guardar el cambio.",
@@ -192,6 +193,7 @@
     "backToStart": "Volver al inicio",
     "tryAgain": "Intentar de nuevo",
     "signOut": "Cerrar sesión",
+    "working": "En curso",
     "loading": "Cargando",
     "save": "Guardar",
     "discard": "Descartar cambios",
@@ -472,6 +474,7 @@
     "EXPORT_TOO_LARGE": "Hay demasiados archivos, o pesan demasiado, para una descarga. Acota la búsqueda",
     "EXTERNAL_SERVICE_ERROR": "Falló un servicio externo. Inténtalo más tarde",
     "EXTERNAL_SERVICE_TIMEOUT": "Un servicio externo tardó demasiado. Inténtalo más tarde",
+    "DATABASE_BUSY": "El servicio está ocupado. Inténtalo de nuevo en un momento",
     "FILE_INFECTED": "Se rechazó el archivo porque no es seguro",
     "FILE_KEY_OUT_OF_SCOPE": "Ese archivo no pertenece a esta tienda",
     "FILE_NOT_READY": "El archivo aún se está procesando",

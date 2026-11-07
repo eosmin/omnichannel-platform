@@ -5,12 +5,15 @@ import type { Response } from 'express'
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino'
 
 import { InfraRoutes } from '@platform/core/api'
+import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { scrubUrl } from '@platform/core/domain'
 import {
+  ApiLockTimeout,
   type ErrorCode,
   ErrorCodes,
   type ErrorResponse,
   HttpStatusCodes,
+  isLockTimeoutError,
   PlatformException
 } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -19,6 +22,7 @@ import { InjectMetric } from '@platform/core/metrics-module'
 
 const GENERIC_MESSAGE = 'An unexpected error occurred'
 const RATE_LIMIT_MESSAGE = 'Too many requests'
+const DATABASE_BUSY_MESSAGE = 'The service is busy, try again in a moment'
 // Nest writes the class in front of the message of some errors ("ThrottlerException: Too Many
 // Requests"): a name of ours that the client has no use for
 const CLASS_NAME_PREFIX = /^[A-Za-z]+Exception:\s*/
@@ -166,6 +170,24 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           message: serverFailure ? GENERIC_MESSAGE : publicMessage(status, exception.message),
           // A failing probe says which of its checks failed, so that whoever reads it knows where to look
           metadata: probe ? { checks: checksOf(exception.getResponse()) } : {}
+        },
+        correlationId
+      })
+      return
+    }
+
+    // The database gave up waiting for a lock: the caller is asked to come back, and it is a warning,
+    // not a page (a blocked table is the symptom of something else, which has its own alert)
+    if (isLockTimeoutError(exception)) {
+      this.logger.warn(
+        { route: this.routeOf(request) },
+        'a request gave up waiting for a database lock'
+      )
+      this.send(response, HttpStatusCodes.SERVICE_UNAVAILABLE, {
+        error: {
+          code: ErrorCodes.DATABASE_BUSY,
+          message: DATABASE_BUSY_MESSAGE,
+          metadata: { [RETRY_AFTER_METADATA_KEY]: ApiLockTimeout.RETRY_AFTER_SECONDS }
         },
         correlationId
       })

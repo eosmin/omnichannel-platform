@@ -30,6 +30,13 @@ describe('Button', () => {
     expect(html.indexOf('busy-spinner')).toBeLessThan(html.indexOf('Save'))
   })
 
+  it('keeps its words and its accessible name while busy: nothing is added inside it', () => {
+    const busy = renderToStaticMarkup(createElement(Button, { busy: true }, 'Save'))
+    // The announcement is made by one region of the app (`BusyAnnouncer`), never by a status inside the button
+    expect(busy).not.toContain('role="status"')
+    expect(busy.replace(/<[^>]+>/g, '')).toBe('Save')
+  })
+
   it('renders a plain button with no spinner', () => {
     const html = renderToStaticMarkup(createElement(Button, null, 'Save'))
     expect(html).not.toContain('busy-spinner')

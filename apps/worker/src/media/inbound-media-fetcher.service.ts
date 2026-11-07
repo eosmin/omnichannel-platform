@@ -150,7 +150,7 @@ export class InboundMediaFetcher {
 
     let fetched: { body: Buffer; contentType: string } | null
     try {
-      fetched = await this.download(plugin.fetchMedia.bind(plugin), connection, job)
+      fetched = await this.download(plugin, plugin.fetchMedia.bind(plugin), connection, job)
     } catch (error) {
       if (
         error instanceof FileRefused ||
@@ -266,6 +266,7 @@ export class InboundMediaFetcher {
   }
 
   private async download(
+    plugin: NonNullable<ReturnType<PluginRegistry['find']>>,
     fetchMedia: NonNullable<ReturnType<PluginRegistry['find']>>['fetchMedia'] & object,
     connection: Parameters<ChannelContextFactory['contextFor']>[0],
     job: FetchInboundMediaJob
@@ -279,6 +280,10 @@ export class InboundMediaFetcher {
         (async () => {
           // Anything that is not a plain id of the provider is a link, and is checked as one; the
           // plugin is given the address as the check read it, not the text that came in
+          if (!PLAIN_REFERENCE.test(job.mediaRef) && !acceptedBy(plugin, job.mediaRef)) {
+            // Before any lookup: a host the plugin would refuse is never resolved from here
+            throw new UnsafeUrlError('the channel does not take links of that host')
+          }
           const ref = PLAIN_REFERENCE.test(job.mediaRef)
             ? job.mediaRef
             : (await assertPublicHttpsUrl(job.mediaRef)).href
@@ -341,5 +346,19 @@ export class InboundMediaFetcher {
       { mediaId },
       { jobId: `${JobNames.SCAN_FILE}-${mediaId}` }
     )
+  }
+}
+
+// Whether the plugin takes a link, asked before the host is looked up. A plugin with no such list takes
+// every link (the public-address check still applies); one that throws on a link it cannot read refuses it.
+function acceptedBy(
+  plugin: { acceptsMediaLink?: (mediaRef: string) => boolean },
+  mediaRef: string
+): boolean {
+  if (plugin.acceptsMediaLink === undefined) return true
+  try {
+    return plugin.acceptsMediaLink(mediaRef)
+  } catch {
+    return false
   }
 }

@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
-import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactElement, useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
 import { ResolveUndo } from '@platform/core/domain'
@@ -93,8 +93,10 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   }
 
   // The same function for the life of the hook: the header and the composer hold it in a context
+  // A layout effect, so that it has run before any effect of a component that calls `start` when the settings
+  // arrive (those run after it, with the settings that `start` has to read)
   const latest = useRef(start)
-  useEffect(() => {
+  useLayoutEffect(() => {
     latest.current = start
   })
   const stableStart = useCallback((): void => latest.current(), [])
