@@ -9,6 +9,7 @@
     "notifications": {
       "title": "Notificaciones",
       "forStore": "Tus preferencias para {store}.",
+      "hint": "Toda notificación se guarda en tu lista. Estos interruptores solo eligen cómo te llega cada una: un aviso en vivo mientras trabajas, una notificación push en tus dispositivos, un correo o un sonido.",
       "noStore": "Todavía no perteneces a ninguna tienda.",
       "loading": "Cargando…",
       "saveFailed": "No se pudo guardar el cambio.",
@@ -505,7 +506,7 @@
     "PLUGIN_NOT_FOUND": "El plugin no existe",
     "PLUGIN_NOT_INSTALLED": "El plugin no está instalado",
     "PLUGIN_SCOPE_DENIED": "El plugin no tiene acceso a eso",
-    "RATE_LIMIT_EXCEEDED": "Demasiados intentos. Espera un momento",
+    "RATE_LIMIT_EXCEEDED": "Hay demasiadas solicitudes. Espera un momento",
     "RECEPTION_ALREADY_RECEIVED": "Ese paquete ya fue recibido",
     "RECEPTION_SHIPMENT_NOT_FOUND": "Ningún envío coincide con ese código",
     "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",

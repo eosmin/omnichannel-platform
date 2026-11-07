@@ -1,6 +1,22 @@
+import { lookup } from 'node:dns/promises'
+import type * as DnsPromises from 'node:dns/promises'
 import { Readable } from 'node:stream'
 
 import { UnsafeMediaLinkError, PluginError } from '@platform/plugins/sdk'
+
+// The lookup of a host is the real one unless a case says otherwise: a case can then prove it was not called
+const actualLookup = (...args: Parameters<typeof lookup>): ReturnType<typeof lookup> =>
+  jest.requireActual<typeof DnsPromises>('node:dns/promises').lookup(...args)
+
+jest.mock('node:dns/promises', () => {
+  const actual = jest.requireActual<typeof DnsPromises>('node:dns/promises')
+  return {
+    ...actual,
+    lookup: jest.fn((...args: Parameters<typeof actual.lookup>) =>
+      (actual.lookup as (...a: unknown[]) => unknown)(...args)
+    )
+  }
+})
 
 // The barrel of connections loads the environment of the app, which a unit run does not have
 jest.mock('@platform/channels/connections', () => ({
@@ -345,6 +361,82 @@ describe('InboundMediaFetcher', () => {
     await expect(fetcher.fetch(job, false)).resolves.toBeUndefined()
     // A refusal the provider repeats is not offered again: no source
     expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'fetch_failed', undefined)
+  })
+
+  // QA MS-19: the list of hosts of the channel runs first, so a foreign host is never looked up from here
+  it.each([
+    ['a host that is not a CDN of the channel', 'https://evil.example/x.jpg'],
+    ['a link with a port', 'https://scontent.xx.fbcdn.net:8443/x.jpg'],
+    ['a plain http link', 'http://scontent.xx.fbcdn.net/x.jpg'],
+    ['a literal address', 'https://169.254.169.254/x.jpg']
+  ])('refuses %s as an unsafe link without resolving its host', async (_name, mediaRef) => {
+    const lookups = jest.mocked(lookup)
+    lookups.mockClear()
+    lookups.mockRejectedValue(new Error('the host was looked up'))
+    try {
+      const plugin = {
+        fetchMedia: jest.fn(),
+        acceptsMediaLink: (ref: string) => new URL(ref).hostname.endsWith('.fbcdn.net')
+      }
+      const { fetcher, marker } = setup({ plugin })
+
+      await expect(fetcher.fetch({ ...job, mediaRef }, false)).resolves.toBeUndefined()
+
+      expect(lookups).not.toHaveBeenCalled()
+      expect(plugin.fetchMedia).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
+    } finally {
+      lookups.mockReset()
+      lookups.mockImplementation((...args) => actualLookup(...args))
+    }
+  })
+
+  it('still checks the addresses of a host that the channel accepts', async () => {
+    const lookups = jest.mocked(lookup)
+    lookups.mockClear()
+    lookups.mockResolvedValue([{ address: '10.0.0.7', family: 4 }] as never)
+    try {
+      const plugin = { fetchMedia: jest.fn(), acceptsMediaLink: jest.fn().mockReturnValue(true) }
+      const { fetcher, marker } = setup({ plugin })
+
+      await fetcher.fetch({ ...job, mediaRef: 'https://scontent.xx.fbcdn.net/a.jpg' }, false)
+
+      expect(lookups).toHaveBeenCalledTimes(1)
+      expect(plugin.fetchMedia).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
+    } finally {
+      lookups.mockReset()
+      lookups.mockImplementation((...args) => actualLookup(...args))
+    }
+  })
+
+  it('does not ask the channel about a plain id', async () => {
+    const plugin = {
+      fetchMedia: jest.fn().mockImplementation(() => Promise.resolve(file(JPEG))),
+      acceptsMediaLink: jest.fn().mockReturnValue(false)
+    }
+    const { fetcher } = setup({ plugin })
+
+    await fetcher.fetch(job, false)
+
+    expect(plugin.acceptsMediaLink).not.toHaveBeenCalled()
+    expect(plugin.fetchMedia).toHaveBeenCalled()
+  })
+
+  it('refuses a link as unsafe, without a retry, when the channel cannot read it', async () => {
+    const plugin = {
+      fetchMedia: jest.fn(),
+      acceptsMediaLink: () => {
+        throw new Error('cannot read')
+      }
+    }
+    const { fetcher, marker } = setup({ plugin })
+
+    await expect(
+      fetcher.fetch({ ...job, mediaRef: 'https://x.example/a.jpg' }, false)
+    ).resolves.toBeUndefined()
+
+    expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'unsafe_link')
   })
 
   it('records a channel that cannot fetch files', async () => {

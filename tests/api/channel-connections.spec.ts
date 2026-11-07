@@ -170,6 +170,53 @@ describe('The channel connections of a store', () => {
       expect(await auditCount(AuditAction.CHANNEL_CONNECTED, body.id, 1)).toBe(1)
     })
 
+    it('keeps the name of an account when it is connected again and the plugin could only make one up', async () => {
+      let call = 0
+      const accountId = `acct-${randomUUID()}`
+      const { id } = register({
+        connect: input => {
+          call += 1
+          const name =
+            call === 1
+              ? { displayName: 'Acme Page' }
+              : call === 2
+                ? { displayName: 'Page 109', displayNameIsPlaceholder: true }
+                : { displayName: 'Acme Page renamed' }
+          return Promise.resolve({
+            connectionId: accountId,
+            ...name,
+            credentials: input.credentials,
+            metadata: {}
+          })
+        }
+      })
+
+      const first = (await connect(id)).body as ConnectionBody
+      const second = (await connect(id)).body as ConnectionBody
+      expect(second.id).toBe(first.id)
+      expect(second.displayName).toBe('Acme Page')
+      // A name the provider did say is written, as ever
+      const third = (await connect(id)).body as ConnectionBody
+      expect(third.displayName).toBe('Acme Page renamed')
+    })
+
+    it('uses the made-up name for an account that has no other', async () => {
+      const { id } = register({
+        connect: input =>
+          Promise.resolve({
+            connectionId: `acct-${randomUUID()}`,
+            displayName: 'Page 109',
+            displayNameIsPlaceholder: true,
+            credentials: input.credentials,
+            metadata: {}
+          })
+      })
+
+      const body = (await connect(id)).body as ConnectionBody
+
+      expect(body.displayName).toBe('Page 109')
+    })
+
     it('updates the same account of the same store instead of making another', async () => {
       const { id } = register()
 
