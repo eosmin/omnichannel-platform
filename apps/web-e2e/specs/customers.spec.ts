@@ -17,6 +17,7 @@ import {
   storeIdNamed,
   withWhatsAppChannel
 } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -88,6 +89,7 @@ test.describe('customer merge and identities', () => {
 
     // Only the name differs, so it is the only choice; the survivor is the default
     await expect(dialog.getByText(en.customers.merge.conflictsTitle)).toBeVisible()
+    await expectDialogFitsThePhoneWidth(page, dialog)
     await expect(dialog.getByRole('radio', { name: survivorName })).toBeChecked()
     await dialog.getByRole('radio', { name: absorbedName }).check()
     await dialog.getByRole('button', { name: en.customers.merge.continue }).click()
@@ -102,6 +104,7 @@ test.describe('customer merge and identities', () => {
     await expect(dialog).toBeHidden()
     const profile = page.getByRole('dialog', { name: en.customers.profile.title })
     await expect(profile.getByText(absorbedName, { exact: true })).toBeVisible()
+    await expectDialogFitsThePhoneWidth(page, profile)
     await expect(profile.getByText(en.customers.timeline.merged)).toBeVisible()
     expect(await mergedIntoOf(absorbedId)).toBe(survivorId)
 

@@ -6,6 +6,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { inviteAsAgent, signInByApi } from '../support/api'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { invitationTokenIn, nextEmailTo } from '../support/mailbox'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
@@ -26,6 +27,7 @@ async function createRole(page: Page, name: string): Promise<void> {
   const dialog = page.getByRole('dialog', { name: roles.dialog.createTitle })
   await dialog.getByLabel(roles.dialog.name, { exact: true }).fill(name)
   await dialog.getByLabel(team.permissions.customers.view).click()
+  await expectDialogFitsThePhoneWidth(page, dialog)
   await dialog.getByRole('button', { name: roles.dialog.save }).click()
   await expect(page.getByRole('heading', { name })).toBeVisible()
 }
@@ -62,6 +64,7 @@ test.describe('Settings → Team', () => {
     await page.getByRole('button', { name: invitations.invite, exact: true }).click()
     const invite = page.getByRole('dialog', { name: invitations.dialog.title })
     await invite.getByLabel(invitations.dialog.email).fill(email)
+    await expectDialogFitsThePhoneWidth(page, invite)
     await invite.getByLabel(invitations.dialog.role).selectOption({ label: usedRole })
     await invite.getByRole('button', { name: invitations.dialog.send }).click()
     const row = page
