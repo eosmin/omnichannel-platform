@@ -9,7 +9,7 @@ const SECOND_STORE = 'Tienda Escalón'
 
 test.describe('a person sees what their permissions allow', () => {
   test('an administrator opens the stores of the organization', async ({ page }) => {
-    await signIn(page, 'admin@test.com')
+    await signIn(page, 'admin3@test.com')
 
     await page.goto(AppPaths.org.stores)
 

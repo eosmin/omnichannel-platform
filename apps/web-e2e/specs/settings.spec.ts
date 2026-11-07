@@ -8,9 +8,9 @@ import en from '../../web/messages/en.json' with { type: 'json' }
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
-const ADMIN = 'admin@test.com'
-const VIEWER = 'viewer@test.com'
-const AGENT = 'agent@test.com'
+const ADMIN = 'admin2@test.com'
+const VIEWER = 'viewer2@test.com'
+const AGENT = 'agent3@test.com'
 
 const newStoreName = (): string => `E2E Shop ${randomUUID().slice(0, 8)}`
 

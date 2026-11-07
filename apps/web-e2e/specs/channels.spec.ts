@@ -28,8 +28,8 @@ import {
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin@test.com'
-const VIEWER = 'viewer@test.com'
+const ADMIN = 'admin2@test.com'
+const VIEWER = 'viewer2@test.com'
 const WIDGET_NAME = 'Web widget'
 
 const channels = en.settings.channels

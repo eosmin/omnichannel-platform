@@ -40,7 +40,7 @@ const FIRST_STORE = 'Main Store'
 // An agent reads the thread, writes notes and resolves, so it is what the cases need. The magic link is
 // limited to 5 requests a minute for each address and the whole suite runs inside that minute: the
 // address of the administrator is already spent by the other specs.
-const AGENT = 'agent@test.com'
+const AGENT = 'agent2@test.com'
 const MINUTE_MS = 60_000
 // A valid 1x1 image, what the bucket would answer for the thumbnail of an ad
 const ONE_PIXEL_PNG = Buffer.from(

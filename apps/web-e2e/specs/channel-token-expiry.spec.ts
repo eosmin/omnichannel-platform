@@ -11,7 +11,7 @@ import { addConnectionWithTokenInfo, removeConnections } from '../support/databa
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin@test.com'
+const ADMIN = 'admin3@test.com'
 const health = en.settings.channels.health.token
 const DAY = 86_400_000
 

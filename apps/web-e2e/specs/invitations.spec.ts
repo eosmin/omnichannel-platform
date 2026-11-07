@@ -10,7 +10,7 @@ import { signIn } from '../support/login'
 import { invitationTokenIn, nextEmailTo } from '../support/mailbox'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin@test.com'
+const ADMIN = 'admin3@test.com'
 
 const newAddress = (): string => `invited-${randomUUID().slice(0, 8)}@example.com`
 

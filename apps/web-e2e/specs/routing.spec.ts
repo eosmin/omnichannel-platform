@@ -41,7 +41,7 @@ test.describe('Settings → Routing and Business hours', () => {
     const first = `E2E first ${suffix}`
     const second = `E2E second ${suffix}`
 
-    await signIn(page, 'admin@test.com')
+    await signIn(page, 'admin3@test.com')
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.ROUTING))
     await expect(page.getByRole('heading', { name: routing.title, level: 1 })).toBeVisible()
@@ -99,7 +99,7 @@ test.describe('Settings → Routing and Business hours', () => {
   test('an administrator sets the business hours and they stay after a reload', async ({
     page
   }) => {
-    await signIn(page, 'admin@test.com')
+    await signIn(page, 'admin3@test.com')
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.BUSINESS_HOURS))
     await expect(page.getByRole('heading', { name: hours.title, level: 1 })).toBeVisible()
