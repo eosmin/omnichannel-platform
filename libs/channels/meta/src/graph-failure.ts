@@ -53,7 +53,7 @@ export function graphFailure(
     status === HttpStatusCodes.TOO_MANY_REQUESTS ||
     (code !== undefined && isRateLimitCode(code))
   ) {
-    return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+    return new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
       ...seen,
       retryable: true,
       // A throttle: Meta did not do the work

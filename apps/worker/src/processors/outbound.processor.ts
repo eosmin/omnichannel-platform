@@ -15,6 +15,7 @@ import {
 } from '@platform/core/queues'
 
 import { MessageChangeSender } from '../outbound/message-change-sender.service'
+import { outboundBackoff } from '../outbound/outbound-backoff'
 import { OutboundSender } from '../outbound/outbound-sender.service'
 import { ReactionSender } from '../outbound/reaction-sender.service'
 import { ReadReceiptSender } from '../outbound/read-receipt-sender.service'
@@ -45,8 +46,11 @@ const typingJobSchema = z.object({
 const reactionJobSchema = jobSchema.extend({ userId: z.uuid(), version: z.number().int() })
 
 // The worker half of a reply. What a plugin or the network can do wrong is decided by OutboundSender;
-// this only turns "try again" into BullMQ's retry (5 attempts, backoff from 5 seconds).
-@Processor(QueueNames.OUTBOUND, { concurrency: 20 })
+// this only turns "try again" into BullMQ's retry (5 attempts, backoff from 5 seconds, from 30 when the provider throttled).
+@Processor(QueueNames.OUTBOUND, {
+  concurrency: 20,
+  settings: { backoffStrategy: outboundBackoff }
+})
 export class OutboundProcessor extends BaseProcessor<OutboundJob> {
   constructor(
     support: ProcessorSupport,
