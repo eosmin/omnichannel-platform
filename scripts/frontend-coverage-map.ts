@@ -41,6 +41,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'messages.byId': { step: '3.2' },
   'messages.reaction': { step: '3.2' },
   'messages.resend': { step: '3.2' },
+  // The button that throws away a reply that failed for good (plan, Step 7.7)
+  'messages.discard': { step: '7.7' },
   // The text under a file, sent again on its own: the button of the bubble (Step 3.5 PR F4b-2)
   'messages.resendCaption': { step: '3.5' },
   // A lost file of the customer, downloaded again: the button of the line that says it was lost (Step 3.5 PR F4c)

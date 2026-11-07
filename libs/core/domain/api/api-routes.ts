@@ -55,6 +55,7 @@ export const ApiRoutes = {
     create: '/messages',
     byId: (id: string) => `/messages/${id}`,
     resend: (id: string) => `/messages/${id}/resend`,
+    discard: (id: string) => `/messages/${id}/discard`,
     resendCaption: (id: string) => `/messages/${id}/resend-caption`,
     refetchFile: (id: string, index: number | string) => `/messages/${id}/files/${index}/refetch`,
     reaction: (id: string) => `/messages/${id}/reaction`,
