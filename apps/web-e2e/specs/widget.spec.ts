@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { Browser, BrowserContext, Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
@@ -128,22 +130,23 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
   test('a message that arrives while the agent reads above waits behind a button, and is read only at the end (W3c)', async ({
     browser
   }) => {
+    // Unique to this case: the store holds the conversations of the cases before, and of earlier runs
+    const opening = `First, to open the conversation ${randomUUID().slice(0, 8)}`
     const visitor = await visitorBrowser(browser)
     await openSite(visitor.page)
     await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
     const visitorInput = visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input })
-    await visitorInput.fill('First, to open the conversation')
+    await visitorInput.fill(opening)
     await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
-    await expect(
-      visitor.page.getByRole('log').getByText('First, to open the conversation')
-    ).toBeVisible()
+    await expect(visitor.page.getByRole('log').getByText(opening)).toBeVisible()
 
     // A long thread: older messages are written in the database under the one that just arrived
     const conversationId = await withOwner(
       async owner =>
         (
           await owner.conversation.findFirstOrThrow({
-            where: { storeId },
+            // The conversation of this visitor, found by what the visitor wrote
+            where: { storeId, messages: { some: { content: opening } } },
             orderBy: { createdAt: 'desc' },
             select: { id: true }
           })
@@ -163,7 +166,7 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
     await signIn(agent, AGENT)
     await agent.goto(AppPaths.store.conversation(storeId, conversationId))
     const thread = agent.getByRole('list', { name: en.inbox.thread.label })
-    await expect(thread.getByText('First, to open the conversation')).toBeVisible()
+    await expect(thread.getByText(opening)).toBeVisible()
     // At the end the conversation is read
     await expect.poll(() => unreadCountOf(conversationId)).toBe(0)
 
