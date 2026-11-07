@@ -53,6 +53,7 @@ function build(connect: () => Promise<unknown>): {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     logger
   )
   return { service, warn }

@@ -953,4 +953,226 @@ describe('MetaGraphClient', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     })
   })
+
+  describe('debugToken', () => {
+    const APP_ID = '123456789012345'
+    const APP_SECRET = 'app-secret-0123456789abcdef'
+    const INPUT = 'page-token-SECRET-xyz'
+    const withApp = (): MetaGraphClient =>
+      new MetaGraphClient({ ...config, appId: APP_ID, appSecret: APP_SECRET })
+    const answer = (data: Record<string, unknown>): Response => json({ data })
+    const valid = { is_valid: true, type: 'PAGE', expires_at: 0, scopes: ['pages_messaging'] }
+    const methodRejected = (): Response =>
+      json(
+        { error: { type: 'GraphMethodException', code: 100, error_subcode: 33, message: 'text' } },
+        400
+      )
+    // The urls, headers and bodies of every call, to look for what must not be in them
+    const sent = (): { url: string; init: RequestInit }[] =>
+      fetchMock.mock.calls.map(([url, init]) => ({
+        url: new Request(url).url,
+        init: init ?? {}
+      }))
+
+    it('asks with a POST: the app token in the header only, the token asked about in the body', async () => {
+      fetchMock.mockResolvedValueOnce(answer(valid))
+
+      const result = await withApp().debugToken(INPUT)
+
+      expect(result).toEqual({
+        kind: 'page',
+        isValid: true,
+        expiresAt: null,
+        scopes: ['pages_messaging']
+      })
+      const [call] = sent()
+      expect(call?.init.method).toBe('POST')
+      expect(call?.url).toBe(`https://graph.facebook.com/v23.0/debug_token`)
+      expect(call?.init.headers).toMatchObject({ authorization: `Bearer ${APP_ID}|${APP_SECRET}` })
+      expect(call?.init.body).toBe(`input_token=${INPUT}`)
+      expect(call?.init.redirect).toBe('manual')
+      // Neither the secret of the app nor the token asked about is in the address
+      expect(call?.url).not.toContain(APP_SECRET)
+      expect(call?.url).not.toContain(INPUT)
+    })
+
+    it('reads the date the token stops, in seconds, and the kind', async () => {
+      const at = 1_900_000_000
+      fetchMock.mockResolvedValueOnce(
+        answer({ is_valid: true, type: 'USER', expires_at: at, scopes: [] })
+      )
+
+      const result = await withApp().debugToken(INPUT)
+
+      expect(result.kind).toBe('user')
+      expect(result.expiresAt).toEqual(new Date(at * 1000))
+    })
+
+    it('says a token that Meta reports as not valid, and keeps nothing but the fields it reads', async () => {
+      fetchMock.mockResolvedValueOnce(
+        answer({
+          is_valid: false,
+          type: 'PAGE',
+          expires_at: 1,
+          scopes: [],
+          user_id: '999',
+          app_id: '1'
+        })
+      )
+
+      const result = await withApp().debugToken(INPUT)
+
+      expect(result.isValid).toBe(false)
+      expect(Object.keys(result).sort()).toEqual(['expiresAt', 'isValid', 'kind', 'scopes'])
+    })
+
+    it('falls back to a GET only when Meta refuses the POST for being the wrong method', async () => {
+      fetchMock.mockResolvedValueOnce(methodRejected()).mockResolvedValueOnce(answer(valid))
+      const client2 = withApp()
+
+      const result = await client2.debugToken(INPUT)
+
+      expect(result.isValid).toBe(true)
+      const [post, get] = sent()
+      expect(post?.init.method).toBe('POST')
+      expect(get?.init.method).toBe('GET')
+      // The GET carries the token asked about in the address, and still the app token in the header alone
+      expect(get?.url).toBe(`https://graph.facebook.com/v23.0/debug_token?input_token=${INPUT}`)
+      expect(get?.url).not.toContain(APP_SECRET)
+      expect(get?.init.headers).toMatchObject({ authorization: `Bearer ${APP_ID}|${APP_SECRET}` })
+      expect(get?.init.redirect).toBe('manual')
+      // The method that worked is remembered: the next question goes straight to it
+      fetchMock.mockResolvedValueOnce(answer(valid))
+      await client2.debugToken(INPUT)
+      expect(sent()).toHaveLength(3)
+      expect(sent()[2]?.init.method).toBe('GET')
+    })
+
+    it('does not take code 100 with subcode 33 for the refusal of a method: it also means "not found"', async () => {
+      fetchMock.mockResolvedValueOnce(
+        json({ error: { code: 100, error_subcode: 33, message: 'x' } }, 400)
+      )
+
+      await expect(withApp().debugToken(INPUT)).rejects.toBeInstanceOf(PluginError)
+
+      expect(sent().map(call => call.init.method)).toEqual(['POST'])
+    })
+
+    it('says a token that Meta reports as not valid even when it comes without a date', async () => {
+      fetchMock.mockResolvedValueOnce(
+        answer({ is_valid: false, type: 'PAGE', error: { code: 190 }, scopes: [] })
+      )
+
+      const result = await withApp().debugToken(INPUT)
+
+      expect(result).toMatchObject({ isValid: false, expiresAt: null })
+    })
+
+    it('tries the POST again after a while, so a GET is not kept for ever', async () => {
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] })
+      try {
+        const client2 = withApp()
+        fetchMock.mockResolvedValueOnce(methodRejected()).mockResolvedValueOnce(answer(valid))
+        await client2.debugToken(INPUT)
+        fetchMock.mockResolvedValueOnce(answer(valid))
+        await client2.debugToken(INPUT)
+        expect(sent().map(call => call.init.method)).toEqual(['POST', 'GET', 'GET'])
+
+        jest.advanceTimersByTime(MetaLimits.DEBUG_METHOD_MEMORY_MS + 1)
+        fetchMock.mockResolvedValueOnce(answer(valid))
+        await client2.debugToken(INPUT)
+
+        expect(sent().map(call => call.init.method)).toEqual(['POST', 'GET', 'GET', 'POST'])
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('asks one at a time until a method is known: a burst does not each try the POST and the GET', async () => {
+      fetchMock.mockImplementation((_url, init) =>
+        Promise.resolve(init?.method === 'POST' ? methodRejected() : answer(valid))
+      )
+      const client2 = withApp()
+
+      await Promise.all(Array.from({ length: 5 }, () => client2.debugToken(INPUT)))
+
+      // The first tried POST then GET; the other four went straight to the GET that worked
+      expect(sent().map(call => call.init.method)).toEqual([
+        'POST',
+        'GET',
+        'GET',
+        'GET',
+        'GET',
+        'GET'
+      ])
+    })
+
+    it('does not fall back for any other refusal, nor for a text that sounds like one', async () => {
+      fetchMock.mockResolvedValueOnce(
+        json({ error: { code: 100, message: 'Unsupported post request' } }, 400)
+      )
+
+      await expect(withApp().debugToken(INPUT)).rejects.toBeInstanceOf(PluginError)
+
+      expect(sent()).toHaveLength(1)
+    })
+
+    it('refuses without calling Meta when the app has no id or secret', async () => {
+      await expect(new MetaGraphClient(config).debugToken(INPUT)).rejects.toBeInstanceOf(
+        PluginError
+      )
+      await expect(
+        new MetaGraphClient({ ...config, appId: APP_ID, appSecret: undefined }).debugToken(INPUT)
+      ).rejects.toBeInstanceOf(PluginError)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('takes an answer with no date for no answer, not for a token that never stops', async () => {
+      fetchMock.mockResolvedValueOnce(answer({ is_valid: true, type: 'PAGE', scopes: [] }))
+
+      await expect(withApp().debugToken(INPUT)).rejects.toBeInstanceOf(PluginError)
+    })
+
+    it.each([
+      [
+        'a refusal',
+        () => json({ error: { code: 190, message: `bad ${APP_SECRET} ${INPUT}` } }, 400)
+      ],
+      ['an outage', () => json({ error: { code: 2, message: `down ${APP_SECRET}` } }, 500)],
+      ['a throttle', () => json({ error: { code: 4 } }, 429)],
+      ['a redirect', () => new Response(null, { status: 302, headers: { location: 'https://x' } })]
+    ])(
+      'fails on %s without a word of the secret, the token or the text of Meta',
+      async (_n, make) => {
+        fetchMock.mockResolvedValue(make())
+        let failure: unknown
+        try {
+          await withApp().debugToken(INPUT)
+        } catch (error) {
+          failure = error
+        }
+        expect(failure).toBeInstanceOf(PluginError)
+        const shown = `${String(failure)} ${JSON.stringify(failure)} ${(failure as Error).stack ?? ''}`
+        for (const secret of [APP_SECRET, INPUT, `${APP_ID}|`]) {
+          expect(shown).not.toContain(secret)
+        }
+      }
+    )
+
+    it('does not leak either secret through the error of a GET fallback that fails', async () => {
+      fetchMock
+        .mockResolvedValueOnce(methodRejected())
+        .mockResolvedValueOnce(json({ error: { code: 190, message: `x ${INPUT}` } }, 400))
+      let failure: unknown
+      try {
+        await withApp().debugToken(INPUT)
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(PluginError)
+      const shown = `${String(failure)} ${JSON.stringify(failure)}`
+      expect(shown).not.toContain(INPUT)
+      expect(shown).not.toContain(APP_SECRET)
+    })
+  })
 })
