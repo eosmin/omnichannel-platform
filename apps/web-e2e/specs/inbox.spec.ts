@@ -1,4 +1,4 @@
-import { type BrowserContext, type Page } from '@playwright/test'
+import { type BrowserContext, type Page, type Request } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
 import { AuthorType, DeliveryStatus } from '@platform/core/domain'
@@ -433,6 +433,36 @@ test.describe.serial('the inbox list', () => {
     await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
     await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
     await expect(dialog).toBeHidden()
+  })
+
+  test('two Ctrl+Enter in the same instant resolve the conversation once (ATA-12)', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    await rowOf(page, storeId, conversationId).focus()
+    await expect.poll(() => focusedRow(page)).toBe(conversationId)
+    await page.keyboard.press('e')
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await expect(dialog).toBeVisible()
+
+    const statusRequests: string[] = []
+    const countStatusRequest = (request: Request): void => {
+      if (request.method() === 'PATCH' && /\/conversations\/[^/]+\/status/.test(request.url())) {
+        statusRequests.push(request.url())
+      }
+    }
+    page.on('request', countStatusRequest)
+    // Both key presses in one task: the form has not re-rendered between them
+    await dialog.getByLabel(en.inbox.resolve.reason).evaluate(field => {
+      for (let press = 0; press < 2; press += 1) {
+        field.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })
+        )
+      }
+    })
+    await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
+    await expect(dialog).toBeHidden()
+    page.off('request', countStatusRequest)
+    expect(statusRequests).toHaveLength(1)
   })
 
   test('shortcuts: e opens the options of Resolve and Cmd/Ctrl+Enter confirms from the box of the reason', async () => {

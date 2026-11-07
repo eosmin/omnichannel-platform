@@ -66,20 +66,30 @@ export function ResolveForm({
   // now would drop it without a word, so the agent unchecks it or waits
   const isMissingClosing = wantsClosing && canSendClosing && chosenId === ''
 
+  // Set at once, not with the render: two presses that land in the same cycle of render would both see a form that
+  // is not pending yet, and the conversation would be resolved twice
+  const isSubmitting = useRef(false)
   const submit = (): void => {
+    if (isSubmitting.current) return
+    isSubmitting.current = true
     const trimmed = reason.trim()
     resolve
       .mutateAsync({
         ...(trimmed === '' ? {} : { reason: trimmed }),
         ...(sendsClosing ? { closingSnippetId: chosenId } : {})
       })
-      .then(() => {
-        toast.success(t('resolved'))
-        offerPush()
-        onDone()
-      })
-      // The error shows in the dialog, from the state of the mutation
-      .catch(() => undefined)
+      .then(
+        () => {
+          toast.success(t('resolved'))
+          offerPush()
+          onDone()
+        },
+        // The error shows in the dialog, from the state of the mutation, and the form can be sent again.
+        // Only a refused resolve opens the lock: what happens after a good one must not
+        () => {
+          isSubmitting.current = false
+        }
+      )
   }
 
   return (
@@ -88,7 +98,7 @@ export function ResolveForm({
       className="flex flex-col gap-4"
       onSubmit={event => {
         event.preventDefault()
-        if (!resolve.isPending) submit()
+        if (!resolve.isPending && !isMissingClosing) submit()
       }}
       // Cmd/Ctrl+Enter confirms from any field, as it sends in the composer: `e` then the pair resolves
       // without the four Tab to the button (the Enter of the box of the reason stays a line break)
