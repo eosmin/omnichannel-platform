@@ -32,6 +32,7 @@ import {
   storeIdNamed,
   unreadCountOf
 } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
@@ -398,6 +399,7 @@ test.describe.serial('the thread of a conversation', () => {
     await reply.fill('/snooze')
     await reply.press('Enter')
     const dialog = page.getByRole('dialog', { name: en.inbox.snooze.title })
+    await expectDialogFitsThePhoneWidth(page, dialog)
     await dialog
       .getByRole('button', { name: new RegExp(en.inbox.snooze.presets.tomorrowMorning) })
       .click()

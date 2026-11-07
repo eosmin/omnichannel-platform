@@ -5,7 +5,13 @@ import { MessageType } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { newWhatsAppConversationWrittenAgo, storeIdNamed, timelineOf } from '../support/database'
-import { type FakeGraph, startFakeGraph, TEMPLATE_NAME } from '../support/fake-graph'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
+import {
+  type FakeGraph,
+  LONG_TEMPLATE_NAME,
+  startFakeGraph,
+  TEMPLATE_NAME
+} from '../support/fake-graph'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -34,6 +40,9 @@ async function fillTemplate(page: Page): Promise<void> {
   await dialog.getByLabel(variableLabel(1)).fill('Ana')
   await dialog.getByLabel(variableLabel(2)).fill('1042')
   await expect(dialog.getByText(filled)).toBeVisible()
+  // The list of templates, the values and the preview fit a phone (MODAL-390: the group of choices held
+  // the width of its longest word, and the box scrolled sideways)
+  await expectDialogFitsThePhoneWidth(page, dialog)
 }
 
 // The messaging window of WhatsApp and the templates that go through it, against a fake Graph API that
@@ -100,6 +109,19 @@ test.describe.serial('the messaging window and the templates of WhatsApp', () =>
     await expect(page.getByText(composer.window.closedTemplate)).toBeVisible()
     await expect(page.getByRole('textbox', { name: composer.replyLabel })).toHaveCount(0)
     await expect(page.getByRole('button', { name: composer.window.chooseTemplate })).toBeVisible()
+  })
+
+  // MODAL-390: a long name in one piece and a link in the body held the width of the dialog on a phone
+  test('keeps a template with a long name and a long link inside a phone', async () => {
+    const conversationId = await newWhatsAppConversationWrittenAgo(storeId, 25 * HOUR_MS)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    await page.getByRole('button', { name: composer.window.chooseTemplate }).click()
+    const dialog = page.getByRole('dialog', { name: composer.template.title })
+    await dialog.getByRole('radio', { name: new RegExp(LONG_TEMPLATE_NAME) }).check()
+    await expectDialogFitsThePhoneWidth(page, dialog)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
   })
 
   test('sends a template: choose, fill the values, preview, send', async () => {
