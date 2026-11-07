@@ -165,7 +165,9 @@ describe('The name and photo of a customer', () => {
     it('tells the plugin to stop when the read takes longer than its time', async () => {
       const t = await setup({ customerName: null })
       answer = () => new Promise<never>(() => undefined) // a provider that never answers
-      jest.replaceProperty(CustomerProfileFetch, 'TIMEOUT_MS', 50)
+      // The constant is a literal type; as a plain number it can be shortened for the case
+      const limits: { TIMEOUT_MS: number } = CustomerProfileFetch
+      jest.replaceProperty(limits, 'TIMEOUT_MS', 50)
 
       try {
         await fetcher.fetch(t, true)
