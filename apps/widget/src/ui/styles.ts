@@ -50,6 +50,17 @@ svg { width: 20px; height: 20px; display: block; }
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 .launcher svg { width: 26px; height: 26px; }
+.launcher--unavailable { background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-text); }
+.unavailable {
+  position: absolute; right: 0; bottom: 70px; width: 300px; max-width: calc(100vw - 40px);
+  margin: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+.unavailable[hidden] { display: none; }
+.unavailable p { margin: 0; }
+.unavailable .owner { font-size: 12px; color: var(--muted); }
+.unavailable summary { cursor: pointer; }
 .launcher--unread::after {
   content: ''; position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
   border-radius: 50%; background: #dc2626; border: 2px solid var(--surface);
@@ -136,6 +147,7 @@ div.file { cursor: default; }
 .notice { margin: 0; padding: 4px 14px 0; font-size: 12px; color: var(--error); }
 @media (max-width: 480px) {
   :host { right: 12px; bottom: 12px; }
+  .unavailable { max-width: calc(100vw - 24px); }
   .panel { position: fixed; inset: 0; width: auto; height: auto; max-width: none; max-height: none; border-radius: 0; }
 }
 `

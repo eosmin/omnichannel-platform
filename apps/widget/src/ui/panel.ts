@@ -41,6 +41,45 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_PATTERN = /^\+?[\d\s().-]{6,}$/
 
 // The launcher and the panel, in a shadow root on the page. Null when the page is not able to hold it.
+// What the visitor sees when the chat could not connect at all (the browser blocked the call: a policy of
+// the site, or no network): a launcher in a warning state that opens a short explanation, and for whoever
+// runs the site where to look. Nothing of the call is shown: no address, no key, no error text.
+export function mountUnavailable(text: WidgetText): { destroy(): void } | null {
+  if (document.getElementById(HOST_ID) !== null) return null
+  const host = el('div', '')
+  host.id = HOST_ID
+  const root = host.attachShadow({ mode: 'open' })
+  if (!applyStyles(root)) return null
+  const launcher = el('button', 'launcher launcher--unavailable', [icon(Icons.alert)])
+  launcher.type = 'button'
+  launcher.setAttribute('aria-label', text.unavailable)
+  launcher.setAttribute('aria-expanded', 'false')
+  // The hint for whoever runs the site stays folded: the visitor reads one plain line
+  const owner = el('details', 'owner', [
+    el('summary', '', [text.unavailableDetails]),
+    el('p', '', [text.unavailableOwner])
+  ])
+  const box = el('div', 'unavailable', [el('p', '', [text.unavailable]), owner])
+  box.hidden = true
+  const setShown = (shown: boolean): void => {
+    box.hidden = !shown
+    // Given its role when it appears, so that a screen reader reads what was hidden
+    if (shown) box.setAttribute('role', 'status')
+    else box.removeAttribute('role')
+    launcher.setAttribute('aria-expanded', String(shown))
+  }
+  launcher.addEventListener('click', () => setShown(box.hidden))
+  root.addEventListener('keydown', event => {
+    if ((event as KeyboardEvent).key === ESCAPE && !box.hidden) {
+      setShown(false)
+      launcher.focus()
+    }
+  })
+  root.append(box, launcher)
+  document.body.append(host)
+  return { destroy: () => host.remove() }
+}
+
 const keyOf = (entry: string): string => entry.slice(0, entry.lastIndexOf('|'))
 const sameKeys = (a: readonly string[], b: readonly string[]): boolean =>
   a.every((entry, index) => keyOf(entry) === keyOf(b[index] ?? ''))
