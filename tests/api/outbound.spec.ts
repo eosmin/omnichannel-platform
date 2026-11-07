@@ -1645,6 +1645,43 @@ describe('Replies on their way to a channel', () => {
         expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
       })
 
+      it('after an ambiguous failure of file k, with the files before it sent, keeps the doubt and sends again only the failed file', async () => {
+        const { reply } = await replyWithFiles(3)
+        // The second file times out: the provider may or may not have it
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-1`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+                retryable: false,
+                outcomeUnknown: true
+              })
+            : null
+        await sender.send(job(reply), false)
+
+        const failed = await owner.message.findUniqueOrThrow({ where: { id: reply.id } })
+        expect(failed.deliveryStatus).toBe(DeliveryStatus.FAILED)
+        // Amber, no "throw away": part of it went and one file's outcome is unknown
+        expect(failed.failureDefinitive).toBe(false)
+
+        const conversation = await owner.conversation.findUniqueOrThrow({
+          where: { id: reply.conversationId },
+          select: { customerIdentityId: true }
+        })
+        await owner.customerIdentity.update({
+          where: { id: conversation.customerIdentityId },
+          data: { lastInboundAt: new Date() }
+        })
+        await app
+          .get(MessagesService, { strict: false })
+          .resend(reply.storeId, reply.id, viewerOf(ctx.agentA.id, Object.values(Permissions)))
+        mediaFailure = () => null
+        sentMedia = []
+        await sender.send(job(reply), false)
+
+        // Only the failed file goes again (the third had gone in the first run)
+        expect(sentMedia).toHaveLength(1)
+        expect(sentMedia[0]?.idempotencyKey).toMatch(new RegExp(`^${reply.id}-1-\\d+$`))
+      })
+
       it('is a definitive failure only when no file went and every one was refused in so many words', async () => {
         const none = await replyWithFiles(2)
         mediaFailure = () =>

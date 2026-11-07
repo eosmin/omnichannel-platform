@@ -1,4 +1,4 @@
--- Rolls back 20261112120000_media_send_state: the per-file delivery state is dropped. A message with several
+-- Rolls back 20261112130000_media_send_state: the per-file delivery state is dropped. A message with several
 -- files keeps its own delivery state and its first provider id; the ids of the others (used to match the echo
 -- and the receipts of those files) are lost, and an echo that arrives later is stored as a message of the owner.
 BEGIN;
