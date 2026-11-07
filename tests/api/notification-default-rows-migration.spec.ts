@@ -16,6 +16,8 @@ const MIGRATION = join(
   '../../libs/core/database/prisma/migrations/20261114120000_push_default_rows/migration.sql'
 )
 
+// Runs the unscoped DELETE of the migration on the test database, so it relies on the suites running one
+// at a time (`--runInBand`, as the security-tests job and `nx run tests:test-security` do).
 // The data migration that removes the rows holding exactly the old default of the two types that push by
 // default now (owner, 2026-11-08). It is run here against the test database over rows made for the case.
 describe('Migration push_default_rows', () => {
@@ -65,8 +67,10 @@ describe('Migration push_default_rows', () => {
     await row(admin, NotificationTypes.CONVERSATION_REOPENED, [true, false, false, false])
     // The other type's old default is not the old default of this one
     await row(agent, CONVERSATION_UNASSIGNED_QUEUE, [true, false, false, true])
+    await row(ctx.adminA.id, NotificationTypes.MESSAGE_FAILED, [true, false, false, true])
 
     await migrate()
+    await migrate() // a deploy that runs it again finds nothing more to remove
 
     expect(await has(admin, MESSAGE_RECEIVED)).toBe(false)
     expect(await has(viewer, CONVERSATION_UNASSIGNED_QUEUE)).toBe(false)
@@ -76,6 +80,7 @@ describe('Migration push_default_rows', () => {
     expect(await has(agent, NotificationTypes.CONVERSATION_SNOOZE_EXPIRED)).toBe(true)
     expect(await has(admin, NotificationTypes.CONVERSATION_REOPENED)).toBe(true)
     expect(await has(agent, CONVERSATION_UNASSIGNED_QUEUE)).toBe(true)
+    expect(await has(ctx.adminA.id, NotificationTypes.MESSAGE_FAILED)).toBe(true)
   })
 
   it('leaves the removed row to the new default, and a chosen one to its owner', async () => {
@@ -83,13 +88,37 @@ describe('Migration push_default_rows', () => {
     const { MESSAGE_RECEIVED } = NotificationTypes
     await row(ctx.adminA.id, MESSAGE_RECEIVED, [true, false, false, true])
     await row(ctx.agentA.id, MESSAGE_RECEIVED, [true, false, true, true])
+    // Each flag of the predicate decides: the old default with the app channel off is a choice
+    await row(ctx.viewerA.id, NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE, [
+      false,
+      false,
+      false,
+      false
+    ])
 
     await migrate()
 
     const store = ctx.storeA.id
-    expect((await preferences.resolve(ctx.adminA.id, store, MESSAGE_RECEIVED)).push).toBe(true)
+    expect(await preferences.resolve(ctx.adminA.id, store, MESSAGE_RECEIVED)).toEqual({
+      inApp: true,
+      push: true,
+      email: false,
+      sound: true
+    })
     expect((await preferences.resolve(ctx.agentA.id, store, MESSAGE_RECEIVED)).push).toBe(false)
     // No row at all: the new default
-    expect((await preferences.resolve(ctx.viewerA.id, store, MESSAGE_RECEIVED)).push).toBe(true)
+    expect(await preferences.resolve(ctx.viewerA.id, store, MESSAGE_RECEIVED)).toEqual({
+      inApp: true,
+      push: true,
+      email: false,
+      sound: true
+    })
+    expect(
+      await preferences.resolve(
+        ctx.viewerA.id,
+        store,
+        NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE
+      )
+    ).toEqual({ inApp: false, push: false, email: false, sound: false })
   })
 })
