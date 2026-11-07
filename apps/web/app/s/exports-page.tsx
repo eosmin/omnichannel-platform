@@ -21,6 +21,7 @@ import {
   FILTERABLE_STATUSES,
   FILTERABLE_TYPES,
   isExportReady,
+  ExportPermissions,
   mayOpenExports
 } from '../../lib/exports/export-state'
 import { useExportList } from '../../lib/exports/use-export-data'
@@ -128,7 +129,7 @@ export function ExportsPage(): ReactElement {
   const rows = exports.data?.pages.flatMap(page => page.data) ?? []
 
   if (!mayAsk) {
-    return <PermissionDenied body={t('noAccess')} />
+    return <PermissionDenied anyOf={ExportPermissions} />
   }
 
   return (

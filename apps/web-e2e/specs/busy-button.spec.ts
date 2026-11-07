@@ -47,6 +47,8 @@ test('a button that waits for the server keeps its size when the spinner shows',
   await save.click()
   try {
     await expect(save).toHaveAttribute('aria-busy', 'true')
+    // A screen reader hears that it works from the live region of the app; the button keeps its words and its name
+    await expect(page.getByRole('status').filter({ hasText: en.common.working })).toHaveCount(1)
     // Before the spinner shows (it takes 400 ms): the same size, sampled while it is still hidden
     await expect(save.locator('.busy-spinner')).toHaveCSS('opacity', '0')
     expect(await sizeOf()).toEqual(before)

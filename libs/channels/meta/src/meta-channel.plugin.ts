@@ -42,7 +42,7 @@ import {
   type TypingParams
 } from '@platform/plugins/sdk'
 
-import { MetaGraphClient } from './meta-graph.client'
+import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
 import { messagingToEvents } from './meta-messaging-events'
 import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
@@ -72,6 +72,8 @@ export interface MetaAccount {
   // The Page or the Instagram account that receives the webhooks: `entry.id`
   id: string
   displayName: string
+  // The name is a stand-in for one that could not be read (see ConnectResult)
+  displayNameIsPlaceholder?: boolean
   // What the connection keeps beside its id (the Instagram connection keeps its Page)
   metadata?: Record<string, unknown>
 }
@@ -223,6 +225,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     return {
       connectionId: account.id,
       displayName: account.displayName,
+      ...(account.displayNameIsPlaceholder === true ? { displayNameIsPlaceholder: true } : {}),
       credentials: { accessToken },
       metadata: account.metadata ?? {}
     }
@@ -498,6 +501,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 
   // The reference of a file is the url Meta put in the webhook, a link of its CDN
+  acceptsMediaLink(mediaRef: string): boolean {
+    return isMetaMediaLink(mediaRef)
+  }
+
   async fetchMedia(_ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia> {
     return this.meta.downloadMediaUrl(mediaRef)
   }

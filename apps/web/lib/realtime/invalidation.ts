@@ -28,12 +28,16 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.MESSAGE_RECEIVED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   // A reply from another tab or device moves the conversation in the list and changes its preview
   [RealtimeEvents.MESSAGE_QUEUED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
-  [RealtimeEvents.MESSAGE_SENT]: [Scopes.THREAD],
+  // Also what the owner writes from the app of the channel (its echo): the row of the list shows it as its
+  // preview without moving
+  [RealtimeEvents.MESSAGE_SENT]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   [RealtimeEvents.MESSAGE_DELIVERED]: [Scopes.THREAD],
   [RealtimeEvents.MESSAGE_READ]: [Scopes.THREAD],
   [RealtimeEvents.MESSAGE_REACTION]: [Scopes.THREAD],
-  [RealtimeEvents.MESSAGE_EDITED]: [Scopes.THREAD],
-  [RealtimeEvents.MESSAGE_DELETED]: [Scopes.THREAD],
+  // The preview of the row is the last message that is not discarded or deleted, and the server reads it
+  // when the list is read: a message edited or deleted from another tab changes the row as well as the thread
+  [RealtimeEvents.MESSAGE_EDITED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
+  [RealtimeEvents.MESSAGE_DELETED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   // Sent twice for a picture (clean, then variants made): the links read after the first one carry no
   // variant, so they are read again. The event holds no media id, so every link of the store is stale.
   [RealtimeEvents.MEDIA_PROCESSED]: [Scopes.THREAD, Scopes.MEDIA],

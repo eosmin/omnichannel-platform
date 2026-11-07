@@ -8,6 +8,7 @@ import type { ReactElement } from 'react'
 import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 
+import { askSearchFocus } from '../../lib/customers/search-focus'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -20,9 +21,9 @@ export function QuickActionsWidget(): ReactElement {
   if (!mayFind) return <p className="text-muted-foreground text-sm">{t('none')}</p>
   return (
     <div className="flex flex-wrap gap-2">
-      {/* The customers page puts the cursor in its search */}
+      {/* Asks the customers page to put the cursor in its search */}
       <Button asChild size="sm" variant="outline">
-        <Link href={AppPaths.store.customers(storeId)}>
+        <Link href={AppPaths.store.customers(storeId)} onClick={askSearchFocus}>
           <Search />
           {t('findCustomer')}
         </Link>

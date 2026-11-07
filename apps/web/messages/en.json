@@ -9,6 +9,7 @@
     "notifications": {
       "title": "Notifications",
       "forStore": "Your choices for {store}.",
+      "hint": "Every notification is kept in your list. These switches only choose how each one reaches you: a live alert while you work, a push to your devices, an email, or a sound.",
       "noStore": "You do not belong to any store yet.",
       "loading": "Loading…",
       "saveFailed": "The change could not be saved.",
@@ -192,6 +193,7 @@
     "backToStart": "Back to start",
     "tryAgain": "Try again",
     "signOut": "Sign out",
+    "working": "In progress",
     "loading": "Loading",
     "save": "Save",
     "discard": "Discard changes",
@@ -300,6 +302,10 @@
         "remove": "Remove the tag {name}",
         "add": "Add {name}",
         "addLabel": "Add a tag",
+        "searchLabel": "Search the tags to add",
+        "searchPlaceholder": "Search tags",
+        "noMatches": "No tag has that name.",
+        "showingFirst": "Showing {shown} of {total} tags: type to narrow them down.",
         "failed": "The tags of the store could not be loaded."
       },
       "note": {
@@ -468,6 +474,7 @@
     "EXPORT_TOO_LARGE": "There are too many files, or they are too large, for one download. Narrow the search",
     "EXTERNAL_SERVICE_ERROR": "An external service failed. Try again later",
     "EXTERNAL_SERVICE_TIMEOUT": "An external service took too long. Try again later",
+    "DATABASE_BUSY": "The service is busy. Try again in a moment",
     "FILE_INFECTED": "The file was rejected because it is not safe",
     "FILE_KEY_OUT_OF_SCOPE": "That file does not belong to this store",
     "FILE_NOT_READY": "The file is still being processed",
@@ -1515,7 +1522,6 @@
   "exports": {
     "title": "Exports",
     "intro": "The files you asked for. Each one is kept for 7 days.",
-    "noAccess": "Your role cannot see exports.",
     "failed": "The exports could not be loaded.",
     "empty": "You have not asked for any export yet.",
     "noMatch": "No export matches these filters.",
@@ -2392,7 +2398,8 @@
     }
   },
   "permissionDenied": {
-    "named": "You do not have the permission \"{permission}\" for this. Ask an administrator to give it to you."
+    "named": "You do not have the permission \"{permission}\" for this. Ask an administrator to give it to you.",
+    "oneOf": "You need one of these permissions for this: {permissions}. Ask an administrator to give you one."
   },
   "validation": {
     "check": "Check {field}.",

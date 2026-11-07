@@ -103,14 +103,15 @@ export class MessengerPlugin extends MetaChannelPlugin {
         schema: pageSchema
       })
       const name = page.name?.trim()
-      return {
-        id,
-        displayName: page.id === id && name !== undefined && name !== '' ? name : fallback
-      }
+      const named = page.id === id && name !== undefined && name !== ''
+      return named
+        ? { id, displayName: name }
+        : { id, displayName: fallback, displayNameIsPlaceholder: true }
     } catch (error) {
       // Only the refusal of the field: a token revoked between the two reads, a throttle or an outage
       // is not "no permission" and must not be stored as a name
-      if (isNameNotReadable(error)) return { id, displayName: fallback }
+      if (isNameNotReadable(error))
+        return { id, displayName: fallback, displayNameIsPlaceholder: true }
       throw error
     }
   }
