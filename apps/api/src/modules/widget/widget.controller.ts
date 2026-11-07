@@ -10,12 +10,7 @@ import {
 import { ApiRoutes } from '@platform/core/api'
 import { Public } from '@platform/core/auth-module'
 import { ChannelIds, WidgetFieldIssues, WidgetThrottle } from '@platform/core/domain'
-import {
-  ErrorCodes,
-  HttpStatusCodes,
-  PlatformException,
-  resourceNotFound
-} from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { RateLimit, ZodValidationPipe } from '@platform/core/http'
 import { normalizePhone } from '@platform/core/messaging'
 import { MetricNames } from '@platform/core/metrics'
@@ -110,7 +105,6 @@ export class WidgetController {
     @Res({ passthrough: true }) res: Response
   ): Promise<WidgetBootstrapView> {
     const site = await this.sites.find(body.siteKey)
-    if (site === null) throw resourceNotFound('widget')
     allowOrigin(site, origin, res)
     const [messages, readUpToMessageId, away] = await Promise.all([
       this.history.of(site, body.visitorId),
@@ -222,7 +216,6 @@ export class WidgetController {
       )
     }
     const site = await this.sites.find(claims.siteKey)
-    if (site === null) throw resourceNotFound('widget')
     allowOrigin(site, origin, res)
     return { claims, site }
   }
