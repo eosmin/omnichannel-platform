@@ -786,6 +786,13 @@ POST /auth/verify-email { token }
   → hash, find unused & unexpired → User.emailVerified = true, usedAt set → USER_EMAIL_VERIFIED
 ```
 
+**Magic link (as built):** `POST /auth/magic-link/request` counts the per-address limit and
+queues `REQUEST_MAGIC_LINK { email }` on the `email` queue for any address, known or not, and never
+reads the database, so its duration tells nothing about who has an account. The worker looks the
+address up, saves the hashed token and queues `SEND_EMAIL`; an unknown address or one marked
+`emailValid = false` ends there. Login by link therefore depends on the worker. The job is removed
+when it completes or fails, and its dead-letter copy carries no address.
+
 **Password reset:**
 ```
 POST /auth/forgot-password
