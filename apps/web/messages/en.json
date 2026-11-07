@@ -1190,7 +1190,8 @@
         "speed": "Playback speed: {speed}x",
         "failed": "This browser cannot play the audio. Download it to listen.",
         "download": "Download the audio"
-      }
+      },
+      "newMessages": "{count, plural, one {# new message} other {# new messages}}"
     },
     "composer": {
       "readOnly": "You can read this conversation but not answer it.",

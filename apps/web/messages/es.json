@@ -1190,7 +1190,8 @@
         "speed": "Velocidad de reproducción: {speed}x",
         "failed": "Este navegador no puede reproducir el audio. Descárgalo para escucharlo.",
         "download": "Descargar el audio"
-      }
+      },
+      "newMessages": "{count, plural, one {# mensaje nuevo} other {# mensajes nuevos}}"
     },
     "composer": {
       "readOnly": "Puedes leer esta conversación pero no responderla.",

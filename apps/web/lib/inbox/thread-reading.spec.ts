@@ -18,6 +18,16 @@ describe('unseenAfter', () => {
   })
 })
 
+describe('unseenAfter with countable messages', () => {
+  const ids = ['a', 'b', 'c', 'd']
+
+  it('counts only the messages that are news to the reader', () => {
+    expect(unseenAfter(ids, 'a', new Set(['b', 'd']))).toBe(2)
+    expect(unseenAfter(ids, 'a', new Set(['a']))).toBe(0)
+    expect(unseenAfter(ids, 'b', new Set())).toBe(0)
+  })
+})
+
 describe('stickyDayOf', () => {
   const days = [
     { key: '2026-11-05', top: 0 },
