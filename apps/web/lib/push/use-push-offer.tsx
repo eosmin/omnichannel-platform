@@ -52,9 +52,15 @@ export function usePushSync(storeId: string): void {
       return
     }
     syncedInThisPage = true
-    void subscribeToPush(apiClient, storeId, webEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY).catch(
-      () => undefined
-    )
+    // Marked before the call so two stores opening at once register once; given back if it failed (offline,
+    // a busy api), so that the next store that opens tries again
+    subscribeToPush(apiClient, storeId, webEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+      .then(result => {
+        if (result !== PushSubscribeResult.SUBSCRIBED) syncedInThisPage = false
+      })
+      .catch(() => {
+        syncedInThisPage = false
+      })
   }, [storeId])
 }
 
