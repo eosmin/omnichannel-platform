@@ -144,6 +144,9 @@ export const ErrorCodes = {
   EXTERNAL_SERVICE_ERROR: 'EXTERNAL_SERVICE_ERROR',
   EXTERNAL_SERVICE_TIMEOUT: 'EXTERNAL_SERVICE_TIMEOUT',
 
+  // The database kept a request waiting for a lock longer than the api allows (ApiLockTimeout): try again
+  DATABASE_BUSY: 'DATABASE_BUSY',
+
   // The browser could not reach the api: raised by the api client when no answer came, never by the api
   NETWORK_UNAVAILABLE: 'NETWORK_UNAVAILABLE',
 
