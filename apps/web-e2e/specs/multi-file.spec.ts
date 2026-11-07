@@ -10,6 +10,8 @@ import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 const FIRST_STORE = 'Main Store'
 const AGENT = 'agent@test.com'
 const MINUTE_MS = 60_000
+// Each file is uploaded and scanned (ClamAV, the worker) before the message can leave: slower in CI than on a laptop
+const SCAN_TIMEOUT_MS = 60_000
 // What WhatsApp is declared to take in one message (MetaMediaFilesPerMessage)
 const WHATSAPP_MAX_FILES = 10
 // A valid 1x1 image: the bucket checks the bytes of what it is given
@@ -58,6 +60,8 @@ test.describe.serial('the composer with several files', () => {
   }
 
   test('three pictures chosen at once go in their order, one removed leaves two, and the text is the caption', async () => {
+    // The scan of each file is part of the case
+    test.setTimeout(SCAN_TIMEOUT_MS + 30_000)
     const conversationId = await openConversation()
 
     await page
@@ -79,7 +83,7 @@ test.describe.serial('the composer with several files', () => {
       .getByRole('textbox', { name: en.inbox.composer.replyLabel })
       .fill('Your three photos')
     const send = page.getByRole('button', { name: en.inbox.composer.send })
-    await expect(send).toBeEnabled()
+    await expect(send).toBeEnabled({ timeout: SCAN_TIMEOUT_MS })
     await send.click()
 
     await expect(chipsOf(page)).toHaveCount(0)
