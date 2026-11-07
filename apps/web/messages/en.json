@@ -108,7 +108,7 @@
       "push": {
         "title": "Push on this device",
         "label": "Send push notifications to this browser",
-        "hint": "The Push column above chooses which notifications use it.",
+        "hint": "The Push column above chooses which notifications use it. By default a customer message in your conversation and an unassigned conversation you can take send a push; if you do not want it, clear the Push box of “New message in my conversation” or “New unassigned conversation”.",
         "blocked": "This browser blocked notifications. Allow them in its site settings to turn push on.",
         "unsupported": "This browser cannot receive push notifications.",
         "notConfigured": "Push notifications are not set up in this environment."
