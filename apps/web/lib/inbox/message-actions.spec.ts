@@ -22,6 +22,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   attachmentUrl: null,
   unsupportedType: null,
   location: null,
+  contacts: null,
   sticker: false,
   reactions: [],
   media: [],
@@ -126,6 +127,18 @@ describe('messageActionsOf', () => {
     expect(
       messageActionsOf(theirs, viewer([Permissions.MESSAGES_VIEW], ALL_CAPABILITIES)).react
     ).toBe(false)
+  })
+
+  it('treats a shared contact like a message of the customer: react and reply, nothing to change', () => {
+    const contact = message({
+      type: 'CONTACTS',
+      contacts: [{ name: 'Ana', phones: [], emails: [] }],
+      authorType: 'customer',
+      authorId: null,
+      deliveryStatus: null
+    })
+    const actions = messageActionsOf(contact, viewer(AGENT, ALL_CAPABILITIES))
+    expect(actions).toMatchObject({ react: true, edit: false, remove: false, resend: false })
   })
 
   it('offers to download a lost file of the customer only to who may send', () => {

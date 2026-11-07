@@ -34,4 +34,11 @@ describe('placeTextOf', () => {
     expect(placeTextOf('a\u0000b\r\nc\u0085d\u007Fe')).toBe('a b c d e')
     expect(placeTextOf('\u0000\n')).toBeNull()
   })
+
+  it('keeps at most three combining marks on a glyph, so stacked accents cannot overflow into other lines', () => {
+    expect(placeTextOf(`A${'\u0300'.repeat(190)}b`)).toBe('A\u0300\u0300\u0300b')
+    // A normal accented text is untouched
+    expect(placeTextOf('Pérez Núñez')).toBe('Pérez Núñez')
+    expect(placeTextOf('e\u0301')).toBe('e\u0301')
+  })
 })

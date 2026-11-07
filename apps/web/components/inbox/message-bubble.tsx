@@ -23,6 +23,7 @@ import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 
 import { CaptionNotice } from './caption-notice'
+import { ContactCard } from './contact-card'
 import { CustomerAvatar } from './customer-avatar'
 import { DeliveryTicksIcon } from './delivery-ticks'
 import { LocationCard } from './location-card'
@@ -277,6 +278,7 @@ function Content({
   const text = bubbleTextOf({
     content: message.content,
     hasLocation: message.location !== null,
+    hasContacts: message.contacts !== null,
     unsupportedType: message.unsupportedType
   })
   const MediaIcon = isMediaType(message.type) ? MEDIA_ICONS[message.type] : null
@@ -286,6 +288,7 @@ function Content({
       {message.location === null ? null : (
         <LocationCard location={message.location} content={message.content} />
       )}
+      {message.contacts === null ? null : <ContactCard contacts={message.contacts} />}
       {hasFiles ? (
         <MessageMedia
           files={message.media}

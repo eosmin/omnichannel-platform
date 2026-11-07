@@ -95,6 +95,7 @@ const message = {
   media: [],
   unavailableFiles: [],
   captionState: null,
+  contacts: null,
   mentions: [],
   version: 1,
   editedAt: null,

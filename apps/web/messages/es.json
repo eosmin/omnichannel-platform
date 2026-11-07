@@ -1182,6 +1182,19 @@
         "openMapAria": "Abrir en el mapa: {place}",
         "coordinates": "Coordenadas {latitude}, {longitude}"
       },
+      "contacts": {
+        "list": "Contactos compartidos",
+        "copyAria": "Copiar {value}",
+        "copied": "Copiado",
+        "copyFailed": "No se pudo copiar",
+        "kind": {
+          "CELL": "Móvil",
+          "MAIN": "Principal",
+          "IPHONE": "iPhone",
+          "HOME": "Casa",
+          "WORK": "Trabajo"
+        }
+      },
       "audio": {
         "play": "Reproducir audio",
         "pause": "Pausar audio",

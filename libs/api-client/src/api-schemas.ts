@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { CaptionState, MediaStatus } from '@platform/core/domain'
+import { CaptionState, ContactCardLimits, MediaStatus } from '@platform/core/domain'
 import { PresenceStatus } from '@platform/core/realtime'
 
 // What the api answers, parsed at the edge: the browser never trusts a body it has not checked.
@@ -310,6 +310,36 @@ export const messageSchema = z.object({
     })
     .nullable()
     // A server that does not send it yet (a rolling deploy) draws no card instead of failing the thread
+    .default(null),
+  // The cards of a shared contact; a server that does not send it yet (a rolling deploy) draws the line of a
+  // type this page cannot show, as before
+  // Bounded again here: the page draws what the answer holds, and one that does not fit the limits of the
+  // server (a stale deploy, a cache) is drawn as the line of a type this page cannot show, not as a huge card
+  contacts: z
+    .array(
+      z.object({
+        name: z.string().max(ContactCardLimits.NAME_MAX_LENGTH),
+        phones: z
+          .array(
+            z.object({
+              number: z.string().max(ContactCardLimits.PHONE_MAX_LENGTH),
+              kind: z.string().max(ContactCardLimits.KIND_MAX_LENGTH).optional()
+            })
+          )
+          .max(ContactCardLimits.MAX_PHONES),
+        emails: z
+          .array(
+            z.object({
+              address: z.string().max(ContactCardLimits.EMAIL_MAX_LENGTH),
+              kind: z.string().max(ContactCardLimits.KIND_MAX_LENGTH).optional()
+            })
+          )
+          .max(ContactCardLimits.MAX_EMAILS)
+      })
+    )
+    .max(ContactCardLimits.MAX_CONTACTS)
+    .nullable()
+    .catch(null)
     .default(null),
   // A server that does not send it yet (a rolling deploy) draws the image in its bubble, as before
   sticker: z.boolean().default(false),

@@ -34,6 +34,7 @@ import {
   createCustomerIdentity,
   createMessage,
   createSnippet,
+  type MetadataValue,
   createRole,
   createTag,
   ensurePluginInstallation
@@ -113,7 +114,7 @@ export function addMessageTo(
     // The code a reply failed with, shown beside it
     deliveryError?: string
     // The channel's own data: the place of a location, or the mark of a sticker
-    metadata?: Record<string, string | number | boolean>
+    metadata?: Record<string, MetadataValue>
     // Files of the customer the worker gave up on, as it records them in the metadata
     unavailableFiles?: { index: number; code: string }[]
   }
