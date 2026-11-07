@@ -33,8 +33,14 @@ export class PluginError extends PlatformException {
   // does not try again.
   readonly retryable: boolean | undefined
   // True when the call changes something at the provider and got no clear answer (a timeout, a 5xx, an
-  // unreadable 2xx): the provider may have done the work. False or left out: it did not.
+  // unreadable 2xx): the provider may have done the work. False or left out: it did not. A send that fails
+  // without this flag is still not taken for a refusal (see `refused`): the agent can send it again, not throw it away.
   readonly outcomeUnknown: boolean
+  // True when the provider ANSWERED that it did not take the request (a refusal, a throttle): the plugin affirms
+  // it, and nothing else counts. A failed send is definitive, and the reply can be thrown away, only if it is
+  // refused (here, or by a code that is a local check made before anything was sent): a plugin that does not
+  // say so leaves the reply as one that may have gone.
+  readonly refused: boolean
   // The numeric code and subcode of the provider's own answer, for the logs only (Meta's `code` and
   // `error_subcode`). Numbers and nothing else, so they cannot carry a token; never sent to a client.
   readonly providerCode: number | undefined
@@ -51,6 +57,7 @@ export class PluginError extends PlatformException {
     options: {
       retryable?: boolean
       outcomeUnknown?: boolean
+      refused?: boolean
       providerCode?: number
       providerSubcode?: number
       failedCheck?: PluginCheck
@@ -61,6 +68,7 @@ export class PluginError extends PlatformException {
     this.name = 'PluginError'
     this.retryable = options.retryable
     this.outcomeUnknown = options.outcomeUnknown === true
+    this.refused = options.refused === true && options.outcomeUnknown !== true
     this.providerCode = options.providerCode
     this.providerSubcode = options.providerSubcode
     this.failedCheck = options.failedCheck
