@@ -2,6 +2,7 @@ import { MessageLimits, MessageMetadataKeys, MessageType } from '@platform/core/
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { webhookToEvents } from './whatsapp-events'
+import { whatsAppContactSchema } from './whatsapp-webhook.schema'
 
 const PHONE = '106540352242922'
 
@@ -49,6 +50,51 @@ describe('webhookToEvents', () => {
         timestamp: '2025-10-27T21:20:00.000Z'
       },
       timestamp: '2025-10-27T21:20:00.000Z'
+    })
+  })
+
+  // QA WA-23: a customer with no name must stay without one (the web shows the number), never be named "null"
+  it.each([
+    ['no contacts at all', {}],
+    ['an empty list of contacts', { contacts: [] }],
+    [
+      'a contact with a null name',
+      { contacts: [{ wa_id: '15550001111', profile: { name: null } }] }
+    ],
+    ['a contact with no profile', { contacts: [{ wa_id: '15550001111' }] }],
+    [
+      'a contact with an empty name',
+      { contacts: [{ wa_id: '15550001111', profile: { name: '' } }] }
+    ],
+    ['a null contacts', { contacts: null }]
+  ])('names no customer when the webhook has %s', (_case, extra) => {
+    const [event] = webhookToEvents(
+      webhook({
+        ...extra,
+        messages: [
+          {
+            from: '15550001111',
+            id: 'wamid.1',
+            timestamp: '1761600000',
+            type: 'text',
+            text: { body: 'hola' }
+          }
+        ]
+      })
+    )
+    expect(event).toMatchObject({ type: ChannelEventTypes.MESSAGE_RECEIVED })
+    expect(event).toHaveProperty('channelProfile')
+    expect(
+      (event as { channelProfile: { displayName?: unknown } }).channelProfile.displayName
+    ).toBeUndefined()
+  })
+
+  it('keeps the ids of a contact whose name is not text', () => {
+    expect(
+      whatsAppContactSchema.parse({ wa_id: '15550001111', user_id: 'U1', profile: { name: null } })
+    ).toEqual({ wa_id: '15550001111', user_id: 'U1', profile: {} })
+    expect(whatsAppContactSchema.parse({ wa_id: '15550001111', profile: 'Ana' })).toEqual({
+      wa_id: '15550001111'
     })
   })
 
