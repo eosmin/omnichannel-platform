@@ -1066,7 +1066,11 @@
           "channel_cannot_fetch": "No se guardó un archivo del cliente: este canal no entrega archivos",
           "refetch": "Descargar otra vez",
           "refetchRequested": "Descarga solicitada: el archivo aparecerá aquí si el canal lo entrega"
-        }
+        },
+        "fileQueued": "Enviando",
+        "fileFailed": "No enviado",
+        "fileFailedWithReason": "No enviado: {reason}",
+        "retryOnlyFailed": "Al enviar de nuevo solo se reenvían los archivos que no se enviaron"
       },
       "neutral": {
         "LOCATION": "El cliente compartió una ubicación",
