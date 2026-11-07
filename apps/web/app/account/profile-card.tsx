@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AccountLimits } from '@platform/core/domain'
 
@@ -14,6 +13,7 @@ import { Label } from '../../components/ui/label'
 import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import { useOwnProfileWithPicture } from '../../lib/settings/use-avatar'
 import { useSaveOwnProfile } from '../../lib/settings/use-settings-data'
+import { toast } from '../../lib/toast'
 
 import { AvatarPicker } from './avatar-picker'
 

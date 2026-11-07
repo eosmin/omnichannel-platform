@@ -13,13 +13,13 @@ import {
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, QUICK_REACTIONS } from '@platform/core/domain'
 
 import type { MessageActions } from '../../lib/inbox/message-actions'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'

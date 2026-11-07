@@ -4,23 +4,26 @@ import {
   Delete,
   Get,
   HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
   Put,
   Query,
+  Req,
   Res
 } from '@nestjs/common'
 import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { Audit } from '@platform/core/audit-module'
+import { Audit, AuditService } from '@platform/core/audit-module'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, MessageType, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
+import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   AgentReactionsService,
   type CreateMessageBody,
@@ -44,7 +47,9 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
 import { ChannelTemplatesService } from '../channels/channel-templates.service'
-import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+import { actorOf, CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+
+import { channelFileLimits } from './channel-file-limits'
 
 // The messages of a conversation of the store in X-Store-Id. Seeing the conversation is required
 // by every route; what each message type needs on top of that (MESSAGES_SEND for a reply,
@@ -57,7 +62,9 @@ export class MessagesController {
     private readonly reactions: AgentReactionsService,
     private readonly changes: MessageChangesService,
     private readonly templates: ChannelTemplatesService,
-    private readonly registry: PluginRegistry
+    private readonly registry: PluginRegistry,
+    private readonly audit: AuditService,
+    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
   ) {}
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made
@@ -90,7 +97,8 @@ export class MessagesController {
       body,
       viewer,
       rendered,
-      (channel, capability) => this.registry.hasCapability(channel, capability)
+      (channel, capability) => this.registry.hasCapability(channel, capability),
+      channelFileLimits(this.registry, this.multiFileEnabled)
     )
     if (!created) res.status(HttpStatusCodes.OK)
     return message
@@ -108,6 +116,35 @@ export class MessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string
   ): Promise<MessageView> {
     return this.messages.resend(store.id, messageId, viewerOf(user.id, held))
+  }
+
+  // "Discard" on a reply that failed for good and never reached the customer: it disappears from the thread
+  // and nothing is said to the channel. 409 when it may have gone (`MESSAGE_DISCARD_OUTCOME_UNKNOWN`) or is not
+  // a failed reply; twice is once (204 both times, one audit entry). The audit says who, when, of what kind
+  // and why it failed, and never the text.
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Post(ApiRoutes.messages.discard(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  async discard(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<void> {
+    const outcome = await this.changes.discard(store.id, messageId, viewerOf(user.id, held))
+    if (!outcome.discarded) return
+    const actor = actorOf(user, store, req)
+    this.audit.log({
+      action: AuditAction.MESSAGE_DISCARDED,
+      actor: { userId: actor.userId },
+      storeId: store.id,
+      resourceType: 'message',
+      resourceId: messageId,
+      metadata: { type: outcome.type, deliveryError: outcome.deliveryError },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
   }
 
   // "Send the text again" on a file whose caption failed or may not have gone. Only the text goes back to

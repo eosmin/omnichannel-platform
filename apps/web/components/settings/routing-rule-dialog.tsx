@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
 import {
@@ -25,6 +24,7 @@ import {
 } from '../../lib/settings/rule-form'
 import { useChannelChoices, useCreateRule, useUpdateRule } from '../../lib/settings/use-routing'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

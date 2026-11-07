@@ -18,6 +18,11 @@ const REACHABLE_FROM: Readonly<
   [DeliveryStatus.FAILED]: [DeliveryStatus.QUEUED, DeliveryStatus.SENT]
 }
 
+// The states a message (or a file of it) may be in for a receipt to take it to `to`
+export const statesBefore = (
+  to: Exclude<DeliveryStatus, DeliveryStatus.QUEUED>
+): DeliveryStatus[] => REACHABLE_FROM[to]
+
 export interface StatusChange {
   storeId: string
   messageId: string
@@ -31,6 +36,9 @@ export interface StatusChange {
   captionState?: CaptionState
   // Only for FAILED: a code of ours, never the provider's words
   errorCode?: ErrorCode
+  // Only for FAILED: the provider is known not to have taken the message, this attempt or any before it. Absent:
+  // it may have (a receipt that reports a failure, a send nobody answered).
+  definitive?: boolean
 }
 
 // The one writer of the delivery state of a reply, for the processor that sends it and for the
@@ -54,7 +62,9 @@ export class MessageStatusWriter {
           ...(change.channelMessageId === undefined
             ? {}
             : { channelMessageId: change.channelMessageId }),
-          deliveryError: to === DeliveryStatus.FAILED ? (change.errorCode ?? null) : null
+          deliveryError: to === DeliveryStatus.FAILED ? (change.errorCode ?? null) : null,
+          // Decided by the sender, which knows what the earlier attempts left; null once it is not a failure
+          failureDefinitive: to === DeliveryStatus.FAILED ? change.definitive === true : null
         }
       })
       // Also when a receipt moved the message past this state first: the id of the caption (its echo must

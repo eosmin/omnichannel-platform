@@ -18,6 +18,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   replyToMessageId: null,
   deliveryStatus: null,
   deliveryError: null,
+  failureDefinitive: null,
   mentions: [],
   metadata,
   captionState: null,
@@ -69,12 +70,58 @@ describe('messageView media', () => {
     filename: 'a.png',
     contentType: 'image/png',
     fileSize: 10,
-    status: MediaStatus.CLEAN
+    status: MediaStatus.CLEAN,
+    position: null,
+    deliveryStatus: null,
+    sendErrorCode: null
+  }
+  const shown = {
+    id: 'f1',
+    filename: 'a.png',
+    contentType: 'image/png',
+    fileSize: 10,
+    status: MediaStatus.CLEAN,
+    position: null,
+    delivery: null,
+    errorCode: null
   }
 
   it('lists the files of a message without a link or a key', () => {
     const view = messageView({ ...row(null), media: [file] })
-    expect(view.media).toEqual([file])
+    expect(view.media).toEqual([shown])
+  })
+
+  it('tells where each file of a reply went and how the channel took it, and nothing of the provider', () => {
+    const view = messageView({
+      ...row(null),
+      media: [
+        {
+          ...file,
+          id: 'f1',
+          position: 0,
+          deliveryStatus: 'sent',
+          channelMessageId: 'wamid.secret'
+        },
+        {
+          ...file,
+          id: 'f2',
+          position: 1,
+          deliveryStatus: 'failed',
+          sendErrorCode: 'CHANNEL_MESSAGE_FAILED'
+        }
+      ] as never
+    })
+    expect(view.media.map(item => [item.position, item.delivery, item.errorCode])).toEqual([
+      [0, 'sent', null],
+      [1, 'failed', 'CHANNEL_MESSAGE_FAILED']
+    ])
+    expect(JSON.stringify(view)).not.toContain('wamid.secret')
+  })
+
+  it('refuses a delivery state it does not know', () => {
+    expect(() =>
+      messageView({ ...row(null), media: [{ ...file, deliveryStatus: 'weird' }] })
+    ).toThrow()
   })
 
   it('lists no file for a deleted message', () => {
@@ -344,5 +391,41 @@ describe('messageView unsupportedType', () => {
     expect(
       messageView({ ...row(metadata), content: '[image]', type: MessageType.IMAGE }).unsupportedType
     ).toBeNull()
+  })
+})
+
+describe('messageView edited and then deleted (W3a)', () => {
+  const edited = {
+    editedAt: new Date('2026-10-30T10:05:00Z'),
+    editedByType: AuthorType.CUSTOMER,
+    editedById: 'u1',
+    pendingContent: 'hola otra vez',
+    editStatus: 'failed',
+    editError: 'CHANNEL_MESSAGE_FAILED',
+    version: 2
+  }
+
+  it('says it was edited while it was only edited', () => {
+    const view = messageView({ ...row(null), ...edited })
+    expect(view.editedAt).toEqual(edited.editedAt)
+    expect(view.content).toBe('hola')
+  })
+
+  it('lets the deletion win: no "edited", no editor, no content, no edit waiting', () => {
+    const view = messageView({
+      ...row(null),
+      ...edited,
+      deletedAt: new Date('2026-10-30T10:10:00Z')
+    })
+    expect(view.editedAt).toBeNull()
+    expect(view.editedByType).toBeNull()
+    expect(view.editedById).toBeNull()
+    expect(view.pendingEdit).toBe(false)
+    expect(view.editStatus).toBeNull()
+    expect(view.editError).toBeNull()
+    expect(view.content).toBeNull()
+    // What says it was deleted, and by whom, stays
+    expect(view.deletedAt).toEqual(new Date('2026-10-30T10:10:00Z'))
+    expect(view.version).toBe(2)
   })
 })

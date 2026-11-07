@@ -30,9 +30,26 @@ const rawLink = z
   .optional()
   .catch(undefined)
 
+// A coordinate is a number; an empty text is not zero and Infinity is not a place
+const latitude = z.number().finite().min(-90).max(90)
+const longitude = z.number().finite().min(-180).max(180)
+
 export const metaAttachmentSchema = z.object({
   type: z.string().min(1),
-  payload: tolerant(z.object({ url: optionalUrl }))
+  // The name Meta gives a shared place
+  title: optionalText,
+  payload: tolerant(
+    z.object({
+      url: optionalUrl,
+      // The id of a sticker: a number, which can lose digits in JSON, or the text that holds it
+      sticker_id: z
+        .union([z.number(), z.string()])
+        .transform(value => String(value))
+        .optional()
+        .catch(undefined),
+      coordinates: tolerant(z.object({ lat: latitude, long: longitude }))
+    })
+  )
 })
 
 export const metaAttachmentRawLinkSchema = z.object({

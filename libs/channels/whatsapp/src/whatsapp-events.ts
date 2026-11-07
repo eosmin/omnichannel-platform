@@ -19,6 +19,7 @@ import {
 } from '@platform/core/domain'
 import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
 
+import { contactCardsOf, contactsLine } from './whatsapp-contacts'
 import {
   parseChangeValue,
   parseEntryChanges,
@@ -179,6 +180,19 @@ function toReceivedMessage(message: WhatsAppMessage): ReceivedMessage | null {
         longitude,
         ...(name === null ? {} : { name }),
         ...(address === null ? {} : { address })
+      }
+    }
+  }
+
+  if (message.type === WhatsAppMessageTypes.CONTACTS && message.contacts) {
+    const cards = contactCardsOf(message.contacts)
+    // Cards with nothing readable fall through to the marker of a type this plugin could not read
+    if (cards.length > 0) {
+      return {
+        ...base,
+        type: MessageType.CONTACTS,
+        content: cut(contactsLine(cards), InboundLimits.CONTENT_MAX_LENGTH),
+        metadata: { [MessageMetadataKeys.CONTACTS]: cards }
       }
     }
   }

@@ -5,7 +5,6 @@ import { Download, Eye, FileText, Mic, Video } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths, type GalleryCountsView, type GalleryItemView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -16,6 +15,7 @@ import { formatBytes } from '../../lib/media/attachment-rules'
 import { countsOfPages, isViewable } from '../../lib/media/gallery-view'
 import { useDownloadAll, useGallery } from '../../lib/media/use-gallery'
 import { fetchMediaUrlsOnDemand, useMediaUrls } from '../../lib/media/use-media-urls'
+import { toast } from '../../lib/toast'
 import { useDebouncedValue } from '../../lib/use-debounced-value'
 import { MediaLightbox } from '../inbox/media-lightbox'
 import { useStore } from '../providers/store-context'
@@ -280,7 +280,7 @@ export function MediaGallery({
           ) : null}
         </div>
         <MutationError error={downloadAll.error} />
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {gallery.isError && gallery.data === undefined ? (
             <div role="alert" className="flex flex-col items-start gap-2 text-sm">
               <p>{t('failed')}</p>

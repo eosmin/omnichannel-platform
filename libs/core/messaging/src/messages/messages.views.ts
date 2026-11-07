@@ -107,6 +107,13 @@ export interface MessageMediaView {
   contentType: string
   fileSize: number
   status: MediaStatus
+  // The place of the file in a message an agent sent, from 0; null for a file the customer sent
+  position: number | null
+  // How the channel took this file: null for a file the customer sent, or one sent before each had its own
+  // state (the state of the message is then theirs). Never the provider's id.
+  delivery: DeliveryStatus | null
+  // Our code for why this file did not go; null unless `delivery` is failed
+  errorCode: string | null
 }
 
 // A file the customer sent that the platform could not keep: where it was in the message and why. The
@@ -142,6 +149,10 @@ export interface MessageView {
   replyTo: QuotedMessage | null
   deliveryStatus: DeliveryStatus | null
   deliveryError: string | null
+  // Only for a reply that failed: true when the channel is known not to have taken it (it can be sent again
+  // or thrown away: `POST /messages/:id/discard`), false or null when it may have (sending it again may
+  // repeat it, and it cannot be thrown away). Null for anything that has not failed.
+  failureDefinitive: boolean | null
   mentions: string[]
   system: SystemLineMetadata | null
   // The place of a location message, or null (not a location, deleted, or coordinates that do not hold)
@@ -182,6 +193,12 @@ export interface MessageView {
   createdAt: Date
 }
 
+// The order the agent gave the files; the files of the customer have no place and keep their arrival order
+// (a mutable array: Prisma does not take a readonly one)
+const MEDIA_ORDER: (
+  { position: { sort: 'asc'; nulls: 'last' } } | { createdAt: 'asc' } | { id: 'asc' }
+)[] = [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
+
 export const MESSAGE_SELECT = {
   id: true,
   conversationId: true,
@@ -192,6 +209,7 @@ export const MESSAGE_SELECT = {
   replyToMessageId: true,
   deliveryStatus: true,
   deliveryError: true,
+  failureDefinitive: true,
   mentions: true,
   metadata: true,
   captionState: true,
@@ -219,8 +237,18 @@ export const MESSAGE_SELECT = {
     orderBy: { createdAt: 'asc' }
   },
   media: {
-    select: { id: true, filename: true, contentType: true, fileSize: true, status: true },
-    orderBy: { createdAt: 'asc' }
+    select: {
+      id: true,
+      filename: true,
+      contentType: true,
+      fileSize: true,
+      status: true,
+      position: true,
+      deliveryStatus: true,
+      sendErrorCode: true
+    },
+    // The order the agent gave; the files of the customer have no place and keep their arrival order
+    orderBy: MEDIA_ORDER
   },
   createdAt: true
 } as const
@@ -235,6 +263,7 @@ interface MessageRow {
   replyToMessageId: string | null
   deliveryStatus: string | null
   deliveryError: string | null
+  failureDefinitive: boolean | null
   mentions: string[]
   metadata: unknown
   captionState: string | null
@@ -264,8 +293,37 @@ interface MessageRow {
     contentType: string
     fileSize: number
     status: string
+    position: number | null
+    deliveryStatus: string | null
+    sendErrorCode: string | null
   }[]
   createdAt: Date
+}
+
+function editFieldsOf(
+  row: MessageRow
+): Pick<
+  MessageView,
+  'editedAt' | 'editedByType' | 'editedById' | 'pendingEdit' | 'editStatus' | 'editError'
+> {
+  if (row.deletedAt !== null) {
+    return {
+      editedAt: null,
+      editedByType: null,
+      editedById: null,
+      pendingEdit: false,
+      editStatus: null,
+      editError: null
+    }
+  }
+  return {
+    editedAt: row.editedAt,
+    editedByType: authorOrNull(row.editedByType, 'message editor'),
+    editedById: row.editedById,
+    pendingEdit: row.pendingContent !== null,
+    editStatus: deliveryOrNull(row.editStatus, 'edit delivery'),
+    editError: row.editError
+  }
 }
 
 export function messageView(row: MessageRow, replyTo: QuotedMessage | null = null): MessageView {
@@ -285,6 +343,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
         ? null
         : enumValueOf(DeliveryStatuses, row.deliveryStatus, 'delivery status'),
     deliveryError: row.deliveryError,
+    failureDefinitive: row.failureDefinitive,
     mentions: row.mentions,
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
@@ -307,18 +366,21 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
             filename: file.filename,
             contentType: file.contentType,
             fileSize: file.fileSize,
-            status: enumValueOf(MediaStatuses, file.status, 'media status')
+            status: enumValueOf(MediaStatuses, file.status, 'media status'),
+            position: file.position,
+            delivery:
+              file.deliveryStatus === null
+                ? null
+                : enumValueOf(DeliveryStatuses, file.deliveryStatus, 'media delivery'),
+            errorCode: file.sendErrorCode
           }))
         : [],
     unavailableFiles: unavailableFilesOf(row, type),
     captionState: row.deletedAt === null ? captionStateOf(row.captionState) : null,
     version: row.version,
-    editedAt: row.editedAt,
-    editedByType: authorOrNull(row.editedByType, 'message editor'),
-    editedById: row.editedById,
-    pendingEdit: row.pendingContent !== null,
-    editStatus: deliveryOrNull(row.editStatus, 'edit delivery'),
-    editError: row.editError,
+    // A message edited and then deleted is a deleted message: the deletion wins, so it carries no
+    // "edited", no editor and no edit waiting or failed (its text is already hidden above)
+    ...editFieldsOf(row),
     deletedAt: row.deletedAt,
     deletedByType: authorOrNull(row.deletedByType, 'message deleter'),
     deletedById: row.deletedById,

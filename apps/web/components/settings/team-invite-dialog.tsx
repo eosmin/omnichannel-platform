@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { useRoleLabel } from '../../lib/role-label'
 import { isInvitableEmail } from '../../lib/settings/invite-email'
@@ -11,6 +10,7 @@ import type { RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
 import { useInviteMember } from '../../lib/settings/use-team'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

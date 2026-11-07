@@ -41,6 +41,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'messages.byId': { step: '3.2' },
   'messages.reaction': { step: '3.2' },
   'messages.resend': { step: '3.2' },
+  // The button that throws away a reply that failed for good (plan, Step 7.7)
+  'messages.discard': { step: '7.7' },
   // The text under a file, sent again on its own: the button of the bubble (Step 3.5 PR F4b-2)
   'messages.resendCaption': { step: '3.5' },
   // A lost file of the customer, downloaded again: the button of the line that says it was lost (Step 3.5 PR F4c)
@@ -317,6 +319,9 @@ export const CAPABILITY_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   DOCUMENT: { step: '3.4' },
   LOCATION: {
     none: 'An inbound location shows in the thread (Step 3.2); no step lets an agent send one in the MVP'
+  },
+  CONTACTS: {
+    none: 'A shared contact card is stored with its names, phones and emails (PR-3 of the channels lane); the thread shows it as a neutral line until the web lane draws the card (Step 7.7 owner, see the plan). No step lets an agent send one in the MVP'
   },
   BUTTONS: {
     none: 'No step lets an agent send buttons in the MVP; reserved for flows of Phase 2'

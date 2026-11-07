@@ -3,7 +3,6 @@
 import { ArrowDown, ArrowUp, GripVertical, Pencil, Plus, Route, Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type DragEvent, type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -16,6 +15,7 @@ import {
 import { moveBy, moveItem, sameOrder } from '../../lib/settings/routing-order'
 import type { RuleView } from '../../lib/settings/routing-requests'
 import { useDeleteRule, useReorderRules, useUpdateRule } from '../../lib/settings/use-routing'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'

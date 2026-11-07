@@ -76,6 +76,8 @@ export const whatsAppMessageSchema = z.object({
       address: z.string().optional().catch(undefined)
     })
   ),
+  // The cards are read one by one (`parseContactCard`): a card that does not fit costs only itself
+  contacts: tolerant(z.array(z.unknown())),
   // The emoji is missing, or empty, when the customer takes the reaction back. One that is not text is
   // not a removal: the reaction is dropped.
   reaction: tolerant(z.object({ message_id: z.string(), emoji: z.string().optional() })),
@@ -90,6 +92,36 @@ export const whatsAppMessageSchema = z.object({
 })
 
 export type WhatsAppMessage = z.infer<typeof whatsAppMessageSchema>
+
+// One contact the customer shared. Only the parts the platform keeps are read (the name, the phones and
+// the emails); addresses, birthday, links and the company are never parsed, so they cannot cost the card.
+// A part that does not fit is the same as an absent one.
+const optionalString = z.string().optional().catch(undefined)
+const listOf = <T extends z.ZodType>(schema: T) =>
+  z
+    .array(z.unknown())
+    .optional()
+    .catch(undefined)
+    .transform(items =>
+      (items ?? []).flatMap(item => {
+        const parsed = schema.safeParse(item)
+        return parsed.success ? [parsed.data] : []
+      })
+    )
+
+export const whatsAppContactCardSchema = z.object({
+  name: tolerant(
+    z.object({
+      formatted_name: optionalString,
+      first_name: optionalString,
+      last_name: optionalString
+    })
+  ),
+  phones: listOf(z.object({ phone: optionalString, wa_id: optionalString, type: optionalString })),
+  emails: listOf(z.object({ email: optionalString, type: optionalString }))
+})
+
+export type WhatsAppContactCard = z.infer<typeof whatsAppContactCardSchema>
 
 // What the business wrote in the WhatsApp Business app (Coexistence): the same message, with the
 // customer as `to`
