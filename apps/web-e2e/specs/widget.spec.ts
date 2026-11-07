@@ -2,6 +2,7 @@ import type { Browser, BrowserContext, Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
+import { AuthorType } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import {
@@ -11,7 +12,7 @@ import {
   signInByApi,
   type WidgetSite
 } from '../support/api'
-import { storeIdNamed, withOwner } from '../support/database'
+import { addMessageTo, storeIdNamed, unreadCountOf, withOwner } from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 import { openSite, SITE_ORIGIN, startSite, STRICT_CSP } from '../support/widget-site'
@@ -119,6 +120,82 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
     // The reply reaches the visitor through the socket
     await expect(visitor.page.getByRole('log').getByText('Yes, two left')).toBeVisible()
     expect(violations).toEqual([])
+
+    await agentContext.close()
+    await visitor.context.close()
+  })
+
+  test('a message that arrives while the agent reads above waits behind a button, and is read only at the end (W3c)', async ({
+    browser
+  }) => {
+    const visitor = await visitorBrowser(browser)
+    await openSite(visitor.page)
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.open }).click()
+    const visitorInput = visitor.page.getByRole('textbox', { name: WIDGET_TEXT.input })
+    await visitorInput.fill('First, to open the conversation')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
+    await expect(
+      visitor.page.getByRole('log').getByText('First, to open the conversation')
+    ).toBeVisible()
+
+    // A long thread: older messages are written in the database under the one that just arrived
+    const conversationId = await withOwner(
+      async owner =>
+        (
+          await owner.conversation.findFirstOrThrow({
+            where: { storeId },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true }
+          })
+        ).id
+    )
+    for (let index = 0; index < 40; index += 1) {
+      await addMessageTo(storeId, conversationId, {
+        content: `Earlier message ${index + 1}`,
+        authorType: index % 2 === 0 ? AuthorType.CUSTOMER : AuthorType.AGENT,
+        createdAt: new Date(Date.now() - (60 - index) * 60_000)
+      })
+    }
+
+    const agentContext = await browser.newContext()
+    await reachServicesFromOwnAddress(agentContext)
+    const agent = await agentContext.newPage()
+    await signIn(agent, AGENT)
+    await agent.goto(AppPaths.store.conversation(storeId, conversationId))
+    const thread = agent.getByRole('list', { name: en.inbox.thread.label })
+    await expect(thread.getByText('First, to open the conversation')).toBeVisible()
+    // At the end the conversation is read
+    await expect.poll(() => unreadCountOf(conversationId)).toBe(0)
+
+    // The agent reads above the end; the visitor writes
+    const scrollUp = (): Promise<void> =>
+      thread.evaluate(element => {
+        const scroller = element.closest('.overflow-y-auto')
+        if (scroller instanceof HTMLElement) scroller.scrollTop = 0
+      })
+    await scrollUp()
+    await visitorInput.fill('Is anyone there?')
+    await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
+
+    // It waits behind the button; it is not read while the agent is above
+    const pill = agent.getByRole('button', { name: /1 new message/ })
+    await expect(pill).toBeVisible()
+    await agent.waitForTimeout(1500)
+    expect(await unreadCountOf(conversationId)).toBe(1)
+
+    // The button takes the agent to the end: it goes away and the message is read then
+    await pill.click()
+    await expect(thread.getByText('Is anyone there?')).toBeVisible()
+    await expect(pill).toHaveCount(0)
+    await expect.poll(() => unreadCountOf(conversationId)).toBe(0)
+
+    // What the agent writes is not news to them: they are taken to the end and no button appears
+    await scrollUp()
+    const reply = agent.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+    await reply.fill('Yes, I am here')
+    await agent.getByRole('button', { name: en.inbox.composer.send }).click()
+    await expect(thread.getByText('Yes, I am here')).toBeVisible()
+    await expect(agent.getByRole('button', { name: /new message/ })).toHaveCount(0)
 
     await agentContext.close()
     await visitor.context.close()
