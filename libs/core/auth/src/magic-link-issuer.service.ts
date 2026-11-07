@@ -17,16 +17,27 @@ import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platfo
 
 const MS_PER_MINUTE = 60_000
 
+interface IssuerDatabase {
+  readonly client: PrismaService['client']
+  transaction: PrismaService['transaction']
+}
+interface IssuerLogger {
+  setContext: PinoLogger['setContext']
+  info: PinoLogger['info']
+}
+
 // The other half of a magic link request. The api counts the limit and queues a job for any
 // address; this looks the address up, so that the request takes the same time whether or not there
 // is an account. An unknown address, or one the provider reported as dead, gets nothing.
 @Injectable()
 export class MagicLinkIssuer {
   constructor(
-    private readonly prisma: PrismaService,
+    // Typed by what is used, with the class as the token: a class type in a constructor makes
+    // TypeScript emit a guard for the decorator metadata that no test can take both ways
+    @Inject(PrismaService) private readonly prisma: IssuerDatabase,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     @Inject(DIGEST_LINKS) private readonly links: DigestLinks,
-    private readonly logger: PinoLogger
+    @Inject(PinoLogger) private readonly logger: IssuerLogger
   ) {
     this.logger.setContext(MagicLinkIssuer.name)
   }
