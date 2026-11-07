@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Mic, Play, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { FileText, ImageIcon, Mic, Play, ShieldAlert, TriangleAlert, Video } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
@@ -12,6 +12,13 @@ import type { OutboundMediaType } from '@platform/core/storage'
 import { fileDeliveryOf, isAlbum, sayRetryOnlyFailed } from '../../lib/inbox/album'
 import { displayFileNameOf } from '../../lib/inbox/file-label'
 import { mediaKindOf } from '../../lib/inbox/media-kind'
+import {
+  type FileType,
+  fileStateOf,
+  isFileType,
+  isWaitingState,
+  pendingShapeOf
+} from '../../lib/inbox/media-state'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrlReads, useMediaUrls } from '../../lib/media/use-media-urls'
@@ -26,7 +33,9 @@ import { type LightboxFile, MediaLightbox } from './media-lightbox'
 // A file is drawn in one of two states, a skeleton or its content, and both fill the same box, so the
 // thread never jumps when the file arrives. The rare end states (infected, not scannable, not
 // available) keep their text inside the same box. The size of a box depends on the kind of file only,
-// because the size of the picture is not known before its links are read.
+// because the size of the picture is not known before its links are read. The skeleton starts on the first
+// frame of the message, before the file exists (`PendingMedia`), and the states of a file that exists come
+// from one function (`fileStateOf`).
 // The widths are fixed with `max-w-full`, not `min(320px, 100%)`: a bubble is as wide as its content, so
 // a percentage has nothing to resolve against and the box would shrink to the width of the clock.
 const Boxes = {
@@ -110,6 +119,14 @@ export function MessageMedia({
 
 const KIND_LABELS = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'] as const
 
+// The icon in front of the word of a kind of file: a kind with no icon does not compile
+const KIND_ICONS: Record<FileType, typeof FileText> = {
+  [MessageType.IMAGE]: ImageIcon,
+  [MessageType.VIDEO]: Video,
+  [MessageType.AUDIO]: Mic,
+  [MessageType.DOCUMENT]: FileText
+}
+
 // The label of a kind of file; a kind the page has no label for reads as a document
 function labelOf(
   t: ReturnType<typeof useTranslations<'inbox.thread.mediaLabel'>>,
@@ -139,6 +156,45 @@ function Skeleton({ shape, text }: { shape: Shape; text: string }): ReactElement
       )}
     >
       <span className="sr-only">{text}</span>
+    </div>
+  )
+}
+
+// A message that is a file and has none. While the file of a customer's message may still be on the way
+// (`awaiting`, from `useAwaitingFiles`: the worker stores the message first and fetches the file after) it is
+// the skeleton of the box the file will fill, from the first frame, so that no word takes the place of the
+// box for a moment. After that window, or for any other author, it is the word of its kind, as it always was.
+export function PendingMedia({
+  type,
+  awaiting,
+  sticker
+}: {
+  type: string
+  awaiting: boolean
+  sticker: boolean
+}): ReactElement | null {
+  const t = useTranslations('inbox.thread.media')
+  const tKind = useTranslations('inbox.thread.mediaLabel')
+  if (!isFileType(type)) return null
+  if (!awaiting) {
+    const Icon = KIND_ICONS[type]
+    return (
+      <p className="flex items-center gap-1.5 text-xs font-medium">
+        <Icon aria-hidden className="size-4" />
+        {labelOf(tKind, type)}
+      </p>
+    )
+  }
+  const skeleton = <Skeleton shape={pendingShapeOf(type, sticker)} text={t('arriving')} />
+  if (type !== MessageType.AUDIO) return skeleton
+  // The name of a voice note sits over its player in every state, so the box is the same height
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="flex items-center gap-1.5 text-xs">
+        <Mic aria-hidden className="size-3.5" />
+        <span className="min-w-0 truncate">{labelOf(tKind, type)}</span>
+      </p>
+      {skeleton}
     </div>
   )
 }
@@ -314,8 +370,24 @@ function MediaBody({
   // the links were read as many times as the wait allows; the count is kept by the query, so a picture
   // drawn again does not start the wait over, and the read that ends it is a render of its own.
   const reads = useMediaUrlReads(storeId, file.id, urls)
+  const data = urls.data
+  // The thumbnail is 160 px: the medium one fills the box
+  const preview = data === undefined ? null : (data.variants.medium ?? data.variants.thumb)
+  const state = fileStateOf({
+    status: file.status,
+    linksFailed: urls.isError,
+    linksRead: data !== undefined,
+    waitingForVariants:
+      data !== undefined &&
+      kind === MessageType.IMAGE &&
+      isWaitingForVariants({
+        processed: data.processed,
+        hasPreview: preview !== null,
+        givenUp: hasGivenUpWaiting(reads)
+      })
+  })
 
-  if (file.status === MediaStatus.INFECTED) {
+  if (state === 'infected') {
     return (
       <Frame shape={shape}>
         <ShieldAlert aria-hidden className="text-destructive size-4 shrink-0" />
@@ -325,7 +397,7 @@ function MediaBody({
       </Frame>
     )
   }
-  if (file.status === MediaStatus.UNSCANNABLE) {
+  if (state === 'unscannable') {
     return (
       <Frame shape={shape}>
         <TriangleAlert aria-hidden className="text-destructive size-4 shrink-0" />
@@ -335,8 +407,7 @@ function MediaBody({
       </Frame>
     )
   }
-  if (!isClean) return <Skeleton shape={shape} text={t('checking', { name })} />
-  if (urls.isError) {
+  if (state === 'unreadable') {
     return (
       <Frame shape={shape}>
         <TriangleAlert aria-hidden className="size-4 shrink-0" />
@@ -353,21 +424,13 @@ function MediaBody({
       </Frame>
     )
   }
-  if (urls.data === undefined) return <Skeleton shape={shape} text={t('loading', { name })} />
+  if (isWaitingState(state) || data === undefined) {
+    return (
+      <Skeleton shape={shape} text={t(state === 'scanning' ? 'checking' : 'loading', { name })} />
+    )
+  }
 
-  const { data } = urls
-  // The thumbnail is 160 px: the medium one fills the box
-  const preview = data.variants.medium ?? data.variants.thumb
   if (kind === MessageType.IMAGE) {
-    if (
-      isWaitingForVariants({
-        processed: data.processed,
-        hasPreview: preview !== null,
-        givenUp: hasGivenUpWaiting(reads)
-      })
-    ) {
-      return <Skeleton shape={shape} text={t('loading', { name })} />
-    }
     // An image with no variant (the decoder refused it) is not drawn inline, it is a download
     if (preview !== null) {
       const large = data.variants.full ?? preview

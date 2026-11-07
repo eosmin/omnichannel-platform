@@ -1070,7 +1070,8 @@
         "fileQueued": "Sending",
         "fileFailed": "Not sent",
         "fileFailedWithReason": "Not sent: {reason}",
-        "retryOnlyFailed": "Sending again sends only the files that were not sent"
+        "retryOnlyFailed": "Sending again sends only the files that were not sent",
+        "arriving": "The file is arriving"
       },
       "neutral": {
         "LOCATION": "The customer shared a location",
