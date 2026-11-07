@@ -11,7 +11,7 @@ import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
 // An agent may send templates, and the link of the administrator is already spent by other specs
-const AGENT = 'agent@test.com'
+const AGENT = 'agent2@test.com'
 const HOUR_MS = 3_600_000
 const MINUTE_MS = 60_000
 // The reconnection of the socket backs off, so coming back online takes longer than the default wait

@@ -39,7 +39,7 @@ test.describe('Settings → Team', () => {
     const freeRole = `E2E free ${suffix}`
     const email = `e2e-${suffix}@example.com`
 
-    await signIn(page, 'admin@test.com')
+    await signIn(page, 'admin3@test.com')
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.TEAM))
 
@@ -115,7 +115,7 @@ test.describe('Settings → Team', () => {
     const email = `suspend-${suffix}@example.com`
 
     // A new person joins the store through an invitation, and is working in it
-    await inviteAsAgent(await signInByApi('admin@test.com'), email)
+    await inviteAsAgent(await signInByApi('admin3@test.com'), email)
     const guest = await browser.newContext()
     try {
       await reachServicesFromOwnAddress(guest)
@@ -127,7 +127,7 @@ test.describe('Settings → Team', () => {
       const inboxPath = new URL(guestPage.url()).pathname
 
       // The administrator suspends them after being asked to confirm
-      await signIn(page, 'admin@test.com')
+      await signIn(page, 'admin3@test.com')
       await page.waitForURL(/\/s\/[^/]+\/inbox/)
       await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.TEAM))
       const row = page

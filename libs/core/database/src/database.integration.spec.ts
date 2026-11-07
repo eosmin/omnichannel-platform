@@ -501,10 +501,21 @@ describe('development fixtures', () => {
     const fixtureUsers = await prisma.user.count({
       where: {
         email: {
-          in: ['admin@test.com', 'agent@test.com', 'viewer@test.com', 'multi-store@test.com']
+          in: [
+            'admin@test.com',
+            'agent@test.com',
+            'viewer@test.com',
+            'multi-store@test.com',
+            'admin2@test.com',
+            'admin3@test.com',
+            'agent2@test.com',
+            'viewer2@test.com',
+            'admin4@test.com',
+            'agent3@test.com'
+          ]
         }
       }
     })
-    expect(fixtureUsers).toBe(4)
+    expect(fixtureUsers).toBe(10)
   })
 })

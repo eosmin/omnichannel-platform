@@ -20,7 +20,7 @@ const FIRST_STORE = 'Main Store'
 // An administrator connects the widget and an agent answers. The magic link is limited for each
 // address, so each person is one that the other specs spend the least.
 const OWNER = 'multi-store@test.com'
-const AGENT = 'agent@test.com'
+const AGENT = 'agent3@test.com'
 const OTHER_SITE = 'https://other.example.com'
 const WIDGET_TEXT = {
   open: 'Open the chat',
