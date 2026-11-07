@@ -6,8 +6,10 @@ import {
   ChannelType,
   type ChannelConnectionStatus,
   type ConversationStatus,
+  DeliveryStatus,
   MessageType
 } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 
 import { createCustomerIdentity } from './customer'
 import { ensurePluginInstallation } from './plugin'
@@ -147,6 +149,30 @@ export async function createMessageOf(
   })
   conversationOfMessage.set(message.id, conversation.id)
   return message
+}
+
+// A reply of the team that failed for good and never left, in a conversation of its own: what can be discarded
+export async function createDiscardableReplyOf(
+  owner: OwnerClient,
+  input: { storeId: string; userId: string }
+): Promise<{ id: string }> {
+  const conversation = await createConversationOf(owner, { storeId: input.storeId })
+  const reply = await owner.message.create({
+    data: {
+      storeId: input.storeId,
+      conversationId: conversation.id,
+      type: MessageType.TEXT,
+      content: 'a reply that never went',
+      authorType: AuthorType.AGENT,
+      authorId: input.userId,
+      deliveryStatus: DeliveryStatus.FAILED,
+      deliveryError: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+      failureDefinitive: true
+    },
+    select: { id: true }
+  })
+  conversationOfMessage.set(reply.id, conversation.id)
+  return reply
 }
 
 // The message each reaction is on: the route to react names the message, not the reaction
