@@ -112,6 +112,8 @@ export function addMessageTo(
     replyToMessageId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
+    // For a reply that failed: true when it is known not to have gone out, false or null when it may have
+    failureDefinitive?: boolean | null
     // The channel's own data: the place of a location, or the mark of a sticker
     metadata?: Record<string, string | number | boolean>
     // Files of the customer the worker gave up on, as it records them in the metadata
@@ -126,6 +128,12 @@ export function addMessageTo(
     }
     if (deliveryError !== undefined) {
       await owner.message.update({ where: { id }, data: { deliveryError } })
+    }
+    if (input.failureDefinitive !== undefined) {
+      await owner.message.update({
+        where: { id },
+        data: { failureDefinitive: input.failureDefinitive }
+      })
     }
     if (deliveryStatus !== undefined || system !== undefined || replyToMessageId !== undefined) {
       await owner.message.update({

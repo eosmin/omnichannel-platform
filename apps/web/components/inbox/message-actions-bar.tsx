@@ -17,6 +17,7 @@ import { type ReactElement, useState } from 'react'
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, QUICK_REACTIONS } from '@platform/core/domain'
 
+import { failureStateOf } from '../../lib/inbox/failure-state'
 import type { MessageActions } from '../../lib/inbox/message-actions'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { toast } from '../../lib/toast'
@@ -47,6 +48,14 @@ const DeletedContentDialog = dynamic(
   () => import('./message-action-dialogs').then(module => module.DeletedContentDialog),
   { ssr: false }
 )
+const DiscardMessageDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.DiscardMessageDialog),
+  { ssr: false }
+)
+const ResendAgainDialog = dynamic(
+  () => import('./message-action-dialogs').then(module => module.ResendAgainDialog),
+  { ssr: false }
+)
 const EditMessageDialog = dynamic(
   () => import('./message-action-dialogs').then(module => module.EditMessageDialog),
   { ssr: false }
@@ -56,7 +65,8 @@ const RevisionsDialog = dynamic(
   { ssr: false }
 )
 
-type OpenDialog = 'edit' | 'delete' | 'revisions' | 'deleted' | 'reaction' | null
+type OpenDialog =
+  'edit' | 'delete' | 'revisions' | 'deleted' | 'reaction' | 'discard' | 'resend' | null
 
 // What an agent can do to one message, beside its bubble: visible on hover and on keyboard focus (and
 // always on a screen that cannot hover). Only the actions the rules allow are drawn; the api checks
@@ -98,7 +108,12 @@ export function MessageActionsBar({
     promise.catch((error: unknown) => toast.error(errorText(error)))
   }
   const hasMore =
-    actions.resend || actions.edit || actions.remove || actions.revisions || actions.viewDeleted
+    actions.resend ||
+    actions.discard ||
+    actions.edit ||
+    actions.remove ||
+    actions.revisions ||
+    actions.viewDeleted
 
   return (
     <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 pointer-coarse:opacity-100">
@@ -174,9 +189,22 @@ export function MessageActionsBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {actions.resend ? (
-              <DropdownMenuItem onSelect={() => tell(resend.mutateAsync())}>
+              <DropdownMenuItem
+                onSelect={() =>
+                  // A reply that may have gone out asks first: the customer may receive it twice
+                  failureStateOf(message) === 'unconfirmed'
+                    ? setDialog('resend')
+                    : tell(resend.mutateAsync())
+                }
+              >
                 <RotateCcw aria-hidden className="size-4" />
                 {t('resend')}
+              </DropdownMenuItem>
+            ) : null}
+            {actions.discard ? (
+              <DropdownMenuItem onSelect={() => setDialog('discard')}>
+                <Trash2 aria-hidden className="size-4" />
+                {t('discard')}
               </DropdownMenuItem>
             ) : null}
             {actions.edit ? (
@@ -212,6 +240,8 @@ export function MessageActionsBar({
       {/* Each dialog is drawn only for the action that opens it */}
       {dialog === 'edit' ? <EditMessageDialog {...dialogProps} open /> : null}
       {dialog === 'delete' ? <DeleteMessageDialog {...dialogProps} open /> : null}
+      {dialog === 'discard' ? <DiscardMessageDialog {...dialogProps} open /> : null}
+      {dialog === 'resend' ? <ResendAgainDialog {...dialogProps} open /> : null}
       {dialog === 'revisions' ? (
         <RevisionsDialog {...dialogProps} open authorLabel={authorLabel} />
       ) : null}
