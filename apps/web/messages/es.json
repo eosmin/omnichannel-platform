@@ -1021,7 +1021,9 @@
         "sent": "Enviado",
         "delivered": "Entregado",
         "read": "Leído",
-        "failed": "No se entregó"
+        "failed": "No se entregó",
+        "unconfirmed": "No se pudo confirmar la entrega",
+        "unconfirmedNote": "No pudimos confirmar que el cliente la recibiera"
       },
       "failedWithReason": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
       "mediaLabel": {
@@ -1175,7 +1177,13 @@
         "customReactionTitle": "Reaccionar con otro emoji",
         "customReactionDescription": "Escribe o pega un emoji.",
         "customReactionLabel": "Emoji",
-        "reply": "Responder"
+        "reply": "Responder",
+        "discard": "Descartar",
+        "discardTitle": "¿Descartar esta respuesta?",
+        "discardDescription": "No llegó al cliente y sale de la conversación para todo el equipo. El texto se conserva 30 días.",
+        "resendTitle": "¿Enviar de nuevo esta respuesta?",
+        "resendDuplicateDescription": "No pudimos confirmar si el cliente la recibió. Si la envías de nuevo, puede recibirla dos veces.",
+        "resendAnyway": "Enviar de nuevo"
       },
       "location": {
         "untitled": "Ubicación compartida",

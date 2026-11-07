@@ -1021,7 +1021,9 @@
         "sent": "Sent",
         "delivered": "Delivered",
         "read": "Read",
-        "failed": "Not delivered"
+        "failed": "Not delivered",
+        "unconfirmed": "Could not confirm delivery",
+        "unconfirmedNote": "We could not confirm that the customer received it"
       },
       "failedWithReason": "Not delivered: {reason}",
       "mediaLabel": {
@@ -1175,7 +1177,13 @@
         "customReactionTitle": "React with another emoji",
         "customReactionDescription": "Type or paste one emoji.",
         "customReactionLabel": "Emoji",
-        "reply": "Reply"
+        "reply": "Reply",
+        "discard": "Discard",
+        "discardTitle": "Discard this reply?",
+        "discardDescription": "It did not reach the customer and it leaves the conversation for the whole team. The text is kept for 30 days.",
+        "resendTitle": "Send this reply again?",
+        "resendDuplicateDescription": "We could not confirm whether the customer received it. If you send it again they may get it twice.",
+        "resendAnyway": "Send again"
       },
       "location": {
         "untitled": "Shared location",

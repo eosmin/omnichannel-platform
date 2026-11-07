@@ -19,19 +19,31 @@ const ICONS = {
 
 // The state of a reply toward the channel. The icon changes with the state and the word is there for
 // who cannot see it: the color only adds to it (read is the strongest, delivered the same two ticks).
-export function DeliveryTicksIcon({ status }: { status: DeliveryTicks }): ReactElement {
+export function DeliveryTicksIcon({
+  status,
+  unconfirmed = false
+}: {
+  status: DeliveryTicks
+  // A failed reply that may have gone out: amber, and it says so, not that it was refused
+  unconfirmed?: boolean
+}): ReactElement {
   const t = useTranslations('inbox.thread.ticks')
   const Icon = ICONS[status]
   return (
     <span
       className={cn(
         'inline-flex items-center',
-        status === DeliveryStatus.FAILED ? 'text-destructive' : 'text-muted-foreground',
+        status === DeliveryStatus.FAILED
+          ? unconfirmed
+            ? 'text-amber-600 dark:text-amber-400'
+            : 'text-destructive'
+          : 'text-muted-foreground',
         status === DeliveryStatus.READ && 'text-foreground'
       )}
     >
       <Icon aria-hidden className="size-3.5" />
-      <span className="sr-only">{t(status)}</span>
+      {/* An unconfirmed reply has its own note under the bubble: the icon does not say it twice */}
+      {unconfirmed ? null : <span className="sr-only">{t(status)}</span>}
     </span>
   )
 }
