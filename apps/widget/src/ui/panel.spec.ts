@@ -559,6 +559,8 @@ describe('mountUnavailable', () => {
     const owner = root?.querySelector<HTMLDetailsElement>('details.owner')
     expect(owner?.open).toBe(false)
     expect(owner?.textContent).toContain('connect-src')
+    // Both causes the site owner can fix are named: the policy of the page and the list of sites
+    expect(owner?.textContent).toContain('sitios')
     expect(root?.querySelector('textarea')).toBeNull()
 
     root?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))

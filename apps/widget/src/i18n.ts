@@ -33,7 +33,7 @@ const MESSAGES = {
     uploading: 'Subiendo',
     unavailable: 'No pudimos conectar el chat. Inténtalo de nuevo más tarde.',
     unavailableOwner:
-      'Si administras este sitio: el navegador no pudo comunicarse con el chat. Revisa que la política de seguridad de contenido (CSP) permita la dirección del chat en connect-src y que el servicio esté en línea.',
+      'Si administras este sitio: el navegador no pudo comunicarse con el chat. Revisa que la política de seguridad de contenido (CSP) permita la dirección del chat en connect-src, que este sitio esté en la lista de sitios que pueden cargar el chat (Ajustes del widget) y que el servicio esté en línea.',
     unavailableDetails: 'Para quien administra el sitio'
   },
   [Locales.EN]: {
@@ -66,7 +66,7 @@ const MESSAGES = {
     uploading: 'Uploading',
     unavailable: 'We could not connect the chat. Try again later.',
     unavailableOwner:
-      'If you run this site: the browser could not reach the chat. Check that the content security policy (CSP) allows the chat address in connect-src and that the service is online.',
+      'If you run this site: the browser could not reach the chat. Check that the content security policy (CSP) allows the chat address in connect-src, that this site is in the list of sites that may load the chat (widget settings) and that the service is online.',
     unavailableDetails: 'For whoever runs this site'
   }
 } as const
