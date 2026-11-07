@@ -1658,9 +1658,10 @@
           "label": "Pedir nombre, correo y teléfono antes del primer mensaje",
           "hint": "El visitante llena un formulario corto antes de empezar el chat."
         },
-        "connectSrc": {
+        "csp": {
           "title": "Si tu sitio tiene una política de seguridad de contenido estricta",
-          "hint": "Agrega estas direcciones a su directiva connect-src para que el chat pueda comunicarse con nosotros y subir archivos."
+          "hint": "Agrega estas direcciones a las directivas de su política para que el chat cargue, nos alcance y suba archivos.",
+          "others": "No hace falta ninguna otra directiva: el chat no dibuja marcos, imágenes ni estilos en línea."
         }
       },
       "templates": {
