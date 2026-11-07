@@ -126,6 +126,7 @@ export const Events = {
   // Channels & plugins
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
+  CHANNEL_TOKEN_EXPIRING: 'channel.token_expiring',
   CHANNEL_HEALTH_RESTORED: 'channel.health_restored',
   PLUGIN_INSTALLED: 'plugin.installed',
   PLUGIN_ENABLED: 'plugin.enabled',
