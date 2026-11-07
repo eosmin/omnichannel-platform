@@ -458,6 +458,30 @@ test.describe.serial('the inbox list', () => {
     await expect(dialog).toBeHidden()
   })
 
+  test('shortcuts: e pressed before the settings of the store arrive is not lost', async () => {
+    const conversationId = await newConversationIn(storeId)
+    // The settings that the resolve flow needs are held until the key was pressed
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    await page.route('**/settings/inbox/behavior', async route => {
+      await held
+      await route.fallback()
+    })
+    try {
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await page.keyboard.press('e')
+      await expect(page.getByRole('dialog', { name: en.inbox.resolve.title })).toHaveCount(0)
+      release()
+      await expect(page.getByRole('dialog', { name: en.inbox.resolve.title })).toBeVisible()
+    } finally {
+      release()
+      await page.unroute('**/settings/inbox/behavior')
+    }
+  })
+
   test('shortcuts: e opens the options of Resolve and Cmd/Ctrl+Enter confirms from the box of the reason', async () => {
     const conversationId = await newConversationIn(storeId)
     await page.goto(AppPaths.store.inbox(storeId))
