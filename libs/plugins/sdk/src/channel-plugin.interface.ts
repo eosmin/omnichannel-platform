@@ -105,8 +105,11 @@ export interface ChannelPlugin {
   // from the webhook, and stores what it returns. Null is a final answer (nothing to read, now or on
   // the next try); a PluginError is a failure, retried when it says `retryable`. The core cuts every
   // field to its limit and keeps a photo link only if it is plain https, whatever the plugin sends.
+  // `signal` aborts when the core stops waiting (its time for the read runs out): a plugin passes it to the
+  // request it makes, so that the call to the provider ends instead of running on with nobody to hear it.
   fetchProfile?(
     ctx: ChannelContext,
-    channelIdentity: string
+    channelIdentity: string,
+    signal?: AbortSignal
   ): Promise<ChannelCustomerProfile | null>
 }

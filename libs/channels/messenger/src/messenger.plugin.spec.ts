@@ -602,6 +602,18 @@ describe('MessengerPlugin', () => {
       expect(profile).toEqual({ name: 'Peter Chang', avatarUrl: 'https://fbcdn.example/p.jpg' })
     })
 
+    it('hands the signal of the core to the request, so the call ends when the core stops waiting', async () => {
+      const { plugin, get } = build()
+      get.mockResolvedValue({ first_name: 'Peter' })
+      const signal = new AbortController().signal
+
+      await plugin.fetchProfile(ctx, '3000000000000001', signal)
+      await plugin.fetchProfile(ctx, '3000000000000001')
+
+      expect(get.mock.calls[0]?.[0]).toMatchObject({ signal })
+      expect(get.mock.calls[1]?.[0]).not.toHaveProperty('signal')
+    })
+
     it('has no profile when the app may not read it: Meta answers an empty object', async () => {
       const { plugin, get } = build()
       get.mockResolvedValue({})
