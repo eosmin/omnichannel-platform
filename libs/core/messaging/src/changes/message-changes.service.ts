@@ -227,6 +227,11 @@ export class MessageChangesService {
     ) {
       throw resourceNotFound('message')
     }
+    // The edits of a deleted message are part of what was deleted: who may view deleted content sees them
+    // (without the text, which has its own route), anyone else sees none, as the thread shows none
+    if (message.deletedAt !== null && !viewer.held.includes(Permissions.MESSAGES_VIEW_DELETED)) {
+      return []
+    }
     const rows = await this.prisma.client.messageRevision.findMany({
       where: { storeId, messageId },
       select: {
