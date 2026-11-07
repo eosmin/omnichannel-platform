@@ -1,4 +1,4 @@
-import { keptContentType, sniffImageType } from './fetch-helpers'
+import { keptContentType, linkHostOf, sniffImageType } from './fetch-helpers'
 
 describe('sniffImageType', () => {
   it.each([
@@ -48,4 +48,21 @@ describe('keptContentType', () => {
     expect(keptContentType('application/pdf', 'audio/mp4')).toBe('application/pdf')
     expect(keptContentType('image/png', 'audio/mp4')).toBe('image/png')
   })
+})
+
+describe('linkHostOf', () => {
+  it.each([
+    ['https://scontent.cdninstagram.com/v/t1/a.jpg?sig=abc', 'scontent.cdninstagram.com'],
+    ['https://User:pw@Media.Example.com:8443/p?q=1#f', 'media.example.com'],
+    ['https://169.254.169.254/a', '169.254.169.254']
+  ])('reads only the host of %s', (link, host) => {
+    expect(linkHostOf(link)).toBe(host)
+  })
+
+  it.each(['not a url', 'file:///etc/passwd', '//host/a', 'https://[::1]/a', 'wa-media-id', ''])(
+    'reads no host from %j',
+    link => {
+      expect(linkHostOf(link)).toBeNull()
+    }
+  )
 })

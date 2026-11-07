@@ -32,6 +32,8 @@ export const lostFileEntrySchema = z.object({
   code: z.string(),
   // A source that does not parse is no source: the file just cannot be asked for again
   source: lostFileSourceSchema.optional().catch(undefined),
+  // The host of a link that was refused, kept to find a CDN missing from the list of a channel (never shown)
+  host: z.string().max(253).optional().catch(undefined),
   // When an agent last asked for the file again (ISO text)
   requestedAt: z.string().optional()
 })
