@@ -128,6 +128,12 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     pluginId: z.string().regex(CHANNEL_ID_PATTERN),
     reason: z.enum(ChannelDisconnectedReasons)
   }),
+  [Events.CHANNEL_TOKEN_EXPIRING]: z.object({
+    storeId: id,
+    channelConnectionId: id,
+    pluginId: z.string().regex(CHANNEL_ID_PATTERN),
+    expiresAt: z.iso.datetime()
+  }),
   [Events.CHANNEL_HEALTH_RESTORED]: z.object({
     storeId: id,
     channelConnectionId: id,

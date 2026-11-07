@@ -1468,6 +1468,30 @@ Last healthy:  2 minutes ago
 [Test connection]  [Reconnect]  [Disconnect]
 ```
 
+**When the token stops (Messenger and Instagram; owner, 2026-11-07).** A pasted token of a Page can stop
+working on a date (the long ones of a user last about 60 days; those of a Page from a login normally do not
+stop). A channel plugin may implement the optional `inspectToken(ctx)` (read-only, like `healthCheck`); the
+Meta plugins read `GET /debug_token` with the app token `APP_ID|APP_SECRET` (`META_APP_ID`,
+`META_APP_SECRET`) and answer `{ kind: page|user|unknown, isValid, expiresAt|null, scopes }`. The core asks
+when a connection is made or its token replaced (a short wait; a failure never undoes the connect) and once a
+day for the ones due (`CHECK_TOKEN_EXPIRY`, a leader lock, at most `TokenExpiryLimits.RUN_MAX_CALLS` questions
+and a time budget per round; a connection is asked about at most every 20 hours, a token that does not expire
+every 7 days). The answer is kept in `metadata.tokenInfo` (kind, validity, date, scopes, when it was asked, the
+date already announced), written with `jsonb_set` under the lock of the row and only for the credentials that
+were asked with: other keys of the metadata are not overwritten and the answer about a replaced token is
+dropped. Never the token. The view of a connection answers `tokenExpiry { state: never|expires|expired|
+invalid|unknown, expiresAt, checkedAt, kind }`; `unknown` is what is said when Meta could not be asked, and
+`expired` only when Meta gave a date that has passed. Within `TokenExpiryLimits.WARN_DAYS` (7) of the date the
+people who hold `settings:manage_plugins` get one `channel.token_expiring` notice per date (through the
+ordinary notification pipeline, so preferences, the digest and the email suppression apply); a renewed token
+arms it again. `isValid: false` is shown on the card and warned in the log, and the health check takes the
+connection down on its own round (that is the `channel.disconnected` notice: no second one).
+The app token goes in the Authorization header only, never in an address or a log. The token asked about goes
+in the body of a POST; `debug_token` documents only GET, so if Meta refuses the POST (an error of class
+`GraphMethodException`, or code 100 with subcode 33) the same question is asked with GET and only then does the
+token go in the address (never logged, kept or attached to an error). The method that worked is remembered by
+the process.
+
 **Connect flow** (`POST /channels/:pluginId/connect`, guards: `ChannelGuard` +
 `QuotaGuard(CHANNELS)` from `TDD_11` §3/§6.5, resolved from the `pluginId` param):
 

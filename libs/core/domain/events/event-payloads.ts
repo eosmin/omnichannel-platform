@@ -223,6 +223,15 @@ export interface ChannelDisconnectedPayload {
   reason: ChannelDisconnectedReason
 }
 
+// The token of a connection stops working within the warning time (`TokenExpiryLimits.WARN_DAYS`): ids and
+// the date, nothing of the token
+export interface ChannelTokenExpiringPayload {
+  storeId: string
+  channelConnectionId: string
+  pluginId: ChannelId
+  expiresAt: string
+}
+
 export interface ChannelHealthRestoredPayload {
   storeId: string
   channelConnectionId: string
@@ -257,6 +266,7 @@ export interface MemberJoinedPayload {
 export interface DomainEventPayloads {
   [Events.CHANNEL_CONNECTED]: ChannelConnectedPayload
   [Events.CHANNEL_DISCONNECTED]: ChannelDisconnectedPayload
+  [Events.CHANNEL_TOKEN_EXPIRING]: ChannelTokenExpiringPayload
   [Events.CHANNEL_HEALTH_RESTORED]: ChannelHealthRestoredPayload
   [Events.CONVERSATION_CREATED]: ConversationCreatedPayload
   [Events.MESSAGE_RECEIVED]: MessageReceivedPayload

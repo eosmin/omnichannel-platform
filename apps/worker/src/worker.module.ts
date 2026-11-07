@@ -39,6 +39,7 @@ import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
 import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
+import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
 
 // ScheduleModule is imported only here: the api never runs crons
 @Module({
@@ -82,6 +83,7 @@ import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
     OutboundProcessor,
     EmailProcessor,
     ChannelHealthScheduler,
+    TokenExpiryScheduler,
     OutboundRequeueScheduler,
     DeletedMessagePurgeScheduler,
     OrphanMediaScheduler,

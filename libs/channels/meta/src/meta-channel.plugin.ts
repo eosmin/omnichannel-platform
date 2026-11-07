@@ -16,7 +16,8 @@ import {
   MetaMessaging,
   MetaUpload,
   MetaSubscription,
-  type MetaWebhookApp
+  type MetaWebhookApp,
+  type TokenInspection
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
@@ -278,6 +279,12 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // the core drops the webhooks of a connection it does not have
   async disconnect(): Promise<void> {
     return Promise.resolve()
+  }
+
+  // What Meta says about the token (Messenger and Instagram connect with the token of a Page, from the
+  // platform's Meta app)
+  inspectToken(ctx: ChannelContext): Promise<TokenInspection> {
+    return this.meta.debugToken(parseMetaTokenCredentials(ctx.credentials).accessToken)
   }
 
   // A failure is thrown, not reported: the health service reads a PluginError as the state of the

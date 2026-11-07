@@ -31,6 +31,7 @@ function linkKindOfType(type: NotificationType): DigestLinkKind {
     case NotificationTypes.MEDIA_UNSCANNABLE:
       return DigestLinkKinds.CONVERSATION
     case NotificationTypes.CHANNEL_DISCONNECTED:
+    case NotificationTypes.CHANNEL_TOKEN_EXPIRING:
       return DigestLinkKinds.CHANNELS
     case NotificationTypes.MEMBER_JOINED:
     case NotificationTypes.INVITATION_ACCEPTED:
