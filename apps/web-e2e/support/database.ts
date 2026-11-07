@@ -310,6 +310,27 @@ export async function storeIdNamed(name: string): Promise<string> {
   return store.id
 }
 
+// The zone a store counts its hours in (what the settings of the hours save), returning the one it had
+export async function setStoreTimezone(storeId: string, timezone: string): Promise<string> {
+  return withOwner(async owner => {
+    const before = await owner.store.findUniqueOrThrow({ where: { id: storeId } })
+    await owner.store.update({ where: { id: storeId }, data: { timezone } })
+    return before.timezone
+  })
+}
+
+// The zone a person chose in their account (null: none), returning the one they had
+export async function setUserTimezone(
+  email: string,
+  timezone: string | null
+): Promise<string | null> {
+  return withOwner(async owner => {
+    const before = await owner.user.findUniqueOrThrow({ where: { email } })
+    await owner.user.update({ where: { email }, data: { timezone } })
+    return before.timezone
+  })
+}
+
 // A saved reply with the greeting every case expects ("Hello!"), under a shortcut of its own
 export async function addSnippetTo(storeId: string, shortcut: string): Promise<string> {
   return withOwner(async owner => (await createSnippet(owner, { storeId, shortcut })).id)
