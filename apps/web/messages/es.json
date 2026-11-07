@@ -87,7 +87,7 @@
         },
         "channel": {
           "disconnected": "Canal desconectado",
-          "token_expiring": "Acceso del canal por vencer"
+          "token_expiring": "Acceso del canal por expirar"
         },
         "webhook": {
           "auto_disabled": "Integración saliente desactivada"
@@ -615,7 +615,7 @@
         "body": "El canal dejó de funcionar. Vuelve a conectarlo para seguir recibiendo mensajes."
       },
       "token_expiring": {
-        "title": "El acceso de un canal está por vencer",
+        "title": "El acceso de un canal está por expirar",
         "body": "El token de un canal deja de funcionar el {date}. Actualízalo antes para seguir recibiendo mensajes."
       }
     },
@@ -1021,7 +1021,9 @@
         "sent": "Enviado",
         "delivered": "Entregado",
         "read": "Leído",
-        "failed": "No se entregó"
+        "failed": "No se entregó",
+        "unconfirmed": "No se pudo confirmar la entrega",
+        "unconfirmedNote": "No pudimos confirmar que el cliente la recibiera"
       },
       "failedWithReason": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
       "mediaLabel": {
@@ -1175,7 +1177,13 @@
         "customReactionTitle": "Reaccionar con otro emoji",
         "customReactionDescription": "Escribe o pega un emoji.",
         "customReactionLabel": "Emoji",
-        "reply": "Responder"
+        "reply": "Responder",
+        "discard": "Descartar",
+        "discardTitle": "¿Descartar esta respuesta?",
+        "discardDescription": "No llegó al cliente y sale de la conversación para todo el equipo. El texto se conserva 30 días.",
+        "resendTitle": "¿Enviar de nuevo esta respuesta?",
+        "resendDuplicateDescription": "No pudimos confirmar si el cliente la recibió. Si la envías de nuevo, puede recibirla dos veces.",
+        "resendAnyway": "Enviar de nuevo"
       },
       "location": {
         "untitled": "Ubicación compartida",
@@ -1595,6 +1603,14 @@
         "disconnected": "Desconectado"
       },
       "health": {
+        "token": {
+          "never": "El token no expira.",
+          "expires": "El token expira el {date}.",
+          "expired": "El token expiró el {date}. Actualízalo para seguir recibiendo mensajes.",
+          "expiredUnknownDate": "El token expiró. Actualízalo para seguir recibiendo mensajes.",
+          "invalid": "Meta indica que el token ya no es válido. Actualiza el token de esta conexión.",
+          "userToken": "Pegaste un token de usuario; necesitas el de la Página."
+        },
         "never": "Todavía no se ha comprobado.",
         "lastHealthy": "Última vez que funcionó: {date}",
         "errors": {

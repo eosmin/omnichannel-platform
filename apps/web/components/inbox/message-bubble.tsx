@@ -8,6 +8,7 @@ import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
 import { initialsOf } from '../../lib/inbox/customer-label'
+import { failureNotesOf, failureStateOf } from '../../lib/inbox/failure-state'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
@@ -133,23 +134,31 @@ function Bubble({
   const time = format.dateTime(new Date(message.createdAt), messageTimeOptions(locale))
   const reason = (code: string | null): string | null => (code === null ? null : codeText(code))
 
-  const problems = [
-    message.deleteStatus === String(DeliveryStatus.QUEUED) ? t('deleting') : null,
+  const failure = failureStateOf(message)
+  // Red for a refusal; amber for a reply that may have gone out (it is not known that it failed)
+  const problems: { text: string; tone: 'red' | 'amber' }[] = [
+    message.deleteStatus === String(DeliveryStatus.QUEUED)
+      ? { text: t('deleting'), tone: 'red' as const }
+      : null,
     message.deleteStatus === String(DeliveryStatus.FAILED)
-      ? joinReason(t('deleteFailed'), reason(message.deleteError))
+      ? { text: joinReason(t('deleteFailed'), reason(message.deleteError)), tone: 'red' as const }
       : null,
     message.pendingEdit && message.editStatus !== String(DeliveryStatus.FAILED)
-      ? t('editPending')
+      ? { text: t('editPending'), tone: 'red' as const }
       : null,
     message.editStatus === String(DeliveryStatus.FAILED)
-      ? joinReason(t('editFailed'), reason(message.editError))
+      ? { text: joinReason(t('editFailed'), reason(message.editError)), tone: 'red' as const }
       : null,
-    ticks === DeliveryStatus.FAILED
-      ? message.deliveryError === null
-        ? t('ticks.failed')
-        : t('failedWithReason', { reason: codeText(message.deliveryError) })
-      : null
-  ].filter((text): text is string => text !== null)
+    ...failureNotesOf(message).map(note => ({
+      text:
+        note.kind === 'unconfirmed'
+          ? t('ticks.unconfirmedNote')
+          : note.kind === 'failed'
+            ? t('ticks.failed')
+            : t('failedWithReason', { reason: codeText(message.deliveryError ?? '') }),
+      tone: note.tone
+    }))
+  ].filter((problem): problem is { text: string; tone: 'red' | 'amber' } => problem !== null)
 
   return (
     <div className={cn('flex flex-col gap-0.5', isCustomer ? 'items-start' : 'items-end')}>
@@ -215,7 +224,9 @@ function Bubble({
               </span>
             )}
             <time dateTime={message.createdAt}>{time}</time>
-            {ticks === null ? null : <DeliveryTicksIcon status={ticks} />}
+            {ticks === null ? null : (
+              <DeliveryTicksIcon status={ticks} unconfirmed={failure === 'unconfirmed'} />
+            )}
           </p>
         </div>
         {hasAnyAction(actions) ? (
@@ -229,8 +240,15 @@ function Bubble({
         ) : null}
       </div>
       {problems.map(problem => (
-        <p key={problem} role="status" className="text-destructive text-xs">
-          {problem}
+        <p
+          key={problem.text}
+          role="status"
+          className={cn(
+            'text-xs',
+            problem.tone === 'amber' ? 'text-amber-700 dark:text-amber-400' : 'text-destructive'
+          )}
+        >
+          {problem.text}
         </p>
       ))}
       <ReactionChips reactions={message.reactions} authorLabel={authorLabel} />

@@ -3,6 +3,7 @@
 import {
   CircleAlert,
   CircleCheck,
+  Clock,
   ChevronDown,
   ChevronRight,
   KeyRound,
@@ -27,6 +28,7 @@ import type {
 } from '../../lib/settings/channels-requests'
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
 import { needsNewToken } from '../../lib/settings/health-reconnect'
+import { tokenNotice } from '../../lib/settings/token-expiry'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
 import { toast } from '../../lib/toast'
 import { useCodeText, useErrorText } from '../../lib/use-error-text'
@@ -85,6 +87,7 @@ export function ConnectionCard({
       ) : (
         <>
           <Health connection={connection} />
+          <TokenExpiry connection={connection} />
           <ProfileStatus connection={connection} />
           {plugin?.channel?.callbackUrl != null ? (
             <CallbackUrl url={plugin.channel.callbackUrl} />
@@ -181,6 +184,51 @@ function Health({ connection }: { connection: ChannelConnectionView }): ReactEle
           {HEALTH_CODES.includes(error) ? t(`errors.${error}` as 'errors.check_failed') : error}
         </p>
       )}
+    </div>
+  )
+}
+
+// What the provider says about the token of the connection: when it stops, or that it does not, or that it
+// no longer works; and, if what was pasted is the token of a person, which one the channel needs. Nothing is
+// said while it is not known (never asked, or Meta could not be): "unknown" is not "expired".
+function TokenExpiry({ connection }: { connection: ChannelConnectionView }): ReactElement | null {
+  const t = useTranslations('settings.channels.health.token')
+  const format = useFormatter()
+  const notice = tokenNotice(connection.tokenExpiry, new Date())
+  if (notice.when === 'none' && !notice.userToken) return null
+  const date = notice.date === null ? '' : format.dateTime(notice.date, { dateStyle: 'medium' })
+
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      {notice.when === 'never' ? <p className="text-muted-foreground">{t('never')}</p> : null}
+      {notice.when === 'expires' ? (
+        <p className="text-muted-foreground">{t('expires', { date })}</p>
+      ) : null}
+      {notice.when === 'soon' ? (
+        <p
+          role="status"
+          className="flex items-center gap-1 font-medium text-amber-700 dark:text-amber-400"
+        >
+          <Clock aria-hidden className="size-4" />
+          {t('expires', { date })}
+        </p>
+      ) : null}
+      {notice.when === 'expired' ? (
+        <p role="alert" className="text-destructive">
+          {t('expired', { date })}
+        </p>
+      ) : null}
+      {notice.when === 'expiredUnknownDate' ? (
+        <p role="alert" className="text-destructive">
+          {t('expiredUnknownDate')}
+        </p>
+      ) : null}
+      {notice.when === 'invalid' ? (
+        <p role="alert" className="text-destructive">
+          {t('invalid')}
+        </p>
+      ) : null}
+      {notice.userToken ? <p className="text-muted-foreground">{t('userToken')}</p> : null}
     </div>
   )
 }

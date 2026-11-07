@@ -28,6 +28,7 @@ import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
 import {
+  createChannelConnection,
   createConversation,
   createConversationOf,
   createCustomer,
@@ -113,6 +114,8 @@ export function addMessageTo(
     replyToMessageId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
+    // For a reply that failed: true when it is known not to have gone out, false or null when it may have
+    failureDefinitive?: boolean | null
     // The channel's own data: the place of a location, or the mark of a sticker
     metadata?: Record<string, MetadataValue>
     // Files of the customer the worker gave up on, as it records them in the metadata
@@ -127,6 +130,12 @@ export function addMessageTo(
     }
     if (deliveryError !== undefined) {
       await owner.message.update({ where: { id }, data: { deliveryError } })
+    }
+    if (input.failureDefinitive !== undefined) {
+      await owner.message.update({
+        where: { id },
+        data: { failureDefinitive: input.failureDefinitive }
+      })
     }
     if (deliveryStatus !== undefined || system !== undefined || replyToMessageId !== undefined) {
       await owner.message.update({
@@ -414,6 +423,48 @@ export function newCustomerIn(
 export function withWhatsAppChannel(storeId: string): Promise<void> {
   return withOwner(async owner => {
     await whatsAppConnectionOf(owner, storeId)
+  })
+}
+
+// A Messenger connection of the store with what the provider said about its token (`metadata.tokenInfo`, as the
+// worker writes it), or with nothing said. Named, so that its card is found by its heading. Returns its id.
+export function addConnectionWithTokenInfo(
+  storeId: string,
+  input: {
+    name: string
+    tokenInfo?: { kind: string; isValid: boolean; expiresAt: string | null }
+  }
+): Promise<string> {
+  return withOwner(async owner => {
+    const connection = await createChannelConnection(owner, {
+      storeId,
+      channelType: ChannelType.MESSENGER
+    })
+    await owner.channelConnection.update({
+      where: { id: connection.id },
+      data: {
+        displayName: input.name,
+        ...(input.tokenInfo === undefined
+          ? {}
+          : {
+              metadata: {
+                tokenInfo: {
+                  scopes: [],
+                  checkedAt: new Date().toISOString(),
+                  expiryNotifiedFor: null,
+                  ...input.tokenInfo
+                }
+              }
+            })
+      }
+    })
+    return connection.id
+  })
+}
+
+export function removeConnections(ids: readonly string[]): Promise<void> {
+  return withOwner(async owner => {
+    await owner.channelConnection.deleteMany({ where: { id: { in: [...ids] } } })
   })
 }
 

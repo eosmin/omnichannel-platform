@@ -1,11 +1,12 @@
 'use client'
 
 import { useFormatter, useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import type { MessageView } from '@platform/api-client'
 import { InboundLimits, isWholeEmoji, MessageLimits, MessageType } from '@platform/core/domain'
 
+import { failureStateOf } from '../../lib/inbox/failure-state'
 import { currentNoteOf } from '../../lib/inbox/stale-note'
 import {
   useDeletedContent,
@@ -180,6 +181,93 @@ export function DeleteMessageDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+}
+
+// One step of confirmation for an action on a failed reply (discard, send again with a warning). The dialog
+// stays until the api answers, so a refusal is told here; and it closes by itself if the reply is no longer
+// in the state it was opened for (another agent acted, the thread was read again).
+function ConfirmFailedReplyDialog({
+  message,
+  open,
+  onOpenChange,
+  stillApplies,
+  title,
+  description,
+  actionLabel,
+  run
+}: Pick<MessageDialogProps, 'message' | 'open' | 'onOpenChange'> & {
+  stillApplies: boolean
+  title: string
+  description: string
+  actionLabel: string
+  run: { isPending: boolean; mutateAsync: () => Promise<unknown> }
+}): ReactElement {
+  const errorText = useErrorText()
+  const tAll = useTranslations()
+  useEffect(() => {
+    if (open && !stillApplies) onOpenChange(false)
+  }, [open, stillApplies, onOpenChange, message.id])
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{tAll('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={run.isPending}
+            onClick={event => {
+              event.preventDefault()
+              run
+                .mutateAsync()
+                .then(() => onOpenChange(false))
+                .catch((error: unknown) => {
+                  toast.error(errorText(error))
+                  onOpenChange(false)
+                })
+            }}
+          >
+            {actionLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+// A reply known not to have reached the customer is given up: it leaves the thread for the whole team.
+// The api checks again; a 409 says the screen was out of date and the thread is read again.
+export function DiscardMessageDialog(props: MessageDialogProps): ReactElement {
+  const t = useTranslations('inbox.thread.actions')
+  const { discard } = useMessageMutations(props.conversationId, props.message.id)
+  return (
+    <ConfirmFailedReplyDialog
+      {...props}
+      stillApplies={failureStateOf(props.message) === 'definitive'}
+      title={t('discardTitle')}
+      description={t('discardDescription')}
+      actionLabel={t('discard')}
+      run={discard}
+    />
+  )
+}
+
+// A reply that may have reached the customer can be sent again, with the warning that they may get it twice
+export function ResendAgainDialog(props: MessageDialogProps): ReactElement {
+  const t = useTranslations('inbox.thread.actions')
+  const { resend } = useMessageMutations(props.conversationId, props.message.id)
+  return (
+    <ConfirmFailedReplyDialog
+      {...props}
+      stillApplies={failureStateOf(props.message) === 'unconfirmed'}
+      title={t('resendTitle')}
+      description={t('resendDuplicateDescription')}
+      actionLabel={t('resendAnyway')}
+      run={resend}
+    />
   )
 }
 
