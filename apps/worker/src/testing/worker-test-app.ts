@@ -7,6 +7,7 @@ import { Queue } from 'bullmq'
 import { EmailModule, EmailService } from '@platform/core/email'
 import { Locales } from '@platform/core/i18n'
 import { LoggerModule } from '@platform/core/logger'
+import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import { MetricsModule } from '@platform/core/metrics-module'
 import { EmailTemplates, type QueueName, type SendEmailJob } from '@platform/core/queues'
 import { QueueJobOptions, QueuesModule } from '@platform/core/queues-module'
@@ -38,7 +39,12 @@ export async function startWorkerTestApp(): Promise<WorkerTestApp> {
       QueuesModule.forRoot({ redisUrl: REDIS_URL, prefix }),
       EmailModule.forRoot({ from: 'Platform <noreply@platform.local>', smtpUrl: SMTP_URL })
     ],
-    providers: [ProcessorSupport, EmailProcessor]
+    providers: [
+      ProcessorSupport,
+      EmailProcessor,
+      // Looking an address up needs the database, which this app does not have
+      { provide: MagicLinkIssuer, useValue: { issue: () => Promise.resolve() } }
+    ]
   }).compile()
   const app = moduleRef.createNestApplication()
   await app.init()

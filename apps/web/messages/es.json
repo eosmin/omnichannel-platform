@@ -192,7 +192,6 @@
     "backToStart": "Volver al inicio",
     "tryAgain": "Intentar de nuevo",
     "signOut": "Cerrar sesión",
-    "signingOut": "Cerrando sesión",
     "loading": "Cargando",
     "save": "Guardar",
     "discard": "Descartar cambios",
@@ -506,7 +505,7 @@
     "PLUGIN_NOT_FOUND": "El plugin no existe",
     "PLUGIN_NOT_INSTALLED": "El plugin no está instalado",
     "PLUGIN_SCOPE_DENIED": "El plugin no tiene acceso a eso",
-    "RATE_LIMIT_EXCEEDED": "Demasiados intentos. Espera un momento",
+    "RATE_LIMIT_EXCEEDED": "Hay demasiadas solicitudes. Espera un momento",
     "RECEPTION_ALREADY_RECEIVED": "Ese paquete ya fue recibido",
     "RECEPTION_SHIPMENT_NOT_FOUND": "Ningún envío coincide con ese código",
     "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",
@@ -557,7 +556,6 @@
     "nameHint": "Solo hace falta si aún no tienes una cuenta.",
     "nameRequired": "Escribe tu nombre para crear tu cuenta.",
     "accept": "Aceptar invitación",
-    "accepting": "Aceptando",
     "loginRequired": "Ya existe una cuenta para {email}. Inicia sesión con ese correo y abre este enlace de nuevo.",
     "goToLogin": "Iniciar sesión",
     "mismatchTitle": "Esta invitación es para otro correo",
@@ -1675,7 +1673,7 @@
         "useToken": "Usar un token manual"
       },
       "widget": {
-        "toggle": "Configuración del widget web",
+        "toggle": "Configuración del Widget web",
         "snippet": {
           "title": "Código para insertar",
           "hint": "Pégalo antes de la etiqueta de cierre del body en cada página donde debe aparecer el chat."
@@ -2339,7 +2337,6 @@
       "behaviorLabel": "Comportamiento de la bandeja",
       "readOnly": "Puedes ver estos ajustes pero no cambiarlos.",
       "save": "Guardar",
-      "saving": "Guardando…",
       "saved": "Comportamiento de la bandeja guardado",
       "resolve": {
         "legend": "Al resolver una conversación",

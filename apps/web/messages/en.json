@@ -192,7 +192,6 @@
     "backToStart": "Back to start",
     "tryAgain": "Try again",
     "signOut": "Sign out",
-    "signingOut": "Signing out",
     "loading": "Loading",
     "save": "Save",
     "discard": "Discard changes",
@@ -506,7 +505,7 @@
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
     "PLUGIN_SCOPE_DENIED": "The plugin has no access to that",
-    "RATE_LIMIT_EXCEEDED": "Too many attempts. Wait a moment",
+    "RATE_LIMIT_EXCEEDED": "Too many requests. Wait a moment",
     "RECEPTION_ALREADY_RECEIVED": "That package was already received",
     "RECEPTION_SHIPMENT_NOT_FOUND": "No shipment matches that code",
     "REMITTANCE_ALREADY_CONFIRMED": "The remittance is already confirmed",
@@ -557,7 +556,6 @@
     "nameHint": "Only needed if you do not have an account yet.",
     "nameRequired": "Enter your name to create your account.",
     "accept": "Accept invitation",
-    "accepting": "Accepting",
     "loginRequired": "An account already exists for {email}. Sign in with that address, then open this link again.",
     "goToLogin": "Sign in",
     "mismatchTitle": "This invitation is for another address",
@@ -1675,7 +1673,7 @@
         "useToken": "Use a manual token"
       },
       "widget": {
-        "toggle": "Chat widget settings",
+        "toggle": "Web widget settings",
         "snippet": {
           "title": "Embed code",
           "hint": "Paste it before the closing body tag of every page where the chat should appear."
@@ -2339,7 +2337,6 @@
       "behaviorLabel": "Inbox behavior",
       "readOnly": "You can see these settings but not change them.",
       "save": "Save",
-      "saving": "Saving…",
       "saved": "Inbox behavior saved",
       "resolve": {
         "legend": "When marking a conversation as resolved",

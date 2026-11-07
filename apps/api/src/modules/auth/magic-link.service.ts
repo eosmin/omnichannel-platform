@@ -6,23 +6,16 @@ import { PinoLogger } from 'nestjs-pino'
 
 import {
   MAGIC_LINK_EMAIL_THROTTLER,
-  MAGIC_LINK_FRAGMENT_KEY,
-  MAGIC_LINK_TTL_MINUTES,
-  MAGIC_LINK_WEB_PATH,
   MagicLinkThrottle,
   RETRY_AFTER_METADATA_KEY
 } from '@platform/core/auth'
-import { AUTH_SETTINGS, type AuthSettings } from '@platform/core/auth-module'
-import { generateToken, hashToken } from '@platform/core/crypto'
+import { hashToken } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import { VerificationTokenType } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
-import { EmailTemplates, JobNames, QueueNames, type SendEmailJob } from '@platform/core/queues'
+import { JobNames, QueueNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
 import { type IssuedSession, type SessionContext, SessionService } from './session.service'
-
-const MS_PER_MINUTE = 60_000
 
 export interface ConsumedMagicLink {
   session: IssuedSession
@@ -38,58 +31,26 @@ export class MagicLinkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
-    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
+    @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<RequestMagicLinkJob>,
     @Inject(getStorageToken()) private readonly throttleStorage: ThrottlerStorage,
-    @Inject(AUTH_SETTINGS) private readonly settings: AuthSettings,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(MagicLinkService.name)
   }
 
-  // Asking again is the resend: the new link replaces the ones not used yet
+  // Asking again is the resend: the new link replaces the ones not used yet. This does the same
+  // work for any address, known or not (count the limit, queue one job), and never looks the
+  // address up: the worker does, so how long this takes tells nothing about who has an account.
   async request(rawEmail: string, correlationId?: string): Promise<void> {
     const email = normalizeEmail(rawEmail)
     await this.limitByEmail(email)
-
-    const user = await this.findUserByEmail(email)
-    if (user === null || !user.emailValid) {
-      // Nothing is sent. emailValid is false after the provider reported a hard bounce or a
-      // complaint: writing to that address again would hurt the sender reputation of everyone.
-      this.logger.info({ known: user !== null }, 'magic link requested: nothing to send')
-      return
-    }
-
-    const token = generateToken()
-    await this.prisma.transaction(async tx => {
-      await tx.verificationToken.deleteMany({
-        where: { userId: user.id, type: VerificationTokenType.MAGIC_LINK, usedAt: null }
-      })
-      await tx.verificationToken.create({
-        data: {
-          type: VerificationTokenType.MAGIC_LINK,
-          tokenHash: hashToken(token),
-          userId: user.id,
-          subject: user.email,
-          expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MINUTES * MS_PER_MINUTE)
-        }
-      })
-    })
-    // After the commit: a mail must never go out for a token that was not saved
     await this.emailQueue.add(
-      JobNames.SEND_EMAIL,
-      {
-        template: EmailTemplates.MAGIC_LINK,
-        to: user.email,
-        locale: localeOrDefault(user.locale),
-        data: { url: this.linkFor(token), expiresInMinutes: MAGIC_LINK_TTL_MINUTES },
-        tags: { template: EmailTemplates.MAGIC_LINK },
-        ...(correlationId === undefined ? {} : { correlationId })
-      },
-      // The job holds the raw token: once sent it has no reason to stay for the 24 hours that the
-      // queue keeps completed jobs. (A failed job keeps it, and the token expires in minutes.)
-      { removeOnComplete: true }
+      JobNames.REQUEST_MAGIC_LINK,
+      { email, ...(correlationId === undefined ? {} : { correlationId }) },
+      // The job holds an address anybody can type, account or not: it stays in Redis for no longer
+      // than the work takes, failed or not
+      { removeOnComplete: true, removeOnFail: true }
     )
-    this.logger.info({ userId: user.id }, 'magic link sent')
   }
 
   // Uses the link: marks it used, verifies the email and opens the session, all or nothing
@@ -130,22 +91,6 @@ export class MagicLinkService {
     })
   }
 
-  // An exact comparison of lower-cased addresses, because the seed stores the address as it was
-  // written. Not `equals` with mode 'insensitive': Prisma turns that into ILIKE, where "%" and "_"
-  // are wildcards, and a request for "_____@example.com" would reach a real account whose address
-  // it does not know and escape the per-address limit.
-  private async findUserByEmail(
-    email: string
-  ): Promise<{ id: string; email: string; locale: string; emailValid: boolean } | null> {
-    const rows = await this.prisma.client.$queryRaw<
-      { id: string; email: string; locale: string; email_valid: boolean }[]
-    >`SELECT id, email, locale, email_valid FROM users WHERE lower(email) = ${email} LIMIT 1` // The shape of this SELECT
-    const row = rows[0]
-    return row === undefined
-      ? null
-      : { id: row.id, email: row.email, locale: row.locale, emailValid: row.email_valid }
-  }
-
   // The same limit as the IP one, but per address: many IPs cannot mail-bomb one inbox
   private async limitByEmail(email: string): Promise<void> {
     const record = await this.throttleStorage.increment(
@@ -164,13 +109,6 @@ export class MagicLinkService {
       )
     }
   }
-
-  // The token goes in the fragment, which the browser never sends to a server
-  private linkFor(token: string): string {
-    const url = new URL(MAGIC_LINK_WEB_PATH, this.settings.frontendUrl)
-    url.hash = `${MAGIC_LINK_FRAGMENT_KEY}=${token}`
-    return url.toString()
-  }
 }
 
 // The key under which the per-address limit is counted. Exported so that the tests clear the very
@@ -181,10 +119,6 @@ export function emailLimitKey(email: string): string {
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
-}
-
-function localeOrDefault(value: string): Locale {
-  return SUPPORTED_LOCALES.find(locale => locale === value) ?? DEFAULT_LOCALE
 }
 
 function invalidLink(): PlatformException {

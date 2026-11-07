@@ -181,7 +181,7 @@ function AcceptForm({
         )}
         {refusal !== null && <RefusalMessage refusal={refusal} email={invitation.email} />}
         <Button type="submit" disabled={pending} busy={pending}>
-          {pending ? t('invitation.accepting') : t('invitation.accept')}
+          {t('invitation.accept')}
         </Button>
       </form>
     </Frame>
