@@ -27,7 +27,7 @@ export function RowSnooze({
       type="button"
       aria-label={t('snoozeRow', { name })}
       onClick={onSnooze}
-      className="bg-background hover:bg-accent focus-visible:ring-ring pointer-events-none absolute right-2 bottom-1.5 flex size-8 items-center justify-center rounded-md border opacity-0 outline-none group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100"
+      className="bg-background hover:bg-accent focus-visible:ring-ring pointer-events-none absolute right-2 bottom-1.5 flex size-8 items-center justify-center rounded-md border opacity-0 outline-none group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 pointer-coarse:pointer-events-auto pointer-coarse:size-10 pointer-coarse:opacity-100"
     >
       <AlarmClock aria-hidden className="size-4" />
     </button>

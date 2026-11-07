@@ -1,14 +1,14 @@
 import type { NextFunction, Request, Response } from 'express'
 
 import { TenantHeaders } from '@platform/core/auth'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { HttpHeaders, HttpStatusCodes } from '@platform/core/errors'
 import { CORRELATION_ID_HEADER } from '@platform/core/logger'
 
 const PREFLIGHT_MAX_AGE_SECONDS = 600
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].join(', ')
 const ALLOWED_HEADERS = ['authorization', 'content-type', TenantHeaders.STORE_ID].join(', ')
 // What the web app may read from an answer: the id to quote to support, and when to retry a 429
-const EXPOSED_HEADERS = [CORRELATION_ID_HEADER, 'retry-after'].join(', ')
+const EXPOSED_HEADERS = [CORRELATION_ID_HEADER, HttpHeaders.RETRY_AFTER.toLowerCase()].join(', ')
 
 // Lets the web app, and only it, call the api from the browser. The token travels in the
 // Authorization header, never in a cookie, so credentials are not allowed and no other site can ride
