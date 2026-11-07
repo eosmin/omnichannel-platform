@@ -108,7 +108,7 @@
       "push": {
         "title": "Push en este dispositivo",
         "label": "Enviar notificaciones push a este navegador",
-        "hint": "La columna Push de arriba elige cuáles notificaciones lo usan.",
+        "hint": "La columna Push de arriba elige cuáles notificaciones lo usan. Por defecto avisan un mensaje de cliente en tu conversación y una conversación sin responsable que puedas tomar; si no lo quieres, apaga la casilla Push de «Mensaje nuevo en mi conversación» o de «Nueva conversación sin asignar».",
         "blocked": "Este navegador bloqueó las notificaciones. Permítelas en la configuración del sitio para activar el push.",
         "unsupported": "Este navegador no puede recibir notificaciones push.",
         "notConfigured": "Las notificaciones push no están configuradas en este entorno."
