@@ -12,10 +12,11 @@ interface OpenDialog {
 
 // The dialogs that are open, the last one on top: one Back closes one dialog, the one on top
 const openDialogs: OpenDialog[] = []
-// A dialog closed by something else than Back (Escape, its own button, a save) leaves its step in the history. The
+// A dialog closed by something else than Back (Escape, its own button, a save) leaves its step in the history; the
+// steps are counted, one for each dialog (two stacked dialogs leave two). The
 // step is not taken back at once, because the app may be navigating at that very moment (a save that goes to
 // another page) and a step back would undo it. It is skipped the next time the person presses Back, below.
-let isStepLeftBehind = false
+let stepsLeftBehind = 0
 // The address the step was left on: a Back to another address is not a Back out of the step
 let staleHref = ''
 let isListening = false
@@ -39,8 +40,8 @@ function onPopState(): void {
   // No dialog is open: the Back landed on the step of a dialog that closed earlier (the app navigated since),
   // or on the page it was taken from (nothing navigated). Either way that step is not a place of its own:
   // the Back goes on to the real previous page.
-  if (isStepLeftBehind && (hasDialogStep() || window.location.href === staleHref)) {
-    isStepLeftBehind = false
+  if (stepsLeftBehind > 0 && (hasDialogStep() || window.location.href === staleHref)) {
+    stepsLeftBehind -= 1
     window.history.back()
   }
 }
@@ -68,9 +69,9 @@ export function useCloseOnBack(
   useEffect(() => {
     if (!isOpen) return
     listenOnce()
-    if (isStepLeftBehind && hasDialogStep() && window.location.href === staleHref) {
+    if (stepsLeftBehind > 0 && hasDialogStep() && window.location.href === staleHref) {
       // A dialog just closed and left its step on the current entry: this one uses it
-      isStepLeftBehind = false
+      stepsLeftBehind -= 1
     } else {
       const current: unknown = window.history.state
       window.history.pushState(
@@ -94,7 +95,7 @@ export function useCloseOnBack(
       const at = openDialogs.indexOf(entry)
       if (at !== -1) openDialogs.splice(at, 1)
       if (!wasClosedByBack) {
-        isStepLeftBehind = true
+        stepsLeftBehind += 1
         staleHref = window.location.href
       }
     }
