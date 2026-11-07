@@ -216,3 +216,73 @@ describe('GlobalExceptionFilter, the message of a Nest error', () => {
     expect(answer(new BadRequestException('plain words')).error.message).toBe('plain words')
   })
 })
+
+describe('GlobalExceptionFilter, a database lock that was waited for too long', () => {
+  beforeEach(() => jest.mocked(Sentry.captureException).mockClear())
+
+  function run(exception: unknown) {
+    const response = {
+      headersSent: false,
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn<void, [unknown]>()
+    }
+    const request = {
+      url: '/api/v1/customers?search=secret',
+      path: '/api/v1/customers',
+      method: 'GET',
+      correlationId: 'c-9'
+    }
+    const warn = jest.fn()
+    const logger = { error: jest.fn(), warn } as unknown as PinoLogger
+    const host = {
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => response })
+    } as unknown as ArgumentsHost
+    new GlobalExceptionFilter(logger, { inc: jest.fn() } as unknown as Counter<string>).catch(
+      exception,
+      host
+    )
+    return { response, warn }
+  }
+
+  const lockTimeout = {
+    name: 'PrismaClientKnownRequestError',
+    code: 'P2010',
+    meta: { driverAdapterError: { cause: { originalCode: '55P03' } } },
+    message: 'Raw query failed. Code: `55P03`. select * from customers where email = ...'
+  }
+
+  it('answers 503 DATABASE_BUSY with the time to wait, and says nothing of the query', () => {
+    const { response } = run(lockTimeout)
+
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.json).toHaveBeenCalledWith({
+      error: {
+        code: ErrorCodes.DATABASE_BUSY,
+        message: 'The service is busy, try again in a moment',
+        metadata: { retryAfterSeconds: 5 }
+      },
+      correlationId: 'c-9'
+    })
+    expect(JSON.stringify(response.json.mock.calls)).not.toContain('customers')
+  })
+
+  it('logs a warning with the route only, and does not report it as an incident', () => {
+    const { warn } = run(lockTimeout)
+
+    expect(warn).toHaveBeenCalledWith(
+      { route: 'unknown' },
+      'a request gave up waiting for a database lock'
+    )
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
+  it('leaves any other database error as the 500 it is', () => {
+    const { response } = run({
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { originalCode: '23505' } } }
+    })
+
+    expect(response.status).toHaveBeenCalledWith(500)
+    expect(Sentry.captureException).toHaveBeenCalled()
+  })
+})

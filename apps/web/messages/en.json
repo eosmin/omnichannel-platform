@@ -468,6 +468,7 @@
     "EXPORT_TOO_LARGE": "There are too many files, or they are too large, for one download. Narrow the search",
     "EXTERNAL_SERVICE_ERROR": "An external service failed. Try again later",
     "EXTERNAL_SERVICE_TIMEOUT": "An external service took too long. Try again later",
+    "DATABASE_BUSY": "The service is busy. Try again in a moment",
     "FILE_INFECTED": "The file was rejected because it is not safe",
     "FILE_KEY_OUT_OF_SCOPE": "That file does not belong to this store",
     "FILE_NOT_READY": "The file is still being processed",
