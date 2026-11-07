@@ -48,6 +48,7 @@ export const connectResultSchema = z.object({
     // eslint-disable-next-line no-control-regex -- the point is to refuse them
     .regex(/^[^\u0000-\u001f\u007f]+$/),
   displayName: z.string().min(1).max(ChannelConnectionLimits.DISPLAY_NAME_MAX_LENGTH),
+  displayNameIsPlaceholder: z.boolean().optional(),
   // What the client may send it may get back, unchanged: the same bound, on the plain JSON
   credentials: boundedJson(z.record(z.string(), z.unknown())),
   metadata: boundedJson(z.record(z.string(), z.json()))

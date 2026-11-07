@@ -1,6 +1,6 @@
-import { type BrowserContext, type Page } from '@playwright/test'
+import { type BrowserContext, type Page, type Request } from '@playwright/test'
 
-import { AppPaths } from '@platform/api-client'
+import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { AuthorType, DeliveryStatus } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
@@ -456,6 +456,96 @@ test.describe.serial('the inbox list', () => {
     await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
     await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
     await expect(dialog).toBeHidden()
+  })
+
+  test('two Ctrl+Enter in the same instant resolve the conversation once (ATA-12)', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    await rowOf(page, storeId, conversationId).focus()
+    await expect.poll(() => focusedRow(page)).toBe(conversationId)
+    await page.keyboard.press('e')
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await expect(dialog).toBeVisible()
+
+    const statusRequests: string[] = []
+    const countStatusRequest = (request: Request): void => {
+      if (request.method() === 'PATCH' && /\/conversations\/[^/]+\/status/.test(request.url())) {
+        statusRequests.push(request.url())
+      }
+    }
+    page.on('request', countStatusRequest)
+    try {
+      // Both key presses in one task: the form has not re-rendered between them
+      await dialog.getByLabel(en.inbox.resolve.reason).evaluate(field => {
+        for (let press = 0; press < 2; press += 1) {
+          field.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })
+          )
+        }
+      })
+      await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
+      await expect(dialog).toBeHidden()
+    } finally {
+      page.off('request', countStatusRequest)
+    }
+    expect(statusRequests).toHaveLength(1)
+  })
+
+  test('resolving from the dialog offers the Undo, and it reopens the conversation', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    await rowOf(page, storeId, conversationId).focus()
+    await expect.poll(() => focusedRow(page)).toBe(conversationId)
+    await page.keyboard.press('e')
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
+    await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
+
+    await page.getByRole('button', { name: en.common.undo }).click()
+    await expect.poll(() => statusOf(conversationId)).toBe('OPEN')
+  })
+
+  test('a tag with a long name without spaces does not widen the page at 390 px (TRX-04)', async () => {
+    const tagName = `Long${'x'.repeat(56)}${Date.now()}`
+    const { tagId } = await newTaggedConversationIn(storeId, tagName)
+    expect(tagId).not.toBe('')
+    try {
+      await page.setViewportSize({ width: 390, height: 800 })
+      await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.TAGS))
+      await expect(page.getByRole('heading', { name: tagName })).toBeVisible()
+      const sideways = await page.evaluate(() => {
+        const root = document.scrollingElement ?? document.documentElement
+        return { scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
+      })
+      expect(sideways.scrollWidth).toBeLessThanOrEqual(sideways.clientWidth)
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 720 })
+    }
+  })
+
+  test('shortcuts: e pressed before the settings of the store arrive is not lost', async () => {
+    const conversationId = await newConversationIn(storeId)
+    // The settings that the resolve flow needs are held until the key was pressed
+    let release: () => void = () => undefined
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+    await page.route('**/settings/inbox/behavior', async route => {
+      await held
+      await route.fallback()
+    })
+    try {
+      await page.goto(AppPaths.store.conversation(storeId, conversationId))
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await page.keyboard.press('e')
+      await expect(page.getByRole('dialog', { name: en.inbox.resolve.title })).toHaveCount(0)
+      release()
+      await expect(page.getByRole('dialog', { name: en.inbox.resolve.title })).toBeVisible()
+    } finally {
+      release()
+      await page.unroute('**/settings/inbox/behavior')
+    }
   })
 
   test('shortcuts: e opens the options of Resolve and Cmd/Ctrl+Enter confirms from the box of the reason', async () => {

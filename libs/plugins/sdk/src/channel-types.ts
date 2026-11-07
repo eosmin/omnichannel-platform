@@ -138,6 +138,10 @@ export interface ConnectResult {
   connectionId: string
   // Shown in the UI: phone number, page name, site domain, mailbox
   displayName: string
+  // The name is one the plugin made up because the provider would not say it (the id of a Page whose name
+  // needs a permission the token lacks). Connecting again an account that already has a name keeps that
+  // name, instead of writing the made-up one over it.
+  displayNameIsPlaceholder?: boolean
   // What to persist; it may differ from the input (an exchanged long-lived token)
   credentials: Record<string, unknown>
   metadata: Record<string, unknown>
