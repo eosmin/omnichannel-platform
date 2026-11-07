@@ -23,7 +23,10 @@ export function useGoToShortcuts(inboxSearch = '', focusSearch?: () => void): vo
   )
   useShortcut(
     Shortcuts.global.COMMAND_PALETTE,
-    () => (focusSearch ?? (() => router.push(AppPaths.store.customers(storeId))))(),
+    () => {
+      if (focusSearch !== undefined) focusSearch()
+      else router.push(AppPaths.store.customers(storeId))
+    },
     { enabled: can(ClientPermissions.CUSTOMERS_VIEW) }
   )
   useShortcut(
