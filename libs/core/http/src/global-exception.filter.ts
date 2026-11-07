@@ -12,6 +12,7 @@ import {
   type ErrorCode,
   ErrorCodes,
   type ErrorResponse,
+  HttpHeaders,
   HttpStatusCodes,
   isLockTimeoutError,
   PlatformException
@@ -26,6 +27,11 @@ const DATABASE_BUSY_MESSAGE = 'The service is busy, try again in a moment'
 // Nest writes the class in front of the message of some errors ("ThrottlerException: Too Many
 // Requests"): a name of ours that the client has no use for
 const CLASS_NAME_PREFIX = /^[A-Za-z]+Exception:\s*/
+// The statuses for which Retry-After means "come back in this many seconds"
+const RETRY_AFTER_STATUSES: ReadonlySet<number> = new Set([
+  HttpStatusCodes.TOO_MANY_REQUESTS,
+  HttpStatusCodes.SERVICE_UNAVAILABLE
+])
 const INFRA_PATHS: ReadonlySet<string> = new Set([
   InfraRoutes.healthLive,
   InfraRoutes.healthReady,
@@ -220,7 +226,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return (request.route as { path?: string } | undefined)?.path ?? 'unknown'
   }
 
+  // The body is the contract; when it says how long to wait, the header says it too, for the clients
+  // (and proxies) that read headers and not bodies. Only where the header means that (a 429 or a 503,
+  // RFC 9110), in whole seconds, at least one and a number a client can read.
   private send(response: Response, status: number, body: ErrorResponse): void {
+    const wait = body.error.metadata?.[RETRY_AFTER_METADATA_KEY]
+    if (RETRY_AFTER_STATUSES.has(status) && typeof wait === 'number' && wait > 0) {
+      const seconds = Math.ceil(wait)
+      if (Number.isSafeInteger(seconds)) {
+        response.setHeader(HttpHeaders.RETRY_AFTER, String(seconds))
+      }
+    }
     response.status(status).json(body)
   }
 }

@@ -8,7 +8,7 @@ import { Permissions, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpHeaders } from '@platform/core/errors'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import { StorageKeys, UploadLimits } from '@platform/core/storage'
@@ -210,6 +210,9 @@ describe('Media upload', () => {
       const retryAfter = (refused.body as ErrorBody).error.metadata?.[RETRY_AFTER_METADATA_KEY]
       const secondsLeft = Math.ceil((3_600_000 - (Date.now() % 3_600_000)) / 1000)
       expect(retryAfter).toEqual(expect.any(Number))
+      // and the same in the header, for the clients that read headers
+      expect(refused.headers[HttpHeaders.RETRY_AFTER.toLowerCase()]).toBe(String(retryAfter))
+      expect(Number.isInteger(retryAfter)).toBe(true)
       expect(Math.abs((retryAfter as number) - secondsLeft)).toBeLessThanOrEqual(5)
       // Another member of the same store is not held back by it
       expect((await requestUpload()).status).toBe(OK)
