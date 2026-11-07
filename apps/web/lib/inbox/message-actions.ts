@@ -8,6 +8,7 @@ import {
   MessageType
 } from '@platform/core/domain'
 
+import { failureStateOf } from './failure-state'
 import { messageKindOf } from './thread-items'
 
 // Who is asking and what the channel of the conversation can do. The interface only decides what to
@@ -25,6 +26,8 @@ export interface MessageActions {
   edit: boolean
   remove: boolean
   resend: boolean
+  // A reply known not to have gone out can be given up (the api checks it again)
+  discard: boolean
   // Only the text under a file, sent again: drawn in the bubble beside the notice, not in the menu
   resendCaption: boolean
   // A file of the customer that was lost, downloaded again: drawn in the bubble beside the line that says so
@@ -41,6 +44,7 @@ const NONE: MessageActions = {
   edit: false,
   remove: false,
   resend: false,
+  discard: false,
   resendCaption: false,
   refetchFile: false,
   viewDeleted: false,
@@ -103,6 +107,13 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
     }
   }
 
+  const mayResend =
+    message.deliveryStatus === String(DeliveryStatus.FAILED) &&
+    viewer.can(
+      message.type === String(MessageType.TEMPLATE)
+        ? ClientPermissions.MESSAGES_SEND_TEMPLATE
+        : ClientPermissions.MESSAGES_SEND
+    )
   const isEditPending = message.pendingEdit
   // The text under a file is on its way: the message is left alone until it settles
   const isCaptionQueued = message.captionState === CaptionState.QUEUED
@@ -129,13 +140,10 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
       !isEditPending &&
       (message.captionState === CaptionState.FAILED ||
         message.captionState === CaptionState.UNCONFIRMED),
-    resend:
-      message.deliveryStatus === String(DeliveryStatus.FAILED) &&
-      viewer.can(
-        message.type === String(MessageType.TEMPLATE)
-          ? ClientPermissions.MESSAGES_SEND_TEMPLATE
-          : ClientPermissions.MESSAGES_SEND
-      )
+    resend: mayResend,
+    // Only what is known not to have reached the customer: what may have gone out can be sent again
+    // (with a warning) and never discarded, or the team would lose the trace of a message that was read
+    discard: mayResend && failureStateOf(message) === 'definitive'
   }
 }
 
@@ -146,5 +154,6 @@ export const hasAnyAction = (actions: MessageActions): boolean =>
   actions.edit ||
   actions.remove ||
   actions.resend ||
+  actions.discard ||
   actions.viewDeleted ||
   actions.revisions
