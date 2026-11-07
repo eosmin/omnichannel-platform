@@ -17,6 +17,22 @@ const profileStatusSchema = z.object({
 })
 export type ConnectionProfileView = z.output<typeof profileStatusSchema>
 
+// What the provider says about the token of a connection (the daily job and every connect read it). `unknown`
+// is also what a server that does not send it is taken for: nothing is said then, and never "expired".
+const tokenExpirySchema = z.object({
+  state: z.string(),
+  expiresAt: z.string().nullable(),
+  checkedAt: z.string().nullable(),
+  kind: z.string()
+})
+export type TokenExpiryView = z.output<typeof tokenExpirySchema>
+const UNKNOWN_TOKEN_EXPIRY: TokenExpiryView = {
+  state: 'unknown',
+  expiresAt: null,
+  checkedAt: null,
+  kind: 'unknown'
+}
+
 const connectionSchema = z.object({
   id: z.string(),
   pluginId: z.string(),
@@ -29,7 +45,8 @@ const connectionSchema = z.object({
   lastError: z.string().nullable(),
   createdAt: z.string(),
   capabilities: z.array(z.string()),
-  profile: profileStatusSchema.nullable()
+  profile: profileStatusSchema.nullable(),
+  tokenExpiry: tokenExpirySchema.catch(UNKNOWN_TOKEN_EXPIRY)
 })
 export type ChannelConnectionView = z.output<typeof connectionSchema>
 

@@ -28,6 +28,9 @@ export function messageKindOf(message: MessageView): MessageKind {
   if (MEDIA_TYPES.includes(message.type)) return 'media'
   // A location whose place did not hold (no valid coordinates) is a line, never a card with a made-up place
   if (message.type === String(MessageType.LOCATION) && message.location !== null) return 'location'
+  // A shared contact with cards is a bubble (they can be replied to and reacted to, as a text); one whose cards
+  // did not hold falls to the line below, as a location whose place did not
+  if (message.type === String(MessageType.CONTACTS) && message.contacts !== null) return 'message'
   if (TEXT_TYPES.includes(message.type)) return 'message'
   return 'neutral'
 }

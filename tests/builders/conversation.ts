@@ -105,6 +105,10 @@ export async function createConversationOf(
   return { id: conversation.id, customerId: identity.customerId, customerIdentityId: identity.id }
 }
 
+// A value of the Json column of metadata
+export type MetadataValue =
+  string | number | boolean | null | MetadataValue[] | { [key: string]: MetadataValue }
+
 export async function createMessage(
   owner: OwnerClient,
   input: {
@@ -114,7 +118,7 @@ export async function createMessage(
     authorType?: AuthorType
     type?: MessageType
     createdAt?: Date
-    metadata?: Record<string, string | number | boolean>
+    metadata?: Record<string, MetadataValue>
   }
 ): Promise<{ id: string }> {
   return owner.message.create({
