@@ -294,6 +294,7 @@ function Content({
           conversationId={conversationId}
           canRefetch={canRefetchFile}
           sticker={sticker}
+          messageType={message.type}
         />
       ) : null}
       {MediaIcon === null || !isMediaType(message.type) || hasFiles ? null : (

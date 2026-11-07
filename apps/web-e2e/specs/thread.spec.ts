@@ -737,6 +737,33 @@ test.describe.serial('the thread of a conversation', () => {
     await expect(player.getByRole('button', { name: en.inbox.thread.audio.play })).toBeVisible()
   })
 
+  test('draws a voice note that is an mp4 with the audio player, not as a video', async () => {
+    const conversationId = await newConversationIn(storeId)
+    const voice = await addMessageTo(storeId, conversationId, {
+      type: MessageType.AUDIO,
+      content: '',
+      createdAt: minutesAgo(2)
+    })
+    // Instagram sends a voice note as an mp4: the file reads as a video, the message says audio
+    await addMediaTo(storeId, voice.id, {
+      filename: 'voice.mp4',
+      contentType: 'video/mp4',
+      status: MediaStatus.CLEAN
+    })
+    await serveAudio(page, 3)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+
+    const player = threadOf(page).getByRole('group', { name: 'voice.mp4' })
+    await expect(player.getByRole('button', { name: en.inbox.thread.audio.play })).toBeVisible()
+    // No button that opens a video in the modal
+    await expect(
+      threadOf(page).getByRole('button', {
+        name: en.inbox.thread.media.play.replace('{name}', 'voice.mp4')
+      })
+    ).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
   test('moves an audio with the keys of the bar', async () => {
     const conversationId = await newConversationIn(storeId)
     const voice = await addMessageTo(storeId, conversationId, {
