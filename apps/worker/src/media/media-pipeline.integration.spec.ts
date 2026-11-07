@@ -108,6 +108,168 @@ describe('MediaPipeline', () => {
     await dropJob(queued)
   })
 
+  describe('metadata of a picture', () => {
+    // A photo as a phone makes it: held on its side, with where it was taken
+    const phonePhoto = (): Promise<Buffer> =>
+      sharp({ create: { width: 40, height: 20, channels: 3, background: '#cc6633' } })
+        .withMetadata({
+          orientation: 6,
+          exif: {
+            IFD0: { Make: 'Acme', Model: 'Phone 1' },
+            IFD3: {
+              GPSLatitudeRef: 'N',
+              GPSLatitude: '4/1 30/1 0/1',
+              GPSLongitudeRef: 'W',
+              GPSLongitude: '74/1 5/1 0/1'
+            }
+          }
+        })
+        .jpeg()
+        .toBuffer()
+
+    async function stored(key: string): Promise<Buffer> {
+      const body = await storage.read(key, 10 * 1024 * 1024)
+      if (body === null) throw new Error('the file is not in the bucket')
+      return body
+    }
+
+    it('keeps the stored file upright and without location, and the row true to its size', async () => {
+      const photo = await phonePhoto()
+      expect((await sharp(photo).metadata()).exif).toBeDefined()
+      const media = await pendingMedia('photo.jpg', 'image/jpeg', photo)
+
+      await pipeline.scan(media.id)
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('clean')
+      const kept = await stored(media.key)
+      const header = await sharp(kept).metadata()
+      expect(header.exif).toBeUndefined()
+      expect(header.orientation).toBeUndefined()
+      expect(kept.includes('Acme')).toBe(false)
+      expect([header.width, header.height]).toEqual([20, 40]) // Turned upright, as the camera held it
+      expect(row.fileSize).toBe(kept.length)
+      expect(row.contentType).toBe('image/jpeg')
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    })
+
+    it('does not encode the picture again when the scan is tried again', async () => {
+      const media = await pendingMedia('photo.jpg', 'image/jpeg', await phonePhoto())
+      await pipeline.scan(media.id)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+      const first = await stored(media.key)
+      // As after a verdict that never came: the row is pending again and the scan runs once more
+      await owner.query(`UPDATE media SET status = 'pending' WHERE id = $1`, [media.id])
+
+      await pipeline.scan(media.id)
+
+      expect((await stored(media.key)).equals(first)).toBe(true)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    })
+
+    it('settles the row and tells the team even when the refused file cannot be deleted', async () => {
+      const media = await pendingMedia('broken.jpg', 'image/jpeg', Buffer.alloc(300, 0x41))
+      const remove = jest.spyOn(storage, 'delete').mockRejectedValueOnce(new Error('bucket down'))
+
+      await pipeline.scan(media.id)
+
+      remove.mockRestore()
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('unscannable') // The hourly cleanup removes the file of such a row
+      expect(row.scanResult).toEqual({ reason: 'image_not_sanitizable' })
+    })
+
+    it('refuses a picture it cannot decode: no file kept, its own reason, nothing queued', async () => {
+      const photo = await phonePhoto()
+      const media = await pendingMedia(
+        'broken.jpg',
+        'image/jpeg',
+        Buffer.concat([photo.subarray(0, 60), Buffer.alloc(300, 0x41)])
+      )
+
+      await pipeline.scan(media.id)
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('unscannable')
+      expect(row.scanResult).toEqual({ reason: 'image_not_sanitizable' })
+      expect(await storage.head(media.key)).toBeNull() // The original, with its metadata, is gone
+      expect(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)).toBeUndefined()
+    })
+
+    // The scan comes first, on the bytes that were sent. The test string is detected only at the start
+    // of a file (ClamAV anchors it), so it stands for the whole file here: were the decoder first, a
+    // file that is not a picture would be refused as `unscannable` and the virus would go unreported.
+    it('reports a virus before the decoder sees the file', async () => {
+      for (const [filename, contentType] of [
+        ['virus.jpg', 'image/jpeg'],
+        ['virus.png', 'image/png'],
+        ['virus.webp', 'image/webp']
+      ] as const) {
+        const media = await pendingMedia(filename, contentType, Buffer.from(EICAR))
+
+        await pipeline.scan(media.id)
+
+        const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+        expect([filename, row.status]).toEqual([filename, 'infected'])
+        expect(row.scanResult).toEqual({ viruses: [expect.stringContaining('Eicar')] })
+        expect(await storage.head(media.key)).toBeNull()
+        expect(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`)).toBeUndefined()
+      }
+    })
+
+    it('keeps the picture pending, never served, until it is cleaned', async () => {
+      const media = await pendingMedia('photo.jpg', 'image/jpeg', await phonePhoto())
+      let seenWhileCleaning: string | undefined
+      const put = storage.put.bind(storage)
+      const spy = jest.spyOn(storage, 'put').mockImplementation(async (...args) => {
+        seenWhileCleaning = (
+          await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+        ).status
+        await put(...args)
+      })
+
+      await pipeline.scan(media.id)
+
+      spy.mockRestore()
+      expect(seenWhileCleaning).toBe('pending')
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    })
+
+    it('refuses a decompression bomb before decoding it', async () => {
+      const bomb = await sharp({
+        create: { width: 12000, height: 12000, channels: 3, background: '#000' }
+      })
+        .png({ compressionLevel: 9 })
+        .toBuffer()
+      const media = await pendingMedia('bomb.png', 'image/png', bomb)
+
+      await pipeline.scan(media.id)
+
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('unscannable')
+      expect(row.scanResult).toEqual({ reason: 'image_not_sanitizable' })
+      expect(await storage.head(media.key)).toBeNull()
+    }, 60_000)
+
+    it('does not touch an animation', async () => {
+      const frames = Buffer.concat(
+        ['#f00', '#00f'].map(colour => Buffer.alloc(8 * 8 * 3, colour === '#f00' ? 0xf0 : 0x0f))
+      )
+      const gif = await sharp(frames, { raw: { width: 8, height: 16, channels: 3, pageHeight: 8 } })
+        .gif()
+        .toBuffer()
+      const media = await pendingMedia('moving.gif', 'image/gif', gif)
+
+      await pipeline.scan(media.id)
+
+      expect((await stored(media.key)).equals(gif)).toBe(true)
+      const row = await prisma.client.media.findUniqueOrThrow({ where: { id: media.id } })
+      expect(row.status).toBe('clean')
+      expect(row.fileSize).toBe(gif.length)
+      await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
+    })
+  })
+
   it('deletes an infected file and never serves it', async () => {
     const media = await pendingMedia('invoice.txt', 'text/plain', Buffer.from(EICAR))
 
@@ -156,7 +318,9 @@ describe('MediaPipeline', () => {
   })
 
   it('leaves the image as it is when it cannot be decoded, and says it is settled', async () => {
-    const media = await pendingMedia('broken.png', 'image/png', Buffer.from('not an image'))
+    // A gif is not re-encoded by the cleaning of metadata (that would flatten it), so a broken one gets
+    // to the variants; a broken jpeg, png or webp is refused earlier, at the scan
+    const media = await pendingMedia('broken.gif', 'image/gif', Buffer.from('GIF89a not an image'))
     await pipeline.scan(media.id)
     await dropJob(await heavy.getJob(`${JobNames.PROCESS_IMAGE}-${media.id}`))
 
