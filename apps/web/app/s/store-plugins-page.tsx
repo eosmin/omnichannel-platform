@@ -129,7 +129,13 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
             <span className="sr-only"> {entry.name}</span>
           </Button>
         ) : installable ? (
-          <Button type="button" size="sm" disabled={install.isPending} onClick={doInstall}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={install.isPending}
+            busy={install.isPending}
+            onClick={doInstall}
+          >
             {t('install.action')}
             <span className="sr-only"> {entry.name}</span>
           </Button>

@@ -200,6 +200,7 @@ function MergeEntry({
             <Button
               type="button"
               disabled={unmerge.isPending}
+              busy={unmerge.isPending}
               onClick={() => unmerge.mutate(entry.id, { onSuccess: () => setAsking(false) })}
             >
               {t('undoConfirm')}

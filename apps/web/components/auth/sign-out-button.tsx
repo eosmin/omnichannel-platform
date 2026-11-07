@@ -14,6 +14,7 @@ export function SignOutButton({ redirectTo }: { redirectTo?: string }): ReactEle
     <Button
       variant="outline"
       disabled={pending}
+      busy={pending}
       onClick={() => {
         void signOut()
       }}
