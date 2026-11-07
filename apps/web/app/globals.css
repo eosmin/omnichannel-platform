@@ -94,6 +94,11 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* A fieldset is as wide as its longest word by default (`min-width: min-content`), so a long template name
+     or a link inside one pushed a dialog sideways on a phone (MODAL-390). It takes the width it is given. */
+  fieldset {
+    min-width: 0;
+  }
 }
 
 /* The spinner of a button that waits for the server (`busy`): it is laid over the button, so it takes no room,
