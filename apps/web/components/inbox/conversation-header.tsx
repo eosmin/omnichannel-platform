@@ -127,16 +127,17 @@ function LoadedHeader({
     if (isListHiddenByConversation()) heading.current?.focus()
   }, [])
   return (
-    <header className="flex items-center gap-3 border-b p-3">
+    // Wraps: on a phone the name keeps room to be read (at least 7.5rem) and the actions go to a second row
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b p-3">
       {backLink}
       <CustomerAvatar avatarUrl={customer.avatarUrl} initials={initialsOf(label)} />
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-30 flex-1 flex-col">
         <h1 ref={heading} tabIndex={-1} className="truncate text-sm font-semibold outline-none">
           {name}
         </h1>
         <p className="text-muted-foreground truncate text-xs">{channelName}</p>
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
         {can(ClientPermissions.CUSTOMERS_VIEW) ? (
           <Button
             type="button"
