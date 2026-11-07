@@ -4,7 +4,7 @@ import { MessageType } from '../status-enums'
 import { AllowedContentTypes } from './upload-constants'
 
 // The message types an agent can send with a file, with the capability the channel must declare for
-// each. One file per message in the MVP (`MediaMessageLimits.MAX_FILES`).
+// each. How many files one message may carry is `maxFilesFor`.
 export const OutboundMediaTypes = [
   MessageType.IMAGE,
   MessageType.VIDEO,
@@ -14,9 +14,19 @@ export const OutboundMediaTypes = [
 export type OutboundMediaType = (typeof OutboundMediaTypes)[number]
 
 export const MediaMessageLimits = {
-  // Several files in one request are Phase 2 (`IMPLEMENTATION_PLAN.md`, Step 3.4)
-  MAX_FILES: 1
+  // The most a request may carry, whatever the channel says: the channel and the flag below decide the real
+  // number (`maxFilesFor`). Equal to the most any plugin may declare (`ChannelMediaLimits`).
+  MAX_FILES: 30,
+  // What a message carries while several files are not switched on (`OUTBOUND_MULTI_FILE_ENABLED`)
+  SINGLE_FILE: 1
 } as const
+
+// How many files an agent may attach to a message of a channel: what the channel declares, and one while
+// sending several is off. Never more than a request may carry, never less than one.
+export function maxFilesFor(declared: number, multiFileEnabled: boolean): number {
+  if (!multiFileEnabled) return MediaMessageLimits.SINGLE_FILE
+  return Math.min(Math.max(Math.trunc(declared) || 1, 1), MediaMessageLimits.MAX_FILES)
+}
 
 export const CapabilityOfMediaType: Record<OutboundMediaType, ChannelCapabilityType> = {
   [MessageType.IMAGE]: ChannelCapability.IMAGE,

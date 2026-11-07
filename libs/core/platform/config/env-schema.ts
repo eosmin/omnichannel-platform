@@ -156,6 +156,10 @@ export const envSchema = z
     CLAMAV_HOST: z.string().default('localhost'),
     CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
 
+    // Several files in one message to a customer (each channel declares how many it takes). Off until the
+    // interface offers it and a real test with the providers passes: with it off a message carries one file.
+    OUTBOUND_MULTI_FILE_ENABLED: z.stringbool().default(false),
+
     // Bull Board and the dead-letter tooling: a JWT plus this allowlist (empty = nobody)
     BULL_BOARD_ENABLED: z.stringbool().default(false),
     BULL_BOARD_ADMIN_EMAILS: z

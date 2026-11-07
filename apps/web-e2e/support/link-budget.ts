@@ -2,6 +2,8 @@ import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { test } from '@playwright/test'
+
 import { MagicLinkThrottle } from '@platform/core/auth'
 
 // The api allows `MagicLinkThrottle.limit` links a minute per address, whatever the IP, and the specs
@@ -52,10 +54,39 @@ export function resetLinkBudget(): void {
   rmSync(STAMPS_FILE, { force: true })
 }
 
+// How long until the address has room: the oldest stamps that fill the window leave it after that
+function msUntilRoom(recent: number[], now: number): number {
+  const blocking = recent[recent.length - MAX_IN_WINDOW]
+  return blocking === undefined ? 0 : Math.max(0, blocking + WINDOW_MS - now)
+}
+
+// The wait for room is not the test: a case that must wait for the window of its address to free up has
+// its own time to do what it came to do. The wait is measured (the stamps say when room comes), and the
+// timeout of the case grows by exactly that, once for each wait, never more: the time the case has for
+// its own steps, and the timeout of every assertion, stay as they were. Outside a case (the global setup)
+// there is no timeout to grow, and a case with no timeout (0, a debug run) keeps having none.
+function giveTheWaitItsOwnTime(email: string, ms: number): void {
+  let info: ReturnType<typeof test.info> | undefined
+  try {
+    info = test.info()
+  } catch {
+    info = undefined
+  }
+  // The line goes to the log of the run, where a slow suite can be told from a stuck one
+  process.stdout.write(`[link-budget] ${email} waits ${ms} ms for room in the window of the api\n`)
+  if (info !== undefined && info.timeout !== 0) info.setTimeout(info.timeout + ms)
+}
+
+// For the spec that proves the wait: fills the window of an address with the moments given
+export function seedLinkBudget(address: string, stamps: number[]): void {
+  writeStamps({ ...readStamps(), [address.toLowerCase()]: stamps })
+}
+
 export async function waitForLinkBudget(address: string): Promise<void> {
   // The api looks the user up with lower(email): one bucket for any spelling
   const email = address.toLowerCase()
   const startedAt = Date.now()
+  let hasWaited = false
   for (;;) {
     const now = Date.now()
     const stamps = readStamps()
@@ -69,6 +100,10 @@ export async function waitForLinkBudget(address: string): Promise<void> {
       )
       writeStamps({ ...live, [email]: [...recent, now] })
       return
+    }
+    if (!hasWaited) {
+      hasWaited = true
+      giveTheWaitItsOwnTime(email, msUntilRoom(recent, now) + POLL_MS)
     }
     if (now - startedAt > MAX_WAIT_MS) {
       throw new Error(`the magic-link budget of ${email} did not free up in ${MAX_WAIT_MS} ms`)

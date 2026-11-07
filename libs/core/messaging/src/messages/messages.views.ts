@@ -107,6 +107,13 @@ export interface MessageMediaView {
   contentType: string
   fileSize: number
   status: MediaStatus
+  // The place of the file in a message an agent sent, from 0; null for a file the customer sent
+  position: number | null
+  // How the channel took this file: null for a file the customer sent, or one sent before each had its own
+  // state (the state of the message is then theirs). Never the provider's id.
+  delivery: DeliveryStatus | null
+  // Our code for why this file did not go; null unless `delivery` is failed
+  errorCode: string | null
 }
 
 // A file the customer sent that the platform could not keep: where it was in the message and why. The
@@ -186,6 +193,12 @@ export interface MessageView {
   createdAt: Date
 }
 
+// The order the agent gave the files; the files of the customer have no place and keep their arrival order
+// (a mutable array: Prisma does not take a readonly one)
+const MEDIA_ORDER: (
+  { position: { sort: 'asc'; nulls: 'last' } } | { createdAt: 'asc' } | { id: 'asc' }
+)[] = [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
+
 export const MESSAGE_SELECT = {
   id: true,
   conversationId: true,
@@ -224,8 +237,18 @@ export const MESSAGE_SELECT = {
     orderBy: { createdAt: 'asc' }
   },
   media: {
-    select: { id: true, filename: true, contentType: true, fileSize: true, status: true },
-    orderBy: { createdAt: 'asc' }
+    select: {
+      id: true,
+      filename: true,
+      contentType: true,
+      fileSize: true,
+      status: true,
+      position: true,
+      deliveryStatus: true,
+      sendErrorCode: true
+    },
+    // The order the agent gave; the files of the customer have no place and keep their arrival order
+    orderBy: MEDIA_ORDER
   },
   createdAt: true
 } as const
@@ -270,6 +293,9 @@ interface MessageRow {
     contentType: string
     fileSize: number
     status: string
+    position: number | null
+    deliveryStatus: string | null
+    sendErrorCode: string | null
   }[]
   createdAt: Date
 }
@@ -340,7 +366,13 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
             filename: file.filename,
             contentType: file.contentType,
             fileSize: file.fileSize,
-            status: enumValueOf(MediaStatuses, file.status, 'media status')
+            status: enumValueOf(MediaStatuses, file.status, 'media status'),
+            position: file.position,
+            delivery:
+              file.deliveryStatus === null
+                ? null
+                : enumValueOf(DeliveryStatuses, file.deliveryStatus, 'media delivery'),
+            errorCode: file.sendErrorCode
           }))
         : [],
     unavailableFiles: unavailableFilesOf(row, type),
