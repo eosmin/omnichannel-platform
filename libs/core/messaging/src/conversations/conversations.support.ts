@@ -71,6 +71,8 @@ export interface LockedConversation {
   assignedTo: string | null
   snoozedUntil: Date | null
   resolvedAt: Date | null
+  snoozeNote: string | null
+  attentionReason: string | null
 }
 
 // Every write of a conversation starts here, in this order: the shared lock on the store (so that
@@ -90,9 +92,11 @@ export async function lockConversationForWrite(
       assigned_to: string | null
       snoozed_until: Date | null
       resolved_at: Date | null
+      snooze_note: string | null
+      attention_reason: string | null
     }[]
   >`
-    SELECT status, assigned_to, snoozed_until, resolved_at FROM conversations
+    SELECT status, assigned_to, snoozed_until, resolved_at, snooze_note, attention_reason FROM conversations
     WHERE id = ${conversationId} AND store_id = ${storeId}
     FOR UPDATE`
   const row = rows[0]
@@ -103,7 +107,9 @@ export async function lockConversationForWrite(
     status: row.status,
     assignedTo: row.assigned_to,
     snoozedUntil: row.snoozed_until,
-    resolvedAt: row.resolved_at
+    resolvedAt: row.resolved_at,
+    snoozeNote: row.snooze_note,
+    attentionReason: row.attention_reason
   }
 }
 

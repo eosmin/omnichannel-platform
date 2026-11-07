@@ -25,7 +25,9 @@ export const systemLineMetadataSchema = z.strictObject({
   reason: z.string().nullable(),
   snoozedUntil: z.iso.datetime().nullable(),
   assignedTo: uuidSchema.nullable(),
-  previousAssignee: uuidSchema.nullable()
+  previousAssignee: uuidSchema.nullable(),
+  // The reminder the agent left when snoozing, on the line of waking; text of the agent, drawn escaped
+  note: z.string().nullable().default(null)
 })
 export type SystemLineMetadata = z.output<typeof systemLineMetadataSchema>
 
@@ -75,6 +77,7 @@ export async function writeSystemLine(
     snoozedUntil: null,
     assignedTo: null,
     previousAssignee: null,
+    note: null,
     ...line
   }
   await tx.message.create({

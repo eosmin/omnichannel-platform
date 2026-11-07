@@ -19,6 +19,9 @@ export const Events = {
   CONVERSATION_ARCHIVED: 'conversation.archived',
   CONVERSATION_TAGGED: 'conversation.tagged',
   CONVERSATION_READ: 'conversation.read',
+  // The mark that asks for attention in the list was put or taken off (it crosses the worker bridge: the
+  // sweep that wakes a snoozed conversation puts it)
+  CONVERSATION_ATTENTION_CHANGED: 'conversation.attention_changed',
   // An agent marked a conversation as unread again (api only: it never crosses the worker bridge)
   CONVERSATION_UNREAD: 'conversation.unread',
   // The customer is typing (api only, and never written down: it is emitted on the bus directly, not
@@ -175,6 +178,7 @@ export const BridgedEvents = [
   Events.CONVERSATION_REOPENED,
   Events.CONVERSATION_UNASSIGNED,
   Events.CONVERSATION_READ,
+  Events.CONVERSATION_ATTENTION_CHANGED,
   Events.MESSAGE_QUEUED,
   Events.MESSAGE_SENT,
   Events.MESSAGE_DELIVERED,

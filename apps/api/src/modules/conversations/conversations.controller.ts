@@ -191,7 +191,13 @@ export class ConversationsController {
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) body: SnoozeBody
   ): Promise<ConversationDetail> {
-    return this.conversations.snooze(store.id, conversationId, body.until, viewerOf(user.id, held))
+    return this.conversations.snooze(
+      store.id,
+      conversationId,
+      body.until,
+      viewerOf(user.id, held),
+      body.note ?? null
+    )
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)

@@ -121,7 +121,7 @@ describe('Conversation sweeps', () => {
       })
     })
 
-    it('announces the expired snooze with the assignee, and the change of status', async () => {
+    it('announces the expired snooze with the assignee, the change of status and the mark', async () => {
       const id = await snoozed(ctx.storeA.id, new Date(Date.now() - MINUTE_MS), ctx.agentA.id)
 
       await wake.wake()
@@ -130,7 +130,11 @@ describe('Conversation sweeps', () => {
         entry => (entry.payload as { conversationId?: string } | undefined)?.conversationId === id
       )
       expect(events.map(entry => entry.event).sort()).toEqual(
-        [Events.CONVERSATION_SNOOZE_EXPIRED, Events.CONVERSATION_STATUS_CHANGED].sort()
+        [
+          Events.CONVERSATION_ATTENTION_CHANGED,
+          Events.CONVERSATION_SNOOZE_EXPIRED,
+          Events.CONVERSATION_STATUS_CHANGED
+        ].sort()
       )
       expect(events.find(e => e.event === Events.CONVERSATION_SNOOZE_EXPIRED)?.payload).toEqual({
         storeId: ctx.storeA.id,

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  AttentionReasons,
   AuthorType,
   CHANNEL_ID_PATTERN,
   ConversationStatus,
@@ -94,6 +95,12 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     conversationId: id,
     userId: id,
+    visibility
+  }),
+  [Events.CONVERSATION_ATTENTION_CHANGED]: z.object({
+    storeId: id,
+    conversationId: id,
+    reason: z.enum(AttentionReasons).nullable(),
     visibility
   }),
   [Events.MESSAGE_QUEUED]: z.object({

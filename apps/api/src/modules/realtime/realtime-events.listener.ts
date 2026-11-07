@@ -5,6 +5,7 @@ import { Permissions } from '@platform/core/auth'
 import {
   type BridgedPayloads,
   type ConversationAssignedPayload,
+  type ConversationAttentionChangedPayload,
   type ConversationReadPayload,
   type CustomerTypingPayload,
   type ConversationStatusChangedPayload,
@@ -118,6 +119,18 @@ export class RealtimeEventsListener {
         payload.conversationId,
         this.mayStay(payload.conversationId, [payload.visibility])
       )
+    )
+  }
+
+  // The mark that raises a row in the list was put or taken off: everyone who can see the conversation
+  // reads the row again. The reason only; the note of the agent never crosses.
+  @OnEvent(Events.CONVERSATION_ATTENTION_CHANGED)
+  async onAttentionChanged(payload: ConversationAttentionChangedPayload): Promise<void> {
+    await this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.CONVERSATION_ATTENTION_CHANGED,
+      { conversationId: payload.conversationId, reason: payload.reason },
+      socket => mayAny(socket, [payload.visibility])
     )
   }
 
