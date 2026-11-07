@@ -107,6 +107,42 @@ describe('Session', () => {
 
       expect(await session.start()).toBeNull()
       expect(bootstrap).toHaveBeenCalledTimes(1)
+      // An api that said no is not an api that could not be reached: the widget stays silent
+      expect(session.unreachable).toBe(false)
+    })
+
+    it('does not call an api that answered with an error unreachable', async () => {
+      const bootstrap = jest.fn().mockRejectedValue(new WidgetApiError(500, null))
+      const { session } = setup({ bootstrap })
+
+      const started = session.start()
+      await jest.advanceTimersByTimeAsync(40 * MS)
+
+      expect(await started).toBeNull()
+      expect(session.unreachable).toBe(false)
+    })
+
+    it('says the api could not be reached when every try got no answer', async () => {
+      const bootstrap = jest.fn().mockRejectedValue(new WidgetApiError(0, null))
+      const { session } = setup({ bootstrap })
+
+      const started = session.start()
+      await jest.advanceTimersByTimeAsync(40 * MS)
+
+      expect(await started).toBeNull()
+      expect(session.unreachable).toBe(true)
+    })
+
+    it('does not say it when the session was stopped while it tried', async () => {
+      const bootstrap = jest.fn().mockRejectedValue(new WidgetApiError(0, null))
+      const { session } = setup({ bootstrap })
+
+      const started = session.start()
+      session.stop()
+      await jest.advanceTimersByTimeAsync(40 * MS)
+
+      expect(await started).toBeNull()
+      expect(session.unreachable).toBe(false)
     })
 
     it('tries again when the api cannot be reached, and then works', async () => {

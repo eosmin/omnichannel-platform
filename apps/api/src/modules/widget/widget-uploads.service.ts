@@ -58,12 +58,14 @@ export class WidgetUploads {
     await countWithinQuota(
       this.redis,
       CacheKeys.widgetUpload.visitorQuota(site.siteKey, visitorId, bucket),
-      WidgetLimits.UPLOAD_URLS_PER_VISITOR_PER_HOUR
+      WidgetLimits.UPLOAD_URLS_PER_VISITOR_PER_HOUR,
+      bucket
     )
     await countWithinQuota(
       this.redis,
       CacheKeys.widgetUpload.siteQuota(site.siteKey, bucket),
-      WidgetLimits.UPLOAD_URLS_PER_SITE_PER_HOUR
+      WidgetLimits.UPLOAD_URLS_PER_SITE_PER_HOUR,
+      bucket
     )
 
     const uploadId = crypto.randomUUID()
