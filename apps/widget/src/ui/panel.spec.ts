@@ -1,7 +1,7 @@
 import { textFor } from '../i18n'
 import type { ChatMessage } from '../types'
 
-import { mountPanel, type Panel, type PanelProps } from './panel'
+import { mountPanel, mountUnavailable, type Panel, type PanelProps } from './panel'
 
 // jsdom has no constructable stylesheets: the panel needs them, so the browser's are stood in for
 class FakeSheet {
@@ -531,5 +531,49 @@ describe('mountPanel', () => {
     expect(q('input[name="phone"]').parentElement?.querySelector('.problem')?.textContent).toBe(
       'Revisa el teléfono.'
     )
+  })
+})
+
+describe('mountUnavailable', () => {
+  afterEach(() => {
+    document.getElementById('platform-widget')?.remove()
+  })
+
+  it('shows a launcher in a warning state that opens the explanation, and nothing else', () => {
+    const text = textFor('es')
+    const mounted = mountUnavailable(text)
+    expect(mounted).not.toBeNull()
+    const root = document.getElementById('platform-widget')?.shadowRoot
+    const launcher = root?.querySelector<HTMLButtonElement>('.launcher--unavailable')
+    const box = root?.querySelector<HTMLElement>('.unavailable')
+    expect(launcher?.getAttribute('aria-label')).toBe(text.unavailable)
+    expect(box?.hidden).toBe(true)
+
+    launcher?.click()
+
+    expect(box?.hidden).toBe(false)
+    expect(launcher?.getAttribute('aria-expanded')).toBe('true')
+    expect(box?.textContent).toContain(text.unavailable)
+    expect(box?.getAttribute('role')).toBe('status')
+    // The hint for whoever runs the site is folded away from the visitor
+    const owner = root?.querySelector<HTMLDetailsElement>('details.owner')
+    expect(owner?.open).toBe(false)
+    expect(owner?.textContent).toContain('connect-src')
+    expect(root?.querySelector('textarea')).toBeNull()
+
+    root?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(box?.hidden).toBe(true)
+    expect(box?.hasAttribute('role')).toBe(false)
+    expect(launcher?.getAttribute('aria-expanded')).toBe('false')
+
+    mounted?.destroy()
+    expect(document.getElementById('platform-widget')).toBeNull()
+  })
+
+  it('does not mount a second widget over the first', () => {
+    const first = mountUnavailable(textFor('en'))
+    expect(mountUnavailable(textFor('en'))).toBeNull()
+    first?.destroy()
   })
 })

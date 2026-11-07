@@ -85,9 +85,14 @@ export class Session {
 
   constructor(private readonly deps: SessionDeps) {}
 
+  // True when `start` gave up because the api never answered (the browser blocked the call, or there is no
+  // network), as opposed to an api that said no or failed with an answer of its own. Read after `start`.
+  unreachable = false
+
   // Null when the widget cannot work here (a key that does not exist, a site that is not listed) or
   // the api never answered: the page then gets no widget at all
   async start(): Promise<Bootstrap | null> {
+    this.unreachable = false
     let boot: Bootstrap | undefined
     for (let attempt = 0; boot === undefined; attempt += 1) {
       try {
@@ -95,7 +100,16 @@ export class Session {
       } catch (error) {
         const delay = RETRY_DELAYS_MS[attempt]
         const permanent = error instanceof WidgetApiError && error.permanent
-        if (permanent || delay === undefined || this.stopped) return null
+        if (permanent || delay === undefined || this.stopped) {
+          // No answer at all after every try; an api that refused (a site that is not listed) or failed with
+          // an answer of its own stays silent, as does a session that was stopped
+          this.unreachable =
+            !this.stopped &&
+            error instanceof WidgetApiError &&
+            !error.permanent &&
+            error.status === 0
+          return null
+        }
         await wait(delay)
       }
     }

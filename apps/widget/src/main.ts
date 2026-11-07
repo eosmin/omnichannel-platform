@@ -5,7 +5,7 @@ import { ChatLog } from './chat-log'
 import { readOptions } from './config'
 import { resolveLocale, textFor } from './i18n'
 import { Session, type SocketFactory } from './session'
-import { mountPanel, type Panel } from './ui/panel'
+import { mountPanel, mountUnavailable, type Panel } from './ui/panel'
 import { browserStorage, loadVisitorId, markPreChatDone, preChatDone } from './visitor'
 
 // Replies come on a socket of their own namespace, over websocket alone: no long polling, so the api
@@ -36,7 +36,13 @@ async function run(): Promise<void> {
   })
   let panel: Panel | null = null
   const boot = await session.start()
-  if (boot === null) return
+  if (boot === null) {
+    // The call never got an answer: say so, or the site shows nothing and nobody knows why
+    if (session.unreachable) {
+      mountUnavailable(textFor(resolveLocale(options.locale, navigator.language)))
+    }
+    return
+  }
   panel = mountPanel({
     storeName: boot.store.name,
     text: textFor(resolveLocale(options.locale, boot.store.locale, navigator.language)),

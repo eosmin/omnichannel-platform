@@ -30,7 +30,11 @@ const MESSAGES = {
     fileEmpty: 'El archivo está vacío.',
     tooManyFiles: 'Puedes enviar hasta {max} archivos a la vez.',
     fileUnavailable: 'No se pudo abrir el archivo. Inténtalo de nuevo.',
-    uploading: 'Subiendo'
+    uploading: 'Subiendo',
+    unavailable: 'No pudimos conectar el chat. Inténtalo de nuevo más tarde.',
+    unavailableOwner:
+      'Si administras este sitio: el navegador no pudo comunicarse con el chat. Revisa que la política de seguridad de contenido (CSP) permita la dirección del chat en connect-src y que el servicio esté en línea.',
+    unavailableDetails: 'Para quien administra el sitio'
   },
   [Locales.EN]: {
     open: 'Open the chat',
@@ -59,7 +63,11 @@ const MESSAGES = {
     fileEmpty: 'The file is empty.',
     tooManyFiles: 'You can send up to {max} files at a time.',
     fileUnavailable: 'The file could not be opened. Try again.',
-    uploading: 'Uploading'
+    uploading: 'Uploading',
+    unavailable: 'We could not connect the chat. Try again later.',
+    unavailableOwner:
+      'If you run this site: the browser could not reach the chat. Check that the content security policy (CSP) allows the chat address in connect-src and that the service is online.',
+    unavailableDetails: 'For whoever runs this site'
   }
 } as const
 
