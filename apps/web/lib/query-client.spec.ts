@@ -54,6 +54,19 @@ describe('the query client of the app', () => {
     expect(retryDelayOf(2, new ApiError(500, ErrorCodes.INTERNAL_ERROR, 'x'))).toBe(4000)
   })
 
+  it('never retries a mutation by itself, a busy database included', async () => {
+    const client = createQueryClient()
+    expect(client.getDefaultOptions().mutations?.retry).toBe(false)
+    const busy = new ApiError(503, ClientErrorCodes.DATABASE_BUSY, 'busy', null, {
+      retryAfterSeconds: 5
+    })
+    const mutationFn = jest.fn().mockRejectedValue(busy)
+    await expect(client.getMutationCache().build(client, { mutationFn }).execute({})).rejects.toBe(
+      busy
+    )
+    expect(mutationFn).toHaveBeenCalledTimes(1)
+  })
+
   it('wires both rules into the queries of the app', () => {
     const queries = createQueryClient().getDefaultOptions().queries
     expect(queries?.retry).toBe(shouldRetry)

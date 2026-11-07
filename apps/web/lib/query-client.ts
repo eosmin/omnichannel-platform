@@ -42,7 +42,9 @@ export function createQueryClient(): QueryClient {
       // and keeps what was typed. The default ('online') holds the mutation until the network is back:
       // the button says "Saving" for as long as it takes, and the save then runs on its own, behind a
       // dialog that may be closed by then.
-      mutations: { networkMode: 'always' }
+      // And no mutation is tried again by itself, whatever the error (a DATABASE_BUSY included): a write sent again
+      // blind can repeat its effects, so the person decides
+      mutations: { networkMode: 'always', retry: false }
     }
   })
 }
