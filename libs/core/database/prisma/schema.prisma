@@ -818,7 +818,7 @@ model Media {
   // { full: key, medium: key, thumb: key } — KEYS, signed at read time (TDD_07 §6.6)
   variants    Json?
   status      String    @default("pending") // MediaStatus
-  scanResult  Json?     @map("scan_result") // { viruses: string[] } when infected
+  scanResult  Json?     @map("scan_result") // { viruses: string[] } when infected; { reason } when refused; { sanitized: true } once a pending picture was cleaned of its metadata
   processedAt DateTime? @map("processed_at")
   scannedAt   DateTime? @map("scanned_at")
   createdAt   DateTime  @default(now()) @map("created_at")
