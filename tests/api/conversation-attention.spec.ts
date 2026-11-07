@@ -140,6 +140,17 @@ describe('Conversation attention', () => {
       expect((await row(empty)).snoozeNote).toBeNull()
     })
 
+    it('refuses a reminder with a NUL character, which the database cannot store', async () => {
+      const id = await open()
+
+      const response = await asAdmin()
+        .post(ApiRoutes.conversations.snooze(id))
+        .send({ until: future(), note: 'a\u0000b' })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect((await row(id)).status).toBe(ConversationStatus.OPEN)
+    })
+
     it('takes the longest the limit allows and refuses one character more', async () => {
       const id = await open()
       const longest = 'a'.repeat(ConversationLimits.SNOOZE_NOTE_MAX_LENGTH)
@@ -357,6 +368,18 @@ describe('Conversation attention', () => {
       expect(
         attentionEvents(id).map(entry => (entry.payload as { reason: unknown }).reason)
       ).toEqual([null])
+    })
+
+    it('keeps the mark while the conversation goes to PENDING, which is still the work to do', async () => {
+      const id = await overdue('x')
+      await wake.wake()
+
+      const response = await asAdmin()
+        .patch(ApiRoutes.conversations.status(id))
+        .send({ status: ConversationStatus.PENDING })
+
+      expect(response.status).toBe(OK)
+      expect((await row(id)).attentionReason).toBe(AttentionReasons.SNOOZE_WOKE)
     })
 
     it('says nothing when opening a conversation that had no mark', async () => {

@@ -97,6 +97,7 @@ export const snoozeSchema = z.strictObject({
     .string()
     .trim()
     .max(ConversationLimits.SNOOZE_NOTE_MAX_LENGTH)
+    .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
     .transform(value => (value === '' ? null : value))
     .optional()
 })

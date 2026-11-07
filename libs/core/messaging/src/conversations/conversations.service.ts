@@ -321,13 +321,16 @@ export class ConversationsService {
       }
       assertSnoozeWindow(options.snoozedUntil)
     }
-    // A snooze that ran out raises the row until someone opens it; any other way out of OPEN or of the
-    // snooze takes the mark and the reminder off (a person who woke it, resolved it or archived it knows)
-    const marks =
+    // A snooze that ran out raises the row until someone opens it (only the sweep of the worker gives
+    // this reason: a customer who writes to a snoozed conversation wakes it too, but nobody's timer
+    // ran out). A way out of the work (resolved, spam, snoozed again) takes the mark off; OPEN and PENDING
+    // are still the work to do, so the mark stays through them. Any exit from the snooze drops the reminder.
+    const woke =
       from === ConversationStatus.SNOOZED &&
       to === ConversationStatus.OPEN &&
       options.reason === ConversationStatusReasons.SNOOZE_EXPIRED
-    const clearsMark = !marks && to !== ConversationStatus.OPEN
+    const marks = woke
+    const clearsMark = !marks && to !== ConversationStatus.OPEN && to !== ConversationStatus.PENDING
     await tx.conversation.update({
       where: { id: conversationId, storeId },
       data: {
@@ -392,13 +395,7 @@ export class ConversationsService {
           options.causedBy === undefined ? actorRef(options.actor) : userRef(options.causedBy)
       })
     }
-    // Only the sweep of the worker gives this reason: a customer who writes to a snoozed conversation
-    // wakes it too, but nobody's timer ran out
-    if (
-      from === ConversationStatus.SNOOZED &&
-      to === ConversationStatus.OPEN &&
-      options.reason === ConversationStatusReasons.SNOOZE_EXPIRED
-    ) {
+    if (woke) {
       this.events.publish(tx, Events.CONVERSATION_SNOOZE_EXPIRED, {
         storeId,
         conversationId,

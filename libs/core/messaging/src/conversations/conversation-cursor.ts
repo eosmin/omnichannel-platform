@@ -23,7 +23,8 @@ export function encodeConversationCursor(row: ConversationCursor): string {
 
 const cursorParts = z.tuple([z.iso.datetime().nullable(), z.iso.datetime().nullable(), z.uuid()])
 // The cursor of before the mark of attention: (lastMessageAt, id), a row without a mark. A client that
-// holds one across the deploy goes on from where it was.
+// holds one across the deploy goes on through the unmarked rows from where it was; a row that got a mark
+// meanwhile shows on the next load of the list.
 const legacyCursorParts = z.tuple([z.iso.datetime().nullable(), z.uuid()])
 
 // A cursor is about 130 characters; the cap keeps the decoding from running on whatever arrives
