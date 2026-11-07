@@ -116,15 +116,16 @@ export const MetaOAuth = {
 
 // The permissions of the login, by what each is for. `pages_read_engagement` is the one that is easy to
 // miss: without it the Page cannot be read by its id (error 100 in the measurement), and the dialog lets
-// the person clear it. `business_management` is what finds a Page that lives in a portfolio. Standard
-// Access is enough while only the owner and the people with a role on the app use it; for other
-// accounts they need Advanced Access (App Review), which is Phase 2.
+// the person clear it. `business_management` is NOT asked for: measured on 2026-11-07 with an
+// administrator of the app (development mode), `me/businesses/<id>/owned_pages` lists a Page that lives in
+// a portfolio without it, and a Page the list cannot find is typed by number. Standard Access is enough
+// while only the owner and the people with a role on the app use it; for other accounts they need
+// Advanced Access (App Review), which is Phase 2.
 export const MetaOAuthScopes = {
   PAGES_SHOW_LIST: 'pages_show_list',
   PAGES_MESSAGING: 'pages_messaging',
   PAGES_MANAGE_METADATA: 'pages_manage_metadata',
   PAGES_READ_ENGAGEMENT: 'pages_read_engagement',
-  BUSINESS_MANAGEMENT: 'business_management',
   INSTAGRAM_BASIC: 'instagram_basic',
   INSTAGRAM_MANAGE_MESSAGES: 'instagram_manage_messages'
 } as const
