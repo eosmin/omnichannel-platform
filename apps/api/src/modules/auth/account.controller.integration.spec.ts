@@ -35,6 +35,9 @@ describe('AccountController', () => {
   let test: AuthTestApp
   let storage: StorageService
   const keys: string[] = []
+  // The avatar rows this suite made, and nobody else's: the worker suites run beside this one over the same
+  // database, and a delete by key pattern removed the avatars they were in the middle of processing
+  const mediaIds: string[] = []
 
   beforeAll(async () => {
     test = await startAuthTestApp()
@@ -42,9 +45,7 @@ describe('AccountController', () => {
   })
   afterAll(async () => {
     await Promise.all(keys.map(key => storage.delete(key)))
-    await test.asOwner(client =>
-      client.query(`DELETE FROM media WHERE key LIKE $1`, [`users/%/avatar/%`])
-    )
+    await test.asOwner(client => client.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]))
     await test.cleanUp()
   })
 
@@ -75,6 +76,7 @@ describe('AccountController', () => {
   // An avatar row of the person, with a file in the bucket when it is meant to be served
   async function avatar(userId: string, status: string, withFile = true): Promise<string> {
     const id = randomUUID()
+    mediaIds.push(id)
     const key = StorageKeys.avatar(userId, id, 'me.png')
     if (withFile) {
       await storage.put(key, Buffer.from('png'), 'image/png')
@@ -237,6 +239,7 @@ describe('AccountController', () => {
       const other = await person()
       const theirs = await avatar(other.id, MediaStatus.CLEAN)
       const message = randomUUID()
+      mediaIds.push(message)
       await test.asOwner(client =>
         client.query(
           `INSERT INTO media (id, purpose, uploaded_by, key, filename, content_type, file_size, status)

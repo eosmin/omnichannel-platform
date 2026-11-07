@@ -20,6 +20,7 @@ import {
   reactToMessage,
   refetchFile,
   resendCaption,
+  discardMessage,
   resendMessage,
   type RevisionView
 } from '@platform/api-client'
@@ -40,6 +41,7 @@ export interface EditInput {
 export interface MessageMutations {
   react: UseMutationResult<void, Error, string | null>
   resend: UseMutationResult<MessageView, Error, void>
+  discard: UseMutationResult<void, Error, void>
   resendCaption: UseMutationResult<MessageView, Error, void>
   // The place of the file in the message
   refetchFile: UseMutationResult<MessageView, Error, number>
@@ -69,6 +71,13 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     mutationFn: () => resendMessage(apiClient, storeId, messageId),
     onSuccess: refresh
   })
+  const discard = useMutation({
+    mutationFn: () => discardMessage(apiClient, storeId, messageId),
+    // The discarded reply leaves the list; a 409 says the screen was out of date (it may have gone out, or
+    // it is no longer a failed reply): the thread is read again either way
+    onSuccess: refresh,
+    onError: refresh
+  })
   const resendCaptionOnly = useMutation({
     mutationFn: () => resendCaption(apiClient, storeId, messageId),
     onSuccess: refresh,
@@ -94,6 +103,7 @@ export function useMessageMutations(conversationId: string, messageId: string): 
   return {
     react,
     resend,
+    discard,
     resendCaption: resendCaptionOnly,
     refetchFile: refetchLostFile,
     edit,

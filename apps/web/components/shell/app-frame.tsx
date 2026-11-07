@@ -1,9 +1,13 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { ReactElement, ReactNode } from 'react'
 
 import type { AccountProfile } from '@platform/api-client'
+
+import { isInboxPath } from '../../lib/inbox/inbox-route'
+import { cn } from '../../lib/utils'
 
 import { ConnectionIndicator } from './connection-indicator'
 import { DensitySync } from './density-sync'
@@ -23,13 +27,21 @@ export function AppFrame({
   children: ReactNode
 }): ReactElement {
   const t = useTranslations('app')
+  const isInbox = isInboxPath(usePathname())
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div
+      className={cn(
+        'flex flex-col',
+        // The inbox is exactly the window and the page never scrolls (`clip`, not `hidden`: a box that is
+        // `hidden` can still be scrolled by the browser to reveal a focused field, and not scrolled back)
+        isInbox ? 'h-dvh overflow-clip' : 'min-h-dvh'
+      )}
+    >
       <TopBar profile={profile} currentStoreId={currentStoreId} appTitle={t('title')} nav={nav} />
       <LocaleSync savedLocale={profile.locale} />
       <DensitySync density={profile.density} />
       <ConnectionIndicator />
-      <main className="compact:p-2 flex-1 p-4">{children}</main>
+      <main className={cn('flex-1', isInbox ? 'flex min-h-0' : 'compact:p-2 p-4')}>{children}</main>
     </div>
   )
 }

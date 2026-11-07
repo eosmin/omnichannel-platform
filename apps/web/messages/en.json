@@ -446,6 +446,7 @@
     "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that action",
     "CHANNEL_FILE_TYPE_UNSUPPORTED": "The channel does not accept this type of file",
     "CHANNEL_FILE_TOO_LARGE": "The file is larger than the channel accepts",
+    "CHANNEL_TOO_MANY_FILES": "The channel does not accept that many files in one message",
     "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
     "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
     "CHANNEL_MESSAGE_FAILED": "The channel did not accept the message",
@@ -1020,7 +1021,9 @@
         "sent": "Sent",
         "delivered": "Delivered",
         "read": "Read",
-        "failed": "Not delivered"
+        "failed": "Not delivered",
+        "unconfirmed": "Could not confirm delivery",
+        "unconfirmedNote": "We could not confirm that the customer received it"
       },
       "failedWithReason": "Not delivered: {reason}",
       "mediaLabel": {
@@ -1174,7 +1177,13 @@
         "customReactionTitle": "React with another emoji",
         "customReactionDescription": "Type or paste one emoji.",
         "customReactionLabel": "Emoji",
-        "reply": "Reply"
+        "reply": "Reply",
+        "discard": "Discard",
+        "discardTitle": "Discard this reply?",
+        "discardDescription": "It did not reach the customer and it leaves the conversation for the whole team. The text is kept for 30 days.",
+        "resendTitle": "Send this reply again?",
+        "resendDuplicateDescription": "We could not confirm whether the customer received it. If you send it again they may get it twice.",
+        "resendAnyway": "Send again"
       },
       "location": {
         "untitled": "Shared location",

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
@@ -21,7 +22,7 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, MessageType, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   AgentReactionsService,
@@ -48,6 +49,8 @@ import { ChannelCapability } from '@platform/plugins/sdk'
 import { ChannelTemplatesService } from '../channels/channel-templates.service'
 import { actorOf, CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 
+import { channelFileLimits } from './channel-file-limits'
+
 // The messages of a conversation of the store in X-Store-Id. Seeing the conversation is required
 // by every route; what each message type needs on top of that (MESSAGES_SEND for a reply,
 // MESSAGES_INTERNAL_NOTE for a note) depends on the body and is decided by the service.
@@ -60,7 +63,8 @@ export class MessagesController {
     private readonly changes: MessageChangesService,
     private readonly templates: ChannelTemplatesService,
     private readonly registry: PluginRegistry,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
   ) {}
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made
@@ -93,7 +97,8 @@ export class MessagesController {
       body,
       viewer,
       rendered,
-      (channel, capability) => this.registry.hasCapability(channel, capability)
+      (channel, capability) => this.registry.hasCapability(channel, capability),
+      channelFileLimits(this.registry, this.multiFileEnabled)
     )
     if (!created) res.status(HttpStatusCodes.OK)
     return message
