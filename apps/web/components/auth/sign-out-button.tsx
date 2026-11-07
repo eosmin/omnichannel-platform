@@ -19,8 +19,9 @@ export function SignOutButton({ redirectTo }: { redirectTo?: string }): ReactEle
         void signOut()
       }}
     >
+      {/* The label does not change while it waits: a longer one would resize the button */}
       <LogOut aria-hidden />
-      {pending ? t('common.signingOut') : t('common.signOut')}
+      {t('common.signOut')}
     </Button>
   )
 }
