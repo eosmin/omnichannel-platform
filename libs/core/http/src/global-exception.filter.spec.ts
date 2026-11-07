@@ -4,7 +4,7 @@ import type { Counter } from '@prometheus-io/client'
 import * as Sentry from '@sentry/nestjs'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpHeaders, PlatformException } from '@platform/core/errors'
 
 import {
   bodyParserRefusal,
@@ -224,6 +224,7 @@ describe('GlobalExceptionFilter, a database lock that was waited for too long', 
     const response = {
       headersSent: false,
       status: jest.fn().mockReturnThis(),
+      setHeader: jest.fn(),
       json: jest.fn<void, [unknown]>()
     }
     const request = {
@@ -264,6 +265,7 @@ describe('GlobalExceptionFilter, a database lock that was waited for too long', 
       correlationId: 'c-9'
     })
     expect(JSON.stringify(response.json.mock.calls)).not.toContain('customers')
+    expect(response.setHeader).toHaveBeenCalledWith(HttpHeaders.RETRY_AFTER, '5')
   })
 
   it('logs a warning with the route only, and does not report it as an incident', () => {
@@ -284,5 +286,90 @@ describe('GlobalExceptionFilter, a database lock that was waited for too long', 
 
     expect(response.status).toHaveBeenCalledWith(500)
     expect(Sentry.captureException).toHaveBeenCalled()
+  })
+})
+
+describe('GlobalExceptionFilter, the Retry-After header', () => {
+  function run(exception: unknown) {
+    const response = {
+      headersSent: false,
+      status: jest.fn().mockReturnThis(),
+      setHeader: jest.fn(),
+      json: jest.fn<void, [unknown]>()
+    }
+    const request = { url: '/api/v1/x', path: '/api/v1/x', method: 'POST', correlationId: 'c-3' }
+    const logger = { error: jest.fn(), warn: jest.fn() } as unknown as PinoLogger
+    const host = {
+      switchToHttp: () => ({ getRequest: () => request, getResponse: () => response })
+    } as unknown as ArgumentsHost
+    new GlobalExceptionFilter(logger, { inc: jest.fn() } as unknown as Counter<string>).catch(
+      exception,
+      host
+    )
+    return response
+  }
+  const refusal = (metadata?: Record<string, unknown>) =>
+    new PlatformException(ErrorCodes.RATE_LIMIT_EXCEEDED, 'too many', 429, metadata)
+
+  it('says it in the header too when the body says how long to wait', () => {
+    const response = run(refusal({ retryAfterSeconds: 42 }))
+
+    expect(response.setHeader).toHaveBeenCalledWith(HttpHeaders.RETRY_AFTER, '42')
+    // The contract of the body is the same as ever
+    expect(response.json).toHaveBeenCalledWith({
+      error: {
+        code: ErrorCodes.RATE_LIMIT_EXCEEDED,
+        message: 'too many',
+        metadata: { retryAfterSeconds: 42 }
+      },
+      correlationId: 'c-3'
+    })
+  })
+
+  it('rounds a fraction up to whole seconds', () => {
+    const response = run(refusal({ retryAfterSeconds: 2.2 }))
+
+    expect(response.setHeader).toHaveBeenCalledWith(HttpHeaders.RETRY_AFTER, '3')
+  })
+
+  it.each([
+    ['no metadata', undefined],
+    ['metadata with no wait', { other: 1 }],
+    ['a wait that is zero', { retryAfterSeconds: 0 }],
+    ['a negative wait', { retryAfterSeconds: -5 }],
+    ['a wait that is not a number', { retryAfterSeconds: '30' }],
+    ['a wait that is not finite', { retryAfterSeconds: Infinity }],
+    ['a wait too large to write as whole seconds', { retryAfterSeconds: 1e21 }]
+  ])('does not set it for %s', (_name, metadata) => {
+    const response = run(refusal(metadata))
+
+    expect(response.setHeader).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a 400', 400],
+    ['a 403', 403],
+    ['a 409', 409]
+  ])('does not set it on %s, where the header means something else', (_name, status) => {
+    const response = run(
+      new PlatformException(ErrorCodes.VALIDATION_FAILED, 'no', status, { retryAfterSeconds: 30 })
+    )
+
+    expect(response.setHeader).not.toHaveBeenCalled()
+  })
+
+  it('sets it on a 503 as well as on a 429', () => {
+    const response = run(
+      new PlatformException(ErrorCodes.DATABASE_BUSY, 'busy', 503, { retryAfterSeconds: 7 })
+    )
+
+    expect(response.setHeader).toHaveBeenCalledWith(HttpHeaders.RETRY_AFTER, '7')
+  })
+
+  it('leaves the 429 of the rate limiter alone: its guard writes the header, not the filter', () => {
+    const response = run(new ThrottlerException())
+
+    expect(response.status).toHaveBeenCalledWith(429)
+    expect(response.setHeader).not.toHaveBeenCalled()
   })
 })
