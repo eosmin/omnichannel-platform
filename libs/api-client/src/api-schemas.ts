@@ -297,6 +297,9 @@ export const messageSchema = z.object({
   replyTo: quotedMessageSchema.nullable(),
   deliveryStatus: z.string().nullable(),
   deliveryError: z.string().nullable(),
+  // True when a failed reply is known not to have gone (it can be sent again or discarded); optional so that an
+  // answer from before it existed still parses
+  failureDefinitive: z.boolean().nullable().optional(),
   system: systemLineSchema.nullable(),
   location: z
     .object({

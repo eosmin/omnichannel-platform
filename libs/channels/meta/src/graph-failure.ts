@@ -56,6 +56,8 @@ export function graphFailure(
     return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
       ...seen,
       retryable: true,
+      // A throttle: Meta did not do the work
+      refused: true,
       reason: ChannelConnectFailureReasons.PROVIDER_BUSY
     })
   }
@@ -77,10 +79,18 @@ export function graphFailure(
   }
   // The agent can act on this one: pick another template, or wait for the approval
   if (code !== undefined && WhatsAppErrorCodes.TEMPLATE_UNAVAILABLE.some(known => known === code)) {
-    return new PluginError(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED, { ...seen, retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED, {
+      ...seen,
+      retryable: false,
+      refused: true
+    })
   }
   if (code !== undefined && WhatsAppErrorCodes.WINDOW_CLOSED.some(known => known === code)) {
-    return new PluginError(ErrorCodes.CHANNEL_WINDOW_EXPIRED, { ...seen, retryable: false })
+    return new PluginError(ErrorCodes.CHANNEL_WINDOW_EXPIRED, {
+      ...seen,
+      retryable: false,
+      refused: true
+    })
   }
   if (
     status === HttpStatusCodes.UNAUTHORIZED ||
@@ -90,12 +100,15 @@ export function graphFailure(
     return new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
       ...seen,
       retryable: false,
+      refused: true,
       reason: credentialsReasonOf(status, code)
     })
   }
   return new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
     ...seen,
     retryable: false,
+    // Meta answered, and not with a failure of its own (5xx and outages are above): it refused the request
+    refused: true,
     // Meta answers 100 for a field, a permission or a kind of token that it does not take
     ...(code === MetaErrorCodes.INVALID_PARAMETER
       ? { reason: ChannelConnectFailureReasons.REQUEST_REJECTED }

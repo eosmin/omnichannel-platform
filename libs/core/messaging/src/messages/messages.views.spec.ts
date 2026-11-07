@@ -18,6 +18,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   replyToMessageId: null,
   deliveryStatus: null,
   deliveryError: null,
+  failureDefinitive: null,
   mentions: [],
   metadata,
   captionState: null,
@@ -344,5 +345,41 @@ describe('messageView unsupportedType', () => {
     expect(
       messageView({ ...row(metadata), content: '[image]', type: MessageType.IMAGE }).unsupportedType
     ).toBeNull()
+  })
+})
+
+describe('messageView edited and then deleted (W3a)', () => {
+  const edited = {
+    editedAt: new Date('2026-10-30T10:05:00Z'),
+    editedByType: AuthorType.CUSTOMER,
+    editedById: 'u1',
+    pendingContent: 'hola otra vez',
+    editStatus: 'failed',
+    editError: 'CHANNEL_MESSAGE_FAILED',
+    version: 2
+  }
+
+  it('says it was edited while it was only edited', () => {
+    const view = messageView({ ...row(null), ...edited })
+    expect(view.editedAt).toEqual(edited.editedAt)
+    expect(view.content).toBe('hola')
+  })
+
+  it('lets the deletion win: no "edited", no editor, no content, no edit waiting', () => {
+    const view = messageView({
+      ...row(null),
+      ...edited,
+      deletedAt: new Date('2026-10-30T10:10:00Z')
+    })
+    expect(view.editedAt).toBeNull()
+    expect(view.editedByType).toBeNull()
+    expect(view.editedById).toBeNull()
+    expect(view.pendingEdit).toBe(false)
+    expect(view.editStatus).toBeNull()
+    expect(view.editError).toBeNull()
+    expect(view.content).toBeNull()
+    // What says it was deleted, and by whom, stays
+    expect(view.deletedAt).toEqual(new Date('2026-10-30T10:10:00Z'))
+    expect(view.version).toBe(2)
   })
 })
