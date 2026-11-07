@@ -76,7 +76,8 @@ export type MetaReferral = z.infer<typeof metaReferralSchema>
 
 const rawReferral = tolerant(z.record(z.string(), z.unknown()))
 
-export const metaMessageSchema = z.object({
+// Loose: the names of the fields it does not know are logged when the message is of a type we cannot read
+export const metaMessageSchema = z.looseObject({
   mid: boundedId,
   text: optionalText,
   attachments: tolerant(z.array(z.unknown())),
