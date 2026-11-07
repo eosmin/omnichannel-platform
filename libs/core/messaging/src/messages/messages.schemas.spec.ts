@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { MessageType } from '@platform/core/domain'
+import { MediaMessageLimits } from '@platform/core/storage'
 
 import { createMessageSchema } from './messages.schemas'
 
@@ -19,6 +20,12 @@ describe('createMessageSchema, a message with a file', () => {
       expect(createMessageSchema.safeParse(media({ type })).success).toBe(true)
     }
   )
+
+  it('takes several files in order (the channel and the switch decide how many go, later)', () => {
+    const ids = Array.from({ length: MediaMessageLimits.MAX_FILES }, () => randomUUID())
+    const parsed = createMessageSchema.safeParse(media({ mediaIds: ids }))
+    expect(parsed.success && 'mediaIds' in parsed.data ? parsed.data.mediaIds : null).toEqual(ids)
+  })
 
   it('takes a caption, trimmed, and a reply', () => {
     const parsed = createMessageSchema.safeParse(
@@ -41,7 +48,18 @@ describe('createMessageSchema, a message with a file', () => {
   it.each([
     ['no file', { mediaIds: [] }],
     ['no list of files', { mediaIds: undefined }],
-    ['two files', { mediaIds: [randomUUID(), randomUUID()] }],
+    ['no file', { mediaIds: [] }],
+    [
+      'more files than any request may carry',
+      { mediaIds: Array.from({ length: MediaMessageLimits.MAX_FILES + 1 }, () => randomUUID()) }
+    ],
+    [
+      'the same file twice',
+      (() => {
+        const id = randomUUID()
+        return { mediaIds: [id, id] }
+      })()
+    ],
     ['no key', { idempotencyKey: undefined }],
     ['a field it does not know', { mentions: [] }]
   ])('refuses %s', (_name, over) => {

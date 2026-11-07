@@ -39,7 +39,7 @@ export function StoreSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" aria-label={t('switchStore')}>
+        <Button variant="outline" aria-label={t('switchStore')} className="max-w-full min-w-0">
           <span className="max-w-40 truncate">{current?.storeName ?? t('selectStore')}</span>
           <ChevronsUpDown aria-hidden />
         </Button>

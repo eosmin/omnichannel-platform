@@ -11,6 +11,7 @@ import { RedisModule } from '@platform/core/redis'
 import { AuthPlatformModule } from './auth-platform.module'
 import { HealthModule } from './health/health.module'
 import { HttpErrorsModule } from './http-errors.module'
+import { OutboundFlagsPlatformModule } from './outbound-flags-platform.module'
 import { StoragePlatformModule } from './storage-platform.module'
 import { ThrottlerPlatformModule } from './throttler'
 import { TrustProxyModule } from './trust-proxy.module'
@@ -33,6 +34,7 @@ const BRIDGE_MODES = {
     EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
     RedisModule.forRoot({ url: env.REDIS_URL }),
     StoragePlatformModule,
+    OutboundFlagsPlatformModule,
     ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
     AuthPlatformModule,
     TrustProxyModule,

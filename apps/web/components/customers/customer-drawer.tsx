@@ -58,7 +58,7 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
       <SheetHeader>
         <SheetTitle>{t('title')}</SheetTitle>
       </SheetHeader>
-      <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto p-4 md:grid-cols-[260px_1fr]">
+      <div className="relative grid min-h-0 flex-1 gap-6 overflow-y-auto overscroll-contain p-4 md:grid-cols-[260px_1fr]">
         {!mayView ? (
           <p role="alert" className="text-sm md:col-span-2">
             {t('noAccess')}

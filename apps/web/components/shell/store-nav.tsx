@@ -44,7 +44,7 @@ export function StoreNav(): ReactElement {
     }
   ].filter(entry => entry.isShown)
   return (
-    <nav aria-label={t('label')} className="flex items-center gap-1">
+    <nav aria-label={t('label')} className="flex min-w-0 items-center gap-1 overflow-x-auto">
       {entries.map(entry => {
         const isCurrent = pathname.startsWith(entry.match ?? entry.href)
         return (
@@ -53,7 +53,7 @@ export function StoreNav(): ReactElement {
             href={entry.href}
             aria-current={isCurrent ? 'page' : undefined}
             className={cn(
-              'hover:bg-accent rounded-md px-2 py-1 text-sm',
+              'hover:bg-accent shrink-0 rounded-md px-2 py-1 text-sm whitespace-nowrap',
               isCurrent ? 'font-semibold' : 'text-muted-foreground'
             )}
           >
