@@ -78,7 +78,13 @@ export class MessageReactionsService {
         await this.set(tx, target.storeId, target.messageId, reactor, event.reaction.emoji)
       }
     )
-    if (!applied) this.logger.debug({ pluginId }, 'reaction for a message that is not here')
+    // Warn, not debug: the owner must be able to tell "the message was not found" from a screen that does not draw it.
+    // The channel only; no id of the message or the customer leaves.
+    if (!applied)
+      this.logger.warn(
+        { pluginId },
+        'reaction not applied: no message, customer or connection to attach it to'
+      )
     return applied ? ReactionOutcomes.APPLIED : ReactionOutcomes.IGNORED
   }
 
