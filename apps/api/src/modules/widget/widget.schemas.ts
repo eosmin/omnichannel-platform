@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { VISITOR_ID_PATTERN } from '@platform/core/domain'
 
-// The site key is checked by WidgetSites, which answers "not found" for anything that is not one
+// The site key is checked by WidgetSites, which refuses anything that is not one like a site that is not listed
 export const widgetBootstrapSchema = z.strictObject({
   siteKey: z.string().min(1).max(64),
   visitorId: z.string().regex(VISITOR_ID_PATTERN)
