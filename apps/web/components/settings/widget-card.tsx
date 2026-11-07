@@ -61,6 +61,12 @@ function WidgetBody({
   const entries = linesOf(text)
   const changed = draft !== null && entries.join('\n') !== served
   const tooMany = entries.length > WidgetLimits.MAX_ORIGINS
+  // What the site must allow, by directive: where the script comes from, and where the chat connects (the api,
+  // its socket and the bucket of the files). Nothing is listed for a directive the server gave no address for.
+  const directives = [
+    { name: 'script-src', origins: widget.scriptSrc },
+    { name: 'connect-src', origins: widget.connectSrc }
+  ].filter(directive => directive.origins.length > 0)
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -139,16 +145,26 @@ function WidgetBody({
         <MutationError error={savePreChat.error} />
       </section>
 
-      {widget.connectSrc.length > 0 ? (
-        <section className="grid grid-cols-1 gap-1.5" aria-label={t('connectSrc.title')}>
-          <h3 className="text-sm font-semibold">{t('connectSrc.title')}</h3>
-          <p className="text-muted-foreground text-xs">{t('connectSrc.hint')}</p>
-          <code className="bg-muted rounded-md px-2 py-1.5 text-xs break-all">
-            {widget.connectSrc.join(' ')}
-          </code>
-          <div>
-            <CopyButton text={widget.connectSrc.join(' ')} label={t('connectSrc.title')} />
-          </div>
+      {directives.length > 0 ? (
+        <section className="grid grid-cols-1 gap-1.5" aria-label={t('csp.title')}>
+          <h3 className="text-sm font-semibold">{t('csp.title')}</h3>
+          <p className="text-muted-foreground text-xs">{t('csp.hint')}</p>
+          <ul className="grid grid-cols-1 gap-2">
+            {directives.map(directive => (
+              <li key={directive.name} className="grid grid-cols-1 gap-1">
+                <code className="bg-muted rounded-md px-2 py-1.5 text-xs break-all">
+                  {directive.name} {directive.origins.join(' ')}
+                </code>
+                <div>
+                  <CopyButton
+                    text={`${directive.name} ${directive.origins.join(' ')}`}
+                    label={directive.name}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-muted-foreground text-xs">{t('csp.others')}</p>
         </section>
       ) : null}
     </div>

@@ -1021,7 +1021,9 @@
         "sent": "Sent",
         "delivered": "Delivered",
         "read": "Read",
-        "failed": "Not delivered"
+        "failed": "Not delivered",
+        "unconfirmed": "Could not confirm delivery",
+        "unconfirmedNote": "We could not confirm that the customer received it"
       },
       "failedWithReason": "Not delivered: {reason}",
       "mediaLabel": {
@@ -1175,13 +1177,32 @@
         "customReactionTitle": "React with another emoji",
         "customReactionDescription": "Type or paste one emoji.",
         "customReactionLabel": "Emoji",
-        "reply": "Reply"
+        "reply": "Reply",
+        "discard": "Discard",
+        "discardTitle": "Discard this reply?",
+        "discardDescription": "It did not reach the customer and it leaves the conversation for the whole team. The text is kept for 30 days.",
+        "resendTitle": "Send this reply again?",
+        "resendDuplicateDescription": "We could not confirm whether the customer received it. If you send it again they may get it twice.",
+        "resendAnyway": "Send again"
       },
       "location": {
         "untitled": "Shared location",
         "openMap": "Open on the map",
         "openMapAria": "Open on the map: {place}",
         "coordinates": "Coordinates {latitude}, {longitude}"
+      },
+      "contacts": {
+        "list": "Shared contacts",
+        "copyAria": "Copy {value}",
+        "copied": "Copied",
+        "copyFailed": "Could not copy",
+        "kind": {
+          "CELL": "Mobile",
+          "MAIN": "Main",
+          "IPHONE": "iPhone",
+          "HOME": "Home",
+          "WORK": "Work"
+        }
       },
       "audio": {
         "play": "Play audio",
@@ -1437,6 +1458,7 @@
           "OPEN_CUSTOMER": "Open the customer profile"
         },
         "global": {
+          "COMMAND_PALETTE": "Search customers",
           "SEND_MESSAGE": "Send the message",
           "GO_TO_INBOX": "Go to the inbox",
           "GO_TO_CUSTOMERS": "Go to customers"
@@ -1583,6 +1605,14 @@
         "disconnected": "Disconnected"
       },
       "health": {
+        "token": {
+          "never": "The token does not expire.",
+          "expires": "The token expires on {date}.",
+          "expired": "The token expired on {date}. Update it to keep receiving messages.",
+          "expiredUnknownDate": "The token expired. Update it to keep receiving messages.",
+          "invalid": "Meta says the token is no longer valid. Update the token of this connection.",
+          "userToken": "You pasted a user token; you need the one of the Page."
+        },
         "never": "It has not been checked yet.",
         "lastHealthy": "Last working: {date}",
         "errors": {
@@ -1651,9 +1681,10 @@
           "label": "Ask for name, email and phone before the first message",
           "hint": "The visitor fills a short form before they start the chat."
         },
-        "connectSrc": {
+        "csp": {
           "title": "If your site has a strict content security policy",
-          "hint": "Add these addresses to its connect-src directive so that the chat can reach us and upload files."
+          "hint": "Add these addresses to the directives of its policy so that the chat loads, reaches us and uploads files.",
+          "others": "No other directive is needed: the chat draws no frame, image or inline style."
         }
       },
       "templates": {

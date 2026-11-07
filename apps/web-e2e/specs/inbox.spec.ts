@@ -168,9 +168,30 @@ test.describe.serial('the inbox list', () => {
     const sheet = page.getByRole('dialog', { name: en.inbox.shortcuts.title })
     await expect(sheet).toBeVisible()
     await expect(sheet.getByText(en.inbox.shortcuts.labels.list.NEXT_CONVERSATION)).toBeVisible()
+    // The binding of the search is listed, with the words of what it does today
+    await expect(sheet.getByText(en.inbox.shortcuts.labels.global.COMMAND_PALETTE)).toBeVisible()
 
     await page.keyboard.press('Escape')
     await expect(sheet).toBeHidden()
+  })
+
+  // The browser of the suite reports Windows to the app, so `Mod` is Ctrl here
+  test('shortcuts: Cmd/Ctrl+K goes to the search of customers and puts the cursor in it', async () => {
+    await page.goto(AppPaths.store.inbox(storeId))
+    await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
+
+    await page.keyboard.press('Control+k')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
+    const search = page.getByRole('searchbox', { name: en.customers.list.searchLabel })
+    await expect(search).toBeFocused()
+
+    // On that page the same keys bring the cursor back to the box, and a letter typed in it stays text
+    await page.getByRole('heading', { name: en.customers.list.title }).click()
+    await expect(search).not.toBeFocused()
+    await page.keyboard.press('Control+k')
+    await expect(search).toBeFocused()
+    await page.keyboard.type('k')
+    await expect(search).toHaveValue('k')
   })
 
   test('shortcuts: moves through the rows with j and k, ticks with x and resolves with e', async () => {
@@ -390,6 +411,41 @@ test.describe.serial('the inbox list', () => {
     expect(await statusOf(conversationId)).toBe('OPEN')
 
     await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
+    await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
+    await expect(dialog).toBeHidden()
+  })
+
+  test('shortcuts: e opens the options of Resolve and Cmd/Ctrl+Enter confirms from the box of the reason', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    await rowOf(page, storeId, conversationId).focus()
+    await expect.poll(() => focusedRow(page)).toBe(conversationId)
+
+    await page.keyboard.press('e')
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await expect(dialog).toBeVisible()
+    // The focus starts on a field of the form, not on a button: no Tab is spent getting to the choices
+    await expect(dialog.locator('input:focus, select:focus, textarea:focus')).toHaveCount(1)
+    await expect(dialog.getByRole('button', { name: en.common.cancel })).not.toBeFocused()
+    const confirm = dialog.getByRole('button', { name: en.inbox.resolve.confirm })
+    await expect(confirm).toHaveAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter')
+
+    // A plain Enter in the box of the reason is a line break and resolves nothing
+    const reason = dialog.getByLabel(en.inbox.resolve.reason)
+    await reason.fill('Paid')
+    await reason.press('Enter')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+    await expect(dialog).toBeVisible()
+
+    // On Cancel the same keys decide nothing
+    const cancel = dialog.getByRole('button', { name: en.common.cancel })
+    await cancel.focus()
+    await cancel.press('Control+Enter')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+    await expect(dialog).toBeVisible()
+
+    // The suite's browser reports Windows to the app, so `Mod` is Ctrl here
+    await reason.press('Control+Enter')
     await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
     await expect(dialog).toBeHidden()
   })

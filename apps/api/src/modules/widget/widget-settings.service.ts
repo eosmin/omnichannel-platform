@@ -33,6 +33,10 @@ export interface WidgetEmbedView {
   // websocket) and the host of the bucket, where the visitor's browser puts a file on a signed url
   // (TDD_10 §5.4). Origins and nothing else: no path, no query, nothing signed.
   connectSrc: string[]
+  // What a page with a strict `script-src` must list for the snippet to load: the origin of the script. The
+  // widget draws in a shadow root with a constructable stylesheet, and makes no frame, image or inline style,
+  // so no other directive is asked of the site.
+  scriptSrc: string[]
 }
 
 const CONNECTION_SELECT = {
@@ -180,7 +184,8 @@ export class WidgetSettings {
       allowedOrigins,
       preChatEnabled,
       snippet: this.snippetOf(siteKey),
-      connectSrc: await this.connectSrc()
+      connectSrc: await this.connectSrc(),
+      scriptSrc: [new URL(this.config.scriptUrl).origin]
     }
   }
 

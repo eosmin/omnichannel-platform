@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { type ReactElement, useState } from 'react'
+import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -46,6 +46,17 @@ export function ResolveForm({
   const [wantsClosing, setWantsClosing] = useState(defaults.sendClosingMessage)
   const [snippetId, setSnippetId] = useState(defaults.closingSnippetId ?? '')
   const [reason, setReason] = useState('')
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // The form loads after the dialog opens, so the dialog has already put the focus on its close button:
+  // the first field takes it, and the agent starts where the choices are (Cancel and Resolve never take it)
+  useEffect(() => {
+    formRef.current
+      ?.querySelector<HTMLElement>(
+        'input:not(:disabled), select:not(:disabled), textarea:not(:disabled)'
+      )
+      ?.focus()
+  }, [])
 
   const list = snippets.data ?? []
   // Without a snippet chosen, the first one of the list is what the select shows
@@ -73,10 +84,27 @@ export function ResolveForm({
 
   return (
     <form
+      ref={formRef}
       className="flex flex-col gap-4"
       onSubmit={event => {
         event.preventDefault()
         if (!resolve.isPending) submit()
+      }}
+      // Cmd/Ctrl+Enter confirms from any field, as it sends in the composer: `e` then the pair resolves
+      // without the four Tab to the button (the Enter of the box of the reason stays a line break)
+      onKeyDown={event => {
+        if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
+        // Held down, or confirming a candidate of an input method, it is not a decision; on Cancel or a link
+        // the keys keep their own meaning
+        if (event.repeat || event.nativeEvent.isComposing) return
+        if (
+          !(event.target instanceof HTMLElement) ||
+          !event.target.matches('input, select, textarea')
+        ) {
+          return
+        }
+        event.preventDefault()
+        if (!resolve.isPending && !isMissingClosing) submit()
       }}
     >
       <fieldset disabled={resolve.isPending} className="flex flex-col gap-2">
@@ -154,7 +182,13 @@ export function ResolveForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={resolve.isPending}>
           {tAll('common.cancel')}
         </Button>
-        <Button type="submit" disabled={resolve.isPending || isMissingClosing}>
+        <Button
+          type="submit"
+          disabled={resolve.isPending || isMissingClosing}
+          aria-keyshortcuts={
+            resolve.isPending || isMissingClosing ? undefined : 'Control+Enter Meta+Enter'
+          }
+        >
           {resolve.isPending ? t('resolving') : t('confirm')}
         </Button>
       </DialogFooter>

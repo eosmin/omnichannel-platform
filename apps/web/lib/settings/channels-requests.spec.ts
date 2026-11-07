@@ -56,14 +56,16 @@ const connection = {
   lastError: null,
   createdAt: '2026-11-01T10:00:00.000Z',
   capabilities: ['text', 'templates'],
-  profile: null
+  profile: null,
+  tokenExpiry: { state: 'unknown', expiresAt: null, checkedAt: null, kind: 'unknown' }
 }
 const widget = {
   siteKey: 'pk_widget_x',
   allowedOrigins: ['https://a.com'],
   preChatEnabled: false,
   snippet: '<script></script>',
-  connectSrc: ['https://api.example.com']
+  connectSrc: ['https://api.example.com'],
+  scriptSrc: ['https://cdn.example.com']
 }
 const entry = {
   id: 'whatsapp',
@@ -90,6 +92,33 @@ describe('the channel requests', () => {
     const [url, init] = call()
     expect(url).toBe('https://api.example.com/api/v1/channels/connections?state=live')
     expect((init?.headers as Record<string, string>)[TenantHeaders.STORE_ID]).toBe('s1')
+  })
+
+  it('keeps what the platform learned of the token, and takes a server that says nothing for not knowing', async () => {
+    const known = {
+      state: 'expires',
+      expiresAt: '2026-12-01T00:00:00.000Z',
+      checkedAt: '2026-11-07T00:00:00.000Z',
+      kind: 'page'
+    }
+    const withoutIt: Record<string, unknown> = { ...connection }
+    delete withoutIt['tokenExpiry']
+    const { client } = setup({
+      data: [
+        { ...connection, tokenExpiry: known },
+        withoutIt,
+        { ...connection, tokenExpiry: 'soon' }
+      ],
+      nextCursor: null,
+      hasMore: false
+    })
+
+    const read = await fetchConnections(client, 's1', 'live', null)
+
+    expect(read.data[0]?.tokenExpiry).toEqual(known)
+    // An older server, or an answer that does not fit: nothing is said of the token, and never that it expired
+    expect(read.data[1]?.tokenExpiry).toEqual(connection.tokenExpiry)
+    expect(read.data[2]?.tokenExpiry).toEqual(connection.tokenExpiry)
   })
 
   it('keeps a status and a capability it does not know as the text it came as', async () => {

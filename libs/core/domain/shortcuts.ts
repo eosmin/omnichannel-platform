@@ -66,8 +66,9 @@ export const ListKeyAliases = {
   PREVIOUS_CONVERSATION: 'ArrowUp'
 } as const
 
-// The bindings the screen handles today. The help sheet lists only these: search and the palette wait
-// for Step 5.1; the jump to orders and `Shift+O` wait for the pages they open.
+// The bindings the screen handles today. The help sheet lists only these: the search of conversations
+// waits for Step 5.1, and until then `Mod+K` goes to the search of customers (the palette of Step 5.1
+// takes the binding over); the jump to orders and `Shift+O` wait for the pages they open.
 export const AvailableShortcuts = {
   list: [
     'NEXT_CONVERSATION',
@@ -91,7 +92,7 @@ export const AvailableShortcuts = {
     'SNOOZE',
     'OPEN_CUSTOMER'
   ],
-  global: ['SEND_MESSAGE', 'GO_TO_INBOX', 'GO_TO_CUSTOMERS']
+  global: ['COMMAND_PALETTE', 'SEND_MESSAGE', 'GO_TO_INBOX', 'GO_TO_CUSTOMERS']
 } as const satisfies {
   [Group in keyof typeof Shortcuts]: readonly (keyof (typeof Shortcuts)[Group])[]
 }
