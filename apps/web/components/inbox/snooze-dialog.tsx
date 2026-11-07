@@ -2,7 +2,6 @@
 
 import { useLocale, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ConversationLimits } from '@platform/core/domain'
 
@@ -15,6 +14,7 @@ import {
 } from '../../lib/inbox/snooze-presets'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import { useInboxBehavior } from '../../lib/inbox/use-inbox-data'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

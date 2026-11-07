@@ -2,12 +2,12 @@
 
 import { useTranslations } from 'next-intl'
 import { useCallback } from 'react'
-import { toast } from 'sonner'
 
 import { StorageKeys } from '@platform/api-client'
 
 import { apiClient } from '../api'
 import { webEnv } from '../env'
+import { toast } from '../toast'
 import { useErrorText } from '../use-error-text'
 
 import { PushSubscribeResult, pushPermission, subscribeToPush } from './push-browser'

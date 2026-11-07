@@ -3,7 +3,6 @@
 import { Clock, CornerUpLeft, Paperclip, Send, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import {
@@ -43,6 +42,7 @@ import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { useRoleLabel } from '../../lib/role-label'
 import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useProfile } from '../../lib/use-profile'

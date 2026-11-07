@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { StoreView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -20,6 +19,7 @@ import {
 } from '../../lib/settings/store-form'
 import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import { useOrganizationStore, useUpdateStore } from '../../lib/settings/use-settings-data'
+import { toast } from '../../lib/toast'
 
 const valuesOf = (store: StoreView): StoreFormValues => ({
   name: store.name,
