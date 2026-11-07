@@ -94,6 +94,15 @@ export function ResolveForm({
       // without the four Tab to the button (the Enter of the box of the reason stays a line break)
       onKeyDown={event => {
         if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
+        // Held down, or confirming a candidate of an input method, it is not a decision; on Cancel or a link
+        // the keys keep their own meaning
+        if (event.repeat || event.nativeEvent.isComposing) return
+        if (
+          !(event.target instanceof HTMLElement) ||
+          !event.target.matches('input, select, textarea')
+        ) {
+          return
+        }
         event.preventDefault()
         if (!resolve.isPending && !isMissingClosing) submit()
       }}
@@ -176,7 +185,9 @@ export function ResolveForm({
         <Button
           type="submit"
           disabled={resolve.isPending || isMissingClosing}
-          aria-keyshortcuts="Control+Enter Meta+Enter"
+          aria-keyshortcuts={
+            resolve.isPending || isMissingClosing ? undefined : 'Control+Enter Meta+Enter'
+          }
         >
           {resolve.isPending ? t('resolving') : t('confirm')}
         </Button>

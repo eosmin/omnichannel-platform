@@ -416,6 +416,13 @@ test.describe.serial('the inbox list', () => {
     expect(await statusOf(conversationId)).toBe('OPEN')
     await expect(dialog).toBeVisible()
 
+    // On Cancel the same keys decide nothing
+    const cancel = dialog.getByRole('button', { name: en.common.cancel })
+    await cancel.focus()
+    await cancel.press('Control+Enter')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+    await expect(dialog).toBeVisible()
+
     // The suite's browser reports Windows to the app, so `Mod` is Ctrl here
     await reason.press('Control+Enter')
     await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
