@@ -326,7 +326,7 @@ download path verify that prefix against the current store before touching the o
 |---|---|
 | Node.js | `24.20.0` (engines `>=22`) — used in Docker images, CI and Cloud Build |
 | TypeScript | `5.9.3` — TypeScript 7.x is not adopted until `typescript-eslint`, `ts-jest`, Nx and NestJS declare support |
-| Nx | `23.2.0` |
+| Nx | `24.0.4` |
 | pnpm | `11.25.0` |
 
 **Frontend**
@@ -480,7 +480,7 @@ phase starts (YAGNI).
 |---|---|
 | `eslint` | `10.9.1` — flat config only (`eslint.config.js`) |
 | `typescript-eslint` | `8.69.0` |
-| `@nx/eslint-plugin` | `23.2.0` |
+| `@nx/eslint-plugin` | `24.0.4` |
 | `eslint-plugin-import-x` | `4.16.1` |
 | `eslint-import-resolver-typescript` | `4.4.5` — import-x loads it by name; without it lint fails when `NODE_ENV=test` |
 | `prettier` | `3.9.6` |
@@ -491,7 +491,7 @@ phase starts (YAGNI).
 | `tsx` | `4.20.5` |
 | `@eslint/js` | `10.0.1` |
 | `@next/eslint-plugin-next` | `16.4.3` |
-| `@nx/eslint`, `@nx/jest`, `@nx/js` | `23.2.0` |
+| `@nx/eslint`, `@nx/jest`, `@nx/js` | `24.0.4` |
 | `@nestjs/cli` | `12.0.10` — builds `api` and `worker` with the Rspack builder, the default of Nest 12 for monorepos |
 | `@rspack/core` | `2.2.9` |
 | `webpack-node-externals`, `tsconfig-paths-webpack-plugin` | `3.0.0`, `4.2.0` — required by the Rspack builder of the Nest CLI |
