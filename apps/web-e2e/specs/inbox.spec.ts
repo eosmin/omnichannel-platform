@@ -168,9 +168,30 @@ test.describe.serial('the inbox list', () => {
     const sheet = page.getByRole('dialog', { name: en.inbox.shortcuts.title })
     await expect(sheet).toBeVisible()
     await expect(sheet.getByText(en.inbox.shortcuts.labels.list.NEXT_CONVERSATION)).toBeVisible()
+    // The binding of the search is listed, with the words of what it does today
+    await expect(sheet.getByText(en.inbox.shortcuts.labels.global.COMMAND_PALETTE)).toBeVisible()
 
     await page.keyboard.press('Escape')
     await expect(sheet).toBeHidden()
+  })
+
+  // The browser of the suite reports Windows to the app, so `Mod` is Ctrl here
+  test('shortcuts: Cmd/Ctrl+K goes to the search of customers and puts the cursor in it', async () => {
+    await page.goto(AppPaths.store.inbox(storeId))
+    await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
+
+    await page.keyboard.press('Control+k')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
+    const search = page.getByRole('searchbox', { name: en.customers.list.searchLabel })
+    await expect(search).toBeFocused()
+
+    // On that page the same keys bring the cursor back to the box, and a letter typed in it stays text
+    await page.getByRole('heading', { name: en.customers.list.title }).click()
+    await expect(search).not.toBeFocused()
+    await page.keyboard.press('Control+k')
+    await expect(search).toBeFocused()
+    await page.keyboard.type('k')
+    await expect(search).toHaveValue('k')
   })
 
   test('shortcuts: moves through the rows with j and k, ticks with x and resolves with e', async () => {

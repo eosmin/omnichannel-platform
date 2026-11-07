@@ -1457,6 +1457,7 @@
           "OPEN_CUSTOMER": "Abrir el perfil del cliente"
         },
         "global": {
+          "COMMAND_PALETTE": "Buscar clientes",
           "SEND_MESSAGE": "Enviar el mensaje",
           "GO_TO_INBOX": "Ir a la bandeja",
           "GO_TO_CUSTOMERS": "Ir a clientes"
