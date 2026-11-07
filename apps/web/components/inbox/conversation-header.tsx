@@ -37,7 +37,7 @@ export function ConversationHeader({ conversationId }: { conversationId: string 
     <Link
       href={`${AppPaths.store.inbox(storeId)}${search}`}
       aria-label={t('backToList')}
-      className="hover:bg-accent focus-visible:ring-ring flex size-9 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-2 md:hidden"
+      className="hover:bg-accent focus-visible:ring-ring flex size-9 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-2 md:hidden pointer-coarse:size-10"
     >
       <ArrowLeft aria-hidden className="size-4" />
     </Link>

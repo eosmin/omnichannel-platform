@@ -170,6 +170,11 @@ test.describe.serial('the inbox list', () => {
     await expect(sheet.getByText(en.inbox.shortcuts.labels.list.NEXT_CONVERSATION)).toBeVisible()
     // The binding of the search is listed, with the words of what it does today
     await expect(sheet.getByText(en.inbox.shortcuts.labels.global.COMMAND_PALETTE)).toBeVisible()
+    // With no conversation open the keys of a conversation do nothing, so the sheet does not list them
+    const groups = en.inbox.shortcuts.groups
+    await expect(sheet.getByRole('heading', { name: groups.list })).toBeVisible()
+    await expect(sheet.getByRole('heading', { name: groups.global })).toBeVisible()
+    await expect(sheet.getByRole('heading', { name: groups.conversation })).toHaveCount(0)
 
     await page.keyboard.press('Escape')
     await expect(sheet).toBeHidden()
@@ -190,6 +195,21 @@ test.describe.serial('the inbox list', () => {
     await page.keyboard.press('g')
     await page.keyboard.press('i')
     await expect(page).toHaveURL(new RegExp(`${AppPaths.store.inbox(storeId)}`))
+  })
+
+  test('shortcuts: the help sheet lists the keys of the open conversation too', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await page.keyboard.press('?')
+    const sheet = page.getByRole('dialog', { name: en.inbox.shortcuts.title })
+    // The list stays beside the conversation on a wide screen: all three groups work
+    for (const group of Object.values(en.inbox.shortcuts.groups)) {
+      await expect(sheet.getByRole('heading', { name: group })).toBeVisible()
+    }
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
   })
 
   // The browser of the suite reports Windows to the app, so `Mod` is Ctrl here

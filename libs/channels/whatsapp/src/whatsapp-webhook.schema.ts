@@ -147,14 +147,19 @@ export type WhatsAppStatus = z.infer<typeof whatsAppStatusSchema>
 export const whatsAppContactSchema = z.object({
   wa_id: z.string().optional(),
   user_id: z.string().optional(),
-  profile: z.object({ name: z.string() }).optional()
+  // A name that is not text costs the name, not the ids beside it
+  profile: z
+    .object({ name: z.string().optional().catch(undefined) })
+    .optional()
+    .catch(undefined)
 })
 
 // The envelope is strict and its items are not: a batch holds many messages and statuses, and one
 // that does not fit must cost only itself, not the ones beside it (Meta does not send them again).
 const changeValueSchema = z.object({
   metadata: z.object({ phone_number_id: messageId }),
-  contacts: z.array(z.unknown()).optional(),
+  // Only names: a list that is not one costs the names, never the messages beside it
+  contacts: tolerant(z.array(z.unknown())),
   messages: z.array(z.unknown()).optional(),
   statuses: z.array(z.unknown()).optional(),
   message_echoes: z.array(z.unknown()).optional()

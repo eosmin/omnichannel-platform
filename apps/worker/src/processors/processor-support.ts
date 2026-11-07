@@ -17,6 +17,10 @@ import { QueuesRegistry } from '@platform/core/queues-module'
 
 const MS_PER_SECOND = 1000
 
+// Jobs whose data is an address typed by whoever asked, account or not: the dead-letter copy keeps
+// the name, the id and the error, never the address
+const REDACTED_JOBS: ReadonlySet<string> = new Set([JobNames.REQUEST_MAGIC_LINK])
+
 // What every processor shares (TDD_07 §1.5): structured logging, the queue metrics and the route to
 // the dead-letter queue once the attempts are spent.
 @Injectable()
@@ -64,7 +68,7 @@ export class ProcessorSupport {
       originalQueue: queue,
       originalJobName: job.name as JobName, // Job.name is a string; only our own producers add jobs to these queues
       originalJobId: job.id,
-      originalData: job.data,
+      originalData: REDACTED_JOBS.has(job.name) ? null : job.data,
       error: error.message,
       failedAt: new Date().toISOString()
     }
