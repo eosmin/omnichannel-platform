@@ -102,6 +102,8 @@ export const MetaOAuth = {
   // number would be a call for every one of them
   LIST_LIMIT: '100',
   MAX_BUSINESSES: 25,
+  // The Pages the person ticked in the dialog of Facebook (`granular_scopes` of `debug_token`): how many are read
+  MAX_GRANTED_PAGES: 25,
   ASSET_NAME_MAX_LENGTH: 200,
   // The portfolios asked about at the same time, so that a person with many does not cost a call after another
   OWNED_PAGES_CONCURRENCY: 5,
@@ -131,3 +133,10 @@ export const MetaOAuthScopes = {
 } as const
 
 export type MetaOAuthScope = (typeof MetaOAuthScopes)[keyof typeof MetaOAuthScopes]
+
+// The permissions whose targets in `granular_scopes` are Pages (the target of `instagram_basic` is an account)
+export const MetaGrantedPageScopes: readonly string[] = [
+  MetaOAuthScopes.PAGES_SHOW_LIST,
+  MetaOAuthScopes.PAGES_MESSAGING,
+  MetaOAuthScopes.PAGES_MANAGE_METADATA
+]

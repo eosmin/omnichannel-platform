@@ -61,6 +61,11 @@ const LOGIN_PERMISSIONS = [
 export const TEMPLATE_NAME = 'order_update'
 export const TEMPLATE_LANGUAGE = 'en_US'
 export const TEMPLATE_BODY = 'Hello {{1}}, your order {{2}} is on its way.'
+// A template as a real account has them: a long name in one piece and a tracking link in the body, neither
+// of which has a place to break. The dialog of templates must hold them on a phone (MODAL-390)
+export const LONG_TEMPLATE_NAME = 'shipment_notification_with_tracking_link_and_delivery_window_v2'
+export const LONG_TEMPLATE_BODY =
+  'Track it at https://tracking.example.com/shipments/0123456789abcdef0123456789abcdef/status?lang=en_US'
 
 export interface SentToGraph {
   to: string
@@ -145,6 +150,12 @@ export async function startFakeGraph(): Promise<FakeGraph> {
               language: TEMPLATE_LANGUAGE,
               status: WhatsAppTemplateStatuses.APPROVED,
               components: [{ type: WhatsAppTemplateComponents.BODY, text: TEMPLATE_BODY }]
+            },
+            {
+              name: LONG_TEMPLATE_NAME,
+              language: TEMPLATE_LANGUAGE,
+              status: WhatsAppTemplateStatuses.APPROVED,
+              components: [{ type: WhatsAppTemplateComponents.BODY, text: LONG_TEMPLATE_BODY }]
             }
           ]
         })

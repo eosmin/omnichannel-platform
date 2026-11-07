@@ -1759,7 +1759,7 @@
           "loading": "Loading your Pages…",
           "close": "Close",
           "legend": "Available Pages",
-          "none": "Facebook did not show any Page. Type the ID number of your Page.",
+          "none": "Facebook did not show any Page. Connect again and tick your Page in the Facebook dialog, or type the ID number of your Page.",
           "noInstagram": "No Instagram account linked",
           "instagram": "Instagram: @{username}",
           "typedLabel": "ID number of the Page",

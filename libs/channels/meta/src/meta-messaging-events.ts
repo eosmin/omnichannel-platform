@@ -9,7 +9,8 @@ import {
   OriginKinds,
   OriginMediaTypes,
   placeTextOf,
-  ReactionActors
+  ReactionActors,
+  UnsupportedShapeLimits
 } from '@platform/core/domain'
 import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
 
@@ -210,6 +211,46 @@ function placeOf(attachments: ParsedAttachment[]): {
 // What a message says, in the shape the core stores. A message with neither text nor a file we can
 // fetch is kept as a text with no content and the provider's type in the metadata, so the customer's
 // message is never lost and the interface decides how to show it.
+// What the team needs to map a type this plugin cannot read, without a value of the customer: the names
+// of the fields (the payload to two levels, `coordinates.lat`), never what they hold. Bounded, and a name that is not
+// plain is left out, because it is the sender's.
+const SHAPE_NAME = new RegExp(`^[A-Za-z0-9_]{1,${UnsupportedShapeLimits.NAME_MAX_LENGTH}}$`)
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+// The top-level names come first and are capped alone, so nested ones never push them out
+function plainNames(value: unknown, deep = false): string[] {
+  if (!isRecord(value)) return []
+  const top = Object.keys(value)
+    .filter(name => SHAPE_NAME.test(name))
+    .slice(0, UnsupportedShapeLimits.MAX_NAMES)
+  if (!deep) return top
+  const nested = top.flatMap(name =>
+    Object.keys(isRecord(value[name]) ? value[name] : {})
+      .filter(inner => SHAPE_NAME.test(inner))
+      .slice(0, UnsupportedShapeLimits.MAX_NESTED_NAMES)
+      .map(inner => `${name}.${inner}`)
+  )
+  return [...top, ...nested].slice(0, UnsupportedShapeLimits.MAX_NAMES)
+}
+
+export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, unknown> {
+  return {
+    messageFields: plainNames(message),
+    attachments: raw.slice(0, UnsupportedShapeLimits.MAX_ATTACHMENTS).map(item => {
+      const record = isRecord(item) ? item : {}
+      const type = record.type
+      return {
+        type: typeof type === 'string' && SHAPE_NAME.test(type) ? type : UNSUPPORTED_TYPE,
+        fields: plainNames(record),
+        payloadFields: plainNames(record.payload, true)
+      }
+    })
+  }
+}
+
 // The type name of a message that answers a story
 const STORY_REPLY = 'story_reply'
 
@@ -290,6 +331,7 @@ function toReceivedMessage(
     metadata: {
       [MessageMetadataKeys.ATTACHMENT_TYPE]: providerType,
       [MessageMetadataKeys.UNSUPPORTED_TYPE]: providerType,
+      [MessageMetadataKeys.UNSUPPORTED_SHAPE]: shapeOf(message, message.attachments ?? []),
       ...(shared?.url ? { attachmentUrl: shared.url } : {})
     }
   }

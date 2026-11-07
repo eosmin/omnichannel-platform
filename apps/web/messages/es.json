@@ -1759,7 +1759,7 @@
           "loading": "Cargando tus Páginas…",
           "close": "Cerrar",
           "legend": "Páginas disponibles",
-          "none": "Facebook no mostró ninguna Página. Escribe el número de identificación de tu Página.",
+          "none": "Facebook no mostró ninguna Página. Vuelve a conectar y marca tu Página en el diálogo de Facebook, o escribe el número de identificación de tu Página.",
           "noInstagram": "Sin Instagram vinculado",
           "instagram": "Instagram: @{username}",
           "typedLabel": "Número de identificación de la Página",

@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test'
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -21,6 +22,7 @@ async function createRule(page: Page, name: string, keyword: string): Promise<vo
   await page.getByRole('button', { name: routing.create }).click()
   const dialog = page.getByRole('dialog', { name: routing.dialog.createTitle })
   await dialog.getByLabel(routing.dialog.name, { exact: true }).fill(name)
+  await expectDialogFitsThePhoneWidth(page, dialog)
   await dialog.getByLabel(routing.dialog.keywords).fill(keyword)
   await dialog.getByRole('button', { name: routing.dialog.save }).click()
   await expect(page.getByRole('heading', { name: new RegExp(name) })).toBeVisible()
