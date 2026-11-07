@@ -280,7 +280,7 @@ export function MediaGallery({
           ) : null}
         </div>
         <MutationError error={downloadAll.error} />
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {gallery.isError && gallery.data === undefined ? (
             <div role="alert" className="flex flex-col items-start gap-2 text-sm">
               <p>{t('failed')}</p>
