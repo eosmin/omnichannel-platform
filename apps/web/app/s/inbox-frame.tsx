@@ -61,7 +61,9 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
     <div className="flex min-h-0 min-w-0 flex-1">
       <div
         className={cn(
-          'flex w-full min-w-0 flex-col border-r md:w-[280px] md:shrink-0',
+          // On a phone the filters and the list are one column that scrolls as a whole (the filters alone can be
+          // taller than the window); from `md` the list scrolls on its own below the filters
+          'flex w-full min-w-0 flex-col border-r max-md:overflow-y-auto md:w-[280px] md:shrink-0',
           isOpen && 'hidden md:flex'
         )}
       >
