@@ -67,6 +67,20 @@ describe('queryKeysForEvent', () => {
     ).toEqual(expected)
   })
 
+  it("moves the preview of the row when the channel takes a message, also the owner's echo (HIL-22)", () => {
+    expect(queryKeysForEvent(RealtimeEvents.MESSAGE_SENT, { conversationId: 'c1' }, 's1')).toEqual([
+      QueryKeys.conversations.all('s1'),
+      QueryKeys.messages.thread('s1', 'c1')
+    ])
+  })
+
+  it('refreshes the list and every thread when a message is taken and the payload does not say which', () => {
+    expect(queryKeysForEvent(RealtimeEvents.MESSAGE_SENT, null, 's1')).toEqual([
+      QueryKeys.conversations.all('s1'),
+      QueryKeys.messages.all('s1')
+    ])
+  })
+
   it('moves the preview of the row when a message is edited or deleted, from this or another tab', () => {
     const expected = [QueryKeys.conversations.all('s1'), QueryKeys.messages.thread('s1', 'c1')]
     expect(
@@ -158,10 +172,10 @@ describe('queryKeysForEvent', () => {
   })
 
   it('refreshes every thread when the payload does not say which one', () => {
-    expect(queryKeysForEvent(RealtimeEvents.MESSAGE_SENT, { nothing: true }, 's1')).toEqual([
+    expect(queryKeysForEvent(RealtimeEvents.MESSAGE_DELIVERED, { nothing: true }, 's1')).toEqual([
       QueryKeys.messages.all('s1')
     ])
-    expect(queryKeysForEvent(RealtimeEvents.MESSAGE_SENT, null, 's1')).toEqual([
+    expect(queryKeysForEvent(RealtimeEvents.MESSAGE_DELIVERED, null, 's1')).toEqual([
       QueryKeys.messages.all('s1')
     ])
   })

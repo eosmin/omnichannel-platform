@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { type ReactElement, useState } from 'react'
+import { type ReactElement, useEffect, useState } from 'react'
 
 import { type BulkOperation, AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -21,6 +21,9 @@ import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { type BulkPick, BulkPicks } from './bulk-picks'
 import { useConversationControls } from './conversation-controls'
 import { BulkPickDialog } from './lazy-dialogs'
+
+// How long a key pressed before the settings of the store arrive waits for them
+const RESOLVE_WAIT_MS = 5000
 
 // The keys of the open conversation (TDD_09 §9). Each works only where its button would be offered: with
 // its permission and in a state that allows it. The reply box and the note keys are the composer's.
@@ -47,6 +50,23 @@ export function ConversationShortcuts({
   const mayAssign =
     can(ClientPermissions.CONVERSATIONS_RESOLVE) || can(ClientPermissions.CONVERSATIONS_ASSIGN)
   const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
+
+  const [isResolveWaiting, setResolveWhenReady] = useState(false)
+  const { isReady: isResolveReady, start: startResolve } = resolve
+  // The key waits only a short while, for this conversation and while the agent may still resolve it: a request
+  // that outlives that (the settings were slow, the conversation changed or was closed meanwhile) is dropped, so
+  // that a resolve never starts that the agent did not ask for at that moment
+  useEffect(() => {
+    if (!isResolveWaiting) return undefined
+    const timer = setTimeout(() => setResolveWhenReady(false), RESOLVE_WAIT_MS)
+    return () => clearTimeout(timer)
+  }, [isResolveWaiting])
+  useEffect(() => setResolveWhenReady(false), [conversationId])
+  useEffect(() => {
+    if (!isResolveWaiting || !isResolveReady) return
+    setResolveWhenReady(false)
+    if (mayChange && mayResolve) startResolve()
+  }, [isResolveWaiting, isResolveReady, startResolve, mayChange, mayResolve])
 
   const run = (operation: BulkOperation): void => {
     if (detail === undefined || !runner.claim()) return
@@ -89,11 +109,16 @@ export function ConversationShortcuts({
       }),
     { ...keyboard, enabled: mayChange && mayResolve }
   )
-  // Resolving keeps the flow of the header: the reason and the closing message of the store
-  useShortcut(Shortcuts.conversation.MARK_RESOLVED, resolve.start, {
-    ...keyboard,
-    enabled: mayChange && mayResolve && resolve.isReady
-  })
+  // Resolving keeps the flow of the header: the reason and the closing message of the store. The flow needs the
+  // settings of the store; a key pressed before they arrive is not lost: the flow starts when they do.
+  useShortcut(
+    Shortcuts.conversation.MARK_RESOLVED,
+    () => {
+      if (resolve.isReady) resolve.start()
+      else setResolveWhenReady(true)
+    },
+    { ...keyboard, enabled: mayChange && mayResolve }
+  )
   useShortcut(
     Shortcuts.conversation.OPEN_CUSTOMER,
     () => {
