@@ -7,9 +7,10 @@ import { type ReactElement, type ReactNode, useState } from 'react'
 
 import type { MessageView } from '@platform/api-client'
 import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/domain'
-import { mediaMessageTypeOf } from '@platform/core/storage'
+import type { OutboundMediaType } from '@platform/core/storage'
 
 import { displayFileNameOf } from '../../lib/inbox/file-label'
+import { mediaKindOf } from '../../lib/inbox/media-kind'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrlReads, useMediaUrls } from '../../lib/media/use-media-urls'
@@ -56,7 +57,8 @@ export function MessageMedia({
   messageId,
   conversationId,
   canRefetch,
-  sticker = false
+  sticker = false,
+  messageType
 }: {
   files: readonly MediaFile[]
   unavailable: readonly UnavailableFile[]
@@ -64,13 +66,21 @@ export function MessageMedia({
   conversationId: string
   canRefetch: boolean
   sticker?: boolean
+  // The type of the message: a voice note that is an mp4 is drawn by the player of audio (`mediaKindOf`)
+  messageType: string
 }): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
   if (files.length === 0 && unavailable.length === 0) return null
   return (
     <div className="flex flex-col gap-1.5">
       {files.map(file => (
-        <MediaItem key={file.id} file={file} onOpen={setOpen} sticker={sticker} />
+        <MediaItem
+          key={file.id}
+          file={file}
+          onOpen={setOpen}
+          sticker={sticker}
+          messageType={messageType}
+        />
       ))}
       {unavailable.map(file => (
         <UnavailableItem
@@ -197,14 +207,16 @@ function UnavailableItem({
 function MediaItem({
   file,
   onOpen,
-  sticker
+  sticker,
+  messageType
 }: {
   file: MediaFile
   onOpen: (file: LightboxFile) => void
   sticker: boolean
+  messageType: string
 }): ReactElement {
   const tKind = useTranslations('inbox.thread.mediaLabel')
-  const kind = mediaMessageTypeOf(file.contentType)
+  const kind = mediaKindOf(messageType, file.contentType)
   // A file with no name of its own is called by its kind (Audio, Imagen, Documento), not "file"
   const shown = displayFileNameOf(file.filename, kind ?? '')
   const name = shown.kind === 'name' ? shown.name : labelOf(tKind, shown.type)
@@ -233,7 +245,7 @@ function MediaBody({
   file: MediaFile
   onOpen: (file: LightboxFile) => void
   sticker: boolean
-  kind: ReturnType<typeof mediaMessageTypeOf>
+  kind: OutboundMediaType | null
   name: string
 }): ReactElement {
   const t = useTranslations('inbox.thread.media')
