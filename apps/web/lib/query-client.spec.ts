@@ -1,9 +1,9 @@
 import { onlineManager } from '@tanstack/react-query'
 
 import { ApiError } from '@platform/api-client'
-import { ErrorCodes } from '@platform/core/errors'
+import { ClientErrorCodes, ErrorCodes } from '@platform/core/errors'
 
-import { createQueryClient, shouldRetry } from './query-client'
+import { createQueryClient, retryDelayOf, shouldRetry } from './query-client'
 
 describe('the query client of the app', () => {
   afterEach(() => onlineManager.setOnline(true))
@@ -29,5 +29,34 @@ describe('the query client of the app', () => {
     expect(shouldRetry(0, new ApiError(503, ErrorCodes.INTERNAL_ERROR, 'x'))).toBe(true)
     expect(shouldRetry(0, new ApiError(403, ErrorCodes.PERMISSION_DENIED, 'x'))).toBe(false)
     expect(shouldRetry(0, new Error('x'))).toBe(false)
+  })
+
+  it('retries a busy database once, not twice, and a plain 503 still twice', () => {
+    const busy = new ApiError(503, ClientErrorCodes.DATABASE_BUSY, 'The service is busy', null, {
+      retryAfterSeconds: 5
+    })
+    expect(shouldRetry(0, busy)).toBe(true)
+    expect(shouldRetry(1, busy)).toBe(false)
+    const plain = new ApiError(503, ErrorCodes.INTERNAL_ERROR, 'x')
+    expect(shouldRetry(1, plain)).toBe(true)
+    expect(shouldRetry(2, plain)).toBe(false)
+  })
+
+  it('waits for the retry as long as the api asked, else the default growth', () => {
+    const busy = (metadata: Record<string, unknown>): ApiError =>
+      new ApiError(503, ClientErrorCodes.DATABASE_BUSY, 'busy', null, metadata)
+    expect(retryDelayOf(0, busy({ retryAfterSeconds: 5 }))).toBe(5000)
+    expect(retryDelayOf(0, busy({ retryAfterSeconds: 4.2 }))).toBe(5000)
+    expect(retryDelayOf(0, busy({ retryAfterSeconds: 999 }))).toBe(30_000)
+    // No usable number: the default growth
+    expect(retryDelayOf(0, busy({}))).toBe(1000)
+    expect(retryDelayOf(1, busy({ retryAfterSeconds: 'soon' }))).toBe(2000)
+    expect(retryDelayOf(2, new ApiError(500, ErrorCodes.INTERNAL_ERROR, 'x'))).toBe(4000)
+  })
+
+  it('wires both rules into the queries of the app', () => {
+    const queries = createQueryClient().getDefaultOptions().queries
+    expect(queries?.retry).toBe(shouldRetry)
+    expect(queries?.retryDelay).toBe(retryDelayOf)
   })
 })
