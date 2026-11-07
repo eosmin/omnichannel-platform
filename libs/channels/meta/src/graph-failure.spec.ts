@@ -13,14 +13,20 @@ describe('graphFailure', () => {
     expect(error.retryable).toBe(false)
   })
 
-  it.each([4, 17, 80008, 2])(
-    'asks to try again for the code %i even when Meta answers it with HTTP 403',
+  it.each([4, 17, 80008])(
+    'asks to try again for the throttle code %i even when Meta answers it with HTTP 403',
     code => {
       const error = graphFailure(403, graphError(code))
-      expect(error.code).toBe(ErrorCodes.CHANNEL_MESSAGE_FAILED)
+      expect(error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
       expect(error.retryable).toBe(true)
     }
   )
+
+  it('asks to try again for the outage code 2 even when Meta answers it with HTTP 403', () => {
+    const error = graphFailure(403, graphError(2))
+    expect(error.code).toBe(ErrorCodes.CHANNEL_MESSAGE_FAILED)
+    expect(error.retryable).toBe(true)
+  })
 
   it('says there is no profile, for good, when Meta has none to show', () => {
     const error = graphFailure(400, graphError(2018218))
@@ -36,7 +42,7 @@ describe('graphFailure', () => {
     'asks to try again after the throttle code %i',
     code => {
       const error = graphFailure(400, graphError(code))
-      expect(error.code).toBe(ErrorCodes.CHANNEL_MESSAGE_FAILED)
+      expect(error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
       expect(error.retryable).toBe(true)
     }
   )
@@ -233,6 +239,20 @@ describe('the reason a Graph failure gives', () => {
     expect(graphFailure(400, graphError(100)).reason).toBe(
       ChannelConnectFailureReasons.REQUEST_REJECTED
     )
+  })
+
+  it.each([4, 17, 32, 613, 80000, 80007, 80010, 80011, 80012, 80013, 130429, 131056])(
+    'says the rate limit was exceeded, to try again, for the throttle code %i',
+    code => {
+      const error = graphFailure(400, graphError(code))
+      expect(error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      expect(error.retryable).toBe(true)
+      expect(error.refused).toBe(true)
+    }
+  )
+
+  it('says the rate limit was exceeded for a 429 with no code', () => {
+    expect(graphFailure(429, null).code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
   })
 
   it.each([4, 17, 32, 613, 80008, 130429])('asks to wait for the throttle code %i', code => {

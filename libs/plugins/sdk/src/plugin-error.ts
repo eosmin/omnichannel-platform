@@ -21,6 +21,7 @@ export type PluginErrorCode = Extract<
   | typeof ErrorCodes.CHANNEL_FILE_TOO_LARGE
   | typeof ErrorCodes.CHANNEL_PROFILE_UNAVAILABLE
   | typeof ErrorCodes.CHANNEL_WEBHOOK_SIGNATURE_INVALID
+  | typeof ErrorCodes.RATE_LIMIT_EXCEEDED
 >
 
 // How a channel plugin reports a failure. It carries the code and nothing the provider said: the

@@ -152,7 +152,7 @@ export class MediaService {
       }
     ]
     for (const counter of counters) {
-      await countWithinQuota(this.redis, counter.key, counter.limit)
+      await countWithinQuota(this.redis, counter.key, counter.limit, bucket)
     }
   }
 

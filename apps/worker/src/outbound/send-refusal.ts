@@ -1,11 +1,13 @@
-import { errorName } from '@platform/channels/connections'
-import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
+import { errorName, ErrorCodes, type ErrorCode } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
 // What the retry sees of a failed attempt: the code and the name of the error, never its text. The
 // error of a plugin or of the network can carry the token it was called with, and BullMQ logs what is
 // thrown and keeps it in Redis.
 export class SendAttemptFailed extends Error {
+  // The provider throttled the call: the retry waits longer for it (outboundBackoff)
+  readonly throttled: boolean
+
   constructor(
     code: ErrorCode,
     cause: unknown,
@@ -19,6 +21,7 @@ export class SendAttemptFailed extends Error {
   ) {
     super(`sending ${what} failed: ${code} (${errorName(cause)})`)
     this.name = 'SendAttemptFailed'
+    this.throttled = code === ErrorCodes.RATE_LIMIT_EXCEEDED
   }
 }
 

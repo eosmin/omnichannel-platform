@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { RoleNames } from '@platform/core/auth'
+import { RETRY_AFTER_METADATA_KEY, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -438,6 +438,11 @@ describe('The account of a person', () => {
 
       expect(over.status).toBe(TOO_MANY_REQUESTS)
       expect(codeOf(over.body)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      // The avatar limit says when to come back too: the seconds left of the hour
+      const secondsLeft = Math.ceil((3_600_000 - (Date.now() % 3_600_000)) / 1000)
+      const retryAfter = (over.body as { error: { metadata?: Record<string, unknown> } }).error
+        .metadata?.[RETRY_AFTER_METADATA_KEY]
+      expect(Math.abs((retryAfter as number) - secondsLeft)).toBeLessThanOrEqual(5)
       // Another person is not held back by it
       const other = await createActor(owner, app, {
         prefix,
