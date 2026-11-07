@@ -3,7 +3,6 @@
 import { Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import { ClientErrorCodes } from '@platform/core/errors'
@@ -24,6 +23,7 @@ import {
   useRemoveMember,
   useSuspendMember
 } from '../../lib/settings/use-team'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'

@@ -9,6 +9,7 @@ import { useCustomerEdits } from '../../lib/customers/use-customer-data'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
+import { CharCounter } from '../ui/char-counter'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
@@ -38,6 +39,7 @@ export function NoteBox({ customerId }: { customerId: string }): ReactElement {
         value={content}
         onChange={event => setContent(event.target.value)}
       />
+      <CharCounter length={content.length} max={CustomerLimits.NOTE_MAX_LENGTH} />
       <MutationError error={addNote.error} />
       <Button
         type="submit"

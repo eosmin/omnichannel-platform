@@ -1,4 +1,5 @@
 import { type ChannelMediaCapabilities } from '@platform/core/channel-media'
+import type { TokenInspection } from '@platform/core/domain'
 
 import type { ChannelCapabilityType } from './channel-capability'
 import type { ChannelOAuth } from './channel-oauth'
@@ -71,6 +72,12 @@ export interface ChannelPlugin {
   // The core trusts it to tell the account (it cannot know what a provider calls one), so `connect` must also be
   // harmless for an account that is not the one the connection holds: it runs only after this says it is the same.
   healthCheck(ctx: ChannelContext): Promise<ChannelHealth>
+  // Optional, READ-ONLY like `healthCheck`: what the provider says about the token of the connection (whose
+  // kind it is, whether it still works and when it stops). The core asks when a connection is made and once a
+  // day, and warns the people who set the channel up before it stops. A channel whose token does not expire,
+  // or that the provider cannot be asked about, leaves it out. A failure is thrown and means "could not ask":
+  // it never marks the token as expired.
+  inspectToken?(ctx: ChannelContext): Promise<TokenInspection>
 
   sendMessage(ctx: ChannelContext, params: SendMessageParams): Promise<ChannelMessageResult>
   sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult>

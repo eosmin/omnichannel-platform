@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -12,9 +11,11 @@ import { ConversationLimits, SLASH_PREFIX } from '@platform/core/domain'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import { useSnippets } from '../../lib/inbox/use-inbox-data'
 import { usePushOffer } from '../../lib/push/use-push-offer'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
+import { CharCounter } from '../ui/char-counter'
 import { DialogFooter } from '../ui/dialog'
 import { SELECT_CLASS } from '../ui/field-classes'
 import { Label } from '../ui/label'
@@ -137,6 +138,10 @@ export function ResolveForm({
             maxLength={ConversationLimits.RESOLUTION_REASON_MAX_LENGTH}
             rows={2}
             onChange={event => setReason(event.target.value)}
+          />
+          <CharCounter
+            length={reason.length}
+            max={ConversationLimits.RESOLUTION_REASON_MAX_LENGTH}
           />
         </div>
       </fieldset>

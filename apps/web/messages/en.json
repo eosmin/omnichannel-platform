@@ -86,7 +86,8 @@
           "accepted": "Invitation accepted"
         },
         "channel": {
-          "disconnected": "Channel disconnected"
+          "disconnected": "Channel disconnected",
+          "token_expiring": "Channel access about to expire"
         },
         "webhook": {
           "auto_disabled": "Outgoing integration disabled"
@@ -195,7 +196,9 @@
     "loading": "Loading",
     "save": "Save",
     "discard": "Discard changes",
-    "close": "Close"
+    "close": "Close",
+    "charsLeft": "{count, plural, one {# character left} other {# characters left}}",
+    "charLimitReached": "You reached the limit of characters"
   },
   "confirm": {
     "typePhrase": "Type \"{phrase}\" to confirm",
@@ -608,6 +611,10 @@
       "disconnected": {
         "title": "A channel was disconnected",
         "body": "The channel stopped working. Connect it again to keep receiving messages."
+      },
+      "token_expiring": {
+        "title": "A channel's access is about to expire",
+        "body": "The token of a channel stops working on {date}. Update it before then to keep receiving messages."
       }
     },
     "conversation": {

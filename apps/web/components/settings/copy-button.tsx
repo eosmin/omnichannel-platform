@@ -3,8 +3,8 @@
 import { Check, Copy } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
+import { toast } from '../../lib/toast'
 import { Button } from '../ui/button'
 
 const COPIED_MS = 2000

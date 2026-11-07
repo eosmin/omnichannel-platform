@@ -105,7 +105,7 @@ describe('MetaLogin', () => {
       expect(url.searchParams.get('state')).toBe(STATE)
       expect(url.searchParams.get('response_type')).toBe('code')
       expect(url.searchParams.get('scope')).toBe(
-        'pages_show_list,pages_messaging,pages_manage_metadata,pages_read_engagement,business_management,instagram_basic,instagram_manage_messages'
+        'pages_show_list,pages_messaging,pages_manage_metadata,pages_read_engagement,instagram_basic,instagram_manage_messages'
       )
     })
 
@@ -306,6 +306,100 @@ describe('MetaLogin', () => {
       })
       const error = await failure(() => login().listAssets({ userToken: USER_TOKEN }))
       expect(error.reason).toBe(ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE)
+    })
+
+    it.each([
+      ['an invalid parameter (100)', 400, 100],
+      ['a permission error (10)', 403, 10],
+      ['a permission error of the 200 range', 403, 200]
+    ])(
+      'is empty, so the screen asks for the number of the Page, when Meta refuses the portfolios with %s',
+      async (_name, status, code) => {
+        graph = strictGraph({
+          'GET me/accounts': asUser({ data: [] }),
+          'GET me/businesses': () => graphError(status, code)
+        })
+        await expect(login().listAssets({ userToken: USER_TOKEN })).resolves.toEqual([])
+      }
+    )
+
+    it('is empty when Meta refuses the pages of every portfolio it listed', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [{ id: BUSINESS_A }] }),
+        [`GET ${BUSINESS_A}/owned_pages`]: () => graphError(403, 200)
+      })
+      await expect(login().listAssets({ userToken: USER_TOKEN })).resolves.toEqual([])
+    })
+
+    it('still fails when one list is refused and the other had an outage', async () => {
+      graph = strictGraph({
+        'GET me/accounts': () => graphError(500, 2),
+        'GET me/businesses': () => graphError(400, 100)
+      })
+      const error = await failure(() => login().listAssets({ userToken: USER_TOKEN }))
+      expect(error.reason).toBe(ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE)
+    })
+
+    it('keeps the Page me/accounts found when the portfolios are refused', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [pageA] }),
+        'GET me/businesses': () => graphError(400, 100)
+      })
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets.map(asset => asset.id)).toEqual([PAGE])
+    })
+
+    it.each([
+      ['a 503 with code 100', 503, 100],
+      ['a 429 with code 10', 429, 10],
+      ['a 500 with a permission code', 500, 200]
+    ])('still fails, as an outage, when the portfolios answer %s', async (_name, status, code) => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': () => graphError(status, code)
+      })
+      const error = await failure(() => login().listAssets({ userToken: USER_TOKEN }))
+      expect(error.retryable).toBe(true)
+    })
+
+    it('throws the outage, not the refusal, whichever list answered first', async () => {
+      graph = strictGraph({
+        'GET me/accounts': () => graphError(400, 100),
+        'GET me/businesses': () => graphError(500, 2)
+      })
+      const error = await failure(() => login().listAssets({ userToken: USER_TOKEN }))
+      expect(error.reason).toBe(ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE)
+    })
+
+    it('does not turn a refusal of me/accounts into an empty list: that list needs only a permission already checked', async () => {
+      graph = strictGraph({
+        'GET me/accounts': () => graphError(400, 100),
+        'GET me/businesses': () => graphError(400, 100)
+      })
+      await expect(login().listAssets({ userToken: USER_TOKEN })).rejects.toBeInstanceOf(
+        PluginError
+      )
+    })
+
+    it('stops at a dead token on the portfolios, even when the other list is empty', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': () => graphError(401, 190)
+      })
+      const error = await failure(() => login().listAssets({ userToken: USER_TOKEN }))
+      expect(error.reason).toBe(ChannelConnectFailureReasons.TOKEN_REJECTED)
+    })
+
+    it('keeps the Pages of the portfolios that answered when another one is refused', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [{ id: BUSINESS_A }, { id: BUSINESS_B }] }),
+        [`GET ${BUSINESS_A}/owned_pages`]: () => graphError(403, 200),
+        [`GET ${BUSINESS_B}/owned_pages`]: asUser({ data: [pageA] })
+      })
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets.map(asset => asset.id)).toEqual([PAGE])
     })
 
     it('fails when a portfolio could not be read and nothing else was found', async () => {
@@ -509,8 +603,8 @@ describe('MetaLogin', () => {
 
   describe('as the oauth of a plugin', () => {
     it('declares the scopes of its channel and a kind the core knows', () => {
-      expect(login(ChannelIds.INSTAGRAM).scopes).toHaveLength(7)
-      expect(login(ChannelIds.MESSENGER).scopes).toHaveLength(5)
+      expect(login(ChannelIds.INSTAGRAM).scopes).toHaveLength(6)
+      expect(login(ChannelIds.MESSENGER).scopes).toHaveLength(4)
       expect(login().kind).toBe('meta-facebook-login')
     })
   })

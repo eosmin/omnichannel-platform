@@ -3,7 +3,6 @@
 import { Clock, CornerUpLeft, Paperclip, Send, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import {
@@ -43,6 +42,7 @@ import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { useRoleLabel } from '../../lib/role-label'
 import { SHORTCUT_FIELD_ATTRIBUTE } from '../../lib/shortcuts/chords'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useProfile } from '../../lib/use-profile'
@@ -50,6 +50,7 @@ import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
+import { CharCounter } from '../ui/char-counter'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 import { Textarea } from '../ui/textarea'
 
@@ -293,7 +294,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
           if (quoted !== undefined) cancelReplyIf(quoted.messageId)
           setDraft(current => (current.trim() === content ? '' : current))
           setActiveIndex(0)
-          releaseBox()
+          keepBox()
         }
       })
       return
@@ -309,12 +310,22 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     setText('')
     setCaret(0)
     setPicked([])
-    releaseBox()
+    keepBox()
   }
-  // After a send the box lets go of the keyboard, so the next key is a shortcut ("e" resolves) and not a
-  // letter in an empty box; `r` or a click brings the cursor back
-  function releaseBox(): void {
-    if (document.activeElement === textarea.current) textarea.current?.blur()
+  // After a send the box keeps the keyboard (also on a phone, where losing it closes the keys): the
+  // next letters go on writing, and never reach the one-key shortcuts of the page. A click on Send moves
+  // the focus to the button, which is then off (the box is empty), so it is given back here.
+  function keepBox(): void {
+    // A file goes out after an upload: if the agent moved on meanwhile (a dialog, another field), the
+    // focus is theirs and is not taken back
+    const now = document.activeElement
+    if (
+      now === null ||
+      now === document.body ||
+      now === textarea.current ||
+      now.closest('[data-composer]')
+    )
+      textarea.current?.focus()
   }
 
   const pick = (entry: MenuEntry): void => {
@@ -418,6 +429,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
 
   return (
     <div
+      data-composer=""
       className={cn(
         'compact:gap-1 compact:p-2 flex flex-col gap-2 border-t p-3',
         isNote && 'bg-note/40'
@@ -622,6 +634,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               <Send aria-hidden />
             </Button>
           </div>
+          <CharCounter length={draft.length} max={MessageLimits.CONTENT_MAX_LENGTH} />
         </div>
       )}
     </div>

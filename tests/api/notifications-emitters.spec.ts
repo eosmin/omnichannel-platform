@@ -740,4 +740,54 @@ describe('Notification emitters (QA Q2)', () => {
       expect(await rowsOf(NotificationTypes.CHANNEL_DISCONNECTED)).toHaveLength(0)
     })
   })
+
+  describe('a channel token that is about to expire', () => {
+    const expiring = (channelConnectionId: string, storeId = ctx.storeA.id) => ({
+      storeId,
+      channelConnectionId,
+      pluginId: ChannelType.INSTAGRAM,
+      expiresAt: '2026-11-14T10:00:00.000Z'
+    })
+    const connectionIn = async (storeId: string, status: string) => {
+      const { id } = await createChannelConnection(owner, {
+        storeId,
+        channelType: ChannelType.INSTAGRAM
+      })
+      await owner.channelConnection.update({ where: { id }, data: { status } })
+      return id
+    }
+
+    it('tells who can set the channel up, with the day it stops and the path of the channels page', async () => {
+      const id = await connectionIn(ctx.storeA.id, ChannelConnectionStatus.ACTIVE)
+
+      await emit(Events.CHANNEL_TOKEN_EXPIRING, expiring(id))
+
+      const rows = await rowsOf(NotificationTypes.CHANNEL_TOKEN_EXPIRING)
+      expect(rows.map(row => row.userId)).toContain(ctx.adminA.id)
+      expect(rows.map(row => row.userId)).not.toContain(ctx.agentA.id)
+      expect(rows.map(row => row.userId)).not.toContain(ctx.viewerA.id)
+      expect(rows[0]).toMatchObject({
+        resourceType: 'channel_connection',
+        resourceId: id,
+        params: { date: '2026-11-14' },
+        actionPath: AppPaths.store.settings(ctx.storeA.id, StoreSettingsSections.CHANNELS)
+      })
+    })
+
+    it('tells nobody when the connection is already down: its own notice has been sent', async () => {
+      const id = await connectionIn(ctx.storeA.id, ChannelConnectionStatus.ERROR)
+
+      await emit(Events.CHANNEL_TOKEN_EXPIRING, expiring(id))
+
+      expect(await rowsOf(NotificationTypes.CHANNEL_TOKEN_EXPIRING)).toHaveLength(0)
+    })
+
+    it('tells nobody of a store when the event names it for a connection that is another one’s', async () => {
+      const id = await connectionIn(ctx.storeB.id, ChannelConnectionStatus.ACTIVE)
+
+      await emit(Events.CHANNEL_TOKEN_EXPIRING, expiring(id, ctx.storeA.id))
+
+      expect(await rowsOf(NotificationTypes.CHANNEL_TOKEN_EXPIRING)).toHaveLength(0)
+    })
+  })
 })

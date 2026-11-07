@@ -86,7 +86,8 @@
           "accepted": "Invitación aceptada"
         },
         "channel": {
-          "disconnected": "Canal desconectado"
+          "disconnected": "Canal desconectado",
+          "token_expiring": "Acceso del canal por vencer"
         },
         "webhook": {
           "auto_disabled": "Integración saliente desactivada"
@@ -195,7 +196,9 @@
     "loading": "Cargando",
     "save": "Guardar",
     "discard": "Descartar cambios",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "charsLeft": "{count, plural, one {Falta # carácter} other {Faltan # caracteres}}",
+    "charLimitReached": "Llegaste al límite de caracteres"
   },
   "confirm": {
     "typePhrase": "Escribe \"{phrase}\" para confirmar",
@@ -608,6 +611,10 @@
       "disconnected": {
         "title": "Se desconectó un canal",
         "body": "El canal dejó de funcionar. Vuelve a conectarlo para seguir recibiendo mensajes."
+      },
+      "token_expiring": {
+        "title": "El acceso de un canal está por vencer",
+        "body": "El token de un canal deja de funcionar el {date}. Actualízalo antes para seguir recibiendo mensajes."
       }
     },
     "conversation": {

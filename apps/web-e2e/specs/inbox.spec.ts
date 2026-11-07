@@ -38,16 +38,23 @@ test.describe.serial('the inbox list', () => {
   let context: BrowserContext
   let page: Page
   let storeId: string
+  let newAddress: () => void
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext()
-    await reachServicesFromOwnAddress(context)
+    newAddress = await reachServicesFromOwnAddress(context)
     page = await context.newPage()
     await signIn(page, 'admin@test.com')
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.afterAll(async () => {
     await context.close()
+  })
+  // The cases share one session but not one minute of the limit of the api: GET /conversations was called
+  // 97 times of the 100 a minute by the cases together, and one more list request in a slow run was
+  // "Too many attempts" in a case that had nothing to do with it
+  test.beforeEach(() => {
+    newAddress()
   })
 
   test('lists a conversation and opens it with its filters kept in the address', async () => {
@@ -258,11 +265,19 @@ test.describe.serial('the inbox list', () => {
     const restored = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
     await expect(restored).toHaveValue('Still writing this')
 
-    // Sending empties the box and lets go of the keyboard, so the next key is a shortcut
+    // Sending empties the box and keeps the keyboard in it: the next letters are text, never a shortcut
     await restored.focus()
     await page.keyboard.press('Enter')
     await expect(restored).toHaveValue('')
-    await expect(restored).not.toBeFocused()
+    await expect(restored).toBeFocused()
+    await page.keyboard.type('er')
+    await expect(restored).toHaveValue('er')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+
+    // A click on Send keeps it too (the button turns off with the box empty and would drop the focus)
+    await page.getByRole('button', { name: en.inbox.composer.send }).click()
+    await expect(restored).toHaveValue('')
+    await expect(restored).toBeFocused()
   })
 
   test('opening a conversation does not make the page scroll: the thread has its own scroll (W2)', async () => {

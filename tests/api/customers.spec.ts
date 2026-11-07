@@ -4,13 +4,14 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { RoleNames } from '@platform/core/auth'
+import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelIds, ChannelType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelProfile, CustomerIdentityService } from '@platform/core/messaging'
 
 import { createConversation, createCustomer, createTag } from '../builders'
+import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
@@ -69,6 +70,189 @@ describe('The customers of a store', () => {
     expect(response.status).toBe(CREATED)
     return response.body as CustomerBody
   }
+
+  describe('a possible duplicate', () => {
+    interface Hint {
+      id: string
+      name: string | null
+      email: string | null
+      phone: string | null
+      matchedOn: string[]
+    }
+    interface Created extends CustomerBody {
+      possibleDuplicates: Hint[]
+    }
+    const createWith = async (body: Record<string, unknown>): Promise<Created> =>
+      (await create(body)) as Created
+    const uniqueEmail = (): string => `${randomUUID().slice(0, 8)}@example.com`
+    // +503 7 and seven digits, random: no other case of the store can hold the same number
+    const uniquePhone = (): { display: string; digits: string } => {
+      const seven = String(Math.floor(Math.random() * 9_000_000) + 1_000_000)
+      return { display: `+503 7${seven.slice(0, 3)} ${seven.slice(3)}`, digits: `5037${seven}` }
+    }
+    const inStore = (data: Record<string, unknown>) =>
+      owner.customer.create({ data: { storeId: ctx.storeA.id, ...data } as never })
+
+    it('creates the customer anyway and names the ones that share the e-mail or the phone', async () => {
+      const email = uniqueEmail()
+      const phone = uniquePhone()
+      // Stored as it came from a channel or an import, in capitals: the match does not depend on case
+      const byEmail = await inStore({ name: 'Ana', email: email.toUpperCase() })
+      const byPhone = await createWith({ name: 'Beto', phone: phone.display })
+      const neither = await createWith({
+        name: 'Carla',
+        email: `x${email}`,
+        phone: uniquePhone().display
+      })
+
+      const twin = await createWith({ name: 'Ana otra vez', email, phone: phone.display })
+
+      expect(twin.id).toBeDefined()
+      expect(twin.possibleDuplicates).toHaveLength(2)
+      const byId = new Map(twin.possibleDuplicates.map(hint => [hint.id, hint]))
+      expect(byId.get(byEmail.id)).toMatchObject({ name: 'Ana', matchedOn: ['email'] })
+      expect(byId.get(byPhone.id)).toMatchObject({ name: 'Beto', matchedOn: ['phone'] })
+      expect(byId.has(neither.id)).toBe(false)
+      // Created: it is a hint, never a refusal
+      expect(await owner.customer.findUnique({ where: { id: twin.id } })).not.toBeNull()
+    })
+
+    it('names one that shares both, first, with both reasons', async () => {
+      const email = uniqueEmail()
+      const phone = uniquePhone()
+      const onlyEmail = await createWith({ name: 'E', email })
+      const both = await createWith({ name: 'Both', email, phone: phone.display })
+      const onlyPhone = await createWith({ name: 'P', phone: phone.display })
+
+      const created = await createWith({ name: 'New', email, phone: phone.display })
+
+      expect(created.possibleDuplicates.map(hint => hint.id)).toEqual([
+        both.id,
+        onlyPhone.id,
+        onlyEmail.id
+      ])
+      expect(created.possibleDuplicates[0]?.matchedOn.sort()).toEqual(['email', 'phone'])
+    })
+
+    it('says nothing when the customer is the first with that e-mail and phone', async () => {
+      const first = await createWith({
+        name: 'Sola',
+        email: uniqueEmail(),
+        phone: uniquePhone().display
+      })
+
+      expect(first.possibleDuplicates).toEqual([])
+    })
+
+    it('takes an underscore of an e-mail for what it is, not for a wildcard', async () => {
+      const tag = randomUUID().slice(0, 8)
+      const stranger = await inStore({ name: 'Stranger', email: `a${tag}Xb@example.com` })
+      const dotted = await inStore({ name: 'Dotted', email: `a${tag}.b@example.com` })
+      const same = await inStore({ name: 'Same', email: `A${tag}_B@example.com` })
+
+      const created = await createWith({ name: 'Underscore', email: `a${tag}_b@example.com` })
+
+      expect(created.possibleDuplicates.map(hint => hint.id)).toEqual([same.id])
+      expect(created.possibleDuplicates.map(hint => hint.id)).not.toContain(stranger.id)
+      expect(created.possibleDuplicates.map(hint => hint.id)).not.toContain(dotted.id)
+    })
+
+    interface Shared {
+      row: Record<string, unknown> // What the existing customer is stored with
+      body: Record<string, unknown> // What the new one is created with
+    }
+    const sharedEmail = (): Shared => {
+      const email = uniqueEmail()
+      return { row: { email }, body: { email } }
+    }
+    const sharedPhone = (): Shared => {
+      const phone = uniquePhone()
+      return {
+        row: { phone: phone.display, phoneNormalized: phone.digits },
+        body: { phone: phone.display }
+      }
+    }
+
+    describe.each<[string, () => Shared]>([
+      ['e-mail', sharedEmail],
+      ['phone', sharedPhone]
+    ])('by %s alone', (_label, shared) => {
+      it('does not look at another store', async () => {
+        const { row, body } = shared()
+        await owner.customer.create({
+          data: { storeId: ctx.storeB.id, name: 'Elsewhere', ...row } as never
+        })
+
+        const created = await createWith({ name: 'New', ...body })
+
+        expect(created.possibleDuplicates).toEqual([])
+      })
+
+      it('does not list a customer that a merge absorbed', async () => {
+        const { row, body } = shared()
+        const survivor = await inStore({ name: 'Survivor' })
+        await inStore({ name: 'Absorbed', mergedIntoId: survivor.id, ...row })
+
+        const created = await createWith({ name: 'New', ...body })
+
+        expect(created.possibleDuplicates).toEqual([])
+      })
+
+      it('does not list a customer that was erased', async () => {
+        const { row, body } = shared()
+        await inStore({ name: null, erasedAt: new Date(), ...row })
+
+        const created = await createWith({ name: 'New', ...body })
+
+        expect(created.possibleDuplicates).toEqual([])
+      })
+    })
+
+    it('shows at most five, and a shared mailbox does not hide the one with the same phone', async () => {
+      const email = uniqueEmail()
+      const phone = uniquePhone()
+      const samePhone = await createWith({ name: 'Same phone', phone: phone.display })
+      for (let i = 0; i < 7; i += 1) await createWith({ name: `n${i}`, email })
+
+      const created = await createWith({ name: 'Last', email, phone: phone.display })
+
+      expect(created.possibleDuplicates).toHaveLength(5)
+      expect(created.possibleDuplicates[0]?.id).toBe(samePhone.id)
+    })
+
+    it('shows nobody to a member who may create customers but not see them, and shows them to one who may', async () => {
+      const email = uniqueEmail()
+      const existing = await createWith({ name: 'Visible to others', email })
+      const creator = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'creator-only',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CUSTOMERS_CREATE]
+      })
+      const both = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'creator-viewer',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_VIEW]
+      })
+
+      const blind = await api(app, creator, ctx.storeA)
+        .post(ApiRoutes.customers.list)
+        .send({ name: 'Blind', email })
+      const sighted = await api(app, both, ctx.storeA)
+        .post(ApiRoutes.customers.list)
+        .send({ name: 'Sighted', email })
+
+      expect(blind.status).toBe(CREATED)
+      expect((blind.body as Created).possibleDuplicates).toEqual([])
+      expect(sighted.status).toBe(CREATED)
+      expect((sighted.body as Created).possibleDuplicates.map(hint => hint.id)).toContain(
+        existing.id
+      )
+    })
+  })
 
   describe('creating and editing', () => {
     it('stores a phone number with its country code, however it was typed', async () => {

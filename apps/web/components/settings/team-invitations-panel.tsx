@@ -3,7 +3,6 @@
 import { Mail, RotateCw, Send, X } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 
@@ -12,6 +11,7 @@ import { retryAfterSecondsOf } from '../../lib/settings/team-errors'
 import type { InvitationView, RoleView } from '../../lib/settings/team-requests'
 import { canGrant } from '../../lib/settings/team-roles'
 import { useResendInvitation, useRevokeInvitation } from '../../lib/settings/use-team'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
