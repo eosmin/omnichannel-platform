@@ -42,7 +42,7 @@ import {
   type TypingParams
 } from '@platform/plugins/sdk'
 
-import { MetaGraphClient } from './meta-graph.client'
+import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
 import { messagingToEvents } from './meta-messaging-events'
 import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
@@ -498,6 +498,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 
   // The reference of a file is the url Meta put in the webhook, a link of its CDN
+  acceptsMediaLink(mediaRef: string): boolean {
+    return isMetaMediaLink(mediaRef)
+  }
+
   async fetchMedia(_ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia> {
     return this.meta.downloadMediaUrl(mediaRef)
   }
