@@ -126,9 +126,15 @@ export const MetaMessaging = {
   REFERRAL_SOURCE_ADS: 'ADS',
   // The attachment of a place the customer shared: `payload.coordinates` holds `{ lat, long }`
   ATTACHMENT_LOCATION: 'location',
+  ATTACHMENT_STICKER: 'sticker',
   // The like button of Messenger arrives as a sticker with this id (and, until Meta stops sending the
   // pair, as an image with the same link). It is the thumbs up, not a file worth fetching.
   LIKE_STICKER_ID: '369239263222822',
+  // The three sizes of the like (a tap, a short press, a long press) are three stickers: small, medium and
+  // large, all the same thumbs up. Verified only by Meta's documentation, not by a raw webhook yet (owner
+  // test 2026-11-08 saw the medium and the large arrive as stickers with an id); an id that is not here is
+  // a sticker like any other, never guessed to be a like.
+  LIKE_STICKER_IDS: ['369239263222822', '369239343222814', '369239383222810'] as readonly string[],
   LIKE_TEXT: '\u{1F44D}',
   // The texts Messenger puts beside a photo sent from the camera roll: a placeholder, not something the
   // customer wrote. An exact list and not a pattern, because "[ok]" with a photo can be a customer's

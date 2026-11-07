@@ -155,8 +155,28 @@ function sharedOf(attachments: ParsedAttachment[]): ParsedAttachment | null {
   return first
 }
 
+// Whether every file of the message is a sticker: an attachment with a sticker id (Messenger sends them
+// as an image or a sticker) or of the type sticker. A photo beside a sticker keeps the message a photo.
+function isStickerOnly(
+  attachments: ParsedAttachment[],
+  media: NonNullable<ReceivedMessage['media']>
+): boolean {
+  const stickers = new Set(
+    attachments
+      .filter(
+        item => item.stickerId !== undefined || item.type === MetaMessaging.ATTACHMENT_STICKER
+      )
+      .map(item => item.url ?? item.rawUrl)
+  )
+  return media.length > 0 && media.every(file => stickers.has(file.ref))
+}
+
 function likeOf(attachments: ParsedAttachment[]): ParsedAttachment | undefined {
-  return attachments.find(attachment => attachment.stickerId === MetaMessaging.LIKE_STICKER_ID)
+  return attachments.find(
+    attachment =>
+      attachment.stickerId !== undefined &&
+      MetaMessaging.LIKE_STICKER_IDS.includes(attachment.stickerId)
+  )
 }
 
 // The like itself, or the image Meta sends with it (the same link, no id of its own)
@@ -247,7 +267,21 @@ function toReceivedMessage(
           metadata: { [MessageMetadataKeys.ATTACHMENT_TYPE]: STORY_REPLY, attachmentUrl: storyUrl }
         }
       : {}
-  if (files) return { ...base, type: files.type, content: text, media: files.media, ...link }
+  if (files) {
+    // MSG-STK: a sticker is an image to the core; the mark lets the thread draw it without a bubble
+    const sticker = isStickerOnly(attachments, files.media)
+    const metadata = {
+      ...('metadata' in link ? link.metadata : {}),
+      ...(sticker ? { [MessageMetadataKeys.STICKER]: true } : {})
+    }
+    return {
+      ...base,
+      type: files.type,
+      content: text,
+      media: files.media,
+      ...(Object.keys(metadata).length === 0 ? {} : { metadata })
+    }
+  }
   if (text !== null) return { ...base, type: MessageType.TEXT, content: text, ...link }
   return {
     ...base,
