@@ -23,6 +23,7 @@ import { type ChannelOAuth, PluginError } from '@platform/plugins/sdk'
 import { ChannelOAuthStore } from '../../apps/api/src/modules/channels/oauth/channel-oauth.store'
 import { buildChannelPlugin, ensurePluginInstallation } from '../builders'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
@@ -693,10 +694,13 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(JSON.stringify(row.metadata)).not.toContain(PAGE_TOKEN_PREFIX)
       expect(Buffer.from(row.credentials).toString('latin1')).not.toContain(USER_TOKEN)
 
-      const audit = await owner.auditLog.findFirstOrThrow({
-        where: { resourceId: row.id, action: AuditAction.CHANNEL_CONNECTED }
+      // Written after the answer: waited for, not read at once
+      const entries = await waitForAuditEntries(owner, {
+        resourceId: row.id,
+        action: AuditAction.CHANNEL_CONNECTED
       })
-      expect(audit.metadata).toEqual({
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.metadata).toEqual({
         pluginId: id,
         authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
       })
@@ -889,10 +893,13 @@ describe('"Connect with Facebook": the login of a channel', () => {
         authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
       })
       expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(1)
-      const audit = await owner.auditLog.findFirstOrThrow({
-        where: { resourceId: row.id, action: AuditAction.CHANNEL_TOKEN_UPDATED }
+      // Written after the answer: waited for, not read at once
+      const entries = await waitForAuditEntries(owner, {
+        resourceId: row.id,
+        action: AuditAction.CHANNEL_TOKEN_UPDATED
       })
-      expect(audit.metadata).toEqual({
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.metadata).toEqual({
         pluginId: id,
         authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
       })
