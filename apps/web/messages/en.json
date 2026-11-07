@@ -1590,6 +1590,14 @@
         "disconnected": "Disconnected"
       },
       "health": {
+        "token": {
+          "never": "The token does not expire.",
+          "expires": "The token expires on {date}.",
+          "expired": "The token expired on {date}. Update it to keep receiving messages.",
+          "expiredUnknownDate": "The token expired. Update it to keep receiving messages.",
+          "invalid": "Meta says the token is no longer valid. Update the token of this connection.",
+          "userToken": "You pasted a user token; you need the one of the Page."
+        },
         "never": "It has not been checked yet.",
         "lastHealthy": "Last working: {date}",
         "errors": {
