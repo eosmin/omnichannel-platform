@@ -70,12 +70,58 @@ describe('messageView media', () => {
     filename: 'a.png',
     contentType: 'image/png',
     fileSize: 10,
-    status: MediaStatus.CLEAN
+    status: MediaStatus.CLEAN,
+    position: null,
+    deliveryStatus: null,
+    sendErrorCode: null
+  }
+  const shown = {
+    id: 'f1',
+    filename: 'a.png',
+    contentType: 'image/png',
+    fileSize: 10,
+    status: MediaStatus.CLEAN,
+    position: null,
+    delivery: null,
+    errorCode: null
   }
 
   it('lists the files of a message without a link or a key', () => {
     const view = messageView({ ...row(null), media: [file] })
-    expect(view.media).toEqual([file])
+    expect(view.media).toEqual([shown])
+  })
+
+  it('tells where each file of a reply went and how the channel took it, and nothing of the provider', () => {
+    const view = messageView({
+      ...row(null),
+      media: [
+        {
+          ...file,
+          id: 'f1',
+          position: 0,
+          deliveryStatus: 'sent',
+          channelMessageId: 'wamid.secret'
+        },
+        {
+          ...file,
+          id: 'f2',
+          position: 1,
+          deliveryStatus: 'failed',
+          sendErrorCode: 'CHANNEL_MESSAGE_FAILED'
+        }
+      ] as never
+    })
+    expect(view.media.map(item => [item.position, item.delivery, item.errorCode])).toEqual([
+      [0, 'sent', null],
+      [1, 'failed', 'CHANNEL_MESSAGE_FAILED']
+    ])
+    expect(JSON.stringify(view)).not.toContain('wamid.secret')
+  })
+
+  it('refuses a delivery state it does not know', () => {
+    expect(() =>
+      messageView({ ...row(null), media: [{ ...file, deliveryStatus: 'weird' }] })
+    ).toThrow()
   })
 
   it('lists no file for a deleted message', () => {
