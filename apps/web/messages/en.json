@@ -1232,7 +1232,12 @@
         "ready": "{name} is ready to send",
         "captionHint": "The text you write is sent with the file",
         "failed": "{name} was not attached",
-        "unsupported": "This channel does not accept audio or video."
+        "unsupported": "This channel does not accept this kind of file.",
+        "full": "Attach a file (the limit of {max} files is reached)",
+        "tooMany": "This message takes up to {max} files; the rest were not added",
+        "mixed": "A message carries one kind of file: images, videos, audio or documents. Send the others in another message",
+        "captionFirst": "The text you write is sent with the first file",
+        "listLabel": "Files to send"
       },
       "window": {
         "closing": "The messaging window closes in {hours}h {minutes}m",

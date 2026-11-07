@@ -25,6 +25,12 @@ export const SnoozeDialog = dynamic(
   { ssr: false }
 )
 
+// The files of the reply: their uploads and chips are downloaded the first time a file is chosen
+export const AttachmentTray = dynamic(
+  () => import('./attachment-tray').then(module => module.AttachmentTray),
+  { ssr: false }
+)
+
 export const TemplateDialog = dynamic(
   () => import('./template-dialog').then(module => module.TemplateDialog),
   { ssr: false }

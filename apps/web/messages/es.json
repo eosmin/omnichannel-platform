@@ -1232,7 +1232,12 @@
         "ready": "{name} está listo para enviar",
         "captionHint": "El texto que escribas se envía junto con el archivo",
         "failed": "No se adjuntó {name}",
-        "unsupported": "Este canal no admite audios ni videos."
+        "unsupported": "Este canal no admite este tipo de archivo.",
+        "full": "Adjuntar un archivo (se alcanzó el límite de {max} archivos)",
+        "tooMany": "Este mensaje admite hasta {max} archivos; el resto no se agregó",
+        "mixed": "Un mensaje lleva un solo tipo de archivo: imágenes, videos, audios o documentos. Envía los demás en otro mensaje",
+        "captionFirst": "El texto que escribas se envía con el primer archivo",
+        "listLabel": "Archivos por enviar"
       },
       "window": {
         "closing": "La ventana de mensajería se cierra en {hours} h {minutes} min",

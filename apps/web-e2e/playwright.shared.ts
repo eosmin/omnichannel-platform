@@ -23,7 +23,8 @@ const ROOT = '../..'
 // usually the owner's `pnpm dev`, connected to the development database, and the specs would write
 // their fixtures and their stores to it through that server. With the flag set, the servers must have
 // been started with the test database (`pnpm db:test:prepare`, TEST_DATABASE_NAME) and with
-// META_GRAPH_ORIGIN pointing at the fake Graph of the templates spec (support/fake-graph.ts), and with the
+// META_GRAPH_ORIGIN pointing at the fake Graph of the templates spec (support/fake-graph.ts), with
+// OUTBOUND_MULTI_FILE_ENABLED=true (the album cases), and with the
 // login with Facebook configured as the api below is (META_APP_ID, META_APP_SECRET, META_OAUTH_REDIRECT_URI):
 // without it the dialog of a channel shows the token field at once and the specs of the login find no button.
 export const webServer: Extract<PlaywrightTestConfig['webServer'], unknown[]> = [
@@ -39,6 +40,9 @@ export const webServer: Extract<PlaywrightTestConfig['webServer'], unknown[]> = 
       DATABASE_URL: databaseUrls.app,
       TRUST_PROXY_HOPS: '1',
       META_GRAPH_ORIGIN: GRAPH_URL,
+      // Several files in one message: off in a deployment until a real test with each provider passes,
+      // on here so that the composer and the thread are exercised with more than one
+      OUTBOUND_MULTI_FILE_ENABLED: 'true',
       // "Connect with Facebook": the app, its secret and the callback of this api, as a deployment sets them
       META_APP_ID: FAKE_APP_ID,
       META_APP_SECRET: FAKE_APP_SECRET,

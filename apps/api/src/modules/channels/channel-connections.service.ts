@@ -58,6 +58,7 @@ import {
 } from '@platform/plugins/sdk'
 
 import { encodeCursor } from '../customers/list-cursor'
+import { channelFileLimits } from '../messages/channel-file-limits'
 import type { Actor } from '../tenancy'
 
 import {
@@ -66,6 +67,7 @@ import {
   connectResultSchema,
   type ListConnectionsQuery
 } from './channel-connections.schemas'
+import { type DirectoryMediaLimits, directoryMedia } from './directory-media'
 
 // One shape for the refusal, with the name of the holder only when the caller may be told
 function accountInUseException(storeName: string | null): PlatformException {
@@ -126,6 +128,9 @@ export type ChannelDirectoryEntry = Pick<
 > & {
   // What the channel is called ("WhatsApp"), for the filter that groups the accounts of one plugin
   pluginName: string
+  // What the channel takes in one message of each kind of file it declares (none for a kind it does not
+  // take): how many files, which types and how large, so that the composer offers only that
+  media: DirectoryMediaLimits[]
 }
 
 export interface ChannelTestResult {
@@ -330,7 +335,8 @@ export class ChannelConnectionsService {
   // may read (the error text, the dates) never leaves the database for this route. A connection whose
   // installation is gone or whose plugin was suspended is inert (D19): it is told as `error`, because
   // a reply cannot go out through it, whatever its own row says.
-  async directory(storeId: string): Promise<ChannelDirectoryEntry[]> {
+  async directory(storeId: string, multiFileEnabled: boolean): Promise<ChannelDirectoryEntry[]> {
+    const limitsOf = channelFileLimits(this.registry, multiFileEnabled)
     const rows = await this.prisma.client.channelConnection.findMany({
       where: { storeId },
       select: {
@@ -351,7 +357,8 @@ export class ChannelConnectionsService {
       status: isInstallationActive(row.installation)
         ? enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
         : ChannelConnectionStatus.ERROR,
-      capabilities: this.registry.capabilitiesOf(row.pluginId)
+      capabilities: this.registry.capabilitiesOf(row.pluginId),
+      media: directoryMedia(row.pluginId, limitsOf)
     }))
   }
 
