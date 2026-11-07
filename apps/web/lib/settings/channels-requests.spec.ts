@@ -64,7 +64,8 @@ const widget = {
   allowedOrigins: ['https://a.com'],
   preChatEnabled: false,
   snippet: '<script></script>',
-  connectSrc: ['https://api.example.com']
+  connectSrc: ['https://api.example.com'],
+  scriptSrc: ['https://cdn.example.com']
 }
 const entry = {
   id: 'whatsapp',

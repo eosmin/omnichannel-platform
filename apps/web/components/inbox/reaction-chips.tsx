@@ -5,8 +5,8 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useId, useState } from 'react'
 
 import type { ReactionView } from '@platform/api-client'
-import { DeliveryStatus } from '@platform/core/domain'
 
+import { groupStateOf, reactionStateOf } from '../../lib/inbox/reaction-state'
 import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 
@@ -43,8 +43,9 @@ export function ReactionChips({
   if (reactions.length === 0) return null
 
   function stateOf(reaction: ReactionView): string | null {
-    if (reaction.deliveryStatus === String(DeliveryStatus.QUEUED)) return t('reactions.pending')
-    if (reaction.deliveryStatus !== String(DeliveryStatus.FAILED)) return null
+    const state = reactionStateOf(reaction)
+    if (state === 'pending') return t('reactions.pending')
+    if (state === null) return null
     return reaction.deliveryError === null
       ? t('reactions.failed')
       : `${t('reactions.failed')}: ${codeText(reaction.deliveryError)}`
@@ -54,7 +55,9 @@ export function ReactionChips({
     <ul aria-label={t('reactions.group')} className="flex flex-wrap gap-1">
       {groupByEmoji(reactions).map(group => {
         const isOpen = openEmoji === group.emoji
-        const hasProblem = group.reactions.some(reaction => stateOf(reaction) !== null)
+        // A warning only for a reaction the channel refused; one that waits has a clock, never a triangle
+        const groupState = groupStateOf(group.reactions)
+        const hasProblem = groupState === 'failed'
         return (
           <li key={group.emoji} className="flex flex-col items-start">
             <button
@@ -71,8 +74,10 @@ export function ReactionChips({
               <span className="sr-only">
                 {t('reactions.chip', { emoji: group.emoji, count: group.reactions.length })}
                 {hasProblem ? `. ${t('reactions.hasProblem')}` : ''}
+                {groupState === 'pending' ? `. ${t('reactions.pending')}` : ''}
               </span>
               {hasProblem ? <TriangleAlert aria-hidden className="size-3" /> : null}
+              {groupState === 'pending' ? <Clock aria-hidden className="size-3" /> : null}
             </button>
             {isOpen ? (
               <ul id={detailId} className="text-muted-foreground mt-0.5 text-xs">
@@ -80,7 +85,7 @@ export function ReactionChips({
                   const state = stateOf(reaction)
                   return (
                     <li key={index} className="flex items-center gap-1">
-                      {reaction.deliveryStatus === String(DeliveryStatus.QUEUED) ? (
+                      {reactionStateOf(reaction) === 'pending' ? (
                         <Clock aria-hidden className="size-3" />
                       ) : null}
                       <span>{authorLabel(reaction.authorType, reaction.authorId)}</span>

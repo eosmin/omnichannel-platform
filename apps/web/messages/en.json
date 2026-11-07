@@ -1212,7 +1212,8 @@
         "speed": "Playback speed: {speed}x",
         "failed": "This browser cannot play the audio. Download it to listen.",
         "download": "Download the audio"
-      }
+      },
+      "newMessages": "{count, plural, one {# new message} other {# new messages}}"
     },
     "composer": {
       "readOnly": "You can read this conversation but not answer it.",
@@ -1685,9 +1686,10 @@
           "label": "Ask for name, email and phone before the first message",
           "hint": "The visitor fills a short form before they start the chat."
         },
-        "connectSrc": {
+        "csp": {
           "title": "If your site has a strict content security policy",
-          "hint": "Add these addresses to its connect-src directive so that the chat can reach us and upload files."
+          "hint": "Add these addresses to the directives of its policy so that the chat loads, reaches us and uploads files.",
+          "others": "No other directive is needed: the chat draws no frame, image or inline style."
         }
       },
       "templates": {

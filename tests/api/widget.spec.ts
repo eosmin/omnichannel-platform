@@ -1293,6 +1293,7 @@ describe('The web widget', () => {
       preChatEnabled: boolean
       snippet: string
       connectSrc: string[]
+      scriptSrc: string[]
     }
     const NEW_SITE = 'https://www.example.com'
 
@@ -1342,6 +1343,10 @@ describe('The web widget', () => {
         .uploadUrl({ key: ConnectSrcProbe.KEY, contentType: 'text/plain', contentLength: 1 })
       expect(bucket).toBe(new URL(signed).origin)
       for (const origin of connectSrc) expect(origin).toMatch(/^(https?|wss?):\/\/[^/?#]+$/)
+      // The script loads from one origin, cut from the address of the snippet
+      const { scriptSrc, snippet } = response.body as EmbedBody & { snippet: string }
+      expect(scriptSrc).toHaveLength(1)
+      expect(snippet).toContain(`src="${scriptSrc[0]}/`)
       expect(JSON.stringify(response.body)).not.toMatch(/X-Amz/)
     })
 

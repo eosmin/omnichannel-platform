@@ -63,7 +63,7 @@ export function ProfileForm({
       {field('phone', t('phone'), CustomerLimits.CHANNEL_IDENTITY_MAX_LENGTH, 'tel')}
       <MutationError error={update.error} />
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={update.isPending}>
+        <Button type="submit" size="sm" disabled={update.isPending} busy={update.isPending}>
           {t('save')}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>

@@ -83,7 +83,7 @@ function AddressForm({
       </Label>
       <MutationError error={error} />
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={isPending}>
+        <Button type="submit" size="sm" disabled={isPending} busy={isPending}>
           {t('save')}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>

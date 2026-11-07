@@ -46,6 +46,12 @@ describe('WidgetSettings connectSrc', () => {
     expect(uploadUrl).toHaveBeenCalledWith(expect.objectContaining({ key: ConnectSrcProbe.KEY }))
   })
 
+  it('lists the origin of the script, without its path', async () => {
+    uploadUrl.mockResolvedValue(`${BUCKET}/k`)
+    const view = await settings.embed('store-1', 'conn-1')
+    expect(view.scriptSrc).toEqual(['https://cdn.example.test'])
+  })
+
   it('leaves the bucket out and logs when signing fails, without breaking the read', async () => {
     uploadUrl.mockRejectedValue(new Error('no credentials'))
     const view = await settings.embed('store-1', 'conn-1')
