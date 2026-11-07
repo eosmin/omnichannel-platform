@@ -268,6 +268,11 @@ test.describe('customer merge and identities', () => {
       .click()
     const lightbox = page.getByRole('dialog', { name: 'size.png' })
     await expect(lightbox).toBeVisible()
+    // It says how to leave and how to walk (ATA-04): the close button names its key, and the dialog is described by the hint
+    const closeButton = lightbox.getByRole('button', { name: en.inbox.thread.media.close })
+    await expect(closeButton).toHaveAttribute('aria-keyshortcuts', 'Escape')
+    await expect(closeButton).toHaveAttribute('title', en.inbox.thread.media.closeWithKey)
+    await expect(lightbox).toHaveAccessibleDescription(en.inbox.thread.media.lightboxHint)
     await page.keyboard.press('ArrowRight')
     await expect(page.getByRole('dialog', { name: 'shoe.png' })).toBeVisible()
     await page.keyboard.press('Escape')

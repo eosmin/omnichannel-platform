@@ -1061,7 +1061,9 @@
         "downloadFile": "Descargar {name}",
         "download": "Descargar",
         "close": "Cerrar",
-        "lightboxDescription": "El archivo en tamaño completo",
+        "lightboxHint": "Esc cierra, flechas navegan",
+        "lightboxHintSingle": "Esc cierra",
+        "closeWithKey": "Cerrar (Esc)",
         "previous": "Archivo anterior",
         "next": "Archivo siguiente",
         "notKept": {

@@ -1061,7 +1061,9 @@
         "downloadFile": "Download {name}",
         "download": "Download",
         "close": "Close",
-        "lightboxDescription": "The file at full size",
+        "lightboxHint": "Esc closes, arrows navigate",
+        "lightboxHintSingle": "Esc closes",
+        "closeWithKey": "Close (Esc)",
         "previous": "Previous file",
         "next": "Next file",
         "notKept": {

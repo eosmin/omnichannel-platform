@@ -100,6 +100,17 @@ test.describe.serial('the files of the thread', () => {
     expect((after?.width ?? 0) / (after?.height ?? 1)).toBeCloseTo(4 / 3, 1)
     // A box that fills the bubble, not one the bubble shrinks around
     expect(after?.width).toBeGreaterThan(200)
+
+    // The viewer of one file says how to leave it and, having nothing to walk, does not mention the arrows (ATA-04)
+    await image.click()
+    const viewer = page.getByRole('dialog', { name: 'photo.png' })
+    await expect(viewer).toHaveAccessibleDescription(en.inbox.thread.media.lightboxHintSingle)
+    await expect(viewer.getByRole('button', { name: en.inbox.thread.media.close })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Escape'
+    )
+    await page.keyboard.press('Escape')
+    await expect(viewer).toBeHidden()
   })
 
   // The worker stores a customer's message first and fetches the file after: for that moment there is a
