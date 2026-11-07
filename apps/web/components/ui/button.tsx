@@ -1,4 +1,5 @@
 import { cva, type VariantProps } from 'class-variance-authority'
+import { Loader2 } from 'lucide-react'
 import { Slot } from 'radix-ui'
 import type { ComponentProps, ReactElement } from 'react'
 
@@ -35,13 +36,40 @@ export function Button({
   size,
   asChild = false,
   type = 'button',
+  busy = false,
+  children,
   ...props
 }: ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & { asChild?: boolean }): ReactElement {
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+    // The action waits for the server: the button is off, and a spinner appears after 400 ms (an
+    // answer that comes sooner never flashes one; the delay is in the CSS, `busy-spinner`)
+    busy?: boolean
+  }): ReactElement {
   const Comp = asChild ? Slot.Root : 'button'
   // A button is type="button" unless told otherwise, so that it never submits a form by accident
   const typeProps = asChild ? {} : { type }
+  // `busy` is for a plain button: it turns the button off while it waits (a button that is a link, `asChild`,
+  // has no such state)
+  const isBusy = busy && !asChild
   return (
-    <Comp className={cn(buttonVariants({ variant, size, className }))} {...typeProps} {...props} />
+    <Comp
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...typeProps}
+      {...props}
+      {...(isBusy ? { disabled: true, 'aria-busy': true } : {})}
+    >
+      {isBusy ? (
+        <>
+          <span aria-hidden className="busy-spinner">
+            <Loader2 className="animate-spin" />
+          </span>
+          {children}
+        </>
+      ) : (
+        // One child, as it came: `Slot` (asChild) accepts exactly one element and throws on a list
+        children
+      )}
+    </Comp>
   )
 }
