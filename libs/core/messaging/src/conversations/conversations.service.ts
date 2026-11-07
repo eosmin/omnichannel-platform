@@ -80,6 +80,8 @@ const STATUS_PERMISSIONS: Record<ConversationStatus, Permission> = {
 export interface StatusOptions {
   actor: ConversationActor
   resolutionReason?: string
+  // The change takes back the resolution that was just made (the Undo of the toast): the line says so
+  undoesResolution?: boolean
   // Why the system changed it (a customer wrote); it goes to the system line
   reason?: ConversationStatusReason
   // Required to snooze: the moment the conversation comes back
@@ -325,7 +327,7 @@ export class ConversationsService {
         ...fieldsOf(to, options)
       }
     })
-    const event = systemEventFor(from, to)
+    const event = systemEventFor(from, to, options.undoesResolution === true)
     if (event !== null) {
       await writeSystemLine(tx, storeId, conversationId, {
         event,

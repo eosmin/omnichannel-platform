@@ -19,6 +19,12 @@ describe('systemEventFor', () => {
     expect(systemEventFor(from, to)).toBe(event)
   })
 
+  it('says that a resolution was undone only when the person asked to undo it', () => {
+    expect(systemEventFor(RESOLVED, OPEN, true)).toBe(SystemMessageEvents.RESOLVE_UNDONE)
+    expect(systemEventFor(RESOLVED, OPEN, false)).toBe(SystemMessageEvents.REOPENED)
+    expect(systemEventFor(ARCHIVED, OPEN, true)).toBe(SystemMessageEvents.REOPENED)
+  })
+
   it.each([
     [OPEN, PENDING],
     [PENDING, OPEN],

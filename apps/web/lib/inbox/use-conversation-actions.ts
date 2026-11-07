@@ -26,6 +26,8 @@ export interface ConversationActions {
   snooze: UseMutationResult<ConversationDetailView, Error, Date>
   resolve: UseMutationResult<ConversationDetailView, Error, ResolveInput>
   reopen: UseMutationResult<ConversationDetailView, Error, void>
+  // The Undo of a resolution: it reopens too, and the history says the resolution was taken back
+  undoResolve: UseMutationResult<ConversationDetailView, Error, void>
 }
 
 // What an agent does to the conversation open in front of them. The events of the api already make
@@ -68,5 +70,13 @@ export function useConversationActions(
     onSuccess: refresh
   })
 
-  return { assign, snooze, resolve, reopen }
+  const undoResolve = useMutation({
+    mutationFn: () =>
+      changeConversationStatus(apiClient, storeId, conversationId, ConversationStatus.OPEN, {
+        undoesResolution: true
+      }),
+    onSuccess: refresh
+  })
+
+  return { assign, snooze, resolve, reopen, undoResolve }
 }

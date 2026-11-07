@@ -173,7 +173,8 @@ export class ConversationsController {
   ): Promise<ConversationDetail> {
     const options = {
       actor: viewerOf(user.id, held),
-      ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason })
+      ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason }),
+      ...(body.undoesResolution === undefined ? {} : { undoesResolution: true })
     }
     if (body.closingSnippetId !== undefined) {
       return this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)

@@ -866,6 +866,30 @@ describe('The conversations of a store', () => {
       })
     })
 
+    it('says the resolution was undone when the Undo asks for it, and only then', async () => {
+      const conversation = await mk()
+      const status = (to: ConversationStatus, extra: object = {}) =>
+        asAgent()
+          .patch(ApiRoutes.conversations.status(conversation.id))
+          .send({ status: to, ...extra })
+
+      await status(ConversationStatus.RESOLVED)
+      expect((await status(ConversationStatus.OPEN, { undoesResolution: true })).status).toBe(OK)
+      await status(ConversationStatus.RESOLVED)
+      await status(ConversationStatus.OPEN)
+      // Undoing is a way of reopening, not of resolving or of anything else
+      const refused = await status(ConversationStatus.RESOLVED, { undoesResolution: true })
+      expect(refused.status).toBe(BAD_REQUEST)
+
+      const lines = await linesOf(conversation.id)
+      expect(lines.map(line => (line.metadata as { event: string }).event)).toEqual([
+        SystemMessageEvents.RESOLVED,
+        SystemMessageEvents.RESOLVE_UNDONE,
+        SystemMessageEvents.RESOLVED,
+        SystemMessageEvents.REOPENED
+      ])
+    })
+
     it('keeps the date of the snooze and the wake of a snoozed conversation', async () => {
       const conversation = await mk()
       const until = new Date(Date.now() + 3_600_000)

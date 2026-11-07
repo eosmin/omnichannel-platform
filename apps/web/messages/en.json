@@ -1133,6 +1133,7 @@
       "system": {
         "resolved": "{actorKind, select, user {Resolved by {actor}} other {Resolved automatically}}",
         "reopened": "{actorKind, select, user {Reopened by {actor}} other {Reopened automatically}}",
+        "resolve_undone": "{actorKind, select, user {{actor} undid the resolution} other {The resolution was undone}}",
         "archived": "{actorKind, select, user {Archived by {actor}} other {Archived automatically}}",
         "marked_spam": "{actorKind, select, user {Marked as spam by {actor}} other {Marked as spam automatically}}",
         "unmarked_spam": "{actorKind, select, user {Unmarked as spam by {actor}} other {Unmarked as spam automatically}}",

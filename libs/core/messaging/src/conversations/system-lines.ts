@@ -32,7 +32,8 @@ export type SystemLineMetadata = z.output<typeof systemLineMetadataSchema>
 // The changes of status that people care about. Moving between OPEN and PENDING is not one of them.
 export function systemEventFor(
   from: ConversationStatus,
-  to: ConversationStatus
+  to: ConversationStatus,
+  undoesResolution = false
 ): SystemMessageEvent | null {
   switch (to) {
     case ConversationStatus.RESOLVED:
@@ -46,6 +47,9 @@ export function systemEventFor(
     case ConversationStatus.OPEN:
       if (from === ConversationStatus.SNOOZED) return SystemMessageEvents.WOKEN
       if (from === ConversationStatus.SPAM) return SystemMessageEvents.UNMARKED_SPAM
+      if (from === ConversationStatus.RESOLVED && undoesResolution) {
+        return SystemMessageEvents.RESOLVE_UNDONE
+      }
       if (from === ConversationStatus.RESOLVED || from === ConversationStatus.ARCHIVED) {
         return SystemMessageEvents.REOPENED
       }

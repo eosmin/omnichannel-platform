@@ -431,6 +431,9 @@ test.describe.serial('the thread of a conversation', () => {
       await page.getByRole('button', { name: en.common.undo }).click()
 
       await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.OPEN)
+      // The history keeps both lines, and the second says the resolution was taken back, not a bare "reopened"
+      await expect(page.getByText(/undid the resolution/)).toBeVisible()
+      await expect(page.getByText(/Reopened by/)).toHaveCount(0)
     } finally {
       await setResolveBehavior(storeId, { showOptions: true, closingSnippetId: null })
     }

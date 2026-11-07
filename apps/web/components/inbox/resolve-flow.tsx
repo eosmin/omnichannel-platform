@@ -50,7 +50,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   const behavior = useInboxBehavior(storeId)
   const windowState = useWindowState(storeId, conversationId)
   const windowQuery = useMessagingWindow(storeId, conversationId)
-  const { resolve, reopen } = useConversationActions(storeId, conversationId)
+  const { resolve, undoResolve } = useConversationActions(storeId, conversationId)
   const { offer: offerPush } = usePushOffer(storeId)
   const [isDialogOpen, setDialogOpen] = useState(false)
 
@@ -85,7 +85,9 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
           action: {
             label: tAll('common.undo'),
             onClick: () =>
-              void reopen.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
+              void undoResolve
+                .mutateAsync()
+                .catch((error: unknown) => toast.error(errorText(error)))
           }
         })
       })
