@@ -27,6 +27,8 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { type ConversationVisibility, Events } from '@platform/core/events'
 import {
   CapabilityOfMediaType,
+  MediaMessageLimits,
+  type OutboundMediaType,
   isOutboundMediaType,
   MediaPurpose,
   mediaMessageTypeOf
@@ -73,6 +75,19 @@ export type ChannelSupportsFile = (
   capability: ChannelCapabilityType
 ) => boolean
 
+// What a channel takes in one message of a kind of file: how many files (already counting the switch that
+// turns several on) and the rule of the kind. The route builds it from the plugin registry, which lives
+// above this library. `types: null` is any type the platform lets be uploaded.
+export interface ChannelFileLimits {
+  maxFiles: number
+  types: readonly string[] | null
+  maxBytes: number
+}
+export type ChannelFileLimitsOf = (
+  channelType: string,
+  messageType: OutboundMediaType
+) => ChannelFileLimits | null
+
 export interface CreatedMessage {
   message: MessageView
   // false when the key had been used: the message that was already there is returned
@@ -105,9 +120,10 @@ export class MessagesService {
     body: CreateMessageBody,
     viewer: Viewer,
     rendered?: RenderedTemplate,
-    supports?: ChannelSupportsFile
+    supports?: ChannelSupportsFile,
+    limitsOf?: ChannelFileLimitsOf
   ): Promise<CreatedMessage> {
-    const stored = await this.store(storeId, body, viewer, rendered, supports)
+    const stored = await this.store(storeId, body, viewer, rendered, supports, limitsOf)
     return { ...stored, message: await this.withQuote(storeId, stored.message, viewer) }
   }
 
@@ -116,7 +132,8 @@ export class MessagesService {
     body: CreateMessageBody,
     viewer: Viewer,
     rendered?: RenderedTemplate,
-    supports?: ChannelSupportsFile
+    supports?: ChannelSupportsFile,
+    limitsOf?: ChannelFileLimitsOf
   ): Promise<CreatedMessage> {
     const isNote = body.type === MessageType.INTERNAL_NOTE
     const isTemplate = body.type === MessageType.TEMPLATE
@@ -159,7 +176,7 @@ export class MessagesService {
       if (mentions.length > 0) await this.requireMentionable(tx, storeId, mentions, current)
       // Checked under the lock and after the replay: a retry finds its files already linked
       const files = isMediaBody(body)
-        ? await this.requireFiles(tx, storeId, body, viewer, supports)
+        ? await this.requireFiles(tx, storeId, body, viewer, supports, limitsOf)
         : null
 
       // The date is set here, in milliseconds, so that the message and the conversation agree on it
@@ -272,6 +289,11 @@ export class MessagesService {
         await this.window.requireOpen(tx, storeId, row.conversationId)
       }
       const now = new Date()
+      // Only the files that did not go are sent again: the ones the channel took stay sent
+      await tx.media.updateMany({
+        where: { messageId, storeId, deliveryStatus: DeliveryStatus.FAILED },
+        data: { deliveryStatus: DeliveryStatus.QUEUED, sendErrorCode: null }
+      })
       const updated = await tx.message.update({
         where: { id: messageId, storeId },
         data: {
@@ -492,7 +514,8 @@ export class MessagesService {
     storeId: string,
     body: MediaMessageBody,
     viewer: Viewer,
-    supports: ChannelSupportsFile | undefined
+    supports: ChannelSupportsFile | undefined,
+    limitsOf: ChannelFileLimitsOf | undefined
   ): Promise<LinkableFiles> {
     const conversation = await tx.conversation.findFirst({
       where: { id: body.conversationId, storeId },
@@ -509,6 +532,20 @@ export class MessagesService {
       )
     }
     requireCaptionFits(conversation.channelType, body.type, body.content)
+    // How many, before the files are read: a channel that does not say takes one (the limit of the
+    // time before several were allowed)
+    const limits = limitsOf?.(conversation.channelType, body.type) ?? null
+    const maxFiles = limits?.maxFiles ?? MediaMessageLimits.SINGLE_FILE
+    if (body.mediaIds.length > maxFiles) {
+      throw new PlatformException(
+        ErrorCodes.CHANNEL_TOO_MANY_FILES,
+        maxFiles === MediaMessageLimits.SINGLE_FILE
+          ? 'one file per message: several in one message are not switched on, or the channel takes one'
+          : 'the channel does not take that many files in one message',
+        HttpStatusCodes.CONFLICT,
+        { max: maxFiles }
+      )
+    }
     const rows = await tx.media.findMany({
       where: {
         id: { in: body.mediaIds },
@@ -516,7 +553,7 @@ export class MessagesService {
         purpose: MediaPurpose.MESSAGE,
         uploadedBy: viewer.userId
       },
-      select: { id: true, status: true, contentType: true, messageId: true }
+      select: { id: true, status: true, contentType: true, messageId: true, fileSize: true }
     })
     // Another store's file, another member's upload and a file that does not exist are one answer
     if (rows.length !== body.mediaIds.length) throw resourceNotFound('media')
@@ -526,6 +563,24 @@ export class MessagesService {
       assertMediaServable(row.status)
       if (mediaMessageTypeOf(row.contentType) !== body.type) {
         throw invalidInput('the file is not of the type of the message')
+      }
+      // What the channel takes of this kind, before the message is queued (the plugin checks it again)
+      if (limits !== null) {
+        if (limits.types !== null && !limits.types.includes(row.contentType)) {
+          throw new PlatformException(
+            ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED,
+            'the channel does not take this type of file',
+            HttpStatusCodes.CONFLICT
+          )
+        }
+        if (row.fileSize > limits.maxBytes) {
+          throw new PlatformException(
+            ErrorCodes.CHANNEL_FILE_TOO_LARGE,
+            'the file is larger than the channel takes',
+            HttpStatusCodes.CONFLICT,
+            { maxBytes: limits.maxBytes }
+          )
+        }
       }
     }
     return { ids: body.mediaIds, customerId: conversation.customerId }
@@ -539,12 +594,21 @@ export class MessagesService {
     messageId: string,
     files: LinkableFiles
   ): Promise<void> {
-    const linked = await tx.media.updateMany({
-      where: { id: { in: [...files.ids] }, storeId, messageId: null },
-      data: { messageId, customerId: files.customerId }
-    })
-    if (linked.count !== files.ids.length) {
-      throw resourceConflict('the file is already attached to a message')
+    // One by one, in the order the agent gave: the place of a file is its order in the message, and it
+    // starts queued. A file that another request linked first fails the whole message (the transaction).
+    for (const [position, id] of files.ids.entries()) {
+      const linked = await tx.media.updateMany({
+        where: { id, storeId, messageId: null },
+        data: {
+          messageId,
+          customerId: files.customerId,
+          position,
+          deliveryStatus: DeliveryStatus.QUEUED
+        }
+      })
+      if (linked.count !== 1) {
+        throw resourceConflict('the file is already attached to a message')
+      }
     }
   }
 

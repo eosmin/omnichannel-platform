@@ -21,7 +21,7 @@ import { ChannelConnectionResolver } from '@platform/core/messaging'
 import type { ValidChannelEvent } from '@platform/plugins/runtime'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
-import { MessageStatusWriter } from './message-status.writer'
+import { MessageStatusWriter, statesBefore } from './message-status.writer'
 
 const RECEIPT_STATES = {
   [ChannelEventTypes.MESSAGE_DELIVERED]: DeliveryStatus.DELIVERED,
@@ -74,7 +74,25 @@ export class ChannelReceipts {
       )
       return
     }
-    const message = found[0] ?? null
+    let message = found[0] ?? null
+    // A file after the first of a message has its own provider id, kept on its row: a receipt of it is a receipt
+    // of its message (a file that did not arrive fails it), and the file keeps its own state
+    if (message === null) {
+      const file = await this.prisma.client.media.findFirst({
+        where: {
+          storeId: connection.storeId,
+          channelMessageId: externalId,
+          message: {
+            authorType: AuthorType.AGENT,
+            conversation: { channelConnectionId: connection.id }
+          }
+        },
+        select: { messageId: true }
+      })
+      if (file?.messageId != null) {
+        message = { id: file.messageId }
+      }
+    }
     // A receipt for a message this platform did not send (it went out from the phone) or one it has
     // not finished writing: nothing to update
     if (message === null) {
@@ -85,6 +103,38 @@ export class ChannelReceipts {
       return
     }
     const to = RECEIPT_STATES[event.type]
+    // The file the receipt is about keeps its own state, whichever file of the message it is
+    await this.prisma.client.media.updateMany({
+      where: {
+        storeId: connection.storeId,
+        messageId: message.id,
+        channelMessageId: externalId,
+        deliveryStatus: { in: statesBefore(to) }
+      },
+      data: {
+        deliveryStatus: to,
+        sendErrorCode: to === DeliveryStatus.FAILED ? ErrorCodes.CHANNEL_MESSAGE_FAILED : null
+      }
+    })
+    // A message of several files is delivered, or read, when every one of its files is: the receipt of one file
+    // moves that file, and the message only when it was the last. A failure of any file fails the message (the
+    // agent sends again the files that failed).
+    if (to !== DeliveryStatus.FAILED) {
+      const states = await this.prisma.client.media.findMany({
+        where: { storeId: connection.storeId, messageId: message.id, position: { not: null } },
+        select: { deliveryStatus: true }
+      })
+      const reached =
+        to === DeliveryStatus.READ
+          ? [DeliveryStatus.READ]
+          : [DeliveryStatus.DELIVERED, DeliveryStatus.READ]
+      if (
+        states.length > 1 &&
+        states.some(file => !reached.some(state => state === file.deliveryStatus))
+      ) {
+        return
+      }
+    }
     await this.status.apply({
       storeId: connection.storeId,
       messageId: message.id,

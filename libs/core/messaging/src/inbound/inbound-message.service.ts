@@ -208,6 +208,8 @@ export class InboundMessageService {
         },
         select: { id: true, authorType: true }
       })) ??
+      // A file after the first of a message of ours went as a message of its own: its id is on the file
+      (await this.messageOfFile(tx, storeId, conversationIds, event.message.externalId)) ??
       (await this.reconcileUnconfirmedCaption(tx, storeId, conversationIds, event))
     if (known !== null) {
       return {
@@ -285,6 +287,23 @@ export class InboundMessageService {
       })
     }
     return { messageId: message.id, duplicate: false, fetchMedia: true }
+  }
+
+  private async messageOfFile(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationIds: string[],
+    externalId: string
+  ): Promise<{ id: string; authorType: string } | null> {
+    const file = await tx.media.findFirst({
+      where: {
+        storeId,
+        channelMessageId: externalId,
+        message: { conversationId: { in: conversationIds }, authorType: AuthorType.AGENT }
+      },
+      select: { message: { select: { id: true, authorType: true } } }
+    })
+    return file?.message ?? null
   }
 
   // Meta has no idempotency key, so a caption whose call timed out is neither resent nor written off: it
