@@ -42,7 +42,7 @@ export function InboxSidebar(): ReactElement | null {
   return (
     <aside
       aria-label={t('label')}
-      className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto border-l p-3"
+      className="relative flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto overscroll-contain border-l p-3"
     >
       {conversationId === undefined ? null : <CustomerPanel conversationId={conversationId} />}
       {shown.map((entry, index) => {

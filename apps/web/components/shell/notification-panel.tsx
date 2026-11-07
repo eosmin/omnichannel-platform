@@ -72,7 +72,7 @@ export function NotificationPanel({
           </TabsList>
         </Tabs>
       </SheetHeader>
-      <div className="flex-1 overflow-y-auto">
+      <div className="relative flex-1 overflow-y-auto overscroll-contain">
         {list.isError && items.length === 0 ? (
           <p role="alert" className="text-destructive p-4 text-sm">
             {t('failed')}
