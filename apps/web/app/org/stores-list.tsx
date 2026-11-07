@@ -4,7 +4,6 @@ import { Pencil, Plus, Settings, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths, type StoreView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -35,6 +34,7 @@ import {
   useUpdateStore
 } from '../../lib/settings/use-settings-data'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useProfile } from '../../lib/use-profile'
 

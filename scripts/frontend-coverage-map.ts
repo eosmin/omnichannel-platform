@@ -318,6 +318,9 @@ export const CAPABILITY_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   LOCATION: {
     none: 'An inbound location shows in the thread (Step 3.2); no step lets an agent send one in the MVP'
   },
+  CONTACTS: {
+    none: 'A shared contact card is stored with its names, phones and emails (PR-3 of the channels lane); the thread shows it as a neutral line until the web lane draws the card (Step 7.7 owner, see the plan). No step lets an agent send one in the MVP'
+  },
   BUTTONS: {
     none: 'No step lets an agent send buttons in the MVP; reserved for flows of Phase 2'
   },

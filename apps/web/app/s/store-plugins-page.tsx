@@ -3,7 +3,6 @@
 import { Puzzle } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import type { DestructiveAction } from '@platform/core/domain'
@@ -18,6 +17,7 @@ import {
   usePluginCatalog,
   useUninstallPlugin
 } from '../../lib/settings/use-channels'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 
 // Uninstalling disconnects every account of the plugin, which is the high tier of a disconnect

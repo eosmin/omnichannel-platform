@@ -3,7 +3,6 @@
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import { ResolveUndo } from '@platform/core/domain'
@@ -12,6 +11,7 @@ import { useConversationActions } from '../../lib/inbox/use-conversation-actions
 import { useInboxBehavior, useMessagingWindow } from '../../lib/inbox/use-inbox-data'
 import { useWindowState } from '../../lib/inbox/use-window-state'
 import { usePushOffer } from '../../lib/push/use-push-offer'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'

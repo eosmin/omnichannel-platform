@@ -169,6 +169,84 @@ describe('InboundMediaFetcher', () => {
     expect(logger.warn).toHaveBeenCalled()
   })
 
+  describe('an audio clip of Instagram', () => {
+    const M4A = Buffer.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20, 0, 0])
+    const audioJob = { ...job, pluginId: 'instagram', contentType: 'audio/mp4', filename: null }
+
+    it.each(['video/mp4', 'audio/mp4', 'audio/x-m4a', 'application/octet-stream'])(
+      'is kept as audio/mp4 when the server calls it %s and the webhook said audio',
+      async declared => {
+        const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(M4A, declared)) }
+        const { fetcher, media, storage, queue, marker } = setup({ plugin })
+
+        await fetcher.fetch(audioJob, false)
+
+        expect(storage.put).toHaveBeenCalledWith(expect.any(String), M4A, 'audio/mp4')
+        expect(media.create).toHaveBeenCalledTimes(1)
+        const created = media.create.mock.calls[0] as [
+          { data: { contentType: string; fileSize: number } }
+        ]
+        expect(created[0].data).toMatchObject({ contentType: 'audio/mp4', fileSize: M4A.length })
+        expect(queue.add).toHaveBeenCalledTimes(1)
+        expect(marker.mark).not.toHaveBeenCalled()
+      }
+    )
+
+    it.each([
+      ['audio/mpeg', Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, 0, 0])],
+      ['audio/ogg', Buffer.from('OggS\u0000\u0002', 'latin1')],
+      ['audio/aac', Buffer.from([0xff, 0xf1, 0x50, 0x80, 0, 0])]
+    ])(
+      'reads %s from the bytes when the server says nothing and the hint was wrong',
+      async (_t, body) => {
+        const plugin = {
+          fetchMedia: jest.fn().mockResolvedValue(file(body, 'application/octet-stream'))
+        }
+        const { fetcher, storage, marker } = setup({ plugin })
+
+        await fetcher.fetch(audioJob, false)
+
+        expect(marker.mark).not.toHaveBeenCalled()
+        expect(storage.put).toHaveBeenCalledTimes(1)
+      }
+    )
+
+    it('does not guess when the server named a type and the bytes disagree', async () => {
+      const plugin = {
+        fetchMedia: jest
+          .fn()
+          .mockResolvedValue(file(Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, 0, 0]), 'audio/mp4'))
+      }
+      const { fetcher, storage, marker } = setup({ plugin })
+
+      await fetcher.fetch(audioJob, false)
+
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
+    })
+
+    it('keeps a video as a video when the webhook did not say audio', async () => {
+      const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(M4A, 'video/mp4')) }
+      const { fetcher, storage } = setup({ plugin })
+
+      await fetcher.fetch({ ...audioJob, contentType: 'application/octet-stream' }, false)
+
+      expect(storage.put).toHaveBeenCalledWith(expect.any(String), M4A, 'video/mp4')
+    })
+
+    it('refuses bytes that are not an mp4 container, whatever the type said', async () => {
+      const html = Buffer.from('<html><script>alert(1)</script></html>')
+      const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(html, 'audio/mp4')) }
+      const { fetcher, storage, media, marker } = setup({ plugin })
+
+      await fetcher.fetch(audioJob, false)
+
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(media.create).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
+    })
+  })
+
   it('cuts a body that grows past the limit', async () => {
     const big = Readable.from([Buffer.alloc(6 * 1024 * 1024), Buffer.alloc(6 * 1024 * 1024)])
     const plugin = {

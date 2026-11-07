@@ -2,13 +2,13 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ChannelConnectionLimits } from '@platform/core/domain'
 
 import type { ChannelConnectionView } from '../../lib/settings/channels-requests'
 import { useRenameConnection } from '../../lib/settings/use-channels'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

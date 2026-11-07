@@ -944,6 +944,7 @@
       "AUDIO": "Audio",
       "DOCUMENT": "Documento",
       "LOCATION": "Ubicación",
+      "CONTACTS": "Contacto",
       "INTERNAL_NOTE": "Nota interna",
       "SYSTEM": "Evento",
       "PRODUCT_CARD": "Producto",

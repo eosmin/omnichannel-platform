@@ -3,12 +3,12 @@
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useEffect } from 'react'
-import { toast } from 'sonner'
 
 import type { AccountProfile } from '@platform/api-client'
 
 import { LoadingScreen } from '../../components/shell/session-gate'
 import { chooseStartPath } from '../../lib/start-path'
+import { toast } from '../../lib/toast'
 
 // A store the person was suspended in (opened by its link, or the one used last): they are told, and
 // sent to a store they can still enter, or to the screen that explains the suspension when they have

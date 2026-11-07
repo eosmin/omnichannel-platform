@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
-import { toast } from 'sonner'
 
 import { SettingsLimits } from '@platform/core/domain'
 
@@ -17,6 +16,7 @@ import {
 import type { StoreSnippetView } from '../../lib/settings/snippets-requests'
 import { useCreateSnippet, useUpdateSnippet } from '../../lib/settings/use-content'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

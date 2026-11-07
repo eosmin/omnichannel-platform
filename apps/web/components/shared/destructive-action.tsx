@@ -11,7 +11,6 @@ import {
   useRef,
   useState
 } from 'react'
-import { toast } from 'sonner'
 
 import type { DestructiveAction } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
@@ -22,6 +21,7 @@ import {
   needsDestructiveButton,
   phraseMatches
 } from '../../lib/destructive-action'
+import { toast } from '../../lib/toast'
 import {
   AlertDialog,
   AlertDialogAction,
