@@ -1,12 +1,14 @@
-// The zone the hours of the app are shown in: the one the person chose in their account, else the one of
-// their browser. Before the browser says (the first render, which the server also draws) there is none:
-// `undefined` leaves the zone of the provider as it is.
+// The zone the hours of the app are shown in: the one the person chose in their account, else the one of the
+// store they are working in (the one the snooze already counts in), else the one of their browser. Before the
+// browser says (the first render, which the server also draws) there is none: `undefined` leaves the zone of
+// the provider as it is.
 export function displayTimeZone(
   accountZone: string | null | undefined,
-  browserZone: string | undefined
+  browserZone: string | undefined,
+  storeZone?: string | null
 ): string | undefined {
-  if (accountZone !== null && accountZone !== undefined && accountZone !== '') {
-    return isKnownTimeZone(accountZone) ? accountZone : browserZone
+  for (const zone of [accountZone, storeZone]) {
+    if (zone !== null && zone !== undefined && zone !== '' && isKnownTimeZone(zone)) return zone
   }
   return browserZone
 }

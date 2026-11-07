@@ -84,6 +84,15 @@ describe('channel rule', () => {
     }
   })
 
+  it('pushes a customer message to its owner and the unassigned queue to who can take it', () => {
+    for (const type of [
+      NotificationTypes.MESSAGE_RECEIVED,
+      NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE
+    ]) {
+      expect(NotificationDefaults[type].channels).toContain(NotificationChannel.PUSH)
+    }
+  })
+
   it('plays sound only for inbox events', () => {
     for (const [type, { channels }] of Object.entries(NotificationDefaults)) {
       if (channels.includes(NotificationChannel.SOUND)) {

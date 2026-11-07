@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test'
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -19,6 +20,7 @@ async function createStoreNamed(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: en.org.newStore }).click()
   const dialog = page.getByRole('dialog', { name: en.org.create.title })
   await dialog.getByLabel(en.settings.store.name).fill(name)
+  await expectDialogFitsThePhoneWidth(page, dialog)
   await dialog.getByRole('button', { name: en.org.create.submit }).click()
   await expect(page.getByText(name, { exact: true })).toBeVisible()
 }
@@ -35,6 +37,7 @@ test.describe('the stores of the organization', () => {
     await page.getByRole('button', { name: `${en.org.rename.action} ${name}` }).click()
     const renameDialog = page.getByRole('dialog', { name: en.org.rename.title })
     await renameDialog.getByLabel(en.org.rename.name).fill(renamed)
+    await expectDialogFitsThePhoneWidth(page, renameDialog)
     await renameDialog.getByRole('button', { name: en.common.save }).click()
     await expect(page.getByText(renamed, { exact: true })).toBeVisible()
 
@@ -50,6 +53,7 @@ test.describe('the stores of the organization', () => {
     await page.goto(AppPaths.org.stores)
     await page.getByRole('button', { name: `${en.org.delete.action} ${renamed}` }).click()
     const confirm = page.getByRole('alertdialog')
+    await expectDialogFitsThePhoneWidth(page, confirm)
     // The confirm button waits for the exact name of the store
     await expect(confirm.getByRole('button', { name: en.org.delete.confirm })).toBeDisabled()
     await confirm.getByLabel(en.confirm.phraseLabel).fill(renamed)

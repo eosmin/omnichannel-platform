@@ -73,7 +73,8 @@ const { IN_APP, PUSH, EMAIL, SOUND } = NotificationChannel
 const { INFO, SUCCESS, WARNING, ERROR } = NotificationSeverity
 
 // Channel rule (TDD_06 §6.1), how a default is chosen:
-//   IN_APP always. PUSH when someone must act soon or it is time-sensitive. EMAIL when money or a
+//   IN_APP always. PUSH when someone must act soon or it is time-sensitive, and for a customer who
+//   writes (a message to its owner, a conversation nobody owns: owner, 2026-11-08). EMAIL when money or a
 //   legal deadline is involved, or the person may be away from the app. SOUND for inbox events only.
 // Default delivery matrix per type: complete, one entry per NotificationType. TDD_09 §9 renders
 // exactly this matrix; the two must never disagree.
@@ -83,13 +84,13 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
     severity: INFO,
     channels: [IN_APP, PUSH, EMAIL, SOUND]
   },
-  [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]: { severity: INFO, channels: [IN_APP] },
+  [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]: { severity: INFO, channels: [IN_APP, PUSH] },
   [NotificationTypes.CONVERSATION_SNOOZE_EXPIRED]: {
     severity: INFO,
     channels: [IN_APP, PUSH, SOUND]
   },
   [NotificationTypes.CONVERSATION_REOPENED]: { severity: INFO, channels: [IN_APP, PUSH] },
-  [NotificationTypes.MESSAGE_RECEIVED]: { severity: INFO, channels: [IN_APP, SOUND] },
+  [NotificationTypes.MESSAGE_RECEIVED]: { severity: INFO, channels: [IN_APP, PUSH, SOUND] },
   [NotificationTypes.MESSAGE_FAILED]: { severity: ERROR, channels: [IN_APP, PUSH] },
   [NotificationTypes.ORDER_CREATED]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.ORDER_STATUS_CHANGED]: { severity: INFO, channels: [IN_APP] },
