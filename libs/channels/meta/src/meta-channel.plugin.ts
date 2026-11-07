@@ -72,6 +72,8 @@ export interface MetaAccount {
   // The Page or the Instagram account that receives the webhooks: `entry.id`
   id: string
   displayName: string
+  // The name is a stand-in for one that could not be read (see ConnectResult)
+  displayNameIsPlaceholder?: boolean
   // What the connection keeps beside its id (the Instagram connection keeps its Page)
   metadata?: Record<string, unknown>
 }
@@ -223,6 +225,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     return {
       connectionId: account.id,
       displayName: account.displayName,
+      ...(account.displayNameIsPlaceholder === true ? { displayNameIsPlaceholder: true } : {}),
       credentials: { accessToken },
       metadata: account.metadata ?? {}
     }
