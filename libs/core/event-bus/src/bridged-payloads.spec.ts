@@ -119,6 +119,12 @@ describe('bridgedPayload', () => {
       pluginId: 'whatsapp',
       reason: ChannelDisconnectedReasons.ERROR
     },
+    [Events.CHANNEL_TOKEN_EXPIRING]: {
+      storeId: randomUUID(),
+      channelConnectionId: randomUUID(),
+      pluginId: 'messenger',
+      expiresAt: '2026-11-14T10:00:00.000Z'
+    },
     [Events.CHANNEL_HEALTH_RESTORED]: {
       storeId: randomUUID(),
       channelConnectionId: randomUUID(),

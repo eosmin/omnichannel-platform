@@ -35,6 +35,10 @@ export const MetaGraph = {
   // own host, graph.instagram.com, takes another kind of token and is not used. A call names this
   // origin, never a url of its own.
   ORIGIN: 'https://graph.facebook.com',
+  // What Meta says about a token: `GET` is the documented method; `POST` is tried first so that the token
+  // that is being asked about does not travel in the address
+  DEBUG_TOKEN_EDGE: 'debug_token',
+  DEBUG_TOKEN_INPUT_FIELD: 'input_token',
   // The one host that wants the connection token to give a file. Exact on purpose: other
   // *.fbsbx.com hosts (apps.fbsbx.com) serve content of third parties.
   MEDIA_TOKEN_HOSTS: ['lookaside.fbsbx.com'],
@@ -54,6 +58,9 @@ export const MetaTransientStatuses = [408, 425] as const
 
 export const MetaLimits = {
   REQUEST_TIMEOUT_MS: 15_000,
+  // How long the process remembers which method `debug_token` took: after it the POST is tried again, so that
+  // a fallback to GET (the token in the address) is not kept for ever by one odd answer
+  DEBUG_METHOD_MEMORY_MS: 3_600_000,
   MEDIA_TIMEOUT_MS: 60_000,
   // An upload of the largest file (100 MB) over an ordinary uplink; a call that takes longer is cut
   UPLOAD_TIMEOUT_MS: 180_000,
@@ -81,6 +88,10 @@ export const MetaErrorCodes = {
   ],
   // Failure on Meta's side (131000 and 131016 are WhatsApp's): the work may or may not have been done
   TEMPORARY: [1, 2, 131000, 131016],
+  // Meta's answer to a method an edge does not support (a POST to `debug_token`): the class of the error, read
+  // by shape and never by the text, which changes with the language of the app. Its code and subcode (100, 33)
+  // are also those of "the object does not exist or is not yours", so they do not say it alone.
+  METHOD_REJECTED_ERROR_TYPE: 'GraphMethodException',
   // Messenger documents it: the person has no profile to read (an account made with a phone number).
   // Instagram documents no such code; there a person who cannot be read answers an error or nothing.
   NO_PROFILE: 2018218

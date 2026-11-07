@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
+  MetaErrorCodes,
   MetaGraph,
   type MetaGraphOrigin,
   MetaLimits,
@@ -12,7 +13,10 @@ import {
   MetaUpload,
   MetaWebhook,
   type MetaWebhookApp,
-  MetaWebhookApps
+  MetaWebhookApps,
+  TokenExpiryLimits,
+  type TokenInspection,
+  TokenKinds
 } from '@platform/core/domain'
 import {
   ChannelConnectFailureReasons,
@@ -50,6 +54,23 @@ const HTTP_SERVER_ERROR_MIN = 500
 const HTTP_TOO_MANY_REQUESTS = HttpStatusCodes.TOO_MANY_REQUESTS
 
 const tokenAnswerSchema = z.object({ access_token: z.string().min(1).max(4096) })
+
+// What `debug_token` answers, read for these fields alone. `expires_at` is a date in seconds, 0 for a token that
+// does not expire; one that is missing says nothing, and is not taken for "never".
+const debugAnswerSchema = z.object({
+  data: z.object({
+    is_valid: z.boolean(),
+    type: z.string().max(40).optional(),
+    expires_at: z.number().int().nonnegative().optional(),
+    scopes: z.array(z.string()).optional()
+  })
+})
+
+// The shape of the error that says "this edge does not take that method". Only the class and the subcode of
+// the error are read, never its message.
+const methodRejectionSchema = z.object({ error: z.object({ type: z.string().optional() }) })
+
+type DebugMethod = 'POST' | 'GET'
 
 const mediaInfoSchema = z.object({
   url: z.url(),
@@ -193,6 +214,99 @@ export class MetaGraphClient {
     const parsed = tokenAnswerSchema.safeParse(body)
     if (!parsed.success) throw graphUnreachable({ safeToRepeat: false })
     return parsed.data.access_token
+  }
+
+  // The method that worked on `debug_token`, kept for the life of the process so that the other one is not
+  // tried on every call
+  private debugMethod: { method: DebugMethod; until: number } | undefined
+  // Questions are asked one at a time until a method is known: otherwise a burst would each try the POST and,
+  // refused, each put its token in the address of a GET
+  private debugQueue: Promise<unknown> = Promise.resolve()
+
+  // What Meta says about a token (`GET /debug_token`): whether it is valid, whose kind it is and when it
+  // stops. The app proves itself with `APP_ID|APP_SECRET`, sent as the Authorization header and nowhere else:
+  // never in an address, a log or an error. The token that is asked about is a secret too, so it goes in the
+  // body of a POST; `debug_token` documents only GET, so if Meta refuses the POST (recognised by the shape of
+  // its error, not by its text) the same question is asked with GET, and only then does the token go in the
+  // address, which is never logged or kept. Nothing of the answer is kept but the fields above.
+  //
+  // A failure is thrown as the error the core understands and says nothing about the token: the caller
+  // takes it for "could not ask", never for "expired".
+  async debugToken(inputToken: string): Promise<TokenInspection> {
+    if (this.knownDebugMethod() !== undefined) return this.askDebugToken(inputToken)
+    const turn = this.debugQueue.then(
+      () => this.askDebugToken(inputToken),
+      () => this.askDebugToken(inputToken)
+    )
+    this.debugQueue = turn.catch(() => undefined)
+    return turn
+  }
+
+  private knownDebugMethod(): DebugMethod | undefined {
+    const known = this.debugMethod
+    return known !== undefined && known.until > Date.now() ? known.method : undefined
+  }
+
+  private async askDebugToken(inputToken: string): Promise<TokenInspection> {
+    const { appId, appSecret } = this.config
+    if (appId === undefined || appSecret === undefined) throw graphUnexpected()
+    const appToken = `${appId}|${appSecret}`
+    if (!HEADER_TOKEN.test(appToken) || !HEADER_TOKEN.test(inputToken)) throw graphUnexpected()
+    const known = this.knownDebugMethod()
+    const methods: DebugMethod[] = known === undefined ? ['POST', 'GET'] : [known]
+    let last: PluginError | undefined
+    for (const method of methods) {
+      const response = await this.fetchOrFail(
+        this.debugUrl(method, inputToken),
+        {
+          method,
+          headers: {
+            authorization: `Bearer ${appToken}`,
+            ...(method === 'POST' ? { 'content-type': 'application/x-www-form-urlencoded' } : {})
+          },
+          body:
+            method === 'POST'
+              ? new URLSearchParams({ [MetaGraph.DEBUG_TOKEN_INPUT_FIELD]: inputToken }).toString()
+              : undefined,
+          redirect: 'manual',
+          signal: AbortSignal.timeout(TokenExpiryLimits.REQUEST_TIMEOUT_MS)
+        },
+        true
+      )
+      const body = await readJson(response)
+      if (!response.ok) {
+        last = graphFailure(response.status, body, { safeToRepeat: true })
+        // Another method is tried only when this one was refused for being the wrong method
+        if (method === 'POST' && methods.includes('GET') && isMethodRejection(body)) continue
+        throw last
+      }
+      if (body === undefined) throw graphUnreachable({ safeToRepeat: true })
+      const parsed = debugAnswerSchema.safeParse(body)
+      if (!parsed.success) throw graphUnexpected()
+      const { data } = parsed.data
+      // A token that works has a date (0: none); a missing one says nothing and is not taken for "never". One
+      // that Meta says is not valid may come without it, and that is the answer.
+      if (data.is_valid && data.expires_at === undefined) throw graphUnexpected()
+      this.debugMethod = { method, until: Date.now() + MetaLimits.DEBUG_METHOD_MEMORY_MS }
+      return {
+        kind: tokenKindOf(data.type),
+        isValid: data.is_valid,
+        expiresAt: !data.expires_at ? null : new Date(data.expires_at * 1000),
+        scopes: (data.scopes ?? [])
+          .filter(scope => scope.length > 0 && scope.length <= TokenExpiryLimits.SCOPE_MAX_LENGTH)
+          .slice(0, TokenExpiryLimits.SCOPES_MAX)
+      }
+    }
+    throw last ?? graphUnexpected()
+  }
+
+  // The address of the call: the edge alone for a POST; with the token being asked about for a GET
+  private debugUrl(method: DebugMethod, inputToken: string): string {
+    return this.urlFor(
+      MetaGraph.ORIGIN,
+      [MetaGraph.DEBUG_TOKEN_EDGE],
+      method === 'GET' ? { [MetaGraph.DEBUG_TOKEN_INPUT_FIELD]: inputToken } : undefined
+    )
   }
 
   // Uploads one file as multipart/form-data and answers what Meta answers (the id of the media). The
@@ -435,6 +549,23 @@ export class MetaGraphClient {
     }
     return response
   }
+}
+
+function tokenKindOf(type: string | undefined): TokenInspection['kind'] {
+  switch (type?.toUpperCase()) {
+    case 'PAGE':
+      return TokenKinds.PAGE
+    case 'USER':
+      return TokenKinds.USER
+    default:
+      return TokenKinds.UNKNOWN
+  }
+}
+
+// The answer of an edge to a method it does not take: by the class of the error and its subcode
+function isMethodRejection(body: unknown): boolean {
+  const parsed = methodRejectionSchema.safeParse(body)
+  return parsed.success && parsed.data.error.type === MetaErrorCodes.METHOD_REJECTED_ERROR_TYPE
 }
 
 function parseUrl(value: string): URL | null {
