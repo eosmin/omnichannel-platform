@@ -1,4 +1,4 @@
-import { MessageType, MetaGraph, OriginKinds } from '@platform/core/domain'
+import { InboundLimits, MessageType, MetaGraph, OriginKinds } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { messagingToEvents } from './meta-messaging-events'
@@ -282,6 +282,101 @@ describe('messagingToEvents', () => {
       content: '[unsupported]',
       metadata: { unsupportedType: 'unsupported' }
     })
+  })
+
+  it('keeps only the names of what a type it cannot read carried, for the team to map it later', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          attachments: [
+            {
+              type: 'ig_place',
+              title: 'Secret street 1',
+              payload: {
+                url: 'https://l.instagram.com/?u=secret',
+                coordinates: { lat: 1, long: 2 }
+              }
+            },
+            { type: '</b> x', payload: { 'bad key!': 1, ok_key: 2 } }
+          ],
+          extra_field: 'secret value'
+        })
+      ),
+      OBJECT
+    )
+    expect(event?.message?.metadata).toMatchObject({
+      unsupportedShape: {
+        messageFields: ['mid', 'attachments', 'extra_field'],
+        attachments: [
+          {
+            type: 'ig_place',
+            fields: ['type', 'title', 'payload'],
+            payloadFields: ['url', 'coordinates', 'coordinates.lat', 'coordinates.long']
+          },
+          { type: 'unsupported', fields: ['type', 'payload'], payloadFields: ['ok_key'] }
+        ]
+      }
+    })
+    // Names only: no value of the customer, no link
+    const stored = JSON.stringify(event?.message?.metadata?.unsupportedShape)
+    expect(stored).not.toContain('secret')
+    expect(stored).not.toContain('instagram.com')
+  })
+
+  it('keeps the shape of the worst message inside the metadata cap, link included', () => {
+    const names = (prefix: string, count: number): Record<string, number> =>
+      Object.fromEntries(
+        Array.from({ length: count }, (_, i) => [`${prefix}${i}`.padEnd(32, 'x'), 1])
+      )
+    const nested = Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [`n${i}`.padEnd(32, 'y'), names('k', 30)])
+    )
+    const url = `https://www.instagram.com/${'a'.repeat(2000)}`
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          ...names('m', 40),
+          attachments: Array.from({ length: 20 }, () => ({
+            type: 't'.repeat(32),
+            ...names('f', 40),
+            payload: { url, ...nested }
+          }))
+        })
+      ),
+      OBJECT
+    )
+    expect(Buffer.byteLength(JSON.stringify(event?.message?.metadata))).toBeLessThan(
+      InboundLimits.METADATA_MAX_BYTES
+    )
+    expect(event?.message?.metadata?.unsupportedShape).toBeDefined()
+  })
+
+  it('names the top-level fields first, so nested ones never push them out', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm1',
+          attachments: [
+            {
+              type: 'ig_place',
+              payload: { coordinates: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 }, last_one: 1 }
+            }
+          ]
+        })
+      ),
+      OBJECT
+    )
+    const shape = event?.message?.metadata?.unsupportedShape as {
+      attachments: { payloadFields: string[] }[]
+    }
+    expect(shape.attachments[0]?.payloadFields.slice(0, 2)).toEqual(['coordinates', 'last_one'])
+  })
+
+  it('does not add a shape to a message that is read', () => {
+    const [event] = messagingToEvents(wrap(inbound({ mid: 'm1', text: 'hola' })), OBJECT)
+    expect(event?.message?.metadata).toBeUndefined()
   })
 
   it('does not mark as unsupported a text that comes with a shared link', () => {
