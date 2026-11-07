@@ -6,7 +6,7 @@ import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import { ConversationLimits, SLASH_PREFIX } from '@platform/core/domain'
+import { ConversationLimits, ResolveUndo, SLASH_PREFIX } from '@platform/core/domain'
 
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import { useSnippets } from '../../lib/inbox/use-inbox-data'
@@ -41,7 +41,7 @@ export function ResolveForm({
   const tAll = useTranslations()
   const { storeId, can } = useStore()
   const snippets = useSnippets(storeId, true)
-  const { resolve } = useConversationActions(storeId, conversationId)
+  const { resolve, reopen } = useConversationActions(storeId, conversationId)
   const { offer: offerPush } = usePushOffer(storeId)
   const [wantsClosing, setWantsClosing] = useState(defaults.sendClosingMessage)
   const [snippetId, setSnippetId] = useState(defaults.closingSnippetId ?? '')
@@ -80,7 +80,15 @@ export function ResolveForm({
       })
       .then(
         () => {
-          toast.success(t('resolved'))
+          // The same Undo as the way with no dialog: the closing message waits for it on the server
+          toast(t('resolved'), {
+            duration: ResolveUndo.DURATION_MS,
+            action: {
+              label: tAll('common.undo'),
+              onClick: () =>
+                void reopen.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
+            }
+          })
           offerPush()
           onDone()
         },
