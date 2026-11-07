@@ -415,6 +415,41 @@ test.describe.serial('the inbox list', () => {
     await expect(dialog).toBeHidden()
   })
 
+  test('shortcuts: e opens the options of Resolve and Cmd/Ctrl+Enter confirms from the box of the reason', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.inbox(storeId))
+    await rowOf(page, storeId, conversationId).focus()
+    await expect.poll(() => focusedRow(page)).toBe(conversationId)
+
+    await page.keyboard.press('e')
+    const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    await expect(dialog).toBeVisible()
+    // The focus starts on a field of the form, not on a button: no Tab is spent getting to the choices
+    await expect(dialog.locator('input:focus, select:focus, textarea:focus')).toHaveCount(1)
+    await expect(dialog.getByRole('button', { name: en.common.cancel })).not.toBeFocused()
+    const confirm = dialog.getByRole('button', { name: en.inbox.resolve.confirm })
+    await expect(confirm).toHaveAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter')
+
+    // A plain Enter in the box of the reason is a line break and resolves nothing
+    const reason = dialog.getByLabel(en.inbox.resolve.reason)
+    await reason.fill('Paid')
+    await reason.press('Enter')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+    await expect(dialog).toBeVisible()
+
+    // On Cancel the same keys decide nothing
+    const cancel = dialog.getByRole('button', { name: en.common.cancel })
+    await cancel.focus()
+    await cancel.press('Control+Enter')
+    expect(await statusOf(conversationId)).toBe('OPEN')
+    await expect(dialog).toBeVisible()
+
+    // The suite's browser reports Windows to the app, so `Mod` is Ctrl here
+    await reason.press('Control+Enter')
+    await expect.poll(() => statusOf(conversationId)).toBe('RESOLVED')
+    await expect(dialog).toBeHidden()
+  })
+
   test('the sidebar: takes a conversation from the queue and keeps the order of its widgets', async () => {
     const conversationId = await newConversationIn(storeId)
     await page.goto(AppPaths.store.inbox(storeId))
