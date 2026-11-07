@@ -39,6 +39,7 @@ export const WhatsAppMessageTypes = {
   DOCUMENT: 'document',
   STICKER: 'sticker',
   LOCATION: 'location',
+  CONTACTS: 'contacts',
   INTERACTIVE: 'interactive',
   BUTTON: 'button',
   REACTION: 'reaction',

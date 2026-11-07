@@ -42,6 +42,15 @@ describe('channelEventSchema', () => {
     )
   })
 
+  it('takes a contact card message, which a plugin may say a customer sent', () => {
+    const event = withMessage({
+      type: MessageType.CONTACTS,
+      content: 'Ana',
+      metadata: { contacts: [{ name: 'Ana', phones: [{ number: '555' }], emails: [] }] }
+    })
+    expect(channelEventSchema.safeParse(event).success).toBe(true)
+  })
+
   it('accepts files where only some carry an id', () => {
     const id = '33333333-3333-4333-8333-333333333333'
     const event = withMessage({

@@ -16,10 +16,21 @@ const startsWith = (head: Head, bytes: readonly number[]): boolean =>
 const isMovie = (head: Head): boolean =>
   ['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip'].some(box => ascii(head, 4, box))
 
+// The brands of an `ftyp` box that are not audio: QuickTime and the HEIF family (HEIC and AVIF pictures).
+// An mp4 audio and an mp4 video share the container, so a brand is all the head can tell apart.
+const NOT_AUDIO_BRANDS = ['qt  ', 'heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'avif', 'avis']
+const isAudioMp4 = (head: Head): boolean =>
+  ascii(head, 4, 'ftyp') && !NOT_AUDIO_BRANDS.some(brand => ascii(head, 8, brand))
+
 // MPEG audio: an ID3 tag, or the 11 bits of frame sync
 const isMpegAudio = (head: Head): boolean =>
   ascii(head, 0, 'ID3') ||
   (head.length >= 2 && head[0] === 0xff && ((head[1] ?? 0) & 0xe0) === 0xe0)
+
+// Raw AAC (ADTS): 12 bits of sync, then a layer of 00. The looser test of MPEG audio above also lets
+// these bytes through; the declared type decides which of the two a file is kept as
+const isAdts = (head: Head): boolean =>
+  head.length >= 2 && head[0] === 0xff && ((head[1] ?? 0) & 0xf6) === 0xf0
 
 const isZip = (head: Head): boolean => startsWith(head, [0x50, 0x4b, 0x03, 0x04])
 
@@ -38,6 +49,9 @@ const RULES: Readonly<Record<string, (head: Head) => boolean>> = {
   'video/mp4': isMovie,
   'video/quicktime': isMovie,
   'audio/mpeg': isMpegAudio,
+  // An m4a is an mp4 container like a video, with an `ftyp` box and a brand that is not a picture's or QuickTime's
+  'audio/mp4': isAudioMp4,
+  'audio/aac': isAdts,
   'audio/ogg': head => ascii(head, 0, 'OggS'),
   'audio/wav': head => ascii(head, 0, 'RIFF') && ascii(head, 8, 'WAVE'),
   'application/pdf': head => ascii(head, 0, '%PDF-'),
