@@ -12,10 +12,12 @@ import {
   MembershipStatus,
   StoreSettingsSections
 } from '@platform/core/domain'
+import { errorName } from '@platform/core/errors'
 import {
   type ActorRef,
   type ChannelDisconnectedPayload,
   ChannelDisconnectedReasons,
+  type ChannelTokenExpiringPayload,
   type ConversationAssignedPayload,
   type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
@@ -34,6 +36,9 @@ import { NotificationsService } from './notifications.service'
 // queue of the team, a reply that did not go out, a new member, a channel that went down. Ids only in
 // the events; who is told is decided here, from the rows as they are now. The ones for the owner of a
 // conversation are in NotificationsEventsListener.
+// `2026-11-14` of an ISO date: the day the text of the notice says
+const ISO_DATE_LENGTH = 10
+
 @Injectable()
 export class NotificationsInboxListener {
   private readonly logger = new Logger(NotificationsInboxListener.name)
@@ -220,6 +225,49 @@ export class NotificationsInboxListener {
       })
     } catch (error) {
       this.logger.error({ storeId, err: String(error) }, 'a new member could not be notified')
+    }
+  }
+
+  // The token of a connection stops working within the warning time (the worker announces each date once).
+  // To who can set the channel up, with the day it stops. Not "once until they look": a renewed token that
+  // is about to expire again is another notice.
+  @OnEvent(Events.CHANNEL_TOKEN_EXPIRING)
+  async onChannelTokenExpiring(payload: ChannelTokenExpiringPayload): Promise<void> {
+    const { storeId, channelConnectionId } = payload
+    try {
+      const connection = await this.prisma.client.channelConnection.findFirst({
+        where: { id: channelConnectionId, storeId },
+        select: { status: true }
+      })
+      // A connection that is already down or gone has its own notice, or none
+      if (connection === null || connection.status !== String(ChannelConnectionStatus.ACTIVE)) {
+        return
+      }
+      const managers = await this.prisma.client.membership.findMany({
+        where: {
+          storeId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.SETTINGS_MANAGE_PLUGINS } } }
+        },
+        select: { userId: true }
+      })
+      await this.notifications.sendToUsers(
+        managers.map(member => member.userId),
+        {
+          storeId,
+          type: NotificationTypes.CHANNEL_TOKEN_EXPIRING,
+          params: { date: payload.expiresAt.slice(0, ISO_DATE_LENGTH) },
+          resourceType: 'channel_connection',
+          resourceId: channelConnectionId,
+          actionPath: AppPaths.store.settings(storeId, StoreSettingsSections.CHANNELS)
+        }
+      )
+    } catch (error) {
+      this.logger.error(
+        { channelConnectionId, errorName: errorName(error) },
+        'an expiring token could not be notified'
+      )
     }
   }
 

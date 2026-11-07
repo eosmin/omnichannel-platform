@@ -612,6 +612,7 @@ export const NotificationTypes = {
   INVITATION_ACCEPTED: 'invitation.accepted',
 
   CHANNEL_DISCONNECTED: 'channel.disconnected',
+CHANNEL_TOKEN_EXPIRING: 'channel.token_expiring',
   WEBHOOK_AUTO_DISABLED: 'webhook.auto_disabled',
   PLUGIN_ERROR: 'plugin.error',
   EXPORT_READY: 'export.ready',

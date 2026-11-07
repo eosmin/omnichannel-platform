@@ -8,13 +8,12 @@ import {
 } from './meta-oauth-scopes'
 
 describe('metaOAuthScopesFor', () => {
-  it('asks Messenger for the Page permissions and the portfolio one, and no Instagram one', () => {
+  it('asks Messenger for the Page permissions and no Instagram one', () => {
     expect(metaOAuthScopesFor(ChannelIds.MESSENGER)).toEqual([
       'pages_show_list',
       'pages_messaging',
       'pages_manage_metadata',
-      'pages_read_engagement',
-      'business_management'
+      'pages_read_engagement'
     ])
   })
 
@@ -24,7 +23,7 @@ describe('metaOAuthScopesFor', () => {
       expect.arrayContaining([...metaOAuthScopesFor(ChannelIds.MESSENGER), 'instagram_basic'])
     )
     expect(scopes).toContain(MetaOAuthScopes.INSTAGRAM_MANAGE_MESSAGES)
-    expect(scopes).toHaveLength(7)
+    expect(scopes).toHaveLength(6)
   })
 
   it('never asks for a permission twice', () => {
@@ -128,7 +127,6 @@ describe('missingOAuthScopes', () => {
       'pages_messaging',
       'pages_manage_metadata',
       'pages_read_engagement',
-      'business_management',
       'instagram_basic'
     ])
   })

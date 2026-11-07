@@ -31,7 +31,9 @@ const pageTokenSchema = z.object({
 
 // The login of Messenger and Instagram: classic Facebook Login with the code on the server. The core keeps
 // the state and the session; this only knows Meta's calls (measured on 2026-11-06 with the owner's account:
-// `me/accounts` is empty for a Page that lives in a portfolio, `me/businesses` and `owned_pages` find it).
+// `me/accounts` is empty for a Page that lives in a portfolio, `me/businesses` and `owned_pages` find it; on
+// 2026-11-07, with a token WITHOUT `business_management` and an administrator of the app in development mode,
+// they still did, so the login does not ask for that permission).
 export class MetaLogin implements ChannelOAuth {
   readonly kind = ChannelOAuthKinds.META_FACEBOOK_LOGIN
   readonly scopes: readonly string[]
@@ -84,9 +86,15 @@ export class MetaLogin implements ChannelOAuth {
   async listAssets(ctx: { userToken: string }): Promise<readonly OAuthAsset[]> {
     const found = new Map<string, OAuthAsset>()
     const failures: unknown[] = []
+    // The refusals of the PORTFOLIO lists, which the screen can go on without (it asks for the number of the Page);
+    // a refusal of `me/accounts` is not among them: that list needs only `pages_show_list`, which was checked
+    const refusedPortfolios: unknown[] = []
     // The pages of one list, or nothing when that way failed: the failure is kept, and the answer of the
     // others still counts. A list is merged in the order the ways were tried, whichever answered first.
-    const pagesAt = async (path: readonly string[]): Promise<z.infer<typeof pageSchema>[]> => {
+    const pagesAt = async (
+      path: readonly string[],
+      portfolio = false
+    ): Promise<z.infer<typeof pageSchema>[]> => {
       try {
         const answer = await this.meta.get({
           path,
@@ -98,6 +106,7 @@ export class MetaLogin implements ChannelOAuth {
       } catch (error) {
         this.refuseDeadToken(error)
         failures.push(error)
+        if (portfolio && isRefusedList(error)) refusedPortfolios.push(error)
         return []
       }
     }
@@ -125,6 +134,7 @@ export class MetaLogin implements ChannelOAuth {
       } catch (error) {
         this.refuseDeadToken(error)
         failures.push(error)
+        if (isRefusedList(error)) refusedPortfolios.push(error)
         return []
       }
     }
@@ -138,12 +148,23 @@ export class MetaLogin implements ChannelOAuth {
     for (let from = 0; from < businesses.length; from += MetaOAuth.OWNED_PAGES_CONCURRENCY) {
       const group = businesses.slice(from, from + MetaOAuth.OWNED_PAGES_CONCURRENCY)
       const lists = await Promise.all(
-        group.map(business => pagesAt([business, MetaOAuth.EDGE_OWNED_PAGES]))
+        group.map(business => pagesAt([business, MetaOAuth.EDGE_OWNED_PAGES], true))
       )
       for (const pages of lists) keep(pages)
     }
-    // Nothing found and something failed: an outage is not "nothing to connect"
-    if (found.size === 0 && failures.length > 0) throw failures[0]
+    // Nothing found and something failed: an outage is not "nothing to connect". A list that Meta REFUSED to
+    // this token (a permission the token lacks, an edge it may not read: the portfolios need no permission of
+    // ours, but Meta may ask one of an account that is not an administrator of the app) is an empty list: the
+    // screen then asks for the number of the Page, which is the way in that needs nothing from the lists.
+    if (found.size === 0 && failures.length > 0) {
+      // Every failure is a refusal of a portfolio list: an empty list. Otherwise the first one that is not
+      // (not the first to arrive: the lists are asked together, so the order is the network's).
+      const open = failures.filter(failure => !refusedPortfolios.includes(failure))
+      // An outage is told before a refusal: it is the one the person can do something about by waiting
+      const cause = open.find(failure => !isRefusedList(failure)) ?? open[0]
+      // What the helpers of this class throw is a PluginError, or the error of a read the schema refused
+      if (cause !== undefined) throw cause as Error
+    }
     return [...found.values()]
   }
 
@@ -231,6 +252,23 @@ function assetOf(page: z.infer<typeof pageSchema>): OAuthAsset {
             username: page.instagram_business_account.username ?? null
           }
   }
+}
+
+// Meta answered a list with a refusal that will not change by asking again. The code alone does not say so: an
+// outage or a throttle can carry 100, 10 or 2xx too (the Graph copies the code into every failure), so a failure
+// that may be tried again, or whose outcome is unknown, is never a refusal. A dead token (190) was stopped before.
+function isRefusedList(error: unknown): boolean {
+  if (!(error instanceof PluginError) || error.retryable === true || error.outcomeUnknown) {
+    return false
+  }
+  const code = error.providerCode
+  return (
+    code === MetaErrorCodes.INVALID_PARAMETER ||
+    code === MetaErrorCodes.PERMISSION_DENIED ||
+    (code !== undefined &&
+      code >= MetaErrorCodes.PERMISSION_RANGE_START &&
+      code <= MetaErrorCodes.PERMISSION_RANGE_END)
+  )
 }
 
 function isUnreachableObject(error: unknown): error is PluginError {

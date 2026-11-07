@@ -37,6 +37,7 @@ export const NotificationTypes = {
   INVITATION_ACCEPTED: 'invitation.accepted',
 
   CHANNEL_DISCONNECTED: 'channel.disconnected',
+  CHANNEL_TOKEN_EXPIRING: 'channel.token_expiring',
   WEBHOOK_AUTO_DISABLED: 'webhook.auto_disabled',
   PLUGIN_ERROR: 'plugin.error',
   EXPORT_READY: 'export.ready',
@@ -123,6 +124,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.MEMBER_JOINED]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.INVITATION_ACCEPTED]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.CHANNEL_DISCONNECTED]: { severity: ERROR, channels: [IN_APP, PUSH, EMAIL] },
+  [NotificationTypes.CHANNEL_TOKEN_EXPIRING]: { severity: WARNING, channels: [IN_APP, EMAIL] },
   [NotificationTypes.WEBHOOK_AUTO_DISABLED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.PLUGIN_ERROR]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.EXPORT_READY]: { severity: SUCCESS, channels: [IN_APP] },
@@ -184,6 +186,7 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
   [TEAM]: [NotificationTypes.MEMBER_JOINED, NotificationTypes.INVITATION_ACCEPTED],
   [SYSTEM]: [
     NotificationTypes.CHANNEL_DISCONNECTED,
+    NotificationTypes.CHANNEL_TOKEN_EXPIRING,
     NotificationTypes.WEBHOOK_AUTO_DISABLED,
     NotificationTypes.PLUGIN_ERROR,
     NotificationTypes.EXPORT_READY,
