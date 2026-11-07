@@ -36,14 +36,20 @@ test.describe.serial('touch targets on a phone', () => {
     await context.close()
   })
 
+  // Each control is measured until it is settled: a control that React replaces while the page loads (the back link
+  // of the header moves from the loading header to the loaded one) has no box for a moment, and a measure taken in
+  // that moment says nothing about its size. The size asked for is the same; only the wait is longer.
   async function expectTouchable(control: Locator): Promise<void> {
     await expect(control.first()).toBeVisible()
     const count = await control.count()
     expect(count).toBeGreaterThan(0)
     for (let at = 0; at < count; at++) {
-      const box = await control.nth(at).boundingBox()
-      expect(box).not.toBeNull()
-      expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(MIN_TOUCH)
+      await expect
+        .poll(async () => {
+          const box = await control.nth(at).boundingBox()
+          return box === null ? 0 : Math.min(box.width, box.height)
+        })
+        .toBeGreaterThanOrEqual(MIN_TOUCH)
     }
   }
 
@@ -79,6 +85,8 @@ test.describe.serial('touch targets on a phone', () => {
 
   test('the conversation: back, actions and the reply and note tabs', async () => {
     await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    // The header with the name of the customer is the loaded one: the one that stays
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     await expectTouchable(page.getByRole('link', { name: inbox.backToList }))
     await expectTouchable(page.getByRole('button', { name: inbox.actions.snooze, exact: true }))
     await expectTouchable(page.getByRole('button', { name: inbox.actions.resolve, exact: true }))
