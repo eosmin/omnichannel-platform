@@ -37,6 +37,7 @@ import {
 } from '@platform/plugins/runtime'
 
 import { AgentTypingRelay } from '../../apps/api/src/modules/realtime/agent-typing-relay.service'
+import { WidgetTokens } from '../../apps/api/src/modules/widget/widget-tokens.service'
 import { createCustomerIdentity, ensurePluginInstallation } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -85,6 +86,21 @@ async function until(condition: () => boolean): Promise<void> {
   }
   throw new Error('timed out waiting for the condition')
 }
+
+// What an answer carries, minus what differs per request by design
+const PER_REQUEST =
+  /^(date|x-request-id|x-correlation-id|x-ratelimit-.*|ratelimit.*|retry-after|etag)$/i
+const wire = (response: { status: number; headers: Record<string, unknown>; body: unknown }) => ({
+  status: response.status,
+  headers: Object.fromEntries(
+    Object.entries(response.headers)
+      .filter(([name]) => !PER_REQUEST.test(name))
+      .sort(([a], [b]) => a.localeCompare(b))
+  ),
+  body: JSON.stringify(response.body, (key, value: unknown) =>
+    /^(requestId|correlationId|timestamp)$/i.test(key) ? undefined : value
+  )
+})
 
 describe('The web widget', () => {
   const prefix = newRunPrefix()
@@ -214,14 +230,55 @@ describe('The web widget', () => {
       expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.WIDGET_ORIGIN_NOT_ALLOWED)
     })
 
-    it('says "not found" alike for a key that never existed, one of another shape and a bad visitor', async () => {
+    it('refuses a key that never existed, one of another shape and a site not listed with the very same answer, and a bad visitor as a bad body', async () => {
       const unknown = await bootstrap('pk_widget_AAAAAAAAAAAAAAAAAAAAAAAA', randomUUID())
       const malformed = await bootstrap('nope', randomUUID())
       const badVisitor = await bootstrap(siteKey, 'not-a-uuid')
 
-      expect(unknown.status).toBe(NOT_FOUND)
-      expect(malformed.status).toBe(NOT_FOUND)
+      expect(unknown.status).toBe(FORBIDDEN)
+      expect(malformed.status).toBe(FORBIDDEN)
+      expect((unknown.body as ErrorBody).error.code).toBe(ErrorCodes.WIDGET_ORIGIN_NOT_ALLOWED)
       expect(badVisitor.status).toBe(BAD_REQUEST)
+    })
+
+    // The key is public but random: whether it exists must not be learnable from the answers. What
+    // the two answers carry is compared whole, minus what is different per request by design.
+    it('does not tell a key that does not exist from a real one asked from a site that is not listed', async () => {
+      const visitorId = randomUUID()
+
+      for (const origin of [OTHER_SITE, null]) {
+        const real = wire(await bootstrap(siteKey, visitorId, origin))
+        const missing = wire(
+          await bootstrap('pk_widget_AAAAAAAAAAAAAAAAAAAAAAAA', visitorId, origin)
+        )
+        expect(missing).toEqual(real)
+        expect(missing.status).toBe(FORBIDDEN)
+        expect(missing.headers['access-control-allow-origin']).toBeUndefined()
+      }
+    })
+
+    // The routes that take a visitor token read the key out of it: a token signed for a key that does
+    // not exist (the signing key is ours, so only a test can make one) must get the same answer
+    it('answers a token of a key that does not exist like one of a real key from a site not listed', async () => {
+      const tokens = app.get(WidgetTokens, { strict: false })
+      const visitorId = randomUUID()
+      const forged = tokens.issue({
+        siteKey: 'pk_widget_AAAAAAAAAAAAAAAAAAAAAAAA',
+        visitorId
+      }).token
+      const genuine = tokens.issue({ siteKey, visitorId }).token
+      const body = (visitorToken: string) => ({
+        visitorToken,
+        clientMessageId: 'o1',
+        content: 'hola'
+      })
+
+      for (const origin of [OTHER_SITE, null]) {
+        const real = wire(await send(body(genuine), origin))
+        const missing = wire(await send(body(forged), origin))
+        expect(missing).toEqual(real)
+        expect(missing.status).toBe(FORBIDDEN)
+      }
     })
 
     it('stops answering once the connection is disconnected', async () => {
@@ -231,7 +288,7 @@ describe('The web widget', () => {
         data: { status: ChannelConnectionStatus.DISCONNECTED }
       })
 
-      expect((await bootstrap(key, randomUUID())).status).toBe(NOT_FOUND)
+      expect((await bootstrap(key, randomUUID())).status).toBe(FORBIDDEN)
     })
 
     it('says the store is away outside its business hours, and not inside them', async () => {
@@ -420,7 +477,7 @@ describe('The web widget', () => {
         content: 'hola'
       })
 
-      expect(response.status).toBe(NOT_FOUND)
+      expect(response.status).toBe(FORBIDDEN)
       expect(queued()).toEqual([])
     })
   })
