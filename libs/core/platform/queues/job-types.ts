@@ -27,6 +27,13 @@ export interface SendEmailJob extends BaseJob {
   tags: { storeId?: string; template: EmailTemplate } // Echoed back by the Resend webhook (TDD_07 §5.4)
 }
 
+// A magic link was requested. The api does the same for any address (count the limit, queue this),
+// so how long it takes tells nothing about who has an account; the worker does the rest. The job
+// holds the address only, never a token, and is removed once done.
+export interface RequestMagicLinkJob extends BaseJob {
+  email: string // Already trimmed and lower-cased
+}
+
 // webhooks
 export interface TriggerWebhookJob extends BaseJob {
   webhookId: string // Tenant Webhook row
