@@ -446,7 +446,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // error: asking again would answer the same.
   async fetchProfile(
     ctx: ChannelContext,
-    channelIdentity: string
+    channelIdentity: string,
+    signal?: AbortSignal
   ): Promise<ChannelCustomerProfile | null> {
     if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(channelIdentity)) return null
     const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
@@ -456,7 +457,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
         path: [channelIdentity],
         token: accessToken,
         query: { fields: this.userProfileFields },
-        schema: userProfileSchema
+        schema: userProfileSchema,
+        ...(signal === undefined ? {} : { signal })
       })
       const name =
         present(raw.name) ??

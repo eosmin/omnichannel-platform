@@ -45,7 +45,7 @@ describe('The name and photo of a customer', () => {
   let ctx: TestContext
   let fetcher: ProfileFetcher
   let requester: ProfileRequester
-  let calls: { ctx: ChannelContext; channelIdentity: string }[] = []
+  let calls: { ctx: ChannelContext; channelIdentity: string; signal?: AbortSignal }[] = []
   let answer: () => Promise<ChannelCustomerProfile | null>
 
   beforeAll(async () => {
@@ -61,8 +61,8 @@ describe('The name and photo of a customer', () => {
     registry.register(
       buildChannelPlugin({
         capabilities: [ChannelCapability.TEXT, ChannelCapability.CUSTOMER_PROFILE],
-        fetchProfile: (c, channelIdentity) => {
-          calls.push({ ctx: c, channelIdentity })
+        fetchProfile: (c, channelIdentity, signal) => {
+          calls.push({ ctx: c, channelIdentity, signal })
           return answer()
         }
       })
@@ -169,6 +169,9 @@ describe('The name and photo of a customer', () => {
 
       expect(calls).toHaveLength(1)
       expect(calls[0]?.channelIdentity).toBe(t.handle)
+      // The plugin is given a signal that ends with the time of the read, so its request can end with it
+      expect(calls[0]?.signal).toBeInstanceOf(AbortSignal)
+      expect(calls[0]?.signal?.aborted).toBe(false)
       const row = await identityRow(t.identityId)
       expect(row).toMatchObject({
         displayName: 'Peter Chang',

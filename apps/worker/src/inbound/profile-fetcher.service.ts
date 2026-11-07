@@ -100,8 +100,14 @@ export class ProfileFetcher {
     // Only the call to the plugin is a channel failure: a fault of ours below is the job's to retry
     let read: unknown
     try {
+      // The same time for both: the plugin is told to stop (its request ends), and a plugin that ignores the
+      // signal is no longer waited for
       read = await withTimeout(
-        plugin.fetchProfile(this.contexts.contextFor(connection), identity.channelIdentity),
+        plugin.fetchProfile(
+          this.contexts.contextFor(connection),
+          identity.channelIdentity,
+          AbortSignal.timeout(CustomerProfileFetch.TIMEOUT_MS)
+        ),
         CustomerProfileFetch.TIMEOUT_MS
       )
     } catch (error) {
