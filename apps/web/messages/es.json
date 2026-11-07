@@ -9,6 +9,7 @@
     "notifications": {
       "title": "Notificaciones",
       "forStore": "Tus preferencias para {store}.",
+      "hint": "Toda notificación se guarda en tu lista. Estos interruptores solo eligen cómo te llega cada una: un aviso en vivo mientras trabajas, una notificación push en tus dispositivos, un correo o un sonido.",
       "noStore": "Todavía no perteneces a ninguna tienda.",
       "loading": "Cargando…",
       "saveFailed": "No se pudo guardar el cambio.",
