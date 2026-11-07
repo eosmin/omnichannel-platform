@@ -38,7 +38,7 @@ export function conversationsExportSource(
     // One row per message the file keeps: the same cut as the pages below
     count: () =>
       prisma.client.message.count({
-        where: { storeId, type: { notIn: LEFT_OUT_TYPES }, conversation: where }
+        where: { storeId, discardedAt: null, type: { notIn: LEFT_OUT_TYPES }, conversation: where }
       }),
     rows: async function* () {
       let afterConversation: string | undefined
@@ -70,6 +70,7 @@ export function conversationsExportSource(
               where: {
                 storeId,
                 conversationId: conversation.id,
+                discardedAt: null,
                 type: { notIn: LEFT_OUT_TYPES },
                 ...(afterMessage === undefined
                   ? {}

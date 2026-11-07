@@ -177,6 +177,7 @@ export async function listItemsOf(
       FROM messages
       WHERE store_id = ${storeId}
         AND conversation_id = page.id
+        AND discarded_at IS NULL
         AND type <> ${MessageTypes.SYSTEM}
         AND (${readsNotes} OR type <> ${MessageTypes.INTERNAL_NOTE})
       ORDER BY created_at DESC, id DESC

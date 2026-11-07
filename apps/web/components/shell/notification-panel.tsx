@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths, type NotificationView } from '@platform/api-client'
 import { NotificationFilters, type NotificationFilter } from '@platform/core/notifications'
@@ -16,6 +15,7 @@ import {
   useMarkRead,
   useNotificationList
 } from '../../lib/notifications/use-notification-data'
+import { toast } from '../../lib/toast'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/button'
 import { SheetDescription, SheetHeader, SheetTitle } from '../ui/sheet'
@@ -72,7 +72,7 @@ export function NotificationPanel({
           </TabsList>
         </Tabs>
       </SheetHeader>
-      <div className="flex-1 overflow-y-auto">
+      <div className="relative flex-1 overflow-y-auto overscroll-contain">
         {list.isError && items.length === 0 ? (
           <p role="alert" className="text-destructive p-4 text-sm">
             {t('failed')}

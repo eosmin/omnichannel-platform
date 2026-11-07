@@ -36,8 +36,17 @@ export const CustomerLimits = {
   AVATAR_URL_MAX_LENGTH: 2048,
   ADDRESS_LABEL_MAX_LENGTH: 60,
   ADDRESS_FIELD_MAX_LENGTH: 200,
-  ADDRESS_POSTAL_CODE_MAX_LENGTH: 20
+  ADDRESS_POSTAL_CODE_MAX_LENGTH: 20,
+  // Customers of the store that a new one is said to look like (the e-mail or phone it was given)
+  DUPLICATE_HINTS_MAX: 5
 } as const
+
+// Why a customer is said to be the same person as a new one: what they have in common
+export const DuplicateMatches = {
+  EMAIL: 'email',
+  PHONE: 'phone'
+} as const
+export type DuplicateMatch = (typeof DuplicateMatches)[keyof typeof DuplicateMatches]
 
 // The name and photo a channel keeps for a customer (Step 2.8, PR 1c-2). The photo link is signed and
 // expires, so the profile is read again after this many days.

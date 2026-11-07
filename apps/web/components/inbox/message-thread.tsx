@@ -210,11 +210,23 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
     return () => observer.disconnect()
   }, [scroller, content, wasAtEnd])
 
-  const jumpTo = useCallback((messageId: string): void => {
-    const target = document.getElementById(messageDomId(messageId))
-    target?.scrollIntoView({ block: 'center' })
-    target?.focus({ preventScroll: true })
-  }, [])
+  const jumpTo = useCallback(
+    (messageId: string): void => {
+      const target = document.getElementById(messageDomId(messageId))
+      if (target === null) return
+      // The thread is moved, and only the thread: `scrollIntoView` moves every scrollable ancestor,
+      // the page included, which left the header out of sight and a white gap under the thread
+      if (scroller !== null) {
+        const box = scroller.getBoundingClientRect()
+        const at = target.getBoundingClientRect()
+        // Centred, or by its top when it is taller than the thread (its beginning is what is looked for)
+        const offset = Math.max(0, (box.height - at.height) / 2)
+        scroller.scrollTo({ top: scroller.scrollTop + at.top - box.top - offset })
+      }
+      target.focus({ preventScroll: true })
+    },
+    [scroller]
+  )
 
   // The header says why a conversation cannot be read; the thread waits for it
   if (conversation.data === undefined) return null
@@ -246,7 +258,10 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       ref={setScroller}
       // The browser keeps what is in view when something goes in above; the thread does it itself
       onScroll={keepAnchorCurrent}
-      className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
+      // `relative`: the hidden texts inside (`sr-only` is absolute) take the thread as their container and are clipped
+      // by it; without it they escape and make the whole page taller. `overscroll-contain`: the wheel at the
+      // end of the thread does not go on to scroll the page
+      className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]"
     >
       <div ref={setTop} />
       <div ref={setContent}>

@@ -3,12 +3,12 @@
 import { TriangleAlert } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
-import { toast } from 'sonner'
 
 import type { MessageView } from '@platform/api-client'
 import { CaptionState } from '@platform/core/domain'
 
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
 

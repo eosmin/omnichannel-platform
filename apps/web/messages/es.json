@@ -86,7 +86,8 @@
           "accepted": "Invitación aceptada"
         },
         "channel": {
-          "disconnected": "Canal desconectado"
+          "disconnected": "Canal desconectado",
+          "token_expiring": "Acceso del canal por vencer"
         },
         "webhook": {
           "auto_disabled": "Integración saliente desactivada"
@@ -448,6 +449,7 @@
     "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
     "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
     "CHANNEL_MESSAGE_FAILED": "El canal no aceptó el mensaje",
+    "MESSAGE_DISCARD_OUTCOME_UNKNOWN": "Es posible que esta respuesta haya llegado al cliente, así que no se puede descartar. Pregúntale o envíala de nuevo",
     "CHANNEL_NOT_CONNECTED": "El canal no está conectado",
     "CHANNEL_PROFILE_UNAVAILABLE": "El perfil del cliente no está disponible",
     "CHANNEL_TEMPLATE_NOT_APPROVED": "La plantilla aún no está aprobada",
@@ -610,6 +612,10 @@
       "disconnected": {
         "title": "Se desconectó un canal",
         "body": "El canal dejó de funcionar. Vuelve a conectarlo para seguir recibiendo mensajes."
+      },
+      "token_expiring": {
+        "title": "El acceso de un canal está por vencer",
+        "body": "El token de un canal deja de funcionar el {date}. Actualízalo antes para seguir recibiendo mensajes."
       }
     },
     "conversation": {
@@ -939,6 +945,7 @@
       "AUDIO": "Audio",
       "DOCUMENT": "Documento",
       "LOCATION": "Ubicación",
+      "CONTACTS": "Contacto",
       "INTERNAL_NOTE": "Nota interna",
       "SYSTEM": "Evento",
       "PRODUCT_CARD": "Producto",

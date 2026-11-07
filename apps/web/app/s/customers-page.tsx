@@ -4,7 +4,6 @@ import { Download, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths, type CustomerListItemView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -22,6 +21,7 @@ import { tagDotColor } from '../../lib/customers/tag-color'
 import { useCustomerList } from '../../lib/customers/use-customer-data'
 import { useExportCustomers } from '../../lib/customers/use-customer-export'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
+import { toast } from '../../lib/toast'
 import { useDebouncedValue } from '../../lib/use-debounced-value'
 
 const SEARCH_DELAY_MS = 300

@@ -53,7 +53,6 @@ const LOGIN_PERMISSIONS = [
   'pages_messaging',
   'pages_manage_metadata',
   'pages_read_engagement',
-  'business_management',
   // The two of Instagram, so that one login serves both channels
   'instagram_basic',
   'instagram_manage_messages'

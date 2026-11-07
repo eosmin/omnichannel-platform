@@ -3,7 +3,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths } from '@platform/api-client'
 
@@ -11,6 +10,7 @@ import { apiClient, browserSession } from './api'
 import { clearComposerDrafts } from './inbox/composer-drafts'
 import { readLastStoreId } from './last-store'
 import { unsubscribeFromPush } from './push/push-browser'
+import { toast } from './toast'
 import { useErrorText } from './use-error-text'
 
 // How long leaving waits for the browser to drop its push registration: leaving must not depend on it

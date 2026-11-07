@@ -3,13 +3,13 @@
 import { AlarmClock, CircleCheck, RotateCcw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import { ConversationStatus } from '@platform/core/domain'
 
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'

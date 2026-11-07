@@ -117,6 +117,7 @@ export const Events = {
   // Channels and plugins
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
+  CHANNEL_TOKEN_EXPIRING: 'channel.token_expiring',
   CHANNEL_HEALTH_RESTORED: 'channel.health_restored',
   PLUGIN_INSTALLED: 'plugin.installed',
   PLUGIN_ENABLED: 'plugin.enabled',
@@ -190,6 +191,7 @@ export const BridgedEvents = [
   Events.EXPORT_READY,
   Events.EXPORT_FAILED,
   Events.CHANNEL_DISCONNECTED,
+  Events.CHANNEL_TOKEN_EXPIRING,
   Events.CHANNEL_HEALTH_RESTORED
 ] as const satisfies readonly EventName[]
 

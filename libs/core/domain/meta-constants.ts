@@ -35,10 +35,16 @@ export const MetaGraph = {
   // own host, graph.instagram.com, takes another kind of token and is not used. A call names this
   // origin, never a url of its own.
   ORIGIN: 'https://graph.facebook.com',
+  // What Meta says about a token: `GET` is the documented method; `POST` is tried first so that the token
+  // that is being asked about does not travel in the address
+  DEBUG_TOKEN_EDGE: 'debug_token',
+  DEBUG_TOKEN_INPUT_FIELD: 'input_token',
   // The one host that wants the connection token to give a file. Exact on purpose: other
   // *.fbsbx.com hosts (apps.fbsbx.com) serve content of third parties.
   MEDIA_TOKEN_HOSTS: ['lookaside.fbsbx.com'],
   FALLBACK_CONTENT_TYPE: 'application/octet-stream',
+  // What an audio of the webhook is taken to be until the file says otherwise (a clip in an mp4 container)
+  AUDIO_HINT_CONTENT_TYPE: 'audio/mp4',
   // CDNs a media url may point to. They are followed without the token. A media url outside both
   // lists is refused, so a forged answer cannot make the worker call an internal address.
   MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com'],
@@ -52,6 +58,9 @@ export const MetaTransientStatuses = [408, 425] as const
 
 export const MetaLimits = {
   REQUEST_TIMEOUT_MS: 15_000,
+  // How long the process remembers which method `debug_token` took: after it the POST is tried again, so that
+  // a fallback to GET (the token in the address) is not kept for ever by one odd answer
+  DEBUG_METHOD_MEMORY_MS: 3_600_000,
   MEDIA_TIMEOUT_MS: 60_000,
   // An upload of the largest file (100 MB) over an ordinary uplink; a call that takes longer is cut
   UPLOAD_TIMEOUT_MS: 180_000,
@@ -79,6 +88,10 @@ export const MetaErrorCodes = {
   ],
   // Failure on Meta's side (131000 and 131016 are WhatsApp's): the work may or may not have been done
   TEMPORARY: [1, 2, 131000, 131016],
+  // Meta's answer to a method an edge does not support (a POST to `debug_token`): the class of the error, read
+  // by shape and never by the text, which changes with the language of the app. Its code and subcode (100, 33)
+  // are also those of "the object does not exist or is not yours", so they do not say it alone.
+  METHOD_REJECTED_ERROR_TYPE: 'GraphMethodException',
   // Messenger documents it: the person has no profile to read (an account made with a phone number).
   // Instagram documents no such code; there a person who cannot be read answers an error or nothing.
   NO_PROFILE: 2018218
@@ -110,7 +123,17 @@ export const MetaMessaging = {
   ATTACHMENT_AUDIO: 'audio',
   ATTACHMENT_FILE: 'file',
   // `referral.source` of a Click-to-Message ad
-  REFERRAL_SOURCE_ADS: 'ADS'
+  REFERRAL_SOURCE_ADS: 'ADS',
+  // The attachment of a place the customer shared: `payload.coordinates` holds `{ lat, long }`
+  ATTACHMENT_LOCATION: 'location',
+  // The like button of Messenger arrives as a sticker with this id (and, until Meta stops sending the
+  // pair, as an image with the same link). It is the thumbs up, not a file worth fetching.
+  LIKE_STICKER_ID: '369239263222822',
+  LIKE_TEXT: '\u{1F44D}',
+  // The texts Messenger puts beside a photo sent from the camera roll: a placeholder, not something the
+  // customer wrote. An exact list and not a pattern, because "[ok]" with a photo can be a customer's
+  // words and dropping it loses them; a new one is added when a real payload shows it.
+  PLACEHOLDER_TEXTS: ['[Adjuntar foto]'] as readonly string[]
 } as const
 
 // Instagram messaging through the Messenger Platform with Facebook Login (Meta: "Get started with Instagram

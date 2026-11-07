@@ -2,13 +2,13 @@
 
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useMemo } from 'react'
-import { toast } from 'sonner'
 
 import type {
   ChannelConnectionView,
   PluginCatalogEntryView
 } from '../../lib/settings/channels-requests'
 import { useUpdateToken } from '../../lib/settings/use-channels'
+import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 

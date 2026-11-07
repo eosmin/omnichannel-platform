@@ -3,7 +3,6 @@
 import { Clock } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 
 import { ClientPermissions } from '@platform/core/auth'
 import { Weekdays } from '@platform/core/domain'
@@ -29,6 +28,7 @@ import {
   useSaveBusinessHours,
   useSnippetChoices
 } from '../../lib/settings/use-routing'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 
 // Settings → Store → Business hours (TDD_09 §13): the weekly schedule, its time zone, and the saved

@@ -3,7 +3,6 @@
 import { LogOut, Monitor } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
-import { toast } from 'sonner'
 
 import type { ActiveSession } from '@platform/api-client'
 
@@ -12,6 +11,7 @@ import { Button } from '../../components/ui/button'
 import { deviceLabel, rawDeviceText } from '../../lib/account/device-label'
 import { relativeTime } from '../../lib/inbox/relative-time'
 import { useActiveSessions, useRevokeSession } from '../../lib/settings/use-settings-data'
+import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 
 // Account → Security: where the person is signed in, with a way to close each of the other devices.

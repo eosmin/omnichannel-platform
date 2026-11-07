@@ -23,19 +23,26 @@ export function TopBar({
   nav?: ReactNode
 }): ReactElement {
   return (
+    // What does not fit gives way from the left: the title shortens, the store name shortens, the links
+    // scroll on their own. The bell and the account menu never leave the window (the inbox clips the
+    // page, so a control pushed out would be out of reach)
     <header className="bg-background flex h-14 items-center gap-3 border-b px-4">
-      <Link href={AppPaths.home} className="rounded-sm font-semibold">
+      <Link href={AppPaths.home} className="min-w-0 shrink-[2] truncate rounded-sm font-semibold">
         {appTitle}
       </Link>
-      <StoreSwitcher
-        memberships={profile.memberships}
-        suspendedStores={profile.suspendedStores}
-        currentStoreId={currentStoreId}
-      />
+      <div className="min-w-0 shrink">
+        <StoreSwitcher
+          memberships={profile.memberships}
+          suspendedStores={profile.suspendedStores}
+          currentStoreId={currentStoreId}
+        />
+      </div>
       {nav}
       <div className="flex-1" />
-      {currentStoreId !== null && <NotificationCenter storeId={currentStoreId} />}
-      <UserMenu name={profile.name} email={profile.email} />
+      <div className="flex shrink-0 items-center gap-1">
+        {currentStoreId !== null && <NotificationCenter storeId={currentStoreId} />}
+        <UserMenu name={profile.name} email={profile.email} />
+      </div>
     </header>
   )
 }

@@ -18,6 +18,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   replyToMessageId: null,
   deliveryStatus: null,
   deliveryError: null,
+  failureDefinitive: null,
   mentions: [],
   metadata,
   captionState: null,
