@@ -106,6 +106,20 @@ export function resendMessage(
   })
 }
 
+// "Discard" on a reply known not to have gone out: it leaves the thread (the api answers 204, also when it
+// was discarded already). A 409 means the screen was out of date: the thread is read again.
+export function discardMessage(
+  client: ApiClient,
+  storeId: string,
+  messageId: string
+): Promise<void> {
+  return client.request(ApiRoutes.messages.discard(messageId), {
+    method: 'POST',
+    schema: z.undefined(),
+    storeId
+  })
+}
+
 // "Send the text again" on a file whose caption failed or may not have gone: only the text is sent, and the
 // message comes back with its caption queued
 export function resendCaption(

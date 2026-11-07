@@ -20,6 +20,8 @@ export function placeTextOf(
     .replace(MISLEADING_TEXT, '')
     // eslint-disable-next-line no-control-regex -- the point is to remove them
     .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    // A letter takes a few accents; a hundred stacked on one glyph overflow into the lines around it
+    .replace(/(\p{M}{3})\p{M}+/gu, '$1')
     .trim()
   let out = ''
   for (const character of clean) {

@@ -20,8 +20,12 @@ export const unsupportedKindOf = (type: string): UnsupportedKind =>
 export function bubbleTextOf(message: {
   content: string | null
   hasLocation: boolean
+  // The cards already show the names, which are the content of the message
+  hasContacts?: boolean
   unsupportedType: string | null
 }): string | null {
   if (message.content === null || message.content === '') return null
-  return message.hasLocation || message.unsupportedType !== null ? null : message.content
+  return message.hasLocation || message.hasContacts === true || message.unsupportedType !== null
+    ? null
+    : message.content
 }

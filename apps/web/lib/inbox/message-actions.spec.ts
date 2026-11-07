@@ -22,6 +22,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   attachmentUrl: null,
   unsupportedType: null,
   location: null,
+  contacts: null,
   sticker: false,
   reactions: [],
   media: [],
@@ -60,6 +61,49 @@ const ALL_CAPABILITIES = [
   ChannelCapability.EDIT_MESSAGE,
   ChannelCapability.DELETE_MESSAGE
 ]
+
+describe('messageActionsOf, discard', () => {
+  const failed = (over: Partial<MessageView> = {}): MessageView =>
+    message({ deliveryStatus: 'failed', failureDefinitive: true, ...over })
+
+  it('offers to discard a reply that is known not to have gone out, beside sending it again', () => {
+    expect(messageActionsOf(failed(), viewer(AGENT, ALL_CAPABILITIES))).toMatchObject({
+      resend: true,
+      discard: true
+    })
+  })
+
+  it('offers only to send again a reply that may have gone out, or when the api does not say', () => {
+    for (const failureDefinitive of [false, null, undefined]) {
+      expect(
+        messageActionsOf(failed({ failureDefinitive }), viewer(AGENT, ALL_CAPABILITIES))
+      ).toMatchObject({ resend: true, discard: false })
+    }
+  })
+
+  it('needs the permission to send, or to send templates for a template', () => {
+    const noSend = [Permissions.MESSAGES_VIEW]
+    expect(messageActionsOf(failed(), viewer(noSend, ALL_CAPABILITIES)).discard).toBe(false)
+    const template = failed({ type: 'TEMPLATE' })
+    expect(messageActionsOf(template, viewer(AGENT, ALL_CAPABILITIES)).discard).toBe(false)
+    expect(
+      messageActionsOf(
+        template,
+        viewer([...AGENT, Permissions.MESSAGES_SEND_TEMPLATE], ALL_CAPABILITIES)
+      ).discard
+    ).toBe(true)
+  })
+
+  it('does not offer it for a reply that did not fail, or a message of the customer', () => {
+    expect(messageActionsOf(message({}), viewer(AGENT, ALL_CAPABILITIES)).discard).toBe(false)
+    expect(
+      messageActionsOf(
+        failed({ authorType: 'customer', authorId: null }),
+        viewer(AGENT, ALL_CAPABILITIES)
+      ).discard
+    ).toBe(false)
+  })
+})
 
 describe('messageActionsOf', () => {
   it('offers no edit and no delete on a channel that declares neither, but still resends', () => {
@@ -119,6 +163,7 @@ describe('messageActionsOf', () => {
       remove: false,
       resend: false,
       resendCaption: false,
+      discard: false,
       refetchFile: true,
       viewDeleted: false,
       revisions: false
@@ -126,6 +171,18 @@ describe('messageActionsOf', () => {
     expect(
       messageActionsOf(theirs, viewer([Permissions.MESSAGES_VIEW], ALL_CAPABILITIES)).react
     ).toBe(false)
+  })
+
+  it('treats a shared contact like a message of the customer: react and reply, nothing to change', () => {
+    const contact = message({
+      type: 'CONTACTS',
+      contacts: [{ name: 'Ana', phones: [], emails: [] }],
+      authorType: 'customer',
+      authorId: null,
+      deliveryStatus: null
+    })
+    const actions = messageActionsOf(contact, viewer(AGENT, ALL_CAPABILITIES))
+    expect(actions).toMatchObject({ react: true, edit: false, remove: false, resend: false })
   })
 
   it('offers to download a lost file of the customer only to who may send', () => {
@@ -155,6 +212,7 @@ describe('messageActionsOf', () => {
       edit: true,
       remove: true,
       resend: false,
+      discard: false,
       resendCaption: false,
       refetchFile: false,
       viewDeleted: false,
