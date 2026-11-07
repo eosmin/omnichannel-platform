@@ -5,6 +5,8 @@ import type { ComponentProps, ReactElement } from 'react'
 
 import { cn } from '../../lib/utils'
 
+import { AnnounceBusy } from './announce-busy'
+
 export const buttonVariants = cva(
   "relative inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:min-h-10 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
@@ -66,6 +68,7 @@ export function Button({
             <Loader2 className="animate-spin" />
           </span>
           <span className="busy-label">{children}</span>
+          <AnnounceBusy />
         </>
       ) : (
         // One child, as it came: `Slot` (asChild) accepts exactly one element and throws on a list
