@@ -6,6 +6,7 @@ import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { Shortcuts } from '@platform/core/domain'
 
+import { askSearchFocus } from '../../lib/customers/search-focus'
 import { useStore } from '../providers/store-context'
 
 import { useShortcut } from './shortcuts-provider'
@@ -25,7 +26,10 @@ export function useGoToShortcuts(inboxSearch = '', focusSearch?: () => void): vo
     Shortcuts.global.COMMAND_PALETTE,
     () => {
       if (focusSearch !== undefined) focusSearch()
-      else router.push(AppPaths.store.customers(storeId))
+      else {
+        askSearchFocus()
+        router.push(AppPaths.store.customers(storeId))
+      }
     },
     { enabled: can(ClientPermissions.CUSTOMERS_VIEW) }
   )

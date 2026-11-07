@@ -175,6 +175,23 @@ test.describe.serial('the inbox list', () => {
     await expect(sheet).toBeHidden()
   })
 
+  test('shortcuts: g c goes to the customers without taking the cursor, so g i comes back', async () => {
+    await page.goto(AppPaths.store.inbox(storeId))
+    await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
+
+    await page.keyboard.press('g')
+    await page.keyboard.press('c')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
+    const search = page.getByRole('searchbox', { name: en.customers.list.searchLabel })
+    await expect(search).toBeVisible()
+    await expect(search).not.toBeFocused()
+
+    // With the cursor out of a text field the shortcuts still work: a keyboard user is not trapped
+    await page.keyboard.press('g')
+    await page.keyboard.press('i')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.inbox(storeId)}`))
+  })
+
   // The browser of the suite reports Windows to the app, so `Mod` is Ctrl here
   test('shortcuts: Cmd/Ctrl+K goes to the search of customers and puts the cursor in it', async () => {
     await page.goto(AppPaths.store.inbox(storeId))
@@ -361,6 +378,12 @@ test.describe.serial('the inbox list', () => {
           ).toBeLessThanOrEqual(width)
           expect(control?.x ?? -1, `${name} at ${width} px`).toBeGreaterThanOrEqual(0)
         }
+        // The name of the customer can be read (it was 12 px wide at 390 px), and the store switcher shows
+        // more than a letter of the name of the store
+        const customerName = await page.getByRole('heading', { level: 1 }).boundingBox()
+        expect(customerName?.width ?? 0, `customer name at ${width} px`).toBeGreaterThanOrEqual(120)
+        const store = await page.getByRole('button', { name: en.shell.switchStore }).boundingBox()
+        expect(store?.width ?? 0, `store switcher at ${width} px`).toBeGreaterThanOrEqual(110)
       }
       // The page of customers had the same header and overflowed sideways at 485 px (by the app's own link)
       await page.setViewportSize({ width: 485, height: 800 })
