@@ -98,7 +98,9 @@ const widgetSchema = z.object({
   allowedOrigins: z.array(z.string()),
   preChatEnabled: z.boolean(),
   snippet: z.string(),
-  connectSrc: z.array(z.string())
+  connectSrc: z.array(z.string()),
+  // A server older than the page says nothing of the script: the card then lists what it has
+  scriptSrc: z.array(z.string()).catch([])
 })
 export type WidgetEmbedView = z.output<typeof widgetSchema>
 
