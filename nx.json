@@ -67,5 +67,8 @@
       "inputs": ["{projectRoot}/prisma/**/*", "{projectRoot}/prisma.config.ts"]
     }
   },
-  "analytics": false
+  "analytics": false,
+  "affected": {
+    "legacy": true
+  }
 }

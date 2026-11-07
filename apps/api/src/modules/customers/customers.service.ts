@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   resourceConflict,
+  errorName,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException
@@ -15,12 +17,14 @@ import { customerSearchWhere, lockCustomerForWrite } from '@platform/core/messag
 
 import type { Actor } from '../tenancy'
 
+import { findPossibleDuplicates } from './customer-duplicates'
 import type {
   CreateCustomerBody,
   ListCustomersQuery,
   UpdateCustomerBody
 } from './customers.schemas'
 import {
+  type CreatedCustomer,
   type CustomerDetail,
   customerDetail,
   LIST_SELECT,
@@ -36,8 +40,11 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: DomainEvents
-  ) {}
+    private readonly events: DomainEvents,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(CustomersService.name)
+  }
 
   async list(storeId: string, query: ListCustomersQuery): Promise<CustomerPage> {
     const { cursor } = query
@@ -74,7 +81,14 @@ export class CustomersService {
     return customerDetail(this.prisma.client, storeId, customerId)
   }
 
-  async create(storeId: string, body: CreateCustomerBody): Promise<CustomerDetail> {
+  // The customer is created whatever it looks like. `possibleDuplicates` lists the customers of the store
+  // that share its e-mail or phone, so the agent can merge them; empty when the caller may not see
+  // customers (a hint must not show anyone what their role does not).
+  async create(
+    storeId: string,
+    body: CreateCustomerBody,
+    canViewCustomers: boolean
+  ): Promise<CreatedCustomer> {
     const id = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       const created = await tx.customer.create({
@@ -91,7 +105,36 @@ export class CustomersService {
       this.events.publish(tx, Events.CUSTOMER_CREATED, { storeId, customerId: created.id })
       return created.id
     })
-    return this.get(storeId, id)
+    const [customer, possibleDuplicates] = await Promise.all([
+      this.get(storeId, id),
+      canViewCustomers
+        ? this.hints(storeId, id, body)
+        : Promise.resolve<CreatedCustomer['possibleDuplicates']>([])
+    ])
+    return { ...customer, possibleDuplicates }
+  }
+
+  // A hint must never turn a customer that was created into an error: the agent would try again and
+  // make the duplicate the hint is there to prevent. A lookup that fails says nothing.
+  private async hints(
+    storeId: string,
+    customerId: string,
+    body: CreateCustomerBody
+  ): Promise<CreatedCustomer['possibleDuplicates']> {
+    try {
+      return await findPossibleDuplicates(
+        this.prisma.client,
+        storeId,
+        { email: body.email ?? null, phoneDigits: body.phone?.digits ?? null },
+        customerId
+      )
+    } catch (error) {
+      this.logger.warn(
+        { storeId, customerId, errorName: errorName(error) },
+        'the possible duplicates of a new customer could not be looked up'
+      )
+      return []
+    }
   }
 
   async update(

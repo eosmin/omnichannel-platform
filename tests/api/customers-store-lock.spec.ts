@@ -191,7 +191,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
     const writing = app
       .get(CustomersService, { strict: false })
-      .create(storeId, { name: 'a customer too late' })
+      .create(storeId, { name: 'a customer too late' }, false)
       .then(
         () => null,
         (error: unknown) => error

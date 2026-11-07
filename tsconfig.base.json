@@ -65,6 +65,7 @@
       "@platform/core/i18n-server": ["libs/core/i18n-server/src/index.ts"],
       "@platform/core/email": ["libs/core/email/src/index.ts"],
       "@platform/core/storage-module": ["libs/core/storage/src/index.ts"],
+      "@platform/core/image-sanitizer": ["libs/core/storage/src/image-sanitizer.ts"],
       "@platform/core/sentry": ["libs/core/http/src/instrument.ts"]
     }
   },

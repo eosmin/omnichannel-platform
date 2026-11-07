@@ -326,7 +326,7 @@ download path verify that prefix against the current store before touching the o
 |---|---|
 | Node.js | `24.20.0` (engines `>=22`) — used in Docker images, CI and Cloud Build |
 | TypeScript | `5.9.3` — TypeScript 7.x is not adopted until `typescript-eslint`, `ts-jest`, Nx and NestJS declare support |
-| Nx | `23.2.0` |
+| Nx | `24.0.4` |
 | pnpm | `11.25.0` |
 
 **Frontend**
@@ -480,7 +480,7 @@ phase starts (YAGNI).
 |---|---|
 | `eslint` | `10.9.1` — flat config only (`eslint.config.js`) |
 | `typescript-eslint` | `8.69.0` |
-| `@nx/eslint-plugin` | `23.2.0` |
+| `@nx/eslint-plugin` | `24.0.4` |
 | `eslint-plugin-import-x` | `4.16.1` |
 | `eslint-import-resolver-typescript` | `4.4.5` — import-x loads it by name; without it lint fails when `NODE_ENV=test` |
 | `prettier` | `3.9.6` |
@@ -491,7 +491,7 @@ phase starts (YAGNI).
 | `tsx` | `4.20.5` |
 | `@eslint/js` | `10.0.1` |
 | `@next/eslint-plugin-next` | `16.4.3` |
-| `@nx/eslint`, `@nx/jest`, `@nx/js` | `23.2.0` |
+| `@nx/eslint`, `@nx/jest`, `@nx/js` | `24.0.4` |
 | `@nestjs/cli` | `12.0.10` — builds `api` and `worker` with the Rspack builder, the default of Nest 12 for monorepos |
 | `@rspack/core` | `2.2.9` |
 | `webpack-node-externals`, `tsconfig-paths-webpack-plugin` | `3.0.0`, `4.2.0` — required by the Rspack builder of the Nest CLI |
@@ -2479,7 +2479,20 @@ Tokens:
 Rotation: using a refresh token marks it consumedAt, creates the next Session row in the same
 familyId with replacedById linking them, and returns a new pair.
 Reuse detection: presenting a token whose consumedAt is set revokes EVERY row in the family
-(revokedReason = 'reuse_detected') and returns AUTH_REFRESH_TOKEN_REUSED.
+(revokedReason = 'reuse_detected') and returns AUTH_REFRESH_TOKEN_REUSED, except for the grace below.
+Grace (owner, 2026-11-07): a consumed token is accepted ONE more time when ALL hold: it was consumed
+at most REFRESH_REUSE_GRACE_SECONDS (10) ago, graceUsedAt is null, the family is not revoked, no
+expiry has passed, the request carries the same user agent as the consumed session (another one is a reuse), and the token that replaced it (replacedById) is neither consumed nor revoked. A different IP address is allowed (networks change) and is recorded: warn log and metadata.ipChanged in the audit entry.
+The grace issues a new pair in the same family and sets graceUsedAt (a conditional update, so two
+simultaneous requests cannot both take it). Anything else is a reuse as above. It exists because a
+page that is unloaded (a reload) with POST /auth/refresh in flight loses the answer: the api already
+rotated and the browser still holds the consumed token. Two simultaneous requests with the same
+token are the same case. What it costs: for those 10 seconds a copy of the consumed token is worth
+what the original is, ONCE, and only while the person has not yet used the newer token; the thief
+gets no more than the person (the same family, the same cap in familyExpiresAt, revocable like any
+session) and the person's next use after the window of either branch still works. Both branches stay
+valid, each rotating on its own, until the family ends. The grace is logged (info) and audited
+(user.session_refresh_grace, never the token). Not applied to magic links or invitations.
 Logout: revokes the family. Password reset: revokes all families of the user.
 
 Verification tokens (email verification 24h, password reset 1h, DSR 7d) are

@@ -17,6 +17,21 @@ function pathAndSearch(address: string): string {
 }
 
 const numericAudit = z.object({ numericValue: z.number() })
+// Every request of the load, so that the weight of the scripts can be told by file. Read apart from the
+// budgets and item by item: a report that lacks it, or an item without a size, must not fail a run; the
+// listing is only for reading.
+const requestsSchema = z.object({
+  audits: z.object({
+    'network-requests': z.object({ details: z.object({ items: z.array(z.unknown()) }) })
+  })
+})
+const requestItemSchema = z.object({
+  url: z.string(),
+  resourceType: z.string(),
+  transferSize: z.number()
+})
+const NAME_MAX_LENGTH = 80
+
 const resultSchema = z.object({
   finalDisplayedUrl: z.string(),
   audits: z.object({
@@ -40,6 +55,8 @@ export interface PageMetrics {
   totalBlockingTimeMs: number
   cumulativeLayoutShift: number
   scriptTransferKb: number
+  // The scripts of the load, the heaviest first (of the median run: for reading, never asserted)
+  scripts: { name: string; transferKb: number }[]
 }
 
 // One navigation of the page the browser has open. Lighthouse clears the cache and the origin's
@@ -73,7 +90,45 @@ async function measureOnce(url: string, port: number): Promise<PageMetrics> {
     timeToInteractiveMs: audits.interactive.numericValue,
     totalBlockingTimeMs: audits['total-blocking-time'].numericValue,
     cumulativeLayoutShift: audits['cumulative-layout-shift'].numericValue,
-    scriptTransferKb: script.transferSize / BYTES_PER_KB
+    scriptTransferKb: script.transferSize / BYTES_PER_KB,
+    scripts: scriptsOf(result.lhr)
+  }
+}
+
+// The scripts of the load, heaviest first. It never throws: whatever is wrong with the listing, the run
+// goes on to its budgets.
+function scriptsOf(report: unknown): { name: string; transferKb: number }[] {
+  try {
+    const parsed = requestsSchema.safeParse(report)
+    if (!parsed.success) return []
+    return parsed.data.audits['network-requests'].details.items
+      .flatMap(item => {
+        const request = requestItemSchema.safeParse(item)
+        return request.success && request.data.resourceType.toLowerCase() === 'script'
+          ? [
+              {
+                name: scriptName(request.data.url),
+                transferKb: request.data.transferSize / BYTES_PER_KB
+              }
+            ]
+          : []
+      })
+      .sort((a, b) => b.transferKb - a.transferKb)
+  } catch {
+    return []
+  }
+}
+
+// The file of a script without its host and query, which is what tells two builds apart; a link that is
+// not http(s) (data:, blob:) is named by its scheme, so that no payload reaches the log
+function scriptName(address: string): string {
+  try {
+    const { protocol, pathname } = new URL(address)
+    const name =
+      protocol === 'http:' || protocol === 'https:' ? pathname.replace(/^\/_next\//, '') : protocol
+    return name.slice(0, NAME_MAX_LENGTH)
+  } catch {
+    return address.slice(0, NAME_MAX_LENGTH)
   }
 }
 
@@ -102,6 +157,10 @@ export async function measure(
     timeToInteractiveMs: of(m => m.timeToInteractiveMs),
     totalBlockingTimeMs: of(m => m.totalBlockingTimeMs),
     cumulativeLayoutShift: of(m => m.cumulativeLayoutShift),
-    scriptTransferKb: of(m => m.scriptTransferKb)
+    scriptTransferKb: of(m => m.scriptTransferKb),
+    // The listing of the run that is the median of the scripts, so that it adds up to the figure shown
+    scripts:
+      [...runs].sort((a, b) => a.scriptTransferKb - b.scriptTransferKb)[Math.floor(runs.length / 2)]
+        ?.scripts ?? []
   }
 }
