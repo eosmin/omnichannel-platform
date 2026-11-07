@@ -79,6 +79,7 @@ import {
 import { CustomersService } from './customers.service'
 import type {
   AddressView,
+  CreatedCustomer,
   CustomerDetail,
   CustomerPage,
   IdentityView,
@@ -139,9 +140,10 @@ export class CustomersController {
   @HttpCode(HttpStatusCodes.CREATED)
   create(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() permissions: readonly Permission[],
     @Body(new ZodValidationPipe(createCustomerSchema)) body: CreateCustomerBody
-  ): Promise<CustomerDetail> {
-    return this.customers.create(store.id, body)
+  ): Promise<CreatedCustomer> {
+    return this.customers.create(store.id, body, permissions.includes(Permissions.CUSTOMERS_VIEW))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
