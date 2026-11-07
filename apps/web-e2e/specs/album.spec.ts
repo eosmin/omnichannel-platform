@@ -85,15 +85,16 @@ test.describe.serial('a reply with several files in the thread', () => {
   test('draws the pictures as a grid of two columns, in the order they were sent', async () => {
     await albumOf([DeliveryStatus.SENT, DeliveryStatus.SENT, DeliveryStatus.SENT], false)
 
-    const boxes = await Promise.all(
-      [0, 1, 2].map(async at => {
-        const picture = pictureOf(`photo-${at}.png`)
-        await expect(picture).toBeVisible()
-        return picture.boundingBox()
-      })
-    )
-    const [first, second, third] = boxes
-    if (first === null || second === null || third === null) throw new Error('a picture has no box')
+    const boxOf = async (at: number) => {
+      const picture = pictureOf(`photo-${at}.png`)
+      await expect(picture).toBeVisible()
+      const box = await picture.boundingBox()
+      if (box === null) throw new Error(`photo-${at}.png has no box`)
+      return box
+    }
+    const first = await boxOf(0)
+    const second = await boxOf(1)
+    const third = await boxOf(2)
     // Two on the first row, side by side and of one size; the third starts the second row
     expect(second.y).toBe(first.y)
     expect(second.x).toBeGreaterThan(first.x)
