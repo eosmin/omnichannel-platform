@@ -18,6 +18,8 @@ export type QueueName = (typeof QueueNames)[keyof typeof QueueNames]
 export const JobNames = {
   // email: one job, the template decides the content (TDD_07 §5)
   SEND_EMAIL: 'send-email',
+  // A login link was asked for: the worker looks the address up, so the request never does
+  REQUEST_MAGIC_LINK: 'request-magic-link',
 
   // webhooks
   TRIGGER_WEBHOOK: 'trigger-webhook',

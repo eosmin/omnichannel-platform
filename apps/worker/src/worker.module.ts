@@ -3,7 +3,13 @@ import { ScheduleModule } from '@nestjs/schedule'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
 import { AuditModule } from '@platform/core/audit-module'
-import { EmailPlatformModule, HttpPlatformModule, QueuesPlatformModule } from '@platform/core/http'
+import {
+  DigestPlatformModule,
+  EmailPlatformModule,
+  HttpPlatformModule,
+  QueuesPlatformModule
+} from '@platform/core/http'
+import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import {
   ConversationsService,
   MESSAGING_WINDOW_POLICIES,
@@ -48,6 +54,7 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     AuditModule,
     QueuesPlatformModule,
     EmailPlatformModule,
+    DigestPlatformModule,
     ChannelConnectionsLibModule,
     PluginsModule.forRoot(),
     ScheduleModule.forRoot(),
@@ -81,6 +88,7 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     ReadReceiptSender,
     TypingSender,
     OutboundProcessor,
+    MagicLinkIssuer,
     EmailProcessor,
     ChannelHealthScheduler,
     TokenExpiryScheduler,
