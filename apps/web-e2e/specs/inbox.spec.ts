@@ -36,16 +36,23 @@ test.describe.serial('the inbox list', () => {
   let context: BrowserContext
   let page: Page
   let storeId: string
+  let newAddress: () => void
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext()
-    await reachServicesFromOwnAddress(context)
+    newAddress = await reachServicesFromOwnAddress(context)
     page = await context.newPage()
     await signIn(page, 'admin@test.com')
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.afterAll(async () => {
     await context.close()
+  })
+  // The cases share one session but not one minute of the limit of the api: GET /conversations was called
+  // 97 times of the 100 a minute by the cases together, and one more list request in a slow run was
+  // "Too many attempts" in a case that had nothing to do with it
+  test.beforeEach(() => {
+    newAddress()
   })
 
   test('lists a conversation and opens it with its filters kept in the address', async () => {
