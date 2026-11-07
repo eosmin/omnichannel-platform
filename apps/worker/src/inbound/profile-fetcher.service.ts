@@ -99,18 +99,20 @@ export class ProfileFetcher {
     }
     // Only the call to the plugin is a channel failure: a fault of ours below is the job's to retry
     let read: unknown
+    const abort = new AbortController()
     try {
-      // The same time for both: the plugin is told to stop (its request ends), and a plugin that ignores the
-      // signal is no longer waited for
+      // `withTimeout` keeps deciding when the read is late (the error it raises is the same as ever); when it
+      // gives up, or the read fails, the plugin is told to stop so that its request ends too
       read = await withTimeout(
         plugin.fetchProfile(
           this.contexts.contextFor(connection),
           identity.channelIdentity,
-          AbortSignal.timeout(CustomerProfileFetch.TIMEOUT_MS)
+          abort.signal
         ),
         CustomerProfileFetch.TIMEOUT_MS
       )
     } catch (error) {
+      abort.abort()
       const refused = refusalOf(error)
       // The message of the error may hold a token: only its name is logged, and none of it is stored
       this.logger.warn(
