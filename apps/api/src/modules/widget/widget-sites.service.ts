@@ -20,7 +20,8 @@ export interface WidgetSite {
 
 // The door from a site key, which anyone can send, to the store it belongs to. Only an active
 // connection of the widget plugin opens it: one that was disconnected, or a key of another channel,
-// is the same "not found" as a key that never existed.
+// is the same as a key that never existed. The routes turn that into the same 403 as a site that is not
+// listed (`allowOrigin`), never a 404, so the answers do not tell which keys exist.
 @Injectable()
 export class WidgetSites {
   constructor(private readonly prisma: PrismaService) {}
