@@ -435,8 +435,7 @@ export class MetaGraphClient {
     // The link is the customer's: one that is not a Meta CDN is refused as any other unsafe link, not
     // counted as a failure of the fetch. (The url that Graph itself answers for a media id keeps the
     // check below, where a foreign host is an unexpected answer.)
-    const target = parseUrl(url)
-    if (!target || !isMetaMediaUrl(target)) throw new UnsafeMediaLinkError()
+    if (!isMetaMediaLink(url)) throw new UnsafeMediaLinkError()
     return this.downloadFile(url, undefined, undefined, undefined)
   }
 
@@ -585,6 +584,13 @@ function parseUrl(value: string): URL | null {
 function mediaTypeOf(header: string | null): string {
   const type = header?.split(';')[0]?.trim().toLowerCase() ?? ''
   return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(type) ? type : MetaGraph.FALLBACK_CONTENT_TYPE
+}
+
+// Whether a link is one of a Meta CDN that may be fetched: https, no port or credentials, a host of the
+// list. Pure (no lookup, no call), so that it can run before anything touches the network.
+export function isMetaMediaLink(link: string): boolean {
+  const target = parseUrl(link)
+  return target !== null && isMetaMediaUrl(target)
 }
 
 function isMetaMediaUrl(url: URL): boolean {
