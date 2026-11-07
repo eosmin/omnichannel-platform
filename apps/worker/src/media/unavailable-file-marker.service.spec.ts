@@ -59,6 +59,45 @@ describe('UnavailableFileMarker', () => {
     )
   })
 
+  it('keeps the host of a refused link beside the code', async () => {
+    const { marker, tx } = setup(null)
+
+    await marker.mark(STORE, MESSAGE, 1, 'unsafe_link', undefined, { host: 'cdn.example.com' })
+
+    expect(tx.message.updateMany).toHaveBeenCalledWith({
+      where: { id: MESSAGE, storeId: STORE },
+      data: {
+        metadata: {
+          unavailableFiles: [{ index: 1, code: 'unsafe_link', host: 'cdn.example.com' }]
+        }
+      }
+    })
+  })
+
+  it('adds the host to an entry that was written without it, and writes nothing twice', async () => {
+    const { marker, tx } = setup({ unavailableFiles: [{ index: 1, code: 'unsafe_link' }] })
+
+    await marker.mark(STORE, MESSAGE, 1, 'unsafe_link', undefined, { host: 'cdn.example.com' })
+
+    expect(tx.message.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          metadata: {
+            unavailableFiles: [{ index: 1, code: 'unsafe_link', host: 'cdn.example.com' }]
+          }
+        }
+      })
+    )
+    tx.message.updateMany.mockClear()
+    const again = setup({
+      unavailableFiles: [{ index: 1, code: 'unsafe_link', host: 'cdn.example.com' }]
+    })
+    await again.marker.mark(STORE, MESSAGE, 1, 'unsafe_link', undefined, {
+      host: 'cdn.example.com'
+    })
+    expect(again.tx.message.updateMany).not.toHaveBeenCalled()
+  })
+
   it('keeps where the file came from, so that an agent can ask for it again', async () => {
     const { marker, tx } = setup(null)
     const source = {
