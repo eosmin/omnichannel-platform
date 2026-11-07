@@ -67,6 +67,35 @@ describe('queryKeysForEvent', () => {
     ).toEqual(expected)
   })
 
+  it('moves the preview of the row when a message is edited or deleted, from this or another tab', () => {
+    const expected = [QueryKeys.conversations.all('s1'), QueryKeys.messages.thread('s1', 'c1')]
+    expect(
+      queryKeysForEvent(RealtimeEvents.MESSAGE_EDITED, { conversationId: 'c1' }, 's1')
+    ).toEqual(expected)
+    expect(
+      queryKeysForEvent(RealtimeEvents.MESSAGE_DELETED, { conversationId: 'c1' }, 's1')
+    ).toEqual(expected)
+  })
+
+  it('answers a burst of deletions with one read of the list and one of the thread', () => {
+    jest.useFakeTimers()
+    try {
+      const invalidate = jest.fn()
+      const batcher = createInvalidationBatcher(invalidate, 150)
+      for (let at = 0; at < 50; at++) {
+        batcher.add(
+          queryKeysForEvent(RealtimeEvents.MESSAGE_DELETED, { conversationId: 'c1' }, 's1')
+        )
+      }
+      jest.advanceTimersByTime(150)
+      expect(invalidate).toHaveBeenCalledTimes(2)
+      expect(invalidate).toHaveBeenCalledWith(QueryKeys.conversations.all('s1'))
+      expect(invalidate).toHaveBeenCalledWith(QueryKeys.messages.thread('s1', 'c1'))
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('reaches the origins of the conversation through the key of its thread', () => {
     const thread = QueryKeys.messages.thread('s1', 'c1')
 
