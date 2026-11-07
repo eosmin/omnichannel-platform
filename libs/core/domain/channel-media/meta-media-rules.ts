@@ -4,7 +4,8 @@ import {
   type ChannelMediaCapabilities,
   type ChannelMediaKind,
   ChannelMediaKinds,
-  frozenMedia
+  frozenMedia,
+  MetaMediaFilesPerMessage
 } from './channel-media-rules'
 
 const MEGABYTE = 1024 * 1024
@@ -27,7 +28,7 @@ export const MetaAttachmentOfKind: Readonly<Record<ChannelMediaKind, MetaMediaKi
 // Meta, "Saving assets" (Messenger Platform): 8 MB for an image and 25 MB for any other file. The page lists
 // no formats, so none is filtered here; Meta answers 100/2018047 for a type that does not match the file.
 export const MessengerMedia: ChannelMediaCapabilities = frozenMedia({
-  maxFilesPerMessage: 1,
+  maxFilesPerMessage: MetaMediaFilesPerMessage,
   kinds: {
     [ChannelMediaKinds.IMAGE]: { types: null, maxBytes: 8 * MEGABYTE },
     [ChannelMediaKinds.VIDEO]: { types: null, maxBytes: 25 * MEGABYTE },
@@ -40,7 +41,7 @@ export const MessengerMedia: ChannelMediaCapabilities = frozenMedia({
 // image png/jpeg/gif up to 8 MB; audio aac/m4a/wav/mp4 up to 25 MB; video mp4/ogg/avi/mov/webm up to 25 MB;
 // file: pdf only, up to 25 MB.
 export const InstagramMedia: ChannelMediaCapabilities = frozenMedia({
-  maxFilesPerMessage: 1,
+  maxFilesPerMessage: MetaMediaFilesPerMessage,
   kinds: {
     [ChannelMediaKinds.IMAGE]: {
       types: ['image/jpeg', 'image/png', 'image/gif'],

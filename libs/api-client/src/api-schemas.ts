@@ -249,7 +249,19 @@ export const channelDirectoryEntrySchema = z.object({
   pluginName: z.string(),
   displayName: z.string(),
   status: z.string(),
-  capabilities: z.array(z.string())
+  capabilities: z.array(z.string()),
+  // What the channel takes in one message of each kind of file it declares: a kind that is not here is a
+  // file the channel does not take. Absent from a server that does not say it (the check is then the api's).
+  media: z
+    .array(
+      z.object({
+        type: z.string(),
+        maxFiles: z.number().int().min(1),
+        types: z.array(z.string()).nullable(),
+        maxBytes: z.number().int().min(1)
+      })
+    )
+    .optional()
 })
 export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)
 export type ChannelDirectoryEntryView = z.output<typeof channelDirectoryEntrySchema>
