@@ -1159,6 +1159,40 @@ describe('MetaGraphClient', () => {
       }
     )
 
+    // What fetch throws when the network fails names the address in its cause; none of it may travel on
+    describe.each([
+      ['POST', () => [] as Response[]],
+      ['GET', () => [methodRejected()]]
+    ])('a network failure on the %s', (_method, before) => {
+      it('carries nothing of the address, the token or the secret, and no cause', async () => {
+        for (const response of before()) fetchMock.mockResolvedValueOnce(response)
+        const address = `https://graph.facebook.com/v23.0/debug_token?input_token=${INPUT}`
+        fetchMock.mockRejectedValueOnce(
+          new TypeError('fetch failed', {
+            cause: new Error(`connect ECONNREFUSED ${address} Bearer ${APP_ID}|${APP_SECRET}`)
+          })
+        )
+        let failure: unknown
+        try {
+          await withApp().debugToken(INPUT)
+        } catch (error) {
+          failure = error
+        }
+
+        expect(failure).toBeInstanceOf(PluginError)
+        expect((failure as Error).cause).toBeUndefined()
+        const shown = [
+          String(failure),
+          JSON.stringify(failure),
+          (failure as Error).stack ?? '',
+          JSON.stringify(Object.getOwnPropertyDescriptors(failure))
+        ].join(' ')
+        for (const secret of [INPUT, APP_SECRET, `${APP_ID}|`, 'debug_token', 'ECONNREFUSED']) {
+          expect(shown).not.toContain(secret)
+        }
+      })
+    })
+
     it('does not leak either secret through the error of a GET fallback that fails', async () => {
       fetchMock
         .mockResolvedValueOnce(methodRejected())

@@ -5,6 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelTokenExpiryService } from '@platform/channels/connections'
+import { MetaGraphClient } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { CredentialCipher } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -552,6 +553,56 @@ describe('The expiry of the token of a channel connection', () => {
       expect(text).not.toContain(SECRET)
       expect(text).not.toContain('appsecret')
       warn.mockRestore()
+    })
+
+    // The whole way: the real client under the service, a network that fails with the address in its cause,
+    // and every line the logger was given
+    describe.each([
+      ['POST', false],
+      ['GET', true]
+    ])('with the real client, on the %s path', (_method, fallsBackToGet) => {
+      it('logs neither the address, nor the token, nor the secret of the app, nor the cause', async () => {
+        const APP_SECRET = 'app-secret-0123456789abcdef'
+        const address = `https://graph.facebook.com/v23.0/debug_token?input_token=${SECRET}`
+        const fetchSpy = jest.spyOn(globalThis, 'fetch')
+        if (fallsBackToGet) {
+          fetchSpy.mockResolvedValueOnce(
+            new Response(JSON.stringify({ error: { type: 'GraphMethodException', code: 100 } }), {
+              status: 400,
+              headers: { 'content-type': 'application/json' }
+            })
+          )
+        }
+        fetchSpy.mockRejectedValueOnce(
+          new TypeError('fetch failed', {
+            cause: new Error(`connect ECONNREFUSED ${address} Bearer 123|${APP_SECRET}`)
+          })
+        )
+        const client = new MetaGraphClient({
+          appId: '123',
+          appSecret: APP_SECRET,
+          verifyToken: 'v',
+          graphVersion: 'v23.0'
+        })
+        const { id, plugin } = register(token => client.debugToken(token))
+        const row = await seeded(id)
+        const capture: jest.SpyInstance[] = [
+          jest.spyOn(PinoLogger.prototype, 'warn'),
+          jest.spyOn(PinoLogger.prototype, 'error'),
+          jest.spyOn(PinoLogger.prototype, 'info')
+        ]
+
+        const written = await service.refresh(row.id, ctx.storeA.id, plugin)
+
+        expect(written).toBe(false)
+        const text = capture.map(logged).join(' ')
+        expect(text).toContain('could not be asked about')
+        for (const secret of [SECRET, APP_SECRET, 'debug_token', 'ECONNREFUSED', 'input_token']) {
+          expect(text).not.toContain(secret)
+        }
+        for (const spy of capture) spy.mockRestore()
+        fetchSpy.mockRestore()
+      })
     })
 
     it('says in a warning that a connection is up while its token is reported as not valid', async () => {
