@@ -235,7 +235,8 @@ describe('MessengerPlugin', () => {
 
       expect(result).toMatchObject({
         connectionId: '1090000000000001',
-        displayName: 'Messenger 1090000000000001'
+        displayName: 'Messenger 1090000000000001',
+        displayNameIsPlaceholder: true
       })
     })
 

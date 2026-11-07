@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 
 import { ApiRoutes } from '@platform/core/api'
-import { Permissions } from '@platform/core/auth'
+import { Permissions, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { MediaStatus } from '@platform/core/domain'
@@ -206,6 +206,11 @@ describe('Media upload', () => {
       // The refusals of one member do not use up the quota of the store
       expect(Number(await redis.get(storeKey))).toBe(storeBefore)
       expect(codeOf(refused.body)).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+      // It says when to come back: the seconds left of the hour, as the other refusals of the limits do
+      const retryAfter = (refused.body as ErrorBody).error.metadata?.[RETRY_AFTER_METADATA_KEY]
+      const secondsLeft = Math.ceil((3_600_000 - (Date.now() % 3_600_000)) / 1000)
+      expect(retryAfter).toEqual(expect.any(Number))
+      expect(Math.abs((retryAfter as number) - secondsLeft)).toBeLessThanOrEqual(5)
       // Another member of the same store is not held back by it
       expect((await requestUpload()).status).toBe(OK)
     })

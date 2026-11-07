@@ -452,7 +452,13 @@ export class ChannelConnectionsService {
         const installationId = await this.installationOf(tx, storeId, pluginId)
         let existing = await tx.channelConnection.findUnique({
           where: { pluginId_connectionId: { pluginId, connectionId: result.connectionId } },
-          select: { id: true, storeId: true, status: true, connectionId: true }
+          select: {
+            id: true,
+            storeId: true,
+            status: true,
+            connectionId: true,
+            displayName: true
+          }
         })
         if (existing !== null && existing.storeId !== storeId) {
           if (existing.status !== String(ChannelConnectionStatus.DISCONNECTED)) {
@@ -473,11 +479,17 @@ export class ChannelConnectionsService {
             throw await this.accountInUse(tx, existing.storeId, actor.userId)
           existing = null
         }
+        // This store's own row keeps its name when the plugin could only make one up, unless that name
+        // is itself the account id (what a name with nothing left of it falls back to)
+        const keepsName =
+          result.displayNameIsPlaceholder === true &&
+          existing !== null &&
+          existing.displayName !== existing.connectionId
+        // Cleaned, and the account id if nothing is left of it
+        const displayName =
+          providerText(result.displayName, ChannelConnectionLimits.DISPLAY_NAME_MAX_LENGTH) ||
+          result.connectionId
         const data = {
-          // Cleaned, and the account id if nothing is left of it
-          displayName:
-            providerText(result.displayName, ChannelConnectionLimits.DISPLAY_NAME_MAX_LENGTH) ||
-            result.connectionId,
           status: ChannelConnectionStatus.ACTIVE,
           credentials: sealed,
           // Last, so that a plugin cannot say how it was connected through the login
@@ -489,10 +501,23 @@ export class ChannelConnectionsService {
         const row =
           existing === null
             ? await tx.channelConnection.create({
-                data: { ...data, storeId, pluginId, connectionId: result.connectionId },
+                data: {
+                  ...data,
+                  displayName,
+                  storeId,
+                  pluginId,
+                  connectionId: result.connectionId
+                },
                 select: VIEW_SELECT
               })
-            : await this.reconnect(tx, existing, storeId, data)
+            : // Not written when the plugin made the name up and the row already has one: a good name
+              // is not worth less than a stand-in
+              await this.reconnect(
+                tx,
+                existing,
+                storeId,
+                keepsName ? data : { ...data, displayName }
+              )
         this.events.publish(tx, Events.CHANNEL_CONNECTED, {
           storeId,
           channelConnectionId: row.id,

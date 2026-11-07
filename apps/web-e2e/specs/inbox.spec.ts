@@ -170,7 +170,44 @@ test.describe.serial('the inbox list', () => {
     await expect(sheet.getByText(en.inbox.shortcuts.labels.list.NEXT_CONVERSATION)).toBeVisible()
     // The binding of the search is listed, with the words of what it does today
     await expect(sheet.getByText(en.inbox.shortcuts.labels.global.COMMAND_PALETTE)).toBeVisible()
+    // With no conversation open the keys of a conversation do nothing, so the sheet does not list them
+    const groups = en.inbox.shortcuts.groups
+    await expect(sheet.getByRole('heading', { name: groups.list })).toBeVisible()
+    await expect(sheet.getByRole('heading', { name: groups.global })).toBeVisible()
+    await expect(sheet.getByRole('heading', { name: groups.conversation })).toHaveCount(0)
 
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
+  })
+
+  test('shortcuts: g c goes to the customers without taking the cursor, so g i comes back', async () => {
+    await page.goto(AppPaths.store.inbox(storeId))
+    await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
+
+    await page.keyboard.press('g')
+    await page.keyboard.press('c')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
+    const search = page.getByRole('searchbox', { name: en.customers.list.searchLabel })
+    await expect(search).toBeVisible()
+    await expect(search).not.toBeFocused()
+
+    // With the cursor out of a text field the shortcuts still work: a keyboard user is not trapped
+    await page.keyboard.press('g')
+    await page.keyboard.press('i')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.inbox(storeId)}`))
+  })
+
+  test('shortcuts: the help sheet lists the keys of the open conversation too', async () => {
+    const conversationId = await newConversationIn(storeId)
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await page.keyboard.press('?')
+    const sheet = page.getByRole('dialog', { name: en.inbox.shortcuts.title })
+    // The list stays beside the conversation on a wide screen: all three groups work
+    for (const group of Object.values(en.inbox.shortcuts.groups)) {
+      await expect(sheet.getByRole('heading', { name: group })).toBeVisible()
+    }
     await page.keyboard.press('Escape')
     await expect(sheet).toBeHidden()
   })
@@ -361,6 +398,12 @@ test.describe.serial('the inbox list', () => {
           ).toBeLessThanOrEqual(width)
           expect(control?.x ?? -1, `${name} at ${width} px`).toBeGreaterThanOrEqual(0)
         }
+        // The name of the customer can be read (it was 12 px wide at 390 px), and the store switcher shows
+        // more than a letter of the name of the store
+        const customerName = await page.getByRole('heading', { level: 1 }).boundingBox()
+        expect(customerName?.width ?? 0, `customer name at ${width} px`).toBeGreaterThanOrEqual(120)
+        const store = await page.getByRole('button', { name: en.shell.switchStore }).boundingBox()
+        expect(store?.width ?? 0, `store switcher at ${width} px`).toBeGreaterThanOrEqual(110)
       }
       // The page of customers had the same header and overflowed sideways at 485 px (by the app's own link)
       await page.setViewportSize({ width: 485, height: 800 })

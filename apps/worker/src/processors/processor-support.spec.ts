@@ -71,6 +71,25 @@ describe('ProcessorSupport', () => {
       )
     })
 
+    it('copies a request for a magic link without the address that was typed', async () => {
+      const { support, deadLetterAdd } = build()
+      const job = {
+        ...jobOf(3, 3),
+        name: JobNames.REQUEST_MAGIC_LINK,
+        data: { email: 'x@example.com' }
+      }
+
+      await support.failedAttempt(QueueNames.EMAIL, job as unknown as Job, new Error('db down'))
+
+      expect(deadLetterAdd).toHaveBeenCalledWith(
+        JobNames.EXHAUSTED,
+        expect.objectContaining({
+          originalJobName: JobNames.REQUEST_MAGIC_LINK,
+          originalData: null
+        })
+      )
+    })
+
     it('copies a job that can never succeed at once, without waiting for its attempts', async () => {
       const { support, deadLetterAdd } = build()
 

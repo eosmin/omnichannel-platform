@@ -5,13 +5,17 @@ import { cn } from '../../lib/utils'
 
 export const Tabs = TabsPrimitive.Root
 
+// On a coarse pointer the list is 46 px: with its 3 px of padding on each side the triggers (`h-full`) are 40 px
 export function TabsList({
   className,
   ...props
 }: ComponentProps<typeof TabsPrimitive.List>): ReactElement {
   return (
     <TabsPrimitive.List
-      className={cn('bg-muted inline-flex h-9 items-center rounded-lg p-[3px]', className)}
+      className={cn(
+        'bg-muted inline-flex h-9 items-center rounded-lg p-[3px] pointer-coarse:h-[46px]',
+        className
+      )}
       {...props}
     />
   )
