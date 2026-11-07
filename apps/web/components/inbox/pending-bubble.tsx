@@ -1,11 +1,12 @@
 'use client'
 
 import { Clock } from 'lucide-react'
-import { useFormatter, useTranslations } from 'next-intl'
+import { useFormatter, useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { MessageType } from '@platform/core/domain'
 
+import { messageTimeOptions } from '../../lib/inbox/message-time'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { cn } from '../../lib/utils'
 
@@ -14,6 +15,7 @@ import { cn } from '../../lib/utils'
 export function PendingBubble({ message }: { message: PendingMessage }): ReactElement {
   const t = useTranslations('inbox.thread')
   const format = useFormatter()
+  const locale = useLocale()
   const isNote = message.type === MessageType.INTERNAL_NOTE
   return (
     <div className="flex flex-col items-end gap-0.5">
@@ -28,7 +30,7 @@ export function PendingBubble({ message }: { message: PendingMessage }): ReactEl
         <p className="break-words whitespace-pre-wrap">{message.content}</p>
         <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
           <time dateTime={message.createdAt}>
-            {format.dateTime(new Date(message.createdAt), { timeStyle: 'short' })}
+            {format.dateTime(new Date(message.createdAt), messageTimeOptions(locale))}
           </time>
           <span className="inline-flex items-center">
             <Clock aria-hidden className="size-3.5" />
