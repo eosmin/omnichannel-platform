@@ -38,10 +38,38 @@ describe('MagicLinkService', () => {
   }
 
   describe('request', () => {
+    it('queues the same request for an address with an account and for one without, and touches nothing else', async () => {
+      const known = await test.createUser()
+      const unknown = `it-${test.runId}-nobody-queued@example.com`
+      const tokensBefore = await test.asOwner(client =>
+        client.query('SELECT 1 FROM verification_tokens')
+      )
+
+      await test.magicLinks.request(known.email, 'corr-1')
+      await test.magicLinks.request(` ${unknown.toUpperCase()} `, 'corr-1')
+
+      // Nothing is looked up or saved here: that is the worker's work, so the time of this call
+      // cannot tell the two apart
+      const mine = (await test.requestJobs()).filter(job =>
+        [known.email, unknown].includes(job.data.email)
+      )
+      expect(mine.map(job => job.data)).toEqual([
+        { email: known.email, correlationId: 'corr-1' },
+        { email: unknown, correlationId: 'corr-1' }
+      ])
+      expect(mine.map(job => job.removeOnComplete)).toEqual([true, true])
+      const tokensAfter = await test.asOwner(client =>
+        client.query('SELECT 1 FROM verification_tokens')
+      )
+      expect(tokensAfter.rowCount).toBe(tokensBefore.rowCount)
+      await test.emailJobs() // Leave no request behind for the next case
+    })
+
     it('saves the link as a hash that expires in the time of the decision, and queues the email', async () => {
       const user = await test.createUser({ locale: 'en' })
 
       await test.magicLinks.request(user.email)
+      await test.emailJobs() // The worker's turn: it saves the link and queues the email
 
       const rows = await test.asOwner(client =>
         client.query<{ token_hash: string; seconds: number }>(
@@ -65,6 +93,46 @@ describe('MagicLinkService', () => {
       const token = await linkSentTo(user.email)
       expect(rows.rows[0]?.['token_hash']).toBe(hashToken(token)) // The email has what only the hash proves
       expect(JSON.stringify(rows.rows)).not.toContain(token) // The raw token is not in the database
+    })
+
+    it('takes the same time for an address with an account and for one without', async () => {
+      // The structural proof is in magic-link.service.spec.ts; this measures the whole call against
+      // the real Redis, interleaved so that drift hits both alike, with the limit cleared outside
+      // the timed part. The medians of identical work differ by noise only.
+      const known = await Promise.all(Array.from({ length: 10 }, () => test.createUser()))
+      const samples = { known: [] as number[], unknown: [] as number[] }
+      const timed = async (kind: 'known' | 'unknown', email: string): Promise<void> => {
+        await test.forgetEmailLimit(email)
+        const start = process.hrtime.bigint()
+        await test.magicLinks.request(email)
+        samples[kind].push(Number(process.hrtime.bigint() - start) / 1e6)
+      }
+      await timed('known', known[0]?.email ?? '') // Warms the connections: not counted
+      samples.known.length = 0
+
+      for (let i = 0; i < 300; i += 1) {
+        const order: ('known' | 'unknown')[] =
+          i % 2 === 0 ? ['known', 'unknown'] : ['unknown', 'known']
+        for (const kind of order) {
+          const email =
+            kind === 'known'
+              ? (known[i % known.length]?.email ?? '')
+              : `it-${test.runId}-ghost-${i}@example.com`
+          await timed(kind, email)
+        }
+      }
+      await test.emailQueue.drain() // No need to work 300 requests
+
+      const median = (values: number[]): number =>
+        [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0
+      // Under 1 ms, or under the spread of the samples themselves when the machine is noisy
+      const pooled = [...samples.known, ...samples.unknown].sort((a, b) => a - b)
+      const spread =
+        (pooled[Math.floor(pooled.length * 0.75)] ?? 0) -
+        (pooled[Math.floor(pooled.length * 0.25)] ?? 0)
+      expect(Math.abs(median(samples.known) - median(samples.unknown))).toBeLessThan(
+        Math.max(1, spread)
+      )
     })
 
     it('puts the token in the fragment of the link, never in the query', async () => {
@@ -129,6 +197,7 @@ describe('MagicLinkService', () => {
       const user = await test.createUser()
 
       await test.magicLinks.request(user.email)
+      await test.emailJobs() // The worker's turn: it looks the address up and queues the email
 
       const jobs = await test.emailQueue.getJobs(['waiting', 'delayed', 'active'])
       const job = jobs.find(queued => (queued.data as SendEmailJob).to === user.email)

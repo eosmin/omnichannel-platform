@@ -6,12 +6,12 @@ import type { ReactElement } from 'react'
 import { AvailableShortcuts, ListKeyAliases, Shortcuts } from '@platform/core/domain'
 
 import { isMacPlatformName } from '../../lib/shortcuts/dispatch'
+import { shortcutGroupsFor } from '../../lib/shortcuts/help-context'
 import { bindingKeys } from '../../lib/shortcuts/labels'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 
-type Group = keyof typeof AvailableShortcuts
-
-const GROUPS: readonly Group[] = ['list', 'conversation', 'global']
+// The width from which the list and the conversation are side by side (`md` of Tailwind)
+const WIDE_SCREEN = '(min-width: 768px)'
 
 // The arrows that do what j and k do are shown with them
 const ALIASES: Partial<Record<string, string>> = {
@@ -43,10 +43,13 @@ function Keys({ binding, isMac }: { binding: string; isMac: boolean }): ReactEle
 // The sheet of `?` (TDD_09 §9): the table of `libs/core/domain/shortcuts.ts`, the bindings that work today
 export function ShortcutHelp({
   open,
-  onOpenChange
+  onOpenChange,
+  isConversationOpen
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  // The sheet lists the keys that work on the screen: with no conversation open, those of a conversation do not
+  isConversationOpen: boolean
 }): ReactElement {
   const t = useTranslations('inbox.shortcuts')
   return (
@@ -56,21 +59,26 @@ export function ShortcutHelp({
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
-        {open ? <Body /> : null}
+        {open ? <Body isConversationOpen={isConversationOpen} /> : null}
       </DialogContent>
     </Dialog>
   )
 }
 
-function Body(): ReactElement {
+function Body({ isConversationOpen }: { isConversationOpen: boolean }): ReactElement {
   const t = useTranslations('inbox.shortcuts')
   // The key is a group and a name of the table; a spec checks that every pair has its text
   const labelOf = useTranslations('inbox.shortcuts.labels') as unknown as (key: string) => string
   // Read when the sheet opens, in the browser: the table says Cmd or Ctrl by the platform
   const isMac = isMacPlatformName(navigator)
+  // From `md` the list stays beside the conversation; on a phone it is hidden while one is open
+  const groups = shortcutGroupsFor({
+    isConversationOpen,
+    isListVisible: window.matchMedia(WIDE_SCREEN).matches
+  })
   return (
     <div className="grid gap-4">
-      {GROUPS.map(group => (
+      {groups.map(group => (
         <section key={group} aria-labelledby={`shortcuts-${group}`} className="grid gap-2">
           <h3 id={`shortcuts-${group}`} className="text-sm font-semibold">
             {t(`groups.${group}`)}

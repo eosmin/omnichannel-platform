@@ -96,27 +96,34 @@
   }
 }
 
-/* The spinner of a button that waits for the server (`busy`): it takes no room and shows nothing for the
-   first 400 ms, so an answer that comes at once never flashes it, and the button does not change size */
+/* The spinner of a button that waits for the server (`busy`): it is laid over the button, so it takes no room,
+   and it shows nothing for the first 400 ms, so an answer that comes at once never flashes it. When it shows,
+   the label gives way to it (it keeps its place, so the button does not change size at any moment) */
 @keyframes busy-in {
-  from {
-    max-width: 0;
-    opacity: 0;
-    margin-inline-end: -0.5rem;
-  }
   to {
-    max-width: 1rem;
     opacity: 1;
-    margin-inline-end: 0;
+  }
+}
+@keyframes busy-out {
+  to {
+    opacity: 0;
   }
 }
 .busy-spinner {
-  display: inline-flex;
-  overflow: hidden;
-  max-width: 0;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
-  margin-inline-end: -0.5rem;
   animation: busy-in 0s linear 400ms forwards;
+}
+.busy-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+  animation: busy-out 0s linear 400ms forwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .busy-spinner svg {

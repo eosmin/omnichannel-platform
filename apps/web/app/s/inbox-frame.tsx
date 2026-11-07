@@ -95,7 +95,9 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
       </section>
       <InboxSidebar />
       <RealtimeAnnouncer />
-      {isHelpMounted ? <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} /> : null}
+      {isHelpMounted ? (
+        <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} isConversationOpen={isOpen} />
+      ) : null}
     </div>
   )
 }

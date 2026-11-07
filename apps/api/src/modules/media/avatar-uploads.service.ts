@@ -55,10 +55,12 @@ export class AvatarUploadsService {
   async requestUploadUrl(userId: string, body: RequestAvatarUploadBody): Promise<UploadUrlResult> {
     refuseTypeOrSize(body.contentType, body.fileSizeBytes, MediaPurpose.AVATAR)
     // A signed url writes nothing until it is used, so what is counted is the asking, by the hour
+    const bucket = Math.floor(Date.now() / QUOTA_WINDOW_MS)
     await countWithinQuota(
       this.redis,
-      CacheKeys.upload.avatarQuota(userId, Math.floor(Date.now() / QUOTA_WINDOW_MS)),
-      AvatarProcessing.SIGNED_URLS_PER_USER_PER_HOUR
+      CacheKeys.upload.avatarQuota(userId, bucket),
+      AvatarProcessing.SIGNED_URLS_PER_USER_PER_HOUR,
+      bucket
     )
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key
     const mediaId = crypto.randomUUID()
