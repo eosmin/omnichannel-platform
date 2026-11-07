@@ -12,6 +12,7 @@ export const Schedules = {
   SEND_EMAIL_DIGEST_HOURLY: '10 * * * *',
   SEND_EMAIL_DIGEST_DAILY: '10 * * * *', // Every hour at :10; sends to the users whose local time is 08:10
   CHECK_CHANNEL_HEALTH: '*/5 * * * *', // Every 5 minutes (TDD_10 §10)
+  CHECK_TOKEN_EXPIRY: '15 */6 * * *', // Every 6 hours: each connection is asked about once a day at most (TokenExpiryLimits)
   REQUEUE_OUTBOUND: '* * * * *', // Every minute: a reply stored but never queued (Redis was down)
   PURGE_DELETED_MESSAGES: '20 * * * *', // Hourly: the text of a deleted message past its retention
   CLEAN_ORPHAN_MEDIA: '50 * * * *', // Hourly: stray uploads, stuck scans, files of infected rows

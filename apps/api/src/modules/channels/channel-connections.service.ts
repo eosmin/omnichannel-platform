@@ -5,6 +5,7 @@ import {
   CONNECTION_ROW_SELECT,
   ChannelContextFactory,
   ChannelHealthService,
+  ChannelTokenExpiryService,
   connectReasonOfError,
   CredentialsUnreadableError,
   errorName,
@@ -31,7 +32,10 @@ import {
   MembershipStatus,
   OfActiveInstallation,
   PluginInstallationStatus,
-  PluginStatus
+  PluginStatus,
+  readTokenInfo,
+  tokenExpiryOf,
+  type TokenExpiryView
 } from '@platform/core/domain'
 import {
   ChannelConnectFailureReasons,
@@ -96,6 +100,10 @@ export interface ChannelConnectionView {
   // How reading the name and photo of customers goes through this connection; null for a channel
   // that has no such thing
   profile: ConnectionProfileStatus | null
+  // What the provider says about the token of the connection, from the last time it was asked (the daily
+  // job, or when the connection was made or its token replaced). `state` is `unknown` while it was never
+  // asked or could not be, and never `expired` unless the provider gave a date that has passed.
+  tokenExpiry: TokenExpiryView
 }
 
 // Step 2.8 (1c-2): the profile of a customer is read by a job, and a refusal is stored on the identity
@@ -139,15 +147,22 @@ const VIEW_SELECT = {
   status: true,
   lastHealthyAt: true,
   lastError: true,
-  createdAt: true
+  createdAt: true,
+  // Read for `metadata.tokenInfo` alone (a date and a kind); the rest of it does not reach the response
+  metadata: true
 } as const
 
 type ConnectionRow = Omit<
   ChannelConnectionView,
-  'status' | 'capabilities' | 'profile' | 'accountName'
+  'status' | 'capabilities' | 'profile' | 'accountName' | 'tokenExpiry'
 > & {
   status: string
+  metadata: unknown
 }
+
+// How long a connect or a token update waits for the provider to say when the token stops. Past it the
+// answer is written in the background and the card shows it on the next read.
+const TOKEN_INFO_WAIT_MS = 4000
 
 // The connections of the store of the request (TDD_10 §10). Every read and write is filtered by that
 // store; the plugin is the one of the registry, and what it returns is checked before it is kept.
@@ -158,6 +173,7 @@ export class ChannelConnectionsService {
     private readonly registry: PluginRegistry,
     private readonly contexts: ChannelContextFactory,
     private readonly health: ChannelHealthService,
+    private readonly tokens: ChannelTokenExpiryService,
     private readonly cipher: CredentialCipher,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
@@ -184,7 +200,28 @@ export class ChannelConnectionsService {
       capabilities: this.registry.capabilitiesOf(row.pluginId),
       profile: this.registry.hasCapability(row.pluginId, ChannelCapability.CUSTOMER_PROFILE)
         ? (profiles.get(row.id) ?? this.noProfileFailures())
-        : null
+        : null,
+      tokenExpiry: tokenExpiryOf(readTokenInfo(row.metadata), new Date())
+    }
+  }
+
+  // Asks the provider about the token of a connection that was just made or whose token was replaced, and
+  // answers the row as the card should show it. The wait is short and a failure is not the connect's: the
+  // service never throws, and the daily job asks again.
+  private async withTokenInfo(storeId: string, row: ConnectionRow): Promise<ConnectionRow> {
+    try {
+      const written = await withTimeout(
+        this.tokens.refresh(row.id, storeId, this.registry.find(row.pluginId)),
+        TOKEN_INFO_WAIT_MS
+      )
+      if (!written) return row
+      const fresh = await this.prisma.client.channelConnection.findFirst({
+        where: { id: row.id, storeId },
+        select: VIEW_SELECT
+      })
+      return fresh ?? row
+    } catch {
+      return row
     }
   }
 
@@ -485,7 +522,7 @@ export class ChannelConnectionsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return this.viewAfterWrite(storeId, connection)
+    return this.viewAfterWrite(storeId, await this.withTokenInfo(storeId, connection))
   }
 
   // What the provider said may echo the credentials: it is not logged nor sent back.
@@ -677,7 +714,7 @@ export class ChannelConnectionsService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return this.viewAfterWrite(storeId, saved)
+    return this.viewAfterWrite(storeId, await this.withTokenInfo(storeId, saved))
   }
 
   // The owner just gave the provider new credentials or permissions: a refusal recorded before says
