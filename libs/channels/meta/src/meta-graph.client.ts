@@ -9,6 +9,7 @@ import {
   MetaGraph,
   type MetaGraphOrigin,
   MetaLimits,
+  MetaGrantedPageScopes,
   MetaOAuth,
   MetaUpload,
   MetaWebhook,
@@ -62,7 +63,11 @@ const debugAnswerSchema = z.object({
     is_valid: z.boolean(),
     type: z.string().max(40).optional(),
     expires_at: z.number().int().nonnegative().optional(),
-    scopes: z.array(z.string()).optional()
+    scopes: z.array(z.string()).optional(),
+    // What the person ticked in the dialog, by permission: the ids of the Pages they chose. Read tolerant: a
+    // part that does not have the shape is the same as a part that is not there.
+    // Each element is read alone below: one that does not fit must not cost the others
+    granular_scopes: z.array(z.unknown()).optional().catch(undefined)
   })
 })
 
@@ -71,6 +76,30 @@ const debugAnswerSchema = z.object({
 const methodRejectionSchema = z.object({ error: z.object({ type: z.string().optional() }) })
 
 type DebugMethod = 'POST' | 'GET'
+
+interface DebugResult {
+  inspection: TokenInspection
+  pageIds: string[]
+}
+
+// The Pages the person chose, from the targets of the permissions that target Pages
+const granularScopeSchema = z.object({
+  scope: z.string(),
+  target_ids: z.array(z.unknown()).optional().catch(undefined)
+})
+
+function grantedPages(granular: unknown[] | undefined): string[] {
+  const ids = new Set<string>()
+  for (const item of granular ?? []) {
+    const parsed = granularScopeSchema.safeParse(item)
+    if (!parsed.success || !MetaGrantedPageScopes.includes(parsed.data.scope)) continue
+    for (const id of parsed.data.target_ids ?? []) {
+      if (typeof id !== 'string') continue
+      if (MetaOAuth.ASSET_ID_PATTERN.test(id)) ids.add(id)
+    }
+  }
+  return [...ids].slice(0, MetaOAuth.MAX_GRANTED_PAGES)
+}
 
 const mediaInfoSchema = z.object({
   url: z.url(),
@@ -235,6 +264,16 @@ export class MetaGraphClient {
   // A failure is thrown as the error the core understands and says nothing about the token: the caller
   // takes it for "could not ask", never for "expired".
   async debugToken(inputToken: string): Promise<TokenInspection> {
+    return (await this.debug(inputToken)).inspection
+  }
+
+  // The ids of the Pages the person ticked in the dialog of Facebook, from the same question: deduplicated, plain
+  // ids only (they go into a path), at most `MetaOAuth.MAX_GRANTED_PAGES`. Only the permissions that target Pages.
+  async grantedPageIds(inputToken: string): Promise<string[]> {
+    return (await this.debug(inputToken)).pageIds
+  }
+
+  private async debug(inputToken: string): Promise<DebugResult> {
     if (this.knownDebugMethod() !== undefined) return this.askDebugToken(inputToken)
     const turn = this.debugQueue.then(
       () => this.askDebugToken(inputToken),
@@ -249,7 +288,7 @@ export class MetaGraphClient {
     return known !== undefined && known.until > Date.now() ? known.method : undefined
   }
 
-  private async askDebugToken(inputToken: string): Promise<TokenInspection> {
+  private async askDebugToken(inputToken: string): Promise<DebugResult> {
     const { appId, appSecret } = this.config
     if (appId === undefined || appSecret === undefined) throw graphUnexpected()
     const appToken = `${appId}|${appSecret}`
@@ -291,12 +330,15 @@ export class MetaGraphClient {
       if (data.is_valid && data.expires_at === undefined) throw graphUnexpected()
       this.debugMethod = { method, until: Date.now() + MetaLimits.DEBUG_METHOD_MEMORY_MS }
       return {
-        kind: tokenKindOf(data.type),
-        isValid: data.is_valid,
-        expiresAt: !data.expires_at ? null : new Date(data.expires_at * 1000),
-        scopes: (data.scopes ?? [])
-          .filter(scope => scope.length > 0 && scope.length <= TokenExpiryLimits.SCOPE_MAX_LENGTH)
-          .slice(0, TokenExpiryLimits.SCOPES_MAX)
+        inspection: {
+          kind: tokenKindOf(data.type),
+          isValid: data.is_valid,
+          expiresAt: !data.expires_at ? null : new Date(data.expires_at * 1000),
+          scopes: (data.scopes ?? [])
+            .filter(scope => scope.length > 0 && scope.length <= TokenExpiryLimits.SCOPE_MAX_LENGTH)
+            .slice(0, TokenExpiryLimits.SCOPES_MAX)
+        },
+        pageIds: grantedPages(data.granular_scopes)
       }
     }
     throw last ?? graphUnexpected()
