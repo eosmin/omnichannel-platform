@@ -339,6 +339,23 @@ describe('messageView location', () => {
 
 // The text a channel stores for a type it cannot read is `[type]`, the provider's English name for it.
 // The thread must not draw that: the view says which type it was and the interface writes the sentence.
+describe('messageView unsupportedShape', () => {
+  it('never lets the names a worker logs reach the thread', () => {
+    const view = messageView({
+      ...row({
+        [MessageMetadataKeys.UNSUPPORTED_TYPE]: 'share',
+        [MessageMetadataKeys.UNSUPPORTED_SHAPE]: {
+          messageFields: ['mid'],
+          attachments: [{ type: 'share', fields: ['type'], payloadFields: ['url'] }]
+        }
+      }),
+      content: '[share]'
+    })
+    expect(JSON.stringify(view)).not.toContain('payloadFields')
+    expect(JSON.stringify(view)).not.toContain(MessageMetadataKeys.UNSUPPORTED_SHAPE)
+  })
+})
+
 describe('messageView unsupportedType', () => {
   const marker = (type: string, metadata: unknown, content = `[${type}]`) =>
     messageView({ ...row(metadata), content })

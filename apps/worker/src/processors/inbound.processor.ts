@@ -2,7 +2,7 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { CHANNEL_ID_PATTERN } from '@platform/core/domain'
+import { CHANNEL_ID_PATTERN, MessageMetadataKeys } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 import {
   InboundMessageChangesService,
@@ -14,6 +14,7 @@ import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugi
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { ProfileRequester } from '../inbound/profile-requester.service'
+import { unsupportedShapeOf } from '../inbound/unsupported-shape'
 import { ChannelReceipts } from '../outbound/channel-receipts.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
@@ -56,6 +57,26 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
           )
         } catch (error) {
           throw unrecoverableIfInvalid(error)
+        }
+        // Permanent, on purpose: what a type the channel cannot show carried (names only), so it can be
+        // mapped. After the message is stored, so a retry of the job does not repeat it.
+        const unsupported = unsupportedShapeOf(event.message)
+        if (unsupported) {
+          this.logger.info(
+            {
+              pluginId,
+              connectionId: event.connectionId,
+              externalId: event.message.externalId,
+              ...unsupported
+            },
+            'inbound message of a type the channel cannot show'
+          )
+        } else if (event.message.metadata?.[MessageMetadataKeys.UNSUPPORTED_SHAPE] !== undefined) {
+          // The shape did not pass the worker's check: said, not dropped without a word
+          this.logger.warn(
+            { pluginId },
+            'the shape of an unsupported message did not fit its schema'
+          )
         }
         await this.profiles.request(pluginId, event.connectionId, event.channelIdentity)
         return
