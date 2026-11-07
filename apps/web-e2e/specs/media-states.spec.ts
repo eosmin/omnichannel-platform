@@ -4,6 +4,7 @@ import { AppPaths } from '@platform/api-client'
 import { AuthorType, MediaStatus, MessageType } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
+import { writeNote } from '../support/api'
 import {
   addMediaTo,
   addMessageTo,
@@ -15,6 +16,8 @@ import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
+// The first message of a Socket.IO connection: the socket is up
+const SOCKET_IO_CONNECTED = '40'
 const FIRST_STORE = 'Main Store'
 const AGENT = 'agent2@test.com'
 const MINUTE_MS = 60_000
@@ -34,11 +37,17 @@ test.describe.serial('the files of the thread', () => {
   let context: BrowserContext
   let page: Page
   let storeId: string
+  // The bearer token of the page, taken from its own requests: a second session writes with it
+  let token = ''
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext()
     await reachServicesFromOwnAddress(context)
     page = await context.newPage()
+    page.on('request', request => {
+      const authorization = request.headers()['authorization']
+      if (authorization?.startsWith('Bearer ')) token = authorization.slice('Bearer '.length)
+    })
     await signIn(page, AGENT)
     storeId = await storeIdNamed(FIRST_STORE)
   })
@@ -106,12 +115,21 @@ test.describe.serial('the files of the thread', () => {
     await page.route(`${STORAGE_URL}/**`, route =>
       route.fulfill({ status: 200, contentType: 'image/png', body: ONE_PIXEL_PNG })
     )
+    // The event of the worker is announced once and not replayed: the socket has to be up before it comes
+    const connected = new Promise<void>(resolve => {
+      page.once('websocket', socket => {
+        socket.on('framereceived', frame => {
+          if (String(frame.payload).startsWith(SOCKET_IO_CONNECTED)) resolve()
+        })
+      })
+    })
     await page.goto(AppPaths.store.conversation(storeId, conversationId))
 
     const arriving = threadOf(page)
       .getByRole('status')
       .filter({ hasText: en.inbox.thread.media.arriving })
     await expect(arriving).toBeVisible()
+    await connected
     await expect(
       threadOf(page).getByText(en.inbox.thread.mediaLabel.IMAGE, { exact: true })
     ).toHaveCount(0)
@@ -126,8 +144,10 @@ test.describe.serial('the files of the thread', () => {
       status: MediaStatus.CLEAN,
       processed: 'with-variants'
     })
-    // The same page, not a new load: the thread reads the messages again when the window gets the focus
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    // The same page, not a new load: a note of another session makes the thread read its messages again, as
+    // the announcement of the worker does when it has stored the file
+    expect(token).not.toBe('')
+    await writeNote(token, storeId, conversationId, 'Written while the file arrives')
     const image = threadOf(page).getByRole('button', {
       name: en.inbox.thread.media.open.replace('{name}', 'arrived.png')
     })
