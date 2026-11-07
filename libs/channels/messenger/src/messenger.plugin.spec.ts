@@ -329,6 +329,31 @@ describe('MessengerPlugin', () => {
     expect(get.mock.calls[0]?.[0]).toMatchObject({ query: { fields: 'id' } })
   })
 
+  describe('acceptsMediaLink', () => {
+    it.each([
+      ['https://scontent.xx.fbcdn.net/v/t1/a.jpg?sig=1', true],
+      ['https://cdn.fbsbx.com/v/a.mp4', true],
+      ['https://scontent-iad3-1.cdninstagram.com/v/a.jpg', true],
+      ['https://media.whatsapp.net/v/a.jpg', true],
+      ['https://SCONTENT.xx.FBCDN.net/a.jpg', true],
+      ['https://scontent.xx.fbcdn.net./a.jpg', false],
+      ['https://lookaside.fbsbx.com/file', true],
+      ['https://evil.example/x.jpg', false],
+      ['https://other.fbsbx.com/x', false],
+      ['https://scontent.xx.fbcdn.net.evil.example/a.jpg', false],
+      ['https://scontent.xx.fbcdn.net:8443/a.jpg', false],
+      ['http://scontent.xx.fbcdn.net/a.jpg', false],
+      ['https://user:pw@scontent.xx.fbcdn.net/a.jpg', false],
+      ['not a url', false]
+    ])('says %s is %s without any network call', (link, expected) => {
+      const { plugin, get, post } = build()
+
+      expect(plugin.acceptsMediaLink(link)).toBe(expected)
+      expect(get).not.toHaveBeenCalled()
+      expect(post).not.toHaveBeenCalled()
+    })
+  })
+
   describe('sends', () => {
     it('sends a text as a response, replying to a message beside it', async () => {
       const { plugin, post } = build()

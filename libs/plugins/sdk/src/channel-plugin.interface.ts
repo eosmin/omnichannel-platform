@@ -100,6 +100,11 @@ export interface ChannelPlugin {
   handleWebhook(payload: unknown): Promise<ChannelEvent[]>
   // Provider media needs the connection token
   fetchMedia?(ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia>
+  // Whether a link (a media ref that is not a plain id) is one this plugin would fetch. Pure: no network
+  // and no lookup. The core asks it BEFORE it resolves the host of a link, so that a host the plugin would
+  // refuse is never looked up from our servers (no probing through DNS, no retry of a link that can only
+  // be refused). A plugin that has no such list leaves it out and only the public-address check applies.
+  acceptsMediaLink?(mediaRef: string): boolean
   // Name, username and photo link of a customer, read with the connection token; null when the provider
   // has no profile for that person. Required by CUSTOMER_PROFILE. The core calls it from a job, never
   // from the webhook, and stores what it returns. Null is a final answer (nothing to read, now or on
