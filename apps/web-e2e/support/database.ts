@@ -286,6 +286,24 @@ export function filesSentIn(
   })
 }
 
+// How each file of a message stands toward the channel, in the order of the message
+export function deliveryOfFiles(
+  messageId: string
+): Promise<{ filename: string; delivery: string | null; errorCode: string | null }[]> {
+  return withOwner(async owner => {
+    const rows = await owner.media.findMany({
+      where: { messageId },
+      orderBy: { position: 'asc' },
+      select: { filename: true, deliveryStatus: true, sendErrorCode: true }
+    })
+    return rows.map(row => ({
+      filename: row.filename,
+      delivery: row.deliveryStatus,
+      errorCode: row.sendErrorCode
+    }))
+  })
+}
+
 export async function storeIdNamed(name: string): Promise<string> {
   const store = await withOwner(owner => owner.store.findFirst({ where: { name } }))
   if (store === null) throw new Error(`no store named ${name}`)
@@ -540,6 +558,10 @@ export function addMediaTo(
     status: MediaStatus
     // The worker made the variants of a picture, or refused it (settled, with none)
     processed?: 'with-variants' | 'refused'
+    // A file of a reply with several: its place in the message and how it stands toward the channel
+    position?: number
+    delivery?: DeliveryStatus
+    sendErrorCode?: string
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
@@ -555,6 +577,9 @@ export function addMediaTo(
         contentType: input.contentType,
         fileSize: 2048,
         status: input.status,
+        ...(input.position === undefined ? {} : { position: input.position }),
+        ...(input.delivery === undefined ? {} : { deliveryStatus: input.delivery }),
+        ...(input.sendErrorCode === undefined ? {} : { sendErrorCode: input.sendErrorCode }),
         ...settledOf(storeId, id, input.processed)
       }
     })

@@ -9,6 +9,7 @@ import type { MessageView } from '@platform/api-client'
 import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/domain'
 import type { OutboundMediaType } from '@platform/core/storage'
 
+import { fileDeliveryOf, isAlbum, sayRetryOnlyFailed } from '../../lib/inbox/album'
 import { displayFileNameOf } from '../../lib/inbox/file-label'
 import { mediaKindOf } from '../../lib/inbox/media-kind'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
@@ -16,7 +17,7 @@ import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrlReads, useMediaUrls } from '../../lib/media/use-media-urls'
 import { hasGivenUpWaiting, isWaitingForVariants } from '../../lib/media/variant-wait'
 import { toast } from '../../lib/toast'
-import { useErrorText } from '../../lib/use-error-text'
+import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
@@ -31,6 +32,8 @@ import { type LightboxFile, MediaLightbox } from './media-lightbox'
 const Boxes = {
   IMAGE: 'aspect-[4/3] w-[320px] max-w-full',
   STICKER: 'size-32',
+  // A picture of an album: the two columns of its grid share the width of one picture
+  CELL: 'aspect-square w-full',
   // A document, a video and the voice note share one pill: the player is as wide and as high
   PILL: 'h-10 w-[260px] max-w-full'
 } as const
@@ -71,17 +74,26 @@ export function MessageMedia({
 }): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
   if (files.length === 0 && unavailable.length === 0) return null
+  // Several pictures in one message are a grid; the state of each file shows under it once there are several
+  const album = isAlbum(files, messageType, sticker)
+  const states = files.length > 1
   return (
     <div className="flex flex-col gap-1.5">
-      {files.map(file => (
-        <MediaItem
-          key={file.id}
-          file={file}
-          onOpen={setOpen}
-          sticker={sticker}
-          messageType={messageType}
-        />
-      ))}
+      <div className={album ? 'grid w-[320px] max-w-full grid-cols-2 gap-1' : 'contents'}>
+        {files.map(file => (
+          <div key={file.id} className="flex min-w-0 flex-col gap-0.5">
+            <MediaItem
+              file={file}
+              onOpen={setOpen}
+              sticker={sticker}
+              messageType={messageType}
+              inAlbum={album}
+            />
+            {states ? <FileDeliveryLine file={file} /> : null}
+          </div>
+        ))}
+      </div>
+      {sayRetryOnlyFailed(files) ? <RetryHint /> : null}
       {unavailable.map(file => (
         <UnavailableItem
           key={file.index}
@@ -106,11 +118,12 @@ function labelOf(
   return t(KIND_LABELS.find(label => label === type) ?? 'DOCUMENT')
 }
 
-type Shape = 'image' | 'sticker' | 'pill'
+type Shape = 'image' | 'sticker' | 'cell' | 'pill'
 
 const BOX_OF: Record<Shape, string> = {
   image: Boxes.IMAGE,
   sticker: Boxes.STICKER,
+  cell: Boxes.CELL,
   pill: Boxes.PILL
 }
 
@@ -204,23 +217,64 @@ function UnavailableItem({
   )
 }
 
+// What the agent has to know about a file of a reply: that it waits, or that it failed and why. A file that went
+// out is told by the ticks of the message.
+function FileDeliveryLine({ file }: { file: MediaFile }): ReactElement | null {
+  const t = useTranslations('inbox.thread.media')
+  const codeText = useCodeText()
+  const state = fileDeliveryOf(file)
+  if (state === null) return null
+  return (
+    // Plain text, not a live region: a thread full of old albums must not announce every failure it holds
+    <p
+      className={cn(
+        'text-xs break-words',
+        state === 'failed' ? 'text-destructive' : 'text-muted-foreground'
+      )}
+    >
+      {state === 'queued'
+        ? t('fileQueued')
+        : file.errorCode === null
+          ? t('fileFailed')
+          : t('fileFailedWithReason', { reason: codeText(file.errorCode) })}
+    </p>
+  )
+}
+
+// What sending again does with the files that failed, said without naming a button the viewer may not have
+function RetryHint(): ReactElement {
+  const t = useTranslations('inbox.thread.media')
+  return <p className="text-muted-foreground text-xs">{t('retryOnlyFailed')}</p>
+}
+
 function MediaItem({
   file,
   onOpen,
   sticker,
-  messageType
+  messageType,
+  inAlbum
 }: {
   file: MediaFile
   onOpen: (file: LightboxFile) => void
   sticker: boolean
   messageType: string
+  inAlbum: boolean
 }): ReactElement {
   const tKind = useTranslations('inbox.thread.mediaLabel')
   const kind = mediaKindOf(messageType, file.contentType)
   // A file with no name of its own is called by its kind (Audio, Imagen, Documento), not "file"
   const shown = displayFileNameOf(file.filename, kind ?? '')
   const name = shown.kind === 'name' ? shown.name : labelOf(tKind, shown.type)
-  const body = <MediaBody file={file} onOpen={onOpen} sticker={sticker} kind={kind} name={name} />
+  const body = (
+    <MediaBody
+      file={file}
+      onOpen={onOpen}
+      sticker={sticker}
+      kind={kind}
+      name={name}
+      inAlbum={inAlbum}
+    />
+  )
   if (kind !== MessageType.AUDIO) return body
   // The name of a voice note sits over its player in every state, so the box is the same height
   // whether it shows the skeleton, the player or a line of words
@@ -240,19 +294,22 @@ function MediaBody({
   onOpen,
   sticker,
   kind,
-  name
+  name,
+  inAlbum
 }: {
   file: MediaFile
   onOpen: (file: LightboxFile) => void
   sticker: boolean
   kind: OutboundMediaType | null
   name: string
+  inAlbum: boolean
 }): ReactElement {
   const t = useTranslations('inbox.thread.media')
   const { storeId } = useStore()
   const isClean = file.status === MediaStatus.CLEAN
   const urls = useMediaUrls(storeId, file.id, isClean)
-  const shape: Shape = kind === MessageType.IMAGE ? (sticker ? 'sticker' : 'image') : 'pill'
+  const shape: Shape =
+    kind === MessageType.IMAGE ? (sticker ? 'sticker' : inAlbum ? 'cell' : 'image') : 'pill'
   // The variants of a picture come a moment after the picture is clean. The box waits for them until
   // the links were read as many times as the wait allows; the count is kept by the query, so a picture
   // drawn again does not start the wait over, and the read that ends it is a render of its own.
