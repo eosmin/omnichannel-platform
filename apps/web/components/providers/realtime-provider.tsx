@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import { AppPaths, QueryKeys, sendMessage } from '@platform/api-client'
 import { ClientErrorCodes } from '@platform/core/errors'
@@ -24,6 +23,7 @@ import { RealtimeClientTiming } from '../../lib/realtime/realtime-config'
 import { type RealtimeContextValue, RealtimeContext } from '../../lib/realtime/realtime-context'
 import { attachRealtimeSync } from '../../lib/realtime/realtime-sync'
 import { sendThenRefresh } from '../../lib/realtime/send-then-refresh'
+import { toast } from '../../lib/toast'
 
 // The access token in memory first; a fresh one when the api said it expired or there is none
 async function socketToken({ refresh }: { refresh: boolean }): Promise<string> {

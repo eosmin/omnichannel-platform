@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 
 import {
   type AccountPreferences,
@@ -25,6 +24,7 @@ import {
   useAccountPreferences,
   useSaveAccountPreferences
 } from '../../lib/settings/use-settings-data'
+import { toast } from '../../lib/toast'
 
 function rememberLanguageSaved(locale: string): void {
   try {

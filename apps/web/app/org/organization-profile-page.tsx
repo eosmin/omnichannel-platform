@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
-import { toast } from 'sonner'
 
 import type { OrganizationView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -16,6 +15,7 @@ import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { useUnsavedChanges } from '../../lib/settings/unsaved-changes'
 import { useOrganization, useRenameOrganization } from '../../lib/settings/use-settings-data'
+import { toast } from '../../lib/toast'
 
 // Organization → Profile: the name of the organization. Anyone who may look at settings reads it;
 // changing it needs the right to edit them.

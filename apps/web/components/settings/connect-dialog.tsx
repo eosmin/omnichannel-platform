@@ -2,7 +2,6 @@
 
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
-import { toast } from 'sonner'
 
 import type {
   ChannelConnectionView,
@@ -19,6 +18,7 @@ import {
 } from '../../lib/settings/connect-form'
 import { useConnect } from '../../lib/settings/use-channels'
 import { useSubmitGuard } from '../../lib/submit-guard'
+import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
