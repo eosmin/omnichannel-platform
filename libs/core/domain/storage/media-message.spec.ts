@@ -1,6 +1,11 @@
 import { MessageType } from '../status-enums'
 
-import { isOutboundMediaType, mediaMessageTypeOf } from './media-message'
+import {
+  isOutboundMediaType,
+  MediaMessageLimits,
+  maxFilesFor,
+  mediaMessageTypeOf
+} from './media-message'
 
 describe('mediaMessageTypeOf', () => {
   it.each([
@@ -22,5 +27,23 @@ describe('isOutboundMediaType', () => {
     expect(isOutboundMediaType(MessageType.IMAGE)).toBe(true)
     expect(isOutboundMediaType(MessageType.TEXT)).toBe(false)
     expect(isOutboundMediaType(MessageType.INTERNAL_NOTE)).toBe(false)
+  })
+})
+
+describe('maxFilesFor', () => {
+  it('is one while several files are off, whatever the channel declares', () => {
+    expect(maxFilesFor(10, false)).toBe(1)
+    expect(maxFilesFor(1, false)).toBe(1)
+  })
+
+  it('is what the channel declares once they are on', () => {
+    expect(maxFilesFor(10, true)).toBe(10)
+    expect(maxFilesFor(1, true)).toBe(1)
+  })
+
+  it('is never less than one nor more than a request carries, even for a value that is not a count', () => {
+    for (const odd of [0, -4, Number.NaN, 0.4]) expect(maxFilesFor(odd, true)).toBe(1)
+    expect(maxFilesFor(1000, true)).toBe(MediaMessageLimits.MAX_FILES)
+    expect(maxFilesFor(Number.POSITIVE_INFINITY, true)).toBe(MediaMessageLimits.MAX_FILES)
   })
 })
