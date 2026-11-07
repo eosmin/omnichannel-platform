@@ -539,7 +539,9 @@ export class MessagesService {
     if (body.mediaIds.length > maxFiles) {
       throw new PlatformException(
         ErrorCodes.CHANNEL_TOO_MANY_FILES,
-        'the channel does not take that many files in one message',
+        maxFiles === MediaMessageLimits.SINGLE_FILE
+          ? 'one file per message: several in one message are not switched on, or the channel takes one'
+          : 'the channel does not take that many files in one message',
         HttpStatusCodes.CONFLICT,
         { max: maxFiles }
       )

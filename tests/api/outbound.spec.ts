@@ -96,6 +96,8 @@ describe('Replies on their way to a channel', () => {
   let mediaResult: { metadata?: Record<string, unknown> } = {}
   // Makes the send of some files fail: given the params, an error to throw or null to accept
   let mediaFailure: (params: SendMediaParams) => Error | null = () => null
+  // Runs inside the send of a file, before the provider's answer: where a receipt can overtake the worker
+  let duringMediaSend: (params: SendMediaParams) => Promise<void> = () => Promise.resolve()
   let heard: { event: string; payload: Record<string, unknown> }[] = []
   let sendMessage: (ctx: ChannelContext, params: SendMessageParams) => ReturnType<ChannelSend>
   let externalCount = 0
@@ -111,16 +113,17 @@ describe('Replies on their way to a channel', () => {
     })
   }
 
-  const sendMediaOf = (_ctx: ChannelContext, params: SendMediaParams) => {
+  const sendMediaOf = async (_ctx: ChannelContext, params: SendMediaParams) => {
     sentMedia.push(params)
+    await duringMediaSend(params)
     const failure = mediaFailure(params)
-    if (failure !== null) return Promise.reject(failure)
-    return Promise.resolve({
+    if (failure !== null) throw failure
+    return {
       externalId: `media-${params.idempotencyKey}`,
       status: DeliveryStatus.SENT,
       sentAt: new Date().toISOString(),
       ...mediaResult
-    })
+    }
   }
 
   beforeAll(async () => {
@@ -228,6 +231,7 @@ describe('Replies on their way to a channel', () => {
     sentMedia = []
     mediaResult = {}
     mediaFailure = () => null
+    duringMediaSend = () => Promise.resolve()
     heard = []
     sendMessage = accept
   })
@@ -1677,6 +1681,114 @@ describe('Replies on their way to a channel', () => {
         ).toBe(false)
       })
 
+      it('does not send again a file that a receipt already moved to delivered or read', async () => {
+        const { reply, files } = await replyWithFiles(3)
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-2`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
+            : null
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+        await owner.media.update({
+          where: { id: files[0]?.id ?? '' },
+          data: { deliveryStatus: 'read' }
+        })
+        await owner.media.update({
+          where: { id: files[1]?.id ?? '' },
+          data: { deliveryStatus: 'delivered' }
+        })
+        mediaFailure = () => null
+        sentMedia = []
+
+        await sender.send(job(reply), true)
+
+        expect(sentMedia.map(params => params.idempotencyKey)).toEqual([`${reply.id}-2`])
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual([
+          'read',
+          'delivered',
+          'sent'
+        ])
+      })
+
+      it("never takes a file back from read when the receipt beats the worker's write", async () => {
+        const { reply, files } = await replyWithFiles(1)
+        duringMediaSend = async () => {
+          await owner.media.update({
+            where: { id: files[0]?.id ?? '' },
+            data: { deliveryStatus: 'read' }
+          })
+        }
+
+        await sender.send(job(reply), false)
+
+        expect((await rowsOf(reply.id)).map(row => row.deliveryStatus)).toEqual(['read'])
+      })
+
+      it("does not send again, behind the agent's back, a file that failed on an earlier attempt", async () => {
+        const { reply } = await replyWithFiles(3)
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-0`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+            : params.idempotencyKey === `${reply.id}-1`
+              ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
+              : null
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+        mediaFailure = () => null
+        sentMedia = []
+
+        await sender.send(job(reply), true)
+
+        // The first one is not sent again; the second and the third go
+        expect(sentMedia.map(params => params.idempotencyKey)).toEqual([
+          `${reply.id}-1`,
+          `${reply.id}-2`
+        ])
+        const message = await stored(reply.id)
+        expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+        expect(
+          (await owner.message.findUniqueOrThrow({ where: { id: reply.id } })).failureDefinitive
+        ).toBe(false)
+      })
+
+      it('keeps the id of the caption of the first file when a later file makes the job try again', async () => {
+        const { reply } = await replyWithFiles(2)
+        mediaResult = { metadata: { captionExternalId: 'cap-multi' } }
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-1`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
+            : null
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+        mediaFailure = () => null
+
+        await sender.send(job(reply), true)
+
+        const row = await owner.message.findUniqueOrThrow({
+          where: { id: reply.id },
+          select: { captionChannelMessageId: true, captionState: true, deliveryStatus: true }
+        })
+        expect(row).toMatchObject({
+          captionChannelMessageId: 'cap-multi',
+          captionState: 'sent',
+          deliveryStatus: 'sent'
+        })
+      })
+
+      it('keeps a clean-refusal mark when an earlier file of the same attempt left the outcome unknown', async () => {
+        const { reply } = await replyWithFiles(2)
+        mediaFailure = params =>
+          params.idempotencyKey === `${reply.id}-0`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+            : new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+                refused: true,
+                retryable: true
+              })
+
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+
+        expect(
+          (await owner.message.findUniqueOrThrow({ where: { id: reply.id } })).failureDefinitive
+        ).toBe(false)
+      })
+
       it('fails the file that is not clean and sends the rest', async () => {
         const { reply, files } = await replyWithFiles(3)
         await owner.media.update({
@@ -1753,7 +1865,7 @@ describe('Replies on their way to a channel', () => {
       return { ...reply, externalId: channelMessageId ?? '' }
     }
 
-    it('moves the message and only the file it names when the receipt is about a file after the first', async () => {
+    it('moves a file by its own receipt, and the message only once every file has reached that state', async () => {
       const reply = await queuedReply({ pluginId: MULTI_MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
       for (let position = 0; position < 3; position += 1) {
         const id = randomUUID()
@@ -1776,33 +1888,83 @@ describe('Replies on their way to a channel', () => {
       }
       await sender.send(job(reply), false)
 
-      const aboutFile = (type: 'message_delivered' | 'message_read') =>
+      const aboutFile = (position: number, type: 'message_delivered' | 'message_read') =>
         receipts.handleReceipt(
           MULTI_MEDIA_CHANNEL_ID,
           {
             type,
             connectionId: reply.connectionId,
             channelIdentity: '50370000000',
-            status: { externalId: `media-${reply.id}-2` },
+            status: { externalId: `media-${reply.id}-${position}` },
             timestamp: new Date().toISOString()
           },
           false
         )
-      await aboutFile('message_read')
+      const states = async () =>
+        (
+          await owner.media.findMany({
+            where: { messageId: reply.id },
+            orderBy: { position: 'asc' },
+            select: { deliveryStatus: true }
+          })
+        ).map(file => file.deliveryStatus)
+      await aboutFile(2, 'message_read')
 
+      // One file read is one file read: the message is not read while the others are not
+      expect(await states()).toEqual(['sent', 'sent', 'read'])
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      // A receipt that arrives late for an earlier state never takes a file back
+      await aboutFile(2, 'message_delivered')
+      expect(await states()).toEqual(['sent', 'sent', 'read'])
+      await aboutFile(0, 'message_read')
+      await aboutFile(1, 'message_read')
+
+      expect(await states()).toEqual(['read', 'read', 'read'])
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.READ)
+    })
+
+    it('fails the message when a later file fails by receipt, and only that file', async () => {
+      const reply = await queuedReply({ pluginId: MULTI_MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+      for (let position = 0; position < 2; position += 1) {
+        const id = randomUUID()
+        await owner.media.create({
+          data: {
+            id,
+            storeId: reply.storeId,
+            purpose: 'message',
+            messageId: reply.id,
+            key: `stores/${reply.storeId}/messages/${id}/p.png`,
+            filename: 'p.png',
+            contentType: 'image/png',
+            fileSize: 10,
+            status: 'clean',
+            position,
+            deliveryStatus: 'queued',
+            createdAt: new Date(Date.now() + position)
+          }
+        })
+      }
+      await sender.send(job(reply), false)
+
+      await receipts.handleReceipt(
+        MULTI_MEDIA_CHANNEL_ID,
+        {
+          type: 'message_failed',
+          connectionId: reply.connectionId,
+          channelIdentity: '50370000000',
+          status: { externalId: `media-${reply.id}-1` },
+          timestamp: new Date().toISOString()
+        },
+        false
+      )
+
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
       const files = await owner.media.findMany({
         where: { messageId: reply.id },
         orderBy: { position: 'asc' },
         select: { deliveryStatus: true }
       })
-      expect(files.map(file => file.deliveryStatus)).toEqual(['sent', 'sent', 'read'])
-      // A receipt that arrives late for an earlier state never takes a file back
-      await aboutFile('message_delivered')
-      expect(
-        (await owner.media.findFirstOrThrow({ where: { messageId: reply.id, position: 2 } }))
-          .deliveryStatus
-      ).toBe('read')
+      expect(files.map(file => file.deliveryStatus)).toEqual(['sent', 'failed'])
     })
 
     it('moves a sent reply to delivered and then read, and says each once', async () => {

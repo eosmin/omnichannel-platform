@@ -70,9 +70,18 @@ interface AttachmentToSend {
   size: number
   isClean: boolean
   wasSent: boolean
+  failedBefore: boolean
+  earlierErrorCode: string | null
   channelMessageId: string | null
   open: () => Promise<NodeJS.ReadableStream>
 }
+
+// The states of a file the provider has taken
+const SENT_STATES: readonly string[] = [
+  DeliveryStatus.SENT,
+  DeliveryStatus.DELIVERED,
+  DeliveryStatus.READ
+]
 
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -336,7 +345,15 @@ export class OutboundSender {
       taken > 0 ? withoutId : { ...withoutId, channelMessageId: accepted.externalId }
     for (let attempt = 1; ; attempt += 1) {
       try {
-        await this.status.apply(change)
+        const applied = await this.status.apply(change)
+        // A receipt moved the message past this state first: the id is still a fact about what was sent, and
+        // receipts and echoes find the message by it
+        if (!applied && change.channelMessageId !== undefined) {
+          await this.prisma.client.message.updateMany({
+            where: { id: messageId, storeId, channelMessageId: null },
+            data: { channelMessageId: change.channelMessageId }
+          })
+        }
         return
       } catch (error) {
         if (attempt >= OutboundLimits.WRITE_ATTEMPTS) throw error
@@ -409,6 +426,7 @@ export class OutboundSender {
         fileSize: true,
         position: true,
         deliveryStatus: true,
+        sendErrorCode: true,
         channelMessageId: true
       },
       orderBy: [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
@@ -422,7 +440,11 @@ export class OutboundSender {
       // The size recorded when the file was checked: a plugin holds the upload to it
       size: file.fileSize,
       isClean: file.status === String(MediaStatus.CLEAN),
-      wasSent: file.deliveryStatus === String(DeliveryStatus.SENT),
+      // Taken by the provider: sent, or already delivered or read by a receipt
+      wasSent: SENT_STATES.includes(file.deliveryStatus ?? ''),
+      // Failed on an earlier attempt of this send: it waits for the agent to send it again
+      failedBefore: file.deliveryStatus === String(DeliveryStatus.FAILED),
+      earlierErrorCode: file.sendErrorCode,
       channelMessageId: file.channelMessageId,
       // No link is signed: a plugin gets the bytes through `open`, and a signed link nobody reads is only one
       // more live credential to the storage in memory and in logs. Only the object of this row, read from the
@@ -484,6 +506,17 @@ export class OutboundSender {
     let firstAccepted: z.infer<typeof resultSchema> | null = null
     for (const file of files) {
       if (file.wasSent) continue
+      // Failed on an earlier attempt of this send, possibly with the outcome unknown: it is not sent again
+      // behind the agent's back; "send again" puts it back in the queue. It still fails the message.
+      if (file.failedBefore) {
+        allRefused = false
+        failures.push(
+          (Object.values(ErrorCodes) as string[]).includes(file.earlierErrorCode ?? '')
+            ? (file.earlierErrorCode as ErrorCode)
+            : ErrorCodes.CHANNEL_MESSAGE_FAILED
+        )
+        continue
+      }
       if (!file.isClean) {
         this.logger.warn(
           { storeId, messageId, position: file.position },
@@ -532,7 +565,12 @@ export class OutboundSender {
         }
         anySent = true
         await this.markFile(storeId, messageId, file.id, { sent: result.data })
-        if (file.index === 0) firstAccepted = result.data
+        if (file.index === 0) {
+          firstAccepted = result.data
+          // Written now and not at the end: a later file can fail with a retry, and the caption of the first
+          // would be lost with this memory (its echo would be stored as a message of the owner)
+          await this.recordCaption(storeId, messageId, result.data)
+        }
       } catch (error) {
         const refused = refusalOf(error)
         // The message of the error may hold a token: only its name is logged, and none of it is stored
@@ -553,7 +591,7 @@ export class OutboundSender {
         const outcomeKnown = isDefinitiveRefusal(error)
         if (refused.retryable && !args.isLastAttempt) {
           // A clean refusal with nothing before it that may have gone leaves the message as it was
-          if (outcomeKnown && !args.tainted && !anySent) {
+          if (outcomeKnown && allRefused && !args.tainted && !anySent) {
             await this.clearInFlight(storeId, messageId)
           }
           // Not `error` itself: the retry machinery logs it whole and keeps its text in Redis
@@ -587,6 +625,34 @@ export class OutboundSender {
     await this.recordAccepted(storeId, messageId, args.connectionRowId, accepted, failure)
   }
 
+  // The id and the state of the text under the first file, as the plugin reported them: facts about what was
+  // sent, written whatever the state of the message. A caption that is `sent` is never taken back.
+  private async recordCaption(
+    storeId: string,
+    messageId: string,
+    accepted: z.infer<typeof resultSchema>
+  ): Promise<void> {
+    const captionExternalId = accepted.metadata?.[ChannelResultMetadata.CAPTION_EXTERNAL_ID]
+    const captionState =
+      captionExternalId === undefined
+        ? accepted.metadata?.[ChannelResultMetadata.CAPTION_STATE]
+        : CaptionState.SENT
+    if (captionExternalId === undefined && captionState === undefined) return
+    await this.prisma.client.message.updateMany({
+      where: {
+        id: messageId,
+        storeId,
+        ...(captionState === CaptionState.SENT
+          ? {}
+          : { OR: [{ captionState: null }, { captionState: { not: CaptionState.SENT } }] })
+      },
+      data: {
+        ...(captionExternalId === undefined ? {} : { captionChannelMessageId: captionExternalId }),
+        ...(captionState === undefined ? {} : { captionState })
+      }
+    })
+  }
+
   // What happened to one file, written on its row. The provider has the file when `sent` is given: nothing here
   // may make it be sent again, so a write that fails is tried a few times before the job fails.
   private async markFile(
@@ -612,7 +678,11 @@ export class OutboundSender {
             id: mediaId,
             storeId,
             messageId,
-            OR: [{ deliveryStatus: null }, { deliveryStatus: { not: DeliveryStatus.SENT } }]
+            // A file the provider took, or a receipt moved on, is never taken back
+            OR: [
+              { deliveryStatus: null },
+              { deliveryStatus: { in: [DeliveryStatus.QUEUED, DeliveryStatus.FAILED] } }
+            ]
           },
           data
         })

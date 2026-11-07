@@ -116,6 +116,25 @@ export class ChannelReceipts {
         sendErrorCode: to === DeliveryStatus.FAILED ? ErrorCodes.CHANNEL_MESSAGE_FAILED : null
       }
     })
+    // A message of several files is delivered, or read, when every one of its files is: the receipt of one file
+    // moves that file, and the message only when it was the last. A failure of any file fails the message (the
+    // agent sends again the files that failed).
+    if (to !== DeliveryStatus.FAILED) {
+      const states = await this.prisma.client.media.findMany({
+        where: { storeId: connection.storeId, messageId: message.id, position: { not: null } },
+        select: { deliveryStatus: true }
+      })
+      const reached =
+        to === DeliveryStatus.READ
+          ? [DeliveryStatus.READ]
+          : [DeliveryStatus.DELIVERED, DeliveryStatus.READ]
+      if (
+        states.length > 1 &&
+        states.some(file => !reached.some(state => state === file.deliveryStatus))
+      ) {
+        return
+      }
+    }
     await this.status.apply({
       storeId: connection.storeId,
       messageId: message.id,
