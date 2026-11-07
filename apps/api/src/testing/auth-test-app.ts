@@ -21,8 +21,15 @@ import {
   ThrottlerPlatformModule
 } from '@platform/core/http'
 import { LoggerModule } from '@platform/core/logger'
+import { MagicLinkIssuer } from '@platform/core/magic-link-issuer'
 import { MetricsModule } from '@platform/core/metrics-module'
-import { QueueNames, type SendEmailJob } from '@platform/core/queues'
+import { DIGEST_LINKS } from '@platform/core/notifications'
+import {
+  JobNames,
+  QueueNames,
+  type RequestMagicLinkJob,
+  type SendEmailJob
+} from '@platform/core/queues'
 import { QueueJobOptions, QueuesModule } from '@platform/core/queues-module'
 import { REDIS_CLIENT, RedisModule } from '@platform/core/redis'
 
@@ -62,7 +69,11 @@ export interface AuthTestApp {
   }): Promise<{ id: string; email: string }>
   // Runs a statement as the database owner, for what the api role cannot or should not do
   asOwner<T>(work: (client: pg.Client) => Promise<T>): Promise<T>
+  // The emails queued, oldest first. Asking for a link only queues a request (the worker looks the
+  // address up), so this first does what the worker would: it works the pending requests.
   emailJobs(): Promise<SendEmailJob[]>
+  // The requests for a link that nobody has worked yet, as the api queued them
+  requestJobs(): Promise<{ data: RequestMagicLinkJob; removeOnComplete: unknown }[]>
   // The queue the services write to, to look at the jobs themselves
   emailQueue: Queue
   // Stores, roles and memberships for the tenancy suites
@@ -108,7 +119,15 @@ export async function startAuthTestApp(
           ])
     ],
     controllers: [AuthController, AccountController, TenantProbeController],
-    providers: [SessionService, MagicLinkService, AccountService, AccountSettingsService]
+    providers: [
+      SessionService,
+      MagicLinkService,
+      AccountService,
+      AccountSettingsService,
+      // What the worker runs when it takes a request for a link (see emailJobs)
+      MagicLinkIssuer,
+      { provide: DIGEST_LINKS, useValue: { frontendUrl: FRONTEND_URL } }
+    ]
   }).compile()
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bufferLogs: true })
   // One proxy hop, so that a test picks its own client address with X-Forwarded-For: the limits
@@ -134,6 +153,14 @@ export async function startAuthTestApp(
     prefix,
     defaultJobOptions: QueueJobOptions[QueueNames.EMAIL]
   })
+
+  // Oldest first: BullMQ lists the waiting jobs newest first, and ids grow with each job
+  const pending = async (name: string) => {
+    const jobs = (await queueHandle.getJobs(['waiting', 'delayed', 'active'])).filter(
+      job => job.name === name
+    )
+    return jobs.sort((a, b) => Number(a.id) - Number(b.id))
+  }
 
   return {
     app,
@@ -163,11 +190,19 @@ export async function startAuthTestApp(
       return { id, email }
     },
     emailJobs: async () => {
-      const jobs = await queueHandle.getJobs(['waiting', 'delayed', 'active'])
-      // Oldest first: BullMQ lists the waiting jobs newest first, and ids grow with each job
-      jobs.sort((a, b) => Number(a.id) - Number(b.id))
-      return jobs.map(job => job.data as SendEmailJob) // The queue was written by the code under test
+      for (const job of await pending(JobNames.REQUEST_MAGIC_LINK)) {
+        const data = job.data as RequestMagicLinkJob
+        await app.get(MagicLinkIssuer).issue(data.email, data.correlationId)
+        await job.remove()
+      }
+      // The queue was written by the code under test
+      return (await pending(JobNames.SEND_EMAIL)).map(job => job.data as SendEmailJob)
     },
+    requestJobs: async () =>
+      (await pending(JobNames.REQUEST_MAGIC_LINK)).map(job => ({
+        data: job.data as RequestMagicLinkJob,
+        removeOnComplete: job.opts.removeOnComplete
+      })),
     cleanUp: async () => {
       await tenants.deleteAll()
       await asOwner(async client => {

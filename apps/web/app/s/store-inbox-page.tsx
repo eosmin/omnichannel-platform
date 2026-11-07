@@ -259,7 +259,7 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
       {canEdit ? (
         <div>
           <Button type="submit" disabled={save.isPending} busy={save.isPending}>
-            {save.isPending ? t('saving') : t('save')}
+            {t('save')}
           </Button>
         </div>
       ) : null}
@@ -317,7 +317,7 @@ function ReceiptsForm({ saved: loaded }: { saved: PreferencesView }): ReactEleme
       {canManage ? (
         <div>
           <Button type="submit" disabled={disabled || value === saved.sendReadReceipts}>
-            {save.isPending ? t('saving') : t('save')}
+            {t('save')}
           </Button>
         </div>
       ) : (
