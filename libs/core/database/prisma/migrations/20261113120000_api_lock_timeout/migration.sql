@@ -7,8 +7,11 @@
 -- Only for this database, so another one on the same server is not touched. Only the api role: the worker
 -- has long jobs of its own and retries them (a decision of its own, in the plan, Step 7.1). The value
 -- is ApiLockTimeout.SQL in libs/core/domain/errors/database-errors.ts; a test keeps both equal.
--- Needs the privilege to alter that role, which the migration that created it had: if it is refused here
--- the deploy fails with Postgres's own message, on purpose, instead of leaving the api unprotected.
+-- Needs the privilege to alter that role: a superuser, or CREATEROLE with the ADMIN option on it, which
+-- the migrator has when the first migration created the role. If infrastructure created it and the
+-- migrator has no admin option, this fails with "permission denied to alter role", on purpose, instead of
+-- leaving the api unprotected (fix: GRANT platform_app TO <migrator> WITH ADMIN OPTION, or run this
+-- ALTER ROLE once as a superuser). lock-timeout.integration.spec.ts proves both cases.
 DO $$
 BEGIN
   EXECUTE format('ALTER ROLE platform_app IN DATABASE %I SET lock_timeout = %L', current_database(), '5s');

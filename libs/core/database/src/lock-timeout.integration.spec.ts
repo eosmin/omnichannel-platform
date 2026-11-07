@@ -121,4 +121,57 @@ describe('the lock timeout of the api role', () => {
       await prisma.onModuleDestroy()
     }
   }, 45_000)
+
+  // The migration alters a role. A migrator that is not a superuser can do it for the role it created
+  // (the first migration creates platform_app), and is refused for a role somebody else made and gave
+  // it no admin option on: the deploy then fails with Postgres's own message, on purpose, rather than
+  // leave the api without the limit. Both are proved with scratch roles that are dropped afterwards.
+  describe('a migrator that is not a superuser', () => {
+    const id = randomUUID().replaceAll('-', '').slice(0, 10)
+    const migrator = `lockprobe_mig_${id}`
+    const madeByMigrator = `lockprobe_own_${id}`
+    const madeByOther = `lockprobe_other_${id}`
+    const password = randomUUID()
+    const alter = (role: string) =>
+      `DO $$ BEGIN EXECUTE format('ALTER ROLE ${role} IN DATABASE %I SET lock_timeout = %L', current_database(), '${ApiLockTimeout.SQL}'); END $$`
+
+    function asMigrator(): string {
+      const url = new URL(urls.owner)
+      url.username = migrator
+      url.password = password
+      return url.toString()
+    }
+
+    beforeAll(async () => {
+      await withClient(urls.owner, async owner => {
+        await owner.query(
+          `CREATE ROLE ${migrator} LOGIN PASSWORD '${password}' NOSUPERUSER CREATEROLE`
+        )
+        await owner.query(`CREATE ROLE ${madeByOther} NOLOGIN`)
+      })
+    })
+
+    afterAll(async () => {
+      await withClient(urls.owner, async owner => {
+        for (const role of [madeByMigrator, madeByOther, migrator]) {
+          await owner.query(`DROP ROLE IF EXISTS ${role}`)
+        }
+      })
+    })
+
+    it('can set it on the role it created', async () => {
+      await withClient(asMigrator(), async client => {
+        await client.query(`CREATE ROLE ${madeByMigrator} NOLOGIN`)
+        await expect(client.query(alter(madeByMigrator))).resolves.toBeDefined()
+      })
+    })
+
+    it('is refused, loudly, for a role it has no admin option on', async () => {
+      await withClient(asMigrator(), async client => {
+        await expect(client.query(alter(madeByOther))).rejects.toThrow(
+          'permission denied to alter role'
+        )
+      })
+    })
+  })
 })
