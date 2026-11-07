@@ -37,6 +37,11 @@ export interface ChannelMediaCapabilities {
   readonly kinds: ChannelMediaRules
 }
 
+// Files in one message on the channels of Meta, which send them one by one in the order the agent gave. A
+// number the platform chose (WhatsApp, Messenger and Instagram publish none): it only counts while
+// `OUTBOUND_MULTI_FILE_ENABLED` is on, and the real test with each provider decides whether it stays.
+export const MetaMediaFilesPerMessage = 10
+
 export const ChannelMediaLimits = {
   // What no declaration may exceed: the registry refuses a plugin that asks for more
   MAX_FILES_PER_MESSAGE: 30,

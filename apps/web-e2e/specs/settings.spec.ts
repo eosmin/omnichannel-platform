@@ -133,9 +133,9 @@ test.describe('my account', () => {
   })
 
   // A viewer holds no permission to upload to the store, and still sets a picture: it belongs to the
-  // person. The e2e stack has no antivirus, so the file is never scanned and the page stays on "getting
-  // your picture ready"; that the picture shows once scanned and re-encoded is tested against the real
-  // pipeline (tests/api/account.spec.ts and the worker's media-pipeline suite).
+  // person. The e2e stack has an antivirus (the composer cases need it), so the picture is "getting
+  // ready" for a moment and then shows; either is the right state, and a refusal is not. The pipeline
+  // itself is tested in tests/api/account.spec.ts and the worker's media-pipeline suite.
   test('a viewer uploads a picture, it is being prepared, and takes it away', async ({ page }) => {
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
@@ -151,9 +151,14 @@ test.describe('my account', () => {
       .getByTestId('avatar-input')
       .setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: png })
     await expect(page.getByText(en.account.profile.avatar.uploaded)).toBeVisible()
-    await expect(page.getByText(en.account.profile.avatar.processing)).toBeVisible()
+    const avatar = en.account.profile.avatar
+    const preparingOrShown = page
+      .getByText(avatar.processing)
+      .or(page.getByRole('img', { name: avatar.alt }))
+    await expect(preparingOrShown).toBeVisible()
     await page.reload()
-    await expect(page.getByText(en.account.profile.avatar.processing)).toBeVisible()
+    await expect(preparingOrShown).toBeVisible()
+    await expect(page.getByText(avatar.refused)).toHaveCount(0)
 
     await page.getByRole('button', { name: en.account.profile.avatar.remove }).click()
     await expect(page.getByText(en.account.profile.avatar.removed)).toBeVisible()

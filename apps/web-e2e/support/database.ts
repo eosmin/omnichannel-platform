@@ -267,6 +267,25 @@ export function messagesOf(
   )
 }
 
+// The files the agent sent in a conversation, in the order of their place in the message, with the text of
+// the message they belong to (the caption goes with the message)
+export function filesSentIn(
+  conversationId: string
+): Promise<{ filename: string; position: number | null; caption: string | null }[]> {
+  return withOwner(async owner => {
+    const rows = await owner.media.findMany({
+      where: { message: { conversationId } },
+      orderBy: [{ messageId: 'asc' }, { position: 'asc' }],
+      select: { filename: true, position: true, message: { select: { content: true } } }
+    })
+    return rows.map(row => ({
+      filename: row.filename,
+      position: row.position,
+      caption: row.message?.content ?? null
+    }))
+  })
+}
+
 export async function storeIdNamed(name: string): Promise<string> {
   const store = await withOwner(owner => owner.store.findFirst({ where: { name } }))
   if (store === null) throw new Error(`no store named ${name}`)

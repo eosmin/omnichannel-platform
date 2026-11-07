@@ -17,6 +17,7 @@ import {
   ChannelConnectionStatus,
   ChannelHealthErrors,
   MembershipStatus,
+  MessageType,
   PaginationLimits,
   PluginInstallationStatus
 } from '@platform/core/domain'
@@ -1367,12 +1368,39 @@ describe('The channel connections of a store', () => {
         'capabilities',
         'displayName',
         'id',
+        'media',
         'pluginId',
         'pluginName',
         'status'
       ])
       expect(item?.pluginName).toBe(plugin.name)
       expect(item?.capabilities.slice().sort()).toEqual([...new Set(plugin.capabilities)].sort())
+    })
+
+    it('says what the channel takes of each kind of file, and one file per message while several are off', async () => {
+      const takes = register({
+        capabilities: [ChannelCapability.TEXT, ChannelCapability.IMAGE],
+        media: {
+          maxFilesPerMessage: 5,
+          kinds: { image: { types: ['image/png'], maxBytes: 2048 } }
+        }
+      })
+      const text = register({ capabilities: [ChannelCapability.TEXT] })
+      await connect(takes.id)
+      await connect(text.id)
+
+      const list = await asAgent().get(ApiRoutes.channels.directory)
+
+      const mediaOf = (pluginId: string) =>
+        (list.body as { pluginId: string; media: unknown[] }[]).find(
+          item => item.pluginId === pluginId
+        )?.media
+      // The switch for several files is off in the suite: the channel's five become one, as the route says
+      expect(mediaOf(takes.id)).toEqual([
+        { type: MessageType.IMAGE, maxFiles: 1, types: ['image/png'], maxBytes: 2048 }
+      ])
+      // A channel with no file capability lists no kind
+      expect(mediaOf(text.id)).toEqual([])
     })
 
     it('leaves out the connections of another store, and lists those of its own', async () => {

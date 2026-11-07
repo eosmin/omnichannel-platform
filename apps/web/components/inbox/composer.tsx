@@ -2,7 +2,15 @@
 
 import { Clock, CornerUpLeft, Paperclip, Send, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState
+} from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
 import {
@@ -35,8 +43,8 @@ import {
 } from '../../lib/inbox/use-inbox-data'
 import { useWindowState } from '../../lib/inbox/use-window-state'
 import { hoursAndMinutes } from '../../lib/inbox/window-state'
-import { acceptFor, ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
-import { useAttachment } from '../../lib/media/use-attachment'
+import { acceptWith, pickerMaxFiles } from '../../lib/media/attachment-batch'
+import { ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { useRoleLabel } from '../../lib/role-label'
@@ -54,11 +62,11 @@ import { CharCounter } from '../ui/char-counter'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 import { Textarea } from '../ui/textarea'
 
-import { AttachmentChip } from './attachment-chip'
+import { EMPTY_TRAY, type TrayHandle, type TrayStatus } from './attachment-tray'
 import { CommandMenu } from './command-menu'
 import { useConversationControls } from './conversation-controls'
 import { type EditState, FailedMessages } from './failed-messages'
-import { TemplateDialog } from './lazy-dialogs'
+import { AttachmentTray, TemplateDialog } from './lazy-dialogs'
 import { typeKeyOf } from './quoted-message'
 import { useReplyTarget } from './reply-target'
 
@@ -133,7 +141,34 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       ? undefined
       : (channels.data.find(channel => channel.id === conversation.data?.channelConnectionId)
           ?.capabilities ?? [])
-  const attachment = useAttachment(storeId, conversationId, channelCapabilities)
+  const channelMedia = channels.data?.find(
+    channel => channel.id === conversation.data?.channelConnectionId
+  )?.media
+  // The files the agent attaches live in the tray, which is downloaded the first time a file is chosen:
+  // the files chosen before it arrives wait here until it hands over its handle
+  const [isTrayWanted, setTrayWanted] = useState(false)
+  const isTrayMounted = useMountedOnce(isTrayWanted)
+  const [tray, setTray] = useState<TrayStatus>(EMPTY_TRAY)
+  const trayHandle = useRef<TrayHandle | null>(null)
+  const waitingFiles = useRef<File[]>([])
+  const bindTray = useCallback((handle: TrayHandle | null): void => {
+    trayHandle.current = handle
+    if (handle !== null && waitingFiles.current.length > 0) {
+      handle.add(waitingFiles.current)
+      waitingFiles.current = []
+    }
+  }, [])
+  const attachFiles = (files: File[], isSingle: boolean): void => {
+    // A channel that takes one file: the new one takes the place of the old, as it always did
+    if (isSingle) trayHandle.current?.clear()
+    if (trayHandle.current === null) {
+      // Files chosen while the tray downloads join the ones already waiting
+      waitingFiles.current = isSingle ? files : [...waitingFiles.current, ...files]
+      setTrayWanted(true)
+    } else {
+      trayHandle.current.add(files)
+    }
+  }
   const { target: replyTarget, cancel: cancelReply, cancelIf: cancelReplyIf } = useReplyTarget()
   const tQuote = useTranslations('inbox.thread.quote.type')
   const fileInput = useRef<HTMLInputElement>(null)
@@ -233,7 +268,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   // Only what the channel takes; empty is a channel that takes no file, which has no paperclip. Until the
   // directory loads the picker offers every allowed type and the check is left to the api.
   const acceptedFiles =
-    channelCapabilities === undefined ? ATTACHMENT_ACCEPT : acceptFor(channelCapabilities)
+    channelCapabilities === undefined
+      ? ATTACHMENT_ACCEPT
+      : acceptWith(channelCapabilities, channelMedia)
+  // The most files any kind takes; one until the directory says, or while sending several is off
+  const mostFiles = pickerMaxFiles(channelMedia)
+  const isTrayFull = tray.count >= mostFiles
 
   const content = draft.trim()
   // The quote goes with a reply to the customer; a note does not carry it
@@ -277,10 +317,9 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   // A file belongs to a reply to the customer; a note never carries one. The file goes out with the
   // text as its caption in one message, and only once it is clean; while it uploads or is scanned
   // nothing is sent, so the text cannot leave without the file the agent meant to send with it.
-  const fileState = isNote ? ({ kind: 'idle' } as const) : attachment.state
-  const isFileReady = fileState.kind === 'ready'
-  const isFileBusy = fileState.kind === 'uploading' || fileState.kind === 'checking'
-  const isFileSending = fileState.kind === 'ready' && fileState.isSending
+  const isFileReady = !isNote && tray.ready > 0
+  const isFileBusy = !isNote && tray.isBusy
+  const isFileSending = !isNote && tray.isSending
   const submit = (): void => {
     if ((content === '' && !isFileReady) || isClosed || !queue.isReady) return
     // Text that starts with a command is never a message, whether or not the agent may use it or the
@@ -288,7 +327,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     if (isCommandText) return
     if (isFileBusy || isFileSending) return
     if (isFileReady) {
-      void attachment.send(content, quoted?.messageId).then(sent => {
+      void trayHandle.current?.send(content, quoted?.messageId).then(sent => {
         // The text is cleared only if the agent has not changed it while the file was going out
         if (sent) {
           if (quoted !== undefined) cancelReplyIf(quoted.messageId)
@@ -568,24 +607,32 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               </Button>
             </div>
           )}
-          {fileState.kind === 'idle' ? null : (
-            <AttachmentChip state={fileState} onRemove={attachment.clear} />
-          )}
+          {isTrayMounted ? (
+            <AttachmentTray
+              storeId={storeId}
+              conversationId={conversationId}
+              rules={{ capabilities: channelCapabilities, media: channelMedia }}
+              hidden={isNote}
+              onStatus={setTray}
+              handle={bindTray}
+            />
+          ) : null}
           <div className="flex items-end gap-2">
             {mayReply && !isNote && acceptedFiles !== '' ? (
               <>
                 <input
                   ref={fileInput}
                   type="file"
+                  multiple={mostFiles > 1}
                   accept={acceptedFiles}
                   className="sr-only"
                   tabIndex={-1}
                   aria-hidden
                   onChange={event => {
-                    const picked = event.target.files?.[0]
+                    const chosen = Array.from(event.target.files ?? [])
                     // The same file can be chosen again after it was removed
                     event.target.value = ''
-                    if (picked !== undefined) attachment.attach(picked)
+                    if (chosen.length > 0) attachFiles(chosen, mostFiles <= 1)
                   }}
                 />
                 <Button
@@ -593,8 +640,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
                   variant="ghost"
                   size="icon"
                   onClick={() => fileInput.current?.click()}
-                  disabled={isFileBusy || isFileSending}
-                  aria-label={t('attach.button')}
+                  disabled={isFileSending || (mostFiles > 1 ? isTrayFull : isFileBusy)}
+                  aria-label={
+                    isTrayFull && mostFiles > 1
+                      ? t('attach.full', { max: mostFiles })
+                      : t('attach.button')
+                  }
                 >
                   <Paperclip aria-hidden />
                 </Button>

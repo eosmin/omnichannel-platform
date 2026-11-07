@@ -29,12 +29,14 @@ export interface SendMessageInput {
   replyToMessageId?: string
 }
 
-// A file with its text under it: one message, one key. The file was uploaded and confirmed first
-// (`POST /media/confirm-upload`); the text is the caption and may be left out. One file per message.
+// Files with their text under them: one message, one key. Each file was uploaded and confirmed first
+// (`POST /media/confirm-upload`); they are sent in the order given, all of the type of the message, and the
+// text is the caption of the first and may be left out. How many the channel takes is in the channel directory
+// (`media`); the api refuses more, and while sending several is off it takes one.
 export interface SendMediaMessageInput {
   type: MessageType.IMAGE | MessageType.VIDEO | MessageType.AUDIO | MessageType.DOCUMENT
   conversationId: string
-  mediaIds: [string]
+  mediaIds: string[]
   content?: string
   idempotencyKey: string
   replyToMessageId?: string
