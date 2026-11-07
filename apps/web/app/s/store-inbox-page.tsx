@@ -258,7 +258,7 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
       ) : null}
       {canEdit ? (
         <div>
-          <Button type="submit" disabled={save.isPending}>
+          <Button type="submit" disabled={save.isPending} busy={save.isPending}>
             {save.isPending ? t('saving') : t('save')}
           </Button>
         </div>

@@ -87,7 +87,7 @@
         },
         "channel": {
           "disconnected": "Canal desconectado",
-          "token_expiring": "Acceso del canal por vencer"
+          "token_expiring": "Acceso del canal por expirar"
         },
         "webhook": {
           "auto_disabled": "Integración saliente desactivada"
@@ -615,7 +615,7 @@
         "body": "El canal dejó de funcionar. Vuelve a conectarlo para seguir recibiendo mensajes."
       },
       "token_expiring": {
-        "title": "El acceso de un canal está por vencer",
+        "title": "El acceso de un canal está por expirar",
         "body": "El token de un canal deja de funcionar el {date}. Actualízalo antes para seguir recibiendo mensajes."
       }
     },
@@ -1191,6 +1191,19 @@
         "openMapAria": "Abrir en el mapa: {place}",
         "coordinates": "Coordenadas {latitude}, {longitude}"
       },
+      "contacts": {
+        "list": "Contactos compartidos",
+        "copyAria": "Copiar {value}",
+        "copied": "Copiado",
+        "copyFailed": "No se pudo copiar",
+        "kind": {
+          "CELL": "Móvil",
+          "MAIN": "Principal",
+          "IPHONE": "iPhone",
+          "HOME": "Casa",
+          "WORK": "Trabajo"
+        }
+      },
       "audio": {
         "play": "Reproducir audio",
         "pause": "Pausar audio",
@@ -1444,6 +1457,7 @@
           "OPEN_CUSTOMER": "Abrir el perfil del cliente"
         },
         "global": {
+          "COMMAND_PALETTE": "Buscar clientes",
           "SEND_MESSAGE": "Enviar el mensaje",
           "GO_TO_INBOX": "Ir a la bandeja",
           "GO_TO_CUSTOMERS": "Ir a clientes"
@@ -1590,6 +1604,14 @@
         "disconnected": "Desconectado"
       },
       "health": {
+        "token": {
+          "never": "El token no expira.",
+          "expires": "El token expira el {date}.",
+          "expired": "El token expiró el {date}. Actualízalo para seguir recibiendo mensajes.",
+          "expiredUnknownDate": "El token expiró. Actualízalo para seguir recibiendo mensajes.",
+          "invalid": "Meta indica que el token ya no es válido. Actualiza el token de esta conexión.",
+          "userToken": "Pegaste un token de usuario; necesitas el de la Página."
+        },
         "never": "Todavía no se ha comprobado.",
         "lastHealthy": "Última vez que funcionó: {date}",
         "errors": {

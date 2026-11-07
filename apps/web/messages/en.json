@@ -1191,6 +1191,19 @@
         "openMapAria": "Open on the map: {place}",
         "coordinates": "Coordinates {latitude}, {longitude}"
       },
+      "contacts": {
+        "list": "Shared contacts",
+        "copyAria": "Copy {value}",
+        "copied": "Copied",
+        "copyFailed": "Could not copy",
+        "kind": {
+          "CELL": "Mobile",
+          "MAIN": "Main",
+          "IPHONE": "iPhone",
+          "HOME": "Home",
+          "WORK": "Work"
+        }
+      },
       "audio": {
         "play": "Play audio",
         "pause": "Pause audio",
@@ -1444,6 +1457,7 @@
           "OPEN_CUSTOMER": "Open the customer profile"
         },
         "global": {
+          "COMMAND_PALETTE": "Search customers",
           "SEND_MESSAGE": "Send the message",
           "GO_TO_INBOX": "Go to the inbox",
           "GO_TO_CUSTOMERS": "Go to customers"
@@ -1590,6 +1604,14 @@
         "disconnected": "Disconnected"
       },
       "health": {
+        "token": {
+          "never": "The token does not expire.",
+          "expires": "The token expires on {date}.",
+          "expired": "The token expired on {date}. Update it to keep receiving messages.",
+          "expiredUnknownDate": "The token expired. Update it to keep receiving messages.",
+          "invalid": "Meta says the token is no longer valid. Update the token of this connection.",
+          "userToken": "You pasted a user token; you need the one of the Page."
+        },
         "never": "It has not been checked yet.",
         "lastHealthy": "Last working: {date}",
         "errors": {

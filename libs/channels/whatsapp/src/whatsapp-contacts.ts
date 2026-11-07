@@ -3,7 +3,8 @@ import {
   ContactCardLimits,
   InboundLimits,
   MessageMetadataKeys,
-  placeTextOf
+  placeTextOf,
+  sanitizeContactCard
 } from '@platform/core/domain'
 
 import { whatsAppContactCardSchema, type WhatsAppContactCard } from './whatsapp-webhook.schema'
@@ -28,27 +29,17 @@ function nameOf(card: WhatsAppContactCard): string | null {
 function cardOf(raw: unknown): ContactCard | null {
   const parsed = whatsAppContactCardSchema.safeParse(raw)
   if (!parsed.success) return null
-  const name = nameOf(parsed.data)
-  const phones = parsed.data.phones
-    .flatMap(phone => {
+  return sanitizeContactCard({
+    name: nameOf(parsed.data),
+    phones: parsed.data.phones.map(phone => ({
       // The first of the two that has something in it: an empty `phone` does not hide the `wa_id`
-      const number =
+      number:
         placeTextOf(phone.phone, ContactCardLimits.PHONE_MAX_LENGTH) ??
-        placeTextOf(phone.wa_id, ContactCardLimits.PHONE_MAX_LENGTH)
-      const kind = placeTextOf(phone.type, ContactCardLimits.KIND_MAX_LENGTH)
-      return number === null ? [] : [{ number, ...(kind === null ? {} : { kind }) }]
-    })
-    .slice(0, ContactCardLimits.MAX_PHONES)
-  const emails = parsed.data.emails
-    .flatMap(email => {
-      const address = placeTextOf(email.email, ContactCardLimits.EMAIL_MAX_LENGTH)
-      const kind = placeTextOf(email.type, ContactCardLimits.KIND_MAX_LENGTH)
-      return address === null ? [] : [{ address, ...(kind === null ? {} : { kind }) }]
-    })
-    .slice(0, ContactCardLimits.MAX_EMAILS)
-  // A card with no name and nothing to reach is not a contact
-  if (name === null && phones.length === 0 && emails.length === 0) return null
-  return { name: name ?? phones[0]?.number ?? emails[0]?.address ?? '', phones, emails }
+        placeTextOf(phone.wa_id, ContactCardLimits.PHONE_MAX_LENGTH),
+      kind: phone.type
+    })),
+    emails: parsed.data.emails.map(email => ({ address: email.email, kind: email.type }))
+  })
 }
 
 // The cards that fit: at most MAX_CONTACTS, and as many as keep the metadata under its byte cap (the

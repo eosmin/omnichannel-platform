@@ -17,6 +17,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   attachmentUrl: null,
   unsupportedType: null,
   location: null,
+  contacts: null,
   sticker: false,
   reactions: [],
   media: [],
@@ -46,6 +47,9 @@ describe('messageKindOf', () => {
     [{ type: 'IMAGE' }, 'media'],
     [{ type: 'INTERNAL_NOTE' }, 'note'],
     [{ type: 'LOCATION' }, 'neutral'],
+    [{ type: 'CONTACTS', contacts: [{ name: 'Ana', phones: [], emails: [] }] }, 'message'],
+    // Cards that did not hold are a line, as a place whose coordinates did not
+    [{ type: 'CONTACTS', contacts: null }, 'neutral'],
     [{ type: 'ORDER_SUMMARY' }, 'neutral'],
     [{ type: 'SOMETHING_NEW' }, 'neutral'],
     [{ type: 'TEXT', deletedAt: '2026-10-30T11:00:00.000Z' }, 'deleted']
