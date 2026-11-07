@@ -149,6 +149,10 @@ export interface MessageView {
   replyTo: QuotedMessage | null
   deliveryStatus: DeliveryStatus | null
   deliveryError: string | null
+  // Only for a reply that failed: true when the channel is known not to have taken it (it can be sent again
+  // or thrown away: `POST /messages/:id/discard`), false or null when it may have (sending it again may
+  // repeat it, and it cannot be thrown away). Null for anything that has not failed.
+  failureDefinitive: boolean | null
   mentions: string[]
   system: SystemLineMetadata | null
   // The place of a location message, or null (not a location, deleted, or coordinates that do not hold)
@@ -205,6 +209,7 @@ export const MESSAGE_SELECT = {
   replyToMessageId: true,
   deliveryStatus: true,
   deliveryError: true,
+  failureDefinitive: true,
   mentions: true,
   metadata: true,
   captionState: true,
@@ -258,6 +263,7 @@ interface MessageRow {
   replyToMessageId: string | null
   deliveryStatus: string | null
   deliveryError: string | null
+  failureDefinitive: boolean | null
   mentions: string[]
   metadata: unknown
   captionState: string | null
@@ -311,6 +317,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
         ? null
         : enumValueOf(DeliveryStatuses, row.deliveryStatus, 'delivery status'),
     deliveryError: row.deliveryError,
+    failureDefinitive: row.failureDefinitive,
     mentions: row.mentions,
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,

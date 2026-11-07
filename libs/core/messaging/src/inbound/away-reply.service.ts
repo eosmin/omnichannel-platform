@@ -86,6 +86,8 @@ export class AwayReplyService {
       where: {
         storeId,
         conversationId,
+        // A reply that was thrown away never reached the customer: it is no answer
+        discardedAt: null,
         createdAt: { gte: new Date(at.getTime() - AwayReply.LOOKBACK_MS) },
         OR: [
           {

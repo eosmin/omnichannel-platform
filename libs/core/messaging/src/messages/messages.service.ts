@@ -296,7 +296,14 @@ export class MessagesService {
       })
       const updated = await tx.message.update({
         where: { id: messageId, storeId },
-        data: { deliveryStatus: DeliveryStatus.QUEUED, deliveryError: null, resentAt: now },
+        data: {
+          deliveryStatus: DeliveryStatus.QUEUED,
+          deliveryError: null,
+          // A failure that was definitive starts clean; one that may have gone keeps the doubt: the new attempt
+          // can be refused cleanly and the first still be in the customer's hands
+          failureDefinitive: row.failureDefinitive === true ? null : false,
+          resentAt: now
+        },
         select: { ...MESSAGE_SELECT, idempotencyKey: true }
       })
       // Answering the customer again is answering them: the conversation moves as it did the first
@@ -479,9 +486,14 @@ export class MessagesService {
     if (body.idempotencyKey === undefined) return null
     const existing = await db.message.findFirst({
       where: { storeId, conversationId: body.conversationId, idempotencyKey: body.idempotencyKey },
-      select: { ...MESSAGE_SELECT }
+      select: { ...MESSAGE_SELECT, discardedAt: true }
     })
     if (existing === null) return null
+    // A reply that was thrown away is not sent by a client that asks again with its key, and it is not
+    // answered as if it had been: the agent decided against it
+    if (existing.discardedAt !== null) {
+      throw resourceConflict('this reply was discarded')
+    }
     const message = messageView(existing)
     if (
       message.authorId !== viewer.userId ||
@@ -687,6 +699,8 @@ export class MessagesService {
       where: {
         storeId,
         conversationId,
+        // A reply that failed and was thrown away is nowhere in the thread
+        discardedAt: null,
         ...(readsNotes ? {} : { type: { not: MessageType.INTERNAL_NOTE } }),
         ...(cursor === undefined
           ? {}
@@ -738,6 +752,7 @@ export class MessagesService {
         id: { in: ids },
         storeId,
         conversationId,
+        discardedAt: null,
         type: { not: MessageType.SYSTEM },
         ...(readsNotes ? {} : { NOT: { type: MessageType.INTERNAL_NOTE } })
       },
@@ -757,6 +772,7 @@ export class MessagesService {
   ): Promise<void> {
     const target = await tx.message.count({
       where: {
+        discardedAt: null,
         id: messageId,
         storeId,
         conversationId,

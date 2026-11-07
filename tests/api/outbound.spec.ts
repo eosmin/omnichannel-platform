@@ -470,6 +470,197 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(final.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
     })
 
+    describe('whether a failure is definitive (the reply can be thrown away only when it is)', () => {
+      const definitive = async (id: string) =>
+        (await owner.message.findUniqueOrThrow({ where: { id } })).failureDefinitive
+
+      it('is definitive when the provider refuses it in so many words', async () => {
+        const refused = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true }))
+        await sender.send(job(refused), false)
+        const local = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false }))
+        await sender.send(job(local), false)
+        const throttled = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(
+            new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true, refused: true })
+          )
+        await expect(sender.send(job(throttled), false)).rejects.toThrow()
+        await sender.send(job(throttled), true)
+
+        expect(await definitive(refused.id)).toBe(true)
+        // A check of the plugin itself, made before anything was sent
+        expect(await definitive(local.id)).toBe(true)
+        // A refusal that was retried to the end is still a refusal: the provider never took it
+        expect(await definitive(throttled.id)).toBe(true)
+      })
+
+      it('is not definitive when a plugin fails without saying that the provider refused: the default is the doubt', async () => {
+        const silent = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false }))
+        await sender.send(job(silent), false)
+        const credentials = await queuedReply()
+        sendMessage = () => Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID))
+        await sender.send(job(credentials), false)
+        // A plugin cannot both say that the provider refused and that the outcome is unknown
+        const both = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(
+            new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+              retryable: false,
+              refused: true,
+              outcomeUnknown: true
+            })
+          )
+        await sender.send(job(both), false)
+
+        expect(await definitive(silent.id)).toBe(false)
+        expect(await definitive(credentials.id)).toBe(false)
+        expect(await definitive(both.id)).toBe(false)
+      })
+
+      it('is not definitive when the outcome is unknown: a timeout, a network error, or a plugin that says so', async () => {
+        const network = await queuedReply()
+        sendMessage = () => Promise.reject(new Error('socket hang up'))
+        await expect(sender.send(job(network), false)).rejects.toThrow()
+        await sender.send(job(network), true)
+        const unknown = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(
+            new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+              retryable: false,
+              outcomeUnknown: true
+            })
+          )
+        await sender.send(job(unknown), false)
+
+        expect(await definitive(network.id)).toBe(false)
+        expect(await definitive(unknown.id)).toBe(false)
+      })
+
+      it('is not definitive when an earlier attempt may have gone, whatever the last one says', async () => {
+        const reply = await queuedReply()
+        sendMessage = () => Promise.reject(new Error('socket hang up'))
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true }))
+
+        await sender.send(job(reply), true)
+
+        expect(await stored(reply.id)).toMatchObject({
+          deliveryStatus: DeliveryStatus.FAILED,
+          deliveryError: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+        })
+        expect(await definitive(reply.id)).toBe(false)
+      })
+
+      it('is not definitive when the answer of the plugin makes no sense: the provider may have taken it', async () => {
+        const reply = await queuedReply()
+        sendMessage = () => Promise.resolve({} as never)
+
+        await sender.send(job(reply), false)
+
+        expect(await stored(reply.id)).toMatchObject({ deliveryStatus: DeliveryStatus.FAILED })
+        expect(await definitive(reply.id)).toBe(false)
+      })
+
+      it('is definitive when nothing was sent: a connection that is down, a reply too long', async () => {
+        const down = await queuedReply({ status: ChannelConnectionStatus.DISCONNECTED })
+        await sender.send(job(down), false)
+
+        expect(await stored(down.id)).toMatchObject({
+          deliveryError: ErrorCodes.CHANNEL_NOT_CONNECTED
+        })
+        expect(await definitive(down.id)).toBe(true)
+        expect(sent).toHaveLength(0)
+      })
+
+      it('is marked as one that may have gone BEFORE the provider is asked, and unmarked once it went', async () => {
+        const reply = await queuedReply()
+        let duringTheCall: boolean | null | undefined
+        sendMessage = async (...args) => {
+          duringTheCall = (await owner.message.findUniqueOrThrow({ where: { id: reply.id } }))
+            .failureDefinitive
+          return accept(...args)
+        }
+
+        await sender.send(job(reply), false)
+
+        expect(duringTheCall).toBe(false)
+        expect(await definitive(reply.id)).toBeNull()
+      })
+
+      it('is not definitive after an attempt that died mid-send: the mark it left is still there', async () => {
+        const reply = await queuedReply()
+        // What a worker that crashed (or a job that stalled) after the provider was asked leaves behind
+        await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true }))
+
+        await sender.send(job(reply), false)
+
+        expect(await stored(reply.id)).toMatchObject({ deliveryStatus: DeliveryStatus.FAILED })
+        expect(await definitive(reply.id)).toBe(false)
+      })
+
+      it('is not definitive for a check that fails before sending, when an earlier send may have gone', async () => {
+        const reply = await queuedReply({ status: ChannelConnectionStatus.DISCONNECTED })
+        await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
+
+        await sender.send(job(reply), false)
+
+        expect(await stored(reply.id)).toMatchObject({
+          deliveryError: ErrorCodes.CHANNEL_NOT_CONNECTED
+        })
+        expect(await definitive(reply.id)).toBe(false)
+      })
+
+      it('takes the mark off after a clean refusal that is retried, so the next one can be definitive', async () => {
+        const reply = await queuedReply()
+        sendMessage = () =>
+          Promise.reject(
+            new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true, refused: true })
+          )
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+
+        expect(await definitive(reply.id)).toBeNull()
+      })
+
+      it('is not kept once the reply is sent, and a reply that went has none', async () => {
+        const reply = await queuedReply()
+        sendMessage = () => Promise.reject(new Error('socket hang up'))
+        await expect(sender.send(job(reply), false)).rejects.toThrow()
+        sendMessage = accept
+
+        await sender.send(job(reply), true)
+
+        expect(await stored(reply.id)).toMatchObject({ deliveryStatus: DeliveryStatus.SENT })
+        expect(await definitive(reply.id)).toBeNull()
+      })
+
+      it('is not definitive for a failure that a receipt of the provider reports', async () => {
+        const reply = await queuedReply()
+        sendMessage = accept
+        await sender.send(job(reply), false)
+        const row = await owner.message.findUniqueOrThrow({ where: { id: reply.id } })
+
+        await writer.apply({
+          storeId: ctx.storeA.id,
+          messageId: reply.id,
+          to: DeliveryStatus.FAILED,
+          errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED
+        })
+
+        expect(row.channelMessageId).not.toBeNull()
+        expect(await stored(reply.id)).toMatchObject({ deliveryStatus: DeliveryStatus.FAILED })
+        expect(await definitive(reply.id)).toBe(false)
+      })
+    })
+
     it('keeps what the provider said out of the row, the event and the logs', async () => {
       const reply = await queuedReply()
       sendMessage = () => Promise.reject(new Error('401 token=EAAB-secret-token'))
@@ -1448,6 +1639,42 @@ describe('Replies on their way to a channel', () => {
           `${reply.id}-2`
         ])
         expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      })
+
+      it('is a definitive failure only when no file went and every one was refused in so many words', async () => {
+        const none = await replyWithFiles(2)
+        mediaFailure = () =>
+          new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true })
+        await sender.send(job(none.reply), false)
+        expect(
+          (await owner.message.findUniqueOrThrow({ where: { id: none.reply.id } }))
+            .failureDefinitive
+        ).toBe(true)
+
+        // The first went and the second was refused: the message has gone in part, so it can be sent again
+        // but never thrown away as one that did not go
+        const partly = await replyWithFiles(2)
+        mediaFailure = params =>
+          params.idempotencyKey === `${partly.reply.id}-1`
+            ? new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true })
+            : null
+        await sender.send(job(partly.reply), false)
+        expect(
+          (await owner.message.findUniqueOrThrow({ where: { id: partly.reply.id } }))
+            .failureDefinitive
+        ).toBe(false)
+
+        // Refused, but one of the files gave an answer that says nothing about whether it went
+        const unsure = await replyWithFiles(2)
+        mediaFailure = params =>
+          params.idempotencyKey === `${unsure.reply.id}-1`
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+            : new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true })
+        await sender.send(job(unsure.reply), false)
+        expect(
+          (await owner.message.findUniqueOrThrow({ where: { id: unsure.reply.id } }))
+            .failureDefinitive
+        ).toBe(false)
       })
 
       it('fails the file that is not clean and sends the rest', async () => {

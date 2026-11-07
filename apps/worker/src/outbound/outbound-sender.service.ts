@@ -39,6 +39,7 @@ import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
+import { isDefinitiveRefusal } from './definitive-refusal'
 import { MessageStatusWriter, type StatusChange } from './message-status.writer'
 import { providerCodesOf } from './provider-codes'
 import { type Refusal, refusalOf, SendAttemptFailed } from './send-refusal'
@@ -103,6 +104,8 @@ export class OutboundSender {
         type: true,
         content: true,
         metadata: true,
+        // `false` while queued: an earlier attempt, or an earlier send that was resent, may have reached the provider
+        failureDefinitive: true,
         resentAt: true,
         replyToMessageId: true,
         createdAt: true,
@@ -125,6 +128,8 @@ export class OutboundSender {
     })
     // Gone, or already sent or failed: a second job for the same message (the sweep) has nothing to do
     if (message === null) return
+    // Whatever an earlier attempt left: from here on a failure is definitive only if nothing before it may have gone
+    const tainted = message.failureDefinitive === false
     const isClosing = isClosingMessage(message.metadata)
     if (isClosing && !(await this.discardUnlessStanding(storeId, messageId, message))) return
 
@@ -135,7 +140,7 @@ export class OutboundSender {
       : ChannelConnectionStatus.DISCONNECTED
     const refusal = this.refusalBeforeSending(message, channelType, connectionStatus)
     if (refusal !== null) {
-      await this.fail(storeId, messageId, refusal.code)
+      await this.fail(storeId, messageId, refusal.code, !tainted)
       return
     }
     const plugin = this.registry.find(connection.pluginId)
@@ -143,7 +148,7 @@ export class OutboundSender {
       // A plugin that is not registered yet (a registry that is still filling) is not a connection
       // that is gone: the retries come first, and only the last attempt gives up
       if (!isLastAttempt) throw new Error('the plugin of the connection is not registered')
-      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_NOT_CONNECTED)
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_NOT_CONNECTED, !tainted)
       return
     }
     const content = message.content ?? ''
@@ -155,18 +160,18 @@ export class OutboundSender {
     const isTemplate = message.type === String(MessageType.TEMPLATE)
     const template = isTemplate ? templateMetadataSchema.safeParse(message.metadata) : null
     if (template !== null && !template.success) {
-      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_MESSAGE_FAILED)
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_MESSAGE_FAILED, !tainted)
       return
     }
     if (isTemplate && plugin.sendTemplate === undefined) {
-      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, !tainted)
       return
     }
     // The files are uploaded to the provider from the platform's storage (`openFile`), one message each, in order;
     // the caption is the text under the first
     const isMedia = isOutboundMediaType(message.type)
     if (isMedia && plugin.sendMedia === undefined) {
-      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+      await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, !tainted)
       return
     }
     const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
@@ -182,11 +187,16 @@ export class OutboundSender {
         content,
         replyToExternalId,
         resentAt: message.resentAt,
-        isLastAttempt
+        isLastAttempt,
+        tainted
       })
       return
     }
 
+    // Written BEFORE the provider is asked, and not after: a process that dies mid-send, or a job that stalls,
+    // leaves the mark, and whatever the next attempt hears, the message may have gone. A database that cannot
+    // take the mark fails the attempt before anything is sent.
+    await this.markInFlight(storeId, messageId)
     let accepted: z.infer<typeof resultSchema>
     try {
       const result = resultSchema.safeParse(
@@ -210,8 +220,9 @@ export class OutboundSender {
         )
       )
       // Sent twice would be worse than not sent: an answer that makes no sense is final
+      // The provider may have taken it: the answer is nonsense, the outcome is not known
       if (!result.success) {
-        await this.fail(storeId, messageId, ErrorCodes.CHANNEL_MESSAGE_FAILED)
+        await this.fail(storeId, messageId, ErrorCodes.CHANNEL_MESSAGE_FAILED, false)
         return
       }
       accepted = result.data
@@ -230,8 +241,16 @@ export class OutboundSender {
         'sending a reply failed'
       )
       // Not `error` itself: the retry machinery logs it whole and keeps its text in Redis
-      if (refused.retryable && !isLastAttempt) throw new SendAttemptFailed(refused.code, error)
-      await this.fail(storeId, messageId, refused.code)
+      // A provider that refuses in so many words did not take the message; a timeout or a network error
+      // says nothing about whether it did
+      const outcomeKnown = isDefinitiveRefusal(error)
+      if (refused.retryable && !isLastAttempt) {
+        // A refusal that was clean, with nothing before it that may have gone, leaves the message as it was; any
+        // other keeps the mark: this attempt, or one before it, may have reached the provider
+        if (outcomeKnown && !tainted) await this.clearInFlight(storeId, messageId)
+        throw new SendAttemptFailed(refused.code, error)
+      }
+      await this.fail(storeId, messageId, refused.code, outcomeKnown && !tainted)
       return
     }
     await this.recordAccepted(storeId, messageId, connection.id, accepted)
@@ -308,7 +327,8 @@ export class OutboundSender {
       messageId,
       ...(failedWith === undefined
         ? { to: accepted.status }
-        : { to: DeliveryStatus.FAILED, errorCode: failedWith }),
+        : // The first file went: the message is never one that did not go, so it cannot be thrown away
+          { to: DeliveryStatus.FAILED, errorCode: failedWith, definitive: false }),
       ...(captionExternalId === undefined ? {} : { captionExternalId }),
       ...(captionState === undefined ? {} : { captionState })
     }
@@ -441,15 +461,24 @@ export class OutboundSender {
     replyToExternalId: string | null
     resentAt: Date | null
     isLastAttempt: boolean
+    // An earlier attempt may have reached the provider (see `markInFlight`)
+    tainted: boolean
   }): Promise<void> {
     const { storeId, messageId } = args
     // Outside the try below: a database error here is ours, not the provider's
     const files = await this.filesOf(storeId, messageId)
     if (files.length === 0) {
       this.logger.warn({ storeId, messageId }, 'a media message has no file')
-      await this.fail(storeId, messageId, ErrorCodes.FILE_UNAVAILABLE)
+      await this.fail(storeId, messageId, ErrorCodes.FILE_UNAVAILABLE, !args.tainted)
       return
     }
+    // Written BEFORE the provider is asked (see the text path): a process that dies mid-send leaves the mark
+    await this.markInFlight(storeId, messageId)
+    // A file the provider took, on an earlier attempt or on this one, means the message has gone in part: it is
+    // never thrown away as one that did not go
+    let anySent = files.some(file => file.wasSent)
+    // Whether every failure so far is a refusal in so many words (or a check that failed before anything was sent)
+    let allRefused = true
     const failures: ErrorCode[] = []
     // What the first file got, from this attempt; the caption goes with it
     let firstAccepted: z.infer<typeof resultSchema> | null = null
@@ -491,14 +520,17 @@ export class OutboundSender {
             OutboundLimits.MEDIA_SEND_TIMEOUT_MS
           )
         )
-        // Sent twice would be worse than not sent: an answer that makes no sense is final for this file
+        // Sent twice would be worse than not sent: an answer that makes no sense is final for this file. The
+        // provider may have taken it, though: the outcome is not known.
         if (!result.success) {
+          allRefused = false
           await this.markFile(storeId, messageId, file.id, {
             failedWith: ErrorCodes.CHANNEL_MESSAGE_FAILED
           })
           failures.push(ErrorCodes.CHANNEL_MESSAGE_FAILED)
           continue
         }
+        anySent = true
         await this.markFile(storeId, messageId, file.id, { sent: result.data })
         if (file.index === 0) firstAccepted = result.data
       } catch (error) {
@@ -516,9 +548,18 @@ export class OutboundSender {
           },
           'sending a reply failed'
         )
-        // Not `error` itself: the retry machinery logs it whole and keeps its text in Redis
-        if (refused.retryable && !args.isLastAttempt)
+        // A provider that refuses in so many words did not take the file; a timeout or a network error says
+        // nothing about whether it did
+        const outcomeKnown = isDefinitiveRefusal(error)
+        if (refused.retryable && !args.isLastAttempt) {
+          // A clean refusal with nothing before it that may have gone leaves the message as it was
+          if (outcomeKnown && !args.tainted && !anySent) {
+            await this.clearInFlight(storeId, messageId)
+          }
+          // Not `error` itself: the retry machinery logs it whole and keeps its text in Redis
           throw new SendAttemptFailed(refused.code, error)
+        }
+        if (!outcomeKnown) allRefused = false
         await this.markFile(storeId, messageId, file.id, { failedWith: refused.code })
         failures.push(refused.code)
       }
@@ -528,6 +569,8 @@ export class OutboundSender {
     const firstId =
       firstAccepted?.externalId ?? (first?.wasSent === true ? first.channelMessageId : null)
     const [failure] = failures
+    // Only a message none of whose files may have gone can be thrown away by an agent
+    const definitive = allRefused && !args.tainted && !anySent
     // What the provider answered for the first file, or the id it gave on an earlier attempt
     const accepted =
       firstAccepted ??
@@ -537,7 +580,7 @@ export class OutboundSender {
       if (failure === undefined) {
         await this.status.apply({ storeId, messageId, to: DeliveryStatus.SENT })
       } else {
-        await this.fail(storeId, messageId, failure)
+        await this.fail(storeId, messageId, failure, definitive)
       }
       return
     }
@@ -590,7 +633,37 @@ export class OutboundSender {
     return target?.channelMessageId ?? null
   }
 
-  private async fail(storeId: string, messageId: string, errorCode: ErrorCode): Promise<void> {
-    await this.status.apply({ storeId, messageId, to: DeliveryStatus.FAILED, errorCode })
+  // `definitive`: the provider is known not to have taken the message (a refusal, or a check that failed
+  // before anything was sent). Only then can an agent throw the reply away.
+  private async fail(
+    storeId: string,
+    messageId: string,
+    errorCode: ErrorCode,
+    definitive: boolean
+  ): Promise<void> {
+    await this.status.apply({
+      storeId,
+      messageId,
+      to: DeliveryStatus.FAILED,
+      errorCode,
+      definitive
+    })
+  }
+
+  // The provider is about to be asked: the message is marked as one that may have gone (`failureDefinitive`
+  // false while it is queued) until an answer says otherwise
+  private async markInFlight(storeId: string, messageId: string): Promise<void> {
+    await this.prisma.client.message.updateMany({
+      where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
+      data: { failureDefinitive: false }
+    })
+  }
+
+  // The attempt was refused in so many words and nothing before it may have gone: the mark is taken off
+  private async clearInFlight(storeId: string, messageId: string): Promise<void> {
+    await this.prisma.client.message.updateMany({
+      where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
+      data: { failureDefinitive: null }
+    })
   }
 }

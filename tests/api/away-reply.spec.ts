@@ -329,6 +329,33 @@ describe('The reply of a store that is closed', () => {
     expect(outbound()).toEqual([])
   })
 
+  it('answers a conversation whose only reply of the team was thrown away: it never reached the customer', async () => {
+    const connectionId = await connectionOf()
+    const from = handleOf()
+    await writes(connectionId, from, SATURDAY_NOON)
+    const conversation = await conversationOf(connectionId)
+    await owner.message.deleteMany({
+      where: { conversationId: conversation.id, authorType: AuthorType.SYSTEM }
+    })
+    await owner.message.create({
+      data: {
+        storeId: storeId(),
+        conversationId: conversation.id,
+        type: MessageType.TEXT,
+        content: 'a reply that never went',
+        authorType: AuthorType.AGENT,
+        createdAt: SATURDAY_NOON,
+        discardedAt: SATURDAY_NOON,
+        deletedAt: SATURDAY_NOON
+      }
+    })
+    outbound().length = 0
+
+    await writes(connectionId, from, SATURDAY_AFTERNOON)
+
+    expect(await awayRepliesOf(conversation.id)).toHaveLength(1)
+  })
+
   it('does not answer a conversation that is spam', async () => {
     const connectionId = await connectionOf()
     const from = handleOf()

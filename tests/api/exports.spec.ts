@@ -373,6 +373,40 @@ describe('Exports', () => {
       expect(file).toContain(',true\r\n')
     })
 
+    it('leaves out a reply that was thrown away: not a row, not an id, not a word of it', async () => {
+      const supervisor = await createActor(owner, app, {
+        prefix,
+        name: 'supervisor-discarded',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.SUPERVISOR]
+      })
+      const conversation = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        content: 'the customer wrote this'
+      })
+      const thrown = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        content: 'a reply that never went',
+        authorType: AuthorType.AGENT
+      })
+      const now = new Date()
+      await owner.message.update({
+        where: { id: thrown.id },
+        data: { discardedAt: now, deletedAt: now, deletedByType: AuthorType.AGENT }
+      })
+
+      const response = await api(app, supervisor, ctx.storeA).get(ApiRoutes.conversations.export)
+      const file = await made((response.body as ExportBody).id)
+
+      expect(file).toContain('the customer wrote this')
+      expect(file).not.toContain(thrown.id)
+      expect(file).not.toContain('a reply that never went')
+    })
+
     it('holds only what the member could see when they asked', async () => {
       const mine = await createConversationOf(owner, {
         storeId: ctx.storeA.id,

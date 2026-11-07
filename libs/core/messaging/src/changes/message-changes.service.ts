@@ -14,6 +14,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { NotificationTypes } from '@platform/core/notifications'
 
 import {
   canSee,
@@ -29,6 +30,14 @@ import { OutboundQueue } from '../outbound/outbound-queue'
 
 import { lockMessageRow, publishMessageChanged } from './message-changed'
 import { addRevision } from './message-revisions'
+
+// What a discard did, for who audits it: nothing of the text
+export interface DiscardOutcome {
+  // false when the reply had been discarded already: it is not audited or announced a second time
+  discarded: boolean
+  type: MessageType
+  deliveryError: string | null
+}
 
 // One earlier text of a message and who changed it into the next one
 export interface RevisionView {
@@ -55,6 +64,10 @@ interface Target {
   editStatus: string | null
   deleteStatus: string | null
   captionState: string | null
+  deliveryStatus: string | null
+  deliveryError: string | null
+  failureDefinitive: boolean | null
+  discardedAt: Date | null
   conversation: { channelType: string; status: string; assignedTo: string | null }
 }
 
@@ -70,6 +83,10 @@ const TARGET_SELECT = {
   editStatus: true,
   deleteStatus: true,
   captionState: true,
+  deliveryStatus: true,
+  deliveryError: true,
+  failureDefinitive: true,
+  discardedAt: true,
   conversation: { select: { channelType: true, status: true, assignedTo: true } }
 } as const
 
@@ -170,6 +187,84 @@ export class MessageChangesService {
       } else {
         await this.requestDeletion(tx, storeId, messageId, message, viewer, supportsDelete)
       }
+    })
+  }
+
+  // Throws away a reply that failed for good and never reached the customer: nothing is shown of it from
+  // then on, and nothing is said to the channel (there is nothing there to delete). Only one the provider is
+  // KNOWN not to have taken (`failureDefinitive`); a failure that may have gone (a timeout, an answer that
+  // made no sense) is a conflict with a code of its own, because the customer may have the message and the
+  // agent must send it again or ask. The text is kept as long as that of a deleted message
+  // (`DeletedMessageRetention`), read with MESSAGES_VIEW_DELETED; the files of the reply are removed, and
+  // the sweep of stray files takes them from the bucket. Twice is once. The caller audits a discard.
+  async discard(storeId: string, messageId: string, viewer: Viewer): Promise<DiscardOutcome> {
+    const conversationId = await this.conversationOf(storeId, messageId)
+    return this.prisma.transaction(async tx => {
+      await this.lockTarget(tx, storeId, messageId, conversationId, viewer)
+      await lockMessageRow(tx, messageId)
+      // Read again under the lock of the row: the worker settles a send without taking the lock of the
+      // conversation, and a resend takes turns with this
+      const message = await tx.message.findFirst({
+        where: { id: messageId, storeId },
+        select: TARGET_SELECT
+      })
+      if (message === null) throw resourceNotFound('conversation')
+      // The permission to send it is the one to throw it away; who lacks it is not told how it stands
+      requireAnyPermission(viewer.held, [
+        message.type === MessageType.TEMPLATE.valueOf()
+          ? Permissions.MESSAGES_SEND_TEMPLATE
+          : Permissions.MESSAGES_SEND
+      ])
+      const outcome = {
+        type: enumValueOf(MessageType, message.type, 'message type'),
+        deliveryError: message.deliveryError
+      }
+      if (message.discardedAt !== null) return { discarded: false, ...outcome }
+      if (!isReplyOfTeam(message) || isNote(message) || message.deletedAt !== null) {
+        throw resourceConflict('only a reply of the team that failed can be discarded')
+      }
+      if (
+        message.deliveryStatus !== DeliveryStatus.FAILED.valueOf() ||
+        message.channelMessageId !== null
+      ) {
+        throw resourceConflict('only a reply that failed and never left can be discarded')
+      }
+      // The text alone is on its way: it is the customer's to receive
+      if (message.captionState === CaptionState.QUEUED.valueOf()) {
+        throw resourceConflict('the text under this file is on its way')
+      }
+      if (message.failureDefinitive !== true) {
+        throw new PlatformException(
+          ErrorCodes.MESSAGE_DISCARD_OUTCOME_UNKNOWN,
+          'the reply may have reached the customer',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      const now = new Date()
+      await tx.message.update({
+        where: { id: messageId },
+        data: {
+          discardedAt: now,
+          deletedAt: now,
+          deletedByType: AuthorType.AGENT,
+          deletedById: viewer.userId
+        }
+      })
+      // The files of a reply that never went are no part of the customer's gallery or of anything else
+      await tx.media.deleteMany({ where: { messageId, storeId } })
+      // "A reply failed" is settled: the bell does not go on counting a message that is no longer there
+      await tx.notification.updateMany({
+        where: {
+          storeId,
+          type: NotificationTypes.MESSAGE_FAILED,
+          resourceType: 'message',
+          resourceId: messageId,
+          readAt: null
+        },
+        data: { readAt: now }
+      })
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
+      return { discarded: true, ...outcome }
     })
   }
 
