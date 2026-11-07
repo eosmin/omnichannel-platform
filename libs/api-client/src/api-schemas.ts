@@ -369,7 +369,13 @@ export const messageSchema = z.object({
       contentType: z.string(),
       fileSize: z.number(),
       // A status of a newer server is a file still being processed, not a thread that fails to draw
-      status: z.enum(MediaStatus).catch(MediaStatus.PENDING)
+      status: z.enum(MediaStatus).catch(MediaStatus.PENDING),
+      // Of a reply with several files: the place of the file in the message and how it stands (`queued`,
+      // `sent`, `delivered`, `read`, `failed`) with our code when it failed. Null for a customer's file and
+      // for a server that does not send them yet; a state of a newer server is read as none.
+      position: z.number().int().nullable().catch(null).default(null),
+      delivery: z.string().nullable().catch(null).default(null),
+      errorCode: z.string().nullable().catch(null).default(null)
     })
   ),
   // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one
