@@ -1,3 +1,4 @@
+import { MetaGraph } from '@platform/core/domain'
 import {
   AllowedContentTypes,
   GENERIC_CONTENT_TYPE,
@@ -38,6 +39,28 @@ export const GENERIC_TYPES: ReadonlySet<string> = new Set([
   'binary/octet-stream',
   'application/x-download'
 ])
+
+// The names a server gives an m4a besides the registered one
+const AUDIO_MP4_ALIASES: ReadonlySet<string> = new Set([
+  'audio/x-m4a',
+  'audio/m4a',
+  'audio/mp4a-latm'
+])
+const VIDEO_MP4 = 'video/mp4'
+
+// The type a fetched file is kept as. A server that does not know (`declared` generic) leaves the type
+// of the webhook. An audio clip in an mp4 container comes from a server as `video/mp4` or `audio/x-m4a`
+// (Instagram voice messages do): when the message said it was audio, it is kept as `audio/mp4`, the same
+// container and the same signature, so the thread plays it as audio.
+export function keptContentType(declared: string, webhookType: string): string {
+  const fromWebhook = bareType(webhookType)
+  const type = GENERIC_TYPES.has(declared) ? fromWebhook : declared
+  if (AUDIO_MP4_ALIASES.has(type)) return MetaGraph.AUDIO_HINT_CONTENT_TYPE
+  if (type === VIDEO_MP4 && fromWebhook === MetaGraph.AUDIO_HINT_CONTENT_TYPE) {
+    return MetaGraph.AUDIO_HINT_CONTENT_TYPE
+  }
+  return type
+}
 
 // The image type a file's first bytes announce, for a server that did not declare one. null when they
 // announce none of the types the platform keeps. The scan and the decoder judge the rest.

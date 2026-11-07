@@ -16,6 +16,8 @@ const EXTENSIONS = {
   'audio/mpeg': ['mp3', 'mpga'],
   'audio/ogg': ['ogg', 'oga', 'opus'],
   'audio/wav': ['wav', 'wave'],
+  'audio/mp4': ['m4a', 'mp4', 'm4b'],
+  'audio/aac': ['aac'],
   'application/pdf': ['pdf'],
   'text/plain': ['txt', 'text', 'log', 'csv', 'md', 'json'],
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx'],

@@ -40,6 +40,7 @@ import {
   conversationOfOrigin,
   createConversationOf,
   createConversationOriginOf,
+  createDiscardableReplyOf,
   createMessageOf,
   createMessageReactionOf,
   createMessageRevisionOf,
@@ -399,6 +400,23 @@ const resources: IsolationResource[] = [
         select: { conversation: { select: { status: true } } }
       })
       return origin?.conversation.status === ConversationStatus.OPEN.valueOf()
+    }
+  },
+  {
+    // The same model, for the route that throws away a reply that failed: a stranger gets the answer of a
+    // reply that does not exist, and the reply is as it was
+    name: 'message',
+    create: (owner, { storeId }) => createDiscardableReplyOf(owner, { storeId, userId: reactorId }),
+    readPath: id => ApiRoutes.conversations.messages(conversationOfMessage.get(id) ?? randomUUID()),
+    modify: { path: id => ApiRoutes.messages.discard(id), method: 'post', body: {} },
+    untouched: async (owner, id) => {
+      const reply = await owner.message.findUnique({
+        where: { id },
+        select: { discardedAt: true, deletedAt: true, failureDefinitive: true }
+      })
+      return (
+        reply?.discardedAt === null && reply.deletedAt === null && reply.failureDefinitive === true
+      )
     }
   },
   {
