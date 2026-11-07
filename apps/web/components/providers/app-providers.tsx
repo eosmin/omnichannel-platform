@@ -9,6 +9,8 @@ import { AppPaths } from '@platform/api-client'
 import { browserSession } from '../../lib/api'
 import { createQueryClient } from '../../lib/query-client'
 
+import { TimeZoneProvider } from './time-zone-provider'
+
 export function AppProviders({ children }: { children: ReactNode }): ReactElement {
   const router = useRouter()
   const [queryClient] = useState(createQueryClient)
@@ -23,5 +25,9 @@ export function AppProviders({ children }: { children: ReactNode }): ReactElemen
     [queryClient, router]
   )
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TimeZoneProvider>{children}</TimeZoneProvider>
+    </QueryClientProvider>
+  )
 }

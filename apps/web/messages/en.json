@@ -9,6 +9,7 @@
     "notifications": {
       "title": "Notifications",
       "forStore": "Your choices for {store}.",
+      "hint": "Every notification is kept in your list. These switches only choose how each one reaches you: a live alert while you work, a push to your devices, an email, or a sound.",
       "noStore": "You do not belong to any store yet.",
       "loading": "Loading…",
       "saveFailed": "The change could not be saved.",

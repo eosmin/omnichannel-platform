@@ -110,6 +110,7 @@ function Preferences({ storeId, storeName }: { storeId: string; storeName: strin
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
         <p className="text-muted-foreground text-sm">{t('forStore', { store: storeName })}</p>
+        <p className="text-muted-foreground text-sm">{t('hint')}</p>
       </header>
 
       <PushDeviceSwitch storeId={storeId} />
