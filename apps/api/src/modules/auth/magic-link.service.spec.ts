@@ -90,4 +90,20 @@ describe('MagicLinkService.request', () => {
 
     expect(refused.queue.add).not.toHaveBeenCalled()
   })
+
+  it('fails the same way for any address when the queue is down: no answer tells them apart', async () => {
+    const outcomes: string[] = []
+    for (const email of ['someone-with-an-account@example.com', 'nobody-at-all@example.com']) {
+      const { service, queue, calls } = build()
+      queue.add.mockRejectedValueOnce(new Error('redis is down'))
+      const outcome = await service.request(email).then(
+        () => 'accepted',
+        (error: Error) => error.message
+      )
+      outcomes.push(`${outcome} after ${calls.join(',')}`)
+    }
+
+    expect(outcomes[0]).toBe(outcomes[1])
+    expect(outcomes[0]).toContain('redis is down')
+  })
 })
