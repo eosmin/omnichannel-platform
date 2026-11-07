@@ -95,10 +95,16 @@ describe('Notifications', () => {
 
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
 
+  // A fixed moment a minute ago, and moments after it: rows made one after the other can share a
+  // millisecond, and then only their random id says which is first
+  const base = Date.now() - 60_000
+  const at = (offsetMs: number): Date => new Date(base + offsetMs)
+
   const make = (
     userId: string,
     type: string = NotificationTypes.EXPORT_READY,
-    readAt: Date | null = null
+    readAt: Date | null = null,
+    createdAt?: Date
   ) =>
     owner.notification.create({
       data: {
@@ -107,16 +113,18 @@ describe('Notifications', () => {
         type,
         severity: NotificationSeverity.INFO,
         messageKey: notificationMessageKey(NotificationTypes.EXPORT_READY),
-        readAt
+        readAt,
+        ...(createdAt === undefined ? {} : { createdAt })
       },
       select: { id: true }
     })
 
   describe('the center', () => {
     it('lists only the own rows of the store, newest first, by pages', async () => {
-      const first = await make(ctx.adminA.id)
-      const second = await make(ctx.adminA.id)
-      const third = await make(ctx.adminA.id)
+      // Apart in time, as they would be (the next test covers rows that tie on purpose)
+      const first = await make(ctx.adminA.id, undefined, null, at(0))
+      const second = await make(ctx.adminA.id, undefined, null, at(1000))
+      const third = await make(ctx.adminA.id, undefined, null, at(2000))
       await make(ctx.agentA.id)
 
       const page = await asAdmin().get(`${ApiRoutes.notifications.list}?limit=2`)
@@ -130,6 +138,41 @@ describe('Notifications', () => {
       )
       expect((next.body as PageBody).data.map(row => row.id)).toEqual([first.id])
       expect((next.body as PageBody).hasMore).toBe(false)
+    })
+
+    it('pages rows that tie on creation time without repeating or losing any', async () => {
+      const made = await Promise.all(
+        Array.from({ length: 5 }, () => make(ctx.adminA.id, undefined, null, at(0)))
+      )
+      // The rows do tie, or the test would not reach the branch of the cursor that breaks the tie
+      const stored = await owner.notification.findMany({
+        where: { id: { in: made.map(row => row.id) } },
+        select: { createdAt: true }
+      })
+      expect(new Set(stored.map(row => row.createdAt.getTime())).size).toBe(1)
+      // The order the database gives ids (its collation, not that of JavaScript)
+      const expected = await owner.$queryRaw<{ id: string }[]>`
+        SELECT id FROM notifications WHERE user_id = ${ctx.adminA.id}
+        ORDER BY created_at DESC, id DESC`
+      const seen: string[] = []
+      let cursor = ''
+      let ended = false
+
+      for (let pages = 0; pages < made.length + 1 && !ended; pages += 1) {
+        const response = await asAdmin().get(
+          `${ApiRoutes.notifications.list}?limit=1${cursor === '' ? '' : `&cursor=${cursor}`}`
+        )
+        const body = response.body as PageBody
+        expect(response.status).toBe(OK)
+        seen.push(...body.data.map(row => row.id))
+        ended = !body.hasMore
+        cursor = body.nextCursor ?? ''
+        if (!ended) expect(cursor).not.toBe('')
+      }
+
+      expect(ended).toBe(true) // The last page says so, within as many pages as there are rows
+      expect(seen).toEqual(expected.map(row => row.id))
+      expect(new Set(seen).size).toBe(made.length)
     })
 
     it('filters the unread ones and the mentions', async () => {
