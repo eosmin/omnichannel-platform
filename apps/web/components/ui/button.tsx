@@ -60,11 +60,16 @@ export function Button({
       {...(isBusy ? { disabled: true, 'aria-busy': true } : {})}
     >
       {isBusy ? (
-        <span aria-hidden className="busy-spinner">
-          <Loader2 className="animate-spin" />
-        </span>
-      ) : null}
-      {children}
+        <>
+          <span aria-hidden className="busy-spinner">
+            <Loader2 className="animate-spin" />
+          </span>
+          {children}
+        </>
+      ) : (
+        // One child, as it came: `Slot` (asChild) accepts exactly one element and throws on a list
+        children
+      )}
     </Comp>
   )
 }
