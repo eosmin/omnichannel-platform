@@ -42,6 +42,7 @@ describe('WebPushSender', () => {
   const updateSubscription = jest.fn()
   const deleteSubscriptions = jest.fn()
   const send = jest.fn<Promise<void>, [{ endpoint: string }, string, boolean]>()
+  const logger = { setContext: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }
   let enabled = true
 
   const sender = (): WebPushSender => {
@@ -62,7 +63,6 @@ describe('WebPushSender', () => {
       },
       send
     }
-    const logger = { setContext: jest.fn(), warn: jest.fn(), error: jest.fn() }
     return new WebPushSender(
       prisma as unknown as PrismaService,
       gateway as unknown as WebPushGateway,
@@ -78,6 +78,45 @@ describe('WebPushSender', () => {
     countMembers.mockResolvedValue(1)
     send.mockResolvedValue(undefined)
     updateSubscription.mockResolvedValue({ count: 1 })
+  })
+
+  describe('says why nothing was pushed', () => {
+    const reasonsLogged = (): unknown[] =>
+      logger.info.mock.calls.map((call: unknown[]) => (call[0] as { reason: string }).reason)
+
+    it('names the missing keys', async () => {
+      enabled = false
+      await sender().send(USER, NOTIFICATION)
+      expect(reasonsLogged()).toEqual(['no_vapid_keys'])
+    })
+
+    it('names a notification that is gone, one already read and a person out of the store', async () => {
+      findNotification.mockResolvedValueOnce(null)
+      await sender().send(USER, NOTIFICATION)
+      findNotification.mockResolvedValueOnce(notificationRow({ readAt: new Date() }))
+      await sender().send(USER, NOTIFICATION)
+      countMembers.mockResolvedValueOnce(0)
+      await sender().send(USER, NOTIFICATION)
+      expect(reasonsLogged()).toEqual(['notification_gone', 'already_read', 'not_a_member'])
+    })
+
+    it('names a person with no browser registered', async () => {
+      findSubscriptions.mockResolvedValue([])
+      await sender().send(USER, NOTIFICATION)
+      expect(reasonsLogged()).toEqual(['no_subscription'])
+    })
+
+    it('names a browser the push service forgot, which is dropped', async () => {
+      send.mockRejectedValue(pushError(410))
+      await sender().send(USER, NOTIFICATION)
+      expect(reasonsLogged()).toEqual(['subscription_gone'])
+    })
+
+    it('never writes the endpoint, the text or the keys of a browser', async () => {
+      send.mockRejectedValue(pushError(410))
+      await sender().send(USER, NOTIFICATION)
+      expect(JSON.stringify(logger.info.mock.calls)).not.toMatch(/fcm\.googleapis|"p"|"a"/)
+    })
   })
 
   it('sends the text, in the language of the person, to each browser of the person', async () => {

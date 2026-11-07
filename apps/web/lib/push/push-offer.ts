@@ -18,3 +18,14 @@ export function pushOfferFor(input: {
   if (input.permission === 'default' && !input.alreadyOffered) return PushOffer.ASK
   return PushOffer.NONE
 }
+
+// The server drops a subscription its push service no longer knows (410), and a database that is reset
+// forgets them all, while the browser still holds its own: the switch then says "on" and nothing arrives.
+// A browser that allows push is registered again when a store opens, not only after a resolve.
+export function shouldSyncOnLoad(input: {
+  permission: NotificationPermission | null
+  turnedOff: boolean
+  alreadySynced: boolean
+}): boolean {
+  return input.permission === 'granted' && !input.turnedOff && !input.alreadySynced
+}
