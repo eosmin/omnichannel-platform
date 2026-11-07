@@ -37,7 +37,7 @@ export async function insertInboundMessage(
     author: typeof AuthorType.CUSTOMER | typeof AuthorType.EXTERNAL
     createdAt: Date
   }
-): Promise<{ id: string }> {
+): Promise<{ id: string; replyUnresolved: boolean }> {
   const { storeId, conversationId, message } = input
   // The message it answers, if the thread has it: a provider id that is not known is just not linked
   const replyTo =
@@ -45,9 +45,11 @@ export async function insertInboundMessage(
       ? null
       : await tx.message.findFirst({
           where: { storeId, conversationId, channelMessageId: message.replyToExternalId },
+          // The same order as the reaction lookup, so a quote and a reaction find the same row
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           select: { id: true }
         })
-  return tx.message.create({
+  const created = await tx.message.create({
     data: {
       storeId,
       conversationId,
@@ -63,4 +65,9 @@ export async function insertInboundMessage(
     },
     select: { id: true }
   })
+  // The message quotes one this thread does not have: told to the caller, who logs it (no id leaves)
+  return {
+    id: created.id,
+    replyUnresolved: message.replyToExternalId !== undefined && replyTo === null
+  }
 }

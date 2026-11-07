@@ -88,7 +88,7 @@ export class MetaLogin implements ChannelOAuth {
     const failures: unknown[] = []
     // The refusals of the PORTFOLIO lists, which the screen can go on without (it asks for the number of the Page);
     // a refusal of `me/accounts` is not among them: that list needs only `pages_show_list`, which was checked
-    const refusedPortfolios: unknown[] = []
+    const refusedLists: unknown[] = []
     // The pages of one list, or nothing when that way failed: the failure is kept, and the answer of the
     // others still counts. A list is merged in the order the ways were tried, whichever answered first.
     const pagesAt = async (
@@ -106,8 +106,24 @@ export class MetaLogin implements ChannelOAuth {
       } catch (error) {
         this.refuseDeadToken(error)
         failures.push(error)
-        if (portfolio && isRefusedList(error)) refusedPortfolios.push(error)
+        if (portfolio && isRefusedList(error)) refusedLists.push(error)
         return []
+      }
+    }
+    // One Page by its id. A refusal (the Page is not reachable with this token) is a Page that is not listed.
+    const pageAt = async (id: string): Promise<z.infer<typeof pageSchema> | null> => {
+      try {
+        return await this.meta.get({
+          path: [id],
+          token: ctx.userToken,
+          schema: pageSchema,
+          query: { fields: this.pageFields }
+        })
+      } catch (error) {
+        this.refuseDeadToken(error)
+        failures.push(error)
+        if (isRefusedList(error) || isUnreachableObject(error)) refusedLists.push(error)
+        return null
       }
     }
     // A Page found twice keeps the entry that says which account it links: one way may leave the field out
@@ -134,14 +150,27 @@ export class MetaLogin implements ChannelOAuth {
       } catch (error) {
         this.refuseDeadToken(error)
         failures.push(error)
-        if (isRefusedList(error)) refusedPortfolios.push(error)
+        if (isRefusedList(error)) refusedLists.push(error)
         return []
       }
     }
-    // The two lists do not depend on each other, so they are asked together
-    const [roles, businesses] = await Promise.all([
+    // The Pages the person ticked in the dialog of Facebook: they need no permission of ours, and are the way in
+    // when the person has no role on the Page and no portfolio answers (a consent given again after the app was
+    // removed grants only the permissions asked). A failure here is not one of the person's: nothing is lost.
+    const ticked = async (): Promise<string[]> => {
+      try {
+        return await this.meta.grantedPageIds(ctx.userToken)
+      } catch (error) {
+        // Meta, the network or the app not answering (a PluginError) loses nothing; a bug of ours is not hidden
+        if (error instanceof PluginError) return []
+        throw error
+      }
+    }
+    // The three do not depend on each other, so they are asked together
+    const [roles, businesses, tickedIds] = await Promise.all([
       pagesAt(MetaOAuth.EDGE_ACCOUNTS.split('/')),
-      portfolios()
+      portfolios(),
+      ticked()
     ])
     keep(roles)
     // A few portfolios at a time: one after another would be a call each for a person who has many
@@ -152,6 +181,13 @@ export class MetaLogin implements ChannelOAuth {
       )
       for (const pages of lists) keep(pages)
     }
+    // A ticked Page that no list found is read by its id, as the screen does with a number the person types
+    const missing = tickedIds.filter(id => !found.has(id))
+    for (let from = 0; from < missing.length; from += MetaOAuth.OWNED_PAGES_CONCURRENCY) {
+      const group = missing.slice(from, from + MetaOAuth.OWNED_PAGES_CONCURRENCY)
+      const pages = await Promise.all(group.map(id => pageAt(id)))
+      for (const page of pages) if (page) keep([page])
+    }
     // Nothing found and something failed: an outage is not "nothing to connect". A list that Meta REFUSED to
     // this token (a permission the token lacks, an edge it may not read: the portfolios need no permission of
     // ours, but Meta may ask one of an account that is not an administrator of the app) is an empty list: the
@@ -159,7 +195,7 @@ export class MetaLogin implements ChannelOAuth {
     if (found.size === 0 && failures.length > 0) {
       // Every failure is a refusal of a portfolio list: an empty list. Otherwise the first one that is not
       // (not the first to arrive: the lists are asked together, so the order is the network's).
-      const open = failures.filter(failure => !refusedPortfolios.includes(failure))
+      const open = failures.filter(failure => !refusedLists.includes(failure))
       // An outage is told before a refusal: it is the one the person can do something about by waiting
       const cause = open.find(failure => !isRefusedList(failure)) ?? open[0]
       // What the helpers of this class throw is a PluginError, or the error of a read the schema refused
