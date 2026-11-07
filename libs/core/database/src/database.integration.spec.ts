@@ -501,10 +501,46 @@ describe('development fixtures', () => {
     const fixtureUsers = await prisma.user.count({
       where: {
         email: {
-          in: ['admin@test.com', 'agent@test.com', 'viewer@test.com', 'multi-store@test.com']
+          in: [
+            'admin@test.com',
+            'agent@test.com',
+            'viewer@test.com',
+            'multi-store@test.com',
+            'admin2@test.com',
+            'admin3@test.com',
+            'agent2@test.com',
+            'viewer2@test.com',
+            'admin4@test.com',
+            'agent3@test.com'
+          ]
         }
       }
     })
-    expect(fixtureUsers).toBe(4)
+    expect(fixtureUsers).toBe(10)
+  })
+
+  it('give each spare person the role and the main store they are named for', async () => {
+    await loadDevFixtures(prisma, key)
+    const expected = [
+      ['admin2@test.com', RoleNames.ADMIN],
+      ['admin3@test.com', RoleNames.ADMIN],
+      ['admin4@test.com', RoleNames.ADMIN],
+      ['agent2@test.com', RoleNames.AGENT],
+      ['agent3@test.com', RoleNames.AGENT],
+      ['viewer2@test.com', RoleNames.VIEWER]
+    ] as const
+    for (const [email, role] of expected) {
+      const memberships = await prisma.membership.findMany({
+        where: { user: { email } },
+        select: {
+          status: true,
+          role: { select: { name: true } },
+          store: { select: { name: true } }
+        }
+      })
+      expect(memberships).toEqual([
+        { status: 'ACTIVE', role: { name: role }, store: { name: 'Main Store' } }
+      ])
+    }
   })
 })

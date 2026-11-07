@@ -31,7 +31,16 @@ const FIXTURE_TAGS = [
   { name: 'wholesale', color: '#3b82f6' }
 ]
 
-// Development and CI data, never production: four users without passwords (login is a magic link),
+const SPARE_PEOPLE = [
+  { email: 'admin2@test.com', name: 'Admin Two', role: RoleNames.ADMIN },
+  { email: 'admin3@test.com', name: 'Admin Three', role: RoleNames.ADMIN },
+  { email: 'admin4@test.com', name: 'Admin Four', role: RoleNames.ADMIN },
+  { email: 'agent2@test.com', name: 'Agent Two', role: RoleNames.AGENT },
+  { email: 'agent3@test.com', name: 'Agent Three', role: RoleNames.AGENT },
+  { email: 'viewer2@test.com', name: 'Viewer Two', role: RoleNames.VIEWER }
+] as const
+
+// Development and CI data, never production: ten users without passwords (login is a magic link),
 // two stores, products, customers and conversations. Deterministic, so a test can rely on it, and
 // idempotent, so running it again changes nothing.
 export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffer): Promise<void> {
@@ -50,6 +59,18 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
   const viewer = await ensureUser(prisma, 'viewer@test.com', 'Viewer User')
   const multi = await ensureUser(prisma, 'multi-store@test.com', 'Multi Store User')
   const organizationId = organization.id
+  // More people with the same roles: the magic link allows a few a minute per address, and the e2e
+  // suite signs in about forty times as the admin alone. A spec that does not care who the admin is
+  // takes one of these, so it never waits for the budget of admin@test.com
+  for (const spare of SPARE_PEOPLE) {
+    const person = await ensureUser(prisma, spare.email, spare.name)
+    await ensureMembership(prisma, {
+      userId: person.id,
+      organizationId,
+      storeId: main.id,
+      roleId: roles[spare.role].id
+    })
+  }
   await ensureMembership(prisma, {
     userId: admin.id,
     organizationId,

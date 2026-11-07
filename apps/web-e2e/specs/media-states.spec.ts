@@ -16,7 +16,7 @@ import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent@test.com'
+const AGENT = 'agent2@test.com'
 const MINUTE_MS = 60_000
 // A valid 1x1 image, what the bucket would answer for the variants
 const ONE_PIXEL_PNG = Buffer.from(
