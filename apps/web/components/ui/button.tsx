@@ -6,7 +6,7 @@ import type { ComponentProps, ReactElement } from 'react'
 import { cn } from '../../lib/utils'
 
 export const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "relative inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:min-h-10 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -20,7 +20,7 @@ export const buttonVariants = cva(
         default: 'h-9 px-4 py-2',
         sm: 'h-8 gap-1.5 px-3',
         lg: 'h-10 px-6',
-        icon: 'size-9'
+        icon: 'size-9 pointer-coarse:min-w-10'
       }
     },
     defaultVariants: {
@@ -42,8 +42,9 @@ export function Button({
 }: ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
-    // The action waits for the server: the button is off, and a spinner appears after 400 ms (an
-    // answer that comes sooner never flashes one; the delay is in the CSS, `busy-spinner`)
+    // The action waits for the server: the button is off, and after 400 ms a spinner takes the place of the
+    // label (an answer that comes sooner never flashes one; the delay is in the CSS, `busy-spinner`). The
+    // spinner is laid over the button, never beside the label, so the button keeps its size
     busy?: boolean
   }): ReactElement {
   const Comp = asChild ? Slot.Root : 'button'
@@ -64,7 +65,7 @@ export function Button({
           <span aria-hidden className="busy-spinner">
             <Loader2 className="animate-spin" />
           </span>
-          {children}
+          <span className="busy-label">{children}</span>
         </>
       ) : (
         // One child, as it came: `Slot` (asChild) accepts exactly one element and throws on a list

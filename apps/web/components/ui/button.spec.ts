@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
@@ -31,5 +34,18 @@ describe('Button', () => {
     const html = renderToStaticMarkup(createElement(Button, null, 'Save'))
     expect(html).not.toContain('busy-spinner')
     expect(html).toContain('type="button"')
+  })
+
+  // The size of a busy button must not change when the spinner shows (a layout jump). jsdom has no layout, so
+  // the case that measures it is in `apps/web-e2e/specs/busy-button.spec.ts`; this one keeps the rule from
+  // being undone in the CSS: the spinner is laid over the button, never beside the label
+  it('lays the spinner over the button and keeps the label in the flow, so the size never changes', () => {
+    const css = readFileSync(join(__dirname, '../../app/globals.css'), 'utf8')
+    const rule = (selector: string): string =>
+      new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+    expect(rule('.busy-spinner')).toMatch(/position:\s*absolute/)
+    expect(rule('.busy-spinner')).not.toMatch(/max-width|margin/)
+    const html = renderToStaticMarkup(createElement(Button, { busy: true }, 'Save'))
+    expect(html).toContain('class="busy-label"')
   })
 })
