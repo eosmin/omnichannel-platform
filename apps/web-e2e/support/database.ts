@@ -28,6 +28,7 @@ import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
 import {
+  createChannelConnection,
   createConversation,
   createConversationOf,
   createCustomer,
@@ -413,6 +414,48 @@ export function newCustomerIn(
 export function withWhatsAppChannel(storeId: string): Promise<void> {
   return withOwner(async owner => {
     await whatsAppConnectionOf(owner, storeId)
+  })
+}
+
+// A Messenger connection of the store with what the provider said about its token (`metadata.tokenInfo`, as the
+// worker writes it), or with nothing said. Named, so that its card is found by its heading. Returns its id.
+export function addConnectionWithTokenInfo(
+  storeId: string,
+  input: {
+    name: string
+    tokenInfo?: { kind: string; isValid: boolean; expiresAt: string | null }
+  }
+): Promise<string> {
+  return withOwner(async owner => {
+    const connection = await createChannelConnection(owner, {
+      storeId,
+      channelType: ChannelType.MESSENGER
+    })
+    await owner.channelConnection.update({
+      where: { id: connection.id },
+      data: {
+        displayName: input.name,
+        ...(input.tokenInfo === undefined
+          ? {}
+          : {
+              metadata: {
+                tokenInfo: {
+                  scopes: [],
+                  checkedAt: new Date().toISOString(),
+                  expiryNotifiedFor: null,
+                  ...input.tokenInfo
+                }
+              }
+            })
+      }
+    })
+    return connection.id
+  })
+}
+
+export function removeConnections(ids: readonly string[]): Promise<void> {
+  return withOwner(async owner => {
+    await owner.channelConnection.deleteMany({ where: { id: { in: [...ids] } } })
   })
 }
 

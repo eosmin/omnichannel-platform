@@ -87,7 +87,7 @@
         },
         "channel": {
           "disconnected": "Canal desconectado",
-          "token_expiring": "Acceso del canal por vencer"
+          "token_expiring": "Acceso del canal por expirar"
         },
         "webhook": {
           "auto_disabled": "Integración saliente desactivada"
@@ -614,7 +614,7 @@
         "body": "El canal dejó de funcionar. Vuelve a conectarlo para seguir recibiendo mensajes."
       },
       "token_expiring": {
-        "title": "El acceso de un canal está por vencer",
+        "title": "El acceso de un canal está por expirar",
         "body": "El token de un canal deja de funcionar el {date}. Actualízalo antes para seguir recibiendo mensajes."
       }
     },
@@ -1581,6 +1581,14 @@
         "disconnected": "Desconectado"
       },
       "health": {
+        "token": {
+          "never": "El token no expira.",
+          "expires": "El token expira el {date}.",
+          "expired": "El token expiró el {date}. Actualízalo para seguir recibiendo mensajes.",
+          "expiredUnknownDate": "El token expiró. Actualízalo para seguir recibiendo mensajes.",
+          "invalid": "Meta indica que el token ya no es válido. Actualiza el token de esta conexión.",
+          "userToken": "Pegaste un token de usuario; necesitas el de la Página."
+        },
         "never": "Todavía no se ha comprobado.",
         "lastHealthy": "Última vez que funcionó: {date}",
         "errors": {
