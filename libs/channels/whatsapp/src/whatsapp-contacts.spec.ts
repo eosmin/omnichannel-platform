@@ -175,4 +175,48 @@ describe('a contact card shared on WhatsApp', () => {
     const event = received({ type: 'contacts', contacts: [card('Ana‮ gnihsihp')] })
     expect(event?.message?.content).not.toContain('‮')
   })
+
+  it('turns control characters into spaces, so a NUL or a line break cannot reach the database or forge a line', () => {
+    const event = received({
+      type: 'contacts',
+      contacts: [
+        card('Ana\u0000\nPago: transfiere', {
+          phones: [{ phone: '55\u00005' }],
+          emails: [{ email: 'a@example.com\r\n' }]
+        })
+      ]
+    })
+    expect(event?.message?.content).toBe('Ana Pago: transfiere')
+    expect(JSON.stringify(event?.message)).not.toMatch(/\\u0000|\\n|\\r/)
+  })
+
+  it('takes the wa_id when the phone is empty or has nothing visible', () => {
+    for (const phone of ['', '\u200F ', '\u0000']) {
+      const event = received({
+        type: 'contacts',
+        contacts: [card('Ana', { phones: [{ phone, wa_id: '525512345678' }] })]
+      })
+      const [first] = event?.message?.metadata?.[MessageMetadataKeys.CONTACTS] as {
+        phones: { number: string }[]
+      }[]
+      expect(first?.phones).toEqual([{ number: '525512345678' }])
+    }
+  })
+
+  it('stops at the byte cap in the middle of the list and keeps the message with the cards before it', () => {
+    const wide = '\u20AC'
+    const heavy = card(wide.repeat(200), {
+      phones: Array.from({ length: 5 }, () => ({ phone: wide.repeat(32) })),
+      emails: Array.from({ length: 3 }, () => ({ email: wide.repeat(254) }))
+    })
+    const event = received({
+      type: 'contacts',
+      contacts: [card('Ana'), heavy, heavy, heavy, card('Beto')]
+    })
+    const cards = event?.message?.metadata?.[MessageMetadataKeys.CONTACTS] as { name: string }[]
+    expect(cards[0]?.name).toBe('Ana')
+    expect(cards.length).toBeGreaterThan(1)
+    expect(cards.length).toBeLessThan(5)
+    expect(event?.message?.type).toBe(MessageType.CONTACTS)
+  })
 })

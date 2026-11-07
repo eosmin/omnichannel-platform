@@ -174,6 +174,41 @@ describe('a place', () => {
   })
 })
 
+describe('a place with more in the message', () => {
+  const place = { type: 'location', title: 'Casa', payload: { coordinates: { lat: 1, long: 2 } } }
+
+  it('keeps the words of the customer as the content of the place', () => {
+    expect(messageOf({ mid: 'm1', text: 'esta es mi casa', attachments: [place] })).toMatchObject({
+      type: MessageType.LOCATION,
+      content: 'esta es mi casa',
+      metadata: { latitude: 1, longitude: 2, name: 'Casa' }
+    })
+  })
+
+  it('keeps the file, and the words, when a file came with the place', () => {
+    expect(
+      messageOf({
+        mid: 'm1',
+        text: 'mira',
+        attachments: [{ type: 'image', payload: { url: PHOTO } }, place]
+      })
+    ).toMatchObject({ type: MessageType.IMAGE, content: 'mira', media: [{ ref: PHOTO }] })
+  })
+})
+
+describe('a like with something else beside it', () => {
+  it('is not a like when another thing was shared with it', () => {
+    const message = messageOf({
+      mid: 'm1',
+      attachments: [
+        { type: 'image', payload: { url: STICKER, sticker_id: LIKE_ID } },
+        { type: 'fallback', title: 'a link' }
+      ]
+    })
+    expect(message?.content).not.toBe(MetaMessaging.LIKE_TEXT)
+  })
+})
+
 describe('an audio', () => {
   it('is taken to be a clip in an mp4 container until the file says otherwise', () => {
     const message = messageOf({

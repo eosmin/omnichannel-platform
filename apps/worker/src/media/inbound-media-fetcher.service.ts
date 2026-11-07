@@ -28,8 +28,10 @@ import {
 } from '@platform/core/queues'
 import {
   AllAllowedContentTypes,
+  AllowedContentTypes,
   FILE_SIGNATURE_WINDOW_BYTES,
   matchesDeclaredType,
+  sniffDeclarableType,
   MediaPurpose,
   refuseUpload,
   sanitizeFilename,
@@ -43,7 +45,7 @@ import { UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { refusalOf } from '../outbound/send-refusal'
 
-import { bareType, FileRefused, keptContentType, readLimited } from './fetch-helpers'
+import { bareType, FileRefused, GENERIC_TYPES, keptContentType, readLimited } from './fetch-helpers'
 import { inboundMediaId } from './inbound-media-id'
 import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
@@ -286,7 +288,8 @@ export class InboundMediaFetcher {
             open.destroy?.()
             throw new FileRefused('the fetch took too long')
           }
-          const contentType = keptContentType(bareType(file.contentType), job.contentType)
+          const declared = bareType(file.contentType)
+          let contentType = keptContentType(declared, job.contentType)
           if (!AllAllowedContentTypes.has(contentType)) {
             throw new FileRefused('the type of the file is not allowed')
           }
@@ -301,8 +304,16 @@ export class InboundMediaFetcher {
           }
           if (body.length === 0) throw new FileRefused('the file is empty')
           // What the bytes are, not what the provider or the webhook says they are
-          if (!matchesDeclaredType(contentType, body.subarray(0, FILE_SIGNATURE_WINDOW_BYTES))) {
-            throw new FileRefused('the file is not of the type it declares')
+          const head = body.subarray(0, FILE_SIGNATURE_WINDOW_BYTES)
+          if (!matchesDeclaredType(contentType, head)) {
+            // A server that did not say what the file is leaves the type to a guess (the hint of the
+            // webhook for an audio): the bytes then pick among the audio types, or the file is refused
+            const read =
+              GENERIC_TYPES.has(declared) && contentType.startsWith('audio/')
+                ? sniffDeclarableType(head, AllowedContentTypes.AUDIO)
+                : null
+            if (read === null) throw new FileRefused('the file is not of the type it declares')
+            contentType = read
           }
           return { body, contentType }
         })(),

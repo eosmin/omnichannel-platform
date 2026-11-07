@@ -18,6 +18,7 @@ const MP4 = pad(bytes(0, 0, 0, 0x18, 'ftypmp42'))
 const MOV = pad(bytes(0, 0, 0, 0x14, 'ftypqt  '))
 const M4A = pad(bytes(0, 0, 0, 0x20, 'ftypM4A '))
 const AAC_ADTS = pad(bytes(0xff, 0xf1, 0x50))
+const HEIC = pad(bytes(0, 0, 0, 0x18, 'ftypheic'))
 const MP3_ID3 = pad(bytes('ID3', 3, 0))
 const MP3_FRAME = pad(bytes(0xff, 0xfb, 0x90))
 const OGG = pad(bytes('OggS', 0))
@@ -70,6 +71,9 @@ describe('matchesDeclaredType', () => {
     ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', PDF],
     ['audio/mpeg', HTML],
     ['audio/mp4', HTML],
+    ['audio/mp4', MOV],
+    ['audio/mp4', HEIC],
+    ['audio/mp4', pad(bytes(0, 0, 0, 8, 'moov'))],
     ['audio/mp4', MP3_ID3],
     ['audio/aac', HTML],
     ['audio/aac', MP3_FRAME],

@@ -219,9 +219,15 @@ function toReceivedMessage(
     files && rawText !== null && MetaMessaging.PLACEHOLDER_TEXTS.includes(rawText.trim())
       ? null
       : rawText
-  const place = unsupported ? null : placeOf(attachments)
+  // A place beside a file stays a shared thing with the file, so the file is kept; beside words it keeps them
+  const place = unsupported || files ? null : placeOf(attachments)
   if (place) {
-    return { ...base, type: MessageType.LOCATION, content: place.name, metadata: place.metadata }
+    return {
+      ...base,
+      type: MessageType.LOCATION,
+      content: text ?? place.name,
+      metadata: place.metadata
+    }
   }
   const shared = unsupported ? null : sharedOf(attachments)
   // The name of a type is the sender's, and it goes into the metadata and the content: only a plain one

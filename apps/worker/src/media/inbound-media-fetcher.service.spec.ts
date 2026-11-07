@@ -192,6 +192,39 @@ describe('InboundMediaFetcher', () => {
       }
     )
 
+    it.each([
+      ['audio/mpeg', Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, 0, 0])],
+      ['audio/ogg', Buffer.from('OggS\u0000\u0002', 'latin1')],
+      ['audio/aac', Buffer.from([0xff, 0xf1, 0x50, 0x80, 0, 0])]
+    ])(
+      'reads %s from the bytes when the server says nothing and the hint was wrong',
+      async (_t, body) => {
+        const plugin = {
+          fetchMedia: jest.fn().mockResolvedValue(file(body, 'application/octet-stream'))
+        }
+        const { fetcher, storage, marker } = setup({ plugin })
+
+        await fetcher.fetch(audioJob, false)
+
+        expect(marker.mark).not.toHaveBeenCalled()
+        expect(storage.put).toHaveBeenCalledTimes(1)
+      }
+    )
+
+    it('does not guess when the server named a type and the bytes disagree', async () => {
+      const plugin = {
+        fetchMedia: jest
+          .fn()
+          .mockResolvedValue(file(Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, 0, 0]), 'audio/mp4'))
+      }
+      const { fetcher, storage, marker } = setup({ plugin })
+
+      await fetcher.fetch(audioJob, false)
+
+      expect(storage.put).not.toHaveBeenCalled()
+      expect(marker.mark).toHaveBeenCalledWith(STORE, MESSAGE, 1, 'refused')
+    })
+
     it('keeps a video as a video when the webhook did not say audio', async () => {
       const plugin = { fetchMedia: jest.fn().mockResolvedValue(file(M4A, 'video/mp4')) }
       const { fetcher, storage } = setup({ plugin })

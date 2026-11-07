@@ -2,6 +2,7 @@ import {
   type ContactCard,
   ContactCardLimits,
   InboundLimits,
+  MessageMetadataKeys,
   placeTextOf
 } from '@platform/core/domain'
 
@@ -30,7 +31,10 @@ function cardOf(raw: unknown): ContactCard | null {
   const name = nameOf(parsed.data)
   const phones = parsed.data.phones
     .flatMap(phone => {
-      const number = placeTextOf(phone.phone ?? phone.wa_id, ContactCardLimits.PHONE_MAX_LENGTH)
+      // The first of the two that has something in it: an empty `phone` does not hide the `wa_id`
+      const number =
+        placeTextOf(phone.phone, ContactCardLimits.PHONE_MAX_LENGTH) ??
+        placeTextOf(phone.wa_id, ContactCardLimits.PHONE_MAX_LENGTH)
       const kind = placeTextOf(phone.type, ContactCardLimits.KIND_MAX_LENGTH)
       return number === null ? [] : [{ number, ...(kind === null ? {} : { kind }) }]
     })
@@ -56,7 +60,7 @@ export function contactCardsOf(raw: readonly unknown[]): ContactCard[] {
     const card = cardOf(item)
     if (card === null) continue
     if (
-      Buffer.byteLength(JSON.stringify({ contacts: [...cards, card] })) >
+      Buffer.byteLength(JSON.stringify({ [MessageMetadataKeys.CONTACTS]: [...cards, card] })) >
       InboundLimits.METADATA_MAX_BYTES
     ) {
       break
