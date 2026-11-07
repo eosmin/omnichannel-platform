@@ -163,7 +163,8 @@ export const InboundMessageTypes = [
   MessageType.VIDEO,
   MessageType.AUDIO,
   MessageType.DOCUMENT,
-  MessageType.LOCATION
+  MessageType.LOCATION,
+  MessageType.CONTACTS
 ] as const
 
 // Bounds on what a channel event may carry: it comes from a provider, or from a plugin that is not ours

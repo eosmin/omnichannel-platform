@@ -7,6 +7,7 @@ export const ChannelCapability = {
   AUDIO: 'audio',
   DOCUMENT: 'document',
   LOCATION: 'location',
+  CONTACTS: 'contacts',
   BUTTONS: 'buttons',
   LIST_PICKER: 'list_picker',
   TEMPLATES: 'templates',

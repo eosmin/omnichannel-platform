@@ -29,4 +29,9 @@ describe('placeTextOf', () => {
     expect(placeTextOf('🏠'.repeat(150), 200)).toBe('🏠'.repeat(100))
     expect(placeTextOf('abcdef', 3)).toBe('abc')
   })
+
+  it('turns control characters into spaces', () => {
+    expect(placeTextOf('a\u0000b\r\nc\u0085d\u007Fe')).toBe('a b c d e')
+    expect(placeTextOf('\u0000\n')).toBeNull()
+  })
 })

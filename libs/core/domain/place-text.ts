@@ -14,7 +14,13 @@ export function placeTextOf(
   text: string | undefined | null,
   max: number = MessageLimits.LOCATION_TEXT_MAX_LENGTH
 ): string | null {
-  const clean = (text ?? '').replace(MISLEADING_TEXT, '').trim()
+  // A control character (NUL, a line break, DEL) becomes a space: a NUL is refused by the database, and
+  // a line break would let a name forge a second line in a preview
+  const clean = (text ?? '')
+    .replace(MISLEADING_TEXT, '')
+    // eslint-disable-next-line no-control-regex -- the point is to remove them
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    .trim()
   let out = ''
   for (const character of clean) {
     if (out.length + character.length > max) break

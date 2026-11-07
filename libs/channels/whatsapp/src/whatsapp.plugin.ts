@@ -182,6 +182,7 @@ export class WhatsAppPlugin implements ChannelPlugin {
     ChannelCapability.AUDIO,
     ChannelCapability.DOCUMENT,
     ChannelCapability.LOCATION,
+    ChannelCapability.CONTACTS,
     ChannelCapability.BUTTONS,
     ChannelCapability.TEMPLATES,
     ChannelCapability.READ_RECEIPTS,
