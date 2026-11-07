@@ -30,7 +30,7 @@ function filesNamed(directory: string, name: string): string[] {
 
 // Pages that draw nothing of their own: the first one sends the visitor on to where they belong, and the
 // second is the redirect of /account to its first tab. Neither is ever on the screen long enough to be read.
-const REDIRECT_ONLY = new Set(['page.tsx', 'account/page.tsx'])
+const REDIRECT_ONLY = new Set(['page.tsx', 'account/page.tsx', 's/[storeId]/page.tsx'])
 
 // The title each route must have. Written out, so that a page copied with the wrong name fails here
 const TITLE_OF_PAGE: Record<string, string> = {

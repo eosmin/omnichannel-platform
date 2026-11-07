@@ -300,6 +300,10 @@
         "remove": "Quitar la etiqueta {name}",
         "add": "Agregar {name}",
         "addLabel": "Agregar una etiqueta",
+        "searchLabel": "Buscar las etiquetas para agregar",
+        "searchPlaceholder": "Buscar etiquetas",
+        "noMatches": "Ninguna etiqueta tiene ese nombre.",
+        "showingFirst": "Mostrando {shown} de {total} etiquetas: escribe para acotarlas.",
         "failed": "No se pudieron cargar las etiquetas de la tienda."
       },
       "note": {
@@ -1515,7 +1519,6 @@
   "exports": {
     "title": "Exportaciones",
     "intro": "Los archivos que pediste. Cada uno se guarda 7 días.",
-    "noAccess": "Tu rol no puede ver exportaciones. Pide a un administrador que te dé el permiso.",
     "failed": "No se pudieron cargar las exportaciones.",
     "empty": "Todavía no pediste ninguna exportación.",
     "noMatch": "Ninguna exportación coincide con estos filtros.",
@@ -2392,7 +2395,8 @@
     }
   },
   "permissionDenied": {
-    "named": "No tienes el permiso «{permission}» para esto. Pide a un administrador que te lo dé."
+    "named": "No tienes el permiso «{permission}» para esto. Pide a un administrador que te lo dé.",
+    "oneOf": "Necesitas uno de estos permisos para esto: {permissions}. Pide a un administrador que te dé uno."
   },
   "validation": {
     "check": "Revisa {field}.",
