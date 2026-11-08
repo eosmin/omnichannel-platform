@@ -84,9 +84,12 @@ export interface ChannelFileLimits {
   maxFiles: number
   types: readonly string[] | null
   maxBytes: number
-  // Whether a text under each file is sent (the switch `OUTBOUND_CAPTION_PER_FILE_ENABLED`); off, only the
-  // text under the first file is
+  // Whether the channel sends a text under each file of this kind with the file (its capability
+  // `CAPTION_PER_FILE`, and a kind that has a place for one); otherwise only the text under the first file is taken
   captionsPerFile?: boolean
+  // Whether the text of the message may go after its first file, as a message of its own, where the kind has no
+  // place for one (an audio on WhatsApp): a channel that carries the text of a file itself does it
+  textAfterFile?: boolean
 }
 export type ChannelFileLimitsOf = (
   channelType: string,
@@ -683,12 +686,14 @@ export class MessagesService {
     const limits = limitsOf?.(conversation.channelType, body.type) ?? null
     requireCaptionsPlaced(body, limits?.captionsPerFile === true)
     const captions = captionsOf(body)
-    for (const caption of captions) {
+    for (const [place, caption] of captions.entries()) {
       requireCaptionFits(
         conversation.channelType,
         body.type,
         caption ?? undefined,
-        limits?.captionsPerFile === true
+        // The text of the message goes after a file with no place for one (an audio on WhatsApp); the text of
+        // any other file never goes apart: it is refused
+        place === 0 && limits?.textAfterFile === true
       )
     }
     const maxFiles = limits?.maxFiles ?? MediaMessageLimits.SINGLE_FILE

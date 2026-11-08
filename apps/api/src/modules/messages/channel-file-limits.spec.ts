@@ -1,10 +1,12 @@
-import { MessageType } from '@platform/core/domain'
+import { ChannelCapability, MessageType } from '@platform/core/domain'
 import { MediaMessageLimits } from '@platform/core/storage'
 
 import { channelFileLimits } from './channel-file-limits'
 
 const png = { types: ['image/png'], maxBytes: 1000 }
-const registryOf = (media: unknown) => ({ mediaOf: () => media }) as never
+// The capabilities a channel declared when it registered, by channel type
+const registryOf = (media: unknown, capabilities: Record<string, string[]> = {}) =>
+  ({ mediaOf: () => media, capabilitiesOf: (type: string) => capabilities[type] ?? [] }) as never
 
 describe('channelFileLimits', () => {
   const media = {
@@ -17,7 +19,8 @@ describe('channelFileLimits', () => {
     expect(limits('whatsapp', MessageType.IMAGE)).toEqual({
       maxFiles: 1,
       ...png,
-      captionsPerFile: false
+      captionsPerFile: false,
+      textAfterFile: false
     })
   })
 
@@ -36,25 +39,32 @@ describe('channelFileLimits', () => {
       maxFiles: 10,
       types: null,
       maxBytes: 5,
-      captionsPerFile: false
+      captionsPerFile: false,
+      textAfterFile: false
     })
   })
 
-  it('offers a text under each file only where the switch is on, for every kind (an audio goes apart)', () => {
+  it('offers a text under each file only to a channel that declares it, for every kind (an audio goes apart)', () => {
     const audio = { ...media, kinds: { audio: png } }
+    const registry = registryOf(media, { whatsapp: [ChannelCapability.CAPTION_PER_FILE] })
+    const audioRegistry = registryOf(audio, { whatsapp: [ChannelCapability.CAPTION_PER_FILE] })
 
-    expect(
-      channelFileLimits(registryOf(media), true, true)('instagram', MessageType.IMAGE)
-        ?.captionsPerFile
-    ).toBe(true)
-    expect(
-      channelFileLimits(registryOf(audio), true, true)('whatsapp', MessageType.AUDIO)
-        ?.captionsPerFile
-    ).toBe(true)
-    expect(
-      channelFileLimits(registryOf(media), true, false)('instagram', MessageType.IMAGE)
-        ?.captionsPerFile
-    ).toBe(false)
+    expect(channelFileLimits(registry, true)('whatsapp', MessageType.IMAGE)?.captionsPerFile).toBe(
+      true
+    )
+    // An audio on WhatsApp has no place for a text: none under a file but the first, and the text of the
+    // message goes after the first one
+    expect(channelFileLimits(audioRegistry, true)('whatsapp', MessageType.AUDIO)).toMatchObject({
+      captionsPerFile: false,
+      textAfterFile: true
+    })
+    // Another channel of the same registry (it sends the text as a message of its own) does not
+    expect(channelFileLimits(registry, true)('instagram', MessageType.IMAGE)?.captionsPerFile).toBe(
+      false
+    )
+    expect(channelFileLimits(registryOf(media), true)('whatsapp', MessageType.IMAGE)).toMatchObject(
+      { captionsPerFile: false, textAfterFile: false }
+    )
   })
 
   it('has nothing to say for a kind the channel declares no rule for, or a channel with no files', () => {
