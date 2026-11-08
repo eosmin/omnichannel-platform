@@ -14,6 +14,8 @@ import {
 
 import { ClientPermissions } from '@platform/core/auth'
 import {
+  ChannelCaptionRules,
+  ChannelTextLimits,
   ConversationStatus,
   MessageLimits,
   MessageType,
@@ -613,6 +615,10 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               storeId={storeId}
               conversationId={conversationId}
               rules={{ capabilities: channelCapabilities, media: channelMedia }}
+              captionMax={
+                ChannelCaptionRules[conversation.data.channelType]?.maxLength ??
+                ChannelTextLimits[conversation.data.channelType]
+              }
               hidden={isNote}
               onStatus={setTray}
               handle={bindTray}

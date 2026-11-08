@@ -28,6 +28,7 @@ import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
+import { FileCaption } from './file-caption'
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
 
 // A file is drawn in one of two states, a skeleton or its content, and both fill the same box, so the
@@ -69,6 +70,7 @@ export function MessageMedia({
   messageId,
   conversationId,
   canRefetch,
+  canResendCaption = false,
   sticker = false,
   messageType
 }: {
@@ -77,6 +79,8 @@ export function MessageMedia({
   messageId: string
   conversationId: string
   canRefetch: boolean
+  // The agent may send the text under a file again
+  canResendCaption?: boolean
   sticker?: boolean
   // The type of the message: a voice note that is an mp4 is drawn by the player of audio (`mediaKindOf`)
   messageType: string
@@ -99,6 +103,12 @@ export function MessageMedia({
               inAlbum={album}
             />
             {states ? <FileDeliveryLine file={file} /> : null}
+            <FileCaption
+              file={file}
+              messageId={messageId}
+              conversationId={conversationId}
+              canResend={canResendCaption}
+            />
           </div>
         ))}
       </div>

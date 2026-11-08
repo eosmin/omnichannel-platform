@@ -13,6 +13,7 @@ import {
 } from '@platform/core/database-testing'
 import {
   AuthorType,
+  type CaptionState,
   ChannelConnectionStatus,
   ChannelType,
   type DeliveryStatus,
@@ -312,6 +313,20 @@ export function messagesOf(
 
 // The files the agent sent in a conversation, in the order of their place in the message, with the text of
 // the message they belong to (the caption goes with the message)
+// The text stored under each file of the messages of a conversation, in the order of the message
+export function captionsStoredIn(
+  conversationId: string
+): Promise<{ filename: string; caption: string | null }[]> {
+  return withOwner(async owner => {
+    const rows = await owner.media.findMany({
+      where: { message: { conversationId } },
+      orderBy: [{ messageId: 'asc' }, { position: 'asc' }],
+      select: { filename: true, caption: true }
+    })
+    return rows.map(row => ({ filename: row.filename, caption: row.caption }))
+  })
+}
+
 export function filesSentIn(
   conversationId: string
 ): Promise<{ filename: string; position: number | null; caption: string | null }[]> {
@@ -654,6 +669,9 @@ export function addMediaTo(
     position?: number
     delivery?: DeliveryStatus
     sendErrorCode?: string
+    // The text under this file and how it went when the channel sends it as a message of its own
+    caption?: string
+    captionState?: CaptionState
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
@@ -672,6 +690,8 @@ export function addMediaTo(
         ...(input.position === undefined ? {} : { position: input.position }),
         ...(input.delivery === undefined ? {} : { deliveryStatus: input.delivery }),
         ...(input.sendErrorCode === undefined ? {} : { sendErrorCode: input.sendErrorCode }),
+        ...(input.caption === undefined ? {} : { caption: input.caption }),
+        ...(input.captionState === undefined ? {} : { captionState: input.captionState }),
         ...settledOf(storeId, id, input.processed)
       }
     })
