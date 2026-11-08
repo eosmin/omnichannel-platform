@@ -12,6 +12,7 @@ export { cleanText, escapeLike, lockCustomerForWrite } from './customers/custome
 export * from './customers/identity'
 export * from './customers/phone'
 export * from './messages/away-reply'
+export * from './messages/caption-rules'
 export * from './messages/closing-message'
 export * from './messages/lost-files'
 export * from './messages/media-guard'

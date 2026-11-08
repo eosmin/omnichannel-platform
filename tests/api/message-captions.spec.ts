@@ -213,6 +213,46 @@ describe.each([
     })
   }
 
+  it('takes a text under an audio only where it can go after it (switched on), as before otherwise', async () => {
+    const target = await createConversationOf(owner, {
+      storeId: ctx.storeA.id,
+      channelType: ChannelIds.WHATSAPP
+    })
+    await owner.customerIdentity.update({
+      where: { id: target.customerIdentityId },
+      data: { lastInboundAt: new Date() }
+    })
+    const id = randomUUID()
+    await owner.media.create({
+      data: {
+        id,
+        storeId: ctx.storeA.id,
+        purpose: 'message',
+        key: `stores/${ctx.storeA.id}/messages/${id}/a.ogg`,
+        filename: 'a.ogg',
+        contentType: 'audio/ogg',
+        fileSize: 10,
+        status: 'clean',
+        uploadedBy: ctx.agentA.id
+      }
+    })
+
+    const response = await post({
+      type: MessageType.AUDIO,
+      conversationId: target.id,
+      mediaIds: [id],
+      captions: ['say this'],
+      idempotencyKey: randomUUID()
+    })
+
+    expect(response.status).toBe(perFile ? CREATED : CONFLICT)
+    if (!perFile) {
+      expect(response.body).toMatchObject({
+        error: { code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED }
+      })
+    }
+  })
+
   it('never lists the text of a file of another store', async () => {
     const mine = await album(1)
     await send(mine.target, mine.ids, { captions: ['private text of store A'] }).expect(CREATED)

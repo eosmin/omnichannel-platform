@@ -404,7 +404,8 @@ export class InboundMessageService {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, authorType: true }
     })
-    if (waiting === null) return null
+    if (waiting === null)
+      return this.reconcileUnconfirmedFileCaption(tx, storeId, conversationIds, event, since)
     const claimed = await tx.message.updateMany({
       where: {
         id: waiting.id,
@@ -414,6 +415,42 @@ export class InboundMessageService {
       data: { captionChannelMessageId: externalId, captionState: CaptionState.SENT }
     })
     return claimed.count === 1 ? waiting : null
+  }
+
+  // The same for the text under one file that is not the first (or an audio's text sent apart): its state is
+  // on the file, and the echo of the owner's message with that text is it, not a new message
+  private async reconcileUnconfirmedFileCaption(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationIds: string[],
+    event: InboundEvent,
+    since: Date
+  ): Promise<{ id: string; authorType: string } | null> {
+    const file = await tx.media.findFirst({
+      where: {
+        storeId,
+        caption: event.message.content,
+        captionState: { in: [CaptionState.UNCONFIRMED, CaptionState.QUEUED] },
+        message: {
+          conversationId: { in: conversationIds },
+          authorType: AuthorType.AGENT,
+          deletedAt: null,
+          OR: [{ createdAt: { gt: since } }, { changeRequestedAt: { gt: since } }]
+        }
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, message: { select: { id: true, authorType: true } } }
+    })
+    if (file === null || file.message === null) return null
+    const claimed = await tx.media.updateMany({
+      where: {
+        id: file.id,
+        storeId,
+        captionState: { in: [CaptionState.UNCONFIRMED, CaptionState.QUEUED] }
+      },
+      data: { captionChannelMessageId: event.message.externalId, captionState: CaptionState.SENT }
+    })
+    return claimed.count === 1 ? file.message : null
   }
 
   private async mayBeWaitingForItsId(

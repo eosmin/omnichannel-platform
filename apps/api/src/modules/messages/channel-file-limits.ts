@@ -1,5 +1,5 @@
 import { ChannelMediaKinds, type ChannelMediaKind } from '@platform/core/channel-media'
-import { ChannelCaptionRules, MessageType } from '@platform/core/domain'
+import { MessageType } from '@platform/core/domain'
 import type { ChannelFileLimits } from '@platform/core/messaging'
 import { maxFilesFor, type OutboundMediaType } from '@platform/core/storage'
 import type { PluginRegistry } from '@platform/plugins/runtime'
@@ -27,10 +27,9 @@ export function channelFileLimits(
       maxFiles: maxFilesFor(media.maxFilesPerMessage, multiFileEnabled),
       types: rule.types,
       maxBytes: rule.maxBytes,
-      // Where the channel carries no text under this kind of file (an audio on WhatsApp) none is offered
-      captionsPerFile:
-        captionPerFileEnabled &&
-        ChannelCaptionRules[channelType]?.withoutCaption.includes(messageType) !== true
+      // Every kind takes a text under it: where the channel has no place for it (an audio on WhatsApp) the
+      // worker sends it after the file, as a message of its own
+      captionsPerFile: captionPerFileEnabled
     }
   }
 }
