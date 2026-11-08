@@ -1,14 +1,18 @@
 'use client'
 
 import { TriangleAlert } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
 
-import { fileCaptionOf } from '../../lib/inbox/file-caption'
+import { fileCaptionOf, mayResendFileCaption } from '../../lib/inbox/file-caption'
 
 type MediaFile = MessageView['media'][number]
+
+// The action to send a text again and its confirmation, downloaded the first time a text needs them
+const FileCaptionResend = dynamic(() => import('./file-caption-resend'), { ssr: false })
 
 const NOTICE_KEYS = {
   failed: 'fileCaptionFailed',
@@ -20,13 +24,18 @@ const NOTICE_KEYS = {
 // channel sent it as a message of its own and it did not clearly go, what happened to it.
 export function FileCaption({
   file,
-  index
+  messageId,
+  conversationId,
+  canResend
 }: {
   file: MediaFile
-  index: number
+  messageId: string
+  conversationId: string
+  // The agent may send a text again (the api checks it again)
+  canResend: boolean
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
-  const caption = fileCaptionOf(file, index)
+  const caption = fileCaptionOf(file)
   if (caption === null) return null
   return (
     <div className="flex flex-col gap-0.5">
@@ -39,6 +48,16 @@ export function FileCaption({
           {t(NOTICE_KEYS[caption.state])}
         </p>
       )}
+      {canResend && mayResendFileCaption(caption.state, file.delivery) ? (
+        <div>
+          <FileCaptionResend
+            conversationId={conversationId}
+            messageId={messageId}
+            mediaId={file.id}
+            state={caption.state}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

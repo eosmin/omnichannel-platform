@@ -140,6 +140,21 @@ export function resendCaption(
   })
 }
 
+// The same for the text under ONE file of a message with several (`captionState` of that file is failed or
+// unconfirmed): only that text is sent, and the message comes back with it queued
+export function resendMediaCaption(
+  client: ApiClient,
+  storeId: string,
+  messageId: string,
+  mediaId: string
+): Promise<MessageView> {
+  return client.request(ApiRoutes.messages.resendMediaCaption(messageId, mediaId), {
+    method: 'POST',
+    schema: messageSchema,
+    storeId
+  })
+}
+
 // "Download it again" on a file of the customer that was lost: the worker fetches it from the provider
 export function refetchFile(
   client: ApiClient,

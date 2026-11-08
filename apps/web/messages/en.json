@@ -1062,6 +1062,11 @@
       "fileCaptionFailed": "The text under this file was not sent",
       "fileCaptionUnconfirmed": "The text under this file may not have reached the customer",
       "fileCaptionQueued": "Sending the text under this file",
+      "fileCaptionResend": "Send the text again",
+      "fileCaptionResendTitle": "Send the text again?",
+      "fileCaptionResendMaybeSent": "The customer may already have received this text. If you send it again, they may see it twice.",
+      "fileCaptionResendConfirm": "Send again",
+      "fileCaptionResendCancel": "Do not send",
       "resendCaption": "Send the text again",
       "media": {
         "checking": "Checking {name}",

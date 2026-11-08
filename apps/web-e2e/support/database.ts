@@ -13,6 +13,7 @@ import {
 } from '@platform/core/database-testing'
 import {
   AuthorType,
+  type CaptionState,
   ChannelConnectionStatus,
   ChannelType,
   type DeliveryStatus,
@@ -668,6 +669,9 @@ export function addMediaTo(
     position?: number
     delivery?: DeliveryStatus
     sendErrorCode?: string
+    // The text under this file and how it went when the channel sends it as a message of its own
+    caption?: string
+    captionState?: CaptionState
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
@@ -686,6 +690,8 @@ export function addMediaTo(
         ...(input.position === undefined ? {} : { position: input.position }),
         ...(input.delivery === undefined ? {} : { deliveryStatus: input.delivery }),
         ...(input.sendErrorCode === undefined ? {} : { sendErrorCode: input.sendErrorCode }),
+        ...(input.caption === undefined ? {} : { caption: input.caption }),
+        ...(input.captionState === undefined ? {} : { captionState: input.captionState }),
         ...settledOf(storeId, id, input.processed)
       }
     })

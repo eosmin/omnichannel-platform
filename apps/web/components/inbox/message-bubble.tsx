@@ -200,6 +200,7 @@ function Bubble({
             mentionNames={isNote ? mentionNames : NO_NAMES}
             conversationId={conversationId}
             canResendCaption={actions.resendCaption}
+            canResendFileCaption={actions.resendFileCaption}
             canRefetchFile={actions.refetchFile}
             sticker={bubbleless}
             awaitingFiles={awaitingFiles}
@@ -260,6 +261,7 @@ function Content({
   mentionNames,
   conversationId,
   canResendCaption,
+  canResendFileCaption,
   canRefetchFile,
   sticker,
   awaitingFiles
@@ -270,6 +272,7 @@ function Content({
   mentionNames: readonly string[]
   conversationId: string
   canResendCaption: boolean
+  canResendFileCaption: boolean
   canRefetchFile: boolean
   sticker: boolean
   // A customer's file that has not been stored yet (the window of `useAwaitingFiles` is open)
@@ -308,6 +311,7 @@ function Content({
           messageId={message.id}
           conversationId={conversationId}
           canRefetch={canRefetchFile}
+          canResendCaption={canResendFileCaption}
           sticker={sticker}
           messageType={message.type}
         />

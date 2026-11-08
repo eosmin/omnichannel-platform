@@ -163,6 +163,7 @@ describe('messageActionsOf', () => {
       remove: false,
       resend: false,
       resendCaption: false,
+      resendFileCaption: false,
       discard: false,
       refetchFile: true,
       viewDeleted: false,
@@ -214,6 +215,7 @@ describe('messageActionsOf', () => {
       resend: false,
       discard: false,
       resendCaption: false,
+      resendFileCaption: false,
       refetchFile: false,
       viewDeleted: false,
       revisions: false
@@ -269,6 +271,49 @@ describe('messageActionsOf', () => {
   })
 
   describe('the text under a file', () => {
+    const withFiles = (
+      captionStates: MessageView['captionState'][],
+      over: Partial<MessageView> = {}
+    ): MessageView =>
+      message({
+        type: 'IMAGE',
+        media: captionStates.map((captionState, at) => ({
+          id: `file-${at}`,
+          filename: `f${at}.png`,
+          contentType: 'image/png',
+          fileSize: 1,
+          status: 'clean',
+          position: at,
+          delivery: 'sent',
+          errorCode: null,
+          caption: `text ${at}`,
+          captionState
+        })) as MessageView['media'],
+        ...over
+      })
+
+    it('may be sent again for a file other than the first, whatever the state of the message', () => {
+      // The state of the message is the one of the first file: here it is fine, and the second text failed
+      const second = withFiles([null, 'failed'], { captionState: null })
+      const actions = messageActionsOf(second, viewer(AGENT, ALL_CAPABILITIES))
+      expect(actions.resendCaption).toBe(false)
+      expect(actions.resendFileCaption).toBe(true)
+    })
+
+    it('waits while any text of the message is on its way, and without the permission to send', () => {
+      const waiting = withFiles(['failed', 'queued'])
+      expect(messageActionsOf(waiting, viewer(AGENT, ALL_CAPABILITIES)).resendFileCaption).toBe(
+        false
+      )
+      const idle = withFiles([null, 'failed'])
+      expect(messageActionsOf(idle, viewer([], ALL_CAPABILITIES)).resendFileCaption).toBe(false)
+    })
+
+    it('does not open the bar of the message by itself', () => {
+      const actions = messageActionsOf(withFiles([null, 'failed']), viewer(AGENT, ALL_CAPABILITIES))
+      expect(hasAnyAction({ ...actions, react: false, remove: false })).toBe(false)
+    })
+
     const file = (captionState: MessageView['captionState']): MessageView =>
       message({ type: 'IMAGE', captionState })
 
