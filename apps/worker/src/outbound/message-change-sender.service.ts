@@ -200,7 +200,7 @@ export class MessageChangeSender {
     const message = await this.read(storeId, messageId)
     const file = await this.prisma.client.media.findFirst({
       where: { id: mediaId, storeId, messageId },
-      select: { caption: true, captionState: true }
+      select: { caption: true, captionState: true, position: true }
     })
     // Not waiting, or waiting for a newer request than this job's: a late job sends nothing
     if (
@@ -213,7 +213,8 @@ export class MessageChangeSender {
     }
     const settle = (outcome: CaptionSettlement['outcome']): Promise<void> =>
       this.settleMediaCaption({ storeId, messageId, mediaId, version: job.version, outcome })
-    const text = file.caption
+    // The text of the first file is the text of the message (an edit settles there)
+    const text = file.position === 0 ? message.content : file.caption
     if (message.deletedAt !== null || text === null || text === '') {
       return settle({ state: CaptionState.FAILED })
     }

@@ -134,21 +134,41 @@ export class MessageChangeStatusWriter {
       // A request made again meanwhile has another version: a late job settles nothing
       const current = await tx.message.count({ where: { id: messageId, storeId, version } })
       if (current === 0) return
+      const file = await tx.media.findFirst({
+        where: { id: mediaId, storeId, messageId, captionState: CaptionState.QUEUED },
+        select: { position: true }
+      })
+      if (file === null) return
+      const data = {
+        captionState: outcome.state,
+        ...(outcome.state === CaptionState.SENT
+          ? { captionChannelMessageId: outcome.externalId }
+          : {})
+      }
       const changed = await tx.media.updateMany({
         where: { id: mediaId, storeId, messageId, captionState: CaptionState.QUEUED },
-        data: {
-          captionState: outcome.state,
-          ...(outcome.state === CaptionState.SENT
-            ? { captionChannelMessageId: outcome.externalId }
-            : {})
-        }
+        data
       })
       if (changed.count === 0) return
-      // The request is over unless another text of the message still waits
-      const waiting = await tx.media.count({
-        where: { storeId, messageId, captionState: CaptionState.QUEUED }
+      // The first file is also the message's, as the older screens and the echo of a message read it
+      if (file.position === 0) {
+        await tx.message.updateMany({ where: { id: messageId, storeId }, data })
+      }
+      // The request is over when no other text, edit or deletion of the message still waits: the time of the
+      // request is what the sweep finds a lost job by, and it belongs to all of them
+      const left = await tx.message.count({
+        where: {
+          id: messageId,
+          storeId,
+          OR: [
+            { captionState: CaptionState.QUEUED },
+            { editStatus: DeliveryStatus.QUEUED },
+            { deleteStatus: DeliveryStatus.QUEUED },
+            { media: { some: { captionState: CaptionState.QUEUED } } }
+          ]
+        }
       })
-      if (waiting === 0) {
+      if (left === 0) {
         await tx.message.updateMany({
           where: { id: messageId, storeId },
           data: { changeRequestedAt: null }

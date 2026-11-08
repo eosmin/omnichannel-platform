@@ -487,21 +487,39 @@ export class MessagesService {
       requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
       const file = await tx.media.findFirst({
         where: { id: mediaId, storeId, messageId },
-        select: { id: true, caption: true, captionState: true, position: true }
+        select: {
+          id: true,
+          caption: true,
+          captionState: true,
+          position: true,
+          deliveryStatus: true
+        }
       })
       if (file === null) throw resourceNotFound('media')
       const state = file.captionState
+      // The text of the first file is the text of the message (an edit settles there)
+      const text = file.position === 0 ? row.content : file.caption
       if (
         row.authorType !== String(AuthorType.AGENT) ||
         row.deletedAt !== null ||
         // The file itself must have gone: a file that failed is sent again whole, with its text
         row.deliveryStatus === String(DeliveryStatus.FAILED) ||
         row.deliveryStatus === String(DeliveryStatus.QUEUED) ||
-        file.caption === null ||
-        file.caption === '' ||
+        // The file itself must have gone: a text without its file is not what the agent meant
+        !['sent', 'delivered', 'read'].includes(file.deliveryStatus ?? '') ||
+        text === null ||
+        text === '' ||
         !ResendableCaptionStates.some(allowed => allowed === state)
       ) {
         throw resourceConflict('only the text of a file that was sent can be sent again')
+      }
+      // One request at a time for a message: each is checked against the version of the message, and two at
+      // once would leave the first job without its turn
+      const waitingTexts = await tx.media.count({
+        where: { storeId, messageId, captionState: CaptionState.QUEUED }
+      })
+      if (waitingTexts > 0 || row.captionState === CaptionState.QUEUED) {
+        throw resourceConflict('another text of this message is on its way')
       }
       if (
         row.editStatus === DeliveryStatus.QUEUED.valueOf() ||

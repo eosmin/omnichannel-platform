@@ -520,6 +520,46 @@ describe('Sending only the text under a file again', () => {
       expect((await resendFile(other.id, other.second, ctx.viewerA)).status).toBe(FORBIDDEN)
     })
 
+    it('takes one request at a time for a message: a second text waits for the first', async () => {
+      const { id, second } = await album(CaptionState.FAILED)
+      const third = (
+        await owner.media.findMany({ where: { messageId: id }, orderBy: { position: 'asc' } })
+      )[2]
+      await owner.media.update({
+        where: { id: third?.id ?? '' },
+        data: { caption: 'the text under the third', captionState: CaptionState.FAILED }
+      })
+      await resendFile(id, second).expect(OK)
+
+      const again = await resendFile(id, third?.id ?? '')
+
+      expect(again.status).toBe(CONFLICT)
+      expect((await fileRow(third?.id ?? '')).captionState).toBe(CaptionState.FAILED)
+    })
+
+    it('is refused for a text whose file did not go', async () => {
+      const { id, second } = await album(CaptionState.FAILED)
+      await owner.media.update({ where: { id: second }, data: { deliveryStatus: 'failed' } })
+
+      expect((await resendFile(id, second)).status).toBe(CONFLICT)
+    })
+
+    it('sends the text of the first file as the message has it now, after an edit', async () => {
+      const { id, first } = await album(null)
+      await owner.media.update({
+        where: { id: first },
+        data: { caption: 'stale before the edit', captionState: CaptionState.UNCONFIRMED }
+      })
+      await owner.message.update({ where: { id }, data: { content: 'the text after the edit' } })
+      await resendFile(id, first).expect(OK)
+
+      await sender.sendCaption(queuedJob(), false)
+
+      expect(sent.map(item => item.content)).toEqual(['the text after the edit'])
+      // The message carries the state of the first file too, for the older screens
+      expect(await row(id)).toMatchObject({ captionState: CaptionState.SENT })
+    })
+
     it('does not reach a message of another store', async () => {
       const mine = await album(CaptionState.FAILED)
 

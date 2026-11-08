@@ -612,6 +612,11 @@ export class OutboundSender {
       const apart = carriesNoCaption(args.channelType, args.messageType)
       const base = files.length === 1 ? messageId : `${messageId}-${file.position}`
       const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
+      // An apart text has its state written BEFORE the file goes: a process that dies between the file and its
+      // text leaves the text `unconfirmed`, which the agent can send again (a retry never sends a file twice)
+      if (apart && text !== '') {
+        await this.writeCaptionFacts(storeId, messageId, file, { state: CaptionState.UNCONFIRMED })
+      }
       try {
         const result = resultSchema.safeParse(
           await withTimeout(
@@ -647,7 +652,7 @@ export class OutboundSender {
         await this.markFile(storeId, messageId, file.id, { sent: result.data })
         // Written now and not at the end: a later file can fail with a retry, and the id of this text would
         // be lost with this memory (its echo would be stored as a message of the owner)
-        await this.recordCaption(storeId, messageId, file, result.data)
+        await this.recordCaptionSafely(storeId, messageId, file, result.data)
         if (file.index === 0) firstAccepted = result.data
         if (apart && text !== '') {
           await this.sendTextAfter(args, file, text, idempotencyKey)
@@ -733,6 +738,42 @@ export class OutboundSender {
     })
   }
 
+  // For the text sent after a file: a write that fails is logged and never escapes (the file is sent)
+  private async writeFactsSafely(
+    storeId: string,
+    messageId: string,
+    file: AttachmentToSend,
+    facts: { externalId?: string; state?: CaptionState }
+  ): Promise<void> {
+    try {
+      await this.writeCaptionFacts(storeId, messageId, file, facts)
+    } catch (error) {
+      this.logger.error(
+        { messageId, position: file.position, errorName: errorName(error) },
+        'the state of the text under a file was not written'
+      )
+    }
+  }
+
+  // The facts of a text are written after the provider answered for the file: a failure to write them must
+  // not become a failure of the file (it is sent already, and a retry would skip it and lose the text). The
+  // state stays as it was, which the agent can see and resend.
+  private async recordCaptionSafely(
+    storeId: string,
+    messageId: string,
+    file: AttachmentToSend,
+    accepted: z.infer<typeof resultSchema>
+  ): Promise<void> {
+    try {
+      await this.recordCaption(storeId, messageId, file, accepted)
+    } catch (error) {
+      this.logger.error(
+        { messageId, position: file.position, errorName: errorName(error) },
+        'the state of the text under a file was not written'
+      )
+    }
+  }
+
   private async writeCaptionFacts(
     storeId: string,
     messageId: string,
@@ -789,10 +830,10 @@ export class OutboundSender {
         )
       )
       if (!answer.success) {
-        await this.writeCaptionFacts(storeId, messageId, file, { state: CaptionState.UNCONFIRMED })
+        await this.writeFactsSafely(storeId, messageId, file, { state: CaptionState.UNCONFIRMED })
         return
       }
-      await this.writeCaptionFacts(storeId, messageId, file, {
+      await this.writeFactsSafely(storeId, messageId, file, {
         externalId: answer.data.externalId,
         state: CaptionState.SENT
       })
@@ -807,7 +848,7 @@ export class OutboundSender {
         },
         'sending the text under a file failed'
       )
-      await this.writeCaptionFacts(storeId, messageId, file, {
+      await this.writeFactsSafely(storeId, messageId, file, {
         state: isDefinitiveRefusal(error) ? CaptionState.FAILED : CaptionState.UNCONFIRMED
       })
     }

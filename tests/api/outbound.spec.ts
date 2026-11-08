@@ -1881,6 +1881,44 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
+    it('says a text sent apart is in doubt BEFORE its file goes, so a death in between can be resent', async () => {
+      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
+      let seen: string | null = null
+      duringMediaSend = async () => {
+        seen = (await filesOf(reply.id))[0]?.captionState ?? null
+      }
+
+      await sender.send(job(reply), false)
+
+      expect(seen).toBe(CaptionState.UNCONFIRMED)
+      expect((await filesOf(reply.id))[0]?.captionState).toBe(CaptionState.SENT)
+    })
+
+    it('does not make the file fail when the state of its text cannot be written after it went', async () => {
+      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
+      const original = prisma.client.media.updateMany.bind(prisma.client.media)
+      const failing = jest.spyOn(prisma.client.media, 'updateMany').mockImplementation(((args: {
+        data?: Record<string, unknown>
+      }) =>
+        // The state BEFORE the file (in doubt) is written; the one after the answer cannot be
+        args.data !== undefined &&
+        'captionState' in args.data &&
+        args.data['captionState'] !== CaptionState.UNCONFIRMED
+          ? Promise.reject(new Error('database went away'))
+          : original(args as never)) as never)
+      try {
+        await sender.send(job(reply), false)
+      } finally {
+        failing.mockRestore()
+      }
+
+      const [file] = await filesOf(reply.id)
+      expect(file?.deliveryStatus).toBe('sent')
+      // The text is left in doubt, which the agent can see and send again
+      expect(file?.captionState).toBe(CaptionState.UNCONFIRMED)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
     it('sends no text twice when a retry finds the files sent: nothing goes again', async () => {
       const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, ['one', 'two'])
       await sender.send(job(reply), false)
