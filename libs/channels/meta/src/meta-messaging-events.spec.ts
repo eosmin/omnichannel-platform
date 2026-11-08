@@ -284,6 +284,164 @@ describe('messagingToEvents', () => {
     })
   })
 
+  describe('a place that Instagram sends as a template', () => {
+    const template = (url: string | undefined, element: object = {}): object => ({
+      type: 'template',
+      payload: {
+        generic: {
+          elements: [
+            {
+              title: 'Mi casa',
+              subtitle: 'Colonia Escalón',
+              image_url: 'https://scontent.cdninstagram.com/v/map.jpg',
+              ...(url === undefined ? {} : { default_action: { type: 'web_url', url } }),
+              ...element
+            }
+          ]
+        }
+      }
+    })
+
+    it('is a location card when the link is a map with coordinates', () => {
+      const [event] = messagingToEvents(
+        wrap(
+          inbound({
+            mid: 'm1',
+            attachments: [template('https://maps.apple.com/?coordinate=13.69,-89.21')]
+          })
+        ),
+        OBJECT
+      )
+      expect(event?.message).toMatchObject({
+        type: MessageType.LOCATION,
+        content: 'Mi casa',
+        metadata: {
+          latitude: 13.69,
+          longitude: -89.21,
+          name: 'Mi casa',
+          address: 'Colonia Escalón'
+        }
+      })
+      expect(event?.message?.media).toBeUndefined()
+    })
+
+    it('reads the link of a button when the element has no default action', () => {
+      const [event] = messagingToEvents(
+        wrap(
+          inbound({
+            mid: 'm1',
+            attachments: [
+              template(undefined, {
+                buttons: [
+                  {
+                    type: 'web_url',
+                    url: 'https://www.google.com/maps/place/Casa/@13.69,-89.21,17z'
+                  }
+                ]
+              })
+            ]
+          })
+        ),
+        OBJECT
+      )
+      expect(event?.message?.type).toBe(MessageType.LOCATION)
+    })
+
+    it.each([
+      ['a link that is not a map', 'https://evil.example/?ll=13.69,-89.21'],
+      ['a short link with no coordinates', 'https://maps.app.goo.gl/abc'],
+      ['no link', undefined]
+    ])('stays the marker of an unsupported type with %s', (_name, url) => {
+      const [event] = messagingToEvents(
+        wrap(inbound({ mid: 'm1', attachments: [template(url)] })),
+        OBJECT
+      )
+      expect(event?.message).toMatchObject({
+        type: MessageType.TEXT,
+        content: '[template]',
+        metadata: { unsupportedType: 'template' }
+      })
+      // Whatever the template held, the title is not put in the message
+      expect(JSON.stringify(event?.message)).not.toContain('Mi casa')
+    })
+
+    it('is a location card even when the template has no title', () => {
+      const [event] = messagingToEvents(
+        wrap(
+          inbound({
+            mid: 'm1',
+            attachments: [
+              {
+                type: 'template',
+                payload: {
+                  generic: {
+                    elements: [
+                      { default_action: { url: 'https://maps.apple.com/?coordinate=13.69,-89.21' } }
+                    ]
+                  }
+                }
+              }
+            ]
+          })
+        ),
+        OBJECT
+      )
+      expect(event?.message).toMatchObject({
+        type: MessageType.LOCATION,
+        metadata: { latitude: 13.69, longitude: -89.21 }
+      })
+    })
+
+    it('reads the map link from a second element and names its fields', () => {
+      const [event] = messagingToEvents(
+        wrap(
+          inbound({
+            mid: 'm1',
+            attachments: [
+              {
+                type: 'template',
+                payload: {
+                  generic: {
+                    elements: [
+                      { title: 'Header' },
+                      {
+                        title: 'Casa',
+                        buttons: [{ url: 'https://maps.apple.com/?coordinate=13.69,-89.21' }]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          })
+        ),
+        OBJECT
+      )
+      expect(event?.message?.type).toBe(MessageType.LOCATION)
+    })
+
+    it('names the fields of the element for the team, never their values', () => {
+      const [event] = messagingToEvents(
+        wrap(inbound({ mid: 'm1', attachments: [template('https://evil.example/x?secret=1')] })),
+        OBJECT
+      )
+      const shape = event?.message?.metadata?.unsupportedShape as {
+        attachments: { elementFields: string[] }[]
+      }
+      expect(shape.attachments[0]?.elementFields).toEqual(
+        expect.arrayContaining([
+          'title',
+          'subtitle',
+          'image_url',
+          'default_action',
+          'default_action.url'
+        ])
+      )
+      expect(JSON.stringify(shape)).not.toContain('secret')
+      expect(JSON.stringify(shape)).not.toContain('Mi casa')
+    })
+  })
+
   it('keeps only the names of what a type it cannot read carried, for the team to map it later', () => {
     const [event] = messagingToEvents(
       wrap(
@@ -341,7 +499,15 @@ describe('messagingToEvents', () => {
           attachments: Array.from({ length: 20 }, () => ({
             type: 't'.repeat(32),
             ...names('f', 40),
-            payload: { url, ...nested }
+            payload: {
+              url,
+              ...nested,
+              generic: {
+                elements: [
+                  { ...names('e', 40), default_action: names('d', 40), buttons: [names('b', 40)] }
+                ]
+              }
+            }
           }))
         })
       ),
