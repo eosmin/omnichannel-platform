@@ -45,6 +45,7 @@ import { AwayReplyService } from './away-reply.service'
 import { recordOrigin } from './conversation-origin'
 import { type InboundEvent, type InboundOutcome, InboundOutcomes } from './inbound-event'
 import { receivedTime } from './inbound-time'
+import type { MissingTargetShape } from './missing-target-shape'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -127,10 +128,14 @@ export class InboundMessageService {
   }
 
   // Permanent, safe diagnostic: a quote that points at a message this thread does not have is stored as a plain
-  // message. Only the channel is logged, never an id, so the owner can tell "target not found" from a screen bug.
-  private warnIfQuoteLost(pluginId: string, unresolved: boolean): void {
-    if (unresolved)
-      this.logger.info({ pluginId }, 'an inbound message quotes a message that is not here')
+  // message. The channel and the SHAPE of the id (length, prefix, how many messages share it), never an id.
+  private warnIfQuoteLost(pluginId: string, unresolved: MissingTargetShape | null): void {
+    if (unresolved) {
+      this.logger.info(
+        { pluginId, target: unresolved },
+        'an inbound message quotes a message that is not here'
+      )
+    }
   }
 
   // The owner wrote to the customer from the provider's own app and the provider echoes it to us. It is
@@ -188,7 +193,7 @@ export class InboundMessageService {
     messageId: string
     duplicate: boolean
     fetchMedia: boolean
-    replyUnresolved: boolean
+    replyUnresolved: MissingTargetShape | null
   }> {
     const { storeId, connectionRowId, identityId } = where
     const identity = await tx.customerIdentity.findFirst({
@@ -229,7 +234,7 @@ export class InboundMessageService {
       return {
         messageId: known.id,
         duplicate: true,
-        replyUnresolved: false,
+        replyUnresolved: null,
         // The files of the owner's own message, if a failed first try left some out
         fetchMedia:
           known.authorType === String(AuthorType.EXTERNAL) &&
@@ -455,7 +460,7 @@ export class InboundMessageService {
     conversationId: string
     duplicate: boolean
     needsRouting: boolean
-    replyUnresolved: boolean
+    replyUnresolved: MissingTargetShape | null
   }> {
     const { storeId, connectionRowId, identityId } = where
     // Read after the lock: a merge may have moved the identity to another customer meanwhile
@@ -487,7 +492,7 @@ export class InboundMessageService {
         conversationId: known.conversationId,
         duplicate: true,
         needsRouting: false,
-        replyUnresolved: false
+        replyUnresolved: null
       }
     }
 

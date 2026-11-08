@@ -39,8 +39,8 @@ describe('Several pictures that a customer sends in a row', () => {
   let prisma: PrismaService
   let handle = 0
 
-  const warn = jest.fn()
-  const info = jest.fn()
+  const warn = jest.fn<void, [Record<string, unknown>, string]>()
+  const info = jest.fn<void, [Record<string, unknown>, string]>()
   let logger: PinoLogger
 
   beforeAll(async () => {
@@ -171,6 +171,9 @@ describe('Several pictures that a customer sends in a row', () => {
       }))
     }
   })
+  // The shape a log line of the last call carried
+  const targetOf = (log: typeof warn): Record<string, unknown> | undefined =>
+    (log.mock.calls.at(-1)?.[0] as { target?: Record<string, unknown> } | undefined)?.target
   const quoting = (
     connectionId: string,
     from: string,
@@ -234,10 +237,11 @@ describe('Several pictures that a customer sends in a row', () => {
     const connectionId = await connectionOf(ctx.storeA.id)
     const from = handleOf()
     await inbound.handleMessageReceived(TEST_CHANNEL_ID, quoting(connectionId, from, 'z1', 'gone'))
-    expect(info).toHaveBeenCalledWith(
-      { pluginId: TEST_CHANNEL_ID },
-      'an inbound message quotes a message that is not here'
-    )
+    // The shape of the id, not the id
+    expect(info).toHaveBeenCalledTimes(1)
+    expect(info.mock.calls[0]?.[1]).toBe('an inbound message quotes a message that is not here')
+    expect(targetOf(info)).toMatchObject({ length: 4, prefix: 'gon', recentCustomerMessages: 0 })
+    expect(JSON.stringify(info.mock.calls)).not.toContain('"gone"')
     const { messages } = await threadOf(ctx.storeA.id, from)
     expect(messages[0]?.replyToMessageId).toBeNull()
   })
@@ -255,9 +259,39 @@ describe('Several pictures that a customer sends in a row', () => {
     const from = handleOf()
     await inbound.handleMessageReceived(TEST_CHANNEL_ID, picture(connectionId, from, 'x1'))
     await expect(react(connectionId, from, 'gone', '👍')).resolves.toBe(ReactionOutcomes.IGNORED)
+    // x1 is a picture of the thread, so a target that starts like it is counted; the id itself never leaves
     expect(warn).toHaveBeenCalledWith(
-      { pluginId: TEST_CHANNEL_ID },
+      {
+        pluginId: TEST_CHANNEL_ID,
+        target: {
+          length: 4,
+          prefix: 'gon',
+          sameShortPrefix: 0,
+          sameLongPrefix: 0,
+          recentCustomerMessages: 1
+        }
+      },
       'reaction not applied: no message, customer or connection to attach it to'
     )
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('"gone"')
+  })
+
+  it('counts the prefix `m_` literally: the underscore is no wildcard', async () => {
+    const connectionId = await connectionOf(ctx.storeA.id)
+    const from = handleOf()
+    await inbound.handleMessageReceived(
+      TEST_CHANNEL_ID,
+      picture(connectionId, from, 'mXabcdefghij')
+    )
+    await inbound.handleMessageReceived(
+      TEST_CHANNEL_ID,
+      picture(connectionId, from, 'm_abcdefghij')
+    )
+    await react(connectionId, from, 'm_zzzzzzzzzz', '👍')
+    expect(targetOf(warn)).toMatchObject({ prefix: 'm_z', sameShortPrefix: 0, sameLongPrefix: 0 })
+    // `m_a` is on one stored id only, not on `mX…`
+    warn.mockClear()
+    await react(connectionId, from, 'm_abcdefghXX', '👍')
+    expect(targetOf(warn)).toMatchObject({ sameShortPrefix: 1, sameLongPrefix: 1 })
   })
 })
