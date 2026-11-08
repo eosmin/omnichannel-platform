@@ -178,6 +178,12 @@ export function BulkBar({
     },
     { ...keyboard, enabled: mayResolve }
   )
+  // The dialog of the options is for one conversation: with a selection the key is taken and does nothing, so
+  // that it never resolves the row that happens to be focused instead
+  useShortcut(Shortcuts.list.MARK_RESOLVED_OTHER_WAY, () => undefined, {
+    ...keyboard,
+    enabled: mayResolve
+  })
   // Escape drops the selection first and closes the conversation after
   useShortcut(Shortcuts.conversation.CLOSE, clear, { priority: ShortcutPriority.SELECTION })
 

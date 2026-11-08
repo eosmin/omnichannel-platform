@@ -137,4 +137,19 @@ describe('composer drafts', () => {
     expect(storage.getItem('other')).toBe('kept')
     expect(storage.length).toBe(1)
   })
+
+  it('says whether the storage kept the draft, so that nothing shows one that is not there', () => {
+    const refusing = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('quota')
+      },
+      removeItem: () => undefined
+    }
+
+    expect(writeDraft(refusing, scope, { text: 'Hi', isNote: false, mentions: [] })).toBe(false)
+    expect(
+      writeDraft(new MemoryStorage(), scope, { text: 'Hi', isNote: false, mentions: [] })
+    ).toBe(true)
+  })
 })

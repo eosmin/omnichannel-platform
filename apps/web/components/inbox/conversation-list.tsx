@@ -119,7 +119,8 @@ export function ConversationList({
   const nameOf = useCustomerNamer()
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null)
   const isSnoozeMounted = useMountedOnce(snoozeFor !== null)
-  const [resolveFor, setResolveFor] = useState<string | null>(null)
+  // The row a resolve runs for, and whether it is the way the main button does not take (`Shift+E`)
+  const [resolveFor, setResolveFor] = useState<{ id: string; otherWay: boolean } | null>(null)
 
   const focusRow = useCallback((id: string, attemptsLeft = FOCUS_ATTEMPTS): void => {
     const link = scrollRef.current?.querySelector<HTMLElement>(`[${ROW_ID_ATTRIBUTE}="${id}"] a`)
@@ -193,7 +194,17 @@ export function ConversationList({
       if (item === undefined || !canChangeState(item.status)) return false
       if (!runner.claim()) return
       // The flow of the store (reason, closing message), as in the open conversation
-      setResolveFor(item.id)
+      setResolveFor({ id: item.id, otherWay: false })
+    },
+    { enabled: mayResolve, priority: ShortcutPriority.FOCUSED_ROW }
+  )
+  useShortcut(
+    Shortcuts.list.MARK_RESOLVED_OTHER_WAY,
+    () => {
+      const item = focusedItem()
+      if (item === undefined || !canChangeState(item.status)) return false
+      if (!runner.claim()) return
+      setResolveFor({ id: item.id, otherWay: true })
     },
     { enabled: mayResolve, priority: ShortcutPriority.FOCUSED_ROW }
   )
@@ -359,8 +370,9 @@ export function ConversationList({
       ) : null}
       {resolveFor === null ? null : (
         <RowResolve
-          key={resolveFor}
-          conversationId={resolveFor}
+          key={`${resolveFor.id}-${resolveFor.otherWay}`}
+          conversationId={resolveFor.id}
+          otherWay={resolveFor.otherWay}
           onFinished={() => setResolveFor(null)}
         />
       )}

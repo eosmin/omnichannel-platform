@@ -8,11 +8,13 @@ import type { ReactElement } from 'react'
 import { AppPaths, type ConversationListItemView } from '@platform/api-client'
 import { ConversationStatusColors } from '@platform/core/domain'
 
+import { useDraftPreview } from '../../lib/inbox/composer-draft-index'
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { previewOf } from '../../lib/inbox/preview'
 import { relativeTime } from '../../lib/inbox/relative-time'
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
+import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 
 import { CustomerAvatar } from './customer-avatar'
@@ -50,6 +52,12 @@ export function ConversationItem({
     if (value.kind === 'text' && value.isNote) return t('notePrefix', { text })
     return value.byAgent ? t('youPrefix', { text }) : text
   }
+
+  // The unsent text of this conversation, kept in this tab by the composer: it takes the place of the preview
+  const userId = useProfile().data?.id
+  const draft = useDraftPreview(
+    userId === undefined ? null : { userId, storeId, conversationId: item.id }
+  )
 
   const when =
     item.lastMessageAt === null ? null : relativeTime(new Date(item.lastMessageAt), now, locale)
@@ -90,25 +98,33 @@ export function ConversationItem({
           )}
         </span>
         <span className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'truncate text-sm',
-              isUnread || asksAttention ? 'text-foreground' : 'text-muted-foreground'
-            )}
-          >
-            {body}
-          </span>
-          {isUnread ? (
-            <span className="bg-primary text-primary-foreground min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs">
-              <span aria-hidden>{item.unreadCount}</span>
-              <span className="sr-only">{t('unreadCount', { count: item.unreadCount })}</span>
+          {draft === null ? (
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate text-sm',
+                isUnread || asksAttention ? 'text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              {body}
             </span>
-          ) : null}
-        </span>
-        <span className="text-muted-foreground flex items-center gap-2 text-xs">
+          ) : (
+            // Text typed by this person and not sent: another colour and weight, and said to a screen reader
+            <span className="text-primary min-w-0 flex-1 truncate text-sm font-medium">
+              <span className="sr-only">{t('draftUnsent')}. </span>
+              {t(draft.isNote ? 'draftNote' : 'draft', { text: draft.text })}
+            </span>
+          )}
           {attention === null ? null : (
-            // The reminder is text of an agent: drawn as text (React escapes it), cut to the line
-            <span className="bg-primary/10 text-primary flex max-w-[10rem] min-w-0 shrink items-center gap-1 rounded px-1.5 font-medium">
+            // The reminder is text of an agent: drawn as text (React escapes it). It sits on the line of the
+            // preview, which gives way to it, so that the channel and the status below keep their room
+            <span
+              title={
+                attention.note === null || attention.note === ''
+                  ? t('woke')
+                  : t('wokeNote', { note: attention.note })
+              }
+              className="bg-primary/10 text-primary flex max-w-[45%] shrink-0 items-center gap-1 rounded px-1.5 text-xs font-medium"
+            >
               <Clock aria-hidden className="size-3 shrink-0" />
               <span className="truncate">
                 {attention.note === null || attention.note === ''
@@ -117,6 +133,14 @@ export function ConversationItem({
               </span>
             </span>
           )}
+          {isUnread ? (
+            <span className="bg-primary text-primary-foreground min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs">
+              <span aria-hidden>{item.unreadCount}</span>
+              <span className="sr-only">{t('unreadCount', { count: item.unreadCount })}</span>
+            </span>
+          ) : null}
+        </span>
+        <span className="text-muted-foreground flex items-center gap-2 text-xs">
           <span className="truncate">{channelName}</span>
           {status === null ? null : (
             <span className={cn('rounded px-1.5', ConversationStatusColors[status])}>

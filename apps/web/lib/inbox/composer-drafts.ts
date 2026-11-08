@@ -65,17 +65,20 @@ export function readDraft(
 }
 
 // An empty text removes the draft: nothing is kept for a box that holds nothing
+// Says whether it was kept (or removed) as asked: false when the storage refused, so that what shows the draft
+// elsewhere does not show one that is not there
 export function writeDraft(
   storage: DraftStorage,
   scope: DraftScope,
   draft: ComposerDraft,
   now: number = Date.now()
-): void {
+): boolean {
   try {
     if (draft.text.trim() === '') storage.removeItem(draftKey(scope))
     else storage.setItem(draftKey(scope), JSON.stringify({ ...draft, savedAt: now }))
+    return true
   } catch {
-    return // Quota or blocked storage: the draft is not kept, the box still works
+    return false // Quota or blocked storage: the draft is not kept, the box still works
   }
 }
 
