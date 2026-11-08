@@ -1048,6 +1048,7 @@
         "share": "El cliente compartió una publicación; este canal no deja ver su contenido",
         "location": "El cliente compartió una ubicación que este canal no deja ver",
         "media": "El cliente envió un archivo que no se pudo traer",
+        "notDelivered": "El cliente envió algo que el canal no entrega (por ejemplo un sticker o un me gusta). Ábrelo en la app del canal",
         "other": "El cliente envió algo que este canal no permite mostrar"
       },
       "captionFailed": "El archivo se envió, pero el texto que lo acompaña no",

@@ -1048,6 +1048,7 @@
         "share": "The customer shared a post; this channel does not let you see its content",
         "location": "The customer shared a location that this channel does not let you see",
         "media": "The customer sent a file that could not be fetched",
+        "notDelivered": "The customer sent something the channel does not deliver (for example a sticker or a like). Open it in the channel's app",
         "other": "The customer sent something this channel cannot show"
       },
       "captionFailed": "The file was sent, but the text under it was not",
