@@ -21,6 +21,7 @@ import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { type BulkPick, BulkPicks } from './bulk-picks'
 import { useConversationControls } from './conversation-controls'
 import { BulkPickDialog } from './lazy-dialogs'
+import { otherResolveMode } from './resolve-flow'
 
 // How long a key pressed before the settings of the store arrive waits for them
 const RESOLVE_WAIT_MS = 5000
@@ -116,6 +117,14 @@ export function ConversationShortcuts({
     () => {
       if (resolve.isReady) resolve.start()
       else setResolveWhenReady(true)
+    },
+    { ...keyboard, enabled: mayChange && mayResolve }
+  )
+  // The other way to resolve than the main button's: the dialog if the store resolves at once, and the reverse
+  useShortcut(
+    Shortcuts.conversation.MARK_RESOLVED_OTHER_WAY,
+    () => {
+      if (resolve.isReady) resolve.startWith(otherResolveMode(resolve.defaultMode))
     },
     { ...keyboard, enabled: mayChange && mayResolve }
   )

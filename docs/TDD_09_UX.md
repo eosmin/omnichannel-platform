@@ -125,14 +125,23 @@ Stored in `StoreSettings` (`resolveShowOptions`, `sendClosingMessage`, `closingS
 ```
 Settings → Store → Inbox behavior
 
-When marking a conversation as resolved:
-  (o) Show options    — closing message, reason, CSAT request
-  ( ) Resolve immediately — toast with Undo (10 seconds)
+When pressing Resolve:
+  (o) Resolve now (recommended)           — toast with Undo (10 seconds)
+  ( ) Ask for a closing message and a reason — the dialog: closing message, reason
 
-If resolving immediately:
+If resolving now:
   [x] Send default closing message   [Snippet: /gracias ▼]
   [ ] Request CSAT rating
 ```
+
+The Resolve control is a split button: the button takes the way the store chose, and its arrow always
+lists both ways ("Resolve now", "Resolve with closing message and reason…") and marks the one the button
+takes. `e` takes the default way and `Shift+E` the other, in the open conversation and on the focused row
+of the list; Ctrl/Cmd+Enter stays "send the message" in the composer (and confirms the dialog). With a
+selection, the bulk bar resolves at once (a dialog for many conversations is not offered) and `Shift+E`
+does nothing. A new store resolves now (the default of the column `resolve_show_options` is `false`); a
+store that exists keeps its value. The closing message is sent by the server once the Undo time is over,
+and not at all if the resolution was undone.
 
 Resolution reason is stored in `Conversation.resolutionReason` (free text, optional). CSAT:
 the closing message carries a 1-5 prompt; the customer's numeric reply within 24h is

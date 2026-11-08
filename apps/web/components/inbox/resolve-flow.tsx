@@ -29,12 +29,26 @@ const ResolveForm = dynamic(() => import('./resolve-form').then(module => module
   loading: () => <ResolveFormLoading />
 })
 
+// At once, with a toast to undo; or asking first for the closing message and the reason
+export const ResolveMode = { NOW: 'now', OPTIONS: 'options' } as const
+export type ResolveModeType = (typeof ResolveMode)[keyof typeof ResolveMode]
+
+// The way the arrow of the button and `Shift+E` offer: the one the main button does not take
+export function otherResolveMode(mode: ResolveModeType): ResolveModeType {
+  return mode === ResolveMode.NOW ? ResolveMode.OPTIONS : ResolveMode.NOW
+}
+
 export interface ResolveFlow {
   // False until the settings of the store are read: they decide which of the two flows runs
   isReady: boolean
   // The options dialog is showing: a caller that mounts the flow for one action waits for it to close
   isDialogOpen: boolean
+  // What the main button and the key `e` do: the way the store chose (see `ResolveMode`)
+  defaultMode: ResolveModeType
+  // The main action, the way the store chose
   start: () => void
+  // One of the two ways, whatever the store chose: the arrow of the button and `Shift+E` offer the other
+  startWith: (mode: ResolveModeType) => void
   // The options dialog, to render once where the flow is used
   dialog: ReactElement
 }
@@ -58,7 +72,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   const canSendClosing = windowState.kind !== 'closed' && can(ClientPermissions.MESSAGES_SEND)
   const settings = behavior.data
 
-  const start = (): void => {
+  const startWith = (mode: ResolveModeType): void => {
     if (resolve.isPending) return
     if (settings === undefined) {
       // The settings did not load: say so and ask again, instead of a button that does nothing
@@ -68,7 +82,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
       }
       return
     }
-    if (settings.resolveShowOptions) {
+    if (mode === ResolveMode.OPTIONS) {
       setDialogOpen(true)
       return
     }
@@ -94,21 +108,30 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
       .catch((error: unknown) => toast.error(errorText(error)))
   }
 
-  // The same function for the life of the hook: the header and the composer hold it in a context
+  const defaultMode = settings?.resolveShowOptions === true ? ResolveMode.OPTIONS : ResolveMode.NOW
+  const start = (): void => startWith(defaultMode)
+
+  // The same functions for the life of the hook: the header and the composer hold them in a context
   // A layout effect, so that it has run before any effect of a component that calls `start` when the settings
   // arrive (those run after it, with the settings that `start` has to read)
-  const latest = useRef(start)
+  const latest = useRef({ start, startWith })
   useLayoutEffect(() => {
-    latest.current = start
+    latest.current = { start, startWith }
   })
-  const stableStart = useCallback((): void => latest.current(), [])
+  const stableStart = useCallback((): void => latest.current.start(), [])
+  const stableStartWith = useCallback(
+    (mode: ResolveModeType): void => latest.current.startWith(mode),
+    []
+  )
 
   return {
     // Ready once the settings and the window are known (a failed read does not block: the click then
     // says what failed and reads again)
     isReady: !behavior.isPending && !windowQuery.isPending,
     isDialogOpen,
+    defaultMode,
     start: stableStart,
+    startWith: stableStartWith,
     dialog: (
       <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
