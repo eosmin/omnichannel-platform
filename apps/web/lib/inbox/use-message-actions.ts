@@ -20,7 +20,6 @@ import {
   reactToMessage,
   refetchFile,
   resendCaption,
-  resendMediaCaption,
   discardMessage,
   resendMessage,
   type RevisionView
@@ -44,8 +43,6 @@ export interface MessageMutations {
   resend: UseMutationResult<MessageView, Error, void>
   discard: UseMutationResult<void, Error, void>
   resendCaption: UseMutationResult<MessageView, Error, void>
-  // The text under one file of the message (its media id)
-  resendFileCaption: UseMutationResult<MessageView, Error, string>
   // The place of the file in the message
   refetchFile: UseMutationResult<MessageView, Error, number>
   edit: UseMutationResult<MessageView, Error, EditInput>
@@ -82,19 +79,9 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     onError: refresh
   })
   const resendCaptionOnly = useMutation({
-    // The same key as the texts under the files: the api takes one text at a time for a message
-    mutationKey: ['resend-file-caption', messageId],
     mutationFn: () => resendCaption(apiClient, storeId, messageId),
     onSuccess: refresh,
     // A 409 means the caption moved on (settled, or another agent asked): the thread says how it stands
-    onError: refresh
-  })
-  const resendFileCaption = useMutation({
-    // The same key for every file of the message: the api takes one text at a time for a message
-    mutationKey: ['resend-file-caption', messageId],
-    mutationFn: (mediaId: string) => resendMediaCaption(apiClient, storeId, messageId, mediaId),
-    onSuccess: refresh,
-    // A 409 means the text moved on (settled, or another request is on its way): the thread says how it stands
     onError: refresh
   })
   const refetchLostFile = useMutation({
@@ -118,7 +105,6 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     resend,
     discard,
     resendCaption: resendCaptionOnly,
-    resendFileCaption,
     refetchFile: refetchLostFile,
     edit,
     remove
