@@ -72,7 +72,6 @@ export function MessageMedia({
   messageId,
   conversationId,
   canRefetch,
-  canResendCaption = false,
   sticker = false,
   messageType,
   albumCaptions
@@ -82,8 +81,6 @@ export function MessageMedia({
   messageId: string
   conversationId: string
   canRefetch: boolean
-  // The agent may send the text under a file again
-  canResendCaption?: boolean
   sticker?: boolean
   // The type of the message: a voice note that is an mp4 is drawn by the player of audio (`mediaKindOf`)
   messageType: string
@@ -111,25 +108,12 @@ export function MessageMedia({
               inAlbum={album}
             />
             {states ? <FileDeliveryLine file={file} /> : null}
-            {albumCaptions === undefined ? (
-              <FileCaption
-                file={file}
-                messageId={messageId}
-                conversationId={conversationId}
-                canResend={canResendCaption}
-              />
-            ) : null}
+            {albumCaptions === undefined ? <FileCaption file={file} /> : null}
           </div>
         ))}
       </div>
       {albumCaptions === undefined ? null : (
-        <AlbumCaptionList
-          lines={albumCaptions.lines}
-          lead={albumCaptions.lead}
-          messageId={messageId}
-          conversationId={conversationId}
-          canResend={canResendCaption}
-        />
+        <AlbumCaptionList lines={albumCaptions.lines} lead={albumCaptions.lead} />
       )}
       {sayRetryOnlyFailed(files) ? <RetryHint /> : null}
       {unavailable.map(file => (

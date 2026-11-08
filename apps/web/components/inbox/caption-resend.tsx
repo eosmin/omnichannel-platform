@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import { asksBeforeResending, type FileCaptionView } from '../../lib/inbox/file-caption'
+import { asksBeforeResending } from '../../lib/inbox/caption-resend'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,10 +16,10 @@ import {
 } from '../ui/alert-dialog'
 import { Button } from '../ui/button'
 
-// The button to send a text again and the question that goes before it, the same for the text of a message and
-// for the one under a file. A text that failed is sent at once; one that got no clear answer may already be with
-// the customer, so the agent confirms first and is told they may see it twice. Never automatic. Loaded only when
-// a text is in one of those states (a rare one), so the thread does not carry it.
+// The button to send the text of a message again and the question that goes before it. A text that failed is
+// sent at once; one that got no clear answer may already be with the customer, so the agent confirms first and is
+// told they may see it twice. Never automatic. Loaded only when a text is in one of those states (a rare one),
+// so the thread does not carry it.
 export default function CaptionResend({
   label,
   state,
@@ -27,7 +27,7 @@ export default function CaptionResend({
   onSend
 }: {
   label: string
-  state: FileCaptionView['state']
+  state: Parameters<typeof asksBeforeResending>[0]
   // A text of this message is on its way: the api takes one at a time
   isBusy: boolean
   onSend: () => void
@@ -56,13 +56,13 @@ export default function CaptionResend({
       <AlertDialog open={isAsking} onOpenChange={setAsking}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('fileCaptionResendTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('fileCaptionResendMaybeSent')}</AlertDialogDescription>
+            <AlertDialogTitle>{t('captionResendTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('captionResendMaybeSent')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('fileCaptionResendCancel')}</AlertDialogCancel>
+            <AlertDialogCancel>{t('captionResendCancel')}</AlertDialogCancel>
             <AlertDialogAction disabled={isBusy} onClick={send}>
-              {t('fileCaptionResendConfirm')}
+              {t('captionResendConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
