@@ -5,10 +5,9 @@ import { AuthorType } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { addMessageTo, newConversationIn, storeIdNamed } from '../support/database'
+import { noonUtcDaysAgo, pinAccountToUtc } from '../support/day-anchor'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
-
-const DAY_MS = 24 * 60 * 60_000
 
 // The day of the top of the view floats while the reader scrolls a long thread (W3c). The pill of new
 // messages needs a message to arrive while the reader is above the end, which the database alone cannot
@@ -16,28 +15,37 @@ const DAY_MS = 24 * 60 * 60_000
 test.describe('reading a long thread', () => {
   let context: BrowserContext
   let page: Page
+  let restoreZone: () => Promise<void> = () => Promise.resolve()
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext()
     await reachServicesFromOwnAddress(context)
     page = await context.newPage()
+    // The days the page draws are the days of UTC, whatever the machine of the browser is in
+    restoreZone = await pinAccountToUtc('admin@test.com')
     await signIn(page, 'admin@test.com')
   })
   test.afterAll(async () => {
-    await context.close()
+    // The zone goes back even when the browser does not close well
+    try {
+      await context.close()
+    } finally {
+      await restoreZone()
+    }
   })
 
   test('shows the day of the top of the view while the reader scrolls up, and lets it go', async () => {
     await page.setViewportSize({ width: 1280, height: 600 })
     const storeId = await storeIdNamed('Main Store')
     const conversationId = await newConversationIn(storeId)
-    // Three days of messages, enough to scroll
+    // Three days of messages, enough to scroll, each day at noon: a run at midnight does not split a day in two
+    const now = Date.now()
     for (let day = 3; day >= 1; day -= 1) {
       for (let index = 0; index < 8; index += 1) {
         await addMessageTo(storeId, conversationId, {
           content: `Message ${day}-${index}`,
           authorType: index % 2 === 0 ? AuthorType.CUSTOMER : AuthorType.AGENT,
-          createdAt: new Date(Date.now() - day * DAY_MS + index * 60_000)
+          createdAt: new Date(noonUtcDaysAgo(day, now) + index * 60_000)
         })
       }
     }

@@ -11,6 +11,7 @@ import {
   statusOf,
   storeIdNamed
 } from '../support/database'
+import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
@@ -40,16 +41,24 @@ test.describe.serial('the inbox list', () => {
   let page: Page
   let storeId: string
   let newAddress: () => void
+  let restoreZone: () => Promise<void> = () => Promise.resolve()
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext()
     newAddress = await reachServicesFromOwnAddress(context)
     page = await context.newPage()
+    // The days the page draws are the days of UTC, whatever the machine of the browser is in
+    restoreZone = await pinAccountToUtc('admin@test.com')
     await signIn(page, 'admin@test.com')
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.afterAll(async () => {
-    await context.close()
+    // The zone goes back even when the browser does not close well
+    try {
+      await context.close()
+    } finally {
+      await restoreZone()
+    }
   })
   // The cases share one session but not one minute of the limit of the api: GET /conversations was called
   // 97 times of the 100 a minute by the cases together, and one more list request in a slow run was
@@ -343,12 +352,14 @@ test.describe.serial('the inbox list', () => {
   test('opening a conversation does not make the page scroll: the thread has its own scroll (W2)', async () => {
     const conversationId = await newConversationIn(storeId)
     // Sent replies carry a hidden text each ("Sent", `sr-only`, absolute): they must stay inside the thread
+    // One reading of the clock, and a window that does not cross midnight
+    const anchor = seedAnchor(14 * 60_000)
     for (let index = 0; index < 14; index += 1) {
       await addMessageTo(storeId, conversationId, {
         content: `Reply number ${index + 1}`,
         authorType: AuthorType.AGENT,
         deliveryStatus: DeliveryStatus.SENT,
-        createdAt: new Date(Date.now() - (14 - index) * 60_000)
+        createdAt: new Date(anchor - (14 - index) * 60_000)
       })
     }
     const measure = (): Promise<{

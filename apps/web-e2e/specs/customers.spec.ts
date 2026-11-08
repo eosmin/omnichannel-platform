@@ -17,6 +17,7 @@ import {
   storeIdNamed,
   withWhatsAppChannel
 } from '../support/database'
+import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
@@ -60,17 +61,25 @@ test.describe('customer merge and identities', () => {
   let context: BrowserContext
   let page: Page
   let storeId: string
+  let restoreZone: () => Promise<void> = () => Promise.resolve()
 
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext({ locale: 'en' })
     await reachServicesFromOwnAddress(context)
     page = await context.newPage()
+    // The days the page draws are the days of UTC, whatever the machine of the browser is in
+    restoreZone = await pinAccountToUtc(ADMIN)
     await signIn(page, ADMIN)
     storeId = await storeIdNamed(FIRST_STORE)
     await withWhatsAppChannel(storeId)
   })
   test.afterAll(async () => {
-    await context.close()
+    // The zone goes back even when the browser does not close well
+    try {
+      await context.close()
+    } finally {
+      await restoreZone()
+    }
   })
 
   test('merges two customers choosing the data to keep, and undoes it from the activity', async () => {
@@ -223,7 +232,9 @@ test.describe('customer merge and identities', () => {
       channelType: ChannelType.WHATSAPP,
       handle: handle.digits
     })
-    const at = (minutes: number): Date => new Date(Date.now() - minutes * 60_000)
+    // One reading of the clock, and a window that does not cross midnight
+    const anchor = seedAnchor(30 * 60_000)
+    const at = (minutes: number): Date => new Date(anchor - minutes * 60_000)
     await addCustomerFileTo(storeId, customerId, {
       filename: 'shoe.png',
       contentType: 'image/png',

@@ -15,6 +15,7 @@ import {
   type WidgetSite
 } from '../support/api'
 import { addMessageTo, storeIdNamed, unreadCountOf, withOwner } from '../support/database'
+import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 import { openSite, SITE_ORIGIN, startSite, STRICT_CSP } from '../support/widget-site'
@@ -57,15 +58,23 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
   let ownerToken: string
   let site: WidgetSite
   let stopSite: () => Promise<void>
+  let restoreZone: () => Promise<void> = () => Promise.resolve()
 
   test.beforeAll(async () => {
     storeId = await storeIdNamed(FIRST_STORE)
     ownerToken = await signInByApi(OWNER)
     site = await connectWidget(ownerToken, storeId, [SITE_ORIGIN])
     stopSite = await startSite(site.snippet)
+    // The days the agent's page draws are the days of UTC, whatever the machine of the browser is in
+    restoreZone = await pinAccountToUtc(AGENT)
   })
   test.afterAll(async () => {
-    await stopSite()
+    // The zone goes back even when the site does not stop well
+    try {
+      await stopSite()
+    } finally {
+      await restoreZone()
+    }
   })
 
   test('a visitor writes, an agent answers from the inbox and the visitor sees it', async ({
@@ -152,11 +161,13 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
           })
         ).id
     )
+    // One reading of the clock, and a window that does not cross midnight
+    const anchor = seedAnchor(60 * 60_000)
     for (let index = 0; index < 40; index += 1) {
       await addMessageTo(storeId, conversationId, {
         content: `Earlier message ${index + 1}`,
         authorType: index % 2 === 0 ? AuthorType.CUSTOMER : AuthorType.AGENT,
-        createdAt: new Date(Date.now() - (60 - index) * 60_000)
+        createdAt: new Date(anchor - (60 - index) * 60_000)
       })
     }
 
