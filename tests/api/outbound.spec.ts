@@ -1846,6 +1846,41 @@ describe('Replies on their way to a channel', () => {
       expect(took).toBeLessThan(STEP_OVERHEAD_BUDGET_MS)
     })
 
+    // The process died after the second file and before its text: what is left is the rows. The sweep queues
+    // the message again and the job that runs finds files 1 and 2 sent, the text of the first in doubt
+    it('resumes after a death in the middle: only what was not sent goes, and a text in doubt is not sent again', async () => {
+      const reply = await albumOf(
+        ChannelIds.WHATSAPP,
+        MessageType.AUDIO,
+        ['one', 'two', 'three'],
+        'audio/ogg'
+      )
+      await owner.media.updateMany({
+        where: { messageId: reply.id, position: { in: [0, 1] } },
+        data: { deliveryStatus: 'sent', channelMessageId: 'earlier' }
+      })
+      await owner.media.updateMany({
+        where: { messageId: reply.id, position: 0 },
+        data: { captionState: CaptionState.UNCONFIRMED }
+      })
+      // The mark an attempt that reached the provider leaves
+      await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
+
+      await sender.send(job(reply), false)
+
+      // Only the third file goes, and its text after it; the second text, which never had a state, is not
+      // invented, and the unconfirmed one of the first is not sent again by itself
+      expect(sentMedia.map(item => item.idempotencyKey)).toEqual([`${reply.id}-2`])
+      expect(sent.map(item => item.content)).toEqual(['three'])
+      const files = await filesOf(reply.id)
+      expect(files.map(file => [file.deliveryStatus, file.captionState])).toEqual([
+        ['sent', CaptionState.UNCONFIRMED],
+        ['sent', null],
+        ['sent', CaptionState.SENT]
+      ])
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
     it('sends no text twice when a retry finds the files sent: nothing goes again', async () => {
       const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, ['one', 'two'])
       await sender.send(job(reply), false)
