@@ -945,6 +945,11 @@
     "draft": "Borrador: «{text}»",
     "draftNote": "Nota (borrador): «{text}»",
     "draftUnsent": "Borrador sin enviar",
+    "draftFilter": "Con borrador",
+    "noDrafts": {
+      "title": "Sin borradores",
+      "body": "Ninguna conversación tiene un borrador sin enviar en esta pestaña."
+    },
     "wokeNote": "Despertó: {note}",
     "noMessages": "Aún no hay mensajes",
     "unreadCount": "{count, plural, one {# mensaje sin leer} other {# mensajes sin leer}}",
