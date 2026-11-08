@@ -501,6 +501,23 @@ describe('Replies on their way to a channel', () => {
         await undo(gone)
 
         expect(await owner.message.count({ where: { id: { in: [gone.id, other.id] } } })).toBe(2)
+        expect(eventsOf(Events.MESSAGE_DELETED)).toHaveLength(0)
+      })
+
+      it('is only for the one who queued it: another agent who undoes does not take it back', async () => {
+        const createdAt = new Date()
+        const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+        await owner.message.update({ where: { id: reply.id }, data: { authorId: ctx.agentA.id } })
+
+        await app
+          .get(ConversationsService, { strict: false })
+          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+            actor: viewerOf(ctx.adminA.id, Object.values(Permissions)),
+            undoesResolution: true
+          })
+
+        expect(await owner.message.count({ where: { id: reply.id } })).toBe(1)
+        expect(eventsOf(Events.MESSAGE_DELETED)).toHaveLength(0)
       })
 
       it('is only for the Undo: a reopening of a person does not reach into the thread', async () => {

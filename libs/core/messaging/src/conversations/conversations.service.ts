@@ -362,7 +362,13 @@ export class ConversationsService {
       from === ConversationStatus.RESOLVED &&
       to === ConversationStatus.OPEN
     ) {
-      await this.withdrawQueuedClosing(tx, storeId, conversationId, current.resolvedAt)
+      await this.withdrawQueuedClosing(
+        tx,
+        storeId,
+        conversationId,
+        current.resolvedAt,
+        options.actor === 'system' ? null : options.actor.userId
+      )
     }
     const event = systemEventFor(from, to, options.undoesResolution === true)
     if (event !== null) {
@@ -427,7 +433,9 @@ export class ConversationsService {
     tx: PrismaTransaction,
     storeId: string,
     conversationId: string,
-    resolvedAt: Date | null
+    resolvedAt: Date | null,
+    // The person who undoes: only the message they queued is theirs to take back. Null for the system.
+    undoneBy: string | null
   ): Promise<void> {
     if (resolvedAt === null) return
     const queued = await tx.message.findMany({
@@ -436,7 +444,8 @@ export class ConversationsService {
         conversationId,
         deliveryStatus: DeliveryStatus.QUEUED,
         failureDefinitive: null,
-        createdAt: { gte: resolvedAt }
+        createdAt: { gte: resolvedAt },
+        ...(undoneBy === null ? {} : { authorId: undoneBy })
       },
       select: { id: true, metadata: true }
     })
