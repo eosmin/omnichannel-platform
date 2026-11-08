@@ -675,14 +675,16 @@ export class MessagesService {
   ): Promise<boolean> {
     const linked = await db.media.findMany({
       where: { storeId, messageId },
-      select: { id: true, caption: true }
+      select: { id: true, caption: true, position: true }
     })
     if (linked.length !== body.mediaIds.length) return false
     const wanted = captionsOf(body)
     return body.mediaIds.every((id, place) => {
       const row = linked.find(file => file.id === id)
-      if (row === undefined) return false
-      const stored = row.caption ?? (place === 0 ? content : null)
+      // The same place: the same files in another order are another message
+      if (row === undefined || (row.position ?? 0) !== place) return false
+      // The text under the first file is the text of the message (an edit settles there)
+      const stored = place === 0 ? content : row.caption
       return stored === wanted[place]
     })
   }

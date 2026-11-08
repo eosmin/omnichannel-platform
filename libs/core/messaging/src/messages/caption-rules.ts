@@ -33,8 +33,13 @@ export function captionsOf(body: {
   content?: string | undefined
   captions?: readonly (string | null)[] | undefined
 }): (string | null)[] {
-  const given = body.captions ?? [body.content ?? null]
-  return body.mediaIds.map((_, place) => given[place] ?? null)
+  // `captions` wins for the places it names; the text under the first file is `content` when `captions` does
+  // not reach it, so that a request with both never loses the one text it carried
+  return body.mediaIds.map((_, place) => {
+    const named = body.captions?.[place]
+    if (named !== undefined) return named
+    return place === 0 ? (body.content ?? null) : null
+  })
 }
 
 // More texts than files, or a text under a file other than the first when the switch is off: the request

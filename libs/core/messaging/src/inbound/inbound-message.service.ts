@@ -140,11 +140,12 @@ export class InboundMessageService {
   ): Promise<void> {
     const targetId = event.message.replyToExternalId
     if (targetId === undefined) return
+    // A diagnostic: a failing read must not fail a message that is stored already
     const shape = await missingTargetShapeOrNull({
       targetId,
       now: new Date(),
       count: countersOf(this.prisma.client, { storeId, conversationId }, AuthorType.CUSTOMER)
-    })
+    }).catch(() => null)
     this.logger.info(
       { pluginId, ...(shape ? { target: shape } : {}) },
       'an inbound message quotes a message that is not here'
@@ -248,6 +249,8 @@ export class InboundMessageService {
       })) ??
       // A file after the first of a message of ours went as a message of its own: its id is on the file
       (await this.messageOfFile(tx, storeId, conversationIds, event.message.externalId)) ??
+      // The text under a file after the first, sent apart: its id is on the file
+      (await this.messageOfFileCaption(tx, storeId, conversationIds, event.message.externalId)) ??
       (await this.reconcileUnconfirmedCaption(tx, storeId, conversationIds, event))
     if (known !== null) {
       return {
@@ -345,6 +348,23 @@ export class InboundMessageService {
       where: {
         storeId,
         channelMessageId: externalId,
+        message: { conversationId: { in: conversationIds }, authorType: AuthorType.AGENT }
+      },
+      select: { message: { select: { id: true, authorType: true } } }
+    })
+    return file?.message ?? null
+  }
+
+  private async messageOfFileCaption(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationIds: string[],
+    externalId: string
+  ): Promise<{ id: string; authorType: string } | null> {
+    const file = await tx.media.findFirst({
+      where: {
+        storeId,
+        captionChannelMessageId: externalId,
         message: { conversationId: { in: conversationIds }, authorType: AuthorType.AGENT }
       },
       select: { message: { select: { id: true, authorType: true } } }

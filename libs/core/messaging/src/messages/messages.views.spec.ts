@@ -127,12 +127,13 @@ describe('messageView media', () => {
     const view = messageView({
       ...row(null),
       media: [
-        { ...file, id: 'f1', position: 0, caption: 'first', captionState: 'sent' },
+        { ...file, id: 'f1', position: 0, caption: 'stale', captionState: 'sent' },
         { ...file, id: 'f2', position: 1, caption: 'second <b>', captionState: 'weird' }
       ] as never
     })
+    // The first file shows the text of the message (what an edit settles); the others, their own
     expect(view.media.map(item => [item.caption, item.captionState])).toEqual([
-      ['first', 'sent'],
+      ['hola', 'sent'],
       ['second <b>', null]
     ])
   })

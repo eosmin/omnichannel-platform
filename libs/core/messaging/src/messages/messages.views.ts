@@ -388,7 +388,9 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
                 ? null
                 : enumValueOf(DeliveryStatuses, file.deliveryStatus, 'media delivery'),
             errorCode: file.sendErrorCode,
-            caption: file.caption,
+            // The text under the first file is the text of the message (what an edit settles, and what a
+            // message sent before each file had its own carries)
+            caption: file.position === 0 ? row.content : file.caption,
             captionState: captionStateOf(file.captionState)
           }))
         : [],

@@ -1368,7 +1368,7 @@ describe('Tenant isolation', () => {
         data: {
           storeId: ctx.storeA.id,
           conversationId,
-          type: 'image',
+          type: MessageType.IMAGE,
           content: 'private text under a file',
           authorType: 'agent'
         },
@@ -1397,7 +1397,7 @@ describe('Tenant isolation', () => {
       const write = await asB()
         .post(ApiRoutes.messages.create)
         .send({
-          type: 'image',
+          type: MessageType.IMAGE,
           conversationId,
           mediaIds: [mediaId],
           captions: ['hijacked'],
@@ -1406,7 +1406,7 @@ describe('Tenant isolation', () => {
 
       expect(thread.status).toBe(404)
       expect(JSON.stringify([thread.body, list.body])).not.toContain('private text under a file')
-      expect([404, 400]).toContain(write.status)
+      expect(write.status).toBe(404)
       const after = await owner.media.findUniqueOrThrow({
         where: { id: mediaId },
         select: { caption: true, messageId: true }
