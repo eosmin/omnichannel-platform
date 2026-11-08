@@ -342,6 +342,70 @@ describe('Replies on their way to a channel', () => {
       expect(conversation.firstResponseAt).toEqual(createdAt)
     })
 
+    // The Undo and the send are two transactions at once: the Undo holds the row of the conversation,
+    // reopened, and has not committed when the worker starts to look at it. A reply sent to a customer
+    // cannot be taken back, so the worker must wait for that row and read the conversation again.
+    it('is not sent when an Undo that reopens the conversation commits after the worker began', async () => {
+      const createdAt = new Date()
+      const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+      let release = (): void => undefined
+      const held = new Promise<void>(resolve => {
+        release = resolve
+      })
+      let locked = (): void => undefined
+      const undoHoldsTheRow = new Promise<void>(resolve => {
+        locked = resolve
+      })
+      const undo = prisma.transaction(async tx => {
+        await app
+          .get(ConversationsService, { strict: false })
+          .applyStatus(tx, reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+            actor: 'system'
+          })
+        locked()
+        await held
+      })
+      await undoHoldsTheRow
+
+      const sending = sender.send(job(reply), false)
+      // The worker has had time to read the conversation and, with no lock, to go on to the provider
+      await new Promise(resolve => setTimeout(resolve, 500))
+      release()
+      await undo
+      await Promise.race([
+        sending,
+        new Promise((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error('the send did not finish: a lock was not released')),
+            5_000
+          )
+        )
+      ])
+
+      expect(sent).toHaveLength(0)
+      expect(await owner.message.count({ where: { id: reply.id } })).toBe(0)
+    })
+
+    // By design: past the point of no return (the 10 s of the Undo and the 2 s of grace are over) the
+    // reply is on its way to the customer, and the lock is not held while the provider is asked
+    it('is not taken back by an Undo that comes while the provider is being asked', async () => {
+      const createdAt = new Date()
+      const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+      sendMessage = async (channelContext, params) => {
+        await app
+          .get(ConversationsService, { strict: false })
+          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+            actor: 'system'
+          })
+        return accept(channelContext, params)
+      }
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(1)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
     it('is deleted, never sent and never counted, when the Undo reopened the conversation', async () => {
       const createdAt = new Date()
       const reply = await queuedReply({

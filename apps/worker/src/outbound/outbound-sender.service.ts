@@ -29,6 +29,8 @@ import {
   ConversationsService,
   enumValueOf,
   isClosingMessage,
+  lockConversationForWrite,
+  lockMessageRow,
   MessagingWindowService,
   publishMessageChanged,
   templateMetadataSchema
@@ -140,7 +142,7 @@ export class OutboundSender {
     // Whatever an earlier attempt left: from here on a failure is definitive only if nothing before it may have gone
     const tainted = message.failureDefinitive === false
     const isClosing = isClosingMessage(message.metadata)
-    if (isClosing && !(await this.discardUnlessStanding(storeId, messageId, message))) return
+    if (isClosing && !(await this.claimClosingMessage(storeId, messageId, message))) return
 
     const { channelConnection: connection, channelType, customerIdentity } = message.conversation
     // A connection of an installation that is not active sends nothing, as a disconnected one
@@ -275,30 +277,50 @@ export class OutboundSender {
   // the customer, reopened the conversation, and one resolved again since is another resolution with
   // its own message. A message that does not go is deleted: it was never sent, so it leaves no trace
   // (`failed` would show a red bubble, and a `queued` one would be requeued by the sweep).
-  private async discardUnlessStanding(
+  //
+  // The check and the mark of "may have gone" are one step under the lock of the conversation, the one
+  // the Undo takes: a reply to a customer cannot be taken back, so an Undo that committed before this
+  // lock is seen and the message is dropped, and one that comes after it finds a message past the point
+  // of no return (the 10 s of the Undo and the 2 s of grace are over). The lock is held for these
+  // statements only, never while the provider is asked, and the order is the one of every writer of a
+  // thread: the conversation, then the message.
+  private async claimClosingMessage(
     storeId: string,
     messageId: string,
-    message: {
-      conversation: { id: string; status: string; resolvedAt: Date | null }
-      createdAt: Date
-    }
+    message: { conversation: { id: string }; createdAt: Date }
   ): Promise<boolean> {
-    const { conversation } = message
-    // The window was open when the agent resolved; it may have closed during the wait, and free text
-    // sent after it would only come back as a red bubble
-    const stands =
-      conversation.status === String(ConversationStatus.RESOLVED) &&
-      conversation.resolvedAt !== null &&
-      conversation.resolvedAt <= message.createdAt &&
-      (await this.window.isOpen(this.prisma.client, storeId, conversation.id))
-    if (stands) return true
-    await this.prisma.transaction(async tx => {
-      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
-      await tx.message.deleteMany({
+    const conversationId = message.conversation.id
+    return this.prisma.transaction(async tx => {
+      const conversation = await lockConversationForWrite(tx, storeId, conversationId)
+      await lockMessageRow(tx, messageId)
+      const stillQueued = await tx.message.count({
         where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED }
       })
+      // The window was open when the agent resolved; it may have closed during the wait, and free text
+      // sent after it would only come back as a red bubble
+      const stands =
+        stillQueued === 1 &&
+        conversation.status === String(ConversationStatus.RESOLVED) &&
+        conversation.resolvedAt !== null &&
+        conversation.resolvedAt <= message.createdAt &&
+        (await this.window.isOpen(tx, storeId, conversationId))
+      if (stands) {
+        // What `markInFlight` writes before the provider is asked, written here with the check so that
+        // nothing sits between them (a process that dies after this leaves the same mark as before)
+        await tx.message.updateMany({
+          where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED },
+          data: { failureDefinitive: false }
+        })
+        return true
+      }
+      if (stillQueued === 1) {
+        await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
+        await tx.message.deleteMany({
+          where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED }
+        })
+      }
+      return false
     })
-    return false
   }
 
   // The provider has the message: nothing here may make it be sent again. A write that fails is tried
