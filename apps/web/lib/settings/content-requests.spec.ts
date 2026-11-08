@@ -135,13 +135,17 @@ describe('inbox and preferences requests', () => {
     expect(bodyOf(call()[1])).toEqual({ autoArchiveAfterDays: 14 })
   })
 
-  it('reads and puts the read-receipts switch, and nothing else', async () => {
-    const read = setup({ sendReadReceipts: true })
-    await expect(fetchPreferences(read.client, 's-1')).resolves.toEqual({ sendReadReceipts: true })
+  it('reads and puts the switches of the store preferences, one key at a time', async () => {
+    const view = { sendReadReceipts: true, assignOnReply: true }
+    const read = setup(view)
+    await expect(fetchPreferences(read.client, 's-1')).resolves.toEqual(view)
     expect(read.call()[0]).toBe('https://api.example.com/api/v1/settings/preferences')
-    const put = setup({ sendReadReceipts: false })
+    const put = setup({ ...view, sendReadReceipts: false })
     await savePreferences(put.client, 's-1', { sendReadReceipts: false })
     expect(put.call()[1]?.method).toBe('PUT')
     expect(bodyOf(put.call()[1])).toEqual({ sendReadReceipts: false })
+    const second = setup({ ...view, assignOnReply: false })
+    await savePreferences(second.client, 's-1', { assignOnReply: false })
+    expect(bodyOf(second.call()[1])).toEqual({ assignOnReply: false })
   })
 })

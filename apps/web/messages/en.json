@@ -1154,6 +1154,7 @@
         "snoozedUntil": "until {until}",
         "woken": "{actorKind, select, user {Reopened by {actor}} other {Woke up}}",
         "assigned": "{actorKind, select, user {{actor} assigned it to {assignee}} other {Assigned to {assignee}}}",
+        "assigned_on_reply": "{actor} took it by replying",
         "unassigned": "{actorKind, select, user {{actor} left it unassigned} other {Left unassigned}}",
         "unknown": "The conversation changed",
         "reason": "Reason: {reason}",
@@ -2401,6 +2402,15 @@
         "archiveDays": "The archive time must be a whole number of days from 1 to 365.",
         "loadThreshold": "The load threshold must be a whole number from 1 to 100.",
         "closingSnippetRequired": "Choose the snippet to send as the closing message."
+      },
+      "assignOnReply": {
+        "label": "Assign on reply",
+        "title": "Assign on reply",
+        "switch": "Assign me when I reply",
+        "hint": "If you reply to a conversation nobody has, it is assigned to you (only for who can assign).",
+        "save": "Save",
+        "saved": "Assign on reply saved",
+        "readOnly": "You can see this setting but not change it."
       },
       "receipts": {
         "label": "Read receipts",

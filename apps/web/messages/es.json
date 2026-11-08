@@ -1154,6 +1154,7 @@
         "snoozedUntil": "hasta {until}",
         "woken": "{actorKind, select, user {Reabierta por {actor}} other {Despertó}}",
         "assigned": "{actorKind, select, user {{actor} la asignó a {assignee}} other {Asignada a {assignee}}}",
+        "assigned_on_reply": "{actor} se la asignó al responder",
         "unassigned": "{actorKind, select, user {{actor} la dejó sin asignar} other {Quedó sin asignar}}",
         "unknown": "La conversación cambió",
         "reason": "Motivo: {reason}",
@@ -2401,6 +2402,15 @@
         "archiveDays": "El tiempo de archivo debe ser un número entero de días de 1 a 365.",
         "loadThreshold": "El umbral de carga debe ser un número entero de 1 a 100.",
         "closingSnippetRequired": "Elige la respuesta que se envía como mensaje de cierre."
+      },
+      "assignOnReply": {
+        "label": "Asignar al responder",
+        "title": "Asignar al responder",
+        "switch": "Asignarme al responder",
+        "hint": "Si respondes a una conversación sin responsable, queda asignada a ti (solo quien puede asignar).",
+        "save": "Guardar",
+        "saved": "Asignar al responder guardado",
+        "readOnly": "Puedes ver este ajuste pero no cambiarlo."
       },
       "receipts": {
         "label": "Confirmaciones de lectura",
