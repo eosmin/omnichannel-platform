@@ -17,7 +17,7 @@ import {
   ChannelType,
   type DeliveryStatus,
   MediaStatus,
-  type MessageType,
+  MessageType,
   OriginKinds,
   OriginMediaSlots,
   type SystemMessageEvent
@@ -268,7 +268,8 @@ export function messagesOf(
 ): Promise<{ content: string | null; idempotencyKey: string | null }[]> {
   return withOwner(owner =>
     owner.message.findMany({
-      where: { conversationId },
+      // What somebody wrote: the lines of the system (resolved, assigned on a reply...) are not messages
+      where: { conversationId, type: { not: MessageType.SYSTEM } },
       select: { content: true, idempotencyKey: true }
     })
   )
