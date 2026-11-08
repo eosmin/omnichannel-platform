@@ -945,6 +945,11 @@
     "draft": "Draft: “{text}”",
     "draftNote": "Note (draft): “{text}”",
     "draftUnsent": "Unsent draft",
+    "draftFilter": "With draft",
+    "noDrafts": {
+      "title": "No drafts",
+      "body": "No conversation has an unsent draft in this tab."
+    },
     "wokeNote": "Woke up: {note}",
     "noMessages": "No messages yet",
     "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",

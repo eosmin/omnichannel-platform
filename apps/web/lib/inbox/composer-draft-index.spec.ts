@@ -1,9 +1,11 @@
 import {
+  conversationIdsWithDraft,
   previewOfDraft,
   publishDraft,
   resetDraftIndex,
   subscribeToDrafts
 } from './composer-draft-index'
+import { DRAFT_MAX_AGE_MS } from './composer-drafts'
 
 describe('previewOfDraft', () => {
   it('keeps one line, trimmed, and the kind', () => {
@@ -53,5 +55,78 @@ describe('the index of drafts of the list', () => {
     resetDraftIndex()
     expect(heard).toHaveBeenCalledTimes(1)
     stop()
+  })
+})
+
+describe('the conversations with a draft', () => {
+  afterEach(() => resetDraftIndex())
+
+  it('lists, sorted, those of this person in this store that hold text, and follows what is typed and sent', () => {
+    publishDraft(
+      { userId: 'u1', storeId: 's1', conversationId: 'c2' },
+      { text: 'b', isNote: false }
+    )
+    publishDraft({ userId: 'u1', storeId: 's1', conversationId: 'c1' }, { text: 'a', isNote: true })
+    // Another store and another person are not in it, and spaces only is no draft
+    publishDraft(
+      { userId: 'u1', storeId: 's2', conversationId: 'c3' },
+      { text: 'c', isNote: false }
+    )
+    publishDraft(
+      { userId: 'u2', storeId: 's1', conversationId: 'c4' },
+      { text: 'd', isNote: false }
+    )
+    publishDraft(
+      { userId: 'u1', storeId: 's1', conversationId: 'c5' },
+      { text: '  ', isNote: false }
+    )
+
+    expect(conversationIdsWithDraft('u1', 's1')).toEqual(['c1', 'c2'])
+
+    publishDraft({ userId: 'u1', storeId: 's1', conversationId: 'c1' }, { text: '', isNote: true })
+    expect(conversationIdsWithDraft('u1', 's1')).toEqual(['c2'])
+  })
+
+  it('gives the same array while nothing changed, so that what depends on it does not run again', () => {
+    publishDraft(
+      { userId: 'u1', storeId: 's1', conversationId: 'c1' },
+      { text: 'a', isNote: false }
+    )
+    const first = conversationIdsWithDraft('u1', 's1')
+
+    expect(conversationIdsWithDraft('u1', 's1')).toBe(first)
+    // A change of text keeps the ids, and so the array
+    publishDraft(
+      { userId: 'u1', storeId: 's1', conversationId: 'c1' },
+      { text: 'ab', isNote: false }
+    )
+    expect(conversationIdsWithDraft('u1', 's1')).toBe(first)
+  })
+
+  it('is empty after the session ends', () => {
+    publishDraft(
+      { userId: 'u1', storeId: 's1', conversationId: 'c1' },
+      { text: 'a', isNote: false }
+    )
+    resetDraftIndex()
+
+    expect(conversationIdsWithDraft('u1', 's1')).toEqual([])
+  })
+
+  it('drops a draft that is old enough to be dropped, with no other change to make it look again', () => {
+    const real = Date.now()
+    const spy = jest.spyOn(Date, 'now').mockReturnValue(real)
+    try {
+      publishDraft(
+        { userId: 'u1', storeId: 's1', conversationId: 'c1' },
+        { text: 'a', isNote: false }
+      )
+      expect(conversationIdsWithDraft('u1', 's1')).toEqual(['c1'])
+
+      spy.mockReturnValue(real + DRAFT_MAX_AGE_MS + 1000)
+      expect(conversationIdsWithDraft('u1', 's1')).toEqual([])
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

@@ -48,3 +48,26 @@ export function paramsFromFilters(filters: ConversationFilters): URLSearchParams
 }
 
 export const hasFilters = (filters: ConversationFilters): boolean => Object.keys(filters).length > 0
+
+// "With draft" is not a filter of the api: the drafts live in this tab, so it is kept in the address (a reload keeps
+// the view, as the drafts stay in the tab) apart from the filters, and nothing of it is sent to the server
+export const DRAFT_FILTER_PARAM = 'draft'
+const DRAFT_FILTER_ON = '1'
+
+export const onlyDraftsFromParams = (params: URLSearchParams): boolean =>
+  params.get(DRAFT_FILTER_PARAM) === DRAFT_FILTER_ON
+
+// The query kept on the links to a conversation: the filters and, if it is on, the draft view
+export function searchOf(filters: ConversationFilters, onlyDrafts: boolean): string {
+  const params = paramsFromFilters(filters)
+  if (onlyDrafts) params.set(DRAFT_FILTER_PARAM, DRAFT_FILTER_ON)
+  const query = params.toString()
+  return query === '' ? '' : `?${query}`
+}
+
+export function withOnlyDrafts(params: URLSearchParams, onlyDrafts: boolean): URLSearchParams {
+  const next = new URLSearchParams(params)
+  if (onlyDrafts) next.set(DRAFT_FILTER_PARAM, DRAFT_FILTER_ON)
+  else next.delete(DRAFT_FILTER_PARAM)
+  return next
+}
