@@ -41,7 +41,7 @@ export function ResolveForm({
   const tAll = useTranslations()
   const { storeId, can } = useStore()
   const snippets = useSnippets(storeId, true)
-  const { resolve, reopen } = useConversationActions(storeId, conversationId)
+  const { resolve, undoResolve } = useConversationActions(storeId, conversationId)
   const { offer: offerPush } = usePushOffer(storeId)
   const [wantsClosing, setWantsClosing] = useState(defaults.sendClosingMessage)
   const [snippetId, setSnippetId] = useState(defaults.closingSnippetId ?? '')
@@ -86,7 +86,9 @@ export function ResolveForm({
             action: {
               label: tAll('common.undo'),
               onClick: () =>
-                void reopen.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
+                void undoResolve
+                  .mutateAsync()
+                  .catch((error: unknown) => toast.error(errorText(error)))
             }
           })
           offerPush()

@@ -27,6 +27,8 @@ export type AttentionReason = (typeof AttentionReasons)[keyof typeof AttentionRe
 export const SystemMessageEvents = {
   RESOLVED: 'resolved',
   REOPENED: 'reopened',
+  // The Undo of a resolution just made: the history keeps both lines, the second says it was taken back
+  RESOLVE_UNDONE: 'resolve_undone',
   ARCHIVED: 'archived',
   MARKED_SPAM: 'marked_spam',
   UNMARKED_SPAM: 'unmarked_spam',
