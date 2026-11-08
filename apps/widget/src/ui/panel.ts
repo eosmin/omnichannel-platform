@@ -383,9 +383,22 @@ export function mountPanel(props: PanelProps): Panel | null {
     const mine = message.from === WidgetAuthors.VISITOR
     const author = el('span', 'sr-only', [mine ? text.you : text.team])
     const item = el('div', `msg msg--${mine ? 'visitor' : 'team'} msg--${message.state}`, [author])
-    item.append(...message.attachments.map(fileRow))
-    // A message of only files has no text to put in a bubble
-    if (message.content !== '') item.append(el('p', 'bubble', [message.content]))
+    const bubble = (content: string): HTMLElement => el('p', 'bubble', [content])
+    const textOf = (attachment: Attachment): string =>
+      typeof attachment.caption === 'string' ? attachment.caption : ''
+    // The api gives each file its own text (the first one's too): when any has one, the texts go under
+    // their files and the text of the message is not drawn again. Otherwise (a message from before, a
+    // message of one text and no files) the text is one bubble after the files.
+    if (message.attachments.some(attachment => textOf(attachment) !== '')) {
+      for (const attachment of message.attachments) {
+        item.append(fileRow(attachment))
+        if (textOf(attachment) !== '') item.append(bubble(textOf(attachment)))
+      }
+    } else {
+      item.append(...message.attachments.map(fileRow))
+      // A message of only files has no text to put in a bubble
+      if (message.content !== '') item.append(bubble(message.content))
+    }
     if (message.progress !== null) {
       const bar = el('progress', 'progress')
       bar.max = 1

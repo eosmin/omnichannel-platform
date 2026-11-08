@@ -17,6 +17,9 @@ export interface WidgetAttachmentView {
   filename: string
   contentType: string
   size: number
+  // The text under this file, the first one included (null: none, or a message from before the places).
+  // Whoever draws the message puts each text under its file: `content` is not drawn again beside them.
+  caption: string | null
 }
 
 // A message as the visitor sees it: who (their side or the store's), what, and when. Nothing about the
@@ -44,8 +47,20 @@ export const WIDGET_VISIBLE_TYPES = [
 // an ad) that the scan found clean
 export const WIDGET_FILES_SELECT = {
   where: { purpose: MediaPurpose.MESSAGE, status: MediaStatus.CLEAN },
-  select: { id: true, filename: true, contentType: true, fileSize: true },
-  orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
+  select: {
+    id: true,
+    filename: true,
+    contentType: true,
+    fileSize: true,
+    position: true,
+    caption: true
+  },
+  // The order the agent chose (`position`, a message from before it last), then the upload
+  orderBy: [
+    { position: { sort: 'asc' as const, nulls: 'last' as const } },
+    { createdAt: 'asc' as const },
+    { id: 'asc' as const }
+  ]
 }
 
 export interface VisitorMessagesWhere {
@@ -97,23 +112,35 @@ interface MessageRow {
   content: string | null
   authorType: string
   createdAt: Date
-  media: { id: string; filename: string; contentType: string; fileSize: number }[]
+  media: {
+    id: string
+    filename: string
+    contentType: string
+    fileSize: number
+    position: number | null
+    caption: string | null
+  }[]
 }
 
 // A message with neither text nor a file the visitor can have yet (a file still being scanned, or an
 // infected one) has nothing to show
 export function widgetMessageView(row: MessageRow): WidgetMessageView | null {
   if (row.content === null && row.media.length === 0) return null
+  // The text of a message is the text under its first file. When that file is not given to the visitor
+  // (still scanned, or infected), the text is not shown under another file or beside the rest.
+  const placed = row.media.some(file => file.position !== null)
+  const firstHidden = placed && !row.media.some(file => file.position === 0)
   return {
     id: row.id,
     from:
       row.authorType === String(AuthorType.CUSTOMER) ? WidgetAuthors.VISITOR : WidgetAuthors.TEAM,
-    content: row.content ?? '',
+    content: firstHidden ? '' : (row.content ?? ''),
     attachments: row.media.map(file => ({
       id: file.id,
       filename: file.filename,
       contentType: file.contentType,
-      size: file.fileSize
+      size: file.fileSize,
+      caption: file.position === 0 ? row.content : file.position === null ? null : file.caption
     })),
     createdAt: row.createdAt.toISOString()
   }

@@ -18,6 +18,8 @@ export interface Attachment {
   filename: string
   contentType: string
   size: number
+  // The text under this file (the files after the first; the first one's is the `content` of the message)
+  caption?: string | null
 }
 
 // What `POST /widget/download-url` answers

@@ -276,6 +276,25 @@ describe('WebWidgetPlugin', () => {
       expect(result).toMatchObject({ externalId: 'm2', status: DeliveryStatus.SENT })
     })
 
+    it('answers each file of a message with its own id, with or without a text of its own', async () => {
+      const send = (idempotencyKey: string, caption?: string) =>
+        plugin.sendMedia(ctx, {
+          channelIdentity: visitorId,
+          fileSize: 1,
+          openFile: sendsByLink,
+          contentType: 'image/png',
+          filename: 'a.png',
+          ...(caption === undefined ? {} : { caption }),
+          idempotencyKey
+        })
+
+      const sent = await Promise.all([send('m-0', 'uno'), send('m-1', 'dos'), send('m-2')])
+
+      expect(sent.map(result => result.externalId)).toEqual(['m-0', 'm-1', 'm-2'])
+      // the text reaches the visitor from the api: the plugin neither sends it apart nor answers an id for it
+      expect(sent.map(result => result.metadata)).toEqual([undefined, undefined, undefined])
+    })
+
     it('holds a file to what it declares: a size over the limit and a size that makes no sense', async () => {
       const file = (fileSize: number) => ({
         channelIdentity: visitorId,
