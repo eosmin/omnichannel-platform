@@ -131,22 +131,6 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
           <input
             type="radio"
             name={`${idPrefix}-resolve`}
-            checked={draft.resolveShowOptions}
-            onChange={() => set({ resolveShowOptions: true })}
-            disabled={disabled}
-            className="mt-1"
-          />
-          <span>
-            {t('resolve.showOptions')}
-            <span className="text-muted-foreground block text-xs">
-              {t('resolve.showOptionsHint')}
-            </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="radio"
-            name={`${idPrefix}-resolve`}
             checked={!draft.resolveShowOptions}
             onChange={() => set({ resolveShowOptions: false })}
             disabled={disabled}
@@ -156,6 +140,22 @@ function BehaviorForm({ saved: loaded }: { saved: InboxSettingsView }): ReactEle
             {t('resolve.immediately')}
             <span className="text-muted-foreground block text-xs">
               {t('resolve.immediatelyHint')}
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="radio"
+            name={`${idPrefix}-resolve`}
+            checked={draft.resolveShowOptions}
+            onChange={() => set({ resolveShowOptions: true })}
+            disabled={disabled}
+            className="mt-1"
+          />
+          <span>
+            {t('resolve.showOptions')}
+            <span className="text-muted-foreground block text-xs">
+              {t('resolve.showOptionsHint')}
             </span>
           </span>
         </label>

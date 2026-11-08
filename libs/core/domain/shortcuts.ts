@@ -11,6 +11,8 @@ export const Shortcuts = {
     SELECT_ALL_VISIBLE: '* a',
     ASSIGN_TO_ME: 'a',
     MARK_RESOLVED: 'e',
+    // The way the main button does not resolve (the dialog, or at once, whichever the store did not choose)
+    MARK_RESOLVED_OTHER_WAY: 'Shift+E',
     SHOW_HELP: '?'
   },
   conversation: {
@@ -22,6 +24,7 @@ export const Shortcuts = {
     ADD_TAG: 't',
     MARK_PENDING: 'p',
     MARK_RESOLVED: 'e',
+    MARK_RESOLVED_OTHER_WAY: 'Shift+E',
     SNOOZE: 's',
     CREATE_ORDER: 'Shift+O',
     OPEN_CUSTOMER: 'Shift+C'
@@ -78,6 +81,7 @@ export const AvailableShortcuts = {
     'SELECT_ALL_VISIBLE',
     'ASSIGN_TO_ME',
     'MARK_RESOLVED',
+    'MARK_RESOLVED_OTHER_WAY',
     'SHOW_HELP'
   ],
   conversation: [
@@ -89,6 +93,7 @@ export const AvailableShortcuts = {
     'ADD_TAG',
     'MARK_PENDING',
     'MARK_RESOLVED',
+    'MARK_RESOLVED_OTHER_WAY',
     'SNOOZE',
     'OPEN_CUSTOMER'
   ],

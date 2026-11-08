@@ -1339,6 +1339,10 @@
     "actions": {
       "snooze": "Posponer",
       "resolve": "Resolver",
+      "resolveMore": "Opciones de resolución",
+      "resolveNow": "Resolver ahora",
+      "resolveWithOptions": "Resolver con mensaje de cierre y motivo…",
+      "resolveDefault": "(predeterminada)",
       "reopen": "Reabrir",
       "wakeUp": "Despertar",
       "snoozeRow": "Posponer la conversación con {name}"
@@ -1469,6 +1473,7 @@
           "SELECT_ALL_VISIBLE": "Seleccionar todas las cargadas",
           "ASSIGN_TO_ME": "Asignármela",
           "MARK_RESOLVED": "Resolver la conversación",
+          "MARK_RESOLVED_OTHER_WAY": "Resolver de la otra forma (el diálogo, o al instante)",
           "SHOW_HELP": "Mostrar esta ayuda"
         },
         "conversation": {
@@ -1480,6 +1485,7 @@
           "ADD_TAG": "Agregar una etiqueta",
           "MARK_PENDING": "Marcar como pendiente",
           "MARK_RESOLVED": "Resolver la conversación",
+          "MARK_RESOLVED_OTHER_WAY": "Resolver de la otra forma (el diálogo, o al instante)",
           "SNOOZE": "Posponer",
           "OPEN_CUSTOMER": "Abrir el perfil del cliente"
         },
@@ -2356,14 +2362,14 @@
       "save": "Guardar",
       "saved": "Comportamiento de la bandeja guardado",
       "resolve": {
-        "legend": "Al resolver una conversación",
-        "showOptions": "Mostrar opciones",
-        "showOptionsHint": "Preguntar por el mensaje de cierre y el motivo antes de resolver.",
-        "immediately": "Resolver de inmediato",
-        "immediatelyHint": "Resolver al instante, con un aviso para deshacer durante unos segundos."
+        "legend": "Al pulsar Resolver",
+        "showOptions": "Pedir mensaje de cierre y motivo",
+        "showOptionsHint": "Abre el diálogo antes de resolver. La flecha junto al botón siempre ofrece Resolver ahora.",
+        "immediately": "Resolver ahora (recomendado)",
+        "immediatelyHint": "Resuelve al instante, con un aviso para deshacer durante unos segundos. La flecha junto al botón siempre ofrece el diálogo."
       },
       "closing": {
-        "send": "Enviar el mensaje de cierre predeterminado al resolver de inmediato",
+        "send": "Enviar el mensaje de cierre predeterminado al usar Resolver ahora",
         "snippet": "Mensaje de cierre",
         "none": "Sin respuesta guardada",
         "missing": "Una respuesta eliminada",

@@ -10,6 +10,10 @@ export default async function globalSetup(): Promise<void> {
   const owner = createOwnerClient(databaseUrls.owner)
   try {
     await loadDevFixtures(owner, parseEncryptionKey(credentialsEncryptionKey))
+    // A new store resolves at once (the default of the column), and the specs written before that expect the
+    // dialog of the options when they press Resolve: their stores keep asking, as a store that chose it does.
+    // The cases of the quick resolve set the way they need themselves (`setResolveBehavior`).
+    await owner.storeSettings.updateMany({ data: { resolveShowOptions: true } })
   } finally {
     await owner.$disconnect()
   }

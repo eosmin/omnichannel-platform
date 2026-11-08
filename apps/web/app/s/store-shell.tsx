@@ -70,13 +70,13 @@ function NoMembership(): ReactElement {
   return <LoadingScreen />
 }
 
-// "/" goes to the store used last
 // Registers this browser again for push when it allows it (see `usePushSync`). Renders nothing.
 function PushSync({ storeId }: { storeId: string }): null {
   usePushSync(storeId)
   return null
 }
 
+// "/" goes to the store used last
 function Remember({ storeId }: { storeId: string }): null {
   useEffect(() => {
     rememberLastStoreId(storeId)
