@@ -69,7 +69,12 @@ function ReceiptsLoader(): ReactElement {
     return <LoadFailed error={preferences.error} onRetry={() => void preferences.refetch()} />
   }
   if (preferences.data === undefined) return <PageLoading />
-  return <ReceiptsForm saved={preferences.data} />
+  return (
+    <>
+      <ReceiptsForm saved={preferences.data} />
+      <AssignOnReplyForm saved={preferences.data} />
+    </>
+  )
 }
 
 // `saved` is what the form started from and, after a save of its own, what that save returned. A read
@@ -317,6 +322,67 @@ function ReceiptsForm({ saved: loaded }: { saved: PreferencesView }): ReactEleme
       {canManage ? (
         <div>
           <Button type="submit" disabled={disabled || value === saved.sendReadReceipts}>
+            {t('save')}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-xs">{t('readOnly')}</p>
+      )}
+    </form>
+  )
+}
+
+// The switch "assign me when I reply": a reply to a conversation nobody has takes it for the agent. Same rule
+// as the other form: the baseline is the value the form started from or its last save.
+function AssignOnReplyForm({ saved: loaded }: { saved: PreferencesView }): ReactElement {
+  const [saved, setSaved] = useState(loaded)
+  const t = useTranslations('settings.inbox.assignOnReply')
+  const errorText = useErrorText()
+  const { storeId, can } = useStore()
+  const canManage = can(ClientPermissions.SETTINGS_MANAGE_PREFERENCES)
+  const save = useSavePreferences(storeId)
+  const [value, setValue] = useState(saved.assignOnReply)
+  const disabled = !canManage || save.isPending
+  useUnsavedChanges(canManage && value !== saved.assignOnReply)
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault()
+    if (disabled || value === saved.assignOnReply) return
+    save.mutate(
+      { assignOnReply: value },
+      {
+        onSuccess: view => {
+          setSaved(view)
+          toast.success(t('saved'))
+        },
+        onError: error => toast.error(errorText(error))
+      }
+    )
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-3 rounded-lg border p-4"
+      aria-label={t('label')}
+    >
+      <h2 className="text-sm font-medium">{t('title')}</h2>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={value}
+          onChange={event => setValue(event.target.checked)}
+          disabled={disabled}
+          className="mt-1"
+        />
+        <span>
+          {t('switch')}
+          <span className="text-muted-foreground block text-xs">{t('hint')}</span>
+        </span>
+      </label>
+      {canManage ? (
+        <div>
+          <Button type="submit" disabled={disabled || value === saved.assignOnReply}>
             {t('save')}
           </Button>
         </div>
