@@ -126,6 +126,11 @@ export const MetaMessaging = {
   REFERRAL_SOURCE_ADS: 'ADS',
   // The attachment of a place the customer shared: `payload.coordinates` holds `{ lat, long }`
   ATTACHMENT_LOCATION: 'location',
+  // Instagram shares a place as a template of elements (a title, a subtitle, a link to a map)
+  ATTACHMENT_TEMPLATE: 'template',
+  // How much of a template is read: a card has one element and a few buttons
+  TEMPLATE_MAX_ELEMENTS: 3,
+  TEMPLATE_MAX_BUTTONS: 3,
   ATTACHMENT_STICKER: 'sticker',
   // The like button of Messenger arrives as a sticker with this id (and, until Meta stops sending the
   // pair, as an image with the same link). It is the thumbs up, not a file worth fetching.
