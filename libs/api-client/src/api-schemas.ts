@@ -263,7 +263,10 @@ export const channelDirectoryEntrySchema = z.object({
         type: z.string(),
         maxFiles: z.number().int().min(1),
         types: z.array(z.string()).nullable(),
-        maxBytes: z.number().int().min(1)
+        maxBytes: z.number().int().min(1),
+        // Whether a text goes under EACH file of a message (the composer offers one per file) or only
+        // under the first. Absent from a server that does not say it: only the first.
+        captionsPerFile: z.boolean().optional().default(false)
       })
     )
     .optional()

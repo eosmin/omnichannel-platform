@@ -335,8 +335,12 @@ export class ChannelConnectionsService {
   // may read (the error text, the dates) never leaves the database for this route. A connection whose
   // installation is gone or whose plugin was suspended is inert (D19): it is told as `error`, because
   // a reply cannot go out through it, whatever its own row says.
-  async directory(storeId: string, multiFileEnabled: boolean): Promise<ChannelDirectoryEntry[]> {
-    const limitsOf = channelFileLimits(this.registry, multiFileEnabled)
+  async directory(
+    storeId: string,
+    multiFileEnabled: boolean,
+    captionPerFileEnabled = false
+  ): Promise<ChannelDirectoryEntry[]> {
+    const limitsOf = channelFileLimits(this.registry, multiFileEnabled, captionPerFileEnabled)
     const rows = await this.prisma.client.channelConnection.findMany({
       where: { storeId },
       select: {
