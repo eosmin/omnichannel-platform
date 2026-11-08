@@ -909,9 +909,10 @@ describe('The conversations of a store', () => {
     it('tells the screens that the line of the resolution went, and restores what resolving set', async () => {
       const conversation = await mk()
       const heardDeleted: string[] = []
-      app.get(EventEmitter2).on(Events.MESSAGE_DELETED, (payload: { messageId: string }) => {
+      const listener = (payload: { messageId: string }): void => {
         heardDeleted.push(payload.messageId)
-      })
+      }
+      app.get(EventEmitter2).on(Events.MESSAGE_DELETED, listener)
       await asAgent()
         .patch(ApiRoutes.conversations.status(conversation.id))
         .send({ status: ConversationStatus.RESOLVED, resolutionReason: 'answered' })
@@ -921,6 +922,7 @@ describe('The conversations of a store', () => {
         .patch(ApiRoutes.conversations.status(conversation.id))
         .send({ status: ConversationStatus.OPEN, undoesResolution: true })
 
+      app.get(EventEmitter2).off(Events.MESSAGE_DELETED, listener)
       expect(heardDeleted).toEqual([resolvedLine?.id])
       expect(await linesOf(conversation.id)).toHaveLength(0)
       expect(
@@ -929,6 +931,31 @@ describe('The conversations of a store', () => {
           select: { status: true, resolvedAt: true, resolutionReason: true }
         })
       ).toEqual({ status: ConversationStatus.OPEN, resolvedAt: null, resolutionReason: null })
+    })
+
+    it('retracts at the edge of the window: 11 s yes, 13 s no', async () => {
+      const inside = await mk()
+      const outside = await mk()
+      for (const { id } of [inside, outside]) {
+        await asAgent()
+          .patch(ApiRoutes.conversations.status(id))
+          .send({ status: ConversationStatus.RESOLVED })
+      }
+      // The resolution and its line moved back in time together, as if resolved that long ago
+      for (const [{ id }, seconds] of [
+        [inside, 11],
+        [outside, 13]
+      ] as const) {
+        const at = new Date(Date.now() - seconds * 1000)
+        await owner.conversation.update({ where: { id }, data: { resolvedAt: at } })
+        await owner.message.updateMany({ where: { conversationId: id }, data: { createdAt: at } })
+        await asAgent()
+          .patch(ApiRoutes.conversations.status(id))
+          .send({ status: ConversationStatus.OPEN, undoesResolution: true })
+      }
+
+      expect(await linesOf(inside.id)).toHaveLength(0)
+      expect(await linesOf(outside.id)).toHaveLength(2)
     })
 
     it('writes the usual line when the Undo comes late or from someone who did not resolve it', async () => {

@@ -449,10 +449,14 @@ export class ConversationsService {
         metadata: { path: ['event'], equals: SystemMessageEvents.RESOLVED }
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true, metadata: true }
+      select: { id: true, metadata: true, createdAt: true }
     })
     const parsed = systemLineMetadataSchema.safeParse(line?.metadata)
     if (line === null || !parsed.success) return false
+    // The line of THIS resolution: written in the transaction that set `resolvedAt`, a moment apart at most
+    if (Math.abs(line.createdAt.getTime() - resolvedAt.getTime()) > ResolveUndo.CLOSING_GRACE_MS) {
+      return false
+    }
     if (parsed.data.actor.type !== 'user' || parsed.data.actor.id !== userId) return false
     await lockMessageRow(tx, line.id)
     await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, line.id)
