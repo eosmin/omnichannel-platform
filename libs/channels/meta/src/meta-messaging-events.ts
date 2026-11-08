@@ -215,9 +215,16 @@ function placeOf(attachments: ParsedAttachment[]): {
   }
 }
 
+const cutText = z
+  .string()
+  .transform(text => cut(text, MapLinks.TEMPLATE_TEXT_MAX_LENGTH))
+  .optional()
+  .catch(undefined)
+
 const templateElementSchema = z.object({
-  title: z.string().max(MapLinks.TEMPLATE_TEXT_MAX_LENGTH).optional().catch(undefined),
-  subtitle: z.string().max(MapLinks.TEMPLATE_TEXT_MAX_LENGTH).optional().catch(undefined),
+  // Cut at the limit before it is cleaned: a long name is a shorter name, not none
+  title: cutText,
+  subtitle: cutText,
   default_action: z
     .object({ url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined) })
     .optional()
@@ -336,7 +343,10 @@ export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, un
         type: typeof type === 'string' && SHAPE_NAME.test(type) ? type : UNSUPPORTED_TYPE,
         fields: plainNames(record),
         payloadFields: plainNames(record.payload, true),
-        elementFields: elementNames(record.payload)
+        // Only a template has elements: the key is left out of the shape of anything else
+        ...(type === MetaMessaging.ATTACHMENT_TEMPLATE
+          ? { elementFields: elementNames(record.payload) }
+          : {})
       }
     })
   }

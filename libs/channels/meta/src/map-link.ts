@@ -18,19 +18,25 @@ const APPLE = hosts(MapLinks.APPLE_HOSTS)
 const OSM = hosts(MapLinks.OSM_HOSTS)
 const REDIRECTS = hosts(MapLinks.REDIRECT_HOSTS)
 
-const NUMBER = /^-?\d{1,3}(?:\.\d{1,10})?$/
+// More decimals than a place needs are cut (a float written out by an app has 14), never refused
+const NUMBER = /^-?\d{1,3}(?:\.\d+)?$/
+const COORDINATE = '(-?\\d{1,3}(?:\\.\\d+)?)'
 
 function pointOf(lat: string | undefined, long: string | undefined): Point | null {
   if (lat === undefined || long === undefined || !NUMBER.test(lat) || !NUMBER.test(long)) {
     return null
   }
-  const point = { lat: Number(lat), long: Number(long) }
+  const point = { lat: Number(Number(lat).toFixed(7)), long: Number(Number(long).toFixed(7)) }
   if (point.lat === 0 && point.long === 0) return null
   return Math.abs(point.lat) <= 90 && Math.abs(point.long) <= 180 ? point : null
 }
 
 function pairOf(text: string | null): Point | null {
-  const [lat, long, ...rest] = (text ?? '').split(',').map(part => part.trim())
+  // `loc:13.69,-89.21` is how Google writes a point in a query
+  const [lat, long, ...rest] = (text ?? '')
+    .replace(/^loc:/, '')
+    .split(',')
+    .map(part => part.trim())
   return rest.length === 0 ? pointOf(lat, long) : null
 }
 
@@ -49,11 +55,14 @@ function google(url: URL): Point | null {
   }
   // The centre of a PLACE page is the place; that of a search page is a viewport
   if (url.pathname.startsWith(MapLinks.GOOGLE_PLACE_PATH)) {
-    // The segment that starts with `@`, not an `@` inside the name of the place
-    const at = /\/@(-?\d{1,3}(?:\.\d{1,10})?),(-?\d{1,3}(?:\.\d{1,10})?)(?:,|\/|$)/.exec(
-      url.pathname
-    )
-    const point = at ? pointOf(at[1], at[2]) : null
+    // The segment that starts with `@`, or a segment that is the pair itself (`/maps/place/13.69,-89.21`), never an
+    // `@` inside the name of the place
+    const at = new RegExp(`/@${COORDINATE},${COORDINATE}(?:,|/|$)`).exec(url.pathname)
+    const named = new RegExp(
+      `^${MapLinks.GOOGLE_PLACE_PATH}${COORDINATE},${COORDINATE}(?:/|$)`
+    ).exec(url.pathname)
+    const hit = at ?? named
+    const point = hit ? pointOf(hit[1], hit[2]) : null
     if (point) return point
   }
   return fromParams(url, MapLinks.GOOGLE_PLACE_PARAMS)
