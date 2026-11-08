@@ -52,22 +52,40 @@ export function ConversationShortcuts({
     can(ClientPermissions.CONVERSATIONS_RESOLVE) || can(ClientPermissions.CONVERSATIONS_ASSIGN)
   const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
 
-  const [isResolveWaiting, setResolveWhenReady] = useState(false)
-  const { isReady: isResolveReady, start: startResolve } = resolve
+  // The way of resolving a key asked for while the flow was not ready: the main one (`e`) or the other (`Shift+E`),
+  // for the conversation it was pressed on
+  const [resolveWaiting, setResolveWhenReady] = useState<{
+    way: 'default' | 'other'
+    conversationId: string
+  } | null>(null)
+  const { isReady: isResolveReady, start: startResolve, startWith: startResolveWith } = resolve
+  const { defaultMode: resolveDefaultMode } = resolve
   // The key waits only a short while, for this conversation and while the agent may still resolve it: a request
   // that outlives that (the settings were slow, the conversation changed or was closed meanwhile) is dropped, so
   // that a resolve never starts that the agent did not ask for at that moment
   useEffect(() => {
-    if (!isResolveWaiting) return undefined
-    const timer = setTimeout(() => setResolveWhenReady(false), RESOLVE_WAIT_MS)
+    if (resolveWaiting === null) return undefined
+    const timer = setTimeout(() => setResolveWhenReady(null), RESOLVE_WAIT_MS)
     return () => clearTimeout(timer)
-  }, [isResolveWaiting])
-  useEffect(() => setResolveWhenReady(false), [conversationId])
+  }, [resolveWaiting])
+  useEffect(() => setResolveWhenReady(null), [conversationId])
   useEffect(() => {
-    if (!isResolveWaiting || !isResolveReady) return
-    setResolveWhenReady(false)
-    if (mayChange && mayResolve) startResolve()
-  }, [isResolveWaiting, isResolveReady, startResolve, mayChange, mayResolve])
+    if (resolveWaiting === null || !isResolveReady) return
+    setResolveWhenReady(null)
+    // A request made on another conversation is dropped, even in the render where the conversation changed
+    if (resolveWaiting.conversationId !== conversationId || !mayChange || !mayResolve) return
+    if (resolveWaiting.way === 'default') startResolve()
+    else startResolveWith(otherResolveMode(resolveDefaultMode))
+  }, [
+    resolveWaiting,
+    isResolveReady,
+    startResolve,
+    startResolveWith,
+    resolveDefaultMode,
+    conversationId,
+    mayChange,
+    mayResolve
+  ])
 
   const run = (operation: BulkOperation): void => {
     if (detail === undefined || !runner.claim()) return
@@ -111,12 +129,12 @@ export function ConversationShortcuts({
     { ...keyboard, enabled: mayChange && mayResolve }
   )
   // Resolving keeps the flow of the header: the reason and the closing message of the store. The flow needs the
-  // settings of the store; a key pressed before they arrive is not lost: the flow starts when they do.
+  // settings of the store; a key pressed before they arrive (either of the two) is not lost: the flow starts when they do.
   useShortcut(
     Shortcuts.conversation.MARK_RESOLVED,
     () => {
       if (resolve.isReady) resolve.start()
-      else setResolveWhenReady(true)
+      else setResolveWhenReady({ way: 'default', conversationId })
     },
     { ...keyboard, enabled: mayChange && mayResolve }
   )
@@ -125,6 +143,7 @@ export function ConversationShortcuts({
     Shortcuts.conversation.MARK_RESOLVED_OTHER_WAY,
     () => {
       if (resolve.isReady) resolve.startWith(otherResolveMode(resolve.defaultMode))
+      else setResolveWhenReady({ way: 'other', conversationId })
     },
     { ...keyboard, enabled: mayChange && mayResolve }
   )
