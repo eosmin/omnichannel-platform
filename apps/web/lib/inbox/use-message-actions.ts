@@ -82,6 +82,8 @@ export function useMessageMutations(conversationId: string, messageId: string): 
     onError: refresh
   })
   const resendCaptionOnly = useMutation({
+    // The same key as the texts under the files: the api takes one text at a time for a message
+    mutationKey: ['resend-file-caption', messageId],
     mutationFn: () => resendCaption(apiClient, storeId, messageId),
     onSuccess: refresh,
     // A 409 means the caption moved on (settled, or another agent asked): the thread says how it stands
