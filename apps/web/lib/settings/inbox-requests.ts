@@ -18,7 +18,7 @@ const inboxSchema = z.object({
 export type InboxSettingsView = z.output<typeof inboxSchema>
 export type InboxSettingsInput = Partial<InboxSettingsView>
 
-const preferencesSchema = z.object({ sendReadReceipts: z.boolean() })
+const preferencesSchema = z.object({ sendReadReceipts: z.boolean(), assignOnReply: z.boolean() })
 export type PreferencesView = z.output<typeof preferencesSchema>
 
 export function fetchInboxSettings(
