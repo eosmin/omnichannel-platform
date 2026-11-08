@@ -15,7 +15,7 @@ import {
 import { MessageType } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
-import { limitOfKind } from '../../lib/media/attachment-batch'
+import { takesCaptionPerFile } from '../../lib/media/attachment-batch'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import {
   type AttachmentItem,
@@ -219,7 +219,7 @@ export function AttachmentTray({
   // The files that go in the message, in order; each but the first has a field for its text where the channel
   // puts a text under each file (the first takes the text of the composer)
   const kept = items.filter(item => item.status !== 'failed')
-  const perFile = limitOfKind(rules.media, kept[0]?.type ?? null)?.captionsPerFile === true
+  const perFile = takesCaptionPerFile(rules, kept[0]?.type ?? null)
   const count = items.filter(item => item.status !== 'failed').length
   const ready = items.filter(item => item.status === 'ready').length
   const isBusy = items.some(item => item.status === 'uploading' || item.status === 'checking')

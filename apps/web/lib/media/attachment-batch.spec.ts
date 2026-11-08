@@ -1,12 +1,14 @@
-import { MessageType } from '@platform/core/domain'
+import { ChannelCapability, MessageType } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import {
   acceptWith,
+  captionsForSend,
   type ChannelMediaLimit,
   maxFilesOf,
   pickerMaxFiles,
-  planAdd
+  planAdd,
+  takesCaptionPerFile
 } from './attachment-batch'
 
 const IMAGE: ChannelMediaLimit = {
@@ -121,5 +123,63 @@ describe('acceptWith', () => {
     expect(acceptWith(['image'], [{ ...IMAGE, types: null }]).split(',')).toContain('image/gif')
     expect(acceptWith(['image'], undefined).split(',')).toContain('image/gif')
     expect(acceptWith([], media)).toBe('')
+  })
+})
+
+describe('takesCaptionPerFile', () => {
+  const perFile: ChannelMediaLimit = { ...IMAGE, captionsPerFile: true }
+
+  it('offers a text under each file only where the channel declares the capability and the kind takes it', () => {
+    const declared = [ChannelCapability.IMAGE, ChannelCapability.CAPTION_PER_FILE]
+    expect(
+      takesCaptionPerFile({ capabilities: declared, media: [perFile] }, MessageType.IMAGE)
+    ).toBe(true)
+    // The kind does not take it (the switch of the api is off)
+    expect(takesCaptionPerFile({ capabilities: declared, media: [IMAGE] }, MessageType.IMAGE)).toBe(
+      false
+    )
+  })
+
+  it('does not offer it to a channel that sends the text of a file apart, whatever the media rule says', () => {
+    expect(
+      takesCaptionPerFile(
+        { capabilities: [ChannelCapability.IMAGE], media: [perFile] },
+        MessageType.IMAGE
+      )
+    ).toBe(false)
+  })
+
+  it('does not offer it while the directory has not loaded', () => {
+    expect(takesCaptionPerFile({ media: [perFile] }, MessageType.IMAGE)).toBe(false)
+    expect(
+      takesCaptionPerFile({ capabilities: [ChannelCapability.CAPTION_PER_FILE] }, MessageType.IMAGE)
+    ).toBe(false)
+    expect(takesCaptionPerFile({ capabilities: [], media: [perFile] }, null)).toBe(false)
+  })
+})
+
+describe('captionsForSend', () => {
+  const rules = {
+    capabilities: [ChannelCapability.CAPTION_PER_FILE],
+    media: [{ ...IMAGE, captionsPerFile: true }]
+  }
+
+  it('sends the texts by place where the channel carries them, with a blank one as null', () => {
+    expect(captionsForSend(rules, MessageType.IMAGE, 'One', [' Two ', ''])).toEqual([
+      'One',
+      'Two',
+      null
+    ])
+    expect(captionsForSend(rules, MessageType.IMAGE, '', ['Two'])).toEqual([null, 'Two'])
+  })
+
+  it('sends none when no other file has a text', () => {
+    expect(captionsForSend(rules, MessageType.IMAGE, 'One', ['', '  '])).toBeNull()
+  })
+
+  it('drops the texts typed under files on a channel that does not carry them: the one text of the message goes', () => {
+    const messenger = { capabilities: [ChannelCapability.IMAGE], media: rules.media }
+    expect(captionsForSend(messenger, MessageType.IMAGE, 'One', ['Two'])).toBeNull()
+    expect(captionsForSend({ media: rules.media }, MessageType.IMAGE, 'One', ['Two'])).toBeNull()
   })
 })
