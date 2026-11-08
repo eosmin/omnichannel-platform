@@ -13,21 +13,11 @@ import { useWindowState } from '../../lib/inbox/use-window-state'
 import { usePushOffer } from '../../lib/push/use-push-offer'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
+import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useStore } from '../providers/store-context'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 
-function ResolveFormLoading(): ReactElement {
-  const t = useTranslations('common')
-  return (
-    <p role="status" className="text-muted-foreground text-sm">
-      {t('loading')}
-    </p>
-  )
-}
-
-const ResolveForm = dynamic(() => import('./resolve-form').then(module => module.ResolveForm), {
-  loading: () => <ResolveFormLoading />
-})
+// The options dialog (the dialog primitive and the form) is downloaded the first time it opens
+const ResolveDialog = dynamic(() => import('./resolve-dialog'), { ssr: false })
 
 // At once, with a toast to undo; or asking first for the closing message and the reason
 export const ResolveMode = { NOW: 'now', OPTIONS: 'options' } as const
@@ -74,6 +64,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
   const { resolve, undoResolve } = useConversationActions(storeId, conversationId)
   const { offer: offerPush } = usePushOffer(storeId)
   const [isDialogOpen, setDialogOpen] = useState(false)
+  const isDialogMounted = useMountedOnce(isDialogOpen)
 
   // The closing message is a reply: it needs the window open and the permission to reply
   const canSendClosing = windowState.kind !== 'closed' && can(ClientPermissions.MESSAGES_SEND)
@@ -139,25 +130,16 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
     defaultMode,
     start: stableStart,
     startWith: stableStartWith,
-    dialog: (
-      <Dialog open={isDialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('title')}</DialogTitle>
-            <DialogDescription>{t('description')}</DialogDescription>
-          </DialogHeader>
-          {/* Mounted only while open: the choices start from the settings each time */}
-          {isDialogOpen && settings !== undefined ? (
-            <ResolveForm
-              conversationId={conversationId}
-              defaults={settings}
-              canSendClosing={canSendClosing}
-              onDone={() => setDialogOpen(false)}
-              onCancel={() => setDialogOpen(false)}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+    dialog: isDialogMounted ? (
+      <ResolveDialog
+        open={isDialogOpen}
+        onOpenChange={setDialogOpen}
+        conversationId={conversationId}
+        settings={settings}
+        canSendClosing={canSendClosing}
+      />
+    ) : (
+      <></>
     )
   }
 }
