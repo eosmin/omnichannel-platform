@@ -85,11 +85,21 @@ const STATUS_PERMISSIONS: Record<ConversationStatus, Permission> = {
   [ConversationStatus.SPAM]: Permissions.CONVERSATIONS_ARCHIVE
 }
 
+export interface StatusTransition {
+  from: ConversationStatus
+  to: ConversationStatus
+  retracted: boolean
+}
+
 export interface StatusOptions {
   actor: ConversationActor
   resolutionReason?: string
   // The change takes back the resolution that was just made (the Undo of the toast): the line says so
   undoesResolution?: boolean
+  // Told once, after the commit, when the change really happened (not when it was refused or changed nothing):
+  // what the status was, what it is, and whether the Undo took its "resolved" line off the thread. The api
+  // writes the audit entry from it, so that the log says what the service did and not what was asked.
+  afterTransition?: (done: StatusTransition) => void
   // Why the system changed it (a customer wrote); it goes to the system line
   reason?: ConversationStatusReason
   // Required to snooze: the moment the conversation comes back
@@ -388,6 +398,10 @@ export class ConversationsService {
         options.actor.userId
       ))
     const event = undid ? null : systemEventFor(from, to, options.undoesResolution === true)
+    const { afterTransition } = options
+    if (afterTransition !== undefined) {
+      this.prisma.afterCommit(tx, () => afterTransition({ from, to, retracted: undid }))
+    }
     if (event !== null) {
       await writeSystemLine(tx, storeId, conversationId, {
         event,

@@ -74,7 +74,9 @@ describe('messageView media', () => {
     status: MediaStatus.CLEAN,
     position: null,
     deliveryStatus: null,
-    sendErrorCode: null
+    sendErrorCode: null,
+    caption: null,
+    captionState: null
   }
   const shown = {
     id: 'f1',
@@ -84,7 +86,9 @@ describe('messageView media', () => {
     status: MediaStatus.CLEAN,
     position: null,
     delivery: null,
-    errorCode: null
+    errorCode: null,
+    caption: null,
+    captionState: null
   }
 
   it('lists the files of a message without a link or a key', () => {
@@ -117,6 +121,21 @@ describe('messageView media', () => {
       [1, 'failed', 'CHANNEL_MESSAGE_FAILED']
     ])
     expect(JSON.stringify(view)).not.toContain('wamid.secret')
+  })
+
+  it('carries the text under each file and how it went, as text of the agent and a known state', () => {
+    const view = messageView({
+      ...row(null),
+      media: [
+        { ...file, id: 'f1', position: 0, caption: 'stale', captionState: 'sent' },
+        { ...file, id: 'f2', position: 1, caption: 'second <b>', captionState: 'weird' }
+      ] as never
+    })
+    // The first file shows the text of the message (what an edit settles); the others, their own
+    expect(view.media.map(item => [item.caption, item.captionState])).toEqual([
+      ['hola', 'sent'],
+      ['second <b>', null]
+    ])
   })
 
   it('refuses a delivery state it does not know', () => {

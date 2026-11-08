@@ -77,6 +77,24 @@ const mediaMessageFields = {
       content
     ])
     .optional(),
+  // The text under each file, by its place (`captions[i]` is the text under `mediaIds[i]`); a blank one is
+  // none. When it comes, it wins over `content`, which is the text under the first file and stays so that a
+  // client that sends one text keeps working.
+  captions: z
+    .array(
+      z
+        .union([
+          z
+            .string()
+            .trim()
+            .length(0)
+            .transform(() => null),
+          content
+        ])
+        .nullable()
+    )
+    .max(MediaMessageLimits.MAX_FILES)
+    .optional(),
   idempotencyKey: idempotencyKeySchema,
   replyToMessageId: uuidSchema.optional()
 }

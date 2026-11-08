@@ -1359,6 +1359,62 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The text under a file belongs to the message of its conversation: another store neither reads it from
+  // the thread, nor finds it in a list, nor sends one of its own under a file of this store
+  describe('the text under the files of a message', () => {
+    it('is not read, listed or written through another store', async () => {
+      const { id: conversationId } = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      const message = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId,
+          type: MessageType.IMAGE,
+          content: 'private text under a file',
+          authorType: 'agent'
+        },
+        select: { id: true }
+      })
+      const mediaId = randomUUID()
+      await owner.media.create({
+        data: {
+          id: mediaId,
+          storeId: ctx.storeA.id,
+          messageId: message.id,
+          purpose: 'message',
+          key: `stores/${ctx.storeA.id}/messages/${mediaId}/a.png`,
+          filename: 'a.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          status: 'clean',
+          position: 0,
+          caption: 'private text under a file'
+        }
+      })
+      const asB = () => api(app, ctx.adminB, ctx.storeB)
+
+      const thread = await asB().get(ApiRoutes.conversations.messages(conversationId))
+      const list = await asB().get(ApiRoutes.conversations.list)
+      const write = await asB()
+        .post(ApiRoutes.messages.create)
+        .send({
+          type: MessageType.IMAGE,
+          conversationId,
+          mediaIds: [mediaId],
+          captions: ['hijacked'],
+          idempotencyKey: randomUUID()
+        })
+
+      expect(thread.status).toBe(404)
+      expect(JSON.stringify([thread.body, list.body])).not.toContain('private text under a file')
+      expect(write.status).toBe(404)
+      const after = await owner.media.findUniqueOrThrow({
+        where: { id: mediaId },
+        select: { caption: true, messageId: true }
+      })
+      expect(after).toEqual({ caption: 'private text under a file', messageId: message.id })
+    })
+  })
+
   // Who of the team is online comes from Redis, keyed by the store of the request
   describe('the presence of the team', () => {
     it('is answered for the store of the caller, with nobody of another store in it', async () => {

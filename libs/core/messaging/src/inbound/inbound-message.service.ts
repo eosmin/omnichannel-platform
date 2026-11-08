@@ -140,11 +140,12 @@ export class InboundMessageService {
   ): Promise<void> {
     const targetId = event.message.replyToExternalId
     if (targetId === undefined) return
+    // A diagnostic: a failing read must not fail a message that is stored already
     const shape = await missingTargetShapeOrNull({
       targetId,
       now: new Date(),
       count: countersOf(this.prisma.client, { storeId, conversationId }, AuthorType.CUSTOMER)
-    })
+    }).catch(() => null)
     this.logger.info(
       { pluginId, ...(shape ? { target: shape } : {}) },
       'an inbound message quotes a message that is not here'
@@ -191,6 +192,11 @@ export class InboundMessageService {
     })
     // A message of the platform that comes back has its files already; the owner's is fetched, again
     // after a failure here (the job id makes it one)
+    // The quote of an owner's message that finds nothing is told as the customer's is: the channel and the
+    // shape of the id, never the id (read after the transaction)
+    if (stored.replyUnresolved && stored.conversationId !== null) {
+      await this.logUnresolvedQuote(pluginId, storeId, stored.conversationId, event)
+    }
     if (stored.fetchMedia) await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     return stored.duplicate ? InboundOutcomes.DUPLICATE : InboundOutcomes.STORED
   }
@@ -206,6 +212,8 @@ export class InboundMessageService {
     duplicate: boolean
     fetchMedia: boolean
     replyUnresolved: boolean
+    // Where the new message went; null for one that was already here (nothing to say about its quote)
+    conversationId: string | null
   }> {
     const { storeId, connectionRowId, identityId } = where
     const identity = await tx.customerIdentity.findFirst({
@@ -241,12 +249,15 @@ export class InboundMessageService {
       })) ??
       // A file after the first of a message of ours went as a message of its own: its id is on the file
       (await this.messageOfFile(tx, storeId, conversationIds, event.message.externalId)) ??
+      // The text under a file after the first, sent apart: its id is on the file
+      (await this.messageOfFileCaption(tx, storeId, conversationIds, event.message.externalId)) ??
       (await this.reconcileUnconfirmedCaption(tx, storeId, conversationIds, event))
     if (known !== null) {
       return {
         messageId: known.id,
         duplicate: true,
         replyUnresolved: false,
+        conversationId: null,
         // The files of the owner's own message, if a failed first try left some out
         fetchMedia:
           known.authorType === String(AuthorType.EXTERNAL) &&
@@ -322,7 +333,8 @@ export class InboundMessageService {
       messageId: message.id,
       duplicate: false,
       fetchMedia: true,
-      replyUnresolved: message.replyUnresolved
+      replyUnresolved: message.replyUnresolved,
+      conversationId
     }
   }
 
@@ -336,6 +348,23 @@ export class InboundMessageService {
       where: {
         storeId,
         channelMessageId: externalId,
+        message: { conversationId: { in: conversationIds }, authorType: AuthorType.AGENT }
+      },
+      select: { message: { select: { id: true, authorType: true } } }
+    })
+    return file?.message ?? null
+  }
+
+  private async messageOfFileCaption(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationIds: string[],
+    externalId: string
+  ): Promise<{ id: string; authorType: string } | null> {
+    const file = await tx.media.findFirst({
+      where: {
+        storeId,
+        captionChannelMessageId: externalId,
         message: { conversationId: { in: conversationIds }, authorType: AuthorType.AGENT }
       },
       select: { message: { select: { id: true, authorType: true } } }

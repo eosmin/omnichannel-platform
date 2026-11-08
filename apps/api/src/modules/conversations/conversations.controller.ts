@@ -38,6 +38,7 @@ import {
   type ConversationDetail,
   type ConversationPage,
   ConversationsService,
+  type StatusTransition,
   type ListConversationsQuery,
   listConversationsQuerySchema,
   ReadReceipts,
@@ -167,7 +168,7 @@ export class ConversationsController {
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @Patch(ApiRoutes.conversations.status(':id'))
-  async changeStatus(
+  changeStatus(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
@@ -175,32 +176,37 @@ export class ConversationsController {
     @Body(new ZodValidationPipe(changeStatusSchema)) body: ChangeStatusBody,
     @Req() req: AuthenticatedRequest
   ): Promise<ConversationDetail> {
+    const actor = actorOf(user, store, req)
     const options = {
       actor: viewerOf(user.id, held),
       ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason }),
-      ...(body.undoesResolution === undefined ? {} : { undoesResolution: true })
+      ...(body.undoesResolution === undefined ? {} : { undoesResolution: true }),
+      // The log says what the service did, once it committed: a resolution that happened, or the Undo of
+      // one (and whether the thread kept a line of it), never a request that changed nothing
+      afterTransition: ({ from, to, retracted }: StatusTransition) => {
+        const resolved = to === ConversationStatus.RESOLVED
+        const undone =
+          body.undoesResolution === true &&
+          from === ConversationStatus.RESOLVED &&
+          to === ConversationStatus.OPEN
+        if (!resolved && !undone) return
+        this.audit.log({
+          action: resolved
+            ? AuditAction.CONVERSATION_RESOLVED
+            : AuditAction.CONVERSATION_RESOLVE_UNDONE,
+          actor: { userId: actor.userId },
+          storeId: store.id,
+          resourceType: 'conversation',
+          resourceId: conversationId,
+          metadata: undone ? { silent: retracted } : {},
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent
+        })
+      }
     }
-    const detail =
-      body.closingSnippetId !== undefined
-        ? await this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
-        : await this.conversations.updateStatus(store.id, conversationId, body.status, options)
-    // The thread keeps no trace of an Undo inside its window: the log keeps both facts, with who and when
-    const undone = body.undoesResolution === true
-    if (undone || body.status === ConversationStatus.RESOLVED) {
-      const actor = actorOf(user, store, req)
-      this.audit.log({
-        action: undone
-          ? AuditAction.CONVERSATION_RESOLVE_UNDONE
-          : AuditAction.CONVERSATION_RESOLVED,
-        actor: { userId: actor.userId },
-        storeId: store.id,
-        resourceType: 'conversation',
-        resourceId: conversationId,
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent
-      })
-    }
-    return detail
+    return body.closingSnippetId !== undefined
+      ? this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
+      : this.conversations.updateStatus(store.id, conversationId, body.status, options)
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)

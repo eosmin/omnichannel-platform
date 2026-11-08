@@ -38,6 +38,10 @@ export interface SendMediaMessageInput {
   conversationId: string
   mediaIds: string[]
   content?: string
+  // The text under each file by its place (`captions[i]` goes under `mediaIds[i]`; null or blank is none).
+  // When it comes it wins over `content`. Under a file other than the first it is taken only where the api
+  // has that switched on (`OUTBOUND_CAPTION_PER_FILE_ENABLED`); otherwise the request is refused.
+  captions?: (string | null)[]
   idempotencyKey: string
   replyToMessageId?: string
 }

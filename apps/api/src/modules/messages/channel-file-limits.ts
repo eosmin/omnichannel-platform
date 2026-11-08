@@ -1,5 +1,5 @@
 import { ChannelMediaKinds, type ChannelMediaKind } from '@platform/core/channel-media'
-import { MessageType } from '@platform/core/domain'
+import { ChannelCaptionRules, MessageType } from '@platform/core/domain'
 import type { ChannelFileLimits } from '@platform/core/messaging'
 import { maxFilesFor, type OutboundMediaType } from '@platform/core/storage'
 import type { PluginRegistry } from '@platform/plugins/runtime'
@@ -16,7 +16,8 @@ const KIND_OF_TYPE: Readonly<Record<OutboundMediaType, ChannelMediaKind>> = {
 // kind: the route then lets one file through and the plugin has the last word.
 export function channelFileLimits(
   registry: Pick<PluginRegistry, 'mediaOf'>,
-  multiFileEnabled: boolean
+  multiFileEnabled: boolean,
+  captionPerFileEnabled = false
 ): (channelType: string, messageType: OutboundMediaType) => ChannelFileLimits | null {
   return (channelType, messageType) => {
     const media = registry.mediaOf(channelType)
@@ -25,7 +26,11 @@ export function channelFileLimits(
     return {
       maxFiles: maxFilesFor(media.maxFilesPerMessage, multiFileEnabled),
       types: rule.types,
-      maxBytes: rule.maxBytes
+      maxBytes: rule.maxBytes,
+      // Where the channel carries no text under this kind of file (an audio on WhatsApp) none is offered
+      captionsPerFile:
+        captionPerFileEnabled &&
+        ChannelCaptionRules[channelType]?.withoutCaption.includes(messageType) !== true
     }
   }
 }

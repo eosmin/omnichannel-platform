@@ -263,7 +263,10 @@ export const channelDirectoryEntrySchema = z.object({
         type: z.string(),
         maxFiles: z.number().int().min(1),
         types: z.array(z.string()).nullable(),
-        maxBytes: z.number().int().min(1)
+        maxBytes: z.number().int().min(1),
+        // Whether a text goes under EACH file of a message (the composer offers one per file) or only
+        // under the first. Absent from a server that does not say it: only the first.
+        captionsPerFile: z.boolean().optional().default(false)
       })
     )
     .optional()
@@ -382,7 +385,11 @@ export const messageSchema = z.object({
       // for a server that does not send them yet; a state of a newer server is read as none.
       position: z.number().int().nullable().catch(null).default(null),
       delivery: z.string().nullable().catch(null).default(null),
-      errorCode: z.string().nullable().catch(null).default(null)
+      errorCode: z.string().nullable().catch(null).default(null),
+      // The text under this file (text of an agent: drawn escaped) and, for the channels that send it as a
+      // message of its own, how it went. Null for a server that does not send them yet.
+      caption: z.string().nullable().catch(null).default(null),
+      captionState: z.string().nullable().catch(null).default(null)
     })
   ),
   // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one

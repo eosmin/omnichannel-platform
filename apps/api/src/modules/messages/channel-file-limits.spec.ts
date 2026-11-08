@@ -14,7 +14,11 @@ describe('channelFileLimits', () => {
 
   it('takes one file while several are off, whatever the channel declares', () => {
     const limits = channelFileLimits(registryOf(media), false)
-    expect(limits('whatsapp', MessageType.IMAGE)).toEqual({ maxFiles: 1, ...png })
+    expect(limits('whatsapp', MessageType.IMAGE)).toEqual({
+      maxFiles: 1,
+      ...png,
+      captionsPerFile: false
+    })
   })
 
   it('takes what the channel declares once several are on, never more than a request carries', () => {
@@ -31,7 +35,21 @@ describe('channelFileLimits', () => {
     expect(channelFileLimits(registryOf(media), true)('x', MessageType.DOCUMENT)).toEqual({
       maxFiles: 10,
       types: null,
-      maxBytes: 5
+      maxBytes: 5,
+      captionsPerFile: false
+    })
+  })
+
+  it('offers a text under each file only where the switch is on and the channel carries one for the kind', () => {
+    const on = channelFileLimits(registryOf(media), true, true)
+    const audio = { ...media, kinds: { audio: png } }
+
+    expect(on('instagram', MessageType.IMAGE)?.captionsPerFile).toBe(true)
+    // WhatsApp carries no text under an audio file: it is not offered
+    expect(
+      channelFileLimits(registryOf(audio), true, true)('whatsapp', MessageType.AUDIO)
+    ).toMatchObject({
+      captionsPerFile: false
     })
   })
 

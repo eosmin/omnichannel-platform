@@ -52,7 +52,7 @@ import {
 import { MessagingWindowService } from '../messaging-window/messaging-window.service'
 import { OutboundQueue } from '../outbound/outbound-queue'
 
-import { requireCaptionFits } from './caption-rules'
+import { captionsOf, requireCaptionFits, requireCaptionsPlaced } from './caption-rules'
 import { assertMediaServable } from './media-guard'
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
@@ -84,6 +84,9 @@ export interface ChannelFileLimits {
   maxFiles: number
   types: readonly string[] | null
   maxBytes: number
+  // Whether a text under each file is sent (the switch `OUTBOUND_CAPTION_PER_FILE_ENABLED`); off, only the
+  // text under the first file is
+  captionsPerFile?: boolean
 }
 export type ChannelFileLimitsOf = (
   channelType: string,
@@ -194,7 +197,11 @@ export class MessagesService {
           storeId,
           conversationId: body.conversationId,
           type: body.type,
-          content: isTemplate ? (rendered?.content ?? null) : (body.content ?? null),
+          content: isTemplate
+            ? (rendered?.content ?? null)
+            : isMediaBody(body)
+              ? (captionsOf(body)[0] ?? null)
+              : (body.content ?? null),
           authorType: AuthorType.AGENT,
           authorId: viewer.userId,
           idempotencyKey: body.idempotencyKey ?? null,
@@ -537,7 +544,8 @@ export class MessagesService {
       message.authorId !== viewer.userId ||
       message.type !== body.type ||
       (body.type === MessageType.TEMPLATE && !sameTemplate(existing.metadata, body)) ||
-      (isMediaBody(body) && !(await this.sameFiles(db, storeId, existing.id, body)))
+      (isMediaBody(body) &&
+        !(await this.sameFiles(db, storeId, existing.id, existing.content, body)))
     ) {
       throw resourceConflict('the idempotency key was used for another message')
     }
@@ -569,10 +577,14 @@ export class MessagesService {
         HttpStatusCodes.CONFLICT
       )
     }
-    requireCaptionFits(conversation.channelType, body.type, body.content)
     // How many, before the files are read: a channel that does not say takes one (the limit of the
     // time before several were allowed)
     const limits = limitsOf?.(conversation.channelType, body.type) ?? null
+    requireCaptionsPlaced(body, limits?.captionsPerFile === true)
+    const captions = captionsOf(body)
+    for (const caption of captions) {
+      requireCaptionFits(conversation.channelType, body.type, caption ?? undefined)
+    }
     const maxFiles = limits?.maxFiles ?? MediaMessageLimits.SINGLE_FILE
     if (body.mediaIds.length > maxFiles) {
       throw new PlatformException(
@@ -621,7 +633,7 @@ export class MessagesService {
         }
       }
     }
-    return { ids: body.mediaIds, customerId: conversation.customerId }
+    return { ids: body.mediaIds, captions, customerId: conversation.customerId }
   }
 
   // Inside the transaction of the message. `messageId: null` in the condition makes a file that two
@@ -641,7 +653,8 @@ export class MessagesService {
           messageId,
           customerId: files.customerId,
           position,
-          deliveryStatus: DeliveryStatus.QUEUED
+          deliveryStatus: DeliveryStatus.QUEUED,
+          caption: files.captions[position] ?? null
         }
       })
       if (linked.count !== 1) {
@@ -650,20 +663,30 @@ export class MessagesService {
     }
   }
 
-  // The key names one message: the same key with other files is another request
+  // The key names one message: the same key with other files, or with other texts under them, is another
+  // request. A file sent before each had its text (`caption` null) has the text of the message as the one
+  // of its first place.
   private async sameFiles(
     db: PrismaService['client'],
     storeId: string,
     messageId: string,
+    content: string | null,
     body: MediaMessageBody
   ): Promise<boolean> {
     const linked = await db.media.findMany({
       where: { storeId, messageId },
-      select: { id: true }
+      select: { id: true, caption: true, position: true }
     })
-    return (
-      linked.length === body.mediaIds.length && linked.every(row => body.mediaIds.includes(row.id))
-    )
+    if (linked.length !== body.mediaIds.length) return false
+    const wanted = captionsOf(body)
+    return body.mediaIds.every((id, place) => {
+      const row = linked.find(file => file.id === id)
+      // The same place: the same files in another order are another message
+      if (row === undefined || (row.position ?? 0) !== place) return false
+      // The text under the first file is the text of the message (an edit settles there)
+      const stored = place === 0 ? content : row.caption
+      return stored === wanted[place]
+    })
   }
 
   // Only after the commit: the worker reads the message by id and must find it. If Redis fails here
@@ -857,6 +880,8 @@ function isMediaBody(body: CreateMessageBody): body is MediaMessageBody {
 
 interface LinkableFiles {
   ids: readonly string[]
+  // The text under each, by place
+  captions: readonly (string | null)[]
   customerId: string
 }
 

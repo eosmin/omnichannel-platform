@@ -1444,7 +1444,13 @@ describe('The channel connections of a store', () => {
         )?.media
       // The switch for several files is off in the suite: the channel's five become one, as the route says
       expect(mediaOf(takes.id)).toEqual([
-        { type: MessageType.IMAGE, maxFiles: 1, types: ['image/png'], maxBytes: 2048 }
+        {
+          type: MessageType.IMAGE,
+          maxFiles: 1,
+          types: ['image/png'],
+          maxBytes: 2048,
+          captionsPerFile: false
+        }
       ])
       // A channel with no file capability lists no kind
       expect(mediaOf(text.id)).toEqual([])
