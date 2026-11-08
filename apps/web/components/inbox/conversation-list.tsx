@@ -30,7 +30,7 @@ import {
 } from '../../lib/inbox/selection'
 import { useBulkRunner } from '../../lib/inbox/use-bulk-actions'
 import { useCustomerNamer } from '../../lib/inbox/use-customer-name'
-import { useConversationPages } from '../../lib/inbox/use-inbox-data'
+import { useConversationPages, useInboxBehavior } from '../../lib/inbox/use-inbox-data'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
@@ -42,8 +42,10 @@ import { Button } from '../ui/button'
 import { CONVERSATION_ROW_HEIGHT_PX, ConversationItem } from './conversation-item'
 import { InboxState } from './inbox-state'
 import { BulkBar, EmptyInbox, SnoozeDialog } from './lazy-dialogs'
+import { resolveModeOf } from './resolve-flow'
 import { RowCheckbox } from './row-checkbox'
-import { RowResolve } from './row-resolve'
+import { RowResolve, type RowResolveWay } from './row-resolve'
+import { RowResolveButton } from './row-resolve-button'
 import { RowSnooze } from './row-snooze'
 
 const OVERSCAN_ROWS = 6
@@ -141,7 +143,7 @@ export function ConversationList({
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null)
   const isSnoozeMounted = useMountedOnce(snoozeFor !== null)
   // The row a resolve runs for, and whether it is the way the main button does not take (`Shift+E`)
-  const [resolveFor, setResolveFor] = useState<{ id: string; otherWay: boolean } | null>(null)
+  const [resolveFor, setResolveFor] = useState<{ id: string; way: RowResolveWay } | null>(null)
 
   const focusRow = useCallback((id: string, attemptsLeft = FOCUS_ATTEMPTS): void => {
     const link = scrollRef.current?.querySelector<HTMLElement>(`[${ROW_ID_ATTRIBUTE}="${id}"] a`)
@@ -192,6 +194,9 @@ export function ConversationList({
   const mayAssign =
     can(ClientPermissions.CONVERSATIONS_RESOLVE) || can(ClientPermissions.CONVERSATIONS_ASSIGN)
   const mayResolve = can(ClientPermissions.CONVERSATIONS_RESOLVE)
+  // The way the button of a row takes: the one the store chose, which the arrow marks
+  const resolveSettings = useInboxBehavior(storeId).data
+  const defaultResolveMode = resolveSettings === undefined ? null : resolveModeOf(resolveSettings)
   const maySnooze = can(ClientPermissions.CONVERSATIONS_SNOOZE)
   useShortcut(
     Shortcuts.list.ASSIGN_TO_ME,
@@ -215,7 +220,7 @@ export function ConversationList({
       if (item === undefined || !canChangeState(item.status)) return false
       if (!runner.claim()) return
       // The flow of the store (reason, closing message), as in the open conversation
-      setResolveFor({ id: item.id, otherWay: false })
+      setResolveFor({ id: item.id, way: 'default' })
     },
     { enabled: mayResolve, priority: ShortcutPriority.FOCUSED_ROW }
   )
@@ -225,7 +230,7 @@ export function ConversationList({
       const item = focusedItem()
       if (item === undefined || !canChangeState(item.status)) return false
       if (!runner.claim()) return
-      setResolveFor({ id: item.id, otherWay: true })
+      setResolveFor({ id: item.id, way: 'other' })
     },
     { enabled: mayResolve, priority: ShortcutPriority.FOCUSED_ROW }
   )
@@ -369,6 +374,17 @@ export function ConversationList({
                     isSelecting={isSelecting}
                     onToggle={() => setSelection(toggleId(selection, item.id))}
                   />
+                  {mayResolve && canChangeState(item.status) ? (
+                    <RowResolveButton
+                      customer={item.customer}
+                      channelType={item.channelType}
+                      defaultMode={defaultResolveMode}
+                      onResolve={way => {
+                        if (!runner.claim()) return
+                        setResolveFor({ id: item.id, way })
+                      }}
+                    />
+                  ) : null}
                   {maySnooze && canChangeState(item.status) ? (
                     <RowSnooze
                       customer={item.customer}
@@ -407,9 +423,9 @@ export function ConversationList({
       ) : null}
       {resolveFor === null ? null : (
         <RowResolve
-          key={`${resolveFor.id}-${resolveFor.otherWay}`}
+          key={`${resolveFor.id}-${resolveFor.way}`}
           conversationId={resolveFor.id}
-          otherWay={resolveFor.otherWay}
+          way={resolveFor.way}
           onFinished={() => setResolveFor(null)}
         />
       )}

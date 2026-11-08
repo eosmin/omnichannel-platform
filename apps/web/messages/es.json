@@ -1353,6 +1353,8 @@
       "resolveDefault": "(predeterminada)",
       "reopen": "Reabrir",
       "wakeUp": "Despertar",
+      "resolveRow": "Resolver la conversación con {name}",
+      "resolveRowMore": "Opciones de resolución de la conversación con {name}",
       "snoozeRow": "Posponer la conversación con {name}"
     },
     "bulk": {

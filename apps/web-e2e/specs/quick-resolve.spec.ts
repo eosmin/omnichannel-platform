@@ -23,7 +23,7 @@ test.describe('the split button of Resolve', () => {
       const storeId = await storeIdNamed(FIRST_STORE)
       const conversationId = await newConversationIn(storeId)
       await page.goto(AppPaths.store.conversation(storeId, conversationId))
-      const arrow = page.getByRole('button', { name: en.inbox.actions.resolveMore })
+      const arrow = page.getByRole('button', { name: en.inbox.actions.resolveMore, exact: true })
       const now = page.getByRole('menuitem', { name: new RegExp(en.inbox.actions.resolveNow) })
       const withOptions = page.getByRole('menuitem', {
         name: new RegExp(en.inbox.actions.resolveWithOptions.replace('…', ''))

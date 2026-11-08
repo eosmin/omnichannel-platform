@@ -137,7 +137,8 @@ If resolving now:
 The Resolve control is a split button: the button takes the way the store chose, and its arrow always
 lists both ways ("Resolve now", "Resolve with closing message and reason…") and marks the one the button
 takes. `e` takes the default way and `Shift+E` the other, in the open conversation and on the focused row
-of the list; Ctrl/Cmd+Enter stays "send the message" in the composer (and confirms the dialog). With a
+of the list. Each row of the list has the same split button (it does not open the conversation).
+Ctrl/Cmd+Enter stays "send the message" in the composer (and confirms the dialog). With a
 selection, the bulk bar resolves at once (a dialog for many conversations is not offered) and `Shift+E`
 does nothing. A new store resolves now (the default of the column `resolve_show_options` is `false`); a
 store that exists keeps its value. The closing message is sent by the server once the Undo time is over,

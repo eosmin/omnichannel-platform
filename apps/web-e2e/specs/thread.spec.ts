@@ -412,7 +412,7 @@ test.describe.serial('the thread of a conversation', () => {
     const conversationId = await newConversationIn(storeId)
     await page.goto(AppPaths.store.conversation(storeId, conversationId))
 
-    await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
+    await page.getByRole('button', { name: en.inbox.actions.resolve, exact: true }).click()
     const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
     await dialog.getByRole('textbox', { name: en.inbox.resolve.reason }).fill('Sorted out')
     await dialog.getByRole('button', { name: en.inbox.resolve.confirm }).click()
@@ -428,7 +428,7 @@ test.describe.serial('the thread of a conversation', () => {
       const conversationId = await newConversationIn(storeId)
       await page.goto(AppPaths.store.conversation(storeId, conversationId))
 
-      await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
+      await page.getByRole('button', { name: en.inbox.actions.resolve, exact: true }).click()
       await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
       await page.getByRole('button', { name: en.common.undo }).click()
 
@@ -456,7 +456,7 @@ test.describe.serial('the thread of a conversation', () => {
       const conversationId = await newConversationIn(storeId)
       await page.goto(AppPaths.store.conversation(storeId, conversationId))
 
-      await page.getByRole('button', { name: en.inbox.actions.resolve }).click()
+      await page.getByRole('button', { name: en.inbox.actions.resolve, exact: true }).click()
 
       await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.RESOLVED)
       // The line of the system comes first and the message follows, once the time to undo is over. A
