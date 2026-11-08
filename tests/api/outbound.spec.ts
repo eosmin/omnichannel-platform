@@ -368,8 +368,16 @@ describe('Replies on their way to a channel', () => {
       await undoHoldsTheRow
 
       const sending = sender.send(job(reply), false)
+      let settled = false
+      void sending.then(
+        () => (settled = true),
+        () => (settled = true)
+      )
       // The worker has had time to read the conversation and, with no lock, to go on to the provider
       await new Promise(resolve => setTimeout(resolve, 500))
+      // It waits for the row the Undo holds: it did not go on, and it did not finish
+      expect(settled).toBe(false)
+      expect(sent).toHaveLength(0)
       release()
       await undo
       await Promise.race([
@@ -403,6 +411,36 @@ describe('Replies on their way to a channel', () => {
       await sender.send(job(reply), false)
 
       expect(sent).toHaveLength(1)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
+    it('is not judged again, nor deleted, when a retry follows an attempt that may have reached the provider', async () => {
+      const createdAt = new Date()
+      // The first attempt marked it as one that may have gone; then the customer wrote back, which
+      // reopened the conversation
+      const reply = await queuedReply({
+        createdAt,
+        closing: { conversationStatus: ConversationStatus.OPEN, resolvedAt: null }
+      })
+      await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
+
+      await sender.send(job(reply), false)
+
+      expect(await owner.message.count({ where: { id: reply.id } })).toBe(1)
+      expect(sent).toHaveLength(1)
+    })
+
+    it('does nothing for a closing message that is no longer queued', async () => {
+      const createdAt = new Date()
+      const reply = await queuedReply({
+        createdAt,
+        deliveryStatus: DeliveryStatus.SENT,
+        closing: resolvedBefore(createdAt)
+      })
+
+      await sender.send(job(reply), false)
+
+      expect(sent).toHaveLength(0)
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
