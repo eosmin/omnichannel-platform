@@ -57,24 +57,35 @@ export function SystemLineView({
         ? t(`reasons.${line.reason}`)
         : line.reason
 
+  // Waking is one line, whoever woke it: the reminder the agent left goes inside it, and the code of the reason
+  // is left out when it only says that the time ran out (the line already says it woke). Other events keep their
+  // reason on a line of its own.
+  const isWake = line.event === SystemMessageEvents.WOKEN
+  const reminder =
+    isWake && line.note !== undefined && line.note !== null && line.note !== ''
+      ? t('reminder', { note: line.note })
+      : null
+  const wakeReason =
+    isWake &&
+    reason !== null &&
+    !(actorKind === 'system' && line.reason === ConversationStatusReasons.SNOOZE_EXPIRED)
+      ? t('reason', { reason })
+      : null
+
   return (
     <div className="text-muted-foreground flex flex-col items-center gap-0.5 py-1 text-center text-xs">
-      <p>
+      <p className="break-words">
         {text}
         {until === null ? null : ` ${until}`}
         {' · '}
         <time dateTime={createdAt}>
           {format.dateTime(new Date(createdAt), { dateStyle: 'medium', timeStyle: 'short' })}
         </time>
+        {wakeReason === null ? null : ` · ${wakeReason}`}
+        {/* What the agent wrote when snoozing: text of the agent, drawn as it is */}
+        {reminder === null ? null : ` · ${reminder}`}
       </p>
-      {reason === null ? null : <p>{t('reason', { reason })}</p>}
-      {/* What the agent wrote when snoozing: text of the agent, drawn as it is */}
-      {line.event !== SystemMessageEvents.WOKEN ||
-      line.note === undefined ||
-      line.note === null ||
-      line.note === '' ? null : (
-        <p className="break-words">{t('reminder', { note: line.note })}</p>
-      )}
+      {!isWake && reason !== null ? <p>{t('reason', { reason })}</p> : null}
     </div>
   )
 }

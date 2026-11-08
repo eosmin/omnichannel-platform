@@ -47,7 +47,9 @@ export const metaAttachmentSchema = z.object({
         .transform(value => String(value))
         .optional()
         .catch(undefined),
-      coordinates: tolerant(z.object({ lat: latitude, long: longitude }))
+      coordinates: tolerant(z.object({ lat: latitude, long: longitude })),
+      // The card a place is shared in on Instagram: a template with elements (title, subtitle, a link)
+      generic: tolerant(z.object({ elements: tolerant(z.array(z.unknown())) }))
     })
   )
 })
