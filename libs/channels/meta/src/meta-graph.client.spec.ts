@@ -7,7 +7,7 @@ import { MetaGraph, MetaLimits, MetaWebhookApps } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginError, UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
-import { MetaGraphClient } from './meta-graph.client'
+import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 
 const config = { appSecret: 'secret', verifyToken: 'verify', graphVersion: 'v23.0' }
 const TOKEN = 'connection-token'
@@ -360,6 +360,53 @@ describe('MetaGraphClient', () => {
       ).rejects.toBeInstanceOf(UnsafeMediaLinkError)
     })
 
+    // IG-STK: the GIFs of Instagram come from Giphy and Tenor, whose hosts are listed one by one
+    it.each([
+      'https://media0.giphy.com/media/abc/giphy.gif',
+      'https://media4.giphy.com/media/abc/giphy.gif?cid=1',
+      'https://i.giphy.com/abc.gif',
+      'https://media.tenor.com/abc/tenor.gif',
+      'https://c.tenor.com/abc/tenor.gif'
+    ])('takes the GIF host %s, with no token', async url => {
+      fetchMock.mockResolvedValueOnce(new Response('x'))
+      await expect(client.downloadMediaUrl(url)).resolves.toBeDefined()
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(init.headers).not.toHaveProperty('authorization')
+      expect(init.redirect).toBe('manual')
+    })
+
+    it.each([
+      'https://media1.giphy.com.evil.example/x.gif',
+      'https://evil-giphy.com/x.gif',
+      'https://giphy.com/x.gif',
+      'https://media5.giphy.com/x.gif',
+      'https://x.media1.giphy.com/x.gif',
+      'https://media1.giphy.com:8443/x.gif',
+      'http://media1.giphy.com/x.gif',
+      'https://user:pw@media1.giphy.com/x.gif',
+      'https://media.tenor.com.evil.example/x.gif',
+      'https://tenor.com/x.gif',
+      'https://static.tenor.com/x.gif',
+      'https://media1.giphy.com./x.gif',
+      'https://media1.giphy.com@evil.example/x.gif',
+      'https://xn--media1-giphy-9ya.com/x.gif'
+    ])('refuses %s without calling it', async url => {
+      await expect(client.downloadMediaUrl(url)).rejects.toBeInstanceOf(UnsafeMediaLinkError)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('reads the host as the url does: a capitalised one is the same host', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('x'))
+      await expect(
+        client.downloadMediaUrl('https://MEDIA1.GIPHY.COM/media/abc/giphy.gif')
+      ).resolves.toBeDefined()
+    })
+
+    it('says in the pure check which links a channel may fetch', () => {
+      expect(isMetaMediaLink('https://media2.giphy.com/media/abc/giphy.gif')).toBe(true)
+      expect(isMetaMediaLink('https://media2.giphy.com.evil.example/x')).toBe(false)
+    })
+
     it('uses plain bytes when the server declares no usable type', async () => {
       fetchMock.mockResolvedValueOnce(new Response('x', { headers: { 'content-type': 'nope' } }))
       expect((await client.downloadMediaUrl(CDN)).contentType).toBe(MetaGraph.FALLBACK_CONTENT_TYPE)
@@ -378,6 +425,18 @@ describe('MetaGraphClient', () => {
   })
 
   describe('downloadMedia', () => {
+    // The list of GIF hosts is for the links of customers; the url that Graph answers is Meta's alone
+    it('does not follow an answer of Graph that points to a GIF host', async () => {
+      fetchMock.mockResolvedValueOnce(
+        json({ url: 'https://media1.giphy.com/x.gif', mime_type: 'image/gif' })
+      )
+      await expect(client.downloadMedia(TOKEN, '999')).rejects.toBeInstanceOf(PluginError)
+      // Only the call to Graph was made; the GIF host was never called
+      expect((fetchMock.mock.calls as [string][]).map(call => call[0])).toEqual([
+        'https://graph.facebook.com/v23.0/999'
+      ])
+    })
+
     const info = (overrides: Record<string, unknown> = {}): Response =>
       json({ url: MEDIA_URL, mime_type: 'image/jpeg', ...overrides })
 

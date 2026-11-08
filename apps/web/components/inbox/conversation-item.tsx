@@ -53,10 +53,12 @@ export function ConversationItem({
     return value.byAgent ? t('youPrefix', { text }) : text
   }
 
-  // The unsent text of this conversation, kept in this tab by the composer: it takes the place of the preview
+  // The unsent text of this conversation, kept in this tab by the composer: it takes the place of the preview,
+  // but only in the rows of the conversations the agent is NOT looking at. In the open one the text is in the box,
+  // in front of them: showing it twice is noise. It shows when they move to another conversation or leave the thread.
   const userId = useProfile().data?.id
   const draft = useDraftPreview(
-    userId === undefined ? null : { userId, storeId, conversationId: item.id }
+    userId === undefined || isSelected ? null : { userId, storeId, conversationId: item.id }
   )
 
   const when =

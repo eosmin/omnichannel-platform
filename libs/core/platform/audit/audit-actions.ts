@@ -55,6 +55,10 @@ export const AuditAction = {
   ORDER_CANCELLED: 'order.cancelled',
   CONVERSATION_DELETED: 'conversation.deleted',
   BULK_ACTION_EXECUTED: 'conversation.bulk_action',
+  // A person resolved a conversation, and took it back with the Undo of the toast: the thread keeps no
+  // trace of an Undo inside its window, so this log is where both facts live, with who and when
+  CONVERSATION_RESOLVED: 'conversation.resolved',
+  CONVERSATION_RESOLVE_UNDONE: 'conversation.resolve_undone',
 
   // Orders (TDD_17 §3)
   ORDER_CONFIRMED: 'order.confirmed',

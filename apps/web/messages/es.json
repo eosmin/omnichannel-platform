@@ -1319,7 +1319,7 @@
         "nextWeek": "La próxima semana"
       },
       "custom": "Elige fecha y hora",
-      "timezone": "Hora de la tienda ({timezone}).",
+      "timezone": "Las horas son de {timezone}.",
       "confirm": "Posponer",
       "snoozing": "Posponiendo",
       "done": "Pospuesta hasta {time}."

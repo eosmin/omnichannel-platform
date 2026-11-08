@@ -1319,7 +1319,7 @@
         "nextWeek": "Next week"
       },
       "custom": "Pick a date and time",
-      "timezone": "Time of the store ({timezone}).",
+      "timezone": "Times are in {timezone}.",
       "confirm": "Snooze",
       "snoozing": "Snoozing",
       "done": "Snoozed until {time}."
