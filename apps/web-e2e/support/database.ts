@@ -110,7 +110,13 @@ export function addMessageTo(
     type?: MessageType
     createdAt: Date
     deliveryStatus?: DeliveryStatus
-    system?: { event: SystemMessageEvent; actorType: 'user' | 'system' }
+    system?: {
+      event: SystemMessageEvent
+      actorType: 'user' | 'system'
+      // The code the system gave (a snooze that ran out) and what the agent wrote when snoozing
+      reason?: string
+      note?: string
+    }
     replyToMessageId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
@@ -152,10 +158,11 @@ export function addMessageTo(
                   causedBy: null,
                   from: null,
                   to: null,
-                  reason: null,
+                  reason: system.reason ?? null,
                   snoozedUntil: null,
                   assignedTo: null,
-                  previousAssignee: null
+                  previousAssignee: null,
+                  ...(system.note === undefined ? {} : { note: system.note })
                 }
               })
         }
@@ -308,6 +315,14 @@ export async function storeIdNamed(name: string): Promise<string> {
   const store = await withOwner(owner => owner.store.findFirst({ where: { name } }))
   if (store === null) throw new Error(`no store named ${name}`)
   return store.id
+}
+
+// The moment a snoozed conversation comes back (null if it is not snoozed)
+export async function snoozedUntilOf(conversationId: string): Promise<Date | null> {
+  return withOwner(async owner => {
+    const row = await owner.conversation.findUniqueOrThrow({ where: { id: conversationId } })
+    return row.snoozedUntil
+  })
 }
 
 // The zone a store counts its hours in (what the settings of the hours save), returning the one it had
