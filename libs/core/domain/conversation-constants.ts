@@ -22,6 +22,14 @@ export const AttentionReasons = {
 } as const
 export type AttentionReason = (typeof AttentionReasons)[keyof typeof AttentionReasons]
 
+// Why a conversation was given to someone by the system on their own action (`reason` of the line
+// `assigned`); a person's assignment has none
+export const AssignmentReasons = {
+  // The first reply of an agent to a conversation nobody had took it for them (store setting `assignOnReply`)
+  ON_REPLY: 'on_reply'
+} as const
+export type AssignmentReason = (typeof AssignmentReasons)[keyof typeof AssignmentReasons]
+
 // What a SYSTEM message of the thread says happened (its `metadata.event`); the thread draws it as a
 // divider, in the language of who reads it
 export const SystemMessageEvents = {

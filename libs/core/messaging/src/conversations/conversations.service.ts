@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { AssigneePermissions, type Permission, Permissions } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
+  type AssignmentReason,
   AttentionReasons,
   ConversationConflictReasons,
   ConversationHiddenStatuses,
@@ -527,7 +528,9 @@ export class ConversationsService {
     storeId: string,
     conversationId: string,
     userId: string,
-    actor: ConversationActor = 'system'
+    actor: ConversationActor = 'system',
+    // Why, when the system does it on the action of the person (the first reply)
+    reason?: AssignmentReason
   ): Promise<boolean> {
     const { count } = await tx.conversation.updateMany({
       where: {
@@ -542,7 +545,8 @@ export class ConversationsService {
       await writeSystemLine(tx, storeId, conversationId, {
         event: SystemMessageEvents.ASSIGNED,
         actor: actorRef(actor),
-        assignedTo: userId
+        assignedTo: userId,
+        ...(reason === undefined ? {} : { reason })
       })
       this.events.publish(tx, Events.CONVERSATION_ASSIGNED, {
         storeId,
