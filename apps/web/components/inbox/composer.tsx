@@ -22,6 +22,7 @@ import {
 } from '@platform/core/domain'
 
 import { isAssigneeRefusal } from '../../lib/inbox/assignees'
+import { publishDraft } from '../../lib/inbox/composer-draft-index'
 import { readDraft, writeDraft } from '../../lib/inbox/composer-drafts'
 import { composerMenu, type MenuEntry } from '../../lib/inbox/composer-menu'
 import {
@@ -230,15 +231,15 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const keptMode = allowedMode(chosenMode, mayReply, mayNote)
   useEffect(() => {
     if (userId === undefined || !isDraftLoaded) return
-    writeDraft(
-      window.sessionStorage,
-      { userId, storeId, conversationId },
-      {
-        text: draft,
-        isNote: keptMode === MessageType.INTERNAL_NOTE,
-        mentions: mentionedPeople(draft, picked)
-      }
-    )
+    const scope = { userId, storeId, conversationId }
+    const isNote = keptMode === MessageType.INTERNAL_NOTE
+    const isKept = writeDraft(window.sessionStorage, scope, {
+      text: draft,
+      isNote,
+      mentions: mentionedPeople(draft, picked)
+    })
+    // The row of this conversation in the list shows it, only if it was kept
+    if (isKept) publishDraft(scope, { text: draft, isNote })
   }, [draft, picked, keptMode, userId, storeId, conversationId, isDraftLoaded])
 
   // Answering a message puts the cursor in the box

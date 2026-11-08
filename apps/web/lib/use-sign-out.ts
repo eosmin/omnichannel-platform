@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { AppPaths } from '@platform/api-client'
 
 import { apiClient, browserSession } from './api'
+import { resetDraftIndex } from './inbox/composer-draft-index'
 import { clearComposerDrafts } from './inbox/composer-drafts'
 import { readLastStoreId } from './last-store'
 import { unsubscribeFromPush } from './push/push-browser'
@@ -44,6 +45,7 @@ export function useSignOut(redirectTo: string = AppPaths.login): {
     }
     // What the person was writing does not stay in the browser for the next one
     clearComposerDrafts(window.sessionStorage)
+    resetDraftIndex()
     queryClient.clear()
     router.replace(redirectTo)
   }

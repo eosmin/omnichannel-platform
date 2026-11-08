@@ -7,6 +7,7 @@ import { requestMagicLink } from '@platform/api-client'
 
 import { apiClient } from '../../lib/api'
 import { errorCodeOf } from '../../lib/error-message'
+import { resetDraftIndex } from '../../lib/inbox/composer-draft-index'
 import { clearComposerDrafts } from '../../lib/inbox/composer-drafts'
 import { useCodeText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
@@ -21,7 +22,10 @@ export function LoginForm(): ReactElement {
   const [email, setEmail] = useState('')
   const [step, setStep] = useState<Step>({ name: 'form', errorCode: null })
   // Arriving here means no session: whatever was being written in this tab does not wait for the next person
-  useEffect(() => clearComposerDrafts(window.sessionStorage), [])
+  useEffect(() => {
+    clearComposerDrafts(window.sessionStorage)
+    resetDraftIndex()
+  }, [])
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
