@@ -305,7 +305,10 @@ describe('messagingToEvents', () => {
     it('is a location card when the link is a map with coordinates', () => {
       const [event] = messagingToEvents(
         wrap(
-          inbound({ mid: 'm1', attachments: [template('https://maps.apple.com/?ll=13.69,-89.21')] })
+          inbound({
+            mid: 'm1',
+            attachments: [template('https://maps.apple.com/?coordinate=13.69,-89.21')]
+          })
         ),
         OBJECT
       )
@@ -373,7 +376,7 @@ describe('messagingToEvents', () => {
                 payload: {
                   generic: {
                     elements: [
-                      { default_action: { url: 'https://maps.apple.com/?ll=13.69,-89.21' } }
+                      { default_action: { url: 'https://maps.apple.com/?coordinate=13.69,-89.21' } }
                     ]
                   }
                 }
@@ -403,7 +406,7 @@ describe('messagingToEvents', () => {
                       { title: 'Header' },
                       {
                         title: 'Casa',
-                        buttons: [{ url: 'https://maps.apple.com/?ll=13.69,-89.21' }]
+                        buttons: [{ url: 'https://maps.apple.com/?coordinate=13.69,-89.21' }]
                       }
                     ]
                   }

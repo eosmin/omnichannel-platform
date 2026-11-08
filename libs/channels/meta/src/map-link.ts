@@ -4,8 +4,8 @@ import { MapLinks } from '@platform/core/domain'
 // log of 2026-11-08: a `template` whose `generic.elements[]` carry a title, a subtitle, an image and a link).
 // Only a link on the exact host of a map (`MapLinks`), over https, with no credentials and the default port.
 // Nothing is fetched and no short link is followed: a link with no coordinates in it is no place we can draw.
-// Only what names the place counts: the centre of a viewport or of a search (`sll`, `ll` of Google, the `@` of a
-// search page) is not it.
+// Only what names the place counts: the centre of a viewport or of a search (`ll` and `sll`, the `@` of a search page,
+// the `#map=` of OpenStreetMap) is not it, and neither is the point 0,0 that an empty value makes.
 
 interface Point {
   lat: number
@@ -25,6 +25,7 @@ function pointOf(lat: string | undefined, long: string | undefined): Point | nul
     return null
   }
   const point = { lat: Number(lat), long: Number(long) }
+  if (point.lat === 0 && point.long === 0) return null
   return Math.abs(point.lat) <= 90 && Math.abs(point.long) <= 180 ? point : null
 }
 
@@ -43,10 +44,15 @@ function fromParams(url: URL, names: readonly string[]): Point | null {
 
 function google(url: URL): Point | null {
   // `google.com` is also a search page: only its maps
-  if (url.hostname !== 'maps.google.com' && !/^\/maps(?:\/|$)/.test(url.pathname)) return null
+  if (url.hostname !== MapLinks.GOOGLE_MAPS_HOST && !MapLinks.GOOGLE_MAPS_PATH.test(url.pathname)) {
+    return null
+  }
   // The centre of a PLACE page is the place; that of a search page is a viewport
-  if (url.pathname.startsWith('/maps/place/')) {
-    const at = /@(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/.exec(url.pathname)
+  if (url.pathname.startsWith(MapLinks.GOOGLE_PLACE_PATH)) {
+    // The segment that starts with `@`, not an `@` inside the name of the place
+    const at = /\/@(-?\d{1,3}(?:\.\d{1,10})?),(-?\d{1,3}(?:\.\d{1,10})?)(?:,|\/|$)/.exec(
+      url.pathname
+    )
     const point = at ? pointOf(at[1], at[2]) : null
     if (point) return point
   }
@@ -54,13 +60,10 @@ function google(url: URL): Point | null {
 }
 
 function osm(url: URL): Point | null {
-  const marker = pointOf(
-    url.searchParams.get('mlat') ?? undefined,
-    url.searchParams.get('mlon') ?? undefined
+  const [lat, long] = MapLinks.OSM_MARKER_PARAMS.map(
+    name => url.searchParams.get(name) ?? undefined
   )
-  if (marker) return marker
-  const hash = /^#map=\d{1,2}\/(-?[\d.]+)\/(-?[\d.]+)/.exec(url.hash)
-  return hash ? pointOf(hash[1], hash[2]) : null
+  return pointOf(lat, long)
 }
 
 export function coordinatesOfMapLink(link: string, followed = false): Point | null {

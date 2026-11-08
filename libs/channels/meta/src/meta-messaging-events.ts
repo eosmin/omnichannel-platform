@@ -4,6 +4,7 @@ import {
   httpUrl,
   InboundLimits,
   isWholeEmoji,
+  MapLinks,
   MessageMetadataKeys,
   MessageType,
   MetaGraph,
@@ -215,18 +216,13 @@ function placeOf(attachments: ParsedAttachment[]): {
 }
 
 const templateElementSchema = z.object({
-  title: z.string().optional().catch(undefined),
-  subtitle: z.string().optional().catch(undefined),
+  title: z.string().max(MapLinks.TEMPLATE_TEXT_MAX_LENGTH).optional().catch(undefined),
+  subtitle: z.string().max(MapLinks.TEMPLATE_TEXT_MAX_LENGTH).optional().catch(undefined),
   default_action: z
     .object({ url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined) })
     .optional()
     .catch(undefined),
-  // Cut before it is read: the limit bounds the work, not only the result
-  buttons: z
-    .array(z.unknown())
-    .transform(list => list.slice(0, MetaMessaging.TEMPLATE_MAX_BUTTONS))
-    .optional()
-    .catch(undefined)
+  buttons: z.array(z.unknown()).optional().catch(undefined)
 })
 
 const templateButtonSchema = z.object({
@@ -242,12 +238,12 @@ function templatePlaceOf(attachments: ParsedAttachment[]): {
 } | null {
   for (const attachment of attachments) {
     if (attachment.type !== MetaMessaging.ATTACHMENT_TEMPLATE) continue
-    for (const raw of (attachment.elements ?? []).slice(0, MetaMessaging.TEMPLATE_MAX_ELEMENTS)) {
+    for (const raw of attachment.elements ?? []) {
       const element = templateElementSchema.safeParse(raw)
       if (!element.success) continue
       const links = [
         element.data.default_action?.url,
-        ...(element.data.buttons ?? []).map(button => {
+        ...(element.data.buttons ?? []).slice(0, MetaMessaging.TEMPLATE_MAX_BUTTONS).map(button => {
           const parsed = templateButtonSchema.safeParse(button)
           return parsed.success ? parsed.data.url : undefined
         })
@@ -300,7 +296,7 @@ function plainNames(value: unknown, deep = false): string[] {
   return [...top, ...nested].slice(0, UnsupportedShapeLimits.MAX_NAMES)
 }
 
-// The names of the first element of a template and of what it holds one level down (`default_action.url`,
+// The names of the elements of a template that are read, and of what they hold one level down (`default_action.url`,
 // `buttons.url`): enough to map a card without a single value
 function elementNames(payload: unknown): string[] {
   const generic = isRecord(payload) ? payload.generic : undefined
@@ -323,8 +319,11 @@ function elementNames(payload: unknown): string[] {
       }
     }
   }
-  const half = UnsupportedShapeLimits.MAX_ELEMENT_NAMES / 2
-  return [...[...top].slice(0, half), ...[...nested].slice(0, half)]
+  // The nested names are the ones that say where the link is: they get a half of their own, and the top-level ones
+  // fill what the nested ones leave
+  const room = UnsupportedShapeLimits.MAX_ELEMENT_NAMES
+  const nestedKept = [...nested].slice(0, room / 2)
+  return [...[...top].slice(0, room - nestedKept.length), ...nestedKept]
 }
 
 export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, unknown> {

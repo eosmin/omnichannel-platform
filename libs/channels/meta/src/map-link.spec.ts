@@ -27,21 +27,19 @@ describe('coordinatesOfMapLink', () => {
       13.69,
       -89.21
     ],
-    ['apple ll', 'https://maps.apple.com/?ll=13.6929,-89.2182&q=Home', 13.6929, -89.2182],
     ['apple coordinate', 'https://maps.apple.com/?coordinate=13.6929,-89.2182', 13.6929, -89.2182],
     [
       'osm mlat',
       'https://www.openstreetmap.org/?mlat=13.6929&mlon=-89.2182#map=17/13.69/-89.21',
       13.6929,
       -89.2182
-    ],
-    ['osm hash', 'https://www.openstreetmap.org/#map=17/13.6929/-89.2182', 13.6929, -89.2182]
+    ]
   ])('reads %s', (_name, url, lat, long) => {
     expect(coordinatesOfMapLink(url)).toEqual({ lat, long })
   })
 
   it('reads an upper case host as the same host', () => {
-    expect(coordinatesOfMapLink('https://MAPS.APPLE.COM/?ll=1.5,2.5')).toEqual({
+    expect(coordinatesOfMapLink('https://MAPS.APPLE.COM/?coordinate=1.5,2.5')).toEqual({
       lat: 1.5,
       long: 2.5
     })
@@ -50,12 +48,14 @@ describe('coordinatesOfMapLink', () => {
   it('follows the redirects of Instagram and Facebook once, to a map and only to a map', () => {
     const wrapped = (target: string): string =>
       `https://l.instagram.com/?u=${encodeURIComponent(target)}&e=AT0abc`
-    expect(coordinatesOfMapLink(wrapped('https://maps.apple.com/?ll=1.5,2.5'))).toEqual({
+    expect(coordinatesOfMapLink(wrapped('https://maps.apple.com/?coordinate=1.5,2.5'))).toEqual({
       lat: 1.5,
       long: 2.5
     })
-    expect(coordinatesOfMapLink(wrapped('https://evil.example/?ll=1.5,2.5'))).toBeNull()
-    expect(coordinatesOfMapLink(wrapped(wrapped('https://maps.apple.com/?ll=1.5,2.5')))).toBeNull()
+    expect(coordinatesOfMapLink(wrapped('https://evil.example/?coordinate=1.5,2.5'))).toBeNull()
+    expect(
+      coordinatesOfMapLink(wrapped(wrapped('https://maps.apple.com/?coordinate=1.5,2.5')))
+    ).toBeNull()
   })
 
   it.each([

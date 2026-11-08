@@ -255,5 +255,11 @@ export const MapLinks = {
   REDIRECT_PARAM: 'u',
   // Parameters that name the place itself (a viewport centre or a search centre is not the place)
   GOOGLE_PLACE_PARAMS: ['query', 'q', 'destination'],
-  APPLE_PLACE_PARAMS: ['ll', 'coordinate']
+  APPLE_PLACE_PARAMS: ['coordinate'],
+  GOOGLE_MAPS_HOST: 'maps.google.com',
+  GOOGLE_MAPS_PATH: /^\/maps(?:\/|$)/,
+  GOOGLE_PLACE_PATH: '/maps/place/',
+  OSM_MARKER_PARAMS: ['mlat', 'mlon'],
+  // The text of a title or subtitle that is read: longer is cut before it is cleaned
+  TEMPLATE_TEXT_MAX_LENGTH: 300
 } as const
