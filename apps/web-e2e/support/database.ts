@@ -336,6 +336,26 @@ export async function addSnippetTo(storeId: string, shortcut: string): Promise<s
   return withOwner(async owner => (await createSnippet(owner, { storeId, shortcut })).id)
 }
 
+// A conversation whose last message is old, so that it sits far down the list until something raises it
+export function ageConversation(conversationId: string, agoMs: number): Promise<void> {
+  return withOwner(async owner => {
+    await owner.conversation.update({
+      where: { id: conversationId },
+      data: { lastMessageAt: new Date(Date.now() - agoMs) }
+    })
+  })
+}
+
+// The time of a snooze that is over, so that the next sweep of the worker wakes the conversation
+export function endSnooze(conversationId: string): Promise<void> {
+  return withOwner(async owner => {
+    await owner.conversation.update({
+      where: { id: conversationId },
+      data: { snoozedUntil: new Date(Date.now() - 60_000) }
+    })
+  })
+}
+
 export function statusOf(conversationId: string): Promise<string | undefined> {
   return withOwner(
     async owner =>

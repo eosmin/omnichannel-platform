@@ -68,6 +68,13 @@ export function SystemLineView({
         </time>
       </p>
       {reason === null ? null : <p>{t('reason', { reason })}</p>}
+      {/* What the agent wrote when snoozing: text of the agent, drawn as it is */}
+      {line.event !== SystemMessageEvents.WOKEN ||
+      line.note === undefined ||
+      line.note === null ||
+      line.note === '' ? null : (
+        <p className="break-words">{t('reminder', { note: line.note })}</p>
+      )}
     </div>
   )
 }
