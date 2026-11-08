@@ -1160,6 +1160,7 @@
         }
       },
       "loadEarlierFailed": "The earlier messages could not be loaded",
+      "imageRun": "{count} pictures",
       "typing": {
         "customer": "The customer is typing",
         "teammates": "{count, plural, one {{names} is typing} other {{names} are typing}}"

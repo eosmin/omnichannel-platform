@@ -117,6 +117,20 @@ export function MessageMedia({
   )
 }
 
+// One picture of a run of pictures a customer sent one after the other (each its own message): the cell of the
+// grid, with the states of any picture. What opens it is the viewer of the run, which walks all of them.
+export function RunImage({ file, onOpen }: { file: MediaFile; onOpen: () => void }): ReactElement {
+  return (
+    <MediaItem
+      file={file}
+      onOpen={() => onOpen()}
+      sticker={false}
+      messageType={MessageType.IMAGE}
+      inAlbum
+    />
+  )
+}
+
 const KIND_LABELS = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'] as const
 
 // The icon in front of the word of a kind of file: a kind with no icon does not compile

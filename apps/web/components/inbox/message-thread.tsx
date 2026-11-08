@@ -12,6 +12,7 @@ import {
   useState
 } from 'react'
 
+import { groupImageRuns } from '../../lib/inbox/image-runs'
 import { messageActionsOf } from '../../lib/inbox/message-actions'
 import { buildThreadItems, isFromCustomer, memberIdsOf } from '../../lib/inbox/thread-items'
 import { stickyDayOf, unseenAfter } from '../../lib/inbox/thread-reading'
@@ -31,6 +32,7 @@ import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
+import { ImageRun } from './image-run'
 import { InboxState } from './inbox-state'
 import { MessageBubble, messageDomId } from './message-bubble'
 import { OriginCard } from './origin-card'
@@ -115,6 +117,8 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       ),
     [items]
   )
+  // Pictures a customer sent one after the other are drawn as one block; the logic of the thread keeps its items
+  const entries = useMemo(() => groupImageRuns(items), [items])
   const stickyDay = items.find(item => item.kind === 'day' && item.key === stickyKey)
   const unseen = unseenAfter(messageIds, seenId, fromCustomer)
 
@@ -382,7 +386,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
             <InboxState icon={MessageSquare} title={t('empty.title')} body={t('empty.body')} />
           ) : (
             <ol aria-label={t('label')} className="compact:p-2 flex flex-col p-3">
-              {items.map(item =>
+              {entries.map(item =>
                 item.kind === 'day' ? (
                   <li
                     id={dayDomId(item.key)}
@@ -392,6 +396,21 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                     <time dateTime={item.key} className="bg-muted rounded-full px-3 py-0.5">
                       {format.dateTime(item.at, { dateStyle: 'full' })}
                     </time>
+                  </li>
+                ) : item.kind === 'imageRun' ? (
+                  <li
+                    // The key of the first picture, as a lone picture has: the entry keeps its place when a second joins
+                    key={item.messages[0]?.id ?? 'run'}
+                    className={item.showAuthor ? 'compact:mt-1.5 mt-3' : 'compact:mt-0.5 mt-1'}
+                  >
+                    <ImageRun
+                      messages={item.messages}
+                      showAuthor={item.showAuthor}
+                      authorLabel={authorLabel}
+                      actionsOf={message => messageActionsOf(message, viewer)}
+                      conversationId={conversationId}
+                      userId={viewer.userId}
+                    />
                   </li>
                 ) : (
                   <li

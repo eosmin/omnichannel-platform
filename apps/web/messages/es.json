@@ -1160,6 +1160,7 @@
         }
       },
       "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores",
+      "imageRun": "{count} imágenes",
       "typing": {
         "customer": "El cliente está escribiendo",
         "teammates": "{count, plural, one {{names} está escribiendo} other {{names} están escribiendo}}"
