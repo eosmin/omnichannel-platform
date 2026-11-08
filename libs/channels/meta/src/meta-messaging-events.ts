@@ -1,7 +1,10 @@
+import { z } from 'zod'
+
 import {
   httpUrl,
   InboundLimits,
   isWholeEmoji,
+  MapLinks,
   MessageMetadataKeys,
   MessageType,
   MetaGraph,
@@ -15,6 +18,7 @@ import {
 import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
 
 import { cut, hasText, replyTarget } from './inbound-text'
+import { coordinatesOfMapLink } from './map-link'
 import {
   metaAttachmentRawLinkSchema,
   metaAttachmentSchema,
@@ -83,6 +87,8 @@ interface ParsedAttachment {
   title: string | undefined
   stickerId: string | undefined
   coordinates: { lat: number; long: number } | undefined
+  // The elements of a template (Instagram shares a place as one)
+  elements: unknown[] | undefined
   // The link as it came, when it did not pass as one: a file is still a file (MS-04)
   rawUrl: string | undefined
 }
@@ -103,6 +109,7 @@ function parseAttachments(raw: unknown[]): ParsedAttachment[] {
         title,
         stickerId: payload?.sticker_id,
         coordinates: payload?.coordinates,
+        elements: payload?.generic?.elements?.slice(0, MetaMessaging.TEMPLATE_MAX_ELEMENTS),
         rawUrl
       }
     ]
@@ -196,7 +203,7 @@ function placeOf(attachments: ParsedAttachment[]): {
     attachment =>
       attachment.type === MetaMessaging.ATTACHMENT_LOCATION && attachment.coordinates !== undefined
   )
-  if (!found?.coordinates) return null
+  if (!found?.coordinates) return templatePlaceOf(attachments)
   const name = placeTextOf(found.title)
   return {
     name,
@@ -206,6 +213,66 @@ function placeOf(attachments: ParsedAttachment[]): {
       ...(name === null ? {} : { name })
     }
   }
+}
+
+const cutText = z
+  .string()
+  .transform(text => cut(text, MapLinks.TEMPLATE_TEXT_MAX_LENGTH))
+  .optional()
+  .catch(undefined)
+
+const templateElementSchema = z.object({
+  // Cut at the limit before it is cleaned: a long name is a shorter name, not none
+  title: cutText,
+  subtitle: cutText,
+  default_action: z
+    .object({ url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined) })
+    .optional()
+    .catch(undefined),
+  buttons: z.array(z.unknown()).optional().catch(undefined)
+})
+
+const templateButtonSchema = z.object({
+  url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined)
+})
+
+// A place Instagram shares as a template: a title, a subtitle and a link to a map. It is a place only when the
+// link is a map of a known host that holds coordinates (see `coordinatesOfMapLink`); otherwise it stays the
+// marker of an unsupported type, and the title is not put in the thread.
+function templatePlaceOf(attachments: ParsedAttachment[]): {
+  name: string | null
+  metadata: Record<string, unknown>
+} | null {
+  for (const attachment of attachments) {
+    if (attachment.type !== MetaMessaging.ATTACHMENT_TEMPLATE) continue
+    for (const raw of attachment.elements ?? []) {
+      const element = templateElementSchema.safeParse(raw)
+      if (!element.success) continue
+      const links = [
+        element.data.default_action?.url,
+        ...(element.data.buttons ?? []).slice(0, MetaMessaging.TEMPLATE_MAX_BUTTONS).map(button => {
+          const parsed = templateButtonSchema.safeParse(button)
+          return parsed.success ? parsed.data.url : undefined
+        })
+      ]
+      for (const link of links) {
+        const point = link === undefined ? null : coordinatesOfMapLink(link)
+        if (!point) continue
+        const name = placeTextOf(element.data.title)
+        const address = placeTextOf(element.data.subtitle)
+        return {
+          name,
+          metadata: {
+            latitude: point.lat,
+            longitude: point.long,
+            ...(name === null ? {} : { name }),
+            ...(address === null ? {} : { address })
+          }
+        }
+      }
+    }
+  }
+  return null
 }
 
 // What a message says, in the shape the core stores. A message with neither text nor a file we can
@@ -236,6 +303,36 @@ function plainNames(value: unknown, deep = false): string[] {
   return [...top, ...nested].slice(0, UnsupportedShapeLimits.MAX_NAMES)
 }
 
+// The names of the elements of a template that are read, and of what they hold one level down (`default_action.url`,
+// `buttons.url`): enough to map a card without a single value
+function elementNames(payload: unknown): string[] {
+  const generic = isRecord(payload) ? payload.generic : undefined
+  const elements = isRecord(generic) ? generic.elements : undefined
+  const read = Array.isArray(elements)
+    ? (elements as unknown[]).slice(0, MetaMessaging.TEMPLATE_MAX_ELEMENTS)
+    : []
+  // The names of every element that is read, and apart from them what each holds one level down, so that
+  // the nested ones are not cut by the top-level ones
+  const top = new Set<string>()
+  const nested = new Set<string>()
+  for (const element of read) {
+    if (!isRecord(element)) continue
+    for (const name of plainNames(element)) {
+      top.add(name)
+      const inner = element[name]
+      const record = Array.isArray(inner) ? (inner as unknown[])[0] : inner
+      for (const child of plainNames(record).slice(0, UnsupportedShapeLimits.MAX_NESTED_NAMES)) {
+        nested.add(`${name}.${child}`)
+      }
+    }
+  }
+  // The nested names are the ones that say where the link is: they get a half of their own, and the top-level ones
+  // fill what the nested ones leave
+  const room = UnsupportedShapeLimits.MAX_ELEMENT_NAMES
+  const nestedKept = [...nested].slice(0, room / 2)
+  return [...[...top].slice(0, room - nestedKept.length), ...nestedKept]
+}
+
 export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, unknown> {
   return {
     messageFields: plainNames(message),
@@ -245,7 +342,11 @@ export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, un
       return {
         type: typeof type === 'string' && SHAPE_NAME.test(type) ? type : UNSUPPORTED_TYPE,
         fields: plainNames(record),
-        payloadFields: plainNames(record.payload, true)
+        payloadFields: plainNames(record.payload, true),
+        // Only a template has elements: the key is left out of the shape of anything else
+        ...(type === MetaMessaging.ATTACHMENT_TEMPLATE
+          ? { elementFields: elementNames(record.payload) }
+          : {})
       }
     })
   }

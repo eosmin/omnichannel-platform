@@ -579,7 +579,7 @@ describe('The settings of the inbox of a store', () => {
       const response = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)
 
       expect(response.status).toBe(OK)
-      expect(response.body).toEqual({ sendReadReceipts: true })
+      expect(response.body).toEqual({ sendReadReceipts: true, assignOnReply: true })
     })
 
     it('change the key that is named, audit which one, and write only that key to the column', async () => {
@@ -588,10 +588,10 @@ describe('The settings of the inbox of a store', () => {
         .send({ sendReadReceipts: false })
 
       expect(response.status).toBe(OK)
-      expect(response.body).toEqual({ sendReadReceipts: false })
+      expect(response.body).toEqual({ sendReadReceipts: false, assignOnReply: true })
       expect(
         (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)).body
-      ).toEqual({ sendReadReceipts: false })
+      ).toEqual({ sendReadReceipts: false, assignOnReply: true })
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA2.id }
       })
@@ -669,12 +669,13 @@ describe('The settings of the inbox of a store', () => {
       })
 
       expect((await asAdmin().get(ApiRoutes.settings.preferences)).body).toEqual({
-        sendReadReceipts: true
+        sendReadReceipts: true,
+        assignOnReply: true
       })
       const put = await asAdmin()
         .put(ApiRoutes.settings.preferences)
         .send({ sendReadReceipts: false })
-      expect(put.body).toEqual({ sendReadReceipts: false })
+      expect(put.body).toEqual({ sendReadReceipts: false, assignOnReply: true })
     })
 
     it('never change the store of someone else', async () => {

@@ -46,7 +46,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
   const t = useTranslations('inbox')
   const { storeId } = useStore()
   const { conversationId } = useParams<{ conversationId?: string }>()
-  const { filters, search, setFilters } = useInboxFilters()
+  const { filters, onlyDrafts, search, setFilters, setOnlyDrafts, clearAll } = useInboxFilters()
   const counts = useConversationCounts(storeId)
   const channels = useChannelDirectory(storeId)
   const members = useMemberDirectory(storeId)
@@ -70,6 +70,9 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
         <InboxFilters
           filters={filters}
           onChange={setFilters}
+          onlyDrafts={onlyDrafts}
+          onOnlyDraftsChange={setOnlyDrafts}
+          onClearAll={clearAll}
           counts={counts.data}
           channels={channels.data ?? NO_CHANNELS}
           members={members.data ?? NO_MEMBERS}
@@ -78,6 +81,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
         <ConversationList
           storeId={storeId}
           filters={filters}
+          onlyDrafts={onlyDrafts}
           search={search}
           channels={channels.data ?? NO_CHANNELS}
           areChannelsReady={!channels.isPending}

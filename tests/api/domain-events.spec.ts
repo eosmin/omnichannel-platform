@@ -387,12 +387,19 @@ describe('The domain events of the services', () => {
       expect(heardOf(Events.CONVERSATION_READ).map(item => item.payload.visibility)).toEqual([
         { hidden: true, assignedTo: ctx.agentA.id }
       ])
+      // The hidden one stays hidden and is announced as it was. The archived one that the reply reopens is
+      // taken by the admin (who may assign) once it is open: that is announced as visible, with its new
+      // owner, and so is the message. A conversation that is still hidden is never taken.
       expect(heardOf(Events.CONVERSATION_ASSIGNED).map(item => item.payload.visibility)).toEqual([
-        { hidden: true, assignedTo: null }
+        { hidden: true, assignedTo: null },
+        { hidden: false, assignedTo: ctx.adminA.id }
       ])
       expect(heardOf(Events.MESSAGE_QUEUED).map(item => item.payload.visibility)).toEqual([
-        { hidden: false, assignedTo: null }
+        { hidden: false, assignedTo: ctx.adminA.id }
       ])
+      expect(
+        (await owner.conversation.findUniqueOrThrow({ where: { id: spam.id } })).assignedTo
+      ).toBeNull()
     })
 
     it('does not announce a mention of the author by themselves', async () => {

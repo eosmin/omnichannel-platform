@@ -66,6 +66,7 @@ export async function insertInboundMessage(
     select: { id: true }
   })
   // The message quotes one this thread does not have: told to the caller, who logs it (no id leaves)
+  // A quote that found no message: the caller logs the shape of its id once the transaction is over
   return {
     id: created.id,
     replyUnresolved: message.replyToExternalId !== undefined && replyTo === null
