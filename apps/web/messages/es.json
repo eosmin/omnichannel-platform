@@ -1067,6 +1067,7 @@
       "fileCaptionResendMaybeSent": "Puede que el cliente ya haya recibido este texto. Si lo envías otra vez, puede verlo dos veces.",
       "fileCaptionResendConfirm": "Enviar otra vez",
       "fileCaptionResendCancel": "No enviar",
+      "albumCaptions": "Textos bajo las imágenes",
       "resendCaption": "Enviar el texto otra vez",
       "media": {
         "checking": "Revisando {name}",

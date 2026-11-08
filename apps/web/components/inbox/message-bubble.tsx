@@ -6,8 +6,10 @@ import type { ReactElement } from 'react'
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
+import { isAlbum } from '../../lib/inbox/album'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { failureNotesOf, failureStateOf } from '../../lib/inbox/failure-state'
+import { albumCaptionLinesOf } from '../../lib/inbox/file-caption'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
@@ -298,6 +300,32 @@ function Content({
     unsupportedType: message.unsupportedType
   })
   const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
+  // The pictures a person sent with texts: the texts are listed under them in the order of the pictures, the
+  // first one's (the text of the message) among them, so the text of the message is not drawn apart as well
+  const albumLines = isAlbum(message.media, message.type, sticker)
+    ? albumCaptionLinesOf(message.media, {
+        hasText: text !== null,
+        hasNotice: message.captionState !== null
+      })
+    : []
+  const isCaptionListed = albumLines.length > 0
+  const textNode =
+    text === null ? null : (
+      <p className="break-words whitespace-pre-wrap">
+        {mentionSegments(text, mentionNames).map((segment, index) =>
+          segment.isMention ? (
+            <strong key={index} className="bg-note-border/40 rounded px-0.5 font-semibold">
+              {segment.text}
+            </strong>
+          ) : (
+            segment.text
+          )
+        )}
+      </p>
+    )
+  const noticeNode = (
+    <CaptionNotice message={message} conversationId={conversationId} canResend={canResendCaption} />
+  )
   return (
     <>
       {message.location === null ? null : (
@@ -314,6 +342,19 @@ function Content({
           canResendCaption={canResendFileCaption}
           sticker={sticker}
           messageType={message.type}
+          {...(isCaptionListed
+            ? {
+                albumCaptions: {
+                  lines: albumLines,
+                  lead: (
+                    <>
+                      {textNode}
+                      {noticeNode}
+                    </>
+                  )
+                }
+              }
+            : {})}
         />
       ) : null}
       {hasFiles ? null : (
@@ -327,24 +368,12 @@ function Content({
       {message.type === String(MessageType.TEMPLATE) ? (
         <p className="text-muted-foreground text-xs">{t('templateLabel')}</p>
       ) : null}
-      {text === null ? null : (
-        <p className="break-words whitespace-pre-wrap">
-          {mentionSegments(text, mentionNames).map((segment, index) =>
-            segment.isMention ? (
-              <strong key={index} className="bg-note-border/40 rounded px-0.5 font-semibold">
-                {segment.text}
-              </strong>
-            ) : (
-              segment.text
-            )
-          )}
-        </p>
+      {isCaptionListed ? null : (
+        <>
+          {textNode}
+          {noticeNode}
+        </>
       )}
-      <CaptionNotice
-        message={message}
-        conversationId={conversationId}
-        canResend={canResendCaption}
-      />
     </>
   )
 }

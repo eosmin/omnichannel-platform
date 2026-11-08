@@ -10,6 +10,7 @@ import { MediaStatus, MediaUnavailableCodes, MessageType } from '@platform/core/
 import type { OutboundMediaType } from '@platform/core/storage'
 
 import { fileDeliveryOf, isAlbum, sayRetryOnlyFailed } from '../../lib/inbox/album'
+import type { AlbumCaptionLine } from '../../lib/inbox/file-caption'
 import { displayFileNameOf } from '../../lib/inbox/file-label'
 import { mediaKindOf } from '../../lib/inbox/media-kind'
 import {
@@ -28,6 +29,7 @@ import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
+import { AlbumCaptionList, AlbumCaptionMark } from './album-captions'
 import { FileCaption } from './file-caption'
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
 
@@ -72,7 +74,8 @@ export function MessageMedia({
   canRefetch,
   canResendCaption = false,
   sticker = false,
-  messageType
+  messageType,
+  albumCaptions
 }: {
   files: readonly MediaFile[]
   unavailable: readonly UnavailableFile[]
@@ -84,17 +87,22 @@ export function MessageMedia({
   sticker?: boolean
   // The type of the message: a voice note that is an mp4 is drawn by the player of audio (`mediaKindOf`)
   messageType: string
+  // The texts of the album as a list in the order of the pictures, each number on its picture, with the text of
+  // the message (the first picture's) as `lead`. Without it, each text is drawn under its own file.
+  albumCaptions?: { lines: readonly AlbumCaptionLine<MediaFile>[]; lead: ReactNode }
 }): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
   if (files.length === 0 && unavailable.length === 0) return null
   // Several pictures in one message are a grid; the state of each file shows under it once there are several
   const album = isAlbum(files, messageType, sticker)
   const states = files.length > 1
+  const numbers = new Map(albumCaptions?.lines.map(line => [line.file.id, line.number]))
   return (
     <div className="flex flex-col gap-1.5">
       <div className={album ? 'grid w-[320px] max-w-full grid-cols-2 gap-1' : 'contents'}>
         {files.map(file => (
-          <div key={file.id} className="flex min-w-0 flex-col gap-0.5">
+          <div key={file.id} className="relative flex min-w-0 flex-col gap-0.5">
+            <MarkOf number={numbers.get(file.id)} />
             <MediaItem
               file={file}
               onOpen={setOpen}
@@ -103,15 +111,26 @@ export function MessageMedia({
               inAlbum={album}
             />
             {states ? <FileDeliveryLine file={file} /> : null}
-            <FileCaption
-              file={file}
-              messageId={messageId}
-              conversationId={conversationId}
-              canResend={canResendCaption}
-            />
+            {albumCaptions === undefined ? (
+              <FileCaption
+                file={file}
+                messageId={messageId}
+                conversationId={conversationId}
+                canResend={canResendCaption}
+              />
+            ) : null}
           </div>
         ))}
       </div>
+      {albumCaptions === undefined ? null : (
+        <AlbumCaptionList
+          lines={albumCaptions.lines}
+          lead={albumCaptions.lead}
+          messageId={messageId}
+          conversationId={conversationId}
+          canResend={canResendCaption}
+        />
+      )}
       {sayRetryOnlyFailed(files) ? <RetryHint /> : null}
       {unavailable.map(file => (
         <UnavailableItem
@@ -125,6 +144,10 @@ export function MessageMedia({
       <MediaLightbox file={open} onClose={() => setOpen(null)} />
     </div>
   )
+}
+
+function MarkOf({ number }: { number: number | undefined }): ReactElement | null {
+  return number === undefined ? null : <AlbumCaptionMark number={number} />
 }
 
 // One picture of a run of pictures a customer sent one after the other (each its own message): the cell of the

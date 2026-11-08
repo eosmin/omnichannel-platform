@@ -121,6 +121,8 @@ export function addMessageTo(
     replyToMessageId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
+    // How the text of a reply went when the channel sent it as a message of its own
+    captionState?: CaptionState
     // For a reply that failed: true when it is known not to have gone out, false or null when it may have
     failureDefinitive?: boolean | null
     // The channel's own data: the place of a location, or the mark of a sticker
@@ -137,6 +139,9 @@ export function addMessageTo(
     }
     if (deliveryError !== undefined) {
       await owner.message.update({ where: { id }, data: { deliveryError } })
+    }
+    if (input.captionState !== undefined) {
+      await owner.message.update({ where: { id }, data: { captionState: input.captionState } })
     }
     if (input.failureDefinitive !== undefined) {
       await owner.message.update({

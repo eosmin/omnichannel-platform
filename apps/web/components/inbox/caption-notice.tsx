@@ -1,16 +1,20 @@
 'use client'
 
+import { useIsMutating } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
-import { CaptionState } from '@platform/core/domain'
+import { CaptionState, ResendableCaptionStates } from '@platform/core/domain'
 
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
-import { Button } from '../ui/button'
+
+// The button and the question that goes before it, downloaded the first time a text needs them
+const CaptionResend = dynamic(() => import('./caption-resend'), { ssr: false })
 
 const NOTICE_KEYS = {
   [CaptionState.FAILED]: 'captionFailed',
@@ -19,7 +23,8 @@ const NOTICE_KEYS = {
 } as const
 
 // What the thread says of the text under a file that went apart from it, and the button to send only
-// that text again when the person may (the api checks it again). Nothing is drawn for a text that went.
+// that text again when the person may (the api checks it again); a text that may already be with the customer asks
+// first, as the one under a file does. Nothing is drawn for a text that went.
 export function CaptionNotice(props: {
   message: MessageView
   conversationId: string
@@ -41,6 +46,9 @@ function Notice({
   const t = useTranslations('inbox.thread')
   const errorText = useErrorText()
   const { resendCaption } = useMessageMutations(conversationId, message.id)
+  const isBusy =
+    useIsMutating({ mutationKey: ['resend-file-caption', message.id] }) > 0 ||
+    resendCaption.isPending
   const state = message.captionState
   if (state === null) return null
   return (
@@ -49,18 +57,17 @@ function Notice({
         <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
         {t(NOTICE_KEYS[state])}
       </p>
-      {canResend ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={resendCaption.isPending}
-          onClick={() => {
-            resendCaption.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
-          }}
-        >
-          {t('resendCaption')}
-        </Button>
+      {canResend && ResendableCaptionStates.some(allowed => allowed === state) ? (
+        <div>
+          <CaptionResend
+            label={t('resendCaption')}
+            state={state}
+            isBusy={isBusy}
+            onSend={() => {
+              resendCaption.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
+            }}
+          />
+        </div>
       ) : null}
     </div>
   )

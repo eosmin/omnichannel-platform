@@ -1,0 +1,178 @@
+import { type Browser, type Page } from '@playwright/test'
+
+import { AppPaths } from '@platform/api-client'
+import {
+  AuthorType,
+  CaptionState,
+  DeliveryStatus,
+  MediaStatus,
+  MessageType
+} from '@platform/core/domain'
+
+import en from '../../web/messages/en.json' with { type: 'json' }
+import {
+  addMediaTo,
+  addMessageTo,
+  newWhatsAppConversationWrittenAgo,
+  storeIdNamed
+} from '../support/database'
+import { STORAGE_URL } from '../support/env'
+import { signIn } from '../support/login'
+import { expect, reachServicesFromOwnAddress, test } from '../support/test'
+
+const FIRST_STORE = 'Main Store'
+const AGENT = 'agent@test.com'
+const MINUTE_MS = 60_000
+const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64'
+)
+const thread = en.inbox.thread
+
+// A reply of the team with pictures that went. `captions` is the text of each picture by its place (the first is
+// the text of the message); the state of the message's text is written in the database (the worker that sends the
+// texts is covered by the integration suite of the api): what is under test is what the thread draws and asks.
+async function replyWithPictures(
+  storeId: string,
+  captions: (string | null)[],
+  captionState?: CaptionState,
+  // The state of the text of the file at each place (the first one's is the state of the message)
+  fileStates: Partial<Record<number, CaptionState>> = {}
+): Promise<string> {
+  const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
+  const message = await addMessageTo(storeId, conversationId, {
+    authorType: AuthorType.AGENT,
+    type: MessageType.IMAGE,
+    ...(captions[0] === null ? {} : { content: captions[0] }),
+    deliveryStatus: DeliveryStatus.SENT,
+    createdAt: new Date(Date.now() - MINUTE_MS / 2),
+    ...(captionState === undefined ? {} : { captionState })
+  })
+  for (const [position, caption] of captions.entries()) {
+    await addMediaTo(storeId, message.id, {
+      filename: `picture-${position}.png`,
+      contentType: 'image/png',
+      status: MediaStatus.CLEAN,
+      processed: 'with-variants',
+      position,
+      delivery: DeliveryStatus.SENT,
+      ...(position > 0 && caption !== null ? { caption } : {}),
+      ...(position > 0 && fileStates[position] !== undefined
+        ? { captionState: fileStates[position] }
+        : {})
+    })
+  }
+  return conversationId
+}
+
+async function signedInPage(browser: Browser): Promise<Page> {
+  const context = await browser.newContext()
+  await reachServicesFromOwnAddress(context)
+  const page = await context.newPage()
+  await page.route(`${STORAGE_URL}/**`, route =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: ONE_PIXEL_PNG })
+  )
+  await signIn(page, AGENT)
+  return page
+}
+
+// Its own session and address: the api limits the requests of each address
+test('the text of the message sent again asks first when it may have gone, and not when it failed', async ({
+  browser
+}) => {
+  const page = await signedInPage(browser)
+  try {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    const asked: string[] = []
+    await page.route('**/messages/*/resend-caption', route => {
+      asked.push(new URL(route.request().url()).pathname)
+      return route.fulfill({ status: 409, contentType: 'application/json', body: '{}' })
+    })
+    const list = page.getByRole('list', { name: thread.label })
+
+    // Unconfirmed: the customer may already have it, so nothing goes until the agent confirms
+    const unconfirmed = await replyWithPictures(storeId, ['Text'], CaptionState.UNCONFIRMED)
+    await page.goto(AppPaths.store.conversation(storeId, unconfirmed))
+    await expect(list.getByText(thread.captionUnconfirmed)).toBeVisible()
+    await list.getByRole('button', { name: thread.resendCaption }).click()
+    const dialog = page.getByRole('alertdialog', { name: thread.fileCaptionResendTitle })
+    await expect(dialog).toContainText(thread.fileCaptionResendMaybeSent)
+    await dialog.getByRole('button', { name: thread.fileCaptionResendCancel }).click()
+    await expect(dialog).toHaveCount(0)
+    expect(asked).toHaveLength(0)
+    await list.getByRole('button', { name: thread.resendCaption }).click()
+    await page
+      .getByRole('alertdialog', { name: thread.fileCaptionResendTitle })
+      .getByRole('button', { name: thread.fileCaptionResendConfirm })
+      .click()
+    await expect.poll(() => asked.length).toBe(1)
+
+    // Failed: it did not go, so it is sent at once
+    const failed = await replyWithPictures(storeId, ['Text'], CaptionState.FAILED)
+    await page.goto(AppPaths.store.conversation(storeId, failed))
+    await expect(list.getByText(thread.captionFailed)).toBeVisible()
+    await list.getByRole('button', { name: thread.resendCaption }).click()
+    await expect.poll(() => asked.length).toBe(2)
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('the texts of an album are listed in the order of its files, each with the number on its picture', async ({
+  browser
+}) => {
+  const page = await signedInPage(browser)
+  try {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    // The second picture has no text: it has no line, and the others keep their numbers
+    const album = await replyWithPictures(storeId, ['Uno', null, 'Tres'])
+    await page.goto(AppPaths.store.conversation(storeId, album))
+    const texts = page
+      .getByRole('list', { name: thread.label })
+      .getByRole('list', { name: thread.albumCaptions })
+    await expect(texts.getByRole('listitem')).toHaveCount(2)
+    await expect(texts.getByRole('listitem').nth(0)).toContainText('Uno')
+    await expect(texts.getByRole('listitem').nth(1)).toContainText('Tres')
+    // The text of the first file is drawn once, in the list
+    await expect(page.getByText('Uno', { exact: true })).toHaveCount(1)
+    const marks = page.getByTestId('album-caption-mark')
+    await expect(marks).toHaveText(['1', '3'])
+    await expect(texts.getByTestId('album-caption-number')).toHaveText(['1', '3'])
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('in an album, the text of the message and the text of a file each ask in their own line', async ({
+  browser
+}) => {
+  const page = await signedInPage(browser)
+  try {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    const asked: string[] = []
+    await page.route('**/resend-caption', route => {
+      asked.push(new URL(route.request().url()).pathname)
+      return route.fulfill({ status: 409, contentType: 'application/json', body: '{}' })
+    })
+    const album = await replyWithPictures(storeId, ['Uno', 'Dos'], CaptionState.UNCONFIRMED, {
+      1: CaptionState.FAILED
+    })
+    await page.goto(AppPaths.store.conversation(storeId, album))
+    const texts = page.getByRole('list', { name: thread.albumCaptions })
+    const first = texts.getByRole('listitem').nth(0)
+    const second = texts.getByRole('listitem').nth(1)
+    await expect(first).toContainText(thread.captionUnconfirmed)
+    await expect(second).toContainText(thread.fileCaptionFailed)
+    // The second goes at once (it failed); the first asks (it may have gone)
+    await second.getByRole('button', { name: thread.fileCaptionResend }).click()
+    await expect.poll(() => asked.length).toBe(1)
+    await first.getByRole('button', { name: thread.resendCaption }).click()
+    await expect(
+      page.getByRole('alertdialog', { name: thread.fileCaptionResendTitle })
+    ).toBeVisible()
+    expect(asked).toHaveLength(1)
+  } finally {
+    await page.context().close()
+  }
+})
