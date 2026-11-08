@@ -2,19 +2,17 @@
 
 import { ChevronDown, CircleCheck } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { lazy, type ReactElement } from 'react'
 
 import type { ConversationListItemView } from '@platform/api-client'
 
 import { useCustomerName } from '../../lib/inbox/use-customer-name'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '../ui/dropdown-menu'
+import { OnDemandMenu } from '../shared/on-demand-menu'
 
-import { ResolveMode, type ResolveModeType } from './resolve-flow'
+import type { ResolveModeType } from './resolve-flow'
+
+const loadPopup = () => import('./row-resolve-menu-popup')
+const RowResolveMenuPopup = lazy(loadPopup)
 
 // Shown the way the snooze button is: over the row, as a sibling of the link, on hover or focus and always
 // on a touch screen (where it is 40 px). They stand side by side at the bottom right of the row.
@@ -48,27 +46,21 @@ export function RowResolveButton({
       >
         <CircleCheck aria-hidden className="size-4" />
       </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <OnDemandMenu
+        Popup={RowResolveMenuPopup}
+        preload={loadPopup}
+        popupProps={{ defaultMode, onResolve }}
+        trigger={extra => (
           <button
             type="button"
             aria-label={t('resolveRowMore', { name })}
             className={`${BUTTON_CLASS} w-5 rounded-r-md pointer-coarse:w-10`}
+            {...extra}
           >
             <ChevronDown aria-hidden className="size-3" />
           </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {[ResolveMode.NOW, ResolveMode.OPTIONS].map(mode => (
-            <DropdownMenuItem key={mode} onSelect={() => onResolve(mode)}>
-              {mode === ResolveMode.NOW ? t('resolveNow') : t('resolveWithOptions')}
-              {mode === defaultMode ? (
-                <span className="text-muted-foreground ml-auto text-xs">{t('resolveDefault')}</span>
-              ) : null}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        )}
+      />
     </div>
   )
 }
