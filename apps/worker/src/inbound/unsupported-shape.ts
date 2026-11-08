@@ -11,7 +11,14 @@ const names = z.array(name).max(UnsupportedShapeLimits.MAX_NAMES)
 const shapeSchema = z.object({
   messageFields: names,
   attachments: z
-    .array(z.object({ type: name, fields: names, payloadFields: names }))
+    .array(
+      z.object({
+        type: name,
+        fields: names,
+        payloadFields: names,
+        elementFields: z.array(name).max(UnsupportedShapeLimits.MAX_ELEMENT_NAMES).optional()
+      })
+    )
     .max(UnsupportedShapeLimits.MAX_ATTACHMENTS)
 })
 
