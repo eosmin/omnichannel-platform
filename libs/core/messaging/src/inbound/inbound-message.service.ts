@@ -45,6 +45,7 @@ import { AwayReplyService } from './away-reply.service'
 import { recordOrigin } from './conversation-origin'
 import { type InboundEvent, type InboundOutcome, InboundOutcomes } from './inbound-event'
 import { receivedTime } from './inbound-time'
+import { countersOf, missingTargetShapeOrNull } from './missing-target-shape'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -114,7 +115,9 @@ export class InboundMessageService {
       )
     })
 
-    this.warnIfQuoteLost(pluginId, stored.replyUnresolved)
+    if (stored.replyUnresolved) {
+      await this.logUnresolvedQuote(pluginId, storeId, stored.conversationId, event)
+    }
     await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     if (event.message.origin !== undefined) await this.queueOriginFetches(storeId, stored.messageId)
     if (stored.duplicate) return InboundOutcomes.DUPLICATE
@@ -127,10 +130,25 @@ export class InboundMessageService {
   }
 
   // Permanent, safe diagnostic: a quote that points at a message this thread does not have is stored as a plain
-  // message. Only the channel is logged, never an id, so the owner can tell "target not found" from a screen bug.
-  private warnIfQuoteLost(pluginId: string, unresolved: boolean): void {
-    if (unresolved)
-      this.logger.info({ pluginId }, 'an inbound message quotes a message that is not here')
+  // message. The channel and the SHAPE of the id (length, prefix, how many messages share it), never an id. Read
+  // after the transaction, so that a failing count cannot abort the storing of the message.
+  private async logUnresolvedQuote(
+    pluginId: string,
+    storeId: string,
+    conversationId: string,
+    event: InboundEvent
+  ): Promise<void> {
+    const targetId = event.message.replyToExternalId
+    if (targetId === undefined) return
+    const shape = await missingTargetShapeOrNull({
+      targetId,
+      now: new Date(),
+      count: countersOf(this.prisma.client, { storeId, conversationId }, AuthorType.CUSTOMER)
+    })
+    this.logger.info(
+      { pluginId, ...(shape ? { target: shape } : {}) },
+      'an inbound message quotes a message that is not here'
+    )
   }
 
   // The owner wrote to the customer from the provider's own app and the provider echoes it to us. It is
@@ -173,7 +191,6 @@ export class InboundMessageService {
     })
     // A message of the platform that comes back has its files already; the owner's is fetched, again
     // after a failure here (the job id makes it one)
-    this.warnIfQuoteLost(pluginId, stored.replyUnresolved)
     if (stored.fetchMedia) await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     return stored.duplicate ? InboundOutcomes.DUPLICATE : InboundOutcomes.STORED
   }
