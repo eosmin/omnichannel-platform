@@ -500,6 +500,28 @@ describe('MessengerPlugin', () => {
       expect(result.metadata).toEqual({ captionExternalId: 'm_3' })
     })
 
+    it('sends the text of each file of a message after that file, with the id of each', async () => {
+      const { plugin, post, upload } = build()
+      upload
+        .mockResolvedValueOnce({ message_id: 'm_f1' })
+        .mockResolvedValueOnce({ message_id: 'm_f2' })
+      post
+        .mockResolvedValueOnce({ message_id: 'm_c1' })
+        .mockResolvedValueOnce({ message_id: 'm_c2' })
+
+      const first = await plugin.sendMedia(ctx, media({ caption: 'uno', idempotencyKey: 'm-0' }))
+      const second = await plugin.sendMedia(ctx, media({ caption: 'dos', idempotencyKey: 'm-1' }))
+
+      expect(post.mock.calls.map(call => call[0].body)).toMatchObject([
+        { message: { text: 'uno' } },
+        { message: { text: 'dos' } }
+      ])
+      expect([first, second].map(sent => [sent.externalId, sent.metadata])).toEqual([
+        ['m_f1', { captionExternalId: 'm_c1' }],
+        ['m_f2', { captionExternalId: 'm_c2' }]
+      ])
+    })
+
     it('sends no caption after a file that may not have gone', async () => {
       const { plugin, post, upload } = build()
       upload.mockRejectedValue(

@@ -522,6 +522,23 @@ describe('WhatsAppPlugin over the Meta client', () => {
       expect(result.externalId).toBe('wamid.9')
     })
 
+    it('carries the text of each file of a message natively, each in its own message', async () => {
+      const { plugin, meta } = build()
+      meta.uploadMedia.mockResolvedValueOnce({ id: '1' }).mockResolvedValueOnce({ id: '2' })
+      meta.post
+        .mockResolvedValueOnce({ messages: [{ id: 'wamid.1' }] })
+        .mockResolvedValueOnce({ messages: [{ id: 'wamid.2' }] })
+
+      const first = await plugin.sendMedia(ctx, file({ caption: 'uno', idempotencyKey: 'm-0' }))
+      const second = await plugin.sendMedia(ctx, file({ caption: 'dos', idempotencyKey: 'm-1' }))
+
+      expect(meta.post.mock.calls.map(call => call[0].body)).toMatchObject([
+        { type: 'image', image: { id: '1', caption: 'uno' } },
+        { type: 'image', image: { id: '2', caption: 'dos' } }
+      ])
+      expect([first.externalId, second.externalId]).toEqual(['wamid.1', 'wamid.2'])
+    })
+
     it('does not touch the file, Meta or the signed link when the type or the size is refused', async () => {
       const { plugin, meta } = build()
       const tooBig = file({ fileSize: 6 * 1024 * 1024 })

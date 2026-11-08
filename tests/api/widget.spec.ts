@@ -64,7 +64,13 @@ interface MessageBody {
   id: string
   from: string
   content: string
-  attachments: { id: string; filename: string; contentType: string; size: number }[]
+  attachments: {
+    id: string
+    filename: string
+    contentType: string
+    size: number
+    caption: string | null
+  }[]
   createdAt: string
 }
 interface BootstrapBody {
@@ -629,25 +635,32 @@ describe('The web widget', () => {
         filename: string
         contentType: string
         deletedAt: Date
+        position: number
+        caption: string
+        onMessage: string
       }> = {}
     ): Promise<{ messageId: string; mediaId: string }> {
       clock += 1
       const authorType = over.authorType ?? AuthorType.AGENT
-      const message = await owner.message.create({
-        data: {
-          storeId: ctx.storeA.id,
-          conversationId: where.conversationId,
-          type: over.type ?? MessageType.IMAGE,
-          content: over.content === undefined ? null : over.content,
-          authorType,
-          createdAt: new Date(Date.UTC(2026, 10, 2, 12, 0, clock)),
-          ...(authorType === AuthorType.CUSTOMER
-            ? {}
-            : { deliveryStatus: over.deliveryStatus ?? DeliveryStatus.SENT }),
-          ...(over.deletedAt === undefined ? {} : { deletedAt: over.deletedAt })
-        },
-        select: { id: true }
-      })
+      // A second file of a message that already exists: the same message, another place
+      const message =
+        over.onMessage !== undefined
+          ? { id: over.onMessage }
+          : await owner.message.create({
+              data: {
+                storeId: ctx.storeA.id,
+                conversationId: where.conversationId,
+                type: over.type ?? MessageType.IMAGE,
+                content: over.content === undefined ? null : over.content,
+                authorType,
+                createdAt: new Date(Date.UTC(2026, 10, 2, 12, 0, clock)),
+                ...(authorType === AuthorType.CUSTOMER
+                  ? {}
+                  : { deliveryStatus: over.deliveryStatus ?? DeliveryStatus.SENT }),
+                ...(over.deletedAt === undefined ? {} : { deletedAt: over.deletedAt })
+              },
+              select: { id: true }
+            })
       const media = await owner.media.create({
         data: {
           storeId: ctx.storeA.id,
@@ -658,7 +671,9 @@ describe('The web widget', () => {
           filename: over.filename ?? 'comprobante.png',
           contentType: over.contentType ?? 'image/png',
           fileSize: 2048,
-          status: over.status ?? MediaStatus.CLEAN
+          status: over.status ?? MediaStatus.CLEAN,
+          ...(over.position === undefined ? {} : { position: over.position }),
+          ...(over.caption === undefined ? {} : { caption: over.caption })
         },
         select: { id: true }
       })
@@ -671,6 +686,53 @@ describe('The web widget', () => {
         .send({ visitorToken: token, mediaId })
       return origin === null ? request : request.set('origin', origin)
     }
+
+    it('shows the text under each file by its own file, in the order the agent chose', async () => {
+      const s = await stage()
+      // uploaded b first, sent as [a, b]
+      const second = await messageWithFile(s, {
+        content: 'uno',
+        position: 1,
+        caption: 'dos',
+        filename: 'b.png'
+      })
+      const first = await messageWithFile(s, {
+        onMessage: second.messageId,
+        position: 0,
+        caption: 'uno',
+        filename: 'a.png'
+      })
+
+      const history = await enter(s.siteKey, s.visitorId)
+
+      expect(history.messages).toHaveLength(1)
+      expect(history.messages[0]?.attachments.map(file => [file.id, file.caption])).toEqual([
+        [first.mediaId, 'uno'],
+        [second.mediaId, 'dos']
+      ])
+    })
+
+    it('does not put the text of a file the visitor is not given under another one', async () => {
+      const s = await stage()
+      const hidden = await messageWithFile(s, {
+        content: 'uno',
+        position: 0,
+        caption: 'uno',
+        status: MediaStatus.PENDING
+      })
+      const shown = await messageWithFile(s, {
+        onMessage: hidden.messageId,
+        position: 1,
+        caption: 'dos'
+      })
+
+      const history = await enter(s.siteKey, s.visitorId)
+
+      expect(history.messages[0]?.content).toBe('')
+      expect(history.messages[0]?.attachments.map(file => [file.id, file.caption])).toEqual([
+        [shown.mediaId, 'dos']
+      ])
+    })
 
     it('shows a message of files with its caption and only the files the scan found clean', async () => {
       const s = await stage()
@@ -700,7 +762,8 @@ describe('The web widget', () => {
               id: captioned.mediaId,
               filename: 'comprobante.png',
               contentType: 'image/png',
-              size: 2048
+              size: 2048,
+              caption: null
             }
           ]
         ],
@@ -712,7 +775,8 @@ describe('The web widget', () => {
               id: fileOnly.mediaId,
               filename: 'cedula.pdf',
               contentType: 'application/pdf',
-              size: 2048
+              size: 2048,
+              caption: null
             }
           ]
         ]
@@ -934,7 +998,13 @@ describe('The web widget', () => {
 
       expect(heard[0]).toMatchObject({ from: 'team', content: 'tu factura' })
       expect(heard[0]?.attachments).toEqual([
-        { id: mediaId, filename: 'comprobante.png', contentType: 'image/png', size: 2048 }
+        {
+          id: mediaId,
+          filename: 'comprobante.png',
+          contentType: 'image/png',
+          size: 2048,
+          caption: null
+        }
       ])
     })
 
