@@ -521,8 +521,9 @@ export class ConversationsService {
 
   // Gives a conversation nobody has to someone, atomically: a person who took it a moment earlier
   // keeps it, and one that was archived or marked as spam meanwhile is not given to someone who could
-  // not see it. For the routing of a new conversation, which must not take one back, and for the
-  // round robin of a bulk action, whose actor is the person who asked.
+  // not see it. For the routing of a new conversation, which must not take one back, for the round robin
+  // of a bulk action (whose actor is the person who asked) and for the first reply of an agent who may
+  // assign. It never changes hands a conversation that has an owner.
   async assignIfFree(
     tx: PrismaTransaction,
     storeId: string,
@@ -858,17 +859,25 @@ export class ConversationsService {
     storeId: string,
     userId: string
   ): Promise<void> {
+    if (!(await this.assigneeCanWork(tx, storeId, userId))) throw resourceNotFound('assignee')
+  }
+
+  // Whether the person is an active member who can open conversations and answer them, with their
+  // membership held `FOR SHARE` until the end of the transaction (a suspension waits for it). It takes
+  // the membership BEFORE the conversation, as `assign` does and as removing a member does: a caller
+  // that locks a conversation first must ask this first.
+  async assigneeCanWork(tx: PrismaTransaction, storeId: string, userId: string): Promise<boolean> {
     const rows = await tx.$queryRaw<{ role_id: string }[]>`
       SELECT role_id FROM memberships
       WHERE store_id = ${storeId} AND user_id = ${userId}
         AND status = ${MembershipStatus.ACTIVE} AND revoked_at IS NULL
       FOR SHARE`
     const roleId = rows[0]?.role_id
-    if (roleId === undefined) throw resourceNotFound('assignee')
+    if (roleId === undefined) return false
     const held = await tx.permission.count({
       where: { roleId, name: { in: [...AssigneePermissions] } }
     })
-    if (held < AssigneePermissions.length) throw resourceNotFound('assignee')
+    return held === AssigneePermissions.length
   }
 }
 

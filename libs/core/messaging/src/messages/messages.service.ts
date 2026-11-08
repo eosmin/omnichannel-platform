@@ -144,6 +144,12 @@ export class MessagesService {
     }
     requireAnyPermission(viewer.held, [permissionToWrite(body)])
     return this.prisma.transaction(async tx => {
+      // Before the lock of the conversation, the order of `assign` and of removing a member: an agent
+      // who may assign is checked to still be an active member who can work what they would take
+      const mayTake =
+        !isNote &&
+        viewer.held.includes(Permissions.CONVERSATIONS_ASSIGN) &&
+        (await this.conversations.assigneeCanWork(tx, storeId, viewer.userId))
       // The row lock makes two requests with one key take turns: the second finds the first
       const current = await lockConversationForWrite(tx, storeId, body.conversationId, viewer)
 
@@ -231,7 +237,7 @@ export class MessagesService {
       // store setting, on by default). Never one that has an owner, never a note, and never what the
       // system sends (the closing message does not come through here).
       const takes =
-        !isNote && (await this.takesOnReply(tx, storeId, body.conversationId, current, viewer))
+        mayTake && (await this.takesOnReply(tx, storeId, body.conversationId, current, viewer))
       // A note changes nothing in the conversation; a reply leaves it open (spam was refused above,
       // and an archived one was reopened)
       const visibility = {
@@ -254,7 +260,6 @@ export class MessagesService {
     viewer: Viewer
   ): Promise<boolean> {
     if (current.assignedTo !== null) return false
-    if (!viewer.held.includes(Permissions.CONVERSATIONS_ASSIGN)) return false
     const settings = await tx.storeSettings.findUnique({
       where: { storeId },
       select: { preferences: true }

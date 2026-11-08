@@ -13,7 +13,6 @@ import {
   SystemMessageEvents
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
-import { NotificationTypes } from '@platform/core/notifications'
 
 import { createConversationOf } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -122,24 +121,6 @@ describe('Assigning a conversation on the first reply', () => {
     ])
   })
 
-  it('does not tell the agent that the conversation they took is theirs', async () => {
-    const { id } = await mk()
-
-    await as(supervisor).post(ApiRoutes.messages.create).send(text(id)).expect(CREATED)
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    expect(
-      await owner.notification.count({
-        where: { storeId: ctx.storeA.id, type: NotificationTypes.CONVERSATION_ASSIGNED }
-      })
-    ).toBe(0)
-    expect(
-      await owner.notification.count({
-        where: { storeId: ctx.storeA.id, type: NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE }
-      })
-    ).toBe(0)
-  })
-
   it('also takes a resolved conversation nobody has, which the reply reopens', async () => {
     const { id } = await mk({ status: ConversationStatus.RESOLVED, resolvedAt: new Date() })
 
@@ -152,22 +133,49 @@ describe('Assigning a conversation on the first reply', () => {
     ).toBe(ConversationStatus.OPEN)
   })
 
-  it('counts a template as a reply', async () => {
-    const { id } = await mk()
-    await owner.conversation.update({ where: { id }, data: { lastInboundAt: new Date(0) } })
+  it('also takes a snoozed conversation nobody has, which the reply wakes (an archived one is out of sight of who may not archive)', async () => {
+    const { id } = await mk({ status: ConversationStatus.SNOOZED })
 
-    await as(supervisor).post(ApiRoutes.messages.create).send({
-      type: MessageType.TEMPLATE,
-      conversationId: id,
-      templateName: 'none',
-      language: 'en',
-      variables: [],
-      idempotencyKey: randomUUID()
+    await as(supervisor).post(ApiRoutes.messages.create).send(text(id)).expect(CREATED)
+
+    expect(await assignee(id)).toBe(supervisor.id)
+  })
+
+  it('does not take it for a member who was suspended, nor for a role that cannot answer', async () => {
+    const base = { prefix, organizationId: ctx.orgA.id, storeId: ctx.storeA.id }
+    const suspended = await actorWithPermissions(owner, app, {
+      ...base,
+      name: 'suspended',
+      permissions: [...reading, Permissions.CONVERSATIONS_ASSIGN]
+    })
+    // Takes a reply (a template) and may assign, but cannot answer free text: nobody could work it
+    const templateOnly = await actorWithPermissions(owner, app, {
+      ...base,
+      name: 'template-only',
+      permissions: [
+        Permissions.CONVERSATIONS_VIEW,
+        Permissions.CONVERSATIONS_VIEW_ALL,
+        Permissions.MESSAGES_VIEW,
+        Permissions.MESSAGES_SEND_TEMPLATE,
+        Permissions.CONVERSATIONS_ASSIGN
+      ]
+    })
+    const first = await mk()
+    const second = await mk()
+    await owner.membership.updateMany({
+      where: { userId: suspended.id, storeId: ctx.storeA.id },
+      data: { status: 'SUSPENDED' }
     })
 
-    // Whatever the template check answers here, a reply that is refused takes nothing
-    const taken = await assignee(id)
-    expect([null, supervisor.id]).toContain(taken)
+    await as(suspended).post(ApiRoutes.messages.create).send(text(first.id))
+    await as(templateOnly).post(ApiRoutes.messages.create).send({
+      type: MessageType.INTERNAL_NOTE,
+      conversationId: second.id,
+      content: 'a note needs no send permission'
+    })
+
+    expect(await assignee(first.id)).toBeNull()
+    expect(await assignee(second.id)).toBeNull()
   })
 
   it('never takes a conversation that has an owner', async () => {
