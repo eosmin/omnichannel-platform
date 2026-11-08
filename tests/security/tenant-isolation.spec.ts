@@ -1322,6 +1322,43 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The mark of attention and the reminder of a snooze belong to the conversation: another store neither
+  // clears the mark by opening it, nor sets a reminder, nor sees the conversation in its list
+  describe('the mark of attention of a conversation', () => {
+    it('is not cleared, set or listed through another store', async () => {
+      const { id } = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      await owner.conversation.update({
+        where: { id },
+        data: {
+          attentionReason: 'snooze_woke',
+          attentionAt: new Date(),
+          attentionNote: 'private reminder'
+        }
+      })
+      const asB = () => api(app, ctx.adminB, ctx.storeB)
+
+      const opened = await asB().post(ApiRoutes.conversations.read(id))
+      const snoozed = await asB()
+        .post(ApiRoutes.conversations.snooze(id))
+        .send({ until: new Date(Date.now() + 3_600_000).toISOString(), note: 'not mine' })
+      const listed = await asB().get(ApiRoutes.conversations.list)
+
+      expect(opened.status).toBe(404)
+      expect(snoozed.status).toBe(404)
+      expect(JSON.stringify(listed.body)).not.toContain('private reminder')
+      const after = await owner.conversation.findUniqueOrThrow({
+        where: { id },
+        select: { status: true, snoozeNote: true, attentionReason: true, attentionNote: true }
+      })
+      expect(after).toEqual({
+        status: ConversationStatus.OPEN,
+        snoozeNote: null,
+        attentionReason: 'snooze_woke',
+        attentionNote: 'private reminder'
+      })
+    })
+  })
+
   // Who of the team is online comes from Redis, keyed by the store of the request
   describe('the presence of the team', () => {
     it('is answered for the store of the caller, with nobody of another store in it', async () => {

@@ -1,5 +1,6 @@
 import type { ErrorCode } from '../errors'
 import type {
+  AttentionReason,
   AuthorType,
   BulkLabelJobStatus,
   ChannelId,
@@ -16,6 +17,8 @@ export const RealtimeEvents = {
   CONVERSATION_ASSIGNED: 'conversation.assigned',
   CONVERSATION_STATUS_CHANGED: 'conversation.status_changed',
   CONVERSATION_READ: 'conversation.read',
+  // The mark that asks for attention in the list changed: the client reads the row again
+  CONVERSATION_ATTENTION_CHANGED: 'conversation.attention_changed',
   CONVERSATION_UNREAD: 'conversation.unread',
 
   MESSAGE_RECEIVED: 'message.received',
@@ -86,6 +89,10 @@ export interface RealtimeEventMap {
     previousStatus: ConversationStatus
   }
   [RealtimeEvents.CONVERSATION_READ]: { conversationId: string; userId: string }
+  [RealtimeEvents.CONVERSATION_ATTENTION_CHANGED]: {
+    conversationId: string
+    reason: AttentionReason | null
+  }
   [RealtimeEvents.CONVERSATION_UNREAD]: { conversationId: string; userId: string }
 
   [RealtimeEvents.MESSAGE_RECEIVED]: {

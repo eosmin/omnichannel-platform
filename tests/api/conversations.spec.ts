@@ -1611,7 +1611,11 @@ describe('The conversations of a store', () => {
     })
 
     it('refuses the counts together with a filter or a cursor', async () => {
-      const cursor = encodeConversationCursor({ lastMessageAt: null, id: ctx.storeA.id })
+      const cursor = encodeConversationCursor({
+        attentionAt: null,
+        lastMessageAt: null,
+        id: ctx.storeA.id
+      })
       for (const filter of [
         { cursor },
         { channelType: ChannelType.WHATSAPP },

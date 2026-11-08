@@ -145,6 +145,11 @@ export const conversationListItemSchema = z.object({
   unreadCount: z.number().int(),
   lastMessageAt: z.string().nullable(),
   snoozedUntil: z.string().nullable(),
+  // A mark that raised the row until someone opens it. `reason` is kept as the text it came as (a
+  // newer server may have more of them); `note` is text of an agent, drawn escaped.
+  attention: z
+    .object({ reason: z.string(), at: z.string(), note: z.string().nullable() })
+    .nullable(),
   customer: z.object({
     id: z.string(),
     name: z.string().nullable(),
@@ -295,7 +300,9 @@ const systemLineSchema = z.object({
   reason: z.string().nullable(),
   snoozedUntil: z.string().nullable(),
   assignedTo: z.string().nullable(),
-  previousAssignee: z.string().nullable()
+  previousAssignee: z.string().nullable(),
+  // The reminder left when snoozing, on the line of waking; absent on lines of before it existed
+  note: z.string().nullable().optional()
 })
 
 export const messageSchema = z.object({

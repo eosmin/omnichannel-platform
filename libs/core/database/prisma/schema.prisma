@@ -448,6 +448,10 @@ model Conversation {
   csatComment         String?   @map("csat_comment")
   archivedAt          DateTime? @map("archived_at")
   snoozedUntil        DateTime? @map("snoozed_until")
+  snoozeNote          String?   @map("snooze_note") // What the agent said it waits for; AttentionReasons use it on waking
+  attentionReason     String?   @map("attention_reason") // AttentionReason: a mark that raises the row in the list until it is opened
+  attentionAt         DateTime? @map("attention_at")
+  attentionNote       String?   @map("attention_note")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 

@@ -40,6 +40,7 @@ const item = {
   unreadCount: 2,
   lastMessageAt: '2026-10-30T10:00:00.000Z',
   snoozedUntil: null,
+  attention: null,
   customer: { id: 'u1', name: null, displayIdentity: '5037123', username: null, avatarUrl: null },
   lastMessage: null,
   tags: []

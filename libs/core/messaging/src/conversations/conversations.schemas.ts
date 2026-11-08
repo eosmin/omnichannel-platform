@@ -91,7 +91,15 @@ export const changeStatusSchema = z
 export const assignSchema = z.strictObject({ userId: uuidSchema.nullable() })
 
 export const snoozeSchema = z.strictObject({
-  until: z.iso.datetime({ offset: true }).transform(value => new Date(value))
+  until: z.iso.datetime({ offset: true }).transform(value => new Date(value)),
+  // The reminder of why it waits: trimmed, an empty one is none; text of the agent
+  note: z
+    .string()
+    .trim()
+    .max(ConversationLimits.SNOOZE_NOTE_MAX_LENGTH)
+    .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
+    .transform(value => (value === '' ? null : value))
+    .optional()
 })
 
 export const attachTagSchema = z.strictObject({ tagId: uuidSchema })
