@@ -545,6 +545,38 @@ export function newWhatsAppConversationWrittenAgo(storeId: string, agoMs: number
   })
 }
 
+// A conversation on a channel other than WhatsApp, whose customer wrote `agoMs` ago, for the cases that only need
+// what the channel declares (the directory of channels answers by plugin)
+export function newConversationOnChannel(
+  storeId: string,
+  channelType: string,
+  agoMs: number
+): Promise<string> {
+  const WRITTEN_AT = new Date(Date.now() - agoMs)
+  return withOwner(async owner => {
+    const identity = await createCustomerIdentity(owner, {
+      storeId,
+      channelType,
+      handle: `psid-${randomInt(1_000_000, 10_000_000)}`,
+      lastInboundAt: WRITTEN_AT
+    })
+    const conversation = await createConversation(owner, {
+      storeId,
+      customerId: identity.customerId,
+      customerIdentityId: identity.id,
+      channelType,
+      lastMessageAt: new Date()
+    })
+    await createMessage(owner, {
+      storeId,
+      conversationId: conversation.id,
+      content: 'Hello, is my order on its way?',
+      createdAt: WRITTEN_AT
+    })
+    return conversation.id
+  })
+}
+
 // A customer with a name, an e-mail and, with a handle, one identity on a channel, for the cases of the
 // customers page. The name is what a case looks the customer up by, so it must be unique.
 export function newCustomerIn(

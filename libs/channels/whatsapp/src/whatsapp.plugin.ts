@@ -190,7 +190,9 @@ export class WhatsAppPlugin implements ChannelPlugin {
     ChannelCapability.REPLY_TO,
     ChannelCapability.REACTIONS,
     ChannelCapability.TYPING_INDICATOR,
-    ChannelCapability.MESSAGING_WINDOW
+    ChannelCapability.MESSAGING_WINDOW,
+    // The caption of each file travels with the file
+    ChannelCapability.CAPTION_PER_FILE
   ] as const
 
   // The files WhatsApp takes (the same tables `checkMedia` holds a file to before it is uploaded)

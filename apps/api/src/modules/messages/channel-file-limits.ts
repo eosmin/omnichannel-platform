@@ -27,8 +27,9 @@ export function channelFileLimits(
       maxFiles: maxFilesFor(media.maxFilesPerMessage, multiFileEnabled),
       types: rule.types,
       maxBytes: rule.maxBytes,
-      // Every kind takes a text under it: where the channel has no place for it (an audio on WhatsApp) the
-      // worker sends it after the file, as a message of its own
+      // The switch alone, for every channel: whether a channel is OFFERED a text under each file is decided by its
+      // capability `CAPTION_PER_FILE` (the composer reads it); the api does not check it yet (plan, Step 7.7).
+      // Where the channel has no place for it (an audio on WhatsApp) the worker sends it after the file.
       captionsPerFile: captionPerFileEnabled
     }
   }

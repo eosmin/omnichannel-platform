@@ -16,7 +16,7 @@ import type { OutboundMediaType } from '@platform/core/storage'
 import { apiClient } from '../api'
 import { errorCodeOf } from '../error-message'
 
-import { type BatchRefusal, type BatchRules, limitOfKind, planAdd } from './attachment-batch'
+import { type BatchRefusal, type BatchRules, captionsForSend, planAdd } from './attachment-batch'
 import { attachmentMessageType } from './attachment-rules'
 import { uploadGate } from './upload-gate'
 import { UploadAbortedError, UploadFailedError, uploadToUrl } from './upload-to-url'
@@ -241,12 +241,12 @@ export function useAttachments(
       const mediaIds = ready.flatMap(item => (item.mediaId === null ? [] : [item.mediaId]))
       // A text under a file other than the first goes only where the channel puts a text under each file;
       // the first file takes the text of the composer. Without any, the request is the one of one text.
-      const perFile = limitOfKind(rulesRef.current.media, type)?.captionsPerFile === true
-      const others = ready.slice(1).map(item => item.caption.trim())
-      const captions =
-        perFile && others.some(text => text !== '')
-          ? [caption === '' ? null : caption, ...others.map(text => (text === '' ? null : text))]
-          : null
+      const captions = captionsForSend(
+        rulesRef.current,
+        type,
+        caption,
+        ready.slice(1).map(item => item.caption)
+      )
       // The key names this message: other files, another caption or another quote are another request
       const ids = JSON.stringify([mediaIds, caption, captions, replyToMessageId ?? null])
       if (sendKey.current?.ids !== ids) sendKey.current = { ids, key: crypto.randomUUID() }

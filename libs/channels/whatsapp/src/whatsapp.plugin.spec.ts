@@ -222,6 +222,10 @@ describe('WhatsAppPlugin', () => {
     const hoursAgo = (hours: number): string => new Date(now - hours * 3_600_000).toISOString()
     const start = { channelIdentity: '15550001111', active: true }
 
+    it('declares that it carries a text under each file itself', () => {
+      expect(build().plugin.capabilities).toContain(ChannelCapability.CAPTION_PER_FILE)
+    })
+
     it('declares the capability it implements', () => {
       const { plugin } = build()
       expect(plugin.capabilities).toContain(ChannelCapability.TYPING_INDICATOR)

@@ -1,3 +1,4 @@
+import { ChannelCapability } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 import type { OutboundMediaType } from '@platform/core/storage'
 
@@ -68,9 +69,33 @@ function channelCode(
   return file.size > limit.maxBytes ? ClientErrorCodes.CHANNEL_FILE_TOO_LARGE : null
 }
 
+// The texts of a message of several files, by place, for the request: the text of the composer for the first and
+// the one typed under each other file. null when the channel does not carry a text under each file (the one text
+// of the message is then the whole request) or when no other file has a text.
+export function captionsForSend(
+  rules: BatchRules,
+  type: OutboundMediaType | null,
+  first: string,
+  others: readonly string[]
+): (string | null)[] | null {
+  const typed = others.map(text => text.trim())
+  if (!takesCaptionPerFile(rules, type) || typed.every(text => text === '')) return null
+  return [first === '' ? null : first, ...typed.map(text => (text === '' ? null : text))]
+}
+
 export interface BatchRules {
   capabilities?: readonly string[] | undefined
   media?: readonly ChannelMediaLimit[] | undefined
+}
+
+// Whether the composer offers a text under each file of a message of this kind: the channel carries it itself
+// (it declares `CAPTION_PER_FILE`; a channel that sends the text of a file as a message of its own does not) and
+// the kind takes it. False while the directory has not loaded: the one text of the message always works.
+export function takesCaptionPerFile(rules: BatchRules, type: OutboundMediaType | null): boolean {
+  return (
+    rules.capabilities?.includes(ChannelCapability.CAPTION_PER_FILE) === true &&
+    limitOfKind(rules.media, type)?.captionsPerFile === true
+  )
 }
 
 // Which of the files the person just chose join the message, in the order they came. `held` is the kind of

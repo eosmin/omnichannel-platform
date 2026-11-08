@@ -106,6 +106,8 @@ describe('MessengerPlugin', () => {
     )
     expect(plugin.capabilities).not.toContain(ChannelCapability.BUTTONS)
     expect(plugin.capabilities).toContain(ChannelCapability.REPLY_TO)
+    // It sends the text of a file as a message of its own: no text under each file is offered
+    expect(plugin.capabilities).not.toContain(ChannelCapability.CAPTION_PER_FILE)
     expect(plugin.messagingWindow.extendedHoursAfterAd).toBe(168)
   })
 
