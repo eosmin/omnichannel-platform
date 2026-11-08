@@ -12,9 +12,11 @@ import {
 } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { uuidSchema } from '@platform/core/domain'
+import { ConversationStatus, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -79,7 +81,8 @@ export class ConversationsController {
     private readonly origins: ConversationOriginsService,
     private readonly readReceipts: ReadReceipts,
     private readonly widgetRead: WidgetReadNotifier,
-    private readonly exports: ExportsService
+    private readonly exports: ExportsService,
+    private readonly audit: AuditService
   ) {}
 
   // Declared before `:id`, or "export" would be read as an id. The file holds what the member can see
@@ -164,22 +167,40 @@ export class ConversationsController {
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @Patch(ApiRoutes.conversations.status(':id'))
-  changeStatus(
-    @CurrentStore() store: { id: string },
+  async changeStatus(
+    @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string,
-    @Body(new ZodValidationPipe(changeStatusSchema)) body: ChangeStatusBody
+    @Body(new ZodValidationPipe(changeStatusSchema)) body: ChangeStatusBody,
+    @Req() req: AuthenticatedRequest
   ): Promise<ConversationDetail> {
     const options = {
       actor: viewerOf(user.id, held),
       ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason }),
       ...(body.undoesResolution === undefined ? {} : { undoesResolution: true })
     }
-    if (body.closingSnippetId !== undefined) {
-      return this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
+    const detail =
+      body.closingSnippetId !== undefined
+        ? await this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
+        : await this.conversations.updateStatus(store.id, conversationId, body.status, options)
+    // The thread keeps no trace of an Undo inside its window: the log keeps both facts, with who and when
+    const undone = body.undoesResolution === true
+    if (undone || body.status === ConversationStatus.RESOLVED) {
+      const actor = actorOf(user, store, req)
+      this.audit.log({
+        action: undone
+          ? AuditAction.CONVERSATION_RESOLVE_UNDONE
+          : AuditAction.CONVERSATION_RESOLVED,
+        actor: { userId: actor.userId },
+        storeId: store.id,
+        resourceType: 'conversation',
+        resourceId: conversationId,
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
     }
-    return this.conversations.updateStatus(store.id, conversationId, body.status, options)
+    return detail
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)

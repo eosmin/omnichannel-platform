@@ -140,6 +140,11 @@ export const MetaMessaging = {
   REFERRAL_SOURCE_ADS: 'ADS',
   // The attachment of a place the customer shared: `payload.coordinates` holds `{ lat, long }`
   ATTACHMENT_LOCATION: 'location',
+  // Instagram shares a place as a template of elements (a title, a subtitle, a link to a map)
+  ATTACHMENT_TEMPLATE: 'template',
+  // How much of a template is read: a card has one element and a few buttons
+  TEMPLATE_MAX_ELEMENTS: 3,
+  TEMPLATE_MAX_BUTTONS: 3,
   ATTACHMENT_STICKER: 'sticker',
   // The like button of Messenger arrives as a sticker with this id (and, until Meta stops sending the
   // pair, as an image with the same link). It is the thumbs up, not a file worth fetching.
@@ -243,4 +248,32 @@ export const MetaSubscription = {
   APP_ID_PATTERN: /^\d{1,32}$/,
   // No Page has near this many fields; a longer list is not what Meta answers
   MAX_FIELDS: 64
+} as const
+
+// The maps whose links hold the coordinates of a place a customer shares (Instagram sends it as a template).
+// EXACT hosts only: a subdomain or a look-alike is no map. Other regional domains of Google are added here.
+export const MapLinks = {
+  GOOGLE_HOSTS: [
+    'www.google.com',
+    'google.com',
+    'maps.google.com',
+    'www.google.com.sv',
+    'google.com.sv',
+    'www.google.com.mx',
+    'google.com.mx'
+  ],
+  APPLE_HOSTS: ['maps.apple.com'],
+  OSM_HOSTS: ['www.openstreetmap.org', 'openstreetmap.org'],
+  // The links Instagram and Facebook put in front of an outside link: followed once, and only to a map
+  REDIRECT_HOSTS: ['l.instagram.com', 'l.facebook.com', 'lm.facebook.com'],
+  REDIRECT_PARAM: 'u',
+  // Parameters that name the place itself (a viewport centre or a search centre is not the place)
+  GOOGLE_PLACE_PARAMS: ['query', 'q', 'destination'],
+  APPLE_PLACE_PARAMS: ['coordinate'],
+  GOOGLE_MAPS_HOST: 'maps.google.com',
+  GOOGLE_MAPS_PATH: /^\/maps(?:\/|$)/,
+  GOOGLE_PLACE_PATH: '/maps/place/',
+  OSM_MARKER_PARAMS: ['mlat', 'mlon'],
+  // The text of a title or subtitle that is read: longer is cut before it is cleaned
+  TEMPLATE_TEXT_MAX_LENGTH: 300
 } as const

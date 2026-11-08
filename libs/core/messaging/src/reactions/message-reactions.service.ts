@@ -14,6 +14,7 @@ import { Events } from '@platform/core/events'
 
 import { isHiddenStatus } from '../conversations/conversations.support'
 import { InboundMessageTargets } from '../inbound/inbound-message-targets'
+import type { MissingTargetShape } from '../inbound/missing-target-shape'
 
 // Who left a reaction: the customer by identity, an agent by user, the owner of the provider's own
 // app by neither (there is one of them per message)
@@ -65,6 +66,7 @@ export class MessageReactionsService {
     event: InboundReaction,
     isLastAttempt: boolean
   ): Promise<ReactionOutcome> {
+    const missing: { shape?: MissingTargetShape } = {}
     const applied = await this.targets.apply(
       pluginId,
       { ...event, targetExternalId: event.reaction.targetExternalId },
@@ -76,13 +78,17 @@ export class MessageReactionsService {
             ? { authorType: AuthorType.EXTERNAL }
             : { authorType: AuthorType.CUSTOMER, customerIdentityId: target.customerIdentityId }
         await this.set(tx, target.storeId, target.messageId, reactor, event.reaction.emoji)
+      },
+      found => {
+        missing.shape = found
       }
     )
     // Warn, not debug: the owner must be able to tell "the message was not found" from a screen that does not draw it.
     // The channel only; no id of the message or the customer leaves.
     if (!applied)
       this.logger.warn(
-        { pluginId },
+        // The shape of the id, never the id: why it matched nothing can be told from the lengths and prefixes
+        { pluginId, ...(missing.shape ? { target: missing.shape } : {}) },
         'reaction not applied: no message, customer or connection to attach it to'
       )
     return applied ? ReactionOutcomes.APPLIED : ReactionOutcomes.IGNORED
