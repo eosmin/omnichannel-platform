@@ -44,5 +44,5 @@ export const UnsupportedShapeLimits = {
   // A name under another (`coordinates.lat`) at most this many per parent
   MAX_NESTED_NAMES: 4,
   // The names of the first element of a template, and of what it holds one level down
-  MAX_ELEMENT_NAMES: 8
+  MAX_ELEMENT_NAMES: 16
 } as const

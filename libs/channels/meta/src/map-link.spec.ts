@@ -15,7 +15,18 @@ describe('coordinatesOfMapLink', () => {
       -89.2182
     ],
     ['google q=', 'https://maps.google.com/?q=13.6929,-89.2182', 13.6929, -89.2182],
-    ['google ll', 'https://maps.google.com/maps?ll=13.6929,-89.2182&z=15', 13.6929, -89.2182],
+    [
+      'a regional google',
+      'https://www.google.com.sv/maps/place/Casa/@13.6929,-89.2182,17z',
+      13.6929,
+      -89.2182
+    ],
+    [
+      'google place with long decimals, falling back to its query',
+      'https://www.google.com/maps/place/X/@13.69291234567,-89.2182,17z?query=13.69,-89.21',
+      13.69,
+      -89.21
+    ],
     ['apple ll', 'https://maps.apple.com/?ll=13.6929,-89.2182&q=Home', 13.6929, -89.2182],
     ['apple coordinate', 'https://maps.apple.com/?coordinate=13.6929,-89.2182', 13.6929, -89.2182],
     [
@@ -29,7 +40,14 @@ describe('coordinatesOfMapLink', () => {
     expect(coordinatesOfMapLink(url)).toEqual({ lat, long })
   })
 
-  it('follows the redirect of Instagram once, to a map and only to a map', () => {
+  it('reads an upper case host as the same host', () => {
+    expect(coordinatesOfMapLink('https://MAPS.APPLE.COM/?ll=1.5,2.5')).toEqual({
+      lat: 1.5,
+      long: 2.5
+    })
+  })
+
+  it('follows the redirects of Instagram and Facebook once, to a map and only to a map', () => {
     const wrapped = (target: string): string =>
       `https://l.instagram.com/?u=${encodeURIComponent(target)}&e=AT0abc`
     expect(coordinatesOfMapLink(wrapped('https://maps.apple.com/?ll=1.5,2.5'))).toEqual({
@@ -41,6 +59,28 @@ describe('coordinatesOfMapLink', () => {
   })
 
   it.each([
+    [
+      'the centre of a Google search page',
+      'https://www.google.com/maps/search/Casa/@13.7,-89.2,12z'
+    ],
+    ['the viewport ll of Google', 'https://maps.google.com/maps?ll=13.7,-89.2&z=15'],
+    ['the search centre sll of Apple', 'https://maps.apple.com/?q=Casa&sll=13.7,-89.2'],
+    ['a path that only starts like maps', 'https://www.google.com/mapsfoo/@13.7,-89.2,12z?q=1,2'],
+    ['an encoded at sign', 'https://www.google.com/maps/place/X/%4013.7,-89.2,12z'],
+    ['an upper case look-alike with a dot at the end', 'https://maps.apple.com./?ll=1.5,2.5'],
+    ['a redirect with no target', 'https://l.instagram.com/?e=AT0'],
+    [
+      'a redirect to a target with credentials',
+      `https://l.facebook.com/?u=${encodeURIComponent('https://u:p@maps.apple.com/?ll=1.5,2.5')}`
+    ],
+    [
+      'a redirect to another port',
+      `https://lm.facebook.com/?u=${encodeURIComponent('https://maps.apple.com:444/?ll=1.5,2.5')}`
+    ],
+    [
+      'a redirect to http',
+      `https://l.instagram.com/?u=${encodeURIComponent('http://maps.apple.com/?ll=1.5,2.5')}`
+    ],
     ['http', 'http://maps.apple.com/?ll=1.5,2.5'],
     ['a host that only looks like it', 'https://maps.apple.com.evil.example/?ll=1.5,2.5'],
     ['a subdomain', 'https://x.maps.apple.com/?ll=1.5,2.5'],

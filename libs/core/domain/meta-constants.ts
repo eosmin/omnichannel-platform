@@ -235,3 +235,25 @@ export const MetaSubscription = {
   // No Page has near this many fields; a longer list is not what Meta answers
   MAX_FIELDS: 64
 } as const
+
+// The maps whose links hold the coordinates of a place a customer shares (Instagram sends it as a template).
+// EXACT hosts only: a subdomain or a look-alike is no map. Other regional domains of Google are added here.
+export const MapLinks = {
+  GOOGLE_HOSTS: [
+    'www.google.com',
+    'google.com',
+    'maps.google.com',
+    'www.google.com.sv',
+    'google.com.sv',
+    'www.google.com.mx',
+    'google.com.mx'
+  ],
+  APPLE_HOSTS: ['maps.apple.com'],
+  OSM_HOSTS: ['www.openstreetmap.org', 'openstreetmap.org'],
+  // The links Instagram and Facebook put in front of an outside link: followed once, and only to a map
+  REDIRECT_HOSTS: ['l.instagram.com', 'l.facebook.com', 'lm.facebook.com'],
+  REDIRECT_PARAM: 'u',
+  // Parameters that name the place itself (a viewport centre or a search centre is not the place)
+  GOOGLE_PLACE_PARAMS: ['query', 'q', 'destination'],
+  APPLE_PLACE_PARAMS: ['ll', 'coordinate']
+} as const

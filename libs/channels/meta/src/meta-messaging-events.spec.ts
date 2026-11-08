@@ -329,7 +329,12 @@ describe('messagingToEvents', () => {
             mid: 'm1',
             attachments: [
               template(undefined, {
-                buttons: [{ type: 'web_url', url: 'https://www.google.com/maps/@13.69,-89.21,17z' }]
+                buttons: [
+                  {
+                    type: 'web_url',
+                    url: 'https://www.google.com/maps/place/Casa/@13.69,-89.21,17z'
+                  }
+                ]
               })
             ]
           })
@@ -355,6 +360,61 @@ describe('messagingToEvents', () => {
       })
       // Whatever the template held, the title is not put in the message
       expect(JSON.stringify(event?.message)).not.toContain('Mi casa')
+    })
+
+    it('is a location card even when the template has no title', () => {
+      const [event] = messagingToEvents(
+        wrap(
+          inbound({
+            mid: 'm1',
+            attachments: [
+              {
+                type: 'template',
+                payload: {
+                  generic: {
+                    elements: [
+                      { default_action: { url: 'https://maps.apple.com/?ll=13.69,-89.21' } }
+                    ]
+                  }
+                }
+              }
+            ]
+          })
+        ),
+        OBJECT
+      )
+      expect(event?.message).toMatchObject({
+        type: MessageType.LOCATION,
+        metadata: { latitude: 13.69, longitude: -89.21 }
+      })
+    })
+
+    it('reads the map link from a second element and names its fields', () => {
+      const [event] = messagingToEvents(
+        wrap(
+          inbound({
+            mid: 'm1',
+            attachments: [
+              {
+                type: 'template',
+                payload: {
+                  generic: {
+                    elements: [
+                      { title: 'Header' },
+                      {
+                        title: 'Casa',
+                        buttons: [{ url: 'https://maps.apple.com/?ll=13.69,-89.21' }]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          })
+        ),
+        OBJECT
+      )
+      expect(event?.message?.type).toBe(MessageType.LOCATION)
     })
 
     it('names the fields of the element for the team, never their values', () => {

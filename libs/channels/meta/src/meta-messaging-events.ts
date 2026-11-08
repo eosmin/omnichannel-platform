@@ -108,7 +108,7 @@ function parseAttachments(raw: unknown[]): ParsedAttachment[] {
         title,
         stickerId: payload?.sticker_id,
         coordinates: payload?.coordinates,
-        elements: payload?.generic?.elements,
+        elements: payload?.generic?.elements?.slice(0, MetaMessaging.TEMPLATE_MAX_ELEMENTS),
         rawUrl
       }
     ]
@@ -221,14 +221,16 @@ const templateElementSchema = z.object({
     .object({ url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined) })
     .optional()
     .catch(undefined),
+  // Cut before it is read: the limit bounds the work, not only the result
   buttons: z
-    .array(
-      z.object({
-        url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined)
-      })
-    )
+    .array(z.unknown())
+    .transform(list => list.slice(0, MetaMessaging.TEMPLATE_MAX_BUTTONS))
     .optional()
     .catch(undefined)
+})
+
+const templateButtonSchema = z.object({
+  url: z.string().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined)
 })
 
 // A place Instagram shares as a template: a title, a subtitle and a link to a map. It is a place only when the
@@ -245,7 +247,10 @@ function templatePlaceOf(attachments: ParsedAttachment[]): {
       if (!element.success) continue
       const links = [
         element.data.default_action?.url,
-        ...(element.data.buttons ?? []).slice(0, MetaMessaging.TEMPLATE_MAX_BUTTONS).map(b => b.url)
+        ...(element.data.buttons ?? []).map(button => {
+          const parsed = templateButtonSchema.safeParse(button)
+          return parsed.success ? parsed.data.url : undefined
+        })
       ]
       for (const link of links) {
         const point = link === undefined ? null : coordinatesOfMapLink(link)
@@ -300,17 +305,26 @@ function plainNames(value: unknown, deep = false): string[] {
 function elementNames(payload: unknown): string[] {
   const generic = isRecord(payload) ? payload.generic : undefined
   const elements = isRecord(generic) ? generic.elements : undefined
-  const first: unknown = Array.isArray(elements) ? (elements as unknown[])[0] : undefined
-  if (!isRecord(first)) return []
-  const names = plainNames(first)
-  const nested = names.flatMap(name => {
-    const inner = first[name]
-    const record = Array.isArray(inner) ? (inner as unknown[])[0] : inner
-    return plainNames(record)
-      .slice(0, UnsupportedShapeLimits.MAX_NESTED_NAMES)
-      .map(child => `${name}.${child}`)
-  })
-  return [...names, ...nested].slice(0, UnsupportedShapeLimits.MAX_ELEMENT_NAMES)
+  const read = Array.isArray(elements)
+    ? (elements as unknown[]).slice(0, MetaMessaging.TEMPLATE_MAX_ELEMENTS)
+    : []
+  // The names of every element that is read, and apart from them what each holds one level down, so that
+  // the nested ones are not cut by the top-level ones
+  const top = new Set<string>()
+  const nested = new Set<string>()
+  for (const element of read) {
+    if (!isRecord(element)) continue
+    for (const name of plainNames(element)) {
+      top.add(name)
+      const inner = element[name]
+      const record = Array.isArray(inner) ? (inner as unknown[])[0] : inner
+      for (const child of plainNames(record).slice(0, UnsupportedShapeLimits.MAX_NESTED_NAMES)) {
+        nested.add(`${name}.${child}`)
+      }
+    }
+  }
+  const half = UnsupportedShapeLimits.MAX_ELEMENT_NAMES / 2
+  return [...[...top].slice(0, half), ...[...nested].slice(0, half)]
 }
 
 export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, unknown> {
