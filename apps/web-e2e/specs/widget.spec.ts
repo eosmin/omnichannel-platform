@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Browser, BrowserContext, Page } from '@playwright/test'
+import type { Browser, BrowserContext, Page, Request } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
@@ -14,7 +14,13 @@ import {
   signInByApi,
   type WidgetSite
 } from '../support/api'
-import { addMessageTo, storeIdNamed, unreadCountOf, withOwner } from '../support/database'
+import {
+  addMessagesAt,
+  conversationIdWithMessage,
+  storeIdNamed,
+  unreadCountOf,
+  withOwner
+} from '../support/database'
 import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
@@ -45,6 +51,20 @@ const ONE_PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64'
 )
+
+// Two frames of the page: what the browser sends with a frame (a scroll event, the draw that follows a change of
+// state of React) has happened. A wait for what the page does, not for a number of milliseconds (the second is
+// only the way out for a page that draws no frames).
+function afterNextFrames(page: Page): Promise<void> {
+  return page.evaluate(
+    () =>
+      new Promise<void>(resolve => {
+        // A page in the background draws no frames: it is not waited for forever
+        setTimeout(resolve, 1000)
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
+  )
+}
 
 // A visitor's browser, which reaches the api from an address of its own
 async function visitorBrowser(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
@@ -149,27 +169,27 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
     await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
     await expect(visitor.page.getByRole('log').getByText(opening)).toBeVisible()
 
-    // A long thread: older messages are written in the database under the one that just arrived
-    const conversationId = await withOwner(
-      async owner =>
-        (
-          await owner.conversation.findFirstOrThrow({
-            // The conversation of this visitor, found by what the visitor wrote
-            where: { storeId, messages: { some: { content: opening } } },
-            orderBy: { createdAt: 'desc' },
-            select: { id: true }
-          })
-        ).id
-    )
+    // The widget draws the message as soon as it is sent; the conversation exists once the api and the worker have
+    // stored it, which under load comes after. So it is waited for, and found by what the visitor wrote.
+    let conversationId = ''
+    await expect(async () => {
+      const found = await conversationIdWithMessage(storeId, opening)
+      expect(found).not.toBeNull()
+      conversationId = found ?? ''
+    }).toPass({ timeout: 30_000 })
+
+    // A long thread: older messages are written in the database under the one that just arrived, in one write.
     // One reading of the clock, and a window that does not cross midnight
     const anchor = seedAnchor(60 * 60_000)
-    for (let index = 0; index < 40; index += 1) {
-      await addMessageTo(storeId, conversationId, {
+    await addMessagesAt(
+      storeId,
+      conversationId,
+      Array.from({ length: 40 }, (_, index) => ({
         content: `Earlier message ${index + 1}`,
         authorType: index % 2 === 0 ? AuthorType.CUSTOMER : AuthorType.AGENT,
         createdAt: new Date(anchor - (60 - index) * 60_000)
-      })
-    }
+      }))
+    )
 
     const agentContext = await browser.newContext()
     await reachServicesFromOwnAddress(agentContext)
@@ -188,14 +208,54 @@ test.describe.serial('the web widget on a site with a strict policy', () => {
         if (scroller instanceof HTMLElement) scroller.scrollTop = 0
       })
     await scrollUp()
+    // The thread notes where the reader is on the scroll event, which the browser sends with the next frame
+    await afterNextFrames(agent)
+
+    // What the page asks of the api from here on: it must never ask to mark this conversation read while the
+    // agent is above the end
+    const marks: string[] = []
+    const onRequest = (request: Request): void => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname.endsWith(ApiRoutes.conversations.read(conversationId))
+      ) {
+        marks.push(request.url())
+      }
+    }
+    agent.on('request', onRequest)
+    // When the visitor writes: only an answer to a request made after that counts, because one that was already
+    // on its way may carry the unread of the opening message
+    let writtenAt = Number.POSITIVE_INFINITY
+    // The moment the page knows the message counted: the api answers its read of the conversation with the one
+    // unread. Waited for before the visitor writes, so that no answer slips between the two.
+    const counted = agent.waitForResponse(
+      async response => {
+        const { pathname } = new URL(response.url())
+        if (response.request().method() !== 'GET') return false
+        if (response.request().timing().startTime < writtenAt) return false
+        if (!pathname.endsWith(ApiRoutes.conversations.byId(conversationId))) return false
+        const body: unknown = await response.json().catch(() => null)
+        return typeof body === 'object' && body !== null && Reflect.get(body, 'unreadCount') === 1
+      },
+      { timeout: 30_000 }
+    )
+    // If the visitor's steps fail first, this must not reject later with nobody listening
+    void counted.catch(() => undefined)
     await visitorInput.fill('Is anyone there?')
+    writtenAt = Date.now()
     await visitor.page.getByRole('button', { name: WIDGET_TEXT.send }).click()
 
-    // It waits behind the button; it is not read while the agent is above
+    // It waits behind the button; it is not read while the agent is above. Not a fixed wait: the page has the
+    // count (`counted`), has drawn the button (`pill`) and has run what follows from both (two frames); if it
+    // were going to ask to mark it read, it has by now.
     const pill = agent.getByRole('button', { name: /1 new message/ })
+    await counted
     await expect(pill).toBeVisible()
-    await agent.waitForTimeout(1500)
+    await afterNextFrames(agent)
+    expect(marks).toEqual([])
     expect(await unreadCountOf(conversationId)).toBe(1)
+    // What follows asks to mark it read on purpose (the button), so it is no longer recorded
+    agent.off('request', onRequest)
 
     // The button takes the agent to the end: it goes away and the message is read then
     await pill.click()
