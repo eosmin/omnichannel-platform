@@ -143,9 +143,10 @@ test('the arrow of a row opens its menu from the keyboard, and Shift+E opens the
     // The key of the other way, with the conversation open: the dialog is downloaded the first time
     await page.goto(AppPaths.store.conversation(storeId, conversationId))
     const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
+    // The arrow is off until the settings of the store are here: the key is pressed once the flow is ready
     await expect(
       page.getByRole('button', { name: en.inbox.actions.resolveMore, exact: true })
-    ).toBeVisible()
+    ).toBeEnabled()
     await page.keyboard.press('Shift+E')
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')
