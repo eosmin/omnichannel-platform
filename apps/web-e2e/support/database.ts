@@ -110,7 +110,13 @@ export function addMessageTo(
     type?: MessageType
     createdAt: Date
     deliveryStatus?: DeliveryStatus
-    system?: { event: SystemMessageEvent; actorType: 'user' | 'system' }
+    system?: {
+      event: SystemMessageEvent
+      actorType: 'user' | 'system'
+      // The code the system gave (a snooze that ran out) and what the agent wrote when snoozing
+      reason?: string
+      note?: string
+    }
     replyToMessageId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
@@ -152,10 +158,11 @@ export function addMessageTo(
                   causedBy: null,
                   from: null,
                   to: null,
-                  reason: null,
+                  reason: system.reason ?? null,
                   snoozedUntil: null,
                   assignedTo: null,
-                  previousAssignee: null
+                  previousAssignee: null,
+                  ...(system.note === undefined ? {} : { note: system.note })
                 }
               })
         }
