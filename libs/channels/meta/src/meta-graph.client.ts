@@ -471,24 +471,26 @@ export class MetaGraphClient {
   }
 
   // Messenger and Instagram put the url of the file in the webhook itself. It is a link of a Meta CDN
-  // that needs no token, so none is sent; the type is the one the file server declares, because Meta
+  // (or, for the GIFs of Instagram, of a listed GIF host) that needs no token, so none is sent; the type is the one the file server declares, because Meta
   // does not vouch for it here.
   async downloadMediaUrl(url: string): Promise<FetchedMedia> {
-    // The link is the customer's: one that is not a Meta CDN is refused as any other unsafe link, not
+    // The link is the customer's: one that is not a Meta CDN or a listed GIF host is refused as any other unsafe link, not
     // counted as a failure of the fetch. (The url that Graph itself answers for a media id keeps the
     // check below, where a foreign host is an unexpected answer.)
     if (!isMetaMediaLink(url)) throw new UnsafeMediaLinkError()
-    return this.downloadFile(url, undefined, undefined, undefined)
+    return this.downloadFile(url, undefined, undefined, undefined, true)
   }
 
   private async downloadFile(
     url: string,
     token: string | undefined,
     declaredSize: number | undefined,
-    declaredType: string | undefined
+    declaredType: string | undefined,
+    // The link of a customer may be a GIF host; the url that Graph answers may not
+    customerLink = false
   ): Promise<FetchedMedia> {
     const target = parseUrl(url)
-    if (!target || !isMetaMediaUrl(target)) throw graphUnexpected()
+    if (!target || !isMetaMediaUrl(target, customerLink)) throw graphUnexpected()
     if ((declaredSize ?? 0) > MetaLimits.MEDIA_MAX_BYTES) throw graphUnexpected()
 
     const response = await this.fetchOrFail(url, {
@@ -628,14 +630,15 @@ function mediaTypeOf(header: string | null): string {
   return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(type) ? type : MetaGraph.FALLBACK_CONTENT_TYPE
 }
 
-// Whether a link is one of a Meta CDN that may be fetched: https, no port or credentials, a host of the
+// Whether a link of a customer may be fetched: a Meta CDN or an exact host of the GIF list (so a true is
+// not proof that the host is Meta's; the token is only ever sent to `MEDIA_TOKEN_HOSTS`): https, no port or credentials, a host of the
 // list. Pure (no lookup, no call), so that it can run before anything touches the network.
 export function isMetaMediaLink(link: string): boolean {
   const target = parseUrl(link)
-  return target !== null && isMetaMediaUrl(target)
+  return target !== null && isMetaMediaUrl(target, true)
 }
 
-function isMetaMediaUrl(url: URL): boolean {
+function isMetaMediaUrl(url: URL, customerLink = false): boolean {
   return (
     url.protocol === 'https:' &&
     url.port === '' &&
@@ -643,7 +646,8 @@ function isMetaMediaUrl(url: URL): boolean {
     url.password === '' &&
     (MetaGraph.MEDIA_TOKEN_HOSTS.some(host => host === url.hostname) ||
       MetaGraph.MEDIA_CDN_HOSTS.some(host => host === url.hostname) ||
-      MetaGraph.MEDIA_CDN_SUFFIXES.some(suffix => url.hostname.endsWith(suffix)))
+      MetaGraph.MEDIA_CDN_SUFFIXES.some(suffix => url.hostname.endsWith(suffix)) ||
+      (customerLink && MetaGraph.MEDIA_GIF_HOSTS.some(host => host === url.hostname)))
   )
 }
 

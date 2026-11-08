@@ -50,7 +50,21 @@ export const MetaGraph = {
   MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com'],
   // Exact hosts of a CDN that need no token. Exact, like the one above: the other *.fbsbx.com hosts
   // serve content of third parties. Messenger puts its voice clips and files here.
-  MEDIA_CDN_HOSTS: ['cdn.fbsbx.com']
+  MEDIA_CDN_HOSTS: ['cdn.fbsbx.com'],
+  // The GIFs of Instagram are Giphy's and Tenor's, not Meta's (owner's test, 2026-11-08: media1 and media4
+  // of Giphy). Only for the link a customer sent, never for a url that Graph answers. A closed list of
+  // exact hosts: never `*.giphy.com` or a whole domain, which would let anyone who can put a file there
+  // reach the worker. The client checks the host, https, no port or credentials and no redirect; the worker checks the address and the size, type and scan, and must keep doing so for these third-party hosts.
+  MEDIA_GIF_HOSTS: [
+    'media0.giphy.com',
+    'media1.giphy.com',
+    'media2.giphy.com',
+    'media3.giphy.com',
+    'media4.giphy.com',
+    'i.giphy.com',
+    'media.tenor.com',
+    'c.tenor.com'
+  ] as readonly string[]
 } as const
 
 // Statuses that say "not now" without being a 5xx: request timeout and too early
