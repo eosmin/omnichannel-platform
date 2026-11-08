@@ -63,6 +63,8 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
   const { snooze } = useConversationActions(storeId, conversationId)
   const [now] = useState(() => new Date())
   const [custom, setCustom] = useState('')
+  // What to remember when it wakes: optional, the same for a preset and for a chosen time
+  const [note, setNote] = useState('')
 
   if (behavior.isPending) {
     return (
@@ -101,7 +103,7 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
     // A promise, not the callbacks of mutate: those do not run if the agent moves to another
     // conversation before the answer
     snooze
-      .mutateAsync(until)
+      .mutateAsync(note.trim() === '' ? { until } : { until, note: note.trim() })
       .then(() => {
         toast.success(t('done', { time: format.format(until) }))
         onOpenChange(false)
@@ -112,6 +114,20 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="snooze-note">{t('noteLabel')}</Label>
+        <Input
+          id="snooze-note"
+          value={note}
+          maxLength={ConversationLimits.SNOOZE_NOTE_MAX_LENGTH}
+          disabled={snooze.isPending}
+          onChange={event => setNote(event.target.value)}
+          aria-describedby="snooze-note-hint"
+        />
+        <p id="snooze-note-hint" className="text-muted-foreground text-xs">
+          {t('noteHint', { max: ConversationLimits.SNOOZE_NOTE_MAX_LENGTH })}
+        </p>
+      </div>
       <ul className="flex flex-col gap-2">
         {snoozePresets(now, timezone).map((preset: SnoozePreset) => (
           <li key={preset.id}>

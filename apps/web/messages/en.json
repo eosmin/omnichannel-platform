@@ -108,7 +108,7 @@
       "push": {
         "title": "Push on this device",
         "label": "Send push notifications to this browser",
-        "hint": "The Push column above chooses which notifications use it.",
+        "hint": "The Push column above chooses which notifications use it. By default a customer message in your conversation and an unassigned conversation you can take send a push; if you do not want it, clear the Push box of “New message in my conversation” or “New unassigned conversation”.",
         "blocked": "This browser blocked notifications. Allow them in its site settings to turn push on.",
         "unsupported": "This browser cannot receive push notifications.",
         "notConfigured": "Push notifications are not set up in this environment."
@@ -941,6 +941,8 @@
     "clearFilters": "Clear filters",
     "youPrefix": "You: {text}",
     "notePrefix": "Note: {text}",
+    "woke": "Woke up",
+    "wokeNote": "Woke up: {note}",
     "noMessages": "No messages yet",
     "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
     "snoozed": "Snoozed",
@@ -1061,7 +1063,9 @@
         "downloadFile": "Download {name}",
         "download": "Download",
         "close": "Close",
-        "lightboxDescription": "The file at full size",
+        "lightboxHint": "Esc closes, arrows navigate",
+        "lightboxHintSingle": "Esc closes",
+        "closeWithKey": "Close (Esc)",
         "previous": "Previous file",
         "next": "Next file",
         "notKept": {
@@ -1139,11 +1143,12 @@
         "unmarked_spam": "{actorKind, select, user {Unmarked as spam by {actor}} other {Unmarked as spam automatically}}",
         "snoozed": "{actorKind, select, user {Snoozed by {actor}} other {Snoozed automatically}}",
         "snoozedUntil": "until {until}",
-        "woken": "{actorKind, select, user {Reopened by {actor}} other {Reopened automatically}}",
+        "woken": "{actorKind, select, user {Reopened by {actor}} other {Woke up}}",
         "assigned": "{actorKind, select, user {{actor} assigned it to {assignee}} other {Assigned to {assignee}}}",
         "unassigned": "{actorKind, select, user {{actor} left it unassigned} other {Left unassigned}}",
         "unknown": "The conversation changed",
         "reason": "Reason: {reason}",
+        "reminder": "Reminder: {note}",
         "reasons": {
           "snooze_expired": "the snooze ended",
           "auto_archived": "it was inactive",
@@ -1302,6 +1307,8 @@
     "snooze": {
       "title": "Snooze the conversation",
       "description": "It leaves the inbox and comes back, open, at the time you choose. If the customer writes before, it comes back at once.",
+      "noteLabel": "What are you snoozing it for? (optional)",
+      "noteHint": "Shown when it wakes up. Up to {max} characters.",
       "presets": {
         "laterToday": "Later today",
         "tomorrowMorning": "Tomorrow morning",
@@ -1760,7 +1767,7 @@
           "loading": "Loading your Pages…",
           "close": "Close",
           "legend": "Available Pages",
-          "none": "Facebook did not show any Page. Type the ID number of your Page.",
+          "none": "Facebook did not show any Page. Connect again and tick your Page in the Facebook dialog, or type the ID number of your Page.",
           "noInstagram": "No Instagram account linked",
           "instagram": "Instagram: @{username}",
           "typedLabel": "ID number of the Page",

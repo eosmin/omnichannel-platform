@@ -72,6 +72,38 @@ describe('buildPushPayload', () => {
     expect([...payload.body].length).toBeLessThanOrEqual(PushLimits.MAX_BODY_LENGTH)
   })
 
+  it('never puts the name of a customer in the push, whose text the lock screen shows', () => {
+    const generic = {
+      [Locales.EN]: {
+        [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]:
+          'There are conversations waiting for someone to take them.',
+        [NotificationTypes.MESSAGE_RECEIVED]: 'A customer wrote to you.'
+      },
+      [Locales.ES]: {
+        [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]:
+          'Hay conversaciones esperando que alguien las tome.',
+        [NotificationTypes.MESSAGE_RECEIVED]: 'Un cliente te escribió.'
+      }
+    }
+    for (const locale of [Locales.EN, Locales.ES]) {
+      for (const type of [
+        NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE,
+        NotificationTypes.MESSAGE_RECEIVED
+      ] as const) {
+        const payload = buildPushPayload(
+          row({
+            type,
+            messageKey: notificationMessageKey(type),
+            params: { customer: 'Lucia Prechat', author: 'Lucia', text: 'my secret order' }
+          }),
+          locale
+        )
+        expect(payload.body).toBe(generic[locale][type])
+        expect(JSON.stringify(payload)).not.toMatch(/Lucia|secret/)
+      }
+    }
+  })
+
   it('throws for a type with no message: it will not have one when tried again', () => {
     expect(() => buildPushPayload(row({ messageKey: 'notifications.nope' }), Locales.EN)).toThrow(
       'missing translation'

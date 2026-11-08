@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { AssigneePermissions, type Permission, Permissions } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
+  AttentionReasons,
   ConversationConflictReasons,
   ConversationHiddenStatuses,
   ConversationLimits,
@@ -24,7 +25,7 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
 
-import { encodeConversationCursor } from './conversation-cursor'
+import { afterConversationCursor, encodeConversationCursor } from './conversation-cursor'
 import type { ConversationFilter, ListConversationsQuery } from './conversations.schemas'
 import {
   assignedFilter,
@@ -86,6 +87,9 @@ export interface StatusOptions {
   reason?: ConversationStatusReason
   // Required to snooze: the moment the conversation comes back
   snoozedUntil?: Date
+  // With a snooze: what the agent wants to remember, already trimmed and within the limit. Kept with the
+  // snooze, shown when it wakes, never logged.
+  snoozeNote?: string | null
   // For a change made by the system because of what a person did (a reply reopens the conversation):
   // the person, for the event. It grants nothing: the permission to act was checked by the caller.
   causedBy?: string
@@ -167,23 +171,19 @@ export class ConversationsService {
         AND: [
           visibleTo(viewer),
           assignedFilter(query.assigned, viewer),
-          // After the last row of the previous page in (lastMessageAt desc, nulls last, id desc)
-          cursor === undefined
-            ? {}
-            : cursor.lastMessageAt === null
-              ? { lastMessageAt: null, id: { lt: cursor.id } }
-              : {
-                  OR: [
-                    { lastMessageAt: { lt: cursor.lastMessageAt } },
-                    { lastMessageAt: cursor.lastMessageAt, id: { lt: cursor.id } },
-                    { lastMessageAt: null }
-                  ]
-                }
+          // After the last row of the previous page, in the order of the list
+          cursor === undefined ? {} : afterConversationCursor(cursor)
         ]
       },
       select: LIST_SELECT,
       take: query.limit + 1,
-      orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }]
+      // A mark of attention raises a row; the rest are by their last message (index
+      // conversations_store_list_order_idx serves this order)
+      orderBy: [
+        { attentionAt: { sort: 'desc', nulls: 'last' } },
+        { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+        { id: 'desc' }
+      ]
     })
     const hasMore = rows.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
@@ -192,7 +192,11 @@ export class ConversationsService {
       data: await listItemsOf(this.prisma.client, storeId, page, viewer),
       nextCursor:
         hasMore && last !== undefined
-          ? encodeConversationCursor({ lastMessageAt: last.lastMessageAt, id: last.id })
+          ? encodeConversationCursor({
+              attentionAt: last.attentionAt,
+              lastMessageAt: last.lastMessageAt,
+              id: last.id
+            })
           : null,
       hasMore
     }
@@ -319,12 +323,32 @@ export class ConversationsService {
       }
       assertSnoozeWindow(options.snoozedUntil)
     }
+    // A snooze that ran out raises the row until someone opens it (only the sweep of the worker gives
+    // this reason: a customer who writes to a snoozed conversation wakes it too, but nobody's timer
+    // ran out). A way out of the work (resolved, spam, snoozed again) takes the mark off; OPEN and PENDING
+    // are still the work to do, so the mark stays through them. Any exit from the snooze drops the reminder.
+    const woke =
+      from === ConversationStatus.SNOOZED &&
+      to === ConversationStatus.OPEN &&
+      options.reason === ConversationStatusReasons.SNOOZE_EXPIRED
+    const marks = woke
+    const clearsMark = !marks && to !== ConversationStatus.OPEN && to !== ConversationStatus.PENDING
     await tx.conversation.update({
       where: { id: conversationId, storeId },
       data: {
         // eslint-disable-next-line no-restricted-syntax -- the one place that writes the status
         status: to,
-        ...fieldsOf(to, options)
+        ...fieldsOf(to, options),
+        ...(from === ConversationStatus.SNOOZED ? { snoozeNote: null } : {}),
+        ...(marks
+          ? {
+              attentionReason: AttentionReasons.SNOOZE_WOKE,
+              attentionAt: new Date(),
+              attentionNote: current.snoozeNote
+            }
+          : clearsMark
+            ? { attentionReason: null, attentionAt: null, attentionNote: null }
+            : {})
       }
     })
     const event = systemEventFor(from, to, options.undoesResolution === true)
@@ -336,7 +360,17 @@ export class ConversationsService {
         from,
         to,
         reason: options.reason ?? options.resolutionReason ?? null,
-        snoozedUntil: options.snoozedUntil?.toISOString() ?? null
+        snoozedUntil: options.snoozedUntil?.toISOString() ?? null,
+        // The reminder comes back on the line of waking, however it woke
+        note: from === ConversationStatus.SNOOZED ? current.snoozeNote : null
+      })
+    }
+    if (marks || (clearsMark && current.attentionReason !== null)) {
+      this.events.publish(tx, Events.CONVERSATION_ATTENTION_CHANGED, {
+        storeId,
+        conversationId,
+        reason: marks ? AttentionReasons.SNOOZE_WOKE : null,
+        visibility: { hidden: isHiddenStatus(to), assignedTo: current.assignedTo }
       })
     }
     this.events.publish(tx, Events.CONVERSATION_STATUS_CHANGED, {
@@ -363,13 +397,7 @@ export class ConversationsService {
           options.causedBy === undefined ? actorRef(options.actor) : userRef(options.causedBy)
       })
     }
-    // Only the sweep of the worker gives this reason: a customer who writes to a snoozed conversation
-    // wakes it too, but nobody's timer ran out
-    if (
-      from === ConversationStatus.SNOOZED &&
-      to === ConversationStatus.OPEN &&
-      options.reason === ConversationStatusReasons.SNOOZE_EXPIRED
-    ) {
+    if (woke) {
       this.events.publish(tx, Events.CONVERSATION_SNOOZE_EXPIRED, {
         storeId,
         conversationId,
@@ -485,12 +513,14 @@ export class ConversationsService {
     storeId: string,
     conversationId: string,
     until: Date,
-    viewer: Viewer
+    viewer: Viewer,
+    note: string | null = null
   ): Promise<ConversationDetail> {
     assertSnoozeWindow(until)
     return this.updateStatus(storeId, conversationId, ConversationStatus.SNOOZED, {
       actor: viewer,
-      snoozedUntil: until
+      snoozedUntil: until,
+      snoozeNote: note
     })
   }
 
@@ -579,10 +609,25 @@ export class ConversationsService {
   ): Promise<ConversationDetail> {
     return this.prisma.transaction(async tx => {
       const current = await lockConversationForWrite(tx, storeId, conversationId, viewer)
+      // Opening it takes the mark of attention off, for everyone: it asked for a look and got one
+      const marked = current.attentionReason !== null
       await tx.conversation.update({
         where: { id: conversationId, storeId },
-        data: { unreadCount: 0, lastReadAt: new Date(), lastReadBy: viewer.userId }
+        data: {
+          unreadCount: 0,
+          lastReadAt: new Date(),
+          lastReadBy: viewer.userId,
+          ...(marked ? { attentionReason: null, attentionAt: null, attentionNote: null } : {})
+        }
       })
+      if (marked) {
+        this.events.publish(tx, Events.CONVERSATION_ATTENTION_CHANGED, {
+          storeId,
+          conversationId,
+          reason: null,
+          visibility: { hidden: isHiddenStatus(current.status), assignedTo: current.assignedTo }
+        })
+      }
       this.events.publish(tx, Events.CONVERSATION_READ, {
         storeId,
         conversationId,
@@ -733,6 +778,6 @@ function fieldsOf(to: ConversationStatus, options: StatusOptions) {
     case ConversationStatus.ARCHIVED:
       return { archivedAt: new Date() }
     case ConversationStatus.SNOOZED:
-      return { snoozedUntil: options.snoozedUntil ?? null }
+      return { snoozedUntil: options.snoozedUntil ?? null, snoozeNote: options.snoozeNote ?? null }
   }
 }

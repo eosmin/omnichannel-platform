@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
@@ -20,6 +21,7 @@ import {
 import { type ErrorCode, ErrorCodes } from '@platform/core/errors'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { NotificationLimits, NotificationTypes } from '@platform/core/notifications'
+import { JobNames, QueueNames } from '@platform/core/queues'
 
 import { createChannelConnection, createConversationOf, createMessage } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -27,6 +29,7 @@ import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { CapturedQueue } from '../helpers/queue'
 
 const OK = 200
 const POLL_MS = 100
@@ -42,10 +45,13 @@ describe('Notification emitters (QA Q2)', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  const pushQueue = new CapturedQueue()
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], builder =>
+      builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
+    )
     ctx = await seedTestContext(owner, app, prefix)
   })
   afterAll(async () => {
@@ -55,6 +61,11 @@ describe('Notification emitters (QA Q2)', () => {
   })
   afterEach(async () => {
     await owner.notification.deleteMany({ where: { storeId: ctx.storeA.id } })
+    await owner.notificationPreference.deleteMany({ where: { storeId: ctx.storeA.id } })
+    await owner.pushSubscription.deleteMany({
+      where: { userId: { in: [ctx.adminA.id, ctx.agentA.id, ctx.viewerA.id] } }
+    })
+    pushQueue.jobs.length = 0
   })
 
   const emit = (event: string, payload: object) => app.get(EventEmitter2).emitAsync(event, payload)
@@ -319,6 +330,80 @@ describe('Notification emitters (QA Q2)', () => {
       )
 
       expect(await rowsOf(NotificationTypes.CONVERSATION_REOPENED)).toHaveLength(0)
+    })
+  })
+
+  describe('web push of a customer message (owner, 2026-11-08)', () => {
+    const subscribe = (userId: string) =>
+      owner.pushSubscription.create({
+        data: {
+          userId,
+          endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+          p256dh: 'k',
+          auth: 'a'
+        }
+      })
+    const pushedTo = (): string[] =>
+      pushQueue.jobs
+        .filter(job => job.name === JobNames.SEND_WEB_PUSH)
+        .map(job => (job.data as { userId: string }).userId)
+        .sort()
+    const message = (conversationId: string, assignedTo: string | null) => ({
+      storeId: ctx.storeA.id,
+      conversationId,
+      messageId: randomUUID(),
+      customerId: randomUUID(),
+      channelType: ChannelType.INSTAGRAM,
+      authorType: AuthorType.CUSTOMER,
+      receivedAt: new Date().toISOString(),
+      visibility: { hidden: false, assignedTo }
+    })
+
+    it('pushes to the owner of the conversation by default, once until they read it', async () => {
+      const { id } = await mk({ assignedTo: ctx.agentA.id })
+      await subscribe(ctx.agentA.id)
+
+      await emit(Events.MESSAGE_RECEIVED, message(id, ctx.agentA.id))
+      await emit(Events.MESSAGE_RECEIVED, message(id, ctx.agentA.id))
+
+      expect(pushedTo()).toEqual([ctx.agentA.id])
+    })
+
+    it('does not push when the person turned the push of the type off', async () => {
+      const { id } = await mk({ assignedTo: ctx.agentA.id })
+      await subscribe(ctx.agentA.id)
+      await owner.notificationPreference.create({
+        data: {
+          userId: ctx.agentA.id,
+          storeId: ctx.storeA.id,
+          type: NotificationTypes.MESSAGE_RECEIVED,
+          inApp: true,
+          push: false,
+          email: false,
+          sound: true
+        }
+      })
+
+      await emit(Events.MESSAGE_RECEIVED, message(id, ctx.agentA.id))
+
+      expect(await rowsOf(NotificationTypes.MESSAGE_RECEIVED)).toHaveLength(1)
+      expect(pushedTo()).toEqual([])
+    })
+
+    it('pushes the queue to who can take the conversation, never to who can only read', async () => {
+      const { id } = await mk()
+      await subscribe(ctx.agentA.id)
+      await subscribe(ctx.adminA.id)
+      await subscribe(ctx.viewerA.id)
+
+      await emit(Events.CONVERSATION_UNASSIGNED, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        unassignedBy: { type: 'system', id: null }
+      })
+
+      expect(pushedTo()).toEqual([ctx.adminA.id, ctx.agentA.id].sort())
+      expect(pushedTo()).not.toContain(ctx.viewerA.id)
     })
   })
 

@@ -24,6 +24,8 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.CONVERSATION_ASSIGNED]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.CONVERSATION_STATUS_CHANGED]: [Scopes.CONVERSATIONS, Scopes.CUSTOMERS],
   [RealtimeEvents.CONVERSATION_READ]: [Scopes.CONVERSATIONS],
+  // The mark that raises a row (a snooze that ended) was put or taken off: the list and the open one are read again
+  [RealtimeEvents.CONVERSATION_ATTENTION_CHANGED]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.CONVERSATION_UNREAD]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.MESSAGE_RECEIVED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   // A reply from another tab or device moves the conversation in the list and changes its preview

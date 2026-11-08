@@ -4,15 +4,36 @@ import { expect } from './test'
 
 // A dialog holds its content: nothing is wider or taller than the box, and its buttons are inside it, on a phone
 // and on a desktop (a long address or a wide field must not push the box wider than the screen)
-const SCREENS = [
-  { width: 390, height: 844 },
-  { width: 1280, height: 800 }
-]
+const PHONE = { width: 390, height: 844 }
+const DESKTOP = { width: 1280, height: 800 }
+const SCREENS = [PHONE, DESKTOP]
+// The two widths of a phone where the width is the only thing measured (MODAL-390): a dialog with a long list
+// scrolls down by design, and it never scrolls sideways
+const PHONE_SCREENS = [PHONE, { width: 360, height: 740 }]
+
+// Nothing sticks out of the box to the side, on the two phone widths
+export async function expectDialogFitsThePhoneWidth(page: Page, dialog: Locator): Promise<void> {
+  await measureDialog(page, dialog, PHONE_SCREENS, false)
+}
+
 export async function expectDialogHoldsItsContent(page: Page, dialog: Locator): Promise<void> {
+  await measureDialog(page, dialog, SCREENS, true)
+}
+
+async function measureDialog(
+  page: Page,
+  dialog: Locator,
+  screens: readonly { width: number; height: number }[],
+  isHeightMeasured: boolean
+): Promise<void> {
   const original = page.viewportSize()
   try {
-    for (const screen of SCREENS) {
+    for (const screen of screens) {
       await page.setViewportSize(screen)
+      // A sheet slides in and a dialog zooms in: measured half way, the box is still out of place
+      await dialog.evaluate(element =>
+        Promise.all(element.getAnimations().map(animation => animation.finished))
+      )
       // Everything is measured in one go, after the layout of the new size has settled
       const box = await dialog.evaluate(
         element =>
@@ -49,9 +70,11 @@ export async function expectDialogHoldsItsContent(page: Page, dialog: Locator): 
       expect(box.scrollWidth, `no horizontal scroll at ${screen.width}px`).toBeLessThanOrEqual(
         box.clientWidth
       )
-      expect(box.scrollHeight, `no vertical scroll at ${screen.width}px`).toBeLessThanOrEqual(
-        box.clientHeight
-      )
+      if (isHeightMeasured) {
+        expect(box.scrollHeight, `no vertical scroll at ${screen.width}px`).toBeLessThanOrEqual(
+          box.clientHeight
+        )
+      }
       expect(box.left).toBeGreaterThanOrEqual(0)
       expect(box.right).toBeLessThanOrEqual(screen.width)
       expect(box.stray, `nothing sticks out of the box at ${screen.width}px`).toBe(0)

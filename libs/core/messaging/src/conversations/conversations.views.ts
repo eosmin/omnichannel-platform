@@ -1,5 +1,6 @@
 import { Permissions } from '@platform/core/auth'
 import type {
+  AttentionReason,
   AuthorType,
   ChannelId,
   ConversationStatus,
@@ -7,6 +8,7 @@ import type {
   MessageType
 } from '@platform/core/domain'
 import {
+  AttentionReasons,
   AuthorType as AuthorTypes,
   ConversationLimits,
   CustomerLimits,
@@ -17,6 +19,12 @@ import {
 
 import { type Db, enumValueOf, statusOf, type Viewer } from './conversations.support'
 
+export interface ConversationAttention {
+  reason: AttentionReason
+  at: Date
+  note: string | null
+}
+
 // TDD_09 section 2, without `handler` (no AI in the v1.2 MVP)
 export interface ConversationListItem {
   id: string
@@ -26,6 +34,8 @@ export interface ConversationListItem {
   unreadCount: number
   lastMessageAt: Date | null
   snoozedUntil: Date | null
+  // A mark that raised the row until someone opens it; null when there is none. `note` is text of an agent.
+  attention: ConversationAttention | null
   // `username` and `avatarUrl` are what the channel keeps for the person (capability CUSTOMER_PROFILE),
   // null until a job reads them. The photo is a link a plugin chose and that expires: untrusted.
   customer: {
@@ -77,6 +87,9 @@ export const LIST_SELECT = {
   unreadCount: true,
   lastMessageAt: true,
   snoozedUntil: true,
+  attentionReason: true,
+  attentionAt: true,
+  attentionNote: true,
   customer: { select: { id: true, name: true } },
   customerIdentity: { select: { channelIdentity: true, username: true, avatarUrl: true } },
   tags: { select: { id: true, name: true, color: true }, orderBy: { name: 'asc' } }
@@ -100,6 +113,9 @@ interface ListRow {
   unreadCount: number
   lastMessageAt: Date | null
   snoozedUntil: Date | null
+  attentionReason: string | null
+  attentionAt: Date | null
+  attentionNote: string | null
   customer: { id: string; name: string | null }
   customerIdentity: { channelIdentity: string; username: string | null; avatarUrl: string | null }
   tags: { id: string; name: string; color: string }[]
@@ -110,6 +126,17 @@ type LastMessage = NonNullable<ConversationListItem['lastMessage']>
 // A plugin chose the photo link: only a plain http(s) link leaves, as with any link from outside
 const avatarLink = httpUrl(CustomerLimits.AVATAR_URL_MAX_LENGTH)
 const avatarUrlOf = (url: string | null): string | null => avatarLink.safeParse(url).data ?? null
+
+// Only a reason this code knows is shown: a row written by a newer version does not break the list
+export function attentionOf(row: {
+  attentionReason: string | null
+  attentionAt: Date | null
+  attentionNote: string | null
+}): ConversationAttention | null {
+  const reason = Object.values(AttentionReasons).find(value => value === row.attentionReason)
+  if (reason === undefined || row.attentionAt === null) return null
+  return { reason, at: row.attentionAt, note: row.attentionNote }
+}
 
 function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationListItem {
   return {
@@ -122,6 +149,7 @@ function listItem(row: ListRow, lastMessage: LastMessage | null): ConversationLi
     unreadCount: row.unreadCount,
     lastMessageAt: row.lastMessageAt,
     snoozedUntil: row.snoozedUntil,
+    attention: attentionOf(row),
     customer: {
       id: row.customer.id,
       name: row.customer.name,

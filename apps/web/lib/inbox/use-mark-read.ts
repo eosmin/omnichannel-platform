@@ -30,7 +30,9 @@ export function useMarkRead(
   conversationId: string,
   unreadCount: number | undefined,
   // False while the reader is above the end of the thread: what arrived is not read until they reach it
-  isReading = true
+  isReading = true,
+  // A mark of attention (a snooze that ended) comes off by opening the conversation, even when nothing is unread
+  hasAttention = false
 ): void {
   const { storeId, can } = useStore()
   const queryClient = useQueryClient()
@@ -41,7 +43,13 @@ export function useMarkRead(
   const mayMark = can(ClientPermissions.CONVERSATIONS_RESOLVE)
 
   useEffect(() => {
-    if (!mayMark || !isVisible || !isReading || unreadCount === undefined || unreadCount === 0)
+    if (
+      !mayMark ||
+      !isVisible ||
+      !isReading ||
+      unreadCount === undefined ||
+      (unreadCount === 0 && !hasAttention)
+    )
       return
     if (isInFlight.current) return
     isInFlight.current = true
@@ -54,5 +62,15 @@ export function useMarkRead(
       .finally(() => {
         isInFlight.current = false
       })
-  }, [mayMark, isVisible, isReading, unreadCount, storeId, conversationId, queryClient, settled])
+  }, [
+    mayMark,
+    isVisible,
+    isReading,
+    unreadCount,
+    hasAttention,
+    storeId,
+    conversationId,
+    queryClient,
+    settled
+  ])
 }

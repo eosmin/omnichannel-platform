@@ -221,11 +221,13 @@ export function snoozeConversation(
   client: ApiClient,
   storeId: string,
   conversationId: string,
-  until: Date
+  until: Date,
+  // What the agent wants to remember; the server trims it and limits it
+  note?: string
 ): Promise<ConversationDetailView> {
   return client.request(ApiRoutes.conversations.snooze(conversationId), {
     method: 'POST',
-    body: { until: until.toISOString() },
+    body: { until: until.toISOString(), ...(note === undefined ? {} : { note }) },
     schema: conversationDetailSchema,
     storeId
   })

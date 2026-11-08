@@ -481,6 +481,33 @@ describe('The realtime gateway', () => {
       expect(bystander.of(RealtimeEvents.CONVERSATION_STATUS_CHANGED)).toEqual([])
     })
 
+    it('tells the mark of attention that went off to who sees the conversation, without its note', async () => {
+      const admin = await asA(ctx.adminA)
+      const assignee = await asA(agent2)
+      const bystander = await asA(ctx.agentA)
+      const { id } = await mk({ assignedTo: agent2.id })
+      await owner.conversation.update({
+        where: { id },
+        data: {
+          attentionReason: 'snooze_woke',
+          attentionAt: new Date(),
+          attentionNote: 'private reminder'
+        }
+      })
+
+      await asAdmin().post(ApiRoutes.conversations.read(id)).expect(OK)
+      await until(() => admin.of(RealtimeEvents.CONVERSATION_ATTENTION_CHANGED).length === 1)
+      await until(() => assignee.of(RealtimeEvents.CONVERSATION_ATTENTION_CHANGED).length === 1)
+      await sleep(SETTLE_MS)
+
+      expect(assignee.of(RealtimeEvents.CONVERSATION_ATTENTION_CHANGED)[0]?.payload).toEqual({
+        conversationId: id,
+        reason: null
+      })
+      expect(bystander.of(RealtimeEvents.CONVERSATION_ATTENTION_CHANGED)).toEqual([])
+      expect(JSON.stringify([admin.heard, assignee.heard])).not.toContain('private reminder')
+    })
+
     it('tells the assignee who loses a conversation that it left, and not the others', async () => {
       const formerAssignee = await asA(agent2)
       const newAssignee = await asA(ctx.agentA)

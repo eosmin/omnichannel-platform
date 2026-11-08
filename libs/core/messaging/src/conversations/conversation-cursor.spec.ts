@@ -7,14 +7,29 @@ describe('the cursor of the conversations list', () => {
     const date = new Date('2026-10-26T12:00:00.000Z')
 
     const withDate = conversationCursorSchema.parse(
-      encodeConversationCursor({ lastMessageAt: date, id: ID })
+      encodeConversationCursor({ attentionAt: null, lastMessageAt: date, id: ID })
     )
     const withoutDate = conversationCursorSchema.parse(
-      encodeConversationCursor({ lastMessageAt: null, id: ID })
+      encodeConversationCursor({ attentionAt: null, lastMessageAt: null, id: ID })
+    )
+    const marked = conversationCursorSchema.parse(
+      encodeConversationCursor({ attentionAt: date, lastMessageAt: null, id: ID })
     )
 
-    expect(withDate).toEqual({ lastMessageAt: date, id: ID })
-    expect(withoutDate).toEqual({ lastMessageAt: null, id: ID })
+    expect(withDate).toEqual({ attentionAt: null, lastMessageAt: date, id: ID })
+    expect(withoutDate).toEqual({ attentionAt: null, lastMessageAt: null, id: ID })
+    expect(marked).toEqual({ attentionAt: date, lastMessageAt: null, id: ID })
+  })
+
+  it('takes the cursor of before the mark of attention, as a row without a mark', () => {
+    const date = new Date('2026-10-26T12:00:00.000Z')
+    const old = Buffer.from(JSON.stringify([date.toISOString(), ID])).toString('base64url')
+
+    expect(conversationCursorSchema.parse(old)).toEqual({
+      attentionAt: null,
+      lastMessageAt: date,
+      id: ID
+    })
   })
 
   it.each([
@@ -25,8 +40,8 @@ describe('the cursor of the conversations list', () => {
       Buffer.from(JSON.stringify(['yesterday', ID])).toString('base64url')
     ],
     [
-      'a tuple with a third element',
-      Buffer.from(JSON.stringify([null, ID, 1])).toString('base64url')
+      'a tuple with a fourth element',
+      Buffer.from(JSON.stringify([null, null, ID, 1])).toString('base64url')
     ],
     ['a tuple with one element', Buffer.from(JSON.stringify([ID])).toString('base64url')],
     ['a date with no time', Buffer.from(JSON.stringify(['2026-10-26', ID])).toString('base64url')],

@@ -1,5 +1,6 @@
 import type { ErrorCode } from '../errors/error-codes'
 import type {
+  AttentionReason,
   AuthorType,
   ChannelId,
   ConversationStatus,
@@ -111,6 +112,15 @@ export interface InventoryMovedPayload {
   warehouseId: string
   type: InventoryMovementType
   quantity: number
+}
+
+// The mark of attention of a conversation changed: `reason` is the new one, null when it was taken off.
+// Never the note of the agent: no text crosses the bridge, the client reads the row again.
+export interface ConversationAttentionChangedPayload {
+  storeId: string
+  conversationId: string
+  reason: AttentionReason | null
+  visibility: ConversationVisibility
 }
 
 export interface ConversationReadPayload {
@@ -277,6 +287,7 @@ export interface DomainEventPayloads {
   [Events.CONVERSATION_UNASSIGNED]: ConversationUnassignedPayload
   [Events.MEMBER_JOINED]: MemberJoinedPayload
   [Events.CONVERSATION_READ]: ConversationReadPayload
+  [Events.CONVERSATION_ATTENTION_CHANGED]: ConversationAttentionChangedPayload
   [Events.CONVERSATION_UNREAD]: ConversationReadPayload
   [Events.MESSAGE_QUEUED]: MessageQueuedPayload
   [Events.MESSAGE_SENT]: MessageStatusPayload

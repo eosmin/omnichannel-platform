@@ -8,6 +8,9 @@ export const MessageMetadataKeys = {
   // Set only on a message whose whole text is the marker `[name]` that a channel stores for a type it
   // cannot read. It is what tells the marker from a customer who typed the same words.
   UNSUPPORTED_TYPE: 'unsupportedType',
+  // Beside it: the names (never the values) of the fields that message carried, so the worker logs them
+  // and the team can map the type. It never leaves in a view of the thread.
+  UNSUPPORTED_SHAPE: 'unsupportedShape',
   // The contact cards of a CONTACTS message: a list of `{ name, phones, emails }`, bounded by `ContactCardLimits`
   CONTACTS: 'contacts'
 } as const
@@ -30,3 +33,14 @@ export interface ContactCard {
   phones: { number: string; kind?: string }[]
   emails: { address: string; kind?: string }[]
 }
+
+// The bounds of `unsupportedShape`, shared by the plugin that writes it and the worker that logs it. The
+// worst case (see its test) leaves room under `InboundLimits.METADATA_MAX_BYTES` for the link beside it:
+// a shape that does not fit would cost the whole message.
+export const UnsupportedShapeLimits = {
+  MAX_ATTACHMENTS: 3,
+  MAX_NAMES: 12,
+  NAME_MAX_LENGTH: 32,
+  // A name under another (`coordinates.lat`) at most this many per parent
+  MAX_NESTED_NAMES: 4
+} as const
