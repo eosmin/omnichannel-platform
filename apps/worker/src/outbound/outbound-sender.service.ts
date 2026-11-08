@@ -22,13 +22,14 @@ import {
   ReportedCaptionStates,
   isInstallationActive
 } from '@platform/core/domain'
-import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
+import { ErrorCodes, type ErrorCode, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import {
   ConversationsService,
   enumValueOf,
   isClosingMessage,
+  lockConversationForWrite,
   MessagingWindowService,
   publishMessageChanged,
   templateMetadataSchema
@@ -140,7 +141,11 @@ export class OutboundSender {
     // Whatever an earlier attempt left: from here on a failure is definitive only if nothing before it may have gone
     const tainted = message.failureDefinitive === false
     const isClosing = isClosingMessage(message.metadata)
-    if (isClosing && !(await this.discardUnlessStanding(storeId, messageId, message))) return
+    // A retry of an attempt that may have reached the provider (`tainted`) is past the point of no return:
+    // the customer may have the message and have answered it, so it is not judged again nor deleted
+    if (isClosing && !tainted && !(await this.claimClosingMessage(storeId, messageId, message))) {
+      return
+    }
 
     const { channelConnection: connection, channelType, customerIdentity } = message.conversation
     // A connection of an installation that is not active sends nothing, as a disconnected one
@@ -156,7 +161,11 @@ export class OutboundSender {
     if (plugin === undefined) {
       // A plugin that is not registered yet (a registry that is still filling) is not a connection
       // that is gone: the retries come first, and only the last attempt gives up
-      if (!isLastAttempt) throw new Error('the plugin of the connection is not registered')
+      if (!isLastAttempt) {
+        // Nothing was sent: the claim of a closing message gives its mark back
+        if (isClosing && !tainted) await this.clearInFlight(storeId, messageId)
+        throw new Error('the plugin of the connection is not registered')
+      }
       await this.fail(storeId, messageId, ErrorCodes.CHANNEL_NOT_CONNECTED, !tainted)
       return
     }
@@ -205,7 +214,8 @@ export class OutboundSender {
     // Written BEFORE the provider is asked, and not after: a process that dies mid-send, or a job that stalls,
     // leaves the mark, and whatever the next attempt hears, the message may have gone. A database that cannot
     // take the mark fails the attempt before anything is sent.
-    await this.markInFlight(storeId, messageId)
+    // (a closing message was marked by its claim, under the lock)
+    if (!isClosing) await this.markInFlight(storeId, messageId)
     let accepted: z.infer<typeof resultSchema>
     try {
       const result = resultSchema.safeParse(
@@ -275,30 +285,55 @@ export class OutboundSender {
   // the customer, reopened the conversation, and one resolved again since is another resolution with
   // its own message. A message that does not go is deleted: it was never sent, so it leaves no trace
   // (`failed` would show a red bubble, and a `queued` one would be requeued by the sweep).
-  private async discardUnlessStanding(
+  //
+  // The check and the mark of "may have gone" are one step under the lock of the conversation, the one
+  // the Undo takes: a reply to a customer cannot be taken back, so an Undo that committed before this
+  // lock is seen and the message is dropped, and one that comes after it finds a message past the point
+  // of no return (the 10 s of the Undo and the 2 s of grace are over). The lock is held for these
+  // statements only, never while the provider is asked, and the order is the one of every writer of a
+  // thread: the conversation, then the message.
+  private async claimClosingMessage(
     storeId: string,
     messageId: string,
-    message: {
-      conversation: { id: string; status: string; resolvedAt: Date | null }
-      createdAt: Date
-    }
+    message: { conversation: { id: string }; createdAt: Date }
   ): Promise<boolean> {
-    const { conversation } = message
-    // The window was open when the agent resolved; it may have closed during the wait, and free text
-    // sent after it would only come back as a red bubble
-    const stands =
-      conversation.status === String(ConversationStatus.RESOLVED) &&
-      conversation.resolvedAt !== null &&
-      conversation.resolvedAt <= message.createdAt &&
-      (await this.window.isOpen(this.prisma.client, storeId, conversation.id))
-    if (stands) return true
-    await this.prisma.transaction(async tx => {
-      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
-      await tx.message.deleteMany({
-        where: { id: messageId, storeId, deliveryStatus: DeliveryStatus.QUEUED }
+    const conversationId = message.conversation.id
+    try {
+      return await this.prisma.transaction(async tx => {
+        const conversation = await lockConversationForWrite(tx, storeId, conversationId)
+        // The row of the message under its own lock, after the conversation's (the order of every writer)
+        const rows = await tx.$queryRaw<{ delivery_status: string }[]>`
+          SELECT delivery_status FROM messages
+          WHERE id = ${messageId} AND store_id = ${storeId} FOR UPDATE`
+        const stillQueued = rows[0]?.delivery_status === String(DeliveryStatus.QUEUED)
+        // The window was open when the agent resolved; it may have closed during the wait, and free text
+        // sent after it would only come back as a red bubble
+        const stands =
+          stillQueued &&
+          conversation.status === String(ConversationStatus.RESOLVED) &&
+          conversation.resolvedAt !== null &&
+          conversation.resolvedAt <= message.createdAt &&
+          (await this.window.isOpen(tx, storeId, conversationId))
+        if (stands) {
+          // What `markInFlight` writes before the provider is asked, written here with the check so that
+          // nothing sits between them
+          await tx.message.update({ where: { id: messageId }, data: { failureDefinitive: false } })
+          return true
+        }
+        if (stillQueued) {
+          await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
+          await tx.message.delete({ where: { id: messageId } })
+        }
+        return false
       })
-    })
-    return false
+    } catch (error) {
+      // The conversation went (or its store) after the job began: there is nothing to send. Any other
+      // error, a lock that timed out among them, repeats the attempt
+      if (error instanceof PlatformException && error.code === ErrorCodes.RESOURCE_NOT_FOUND) {
+        return false
+      }
+      throw error
+    }
   }
 
   // The provider has the message: nothing here may make it be sent again. A write that fails is tried
