@@ -1336,6 +1336,10 @@
     "actions": {
       "snooze": "Snooze",
       "resolve": "Resolve",
+      "resolveMore": "Resolution options",
+      "resolveNow": "Resolve now",
+      "resolveWithOptions": "Resolve with closing message and reason…",
+      "resolveDefault": "(default)",
       "reopen": "Reopen",
       "wakeUp": "Wake up",
       "snoozeRow": "Snooze the conversation with {name}"
@@ -1466,6 +1470,7 @@
           "SELECT_ALL_VISIBLE": "Select all loaded",
           "ASSIGN_TO_ME": "Assign to me",
           "MARK_RESOLVED": "Mark resolved",
+          "MARK_RESOLVED_OTHER_WAY": "Resolve the other way (the dialog, or at once)",
           "SHOW_HELP": "Show this help"
         },
         "conversation": {
@@ -1477,6 +1482,7 @@
           "ADD_TAG": "Add a tag",
           "MARK_PENDING": "Mark pending",
           "MARK_RESOLVED": "Mark resolved",
+          "MARK_RESOLVED_OTHER_WAY": "Resolve the other way (the dialog, or at once)",
           "SNOOZE": "Snooze",
           "OPEN_CUSTOMER": "Open the customer profile"
         },
@@ -2353,14 +2359,14 @@
       "save": "Save",
       "saved": "Inbox behavior saved",
       "resolve": {
-        "legend": "When marking a conversation as resolved",
-        "showOptions": "Show options",
-        "showOptionsHint": "Ask for the closing message and the reason before resolving.",
-        "immediately": "Resolve immediately",
-        "immediatelyHint": "Resolve at once, with a toast to undo for a few seconds."
+        "legend": "When pressing Resolve",
+        "showOptions": "Ask for a closing message and a reason",
+        "showOptionsHint": "Opens the dialog before resolving. The arrow next to the button always offers Resolve now.",
+        "immediately": "Resolve now (recommended)",
+        "immediatelyHint": "Resolves at once, with a toast to undo for a few seconds. The arrow next to the button always offers the dialog."
       },
       "closing": {
-        "send": "Send the default closing message when resolving immediately",
+        "send": "Send the default closing message when using Resolve now",
         "snippet": "Closing message",
         "none": "No snippet",
         "missing": "A deleted snippet",

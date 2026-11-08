@@ -1,6 +1,6 @@
 'use client'
 
-import { AlarmClock, CircleCheck, RotateCcw } from 'lucide-react'
+import { AlarmClock, ChevronDown, CircleCheck, RotateCcw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
@@ -13,8 +13,15 @@ import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
 
 import { useConversationControls } from './conversation-controls'
+import { ResolveMode } from './resolve-flow'
 
 // The buttons of the header that change the state of the conversation. Each is offered only with its
 // permission and only where the state allows it: a resolved or snoozed conversation is reopened, any
@@ -70,15 +77,50 @@ export function ConversationActions({
           </Button>
         ) : null}
         {mayResolve ? (
-          <Button
-            type="button"
-            size="sm"
-            disabled={!resolveFlow.isReady}
-            onClick={resolveFlow.start}
-          >
-            <CircleCheck aria-hidden />
-            {t('resolve')}
-          </Button>
+          // One button and its arrow: the button resolves the way the store chose, the arrow always lists the two
+          // ways and marks the one the button takes
+          <div className="flex items-center">
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-r-none"
+              disabled={!resolveFlow.isReady}
+              aria-keyshortcuts="e"
+              onClick={resolveFlow.start}
+            >
+              <CircleCheck aria-hidden />
+              {t('resolve')}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="border-primary-foreground/30 rounded-l-none border-l px-2"
+                  disabled={!resolveFlow.isReady}
+                  aria-label={t('resolveMore')}
+                >
+                  <ChevronDown aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {[ResolveMode.NOW, ResolveMode.OPTIONS].map(mode => (
+                  <DropdownMenuItem
+                    key={mode}
+                    aria-keyshortcuts={mode === resolveFlow.defaultMode ? 'e' : 'Shift+E'}
+                    onSelect={() => resolveFlow.startWith(mode)}
+                  >
+                    {mode === ResolveMode.NOW ? t('resolveNow') : t('resolveWithOptions')}
+                    {mode === resolveFlow.defaultMode ? (
+                      <span className="text-muted-foreground ml-auto text-xs">
+                        {t('resolveDefault')}
+                      </span>
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ) : null}
       </div>
     )

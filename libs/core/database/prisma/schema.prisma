@@ -85,7 +85,7 @@ model StoreSettings {
   storeId                    String   @id @map("store_id")
   reopenWindowDays           Int?     @map("reopen_window_days") // null: a customer keeps one thread per channel for good (TDD_09 §3.3)
   autoArchiveAfterDays       Int      @default(30) @map("auto_archive_after_days")
-  resolveShowOptions         Boolean  @default(true) @map("resolve_show_options")
+  resolveShowOptions         Boolean  @default(false) @map("resolve_show_options")
   sendClosingMessage         Boolean  @default(false) @map("send_closing_message")
   closingSnippetId           String?  @map("closing_snippet_id")
   requestCsat                Boolean  @default(false) @map("request_csat")

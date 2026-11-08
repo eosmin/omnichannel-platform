@@ -16,7 +16,7 @@ import { SnoozeDialog } from './lazy-dialogs'
 import { type ResolveFlow, useResolveFlow } from './resolve-flow'
 
 interface ConversationControlsValue {
-  resolve: Pick<ResolveFlow, 'isReady' | 'start'>
+  resolve: Pick<ResolveFlow, 'isReady' | 'start' | 'startWith' | 'defaultMode'>
   openSnooze: () => void
 }
 
@@ -35,10 +35,13 @@ export function ConversationControls({
   const resolve = useResolveFlow(conversationId)
   const [isSnoozeOpen, setSnoozeOpen] = useState(false)
   const isSnoozeMounted = useMountedOnce(isSnoozeOpen)
-  const { isReady, start, dialog } = resolve
+  const { isReady, start, startWith, defaultMode, dialog } = resolve
   const value = useMemo<ConversationControlsValue>(
-    () => ({ resolve: { isReady, start }, openSnooze: () => setSnoozeOpen(true) }),
-    [isReady, start]
+    () => ({
+      resolve: { isReady, start, startWith, defaultMode },
+      openSnooze: () => setSnoozeOpen(true)
+    }),
+    [isReady, start, startWith, defaultMode]
   )
   return (
     <ConversationControlsContext.Provider value={value}>

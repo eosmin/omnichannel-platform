@@ -2,7 +2,7 @@
 
 import { type ReactElement, useEffect, useRef, useState } from 'react'
 
-import { useResolveFlow } from './resolve-flow'
+import { otherResolveMode, useResolveFlow } from './resolve-flow'
 
 // Resolves one conversation of the list with the flow of the store (the options dialog, or at once with
 // the Undo), the same as the header does for the open one. It is mounted for the conversation the key
@@ -10,9 +10,12 @@ import { useResolveFlow } from './resolve-flow'
 // no questions (the request and its Undo toast outlive this component), or when the dialog closes.
 export function RowResolve({
   conversationId,
+  otherWay,
   onFinished
 }: {
   conversationId: string
+  // `Shift+E`: the way the main button does not take
+  otherWay: boolean
   onFinished: () => void
 }): ReactElement {
   const flow = useResolveFlow(conversationId)
@@ -23,9 +26,9 @@ export function RowResolve({
   useEffect(() => {
     if (hasStarted.current || !flow.isReady) return
     hasStarted.current = true
-    flow.start()
+    flow.startWith(otherWay ? otherResolveMode(flow.defaultMode) : flow.defaultMode)
     setStarted(true)
-  }, [flow])
+  }, [flow, otherWay])
 
   // `start` opens the dialog in the same batch that sets `isStarted`, so a started flow with no dialog
   // is one that has nothing left to ask

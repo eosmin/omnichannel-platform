@@ -7,7 +7,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import { SettingsLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { createRole, createSnippet, createTag } from '../builders'
+import { createRole, createSnippet, createTag, resetStoreSettings } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
@@ -437,6 +437,20 @@ describe('The settings of the inbox of a store', () => {
   })
 
   describe('the behavior of the inbox read by who works it', () => {
+    it('is born resolving at once, and a store that chose to be asked keeps its choice', async () => {
+      // The factory state comes from the default of the column (owner, 2026-11-08), the one a new store
+      // gets when it is created; a row written with a value of its own is not changed by it
+      const { storeId } = { storeId: ctx.storeA.id }
+      await resetStoreSettings(owner, { storeId })
+      const born = await owner.storeSettings.findUniqueOrThrow({ where: { storeId } })
+      expect(born.resolveShowOptions).toBe(false)
+
+      await owner.storeSettings.update({ where: { storeId }, data: { resolveShowOptions: true } })
+      const chosen = await owner.storeSettings.findUniqueOrThrow({ where: { storeId } })
+      expect(chosen.resolveShowOptions).toBe(true)
+      await resetStoreSettings(owner, { storeId })
+    })
+
     it('reads back what the settings of the store say', async () => {
       const snippet = await newSnippet(`${prefix}-bye`)
       await asAdmin()
