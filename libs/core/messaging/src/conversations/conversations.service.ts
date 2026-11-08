@@ -11,6 +11,7 @@ import {
   type ConversationStatusReason,
   ConversationStatusReasons,
   ConversationStatusTransitions,
+  DeliveryStatus,
   MembershipStatus,
   MessageType,
   OfActiveInstallation,
@@ -28,6 +29,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
 
 import { lockMessageRow, publishMessageChanged } from '../changes/message-changed'
+import { isClosingMessage } from '../messages/closing-message'
 
 import { afterConversationCursor, encodeConversationCursor } from './conversation-cursor'
 import type { ConversationFilter, ListConversationsQuery } from './conversations.schemas'
@@ -355,6 +357,21 @@ export class ConversationsService {
             : {})
       }
     })
+    // The Undo of a resolution takes back what that resolution queued: its closing message, if the
+    // worker has not claimed it. One that is in flight (marked by its claim) or gone is not touched.
+    if (
+      options.undoesResolution === true &&
+      from === ConversationStatus.RESOLVED &&
+      to === ConversationStatus.OPEN
+    ) {
+      await this.withdrawQueuedClosing(
+        tx,
+        storeId,
+        conversationId,
+        current.resolvedAt,
+        options.actor === 'system' ? null : options.actor.userId
+      )
+    }
     // An Undo inside its window is a Ctrl+Z: the thread keeps no line that it was resolved and none that
     // it was undone (the audit log has both). Past the window, or by someone else, it is a reopening.
     const undid =
@@ -462,6 +479,43 @@ export class ConversationsService {
     await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, line.id)
     await tx.message.delete({ where: { id: line.id } })
     return true
+  }
+
+  // Under the lock of the conversation, the one the worker takes to claim the message: a closing message
+  // still queued and not marked as in flight is deleted at once, with the event that takes it off the
+  // thread, so that the Undo does not leave it on screen until the worker finds it. The row is locked
+  // and read again before it goes, after the conversation (the order of every writer).
+  private async withdrawQueuedClosing(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    resolvedAt: Date | null,
+    // The person who undoes: only the message they queued is theirs to take back. Null for the system.
+    undoneBy: string | null
+  ): Promise<void> {
+    if (resolvedAt === null) return
+    const queued = await tx.message.findMany({
+      where: {
+        storeId,
+        conversationId,
+        deliveryStatus: DeliveryStatus.QUEUED,
+        failureDefinitive: null,
+        createdAt: { gte: resolvedAt },
+        ...(undoneBy === null ? {} : { authorId: undoneBy })
+      },
+      select: { id: true, metadata: true }
+    })
+    for (const { id, metadata } of queued) {
+      if (!isClosingMessage(metadata)) continue
+      await lockMessageRow(tx, id)
+      const standing = await tx.message.count({
+        where: { id, storeId, deliveryStatus: DeliveryStatus.QUEUED, failureDefinitive: null }
+      })
+      if (standing === 0) continue
+      // The event reads the row, so it is made before the row goes
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, id)
+      await tx.message.delete({ where: { id } })
+    }
   }
 
   // Gives a conversation nobody has to someone, atomically: a person who took it a moment earlier
