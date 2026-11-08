@@ -50,7 +50,21 @@ export const MetaGraph = {
   MEDIA_CDN_SUFFIXES: ['.fbcdn.net', '.whatsapp.net', '.cdninstagram.com'],
   // Exact hosts of a CDN that need no token. Exact, like the one above: the other *.fbsbx.com hosts
   // serve content of third parties. Messenger puts its voice clips and files here.
-  MEDIA_CDN_HOSTS: ['cdn.fbsbx.com']
+  MEDIA_CDN_HOSTS: ['cdn.fbsbx.com'],
+  // The GIFs of Instagram are Giphy's and Tenor's, not Meta's (owner's test, 2026-11-08: media1 and media4
+  // of Giphy). Only for the link a customer sent, never for a url that Graph answers. A closed list of
+  // exact hosts: never `*.giphy.com` or a whole domain, which would let anyone who can put a file there
+  // reach the worker. The client checks the host, https, no port or credentials and no redirect; the worker checks the address and the size, type and scan, and must keep doing so for these third-party hosts.
+  MEDIA_GIF_HOSTS: [
+    'media0.giphy.com',
+    'media1.giphy.com',
+    'media2.giphy.com',
+    'media3.giphy.com',
+    'media4.giphy.com',
+    'i.giphy.com',
+    'media.tenor.com',
+    'c.tenor.com'
+  ] as readonly string[]
 } as const
 
 // Statuses that say "not now" without being a 5xx: request timeout and too early
@@ -126,6 +140,11 @@ export const MetaMessaging = {
   REFERRAL_SOURCE_ADS: 'ADS',
   // The attachment of a place the customer shared: `payload.coordinates` holds `{ lat, long }`
   ATTACHMENT_LOCATION: 'location',
+  // Instagram shares a place as a template of elements (a title, a subtitle, a link to a map)
+  ATTACHMENT_TEMPLATE: 'template',
+  // How much of a template is read: a card has one element and a few buttons
+  TEMPLATE_MAX_ELEMENTS: 3,
+  TEMPLATE_MAX_BUTTONS: 3,
   ATTACHMENT_STICKER: 'sticker',
   // The like button of Messenger arrives as a sticker with this id (and, until Meta stops sending the
   // pair, as an image with the same link). It is the thumbs up, not a file worth fetching.
@@ -229,4 +248,32 @@ export const MetaSubscription = {
   APP_ID_PATTERN: /^\d{1,32}$/,
   // No Page has near this many fields; a longer list is not what Meta answers
   MAX_FIELDS: 64
+} as const
+
+// The maps whose links hold the coordinates of a place a customer shares (Instagram sends it as a template).
+// EXACT hosts only: a subdomain or a look-alike is no map. Other regional domains of Google are added here.
+export const MapLinks = {
+  GOOGLE_HOSTS: [
+    'www.google.com',
+    'google.com',
+    'maps.google.com',
+    'www.google.com.sv',
+    'google.com.sv',
+    'www.google.com.mx',
+    'google.com.mx'
+  ],
+  APPLE_HOSTS: ['maps.apple.com'],
+  OSM_HOSTS: ['www.openstreetmap.org', 'openstreetmap.org'],
+  // The links Instagram and Facebook put in front of an outside link: followed once, and only to a map
+  REDIRECT_HOSTS: ['l.instagram.com', 'l.facebook.com', 'lm.facebook.com'],
+  REDIRECT_PARAM: 'u',
+  // Parameters that name the place itself (a viewport centre or a search centre is not the place)
+  GOOGLE_PLACE_PARAMS: ['query', 'q', 'destination'],
+  APPLE_PLACE_PARAMS: ['coordinate'],
+  GOOGLE_MAPS_HOST: 'maps.google.com',
+  GOOGLE_MAPS_PATH: /^\/maps(?:\/|$)/,
+  GOOGLE_PLACE_PATH: '/maps/place/',
+  OSM_MARKER_PARAMS: ['mlat', 'mlon'],
+  // The text of a title or subtitle that is read: longer is cut before it is cleaned
+  TEMPLATE_TEXT_MAX_LENGTH: 300
 } as const
