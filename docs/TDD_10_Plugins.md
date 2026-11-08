@@ -86,6 +86,9 @@ export interface ChannelPlugin {
   // audio, document); the registry copies and freezes it at registration. The core signs no download link for
   // a plugin: `SendMediaParams.openFile` gives the bytes.
   readonly media?: ChannelMediaCapabilities
+  // A text under each file (`SendMediaParams.caption`, once per file, in the order of the message) is carried
+  // by the channel when it declares CAPTION_PER_FILE; a channel that does not has its text sent as a message
+  // of its own after the file (the worker does it; the plugin only sees `sendMedia` and then `sendMessage`).
 
   // Connection lifecycle (credentials are supplied by the core, encrypted at rest by the core)
   connect(input: ConnectInput): Promise<ConnectResult>

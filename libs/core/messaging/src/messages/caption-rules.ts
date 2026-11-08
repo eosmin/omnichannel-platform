@@ -25,3 +25,33 @@ export function requireCaptionFits(
     throw invalidInput(`the text under the file is longer than the channel holds (${limit})`)
   }
 }
+
+// The text under each file of a media message, by its place: `captions` when it comes (it wins), else the
+// one `content` that is the text under the first file. A blank one is none. Always as many as files.
+export function captionsOf(body: {
+  mediaIds: readonly string[]
+  content?: string | undefined
+  captions?: readonly (string | null)[] | undefined
+}): (string | null)[] {
+  const given = body.captions ?? [body.content ?? null]
+  return body.mediaIds.map((_, place) => given[place] ?? null)
+}
+
+// More texts than files, or a text under a file other than the first when the switch is off: the request
+// says what the worker would not do, so it is refused before anything is queued
+export function requireCaptionsPlaced(
+  body: { mediaIds: readonly string[]; captions?: readonly (string | null)[] | undefined },
+  captionsPerFile: boolean
+): void {
+  const captions = body.captions ?? []
+  if (captions.length > body.mediaIds.length) {
+    throw invalidInput('there is more text than files: each file has one text at most')
+  }
+  if (!captionsPerFile && captions.slice(1).some(caption => caption !== null)) {
+    throw new PlatformException(
+      ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+      'a text under each file is not switched on: only the first file takes one',
+      HttpStatusCodes.CONFLICT
+    )
+  }
+}

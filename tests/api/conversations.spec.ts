@@ -904,6 +904,38 @@ describe('The conversations of a store', () => {
         ].sort()
       )
       expect(logged.every(entry => entry.userId === ctx.agentA.id)).toBe(true)
+      // The silent Undo says so; the log is where a retraction can be told from a visible reopening
+      expect(
+        logged.find(entry => entry.action === AuditAction.CONVERSATION_RESOLVE_UNDONE)?.metadata
+      ).toEqual({ silent: true })
+    })
+
+    it('logs only what the service did: a refused resolution and an Undo of nothing leave no entry', async () => {
+      const conversation = await mk()
+      const status = (to: ConversationStatus, extra: object = {}) =>
+        asAgent()
+          .patch(ApiRoutes.conversations.status(conversation.id))
+          .send({ status: to, ...extra })
+
+      await status(ConversationStatus.RESOLVED)
+      const again = await status(ConversationStatus.RESOLVED)
+      await status(ConversationStatus.OPEN)
+      // The Undo flag on a conversation that is not resolved is refused: it takes nothing back
+      const nothing = await status(ConversationStatus.OPEN, { undoesResolution: true })
+
+      expect(again.status).toBe(409)
+      expect(nothing.status).toBe(409)
+      const logged = await waitForAuditEntries(
+        owner,
+        { resourceId: conversation.id, action: { startsWith: 'conversation.resolve' } },
+        1
+      )
+      await new Promise(resolve => setTimeout(resolve, 500))
+      const settled = await owner.auditLog.findMany({
+        where: { resourceId: conversation.id, action: { startsWith: 'conversation.resolve' } }
+      })
+      expect(logged.length).toBeGreaterThanOrEqual(1)
+      expect(settled.map(entry => entry.action)).toEqual([AuditAction.CONVERSATION_RESOLVED])
     })
 
     it('tells the screens that the line of the resolution went, and restores what resolving set', async () => {

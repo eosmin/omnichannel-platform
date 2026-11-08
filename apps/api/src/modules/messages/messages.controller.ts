@@ -22,7 +22,11 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, MessageType, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
+import {
+  CAPTION_PER_FILE_SEND_ENABLED,
+  MULTI_FILE_SEND_ENABLED,
+  ZodValidationPipe
+} from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   AgentReactionsService,
@@ -64,7 +68,8 @@ export class MessagesController {
     private readonly templates: ChannelTemplatesService,
     private readonly registry: PluginRegistry,
     private readonly audit: AuditService,
-    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
+    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean,
+    @Inject(CAPTION_PER_FILE_SEND_ENABLED) private readonly captionPerFileEnabled: boolean
   ) {}
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made
@@ -98,7 +103,7 @@ export class MessagesController {
       viewer,
       rendered,
       (channel, capability) => this.registry.hasCapability(channel, capability),
-      channelFileLimits(this.registry, this.multiFileEnabled)
+      channelFileLimits(this.registry, this.multiFileEnabled, this.captionPerFileEnabled)
     )
     if (!created) res.status(HttpStatusCodes.OK)
     return message

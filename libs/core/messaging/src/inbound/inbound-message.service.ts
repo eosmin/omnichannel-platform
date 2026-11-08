@@ -191,6 +191,11 @@ export class InboundMessageService {
     })
     // A message of the platform that comes back has its files already; the owner's is fetched, again
     // after a failure here (the job id makes it one)
+    // The quote of an owner's message that finds nothing is told as the customer's is: the channel and the
+    // shape of the id, never the id (read after the transaction)
+    if (stored.replyUnresolved && stored.conversationId !== null) {
+      await this.logUnresolvedQuote(pluginId, storeId, stored.conversationId, event)
+    }
     if (stored.fetchMedia) await this.queueMediaFetches(pluginId, storeId, event, stored.messageId)
     return stored.duplicate ? InboundOutcomes.DUPLICATE : InboundOutcomes.STORED
   }
@@ -206,6 +211,8 @@ export class InboundMessageService {
     duplicate: boolean
     fetchMedia: boolean
     replyUnresolved: boolean
+    // Where the new message went; null for one that was already here (nothing to say about its quote)
+    conversationId: string | null
   }> {
     const { storeId, connectionRowId, identityId } = where
     const identity = await tx.customerIdentity.findFirst({
@@ -247,6 +254,7 @@ export class InboundMessageService {
         messageId: known.id,
         duplicate: true,
         replyUnresolved: false,
+        conversationId: null,
         // The files of the owner's own message, if a failed first try left some out
         fetchMedia:
           known.authorType === String(AuthorType.EXTERNAL) &&
@@ -322,7 +330,8 @@ export class InboundMessageService {
       messageId: message.id,
       duplicate: false,
       fetchMedia: true,
-      replyUnresolved: message.replyUnresolved
+      replyUnresolved: message.replyUnresolved,
+      conversationId
     }
   }
 

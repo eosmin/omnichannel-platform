@@ -247,6 +247,24 @@ describe('Several pictures that a customer sends in a row', () => {
     expect(messages[0]?.replyToMessageId).toBeNull()
   })
 
+  it('says it too for the message of the owner that comes back as an echo, with the shape only', async () => {
+    const connectionId = await connectionOf(ctx.storeA.id)
+    const from = handleOf()
+    await inbound.handleMessageReceived(TEST_CHANNEL_ID, message(connectionId, from, 'e0'))
+    info.mockClear()
+
+    await inbound.handleMessageEcho(
+      TEST_CHANNEL_ID,
+      quoting(connectionId, from, 'e1', 'gone-too'),
+      false
+    )
+
+    expect(info).toHaveBeenCalledTimes(1)
+    expect(info.mock.calls[0]?.[1]).toBe('an inbound message quotes a message that is not here')
+    expect(targetOf(info)).toMatchObject({ length: 8, prefix: 'gon' })
+    expect(JSON.stringify(info.mock.calls)).not.toContain('gone-too')
+  })
+
   it('does not say it when the quote is found', async () => {
     const connectionId = await connectionOf(ctx.storeA.id)
     const from = handleOf()

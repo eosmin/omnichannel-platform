@@ -16,7 +16,8 @@ const KIND_OF_TYPE: Readonly<Record<OutboundMediaType, ChannelMediaKind>> = {
 // kind: the route then lets one file through and the plugin has the last word.
 export function channelFileLimits(
   registry: Pick<PluginRegistry, 'mediaOf'>,
-  multiFileEnabled: boolean
+  multiFileEnabled: boolean,
+  captionPerFileEnabled = false
 ): (channelType: string, messageType: OutboundMediaType) => ChannelFileLimits | null {
   return (channelType, messageType) => {
     const media = registry.mediaOf(channelType)
@@ -25,7 +26,8 @@ export function channelFileLimits(
     return {
       maxFiles: maxFilesFor(media.maxFilesPerMessage, multiFileEnabled),
       types: rule.types,
-      maxBytes: rule.maxBytes
+      maxBytes: rule.maxBytes,
+      captionsPerFile: captionPerFileEnabled
     }
   }
 }
