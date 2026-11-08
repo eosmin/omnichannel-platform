@@ -609,7 +609,9 @@ export class OutboundSender {
       // another attempt, or a provider that dedupes on the key would answer with the result of the first. A
       // message of one file keeps the key it always had.
       const text = this.captionOf(file, args.content)
-      const apart = carriesNoCaption(args.channelType, args.messageType)
+      // Only the text of the message (under the first file) goes apart: the api refuses a text apart for any
+      // other file, and a text that reaches the plugin there is refused by it, which fails that file in view
+      const apart = file.index === 0 && carriesNoCaption(args.channelType, args.messageType)
       const base = files.length === 1 ? messageId : `${messageId}-${file.position}`
       const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
       // An apart text has its state written BEFORE the file goes: a process that dies between the file and its
@@ -651,9 +653,12 @@ export class OutboundSender {
         anySent = true
         await this.markFile(storeId, messageId, file.id, { sent: result.data })
         // Written now and not at the end: a later file can fail with a retry, and the id of this text would
-        // be lost with this memory (its echo would be stored as a message of the owner)
-        await this.recordCaptionSafely(storeId, messageId, file, result.data)
-        if (file.index === 0) firstAccepted = result.data
+        // be lost with this memory (its echo would be stored as a message of the owner). Only the text of the
+        // message (under the first file) has a state to record: the others go with their file, or are refused
+        if (file.index === 0) {
+          await this.recordCaptionSafely(storeId, messageId, file, result.data)
+          firstAccepted = result.data
+        }
         if (apart && text !== '') {
           await this.sendTextAfter(args, file, text, idempotencyKey)
         }
@@ -716,10 +721,9 @@ export class OutboundSender {
     return (file.index === 0 ? content : (file.caption ?? '')).trim()
   }
 
-  // The id and the state of the text under a file, as the plugin reported them: facts about what was sent,
-  // written whatever the state of the message, on the row of the FILE (and on the message for the first, which
-  // the older screens read). Each file has its own row, so the state of one text never covers another's. A
-  // caption that is `sent` is never taken back.
+  // The id and the state of the text of the message (under the first file), as the plugin reported them: facts
+  // about what was sent, written on the message whatever its delivery state. A caption that is `sent` is never
+  // taken back.
   private async recordCaption(
     storeId: string,
     messageId: string,
@@ -788,16 +792,13 @@ export class OutboundSender {
       ...(facts.externalId === undefined ? {} : { captionChannelMessageId: facts.externalId }),
       ...(facts.state === undefined ? {} : { captionState: facts.state })
     }
-    await this.prisma.client.media.updateMany({
-      where: { id: file.id, storeId, messageId, ...notSent },
+    // The state of the text lives on the message: it is the text of the first file. A file after the first
+    // has none to record (the channel carries its text with the file, or the api refused it)
+    if (file.index !== 0) return
+    await this.prisma.client.message.updateMany({
+      where: { id: messageId, storeId, ...notSent },
       data
     })
-    if (file.index === 0) {
-      await this.prisma.client.message.updateMany({
-        where: { id: messageId, storeId, ...notSent },
-        data
-      })
-    }
   }
 
   // The text of a file whose kind has no place for one on the channel (an audio on WhatsApp), sent after the

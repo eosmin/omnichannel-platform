@@ -1629,10 +1629,14 @@ describe('Replies on their way to a channel', () => {
         select: {
           deliveryStatus: true,
           sendErrorCode: true,
-          caption: true,
-          captionState: true,
-          captionChannelMessageId: true
+          caption: true
         }
+      })
+    // How the text of the message went: its state lives on the message, never on a file
+    const captionOf = (messageId: string) =>
+      owner.message.findUniqueOrThrow({
+        where: { id: messageId },
+        select: { captionState: true, captionChannelMessageId: true }
       })
 
     it('sends the text of each file with it, in the order of the message, and none for a file with none', async () => {
@@ -1649,7 +1653,7 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
-    it('keeps the state of each text on its own file: the id of the third never covers the second', async () => {
+    it('keeps the state of the text of the message on the message, and none for the files after the first', async () => {
       const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, [
         'one',
         'two',
@@ -1666,28 +1670,20 @@ describe('Replies on their way to a channel', () => {
             status: DeliveryStatus.SENT,
             sentAt: new Date().toISOString(),
             metadata:
-              call === 2
-                ? { [ChannelResultMetadata.CAPTION_STATE]: CaptionState.UNCONFIRMED }
-                : { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: `text-${call}` }
+              call === 1
+                ? { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: `text-${call}` }
+                : { [ChannelResultMetadata.CAPTION_STATE]: CaptionState.UNCONFIRMED }
           })
         })
 
       await sender.send(job(reply), false)
       spy.mockRestore()
 
-      const files = await filesOf(reply.id)
-      expect(files.map(file => [file.captionState, file.captionChannelMessageId])).toEqual([
-        [CaptionState.SENT, 'text-1'],
-        [CaptionState.UNCONFIRMED, null],
-        [CaptionState.SENT, 'text-3']
-      ])
-      // The first one is also the message's, as the older screens read it
-      expect(
-        await owner.message.findUniqueOrThrow({
-          where: { id: reply.id },
-          select: { captionChannelMessageId: true }
-        })
-      ).toEqual({ captionChannelMessageId: 'text-1' })
+      // What the first file's text did is the message's; what the others report has no place to be kept
+      expect(await captionOf(reply.id)).toEqual({
+        captionState: CaptionState.SENT,
+        captionChannelMessageId: 'text-1'
+      })
     })
 
     it('sends no text for a file that fails, and the next file still goes with its own', async () => {
@@ -1755,7 +1751,7 @@ describe('Replies on their way to a channel', () => {
       ])
     })
 
-    it('sends the text of an audio after it, as a message of its own, with the id kept on the file', async () => {
+    it('sends the text of an audio after it, as a message of its own, with the id kept on the message', async () => {
       const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
 
       await sender.send(job(reply), false)
@@ -1763,11 +1759,34 @@ describe('Replies on their way to a channel', () => {
       // The audio goes with no text; the text follows as a plain message, in that order
       expect(sentMedia.map(item => item.caption)).toEqual([undefined])
       expect(sent.map(item => item.content)).toEqual(['say this'])
-      expect((await filesOf(reply.id))[0]).toMatchObject({
-        deliveryStatus: 'sent',
+      expect((await filesOf(reply.id))[0]).toMatchObject({ deliveryStatus: 'sent' })
+      expect(await captionOf(reply.id)).toEqual({
         captionState: CaptionState.SENT,
         captionChannelMessageId: `ext-${externalCount}`
       })
+      // The file row keeps no state of that text: the message is the one place
+      expect(
+        await owner.media.findFirstOrThrow({
+          where: { messageId: reply.id },
+          select: { captionState: true, captionChannelMessageId: true }
+        })
+      ).toEqual({ captionState: null, captionChannelMessageId: null })
+    })
+
+    it('sends apart only the text of the message: a text under a later audio is not sent after it', async () => {
+      const reply = await albumOf(
+        ChannelIds.WHATSAPP,
+        MessageType.AUDIO,
+        ['first', 'second'],
+        'audio/ogg'
+      )
+
+      await sender.send(job(reply), false)
+
+      // The api refuses that text before it gets here; if one arrives it reaches the plugin with its file,
+      // which refuses it there, and it is never sent as a message of its own
+      expect(sent.map(item => item.content)).toEqual(['first'])
+      expect(sentMedia.map(item => item.caption)).toEqual([undefined, 'second'])
     })
 
     it('leaves the audio sent and says the text may not have gone when that call gives no answer', async () => {
@@ -1776,10 +1795,8 @@ describe('Replies on their way to a channel', () => {
 
       await sender.send(job(reply), false)
 
-      expect((await filesOf(reply.id))[0]).toMatchObject({
-        deliveryStatus: 'sent',
-        captionState: CaptionState.UNCONFIRMED
-      })
+      expect((await filesOf(reply.id))[0]).toMatchObject({ deliveryStatus: 'sent' })
+      expect((await captionOf(reply.id)).captionState).toBe(CaptionState.UNCONFIRMED)
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
       // Never sent again by itself: one call, no retry
       expect(sentMedia).toHaveLength(1)
@@ -1787,8 +1804,8 @@ describe('Replies on their way to a channel', () => {
 
     it('never takes a text back from sent: a later report of doubt does not cover it', async () => {
       const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, ['one', 'two'])
-      await owner.media.updateMany({
-        where: { messageId: reply.id, position: 1 },
+      await owner.message.update({
+        where: { id: reply.id },
         data: { captionState: CaptionState.SENT, captionChannelMessageId: 'echoed-already' }
       })
       const spy = jest
@@ -1806,77 +1823,55 @@ describe('Replies on their way to a channel', () => {
       await sender.send(job(reply), false)
       spy.mockRestore()
 
-      const files = await filesOf(reply.id)
-      expect(files.map(file => file.captionState)).toEqual([
-        CaptionState.UNCONFIRMED,
-        CaptionState.SENT
-      ])
-      expect(files[1]?.captionChannelMessageId).toBe('echoed-already')
+      expect(await captionOf(reply.id)).toEqual({
+        captionState: CaptionState.SENT,
+        captionChannelMessageId: 'echoed-already'
+      })
     })
 
-    // The worst case of a message: ten files, each with a text that goes after it (twenty calls to the
-    // provider). What the core adds around the calls is measured here with a provider that answers at once;
-    // the time of the provider itself is its own and is bounded per call (`MEDIA_SEND_TIMEOUT_MS`, `SEND_TIMEOUT_MS`).
-    it('sends ten files and ten texts in order, and the core adds little around the twenty calls', async () => {
+    // The worst case of a message: ten files, each with its own text sent with it (ten calls to the provider).
+    // What the core adds around the calls is measured here with a provider that answers at once; the time of
+    // the provider itself is its own and is bounded per call (`MEDIA_SEND_TIMEOUT_MS`).
+    it('sends ten files with their ten texts in order, and the core adds little around the calls', async () => {
       const captions = Array.from({ length: 10 }, (_, n) => `text ${n + 1}`)
-      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, captions, 'audio/ogg')
-      const order: string[] = []
-      duringMediaSend = params => {
-        order.push(`file ${params.idempotencyKey.slice(-1)}`)
-        return Promise.resolve()
-      }
-      sendMessage = (_c, params) => {
-        order.push(params.content)
-        return accept(_c, params)
-      }
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, captions)
 
       const started = performance.now()
       await sender.send(job(reply), false)
       const took = performance.now() - started
 
-      expect(order).toEqual(
-        Array.from({ length: 10 }, (_, n) => [`file ${n}`, `text ${n + 1}`]).flat()
-      )
-      expect((await filesOf(reply.id)).map(file => file.captionState)).toEqual(
-        Array.from({ length: 10 }, () => CaptionState.SENT)
-      )
+      expect(sentMedia.map(item => item.caption)).toEqual(captions)
+      expect(sent).toHaveLength(0)
       process.stdout.write(
-        `[ten files, ten texts] core time around 20 calls: ${Math.round(took)} ms\n`
+        `[ten files, ten texts] core time around 10 calls: ${Math.round(took)} ms\n`
       )
       expect(took).toBeLessThan(STEP_OVERHEAD_BUDGET_MS)
     })
 
-    // The process died after the second file and before its text: what is left is the rows. The sweep queues
-    // the message again and the job that runs finds files 1 and 2 sent, the text of the first in doubt
-    it('resumes after a death in the middle: only what was not sent goes, and a text in doubt is not sent again', async () => {
-      const reply = await albumOf(
-        ChannelIds.WHATSAPP,
-        MessageType.AUDIO,
-        ['one', 'two', 'three'],
-        'audio/ogg'
-      )
+    // The process died after the second file: what is left is the rows. The sweep queues the message again and
+    // the job that runs finds files 1 and 2 sent
+    it('resumes after a death in the middle: only what was not sent goes, with its text', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, [
+        'one',
+        'two',
+        'three'
+      ])
       await owner.media.updateMany({
         where: { messageId: reply.id, position: { in: [0, 1] } },
         data: { deliveryStatus: 'sent', channelMessageId: 'earlier' }
-      })
-      await owner.media.updateMany({
-        where: { messageId: reply.id, position: 0 },
-        data: { captionState: CaptionState.UNCONFIRMED }
       })
       // The mark an attempt that reached the provider leaves
       await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
 
       await sender.send(job(reply), false)
 
-      // Only the third file goes, and its text after it; the second text, which never had a state, is not
-      // invented, and the unconfirmed one of the first is not sent again by itself
+      // Only the third file goes, with its own text
       expect(sentMedia.map(item => item.idempotencyKey)).toEqual([`${reply.id}-2`])
-      expect(sent.map(item => item.content)).toEqual(['three'])
-      const files = await filesOf(reply.id)
-      expect(files.map(file => [file.deliveryStatus, file.captionState])).toEqual([
-        ['sent', CaptionState.UNCONFIRMED],
-        ['sent', null],
-        ['sent', CaptionState.SENT]
+      expect(sentMedia.map(item => item.caption)).toEqual(['three'])
+      expect((await filesOf(reply.id)).map(file => file.deliveryStatus)).toEqual([
+        'sent',
+        'sent',
+        'sent'
       ])
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
@@ -1885,19 +1880,19 @@ describe('Replies on their way to a channel', () => {
       const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
       let seen: string | null = null
       duringMediaSend = async () => {
-        seen = (await filesOf(reply.id))[0]?.captionState ?? null
+        seen = (await captionOf(reply.id)).captionState
       }
 
       await sender.send(job(reply), false)
 
       expect(seen).toBe(CaptionState.UNCONFIRMED)
-      expect((await filesOf(reply.id))[0]?.captionState).toBe(CaptionState.SENT)
+      expect((await captionOf(reply.id)).captionState).toBe(CaptionState.SENT)
     })
 
     it('does not make the file fail when the state of its text cannot be written after it went', async () => {
       const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
-      const original = prisma.client.media.updateMany.bind(prisma.client.media)
-      const failing = jest.spyOn(prisma.client.media, 'updateMany').mockImplementation(((args: {
+      const original = prisma.client.message.updateMany.bind(prisma.client.message)
+      const failing = jest.spyOn(prisma.client.message, 'updateMany').mockImplementation(((args: {
         data?: Record<string, unknown>
       }) =>
         // The state BEFORE the file (in doubt) is written; the one after the answer cannot be
@@ -1915,7 +1910,7 @@ describe('Replies on their way to a channel', () => {
       const [file] = await filesOf(reply.id)
       expect(file?.deliveryStatus).toBe('sent')
       // The text is left in doubt, which the agent can see and send again
-      expect(file?.captionState).toBe(CaptionState.UNCONFIRMED)
+      expect((await captionOf(reply.id)).captionState).toBe(CaptionState.UNCONFIRMED)
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 

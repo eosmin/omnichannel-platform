@@ -75,8 +75,7 @@ describe('messageView media', () => {
     position: null,
     deliveryStatus: null,
     sendErrorCode: null,
-    caption: null,
-    captionState: null
+    caption: null
   }
   const shown = {
     id: 'f1',
@@ -87,8 +86,7 @@ describe('messageView media', () => {
     position: null,
     delivery: null,
     errorCode: null,
-    caption: null,
-    captionState: null
+    caption: null
   }
 
   it('lists the files of a message without a link or a key', () => {
@@ -123,19 +121,20 @@ describe('messageView media', () => {
     expect(JSON.stringify(view)).not.toContain('wamid.secret')
   })
 
-  it('carries the text under each file and how it went, as text of the agent and a known state', () => {
+  it('carries the text under each file, as text of the agent, and no state of its own', () => {
     const view = messageView({
       ...row(null),
+      captionState: 'sent',
       media: [
-        { ...file, id: 'f1', position: 0, caption: 'stale', captionState: 'sent' },
-        { ...file, id: 'f2', position: 1, caption: 'second <b>', captionState: 'weird' }
+        { ...file, id: 'f1', position: 0, caption: 'stale' },
+        { ...file, id: 'f2', position: 1, caption: 'second <b>' }
       ] as never
     })
-    // The first file shows the text of the message (what an edit settles); the others, their own
-    expect(view.media.map(item => [item.caption, item.captionState])).toEqual([
-      ['hola', 'sent'],
-      ['second <b>', null]
-    ])
+    // The first file shows the text of the message (what an edit settles); the others, their own. How the
+    // text of the message went is on the message, never on a file
+    expect(view.media.map(item => item.caption)).toEqual(['hola', 'second <b>'])
+    expect(view.media.every(item => !('captionState' in item))).toBe(true)
+    expect(view.captionState).toBe('sent')
   })
 
   it('refuses a delivery state it does not know', () => {

@@ -119,8 +119,6 @@ export interface MessageMediaView {
   // The text the agent put under this file; null when none, and for a file sent before each had its own
   // (the text of the message is then the one of the first). Text of the agent: drawn escaped.
   caption: string | null
-  // How its text went when the channel sends it as a message of its own; null when it goes with the file
-  captionState: CaptionState | null
 }
 
 // A file the customer sent that the platform could not keep: where it was in the message and why. The
@@ -256,8 +254,7 @@ export const MESSAGE_SELECT = {
       position: true,
       deliveryStatus: true,
       sendErrorCode: true,
-      caption: true,
-      captionState: true
+      caption: true
     },
     // The order the agent gave; the files of the customer have no place and keep their arrival order
     orderBy: MEDIA_ORDER
@@ -309,7 +306,6 @@ interface MessageRow {
     deliveryStatus: string | null
     sendErrorCode: string | null
     caption: string | null
-    captionState: string | null
   }[]
   createdAt: Date
 }
@@ -390,8 +386,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
             errorCode: file.sendErrorCode,
             // The text under the first file is the text of the message (what an edit settles, and what a
             // message sent before each file had its own carries)
-            caption: file.position === 0 ? row.content : file.caption,
-            captionState: captionStateOf(file.captionState)
+            caption: file.position === 0 ? row.content : file.caption
           }))
         : [],
     unavailableFiles: unavailableFilesOf(row, type),

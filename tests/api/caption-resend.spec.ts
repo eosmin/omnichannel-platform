@@ -294,6 +294,41 @@ describe('Sending only the text under a file again', () => {
     })
   })
 
+  describe('the text under one file', () => {
+    it('has no route of its own: only the text of the message is sent again', async () => {
+      const id = await fileWithCaption(CaptionState.FAILED)
+      const second = await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          messageId: id,
+          purpose: 'message',
+          key: `stores/${ctx.storeA.id}/messages/${randomUUID()}/p.png`,
+          filename: 'p.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          status: 'clean',
+          position: 1,
+          deliveryStatus: 'sent',
+          caption: 'second',
+          captionState: CaptionState.FAILED
+        },
+        select: { id: true }
+      })
+
+      // The route that sent the text of ONE file again is gone (a channel that carries it with the file has
+      // nothing to send again, and the others take one text)
+      const response = await api(app, ctx.agentA, ctx.storeA).post(
+        `/messages/${id}/media/${second.id}/resend-caption`
+      )
+
+      expect(response.status).toBe(NOT_FOUND)
+      expect(queueOf(app, QueueNames.OUTBOUND).jobs).toHaveLength(0)
+      expect((await owner.media.findUniqueOrThrow({ where: { id: second.id } })).captionState).toBe(
+        CaptionState.FAILED
+      )
+    })
+  })
+
   describe('the worker', () => {
     const queued = async (): Promise<{ id: string; job: SendOutboundCaptionJob }> => {
       const id = await fileWithCaption(CaptionState.FAILED)
@@ -432,200 +467,6 @@ describe('Sending only the text under a file again', () => {
         changeRequestedAt: null
       })
       expect((await row(fresh)).captionState).toBe(CaptionState.QUEUED)
-    })
-  })
-
-  describe('the text under one file of a message with several', () => {
-    // A message of three files that the channel took; the second one's text is in the state given
-    const album = async (
-      captionState: string | null,
-      over: { storeId?: string; caption?: string | null } = {}
-    ): Promise<{ id: string; second: string; first: string }> => {
-      const storeId = over.storeId ?? ctx.storeA.id
-      const id = await fileWithCaption(null, {
-        storeId,
-        conversationId: await conversationOn({ storeId })
-      })
-      const files: string[] = []
-      for (let position = 0; position < 3; position += 1) {
-        const mediaId = randomUUID()
-        files.push(mediaId)
-        await owner.media.create({
-          data: {
-            id: mediaId,
-            storeId,
-            messageId: id,
-            purpose: 'message',
-            key: `stores/${storeId}/messages/${mediaId}/p.png`,
-            filename: 'p.png',
-            contentType: 'image/png',
-            fileSize: 10,
-            status: 'clean',
-            position,
-            deliveryStatus: 'sent',
-            channelMessageId: `file-${mediaId}`,
-            createdAt: new Date(Date.now() + position),
-            ...(position === 1
-              ? {
-                  caption: over.caption === undefined ? 'the text under the second' : over.caption,
-                  captionState
-                }
-              : {})
-          }
-        })
-      }
-      return { id, first: files[0] ?? '', second: files[1] ?? '' }
-    }
-    const resendFile = (id: string, mediaId: string, who = ctx.agentA, store = ctx.storeA) =>
-      api(app, who, store).post(ApiRoutes.messages.resendMediaCaption(id, mediaId))
-    const fileRow = (mediaId: string) =>
-      owner.media.findUniqueOrThrow({
-        where: { id: mediaId },
-        select: { captionState: true, captionChannelMessageId: true }
-      })
-
-    it.each([CaptionState.FAILED, CaptionState.UNCONFIRMED])(
-      'queues the text of that file when it is %s, and nothing else',
-      async state => {
-        const { id, first, second } = await album(state)
-
-        const response = await resendFile(id, second)
-
-        expect(response.status).toBe(OK)
-        const files = (response.body as { media: { id: string; captionState: string | null }[] })
-          .media
-        expect(files.find(file => file.id === second)?.captionState).toBe(CaptionState.QUEUED)
-        expect(files.find(file => file.id === first)?.captionState).toBeNull()
-        expect((await fileRow(second)).captionState).toBe(CaptionState.QUEUED)
-        expect(queuedJob()).toMatchObject({ messageId: id, mediaId: second, version: 2 })
-      }
-    )
-
-    it.each([null, CaptionState.SENT, CaptionState.QUEUED])(
-      'is refused when the text of the file is %j',
-      async state => {
-        const { id, second } = await album(state)
-
-        expect((await resendFile(id, second)).status).toBe(CONFLICT)
-        expect(queueOf(app, QueueNames.OUTBOUND).jobs).toHaveLength(0)
-      }
-    )
-
-    it('is refused for a file with no text, for one that is not of the message, and for who may not send', async () => {
-      const { id, second } = await album(CaptionState.FAILED, { caption: null })
-      const other = await album(CaptionState.FAILED)
-
-      expect((await resendFile(id, second)).status).toBe(CONFLICT)
-      expect((await resendFile(id, other.second)).status).toBe(NOT_FOUND)
-      expect((await resendFile(other.id, other.second, ctx.viewerA)).status).toBe(FORBIDDEN)
-    })
-
-    it('takes one request at a time for a message: a second text waits for the first', async () => {
-      const { id, second } = await album(CaptionState.FAILED)
-      const third = (
-        await owner.media.findMany({ where: { messageId: id }, orderBy: { position: 'asc' } })
-      )[2]
-      await owner.media.update({
-        where: { id: third?.id ?? '' },
-        data: { caption: 'the text under the third', captionState: CaptionState.FAILED }
-      })
-      await resendFile(id, second).expect(OK)
-
-      const again = await resendFile(id, third?.id ?? '')
-
-      expect(again.status).toBe(CONFLICT)
-      expect((await fileRow(third?.id ?? '')).captionState).toBe(CaptionState.FAILED)
-    })
-
-    it('is refused for a text whose file did not go', async () => {
-      const { id, second } = await album(CaptionState.FAILED)
-      await owner.media.update({ where: { id: second }, data: { deliveryStatus: 'failed' } })
-
-      expect((await resendFile(id, second)).status).toBe(CONFLICT)
-    })
-
-    it('sends the text of the first file as the message has it now, after an edit', async () => {
-      const { id, first } = await album(null)
-      await owner.media.update({
-        where: { id: first },
-        data: { caption: 'stale before the edit', captionState: CaptionState.UNCONFIRMED }
-      })
-      await owner.message.update({ where: { id }, data: { content: 'the text after the edit' } })
-      await resendFile(id, first).expect(OK)
-
-      await sender.sendCaption(queuedJob(), false)
-
-      expect(sent.map(item => item.content)).toEqual(['the text after the edit'])
-      // The message carries the state of the first file too, for the older screens
-      expect(await row(id)).toMatchObject({ captionState: CaptionState.SENT })
-    })
-
-    it('does not reach a message of another store', async () => {
-      const mine = await album(CaptionState.FAILED)
-
-      const response = await resendFile(mine.id, mine.second, ctx.adminB, ctx.storeB)
-
-      expect(response.status).toBe(NOT_FOUND)
-      expect((await fileRow(mine.second)).captionState).toBe(CaptionState.FAILED)
-    })
-
-    it('sends the text alone, settles THAT file as sent with the id of the text, and touches no other', async () => {
-      const { id, first, second } = await album(CaptionState.UNCONFIRMED)
-      await resendFile(id, second)
-
-      await sender.sendCaption(queuedJob(), false)
-
-      expect(sent).toEqual([
-        expect.objectContaining({
-          content: 'the text under the second',
-          idempotencyKey: `caption-${id}-${second}-2`
-        })
-      ])
-      expect(await fileRow(second)).toEqual({
-        captionState: CaptionState.SENT,
-        captionChannelMessageId: `caption-caption-${id}-${second}-2`
-      })
-      expect((await fileRow(first)).captionState).toBeNull()
-      expect((await row(id)).changeRequestedAt).toBeNull()
-    })
-
-    it('settles a refusal as failed, and a call with no clear answer as unconfirmed, and logs no text', async () => {
-      const refused = await album(CaptionState.FAILED)
-      await resendFile(refused.id, refused.second)
-      sendMessage = () =>
-        Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false }))
-      await sender.sendCaption(queuedJob(), false)
-
-      expect((await fileRow(refused.second)).captionState).toBe(CaptionState.FAILED)
-    })
-
-    it('is never sent again by the sweep: a request that stayed queued shows as unconfirmed', async () => {
-      const { id, second } = await album(CaptionState.FAILED)
-      await resendFile(id, second)
-      queueOf(app, QueueNames.OUTBOUND).jobs.length = 0
-      await owner.message.update({
-        where: { id },
-        data: { changeRequestedAt: new Date(Date.now() - 5 * 60_000) }
-      })
-
-      const done = await sweep.requeueStaleChanges()
-
-      expect(done.gaveUp).toBeGreaterThanOrEqual(1)
-      expect(queueOf(app, QueueNames.OUTBOUND).jobs).toHaveLength(0)
-      expect((await fileRow(second)).captionState).toBe(CaptionState.UNCONFIRMED)
-      expect((await row(id)).changeRequestedAt).toBeNull()
-    })
-
-    it('does not settle a request that was made again: a late job sends nothing', async () => {
-      const { id, second } = await album(CaptionState.FAILED)
-      await resendFile(id, second)
-      const late = queuedJob()
-      await owner.message.update({ where: { id }, data: { version: 9 } })
-
-      await sender.sendCaption(late, false)
-
-      expect(sent).toHaveLength(0)
-      expect((await fileRow(second)).captionState).toBe(CaptionState.QUEUED)
     })
   })
 })
