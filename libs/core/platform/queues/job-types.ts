@@ -179,6 +179,9 @@ export interface SendOutboundCaptionJob extends BaseJob {
   storeId: string
   messageId: string
   version: number
+  // The file whose text is sent again; absent for the text under the first file of a message sent before
+  // each file had its own (the state is then the message's)
+  mediaId?: string
 }
 // The agent read the conversation up to `messageId`, the latest message of the customer that has an id at
 // the channel. Nothing is stored about it: the job is best effort.

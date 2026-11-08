@@ -1404,6 +1404,19 @@ describe('Tenant isolation', () => {
           idempotencyKey: randomUUID()
         })
 
+      // Even a text that failed and could be sent again is not reachable from another store
+      await owner.media.update({ where: { id: mediaId }, data: { captionState: 'failed' } })
+      await owner.message.update({ where: { id: message.id }, data: { deliveryStatus: 'sent' } })
+      const resend = await asB().post(ApiRoutes.messages.resendMediaCaption(message.id, mediaId))
+      expect(resend.status).toBe(404)
+      expect(
+        (
+          await owner.media.findUniqueOrThrow({
+            where: { id: mediaId },
+            select: { captionState: true }
+          })
+        ).captionState
+      ).toBe('failed')
       expect(thread.status).toBe(404)
       expect(JSON.stringify([thread.body, list.body])).not.toContain('private text under a file')
       expect(write.status).toBe(404)
