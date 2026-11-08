@@ -159,9 +159,6 @@ export const envSchema = z
     // Several files in one message to a customer (each channel declares how many it takes). Off until the
     // interface offers it and a real test with the providers passes: with it off a message carries one file.
     OUTBOUND_MULTI_FILE_ENABLED: z.stringbool().default(false),
-    // A text under EACH file of a message (`captions`), not only under the first. Off until the worker sends
-    // them step by step and the real test with each provider passes: with it off only the first file has one.
-    OUTBOUND_CAPTION_PER_FILE_ENABLED: z.stringbool().default(false),
 
     // Bull Board and the dead-letter tooling: a JWT plus this allowlist (empty = nobody)
     BULL_BOARD_ENABLED: z.stringbool().default(false),

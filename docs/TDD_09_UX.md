@@ -221,9 +221,9 @@ file by its place (`captions[i]` goes under `mediaIds[i]`; blank or null is none
 channels: each plugin sends them as its provider allows. Where the channel carries a text with each file
 (`captionPerFile`: WhatsApp, the web widget) it goes with the file; where it does not (Messenger, Instagram)
 the worker sends the file and then its text as a message of its own, in the order file 1, text 1, file 2,
-text 2. The agent always sees one bubble per message with each file and its text inside. Until the worker
-sends them step by step the api takes a text under a file other than the first only when
-`OUTBOUND_CAPTION_PER_FILE_ENABLED` is on. Each file keeps its text (`media.caption`), the state of that text
+text 2. The agent always sees one bubble per message with each file and its text inside. The api takes a text under a
+file other than the first only for a channel that declares `CAPTION_PER_FILE` (WhatsApp); for any other it
+answers 409 `CHANNEL_CAPABILITY_UNSUPPORTED`. Each file keeps its text (`media.caption`), the state of that text
 for the channels that send it apart (`captionState`) and the provider id of that message
 (`captionChannelMessageId`), so that the echo of the provider finds it and is not stored as a message of the
 owner.

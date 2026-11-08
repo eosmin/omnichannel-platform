@@ -16,11 +16,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import {
-  CAPTION_PER_FILE_SEND_ENABLED,
-  MULTI_FILE_SEND_ENABLED,
-  ZodValidationPipe
-} from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
@@ -51,8 +47,7 @@ const id = () => new ZodValidationPipe(uuidSchema)
 export class ChannelConnectionsController {
   constructor(
     private readonly connections: ChannelConnectionsService,
-    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean,
-    @Inject(CAPTION_PER_FILE_SEND_ENABLED) private readonly captionPerFileEnabled: boolean
+    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
   ) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
@@ -69,7 +64,7 @@ export class ChannelConnectionsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @Get(ApiRoutes.channels.directory)
   directory(@CurrentStore() store: Store): Promise<ChannelDirectoryEntry[]> {
-    return this.connections.directory(store.id, this.multiFileEnabled, this.captionPerFileEnabled)
+    return this.connections.directory(store.id, this.multiFileEnabled)
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)

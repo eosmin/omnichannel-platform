@@ -4,7 +4,7 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 import { invalidInput } from '../conversations/conversations.support'
 
 // Where a kind of file carries no text of its own on the channel (an audio on WhatsApp), the text goes after
-// the file as a message of its own, once the text under each file is switched on
+// the file as a message of its own (only for the text of the message: the first file)
 export function carriesNoCaption(channelType: string, type: MessageType): boolean {
   return ChannelCaptionRules[channelType]?.withoutCaption.includes(type) === true
 }
@@ -68,7 +68,7 @@ export function captionsOf(body: {
   })
 }
 
-// More texts than files, or a text under a file other than the first when the switch is off: the request
+// More texts than files, or a text under a file other than the first on a channel that does not carry one (or under a kind with no place for one): the request
 // says what the worker would not do, so it is refused before anything is queued
 export function requireCaptionsPlaced(
   body: { mediaIds: readonly string[]; captions?: readonly (string | null)[] | undefined },
@@ -81,7 +81,7 @@ export function requireCaptionsPlaced(
   if (!captionsPerFile && captions.slice(1).some(caption => caption !== null)) {
     throw new PlatformException(
       ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
-      'a text under each file is not switched on: only the first file takes one',
+      'this channel takes a text under the first file only',
       HttpStatusCodes.CONFLICT
     )
   }

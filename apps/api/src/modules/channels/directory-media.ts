@@ -14,6 +14,16 @@ export function directoryMedia(
 ): DirectoryMediaLimits[] {
   return OutboundMediaTypes.flatMap(type => {
     const limits = limitsOf(channelType, type)
-    return limits === null ? [] : [{ type, ...limits }]
+    if (limits === null) return []
+    // `textAfterFile` is for the api's own check of a request: the composer reads `captionsPerFile` only
+    return [
+      {
+        type,
+        maxFiles: limits.maxFiles,
+        types: limits.types,
+        maxBytes: limits.maxBytes,
+        captionsPerFile: limits.captionsPerFile
+      }
+    ]
   })
 }

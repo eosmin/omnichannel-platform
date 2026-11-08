@@ -6,7 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelIds, DeliveryStatus, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { CAPTION_PER_FILE_SEND_ENABLED, MULTI_FILE_SEND_ENABLED } from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED } from '@platform/core/http'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
@@ -32,9 +32,9 @@ interface MessageBody {
 // A text under EACH file of a message (owner, 2026-11-08): the contract, the limits of the channel, the
 // switch, and what is kept. How the worker sends them step by step is the next piece.
 describe.each([
-  ['switched on', true],
-  ['switched off', false]
-])('The text under each file of a message, %s', (_label, perFile) => {
+  ['a channel that carries it', true],
+  ['a channel that does not', false]
+])('The text under each file of a message, on %s', (_label, perFile) => {
   const prefix = newRunPrefix()
   let app: INestApplication
   let owner: OwnerClient
@@ -43,11 +43,7 @@ describe.each([
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp([], builder =>
-      builder
-        .overrideProvider(MULTI_FILE_SEND_ENABLED)
-        .useValue(true)
-        .overrideProvider(CAPTION_PER_FILE_SEND_ENABLED)
-        .useValue(perFile)
+      builder.overrideProvider(MULTI_FILE_SEND_ENABLED).useValue(true)
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(
@@ -56,7 +52,9 @@ describe.each([
         capabilities: [
           ChannelCapability.TEXT,
           ChannelCapability.IMAGE,
-          ChannelCapability.MESSAGING_WINDOW
+          ChannelCapability.MESSAGING_WINDOW,
+          // The channel sends the text of a file with the file: only then is one asked for under each
+          ...(perFile ? [ChannelCapability.CAPTION_PER_FILE] : [])
         ],
         media: {
           maxFilesPerMessage: 3,
@@ -213,45 +211,60 @@ describe.each([
     })
   }
 
-  it('takes a text under an audio only where it can go after it (switched on), as before otherwise', async () => {
-    const target = await createConversationOf(owner, {
-      storeId: ctx.storeA.id,
-      channelType: ChannelIds.WHATSAPP
-    })
-    await owner.customerIdentity.update({
-      where: { id: target.customerIdentityId },
-      data: { lastInboundAt: new Date() }
-    })
-    const id = randomUUID()
-    await owner.media.create({
-      data: {
-        id,
+  // WhatsApp carries the text of a file itself, and an audio has no place for one: the text of the message goes
+  // after it. A text under a file that is not the first never goes apart.
+  if (perFile) {
+    const audioMessage = async (captions: (string | null)[]) => {
+      const target = await createConversationOf(owner, {
         storeId: ctx.storeA.id,
-        purpose: 'message',
-        key: `stores/${ctx.storeA.id}/messages/${id}/a.ogg`,
-        filename: 'a.ogg',
-        contentType: 'audio/ogg',
-        fileSize: 10,
-        status: 'clean',
-        uploadedBy: ctx.agentA.id
+        channelType: ChannelIds.WHATSAPP
+      })
+      await owner.customerIdentity.update({
+        where: { id: target.customerIdentityId },
+        data: { lastInboundAt: new Date() }
+      })
+      const ids: string[] = []
+      for (let place = 0; place < captions.length; place += 1) {
+        const id = randomUUID()
+        ids.push(id)
+        await owner.media.create({
+          data: {
+            id,
+            storeId: ctx.storeA.id,
+            purpose: 'message',
+            key: `stores/${ctx.storeA.id}/messages/${id}/a.ogg`,
+            filename: 'a.ogg',
+            contentType: 'audio/ogg',
+            fileSize: 10,
+            status: 'clean',
+            uploadedBy: ctx.agentA.id
+          }
+        })
       }
+      return post({
+        type: MessageType.AUDIO,
+        conversationId: target.id,
+        mediaIds: ids,
+        captions,
+        idempotencyKey: randomUUID()
+      })
+    }
+
+    it('takes the text of the message under a first audio, that goes after it', async () => {
+      const response = await audioMessage(['say this'])
+
+      expect(response.status).toBe(CREATED)
     })
 
-    const response = await post({
-      type: MessageType.AUDIO,
-      conversationId: target.id,
-      mediaIds: [id],
-      captions: ['say this'],
-      idempotencyKey: randomUUID()
-    })
+    it('refuses a text under an audio that is not the first: it would go apart', async () => {
+      const response = await audioMessage([null, 'say this too'])
 
-    expect(response.status).toBe(perFile ? CREATED : CONFLICT)
-    if (!perFile) {
+      expect(response.status).toBe(CONFLICT)
       expect(response.body).toMatchObject({
         error: { code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED }
       })
-    }
-  })
+    })
+  }
 
   it('never lists the text of a file of another store', async () => {
     const mine = await album(1)
