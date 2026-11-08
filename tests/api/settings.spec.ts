@@ -461,7 +461,7 @@ describe('The settings of the inbox of a store', () => {
       // The settings of this store go back to what the other cases expect
       await asAdmin()
         .patch(ApiRoutes.settings.inbox)
-        .send({ sendClosingMessage: false, closingSnippetId: null, resolveShowOptions: true })
+        .send({ sendClosingMessage: false, closingSnippetId: null, resolveShowOptions: false })
 
       expect(response.body).toMatchObject({
         resolveShowOptions: false,
@@ -491,12 +491,12 @@ describe('The settings of the inbox of a store', () => {
       const before = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.inbox)
       const after = await api(app, ctx.adminA2, ctx.storeA2)
         .patch(ApiRoutes.settings.inbox)
-        .send({ reopenWindowDays: 14, resolveShowOptions: false })
+        .send({ reopenWindowDays: 14, resolveShowOptions: true })
 
       expect(before.body).toEqual({
         reopenWindowDays: null,
         autoArchiveAfterDays: 30,
-        resolveShowOptions: true,
+        resolveShowOptions: false,
         sendClosingMessage: false,
         closingSnippetId: null,
         requestCsat: false,
@@ -504,7 +504,7 @@ describe('The settings of the inbox of a store', () => {
       })
       expect(after.body).toMatchObject({
         reopenWindowDays: 14,
-        resolveShowOptions: false,
+        resolveShowOptions: true,
         requestCsat: false,
         autoArchiveAfterDays: 30
       })
