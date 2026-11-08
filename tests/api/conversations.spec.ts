@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
@@ -16,6 +18,7 @@ import {
   SystemMessageEvents
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
 import { encodeConversationCursor, ConversationsService } from '@platform/core/messaging'
 import { QueueNames } from '@platform/core/queues'
 
@@ -31,6 +34,7 @@ import {
 } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
@@ -866,7 +870,7 @@ describe('The conversations of a store', () => {
       })
     })
 
-    it('says the resolution was undone when the Undo asks for it, and only then', async () => {
+    it('leaves no trace in the thread of a resolution that the Undo took back, and the log keeps both', async () => {
       const conversation = await mk()
       const status = (to: ConversationStatus, extra: object = {}) =>
         asAgent()
@@ -875,6 +879,7 @@ describe('The conversations of a store', () => {
 
       await status(ConversationStatus.RESOLVED)
       expect((await status(ConversationStatus.OPEN, { undoesResolution: true })).status).toBe(OK)
+      // Resolved and reopened by hand: the usual two lines
       await status(ConversationStatus.RESOLVED)
       await status(ConversationStatus.OPEN)
       // Undoing is a way of reopening, not of resolving or of anything else
@@ -884,10 +889,101 @@ describe('The conversations of a store', () => {
       const lines = await linesOf(conversation.id)
       expect(lines.map(line => (line.metadata as { event: string }).event)).toEqual([
         SystemMessageEvents.RESOLVED,
-        SystemMessageEvents.RESOLVE_UNDONE,
-        SystemMessageEvents.RESOLVED,
         SystemMessageEvents.REOPENED
       ])
+      const logged = await waitForAuditEntries(
+        owner,
+        { resourceId: conversation.id, action: { startsWith: 'conversation.resolve' } },
+        3
+      )
+      expect(logged.map(entry => entry.action).sort()).toEqual(
+        [
+          AuditAction.CONVERSATION_RESOLVE_UNDONE,
+          AuditAction.CONVERSATION_RESOLVED,
+          AuditAction.CONVERSATION_RESOLVED
+        ].sort()
+      )
+      expect(logged.every(entry => entry.userId === ctx.agentA.id)).toBe(true)
+    })
+
+    it('tells the screens that the line of the resolution went, and restores what resolving set', async () => {
+      const conversation = await mk()
+      const heardDeleted: string[] = []
+      const listener = (payload: { messageId: string }): void => {
+        heardDeleted.push(payload.messageId)
+      }
+      app.get(EventEmitter2).on(Events.MESSAGE_DELETED, listener)
+      await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.RESOLVED, resolutionReason: 'answered' })
+      const [resolvedLine] = await linesOf(conversation.id)
+
+      await asAgent()
+        .patch(ApiRoutes.conversations.status(conversation.id))
+        .send({ status: ConversationStatus.OPEN, undoesResolution: true })
+
+      app.get(EventEmitter2).off(Events.MESSAGE_DELETED, listener)
+      expect(heardDeleted).toEqual([resolvedLine?.id])
+      expect(await linesOf(conversation.id)).toHaveLength(0)
+      expect(
+        await owner.conversation.findUniqueOrThrow({
+          where: { id: conversation.id },
+          select: { status: true, resolvedAt: true, resolutionReason: true }
+        })
+      ).toEqual({ status: ConversationStatus.OPEN, resolvedAt: null, resolutionReason: null })
+    })
+
+    it('retracts at the edge of the window: 11 s yes, 13 s no', async () => {
+      const inside = await mk()
+      const outside = await mk()
+      for (const { id } of [inside, outside]) {
+        await asAgent()
+          .patch(ApiRoutes.conversations.status(id))
+          .send({ status: ConversationStatus.RESOLVED })
+      }
+      // The resolution and its line moved back in time together, as if resolved that long ago
+      for (const [{ id }, seconds] of [
+        [inside, 11],
+        [outside, 13]
+      ] as const) {
+        const at = new Date(Date.now() - seconds * 1000)
+        await owner.conversation.update({ where: { id }, data: { resolvedAt: at } })
+        await owner.message.updateMany({ where: { conversationId: id }, data: { createdAt: at } })
+        await asAgent()
+          .patch(ApiRoutes.conversations.status(id))
+          .send({ status: ConversationStatus.OPEN, undoesResolution: true })
+      }
+
+      expect(await linesOf(inside.id)).toHaveLength(0)
+      expect(await linesOf(outside.id)).toHaveLength(2)
+    })
+
+    it('writes the usual line when the Undo comes late or from someone who did not resolve it', async () => {
+      const late = await mk()
+      const others = await mk()
+      for (const { id } of [late, others]) {
+        await asAgent()
+          .patch(ApiRoutes.conversations.status(id))
+          .send({ status: ConversationStatus.RESOLVED })
+      }
+      // The window of the toast and its grace are over
+      await owner.conversation.update({
+        where: { id: late.id },
+        data: { resolvedAt: new Date(Date.now() - 60_000) }
+      })
+
+      await asAgent()
+        .patch(ApiRoutes.conversations.status(late.id))
+        .send({ status: ConversationStatus.OPEN, undoesResolution: true })
+      await api(app, ctx.adminA, ctx.storeA)
+        .patch(ApiRoutes.conversations.status(others.id))
+        .send({ status: ConversationStatus.OPEN, undoesResolution: true })
+
+      for (const { id } of [late, others]) {
+        expect((await linesOf(id)).map(line => (line.metadata as { event: string }).event)).toEqual(
+          [SystemMessageEvents.RESOLVED, SystemMessageEvents.RESOLVE_UNDONE]
+        )
+      }
     })
 
     it('keeps the date of the snooze and the wake of a snoozed conversation', async () => {

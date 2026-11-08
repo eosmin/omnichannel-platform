@@ -317,6 +317,14 @@ export async function storeIdNamed(name: string): Promise<string> {
   return store.id
 }
 
+// The moment a snoozed conversation comes back (null if it is not snoozed)
+export async function snoozedUntilOf(conversationId: string): Promise<Date | null> {
+  return withOwner(async owner => {
+    const row = await owner.conversation.findUniqueOrThrow({ where: { id: conversationId } })
+    return row.snoozedUntil
+  })
+}
+
 // The zone a store counts its hours in (what the settings of the hours save), returning the one it had
 export async function setStoreTimezone(storeId: string, timezone: string): Promise<string> {
   return withOwner(async owner => {
