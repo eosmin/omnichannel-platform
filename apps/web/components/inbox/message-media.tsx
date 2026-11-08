@@ -28,6 +28,7 @@ import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
+import { FileCaption } from './file-caption'
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
 
 // A file is drawn in one of two states, a skeleton or its content, and both fill the same box, so the
@@ -99,6 +100,7 @@ export function MessageMedia({
               inAlbum={album}
             />
             {states ? <FileDeliveryLine file={file} /> : null}
+            <FileCaption file={file} index={files.indexOf(file)} />
           </div>
         ))}
       </div>

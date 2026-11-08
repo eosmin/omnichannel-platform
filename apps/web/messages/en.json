@@ -1059,6 +1059,9 @@
       "captionFailed": "The file was sent, but the text under it was not",
       "captionUnconfirmed": "The file was sent, but the text under it may not have been. Check the chat before sending the text again",
       "captionQueued": "Sending the text under the file",
+      "fileCaptionFailed": "The text under this file was not sent",
+      "fileCaptionUnconfirmed": "The text under this file may not have reached the customer",
+      "fileCaptionQueued": "Sending the text under this file",
       "resendCaption": "Send the text again",
       "media": {
         "checking": "Checking {name}",
@@ -1264,6 +1267,10 @@
         "full": "Attach a file (the limit of {max} files is reached)",
         "tooMany": "This message takes up to {max} files; the rest were not added",
         "mixed": "A message carries one kind of file: images, videos, audio or documents. Send the others in another message",
+        "captionEach": "The text you write goes under the first file; write the others under each one",
+        "captionFor": "Text under {name}",
+        "captionPlaceholder": "Text under this file",
+        "captionCount": "{used} of {max}",
         "captionFirst": "The text you write is sent with the first file",
         "listLabel": "Files to send"
       },

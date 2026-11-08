@@ -2,11 +2,20 @@
 
 import { FileText, LoaderCircle, Music, Video, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { type ReactElement, type Ref, useEffect, useImperativeHandle, useState } from 'react'
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  type Ref,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useState
+} from 'react'
 
 import { MessageType } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
+import { limitOfKind } from '../../lib/media/attachment-batch'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import {
   type AttachmentItem,
@@ -15,6 +24,7 @@ import {
 } from '../../lib/media/use-attachments'
 import { useCodeText } from '../../lib/use-error-text'
 import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 
 // What the composer reads from the tray to draw its own button and to decide what Send does
 export interface TrayStatus {
@@ -61,13 +71,62 @@ function Thumbnail({ item }: { item: AttachmentItem }): ReactElement {
   return <Icon aria-hidden className="size-4 shrink-0" />
 }
 
+// The text under one file: its own field, with how much the channel holds. Escape leaves the field and keeps
+// the text (it must not close the conversation, as in the box of the message).
+function CaptionField({
+  item,
+  max,
+  isLocked,
+  onChange
+}: {
+  item: AttachmentItem
+  max: number | undefined
+  isLocked: boolean
+  onChange: (caption: string) => void
+}): ReactElement {
+  const t = useTranslations('inbox.composer.attach')
+  const countId = useId()
+  const used = Array.from(item.caption).length
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key !== 'Escape' || event.nativeEvent.isComposing) return
+    event.stopPropagation()
+    event.currentTarget.blur()
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Input
+        value={item.caption}
+        disabled={isLocked}
+        aria-label={t('captionFor', { name: item.file.name })}
+        aria-describedby={max === undefined ? undefined : countId}
+        placeholder={t('captionPlaceholder')}
+        className="h-8 text-xs"
+        onChange={event => onChange(Array.from(event.target.value).slice(0, max).join(''))}
+        onKeyDown={onKeyDown}
+      />
+      {max === undefined ? null : (
+        <span id={countId} className="text-muted-foreground self-end text-[0.7rem]">
+          {t('captionCount', { used, max })}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function Chip({
   item,
   isLocked,
+  hasCaption,
+  captionMax,
+  onCaption,
   onRemove
 }: {
   item: AttachmentItem
   isLocked: boolean
+  // This file has its own field for the text under it
+  hasCaption: boolean
+  captionMax: number | undefined
+  onCaption: (caption: string) => void
   onRemove: () => void
 }): ReactElement {
   const t = useTranslations('inbox.composer.attach')
@@ -92,6 +151,9 @@ function Chip({
           <X aria-hidden />
         </Button>
       </div>
+      {hasCaption ? (
+        <CaptionField item={item} max={captionMax} isLocked={isLocked} onChange={onCaption} />
+      ) : null}
       {percent === null ? null : (
         <div
           role="progressbar"
@@ -130,6 +192,7 @@ export function AttachmentTray({
   storeId,
   conversationId,
   rules,
+  captionMax,
   hidden,
   onStatus,
   handle
@@ -137,6 +200,8 @@ export function AttachmentTray({
   storeId: string
   conversationId: string
   rules: AttachmentRules
+  // How much text the channel holds under a file; unknown when it does not say
+  captionMax: number | undefined
   hidden: boolean
   onStatus: (status: TrayStatus) => void
   handle: Ref<TrayHandle>
@@ -151,6 +216,10 @@ export function AttachmentTray({
     [attachments.send, attachments.add, attachments.clear]
   )
 
+  // The files that go in the message, in order; each but the first has a field for its text where the channel
+  // puts a text under each file (the first takes the text of the composer)
+  const kept = items.filter(item => item.status !== 'failed')
+  const perFile = limitOfKind(rules.media, kept[0]?.type ?? null)?.captionsPerFile === true
   const count = items.filter(item => item.status !== 'failed').length
   const ready = items.filter(item => item.status === 'ready').length
   const isBusy = items.some(item => item.status === 'uploading' || item.status === 'checking')
@@ -168,12 +237,19 @@ export function AttachmentTray({
               key={item.id}
               item={item}
               isLocked={isSending}
+              hasCaption={perFile && kept.indexOf(item) > 0}
+              captionMax={captionMax}
+              onCaption={caption => attachments.setCaption(item.id, caption)}
               onRemove={() => attachments.remove(item.id)}
             />
           ))}
         </ul>
       )}
-      {count > 1 ? <p className="text-muted-foreground text-xs">{t('captionFirst')}</p> : null}
+      {count > 1 ? (
+        <p className="text-muted-foreground text-xs">
+          {t(perFile ? 'captionEach' : 'captionFirst')}
+        </p>
+      ) : null}
       {notice === null ? null : (
         <p role="alert" className="text-destructive text-xs">
           {notice.kind === 'mixed' ? t('mixed') : t('tooMany', { max: notice.max })}

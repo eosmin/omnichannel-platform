@@ -43,6 +43,8 @@ export const webServer: Extract<PlaywrightTestConfig['webServer'], unknown[]> = 
       // Several files in one message: off in a deployment until a real test with each provider passes,
       // on here so that the composer and the thread are exercised with more than one
       OUTBOUND_MULTI_FILE_ENABLED: 'true',
+      // A text under each file: the composer offers a field for each file but the first
+      OUTBOUND_CAPTION_PER_FILE_ENABLED: 'true',
       // "Connect with Facebook": the app, its secret and the callback of this api, as a deployment sets them
       META_APP_ID: FAKE_APP_ID,
       META_APP_SECRET: FAKE_APP_SECRET,

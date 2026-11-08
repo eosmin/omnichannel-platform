@@ -277,6 +277,20 @@ export function messagesOf(
 
 // The files the agent sent in a conversation, in the order of their place in the message, with the text of
 // the message they belong to (the caption goes with the message)
+// The text stored under each file of the messages of a conversation, in the order of the message
+export function captionsStoredIn(
+  conversationId: string
+): Promise<{ filename: string; caption: string | null }[]> {
+  return withOwner(async owner => {
+    const rows = await owner.media.findMany({
+      where: { message: { conversationId } },
+      orderBy: [{ messageId: 'asc' }, { position: 'asc' }],
+      select: { filename: true, caption: true }
+    })
+    return rows.map(row => ({ filename: row.filename, caption: row.caption }))
+  })
+}
+
 export function filesSentIn(
   conversationId: string
 ): Promise<{ filename: string; position: number | null; caption: string | null }[]> {

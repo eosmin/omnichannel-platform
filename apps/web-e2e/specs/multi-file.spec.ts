@@ -72,7 +72,7 @@ test.describe.serial('the composer with several files', () => {
     await expect(chipsOf(page).nth(0)).toContainText('first.png')
     await expect(chipsOf(page).nth(1)).toContainText('second.png')
     await expect(chipsOf(page).nth(2)).toContainText('third.png')
-    await expect(page.getByText(attach.captionFirst)).toBeVisible()
+    await expect(page.getByText(attach.captionEach)).toBeVisible()
 
     await removeButton(page, 'second.png').click()
     await expect(chipsOf(page)).toHaveCount(2)

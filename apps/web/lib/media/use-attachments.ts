@@ -16,7 +16,7 @@ import type { OutboundMediaType } from '@platform/core/storage'
 import { apiClient } from '../api'
 import { errorCodeOf } from '../error-message'
 
-import { type BatchRefusal, type BatchRules, planAdd } from './attachment-batch'
+import { type BatchRefusal, type BatchRules, limitOfKind, planAdd } from './attachment-batch'
 import { attachmentMessageType } from './attachment-rules'
 import { uploadGate } from './upload-gate'
 import { UploadAbortedError, UploadFailedError, uploadToUrl } from './upload-to-url'
@@ -35,6 +35,8 @@ export interface AttachmentItem {
   progress: number
   mediaId: string | null
   code: string | null
+  // The text the agent writes under this file (the first one takes the text of the composer instead)
+  caption: string
 }
 
 export interface Attachments {
@@ -46,6 +48,7 @@ export interface Attachments {
   isSending: boolean
   add: (files: readonly File[]) => void
   remove: (id: string) => void
+  setCaption: (id: string, caption: string) => void
   clear: () => void
   // Sends the files that are ready, in the order they were chosen, with the text as the caption of the
   // first one, as one message. Resolves true when the api took it.
@@ -128,6 +131,14 @@ export function useAttachments(
     [commit]
   )
 
+  const setCaption = useCallback(
+    (id: string, caption: string): void => {
+      patch(id, { caption })
+      setSendError(null)
+    },
+    [patch]
+  )
+
   const upload = useCallback(
     async (item: AttachmentItem, controller: AbortController): Promise<void> => {
       const { file, id } = item
@@ -192,7 +203,8 @@ export function useAttachments(
           status: refusal === null ? 'uploading' : 'failed',
           progress: 0,
           mediaId: null,
-          code: refusal?.kind === 'code' ? refusal.code : null
+          code: refusal?.kind === 'code' ? refusal.code : null,
+          caption: ''
         })
       })
       setNotice(refused)
@@ -227,8 +239,16 @@ export function useAttachments(
         return false
       }
       const mediaIds = ready.flatMap(item => (item.mediaId === null ? [] : [item.mediaId]))
+      // A text under a file other than the first goes only where the channel puts a text under each file;
+      // the first file takes the text of the composer. Without any, the request is the one of one text.
+      const perFile = limitOfKind(rulesRef.current.media, type)?.captionsPerFile === true
+      const others = ready.slice(1).map(item => item.caption.trim())
+      const captions =
+        perFile && others.some(text => text !== '')
+          ? [caption === '' ? null : caption, ...others.map(text => (text === '' ? null : text))]
+          : null
       // The key names this message: other files, another caption or another quote are another request
-      const ids = JSON.stringify([mediaIds, caption, replyToMessageId ?? null])
+      const ids = JSON.stringify([mediaIds, caption, captions, replyToMessageId ?? null])
       if (sendKey.current?.ids !== ids) sendKey.current = { ids, key: crypto.randomUUID() }
       const { key } = sendKey.current
       sending.current = true
@@ -240,6 +260,7 @@ export function useAttachments(
           conversationId,
           mediaIds,
           ...(caption === '' ? {} : { content: caption }),
+          ...(captions === null ? {} : { captions }),
           ...(replyToMessageId === undefined ? {} : { replyToMessageId }),
           idempotencyKey: key
         })
@@ -260,5 +281,5 @@ export function useAttachments(
     [clear, conversationId, queryClient, storeId]
   )
 
-  return { items, notice, sendError, isSending, add, remove, clear, send }
+  return { items, notice, sendError, isSending, add, remove, setCaption, clear, send }
 }

@@ -15,6 +15,8 @@ export interface ChannelMediaLimit {
   maxFiles: number
   types: readonly string[] | null
   maxBytes: number
+  // Whether a text goes under EACH file of a message of this kind (false: only under the first)
+  captionsPerFile?: boolean
 }
 
 // Why a file does not join the message: a code the person reads as any error, the mix of kinds (a message
