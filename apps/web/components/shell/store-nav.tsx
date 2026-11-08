@@ -53,7 +53,7 @@ export function StoreNav(): ReactElement {
             href={entry.href}
             aria-current={isCurrent ? 'page' : undefined}
             className={cn(
-              'hover:bg-accent shrink-0 rounded-md px-2 py-1 text-sm whitespace-nowrap',
+              'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-10',
               isCurrent ? 'font-semibold' : 'text-muted-foreground'
             )}
           >
