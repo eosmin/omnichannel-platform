@@ -1,6 +1,6 @@
 'use client'
 
-import { useLocale, useTranslations } from 'next-intl'
+import { useLocale, useTimeZone, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { ConversationLimits } from '@platform/core/domain'
@@ -35,8 +35,9 @@ export interface SnoozeDialogProps {
   conversationId: string
 }
 
-// Hides the conversation until a moment, counted in the timezone of the store: the
-// presets and the date field both mean the wall clock of the store, wherever the agent is.
+// Hides the conversation until a moment, counted in the zone every hour of the app is shown in (the
+// account, else the store, else the browser; `TimeZoneProvider`): the presets and the date field both mean
+// the wall clock of that zone, so what the agent picks is what they read everywhere else.
 export function SnoozeDialog(props: SnoozeDialogProps): ReactElement {
   const t = useTranslations('inbox.snooze')
   return (
@@ -60,6 +61,7 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
   const locale = useLocale()
   const { storeId } = useStore()
   const behavior = useInboxBehavior(storeId)
+  const displayZone = useTimeZone()
   const { snooze } = useConversationActions(storeId, conversationId)
   const [now] = useState(() => new Date())
   const [custom, setCustom] = useState('')
@@ -86,7 +88,8 @@ function SnoozeForm({ onOpenChange, conversationId }: SnoozeDialogProps): ReactE
     )
   }
 
-  const { timezone } = behavior.data
+  // The store's zone reaches `timeZone` through the provider once the behavior is read (hence the wait above)
+  const timezone = displayZone ?? behavior.data.timezone
   const format = new Intl.DateTimeFormat(locale, {
     timeZone: timezone,
     dateStyle: 'medium',
