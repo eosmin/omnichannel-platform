@@ -433,9 +433,17 @@ test.describe.serial('the thread of a conversation', () => {
       await page.getByRole('button', { name: en.common.undo }).click()
 
       await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.OPEN)
-      // The history keeps both lines, and the second says the resolution was taken back, not a bare "reopened"
-      await expect(page.getByText(/undid the resolution/)).toBeVisible()
+      // An Undo inside its window is a Ctrl+Z: the thread keeps no line that it was resolved and none that
+      // it was undone, and not a bare "reopened" either (the audit log has the pair; a late Undo, which
+      // does leave its lines, is covered by tests/api/conversations.spec.ts)
+      await expect(page.getByText(/undid the resolution/)).toHaveCount(0)
       await expect(page.getByText(/Reopened by/)).toHaveCount(0)
+      await expect(page.getByText(/Resolved by/)).toHaveCount(0)
+      expect(
+        (await timelineOf(conversationId)).filter(
+          message => message.type === String(MessageType.SYSTEM)
+        )
+      ).toHaveLength(0)
     } finally {
       await setResolveBehavior(storeId, { showOptions: true, closingSnippetId: null })
     }

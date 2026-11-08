@@ -444,6 +444,92 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
+    describe('when the Undo of the resolution comes', () => {
+      const undo = (reply: { storeId: string; conversationId: string }, undoesResolution = true) =>
+        app
+          .get(ConversationsService, { strict: false })
+          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+            actor: 'system',
+            ...(undoesResolution ? { undoesResolution: true } : {})
+          })
+
+      it('takes the queued closing message off the thread at once, and the worker finds nothing', async () => {
+        const createdAt = new Date()
+        const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+
+        await undo(reply)
+
+        expect(await owner.message.count({ where: { id: reply.id } })).toBe(0)
+        const told = eventsOf(Events.MESSAGE_DELETED).filter(
+          item => item.payload['messageId'] === reply.id
+        )
+        expect(told).toHaveLength(1)
+        await sender.send(job(reply), false)
+        expect(sent).toHaveLength(0)
+      })
+
+      it('leaves one that is in flight, which a worker already claimed', async () => {
+        const createdAt = new Date()
+        const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+        await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
+
+        await undo(reply)
+
+        expect(await owner.message.count({ where: { id: reply.id } })).toBe(1)
+      })
+
+      it('leaves one that was sent, and any other queued reply of the conversation', async () => {
+        const createdAt = new Date()
+        const gone = await queuedReply({
+          createdAt,
+          deliveryStatus: DeliveryStatus.SENT,
+          closing: resolvedBefore(createdAt)
+        })
+        const other = await owner.message.create({
+          data: {
+            storeId: gone.storeId,
+            conversationId: gone.conversationId,
+            type: MessageType.TEXT,
+            content: 'a reply of the team',
+            authorType: AuthorType.AGENT,
+            deliveryStatus: DeliveryStatus.QUEUED,
+            createdAt: new Date(createdAt.getTime() + 1)
+          },
+          select: { id: true }
+        })
+
+        await undo(gone)
+
+        expect(await owner.message.count({ where: { id: { in: [gone.id, other.id] } } })).toBe(2)
+        expect(eventsOf(Events.MESSAGE_DELETED)).toHaveLength(0)
+      })
+
+      it('is only for the one who queued it: another agent who undoes does not take it back', async () => {
+        const createdAt = new Date()
+        const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+        await owner.message.update({ where: { id: reply.id }, data: { authorId: ctx.agentA.id } })
+
+        await app
+          .get(ConversationsService, { strict: false })
+          .updateStatus(reply.storeId, reply.conversationId, ConversationStatus.OPEN, {
+            actor: viewerOf(ctx.adminA.id, Object.values(Permissions)),
+            undoesResolution: true
+          })
+
+        expect(await owner.message.count({ where: { id: reply.id } })).toBe(1)
+        expect(eventsOf(Events.MESSAGE_DELETED)).toHaveLength(0)
+      })
+
+      it('is only for the Undo: a reopening of a person does not reach into the thread', async () => {
+        const createdAt = new Date()
+        const reply = await queuedReply({ createdAt, closing: resolvedBefore(createdAt) })
+
+        await undo(reply, false)
+
+        expect(await owner.message.count({ where: { id: reply.id } })).toBe(1)
+      })
+    })
+
     it('is deleted, never sent and never counted, when the Undo reopened the conversation', async () => {
       const createdAt = new Date()
       const reply = await queuedReply({
