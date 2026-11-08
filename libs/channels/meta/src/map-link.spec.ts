@@ -22,10 +22,10 @@ describe('coordinatesOfMapLink', () => {
       -89.2182
     ],
     [
-      'google place with long decimals, falling back to its query',
+      'google place with long decimals, cut to seven',
       'https://www.google.com/maps/place/X/@13.69291234567,-89.2182,17z?query=13.69,-89.21',
-      13.69,
-      -89.21
+      13.6929123,
+      -89.2182
     ],
     ['apple coordinate', 'https://maps.apple.com/?coordinate=13.6929,-89.2182', 13.6929, -89.2182],
     [
