@@ -149,10 +149,15 @@ export function RuleDialog({
           <fieldset className="flex flex-col gap-3 rounded-lg border p-3">
             <legend className="px-1 text-sm font-medium">{t('conditions')}</legend>
             <p className="text-muted-foreground text-xs">{t('conditionsHint')}</p>
+            {/* The names are the store's own: a tag of 60 characters in one piece pushed this dialog to 580 px on a phone (MODAL-390), so the labels wrap anywhere */}
             <div role="group" aria-label={t('channels')} className="flex flex-wrap gap-3">
               {channelOptions.map(channel => (
-                <label key={channel.id} className="flex items-center gap-1.5 text-sm">
+                <label
+                  key={channel.id}
+                  className="flex max-w-full items-center gap-1.5 text-sm [overflow-wrap:anywhere]"
+                >
                   <input
+                    className="shrink-0"
                     type="checkbox"
                     checked={draft.channelTypes.includes(channel.id)}
                     onChange={() => set({ channelTypes: toggled(draft.channelTypes, channel.id) })}
@@ -178,8 +183,12 @@ export function RuleDialog({
                 <p className="text-muted-foreground text-xs">{t('noTags')}</p>
               ) : (
                 tags.map(tag => (
-                  <label key={tag.id} className="flex items-center gap-1.5 text-sm">
+                  <label
+                    key={tag.id}
+                    className="flex max-w-full items-center gap-1.5 text-sm [overflow-wrap:anywhere]"
+                  >
                     <input
+                      className="shrink-0"
                       type="checkbox"
                       checked={draft.tagIds.includes(tag.id)}
                       onChange={() => set({ tagIds: toggled(draft.tagIds, tag.id) })}
@@ -251,7 +260,10 @@ export function RuleDialog({
                   .map(member => ({ id: member.id, name: member.name })),
                 ...missing.map(id => ({ id, name: t('formerMember') }))
               ].map(person => (
-                <label key={person.id} className="flex items-center gap-1.5 text-sm">
+                <label
+                  key={person.id}
+                  className="flex max-w-full items-center gap-1.5 text-sm [overflow-wrap:anywhere]"
+                >
                   <input
                     type={
                       draft.actionType === RoutingActionTypes.ASSIGN_USER ? 'radio' : 'checkbox'

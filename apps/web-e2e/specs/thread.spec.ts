@@ -32,6 +32,7 @@ import {
   storeIdNamed,
   unreadCountOf
 } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
@@ -398,6 +399,7 @@ test.describe.serial('the thread of a conversation', () => {
     await reply.fill('/snooze')
     await reply.press('Enter')
     const dialog = page.getByRole('dialog', { name: en.inbox.snooze.title })
+    await expectDialogFitsThePhoneWidth(page, dialog)
     await dialog
       .getByRole('button', { name: new RegExp(en.inbox.snooze.presets.tomorrowMorning) })
       .click()
@@ -431,6 +433,9 @@ test.describe.serial('the thread of a conversation', () => {
       await page.getByRole('button', { name: en.common.undo }).click()
 
       await expect.poll(() => statusOf(conversationId)).toBe(ConversationStatus.OPEN)
+      // The history keeps both lines, and the second says the resolution was taken back, not a bare "reopened"
+      await expect(page.getByText(/undid the resolution/)).toBeVisible()
+      await expect(page.getByText(/Reopened by/)).toHaveCount(0)
     } finally {
       await setResolveBehavior(storeId, { showOptions: true, closingSnippetId: null })
     }

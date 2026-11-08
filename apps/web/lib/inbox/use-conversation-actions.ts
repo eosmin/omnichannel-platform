@@ -14,6 +14,12 @@ import { ConversationStatus } from '@platform/core/domain'
 
 import { apiClient } from '../api'
 
+// When to wake and, if the agent left one, what to remember (text of the agent: the api trims and limits it)
+export interface SnoozeInput {
+  until: Date
+  note?: string
+}
+
 export interface ResolveInput {
   reason?: string
   // The saved reply for the customer: the server sends it when the time to undo is over, if the
@@ -23,9 +29,11 @@ export interface ResolveInput {
 
 export interface ConversationActions {
   assign: UseMutationResult<ConversationDetailView, Error, string | null>
-  snooze: UseMutationResult<ConversationDetailView, Error, Date>
+  snooze: UseMutationResult<ConversationDetailView, Error, SnoozeInput>
   resolve: UseMutationResult<ConversationDetailView, Error, ResolveInput>
   reopen: UseMutationResult<ConversationDetailView, Error, void>
+  // The Undo of a resolution: it reopens too, and the history says the resolution was taken back
+  undoResolve: UseMutationResult<ConversationDetailView, Error, void>
 }
 
 // What an agent does to the conversation open in front of them. The events of the api already make
@@ -51,7 +59,8 @@ export function useConversationActions(
     onSuccess: refresh
   })
   const snooze = useMutation({
-    mutationFn: (until: Date) => snoozeConversation(apiClient, storeId, conversationId, until),
+    mutationFn: ({ until, note }: SnoozeInput) =>
+      snoozeConversation(apiClient, storeId, conversationId, until, note),
     onSuccess: refresh
   })
   const resolve = useMutation({
@@ -68,5 +77,13 @@ export function useConversationActions(
     onSuccess: refresh
   })
 
-  return { assign, snooze, resolve, reopen }
+  const undoResolve = useMutation({
+    mutationFn: () =>
+      changeConversationStatus(apiClient, storeId, conversationId, ConversationStatus.OPEN, {
+        undoesResolution: true
+      }),
+    onSuccess: refresh
+  })
+
+  return { assign, snooze, resolve, reopen, undoResolve }
 }

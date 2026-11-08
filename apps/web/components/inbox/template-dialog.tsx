@@ -168,14 +168,15 @@ function TemplateForm({
             >
               <span className="flex items-center gap-2">
                 <input
+                  className="shrink-0"
                   type="radio"
                   name="template"
                   value={key}
                   checked={chosen === key}
                   onChange={() => changeChoice(key)}
                 />
-                <span className="font-medium">{item.name}</span>
-                <span className="text-muted-foreground text-xs">{item.language}</span>
+                <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{item.name}</span>
+                <span className="text-muted-foreground shrink-0 text-xs">{item.language}</span>
               </span>
               <span className="text-muted-foreground break-words whitespace-pre-wrap">
                 {item.body}

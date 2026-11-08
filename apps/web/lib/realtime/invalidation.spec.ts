@@ -57,6 +57,16 @@ describe('queryKeysForEvent', () => {
     ).toEqual([QueryKeys.conversations.all('s1'), QueryKeys.messages.thread('s1', 'c1')])
   })
 
+  it('reads the list again when the mark that raises a row is put or taken off (a snooze that woke)', () => {
+    expect(
+      queryKeysForEvent(
+        RealtimeEvents.CONVERSATION_ATTENTION_CHANGED,
+        { conversationId: 'c1', reason: null },
+        's1'
+      )
+    ).toEqual([QueryKeys.conversations.all('s1')])
+  })
+
   it('moves the conversation in the list when a reply or a note is written', () => {
     const expected = [QueryKeys.conversations.all('s1'), QueryKeys.messages.thread('s1', 'c1')]
     expect(

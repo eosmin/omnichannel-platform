@@ -11,6 +11,7 @@ import {
   statusOf,
   storeIdNamed
 } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -167,6 +168,7 @@ test.describe.serial('the inbox list', () => {
     await page.keyboard.press('?')
     const sheet = page.getByRole('dialog', { name: en.inbox.shortcuts.title })
     await expect(sheet).toBeVisible()
+    await expectDialogFitsThePhoneWidth(page, sheet)
     await expect(sheet.getByText(en.inbox.shortcuts.labels.list.NEXT_CONVERSATION)).toBeVisible()
     // The binding of the search is listed, with the words of what it does today
     await expect(sheet.getByText(en.inbox.shortcuts.labels.global.COMMAND_PALETTE)).toBeVisible()
@@ -450,6 +452,7 @@ test.describe.serial('the inbox list', () => {
     await page.keyboard.press('e')
     const dialog = page.getByRole('dialog', { name: en.inbox.resolve.title })
     await expect(dialog).toBeVisible()
+    await expectDialogFitsThePhoneWidth(page, dialog)
     // Nothing changed until the agent confirms
     expect(await statusOf(conversationId)).toBe('OPEN')
 

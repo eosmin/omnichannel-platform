@@ -64,12 +64,87 @@ describe('the like of Messenger', () => {
     })
   })
 
+  // MSG-LIKE: the medium and the large like are other stickers of the same thumbs up
+  it.each(['369239343222814', '369239383222810'])(
+    'is the same thumbs up for the sticker %s',
+    id => {
+      const sticker = { type: 'image', payload: { url: STICKER, sticker_id: id } }
+      const message = messageOf({
+        mid: 'm1',
+        attachments: [sticker, { type: 'image', payload: { url: STICKER } }]
+      })
+      expect(message).toMatchObject({ type: MessageType.TEXT, content: MetaMessaging.LIKE_TEXT })
+      expect(message?.media).toBeUndefined()
+      // The id may come as a number, which does not lose digits at this size
+      const byNumber = messageOf({
+        mid: 'm2',
+        attachments: [{ type: 'image', payload: { url: STICKER, sticker_id: Number(id) } }]
+      })
+      expect(byNumber).toMatchObject({ type: MessageType.TEXT, content: MetaMessaging.LIKE_TEXT })
+      expect(byNumber?.media).toBeUndefined()
+      expect(byNumber?.metadata).toBeUndefined()
+    }
+  )
+
   it('is not set off by another sticker', () => {
     const message = messageOf({
       mid: 'm1',
       attachments: [{ type: 'image', payload: { url: PHOTO, sticker_id: 123 } }]
     })
     expect(message).toMatchObject({ type: MessageType.IMAGE, media: [{ ref: PHOTO }] })
+  })
+
+  // MSG-STK: a sticker with an id is marked, so the thread draws it at its own size and not as a photo
+  it('marks a sticker that is not a like as a sticker', () => {
+    const message = messageOf({
+      mid: 'm1',
+      attachments: [{ type: 'image', payload: { url: PHOTO, sticker_id: 123 } }]
+    })
+    expect(message?.metadata).toEqual({ sticker: true })
+  })
+
+  it('does not read a neighbouring id as a like', () => {
+    for (const id of ['369239343222813', '369239383222811', '36923926322282']) {
+      const message = messageOf({
+        mid: 'm1',
+        attachments: [{ type: 'image', payload: { url: STICKER, sticker_id: id } }]
+      })
+      expect(message).toMatchObject({ type: MessageType.IMAGE, metadata: { sticker: true } })
+    }
+  })
+
+  it('marks an attachment of the type sticker that has no id', () => {
+    const message = messageOf({
+      mid: 'm1',
+      attachments: [{ type: 'sticker', payload: { url: PHOTO } }]
+    })
+    expect(message).toMatchObject({ type: MessageType.IMAGE, metadata: { sticker: true } })
+  })
+
+  it('marks a sticker that comes with its image of the same link', () => {
+    const message = messageOf({
+      mid: 'm1',
+      attachments: [
+        { type: 'sticker', payload: { url: PHOTO, sticker_id: 7 } },
+        { type: 'image', payload: { url: PHOTO } }
+      ]
+    })
+    expect(message?.metadata).toEqual({ sticker: true })
+  })
+
+  it('does not mark a photo, nor a photo sent beside a sticker', () => {
+    expect(
+      messageOf({ mid: 'm1', attachments: [{ type: 'image', payload: { url: PHOTO } }] })?.metadata
+    ).toBeUndefined()
+    expect(
+      messageOf({
+        mid: 'm2',
+        attachments: [
+          { type: 'image', payload: { url: PHOTO } },
+          { type: 'image', payload: { url: STICKER, sticker_id: 7 } }
+        ]
+      })?.metadata
+    ).toBeUndefined()
   })
 })
 

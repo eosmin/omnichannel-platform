@@ -96,7 +96,12 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
   const [isScrolling, setScrolling] = useState(false)
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const frame = useRef<number | undefined>(undefined)
-  useMarkRead(conversationId, conversation.data?.unreadCount, isAtEnd)
+  useMarkRead(
+    conversationId,
+    conversation.data?.unreadCount,
+    isAtEnd,
+    (conversation.data?.attention ?? null) !== null
+  )
   const messageIds = useMemo(
     () => items.flatMap(item => (item.kind === 'message' ? [item.message.id] : [])),
     [items]

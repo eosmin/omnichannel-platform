@@ -163,6 +163,10 @@ export function useSaveBusinessHours(
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (hours: BusinessHoursView) => saveBusinessHours(apiClient, storeId, hours),
-    onSuccess: hours => queryClient.setQueryData(RoutingKeys.hours(storeId), hours)
+    onSuccess: hours => {
+      queryClient.setQueryData(RoutingKeys.hours(storeId), hours)
+      // The zone of the hours is the one the store shows every hour in
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.inboxBehavior.store(storeId) })
+    }
   })
 }

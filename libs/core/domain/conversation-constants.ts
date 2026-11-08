@@ -13,11 +13,22 @@ export const ConversationStatusReasons = {
 export type ConversationStatusReason =
   (typeof ConversationStatusReasons)[keyof typeof ConversationStatusReasons]
 
+// Why a conversation asks for attention in the list (`attention.reason`): a mark the system puts and
+// that opening the conversation takes off. One mark with a reason, so that another notice (a reaction,
+// later) can use it without a new column.
+export const AttentionReasons = {
+  // A snoozed conversation woke up because its time ran out
+  SNOOZE_WOKE: 'snooze_woke'
+} as const
+export type AttentionReason = (typeof AttentionReasons)[keyof typeof AttentionReasons]
+
 // What a SYSTEM message of the thread says happened (its `metadata.event`); the thread draws it as a
 // divider, in the language of who reads it
 export const SystemMessageEvents = {
   RESOLVED: 'resolved',
   REOPENED: 'reopened',
+  // The Undo of a resolution just made: the history keeps both lines, the second says it was taken back
+  RESOLVE_UNDONE: 'resolve_undone',
   ARCHIVED: 'archived',
   MARKED_SPAM: 'marked_spam',
   UNMARKED_SPAM: 'unmarked_spam',
@@ -274,6 +285,8 @@ export const ConversationConflictReasons = {
 export const ConversationLimits = {
   RESOLUTION_REASON_MAX_LENGTH: 500,
   MAX_SNOOZE_DAYS: 365,
+  // The reminder an agent leaves when snoozing ("what is this waiting for"); text of the agent
+  SNOOZE_NOTE_MAX_LENGTH: 140,
   PREVIEW_MAX_LENGTH: 140,
   // The tags of a conversation travel with every row of the list: the number is bounded
   MAX_TAGS_PER_CONVERSATION: 20,

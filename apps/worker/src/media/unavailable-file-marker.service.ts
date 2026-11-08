@@ -38,7 +38,9 @@ export class UnavailableFileMarker {
     index: number,
     code: MediaUnavailableCode,
     // Where the file came from, kept only when an agent can ask for it again (see `lostFileSourceSchema`)
-    source?: LostFileSource
+    source?: LostFileSource,
+    // Only for whoever reads the row to see why a link was refused: the host of it, never the link
+    diagnostic?: { host: string }
   ): Promise<void> {
     try {
       await this.prisma.transaction(async tx => {
@@ -68,10 +70,20 @@ export class UnavailableFileMarker {
         // for a place already listed (a file asked for again that now fails otherwise) replaces it, so the
         // thread stops offering a download that cannot succeed.
         // (a source that was not kept before is added when this answer brings one)
-        if (existing?.code === code && (source === undefined || existing.source !== undefined))
+        // (the same for the host of a refused link: an entry written without it gets it when it comes)
+        if (
+          existing?.code === code &&
+          (source === undefined || existing.source !== undefined) &&
+          (diagnostic === undefined || existing.host === diagnostic.host)
+        )
           return
         const kept = keptMetadataSchema.safeParse(message.metadata).data ?? {}
-        const entry = source === undefined ? { index, code } : { index, code, source }
+        const entry = {
+          index,
+          code,
+          ...(source === undefined ? {} : { source }),
+          ...(diagnostic === undefined ? {} : { host: diagnostic.host })
+        }
         await tx.message.updateMany({
           where: { id: messageId, storeId },
           data: {

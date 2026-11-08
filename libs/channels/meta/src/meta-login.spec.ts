@@ -23,6 +23,13 @@ const graphError = (status: number, code: number): Response =>
   json(status, { error: { code, type: 'OAuthException', message: 'SECRET-text-of-meta' } })
 
 type Handler = (url: URL, init: RequestInit) => Response
+
+const debugAnswer = (granular: unknown[] = []): Response =>
+  json(200, {
+    data: { is_valid: true, type: 'USER', expires_at: 0, scopes: [], granular_scopes: granular }
+  })
+// What `debug_token` says when the test does not care about it: no Page ticked in the dialog
+const NO_GRANTS: Record<string, Handler> = { 'POST debug_token': () => debugAnswer() }
 interface FakeGraph {
   requests: { method: string; url: URL; init: RequestInit }[]
   rejected: string[]
@@ -42,7 +49,7 @@ function strictGraph(routes: Record<string, Handler>): FakeGraph {
     const method = init.method ?? 'GET'
     requests.push({ method, url, init })
     const key = `${method} ${url.pathname.replace(/^\/v\d+\.\d+\//, '')}`
-    const handler = routes[key]
+    const handler = { ...NO_GRANTS, ...routes }[key]
     if (url.origin !== 'https://graph.facebook.com' || handler === undefined) {
       rejected.push(`${method} ${url.origin}${url.pathname}`)
       return Promise.resolve(graphError(400, 100))
@@ -268,6 +275,116 @@ describe('MetaLogin', () => {
       ])
     })
 
+    it('finds the Pages ticked in the dialog when me/accounts and the portfolios give none', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () =>
+          debugAnswer([
+            { scope: 'pages_show_list', target_ids: [PAGE] },
+            { scope: 'pages_messaging', target_ids: [PAGE, OTHER_PAGE] },
+            // The target of this one is an Instagram account, not a Page
+            { scope: 'instagram_basic', target_ids: [ACCOUNT] }
+          ]),
+        [`GET ${PAGE}`]: asUser(pageA),
+        [`GET ${OTHER_PAGE}`]: asUser(pageB)
+      })
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets.map(asset => asset.id)).toEqual([PAGE, OTHER_PAGE])
+      expect(assets[0]?.linkedAccount).toEqual({ id: ACCOUNT, username: 'smartgadgetsv_' })
+      expect(graph.rejected).toEqual([])
+      // One question about the token, with the proof of the app and not the token of the person
+      const asked = graph.requests.filter(({ url }) => url.pathname.endsWith('debug_token'))
+      expect(asked).toHaveLength(1)
+      expect(bearer(asked[0]?.init ?? {})).not.toContain(USER_TOKEN)
+    })
+
+    it('does not read again a ticked Page that another way already found', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [pageA] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () =>
+          debugAnswer([{ scope: 'pages_show_list', target_ids: [PAGE, OTHER_PAGE] }]),
+        [`GET ${OTHER_PAGE}`]: asUser(pageB)
+      })
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets.map(asset => asset.id)).toEqual([PAGE, OTHER_PAGE])
+      expect(graph.requests.some(({ url }) => url.pathname.endsWith(`/${PAGE}`))).toBe(false)
+    })
+
+    it('keeps what the lists found when debug_token or a ticked Page fails', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [pageA] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () => graphError(500, 2)
+      })
+      await expect(login().listAssets({ userToken: USER_TOKEN })).resolves.toHaveLength(1)
+      expect(graph.rejected).toEqual([])
+      graph.restore()
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [pageA] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () =>
+          debugAnswer([{ scope: 'pages_show_list', target_ids: [OTHER_PAGE] }]),
+        [`GET ${OTHER_PAGE}`]: () => graphError(400, 100)
+      })
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets.map(asset => asset.id)).toEqual([PAGE])
+    })
+
+    it('is empty when debug_token fails and the lists are empty: the screen asks for the number', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () => graphError(500, 2)
+      })
+      await expect(login().listAssets({ userToken: USER_TOKEN })).resolves.toEqual([])
+    })
+
+    it('fails, and does not say there is nothing, when a ticked Page has an outage and nothing else was found', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () =>
+          debugAnswer([{ scope: 'pages_show_list', target_ids: [OTHER_PAGE] }]),
+        [`GET ${OTHER_PAGE}`]: () => graphError(500, 2)
+      })
+      await expect(login().listAssets({ userToken: USER_TOKEN })).rejects.toBeInstanceOf(
+        PluginError
+      )
+    })
+
+    it('reads the good targets when one element of granular_scopes does not fit', async () => {
+      graph = strictGraph({
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () =>
+          debugAnswer([
+            { target_ids: [OTHER_PAGE] },
+            'nonsense',
+            { scope: 'pages_messaging', target_ids: [PAGE, 7, null] }
+          ]),
+        [`GET ${PAGE}`]: asUser(pageA)
+      })
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets.map(asset => asset.id)).toEqual([PAGE])
+    })
+
+    it('reads at most a bounded number of ticked Pages and only plain ids', async () => {
+      const ids = Array.from({ length: 40 }, (_, i) => `1100000000001${String(i).padStart(2, '0')}`)
+      const routes: Record<string, Handler> = {
+        'GET me/accounts': asUser({ data: [] }),
+        'GET me/businesses': asUser({ data: [] }),
+        'POST debug_token': () =>
+          debugAnswer([{ scope: 'pages_messaging', target_ids: [...ids, '../me', 'abc'] }])
+      }
+      for (const id of ids) routes[`GET ${id}`] = asUser({ id })
+      graph = strictGraph(routes)
+      const assets = await login().listAssets({ userToken: USER_TOKEN })
+      expect(assets).toHaveLength(MetaOAuth.MAX_GRANTED_PAGES)
+      expect(graph.rejected).toEqual([])
+    })
+
     it('lists a Page once when two ways find it', async () => {
       graph = strictGraph({
         'GET me/accounts': asUser({ data: [pageA] }),
@@ -285,7 +402,10 @@ describe('MetaLogin', () => {
         [`GET ${BUSINESS_A}/owned_pages`]: asUser({ data: [] })
       })
       await login().listAssets({ userToken: USER_TOKEN })
-      for (const { url } of graph.requests) {
+      // `debug_token` is no list: the one question about the token, with no field and no page
+      for (const { url } of graph.requests.filter(
+        ({ url }) => !url.pathname.endsWith('debug_token')
+      )) {
         expect(url.searchParams.get('fields') ?? '').not.toContain('access_token')
         expect(url.searchParams.get('limit')).toBe(MetaOAuth.LIST_LIMIT)
       }

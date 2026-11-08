@@ -31,6 +31,7 @@ export function MediaLightbox({
   onNext?: () => void
 }): ReactElement {
   const t = useTranslations('inbox.thread.media')
+  const canWalk = onPrevious !== undefined || onNext !== undefined
   return (
     <Dialog open={file !== null} onOpenChange={open => (open ? undefined : onClose())}>
       {file === null ? null : (
@@ -44,7 +45,11 @@ export function MediaLightbox({
           }}
         >
           <DialogTitle className="truncate pr-8 text-base">{file.filename}</DialogTitle>
-          <DialogDescription className="sr-only">{t('lightboxDescription')}</DialogDescription>
+          {/* Radix points aria-describedby of the dialog at this line: how to close it and, where there are
+              several files, how to walk them */}
+          <DialogDescription className="sr-only">
+            {t(canWalk ? 'lightboxHint' : 'lightboxHintSingle')}
+          </DialogDescription>
           <div className="bg-muted flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md">
             {file.src === null ? (
               <p role="status" className="text-muted-foreground p-8 text-sm">
@@ -91,7 +96,12 @@ export function MediaLightbox({
               </a>
             </Button>
             <DialogClose asChild>
-              <Button variant="secondary" size="sm">
+              <Button
+                variant="secondary"
+                size="sm"
+                title={t('closeWithKey')}
+                aria-keyshortcuts="Escape"
+              >
                 {t('close')}
               </Button>
             </DialogClose>

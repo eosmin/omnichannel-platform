@@ -75,7 +75,9 @@ export const changeStatusSchema = z
       .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
       .optional(),
     // The saved reply sent to the customer once the Undo is over; the api reads its text
-    closingSnippetId: uuidSchema.optional()
+    closingSnippetId: uuidSchema.optional(),
+    // Reopening because the person pressed Undo on the toast of a resolution
+    undoesResolution: z.literal(true).optional()
   })
   .refine(
     body => body.resolutionReason === undefined || body.status === ConversationStatus.RESOLVED,
@@ -83,6 +85,9 @@ export const changeStatusSchema = z
       message: 'a resolution reason goes with resolving'
     }
   )
+  .refine(body => body.undoesResolution === undefined || body.status === ConversationStatus.OPEN, {
+    message: 'only reopening undoes a resolution'
+  })
   .refine(
     body => body.closingSnippetId === undefined || body.status === ConversationStatus.RESOLVED,
     { message: 'a closing message goes with resolving' }
@@ -91,7 +96,15 @@ export const changeStatusSchema = z
 export const assignSchema = z.strictObject({ userId: uuidSchema.nullable() })
 
 export const snoozeSchema = z.strictObject({
-  until: z.iso.datetime({ offset: true }).transform(value => new Date(value))
+  until: z.iso.datetime({ offset: true }).transform(value => new Date(value)),
+  // The reminder of why it waits: trimmed, an empty one is none; text of the agent
+  note: z
+    .string()
+    .trim()
+    .max(ConversationLimits.SNOOZE_NOTE_MAX_LENGTH)
+    .refine(value => !value.includes('\0'), { message: 'contains a NUL character' })
+    .transform(value => (value === '' ? null : value))
+    .optional()
 })
 
 export const attachTagSchema = z.strictObject({ tagId: uuidSchema })

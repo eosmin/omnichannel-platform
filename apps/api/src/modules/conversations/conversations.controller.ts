@@ -173,7 +173,8 @@ export class ConversationsController {
   ): Promise<ConversationDetail> {
     const options = {
       actor: viewerOf(user.id, held),
-      ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason })
+      ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason }),
+      ...(body.undoesResolution === undefined ? {} : { undoesResolution: true })
     }
     if (body.closingSnippetId !== undefined) {
       return this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
@@ -191,7 +192,13 @@ export class ConversationsController {
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) body: SnoozeBody
   ): Promise<ConversationDetail> {
-    return this.conversations.snooze(store.id, conversationId, body.until, viewerOf(user.id, held))
+    return this.conversations.snooze(
+      store.id,
+      conversationId,
+      body.until,
+      viewerOf(user.id, held),
+      body.note ?? null
+    )
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)

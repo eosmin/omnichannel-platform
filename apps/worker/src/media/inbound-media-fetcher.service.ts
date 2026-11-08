@@ -45,7 +45,14 @@ import { UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { refusalOf } from '../outbound/send-refusal'
 
-import { bareType, FileRefused, GENERIC_TYPES, keptContentType, readLimited } from './fetch-helpers'
+import {
+  bareType,
+  FileRefused,
+  GENERIC_TYPES,
+  keptContentType,
+  linkHostOf,
+  readLimited
+} from './fetch-helpers'
 import { inboundMediaId } from './inbound-media-id'
 import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
@@ -158,18 +165,23 @@ export class InboundMediaFetcher {
         error instanceof UnsafeMediaLinkError
       ) {
         // The same answer on every try: the message keeps no file
+        const unsafe = error instanceof UnsafeUrlError || error instanceof UnsafeMediaLinkError
+        // Which host was refused, and only the host: it is how a CDN missing from the list of the
+        // channel is found, and a whole link can carry a signature that opens the file
+        const host = unsafe ? linkHostOf(job.mediaRef) : null
         this.logger.warn(
-          { messageId, index, reason: error.message },
+          {
+            messageId,
+            index,
+            reason: error.message,
+            pluginId: connection.pluginId,
+            ...(host === null ? {} : { host })
+          },
           'a file of the customer was not kept'
         )
-        await this.marker.mark(
-          storeId,
-          messageId,
-          index,
-          error instanceof UnsafeUrlError || error instanceof UnsafeMediaLinkError
-            ? MediaUnavailableCodes.UNSAFE_LINK
-            : MediaUnavailableCodes.REFUSED
-        )
+        const code = unsafe ? MediaUnavailableCodes.UNSAFE_LINK : MediaUnavailableCodes.REFUSED
+        if (host === null) await this.marker.mark(storeId, messageId, index, code)
+        else await this.marker.mark(storeId, messageId, index, code, undefined, { host })
         return
       }
       const refused = refusalOf(error)

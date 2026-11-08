@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  AttentionReasons,
   AuthorType,
   ChannelIds,
   ConversationStatus,
@@ -88,6 +89,12 @@ describe('bridgedPayload', () => {
       visibility: { hidden: false, assignedTo: null }
     },
     [Events.CONVERSATION_READ]: read,
+    [Events.CONVERSATION_ATTENTION_CHANGED]: {
+      storeId: read.storeId,
+      conversationId: read.conversationId,
+      reason: AttentionReasons.SNOOZE_WOKE,
+      visibility: read.visibility
+    },
     [Events.MESSAGE_QUEUED]: { ...message, clientMessageId: 'key-1' },
     [Events.MESSAGE_NOTE_ADDED]: message,
     [Events.MESSAGE_SENT]: status,

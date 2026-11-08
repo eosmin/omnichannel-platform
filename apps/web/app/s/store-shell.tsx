@@ -9,6 +9,7 @@ import { AppPaths } from '@platform/api-client'
 import { CustomerDrawerProvider } from '../../components/customers/customer-drawer-context'
 import { RealtimeProvider } from '../../components/providers/realtime-provider'
 import { StoreProvider } from '../../components/providers/store-context'
+import { StoreTimeZone } from '../../components/providers/time-zone-provider'
 import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
 import { StoreNav } from '../../components/shell/store-nav'
@@ -45,6 +46,7 @@ export function StoreShell({
         return (
           <StoreProvider membership={membership}>
             <Remember storeId={storeId} />
+            <StoreTimeZone />
             <PushSync storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
               <CustomerDrawerProvider>

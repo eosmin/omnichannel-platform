@@ -229,7 +229,11 @@ describe('The list of conversations at the size of a real inbox', () => {
   })
 
   it('answers the page where the conversations without a date begin just as fast', async () => {
-    const cursor = encodeConversationCursor({ lastMessageAt: new Date(0), id: randomUUID() })
+    const cursor = encodeConversationCursor({
+      attentionAt: null,
+      lastMessageAt: new Date(0),
+      id: randomUUID()
+    })
 
     const page = await admin.get(ApiRoutes.conversations.list).query({ cursor })
     const times = await measure(() => admin.get(ApiRoutes.conversations.list).query({ cursor }))
@@ -251,5 +255,50 @@ describe('The list of conversations at the size of a real inbox', () => {
     expect(counts.mine).toBe(VISIBLE_MINE)
     expect(counts.unassigned).toBe(VISIBLE - VISIBLE_MINE)
     expect(percentile95(times)).toBeLessThan(P95_LIMIT_MS)
+  })
+
+  describe('with marks of attention up', () => {
+    const MARKED = 12
+
+    beforeAll(async () => {
+      // A few conversations woke up: the old ones of the store carry the mark, as after a long snooze
+      await owner.$executeRawUnsafe(
+        `UPDATE conversations SET attention_reason = 'snooze_woke', attention_at = now() - (row_number_in_store * interval '1 minute')
+         FROM (
+           SELECT id, row_number() OVER (ORDER BY last_message_at ASC NULLS LAST) AS row_number_in_store
+           FROM conversations WHERE store_id = '${storeId}' AND status = 'OPEN' AND last_message_at IS NOT NULL
+           ORDER BY last_message_at ASC LIMIT ${MARKED}
+         ) AS pick
+         WHERE conversations.id = pick.id`
+      )
+      await owner.$executeRawUnsafe('ANALYZE conversations')
+    }, 60_000)
+
+    it('puts them first and answers the first page and the page after the marks as fast', async () => {
+      const first = await admin.get(ApiRoutes.conversations.list).query({ limit: MARKED + 5 })
+      const items = (first.body as { data: { attention: unknown }[]; nextCursor: string }).data
+      expect(items.slice(0, MARKED).every(item => item.attention !== null)).toBe(true)
+      expect(items.slice(MARKED).every(item => item.attention === null)).toBe(true)
+      const { nextCursor } = first.body as { nextCursor: string }
+
+      const times = await measure(() => admin.get(ApiRoutes.conversations.list))
+      const after = await measure(() =>
+        admin.get(ApiRoutes.conversations.list).query({ cursor: nextCursor })
+      )
+
+      expect(percentile95(times)).toBeLessThan(P95_LIMIT_MS)
+      expect(percentile95(after)).toBeLessThan(P95_LIMIT_MS)
+    })
+
+    it('serves the order of the list from its index, without sorting the store', async () => {
+      const plan = await owner.$queryRawUnsafe<{ 'QUERY PLAN': string }[]>(
+        `EXPLAIN SELECT id FROM conversations WHERE store_id = '${storeId}'
+         ORDER BY attention_at DESC NULLS LAST, last_message_at DESC NULLS LAST, id DESC LIMIT 26`
+      )
+
+      const text = plan.map(line => line['QUERY PLAN']).join('\n')
+      expect(text).toContain('conversations_store_list_order_idx')
+      expect(text).not.toMatch(/\bSort\b/)
+    })
   })
 })

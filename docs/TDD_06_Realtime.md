@@ -652,13 +652,13 @@ const { IN_APP, PUSH, EMAIL, SOUND } = NotificationChannel   // enum from TDD_02
 export const NotificationDefaults: Record<NotificationType, NotificationDefault> = {
   [NotificationTypes.CONVERSATION_ASSIGNED]:            { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH, SOUND] },
   [NotificationTypes.CONVERSATION_MENTIONED]:           { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH, EMAIL, SOUND] },
-  [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]:    { severity: NotificationSeverity.INFO,    channels: [IN_APP] },
+  [NotificationTypes.CONVERSATION_UNASSIGNED_QUEUE]:    { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH] },
   [NotificationTypes.CONVERSATION_SNOOZE_EXPIRED]:      { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH, SOUND] },
   [NotificationTypes.CONVERSATION_REOPENED]:            { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH] },
   [NotificationTypes.CONVERSATION_SLA_BREACH]:          { severity: NotificationSeverity.WARNING, channels: [IN_APP, PUSH, EMAIL, SOUND] },
   [NotificationTypes.CONVERSATION_ESCALATION_SUGGESTED]:{ severity: NotificationSeverity.WARNING, channels: [IN_APP, PUSH] },
   [NotificationTypes.CONVERSATION_AI_HANDOFF]:          { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH, SOUND] },
-  [NotificationTypes.MESSAGE_RECEIVED]:                 { severity: NotificationSeverity.INFO,    channels: [IN_APP, SOUND] },
+  [NotificationTypes.MESSAGE_RECEIVED]:                 { severity: NotificationSeverity.INFO,    channels: [IN_APP, PUSH, SOUND] },
   [NotificationTypes.MESSAGE_FAILED]:                   { severity: NotificationSeverity.ERROR,   channels: [IN_APP, PUSH] },
   [NotificationTypes.ORDER_CREATED]:                    { severity: NotificationSeverity.INFO,    channels: [IN_APP] },
   [NotificationTypes.ORDER_STATUS_CHANGED]:             { severity: NotificationSeverity.INFO,    channels: [IN_APP] },
@@ -1055,7 +1055,7 @@ Settings → My Account → Notifications
 CONVERSATIONS
   Assigned to me                  [x]   [x]   [ ]    [x]
   Mentioned in a note             [x]   [x]   [x]    [x]
-  New unassigned conversation     [x]   [ ]   [ ]    [ ]
+  New unassigned conversation     [x]   [x]   [ ]    [ ]
   Snooze expired                  [x]   [x]   [ ]    [x]
   Reopened by the customer        [x]   [x]   [ ]    [ ]
   SLA breach warning              [x]   [x]   [x]    [x]
@@ -1063,7 +1063,7 @@ CONVERSATIONS
   AI handed off to the team       [x]   [x]   [ ]    [x]
 
 MESSAGES
-  New message in my conversation  [x]   [ ]   [ ]    [x]
+  New message in my conversation  [x]   [x]   [ ]    [x]
   Message failed to send          [x]   [x]   [ ]    [ ]
 
 ORDERS
@@ -1091,6 +1091,13 @@ CROSS-STORE
   [x] Notify me about conversations in my other stores
   [ ] Only where I am a supervisor
 ```
+
+A customer message pushes by default (owner, 2026-11-08): to the owner of an open conversation
+(once until they read it) and, for a conversation nobody owns, to who may take it (the unassigned
+queue: the same readers and the same permissions as the in-app line, per `storeId`). The push never
+carries the text of the message or the name of the customer (its body is the generic sentence
+of the type): both stay in the center. It does not name the store either (debt in the plan, Step 7.7). A person turns it off per type in this matrix, and
+quiet hours hold it back like any push.
 
 Per-type toggles are stored per `(userId, storeId, type)` in `NotificationPreference`;
 quiet hours, digest and cross-store are user-level in `UserNotificationSettings`.

@@ -5,6 +5,7 @@ import { AppPaths } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { profileOf, signInByApi, writeNote } from '../support/api'
 import { newConversationIn, storeIdNamed } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -40,6 +41,7 @@ test.describe('the notification center', () => {
     await withCount.click()
 
     const panel = page.getByRole('dialog', { name: bell.title })
+    await expectDialogFitsThePhoneWidth(page, panel)
     const item = panel.getByRole('button', {
       name: new RegExp(en.notifications.conversation.mentioned.title)
     })

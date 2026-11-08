@@ -207,7 +207,7 @@ export function changeConversationStatus(
   conversationId: string,
   status: SettableConversationStatus,
   // With RESOLVED only. The closing message is sent by the server once the time to undo is over.
-  options: { resolutionReason?: string; closingSnippetId?: string } = {}
+  options: { resolutionReason?: string; closingSnippetId?: string; undoesResolution?: true } = {}
 ): Promise<ConversationDetailView> {
   return client.request(ApiRoutes.conversations.status(conversationId), {
     method: 'PATCH',
@@ -221,11 +221,13 @@ export function snoozeConversation(
   client: ApiClient,
   storeId: string,
   conversationId: string,
-  until: Date
+  until: Date,
+  // What the agent wants to remember; the server trims it and limits it
+  note?: string
 ): Promise<ConversationDetailView> {
   return client.request(ApiRoutes.conversations.snooze(conversationId), {
     method: 'POST',
-    body: { until: until.toISOString() },
+    body: { until: until.toISOString(), ...(note === undefined ? {} : { note }) },
     schema: conversationDetailSchema,
     storeId
   })

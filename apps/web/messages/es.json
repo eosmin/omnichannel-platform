@@ -108,7 +108,7 @@
       "push": {
         "title": "Push en este dispositivo",
         "label": "Enviar notificaciones push a este navegador",
-        "hint": "La columna Push de arriba elige cuáles notificaciones lo usan.",
+        "hint": "La columna Push de arriba elige cuáles notificaciones lo usan. Por defecto avisan un mensaje de cliente en tu conversación y una conversación sin responsable que puedas tomar; si no lo quieres, apaga la casilla Push de «Mensaje nuevo en mi conversación» o de «Nueva conversación sin asignar».",
         "blocked": "Este navegador bloqueó las notificaciones. Permítelas en la configuración del sitio para activar el push.",
         "unsupported": "Este navegador no puede recibir notificaciones push.",
         "notConfigured": "Las notificaciones push no están configuradas en este entorno."
@@ -941,6 +941,8 @@
     "clearFilters": "Quitar filtros",
     "youPrefix": "Tú: {text}",
     "notePrefix": "Nota: {text}",
+    "woke": "Despertó",
+    "wokeNote": "Despertó: {note}",
     "noMessages": "Aún no hay mensajes",
     "unreadCount": "{count, plural, one {# mensaje sin leer} other {# mensajes sin leer}}",
     "snoozed": "Pospuesta",
@@ -1061,7 +1063,9 @@
         "downloadFile": "Descargar {name}",
         "download": "Descargar",
         "close": "Cerrar",
-        "lightboxDescription": "El archivo en tamaño completo",
+        "lightboxHint": "Esc cierra, flechas navegan",
+        "lightboxHintSingle": "Esc cierra",
+        "closeWithKey": "Cerrar (Esc)",
         "previous": "Archivo anterior",
         "next": "Archivo siguiente",
         "notKept": {
@@ -1133,16 +1137,18 @@
       "system": {
         "resolved": "{actorKind, select, user {Resuelta por {actor}} other {Resuelta automáticamente}}",
         "reopened": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta automáticamente}}",
+        "resolve_undone": "{actorKind, select, user {{actor} deshizo la resolución} other {Se deshizo la resolución}}",
         "archived": "{actorKind, select, user {Archivada por {actor}} other {Archivada automáticamente}}",
         "marked_spam": "{actorKind, select, user {Marcada como spam por {actor}} other {Marcada como spam automáticamente}}",
         "unmarked_spam": "{actorKind, select, user {{actor} quitó la marca de spam} other {Se quitó la marca de spam automáticamente}}",
         "snoozed": "{actorKind, select, user {Pospuesta por {actor}} other {Pospuesta automáticamente}}",
         "snoozedUntil": "hasta {until}",
-        "woken": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta automáticamente}}",
+        "woken": "{actorKind, select, user {Reabierta por {actor}} other {Despertó}}",
         "assigned": "{actorKind, select, user {{actor} la asignó a {assignee}} other {Asignada a {assignee}}}",
         "unassigned": "{actorKind, select, user {{actor} la dejó sin asignar} other {Quedó sin asignar}}",
         "unknown": "La conversación cambió",
         "reason": "Motivo: {reason}",
+        "reminder": "Recordatorio: {note}",
         "reasons": {
           "snooze_expired": "terminó la pausa",
           "auto_archived": "estuvo inactiva",
@@ -1301,6 +1307,8 @@
     "snooze": {
       "title": "Posponer la conversación",
       "description": "Sale de la bandeja y vuelve, abierta, a la hora que elijas. Si el cliente escribe antes, vuelve de inmediato.",
+      "noteLabel": "¿Para qué la pospones? (opcional)",
+      "noteHint": "Se muestra cuando despierte. Máximo {max} caracteres.",
       "presets": {
         "laterToday": "Más tarde hoy",
         "tomorrowMorning": "Mañana por la mañana",
@@ -1759,7 +1767,7 @@
           "loading": "Cargando tus Páginas…",
           "close": "Cerrar",
           "legend": "Páginas disponibles",
-          "none": "Facebook no mostró ninguna Página. Escribe el número de identificación de tu Página.",
+          "none": "Facebook no mostró ninguna Página. Vuelve a conectar y marca tu Página en el diálogo de Facebook, o escribe el número de identificación de tu Página.",
           "noInstagram": "Sin Instagram vinculado",
           "instagram": "Instagram: @{username}",
           "typedLabel": "Número de identificación de la Página",
