@@ -23,10 +23,12 @@ export function TopBar({
   nav?: ReactNode
 }): ReactElement {
   return (
-    // What does not fit gives way from the left: the title shortens, the store name shortens, the links
-    // scroll on their own. The bell and the account menu never leave the window (the inbox clips the
-    // page, so a control pushed out would be out of reach)
-    <header className="bg-background flex h-14 items-center gap-3 border-b px-4">
+    // What does not fit gives way from the left: the title shortens, the store name shortens. On a phone the
+    // links take a row of their own under the bar (four of them do not fit beside the store and the account
+    // menu, and scrolling cut a word: "Custome"); from `md` they scroll on their own if they ever overflow.
+    // The bell and the account menu never leave the window (the inbox clips the page, so a control pushed
+    // out would be out of reach)
+    <header className="bg-background flex items-center gap-3 border-b px-4 max-md:min-h-14 max-md:flex-wrap max-md:gap-y-0 md:h-14">
       {/* On a phone the title leaves the bar (it stays for a screen reader) so that the store name can be read */}
       <Link
         href={AppPaths.home}
@@ -41,7 +43,8 @@ export function TopBar({
           currentStoreId={currentStoreId}
         />
       </div>
-      {nav}
+      {/* On a phone the links are the row under the bar, whatever they are made of */}
+      <div className="min-w-0 max-md:order-last max-md:basis-full">{nav}</div>
       <div className="flex-1" />
       <div className="flex shrink-0 items-center gap-1">
         {currentStoreId !== null && <NotificationCenter storeId={currentStoreId} />}
