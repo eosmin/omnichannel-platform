@@ -1,6 +1,5 @@
 'use client'
 
-import { useIsMutating } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
@@ -22,9 +21,9 @@ const NOTICE_KEYS = {
   [CaptionState.QUEUED]: 'captionQueued'
 } as const
 
-// What the thread says of the text under a file that went apart from it, and the button to send only
-// that text again when the person may (the api checks it again); a text that may already be with the customer asks
-// first, as the one under a file does. Nothing is drawn for a text that went.
+// What the thread says of the text of a message that the channel sent apart from its file (Meta), and the button
+// to send only that text again when the person may (the api checks it again); a text that may already be with the
+// customer asks first. Nothing is drawn for a text that went.
 export function CaptionNotice(props: {
   message: MessageView
   conversationId: string
@@ -46,9 +45,6 @@ function Notice({
   const t = useTranslations('inbox.thread')
   const errorText = useErrorText()
   const { resendCaption } = useMessageMutations(conversationId, message.id)
-  const isBusy =
-    useIsMutating({ mutationKey: ['resend-file-caption', message.id] }) > 0 ||
-    resendCaption.isPending
   const state = message.captionState
   if (state === null) return null
   return (
@@ -62,7 +58,7 @@ function Notice({
           <CaptionResend
             label={t('resendCaption')}
             state={state}
-            isBusy={isBusy}
+            isBusy={resendCaption.isPending}
             onSend={() => {
               resendCaption.mutateAsync().catch((error: unknown) => toast.error(errorText(error)))
             }}

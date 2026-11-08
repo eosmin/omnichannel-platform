@@ -30,9 +30,6 @@ export interface MessageActions {
   discard: boolean
   // Only the text under a file, sent again: drawn in the bubble beside the notice, not in the menu
   resendCaption: boolean
-  // The same for the text under any file of the message (each file says whether its own text may be sent again):
-  // the state of the first file is the one of the message, so this one does not read it
-  resendFileCaption: boolean
   // A file of the customer that was lost, downloaded again: drawn in the bubble beside the line that says so
   refetchFile: boolean
   // The kept text of a message the customer deleted
@@ -49,7 +46,6 @@ const NONE: MessageActions = {
   resend: false,
   discard: false,
   resendCaption: false,
-  resendFileCaption: false,
   refetchFile: false,
   viewDeleted: false,
   revisions: false
@@ -119,11 +115,8 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
         : ClientPermissions.MESSAGES_SEND
     )
   const isEditPending = message.pendingEdit
-  // The text under a file is on its way: the message is left alone until it settles
+  // The text of the message is on its way: the message is left alone until it settles
   const isCaptionQueued = message.captionState === CaptionState.QUEUED
-  // One text at a time for a message: the api refuses another while any file has one on its way
-  const isAnyCaptionQueued =
-    isCaptionQueued || message.media.some(file => file.captionState === CaptionState.QUEUED)
   return {
     ...NONE,
     react,
@@ -147,7 +140,6 @@ export function messageActionsOf(message: MessageView, viewer: ActionViewer): Me
       !isEditPending &&
       (message.captionState === CaptionState.FAILED ||
         message.captionState === CaptionState.UNCONFIRMED),
-    resendFileCaption: maySend && reached && !isEditPending && !isAnyCaptionQueued,
     resend: mayResend,
     // Only what is known not to have reached the customer: what may have gone out can be sent again
     // (with a warning) and never discarded, or the team would lose the trace of a message that was read

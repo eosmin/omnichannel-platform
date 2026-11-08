@@ -32,19 +32,13 @@ export function AlbumCaptionMark({ number }: { number: number }): ReactElement {
 // The texts of a reply with several pictures, one line per picture that has something to say, in the order of the
 // pictures (the first one first) and each with its number. A picture with no text has no line. The first picture's
 // line is the text of the message (`lead`, drawn by the thread as it draws any text); the others are the text
-// under their file, with how it went and the button to send it again.
+// under their file.
 export function AlbumCaptionList({
   lines,
-  lead,
-  messageId,
-  conversationId,
-  canResend
+  lead
 }: {
   lines: readonly AlbumCaptionLine<MediaFile>[]
   lead: ReactNode
-  messageId: string
-  conversationId: string
-  canResend: boolean
 }): ReactElement {
   const t = useTranslations('inbox.thread')
   return (
@@ -59,16 +53,7 @@ export function AlbumCaptionList({
             {line.number}
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            {line.isLead ? (
-              lead
-            ) : (
-              <FileCaption
-                file={line.file}
-                messageId={messageId}
-                conversationId={conversationId}
-                canResend={canResend}
-              />
-            )}
+            {line.isLead ? lead : <FileCaption file={line.file} />}
           </div>
         </li>
       ))}

@@ -35,9 +35,7 @@ const thread = en.inbox.thread
 async function replyWithPictures(
   storeId: string,
   captions: (string | null)[],
-  captionState?: CaptionState,
-  // The state of the text of the file at each place (the first one's is the state of the message)
-  fileStates: Partial<Record<number, CaptionState>> = {}
+  captionState?: CaptionState
 ): Promise<string> {
   const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
   const message = await addMessageTo(storeId, conversationId, {
@@ -56,10 +54,7 @@ async function replyWithPictures(
       processed: 'with-variants',
       position,
       delivery: DeliveryStatus.SENT,
-      ...(position > 0 && caption !== null ? { caption } : {}),
-      ...(position > 0 && fileStates[position] !== undefined
-        ? { captionState: fileStates[position] }
-        : {})
+      ...(position > 0 && caption !== null ? { caption } : {})
     })
   }
   return conversationId
@@ -95,15 +90,15 @@ test('the text of the message sent again asks first when it may have gone, and n
     await page.goto(AppPaths.store.conversation(storeId, unconfirmed))
     await expect(list.getByText(thread.captionUnconfirmed)).toBeVisible()
     await list.getByRole('button', { name: thread.resendCaption }).click()
-    const dialog = page.getByRole('alertdialog', { name: thread.fileCaptionResendTitle })
-    await expect(dialog).toContainText(thread.fileCaptionResendMaybeSent)
-    await dialog.getByRole('button', { name: thread.fileCaptionResendCancel }).click()
+    const dialog = page.getByRole('alertdialog', { name: thread.captionResendTitle })
+    await expect(dialog).toContainText(thread.captionResendMaybeSent)
+    await dialog.getByRole('button', { name: thread.captionResendCancel }).click()
     await expect(dialog).toHaveCount(0)
     expect(asked).toHaveLength(0)
     await list.getByRole('button', { name: thread.resendCaption }).click()
     await page
-      .getByRole('alertdialog', { name: thread.fileCaptionResendTitle })
-      .getByRole('button', { name: thread.fileCaptionResendConfirm })
+      .getByRole('alertdialog', { name: thread.captionResendTitle })
+      .getByRole('button', { name: thread.captionResendConfirm })
       .click()
     await expect.poll(() => asked.length).toBe(1)
 
@@ -114,6 +109,19 @@ test('the text of the message sent again asks first when it may have gone, and n
     await list.getByRole('button', { name: thread.resendCaption }).click()
     await expect.poll(() => asked.length).toBe(2)
     await expect(page.getByRole('alertdialog')).toHaveCount(0)
+
+    // Not held any more: the api takes the request of a text that failed, with its file sent and the window open,
+    // and answers with the message
+    await page.unroute('**/messages/*/resend-caption')
+    const real = await replyWithPictures(storeId, ['Text'], CaptionState.FAILED)
+    await page.goto(AppPaths.store.conversation(storeId, real))
+    await expect(list.getByText(thread.captionFailed)).toBeVisible()
+    const answered = page.waitForResponse(
+      response =>
+        response.request().method() === 'POST' && response.url().endsWith('/resend-caption')
+    )
+    await list.getByRole('button', { name: thread.resendCaption }).click()
+    expect((await answered).status()).toBe(200)
   } finally {
     await page.context().close()
   }
@@ -144,7 +152,7 @@ test('the texts of an album are listed in the order of its files, each with the 
   }
 })
 
-test('in an album, the text of the message and the text of a file each ask in their own line', async ({
+test('in an album, the text of the message asks before it is sent again, inside its line of the list', async ({
   browser
 }) => {
   const page = await signedInPage(browser)
@@ -155,23 +163,18 @@ test('in an album, the text of the message and the text of a file each ask in th
       asked.push(new URL(route.request().url()).pathname)
       return route.fulfill({ status: 409, contentType: 'application/json', body: '{}' })
     })
-    const album = await replyWithPictures(storeId, ['Uno', 'Dos'], CaptionState.UNCONFIRMED, {
-      1: CaptionState.FAILED
-    })
+    const album = await replyWithPictures(storeId, ['Uno', 'Dos'], CaptionState.UNCONFIRMED)
     await page.goto(AppPaths.store.conversation(storeId, album))
     const texts = page.getByRole('list', { name: thread.albumCaptions })
     const first = texts.getByRole('listitem').nth(0)
-    const second = texts.getByRole('listitem').nth(1)
+    await expect(first).toContainText('Uno')
     await expect(first).toContainText(thread.captionUnconfirmed)
-    await expect(second).toContainText(thread.fileCaptionFailed)
-    // The second goes at once (it failed); the first asks (it may have gone)
-    await second.getByRole('button', { name: thread.fileCaptionResend }).click()
-    await expect.poll(() => asked.length).toBe(1)
+    // The text of the second picture is drawn, with no state and no button of its own
+    await expect(texts.getByRole('listitem').nth(1)).toContainText('Dos')
+    await expect(texts.getByRole('button')).toHaveCount(1)
     await first.getByRole('button', { name: thread.resendCaption }).click()
-    await expect(
-      page.getByRole('alertdialog', { name: thread.fileCaptionResendTitle })
-    ).toBeVisible()
-    expect(asked).toHaveLength(1)
+    await expect(page.getByRole('alertdialog', { name: thread.captionResendTitle })).toBeVisible()
+    expect(asked).toHaveLength(0)
   } finally {
     await page.context().close()
   }
