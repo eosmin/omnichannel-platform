@@ -1,5 +1,6 @@
 'use client'
 
+import { Clock } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
@@ -54,6 +55,9 @@ export function ConversationItem({
     item.lastMessageAt === null ? null : relativeTime(new Date(item.lastMessageAt), now, locale)
   const status = conversationStatusOf(item.status)
   const isUnread = item.unreadCount > 0
+  // A snooze that ended asks for a look until someone opens the conversation: it weighs like an unread one
+  const attention = item.attention
+  const asksAttention = attention !== null
 
   return (
     <Link
@@ -68,7 +72,12 @@ export function ConversationItem({
       <CustomerAvatar avatarUrl={item.customer.avatarUrl} initials={initialsOf(label)} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-baseline justify-between gap-2">
-          <span className={cn('truncate text-sm', isUnread ? 'font-semibold' : 'font-medium')}>
+          <span
+            className={cn(
+              'truncate text-sm',
+              isUnread || asksAttention ? 'font-semibold' : 'font-medium'
+            )}
+          >
             {name}
           </span>
           {when === null ? null : (
@@ -84,7 +93,7 @@ export function ConversationItem({
           <span
             className={cn(
               'truncate text-sm',
-              isUnread ? 'text-foreground' : 'text-muted-foreground'
+              isUnread || asksAttention ? 'text-foreground' : 'text-muted-foreground'
             )}
           >
             {body}
@@ -97,6 +106,17 @@ export function ConversationItem({
           ) : null}
         </span>
         <span className="text-muted-foreground flex items-center gap-2 text-xs">
+          {attention === null ? null : (
+            // The reminder is text of an agent: drawn as text (React escapes it), cut to the line
+            <span className="bg-primary/10 text-primary flex max-w-[10rem] min-w-0 shrink items-center gap-1 rounded px-1.5 font-medium">
+              <Clock aria-hidden className="size-3 shrink-0" />
+              <span className="truncate">
+                {attention.note === null || attention.note === ''
+                  ? t('woke')
+                  : t('wokeNote', { note: attention.note })}
+              </span>
+            </span>
+          )}
           <span className="truncate">{channelName}</span>
           {status === null ? null : (
             <span className={cn('rounded px-1.5', ConversationStatusColors[status])}>

@@ -941,6 +941,8 @@
     "clearFilters": "Quitar filtros",
     "youPrefix": "Tú: {text}",
     "notePrefix": "Nota: {text}",
+    "woke": "Despertó",
+    "wokeNote": "Despertó: {note}",
     "noMessages": "Aún no hay mensajes",
     "unreadCount": "{count, plural, one {# mensaje sin leer} other {# mensajes sin leer}}",
     "snoozed": "Pospuesta",
@@ -1140,11 +1142,12 @@
         "unmarked_spam": "{actorKind, select, user {{actor} quitó la marca de spam} other {Se quitó la marca de spam automáticamente}}",
         "snoozed": "{actorKind, select, user {Pospuesta por {actor}} other {Pospuesta automáticamente}}",
         "snoozedUntil": "hasta {until}",
-        "woken": "{actorKind, select, user {Reabierta por {actor}} other {Reabierta automáticamente}}",
+        "woken": "{actorKind, select, user {Reabierta por {actor}} other {Despertó}}",
         "assigned": "{actorKind, select, user {{actor} la asignó a {assignee}} other {Asignada a {assignee}}}",
         "unassigned": "{actorKind, select, user {{actor} la dejó sin asignar} other {Quedó sin asignar}}",
         "unknown": "La conversación cambió",
         "reason": "Motivo: {reason}",
+        "reminder": "Recordatorio: {note}",
         "reasons": {
           "snooze_expired": "terminó la pausa",
           "auto_archived": "estuvo inactiva",
@@ -1303,6 +1306,8 @@
     "snooze": {
       "title": "Posponer la conversación",
       "description": "Sale de la bandeja y vuelve, abierta, a la hora que elijas. Si el cliente escribe antes, vuelve de inmediato.",
+      "noteLabel": "¿Para qué la pospones? (opcional)",
+      "noteHint": "Se muestra cuando despierte. Máximo {max} caracteres.",
       "presets": {
         "laterToday": "Más tarde hoy",
         "tomorrowMorning": "Mañana por la mañana",
