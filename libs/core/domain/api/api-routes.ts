@@ -57,6 +57,9 @@ export const ApiRoutes = {
     resend: (id: string) => `/messages/${id}/resend`,
     discard: (id: string) => `/messages/${id}/discard`,
     resendCaption: (id: string) => `/messages/${id}/resend-caption`,
+    // The text under ONE file of a message, sent again (a text sent apart that failed or may not have gone)
+    resendMediaCaption: (id: string, mediaId: string) =>
+      `/messages/${id}/media/${mediaId}/resend-caption`,
     refetchFile: (id: string, index: number | string) => `/messages/${id}/files/${index}/refetch`,
     reaction: (id: string) => `/messages/${id}/reaction`,
     deletedContent: (id: string) => `/messages/${id}/deleted-content`,

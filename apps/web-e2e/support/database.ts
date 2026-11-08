@@ -203,24 +203,59 @@ export function quotedByReplyIn(
 
 // Many messages in one go, one a minute apart and the last one a minute ago, for the cases that need
 // more than a page of the thread
+// The conversation that holds a message with this text, or null while none does. A page may draw what the person
+// just sent before the api and the worker have stored it, so a case that looks the conversation up polls this.
+export function conversationIdWithMessage(
+  storeId: string,
+  content: string
+): Promise<string | null> {
+  return withOwner(async owner => {
+    const found = await owner.conversation.findFirst({
+      where: { storeId, messages: { some: { content } } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true }
+    })
+    return found?.id ?? null
+  })
+}
+
+// Many messages in one write, each with its own moment: a long thread for a case that scrolls. One write, not one
+// connection for each message, so that the length of the thread does not depend on how fast the database is.
+export function addMessagesAt(
+  storeId: string,
+  conversationId: string,
+  messages: readonly { content: string; authorType: AuthorType; createdAt: Date }[]
+): Promise<void> {
+  return withOwner(async owner => {
+    await owner.message.createMany({
+      data: messages.map(message => ({
+        storeId,
+        conversationId,
+        type: MessageType.TEXT,
+        content: message.content,
+        authorType: message.authorType,
+        createdAt: message.createdAt
+      }))
+    })
+  })
+}
+
 export function addManyMessagesTo(
   storeId: string,
   conversationId: string,
   count: number
 ): Promise<void> {
   const MINUTE_MS = 60_000
-  return withOwner(async owner => {
-    await owner.message.createMany({
-      data: Array.from({ length: count }, (_, index) => ({
-        storeId,
-        conversationId,
-        type: 'TEXT',
-        content: `Message number ${index + 1}`,
-        authorType: index % 2 === 0 ? 'customer' : 'agent',
-        createdAt: new Date(Date.now() - (count - index) * MINUTE_MS)
-      }))
-    })
-  })
+  const now = Date.now()
+  return addMessagesAt(
+    storeId,
+    conversationId,
+    Array.from({ length: count }, (_, index) => ({
+      content: `Message number ${index + 1}`,
+      authorType: index % 2 === 0 ? AuthorType.CUSTOMER : AuthorType.AGENT,
+      createdAt: new Date(now - (count - index) * MINUTE_MS)
+    }))
+  )
 }
 
 // The ad a conversation came from. With `picture` the origin also has a thumbnail in the state the scan

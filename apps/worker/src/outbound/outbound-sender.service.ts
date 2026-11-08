@@ -28,6 +28,8 @@ import { Events } from '@platform/core/events'
 import {
   ConversationsService,
   enumValueOf,
+  captionProblemOf,
+  carriesNoCaption,
   isClosingMessage,
   lockConversationForWrite,
   MessagingWindowService,
@@ -74,6 +76,8 @@ interface AttachmentToSend {
   failedBefore: boolean
   earlierErrorCode: string | null
   channelMessageId: string | null
+  // The text the agent put under this file (the first file's is the message's); null when none
+  caption: string | null
   open: () => Promise<NodeJS.ReadableStream>
 }
 
@@ -201,6 +205,10 @@ export class OutboundSender {
         pluginId: connection.pluginId,
         context: this.contexts.contextFor(connection),
         sendMedia: plugin.sendMedia.bind(plugin),
+        sendText: plugin.sendMessage.bind(plugin),
+        conversationId: message.conversation.id,
+        channelType,
+        messageType: enumValueOf(MessageType, message.type, 'message type'),
         channelIdentity: customerIdentity.channelIdentity,
         content,
         replyToExternalId,
@@ -462,7 +470,8 @@ export class OutboundSender {
         position: true,
         deliveryStatus: true,
         sendErrorCode: true,
-        channelMessageId: true
+        channelMessageId: true,
+        caption: true
       },
       orderBy: [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
     })
@@ -481,6 +490,7 @@ export class OutboundSender {
       failedBefore: file.deliveryStatus === String(DeliveryStatus.FAILED),
       earlierErrorCode: file.sendErrorCode,
       channelMessageId: file.channelMessageId,
+      caption: file.caption,
       // No link is signed: a plugin gets the bytes through `open`, and a signed link nobody reads is only one
       // more live credential to the storage in memory and in logs. Only the object of this row, read from the
       // platform's own storage, when the plugin is about to send: one stream for each attempt.
@@ -513,6 +523,11 @@ export class OutboundSender {
     pluginId: string
     context: ReturnType<ChannelContextFactory['contextFor']>
     sendMedia: NonNullable<ChannelPlugin['sendMedia']>
+    // The text of a file whose kind has no place for one on the channel goes after it, as a message
+    sendText: ChannelPlugin['sendMessage']
+    conversationId: string
+    channelType: string
+    messageType: MessageType
     channelIdentity: string
     content: string
     replyToExternalId: string | null
@@ -528,6 +543,21 @@ export class OutboundSender {
       this.logger.warn({ storeId, messageId }, 'a media message has no file')
       await this.fail(storeId, messageId, ErrorCodes.FILE_UNAVAILABLE, !args.tainted)
       return
+    }
+    // Every text is checked BEFORE the first file leaves, so that no album goes in part for a text the channel
+    // would refuse. Only on a first attempt: a retry has files on their way already, and what they carried was
+    // checked then.
+    if (!args.tainted && !files.some(file => file.wasSent)) {
+      const refused = files.some(file => {
+        const text = this.captionOf(file, args.content)
+        return (
+          text !== '' && captionProblemOf(args.channelType, args.messageType, text, true) !== null
+        )
+      })
+      if (refused) {
+        await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, true)
+        return
+      }
     }
     // Written BEFORE the provider is asked (see the text path): a process that dies mid-send leaves the mark
     await this.markInFlight(storeId, messageId)
@@ -563,11 +593,30 @@ export class OutboundSender {
         failures.push(ErrorCodes.FILE_UNAVAILABLE)
         continue
       }
+      // The window of the channel is looked at at EVERY step: a conversation that closes in the middle of an
+      // album sends what went, and the files that follow fail with the code of the window, in their order
+      if (
+        file.index > 0 &&
+        !(await this.window.isOpen(this.prisma.client, storeId, args.conversationId))
+      ) {
+        await this.markFile(storeId, messageId, file.id, {
+          failedWith: ErrorCodes.CHANNEL_WINDOW_EXPIRED
+        })
+        failures.push(ErrorCodes.CHANNEL_WINDOW_EXPIRED)
+        continue
+      }
       // The first attempt is keyed by the message and the place of the file; one the agent asked for again is
       // another attempt, or a provider that dedupes on the key would answer with the result of the first. A
       // message of one file keeps the key it always had.
+      const text = this.captionOf(file, args.content)
+      const apart = carriesNoCaption(args.channelType, args.messageType)
       const base = files.length === 1 ? messageId : `${messageId}-${file.position}`
       const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
+      // An apart text has its state written BEFORE the file goes: a process that dies between the file and its
+      // text leaves the text `unconfirmed`, which the agent can send again (a retry never sends a file twice)
+      if (apart && text !== '') {
+        await this.writeCaptionFacts(storeId, messageId, file, { state: CaptionState.UNCONFIRMED })
+      }
       try {
         const result = resultSchema.safeParse(
           await withTimeout(
@@ -577,8 +626,9 @@ export class OutboundSender {
               fileSize: file.size,
               openFile: file.open,
               filename: file.filename,
-              // The text goes with the first file, and only while that one is still to be sent
-              ...(file.index !== 0 || args.content.trim() === '' ? {} : { caption: args.content }),
+              // The text of this file goes with it, unless its kind has no place for one on the channel (then it
+              // follows as a message of its own, below). It is the text of the message for the first file.
+              ...(text === '' || apart ? {} : { caption: text }),
               ...(args.replyToExternalId === null || file.index !== 0
                 ? {}
                 : { replyToExternalId: args.replyToExternalId }),
@@ -600,11 +650,12 @@ export class OutboundSender {
         }
         anySent = true
         await this.markFile(storeId, messageId, file.id, { sent: result.data })
-        if (file.index === 0) {
-          firstAccepted = result.data
-          // Written now and not at the end: a later file can fail with a retry, and the caption of the first
-          // would be lost with this memory (its echo would be stored as a message of the owner)
-          await this.recordCaption(storeId, messageId, result.data)
+        // Written now and not at the end: a later file can fail with a retry, and the id of this text would
+        // be lost with this memory (its echo would be stored as a message of the owner)
+        await this.recordCaptionSafely(storeId, messageId, file, result.data)
+        if (file.index === 0) firstAccepted = result.data
+        if (apart && text !== '') {
+          await this.sendTextAfter(args, file, text, idempotencyKey)
         }
       } catch (error) {
         const refused = refusalOf(error)
@@ -660,32 +711,147 @@ export class OutboundSender {
     await this.recordAccepted(storeId, messageId, args.connectionRowId, accepted, failure)
   }
 
-  // The id and the state of the text under the first file, as the plugin reported them: facts about what was
-  // sent, written whatever the state of the message. A caption that is `sent` is never taken back.
+  // The text under a file: the message's own for the first, the file's for the others. Empty when none.
+  private captionOf(file: AttachmentToSend, content: string): string {
+    return (file.index === 0 ? content : (file.caption ?? '')).trim()
+  }
+
+  // The id and the state of the text under a file, as the plugin reported them: facts about what was sent,
+  // written whatever the state of the message, on the row of the FILE (and on the message for the first, which
+  // the older screens read). Each file has its own row, so the state of one text never covers another's. A
+  // caption that is `sent` is never taken back.
   private async recordCaption(
     storeId: string,
     messageId: string,
+    file: AttachmentToSend,
     accepted: z.infer<typeof resultSchema>
   ): Promise<void> {
-    const captionExternalId = accepted.metadata?.[ChannelResultMetadata.CAPTION_EXTERNAL_ID]
-    const captionState =
-      captionExternalId === undefined
+    const externalId = accepted.metadata?.[ChannelResultMetadata.CAPTION_EXTERNAL_ID]
+    const reported =
+      externalId === undefined
         ? accepted.metadata?.[ChannelResultMetadata.CAPTION_STATE]
         : CaptionState.SENT
-    if (captionExternalId === undefined && captionState === undefined) return
-    await this.prisma.client.message.updateMany({
-      where: {
-        id: messageId,
-        storeId,
-        ...(captionState === CaptionState.SENT
-          ? {}
-          : { OR: [{ captionState: null }, { captionState: { not: CaptionState.SENT } }] })
-      },
-      data: {
-        ...(captionExternalId === undefined ? {} : { captionChannelMessageId: captionExternalId }),
-        ...(captionState === undefined ? {} : { captionState })
-      }
+    if (externalId === undefined && reported === undefined) return
+    await this.writeCaptionFacts(storeId, messageId, file, {
+      ...(externalId === undefined ? {} : { externalId }),
+      ...(reported === undefined ? {} : { state: reported })
     })
+  }
+
+  // For the text sent after a file: a write that fails is logged and never escapes (the file is sent)
+  private async writeFactsSafely(
+    storeId: string,
+    messageId: string,
+    file: AttachmentToSend,
+    facts: { externalId?: string; state?: CaptionState }
+  ): Promise<void> {
+    try {
+      await this.writeCaptionFacts(storeId, messageId, file, facts)
+    } catch (error) {
+      this.logger.error(
+        { messageId, position: file.position, errorName: errorName(error) },
+        'the state of the text under a file was not written'
+      )
+    }
+  }
+
+  // The facts of a text are written after the provider answered for the file: a failure to write them must
+  // not become a failure of the file (it is sent already, and a retry would skip it and lose the text). The
+  // state stays as it was, which the agent can see and resend.
+  private async recordCaptionSafely(
+    storeId: string,
+    messageId: string,
+    file: AttachmentToSend,
+    accepted: z.infer<typeof resultSchema>
+  ): Promise<void> {
+    try {
+      await this.recordCaption(storeId, messageId, file, accepted)
+    } catch (error) {
+      this.logger.error(
+        { messageId, position: file.position, errorName: errorName(error) },
+        'the state of the text under a file was not written'
+      )
+    }
+  }
+
+  private async writeCaptionFacts(
+    storeId: string,
+    messageId: string,
+    file: AttachmentToSend,
+    facts: { externalId?: string; state?: CaptionState }
+  ): Promise<void> {
+    const notSent =
+      facts.state === CaptionState.SENT
+        ? {}
+        : { OR: [{ captionState: null }, { captionState: { not: CaptionState.SENT } }] }
+    const data = {
+      ...(facts.externalId === undefined ? {} : { captionChannelMessageId: facts.externalId }),
+      ...(facts.state === undefined ? {} : { captionState: facts.state })
+    }
+    await this.prisma.client.media.updateMany({
+      where: { id: file.id, storeId, messageId, ...notSent },
+      data
+    })
+    if (file.index === 0) {
+      await this.prisma.client.message.updateMany({
+        where: { id: messageId, storeId, ...notSent },
+        data
+      })
+    }
+  }
+
+  // The text of a file whose kind has no place for one on the channel (an audio on WhatsApp), sent after the
+  // file as a message of its own. A failure here is the text's alone: the file is sent, it is never sent again
+  // for this, and the text is the agent's to send again. It is not retried by itself (the provider has no key
+  // for it, so a call with no clear answer may have gone: `unconfirmed`). The text is never logged.
+  private async sendTextAfter(
+    args: {
+      storeId: string
+      messageId: string
+      pluginId: string
+      context: ReturnType<ChannelContextFactory['contextFor']>
+      sendText: ChannelPlugin['sendMessage']
+      channelIdentity: string
+    },
+    file: AttachmentToSend,
+    text: string,
+    fileKey: string
+  ): Promise<void> {
+    const { storeId, messageId } = args
+    try {
+      const answer = resultSchema.safeParse(
+        await withTimeout(
+          args.sendText(args.context, {
+            channelIdentity: args.channelIdentity,
+            content: text,
+            idempotencyKey: `${fileKey}-caption`
+          }),
+          OutboundLimits.SEND_TIMEOUT_MS
+        )
+      )
+      if (!answer.success) {
+        await this.writeFactsSafely(storeId, messageId, file, { state: CaptionState.UNCONFIRMED })
+        return
+      }
+      await this.writeFactsSafely(storeId, messageId, file, {
+        externalId: answer.data.externalId,
+        state: CaptionState.SENT
+      })
+    } catch (error) {
+      this.logger.warn(
+        {
+          pluginId: args.pluginId,
+          messageId,
+          position: file.position,
+          errorName: errorName(error),
+          length: Array.from(text).length
+        },
+        'sending the text under a file failed'
+      )
+      await this.writeFactsSafely(storeId, messageId, file, {
+        state: isDefinitiveRefusal(error) ? CaptionState.FAILED : CaptionState.UNCONFIRMED
+      })
+    }
   }
 
   // What happened to one file, written on its row. The provider has the file when `sent` is given: nothing here

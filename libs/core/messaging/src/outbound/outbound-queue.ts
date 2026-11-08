@@ -48,7 +48,7 @@ export function deleteJobId(job: SendOutboundDeleteJob): string {
 }
 
 export function captionJobId(job: SendOutboundCaptionJob): string {
-  return `caption-${job.messageId}-${job.version}`
+  return `caption-${job.messageId}-${job.mediaId ?? 'message'}-${job.version}`
 }
 
 // One job for each message read up to: reading the same thread again changes nothing, and a newer
