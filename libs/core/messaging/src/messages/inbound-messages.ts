@@ -8,11 +8,6 @@ import {
 } from '@platform/core/domain'
 
 import type { InboundMessage } from '../inbound/inbound-event'
-import {
-  countersOf,
-  type MissingTargetShape,
-  missingTargetShapeOrNull
-} from '../inbound/missing-target-shape'
 
 // The keys only the platform writes in the metadata of a message: whatever a channel plugin passes
 // through under these names is dropped, so a provider cannot draw a warning in the thread
@@ -42,7 +37,7 @@ export async function insertInboundMessage(
     author: typeof AuthorType.CUSTOMER | typeof AuthorType.EXTERNAL
     createdAt: Date
   }
-): Promise<{ id: string; replyUnresolved: MissingTargetShape | null }> {
+): Promise<{ id: string; replyUnresolved: boolean }> {
   const { storeId, conversationId, message } = input
   // The message it answers, if the thread has it: a provider id that is not known is just not linked
   const replyTo =
@@ -54,15 +49,6 @@ export async function insertInboundMessage(
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           select: { id: true }
         })
-  // The shape of a quote that found nothing, read before the message is written so it does not count itself
-  const replyUnresolved =
-    message.replyToExternalId !== undefined && replyTo === null
-      ? await missingTargetShapeOrNull({
-          targetId: message.replyToExternalId,
-          now: new Date(),
-          count: countersOf(tx, { storeId, conversationId }, AuthorType.CUSTOMER)
-        })
-      : null
   const created = await tx.message.create({
     data: {
       storeId,
@@ -80,5 +66,9 @@ export async function insertInboundMessage(
     select: { id: true }
   })
   // The message quotes one this thread does not have: told to the caller, who logs it (no id leaves)
-  return { id: created.id, replyUnresolved }
+  // A quote that found no message: the caller logs the shape of its id once the transaction is over
+  return {
+    id: created.id,
+    replyUnresolved: message.replyToExternalId !== undefined && replyTo === null
+  }
 }

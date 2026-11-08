@@ -53,35 +53,13 @@ describe('insertInboundMessage quote', () => {
     const tx = {
       message: {
         create: jest.fn().mockResolvedValue({ id: 'm1' }),
-        findFirst: jest.fn().mockResolvedValue(found),
-        count: jest.fn().mockResolvedValue(0)
+        findFirst: jest.fn().mockResolvedValue(found)
       }
     }
     await expect(insertInboundMessage(tx as never, input('wamid.0'))).resolves.toEqual({
       id: 'm1',
       replyUnresolved: unresolved
-        ? {
-            length: 7,
-            prefix: 'wam',
-            sameShortPrefix: 0,
-            sameLongPrefix: 0,
-            recentCustomerMessages: 0
-          }
-        : null
     })
-    // The counts of the shape are scoped to the store and the thread too, and the recent ones to the customer
-    if (unresolved) {
-      const wheres = tx.message.count.mock.calls.map(
-        call => (call as [{ where: Record<string, unknown> }])[0].where
-      )
-      expect(wheres).toHaveLength(3)
-      for (const where of wheres) expect(where).toMatchObject({ storeId: 's', conversationId: 'c' })
-      expect(
-        wheres.some(
-          where => where.authorType === AuthorType.CUSTOMER && where.createdAt !== undefined
-        )
-      ).toBe(true)
-    }
     // Scoped to the store and the thread, like every tenant query
     expect(tx.message.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -100,7 +78,7 @@ describe('insertInboundMessage quote', () => {
     }
     await expect(insertInboundMessage(tx as never, input())).resolves.toEqual({
       id: 'm1',
-      replyUnresolved: null
+      replyUnresolved: false
     })
   })
 })

@@ -67,7 +67,8 @@ export class InboundMessageTargets {
       if (!isLastAttempt) throw new Error(`the ${what} came before the customer it is from`)
       return false
     }
-    return this.prisma.transaction(async tx => {
+    let missing = false
+    const applied = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       // Takes turns with the messages of the same handle: the event may follow its message closely
       await lockStoreScope(tx, storeId, `inbound-${identity.id}`)
@@ -82,22 +83,29 @@ export class InboundMessageTargets {
       })
       if (target === null) {
         if (!isLastAttempt) throw new Error(`the ${what} came before the message it points at`)
-        if (onMissing) {
-          const scope = {
-            storeId,
-            conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
-          }
-          const shape = await missingTargetShapeOrNull({
-            targetId: event.targetExternalId,
-            now: new Date(),
-            count: countersOf(tx, scope, AuthorType.CUSTOMER)
-          })
-          if (shape) onMissing(shape)
-        }
+        missing = true
         return false
       }
       await apply(tx, { storeId, customerIdentityId: identity.id, messageId: target.id })
       return true
     })
+    // The shape of the id that matched nothing is read once the transaction is over: a count that failed inside it
+    // would have aborted the transaction of the reaction
+    if (missing && onMissing) {
+      const shape = await missingTargetShapeOrNull({
+        targetId: event.targetExternalId,
+        now: new Date(),
+        count: countersOf(
+          this.prisma.client,
+          {
+            storeId,
+            conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
+          },
+          AuthorType.CUSTOMER
+        )
+      })
+      if (shape) onMissing(shape)
+    }
+    return applied
   }
 }

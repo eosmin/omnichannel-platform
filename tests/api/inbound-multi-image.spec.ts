@@ -240,7 +240,8 @@ describe('Several pictures that a customer sends in a row', () => {
     // The shape of the id, not the id
     expect(info).toHaveBeenCalledTimes(1)
     expect(info.mock.calls[0]?.[1]).toBe('an inbound message quotes a message that is not here')
-    expect(targetOf(info)).toMatchObject({ length: 4, prefix: 'gon', recentCustomerMessages: 0 })
+    // The quoting message is stored by now, so it is the one recent message
+    expect(targetOf(info)).toMatchObject({ length: 4, prefix: 'gon', recentCustomerMessages: 1 })
     expect(JSON.stringify(info.mock.calls)).not.toContain('"gone"')
     const { messages } = await threadOf(ctx.storeA.id, from)
     expect(messages[0]?.replyToMessageId).toBeNull()

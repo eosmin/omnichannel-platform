@@ -1,3 +1,6 @@
+import type { MessageWhereInput } from '@platform/core/database'
+import type { AuthorType } from '@platform/core/domain'
+
 // What an inbound reaction or quote points at, when no stored message has that id: the SHAPE of
 // the id and of the thread around it, never a value, so the owner can tell why it did not match (another format,
 // a truncated id, a message that never arrived) without an id of a customer reaching a log.
@@ -6,11 +9,12 @@ export interface MissingTargetShape {
   length: number
   // The first three characters when they are plain (the provider's own marker: `wam`, `m_`), else `?`
   prefix: string
-  // Messages of the thread whose id starts with those three, and with the first ten, characters (Prisma escapes
-  // the wildcards of a LIKE, so `_` in `m_` matches only itself)
+  // Messages in the scope searched (the thread for a quote, the customer on the connection for a reaction) whose
+  // id starts with those three, and with the first ten, characters. Prisma does not escape the wildcards of a LIKE
+  // for `startsWith`, so `escapeLike` below does: `m_` would otherwise match `mX`.
   sameShortPrefix: number
   sameLongPrefix: number
-  // Messages of the customer in the two minutes before
+  // Messages of the customer in that scope in the last two minutes (a quote counts itself: the shape is read once it is stored)
   recentCustomerMessages: number
 }
 
@@ -32,11 +36,10 @@ export async function missingTargetShape(input: {
   const plain = PLAIN_PREFIX.test(short)
   const long = targetId.slice(0, LONG)
   // Counted whatever the characters are (only the log of the prefix is limited to plain ones)
-  const [sameShortPrefix, sameLongPrefix, recentCustomerMessages] = await Promise.all([
-    count({ startsWith: short }),
-    count({ startsWith: long }),
-    count({ since: new Date(now.getTime() - LOOK_BACK_MS) })
-  ])
+  // One after another: the caller's client is one connection, and nothing here runs inside a transaction
+  const sameShortPrefix = await count({ startsWith: short })
+  const sameLongPrefix = await count({ startsWith: long })
+  const recentCustomerMessages = await count({ since: new Date(now.getTime() - LOOK_BACK_MS) })
   return {
     length: targetId.length,
     prefix: plain ? short : '?',
@@ -46,7 +49,8 @@ export async function missingTargetShape(input: {
   }
 }
 
-// The diagnostic must never be what fails an ingestion: a count that throws is no shape
+// The diagnostic must never be what fails an ingestion: a count that throws is no shape. It is asked AFTER the
+// transaction of the ingestion has ended: inside it, a failed statement would abort the whole transaction.
 export async function missingTargetShapeOrNull(
   input: Parameters<typeof missingTargetShape>[0]
 ): Promise<MissingTargetShape | null> {
@@ -64,12 +68,12 @@ const escapeLike = (text: string): string => text.replace(/[\\%_]/g, '\\$&')
 // The counter of a thread, for both callers: scoped by the `where` they give (store and thread), the prefix and
 // the look-back being the same everywhere
 export function countersOf(
-  tx: { message: { count: (args: { where: Record<string, unknown> }) => Promise<number> } },
-  scope: Record<string, unknown>,
-  customerAuthor: string
+  client: { message: { count: (args: { where: MessageWhereInput }) => Promise<number> } },
+  scope: MessageWhereInput & { storeId: string },
+  customerAuthor: typeof AuthorType.CUSTOMER
 ): TargetCount {
   return filter =>
-    tx.message.count({
+    client.message.count({
       where: {
         ...scope,
         ...(filter.startsWith === undefined
