@@ -69,7 +69,6 @@ interface MessageBody {
     filename: string
     contentType: string
     size: number
-    caption: string | null
   }[]
   createdAt: string
 }
@@ -687,7 +686,7 @@ describe('The web widget', () => {
       return origin === null ? request : request.set('origin', origin)
     }
 
-    it('shows the text under each file by its own file, in the order the agent chose', async () => {
+    it('lists the files in the order the agent chose, with the one text of the message and no text of their own', async () => {
       const s = await stage()
       // uploaded b first, sent as [a, b]
       const second = await messageWithFile(s, {
@@ -699,17 +698,19 @@ describe('The web widget', () => {
       const first = await messageWithFile(s, {
         onMessage: second.messageId,
         position: 0,
-        caption: 'uno',
         filename: 'a.png'
       })
 
       const history = await enter(s.siteKey, s.visitorId)
 
       expect(history.messages).toHaveLength(1)
-      expect(history.messages[0]?.attachments.map(file => [file.id, file.caption])).toEqual([
-        [first.mediaId, 'uno'],
-        [second.mediaId, 'dos']
+      expect(history.messages[0]?.content).toBe('uno')
+      expect(history.messages[0]?.attachments.map(file => file.id)).toEqual([
+        first.mediaId,
+        second.mediaId
       ])
+      // The text under a file is the agent's to read, not a visitor's: the widget has none under files
+      expect(JSON.stringify(history.messages)).not.toContain('dos')
     })
 
     it('does not put the text of a file the visitor is not given under another one', async () => {
@@ -729,9 +730,7 @@ describe('The web widget', () => {
       const history = await enter(s.siteKey, s.visitorId)
 
       expect(history.messages[0]?.content).toBe('')
-      expect(history.messages[0]?.attachments.map(file => [file.id, file.caption])).toEqual([
-        [shown.mediaId, 'dos']
-      ])
+      expect(history.messages[0]?.attachments.map(file => file.id)).toEqual([shown.mediaId])
     })
 
     it('shows a message of files with its caption and only the files the scan found clean', async () => {
@@ -762,8 +761,7 @@ describe('The web widget', () => {
               id: captioned.mediaId,
               filename: 'comprobante.png',
               contentType: 'image/png',
-              size: 2048,
-              caption: null
+              size: 2048
             }
           ]
         ],
@@ -775,8 +773,7 @@ describe('The web widget', () => {
               id: fileOnly.mediaId,
               filename: 'cedula.pdf',
               contentType: 'application/pdf',
-              size: 2048,
-              caption: null
+              size: 2048
             }
           ]
         ]
@@ -1002,8 +999,7 @@ describe('The web widget', () => {
           id: mediaId,
           filename: 'comprobante.png',
           contentType: 'image/png',
-          size: 2048,
-          caption: null
+          size: 2048
         }
       ])
     })

@@ -386,10 +386,9 @@ export const messageSchema = z.object({
       position: z.number().int().nullable().catch(null).default(null),
       delivery: z.string().nullable().catch(null).default(null),
       errorCode: z.string().nullable().catch(null).default(null),
-      // The text under this file (text of an agent: drawn escaped) and, for the channels that send it as a
-      // message of its own, how it went. Null for a server that does not send them yet.
-      caption: z.string().nullable().catch(null).default(null),
-      captionState: z.string().nullable().catch(null).default(null)
+      // The text under this file (text of an agent: drawn escaped). How the text of the message went is on the
+      // message (`captionState`). Null for a server that does not send it yet.
+      caption: z.string().nullable().catch(null).default(null)
     })
   ),
   // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one

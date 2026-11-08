@@ -161,21 +161,6 @@ export class MessagesController {
     return this.messages.resendCaption(store.id, messageId, viewerOf(user.id, held))
   }
 
-  // The same for the text under ONE file of a message with several: the file is never sent again, and a text
-  // that may have gone (`unconfirmed`) is the agent's call, so the screen asks first.
-  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
-  @Post(ApiRoutes.messages.resendMediaCaption(':id', ':mediaId'))
-  @HttpCode(HttpStatusCodes.OK)
-  resendMediaCaption(
-    @CurrentStore() store: { id: string },
-    @CurrentUser() user: AuthenticatedUser,
-    @CurrentPermissions() held: readonly Permission[],
-    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
-    @Param('mediaId', new ZodValidationPipe(uuidSchema)) mediaId: string
-  ): Promise<MessageView> {
-    return this.messages.resendMediaCaption(store.id, messageId, mediaId, viewerOf(user.id, held))
-  }
-
   // "Download it again" on a file of the customer that was lost. The worker fetches it from the provider
   // with what it kept when it gave up; the caller names only the message and the place of the file.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)

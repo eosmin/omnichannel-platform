@@ -17,9 +17,6 @@ export interface WidgetAttachmentView {
   filename: string
   contentType: string
   size: number
-  // The text under this file, the first one included (null: none, or a message from before the places).
-  // Whoever draws the message puts each text under its file: `content` is not drawn again beside them.
-  caption: string | null
 }
 
 // A message as the visitor sees it: who (their side or the store's), what, and when. Nothing about the
@@ -52,8 +49,7 @@ export const WIDGET_FILES_SELECT = {
     filename: true,
     contentType: true,
     fileSize: true,
-    position: true,
-    caption: true
+    position: true
   },
   // The order the agent chose (`position`, a message from before it last), then the upload
   orderBy: [
@@ -118,7 +114,6 @@ interface MessageRow {
     contentType: string
     fileSize: number
     position: number | null
-    caption: string | null
   }[]
 }
 
@@ -139,8 +134,7 @@ export function widgetMessageView(row: MessageRow): WidgetMessageView | null {
       id: file.id,
       filename: file.filename,
       contentType: file.contentType,
-      size: file.fileSize,
-      caption: file.position === 0 ? row.content : file.position === null ? null : file.caption
+      size: file.fileSize
     })),
     createdAt: row.createdAt.toISOString()
   }

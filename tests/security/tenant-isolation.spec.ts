@@ -1405,14 +1405,16 @@ describe('Tenant isolation', () => {
         })
 
       // Even a text that failed and could be sent again is not reachable from another store
-      await owner.media.update({ where: { id: mediaId }, data: { captionState: 'failed' } })
-      await owner.message.update({ where: { id: message.id }, data: { deliveryStatus: 'sent' } })
-      const resend = await asB().post(ApiRoutes.messages.resendMediaCaption(message.id, mediaId))
+      await owner.message.update({
+        where: { id: message.id },
+        data: { deliveryStatus: 'sent', captionState: 'failed' }
+      })
+      const resend = await asB().post(ApiRoutes.messages.resendCaption(message.id))
       expect(resend.status).toBe(404)
       expect(
         (
-          await owner.media.findUniqueOrThrow({
-            where: { id: mediaId },
+          await owner.message.findUniqueOrThrow({
+            where: { id: message.id },
             select: { captionState: true }
           })
         ).captionState

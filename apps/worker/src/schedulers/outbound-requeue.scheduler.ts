@@ -165,8 +165,7 @@ export class OutboundRequeueScheduler {
         OR: [
           { editStatus: DeliveryStatus.QUEUED, pendingContent: { not: null } },
           { deleteStatus: DeliveryStatus.QUEUED },
-          { captionState: CaptionState.QUEUED },
-          { media: { some: { captionState: CaptionState.QUEUED } } }
+          { captionState: CaptionState.QUEUED }
         ]
       },
       select: {
@@ -213,24 +212,6 @@ export class OutboundRequeueScheduler {
           } else {
             await this.outbound.requeueDelete({ storeId, messageId, version })
           }
-        }
-        // The text under a file asked again: the same rule, for each file that waits
-        const waitingFiles = await this.prisma.client.media.findMany({
-          where: { storeId, messageId, captionState: CaptionState.QUEUED },
-          select: { id: true }
-        })
-        for (const file of waitingFiles) {
-          await this.changeStatus.settleMediaCaption({
-            storeId,
-            messageId,
-            mediaId: file.id,
-            version,
-            outcome: { state: CaptionState.UNCONFIRMED }
-          })
-          done.gaveUp += 1
-        }
-        if (waitingFiles.length > 0 && message.captionState !== CaptionState.QUEUED.valueOf()) {
-          continue
         }
         if (message.captionState === CaptionState.QUEUED.valueOf()) {
           // Never queued again: a job that sent the text and could not write it down looks the same as

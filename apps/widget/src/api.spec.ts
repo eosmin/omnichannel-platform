@@ -257,16 +257,6 @@ describe('isServerMessage', () => {
     expect(isServerMessage(base)).toBe(false)
   })
 
-  it('takes the text under a file when it comes, and does not lose the message over one that is not text', () => {
-    const base = { id: 'a', from: 'team', content: '', createdAt: 'd' }
-    const file = { id: 'f', filename: 'a.png', contentType: 'image/png', size: 3 }
-
-    expect(isServerMessage({ ...base, attachments: [{ ...file, caption: 'hola' }] })).toBe(true)
-    expect(isServerMessage({ ...base, attachments: [{ ...file, caption: null }] })).toBe(true)
-    // an optional decoration of a newer api never costs the visitor the reply
-    expect(isServerMessage({ ...base, attachments: [{ ...file, caption: 3 }] })).toBe(true)
-  })
-
   // A site that is not listed gets a 403 with no CORS header: the browser hides the answer and `fetch`
   // rejects, so it reaches the session as a call that got no answer, the same as a CSP block
   it('turns a call the browser refused to show (a CORS refusal, a CSP block) into no answer', async () => {

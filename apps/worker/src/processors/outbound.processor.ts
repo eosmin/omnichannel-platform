@@ -35,10 +35,7 @@ type OutboundJob =
 
 const jobSchema = z.object({ storeId: z.uuid(), messageId: z.uuid() })
 // An edit, a deletion or a caption sent again: the `version` of the message when the agent asked
-const changeJobSchema = jobSchema.extend({
-  version: z.number().int(),
-  mediaId: z.uuid().optional()
-})
+const changeJobSchema = jobSchema.extend({ version: z.number().int() })
 const readReceiptJobSchema = jobSchema.extend({ conversationId: z.uuid() })
 const typingJobSchema = z.object({
   storeId: z.uuid(),

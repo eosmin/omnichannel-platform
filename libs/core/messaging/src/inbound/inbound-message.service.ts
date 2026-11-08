@@ -249,8 +249,6 @@ export class InboundMessageService {
       })) ??
       // A file after the first of a message of ours went as a message of its own: its id is on the file
       (await this.messageOfFile(tx, storeId, conversationIds, event.message.externalId)) ??
-      // The text under a file after the first, sent apart: its id is on the file
-      (await this.messageOfFileCaption(tx, storeId, conversationIds, event.message.externalId)) ??
       (await this.reconcileUnconfirmedCaption(tx, storeId, conversationIds, event))
     if (known !== null) {
       return {
@@ -355,23 +353,6 @@ export class InboundMessageService {
     return file?.message ?? null
   }
 
-  private async messageOfFileCaption(
-    tx: PrismaTransaction,
-    storeId: string,
-    conversationIds: string[],
-    externalId: string
-  ): Promise<{ id: string; authorType: string } | null> {
-    const file = await tx.media.findFirst({
-      where: {
-        storeId,
-        captionChannelMessageId: externalId,
-        message: { conversationId: { in: conversationIds }, authorType: AuthorType.AGENT }
-      },
-      select: { message: { select: { id: true, authorType: true } } }
-    })
-    return file?.message ?? null
-  }
-
   // Meta has no idempotency key, so a caption whose call timed out is neither resent nor written off: it
   // waits as `unconfirmed`. If the provider delivered it, its echo arrives here with an id nobody has; it
   // is that caption when the text is the same, and then it is not a new message of the owner. The oldest
@@ -404,8 +385,7 @@ export class InboundMessageService {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, authorType: true }
     })
-    if (waiting === null)
-      return this.reconcileUnconfirmedFileCaption(tx, storeId, conversationIds, event, since)
+    if (waiting === null) return null
     const claimed = await tx.message.updateMany({
       where: {
         id: waiting.id,
@@ -415,42 +395,6 @@ export class InboundMessageService {
       data: { captionChannelMessageId: externalId, captionState: CaptionState.SENT }
     })
     return claimed.count === 1 ? waiting : null
-  }
-
-  // The same for the text under one file that is not the first (or an audio's text sent apart): its state is
-  // on the file, and the echo of the owner's message with that text is it, not a new message
-  private async reconcileUnconfirmedFileCaption(
-    tx: PrismaTransaction,
-    storeId: string,
-    conversationIds: string[],
-    event: InboundEvent,
-    since: Date
-  ): Promise<{ id: string; authorType: string } | null> {
-    const file = await tx.media.findFirst({
-      where: {
-        storeId,
-        caption: event.message.content,
-        captionState: { in: [CaptionState.UNCONFIRMED, CaptionState.QUEUED] },
-        message: {
-          conversationId: { in: conversationIds },
-          authorType: AuthorType.AGENT,
-          deletedAt: null,
-          OR: [{ createdAt: { gt: since } }, { changeRequestedAt: { gt: since } }]
-        }
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, message: { select: { id: true, authorType: true } } }
-    })
-    if (file === null || file.message === null) return null
-    const claimed = await tx.media.updateMany({
-      where: {
-        id: file.id,
-        storeId,
-        captionState: { in: [CaptionState.UNCONFIRMED, CaptionState.QUEUED] }
-      },
-      data: { captionChannelMessageId: event.message.externalId, captionState: CaptionState.SENT }
-    })
-    return claimed.count === 1 ? file.message : null
   }
 
   private async mayBeWaitingForItsId(

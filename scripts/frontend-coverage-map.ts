@@ -45,9 +45,6 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'messages.discard': { step: '7.7' },
   // The text of a message, sent again on its own: the button of the bubble (Step 3.5 PR F4b-2)
   'messages.resendCaption': { step: '3.5' },
-  'messages.resendMediaCaption': {
-    none: 'The web no longer calls it: a text under a file is not sent again on its own any more; the route is removed from the api (plan, Step 7.7)'
-  },
   // A lost file of the customer, downloaded again: the button of the line that says it was lost (Step 3.5 PR F4c)
   'messages.refetchFile': { step: '3.5' },
   'messages.deletedContent': { step: '3.2' },

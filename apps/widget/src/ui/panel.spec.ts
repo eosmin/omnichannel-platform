@@ -412,52 +412,27 @@ describe('mountPanel', () => {
       expect(q('.bubble').textContent).toBe('hola')
     })
 
-    it('draws the text of each file right under it, and no other text of the message', () => {
+    it('draws the files, then the one text of the message', () => {
       const panel = mount()
-      const file = (id: string, caption: string | null) => ({
+      const file = (id: string) => ({
         id,
         filename: `${id}.png`,
         contentType: 'image/png',
-        size: 3,
-        caption
+        size: 3
       })
 
       panel.update([
         message({
           key: 'a',
           content: 'uno',
-          attachments: [file('a', 'uno'), file('b', null), file('c', 'tres')]
+          attachments: [file('a'), file('b')]
         })
       ])
 
       const order = Array.from(shadow().querySelectorAll('.msg > .file, .msg > .bubble')).map(
         node => node.textContent
       )
-      expect(order).toEqual(['a.png3 B', 'uno', 'b.png3 B', 'c.png3 B', 'tres'])
-    })
-
-    it('draws a text only under its first file as that file text, not under the group', () => {
-      const panel = mount()
-      const file = (id: string, caption: string | null) => ({
-        id,
-        filename: `${id}.png`,
-        contentType: 'image/png',
-        size: 3,
-        caption
-      })
-
-      panel.update([
-        message({
-          key: 'a',
-          content: 'uno',
-          attachments: [file('a', 'uno'), file('b', null)]
-        })
-      ])
-
-      const order = Array.from(shadow().querySelectorAll('.msg > .file, .msg > .bubble')).map(
-        node => node.textContent
-      )
-      expect(order).toEqual(['a.png3 B', 'uno', 'b.png3 B'])
+      expect(order).toEqual(['a.png3 B', 'b.png3 B', 'uno'])
     })
 
     it('keeps the text after the files when the api sends no text per file (a message from before)', () => {

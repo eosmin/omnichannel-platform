@@ -1,12 +1,11 @@
 import { WIDGET_FILES_SELECT, widgetMessageView } from './widget-message-view'
 
-const file = (id: string, position: number | null, caption: string | null) => ({
+const file = (id: string, position: number | null) => ({
   id,
   filename: `${id}.png`,
   contentType: 'image/png',
   fileSize: 3,
-  position,
-  caption
+  position
 })
 
 const row = (media: ReturnType<typeof file>[], content: string | null = null) => ({
@@ -18,26 +17,26 @@ const row = (media: ReturnType<typeof file>[], content: string | null = null) =>
 })
 
 describe('widgetMessageView', () => {
-  it('gives each file its own text, the first one included, so the visitor never guesses', () => {
-    const view = widgetMessageView(
-      row([file('a', 0, 'uno'), file('b', 1, 'dos'), file('c', 2, null)], 'uno')
-    )
+  it('gives the one text of the message and the files, with no text of their own', () => {
+    const view = widgetMessageView(row([file('a', 0), file('b', 1)], 'uno'))
 
-    expect(view?.attachments.map(attachment => attachment.caption)).toEqual(['uno', 'dos', null])
+    expect(view?.content).toBe('uno')
+    expect(view?.attachments).toEqual([
+      { id: 'a', filename: 'a.png', contentType: 'image/png', size: 3 },
+      { id: 'b', filename: 'b.png', contentType: 'image/png', size: 3 }
+    ])
   })
 
   it('shows the text of the message under no file when its first file is not delivered', () => {
-    const view = widgetMessageView(row([file('b', 1, 'dos')], 'uno'))
+    const view = widgetMessageView(row([file('b', 1)], 'uno'))
 
     expect(view?.content).toBe('')
-    expect(view?.attachments.map(attachment => attachment.caption)).toEqual(['dos'])
   })
 
-  it('keeps the text of the message for a message sent before the columns (no places)', () => {
-    const view = widgetMessageView(row([file('a', null, null), file('b', null, null)], 'uno'))
+  it('keeps the text of the message for a message sent before the places', () => {
+    const view = widgetMessageView(row([file('a', null), file('b', null)], 'uno'))
 
     expect(view?.content).toBe('uno')
-    expect(view?.attachments.map(attachment => attachment.caption)).toEqual([null, null])
   })
 
   it('leaves the content as it is when the message has no files', () => {
@@ -46,8 +45,9 @@ describe('widgetMessageView', () => {
 })
 
 describe('WIDGET_FILES_SELECT', () => {
-  it('asks the database for the place and the text of each file, in the order the agent chose', () => {
-    expect(WIDGET_FILES_SELECT.select).toMatchObject({ position: true, caption: true })
+  it('asks the database for the place of each file, in the order the agent chose, and no text', () => {
+    expect(WIDGET_FILES_SELECT.select).toMatchObject({ position: true })
+    expect(WIDGET_FILES_SELECT.select).not.toHaveProperty('caption')
     expect(WIDGET_FILES_SELECT.orderBy[0]).toEqual({ position: { sort: 'asc', nulls: 'last' } })
   })
 })
