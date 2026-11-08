@@ -1764,13 +1764,6 @@ describe('Replies on their way to a channel', () => {
         captionState: CaptionState.SENT,
         captionChannelMessageId: `ext-${externalCount}`
       })
-      // The file row keeps no state of that text: the message is the one place
-      expect(
-        await owner.media.findFirstOrThrow({
-          where: { messageId: reply.id },
-          select: { captionState: true, captionChannelMessageId: true }
-        })
-      ).toEqual({ captionState: null, captionChannelMessageId: null })
     })
 
     it('sends apart only the text of the message: a text under a later audio is not sent after it', async () => {

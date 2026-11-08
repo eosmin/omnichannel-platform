@@ -706,9 +706,8 @@ export function addMediaTo(
     position?: number
     delivery?: DeliveryStatus
     sendErrorCode?: string
-    // The text under this file and how it went when the channel sends it as a message of its own
+    // The text under this file
     caption?: string
-    captionState?: CaptionState
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
@@ -728,7 +727,6 @@ export function addMediaTo(
         ...(input.delivery === undefined ? {} : { deliveryStatus: input.delivery }),
         ...(input.sendErrorCode === undefined ? {} : { sendErrorCode: input.sendErrorCode }),
         ...(input.caption === undefined ? {} : { caption: input.caption }),
-        ...(input.captionState === undefined ? {} : { captionState: input.captionState }),
         ...settledOf(storeId, id, input.processed)
       }
     })

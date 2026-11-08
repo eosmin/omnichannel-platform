@@ -309,8 +309,7 @@ describe('Sending only the text under a file again', () => {
           status: 'clean',
           position: 1,
           deliveryStatus: 'sent',
-          caption: 'second',
-          captionState: CaptionState.FAILED
+          caption: 'second'
         },
         select: { id: true }
       })
@@ -323,9 +322,7 @@ describe('Sending only the text under a file again', () => {
 
       expect(response.status).toBe(NOT_FOUND)
       expect(queueOf(app, QueueNames.OUTBOUND).jobs).toHaveLength(0)
-      expect((await owner.media.findUniqueOrThrow({ where: { id: second.id } })).captionState).toBe(
-        CaptionState.FAILED
-      )
+      expect((await row(id)).captionState).toBe(CaptionState.FAILED)
     })
   })
 
