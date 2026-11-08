@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import { StorageKeys } from '@platform/api-client'
 
@@ -11,7 +11,7 @@ import { toast } from '../toast'
 import { useErrorText } from '../use-error-text'
 
 import { PushSubscribeResult, pushPermission, subscribeToPush } from './push-browser'
-import { PushOffer, pushOfferFor } from './push-offer'
+import { PushOffer, pushOfferFor, shouldSyncOnLoad } from './push-offer'
 
 function readOffered(): boolean {
   try {
@@ -41,6 +41,28 @@ const PROMPT_TOAST_ID = 'push-prompt'
 
 // The silent registration of a browser that already allows push runs once per page load
 let syncedInThisPage = false
+
+// Opening a store: a browser that allows push tells the server it is there (see `shouldSyncOnLoad`)
+export function usePushSync(storeId: string): void {
+  useEffect(() => {
+    const permission = pushPermission(webEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+    if (
+      !shouldSyncOnLoad({ permission, turnedOff: readTurnedOff(), alreadySynced: syncedInThisPage })
+    ) {
+      return
+    }
+    syncedInThisPage = true
+    // Marked before the call so two stores opening at once register once; given back if it failed (offline,
+    // a busy api), so that the next store that opens tries again
+    subscribeToPush(apiClient, storeId, webEnv.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+      .then(result => {
+        if (result !== PushSubscribeResult.SUBSCRIBED) syncedInThisPage = false
+      })
+      .catch(() => {
+        syncedInThisPage = false
+      })
+  }, [storeId])
+}
 
 // The question about notifications on this device, asked after the agent resolves a conversation
 export function usePushOffer(storeId: string): { offer: () => void } {

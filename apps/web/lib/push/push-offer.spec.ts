@@ -1,4 +1,4 @@
-import { PushOffer, pushOfferFor } from './push-offer'
+import { PushOffer, pushOfferFor, shouldSyncOnLoad } from './push-offer'
 
 describe('pushOfferFor', () => {
   it('asks a browser that was never asked, once', () => {
@@ -14,5 +14,21 @@ describe('pushOfferFor', () => {
   it('leaves alone a browser that said no or cannot do push', () => {
     expect(pushOfferFor({ permission: 'denied', alreadyOffered: false })).toBe(PushOffer.NONE)
     expect(pushOfferFor({ permission: null, alreadyOffered: false })).toBe(PushOffer.NONE)
+  })
+})
+
+describe('shouldSyncOnLoad', () => {
+  const base = { permission: 'granted', turnedOff: false, alreadySynced: false } as const
+
+  it('registers again, once per page, a browser that allows push', () => {
+    expect(shouldSyncOnLoad(base)).toBe(true)
+    expect(shouldSyncOnLoad({ ...base, alreadySynced: true })).toBe(false)
+  })
+
+  it('leaves alone a browser that is blocked, never asked, unsupported, or switched off by the person', () => {
+    for (const permission of ['denied', 'default', null] as const) {
+      expect(shouldSyncOnLoad({ ...base, permission })).toBe(false)
+    }
+    expect(shouldSyncOnLoad({ ...base, turnedOff: true })).toBe(false)
   })
 })

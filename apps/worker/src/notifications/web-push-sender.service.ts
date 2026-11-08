@@ -67,7 +67,8 @@ export class WebPushSender {
   }
 
   async send(userId: string, notificationId: string): Promise<void> {
-    if (!this.gateway.enabled) return // No keys: nothing can be sent, and retrying will not add them
+    // No keys: nothing can be sent, and retrying will not add them
+    if (!this.gateway.enabled) return this.skip(userId, notificationId, 'no_vapid_keys')
 
     // Both ids, so a job that names someone else's notification pushes nothing
     const found = await this.prisma.client.notification.findFirst({
@@ -86,7 +87,8 @@ export class WebPushSender {
       }
     })
     // Gone, or read in the app while the job waited: the push has no reason left
-    if (found === null || found.readAt !== null) return
+    if (found === null) return this.skip(userId, notificationId, 'notification_gone')
+    if (found.readAt !== null) return this.skip(userId, notificationId, 'already_read')
     // The browser is the person's, not the store's: a push of a store they can no longer enter (a
     // suspended or removed member, queued before it happened) would still reach their screen
     const member = await this.prisma.client.membership.count({
@@ -97,12 +99,12 @@ export class WebPushSender {
         revokedAt: null
       }
     })
-    if (member === 0) return
+    if (member === 0) return this.skip(userId, notificationId, 'not_a_member')
 
     const parsed = rowSchema.safeParse(found)
     if (!parsed.success) throw new UnrecoverableError('the notification does not fit a push')
     const subscriptions = await this.prisma.client.pushSubscription.findMany({ where: { userId } })
-    if (subscriptions.length === 0) return
+    if (subscriptions.length === 0) return this.skip(userId, notificationId, 'no_subscription')
 
     let payload: PushPayload
     try {
@@ -119,7 +121,7 @@ export class WebPushSender {
         try {
           await this.gateway.send(sub, body, urgent)
         } catch (error) {
-          return this.settle(sub.id, userId, error)
+          return this.settle(sub.id, userId, notificationId, error)
         }
         // Bookkeeping: its failure must not turn a delivered push into a retry of every browser
         await this.prisma.client.pushSubscription
@@ -134,9 +136,16 @@ export class WebPushSender {
     if (outcomes.includes('retry')) throw new Error('a push service could not be reached')
   }
 
+  // A push that is not sent for a reason that is not an error. Nothing of the person or the text goes in
+  // the line: the ids and the reason are what a missing notification needs to be traced.
+  private skip(userId: string, notificationId: string, reason: string): void {
+    this.logger.info({ userId, notificationId, reason }, 'a web push was not sent')
+  }
+
   private async settle(
     subscriptionId: string,
     userId: string,
+    notificationId: string,
     error: unknown
   ): Promise<'dropped' | 'retry' | 'failed'> {
     if (error instanceof WebPushError && GONE.has(error.statusCode)) {
@@ -144,6 +153,16 @@ export class WebPushSender {
       await this.prisma.client.pushSubscription.deleteMany({
         where: { id: subscriptionId, userId }
       })
+      this.logger.info(
+        {
+          userId,
+          notificationId,
+          subscriptionId,
+          statusCode: error.statusCode,
+          reason: 'subscription_gone'
+        },
+        'a web push subscription was dropped: the browser or its push service forgot it'
+      )
       return 'dropped'
     }
     const statusCode = error instanceof WebPushError ? error.statusCode : undefined

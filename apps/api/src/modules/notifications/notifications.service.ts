@@ -100,6 +100,12 @@ export class NotificationsService {
     const sound = prefs.sound && !quiet
 
     if (prefs.inApp) this.emitLive(input, row, defaults.severity, sound)
+    if (prefs.push && quiet) {
+      this.logger.log(
+        { userId: input.userId, notificationId: row.id, reason: 'quiet_hours' },
+        'a web push was not queued'
+      )
+    }
     if (prefs.push && !quiet) await this.queueWebPush(input.userId, row.id)
     // Quiet hours do not hold the email back: they pause what makes noise, and a mail is read later.
     // Only the immediate kind needs a job: hourly and daily are found by the scheduler by the mark
@@ -134,7 +140,13 @@ export class NotificationsService {
         where: { userId },
         select: { id: true }
       })
-      if (browser === null) return
+      if (browser === null) {
+        this.logger.log(
+          { userId, notificationId, reason: 'no_subscription' },
+          'a web push was not queued'
+        )
+        return
+      }
       await this.enqueue(JobNames.SEND_WEB_PUSH, { userId, notificationId })
     } catch (error) {
       this.logger.warn(

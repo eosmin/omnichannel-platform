@@ -14,6 +14,7 @@ import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
 import { StoreNav } from '../../components/shell/store-nav'
 import { rememberLastStoreId } from '../../lib/last-store'
+import { usePushSync } from '../../lib/push/use-push-offer'
 
 // Only a suspended person ever loads this, so it stays out of the chunk every store page shares
 const Suspended = dynamic(() => import('./suspended-store').then(module => module.SuspendedStore), {
@@ -46,6 +47,7 @@ export function StoreShell({
           <StoreProvider membership={membership}>
             <Remember storeId={storeId} />
             <StoreTimeZone />
+            <PushSync storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
               <CustomerDrawerProvider>
                 <AppFrame profile={profile} currentStoreId={storeId} nav={<StoreNav />}>
@@ -69,6 +71,12 @@ function NoMembership(): ReactElement {
 }
 
 // "/" goes to the store used last
+// Registers this browser again for push when it allows it (see `usePushSync`). Renders nothing.
+function PushSync({ storeId }: { storeId: string }): null {
+  usePushSync(storeId)
+  return null
+}
+
 function Remember({ storeId }: { storeId: string }): null {
   useEffect(() => {
     rememberLastStoreId(storeId)
