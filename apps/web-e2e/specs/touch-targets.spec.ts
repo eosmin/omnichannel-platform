@@ -67,6 +67,11 @@ test.describe.serial('touch targets on a phone', () => {
         name: new RegExp(`^${en.inbox.actions.snoozeRow.split('{')[0] ?? ''}`)
       })
     )
+    for (const label of [en.inbox.actions.resolveRow, en.inbox.actions.resolveRowMore]) {
+      await expectTouchable(
+        row.getByRole('button', { name: new RegExp(`^${label.split('{')[0] ?? ''}`) })
+      )
+    }
     // The checkbox glyph is drawn small on purpose; the control a finger hits is the label around it (40 px)
     await expectTouchable(row.locator('label:has(input[type="checkbox"])'))
   })

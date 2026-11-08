@@ -33,6 +33,13 @@ const ResolveForm = dynamic(() => import('./resolve-form').then(module => module
 export const ResolveMode = { NOW: 'now', OPTIONS: 'options' } as const
 export type ResolveModeType = (typeof ResolveMode)[keyof typeof ResolveMode]
 
+// The way the store chose, from its settings (the way a row shows before the flow of a conversation exists)
+export function resolveModeOf(
+  settings: { resolveShowOptions: boolean } | undefined
+): ResolveModeType {
+  return settings?.resolveShowOptions === true ? ResolveMode.OPTIONS : ResolveMode.NOW
+}
+
 // The way the arrow of the button and `Shift+E` offer: the one the main button does not take
 export function otherResolveMode(mode: ResolveModeType): ResolveModeType {
   return mode === ResolveMode.NOW ? ResolveMode.OPTIONS : ResolveMode.NOW
@@ -108,7 +115,7 @@ export function useResolveFlow(conversationId: string): ResolveFlow {
       .catch((error: unknown) => toast.error(errorText(error)))
   }
 
-  const defaultMode = settings?.resolveShowOptions === true ? ResolveMode.OPTIONS : ResolveMode.NOW
+  const defaultMode = resolveModeOf(settings)
   const start = (): void => startWith(defaultMode)
 
   // The same functions for the life of the hook: the header and the composer hold them in a context

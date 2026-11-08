@@ -1345,6 +1345,8 @@
       "resolveDefault": "(default)",
       "reopen": "Reopen",
       "wakeUp": "Wake up",
+      "resolveRow": "Resolve the conversation with {name}",
+      "resolveRowMore": "Resolution options for the conversation with {name}",
       "snoozeRow": "Snooze the conversation with {name}"
     },
     "bulk": {
