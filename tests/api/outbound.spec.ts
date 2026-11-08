@@ -12,12 +12,15 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
+  CaptionState,
   ChannelConnectionStatus,
+  ChannelResultMetadata,
   ConversationStatus,
   PluginInstallationStatus,
   ChannelIds,
   DeliveryStatus,
-  MessageType
+  MessageType,
+  WhatsAppLimits
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -78,6 +81,8 @@ const NOT_FOUND = 404
 const THREE_MINUTES_MS = 180_000
 const TWO_HOURS_MS = 7_200_000
 const SIX_MINUTES_MS = 360_000
+// What the core may add to a message of ten files and ten texts, with a provider that answers at once
+const STEP_OVERHEAD_BUDGET_MS = 10_000
 
 describe('Replies on their way to a channel', () => {
   const prefix = newRunPrefix()
@@ -180,6 +185,14 @@ describe('Replies on their way to a channel', () => {
     // Instagram is an official plugin of the app now: its send is the only thing the suite replaces
     jest
       .spyOn(registry.get(ChannelIds.INSTAGRAM), 'sendMessage')
+      .mockImplementation((c, p) => sendMessage(c, p))
+
+    // WhatsApp carries no text under an audio: the suite replaces its two sends to see where the text goes
+    jest
+      .spyOn(registry.get(ChannelIds.WHATSAPP), 'sendMedia')
+      .mockImplementation((c, p) => sendMediaOf(c, p))
+    jest
+      .spyOn(registry.get(ChannelIds.WHATSAPP), 'sendMessage')
       .mockImplementation((c, p) => sendMessage(c, p))
 
     const logger: PinoLogger = await app.resolve(PinoLogger)
@@ -1563,6 +1576,308 @@ describe('Replies on their way to a channel', () => {
           await owner.media.count({ where: { id: { in: files.map(f => f.id) }, messageId: null } })
         ).toBe(2)
       })
+    })
+  })
+
+  describe('a text under each file', () => {
+    const DAY_MS = 86_400_000
+    // A reply of several files with the text of each, over a plugin; the first text is the message's own
+    const albumOf = async (
+      pluginId: string,
+      type: MessageType,
+      captions: (string | null)[],
+      contentType = 'image/png'
+    ) => {
+      const reply = await queuedReply({
+        pluginId,
+        type,
+        ...(captions[0] === null || captions[0] === undefined ? {} : { content: captions[0] })
+      })
+      if (captions[0] === null || captions[0] === undefined) {
+        await owner.message.update({ where: { id: reply.id }, data: { content: null } })
+      }
+      await owner.customerIdentity.updateMany({
+        where: { conversations: { some: { id: reply.conversationId } } },
+        data: { lastInboundAt: new Date() }
+      })
+      for (const [position, caption] of captions.entries()) {
+        const id = randomUUID()
+        await owner.media.create({
+          data: {
+            id,
+            storeId: reply.storeId,
+            messageId: reply.id,
+            purpose: 'message',
+            key: `stores/${reply.storeId}/messages/${id}/p.png`,
+            filename: 'p.png',
+            contentType,
+            fileSize: 10,
+            status: 'clean',
+            position,
+            deliveryStatus: 'queued',
+            caption,
+            createdAt: new Date(Date.now() + position)
+          }
+        })
+      }
+      return reply
+    }
+    const filesOf = (messageId: string) =>
+      owner.media.findMany({
+        where: { messageId },
+        orderBy: { position: 'asc' },
+        select: {
+          deliveryStatus: true,
+          sendErrorCode: true,
+          caption: true,
+          captionState: true,
+          captionChannelMessageId: true
+        }
+      })
+
+    it('sends the text of each file with it, in the order of the message, and none for a file with none', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, ['one', null, 'three'])
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia.map(item => item.caption)).toEqual(['one', undefined, 'three'])
+      expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
+        `${reply.id}-0`,
+        `${reply.id}-1`,
+        `${reply.id}-2`
+      ])
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
+    it('keeps the state of each text on its own file: the id of the third never covers the second', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, [
+        'one',
+        'two',
+        'three'
+      ])
+      let call = 0
+      const spy = jest
+        .spyOn(app.get(PluginRegistry, { strict: false }).get(MULTI_MEDIA_CHANNEL_ID), 'sendMedia')
+        .mockImplementation((_c, params) => {
+          sentMedia.push(params)
+          call += 1
+          return Promise.resolve({
+            externalId: `file-${call}`,
+            status: DeliveryStatus.SENT,
+            sentAt: new Date().toISOString(),
+            metadata:
+              call === 2
+                ? { [ChannelResultMetadata.CAPTION_STATE]: CaptionState.UNCONFIRMED }
+                : { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: `text-${call}` }
+          })
+        })
+
+      await sender.send(job(reply), false)
+      spy.mockRestore()
+
+      const files = await filesOf(reply.id)
+      expect(files.map(file => [file.captionState, file.captionChannelMessageId])).toEqual([
+        [CaptionState.SENT, 'text-1'],
+        [CaptionState.UNCONFIRMED, null],
+        [CaptionState.SENT, 'text-3']
+      ])
+      // The first one is also the message's, as the older screens read it
+      expect(
+        await owner.message.findUniqueOrThrow({
+          where: { id: reply.id },
+          select: { captionChannelMessageId: true }
+        })
+      ).toEqual({ captionChannelMessageId: 'text-1' })
+    })
+
+    it('sends no text for a file that fails, and the next file still goes with its own', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, [
+        'one',
+        'two',
+        'three'
+      ])
+      mediaFailure = params =>
+        params.caption === 'two'
+          ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+          : null
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia.map(item => item.caption)).toEqual(['one', 'two', 'three'])
+      expect((await filesOf(reply.id)).map(file => file.deliveryStatus)).toEqual([
+        'sent',
+        'failed',
+        'sent'
+      ])
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+    })
+
+    it('fails the files that follow with the code of the window when it closes in the middle, in their order', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, [
+        'one',
+        'two',
+        'three'
+      ])
+      duringMediaSend = async () => {
+        await owner.customerIdentity.updateMany({
+          where: { conversations: { some: { id: reply.conversationId } } },
+          data: { lastInboundAt: new Date(Date.now() - 3 * DAY_MS) }
+        })
+      }
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(1)
+      const files = await filesOf(reply.id)
+      expect(files.map(file => [file.deliveryStatus, file.sendErrorCode])).toEqual([
+        ['sent', null],
+        ['failed', ErrorCodes.CHANNEL_WINDOW_EXPIRED],
+        ['failed', ErrorCodes.CHANNEL_WINDOW_EXPIRED]
+      ])
+    })
+
+    it('sends nothing when a text would be refused: no album goes in part', async () => {
+      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.IMAGE, [
+        'fine',
+        'x'.repeat(WhatsAppLimits.CAPTION_MAX_LENGTH + 1)
+      ])
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(0)
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+      })
+      expect((await filesOf(reply.id)).map(file => file.deliveryStatus)).toEqual([
+        'queued',
+        'queued'
+      ])
+    })
+
+    it('sends the text of an audio after it, as a message of its own, with the id kept on the file', async () => {
+      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
+
+      await sender.send(job(reply), false)
+
+      // The audio goes with no text; the text follows as a plain message, in that order
+      expect(sentMedia.map(item => item.caption)).toEqual([undefined])
+      expect(sent.map(item => item.content)).toEqual(['say this'])
+      expect((await filesOf(reply.id))[0]).toMatchObject({
+        deliveryStatus: 'sent',
+        captionState: CaptionState.SENT,
+        captionChannelMessageId: `ext-${externalCount}`
+      })
+    })
+
+    it('leaves the audio sent and says the text may not have gone when that call gives no answer', async () => {
+      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, ['say this'], 'audio/ogg')
+      sendMessage = () => Promise.reject(new Error('socket hang up'))
+
+      await sender.send(job(reply), false)
+
+      expect((await filesOf(reply.id))[0]).toMatchObject({
+        deliveryStatus: 'sent',
+        captionState: CaptionState.UNCONFIRMED
+      })
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      // Never sent again by itself: one call, no retry
+      expect(sentMedia).toHaveLength(1)
+    })
+
+    it('never takes a text back from sent: a later report of doubt does not cover it', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, ['one', 'two'])
+      await owner.media.updateMany({
+        where: { messageId: reply.id, position: 1 },
+        data: { captionState: CaptionState.SENT, captionChannelMessageId: 'echoed-already' }
+      })
+      const spy = jest
+        .spyOn(app.get(PluginRegistry, { strict: false }).get(MULTI_MEDIA_CHANNEL_ID), 'sendMedia')
+        .mockImplementation((_c, params) => {
+          sentMedia.push(params)
+          return Promise.resolve({
+            externalId: `f-${sentMedia.length}`,
+            status: DeliveryStatus.SENT,
+            sentAt: new Date().toISOString(),
+            metadata: { [ChannelResultMetadata.CAPTION_STATE]: CaptionState.UNCONFIRMED }
+          })
+        })
+
+      await sender.send(job(reply), false)
+      spy.mockRestore()
+
+      const files = await filesOf(reply.id)
+      expect(files.map(file => file.captionState)).toEqual([
+        CaptionState.UNCONFIRMED,
+        CaptionState.SENT
+      ])
+      expect(files[1]?.captionChannelMessageId).toBe('echoed-already')
+    })
+
+    // The worst case of a message: ten files, each with a text that goes after it (twenty calls to the
+    // provider). What the core adds around the calls is measured here with a provider that answers at once;
+    // the time of the provider itself is its own and is bounded per call (`MEDIA_SEND_TIMEOUT_MS`, `SEND_TIMEOUT_MS`).
+    it('sends ten files and ten texts in order, and the core adds little around the twenty calls', async () => {
+      const captions = Array.from({ length: 10 }, (_, n) => `text ${n + 1}`)
+      const reply = await albumOf(ChannelIds.WHATSAPP, MessageType.AUDIO, captions, 'audio/ogg')
+      const order: string[] = []
+      duringMediaSend = params => {
+        order.push(`file ${params.idempotencyKey.slice(-1)}`)
+        return Promise.resolve()
+      }
+      sendMessage = (_c, params) => {
+        order.push(params.content)
+        return accept(_c, params)
+      }
+
+      const started = performance.now()
+      await sender.send(job(reply), false)
+      const took = performance.now() - started
+
+      expect(order).toEqual(
+        Array.from({ length: 10 }, (_, n) => [`file ${n}`, `text ${n + 1}`]).flat()
+      )
+      expect((await filesOf(reply.id)).map(file => file.captionState)).toEqual(
+        Array.from({ length: 10 }, () => CaptionState.SENT)
+      )
+      process.stdout.write(
+        `[ten files, ten texts] core time around 20 calls: ${Math.round(took)} ms\n`
+      )
+      expect(took).toBeLessThan(STEP_OVERHEAD_BUDGET_MS)
+    })
+
+    it('sends no text twice when a retry finds the files sent: nothing goes again', async () => {
+      const reply = await albumOf(MULTI_MEDIA_CHANNEL_ID, MessageType.IMAGE, ['one', 'two'])
+      await sender.send(job(reply), false)
+      await owner.message.update({
+        where: { id: reply.id },
+        data: { deliveryStatus: DeliveryStatus.QUEUED, failureDefinitive: false }
+      })
+      sentMedia = []
+
+      await sender.send(job(reply), false)
+
+      expect(sentMedia).toHaveLength(0)
+    })
+
+    it('never logs the text of a file', async () => {
+      const reply = await albumOf(
+        ChannelIds.WHATSAPP,
+        MessageType.AUDIO,
+        ['a secret sentence'],
+        'audio/ogg'
+      )
+      sendMessage = () => Promise.reject(new Error('socket hang up'))
+      const logs: string[] = []
+      for (const level of ['warn', 'error', 'info', 'log'] as const) {
+        jest.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+          logs.push(JSON.stringify(args))
+        })
+      }
+
+      await sender.send(job(reply), false)
+
+      expect(logs.join('')).not.toContain('a secret sentence')
     })
   })
 

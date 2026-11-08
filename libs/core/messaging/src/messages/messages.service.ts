@@ -461,6 +461,89 @@ export class MessagesService {
     return this.withQuote(storeId, message, viewer)
   }
 
+  // The text under one file of a message, sent again as a message of its own (the file is never sent again).
+  // Only from `failed` or `unconfirmed` (after the latter the customer may see it twice: the agent decided,
+  // having been told to check the chat), and the window must be open. `queued` is written here and settled by
+  // the worker. The first file of a message sent before each file had its own text is the message's.
+  async resendMediaCaption(
+    storeId: string,
+    messageId: string,
+    mediaId: string,
+    viewer: Viewer
+  ): Promise<MessageView> {
+    const message = await this.prisma.transaction(async tx => {
+      const found = await tx.message.findFirst({
+        where: { id: messageId, storeId },
+        select: { conversationId: true }
+      })
+      if (found === null) throw resourceNotFound('message')
+      const current = await lockConversationForWrite(tx, storeId, found.conversationId, viewer)
+      await lockMessageRow(tx, messageId)
+      const row = await tx.message.findFirst({
+        where: { id: messageId, storeId },
+        select: { ...MESSAGE_SELECT, version: true, editStatus: true, deleteStatus: true }
+      })
+      if (row === null) throw resourceNotFound('message')
+      requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
+      const file = await tx.media.findFirst({
+        where: { id: mediaId, storeId, messageId },
+        select: { id: true, caption: true, captionState: true, position: true }
+      })
+      if (file === null) throw resourceNotFound('media')
+      const state = file.captionState
+      if (
+        row.authorType !== String(AuthorType.AGENT) ||
+        row.deletedAt !== null ||
+        // The file itself must have gone: a file that failed is sent again whole, with its text
+        row.deliveryStatus === String(DeliveryStatus.FAILED) ||
+        row.deliveryStatus === String(DeliveryStatus.QUEUED) ||
+        file.caption === null ||
+        file.caption === '' ||
+        !ResendableCaptionStates.some(allowed => allowed === state)
+      ) {
+        throw resourceConflict('only the text of a file that was sent can be sent again')
+      }
+      if (
+        row.editStatus === DeliveryStatus.QUEUED.valueOf() ||
+        row.deleteStatus === DeliveryStatus.QUEUED.valueOf()
+      ) {
+        throw resourceConflict('another change of this message is on its way')
+      }
+      if (statusOf(current.status) === ConversationStatus.SPAM) {
+        throw new PlatformException(
+          ErrorCodes.CONVERSATION_INVALID_STATUS_TRANSITION,
+          'a spam conversation is not answered: mark it as not spam first',
+          HttpStatusCodes.CONFLICT,
+          { from: ConversationStatus.SPAM, to: ConversationStatus.OPEN }
+        )
+      }
+      await this.window.requireOpen(tx, storeId, row.conversationId)
+      const version = row.version + 1
+      await tx.media.updateMany({
+        where: { id: mediaId, storeId, messageId, captionState: state },
+        data: { captionState: CaptionState.QUEUED }
+      })
+      const updated = await tx.message.update({
+        where: { id: messageId, storeId },
+        data: { changeRequestedAt: new Date(), version },
+        select: { ...MESSAGE_SELECT }
+      })
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
+      this.prisma.afterCommit(tx, () => {
+        this.outbound
+          .enqueueCaption({ storeId, messageId, version, mediaId })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              { messageId, errorName: errorName(error) },
+              'the text under a file could not be queued; the sweep will mark it unconfirmed'
+            )
+          })
+      })
+      return messageView(updated)
+    })
+    return this.withQuote(storeId, message, viewer)
+  }
+
   // The job of the failed attempt is still kept under the id of the message: it is removed first, or
   // the new one would be ignored
   private requeueForChannel(tx: PrismaTransaction, storeId: string, messageId: string): void {
@@ -583,7 +666,12 @@ export class MessagesService {
     requireCaptionsPlaced(body, limits?.captionsPerFile === true)
     const captions = captionsOf(body)
     for (const caption of captions) {
-      requireCaptionFits(conversation.channelType, body.type, caption ?? undefined)
+      requireCaptionFits(
+        conversation.channelType,
+        body.type,
+        caption ?? undefined,
+        limits?.captionsPerFile === true
+      )
     }
     const maxFiles = limits?.maxFiles ?? MediaMessageLimits.SINGLE_FILE
     if (body.mediaIds.length > maxFiles) {

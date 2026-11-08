@@ -22,6 +22,11 @@ export interface DeletionSettlement {
   errorCode: ErrorCode | null
 }
 
+// The same for the text under ONE file of a message (`mediaId`): the request is the version of the message
+export interface MediaCaptionSettlement extends CaptionSettlement {
+  mediaId: string
+}
+
 export interface CaptionSettlement {
   storeId: string
   messageId: string
@@ -118,6 +123,37 @@ export class MessageChangeStatusWriter {
         }
       })
       if (changed.count === 0) return
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
+    })
+  }
+
+  async settleMediaCaption(settlement: MediaCaptionSettlement): Promise<void> {
+    const { storeId, messageId, mediaId, version, outcome } = settlement
+    await this.prisma.transaction(async tx => {
+      await lockMessageRow(tx, messageId)
+      // A request made again meanwhile has another version: a late job settles nothing
+      const current = await tx.message.count({ where: { id: messageId, storeId, version } })
+      if (current === 0) return
+      const changed = await tx.media.updateMany({
+        where: { id: mediaId, storeId, messageId, captionState: CaptionState.QUEUED },
+        data: {
+          captionState: outcome.state,
+          ...(outcome.state === CaptionState.SENT
+            ? { captionChannelMessageId: outcome.externalId }
+            : {})
+        }
+      })
+      if (changed.count === 0) return
+      // The request is over unless another text of the message still waits
+      const waiting = await tx.media.count({
+        where: { storeId, messageId, captionState: CaptionState.QUEUED }
+      })
+      if (waiting === 0) {
+        await tx.message.updateMany({
+          where: { id: messageId, storeId },
+          data: { changeRequestedAt: null }
+        })
+      }
       await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
     })
   }

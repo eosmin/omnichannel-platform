@@ -27,7 +27,11 @@ import type {
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { type ChannelContext, type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
-import { MessageChangeStatusWriter, type CaptionSettlement } from './message-change-status.writer'
+import {
+  MessageChangeStatusWriter,
+  type CaptionSettlement,
+  type MediaCaptionSettlement
+} from './message-change-status.writer'
 import { refusalOf, SendAttemptFailed } from './send-refusal'
 
 const MESSAGE_SELECT = {
@@ -130,6 +134,7 @@ export class MessageChangeSender {
   // have gone out is never repeated here: it ends `unconfirmed`, and the echo of the owner settles it.
   async sendCaption(job: SendOutboundCaptionJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, messageId } = job
+    if (job.mediaId !== undefined) return this.sendMediaCaption(job, job.mediaId, isLastAttempt)
     const message = await this.read(storeId, messageId)
     // Not waiting, or waiting for a newer request than this job's: a late job sends nothing
     if (
@@ -182,6 +187,90 @@ export class MessageChangeSender {
       return settle({ state: outcomeUnknown ? CaptionState.UNCONFIRMED : CaptionState.FAILED })
     }
     return settle({ state: CaptionState.SENT, externalId })
+  }
+
+  // The text under one file of a message, sent again as a message of its own: its state and its id are the
+  // ones of the file, and the version of the message says which request this job is
+  private async sendMediaCaption(
+    job: SendOutboundCaptionJob,
+    mediaId: string,
+    isLastAttempt: boolean
+  ): Promise<void> {
+    const { storeId, messageId } = job
+    const message = await this.read(storeId, messageId)
+    const file = await this.prisma.client.media.findFirst({
+      where: { id: mediaId, storeId, messageId },
+      select: { caption: true, captionState: true }
+    })
+    // Not waiting, or waiting for a newer request than this job's: a late job sends nothing
+    if (
+      message === null ||
+      file === null ||
+      file.captionState !== CaptionState.QUEUED ||
+      message.version !== job.version
+    ) {
+      return
+    }
+    const settle = (outcome: CaptionSettlement['outcome']): Promise<void> =>
+      this.settleMediaCaption({ storeId, messageId, mediaId, version: job.version, outcome })
+    const text = file.caption
+    if (message.deletedAt !== null || text === null || text === '') {
+      return settle({ state: CaptionState.FAILED })
+    }
+    const prepared = this.prepare(message, 'sendMessage', isLastAttempt)
+    if ('refusedWith' in prepared) return settle({ state: CaptionState.FAILED })
+    let externalId: string
+    try {
+      const answer = await withTimeout(
+        prepared.plugin.sendMessage(prepared.ctx, {
+          channelIdentity: prepared.channelIdentity,
+          content: text,
+          idempotencyKey: `caption-${messageId}-${mediaId}-${job.version}`
+        }),
+        OutboundLimits.SEND_TIMEOUT_MS
+      )
+      const parsed = captionResultSchema.safeParse(answer)
+      if (!parsed.success) return settle({ state: CaptionState.UNCONFIRMED })
+      externalId = parsed.data.externalId
+    } catch (error) {
+      const refused = refusalOf(error)
+      const outcomeUnknown = !(error instanceof PluginError) || error.outcomeUnknown
+      // Only the length of the text, never the text
+      this.logger.warn(
+        {
+          pluginId: prepared.plugin.id,
+          messageId,
+          code: refused.code,
+          errorName: errorName(error),
+          length: Array.from(text).length
+        },
+        'sending the text under a file failed'
+      )
+      if (!outcomeUnknown && refused.retryable && !isLastAttempt) {
+        throw new SendAttemptFailed(refused.code, error, 'a caption')
+      }
+      return settle({ state: outcomeUnknown ? CaptionState.UNCONFIRMED : CaptionState.FAILED })
+    }
+    return settle({ state: CaptionState.SENT, externalId })
+  }
+
+  private async settleMediaCaption(settlement: MediaCaptionSettlement): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.status.settleMediaCaption(settlement)
+      } catch (error) {
+        if (attempt >= OutboundLimits.WRITE_ATTEMPTS) {
+          this.logger.error(
+            { messageId: settlement.messageId, errorName: errorName(error) },
+            'the state of the text under a file was not written; the sweep marks it unconfirmed'
+          )
+          return
+        }
+        await new Promise(resolve =>
+          setTimeout(resolve, OutboundLimits.WRITE_RETRY_DELAY_MS * attempt)
+        )
+      }
+    }
   }
 
   // Once the call was made, a write that fails is tried a few times and never makes the job call the

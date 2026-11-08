@@ -45,6 +45,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'messages.discard': { step: '7.7' },
   // The text under a file, sent again on its own: the button of the bubble (Step 3.5 PR F4b-2)
   'messages.resendCaption': { step: '3.5' },
+  'messages.resendMediaCaption': { step: '3.5' },
   // A lost file of the customer, downloaded again: the button of the line that says it was lost (Step 3.5 PR F4c)
   'messages.refetchFile': { step: '3.5' },
   'messages.deletedContent': { step: '3.2' },
