@@ -11,8 +11,11 @@ import {
   type ConversationStatusReason,
   ConversationStatusReasons,
   ConversationStatusTransitions,
+  DeliveryStatus,
   MembershipStatus,
+  MessageType,
   OfActiveInstallation,
+  ResolveUndo,
   SystemMessageEvents
 } from '@platform/core/domain'
 import {
@@ -24,6 +27,9 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
+
+import { lockMessageRow, publishMessageChanged } from '../changes/message-changed'
+import { isClosingMessage } from '../messages/closing-message'
 
 import { afterConversationCursor, encodeConversationCursor } from './conversation-cursor'
 import type { ConversationFilter, ListConversationsQuery } from './conversations.schemas'
@@ -47,7 +53,7 @@ import {
   LIST_SELECT,
   listItemsOf
 } from './conversations.views'
-import { systemEventFor, writeSystemLine } from './system-lines'
+import { systemEventFor, systemLineMetadataSchema, writeSystemLine } from './system-lines'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // A conversation is snoozed until a moment to come, within the limit
@@ -351,7 +357,36 @@ export class ConversationsService {
             : {})
       }
     })
-    const event = systemEventFor(from, to, options.undoesResolution === true)
+    // The Undo of a resolution takes back what that resolution queued: its closing message, if the
+    // worker has not claimed it. One that is in flight (marked by its claim) or gone is not touched.
+    if (
+      options.undoesResolution === true &&
+      from === ConversationStatus.RESOLVED &&
+      to === ConversationStatus.OPEN
+    ) {
+      await this.withdrawQueuedClosing(
+        tx,
+        storeId,
+        conversationId,
+        current.resolvedAt,
+        options.actor === 'system' ? null : options.actor.userId
+      )
+    }
+    // An Undo inside its window is a Ctrl+Z: the thread keeps no line that it was resolved and none that
+    // it was undone (the audit log has both). Past the window, or by someone else, it is a reopening.
+    const undid =
+      options.undoesResolution === true &&
+      from === ConversationStatus.RESOLVED &&
+      to === ConversationStatus.OPEN &&
+      options.actor !== 'system' &&
+      (await this.retractResolvedLine(
+        tx,
+        storeId,
+        conversationId,
+        current.resolvedAt,
+        options.actor.userId
+      ))
+    const event = undid ? null : systemEventFor(from, to, options.undoesResolution === true)
     if (event !== null) {
       await writeSystemLine(tx, storeId, conversationId, {
         event,
@@ -403,6 +438,83 @@ export class ConversationsService {
         conversationId,
         assignedTo: current.assignedTo
       })
+    }
+  }
+
+  // The line "resolved" of the resolution that the person is undoing, taken off the thread with the event
+  // that tells the screens; false when the Undo is out of its window or the line is not theirs, which
+  // leaves the thread as it is and lets the reopening write its line.
+  private async retractResolvedLine(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    resolvedAt: Date | null,
+    userId: string
+  ): Promise<boolean> {
+    if (resolvedAt === null) return false
+    if (
+      Date.now() - resolvedAt.getTime() >
+      ResolveUndo.DURATION_MS + ResolveUndo.CLOSING_GRACE_MS
+    ) {
+      return false
+    }
+    const line = await tx.message.findFirst({
+      where: {
+        storeId,
+        conversationId,
+        type: MessageType.SYSTEM,
+        metadata: { path: ['event'], equals: SystemMessageEvents.RESOLVED }
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, metadata: true, createdAt: true }
+    })
+    const parsed = systemLineMetadataSchema.safeParse(line?.metadata)
+    if (line === null || !parsed.success) return false
+    // The line of THIS resolution: written in the transaction that set `resolvedAt`, a moment apart at most
+    if (Math.abs(line.createdAt.getTime() - resolvedAt.getTime()) > ResolveUndo.CLOSING_GRACE_MS) {
+      return false
+    }
+    if (parsed.data.actor.type !== 'user' || parsed.data.actor.id !== userId) return false
+    await lockMessageRow(tx, line.id)
+    await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, line.id)
+    await tx.message.delete({ where: { id: line.id } })
+    return true
+  }
+
+  // Under the lock of the conversation, the one the worker takes to claim the message: a closing message
+  // still queued and not marked as in flight is deleted at once, with the event that takes it off the
+  // thread, so that the Undo does not leave it on screen until the worker finds it. The row is locked
+  // and read again before it goes, after the conversation (the order of every writer).
+  private async withdrawQueuedClosing(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    resolvedAt: Date | null,
+    // The person who undoes: only the message they queued is theirs to take back. Null for the system.
+    undoneBy: string | null
+  ): Promise<void> {
+    if (resolvedAt === null) return
+    const queued = await tx.message.findMany({
+      where: {
+        storeId,
+        conversationId,
+        deliveryStatus: DeliveryStatus.QUEUED,
+        failureDefinitive: null,
+        createdAt: { gte: resolvedAt },
+        ...(undoneBy === null ? {} : { authorId: undoneBy })
+      },
+      select: { id: true, metadata: true }
+    })
+    for (const { id, metadata } of queued) {
+      if (!isClosingMessage(metadata)) continue
+      await lockMessageRow(tx, id)
+      const standing = await tx.message.count({
+        where: { id, storeId, deliveryStatus: DeliveryStatus.QUEUED, failureDefinitive: null }
+      })
+      if (standing === 0) continue
+      // The event reads the row, so it is made before the row goes
+      await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, id)
+      await tx.message.delete({ where: { id } })
     }
   }
 
