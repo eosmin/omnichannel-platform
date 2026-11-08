@@ -4,7 +4,11 @@ import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
-import { ConversationStatusReasons, SystemMessageEvents } from '@platform/core/domain'
+import {
+  AssignmentReasons,
+  ConversationStatusReasons,
+  SystemMessageEvents
+} from '@platform/core/domain'
 
 type SystemLine = NonNullable<MessageView['system']>
 
@@ -38,7 +42,14 @@ export function SystemLineView({
     actor: nameOf(line.actor.id),
     assignee: nameOf(line.assignedTo)
   }
-  const text = isEvent(line.event) ? t(line.event, params) : t('unknown')
+  // An assignment the system made on the reply of the agent says so, and has no reason line
+  const isOnReply =
+    line.event === SystemMessageEvents.ASSIGNED && line.reason === AssignmentReasons.ON_REPLY
+  const text = isOnReply
+    ? t('assigned_on_reply', params)
+    : isEvent(line.event)
+      ? t(line.event, params)
+      : t('unknown')
   const until =
     line.snoozedUntil === null
       ? null
@@ -85,7 +96,7 @@ export function SystemLineView({
         {/* What the agent wrote when snoozing: text of the agent, drawn as it is */}
         {reminder === null ? null : ` · ${reminder}`}
       </p>
-      {!isWake && reason !== null ? <p>{t('reason', { reason })}</p> : null}
+      {!isWake && !isOnReply && reason !== null ? <p>{t('reason', { reason })}</p> : null}
     </div>
   )
 }

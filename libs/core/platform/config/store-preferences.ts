@@ -13,7 +13,10 @@ import { z } from 'zod'
 // the others, least of all a switch the store turned off.
 export const storePreferencesSchema = z.object({
   // A store may read a conversation without telling the customer (blue ticks); on by default
-  sendReadReceipts: z.boolean().catch(true)
+  sendReadReceipts: z.boolean().catch(true),
+  // The first reply of an agent who may assign, to a conversation nobody has, gives it to them; on by
+  // default, in the stores that already exist too (a key that is missing reads as this)
+  assignOnReply: z.boolean().catch(true)
 })
 
 export type StorePreferences = z.output<typeof storePreferencesSchema>
@@ -30,7 +33,8 @@ export function readStorePreferences(raw: unknown): StorePreferences {
 // not named keep their value, so a page that draws only some of them cannot reset the others.
 export const updateStorePreferencesSchema = z
   .strictObject({
-    sendReadReceipts: z.boolean().optional()
+    sendReadReceipts: z.boolean().optional(),
+    assignOnReply: z.boolean().optional()
   })
   .refine(body => Object.values(body).some(value => value !== undefined), {
     message: 'nothing to change'

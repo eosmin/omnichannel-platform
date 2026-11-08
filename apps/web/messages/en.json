@@ -945,6 +945,11 @@
     "draft": "Draft: “{text}”",
     "draftNote": "Note (draft): “{text}”",
     "draftUnsent": "Unsent draft",
+    "draftFilter": "With draft",
+    "noDrafts": {
+      "title": "No drafts",
+      "body": "No conversation has an unsent draft in this tab."
+    },
     "wokeNote": "Woke up: {note}",
     "noMessages": "No messages yet",
     "unreadCount": "{count, plural, one {# unread message} other {# unread messages}}",
@@ -1048,6 +1053,7 @@
         "share": "The customer shared a post; this channel does not let you see its content",
         "location": "The customer shared a location that this channel does not let you see",
         "media": "The customer sent a file that could not be fetched",
+        "notDelivered": "The customer sent something the channel does not deliver (for example a sticker or a like). Open it in the channel's app",
         "other": "The customer sent something this channel cannot show"
       },
       "captionFailed": "The file was sent, but the text under it was not",
@@ -1148,6 +1154,7 @@
         "snoozedUntil": "until {until}",
         "woken": "{actorKind, select, user {Reopened by {actor}} other {Woke up}}",
         "assigned": "{actorKind, select, user {{actor} assigned it to {assignee}} other {Assigned to {assignee}}}",
+        "assigned_on_reply": "{actor} took it by replying",
         "unassigned": "{actorKind, select, user {{actor} left it unassigned} other {Left unassigned}}",
         "unknown": "The conversation changed",
         "reason": "Reason: {reason}",
@@ -1160,6 +1167,7 @@
         }
       },
       "loadEarlierFailed": "The earlier messages could not be loaded",
+      "imageRun": "{count} pictures",
       "typing": {
         "customer": "The customer is typing",
         "teammates": "{count, plural, one {{names} is typing} other {{names} are typing}}"
@@ -2397,6 +2405,15 @@
         "archiveDays": "The archive time must be a whole number of days from 1 to 365.",
         "loadThreshold": "The load threshold must be a whole number from 1 to 100.",
         "closingSnippetRequired": "Choose the snippet to send as the closing message."
+      },
+      "assignOnReply": {
+        "label": "Assign on reply",
+        "title": "Assign on reply",
+        "switch": "Assign me when I reply",
+        "hint": "If you reply to a conversation nobody has, it is assigned to you (only for who can assign).",
+        "save": "Save",
+        "saved": "Assign on reply saved",
+        "readOnly": "You can see this setting but not change it."
       },
       "receipts": {
         "label": "Read receipts",

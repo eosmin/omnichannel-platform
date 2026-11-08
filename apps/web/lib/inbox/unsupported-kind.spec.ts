@@ -8,7 +8,7 @@ describe('unsupportedKindOf', () => {
     ['location', 'location'],
     ['image', 'media'],
     ['audio', 'media'],
-    ['unsupported', 'other'],
+    ['unsupported', 'notDelivered'],
     ['order', 'other'],
     ['something_new', 'other']
   ])('names %s as %s', (type, kind) => {

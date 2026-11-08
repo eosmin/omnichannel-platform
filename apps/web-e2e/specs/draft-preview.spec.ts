@@ -37,28 +37,55 @@ test.describe.serial('the draft in the list of conversations', () => {
     const reply = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
     const shown = en.inbox.draft.replace('{text}', UNSENT)
 
-    // Live, in the conversation that is open
-    await reply.fill(UNSENT)
-    await expect(rowOf(first).getByText(shown)).toBeVisible()
-    // The text is shown as text: the tags in it are not drawn as tags
-    await expect(rowOf(first).locator('i')).toHaveCount(0)
+    const draftWord = en.inbox.draft.split('{')[0] ?? 'Draft'
+    const afterRender = (): Promise<void> =>
+      page.evaluate(
+        () =>
+          new Promise<void>(resolve => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          })
+      )
 
-    // Kept when the agent goes to another conversation, whose row has none
+    // In the conversation that is open the text is in the box, in front of the agent: the row does not repeat it.
+    // The draft is first kept (the same one that will show later) and the page is given time to draw it.
+    await reply.fill(UNSENT)
+    await expect
+      .poll(() =>
+        page.evaluate(
+          text => Object.values<string>(window.sessionStorage).some(value => value.includes(text)),
+          'Remember to ask about'
+        )
+      )
+      .toBe(true)
+    await afterRender()
+    await expect(rowOf(first).getByText(draftWord)).toHaveCount(0)
+
+    // When the agent goes to another conversation the row of the first one shows it, as text: the tags in it are
+    // not drawn as tags, and the order of the list does not change
+    const hrefs = (): Promise<(string | null)[]> =>
+      list.getByRole('link').evaluateAll(links => links.map(link => link.getAttribute('href')))
+    const orderBefore = await hrefs()
     await rowOf(second).click()
     await expect(page).toHaveURL(new RegExp(second))
     await expect(rowOf(first).getByText(shown)).toBeVisible()
-    await expect(rowOf(second).getByText(en.inbox.draft.split('{')[0] ?? 'Draft')).toHaveCount(0)
+    await expect(rowOf(first).locator('i')).toHaveCount(0)
+    expect(await hrefs()).toEqual(orderBefore)
 
-    // Only spaces: no draft
+    // Only spaces in the second, and the agent leaves it: that row shows no draft
     await page.getByRole('textbox', { name: en.inbox.composer.replyLabel }).fill('   ')
-    await expect(rowOf(second).getByText(en.inbox.draft.split('{')[0] ?? 'Draft')).toHaveCount(0)
-
-    // Back to the first one and send: the row has no draft
     await rowOf(first).click()
     await expect(page).toHaveURL(new RegExp(first))
     const box = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
     await expect(box).toHaveValue(UNSENT)
+    await afterRender()
+    await expect(rowOf(second).getByText(draftWord)).toHaveCount(0)
+
+    // Sending takes it away: from the second one the row of the first has none
     await box.press('Enter')
-    await expect(rowOf(first).getByText(shown)).toHaveCount(0)
+    await expect(box).toHaveValue('')
+    await rowOf(second).click()
+    await expect(page).toHaveURL(new RegExp(second))
+    await afterRender()
+    await expect(rowOf(first).getByText(draftWord)).toHaveCount(0)
   })
 })

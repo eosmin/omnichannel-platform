@@ -1,5 +1,6 @@
 'use client'
 
+import { PencilLine } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ChangeEvent, ReactElement } from 'react'
 
@@ -12,7 +13,10 @@ import type {
 } from '@platform/api-client'
 import { ConversationAssignedFilters, ConversationStatus } from '@platform/core/domain'
 
+import { useConversationIdsWithDraft } from '../../lib/inbox/composer-draft-index'
 import { hasFilters } from '../../lib/inbox/inbox-filters'
+import { useProfile } from '../../lib/use-profile'
+import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import { SELECT_CLASS } from '../ui/field-classes'
 
@@ -55,6 +59,9 @@ function without(
 export function InboxFilters({
   filters,
   onChange,
+  onlyDrafts,
+  onOnlyDraftsChange,
+  onClearAll,
   counts,
   channels,
   members,
@@ -62,6 +69,10 @@ export function InboxFilters({
 }: {
   filters: ConversationFilters
   onChange: (filters: ConversationFilters) => void
+  // The view of the conversations with an unsent draft of this person in this tab
+  onlyDrafts: boolean
+  onOnlyDraftsChange: (onlyDrafts: boolean) => void
+  onClearAll: () => void
   counts: ConversationCountsView | undefined
   channels: readonly ChannelDirectoryEntryView[]
   members: readonly MemberDirectoryEntryView[]
@@ -69,6 +80,9 @@ export function InboxFilters({
 }): ReactElement {
   const t = useTranslations('inbox')
   const tStatus = useTranslations('conversations.status')
+  const { storeId } = useStore()
+  const userId = useProfile().data?.id
+  const draftCount = useConversationIdsWithDraft(userId, storeId).length
 
   const withCount = (label: string, count: number | undefined): string =>
     count === undefined ? label : t('withCount', { label, count })
@@ -119,6 +133,17 @@ export function InboxFilters({
           )
         })}
       </div>
+      <Button
+        type="button"
+        size="sm"
+        variant={onlyDrafts ? 'default' : 'outline'}
+        aria-pressed={onlyDrafts}
+        className="justify-start px-2"
+        onClick={() => onOnlyDraftsChange(!onlyDrafts)}
+      >
+        <PencilLine aria-hidden className="size-4" />
+        {withCount(t('draftFilter'), userId === undefined ? undefined : draftCount)}
+      </Button>
       <select
         aria-label={t('statusFilter')}
         className={SELECT_CLASS}
@@ -176,8 +201,8 @@ export function InboxFilters({
           </option>
         ))}
       </select>
-      {hasFilters(filters) ? (
-        <Button type="button" variant="ghost" size="sm" onClick={() => onChange({})}>
+      {hasFilters(filters) || onlyDrafts ? (
+        <Button type="button" variant="ghost" size="sm" onClick={onClearAll}>
           {t('clearFilters')}
         </Button>
       ) : null}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Lock, SearchX, TriangleAlert } from 'lucide-react'
+import { Lock, PencilLine, SearchX, TriangleAlert } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -12,6 +12,7 @@ import { ClientPermissions } from '@platform/core/auth'
 import { BulkActions, BulkLimits, ListKeyAliases, Shortcuts } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
+import { useConversationIdsWithDraft } from '../../lib/inbox/composer-draft-index'
 import { canChangeState } from '../../lib/inbox/conversation-status'
 import { hasFilters } from '../../lib/inbox/inbox-filters'
 import {
@@ -33,6 +34,7 @@ import { useConversationPages, useInboxBehavior } from '../../lib/inbox/use-inbo
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
+import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
@@ -50,6 +52,9 @@ const OVERSCAN_ROWS = 6
 // A row far down is not drawn yet: the focus waits for the list to scroll to it
 const FOCUS_ATTEMPTS = 8
 const NOW_REFRESH_MS = 60_000
+// The view "With draft" asks for more pages until it has found the drafts it knows of, up to this many: a person
+// does not have so many drafts in a tab, and a draft of a conversation that no filter lets in is never found
+const DRAFT_VIEW_MAX_PAGES = 20
 
 // The clock of the relative times ("5 min"): one tick a minute for the whole list
 function useNow(): Date {
@@ -64,12 +69,15 @@ function useNow(): Date {
 export function ConversationList({
   storeId,
   filters,
+  onlyDrafts,
   search,
   channels,
   areChannelsReady
 }: {
   storeId: string
   filters: ConversationFilters
+  // Only the conversations that have an unsent draft of this person, in this tab
+  onlyDrafts: boolean
   search: string
   channels: readonly ChannelDirectoryEntryView[]
   // The names of the channels are known (or could not be read): until then the rows would show an id
@@ -81,14 +89,27 @@ export function ConversationList({
   const { conversationId } = useParams<{ conversationId?: string }>()
   const now = useNow()
   const pages = useConversationPages(storeId, filters)
-  const items = useMemo(() => pages.data?.pages.flatMap(page => page.data) ?? [], [pages.data])
+  const loaded = useMemo(() => pages.data?.pages.flatMap(page => page.data) ?? [], [pages.data])
+  const userId = useProfile().data?.id
+  const draftIds = useConversationIdsWithDraft(userId, storeId)
+  const items = useMemo(() => {
+    if (!onlyDrafts) return loaded
+    const withDraft = new Set(draftIds)
+    return loaded.filter(item => withDraft.has(item.id))
+  }, [loaded, onlyDrafts, draftIds])
+  // The drafts of conversations that have not come yet: the next pages are asked for until they do
+  const missingDrafts = onlyDrafts && items.length < draftIds.length
+  const pagesLoaded = pages.data?.pages.length ?? 0
+  const isLookingForDrafts =
+    missingDrafts && pages.hasNextPage && pagesLoaded < DRAFT_VIEW_MAX_PAGES
   const channelNames = useMemo(
     () => new Map(channels.map(channel => [channel.pluginId, channel.pluginName])),
     [channels]
   )
 
   // The ticked rows belong to the filters they were ticked under: other filters, other list
-  const filterKey = JSON.stringify(filters)
+  // The draft view is part of what was ticked under: "all that match" in one is not the same list as in the other
+  const filterKey = JSON.stringify({ filters, onlyDrafts })
   const [ticked, setTicked] = useState<{ filterKey: string; selection: Selection }>({
     filterKey,
     selection: EMPTY_SELECTION
@@ -238,13 +259,18 @@ export function ConversationList({
     // Only a change of the open conversation moves the focus, not a new page of the list
   }, [conversationId])
 
+  useEffect(() => {
+    if (isLookingForDrafts && !isFetchingNextPage && !isError) void fetchNextPage()
+  }, [isLookingForDrafts, isFetchingNextPage, isError, fetchNextPage, pagesLoaded])
+
   // The next page is asked for when the last loaded row comes into view
   useEffect(() => {
-    if (lastRow !== undefined && lastRow.index >= items.length - 1 && hasNextPage) {
+    // The draft view has its own rule (above), with a limit: the last row of a short list is always in view
+    if (!onlyDrafts && lastRow !== undefined && lastRow.index >= items.length - 1 && hasNextPage) {
       // After a failure the "Try again" button asks again: an effect that did would loop
       if (!isFetchingNextPage && !isError) void fetchNextPage()
     }
-  }, [lastRow, items.length, hasNextPage, isFetchingNextPage, isError, fetchNextPage])
+  }, [lastRow, items.length, hasNextPage, isFetchingNextPage, isError, fetchNextPage, onlyDrafts])
 
   // A failed refetch or next page keeps what is loaded (below); only a list with nothing to show is
   // replaced by the error
@@ -272,7 +298,14 @@ export function ConversationList({
       </InboxState>
     )
   }
-  if (pages.isPending || !areChannelsReady) {
+  // On a reload at the draft view the person is not known yet, so the drafts are not either: not "no drafts" yet
+  const isDraftViewWaiting = onlyDrafts && userId === undefined
+  if (
+    pages.isPending ||
+    !areChannelsReady ||
+    isDraftViewWaiting ||
+    (items.length === 0 && isLookingForDrafts)
+  ) {
     return (
       <p role="status" className="text-muted-foreground p-6 text-center text-sm">
         {t('loadingList')}
@@ -280,6 +313,9 @@ export function ConversationList({
     )
   }
   if (items.length === 0) {
+    if (onlyDrafts) {
+      return <InboxState icon={PencilLine} title={t('noDrafts.title')} body={t('noDrafts.body')} />
+    }
     return hasFilters(filters) ? (
       <InboxState icon={SearchX} title={t('noResults.title')} body={t('noResults.body')} />
     ) : (
@@ -295,7 +331,8 @@ export function ConversationList({
           onSelectionChange={setSelection}
           items={items}
           filters={filters}
-          hasMore={hasNextPage}
+          // "All that match" is the api's list; the view of drafts is only in this tab, so it cannot be widened
+          hasMore={hasNextPage && !onlyDrafts}
         />
       ) : null}
       <div

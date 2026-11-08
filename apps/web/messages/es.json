@@ -945,6 +945,11 @@
     "draft": "Borrador: «{text}»",
     "draftNote": "Nota (borrador): «{text}»",
     "draftUnsent": "Borrador sin enviar",
+    "draftFilter": "Con borrador",
+    "noDrafts": {
+      "title": "Sin borradores",
+      "body": "Ninguna conversación tiene un borrador sin enviar en esta pestaña."
+    },
     "wokeNote": "Despertó: {note}",
     "noMessages": "Aún no hay mensajes",
     "unreadCount": "{count, plural, one {# mensaje sin leer} other {# mensajes sin leer}}",
@@ -1048,6 +1053,7 @@
         "share": "El cliente compartió una publicación; este canal no deja ver su contenido",
         "location": "El cliente compartió una ubicación que este canal no deja ver",
         "media": "El cliente envió un archivo que no se pudo traer",
+        "notDelivered": "El cliente envió algo que el canal no entrega (por ejemplo un sticker o un me gusta). Ábrelo en la app del canal",
         "other": "El cliente envió algo que este canal no permite mostrar"
       },
       "captionFailed": "El archivo se envió, pero el texto que lo acompaña no",
@@ -1148,6 +1154,7 @@
         "snoozedUntil": "hasta {until}",
         "woken": "{actorKind, select, user {Reabierta por {actor}} other {Despertó}}",
         "assigned": "{actorKind, select, user {{actor} la asignó a {assignee}} other {Asignada a {assignee}}}",
+        "assigned_on_reply": "{actor} se la asignó al responder",
         "unassigned": "{actorKind, select, user {{actor} la dejó sin asignar} other {Quedó sin asignar}}",
         "unknown": "La conversación cambió",
         "reason": "Motivo: {reason}",
@@ -1160,6 +1167,7 @@
         }
       },
       "loadEarlierFailed": "No se pudieron cargar los mensajes anteriores",
+      "imageRun": "{count} imágenes",
       "typing": {
         "customer": "El cliente está escribiendo",
         "teammates": "{count, plural, one {{names} está escribiendo} other {{names} están escribiendo}}"
@@ -2397,6 +2405,15 @@
         "archiveDays": "El tiempo de archivo debe ser un número entero de días de 1 a 365.",
         "loadThreshold": "El umbral de carga debe ser un número entero de 1 a 100.",
         "closingSnippetRequired": "Elige la respuesta que se envía como mensaje de cierre."
+      },
+      "assignOnReply": {
+        "label": "Asignar al responder",
+        "title": "Asignar al responder",
+        "switch": "Asignarme al responder",
+        "hint": "Si respondes a una conversación sin responsable, queda asignada a ti (solo quien puede asignar).",
+        "save": "Guardar",
+        "saved": "Asignar al responder guardado",
+        "readOnly": "Puedes ver este ajuste pero no cambiarlo."
       },
       "receipts": {
         "label": "Confirmaciones de lectura",

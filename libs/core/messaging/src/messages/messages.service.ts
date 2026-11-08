@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
+  AssignmentReasons,
   AuthorType,
   CaptionState,
   ConversationReopenedByReply,
@@ -33,6 +34,7 @@ import {
   MediaPurpose,
   mediaMessageTypeOf
 } from '@platform/core/storage'
+import { readStorePreferences } from '@platform/core/store-preferences'
 
 import { lockMessageRow, publishMessageChanged } from '../changes/message-changed'
 import { conversationReaders } from '../conversations/conversation-readers'
@@ -142,6 +144,12 @@ export class MessagesService {
     }
     requireAnyPermission(viewer.held, [permissionToWrite(body)])
     return this.prisma.transaction(async tx => {
+      // Before the lock of the conversation, the order of `assign` and of removing a member: an agent
+      // who may assign is checked to still be an active member who can work what they would take
+      const mayTake =
+        !isNote &&
+        viewer.held.includes(Permissions.CONVERSATIONS_ASSIGN) &&
+        (await this.conversations.assigneeCanWork(tx, storeId, viewer.userId))
       // The row lock makes two requests with one key take turns: the second finds the first
       const current = await lockConversationForWrite(tx, storeId, body.conversationId, viewer)
 
@@ -225,16 +233,46 @@ export class MessagesService {
           )
         }
       }
+      // The first reply of an agent who may assign, to a conversation nobody has, gives it to them (a
+      // store setting, on by default). Never one that has an owner, never a note, and never what the
+      // system sends (the closing message does not come through here).
+      const takes =
+        mayTake && (await this.takesOnReply(tx, storeId, body.conversationId, current, viewer))
       // A note changes nothing in the conversation; a reply leaves it open (spam was refused above,
       // and an archived one was reopened)
       const visibility = {
         hidden: isNote && isHiddenStatus(current.status),
-        assignedTo: current.assignedTo
+        assignedTo: takes ? viewer.userId : current.assignedTo
       }
       this.announce(tx, storeId, viewer, row.id, now, body, mentions, visibility)
       if (!isNote) this.queueForChannel(tx, storeId, row.id)
       return { message: messageView({ ...row, media }), created: true }
     })
+  }
+
+  // Under the lock of the conversation, in the transaction of the reply: the same atomic update as taking
+  // it by hand, which refuses a conversation that got an owner a moment ago.
+  private async takesOnReply(
+    tx: PrismaTransaction,
+    storeId: string,
+    conversationId: string,
+    current: { assignedTo: string | null },
+    viewer: Viewer
+  ): Promise<boolean> {
+    if (current.assignedTo !== null) return false
+    const settings = await tx.storeSettings.findUnique({
+      where: { storeId },
+      select: { preferences: true }
+    })
+    if (!readStorePreferences(settings?.preferences ?? {}).assignOnReply) return false
+    return this.conversations.assignIfFree(
+      tx,
+      storeId,
+      conversationId,
+      viewer.userId,
+      viewer,
+      AssignmentReasons.ON_REPLY
+    )
   }
 
   // "Send again" on a reply that failed: the same message goes back to the channel, so the thread keeps
