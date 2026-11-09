@@ -99,10 +99,6 @@
     "code": 0,
     "comment": 3
   },
-  "libs/api-client/src/api-schemas.ts": {
-    "code": 0,
-    "comment": 1
-  },
   "libs/core/domain/api/api-routes.ts": {
     "code": 0,
     "comment": 1
@@ -113,7 +109,7 @@
   },
   "libs/core/domain/channel-ids.ts": {
     "code": 4,
-    "comment": 6
+    "comment": 4
   },
   "libs/core/domain/channel-media/channel-media-rules.ts": {
     "code": 1,
@@ -124,8 +120,8 @@
     "comment": 0
   },
   "libs/core/domain/channel-media/meta-media-rules.ts": {
-    "code": 17,
-    "comment": 11
+    "code": 16,
+    "comment": 4
   },
   "libs/core/domain/channel-media/whatsapp-media.ts": {
     "code": 12,
@@ -179,17 +175,9 @@
     "code": 2,
     "comment": 0
   },
-  "libs/core/messaging/src/customers/identity.ts": {
-    "code": 1,
-    "comment": 0
-  },
   "libs/core/messaging/src/messages/messages.views.ts": {
     "code": 0,
-    "comment": 4
-  },
-  "libs/core/messaging/src/messages/provider-message-match.ts": {
-    "code": 0,
-    "comment": 3
+    "comment": 1
   },
   "libs/core/platform/cache/cache-keys.ts": {
     "code": 0,
