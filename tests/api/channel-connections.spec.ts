@@ -1413,6 +1413,7 @@ describe('The channel connections of a store', () => {
       const item = (list.body as ConnectionBody[]).find(each => each.pluginId === id)
       expect(Object.keys(item ?? {}).sort()).toEqual([
         'capabilities',
+        'descriptor',
         'displayName',
         'id',
         'limits',
@@ -1422,6 +1423,13 @@ describe('The channel connections of a store', () => {
         'status'
       ])
       expect(item?.pluginName).toBe(plugin.name)
+      expect((item as { descriptor?: unknown } | undefined)?.descriptor).toEqual({
+        displayName: { es: plugin.name, en: plugin.name },
+        iconKey: 'message-square',
+        anonymousCustomers: false,
+        managementSurface: null,
+        helpSteps: []
+      })
       expect((item as { limits?: unknown } | undefined)?.limits).toEqual({
         textMaxLength: plugin.limits.textMaxLength,
         caption: null

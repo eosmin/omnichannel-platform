@@ -1,11 +1,27 @@
-import { ChannelConnectFieldLimits, RESERVED_CONNECT_FIELD_KEYS } from '@platform/core/domain'
-import { ChannelCapability, type ChannelPlugin, type ConnectField } from '@platform/plugins/sdk'
+import {
+  ChannelConnectFieldLimits,
+  type LocalizedText,
+  readLocalizedText,
+  RESERVED_CONNECT_FIELD_KEYS
+} from '@platform/core/domain'
+import { ChannelCapability, type ChannelPlugin } from '@platform/plugins/sdk'
 
 import { contractViolation, printable } from './contract-rules'
 
 // What a channel plugin declared for the settings page, copied and checked once when it registers
+// A field as the registry keeps it: the label is a message key or a text of the plugin, never both missing
+export interface ConnectFieldSnapshot {
+  key: string
+  labelKey: string | null
+  label: LocalizedText | null
+  helpKey: string | null
+  secret: boolean
+  required: boolean
+  multiple: boolean
+}
+
 export interface ConnectManifest {
-  connectFields: readonly ConnectField[]
+  connectFields: readonly ConnectFieldSnapshot[]
   receivesProviderWebhooks: boolean
   profileSetupKey: string | null
 }
@@ -32,14 +48,20 @@ export function snapshotConnectManifest(
     throw contractViolation(`Plugin ${printable(id)} does not declare its connect fields`)
   }
   const seen = new Set<string>()
-  const connectFields = declared.map((raw: unknown): ConnectField => {
+  const connectFields = declared.map((raw: unknown): ConnectFieldSnapshot => {
     const field = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
-    const { key, labelKey, secret, required, multiple } = field
+    const { key, labelKey, label: rawLabel, helpKey, secret, required, multiple } = field
+    const label = rawLabel === undefined ? null : readLocalizedText(rawLabel)
     if (
       typeof key !== 'string' ||
       !ChannelConnectFieldLimits.KEY_PATTERN.test(key) ||
       RESERVED_CONNECT_FIELD_KEYS.has(key) ||
-      !messageKey(labelKey) ||
+      (labelKey !== undefined && !messageKey(labelKey)) ||
+      (rawLabel !== undefined && label === null) ||
+      (labelKey === undefined && label === null) ||
+      // One way to name a field, not two: a text of the plugin does not sit beside a message key it could aim
+      (labelKey !== undefined && label !== null) ||
+      (helpKey !== undefined && !messageKey(helpKey)) ||
       typeof secret !== 'boolean' ||
       typeof required !== 'boolean' ||
       typeof multiple !== 'boolean' ||
@@ -48,7 +70,15 @@ export function snapshotConnectManifest(
       throw contractViolation(`Plugin ${printable(id)} declares an invalid connect field`)
     }
     seen.add(key)
-    return { key, labelKey, secret, required, multiple }
+    return Object.freeze({
+      key,
+      labelKey: labelKey ?? null,
+      label,
+      helpKey: helpKey ?? null,
+      secret,
+      required,
+      multiple
+    })
   })
   const webhooks: unknown = plugin.receivesProviderWebhooks
   if (typeof webhooks !== 'boolean') {

@@ -148,8 +148,8 @@ export function ConnectForm({
   }
 
   // A key the page has no text for (a plugin newer than the page) shows the key of the field
-  const labelOf = (key: string, labelKey: string): string =>
-    labelKey.startsWith(ChannelMessagePrefix) &&
+  const labelOf = (key: string, labelKey: string | null): string =>
+    labelKey?.startsWith(ChannelMessagePrefix) === true &&
     tAll.has(labelKey as Parameters<typeof tAll.has>[0])
       ? tAll(labelKey as Parameters<typeof tAll>[0])
       : key

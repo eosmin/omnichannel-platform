@@ -135,6 +135,8 @@ describe('PluginRegistry', () => {
       required: true,
       multiple: false
     }
+    // As the registry keeps it: the label as a key or as a text, and a line of help, each null when absent
+    const kept = { ...field, label: null, helpKey: null }
 
     it('keeps a copy of what the plugin declared when it registered', () => {
       const registry = build()
@@ -149,7 +151,7 @@ describe('PluginRegistry', () => {
       // Changed after the checks: the registry still answers with what passed them
       ;(plugin as { connectFields: unknown }).connectFields = [{ ...field, key: 'other' }]
       expect(registry.connectManifestOf('telegram')).toEqual({
-        connectFields: [field],
+        connectFields: [kept],
         receivesProviderWebhooks: true,
         profileSetupKey: 'settings.channels.setup.telegramProfile'
       })
@@ -161,7 +163,7 @@ describe('PluginRegistry', () => {
       registry.register(
         channel({ connectFields: [{ ...field, apiKey: 'sk-live' } as typeof field] })
       )
-      expect(registry.connectManifestOf('telegram')?.connectFields).toEqual([field])
+      expect(registry.connectManifestOf('telegram')?.connectFields).toEqual([kept])
     })
 
     it.each([

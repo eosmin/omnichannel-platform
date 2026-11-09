@@ -182,6 +182,7 @@ describe('The plugin catalog and the installations of a store', () => {
       interface ManifestBody extends EntryBody {
         channel: {
           connectFields: Record<string, unknown>[]
+          descriptor: Record<string, unknown>
           callbackUrl: string | null
           facebookLogin: boolean
         } | null
@@ -195,6 +196,8 @@ describe('The plugin catalog and the installations of a store', () => {
           {
             key: 'phoneNumberId',
             labelKey: ChannelConnectFieldKeys.WHATSAPP_PHONE_NUMBER_ID,
+            label: null,
+            helpKey: null,
             secret: false,
             required: true,
             multiple: false
@@ -202,6 +205,8 @@ describe('The plugin catalog and the installations of a store', () => {
           {
             key: 'businessAccountId',
             labelKey: ChannelConnectFieldKeys.WHATSAPP_BUSINESS_ACCOUNT_ID,
+            label: null,
+            helpKey: null,
             secret: false,
             required: true,
             multiple: false
@@ -209,6 +214,8 @@ describe('The plugin catalog and the installations of a store', () => {
           {
             key: 'accessToken',
             labelKey: ChannelConnectFieldKeys.WHATSAPP_ACCESS_TOKEN,
+            label: null,
+            helpKey: null,
             secret: true,
             required: true,
             multiple: false
@@ -222,6 +229,34 @@ describe('The plugin catalog and the installations of a store', () => {
         expect((await manifestOf(ChannelIds.WEB_WIDGET))?.connectFields).toEqual([
           expect.objectContaining({ key: 'siteOrigins', secret: false, multiple: true })
         ])
+      })
+
+      it('says how each official channel is named and drawn, with no hosts of images in it', async () => {
+        const descriptors = Object.fromEntries(
+          await Promise.all(
+            [
+              ChannelIds.WHATSAPP,
+              ChannelIds.INSTAGRAM,
+              ChannelIds.MESSENGER,
+              ChannelIds.WEB_WIDGET
+            ].map(async id => [id, (await manifestOf(id))?.descriptor] as const)
+          )
+        )
+        expect(descriptors[ChannelIds.WHATSAPP]).toEqual({
+          displayName: { es: 'WhatsApp', en: 'WhatsApp' },
+          iconKey: 'phone',
+          anonymousCustomers: false,
+          managementSurface: null,
+          helpSteps: []
+        })
+        expect(descriptors[ChannelIds.WEB_WIDGET]).toMatchObject({
+          displayName: { es: 'Widget web', en: 'Web widget' },
+          anonymousCustomers: true,
+          managementSurface: 'embed_snippet'
+        })
+        // What only the build of the web app needs never reaches a browser
+        expect(JSON.stringify(descriptors)).not.toContain('imageHosts')
+        expect(JSON.stringify(descriptors)).not.toContain('fbcdn')
       })
 
       it('gives the callback url of the channels a provider calls, and none for the widget', async () => {
@@ -238,7 +273,7 @@ describe('The plugin catalog and the installations of a store', () => {
         for (const value of [meta.verifyToken, meta.appSecret]) {
           if (value !== undefined && value !== '') expect(text).not.toContain(value)
         }
-        // The shape is closed too: a field of the manifest is one of these five, and nothing else
+        // The shape is closed too: a field of the manifest is one of these, and nothing else
         for (const entry of ((await catalogOf()) as ManifestBody[]).filter(
           e => e.channel !== null
         )) {
@@ -246,12 +281,15 @@ describe('The plugin catalog and the installations of a store', () => {
           expect(Object.keys(entry.channel ?? {}).sort()).toEqual([
             'callbackUrl',
             'connectFields',
+            'descriptor',
             'facebookLogin'
           ])
           expect(entry.channel?.facebookLogin).toBe(false)
           for (const field of entry.channel?.connectFields ?? []) {
             expect(Object.keys(field).sort()).toEqual([
+              'helpKey',
               'key',
+              'label',
               'labelKey',
               'multiple',
               'required',
@@ -275,10 +313,15 @@ describe('The plugin catalog and the installations of a store', () => {
           receivesProviderWebhooks: true
         })
 
+        expect((await manifestOf(id))?.descriptor).toMatchObject({
+          iconKey: 'message-square',
+          managementSurface: null
+        })
         expect(await manifestOf(id)).toEqual({
           connectFields: [
             expect.objectContaining({ key: 'apiKey', secret: true, required: false })
           ],
+          descriptor: expect.anything() as unknown,
           callbackUrl: `${apiUrl()}/api/v1/webhooks/channels/${id}`,
           facebookLogin: false
         })

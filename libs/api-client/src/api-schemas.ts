@@ -1,6 +1,16 @@
 import { z } from 'zod'
 
-import { CaptionState, ContactCardLimits, MediaStatus, MessageType } from '@platform/core/domain'
+import {
+  CaptionState,
+  ChannelDescriptorLimits,
+  ContactCardLimits,
+  DEFAULT_CHANNEL_ICON_KEY,
+  isChannelIconKey,
+  isChannelManagementSurface,
+  isPlainDescriptorText,
+  MediaStatus,
+  MessageType
+} from '@platform/core/domain'
 import { PresenceStatus } from '@platform/core/realtime'
 
 // What the api answers, parsed at the edge: the browser never trusts a body it has not checked.
@@ -246,6 +256,41 @@ export const inboxBehaviorSchema = z.object({
 })
 export type InboxBehaviorView = z.output<typeof inboxBehaviorSchema>
 
+// How a channel is named and drawn, as its plugin declared it. A third party wrote it, so the browser checks it
+// again before it draws anything: a text that is not plain, an icon outside the closed set, a surface that does
+// not exist, each falls back to something safe. A name or a help text that is not plain is not repaired: the
+// descriptor is then none (null) for that channel, and the interface draws it as a channel with no descriptor. It
+// never makes the whole list fail.
+const plainText = z.string().refine(value => isPlainDescriptorText(value))
+export const localizedTextSchema = z.object({ es: plainText, en: plainText })
+export const channelDescriptorSchema = z.object({
+  displayName: localizedTextSchema,
+  iconKey: z
+    .string()
+    .transform(value => (isChannelIconKey(value) ? value : DEFAULT_CHANNEL_ICON_KEY))
+    .catch(DEFAULT_CHANNEL_ICON_KEY),
+  anonymousCustomers: z.boolean().catch(false),
+  managementSurface: z
+    .string()
+    .nullable()
+    .transform(value => (isChannelManagementSurface(value) ? value : null))
+    .catch(null),
+  helpSteps: z
+    .array(
+      z.object({
+        es: z
+          .string()
+          .refine(value => isPlainDescriptorText(value, ChannelDescriptorLimits.HELP_MAX_LENGTH)),
+        en: z
+          .string()
+          .refine(value => isPlainDescriptorText(value, ChannelDescriptorLimits.HELP_MAX_LENGTH))
+      })
+    )
+    .max(ChannelDescriptorLimits.MAX_HELP_STEPS)
+    .catch([])
+})
+export type ChannelDescriptorView = z.output<typeof channelDescriptorSchema>
+
 // GET /channels/directory: the accounts of the store and what each channel can do, so that the
 // inbox names a channel and draws only the actions it supports
 export const channelDirectoryEntrySchema = z.object({
@@ -283,7 +328,10 @@ export const channelDirectoryEntrySchema = z.object({
         .nullable()
     })
     .nullable()
-    .optional()
+    .optional(),
+  // How the channel is named and drawn. Absent from a server that does not say it, and none for a channel
+  // whose plugin is gone or whose descriptor is not valid.
+  descriptor: channelDescriptorSchema.nullable().optional().catch(null)
 })
 export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)
 export type ChannelDirectoryEntryView = z.output<typeof channelDirectoryEntrySchema>

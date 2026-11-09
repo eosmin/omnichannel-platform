@@ -1,5 +1,6 @@
 import type {
   DeliveryStatus,
+  LocalizedText,
   MessageType,
   MessagingWindowPolicy,
   OriginKind,
@@ -120,13 +121,17 @@ export interface ChannelContext {
 export interface ConnectField {
   // The name under `credentials`
   key: string
-  // Message key of the label, translated by the web app
-  labelKey: string
+  // How the field is named: a message key the web app translates (the official plugins, whose texts ship with
+  // the app) or the text itself in each language (any other plugin). One of the two is required.
+  labelKey?: string
+  label?: LocalizedText
   // A token or a password: drawn masked, never shown again, and absent from every answer
   secret: boolean
   required: boolean
   // The value is a list (the sites that may load the widget), one entry per line
   multiple: boolean
+  // A line under the field, as a message key
+  helpKey?: string
 }
 
 export interface ConnectInput {

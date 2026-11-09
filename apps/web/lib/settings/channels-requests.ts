@@ -66,7 +66,9 @@ export type ChannelTestView = z.output<typeof testResultSchema>
 
 const connectFieldSchema = z.object({
   key: z.string(),
-  labelKey: z.string(),
+  // A message key (the official plugins) or null for a plugin that names the field with a text of its own, which
+  // the form draws once the settings read it (Step 7.9 B1b); until then such a field shows its key
+  labelKey: z.string().nullable(),
   secret: z.boolean(),
   required: z.boolean(),
   multiple: z.boolean()
