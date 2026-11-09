@@ -100,11 +100,12 @@ export function checkAgainstBaseline(baseline: Baseline, current: Baseline): Bas
 
 // Files of `next` that are not in `previous` or that have more of either kind
 export function baselineGrowth(previous: Baseline, next: Baseline): string[] {
-  return Object.keys(next)
-    .filter(file => {
+  return Object.entries(next)
+    .filter(([file, counts]) => {
       const before = previous[file] ?? ZERO
-      return next[file].code > before.code || next[file].comment > before.comment
+      return counts.code > before.code || counts.comment > before.comment
     })
+    .map(([file]) => file)
     .sort()
 }
 
