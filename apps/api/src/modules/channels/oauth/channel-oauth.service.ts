@@ -111,10 +111,8 @@ export class ChannelOAuthService {
     } catch (error) {
       this.logger.warn({ pluginId, storeId, ...pluginFailureLog(error) }, 'oauth address not made')
     }
-    if (
-      authorizeUrl === null ||
-      !keepsTheState(authorizeUrl, state, redirectUri, oauth.dialogOrigin)
-    ) {
+    const checked = keepsTheState(authorizeUrl, state, redirectUri, oauth.dialogOrigin)
+    if (checked === null) {
       this.logger.error({ pluginId, storeId }, 'a plugin made no authorization address of ours')
       throw new PlatformException(
         ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
@@ -129,7 +127,7 @@ export class ChannelOAuthService {
       pluginId,
       ...(connectionId === undefined ? {} : { connectionId })
     })
-    return { authorizeUrl }
+    return { authorizeUrl: checked }
   }
 
   // Where the callback sends the browser. It never throws and never echoes what the provider put in the
@@ -252,11 +250,9 @@ export class ChannelOAuthService {
     assetId: string
   ): Promise<ChannelConnectionView> {
     const { session, oauth, userToken } = await this.open(storeId, actor.userId, sessionId)
-    // Here too and not only when the Pages are listed: a call that goes straight to `complete` with a Page
-    // number must not connect with a permission the person cleared in the dialog
-    await this.requireScopes(session, oauth, userToken)
     // The id is held to the pattern the plugin declared (the registry kept it as a pattern that cannot backtrack),
-    // since it goes to the provider in a path
+    // since it goes to the provider in a path. Before anything is asked of the provider: an id that can never match is
+    // answered here
     if (assetId.length > ASSET_ID_MAX_LENGTH || !oauth.assetId.test(assetId)) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_FAILED,
@@ -268,6 +264,9 @@ export class ChannelOAuthService {
         }
       )
     }
+    // Here too and not only when the Pages are listed: a call that goes straight to `complete` with a Page
+    // number must not connect with a permission the person cleared in the dialog
+    await this.requireScopes(session, oauth, userToken)
     const credentials = await this.guarded(session, () =>
       oauth.credentialsFor({ userToken, assetId })
     )
@@ -434,22 +433,26 @@ export class ChannelOAuthService {
 // The origin too: the plugin declared the one site its dialog is on, and the registry held that declaration to an
 // exact https origin. An address on any other site, whatever it carries, is not the dialog it declared.
 function keepsTheState(
-  authorizeUrl: string,
+  authorizeUrl: unknown,
   state: string,
   redirectUri: string,
   dialogOrigin: string
-): boolean {
+): string | null {
+  if (typeof authorizeUrl !== 'string') return null
   try {
     const url = new URL(authorizeUrl)
-    return (
+    const keeps =
       url.protocol === 'https:' &&
       url.origin === dialogOrigin &&
       url.searchParams.getAll(ChannelOAuthQuery.STATE).length === 1 &&
       url.searchParams.get(ChannelOAuthQuery.STATE) === state &&
+      // Once each, so the provider cannot read the last one while the core read the first
+      url.searchParams.getAll(ChannelOAuthQuery.REDIRECT_URI).length === 1 &&
       url.searchParams.get(ChannelOAuthQuery.REDIRECT_URI) === redirectUri
-    )
+    // What is sent is the address that was checked, parsed and written back, not the string the plugin gave
+    return keeps ? url.href : null
   } catch {
-    return false
+    return null
   }
 }
 

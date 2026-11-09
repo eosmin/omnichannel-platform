@@ -55,11 +55,14 @@ export class PluginsModule {
           registry.register(plugin, { official, fromCode: true })
         }
         // The toy channel of the suites, only in the composition of the apps and only when the environment turns it
-        // on (which a test environment alone accepts). Loaded when asked, so nothing of it runs otherwise.
+        // on (which a test environment alone accepts).
         if (withToy) {
-          const toy = await import('@platform/channels/toy')
-          if (await toy.isToyChannelEnabled()) {
-            registry.register(new toy.ToyChannelPlugin(), { official: false, fromCode: true })
+          // The switch first, from a module that holds only the variable: the plugin itself is not loaded, and so
+          // not evaluated, unless the environment (a test one) turned it on
+          const { isToyChannelEnabled } = await import('@platform/channels/toy-env')
+          if (await isToyChannelEnabled()) {
+            const { ToyChannelPlugin } = await import('@platform/channels/toy')
+            registry.register(new ToyChannelPlugin(), { official: false, fromCode: true })
           }
         }
         return registry

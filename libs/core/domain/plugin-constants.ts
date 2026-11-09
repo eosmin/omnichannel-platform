@@ -17,6 +17,13 @@ export const OfficialPluginAuthor = {
   EMAIL: 'plugins@omnichannel.invalid'
 } as const
 
+// Who the catalog names as the author of a plugin that the code registers and that is not official (the toy channel
+// of the suites): its own name, and an address that is nobody's
+export const CodePluginAuthor = {
+  EMAIL: 'plugins@code.invalid',
+  NAME_MAX_LENGTH: 100
+} as const
+
 // A channel connection works only while the installation it hangs from is active and its plugin
 // is approved (D19). Every path that receives, sends or checks through a connection adds
 // OfActiveInstallation to its query, so a connection that outlives an uninstall that failed half

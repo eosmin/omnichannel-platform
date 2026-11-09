@@ -250,6 +250,11 @@ describe('"Connect with Facebook": the login of a channel', () => {
         (state: string, uri: string) =>
           `https://evil.dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
       ],
+      [
+        'a repeated callback',
+        (state: string, uri: string) =>
+          `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}&redirect_uri=https%3A%2F%2Fevil.example%2Fcb`
+      ],
       ['something that is not an address', () => 'not an address']
     ])('refuses a plugin that makes %s, and keeps no state for it', async (_name, make) => {
       const { oauth } = login({
@@ -532,6 +537,45 @@ describe('"Connect with Facebook": the login of a channel', () => {
       })
       expect(JSON.stringify(response.body)).not.toContain('LEAK')
       expect(JSON.stringify(response.body)).not.toContain(USER_TOKEN)
+    })
+
+    it('lists only the ids that fit the pattern the plugin declared, whatever they look like', async () => {
+      const { oauth } = login({
+        assetIdPattern: '^[a-z]{8,12}$',
+        listAssets: () =>
+          Promise.resolve([
+            { id: 'abcdefgh', name: 'Letters', linkedAccount: null },
+            { id: '12345678', name: 'Digits', linkedAccount: null },
+            { id: 12345678, name: 'A number', linkedAccount: null } as never
+          ])
+      })
+      const { id } = await register(oauth)
+      const session = await sessionOf(id)
+
+      const response = await asAdmin().get(ApiRoutes.channels.oauthAssets(session))
+
+      expect(response.status).toBe(OK)
+      expect((response.body as SessionBody).assets.map(asset => asset.id)).toEqual(['abcdefgh'])
+    })
+
+    it('holds the id it is given to the declared pattern before it asks the provider anything', async () => {
+      const { oauth, calls } = login({ assetIdPattern: '^[a-z]{8,12}$' })
+      const { id } = await register(oauth)
+      const session = await sessionOf(id)
+      calls.granted.mockClear()
+
+      const digits = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '12345678' })
+      const letters = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: 'abcdefgh' })
+
+      expect(digits.status).toBe(BAD_REQUEST)
+      expect(codeOf(digits.body)).toBe(ErrorCodes.VALIDATION_FAILED)
+      expect(letters.status).toBe(CREATED)
+      // The provider heard of the second only
+      expect(calls.granted).toHaveBeenCalledTimes(1)
     })
 
     it('names the permission the person cleared in the dialog', async () => {

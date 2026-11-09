@@ -3,6 +3,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
+  CodePluginAuthor,
   OfficialPluginAuthor,
   PluginCatalogTypes,
   PluginPricingModels,
@@ -18,8 +19,10 @@ function officialRow(plugin: ChannelPlugin) {
   return {
     name: plugin.name,
     // A plugin the code registers that is not official (the toy channel of the suites) is its own author
-    authorName: official ? OfficialPluginAuthor.NAME : plugin.author,
-    authorEmail: official ? OfficialPluginAuthor.EMAIL : 'plugins@localhost',
+    authorName: official
+      ? OfficialPluginAuthor.NAME
+      : String(plugin.author).slice(0, CodePluginAuthor.NAME_MAX_LENGTH),
+    authorEmail: official ? OfficialPluginAuthor.EMAIL : CodePluginAuthor.EMAIL,
     type: PluginCatalogTypes.CHANNEL,
     isOfficial: official,
     manifest: {
@@ -57,13 +60,26 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
     for (const plugin of plugins) {
       // The status is written once, on creation: a plugin the owner suspended stays suspended
       const { status, ...data } = officialRow(plugin)
+      // A row that is not the platform's own belongs to whoever published it: this one is written when it is
+      // not there, refreshed only while its author is the plugin's own, and never taken over from another
+      if (!isOfficialChannelId(plugin.id)) {
+        const existing = await this.prisma.client.plugin.findUnique({
+          where: { id: plugin.id },
+          select: { authorName: true, isOfficial: true }
+        })
+        if (existing !== null && (existing.isOfficial || existing.authorName !== data.authorName)) {
+          this.logger.warn(
+            { pluginId: plugin.id },
+            'a catalog row of another publisher is left as it is'
+          )
+          continue
+        }
+      }
       const write = () =>
         this.prisma.client.plugin.upsert({
           where: { id: plugin.id },
           create: { id: plugin.id, ...data, status },
-          // A row that is not the platform's own is written once and never taken over: whoever published it
-          // keeps its author, name and manifest
-          update: isOfficialChannelId(plugin.id) ? data : {}
+          update: data
         })
       try {
         await write()

@@ -81,7 +81,15 @@ export function isPlainDescriptorText(
   if (typeof value === 'string' && placeholders.length > 0) {
     const filled = placeholders.reduce((text, name) => text.split(`{${name}}`).join('x'), value)
     if (filled !== value) {
+      // A name the page fills in must not complete a link or a scheme (`go.{username}`, `javascript{username}:`):
+      // it never follows a dot, a colon or a slash, and it appears twice at most
+      const joinsALink = placeholders.some(name =>
+        new RegExp(`[./:]\\{${name}\\}|\\{${name}\\}[./:]`).test(value)
+      )
+      const repeats = placeholders.some(name => value.split(`{${name}}`).length - 1 > 2)
       return (
+        !joinsALink &&
+        !repeats &&
         value.length <= max * 2 &&
         Array.from(value).length <= max &&
         isPlainDescriptorText(filled, Number.MAX_SAFE_INTEGER)
@@ -129,7 +137,20 @@ export function readLocalizedText(
 const IMAGE_HOST =
   /^https:\/\/(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 // Names that are not on the internet: an address of a private network is never a place to load a picture from
-const PRIVATE_TLDS = new Set(['local', 'internal', 'localhost', 'lan', 'corp', 'home', 'intranet'])
+const PRIVATE_TLDS = new Set([
+  'local',
+  'internal',
+  'localhost',
+  'localdomain',
+  'lan',
+  'corp',
+  'home',
+  'intranet',
+  'private',
+  'invalid',
+  'arpa',
+  'onion'
+])
 export function isImageHostOrigin(value: unknown, { wildcard = false } = {}): value is string {
   if (typeof value !== 'string') return false
   if (!wildcard && value.startsWith('https://*.')) return false

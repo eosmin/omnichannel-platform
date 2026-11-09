@@ -4,6 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
+import { PluginCatalogSync } from '../../apps/api/src/modules/plugins/plugin-catalog-sync.service'
 import { ensurePluginInstallation } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -48,6 +49,8 @@ describe('a channel plugin the platform has never heard of', () => {
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
+    // After the stores: an installation keeps its plugin row, and the toy row is written at every boot
+    await owner.plugin.deleteMany({ where: { id: TOY_ID } })
     await app.close()
     await owner.$disconnect()
   })
@@ -98,5 +101,48 @@ describe('a channel plugin the platform has never heard of', () => {
     const entry = (directory.body as DirectoryEntry[]).find(item => item.pluginId === TOY_ID)
     expect(entry?.limits).toEqual({ textMaxLength: 500, caption: null })
     expect(entry?.descriptor?.displayName.en).toBe('Acme Chat')
+  })
+})
+
+describe('the catalog row of a plugin the code registers and nobody published', () => {
+  const prefix = newRunPrefix()
+  let app: INestApplication
+  let owner: OwnerClient
+
+  beforeAll(async () => {
+    owner = ownerClient()
+    // A row left by an earlier run belongs to whoever wrote it: the case starts from none
+    await owner.plugin.deleteMany({ where: { id: TOY_ID, installations: { none: {} } } })
+    app = await withToyChannel(() => createTestApp())
+    await seedTestContext(owner, app, prefix)
+  })
+  afterAll(async () => {
+    await cleanUp(owner, prefix)
+    // After the stores: an installation keeps its plugin row, and the toy row is written at every boot
+    await owner.plugin.deleteMany({ where: { id: TOY_ID } })
+    await app.close()
+    await owner.$disconnect()
+  })
+
+  it('is its own, with no approval it was not given, and is not taken over from another publisher', async () => {
+    const row = await owner.plugin.findUniqueOrThrow({ where: { id: TOY_ID } })
+    expect(row).toMatchObject({ isOfficial: false, authorName: 'Acme' })
+    expect(row.authorEmail).not.toBe('plugins@omnichannel.invalid')
+
+    await owner.plugin.update({
+      where: { id: TOY_ID },
+      data: { authorName: 'Someone else', name: 'Their name' }
+    })
+    try {
+      await app.get(PluginCatalogSync, { strict: false }).sync()
+
+      const after = await owner.plugin.findUniqueOrThrow({ where: { id: TOY_ID } })
+      expect(after).toMatchObject({ authorName: 'Someone else', name: 'Their name' })
+    } finally {
+      await owner.plugin.update({
+        where: { id: TOY_ID },
+        data: { authorName: 'Acme', name: row.name }
+      })
+    }
   })
 })
