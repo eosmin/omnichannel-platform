@@ -74,13 +74,14 @@ export function ImageRun({
                   {format.dateTime(new Date(message.createdAt), messageTimeOptions(locale))}
                 </time>
                 {hasAnyAction(actions) ? (
-                  <div className="bg-background/90 absolute top-1 right-1 rounded-md">
+                  <div className="absolute top-1 right-1">
                     <MessageActionsBar
                       message={message}
                       conversationId={conversationId}
                       actions={actions}
                       userId={userId}
                       authorLabel={authorLabel}
+                      overlay
                     />
                   </div>
                 ) : null}

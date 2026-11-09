@@ -119,6 +119,8 @@ export function addMessageTo(
       note?: string
     }
     replyToMessageId?: string
+    // The file of an album the reply quotes (with `replyToMessageId`)
+    replyToMediaId?: string
     // The code a reply failed with, shown beside it
     deliveryError?: string
     // How the text of a reply went when the channel sent it as a message of its own
@@ -146,6 +148,12 @@ export function addMessageTo(
     }
     if (input.captionState !== undefined) {
       await owner.message.update({ where: { id }, data: { captionState: input.captionState } })
+    }
+    if (input.replyToMediaId !== undefined) {
+      await owner.message.update({
+        where: { id },
+        data: { replyToMediaId: input.replyToMediaId }
+      })
     }
     if (input.channelMessageId !== undefined) {
       await owner.message.update({

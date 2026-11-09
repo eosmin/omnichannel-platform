@@ -48,7 +48,8 @@ export interface MessageBubbleProps {
   authorLabel: (type: string, id: string | null) => string
   // The ids of the messages in the loaded part of the thread: a quote links to one of them only
   loadedIds: ReadonlySet<string>
-  onJumpTo: (messageId: string) => void
+  // `mediaId`: the file of an album the quote answers, so the jump shows THAT one
+  onJumpTo: (messageId: string, mediaId?: string) => void
   // What the agent may do to this message; the thread works it out once for each message
   actions: MessageActions
   conversationId: string
@@ -197,7 +198,9 @@ function Bubble({
             bubbleless ? (isCustomer ? 'items-start' : 'items-end') : 'rounded-lg px-3 py-2',
             !bubbleless && isCustomer && 'bg-card border',
             !bubbleless && !isCustomer && !isNote && 'bg-secondary text-secondary-foreground',
-            isNote && 'bg-note text-note-foreground border-note-border border border-dashed'
+            isNote && 'bg-note text-note-foreground border-note-border border border-dashed',
+            // The card of a story is a fixed thumbnail: the bubble fits it, as a bubble with a picture does
+            message.storyReply !== null && 'max-w-[360px]'
           )}
         >
           {isNote ? <p className="text-xs font-semibold">{t('internalNote')}</p> : null}
@@ -212,6 +215,7 @@ function Bubble({
                   : authorLabel(message.replyTo.authorType, message.replyTo.authorId)
               }
               onJump={loadedIds.has(message.replyToMessageId) ? onJumpTo : undefined}
+              mediaId={message.replyToMediaId ?? undefined}
             />
           )}
           {message.storyReply === null ? null : <StoryReplyCard story={message.storyReply} />}

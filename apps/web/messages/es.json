@@ -1251,7 +1251,9 @@
         "failed": "Este navegador no puede reproducir el audio. Descárgalo para escucharlo.",
         "download": "Descargar el audio"
       },
-      "newMessages": "{count, plural, one {# mensaje nuevo} other {# mensajes nuevos}}"
+      "newMessages": "{count, plural, one {# mensaje nuevo} other {# mensajes nuevos}}",
+      "jumpedMessage": "Mensaje original resaltado",
+      "jumpedPicture": "Imagen original resaltada"
     },
     "composer": {
       "readOnly": "Puedes leer esta conversación pero no responderla.",

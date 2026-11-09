@@ -77,7 +77,8 @@ export function MessageActionsBar({
   actions,
   userId,
   authorLabel,
-  file
+  file,
+  overlay = false
 }: {
   message: MessageView
   conversationId: string
@@ -87,6 +88,9 @@ export function MessageActionsBar({
   // One file of an album: the bar over its thumbnail answers and reacts to THAT file (and nothing else: the rest
   // of the actions are the message's), and its buttons say which one it is
   file?: { id: string; number: number; total: number }
+  // Drawn over a thumbnail: the bar has a surface of its own, and it shows only when the bar does (a surface
+  // outside it was a white square that stayed when the buttons were hidden)
+  overlay?: boolean
 }): ReactElement {
   const t = useTranslations('inbox.thread.actions')
   const errorText = useErrorText()
@@ -127,6 +131,7 @@ export function MessageActionsBar({
     <div
       className={cn(
         'flex shrink-0 items-center opacity-0 transition-opacity max-md:opacity-100 pointer-coarse:opacity-100',
+        overlay && 'bg-background/90 rounded-md shadow-sm',
         // The thumbnail is its own group: hovering the bubble does not light the bars of all its files
         file === undefined
           ? 'group-focus-within:opacity-100 group-hover:opacity-100'

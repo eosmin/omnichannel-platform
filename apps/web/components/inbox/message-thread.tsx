@@ -12,8 +12,9 @@ import {
   useState
 } from 'react'
 
-import { quotedFileOf } from '../../lib/inbox/file-targets'
+import { fileDomId, quotedFileOf } from '../../lib/inbox/file-targets'
 import { groupImageRuns } from '../../lib/inbox/image-runs'
+import { announce, highlightFor } from '../../lib/inbox/jump-highlight'
 import { messageActionsOf } from '../../lib/inbox/message-actions'
 import { groupNoticeRuns } from '../../lib/inbox/notice-runs'
 import { buildThreadItems, isFromCustomer, memberIdsOf } from '../../lib/inbox/thread-items'
@@ -317,10 +318,15 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       document.getElementById(messageDomId(lastId))?.focus({ preventScroll: true })
   }, [scroller, lastId])
 
+  // What a screen reader is told when a quote is followed: the original is the one marked
+  const announcer = useRef<HTMLParagraphElement>(null)
   const jumpTo = useCallback(
-    (messageId: string): void => {
-      const target = document.getElementById(messageDomId(messageId))
-      if (target === null) return
+    (messageId: string, mediaId?: string): void => {
+      const message = document.getElementById(messageDomId(messageId))
+      if (message === null) return
+      // A quote of one picture of an album shows THAT picture: it is the one centred and marked
+      const picture = mediaId === undefined ? null : document.getElementById(fileDomId(mediaId))
+      const target = picture ?? message
       // The thread is moved, and only the thread: `scrollIntoView` moves every scrollable ancestor,
       // the page included, which left the header out of sight and a white gap under the thread
       if (scroller !== null) {
@@ -330,9 +336,11 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
         const offset = Math.max(0, (box.height - at.height) / 2)
         scroller.scrollTo({ top: scroller.scrollTop + at.top - box.top - offset })
       }
-      target.focus({ preventScroll: true })
+      message.focus({ preventScroll: true })
+      highlightFor(target)
+      announce(announcer.current, picture === null ? t('jumpedMessage') : t('jumpedPicture'))
     },
-    [scroller]
+    [scroller, t]
   )
 
   // The header says why a conversation cannot be read; the thread waits for it
@@ -492,6 +500,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
           </time>
         </div>
       ) : null}
+      <p ref={announcer} role="status" className="sr-only" />
       {/* Said to a screen reader when the count changes; the button itself is for who sees */}
       <p role="status" className="sr-only">
         {unseen > 0 && !isAtEnd ? t('newMessages', { count: unseen }) : ''}
