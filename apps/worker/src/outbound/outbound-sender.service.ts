@@ -117,6 +117,9 @@ export class OutboundSender {
       select: {
         type: true,
         content: true,
+        // The text of the message goes as a message of its own after the files, and where it stands
+        textApart: true,
+        captionState: true,
         metadata: true,
         // `false` while queued: an earlier attempt, or an earlier send that was resent, may have reached the provider
         failureDefinitive: true,
@@ -211,6 +214,8 @@ export class OutboundSender {
         messageType: enumValueOf(MessageType, message.type, 'message type'),
         channelIdentity: customerIdentity.channelIdentity,
         content,
+        textApart: message.textApart,
+        captionState: message.captionState,
         replyToExternalId,
         resentAt: message.resentAt,
         isLastAttempt,
@@ -530,6 +535,10 @@ export class OutboundSender {
     messageType: MessageType
     channelIdentity: string
     content: string
+    // The text of the message is its own message after the last file (every file has only its own text)
+    textApart: boolean
+    // Where that text stands: only a text never tried (null) is sent by this send
+    captionState: string | null
     replyToExternalId: string | null
     resentAt: Date | null
     isLastAttempt: boolean
@@ -549,9 +558,11 @@ export class OutboundSender {
     // checked then.
     if (!args.tainted && !files.some(file => file.wasSent)) {
       const refused = files.some(file => {
-        const text = this.captionOf(file, args.content)
+        const text = this.captionOf(file, args.content, args.textApart)
         return (
-          text !== '' && captionProblemOf(args.channelType, args.messageType, text, true) !== null
+          text !== '' &&
+          // Apart, a file never carries its text as a message of its own: it is under it or it is refused
+          captionProblemOf(args.channelType, args.messageType, text, !args.textApart) !== null
         )
       })
       if (refused) {
@@ -608,10 +619,13 @@ export class OutboundSender {
       // The first attempt is keyed by the message and the place of the file; one the agent asked for again is
       // another attempt, or a provider that dedupes on the key would answer with the result of the first. A
       // message of one file keeps the key it always had.
-      const text = this.captionOf(file, args.content)
-      // Only the text of the message (under the first file) goes apart: the api refuses a text apart for any
-      // other file, and a text that reaches the plugin there is refused by it, which fails that file in view
-      const apart = file.index === 0 && carriesNoCaption(args.channelType, args.messageType)
+      const text = this.captionOf(file, args.content, args.textApart)
+      // Where the text of the message goes under the first file, a kind with no place for one sends it after the
+      // file; the api refuses a text apart for any other file, and a text that reaches the plugin there is
+      // refused by it, which fails that file in view. Where the text of the message is its own message after every
+      // file (`textApart`), no file sends a text apart.
+      const apart =
+        !args.textApart && file.index === 0 && carriesNoCaption(args.channelType, args.messageType)
       const base = files.length === 1 ? messageId : `${messageId}-${file.position}`
       const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
       // An apart text has its state written BEFORE the file goes: a process that dies between the file and its
@@ -656,7 +670,9 @@ export class OutboundSender {
         // be lost with this memory (its echo would be stored as a message of the owner). Only the text of the
         // message (under the first file) has a state to record: the others go with their file, or are refused
         if (file.index === 0) {
-          await this.recordCaptionSafely(storeId, messageId, file, result.data)
+          // The text under the first file travels with it when the text of the message is apart: the state
+          // of the message is that of the text of the message, which the file does not report
+          if (!args.textApart) await this.recordCaptionSafely(storeId, messageId, file, result.data)
           firstAccepted = result.data
         }
         if (apart && text !== '') {
@@ -693,8 +709,19 @@ export class OutboundSender {
         failures.push(refused.code)
       }
     }
-    // The id of the message is the first file's, whichever attempt sent it: receipts and echoes find it there
     const first = files[0]
+    // The text of the message goes last, as a message of its own, and only when every file has gone: a text that
+    // overtakes a file that failed would reach the customer before it
+    if (
+      args.textApart &&
+      first !== undefined &&
+      args.content.trim() !== '' &&
+      args.captionState === null &&
+      failures.length === 0
+    ) {
+      await this.sendTextApart(args, first)
+    }
+    // The id of the message is the first file's, whichever attempt sent it: receipts and echoes find it there
     const firstId =
       firstAccepted?.externalId ?? (first?.wasSent === true ? first.channelMessageId : null)
     const [failure] = failures
@@ -716,9 +743,37 @@ export class OutboundSender {
     await this.recordAccepted(storeId, messageId, args.connectionRowId, accepted, failure)
   }
 
-  // The text under a file: the message's own for the first, the file's for the others. Empty when none.
-  private captionOf(file: AttachmentToSend, content: string): string {
-    return (file.index === 0 ? content : (file.caption ?? '')).trim()
+  // The text under a file: the message's own for the first and the file's for the others, or the file's own for
+  // every one where the text of the message is apart. Empty when none.
+  private captionOf(file: AttachmentToSend, content: string, textApart: boolean): string {
+    return (file.index === 0 && !textApart ? content : (file.caption ?? '')).trim()
+  }
+
+  // The text of the message as a message of its own after the last file. Its state is written BEFORE the call
+  // (see `sendTextAfter`), so a send that dies in the middle never sends it twice; the window is looked at
+  // first, because the files may have taken their time.
+  private async sendTextApart(
+    args: Parameters<OutboundSender['sendFiles']>[0],
+    first: AttachmentToSend
+  ): Promise<void> {
+    const { storeId, messageId } = args
+    if (!(await this.window.isOpen(this.prisma.client, storeId, args.conversationId))) {
+      await this.writeFactsSafely(storeId, messageId, first, { state: CaptionState.FAILED })
+      return
+    }
+    // The doubt is written before the call so that a death in between never sends the text twice. A write that
+    // fails does not fail the files (they are sent): the text is then not sent, and it stays the agent's to send
+    try {
+      await this.writeCaptionFacts(storeId, messageId, first, { state: CaptionState.UNCONFIRMED })
+    } catch (error) {
+      this.logger.error(
+        { messageId, errorName: errorName(error) },
+        'the state of the text of the message was not written; the text was not sent'
+      )
+      return
+    }
+    const base = args.resentAt === null ? messageId : `${messageId}-${args.resentAt.getTime()}`
+    await this.sendTextAfter(args, first, args.content.trim(), base)
   }
 
   // The id and the state of the text of the message (under the first file), as the plugin reported them: facts

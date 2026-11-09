@@ -1,7 +1,12 @@
 import { ChannelIds, MessageType } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 
-import { requireCaptionFits } from './caption-rules'
+import {
+  captionsOf,
+  requireCaptionFits,
+  requireCaptionsPlaced,
+  requireTextFits
+} from './caption-rules'
 
 const codeOf = (work: () => void): unknown => {
   try {
@@ -51,5 +56,60 @@ describe('requireCaptionFits', () => {
 
   it('does not bound a channel it does not know', () => {
     expect(() => requireCaptionFits('acme', MessageType.IMAGE, 'a'.repeat(5000))).not.toThrow()
+  })
+})
+
+describe('captionsOf', () => {
+  const ids = ['a', 'b', 'c']
+
+  it('puts the text of the message under the first file where the text goes with the file', () => {
+    expect(captionsOf({ mediaIds: ids, content: 'One' }, false)).toEqual(['One', null, null])
+    // `captions` wins for the places it names; the text of the message is the first one's where it does not reach
+    expect(captionsOf({ mediaIds: ids, content: 'One', captions: [] }, false)).toEqual([
+      'One',
+      null,
+      null
+    ])
+    expect(captionsOf({ mediaIds: ids, content: 'One', captions: ['Own', 'Two'] }, false)).toEqual([
+      'Own',
+      'Two',
+      null
+    ])
+  })
+
+  it('keeps the text of the message apart where it goes after the files: each file has only its own', () => {
+    expect(captionsOf({ mediaIds: ids, content: 'General' }, true)).toEqual([null, null, null])
+    expect(
+      captionsOf({ mediaIds: ids, content: 'General', captions: ['One', null, 'Three'] }, true)
+    ).toEqual(['One', null, 'Three'])
+  })
+})
+
+describe('requireCaptionsPlaced with the text apart', () => {
+  const body = { mediaIds: ['a', 'b'], captions: ['One', 'Two'] }
+
+  it('takes a text under every file, the first included, where the channel carries one under each', () => {
+    expect(() => requireCaptionsPlaced(body, true, true)).not.toThrow()
+  })
+
+  it('refuses a text under the first file too where the kind has no place for one', () => {
+    expect(codeOf(() => requireCaptionsPlaced({ ...body, captions: ['One'] }, false, true))).toBe(
+      ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+    )
+  })
+
+  it('still refuses more texts than files', () => {
+    expect(() =>
+      requireCaptionsPlaced({ ...body, captions: ['a', 'b', 'c'] }, true, true)
+    ).toThrow()
+  })
+})
+
+describe('requireTextFits', () => {
+  it('holds the text of the message to the limit of a plain text of its channel', () => {
+    expect(() => requireTextFits(ChannelIds.WHATSAPP, undefined)).not.toThrow()
+    expect(() => requireTextFits(ChannelIds.WHATSAPP, 'a'.repeat(4096))).not.toThrow()
+    expect(() => requireTextFits(ChannelIds.WHATSAPP, 'a'.repeat(4097))).toThrow()
+    expect(() => requireTextFits('acme', 'a'.repeat(9000))).not.toThrow()
   })
 })

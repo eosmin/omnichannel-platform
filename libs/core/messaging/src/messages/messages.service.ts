@@ -52,7 +52,12 @@ import {
 import { MessagingWindowService } from '../messaging-window/messaging-window.service'
 import { OutboundQueue } from '../outbound/outbound-queue'
 
-import { captionsOf, requireCaptionFits, requireCaptionsPlaced } from './caption-rules'
+import {
+  captionsOf,
+  requireCaptionFits,
+  requireCaptionsPlaced,
+  requireTextFits
+} from './caption-rules'
 import { assertMediaServable } from './media-guard'
 import { encodeMessageCursor } from './message-cursor'
 import type { CreateMessageBody, ListMessagesQuery } from './messages.schemas'
@@ -202,9 +207,13 @@ export class MessagesService {
           type: body.type,
           content: isTemplate
             ? (rendered?.content ?? null)
-            : isMediaBody(body)
-              ? (captionsOf(body)[0] ?? null)
+            : files !== null
+              ? // Apart, the text of the message is its own; otherwise it is the text under the first file
+                files.textApart
+                ? (body.content ?? null)
+                : (files.captions[0] ?? null)
               : (body.content ?? null),
+          textApart: files?.textApart ?? false,
           authorType: AuthorType.AGENT,
           authorId: viewer.userId,
           idempotencyKey: body.idempotencyKey ?? null,
@@ -547,8 +556,7 @@ export class MessagesService {
       message.authorId !== viewer.userId ||
       message.type !== body.type ||
       (body.type === MessageType.TEMPLATE && !sameTemplate(existing.metadata, body)) ||
-      (isMediaBody(body) &&
-        !(await this.sameFiles(db, storeId, existing.id, existing.content, body)))
+      (isMediaBody(body) && !(await this.sameFiles(db, storeId, existing, body)))
     ) {
       throw resourceConflict('the idempotency key was used for another message')
     }
@@ -583,18 +591,17 @@ export class MessagesService {
     // How many, before the files are read: a channel that does not say takes one (the limit of the
     // time before several were allowed)
     const limits = limitsOf?.(conversation.channelType, body.type) ?? null
-    requireCaptionsPlaced(body, limits?.captionsPerFile === true)
-    const captions = captionsOf(body)
-    for (const [place, caption] of captions.entries()) {
-      requireCaptionFits(
-        conversation.channelType,
-        body.type,
-        caption ?? undefined,
-        // The text of the message goes after a file with no place for one (an audio on WhatsApp); the text of
-        // any other file never goes apart: it is refused
-        place === 0 && limits?.textAfterFile === true
-      )
+    // Where the channel carries a text under each file, the text of the message is no longer under the first
+    // one: every file has its own and the text of the message is sent as a message of its own after the last
+    const textApart = limits?.textAfterFile === true
+    requireCaptionsPlaced(body, limits?.captionsPerFile === true, textApart)
+    const captions = captionsOf(body, textApart)
+    for (const caption of captions) {
+      // The text of a file is under it or it is refused (an audio on WhatsApp has no place for one): only the
+      // text of the message goes apart, and it has the limit of a plain text
+      requireCaptionFits(conversation.channelType, body.type, caption ?? undefined)
     }
+    if (textApart) requireTextFits(conversation.channelType, body.content)
     const maxFiles = limits?.maxFiles ?? MediaMessageLimits.SINGLE_FILE
     if (body.mediaIds.length > maxFiles) {
       throw new PlatformException(
@@ -643,7 +650,7 @@ export class MessagesService {
         }
       }
     }
-    return { ids: body.mediaIds, captions, customerId: conversation.customerId }
+    return { ids: body.mediaIds, captions, textApart, customerId: conversation.customerId }
   }
 
   // Inside the transaction of the message. `messageId: null` in the condition makes a file that two
@@ -675,26 +682,26 @@ export class MessagesService {
 
   // The key names one message: the same key with other files, or with other texts under them, is another
   // request. A file sent before each had its text (`caption` null) has the text of the message as the one
-  // of its first place.
+  // of its first place; where the text of the message went apart, it is compared on its own.
   private async sameFiles(
     db: PrismaService['client'],
     storeId: string,
-    messageId: string,
-    content: string | null,
+    message: { id: string; content: string | null; textApart: boolean },
     body: MediaMessageBody
   ): Promise<boolean> {
     const linked = await db.media.findMany({
-      where: { storeId, messageId },
+      where: { storeId, messageId: message.id },
       select: { id: true, caption: true, position: true }
     })
     if (linked.length !== body.mediaIds.length) return false
-    const wanted = captionsOf(body)
+    if (message.textApart && message.content !== (body.content ?? null)) return false
+    const wanted = captionsOf(body, message.textApart)
     return body.mediaIds.every((id, place) => {
       const row = linked.find(file => file.id === id)
       // The same place: the same files in another order are another message
       if (row === undefined || (row.position ?? 0) !== place) return false
-      // The text under the first file is the text of the message (an edit settles there)
-      const stored = place === 0 ? content : row.caption
+      // The text under the first file is the text of the message (an edit settles there), unless it went apart
+      const stored = place === 0 && !message.textApart ? message.content : row.caption
       return stored === wanted[place]
     })
   }
@@ -892,6 +899,8 @@ interface LinkableFiles {
   ids: readonly string[]
   // The text under each, by place
   captions: readonly (string | null)[]
+  // The text of the message goes as a message of its own after the files (see `Message.textApart`)
+  textApart: boolean
   customerId: string
 }
 

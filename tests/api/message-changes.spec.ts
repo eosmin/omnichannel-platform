@@ -623,8 +623,27 @@ describe('An agent editing and deleting a message', () => {
         }
       })
 
+      // The text under a file is content too
+      const attached = randomUUID()
+      await owner.media.create({
+        data: {
+          id: attached,
+          storeId: ctx.storeA.id,
+          messageId: old,
+          purpose: 'message',
+          key: `stores/${ctx.storeA.id}/messages/${attached}/p.png`,
+          filename: 'p.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          status: 'clean',
+          position: 0,
+          caption: 'text under the picture'
+        }
+      })
+
       await purge.purge()
 
+      expect((await owner.media.findUniqueOrThrow({ where: { id: attached } })).caption).toBeNull()
       expect(await row(old)).toMatchObject({ content: null })
       expect((await row(old)).deletedAt).not.toBeNull()
       expect(

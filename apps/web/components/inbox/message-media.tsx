@@ -74,7 +74,8 @@ export function MessageMedia({
   canRefetch,
   sticker = false,
   messageType,
-  albumCaptions
+  albumCaptions,
+  textApart = false
 }: {
   files: readonly MediaFile[]
   unavailable: readonly UnavailableFile[]
@@ -87,6 +88,8 @@ export function MessageMedia({
   // The texts of the album as a list in the order of the pictures, each number on its picture, with the text of
   // the message (the first picture's) as `lead`. Without it, each text is drawn under its own file.
   albumCaptions?: { lines: readonly AlbumCaptionLine<MediaFile>[]; lead: ReactNode }
+  // The text of the message is its own message after the files: every file, the first included, draws its own text
+  textApart?: boolean
 }): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
   if (files.length === 0 && unavailable.length === 0) return null
@@ -108,12 +111,16 @@ export function MessageMedia({
               inAlbum={album}
             />
             {states ? <FileDeliveryLine file={file} /> : null}
-            {albumCaptions === undefined ? <FileCaption file={file} /> : null}
+            {albumCaptions === undefined ? <FileCaption file={file} textApart={textApart} /> : null}
           </div>
         ))}
       </div>
       {albumCaptions === undefined ? null : (
-        <AlbumCaptionList lines={albumCaptions.lines} lead={albumCaptions.lead} />
+        <AlbumCaptionList
+          lines={albumCaptions.lines}
+          lead={albumCaptions.lead}
+          textApart={textApart}
+        />
       )}
       {sayRetryOnlyFailed(files) ? <RetryHint /> : null}
       {unavailable.map(file => (

@@ -33,13 +33,14 @@ test('the field for the text under each file is offered where the channel carrie
     const fieldOf = (name: string) =>
       page.getByRole('textbox', { name: attach.captionFor.replace('{name}', name) })
 
-    // WhatsApp carries a text under each file: the second file has a field
+    // WhatsApp carries a text under each file: every file has a field, the first included
     const whatsApp = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
     await page.goto(AppPaths.store.conversation(storeId, whatsApp))
     // The picker takes several once the directory of channels has answered: only then are its capabilities known
     await expect(page.locator('input[type=file]')).toHaveAttribute('multiple', '')
     await page.locator('input[type=file]').setInputFiles([png('one.png'), png('two.png')])
     await expect(page.getByText(attach.captionEach)).toBeVisible()
+    await expect(fieldOf('one.png')).toBeVisible()
     await expect(fieldOf('two.png')).toBeVisible()
 
     // Messenger sends the text of a file as a message of its own: no field, and the text is the one of the message
@@ -48,7 +49,8 @@ test('the field for the text under each file is offered where the channel carrie
     // The picker takes several once the directory of channels has answered: only then are its capabilities known
     await expect(page.locator('input[type=file]')).toHaveAttribute('multiple', '')
     await page.locator('input[type=file]').setInputFiles([png('one.png'), png('two.png')])
-    await expect(page.getByText(attach.captionFirst)).toBeVisible()
+    await expect(page.getByText(attach.captionAfter)).toBeVisible()
+    await expect(fieldOf('one.png')).toHaveCount(0)
     await expect(fieldOf('two.png')).toHaveCount(0)
     await expect(page.getByRole('textbox', { name: en.inbox.composer.replyLabel })).toBeVisible()
   } finally {

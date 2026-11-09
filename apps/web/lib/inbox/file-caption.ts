@@ -1,12 +1,17 @@
-// The text the thread draws under a file of a message with several. The first file's text is the text of the
-// message and is drawn where it always was (or first in the list of an album), so it is not repeated under the
-// file. A file of the customer has no place and no text of its own.
-export function fileCaptionOf(file: {
-  position: number | null
-  caption: string | null
-}): string | null {
-  // The text of the file at place 0 is the text of the message (the api reads it the same way)
-  if (file.position === null || file.position === 0) return null
+// The text the thread draws under a file of a message with several. Unless the text of the message went apart
+// (`textApart`), the first file's text is the text of the message and is drawn where it always was (or first in
+// the list of an album), so it is not repeated under the file; apart, every file has its own, the first
+// included. A file of the customer has no place and no text of its own.
+export function fileCaptionOf(
+  file: {
+    position: number | null
+    caption: string | null
+  },
+  textApart = false
+): string | null {
+  // Unless the text of the message went apart, the text of the file at place 0 is the text of the message (the
+  // api reads it the same way); apart, it is the file's own
+  if (file.position === null || (file.position === 0 && !textApart)) return null
   return file.caption === null || file.caption.trim() === '' ? null : file.caption
 }
 
@@ -27,7 +32,9 @@ export function albumCaptionLinesOf<
   File extends { position: number | null; caption: string | null }
 >(
   files: readonly File[],
-  lead: { hasText: boolean; hasNotice: boolean }
+  lead: { hasText: boolean; hasNotice: boolean },
+  // The text of the message is drawn after the album, not as the line of the first file
+  textApart = false
 ): AlbumCaptionLine<File>[] {
   const placed = files.flatMap(file =>
     file.position === null ? [] : [{ file, at: file.position }]
@@ -40,8 +47,10 @@ export function albumCaptionLinesOf<
   const lines = placed
     .toSorted((a, b) => a.at - b.at)
     .flatMap(({ file, at }) => {
-      const isLead = at === 0
-      const hasLine = isLead ? lead.hasText || lead.hasNotice : fileCaptionOf(file) !== null
+      const isLead = at === 0 && !textApart
+      const hasLine = isLead
+        ? lead.hasText || lead.hasNotice
+        : fileCaptionOf(file, textApart) !== null
       return hasLine ? [{ file, number: at + 1, isLead }] : []
     })
   // A single line has nothing to be told apart from: the text stays where it always was

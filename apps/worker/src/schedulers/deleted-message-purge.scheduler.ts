@@ -58,6 +58,12 @@ export class DeletedMessagePurgeScheduler {
         where: { messageId: { in: messageIds } },
         data: { content: null }
       })
+      // The text under each file is content too (the first file's included, since the text of a message can go
+      // apart from it): it goes with the text of the message
+      await tx.media.updateMany({
+        where: { messageId: { in: messageIds }, caption: { not: null } },
+        data: { caption: null }
+      })
       await tx.message.updateMany({
         where: { id: { in: messageIds }, contentPurgedAt: null },
         data: { content: null, pendingContent: null, changeRequestedAt: null, contentPurgedAt: now }

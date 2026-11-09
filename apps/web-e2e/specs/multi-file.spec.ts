@@ -90,8 +90,9 @@ test.describe.serial('the composer with several files', () => {
     await expect
       .poll(() => filesSentIn(conversationId))
       .toEqual([
-        { filename: 'first.png', position: 0, caption: 'Your three photos' },
-        { filename: 'third.png', position: 1, caption: 'Your three photos' }
+        // The text of the box is the message's own, sent after the files: no file carries it
+        { filename: 'first.png', position: 0, caption: null, text: 'Your three photos' },
+        { filename: 'third.png', position: 1, caption: null, text: 'Your three photos' }
       ])
   })
 

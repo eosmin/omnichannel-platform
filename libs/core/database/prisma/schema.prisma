@@ -486,6 +486,8 @@ model Message {
   captionChannelMessageId String?   @map("caption_channel_message_id")
   // CaptionState of the text under a file that the channel sends as a message of its own; null otherwise
   captionState            String?   @map("caption_state")
+  // The text of a media message (`content`) is its own message sent after every file, not the text under the first one (the channel carries a text under each file: `CAPTION_PER_FILE`); false for a message sent before, and where the channel puts the one text with the first file
+  textApart               Boolean   @default(false) @map("text_apart")
   idempotencyKey          String?   @map("idempotency_key") // Client-generated for outbound (TDD_06 §4)
   replyToMessageId        String?   @map("reply_to_message_id")
   deliveryStatus          String?   @map("delivery_status") // DeliveryStatus, outbound only

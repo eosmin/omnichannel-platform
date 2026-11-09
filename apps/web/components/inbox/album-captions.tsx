@@ -35,10 +35,12 @@ export function AlbumCaptionMark({ number }: { number: number }): ReactElement {
 // under their file.
 export function AlbumCaptionList({
   lines,
-  lead
+  lead,
+  textApart = false
 }: {
   lines: readonly AlbumCaptionLine<MediaFile>[]
   lead: ReactNode
+  textApart?: boolean
 }): ReactElement {
   const t = useTranslations('inbox.thread')
   return (
@@ -53,7 +55,7 @@ export function AlbumCaptionList({
             {line.number}
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            {line.isLead ? lead : <FileCaption file={line.file} />}
+            {line.isLead ? lead : <FileCaption file={line.file} textApart={textApart} />}
           </div>
         </li>
       ))}

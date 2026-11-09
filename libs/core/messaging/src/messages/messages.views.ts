@@ -181,6 +181,8 @@ export interface MessageView {
   // The state of the text under a file that went apart from it (Instagram and Messenger): failed, or
   // unconfirmed when the provider may have delivered it; null when there is nothing to say
   captionState: CaptionState | null
+  // The text of the message (`content`) is a message of its own after the files, not the text under the first one
+  textApart: boolean
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
   version: number
@@ -221,6 +223,7 @@ export const MESSAGE_SELECT = {
   mentions: true,
   metadata: true,
   captionState: true,
+  textApart: true,
   version: true,
   editedAt: true,
   editedByType: true,
@@ -276,6 +279,7 @@ interface MessageRow {
   mentions: string[]
   metadata: unknown
   captionState: string | null
+  textApart: boolean
   version: number
   editedAt: Date | null
   editedByType: string | null
@@ -386,11 +390,12 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
             errorCode: file.sendErrorCode,
             // The text under the first file is the text of the message (what an edit settles, and what a
             // message sent before each file had its own carries)
-            caption: file.position === 0 ? row.content : file.caption
+            caption: file.position === 0 && !row.textApart ? row.content : file.caption
           }))
         : [],
     unavailableFiles: unavailableFilesOf(row, type),
     captionState: row.deletedAt === null ? captionStateOf(row.captionState) : null,
+    textApart: row.textApart,
     version: row.version,
     // A message edited and then deleted is a deleted message: the deletion wins, so it carries no
     // "edited", no editor and no edit waiting or failed (its text is already hidden above)

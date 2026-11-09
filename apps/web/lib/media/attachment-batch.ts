@@ -69,18 +69,18 @@ function channelCode(
   return file.size > limit.maxBytes ? ClientErrorCodes.CHANNEL_FILE_TOO_LARGE : null
 }
 
-// The texts of a message of several files, by place, for the request: the text of the composer for the first and
-// the one typed under each other file. null when the channel does not carry a text under each file (the one text
-// of the message is then the whole request) or when no other file has a text.
+// The texts under the files of a message, by place, for the request: the one typed under each file, the first
+// included (the text of the composer is the text of the message and goes apart, after every file). null when the
+// channel does not carry a text under each file (the one text of the message is then the whole request) or when
+// no file has a text.
 export function captionsForSend(
   rules: BatchRules,
   type: OutboundMediaType | null,
-  first: string,
-  others: readonly string[]
+  typed: readonly string[]
 ): (string | null)[] | null {
-  const typed = others.map(text => text.trim())
-  if (!takesCaptionPerFile(rules, type) || typed.every(text => text === '')) return null
-  return [first === '' ? null : first, ...typed.map(text => (text === '' ? null : text))]
+  const trimmed = typed.map(text => text.trim())
+  if (!takesCaptionPerFile(rules, type) || trimmed.every(text => text === '')) return null
+  return trimmed.map(text => (text === '' ? null : text))
 }
 
 export interface BatchRules {
