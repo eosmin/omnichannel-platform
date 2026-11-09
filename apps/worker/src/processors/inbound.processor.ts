@@ -14,7 +14,7 @@ import { channelEventSchema, type ProcessChannelEventJob } from '@platform/plugi
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { ProfileRequester } from '../inbound/profile-requester.service'
-import { unsupportedShapeOf } from '../inbound/unsupported-shape'
+import { unsupportedLogFields, unsupportedShapeOf } from '../inbound/unsupported-shape'
 import { ChannelReceipts } from '../outbound/channel-receipts.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
@@ -62,13 +62,9 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
         // mapped. After the message is stored, so a retry of the job does not repeat it.
         const unsupported = unsupportedShapeOf(event.message)
         if (unsupported) {
+          // One line, the shape only: no id of the message or of the connection (they say nothing about what to map)
           this.logger.info(
-            {
-              pluginId,
-              connectionId: event.connectionId,
-              externalId: event.message.externalId,
-              ...unsupported
-            },
+            unsupportedLogFields(pluginId, unsupported),
             'inbound message of a type the channel cannot show'
           )
         } else if (event.message.metadata?.[MessageMetadataKeys.UNSUPPORTED_SHAPE] !== undefined) {

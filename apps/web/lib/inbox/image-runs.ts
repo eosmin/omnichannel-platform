@@ -10,7 +10,10 @@ import { isFromCustomer, messageKindOf, type ThreadItem } from './thread-items'
 export const IMAGE_RUN_WINDOW_MS = 60_000
 
 export type ThreadEntry =
-  ThreadItem | { kind: 'imageRun'; messages: readonly MessageView[]; showAuthor: boolean }
+  | ThreadItem
+  | { kind: 'imageRun'; messages: readonly MessageView[]; showAuthor: boolean }
+  // Notices of content the channel does not show, one after the other: one bubble (see `notice-runs.ts`)
+  | { kind: 'noticeRun'; messages: readonly MessageView[]; last: MessageView; showAuthor: boolean }
 
 // A message that may be part of a run: a customer's single picture, with nothing else in it. A caption, a quote,
 // a link, a sticker, a deleted one, one whose file is not clean or not stored yet, anything that is not a picture:

@@ -1049,13 +1049,10 @@
       },
       "templateLabel": "Template message",
       "unsupportedKind": {
-        "storyMention": "The customer mentioned your account in a story; this channel does not let you see the story",
-        "share": "The customer shared a post; this channel does not let you see its content",
-        "location": "The customer shared a location that this channel does not let you see",
         "media": "The customer sent a file that could not be fetched",
-        "notDelivered": "The customer sent something the channel does not deliver (for example a sticker or a like). Open it in the channel's app",
-        "other": "The customer sent something this channel cannot show"
+        "notice": "The customer sent content that this channel does not let you view. To see it, open it from the channel's account or phone."
       },
+      "unsupportedGroup": "The customer sent {count} items that this channel does not let you view. To see them, open them from the channel's account or phone.",
       "captionFailed": "The file was sent, but the text under it was not",
       "captionUnconfirmed": "The file was sent, but the text under it may not have been. Check the chat before sending the text again",
       "captionQueued": "Sending the text under the file",

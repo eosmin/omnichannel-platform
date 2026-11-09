@@ -14,6 +14,7 @@ import {
 
 import { groupImageRuns } from '../../lib/inbox/image-runs'
 import { messageActionsOf } from '../../lib/inbox/message-actions'
+import { groupNoticeRuns } from '../../lib/inbox/notice-runs'
 import { buildThreadItems, isFromCustomer, memberIdsOf } from '../../lib/inbox/thread-items'
 import { stickyDayOf, unseenAfter } from '../../lib/inbox/thread-reading'
 import { useAuthorLabel } from '../../lib/inbox/use-author-label'
@@ -118,7 +119,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
     [items]
   )
   // Pictures a customer sent one after the other are drawn as one block; the logic of the thread keeps its items
-  const entries = useMemo(() => groupImageRuns(items), [items])
+  const entries = useMemo(() => groupNoticeRuns(groupImageRuns(items)), [items])
   const stickyDay = items.find(item => item.kind === 'day' && item.key === stickyKey)
   const unseen = unseenAfter(messageIds, seenId, fromCustomer)
 
@@ -410,6 +411,29 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                       actionsOf={message => messageActionsOf(message, viewer)}
                       conversationId={conversationId}
                       userId={viewer.userId}
+                    />
+                  </li>
+                ) : item.kind === 'noticeRun' ? (
+                  <li
+                    // The key of the first notice, as a lone one has: the entry keeps its place when another joins
+                    key={item.messages[0]?.id ?? 'notices'}
+                    className={item.showAuthor ? 'compact:mt-1.5 mt-3' : 'compact:mt-0.5 mt-1'}
+                  >
+                    <MessageBubble
+                      // The bubble is the last notice's (its hour and its menu); the others keep their place for a quote
+                      message={item.last}
+                      showAuthor={item.showAuthor}
+                      authorLabel={authorLabel}
+                      loadedIds={loadedIds}
+                      onJumpTo={jumpTo}
+                      actions={messageActionsOf(item.last, viewer)}
+                      conversationId={conversationId}
+                      userId={viewer.userId}
+                      mentionNames={[]}
+                      notice={{
+                        count: item.messages.length,
+                        otherIds: item.messages.slice(0, -1).map(message => message.id)
+                      }}
                     />
                   </li>
                 ) : (

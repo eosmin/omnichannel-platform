@@ -1,24 +1,15 @@
 // What the thread says about a message whose text is only the marker a channel stores for a type it
-// cannot read. The provider's word (`story_mention`, `image`) never reaches the screen: it picks one of a
-// few translated sentences. A media type here means the file could not be fetched (a link the server
-// refused), not that the channel cannot show images.
-// `unsupported` is the type the channel stores when the provider itself sends the message with no content
-// (a sticker or a like of Instagram): there is nothing to show, and the team is told to open the app.
-export type UnsupportedKind =
-  'storyMention' | 'share' | 'location' | 'media' | 'notDelivered' | 'other'
+// cannot read. The provider's word never reaches the screen, and this page knows no channel and no form of one
+// provider: every content the channel does not let the team see is ONE sentence (`notice`), the same for all
+// channels, and consecutive ones are drawn as one bubble (`notice-runs.ts`). A media type here means the file
+// could not be fetched (a link the server refused), not that the channel cannot show images.
+export type UnsupportedKind = 'media' | 'notice'
 
 export const unsupportedKindOf = (type: string): UnsupportedKind =>
-  type === 'story_mention'
-    ? 'storyMention'
-    : type === 'location'
-      ? 'location'
-      : type === 'unsupported'
-        ? 'notDelivered'
-        : /^(share|ig_post|ig_reel|reel|post)$/.test(type)
-          ? 'share'
-          : /^(image|video|audio|file|document|sticker)$/.test(type)
-            ? 'media'
-            : 'other'
+  /^(image|video|audio|file|document|sticker)$/.test(type) ? 'media' : 'notice'
+
+// Content the channel does not let the team see (what the notices say), as opposed to a file that failed to arrive
+export const isNoticeType = (type: string): boolean => unsupportedKindOf(type) === 'notice'
 
 // The text a bubble draws as the words of the message, or null when it draws something else in their
 // place: a deleted message has none, a location is drawn as its card, and a marker is a sentence
