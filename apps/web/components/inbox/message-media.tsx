@@ -12,7 +12,12 @@ import type { OutboundMediaType } from '@platform/core/storage'
 import { fileDeliveryOf, isAlbum, sayRetryOnlyFailed } from '../../lib/inbox/album'
 import type { AlbumCaptionLine } from '../../lib/inbox/file-caption'
 import { displayFileNameOf } from '../../lib/inbox/file-label'
-import { fileDomId, fileTargetOf, reactionsUnderFile } from '../../lib/inbox/file-targets'
+import {
+  fileDomId,
+  fileTargetOf,
+  isNativeAlbumOf,
+  reactionsUnderFile
+} from '../../lib/inbox/file-targets'
 import { mediaKindOf } from '../../lib/inbox/media-kind'
 import {
   type FileType,
@@ -130,6 +135,11 @@ export function MessageMedia({
         {files.map(file => {
           const target =
             fileActions === undefined ? null : fileTargetOf(fileActions.message, file.id)
+          // A thumbnail of a native album can only be answered (the message is quoted): never reacted to alone
+          const answersOnly =
+            fileActions !== undefined &&
+            isNativeAlbumOf(fileActions.message) &&
+            fileActions.actions.reply
           return (
             <div
               key={file.id}
@@ -138,7 +148,7 @@ export function MessageMedia({
             >
               <MarkOf number={numbers.get(file.id)} />
               {fileActions === undefined ||
-              target === null ||
+              (target === null && !answersOnly) ||
               !(fileActions.actions.reply || fileActions.actions.react) ? (
                 <MediaItem
                   file={file}
@@ -164,7 +174,9 @@ export function MessageMedia({
                       actions={fileActions.actions}
                       userId={fileActions.userId}
                       authorLabel={fileActions.authorLabel}
-                      file={{ id: file.id, ...target }}
+                      {...(target === null
+                        ? { replyOnly: { number: files.indexOf(file) + 1, total: files.length } }
+                        : { file: { id: file.id, ...target } })}
                       overlay
                     />
                   </div>
