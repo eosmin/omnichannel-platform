@@ -4,6 +4,7 @@ import { ExportLimits } from '@platform/core/exports'
 import { type ConversationsExportFilters, conversationsExportWhere } from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
+import { exportMessageText } from './export-message-text'
 
 export const CONVERSATION_COLUMNS = [
   'conversation_id',
@@ -91,7 +92,10 @@ export function conversationsExportSource(
                 content: true,
                 deliveryStatus: true,
                 deletedAt: true,
-                contentPurgedAt: true
+                contentPurgedAt: true,
+                textApart: true,
+                // The text under each file is part of what was said to the customer
+                media: { orderBy: { position: 'asc' }, select: { caption: true, position: true } }
               }
             })
             const lastMessage = messages.at(-1)
@@ -109,7 +113,7 @@ export function conversationsExportSource(
                 conversation.customer.name,
                 message.authorType,
                 message.type,
-                hidden ? null : message.content,
+                hidden ? null : exportMessageText(message),
                 message.deliveryStatus,
                 message.deletedAt !== null
               ]

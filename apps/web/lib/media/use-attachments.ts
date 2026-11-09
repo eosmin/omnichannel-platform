@@ -239,13 +239,13 @@ export function useAttachments(
         return false
       }
       const mediaIds = ready.flatMap(item => (item.mediaId === null ? [] : [item.mediaId]))
-      // A text under a file other than the first goes only where the channel puts a text under each file;
-      // the first file takes the text of the composer. Without any, the request is the one of one text.
+      // A text under each file goes only where the channel puts a text under each file, the first included; the
+      // text of the composer is then the text of the message and goes apart, after every file. Without any, the
+      // request is the one of one text.
       const captions = captionsForSend(
         rulesRef.current,
         type,
-        caption,
-        ready.slice(1).map(item => item.caption)
+        ready.map(item => item.caption)
       )
       // The key names this message: other files, another caption or another quote are another request
       const ids = JSON.stringify([mediaIds, caption, captions, replyToMessageId ?? null])

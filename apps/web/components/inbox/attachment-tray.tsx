@@ -12,7 +12,7 @@ import {
   useState
 } from 'react'
 
-import { MessageType } from '@platform/core/domain'
+import { ChannelCapability, MessageType } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { takesCaptionPerFile } from '../../lib/media/attachment-batch'
@@ -216,11 +216,14 @@ export function AttachmentTray({
     [attachments.send, attachments.add, attachments.clear]
   )
 
-  // The files that go in the message, in order; each but the first has a field for its text where the channel
-  // puts a text under each file (the first takes the text of the composer)
+  // The files that go in the message, in order; each has a field for its text where the channel puts a text under
+  // each file, the first included (the text of the composer is the text of the message and goes after the files)
   const kept = items.filter(item => item.status !== 'failed')
   const perFile = takesCaptionPerFile(rules, kept[0]?.type ?? null)
   const count = items.filter(item => item.status !== 'failed').length
+  // The channel sends the text of the box as a message after the files, whatever the kind of file
+  const carriesPerFile =
+    count > 0 && rules.capabilities?.includes(ChannelCapability.CAPTION_PER_FILE) === true
   const ready = items.filter(item => item.status === 'ready').length
   const isBusy = items.some(item => item.status === 'uploading' || item.status === 'checking')
   useEffect(() => {
@@ -237,7 +240,7 @@ export function AttachmentTray({
               key={item.id}
               item={item}
               isLocked={isSending}
-              hasCaption={perFile && kept.indexOf(item) > 0}
+              hasCaption={perFile && item.status !== 'failed'}
               captionMax={captionMax}
               onCaption={caption => attachments.setCaption(item.id, caption)}
               onRemove={() => attachments.remove(item.id)}
@@ -245,9 +248,9 @@ export function AttachmentTray({
           ))}
         </ul>
       )}
-      {count > 1 ? (
+      {carriesPerFile || count > 1 ? (
         <p className="text-muted-foreground text-xs">
-          {t(perFile ? 'captionEach' : 'captionFirst')}
+          {t(carriesPerFile ? 'captionEach' : 'captionAfter')}
         </p>
       ) : null}
       {notice === null ? null : (

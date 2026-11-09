@@ -215,16 +215,21 @@ and never sent to the customer. Mentioning a teammate with `@` stores their id i
 **Attachments** are uploaded first (`TDD_07` §6.1, `purpose: MESSAGE`) and sent as
 `mediaIds` with the message; the thread shows the pending upload inline.
 
-**A text under each file** (owner, 2026-11-08): `POST /messages` takes `captions`, the text under each
-file by its place (`captions[i]` goes under `mediaIds[i]`; blank or null is none, at most as many as files).
-`content` stays as the text under the first file, and `captions` wins when both come. The core does not know
-channels: only a plugin that declares `CAPTION_PER_FILE` (WhatsApp) carries a text with each file; the api
-answers 409 `CHANNEL_CAPABILITY_UNSUPPORTED` to a text under a file other than the first on any other channel
-(Messenger and Instagram take the one text of the message, which the plugin sends as a message of its own after
-the first file). The agent always sees one bubble per message with each file and its text inside. Each file
-keeps its text (`media.caption`); how the text of the message went (`captionState`) and the provider id of that
-message (`captionChannelMessageId`) live on the message, so that the echo of the provider finds it and is not
-stored as a message of the owner.
+**A text under each file** (owner, 2026-11-08; the text of the message apart, owner, 2026-11-09):
+`POST /messages` takes `captions`, the text under each file by its place (`captions[i]` goes under
+`mediaIds[i]`; blank or null is none, at most as many as files). The core does not know channels: only a plugin
+that declares `CAPTION_PER_FILE` (WhatsApp) carries a text with each file. On such a channel EVERY file, the
+first included, has its own text, and `content` is the text of the message: a message of its own that the
+worker sends after the last file, and only when every file has gone (`messages.text_apart`, `captionState`,
+`resend-caption`). The api answers 409 `CHANNEL_CAPABILITY_UNSUPPORTED` to a text under a file of a kind with
+no place for one (an audio on WhatsApp; its `content` still goes after it). On any other channel (Messenger,
+Instagram, the widget) `content` stays as the text under the first file and `captions` wins when both come; a
+text under a file other than the first is a 409 (Messenger and Instagram take the one text of the message,
+which the plugin sends as a message of its own after the first file). The agent always sees one bubble per
+message with each file and its text inside; the text of the message that went apart is drawn after the files.
+Each file keeps its text (`media.caption`); how the text of the message went (`captionState`) and the provider
+id of that message (`captionChannelMessageId`) live on the message, so that the echo of the provider finds it
+and is not stored as a message of the owner.
 
 **Slash commands:**
 ```

@@ -35,13 +35,19 @@ const thread = en.inbox.thread
 async function replyWithPictures(
   storeId: string,
   captions: (string | null)[],
-  captionState?: CaptionState
+  captionState?: CaptionState,
+  // The text of the message went apart: it is its own, every picture has only its own text (the first too)
+  apartText?: string
 ): Promise<string> {
   const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
   const message = await addMessageTo(storeId, conversationId, {
     authorType: AuthorType.AGENT,
     type: MessageType.IMAGE,
-    ...(captions[0] === null ? {} : { content: captions[0] }),
+    ...(apartText === undefined
+      ? captions[0] === null
+        ? {}
+        : { content: captions[0] }
+      : { content: apartText, textApart: true }),
     deliveryStatus: DeliveryStatus.SENT,
     createdAt: new Date(Date.now() - MINUTE_MS / 2),
     ...(captionState === undefined ? {} : { captionState })
@@ -54,7 +60,7 @@ async function replyWithPictures(
       processed: 'with-variants',
       position,
       delivery: DeliveryStatus.SENT,
-      ...(position > 0 && caption !== null ? { caption } : {})
+      ...((position > 0 || apartText !== undefined) && caption !== null ? { caption } : {})
     })
   }
   return conversationId
@@ -175,6 +181,33 @@ test('in an album, the text of the message asks before it is sent again, inside 
     await first.getByRole('button', { name: thread.resendCaption }).click()
     await expect(page.getByRole('alertdialog', { name: thread.captionResendTitle })).toBeVisible()
     expect(asked).toHaveLength(0)
+  } finally {
+    await page.context().close()
+  }
+})
+
+test('with the text of the message apart, every picture draws its own text, the first too, and the text of the message comes after them', async ({
+  browser
+}) => {
+  const page = await signedInPage(browser)
+  try {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    const album = await replyWithPictures(
+      storeId,
+      ['Uno', null, 'Tres'],
+      undefined,
+      'For all of them'
+    )
+    await page.goto(AppPaths.store.conversation(storeId, album))
+    const list = page.getByRole('list', { name: thread.label })
+    const texts = list.getByRole('list', { name: thread.albumCaptions })
+    await expect(texts.getByRole('listitem')).toHaveCount(2)
+    await expect(texts.getByRole('listitem').nth(0)).toContainText('Uno')
+    await expect(texts.getByRole('listitem').nth(1)).toContainText('Tres')
+    await expect(texts.getByTestId('album-caption-number')).toHaveText(['1', '3'])
+    // The text of the message is not a line of the first picture: it is drawn once, after the list
+    await expect(list.getByText('For all of them', { exact: true })).toHaveCount(1)
+    await expect(texts.getByText('For all of them')).toHaveCount(0)
   } finally {
     await page.context().close()
   }

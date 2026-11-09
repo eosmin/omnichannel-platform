@@ -1586,15 +1586,22 @@ describe('Replies on their way to a channel', () => {
       pluginId: string,
       type: MessageType,
       captions: (string | null)[],
-      contentType = 'image/png'
+      contentType = 'image/png',
+      // The text of the message went apart: every file has only its own text, and this one is the message's,
+      // sent as a message of its own after the last file (undefined: the text of the first file is the message's)
+      apartText?: string
     ) => {
+      const first = apartText === undefined ? captions[0] : apartText
       const reply = await queuedReply({
         pluginId,
         type,
-        ...(captions[0] === null || captions[0] === undefined ? {} : { content: captions[0] })
+        ...(first === null || first === undefined ? {} : { content: first })
       })
-      if (captions[0] === null || captions[0] === undefined) {
+      if (first === null || first === undefined) {
         await owner.message.update({ where: { id: reply.id }, data: { content: null } })
+      }
+      if (apartText !== undefined) {
+        await owner.message.update({ where: { id: reply.id }, data: { textApart: true } })
       }
       await owner.customerIdentity.updateMany({
         where: { conversations: { some: { id: reply.conversationId } } },
@@ -1867,6 +1874,178 @@ describe('Replies on their way to a channel', () => {
         'sent'
       ])
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
+
+    describe('with the text of the message apart', () => {
+      it('sends every file with its own text, the first included, and the text of the message last, as a message of its own', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.IMAGE,
+          ['one', null, 'three'],
+          'image/png',
+          'for everyone'
+        )
+        const filesGoneWhenTextWent: number[] = []
+        sendMessage = (c, p) => {
+          filesGoneWhenTextWent.push(sentMedia.length)
+          return accept(c, p)
+        }
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia.map(item => item.caption)).toEqual(['one', undefined, 'three'])
+        expect(sent.map(item => item.content)).toEqual(['for everyone'])
+        // Last: when the text went, all three files were with the provider already
+        expect(filesGoneWhenTextWent).toEqual([3])
+        expect(sent[0]?.idempotencyKey).toBe(`${reply.id}-caption`)
+        expect(await captionOf(reply.id)).toEqual({
+          captionState: CaptionState.SENT,
+          captionChannelMessageId: `ext-${externalCount}`
+        })
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      })
+
+      it('sends a first file with no text of its own with none, and not the text of the message', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.IMAGE,
+          [null],
+          'image/png',
+          'for everyone'
+        )
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia.map(item => item.caption)).toEqual([undefined])
+        expect(sent.map(item => item.content)).toEqual(['for everyone'])
+      })
+
+      it('sends no text of the message when a file fails: it would reach the customer before the file', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.IMAGE,
+          ['one', 'two'],
+          'image/png',
+          'for everyone'
+        )
+        mediaFailure = params =>
+          params.caption === 'two'
+            ? new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+            : null
+
+        await sender.send(job(reply), false)
+
+        expect(sent).toHaveLength(0)
+        expect((await captionOf(reply.id)).captionState).toBeNull()
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+      })
+
+      it('sends the text of the message once the failed file is sent again, and never twice', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.IMAGE,
+          ['one', 'two'],
+          'image/png',
+          'for everyone'
+        )
+        await owner.media.updateMany({
+          where: { messageId: reply.id, position: 0 },
+          data: { deliveryStatus: 'sent', channelMessageId: 'earlier' }
+        })
+        await owner.message.update({ where: { id: reply.id }, data: { failureDefinitive: false } })
+
+        await sender.send(job(reply), false)
+        // A second run of the same job (a stalled one, or the sweep): the text already went
+        await owner.message.update({
+          where: { id: reply.id },
+          data: { deliveryStatus: DeliveryStatus.QUEUED }
+        })
+        await owner.media.updateMany({
+          where: { messageId: reply.id, position: 1 },
+          data: { deliveryStatus: 'queued' }
+        })
+        await sender.send(job(reply), false)
+
+        expect(sent.map(item => item.content)).toEqual(['for everyone'])
+      })
+
+      it('says the text of the message is in doubt BEFORE it goes, and leaves it unconfirmed when the call gives no answer', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.IMAGE,
+          ['one'],
+          'image/png',
+          'for everyone'
+        )
+        let seen: string | null = null
+        sendMessage = async () => {
+          seen = (await captionOf(reply.id)).captionState
+          throw new Error('socket hang up')
+        }
+
+        await sender.send(job(reply), false)
+
+        expect(seen).toBe(CaptionState.UNCONFIRMED)
+        expect((await captionOf(reply.id)).captionState).toBe(CaptionState.UNCONFIRMED)
+        // The files are sent: the message is sent, and the text is the agent's to send again
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+        expect(sentMedia).toHaveLength(1)
+      })
+
+      it('does not send the text of the message when the window closed while the files went', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.IMAGE,
+          ['one'],
+          'image/png',
+          'for everyone'
+        )
+        duringMediaSend = async () => {
+          await owner.customerIdentity.updateMany({
+            where: { conversations: { some: { id: reply.conversationId } } },
+            data: { lastInboundAt: new Date(Date.now() - 3 * DAY_MS) }
+          })
+        }
+
+        await sender.send(job(reply), false)
+
+        expect(sent).toHaveLength(0)
+        expect((await captionOf(reply.id)).captionState).toBe(CaptionState.FAILED)
+      })
+
+      it('sends a text of the message with an audio, after it, and no text under the audio', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.AUDIO,
+          [null],
+          'audio/ogg',
+          'say this'
+        )
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia.map(item => item.caption)).toEqual([undefined])
+        expect(sent.map(item => item.content)).toEqual(['say this'])
+      })
+
+      it('refuses a text under a file the channel holds no text for, before the first file leaves', async () => {
+        const reply = await albumOf(
+          ChannelIds.WHATSAPP,
+          MessageType.AUDIO,
+          ['under the audio'],
+          'audio/ogg',
+          'say this'
+        )
+
+        await sender.send(job(reply), false)
+
+        expect(sentMedia).toHaveLength(0)
+        expect(sent).toHaveLength(0)
+        expect(await stored(reply.id)).toMatchObject({
+          deliveryStatus: DeliveryStatus.FAILED,
+          deliveryError: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+        })
+      })
     })
 
     it('says a text sent apart is in doubt BEFORE its file goes, so a death in between can be resent', async () => {

@@ -31,7 +31,8 @@ export interface SendMessageInput {
 
 // Files with their text under them: one message, one key. Each file was uploaded and confirmed first
 // (`POST /media/confirm-upload`); they are sent in the order given, all of the type of the message, and the
-// text is the caption of the first and may be left out. How many the channel takes is in the channel directory
+// text is the caption of the first and may be left out (on a channel that declares `CAPTION_PER_FILE` it is
+// instead the text of the message, sent as a message of its own after the last file, and each file has its own). How many the channel takes is in the channel directory
 // (`media`); the api refuses more, and while sending several is off it takes one.
 export interface SendMediaMessageInput {
   type: MessageType.IMAGE | MessageType.VIDEO | MessageType.AUDIO | MessageType.DOCUMENT
@@ -39,8 +40,9 @@ export interface SendMediaMessageInput {
   mediaIds: string[]
   content?: string
   // The text under each file by its place (`captions[i]` goes under `mediaIds[i]`; null or blank is none).
-  // When it comes it wins over `content`. Under a file other than the first it is taken only by a channel
-  // that declares `CAPTION_PER_FILE`; on any other the request is refused (409 `CHANNEL_CAPABILITY_UNSUPPORTED`).
+  // Where it comes it wins over `content` for the places it names. It is taken only by a channel that declares
+  // `CAPTION_PER_FILE` (under every file, the first included), except under the first file on a channel with
+  // none; on any other the request is refused (409 `CHANNEL_CAPABILITY_UNSUPPORTED`).
   captions?: (string | null)[]
   idempotencyKey: string
   replyToMessageId?: string

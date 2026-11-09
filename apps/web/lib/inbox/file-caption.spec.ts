@@ -15,6 +15,12 @@ describe('fileCaptionOf', () => {
     expect(fileCaptionOf(file({ position: 0 }))).toBeNull()
   })
 
+  it('draws the text under the first file too when the text of the message went apart', () => {
+    expect(fileCaptionOf(file({ position: 0, caption: 'First' }), true)).toBe('First')
+    expect(fileCaptionOf(file({ position: 0, caption: null }), true)).toBeNull()
+    expect(fileCaptionOf(file({ position: null }), true)).toBeNull()
+  })
+
   it('draws nothing for a file of the customer or a blank text', () => {
     expect(fileCaptionOf(file({ position: null }))).toBeNull()
     expect(fileCaptionOf(file({ caption: '  ' }))).toBeNull()
@@ -87,5 +93,24 @@ describe('albumCaptionLinesOf', () => {
   it('leaves alone an album of the customer, whose files have no place', () => {
     const files = album('Uno', 'Dos').map(file => ({ ...file, position: null }))
     expect(albumCaptionLinesOf(files, lead)).toEqual([])
+  })
+})
+
+describe('albumCaptionLinesOf with the text of the message apart', () => {
+  const album = (...captions: (string | null)[]) =>
+    captions.map((caption, position) => ({ id: `f${position}`, position, caption }))
+  // The text of the message is not one of the lines: it is drawn after the album
+  const lead = { hasText: true, hasNotice: true }
+
+  it('lists the own text of every file, the first included, and never the text of the message', () => {
+    const lines = albumCaptionLinesOf(album('Uno', null, 'Tres'), lead, true)
+    expect(lines.map(line => [line.number, line.isLead])).toEqual([
+      [1, false],
+      [3, false]
+    ])
+  })
+
+  it('does not count the text or the notice of the message as a line of the first file', () => {
+    expect(albumCaptionLinesOf(album(null, 'Dos'), lead, true)).toEqual([])
   })
 })

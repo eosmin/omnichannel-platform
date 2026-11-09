@@ -23,6 +23,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   mentions: [],
   metadata,
   captionState: null,
+  textApart: false,
   version: 1,
   editedAt: null,
   editedByType: null,
@@ -135,6 +136,24 @@ describe('messageView media', () => {
     expect(view.media.map(item => item.caption)).toEqual(['hola', 'second <b>'])
     expect(view.media.every(item => !('captionState' in item))).toBe(true)
     expect(view.captionState).toBe('sent')
+  })
+
+  it('keeps the own text of the first file apart from the text of the message when that went apart', () => {
+    const view = messageView({
+      ...row(null),
+      textApart: true,
+      media: [
+        { ...file, id: 'f1', position: 0, caption: 'first' },
+        { ...file, id: 'f2', position: 1, caption: null }
+      ] as never
+    })
+    expect(view.textApart).toBe(true)
+    expect(view.content).toBe('hola')
+    expect(view.media.map(item => item.caption)).toEqual(['first', null])
+  })
+
+  it('says the text is not apart for a message sent before the text could go apart', () => {
+    expect(messageView(row(null)).textApart).toBe(false)
   })
 
   it('refuses a delivery state it does not know', () => {

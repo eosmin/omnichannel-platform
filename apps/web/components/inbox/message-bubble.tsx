@@ -297,15 +297,22 @@ function Content({
     unsupportedType: message.unsupportedType
   })
   const hasFiles = message.media.length > 0 || message.unavailableFiles.length > 0
-  // The pictures a person sent with texts: the texts are listed under them in the order of the pictures, the
-  // first one's (the text of the message) among them, so the text of the message is not drawn apart as well
+  // The pictures a person sent with texts: the texts are listed under them in the order of the pictures. Unless
+  // the text of the message went apart, the first one's (the text of the message) is among them, so it is not
+  // drawn apart as well; apart, it is drawn after the list
   const albumLines = isAlbum(message.media, message.type, sticker)
-    ? albumCaptionLinesOf(message.media, {
-        hasText: text !== null,
-        hasNotice: message.captionState !== null
-      })
+    ? albumCaptionLinesOf(
+        message.media,
+        {
+          hasText: text !== null,
+          hasNotice: message.captionState !== null
+        },
+        message.textApart
+      )
     : []
   const isCaptionListed = albumLines.length > 0
+  // The text of the message that went apart is drawn after the files, never as a line of the first one
+  const isTextListed = isCaptionListed && !message.textApart
   const textNode =
     text === null ? null : (
       <p className="break-words whitespace-pre-wrap">
@@ -338,16 +345,17 @@ function Content({
           canRefetch={canRefetchFile}
           sticker={sticker}
           messageType={message.type}
+          textApart={message.textApart}
           {...(isCaptionListed
             ? {
                 albumCaptions: {
                   lines: albumLines,
-                  lead: (
+                  lead: isTextListed ? (
                     <>
                       {textNode}
                       {noticeNode}
                     </>
-                  )
+                  ) : null
                 }
               }
             : {})}
@@ -364,7 +372,7 @@ function Content({
       {message.type === String(MessageType.TEMPLATE) ? (
         <p className="text-muted-foreground text-xs">{t('templateLabel')}</p>
       ) : null}
-      {isCaptionListed ? null : (
+      {isTextListed ? null : (
         <>
           {textNode}
           {noticeNode}

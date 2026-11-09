@@ -164,22 +164,23 @@ describe('captionsForSend', () => {
     media: [{ ...IMAGE, captionsPerFile: true }]
   }
 
-  it('sends the texts by place where the channel carries them, with a blank one as null', () => {
-    expect(captionsForSend(rules, MessageType.IMAGE, 'One', [' Two ', ''])).toEqual([
+  it('sends the text of every file by place, the first included, a blank one as null', () => {
+    expect(captionsForSend(rules, MessageType.IMAGE, [' One ', ' Two ', ''])).toEqual([
       'One',
       'Two',
       null
     ])
-    expect(captionsForSend(rules, MessageType.IMAGE, '', ['Two'])).toEqual([null, 'Two'])
+    expect(captionsForSend(rules, MessageType.IMAGE, ['', 'Two'])).toEqual([null, 'Two'])
+    expect(captionsForSend(rules, MessageType.IMAGE, ['One'])).toEqual(['One'])
   })
 
-  it('sends none when no other file has a text', () => {
-    expect(captionsForSend(rules, MessageType.IMAGE, 'One', ['', '  '])).toBeNull()
+  it('sends none when no file has a text', () => {
+    expect(captionsForSend(rules, MessageType.IMAGE, ['', '  '])).toBeNull()
   })
 
-  it('drops the texts typed under files on a channel that does not carry them: the one text of the message goes', () => {
+  it('drops the texts typed under files on a channel that does not carry them: only the text of the message goes', () => {
     const messenger = { capabilities: [ChannelCapability.IMAGE], media: rules.media }
-    expect(captionsForSend(messenger, MessageType.IMAGE, 'One', ['Two'])).toBeNull()
-    expect(captionsForSend({ media: rules.media }, MessageType.IMAGE, 'One', ['Two'])).toBeNull()
+    expect(captionsForSend(messenger, MessageType.IMAGE, ['One', 'Two'])).toBeNull()
+    expect(captionsForSend({ media: rules.media }, MessageType.IMAGE, ['One', 'Two'])).toBeNull()
   })
 })

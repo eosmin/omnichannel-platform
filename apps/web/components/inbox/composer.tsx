@@ -317,9 +317,10 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   }
   // Text that is a command is not a message: nothing sends it, and the button says so by being off
   const isCommandText = typedCommand(content) !== undefined
-  // A file belongs to a reply to the customer; a note never carries one. The file goes out with the
-  // text as its caption in one message, and only once it is clean; while it uploads or is scanned
-  // nothing is sent, so the text cannot leave without the file the agent meant to send with it.
+  // A file belongs to a reply to the customer; a note never carries one. The file goes out with the text (under
+  // the first file, or, where the channel has a text under each file, as a message after the files), and only
+  // once it is clean; while it uploads or is scanned nothing is sent, so the text cannot leave without the
+  // file the agent meant to send with it.
   const isFileReady = !isNote && tray.ready > 0
   const isFileBusy = !isNote && tray.isBusy
   const isFileSending = !isNote && tray.isSending

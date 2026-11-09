@@ -123,6 +123,8 @@ export function addMessageTo(
     deliveryError?: string
     // How the text of a reply went when the channel sent it as a message of its own
     captionState?: CaptionState
+    // The text of the message is a message of its own after the files, not the text under the first one
+    textApart?: boolean
     // For a reply that failed: true when it is known not to have gone out, false or null when it may have
     failureDefinitive?: boolean | null
     // The channel's own data: the place of a location, or the mark of a sticker
@@ -142,6 +144,9 @@ export function addMessageTo(
     }
     if (input.captionState !== undefined) {
       await owner.message.update({ where: { id }, data: { captionState: input.captionState } })
+    }
+    if (input.textApart !== undefined) {
+      await owner.message.update({ where: { id }, data: { textApart: input.textApart } })
     }
     if (input.failureDefinitive !== undefined) {
       await owner.message.update({
@@ -334,17 +339,26 @@ export function captionsStoredIn(
 
 export function filesSentIn(
   conversationId: string
-): Promise<{ filename: string; position: number | null; caption: string | null }[]> {
+): Promise<
+  { filename: string; position: number | null; caption: string | null; text: string | null }[]
+> {
   return withOwner(async owner => {
     const rows = await owner.media.findMany({
       where: { message: { conversationId } },
       orderBy: [{ messageId: 'asc' }, { position: 'asc' }],
-      select: { filename: true, position: true, message: { select: { content: true } } }
+      select: {
+        filename: true,
+        position: true,
+        caption: true,
+        message: { select: { content: true } }
+      }
     })
+    // `caption` is the text under the file; `text` the text of the message it belongs to
     return rows.map(row => ({
       filename: row.filename,
       position: row.position,
-      caption: row.message?.content ?? null
+      caption: row.caption,
+      text: row.message?.content ?? null
     }))
   })
 }
