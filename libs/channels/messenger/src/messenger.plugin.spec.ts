@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream'
 
-import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
+import { graphFailure, MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import {
   ChannelSetupStepKeys,
   MessengerApi,
@@ -908,6 +908,75 @@ describe('MessengerPlugin, an album in one message', () => {
     // No message left for the customer: the failure is known, whatever the upload went through
     expect(failure).toBeInstanceOf(PluginError)
     expect(failure).toMatchObject({ refused: true, outcomeUnknown: false, retryable: true })
+  })
+
+  it("names the step and the numbers when Meta answers 100 ('Invalid parameter') to the first image, as the owner's real log did", async () => {
+    const { plugin, post, upload } = build()
+    upload.mockRejectedValueOnce(
+      graphFailure(400, {
+        error: { message: 'secret text', type: 'OAuthException', code: 100, fbtrace_id: 'x' }
+      })
+    )
+
+    const failure: unknown = await send(plugin, album()).catch((error: unknown) => error)
+
+    // Nothing was sent: the core may send the images one by one
+    expect(post).not.toHaveBeenCalled()
+    expect(failure).toMatchObject({
+      code: ErrorCodes.CHANNEL_MESSAGE_FAILED,
+      refused: true,
+      outcomeUnknown: false,
+      step: 'upload 1/3',
+      providerCode: 100
+    })
+    expect(JSON.stringify(failure)).not.toContain('secret text')
+  })
+
+  describe('a permission Meta says is missing for the attachment (code 200, subcode 2534096)', () => {
+    const denied = (): PluginError =>
+      graphFailure(403, {
+        error: { message: 'secret text', code: 200, error_subcode: 2534096, fbtrace_id: 'x' }
+      })
+
+    it('is not credentials when storing an image: it names the step and the numbers, and is a refusal', async () => {
+      const { plugin, post, upload } = build()
+      upload.mockRejectedValueOnce(denied())
+
+      const failure: unknown = await send(plugin, album()).catch((error: unknown) => error)
+
+      expect(post).not.toHaveBeenCalled()
+      expect(failure).toMatchObject({
+        code: ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED,
+        refused: true,
+        retryable: false,
+        outcomeUnknown: false,
+        step: 'upload 1/3',
+        providerCode: 200,
+        providerSubcode: 2534096
+      })
+      expect(JSON.stringify(failure)).not.toContain('secret text')
+    })
+
+    it("keeps a permission refused by the final message as the connection's", async () => {
+      const { plugin, post, upload } = build()
+      upload.mockResolvedValue({ attachment_id: 'a' })
+      post.mockRejectedValue(denied())
+
+      await expect(send(plugin, album())).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        step: 'send',
+        providerSubcode: 2534096
+      })
+    })
+
+    it('keeps a token that Meta refuses (code 190) as credentials', async () => {
+      const { plugin, upload } = build()
+      upload.mockRejectedValueOnce(graphFailure(401, { error: { code: 190 } }))
+
+      await expect(send(plugin, album())).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
+    })
   })
 
   it('leaves the outcome UNKNOWN when the one message got no clear answer', async () => {

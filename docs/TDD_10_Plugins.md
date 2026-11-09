@@ -660,6 +660,13 @@ Ids: `ChannelAlbumResult.externalId` is the id of the message and is written on 
 echoes, reactions and quotes find the one message through it). A provider that answers one id per image returns
 `fileExternalIds` in the order of `files`; a list of another length is ignored.
 
+Channels today: Messenger declares an album (the owner's real test delivered one). Instagram does not (2026-11-09,
+owner's real log): the upload an album needs was refused twice (code 200 / subcode 2534096 with the Messenger form,
+then code 100 "Invalid parameter" on the first image with the form of the Instagram page) and no page of Meta confirms a
+form that works, so Instagram declares no `album`, has no `sendAlbum`, and sends each image as a message of its own. It
+gets the album back only with a form that Meta documents without ambiguity (`IMPLEMENTATION_PLAN.md`, the Instagram
+album items of Step 7.3).
+
 Manifest (remote) plugins cannot declare `album` yet: see the debt in `IMPLEMENTATION_PLAN.md` (Step 5.6), next to
 `caption_per_file`.
 
