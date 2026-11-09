@@ -1123,6 +1123,10 @@
           "unknown": "Message"
         }
       },
+      "storyReply": {
+        "label": "Replied to your story",
+        "unavailable": "The story is no longer available"
+      },
       "sharedLink": {
         "label": "Link shared by the customer",
         "open": "Open the link on {host}",

@@ -8,6 +8,7 @@ const sticker = {
   content: null,
   replyToMessageId: null,
   attachmentUrl: null,
+  storyReply: null,
   unsupportedType: null,
   media: [file],
   unavailableFiles: []
@@ -44,6 +45,7 @@ describe('drawsWithoutBubble', () => {
     expect(
       drawsWithoutBubble({ ...sticker, attachmentUrl: 'https://example.com/a' }, 'media')
     ).toBe(false)
+    expect(drawsWithoutBubble({ ...sticker, storyReply: { url: null } }, 'media')).toBe(false)
     expect(drawsWithoutBubble({ ...sticker, media: [] }, 'media')).toBe(false)
   })
 

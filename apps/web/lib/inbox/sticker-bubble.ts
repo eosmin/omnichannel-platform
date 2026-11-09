@@ -9,7 +9,10 @@ import type { MessageKind } from './thread-items'
 // words (infected, not scannable, not kept), which would otherwise float over the thread, and one whose
 // file is not a picture (the box of a sticker is a picture's).
 export function drawsWithoutBubble(
-  message: Pick<MessageView, 'sticker' | 'content' | 'replyToMessageId' | 'attachmentUrl'> & {
+  message: Pick<
+    MessageView,
+    'sticker' | 'content' | 'replyToMessageId' | 'attachmentUrl' | 'storyReply'
+  > & {
     media: readonly Pick<MessageView['media'][number], 'status' | 'contentType'>[]
     unavailableFiles: readonly unknown[]
   },
@@ -32,6 +35,7 @@ export function drawsWithoutBubble(
         message.unavailableFiles.length === 0)) &&
     message.replyToMessageId === null &&
     message.attachmentUrl === null &&
+    message.storyReply === null &&
     (message.content === null || message.content === '')
   )
 }

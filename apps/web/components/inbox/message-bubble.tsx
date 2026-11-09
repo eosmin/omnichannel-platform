@@ -35,6 +35,7 @@ import { MessageMedia, PendingMedia } from './message-media'
 import { QuotedMessage } from './quoted-message'
 import { ReactionChips } from './reaction-chips'
 import { SharedLink } from './shared-link'
+import { StoryReplyCard } from './story-reply-card'
 import { SystemLineView } from './system-line'
 
 // The id the page gives the element of a message, so that a quote can scroll to it
@@ -195,6 +196,7 @@ function Bubble({
               onJump={loadedIds.has(message.replyToMessageId) ? onJumpTo : undefined}
             />
           )}
+          {message.storyReply === null ? null : <StoryReplyCard story={message.storyReply} />}
           <Content
             message={message}
             kind={kind}

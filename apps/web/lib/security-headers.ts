@@ -9,6 +9,14 @@ export const CUSTOMER_AVATAR_IMAGE_HOSTS = [
   'https://platform-lookaside.fbsbx.com'
 ] as const
 
+// The hosts that serve the thumbnail of the story an Instagram customer answered (`MessageView.storyReply`). A
+// provider chose that link, so the image is untrusted: it is drawn from this exact host only (not
+// `*.fbsbx.com`, whose other hosts serve content of third parties), it expires within about a day, and the
+// card falls back to a notice when it fails.
+// (No import here: `next.config.ts` loads this file before the aliases exist. `security-headers.spec.ts` checks the
+// list against `MetaStoryImageHosts`, the one the plugin keeps story links by.)
+export const STORY_REPLY_IMAGE_HOSTS = ['https://lookaside.fbsbx.com'] as const
+
 export interface ContentSecurityPolicyOptions {
   nonce: string
   apiUrl: string
@@ -46,7 +54,7 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: ${storageOrigin} ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`,
+    `img-src 'self' data: blob: ${storageOrigin} ${[...CUSTOMER_AVATAR_IMAGE_HOSTS, ...STORY_REPLY_IMAGE_HOSTS].join(' ')}`,
     `media-src 'self' blob: ${storageOrigin}`,
     `connect-src ${[...connectSources].join(' ')}`,
     "font-src 'self'",

@@ -88,6 +88,7 @@ const message = {
   deliveryError: null,
   system: null,
   attachmentUrl: null,
+  storyReply: null,
   unsupportedType: null,
   location: null,
   sticker: false,
