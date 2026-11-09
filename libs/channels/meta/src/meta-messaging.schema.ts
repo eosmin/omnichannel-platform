@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
-import { httpUrl, InboundLimits, MetaMessaging } from '@platform/core/domain'
+import { httpUrl, InboundLimits } from '@platform/core/domain'
+
+import { MetaMessaging } from './meta-constants'
 
 const boundedId = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)
 // A page-scoped or Instagram-scoped id: digits, and it goes into the path of a send

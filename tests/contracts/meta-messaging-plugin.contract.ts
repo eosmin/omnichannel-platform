@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 
 import { MetaGraphClient } from '@platform/channels/meta'
-import { type MetaWebhookApp, MetaWebhookApps } from '@platform/core/domain'
+import { type MetaWebhookApp, MetaWebhookApps } from '@platform/channels/meta'
 import { channelEventSchema } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 

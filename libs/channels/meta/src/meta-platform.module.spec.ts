@@ -2,9 +2,8 @@ import { createHmac } from 'node:crypto'
 
 import { Test } from '@nestjs/testing'
 
-import { MetaWebhookApps } from '@platform/core/domain'
-
 import { MetaAppConfig } from './meta-app-config'
+import { MetaWebhookApps } from './meta-constants'
 import { MetaGraphClient } from './meta-graph.client'
 import { MetaPlatformModule } from './meta-platform.module'
 

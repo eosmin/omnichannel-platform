@@ -1,5 +1,5 @@
 import { MessengerPlugin } from '@platform/channels/messenger'
-import { MessengerApi, MetaWebhookApps } from '@platform/core/domain'
+import { MessengerApi, MetaWebhookApps } from '@platform/channels/meta'
 
 import { testMetaMessagingContract } from './meta-messaging-plugin.contract'
 

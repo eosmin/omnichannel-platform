@@ -4,11 +4,9 @@ import {
   httpUrl,
   InboundLimits,
   isWholeEmoji,
-  MapLinks,
   MessageMetadataKeys,
   MessageType,
   MetaGraph,
-  MetaMessaging,
   OriginKinds,
   OriginMediaTypes,
   placeTextOf,
@@ -19,6 +17,7 @@ import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platf
 
 import { cut, hasText, replyTarget } from './inbound-text'
 import { coordinatesOfMapLink } from './map-link'
+import { MapLinks, MetaMessaging } from './meta-constants'
 import {
   metaAttachmentRawLinkSchema,
   metaAttachmentSchema,

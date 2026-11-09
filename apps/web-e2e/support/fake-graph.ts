@@ -4,7 +4,7 @@ import {
   WhatsAppApi,
   WhatsAppTemplateComponents,
   WhatsAppTemplateStatuses
-} from '@platform/core/domain'
+} from '@platform/channels/whatsapp-constants'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import { GRAPH_HOST, GRAPH_PORT } from './env'

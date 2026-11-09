@@ -1,14 +1,18 @@
-import { MetaMessaging } from '../meta-constants'
-
 import {
   type ChannelMediaCapabilities,
   type ChannelMediaKind,
   ChannelMediaKinds,
-  frozenMedia,
-  MetaMediaFilesPerMessage
-} from './channel-media-rules'
+  frozenMedia
+} from '@platform/core/channel-media'
+
+import { MetaMessaging } from './meta-constants'
 
 const MEGABYTE = 1024 * 1024
+
+// Files in one message on the channels of Meta, which send them one by one in the order the agent gave. A
+// number the platform chose (WhatsApp, Messenger and Instagram publish none): it only counts while
+// `OUTBOUND_MULTI_FILE_ENABLED` is on, and the real test with each provider decides whether it stays.
+export const MetaMediaFilesPerMessage = 10
 
 // The kinds of attachment the Send API of Messenger and Instagram names
 export type MetaMediaKind =

@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { MetaGraphClient } from '@platform/channels/meta'
-import { WhatsAppMedia } from '@platform/core/channel-media'
+import { MetaGraphClient, MetaWebhookApps } from '@platform/channels/meta'
 import {
   ChannelConnectFieldKeys,
   ChannelIconKeys,
@@ -11,11 +10,7 @@ import {
   type ChannelLimits,
   DeliveryStatus,
   MessageType,
-  MetaWebhookApps,
-  WhatsAppApi,
-  WhatsAppLimits,
-  WhatsAppTemplateComponents,
-  WhatsAppTemplateStatuses
+  WhatsAppLimits
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -41,8 +36,14 @@ import {
   type TypingParams
 } from '@platform/plugins/sdk'
 
+import {
+  WhatsAppApi,
+  WhatsAppTemplateComponents,
+  WhatsAppTemplateStatuses
+} from './whatsapp-constants'
 import { parseWhatsAppCredentials, type WhatsAppCredentials } from './whatsapp-credentials'
 import { webhookToEvents } from './whatsapp-events'
+import { WhatsAppMedia } from './whatsapp-media'
 import {
   buttonsPayload,
   checkMedia,

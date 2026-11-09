@@ -1,12 +1,12 @@
 import { Readable } from 'node:stream'
 
-import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import {
-  ChannelSetupStepKeys,
+  MetaGraphClient,
+  metaTokenCredentialsSchema,
   MessengerApi,
-  MetaGraph,
   MetaSubscribableFields
-} from '@platform/core/domain'
+} from '@platform/channels/meta'
+import { ChannelSetupStepKeys, MetaGraph } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
 

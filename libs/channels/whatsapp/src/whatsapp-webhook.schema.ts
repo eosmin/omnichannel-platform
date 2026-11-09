@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
-import { httpUrl, InboundLimits, WhatsAppWebhook } from '@platform/core/domain'
+import { httpUrl, InboundLimits } from '@platform/core/domain'
+
+import { WhatsAppWebhook } from './whatsapp-constants'
 
 // Ids that become the externalId or the media reference: what the core would refuse is skipped here
 const boundedId = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)

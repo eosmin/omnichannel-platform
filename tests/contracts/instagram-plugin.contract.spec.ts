@@ -1,5 +1,5 @@
 import { InstagramPlugin } from '@platform/channels/instagram'
-import { InstagramApi, MetaWebhookApps } from '@platform/core/domain'
+import { InstagramApi, MetaWebhookApps } from '@platform/channels/meta'
 
 import { testMetaMessagingContract } from './meta-messaging-plugin.contract'
 

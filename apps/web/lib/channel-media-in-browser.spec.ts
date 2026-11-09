@@ -9,9 +9,10 @@ const filesIn = (directory: string): string[] =>
     return /\.tsx?$/.test(entry.name) && !/\.spec\.tsx?$/.test(entry.name) ? [path] : []
   })
 
-// What each channel takes in a file (`@platform/core/channel-media`: the tables of formats and sizes of
-// WhatsApp, Messenger and Instagram) is read by the server, the worker and the plugins. Imported from the
-// browser, it would ship in every bundle, and the inbox sits at the ceiling of its script budget.
+// The generic rules of the files a channel takes (`@platform/core/channel-media`) are read by the server, the worker
+// and the plugins. Imported from the browser, they would ship in every bundle, and the inbox sits at the ceiling of its
+// script budget. The tables of each channel live in its own library (`libs/channels/*`), which the browser may not
+// import at all (Nx boundaries): the last case below keeps a plugin library out of the web sources.
 describe('the rules of the files a channel takes, in the browser', () => {
   const sources = [
     ...filesIn(resolve(__dirname, '..')),
@@ -31,6 +32,13 @@ describe('the rules of the files a channel takes, in the browser', () => {
 
   it('is not reachable through the barrel of the domain either', () => {
     const barrel = readFileSync(resolve(__dirname, '../../../libs/core/domain/index.ts'), 'utf8')
-    expect(barrel).not.toMatch(/channel-media|meta-media-rules/)
+    expect(barrel).not.toMatch(/channel-media/)
+  })
+
+  it('imports no library of a channel', () => {
+    const offenders = sources.filter(path =>
+      /@platform\/channels\//.test(readFileSync(path, 'utf8'))
+    )
+    expect(offenders.map(path => path.slice(resolve(__dirname, '../../..').length + 1))).toEqual([])
   })
 })

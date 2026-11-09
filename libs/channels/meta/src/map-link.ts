@@ -1,4 +1,4 @@
-import { MapLinks } from '@platform/core/domain'
+import { MapLinks } from './meta-constants'
 
 // The coordinates a link to a map holds, for a place that Instagram shares as a template with a link (the owner's
 // log of 2026-11-08: a `template` whose `generic.elements[]` carry a title, a subtitle, an image and a link).

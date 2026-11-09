@@ -1,5 +1,4 @@
-import { MetaSubscription } from '@platform/core/domain'
-
+import { MetaSubscription } from './meta-constants'
 import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
 
 const APP = '1804256354142951'

@@ -8,7 +8,11 @@ import {
   OriginMediaTypes,
   placeTextOf,
   type ReactionActor,
-  ReactionActors,
+  ReactionActors
+} from '@platform/core/domain'
+import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
+
+import {
   WHATSAPP_USER_ID_PATTERN,
   WhatsAppInteractiveTypes,
   WhatsAppMediaFallback,
@@ -16,9 +20,7 @@ import {
   WhatsAppReferralSourceTypes,
   WhatsAppStatuses,
   WhatsAppWebhook
-} from '@platform/core/domain'
-import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platform/plugins/sdk'
-
+} from './whatsapp-constants'
 import { contactCardsOf, contactsLine } from './whatsapp-contacts'
 import {
   parseChangeValue,

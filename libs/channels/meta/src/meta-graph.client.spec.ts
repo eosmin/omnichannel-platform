@@ -3,10 +3,11 @@ import { Readable } from 'node:stream'
 
 import { z } from 'zod'
 
-import { MetaGraph, MetaLimits, MetaWebhookApps } from '@platform/core/domain'
+import { MetaGraph, MetaLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginError, UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
+import { MetaWebhookApps } from './meta-constants'
 import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 
 const config = { appSecret: 'secret', verifyToken: 'verify', graphVersion: 'v23.0' }
