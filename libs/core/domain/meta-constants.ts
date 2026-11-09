@@ -186,6 +186,8 @@ export const InstagramApi = {
   // Instagram. If the real send refuses it, the alternative is `<pageId>/messages` (the id is in the
   // metadata): this is the one place to change (IMPLEMENTATION_PLAN, Step 7.3, owner's real test).
   SEND_OWNER: 'me',
+  // The `platform` an upload names so that the file is stored for Instagram and not for Messenger
+  UPLOAD_PLATFORM: 'instagram',
   // The customer behind a scoped id (User Profile API); `name` may come back null
   USER_PROFILE_FIELDS: 'name,username,profile_pic',
   // The names of the SUBSCRIPTION on the Page edge (`POST me/subscribed_apps` with the Page token), which

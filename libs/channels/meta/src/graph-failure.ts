@@ -16,12 +16,16 @@ function isOutageCode(code: number): boolean {
   return MetaErrorCodes.TEMPORARY.some(temporary => temporary === code)
 }
 
-function isCredentialsCode(code: number): boolean {
+// A permission Meta says is missing: code 10, or 200 to 299
+export function isPermissionCode(code: number): boolean {
   return (
-    code === MetaErrorCodes.INVALID_TOKEN ||
     code === MetaErrorCodes.PERMISSION_DENIED ||
     (code >= MetaErrorCodes.PERMISSION_RANGE_START && code <= MetaErrorCodes.PERMISSION_RANGE_END)
   )
+}
+
+function isCredentialsCode(code: number): boolean {
+  return code === MetaErrorCodes.INVALID_TOKEN || isPermissionCode(code)
 }
 
 // A failed call to the Graph API as the error the core understands. Only the code of the answer is

@@ -454,6 +454,7 @@
     "CHANNEL_TOO_MANY_FILES": "The channel does not accept that many files in one message",
     "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
     "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
+    "CHANNEL_FEATURE_NOT_PERMITTED": "The channel lacks a permission this feature needs",
     "CHANNEL_MESSAGE_FAILED": "The channel did not accept the message",
     "MESSAGE_DISCARD_OUTCOME_UNKNOWN": "This reply may have reached the customer, so it cannot be discarded. Check with them or send it again",
     "CHANNEL_NOT_CONNECTED": "The channel is not connected",
@@ -721,6 +722,7 @@
         "reason": {
           "CHANNEL_WINDOW_EXPIRED": "The reply window with this customer closed. Wait for them to write again.",
           "CHANNEL_CREDENTIALS_INVALID": "The channel connection needs attention. Update its token in Settings.",
+          "CHANNEL_FEATURE_NOT_PERMITTED": "The channel token lacks a permission this feature needs. Text messages still go; check the token permissions in Settings.",
           "CHANNEL_CAPABILITY_UNSUPPORTED": "This channel does not support that kind of message.",
           "CHANNEL_FILE_TYPE_UNSUPPORTED": "The channel does not accept that type of file.",
           "CHANNEL_FILE_TOO_LARGE": "The file is larger than the channel accepts.",
@@ -1041,6 +1043,7 @@
         "unconfirmedNote": "We could not confirm that the customer received it"
       },
       "failedWithReason": "Not delivered: {reason}",
+      "failedWithChannelHint": "Not delivered: {reason}. Try again or check the channel in Settings > Channels.",
       "mediaLabel": {
         "IMAGE": "Image",
         "VIDEO": "Video",

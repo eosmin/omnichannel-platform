@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { Readable } from 'node:stream'
 
-import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
+import { graphFailure, MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
@@ -1258,6 +1258,98 @@ describe('InstagramPlugin, an album in one message', () => {
       }
     })
     expect(result).toMatchObject({ externalId: 'mid.9', status: 'sent' })
+  })
+
+  it('stores each image as the Instagram upload API asks: platform instagram, and is_reusable inside the attachment', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValue({ attachment_id: 'a' })
+    post.mockResolvedValueOnce({ message_id: 'mid.9' })
+
+    await send(plugin, [image(), image()])
+
+    for (const [call] of upload.mock.calls) {
+      expect(call.fields).toEqual({
+        platform: 'instagram',
+        message: '{"attachment":{"type":"image","is_reusable":"true"}}'
+      })
+    }
+  })
+
+  describe('a permission Meta says is missing for the attachment (the real answer: code 200, subcode 2534096)', () => {
+    const denied = (): PluginError =>
+      graphFailure(403, {
+        error: { message: 'secret text', code: 200, error_subcode: 2534096, fbtrace_id: 'x' }
+      })
+
+    it('is not credentials: the same token sends text, so it is a permission this feature lacks, and it names the step and the numbers', async () => {
+      const { plugin, post, upload } = build()
+      upload.mockRejectedValueOnce(denied())
+
+      const failure: unknown = await send(plugin, [image(), image(), image()]).catch(
+        (error: unknown) => error
+      )
+
+      expect(post).not.toHaveBeenCalled()
+      expect(failure).toBeInstanceOf(PluginError)
+      expect(failure).toMatchObject({
+        code: ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED,
+        refused: true,
+        retryable: false,
+        outcomeUnknown: false,
+        step: 'upload 1/3',
+        providerCode: 200,
+        providerSubcode: 2534096
+      })
+      expect(JSON.stringify(failure)).not.toContain('secret text')
+    })
+
+    it("keeps a permission refused by the final message as the connection's: that call sends text too", async () => {
+      const { plugin, post, upload } = build()
+      upload.mockResolvedValue({ attachment_id: 'a' })
+      post.mockRejectedValue(denied())
+
+      await expect(send(plugin, [image(), image()])).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+        step: 'send',
+        providerSubcode: 2534096
+      })
+    })
+
+    it('keeps a token that Meta refuses (code 190) as credentials', async () => {
+      const { plugin, upload } = build()
+      upload.mockRejectedValueOnce(graphFailure(401, { error: { code: 190 } }))
+
+      await expect(send(plugin, [image(), image()])).rejects.toMatchObject({
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+      })
+    })
+  })
+
+  it('names the step that failed, without a value: the upload of the image and the final message', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValueOnce({ attachment_id: 'a' }).mockRejectedValueOnce(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+        retryable: false,
+        providerCode: 100,
+        providerSubcode: 2018047
+      })
+    )
+    const uploadFailure: unknown = await send(plugin, [image(), image(), image()]).catch(
+      (error: unknown) => error
+    )
+    expect(uploadFailure).toMatchObject({
+      step: 'upload 2/3',
+      refused: true,
+      providerCode: 100,
+      providerSubcode: 2018047
+    })
+
+    upload.mockReset()
+    upload.mockResolvedValue({ attachment_id: 'a' })
+    post.mockRejectedValue(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, refused: true })
+    )
+    await expect(send(plugin, [image(), image()])).rejects.toMatchObject({ step: 'send' })
   })
 
   it.each([
