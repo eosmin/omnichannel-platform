@@ -35,12 +35,55 @@ export interface ChannelMediaCapabilities {
   // per file still declares how many the agent may attach).
   readonly maxFilesPerMessage: number
   readonly kinds: ChannelMediaRules
+  // Present when the provider takes several files in ONE message (a native album). The core then hands the plugin
+  // the consecutive files of those kinds, in order and at most `maxFiles` at a time, through `sendAlbum`. Absent
+  // means one message per file. The plugin declares it; the core hardcodes no provider limit.
+  readonly album?: ChannelMediaAlbum
+}
+
+// Which files a channel sends as one album and how many fit in it. `maxFiles` is at least 2 and at most the
+// files the channel takes in a message; every kind must be one the channel declares (the registry checks).
+export interface ChannelMediaAlbum {
+  readonly kinds: readonly ChannelMediaKind[]
+  readonly maxFiles: number
 }
 
 // Files in one message on the channels of Meta, which send them one by one in the order the agent gave. A
 // number the platform chose (WhatsApp, Messenger and Instagram publish none): it only counts while
 // `OUTBOUND_MULTI_FILE_ENABLED` is on, and the real test with each provider decides whether it stays.
 export const MetaMediaFilesPerMessage = 10
+
+// `image/jpeg; charset=binary` is `image/jpeg`: the type without its parameters, in lower case
+export function bareContentType(contentType: string): string {
+  return (contentType.split(';')[0] ?? '').trim().toLowerCase()
+}
+
+// The kind of file for a content type: images, videos and audios by their family, and anything else is a document.
+// The one rule for the core and the plugins, so that none of them decides on its own what an album may hold.
+export function mediaKindOfContentType(contentType: string): ChannelMediaKind {
+  const type = bareContentType(contentType)
+  if (type.startsWith('image/')) return ChannelMediaKinds.IMAGE
+  if (type.startsWith('video/')) return ChannelMediaKinds.VIDEO
+  if (type.startsWith('audio/')) return ChannelMediaKinds.AUDIO
+  return ChannelMediaKinds.DOCUMENT
+}
+
+// Why a channel's rules refuse a file, or null when they take it. The one check for the worker (before it opens
+// anything) and for the plugins (before they send), so that the two cannot drift: `type` is a type the channel does
+// not list, `empty` a size that is not a positive whole number, `too_large` a size over the largest of its kind.
+export type MediaFileProblem = 'type' | 'empty' | 'too_large'
+
+export function mediaFileProblem(
+  rule: ChannelMediaRule,
+  contentType: string,
+  size: number
+): MediaFileProblem | null {
+  const type = bareContentType(contentType)
+  if (rule.types !== null && !rule.types.includes(type)) return 'type'
+  if (!Number.isSafeInteger(size) || size <= 0) return 'empty'
+  if (size > rule.maxBytes) return 'too_large'
+  return null
+}
 
 export const ChannelMediaLimits = {
   // What no declaration may exceed: the registry refuses a plugin that asks for more
@@ -66,6 +109,14 @@ export function frozenMedia(media: ChannelMediaCapabilities): ChannelMediaCapabi
   }
   return Object.freeze({
     maxFilesPerMessage: media.maxFilesPerMessage,
-    kinds: Object.freeze(kinds)
+    kinds: Object.freeze(kinds),
+    ...(media.album === undefined
+      ? {}
+      : {
+          album: Object.freeze({
+            kinds: Object.freeze([...media.album.kinds]),
+            maxFiles: media.album.maxFiles
+          })
+        })
   })
 }

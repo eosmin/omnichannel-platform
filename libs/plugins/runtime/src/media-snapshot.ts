@@ -19,6 +19,8 @@ const CONTENT_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/
 export type ChannelMediaSnapshot = Readonly<{
   maxFilesPerMessage: number
   kinds: Readonly<Partial<Record<ChannelMediaKind, Readonly<ChannelMediaRule>>>>
+  // The files the channel sends as one message (a native album), when it declares them
+  album?: Readonly<{ kinds: readonly ChannelMediaKind[]; maxFiles: number }>
 }>
 
 // The rules of the kinds a channel declares as capabilities, and only those: a rule without its capability
@@ -64,9 +66,54 @@ export function snapshotChannelMedia(
   }
   const copy: Partial<Record<ChannelMediaKind, Readonly<ChannelMediaRule>>> = {}
   for (const kind of needed) copy[kind] = Object.freeze(copyRule(rules[kind], refuse))
+  const album = copyAlbum(block['album'], needed, max as number, refuse)
+  // An album is sent by `sendAlbum` and nothing else: one without the method would fail every album at send
+  // time, and the method without a declaration is a promise the core never reads
+  const hasMethod = typeof plugin.sendAlbum === 'function'
+  if (album !== undefined && !hasMethod) refuse('album (the plugin has no sendAlbum)')
+  if (album === undefined && plugin.sendAlbum !== undefined) {
+    refuse('album (sendAlbum is declared with no album)')
+  }
   return Object.freeze({
     maxFilesPerMessage: max as number,
-    kinds: Object.freeze(copy)
+    kinds: Object.freeze(copy),
+    ...(album === undefined ? {} : { album })
+  })
+}
+
+function copyAlbum(
+  raw: unknown,
+  declaredKinds: readonly ChannelMediaKind[],
+  filesPerMessage: number,
+  refuse: (what: string) => never
+): Readonly<{ kinds: readonly ChannelMediaKind[]; maxFiles: number }> | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) refuse('album')
+  const album = raw as Record<string, unknown>
+  const maxFiles = album['maxFiles']
+  if (
+    typeof maxFiles !== 'number' ||
+    !Number.isInteger(maxFiles) ||
+    maxFiles < 2 ||
+    // An album larger than a message may hold would declare a number that can never be reached
+    maxFiles > filesPerMessage
+  ) {
+    refuse('album maxFiles')
+  }
+  // Copied once and the copy is what is checked, like the types of a rule
+  const kinds: unknown[] = Array.isArray(album['kinds'])
+    ? Array.from(album['kinds'] as unknown[])
+    : []
+  if (
+    kinds.length === 0 ||
+    !kinds.every(kind => declaredKinds.some(declared => declared === kind)) ||
+    new Set<unknown>(kinds).size !== kinds.length
+  ) {
+    refuse('album kinds (they must be kinds the channel declares)')
+  }
+  return Object.freeze({
+    kinds: Object.freeze(kinds as ChannelMediaKind[]),
+    maxFiles: maxFiles
   })
 }
 

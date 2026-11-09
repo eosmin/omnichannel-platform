@@ -42,6 +42,7 @@ import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
+import { albumSendBudgetMs, pickAlbum } from './album-groups'
 import { isDefinitiveRefusal } from './definitive-refusal'
 import { MessageStatusWriter, type StatusChange } from './message-status.writer'
 import { providerCodesOf } from './provider-codes'
@@ -60,6 +61,19 @@ const resultSchema = z.object({
     })
     .optional()
 })
+
+// What a plugin answers for an album: the result of a message, and the id of each file when the provider has one
+// for each (checked against the files before it is used)
+const albumResultSchema = resultSchema.extend({
+  fileExternalIds: z.array(z.string().min(1).max(255)).optional()
+})
+
+// What happened to the files of one album
+type AlbumOutcome =
+  | { kind: 'sent'; accepted: z.infer<typeof resultSchema>; fileIds: readonly string[] | undefined }
+  | { kind: 'failed'; code: ErrorCode; outcomeKnown: boolean }
+  // The provider refused the album in so many words and nothing reached the customer: the files go one by one
+  | { kind: 'fallback' }
 
 // A file of a media message as the worker sends it
 interface AttachmentToSend {
@@ -208,6 +222,9 @@ export class OutboundSender {
         pluginId: connection.pluginId,
         context: this.contexts.contextFor(connection),
         sendMedia: plugin.sendMedia.bind(plugin),
+        // Only a channel that declared an album (and so has the method) sends the images of a message together
+        sendAlbum: plugin.sendAlbum?.bind(plugin),
+        media: this.registry.mediaOf(connection.pluginId),
         sendText: plugin.sendMessage.bind(plugin),
         conversationId: message.conversation.id,
         channelType,
@@ -528,6 +545,9 @@ export class OutboundSender {
     pluginId: string
     context: ReturnType<ChannelContextFactory['contextFor']>
     sendMedia: NonNullable<ChannelPlugin['sendMedia']>
+    sendAlbum: ChannelPlugin['sendAlbum']
+    // What the plugin declared when it registered (a frozen copy): the rules of each kind and its album
+    media: ReturnType<PluginRegistry['mediaOf']>
     // The text of a file whose kind has no place for one on the channel goes after it, as a message
     sendText: ChannelPlugin['sendMessage']
     conversationId: string
@@ -580,7 +600,16 @@ export class OutboundSender {
     const failures: ErrorCode[] = []
     // What the first file got, from this attempt; the caption goes with it
     let firstAccepted: z.infer<typeof resultSchema> | null = null
+    // The images of this message go together when the channel sends an album: the files an album took in (or left
+    // out with their error) are done when the loop reaches them. It is switched off for the rest of the message
+    // when the provider refuses an album, which then goes one by one.
+    let albumOn =
+      args.sendAlbum !== undefined &&
+      args.media?.album !== undefined &&
+      !carriesNoCaption(args.channelType, args.messageType)
+    const handled = new Set<string>()
     for (const file of files) {
+      if (handled.has(file.id)) continue
       if (file.wasSent) continue
       // Failed on an earlier attempt of this send, possibly with the outcome unknown: it is not sent again
       // behind the agent's back; "send again" puts it back in the queue. It still fails the message.
@@ -615,6 +644,69 @@ export class OutboundSender {
         })
         failures.push(ErrorCodes.CHANNEL_WINDOW_EXPIRED)
         continue
+      }
+      if (albumOn && args.sendAlbum !== undefined && args.media !== null) {
+        // The text of the message rides with the album only where it is the text of the first file; any other text
+        // keeps its file out of the album
+        const picked = pickAlbum(
+          files,
+          file.index,
+          args.media,
+          candidate => this.captionOf(candidate, args.content, args.textApart),
+          candidate => candidate.index === 0 && !args.textApart
+        )
+        if (picked.group.length >= 2) {
+          // Checked against the rules of the channel before anything is stored or sent: that image fails alone
+          for (const { file: refusedFile, code } of picked.rejected) {
+            handled.add(refusedFile.id)
+            await this.markFile(storeId, messageId, refusedFile.id, { failedWith: code })
+            failures.push(code)
+          }
+          const clearable = allRefused && !args.tainted && !anySent
+          const outcome = await this.sendAlbumGroup(
+            { ...args, sendAlbum: args.sendAlbum },
+            picked.group,
+            clearable
+          )
+          if (outcome.kind === 'sent') {
+            for (const member of picked.group) handled.add(member.id)
+            anySent = true
+            // All the files of the album at once: a write that fails half way would leave images that did go as
+            // images that did not, and the next attempt would send them again
+            await this.markAlbumSent(
+              storeId,
+              messageId,
+              picked.group.map((member, position) => ({
+                id: member.id,
+                // The id of its own when the provider gave one for each; otherwise the id of the one message
+                externalId: outcome.fileIds?.[position] ?? outcome.accepted.externalId
+              }))
+            )
+            const head = picked.group[0]
+            if (head !== undefined && head.index === 0) {
+              if (!args.textApart) {
+                await this.recordCaptionSafely(storeId, messageId, head, outcome.accepted)
+              }
+              firstAccepted = {
+                ...outcome.accepted,
+                externalId: outcome.fileIds?.[0] ?? outcome.accepted.externalId
+              }
+            }
+            continue
+          }
+          if (outcome.kind === 'failed') {
+            for (const member of picked.group) {
+              handled.add(member.id)
+              await this.markFile(storeId, messageId, member.id, { failedWith: outcome.code })
+              failures.push(outcome.code)
+            }
+            if (!outcome.outcomeKnown) allRefused = false
+            continue
+          }
+          // fallback: the images go one by one, this one first, unless the album already left it out with its error
+          albumOn = false
+          if (handled.has(file.id)) continue
+        }
       }
       // The first attempt is keyed by the message and the place of the file; one the agent asked for again is
       // another attempt, or a provider that dedupes on the key would answer with the result of the first. A
@@ -741,6 +833,94 @@ export class OutboundSender {
       return
     }
     await this.recordAccepted(storeId, messageId, args.connectionRowId, accepted, failure)
+  }
+
+  // The images of an album, in ONE call. The call is not repeatable on its own: a plugin has no key to make it so, and
+  // a doubt (a timeout, a 5xx, an answer that makes no sense) is an unknown outcome, never a reason to send the images
+  // again one by one. Only the provider's refusal in so many words, with nothing delivered, lets them go singly.
+  // A failure that may be repeated while there are attempts left stops the send, as for one file.
+  private async sendAlbumGroup(
+    args: Parameters<OutboundSender['sendFiles']>[0] & {
+      sendAlbum: NonNullable<ChannelPlugin['sendAlbum']>
+    },
+    group: readonly AttachmentToSend[],
+    clearable: boolean
+  ): Promise<AlbumOutcome> {
+    const { storeId, messageId } = args
+    const head = group[0]
+    if (head === undefined)
+      return { kind: 'failed', code: ErrorCodes.CHANNEL_MESSAGE_FAILED, outcomeKnown: false }
+    const base = `${messageId}-album-${head.position}`
+    const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
+    const caption =
+      head.index === 0 && !args.textApart ? this.captionOf(head, args.content, false) : ''
+    try {
+      const result = albumResultSchema.safeParse(
+        await withTimeout(
+          args.sendAlbum(args.context, {
+            channelIdentity: args.channelIdentity,
+            files: group.map(member => ({
+              contentType: member.contentType,
+              fileSize: member.size,
+              openFile: member.open,
+              filename: member.filename
+            })),
+            ...(caption === '' ? {} : { caption }),
+            ...(args.replyToExternalId === null || head.index !== 0
+              ? {}
+              : { replyToExternalId: args.replyToExternalId }),
+            idempotencyKey
+          }),
+          albumSendBudgetMs(group.length)
+        )
+      )
+      // An answer that makes no sense: the provider may have taken the album, the outcome is not known
+      if (!result.success) {
+        return { kind: 'failed', code: ErrorCodes.CHANNEL_MESSAGE_FAILED, outcomeKnown: false }
+      }
+      const { fileExternalIds, ...accepted } = result.data
+      // One id for each file, or none: a list of another length is not trusted, and the id of the message stands
+      const fileIds = fileExternalIds?.length === group.length ? fileExternalIds : undefined
+      return { kind: 'sent', accepted, fileIds }
+    } catch (error) {
+      const refused = refusalOf(error)
+      // The message of the error may hold a token or a link: only its name and the provider's numbers are logged
+      this.logger.warn(
+        {
+          pluginId: args.pluginId,
+          messageId,
+          files: group.length,
+          code: refused.code,
+          errorName: errorName(error),
+          ...providerCodesOf(error)
+        },
+        'sending an album failed'
+      )
+      const outcomeKnown = isDefinitiveRefusal(error)
+      // A job that repeats sends the whole album again, and the provider has no key to stop it: only the plugin's
+      // own word that it can be repeated, with the outcome not in doubt, is taken (a throttle, or images that could
+      // not be stored). Anything else, a timeout of the worker or an error that is not the plugin's included,
+      // may have reached the customer: the files fail as ones that may have gone and the agent decides.
+      const repeatable = refused.retryable && error instanceof PluginError && !error.outcomeUnknown
+      if (repeatable && !args.isLastAttempt) {
+        if (outcomeKnown && clearable) await this.clearInFlight(storeId, messageId)
+        throw new SendAttemptFailed(refused.code, error)
+      }
+      // The provider answered that it did not take the album and nothing is to be waited for: the images go one
+      // by one, each with the key it always had. Never on a doubt, and only for a refusal of the message itself:
+      // a token that does not work, a closed window or a file the channel does not take would be refused once for
+      // each image.
+      if (
+        outcomeKnown &&
+        !repeatable &&
+        error instanceof PluginError &&
+        error.refused &&
+        error.code === ErrorCodes.CHANNEL_MESSAGE_FAILED
+      ) {
+        return { kind: 'fallback' }
+      }
+      return { kind: 'failed', code: refused.code, outcomeKnown }
+    }
   }
 
   // The text under a file: the message's own for the first and the file's for the others, or the file's own for
@@ -907,6 +1087,45 @@ export class OutboundSender {
       await this.writeFactsSafely(storeId, messageId, file, {
         state: isDefinitiveRefusal(error) ? CaptionState.FAILED : CaptionState.UNCONFIRMED
       })
+    }
+  }
+
+  // The files of an album the provider took, written in one transaction: all of them or none. Tried a few times, as a
+  // single file is, because nothing here may make the album be sent again.
+  private async markAlbumSent(
+    storeId: string,
+    messageId: string,
+    files: readonly { id: string; externalId: string }[]
+  ): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.prisma.transaction(async tx => {
+          for (const file of files) {
+            await tx.media.updateMany({
+              // A file that is already sent, or that a receipt moved on, is never taken back
+              where: {
+                id: file.id,
+                storeId,
+                messageId,
+                OR: [
+                  { deliveryStatus: null },
+                  { deliveryStatus: { in: [DeliveryStatus.QUEUED, DeliveryStatus.FAILED] } }
+                ]
+              },
+              data: {
+                deliveryStatus: DeliveryStatus.SENT,
+                channelMessageId: file.externalId,
+                sentAt: new Date(),
+                sendErrorCode: null
+              }
+            })
+          }
+        })
+        return
+      } catch (error) {
+        if (attempt >= OutboundLimits.WRITE_ATTEMPTS) throw error
+        await delay(OutboundLimits.WRITE_RETRY_DELAY_MS * attempt)
+      }
     }
   }
 
