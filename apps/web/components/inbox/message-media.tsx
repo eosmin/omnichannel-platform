@@ -21,6 +21,7 @@ import {
   pendingShapeOf
 } from '../../lib/inbox/media-state'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
+import { viewerItemsOf } from '../../lib/inbox/viewer-items'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { useMediaUrlReads, useMediaUrls } from '../../lib/media/use-media-urls'
 import { hasGivenUpWaiting, isWaitingForVariants } from '../../lib/media/variant-wait'
@@ -31,6 +32,7 @@ import { useStore } from '../providers/store-context'
 
 import { AlbumCaptionList, AlbumCaptionMark } from './album-captions'
 import { FileCaption } from './file-caption'
+import { LazyImageSetViewer } from './image-set-viewer-lazy'
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
 
 // A file is drawn in one of two states, a skeleton or its content, and both fill the same box, so the
@@ -92,6 +94,16 @@ export function MessageMedia({
   textApart?: boolean
 }): ReactElement | null {
   const [open, setOpen] = useState<LightboxFile | null>(null)
+  // The picture of the message open in the viewer that walks them all (by its file)
+  const [viewerKey, setViewerKey] = useState<string | null>(null)
+  const viewerItems = viewerItemsOf(files, messageType)
+  const openFile = (file: LightboxFile): void => {
+    if (file.kind === 'image' && viewerItems.some(item => item.key === file.mediaId)) {
+      setViewerKey(file.mediaId ?? null)
+    } else {
+      setOpen(file)
+    }
+  }
   if (files.length === 0 && unavailable.length === 0) return null
   // Several pictures in one message are a grid; the state of each file shows under it once there are several
   const album = isAlbum(files, messageType, sticker)
@@ -105,7 +117,7 @@ export function MessageMedia({
             <MarkOf number={numbers.get(file.id)} />
             <MediaItem
               file={file}
-              onOpen={setOpen}
+              onOpen={openFile}
               sticker={sticker}
               messageType={messageType}
               inAlbum={album}
@@ -133,6 +145,9 @@ export function MessageMedia({
         />
       ))}
       <MediaLightbox file={open} onClose={() => setOpen(null)} />
+      {viewerKey === null ? null : (
+        <LazyImageSetViewer items={viewerItems} openKey={viewerKey} onOpenKey={setViewerKey} />
+      )}
     </div>
   )
 }
@@ -487,7 +502,8 @@ function MediaBody({
               kind: 'image',
               src: large,
               downloadUrl: data.url,
-              filename: file.filename
+              filename: file.filename,
+              mediaId: file.id
             })
           }
         >

@@ -14,6 +14,8 @@ export interface LightboxFile {
   // The original, to download
   downloadUrl: string
   filename: string
+  // The file an image opens by, so that the thread can open the viewer that walks the pictures of its message
+  mediaId?: string
 }
 
 // A file at full size over the thread. Radix gives it the focus trap, Escape and the return of the
@@ -22,13 +24,20 @@ export function MediaLightbox({
   file,
   onClose,
   onPrevious,
-  onNext
+  onNext,
+  position,
+  caption
 }: {
   file: LightboxFile | null
   onClose: () => void
   // The gallery walks its files with the arrows; the thread opens one file and passes neither
   onPrevious?: () => void
   onNext?: () => void
+  // Where the file stands among the ones the arrows walk (`index` from 0), said to a screen reader as it changes;
+  // `number` is the one its thumbnail wears, drawn before its text
+  position?: { index: number; total: number; number: number }
+  // The text under the file, drawn with its number in the walk
+  caption?: string | null
 }): ReactElement {
   const t = useTranslations('inbox.thread.media')
   const canWalk = onPrevious !== undefined || onNext !== undefined
@@ -40,6 +49,8 @@ export function MediaLightbox({
           onKeyDown={event => {
             // A video keeps the arrows for its own seek bar
             if (event.target instanceof HTMLVideoElement) return
+            // Alt/Cmd + arrow is the browser's back and forward: the picture does not move with it
+            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
             if (event.key === 'ArrowLeft' && onPrevious !== undefined) onPrevious()
             if (event.key === 'ArrowRight' && onNext !== undefined) onNext()
           }}
@@ -73,6 +84,24 @@ export function MediaLightbox({
               />
             )}
           </div>
+          {position === undefined || position.total < 2 ? null : (
+            // A polite status: the arrows change the picture, and a screen reader hears which one it is now
+            <p
+              aria-live="polite"
+              aria-atomic="true"
+              className="text-muted-foreground text-center text-xs"
+            >
+              {t('position', { current: position.index + 1, total: position.total })}
+            </p>
+          )}
+          {caption === undefined || caption === null ? null : (
+            <p className="text-sm break-words whitespace-pre-wrap">
+              {position === undefined || position.total < 2 ? null : (
+                <span className="mr-1 font-medium">{position.number}.</span>
+              )}
+              {caption}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             {onPrevious === undefined ? null : (
               <Button variant="outline" size="icon" onClick={onPrevious} aria-label={t('previous')}>
