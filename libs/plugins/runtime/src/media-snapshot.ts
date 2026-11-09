@@ -66,7 +66,7 @@ export function snapshotChannelMedia(
   }
   const copy: Partial<Record<ChannelMediaKind, Readonly<ChannelMediaRule>>> = {}
   for (const kind of needed) copy[kind] = Object.freeze(copyRule(rules[kind], refuse))
-  const album = copyAlbum(block['album'], needed, refuse)
+  const album = copyAlbum(block['album'], needed, max as number, refuse)
   // An album is sent by `sendAlbum` and nothing else: one without the method would fail every album at send
   // time, and the method without a declaration is a promise the core never reads
   const hasMethod = typeof plugin.sendAlbum === 'function'
@@ -84,6 +84,7 @@ export function snapshotChannelMedia(
 function copyAlbum(
   raw: unknown,
   declaredKinds: readonly ChannelMediaKind[],
+  filesPerMessage: number,
   refuse: (what: string) => never
 ): Readonly<{ kinds: readonly ChannelMediaKind[]; maxFiles: number }> | undefined {
   if (raw === undefined) return undefined
@@ -94,7 +95,8 @@ function copyAlbum(
     typeof maxFiles !== 'number' ||
     !Number.isInteger(maxFiles) ||
     maxFiles < 2 ||
-    maxFiles > ChannelMediaLimits.MAX_FILES_PER_MESSAGE
+    // An album larger than a message may hold would declare a number that can never be reached
+    maxFiles > filesPerMessage
   ) {
     refuse('album maxFiles')
   }

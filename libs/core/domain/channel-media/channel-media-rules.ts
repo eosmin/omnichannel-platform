@@ -63,6 +63,23 @@ export function mediaKindOfContentType(contentType: string): ChannelMediaKind {
   return ChannelMediaKinds.DOCUMENT
 }
 
+// Why a channel's rules refuse a file, or null when they take it. The one check for the worker (before it opens
+// anything) and for the plugins (before they send), so that the two cannot drift: `type` is a type the channel does
+// not list, `empty` a size that is not a positive whole number, `too_large` a size over the largest of its kind.
+export type MediaFileProblem = 'type' | 'empty' | 'too_large'
+
+export function mediaFileProblem(
+  rule: ChannelMediaRule,
+  contentType: string,
+  size: number
+): MediaFileProblem | null {
+  const type = (contentType.split(';')[0] ?? '').trim().toLowerCase()
+  if (rule.types !== null && !rule.types.includes(type)) return 'type'
+  if (!Number.isSafeInteger(size) || size <= 0) return 'empty'
+  if (size > rule.maxBytes) return 'too_large'
+  return null
+}
+
 export const ChannelMediaLimits = {
   // What no declaration may exceed: the registry refuses a plugin that asks for more
   MAX_FILES_PER_MESSAGE: 30,

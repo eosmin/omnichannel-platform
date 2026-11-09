@@ -199,7 +199,11 @@ describe('snapshotChannelMedia', () => {
   describe('album', () => {
     it('keeps a well formed album, as a frozen copy', () => {
       const album = { kinds: ['image'], maxFiles: 10 }
-      const snapshot = snapshotChannelMedia(plugin(media({ album })), 'messenger', capabilities)
+      const snapshot = snapshotChannelMedia(
+        plugin(media({ maxFilesPerMessage: 10, album })),
+        'messenger',
+        capabilities
+      )
       expect(snapshot?.album).toEqual({ kinds: ['image'], maxFiles: 10 })
       album.kinds.push('document')
       album.maxFiles = 30
@@ -211,7 +215,11 @@ describe('snapshotChannelMedia', () => {
     it('refuses an album with no sendAlbum, and a sendAlbum with no album', () => {
       const album = { kinds: ['image'], maxFiles: 10 }
       expect(() =>
-        snapshotChannelMedia(plugin(media({ album }), null), 'messenger', capabilities)
+        snapshotChannelMedia(
+          plugin(media({ maxFilesPerMessage: 10, album }), null),
+          'messenger',
+          capabilities
+        )
       ).toThrow('invalid media')
       expect(() =>
         snapshotChannelMedia(
@@ -236,10 +244,11 @@ describe('snapshotChannelMedia', () => {
       ['an album that repeats a kind', { kinds: ['image', 'image'], maxFiles: 10 }],
       ['an album of one file', { kinds: ['image'], maxFiles: 1 }],
       ['an album above the limit of files', { kinds: ['image'], maxFiles: 31 }],
+      ['an album larger than a message may hold', { kinds: ['image'], maxFiles: 11 }],
       ['an album with a fractional size', { kinds: ['image'], maxFiles: 2.5 }],
       ['an album with kinds that are not a list', { kinds: 'image', maxFiles: 10 }]
     ])('refuses %s', (_name, album) => {
-      expect(refuses(media({ album }))).toContain('invalid media')
+      expect(refuses(media({ maxFilesPerMessage: 10, album }))).toContain('invalid media')
     })
   })
 

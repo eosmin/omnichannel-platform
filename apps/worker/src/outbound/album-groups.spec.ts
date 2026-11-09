@@ -104,4 +104,8 @@ describe('albumSendBudgetMs', () => {
     expect(albumSendBudgetMs(10)).toBeGreaterThan(albumSendBudgetMs(2))
     expect(albumSendBudgetMs(2)).toBeGreaterThan(2 * 180_000)
   })
+
+  it('covers the post of the album and the text that follows it, a call of 15 s each', () => {
+    expect(albumSendBudgetMs(2) - 2 * 180_000).toBeGreaterThanOrEqual(2 * 15_000 + 5_000)
+  })
 })

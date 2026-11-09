@@ -121,7 +121,8 @@ export const OutboundLimits = {
   // An album stores each image (the budget of an upload, `MetaLimits.UPLOAD_TIMEOUT_MS`) and posts one message
   // (and its text after it): the budget grows with the images and never undercuts the calls the plugin makes
   ALBUM_FILE_TIMEOUT_MS: 180_000,
-  ALBUM_POST_TIMEOUT_MS: 25_000,
+  // the post of the album and the text after it: two calls of 15 s (`MetaLimits.REQUEST_TIMEOUT_MS`) and a margin
+  ALBUM_POST_TIMEOUT_MS: 45_000,
   // The sweep queues again a reply that has been `queued` this long: its job was never added, or it
   // failed for good without the message being marked. Past the 75 seconds of the five attempts.
   REQUEUE_AFTER_MS: 120_000,

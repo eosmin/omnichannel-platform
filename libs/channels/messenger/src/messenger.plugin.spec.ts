@@ -825,7 +825,7 @@ describe('MessengerPlugin, an album in one message', () => {
 
   it('declares an album of images, and the method that sends it', () => {
     const { plugin } = build()
-    expect(plugin.media.album).toEqual({ kinds: ['image'], maxFiles: 30 })
+    expect(plugin.media.album).toEqual({ kinds: ['image'], maxFiles: 10 })
     expect(typeof plugin.sendAlbum).toBe('function')
   })
 
@@ -875,7 +875,7 @@ describe('MessengerPlugin, an album in one message', () => {
 
   it.each([
     ['fewer than two files', { files: [image()] }],
-    ['more files than the album takes', { files: Array.from({ length: 31 }, () => image()) }],
+    ['more files than the album takes', { files: Array.from({ length: 11 }, () => image()) }],
     ['a file that is not an image', { files: [image(), image({ contentType: 'video/mp4' })] }],
     [
       'a file above the size of an image',

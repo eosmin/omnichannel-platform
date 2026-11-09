@@ -1958,6 +1958,48 @@ describe('Replies on their way to a channel', () => {
           expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
         })
 
+        it('does not send again, one by one, the image the album left out when the provider refuses the album', async () => {
+          const reply = await album([null, null, null])
+          await owner.media.updateMany({
+            where: { messageId: reply.id, position: 0 },
+            data: { fileSize: 5000 }
+          })
+          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+            retryable: false,
+            refused: true
+          })
+
+          await sender.send(job(reply), false)
+
+          expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
+            `${reply.id}-1`,
+            `${reply.id}-2`
+          ])
+          expect(
+            (await rowsWithIds(reply.id)).map(row => [row.deliveryStatus, row.sendErrorCode])
+          ).toEqual([
+            ['failed', ErrorCodes.CHANNEL_FILE_TOO_LARGE],
+            ['sent', null],
+            ['sent', null]
+          ])
+        })
+
+        it('does not fall back for a refusal that is not about the album (a token that does not work)', async () => {
+          const reply = await album([null, null])
+          albumFailure = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
+            retryable: false,
+            refused: true
+          })
+
+          await sender.send(job(reply), false)
+
+          // One refused call, not one more for each image against the same token
+          expect(sentMedia).toHaveLength(0)
+          const message = await messageFlags(reply.id)
+          expect(message.deliveryError).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
+          expect(message.failureDefinitive).toBe(true)
+        })
+
         it('tries the album again, and never one by one, after a refusal that may be repeated', async () => {
           const reply = await album([null, null])
           albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {

@@ -5,7 +5,9 @@ import {
   type ChannelMediaCapabilities,
   type ChannelMediaKind,
   ChannelMediaKinds,
+  type ChannelMediaRule,
   MetaAttachmentOfKind,
+  mediaFileProblem,
   mediaKindOfContentType
 } from '@platform/core/channel-media'
 import {
@@ -348,15 +350,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     if (rule === undefined) {
       throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
     }
-    if (rule.types !== null && !rule.types.includes(contentType)) {
-      throw new PluginError(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED, { retryable: false })
-    }
-    if (!Number.isSafeInteger(params.fileSize) || params.fileSize <= 0) {
-      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
-    }
-    if (params.fileSize > rule.maxBytes) {
-      throw new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false })
-    }
+    refuseFile(rule, contentType, params.fileSize)
     const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
     // The fields of a form are text: the objects the JSON body would hold go as JSON
     const fields: Record<string, unknown> = {
@@ -419,15 +413,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       if (rule === undefined || !album.kinds.includes(kind)) {
         throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
       }
-      if (rule.types !== null && !rule.types.includes(contentType)) {
-        throw new PluginError(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED, { retryable: false })
-      }
-      if (!Number.isSafeInteger(file.fileSize) || file.fileSize <= 0) {
-        throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
-      }
-      if (file.fileSize > rule.maxBytes) {
-        throw new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false })
-      }
+      refuseFile(rule, contentType, file.fileSize)
       return { file, contentType, kind }
     })
     const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
@@ -464,6 +450,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
           throw new PluginError(error.code as PluginErrorCode, {
             retryable: error.retryable,
             refused: true,
+            ...(error.failedCheck === undefined ? {} : { failedCheck: error.failedCheck }),
             ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
             ...(error.providerSubcode === undefined
               ? {}
@@ -648,6 +635,19 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       sentAt: new Date().toISOString()
     }
   }
+}
+
+// A file the rules of the channel refuse is refused before it is opened, with the code that says why
+function refuseFile(rule: ChannelMediaRule, contentType: string, size: number): void {
+  const problem = mediaFileProblem(rule, contentType, size)
+  if (problem === null) return
+  const code =
+    problem === 'type'
+      ? ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED
+      : problem === 'too_large'
+        ? ErrorCodes.CHANNEL_FILE_TOO_LARGE
+        : ErrorCodes.CHANNEL_MESSAGE_FAILED
+  throw new PluginError(code, { retryable: false })
 }
 
 const MAX_FORM_FILE_NAME = 120

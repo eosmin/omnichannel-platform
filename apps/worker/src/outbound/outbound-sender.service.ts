@@ -671,13 +671,17 @@ export class OutboundSender {
           if (outcome.kind === 'sent') {
             for (const member of picked.group) handled.add(member.id)
             anySent = true
-            for (const [position, member] of picked.group.entries()) {
-              // The id of its own when the provider gave one for each; otherwise the id of the one message
-              const externalId = outcome.fileIds?.[position] ?? outcome.accepted.externalId
-              await this.markFile(storeId, messageId, member.id, {
-                sent: { ...outcome.accepted, externalId }
-              })
-            }
+            // All the files of the album at once: a write that fails half way would leave images that did go as
+            // images that did not, and the next attempt would send them again
+            await this.markAlbumSent(
+              storeId,
+              messageId,
+              picked.group.map((member, position) => ({
+                id: member.id,
+                // The id of its own when the provider gave one for each; otherwise the id of the one message
+                externalId: outcome.fileIds?.[position] ?? outcome.accepted.externalId
+              }))
+            )
             const head = picked.group[0]
             if (head !== undefined && head.index === 0) {
               if (!args.textApart) {
@@ -699,8 +703,9 @@ export class OutboundSender {
             if (!outcome.outcomeKnown) allRefused = false
             continue
           }
-          // fallback: the images go one by one, this one first
+          // fallback: the images go one by one, this one first, unless the album already left it out with its error
           albumOn = false
+          if (handled.has(file.id)) continue
         }
       }
       // The first attempt is keyed by the message and the place of the file; one the agent asked for again is
@@ -898,11 +903,14 @@ export class OutboundSender {
       }
       // The provider answered that it did not take the album and nothing is to be waited for: the images go one
       // by one, each with the key it always had. Never on a doubt.
+      // and only for a refusal of the message itself: a token that does not work, a closed window or a file the
+      // channel does not take would be refused once for each image
       if (
         outcomeKnown &&
         refused.retryable !== true &&
         error instanceof PluginError &&
-        error.refused
+        error.refused &&
+        error.code === ErrorCodes.CHANNEL_MESSAGE_FAILED
       ) {
         return { kind: 'fallback' }
       }
@@ -1074,6 +1082,45 @@ export class OutboundSender {
       await this.writeFactsSafely(storeId, messageId, file, {
         state: isDefinitiveRefusal(error) ? CaptionState.FAILED : CaptionState.UNCONFIRMED
       })
+    }
+  }
+
+  // The files of an album the provider took, written in one transaction: all of them or none. Tried a few times, as a
+  // single file is, because nothing here may make the album be sent again.
+  private async markAlbumSent(
+    storeId: string,
+    messageId: string,
+    files: readonly { id: string; externalId: string }[]
+  ): Promise<void> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.prisma.transaction(async tx => {
+          for (const file of files) {
+            await tx.media.updateMany({
+              // A file that is already sent, or that a receipt moved on, is never taken back
+              where: {
+                id: file.id,
+                storeId,
+                messageId,
+                OR: [
+                  { deliveryStatus: null },
+                  { deliveryStatus: { in: [DeliveryStatus.QUEUED, DeliveryStatus.FAILED] } }
+                ]
+              },
+              data: {
+                deliveryStatus: DeliveryStatus.SENT,
+                channelMessageId: file.externalId,
+                sentAt: new Date(),
+                sendErrorCode: null
+              }
+            })
+          }
+        })
+        return
+      } catch (error) {
+        if (attempt >= OutboundLimits.WRITE_ATTEMPTS) throw error
+        await delay(OutboundLimits.WRITE_RETRY_DELAY_MS * attempt)
+      }
     }
   }
 

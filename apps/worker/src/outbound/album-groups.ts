@@ -1,4 +1,9 @@
-import { type ChannelMediaCapabilities, mediaKindOfContentType } from '@platform/core/channel-media'
+import {
+  type ChannelMediaCapabilities,
+  type MediaFileProblem,
+  mediaFileProblem,
+  mediaKindOfContentType
+} from '@platform/core/channel-media'
 import { OutboundLimits } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
 
@@ -44,10 +49,9 @@ export function pickAlbum<T extends AlbumCandidate>(
     const kind = mediaKindOfContentType(file.contentType)
     const rule = media.kinds[kind]
     if (!album.kinds.includes(kind) || rule === undefined) break
-    const type = (file.contentType.split(';')[0] ?? '').trim().toLowerCase()
-    const problem = problemOf(type, file.size, rule)
+    const problem = mediaFileProblem(rule, file.contentType, file.size)
     if (problem !== null) {
-      picked.rejected.push({ file, code: problem })
+      picked.rejected.push({ file, code: CODE_OF_PROBLEM[problem] })
       continue
     }
     if (textOf(file) !== '' && !allowsText(file)) break
@@ -57,17 +61,10 @@ export function pickAlbum<T extends AlbumCandidate>(
   return picked
 }
 
-function problemOf(
-  type: string,
-  size: number,
-  rule: { types: readonly string[] | null; maxBytes: number }
-): ErrorCode | null {
-  if (rule.types !== null && !rule.types.includes(type)) {
-    return ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED
-  }
-  if (!Number.isSafeInteger(size) || size <= 0) return ErrorCodes.CHANNEL_MESSAGE_FAILED
-  if (size > rule.maxBytes) return ErrorCodes.CHANNEL_FILE_TOO_LARGE
-  return null
+const CODE_OF_PROBLEM: Readonly<Record<MediaFileProblem, ErrorCode>> = {
+  type: ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED,
+  empty: ErrorCodes.CHANNEL_MESSAGE_FAILED,
+  too_large: ErrorCodes.CHANNEL_FILE_TOO_LARGE
 }
 
 // The time an album may take: the plugin stores each image (an upload) and then posts the one message
