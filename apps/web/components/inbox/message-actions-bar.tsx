@@ -78,6 +78,7 @@ export function MessageActionsBar({
   userId,
   authorLabel,
   file,
+  replyOnly,
   overlay = false
 }: {
   message: MessageView
@@ -88,6 +89,9 @@ export function MessageActionsBar({
   // One file of an album: the bar over its thumbnail answers and reacts to THAT file (and nothing else: the rest
   // of the actions are the message's), and its buttons say which one it is
   file?: { id: string; number: number; total: number }
+  // A thumbnail of a native album (the channel took the files as ONE message): the bar answers the message and offers
+  // nothing else, because a file of it cannot be reacted to or quoted alone
+  replyOnly?: { number: number; total: number } | undefined
   // Drawn over a thumbnail: the bar has a surface of its own, and it shows only when the bar does (a surface
   // outside it was a white square that stayed when the buttons were hidden)
   overlay?: boolean
@@ -118,8 +122,9 @@ export function MessageActionsBar({
   const tell = (promise: Promise<unknown>): void => {
     promise.catch((error: unknown) => toast.error(errorText(error)))
   }
+  const onThumbnail = file !== undefined || replyOnly !== undefined
   const hasMore =
-    file === undefined &&
+    !onThumbnail &&
     (actions.resend ||
       actions.discard ||
       actions.edit ||
@@ -133,7 +138,7 @@ export function MessageActionsBar({
         'flex shrink-0 items-center opacity-0 transition-opacity max-md:opacity-100 pointer-coarse:opacity-100',
         overlay && 'bg-background/90 rounded-md shadow-sm',
         // The thumbnail is its own group: hovering the bubble does not light the bars of all its files
-        file === undefined
+        !onThumbnail
           ? 'group-focus-within:opacity-100 group-hover:opacity-100'
           : 'group-focus-within/file:opacity-100 group-hover/file:opacity-100'
       )}
@@ -144,7 +149,13 @@ export function MessageActionsBar({
           variant="ghost"
           size="icon"
           className="size-7 pointer-coarse:size-10"
-          aria-label={file === undefined ? t('reply') : t('replyFile', file)}
+          aria-label={
+            file !== undefined
+              ? t('replyFile', file)
+              : replyOnly !== undefined
+                ? t('replyAlbum', replyOnly)
+                : t('reply')
+          }
           onClick={() =>
             startReply({
               messageId: message.id,
@@ -160,7 +171,7 @@ export function MessageActionsBar({
           <CornerUpLeft aria-hidden className="size-4" />
         </Button>
       ) : null}
-      {actions.react ? (
+      {actions.react && replyOnly === undefined ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
