@@ -1,6 +1,8 @@
 import type { MessageWhereInput } from '@platform/core/database'
 import type { AuthorType } from '@platform/core/domain'
 
+import { messageOfProviderIdPrefix } from '../messages/provider-message-match'
+
 // What an inbound reaction or quote points at, when no stored message has that id: the SHAPE of
 // the id and of the thread around it, never a value, so the owner can tell why it did not match (another format,
 // a truncated id, a message that never arrived) without an id of a customer reaching a log.
@@ -9,8 +11,8 @@ export interface MissingTargetShape {
   length: number
   // The first three characters when they are plain (the provider's own marker: `wam`, `m_`), else `?`
   prefix: string
-  // Messages in the scope searched (the thread for a quote, the customer on the connection for a reaction) whose
-  // id starts with those three, and with the first ten, characters. Prisma does not escape the wildcards of a LIKE
+  // Messages in the scope searched (the thread for a quote, the customer on the connection for a reaction) with an
+  // id (their own, their caption's or a file's) that starts with those three, and with the first ten, characters. Prisma does not escape the wildcards of a LIKE
   // for `startsWith`, so `escapeLike` below does: `m_` would otherwise match `mX`.
   sameShortPrefix: number
   sameLongPrefix: number
@@ -78,7 +80,7 @@ export function countersOf(
         ...scope,
         ...(filter.startsWith === undefined
           ? {}
-          : { channelMessageId: { startsWith: escapeLike(filter.startsWith) } }),
+          : { AND: [messageOfProviderIdPrefix(scope.storeId, escapeLike(filter.startsWith))] }),
         ...(filter.since === undefined
           ? {}
           : { authorType: customerAuthor, createdAt: { gte: filter.since } })

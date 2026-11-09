@@ -69,7 +69,7 @@ export class MessageReactionsService {
     const missing: { shape?: MissingTargetShape } = {}
     const applied = await this.targets.apply(
       pluginId,
-      { ...event, targetExternalId: event.reaction.targetExternalId },
+      { ...event, targetExternalId: event.reaction.targetExternalId, namesFilesToo: true },
       'reaction',
       isLastAttempt,
       async (tx, target) => {

@@ -10,6 +10,7 @@ import { AuthorType } from '@platform/core/domain'
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { parseChannelIdentity } from '../customers/identity'
+import { messageOfProviderId } from '../messages/provider-message-match'
 
 import {
   countersOf,
@@ -21,6 +22,10 @@ export interface InboundTargetEvent {
   connectionId: string
   channelIdentity: string
   targetExternalId: string
+  // A reaction is about the whole message, so an id of any of its files, or of the text sent apart under a
+  // file, names it. An edit or a deletion is about ONE provider message: it keeps to the id of the message
+  // itself, or the deletion of one file would take the whole album with it.
+  namesFilesToo?: boolean
 }
 
 export interface InboundTarget {
@@ -75,7 +80,9 @@ export class InboundMessageTargets {
       const target = await tx.message.findFirst({
         where: {
           storeId,
-          channelMessageId: event.targetExternalId,
+          ...(event.namesFilesToo === true
+            ? { AND: [messageOfProviderId(storeId, event.targetExternalId)] }
+            : { channelMessageId: event.targetExternalId }),
           conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

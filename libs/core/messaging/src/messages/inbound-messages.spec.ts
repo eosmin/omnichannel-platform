@@ -1,6 +1,7 @@
 import { AuthorType, MessageType } from '@platform/core/domain'
 
 import { insertInboundMessage } from './inbound-messages'
+import { messageOfProviderId } from './provider-message-match'
 
 describe('insertInboundMessage metadata', () => {
   it('drops the keys only the platform writes and keeps the rest', async () => {
@@ -63,7 +64,7 @@ describe('insertInboundMessage quote', () => {
     // Scoped to the store and the thread, like every tenant query
     expect(tx.message.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { storeId: 's', conversationId: 'c', channelMessageId: 'wamid.0' }
+        where: { storeId: 's', conversationId: 'c', AND: [messageOfProviderId('s', 'wamid.0')] }
       })
     )
     expect(
