@@ -95,6 +95,12 @@ describe('the descriptor of a plugin nobody named', () => {
     })
   })
 
+  it('is named by its id when its name is not plain text: the name was never held to a shape', () => {
+    const plugins = registry()
+    plugins.register(toy({ displayName: undefined, name: 'Acme <b>Chat</b>' }))
+    expect(plugins.descriptorOf(TOY_ID)?.displayName).toEqual({ es: TOY_ID, en: TOY_ID })
+  })
+
   it('answers nothing for a plugin that is not registered', () => {
     expect(registry().descriptorOf(TOY_ID)).toBeNull()
   })

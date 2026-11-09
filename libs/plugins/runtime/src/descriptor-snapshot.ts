@@ -51,9 +51,12 @@ export function snapshotChannelDescriptor(
   const declaredName: unknown = plugin.displayName
   let displayName: LocalizedText
   if (declaredName === undefined) {
-    // Named by its `name`, in both languages
-    const named = readLocalizedText({ es: plugin.name, en: plugin.name })
-    displayName = named ?? refuse('name')
+    // Named by its `name`, in both languages. `name` was never held to a shape (the api cleans it where it shows
+    // it), so one that is not plain text is not a reason to refuse the plugin: it is named by its id then.
+    displayName =
+      readLocalizedText({ es: plugin.name, en: plugin.name }) ??
+      readLocalizedText({ es: id, en: id }) ??
+      refuse('name')
   } else {
     displayName = readLocalizedText(declaredName) ?? refuse('display name')
   }

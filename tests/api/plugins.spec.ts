@@ -273,7 +273,7 @@ describe('The plugin catalog and the installations of a store', () => {
         for (const value of [meta.verifyToken, meta.appSecret]) {
           if (value !== undefined && value !== '') expect(text).not.toContain(value)
         }
-        // The shape is closed too: a field of the manifest is one of these five, and nothing else
+        // The shape is closed too: a field of the manifest is one of these, and nothing else
         for (const entry of ((await catalogOf()) as ManifestBody[]).filter(
           e => e.channel !== null
         )) {
@@ -281,12 +281,15 @@ describe('The plugin catalog and the installations of a store', () => {
           expect(Object.keys(entry.channel ?? {}).sort()).toEqual([
             'callbackUrl',
             'connectFields',
+            'descriptor',
             'facebookLogin'
           ])
           expect(entry.channel?.facebookLogin).toBe(false)
           for (const field of entry.channel?.connectFields ?? []) {
             expect(Object.keys(field).sort()).toEqual([
+              'helpKey',
               'key',
+              'label',
               'labelKey',
               'multiple',
               'required',
@@ -310,10 +313,15 @@ describe('The plugin catalog and the installations of a store', () => {
           receivesProviderWebhooks: true
         })
 
+        expect((await manifestOf(id))?.descriptor).toMatchObject({
+          iconKey: 'message-square',
+          managementSurface: null
+        })
         expect(await manifestOf(id)).toEqual({
           connectFields: [
             expect.objectContaining({ key: 'apiKey', secret: true, required: false })
           ],
+          descriptor: expect.anything() as unknown,
           callbackUrl: `${apiUrl()}/api/v1/webhooks/channels/${id}`,
           facebookLogin: false
         })
