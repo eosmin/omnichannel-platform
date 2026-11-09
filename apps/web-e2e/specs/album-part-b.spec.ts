@@ -30,15 +30,13 @@ const fill = (text: string, number: number, total: number) =>
 async function albumOf(
   storeId: string,
   conversationId: string,
-  count: number,
-  // The provider took the pictures as ONE message (Messenger, Instagram): they all carry its one id
-  native = false
+  count: number
 ): Promise<{ messageId: string; ids: string[] }> {
   const message = await addMessageTo(storeId, conversationId, {
     authorType: AuthorType.AGENT,
     type: MessageType.IMAGE,
     deliveryStatus: DeliveryStatus.SENT,
-    channelMessageId: native ? 'mid.album-1' : 'wamid.album-1',
+    channelMessageId: 'wamid.album-1',
     createdAt: new Date(Date.now() - MINUTE_MS / 2)
   })
   const ids: string[] = []
@@ -50,7 +48,7 @@ async function albumOf(
       processed: 'with-variants',
       position: at,
       delivery: DeliveryStatus.SENT,
-      channelMessageId: native ? 'mid.album-1' : `wamid.album-${at + 1}`
+      channelMessageId: `wamid.album-${at + 1}`
     })
     ids.push(file.id)
   }
@@ -67,48 +65,6 @@ async function signedInPage(browser: Browser): Promise<Page> {
   await signIn(page, AGENT)
   return page
 }
-
-// The owner's capture: an album of 3 that Messenger took as ONE message, with every thumbnail offering a reaction
-test('a native album offers no reaction on a thumbnail, only to answer; its reaction stays under the message', async ({
-  browser
-}) => {
-  const page = await signedInPage(browser)
-  try {
-    const storeId = await storeIdNamed(FIRST_STORE)
-    const conversationId = await newWhatsAppConversationWrittenAgo(storeId, MINUTE_MS)
-    const { messageId, ids } = await albumOf(storeId, conversationId, 3, true)
-    await addCustomerReactionTo(messageId, { emoji: '❤️' })
-    await page.goto(AppPaths.store.conversation(storeId, conversationId))
-    const list = page.getByRole('list', { name: thread.label })
-    await expect(
-      list.getByRole('button', { name: en.inbox.thread.media.open.replace('{name}', 'p3.png') })
-    ).toBeVisible()
-
-    // No thumbnail can be reacted to or quoted alone
-    await expect(list.getByRole('button', { name: /React to image/ })).toHaveCount(0)
-    await expect(list.getByRole('button', { name: /Reply to image/ })).toHaveCount(0)
-    // Each thumbnail can be answered (the whole message is quoted), and the message keeps its own bar
-    await expect(list.getByRole('button', { name: /Reply to the album/ })).toHaveCount(3)
-    // The reaction is the message's: under the bubble, in none of the thumbnails
-    const chips = list.getByRole('list', { name: thread.reactions.group })
-    await expect(chips).toHaveCount(1)
-    for (const id of ids) {
-      await expect(
-        page.locator(`#file-${id}`).getByRole('list', { name: thread.reactions.group })
-      ).toHaveCount(0)
-    }
-
-    // Answering from a thumbnail quotes the message, not a picture
-    await list
-      .getByRole('button', { name: /Reply to the album/ })
-      .nth(1)
-      .click()
-    await expect(page.getByText(/^Replying to /)).toBeVisible()
-    await expect(page.getByText(/^Replying to .*image \d+ of \d+/)).toHaveCount(0)
-  } finally {
-    await page.context().close()
-  }
-})
 
 // The owner's capture: the reaction to the first picture of a WhatsApp album drew on the whole card
 test('the reaction to the first picture of an album with an id for each picture is drawn under that picture', async ({

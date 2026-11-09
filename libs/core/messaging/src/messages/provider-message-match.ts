@@ -1,8 +1,8 @@
 import type { MessageWhereInput } from '@platform/core/database'
 
-// The messages that a provider id can name. A message the platform sent as an album has one id for each file:
-// the message keeps the first file's, the other files carry their own on their row, and Instagram and Messenger
-// send the text under a file as a message of their own whose id is kept apart. A reaction or a quote that
+// The messages that a provider id can name. A message the platform sent with several files has one id for each file:
+// the message keeps the first file's, the other files carry their own on their row, and a provider that cannot
+// carry the text under a file sends it as a message of its own whose id is kept apart. A reaction or a quote that
 // points at any of them is about this one message, so all three places are looked in. The caller scopes it to
 // the store and the thread, and puts this inside an `AND` so that it never replaces an `OR` of the caller's own;
 // the files are tied to the same store here as well.
@@ -28,20 +28,14 @@ export const messageOfProviderIdPrefix = (storeId: string, prefix: string): Mess
 type FileIds = readonly { id: string; channelMessageId: string | null }[]
 
 // Whether the provider has an id for this file that no other file of the message shares, in a message of several
-// files: it can be named alone (WhatsApp: one message for each picture, the first one too). Files that share one id
-// (an album that Instagram or Messenger takes as ONE message) and files with no id yet cannot.
+// files: it can be named alone (one message for each picture, the first one too). Files that share one id and files
+// with no id yet cannot.
 export function isDistinctFile(
   files: FileIds,
   file: { id: string; channelMessageId: string | null }
 ): boolean {
   if (files.length < 2 || file.channelMessageId === null) return false
   return files.filter(item => item.channelMessageId === file.channelMessageId).length === 1
-}
-
-// The provider took the files as ONE message: at least two have an id and every id there is is the same one.
-export function isNativeAlbum(files: FileIds): boolean {
-  const ids = files.flatMap(file => (file.channelMessageId === null ? [] : [file.channelMessageId]))
-  return ids.length >= 2 && new Set(ids).size === 1
 }
 
 // Whether a file is a target of its own for a REACTION, which is one row for each person and target: the distinct

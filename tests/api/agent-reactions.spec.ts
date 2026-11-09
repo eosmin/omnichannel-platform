@@ -332,9 +332,14 @@ describe('An agent reacting to a message', () => {
       // One row for one target at the provider, the last emoji
       const rows = await owner.messageReaction.findMany({ where: { messageId: album.id } })
       expect(rows.map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+      // What the worker sends goes to the first picture: the id of the message IS the id of its first file
+      for (const job of jobsQueued()) await sender.send(job, false)
+      const last = sentReactions[sentReactions.length - 1]
+      expect(last?.targetExternalId).toBe(album.media[0]?.channelMessageId)
+      expect(last?.emoji).toBe('❤️')
     })
 
-    it('is the message when the files of the album share one id (Instagram and Messenger send one message)', async () => {
+    it('is the message when the files share one id at the provider', async () => {
       const album = await albumMessage(3)
       await owner.media.updateMany({
         where: { messageId: album.id },

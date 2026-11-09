@@ -17,16 +17,8 @@ function media(overrides: Record<string, unknown> = {}): Record<string, unknown>
 
 const capabilities = [ChannelCapability.TEXT, ChannelCapability.IMAGE, ChannelCapability.DOCUMENT]
 
-function plugin(declared: unknown, sendAlbum: unknown = undefined): ChannelPlugin {
-  const hasAlbum =
-    typeof declared === 'object' &&
-    declared !== null &&
-    'album' in declared &&
-    declared.album !== undefined
-  // A plugin that declares an album has the method; a test that wants it missing passes `null`
-  const method =
-    sendAlbum === null ? undefined : (sendAlbum ?? (hasAlbum ? () => undefined : undefined))
-  return { id: 'messenger', media: declared, sendAlbum: method } as unknown as ChannelPlugin
+function plugin(declared: unknown): ChannelPlugin {
+  return { id: 'messenger', media: declared } as unknown as ChannelPlugin
 }
 
 function refuses(declared: unknown, caps: readonly string[] = capabilities): string | undefined {
@@ -194,62 +186,6 @@ describe('snapshotChannelMedia', () => {
     )
     expect(snapshot?.kinds.image?.types).toEqual(['image/png'])
     expect(reads).toBeLessThanOrEqual(3)
-  })
-
-  describe('album', () => {
-    it('keeps a well formed album, as a frozen copy', () => {
-      const album = { kinds: ['image'], maxFiles: 10 }
-      const snapshot = snapshotChannelMedia(
-        plugin(media({ maxFilesPerMessage: 10, album })),
-        'messenger',
-        capabilities
-      )
-      expect(snapshot?.album).toEqual({ kinds: ['image'], maxFiles: 10 })
-      album.kinds.push('document')
-      album.maxFiles = 30
-      expect(snapshot?.album).toEqual({ kinds: ['image'], maxFiles: 10 })
-      expect(Object.isFrozen(snapshot?.album)).toBe(true)
-      expect(Object.isFrozen(snapshot?.album?.kinds)).toBe(true)
-    })
-
-    it('refuses an album with no sendAlbum, and a sendAlbum with no album', () => {
-      const album = { kinds: ['image'], maxFiles: 10 }
-      expect(() =>
-        snapshotChannelMedia(
-          plugin(media({ maxFilesPerMessage: 10, album }), null),
-          'messenger',
-          capabilities
-        )
-      ).toThrow('the plugin has no sendAlbum')
-      expect(() =>
-        snapshotChannelMedia(
-          plugin(media(), () => undefined),
-          'messenger',
-          capabilities
-        )
-      ).toThrow('sendAlbum is declared with no album')
-    })
-
-    it('has no album when the plugin declares none', () => {
-      expect(
-        snapshotChannelMedia(plugin(media()), 'messenger', capabilities)?.album
-      ).toBeUndefined()
-    })
-
-    it.each([
-      ['an album that is not an object', 'x'],
-      ['an album with no kinds', { kinds: [], maxFiles: 10 }],
-      ['an album of a kind the channel does not declare', { kinds: ['video'], maxFiles: 10 }],
-      ['an album of a kind that does not exist', { kinds: ['sticker'], maxFiles: 10 }],
-      ['an album that repeats a kind', { kinds: ['image', 'image'], maxFiles: 10 }],
-      ['an album of one file', { kinds: ['image'], maxFiles: 1 }],
-      ['an album above the limit of files', { kinds: ['image'], maxFiles: 31 }],
-      ['an album larger than a message may hold', { kinds: ['image'], maxFiles: 11 }],
-      ['an album with a fractional size', { kinds: ['image'], maxFiles: 2.5 }],
-      ['an album with kinds that are not a list', { kinds: 'image', maxFiles: 10 }]
-    ])('refuses %s', (_name, album) => {
-      expect(refuses(media({ maxFilesPerMessage: 10, album }))).toContain('invalid media')
-    })
   })
 
   it('refuses a block for a channel that takes no file: an empty one would read as "takes files"', () => {

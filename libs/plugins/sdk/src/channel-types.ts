@@ -185,36 +185,6 @@ export interface SendMediaParams {
   idempotencyKey: string
 }
 
-// One file of an album: what `sendMedia` gets for a file, without the caption and the reply (they belong to
-// the album)
-export interface AlbumFile {
-  contentType: string
-  fileSize: number
-  openFile: () => Promise<NodeJS.ReadableStream>
-  filename: string | null
-}
-
-// Several files in ONE message, in the order the agent gave them. Only the files the channel declared as an
-// album (`media.album`), at most `media.album.maxFiles` of them. The core has refused every file the channel
-// does not take, so a plugin that refuses one anyway fails the whole album.
-export interface SendAlbumParams {
-  channelIdentity: string
-  files: readonly AlbumFile[]
-  replyToExternalId?: string
-  // The text under the album goes after it, as `sendMedia` does for a file; none when empty
-  caption?: string
-  // One key for the album (the message and the place of its first file): a provider that dedupes on it never
-  // sends the album twice
-  idempotencyKey: string
-}
-
-// What the provider answered for an album. `externalId` is the id of the message; `fileExternalIds`, when the
-// provider gives one id per file, lists them in the order of `files` (the same length). The core keeps
-// `externalId` on every file that has no id of its own.
-export interface ChannelAlbumResult extends ChannelMessageResult {
-  fileExternalIds?: readonly string[]
-}
-
 export interface MessageTemplate {
   name: string
   language: string

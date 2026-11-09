@@ -5,7 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory, ChannelHealthService } from '@platform/channels/connections'
-import { graphFailure, MetaGraphClient } from '@platform/channels/meta'
+import { MetaGraphClient } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
@@ -43,7 +43,6 @@ import {
   type ChannelContext,
   ChannelEventTypes,
   PluginError,
-  type SendAlbumParams,
   type SendMediaParams,
   type SendMessageParams,
   type SendTemplateParams
@@ -56,7 +55,6 @@ import { MessageStatusWriter } from '../../apps/worker/src/outbound/message-stat
 import { OutboundSender } from '../../apps/worker/src/outbound/outbound-sender.service'
 import { ReactionStatusWriter } from '../../apps/worker/src/outbound/reaction-status.writer'
 import { OutboundRequeueScheduler } from '../../apps/worker/src/schedulers/outbound-requeue.scheduler'
-import { messageOfProviderId } from '../../libs/core/messaging/src/messages/provider-message-match'
 import {
   buildChannelPlugin,
   createChannelConnection,
@@ -81,8 +79,6 @@ const MULTI_MEDIA_CHANNEL_ID = 'multi_media_channel'
 // A third-party plugin that says its text holds 20 characters: no file of the platform names it
 const TINY_TEXT_CHANNEL_ID = 'tiny_text_channel'
 const TINY_TEXT_LIMIT = 20
-// Takes up to three images in ONE message (a native album) and sends a document apart
-const ALBUM_CHANNEL_ID = 'album_channel'
 const CONFLICT = 409
 const BAD_REQUEST = 400
 const NOT_FOUND = 404
@@ -107,10 +103,6 @@ describe('Replies on their way to a channel', () => {
   let sentTemplates: SendTemplateParams[] = []
   let sentMedia: SendMediaParams[] = []
   let mediaResult: { metadata?: Record<string, unknown> } = {}
-  // The albums the channel was asked to send, and what it answers: an error to throw, or the ids of the files
-  let sentAlbums: SendAlbumParams[] = []
-  let albumFailure: Error | null = null
-  let albumFileIds: string[] | undefined
   // Makes the send of some files fail: given the params, an error to throw or null to accept
   let mediaFailure: (params: SendMediaParams) => Error | null = () => null
   // Runs inside the send of a file, before the provider's answer: where a receipt can overtake the worker
@@ -201,37 +193,6 @@ describe('Replies on their way to a channel', () => {
         sendMedia: sendMediaOf
       })
     )
-    registry.register(
-      buildChannelPlugin({
-        id: ALBUM_CHANNEL_ID,
-        capabilities: [
-          ChannelCapability.TEXT,
-          ChannelCapability.IMAGE,
-          ChannelCapability.DOCUMENT,
-          ChannelCapability.MESSAGING_WINDOW
-        ],
-        media: {
-          maxFilesPerMessage: 5,
-          kinds: {
-            image: { types: ['image/png'], maxBytes: 100 },
-            document: { types: null, maxBytes: 100 }
-          },
-          album: { kinds: ['image'], maxFiles: 3 }
-        },
-        sendMedia: sendMediaOf,
-        sendMessage: (c, p) => sendMessage(c, p),
-        sendAlbum: (_ctx, params) => {
-          sentAlbums.push(params)
-          if (albumFailure !== null) return Promise.reject(albumFailure)
-          return Promise.resolve({
-            externalId: `album-${params.idempotencyKey}`,
-            status: DeliveryStatus.SENT,
-            sentAt: new Date().toISOString(),
-            ...(albumFileIds === undefined ? {} : { fileExternalIds: albumFileIds })
-          })
-        }
-      })
-    )
     // Instagram is an official plugin of the app now: its send is the only thing the suite replaces
     jest
       .spyOn(registry.get(ChannelIds.INSTAGRAM), 'sendMessage')
@@ -293,9 +254,6 @@ describe('Replies on their way to a channel', () => {
     sentTemplates = []
     sentMedia = []
     mediaResult = {}
-    sentAlbums = []
-    albumFailure = null
-    albumFileIds = undefined
     mediaFailure = () => null
     duringMediaSend = () => Promise.resolve()
     heard = []
@@ -1394,6 +1352,37 @@ describe('Replies on their way to a channel', () => {
       expect(sent[0]?.replyToExternalId).toBeUndefined()
     })
 
+    it('hands the plugin the id of the FIRST file when it is the one that is replied to', async () => {
+      const target = await queuedReply({ deliveryStatus: DeliveryStatus.SENT })
+      await owner.message.update({
+        where: { id: target.id },
+        data: { channelMessageId: 'ext-first' }
+      })
+      const first = await owner.media.create({
+        data: {
+          storeId: target.storeId,
+          purpose: 'message',
+          messageId: target.id,
+          key: `${prefix}-key-${randomUUID()}`,
+          filename: 'f1.jpg',
+          contentType: 'image/jpeg',
+          fileSize: 10,
+          position: 0,
+          channelMessageId: 'ext-first'
+        },
+        select: { id: true }
+      })
+      const quoting = await queuedReply()
+      await owner.message.update({
+        where: { id: quoting.id },
+        data: { replyToMessageId: target.id, replyToMediaId: first.id }
+      })
+
+      await sender.send(job(quoting), false)
+
+      expect(sent[0]?.replyToExternalId).toBe('ext-first')
+    })
+
     it('marks a reply sent without the provider id when the plugin repeats an id of the conversation', async () => {
       const first = await queuedReply()
       const second = await owner.message.create({
@@ -1879,9 +1868,7 @@ describe('Replies on their way to a channel', () => {
         select: { captionState: true, captionChannelMessageId: true }
       })
 
-    describe('a native album', () => {
-      const album = (captions: (string | null)[], contentType = 'image/png', apartText?: string) =>
-        albumOf(ALBUM_CHANNEL_ID, MessageType.IMAGE, captions, contentType, apartText)
+    describe('through the real plugins of Instagram and Messenger (only Meta itself is a double)', () => {
       const rowsWithIds = (messageId: string) =>
         owner.media.findMany({
           where: { messageId },
@@ -1899,658 +1886,78 @@ describe('Replies on their way to a channel', () => {
           }
         })
 
-      it('sends the images of the message as ONE album, in order, and writes the shared id on every file', async () => {
-        const reply = await album([null, null, null])
-
-        await sender.send(job(reply), false)
-
-        expect(sentMedia).toHaveLength(0)
-        expect(sentAlbums).toHaveLength(1)
-        expect(sentAlbums[0]?.files).toHaveLength(3)
-        expect(sentAlbums[0]?.idempotencyKey).toBe(`${reply.id}-album-0`)
-        const rows = await rowsWithIds(reply.id)
-        expect(rows.map(row => row.deliveryStatus)).toEqual(['sent', 'sent', 'sent'])
-        expect(rows.map(row => row.channelMessageId)).toEqual(
-          Array(3).fill(`album-${reply.id}-album-0`)
+      // A sender whose connections carry a token the plugins can read (the suite's cipher opens to nothing)
+      const realSender = async () =>
+        new OutboundSender(
+          prisma,
+          app.get(PluginRegistry, { strict: false }),
+          new ChannelContextFactory({
+            open: () => ({ accessToken: 'EAAB-test-token' })
+          } as unknown as CredentialCipher),
+          writer,
+          new ConversationsService(prisma, app.get(DomainEvents, { strict: false })),
+          app.get(MessagingWindowService, { strict: false }),
+          app.get(DomainEvents, { strict: false }),
+          app.get(StorageService, { strict: false }),
+          await app.resolve(PinoLogger)
         )
-        const message = await messageFlags(reply.id)
-        expect(message.deliveryStatus).toBe(DeliveryStatus.SENT)
-        expect(message.channelMessageId).toBe(`album-${reply.id}-album-0`)
-      })
+      const connectionStatusOf = async (conversationId: string) =>
+        (
+          await owner.channelConnection.findFirstOrThrow({
+            where: { conversations: { some: { id: conversationId } } },
+            select: { status: true }
+          })
+        ).status
 
-      it('keeps the id of each file when the provider gives one for each', async () => {
-        const reply = await album([null, null])
-        albumFileIds = ['id-a', 'id-b']
-
-        await sender.send(job(reply), false)
-
-        expect((await rowsWithIds(reply.id)).map(row => row.channelMessageId)).toEqual([
-          'id-a',
-          'id-b'
-        ])
-        expect((await messageFlags(reply.id)).channelMessageId).toBe('id-a')
-      })
-
-      it('ignores a list of ids that does not match the files, and keeps the shared one', async () => {
-        const reply = await album([null, null])
-        albumFileIds = ['only-one']
-
-        await sender.send(job(reply), false)
-
-        expect((await rowsWithIds(reply.id)).map(row => row.channelMessageId)).toEqual(
-          Array(2).fill(`album-${reply.id}-album-0`)
-        )
-      })
-
-      it('is found by a reaction or a quote through the shared id, as one message', async () => {
-        const reply = await album([null, null, null])
-        await sender.send(job(reply), false)
-        const shared = `album-${reply.id}-album-0`
-
-        const found = await owner.message.findMany({
-          where: { storeId: reply.storeId, ...messageOfProviderId(reply.storeId, shared) },
-          select: { id: true }
-        })
-
-        expect(found.map(message => message.id)).toEqual([reply.id])
-      })
-
-      it('moves every file of the album by one receipt, and the message with them', async () => {
-        const reply = await album([null, null, null])
-        await sender.send(job(reply), false)
-
-        await receipts.handleReceipt(
-          ALBUM_CHANNEL_ID,
-          {
-            type: 'message_delivered',
-            connectionId: reply.connectionId,
-            channelIdentity: '50370000000',
-            status: { externalId: `album-${reply.id}-album-0` },
-            timestamp: new Date().toISOString()
-          },
-          false
-        )
-
-        expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
-          'delivered',
-          'delivered',
-          'delivered'
-        ])
-        expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.DELIVERED)
-      })
-
-      it('sends the groups of at most the size the channel declares, and a lone image apart', async () => {
-        const reply = await album([null, null, null, null])
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums.map(item => item.files.length)).toEqual([3])
-        expect(sentMedia.map(item => item.idempotencyKey)).toEqual([`${reply.id}-3`])
-        expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-      })
-
-      it('sends a document apart and keeps the order: the images first as an album, then the document', async () => {
-        const reply = await album([null, null, null])
-        await owner.media.updateMany({
-          where: { messageId: reply.id, position: 2 },
-          data: { contentType: 'application/pdf' }
-        })
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums.map(item => item.files.length)).toEqual([2])
-        expect(sentMedia.map(item => item.contentType)).toEqual(['application/pdf'])
-      })
-
-      it('takes an image the channel would refuse out of the album with its own error, and sends the rest', async () => {
-        const reply = await album([null, null, null])
-        await owner.media.updateMany({
-          where: { messageId: reply.id, position: 1 },
-          data: { fileSize: 5000 }
-        })
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums.map(item => item.files.length)).toEqual([2])
-        expect(sentMedia).toHaveLength(0)
-        const rows = await rowsWithIds(reply.id)
-        expect(rows.map(row => [row.deliveryStatus, row.sendErrorCode])).toEqual([
-          ['sent', null],
-          ['failed', ErrorCodes.CHANNEL_FILE_TOO_LARGE],
-          ['sent', null]
-        ])
-        expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
-      })
-
-      it('sends one image that is left alone, as a file (the resend of a single file)', async () => {
-        const reply = await album([null, null, null])
-        await owner.media.updateMany({
-          where: { messageId: reply.id, position: { in: [0, 2] } },
-          data: { deliveryStatus: 'sent', channelMessageId: 'earlier' }
-        })
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums).toHaveLength(0)
-        expect(sentMedia.map(item => item.idempotencyKey)).toEqual([`${reply.id}-1`])
-      })
-
-      it('sends the images that remain after a partial send as an album, without the ones already sent', async () => {
-        const reply = await album([null, null, null])
-        await owner.media.updateMany({
-          where: { messageId: reply.id, position: 0 },
-          data: { deliveryStatus: 'sent', channelMessageId: 'earlier' }
-        })
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums.map(item => item.files.length)).toEqual([2])
-        expect(sentAlbums[0]?.idempotencyKey).toBe(`${reply.id}-album-1`)
-        expect((await rowsWithIds(reply.id)).map(row => row.channelMessageId)).toEqual([
-          'earlier',
-          `album-${reply.id}-album-1`,
-          `album-${reply.id}-album-1`
-        ])
-      })
-
-      it('keeps the key of the first attempt apart from the one of a send the agent asked for again', async () => {
-        const reply = await album([null, null])
-        const resentAt = new Date(Date.now() - 1000)
-        await owner.message.update({ where: { id: reply.id }, data: { resentAt } })
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums[0]?.idempotencyKey).toBe(`${reply.id}-album-0-${resentAt.getTime()}`)
-      })
-
-      it('puts the text of the message under the album as the caption when it is the text of the first file', async () => {
-        const reply = await album(['mira', null])
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums[0]?.caption).toBe('mira')
-      })
-
-      it('sends the text of the message after the album, and only when the album went out whole', async () => {
-        const reply = await album([null, null], 'image/png', 'todo junto')
-
-        await sender.send(job(reply), false)
-
-        expect(sentAlbums[0]?.caption).toBeUndefined()
-        expect(sent.map(item => item.content)).toEqual(['todo junto'])
-        expect((await captionOf(reply.id)).captionState).toBe(CaptionState.SENT)
-      })
-
-      it('sends no text of the message when the album did not go out', async () => {
-        const reply = await album([null, null], 'image/png', 'todo junto')
-        albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-          retryable: false,
-          refused: true
-        })
-        mediaFailure = () =>
-          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
-
-        await sender.send(job(reply), false)
-
-        expect(sent).toHaveLength(0)
-      })
-
-      it('holds back the text of the message when the album may have gone', async () => {
-        const reply = await album([null, null], 'image/png', 'todo junto')
-        albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-          retryable: false,
-          outcomeUnknown: true
-        })
-
-        await sender.send(job(reply), true)
-
-        // The text would reach the customer before the images, or without them
-        expect(sent).toHaveLength(0)
-        expect((await captionOf(reply.id)).captionState).toBeNull()
-      })
-
-      it('records the state of the caption of an album on the message', async () => {
-        const reply = await album(['mira', null])
-        const registry = app.get(PluginRegistry, { strict: false })
-        const spy = jest.spyOn(registry.get(ALBUM_CHANNEL_ID), 'sendAlbum').mockResolvedValue({
-          externalId: 'album-1',
-          status: 'sent',
-          sentAt: new Date().toISOString(),
-          metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: 'text-1' }
-        } as never)
+      it('Instagram sends each image as a message of its own, and stays connected', async () => {
+        const reply = await albumOf(ChannelIds.INSTAGRAM, MessageType.IMAGE, [null, null, null])
+        const paths: string[] = []
+        const upload = jest
+          .spyOn(MetaGraphClient.prototype, 'uploadMedia')
+          .mockImplementation((request: { path: readonly string[] }) => {
+            paths.push(request.path[1] ?? '')
+            return Promise.resolve({ message_id: `mid.${paths.length}` } as never)
+          })
         try {
-          await sender.send(job(reply), false)
+          await (await realSender()).send(job(reply), false)
         } finally {
-          spy.mockRestore()
+          upload.mockRestore()
         }
 
-        expect(await captionOf(reply.id)).toEqual({
-          captionState: CaptionState.SENT,
-          captionChannelMessageId: 'text-1'
-        })
+        // No try at an album: three messages, in order
+        expect(paths).toEqual(['messages', 'messages', 'messages'])
+        expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+        expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
+          'sent',
+          'sent',
+          'sent'
+        ])
+        expect(await connectionStatusOf(reply.conversationId)).toBe(ChannelConnectionStatus.ACTIVE)
       })
 
-      describe('through the real plugins of Instagram and Messenger (only Meta itself is a double)', () => {
-        // A sender whose connections carry a token the plugins can read (the suite's cipher opens to nothing)
-        const realSender = async () =>
-          new OutboundSender(
-            prisma,
-            app.get(PluginRegistry, { strict: false }),
-            new ChannelContextFactory({
-              open: () => ({ accessToken: 'EAAB-test-token' })
-            } as unknown as CredentialCipher),
-            writer,
-            new ConversationsService(prisma, app.get(DomainEvents, { strict: false })),
-            app.get(MessagingWindowService, { strict: false }),
-            app.get(DomainEvents, { strict: false }),
-            app.get(StorageService, { strict: false }),
-            await app.resolve(PinoLogger)
-          )
-        const connectionStatusOf = async (conversationId: string) =>
-          (
-            await owner.channelConnection.findFirstOrThrow({
-              where: { conversations: { some: { id: conversationId } } },
-              select: { status: true }
-            })
-          ).status
-
-        it('Instagram sends each image as a message of its own, never stores one on the attachments edge, and stays connected', async () => {
-          const reply = await albumOf(ChannelIds.INSTAGRAM, MessageType.IMAGE, [null, null, null])
-          const paths: string[] = []
-          const upload = jest
-            .spyOn(MetaGraphClient.prototype, 'uploadMedia')
-            .mockImplementation((request: { path: readonly string[] }) => {
-              paths.push(request.path[1] ?? '')
-              return Promise.resolve({ message_id: `mid.${paths.length}` } as never)
-            })
-          try {
-            await (await realSender()).send(job(reply), false)
-          } finally {
-            upload.mockRestore()
-          }
-
-          // No try at an album: three messages, in order
-          expect(paths).toEqual(['messages', 'messages', 'messages'])
-          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-          expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
-            'sent',
-            'sent',
-            'sent'
-          ])
-          expect(await connectionStatusOf(reply.conversationId)).toBe(
-            ChannelConnectionStatus.ACTIVE
-          )
-        })
-
-        it("Messenger, with Meta's answer 100 ('Invalid parameter') to the first image: the three images go one by one and the connection stays connected", async () => {
-          const reply = await albumOf(ChannelIds.MESSENGER, MessageType.IMAGE, [null, null, null])
-          const paths: string[] = []
-          const upload = jest
-            .spyOn(MetaGraphClient.prototype, 'uploadMedia')
-            .mockImplementation((request: { path: readonly string[] }) => {
-              paths.push(request.path[1] ?? '')
-              return request.path.includes('message_attachments')
-                ? Promise.reject(
-                    graphFailure(400, {
-                      error: { message: 'x', type: 'OAuthException', code: 100, fbtrace_id: 'y' }
-                    })
-                  )
-                : Promise.resolve({ message_id: `mid.${paths.length}` } as never)
-            })
-          try {
-            await (await realSender()).send(job(reply), false)
-          } finally {
-            upload.mockRestore()
-          }
-
-          expect(paths).toEqual(['message_attachments', 'messages', 'messages', 'messages'])
-          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-          expect(await connectionStatusOf(reply.conversationId)).toBe(
-            ChannelConnectionStatus.ACTIVE
-          )
-        })
-
-        it('Messenger keeps the native album, with its own form and no platform', async () => {
-          const reply = await albumOf(ChannelIds.MESSENGER, MessageType.IMAGE, [null, null, null])
-          const forms: Record<string, string>[] = []
-          const upload = jest
-            .spyOn(MetaGraphClient.prototype, 'uploadMedia')
-            .mockImplementation((request: { fields: Record<string, string> }) => {
-              forms.push(request.fields)
-              return Promise.resolve({ attachment_id: `att${forms.length}` } as never)
-            })
-          const post = jest
-            .spyOn(MetaGraphClient.prototype, 'post')
-            .mockResolvedValue({ message_id: 'mid.album' })
-          const postCalls: unknown[][] = []
-          try {
-            await (await realSender()).send(job(reply), false)
-            postCalls.push(...post.mock.calls)
-          } finally {
-            upload.mockRestore()
-            post.mockRestore()
-          }
-
-          expect(forms).toHaveLength(3)
-          for (const form of forms) {
-            expect(form['platform']).toBeUndefined()
-            expect(JSON.parse(form['message'] ?? '{}')).toEqual({
-              attachment: { type: 'image', payload: { is_reusable: true } }
-            })
-          }
-          expect(postCalls).toHaveLength(1)
-          expect(
-            (postCalls[0]?.[0] as { body: { message: { attachments: unknown[] } } }).body.message
-              .attachments
-          ).toHaveLength(3)
-          expect((await messageFlags(reply.id)).channelMessageId).toBe('mid.album')
-        })
-      })
-
-      describe('when the album fails', () => {
-        it('takes a timeout as an unknown outcome: every file fails as one that may have gone, and nothing is sent one by one', async () => {
-          const reply = await album([null, null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-            retryable: false,
-            outcomeUnknown: true
+      it('Messenger sends each image as a message of its own too, and stays connected', async () => {
+        const reply = await albumOf(ChannelIds.MESSENGER, MessageType.IMAGE, [null, null, null])
+        const paths: string[] = []
+        const upload = jest
+          .spyOn(MetaGraphClient.prototype, 'uploadMedia')
+          .mockImplementation((request: { path: readonly string[] }) => {
+            paths.push(request.path[1] ?? '')
+            return Promise.resolve({ message_id: `mid.${paths.length}` } as never)
           })
+        try {
+          await (await realSender()).send(job(reply), false)
+        } finally {
+          upload.mockRestore()
+        }
 
-          await sender.send(job(reply), true)
-
-          // Falling back would send the images again to a customer who may have them
-          expect(sentMedia).toHaveLength(0)
-          expect(sentAlbums).toHaveLength(1)
-          const rows = await rowsWithIds(reply.id)
-          expect(rows.map(row => row.deliveryStatus)).toEqual(['failed', 'failed', 'failed'])
-          const message = await messageFlags(reply.id)
-          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
-          // Not definitive: the agent cannot throw it away, it may have reached the customer
-          expect(message.failureDefinitive).toBe(false)
-        })
-
-        it('does not fall back either on an error that says nothing about the outcome', async () => {
-          const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
-
-          await sender.send(job(reply), true)
-
-          expect(sentMedia).toHaveLength(0)
-          expect((await messageFlags(reply.id)).failureDefinitive).toBe(false)
-        })
-
-        it('falls back to one message per image when the provider refused the album in so many words', async () => {
-          const reply = await album([null, null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-            retryable: false,
-            refused: true
-          })
-
-          await sender.send(job(reply), false)
-
-          expect(sentAlbums).toHaveLength(1)
-          expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
-            `${reply.id}-0`,
-            `${reply.id}-1`,
-            `${reply.id}-2`
-          ])
-          expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
-            'sent',
-            'sent',
-            'sent'
-          ])
-          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-        })
-
-        it("falls back to one message per image on the shape of the owner's real log (code 100, step 'upload 1/3')", async () => {
-          const reply = await album([null, null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-            retryable: false,
-            refused: true,
-            providerCode: 100,
-            step: 'upload 1/3'
-          })
-
-          await sender.send(job(reply), true)
-
-          expect(sentAlbums).toHaveLength(1)
-          expect(sentMedia).toHaveLength(3)
-          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-        })
-
-        it('does not send again, one by one, the image the album left out when the provider refuses the album', async () => {
-          const reply = await album([null, null, null])
-          await owner.media.updateMany({
-            where: { messageId: reply.id, position: 0 },
-            data: { fileSize: 5000 }
-          })
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-            retryable: false,
-            refused: true
-          })
-
-          await sender.send(job(reply), false)
-
-          expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
-            `${reply.id}-1`,
-            `${reply.id}-2`
-          ])
-          expect(
-            (await rowsWithIds(reply.id)).map(row => [row.deliveryStatus, row.sendErrorCode])
-          ).toEqual([
-            ['failed', ErrorCodes.CHANNEL_FILE_TOO_LARGE],
-            ['sent', null],
-            ['sent', null]
-          ])
-        })
-
-        it.each([[false], [true]])(
-          'sends the images one by one, and leaves the connection alone, when Meta says the permission for the attachment is missing (code 200, subcode 2534096; last attempt: %s)',
-          async isLast => {
-            const reply = await album([null, null, null])
-            albumFailure = new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
-              retryable: false,
-              refused: true,
-              providerCode: 200,
-              providerSubcode: 2534096,
-              step: 'upload 1/3'
-            })
-
-            await sender.send(job(reply), isLast)
-
-            expect(sentAlbums).toHaveLength(1)
-            expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
-              `${reply.id}-0`,
-              `${reply.id}-1`,
-              `${reply.id}-2`
-            ])
-            expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-            // Nothing about the connection changes for a permission of one feature
-            const connection = await owner.channelConnection.findFirstOrThrow({
-              where: { conversations: { some: { id: reply.conversationId } } },
-              select: { status: true }
-            })
-            expect(connection.status).toBe(ChannelConnectionStatus.ACTIVE)
-          }
-        )
-
-        it('shows the permission as its own failure, not as credentials, when the images cannot go singly either', async () => {
-          const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
-            retryable: false,
-            refused: true
-          })
-          mediaFailure = () =>
-            new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
-              retryable: false,
-              refused: true
-            })
-
-          await sender.send(job(reply), false)
-
-          const message = await messageFlags(reply.id)
-          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
-          expect(message.deliveryError).toBe(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED)
-        })
-
-        it('does not fall back for a refusal that is not about the album (a token that does not work)', async () => {
-          const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
-            retryable: false,
-            refused: true
-          })
-
-          await sender.send(job(reply), false)
-
-          // One refused call, not one more for each image against the same token
-          expect(sentMedia).toHaveLength(0)
-          const message = await messageFlags(reply.id)
-          expect(message.deliveryError).toBe(ErrorCodes.CHANNEL_CREDENTIALS_INVALID)
-          expect(message.failureDefinitive).toBe(true)
-        })
-
-        it.each([
-          ['a timeout of the worker', new Error('the call to the provider timed out')],
-          [
-            'a plugin that says retry but also that the outcome is unknown',
-            new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-              retryable: true,
-              outcomeUnknown: true
-            })
-          ]
-        ])(
-          'does not send the whole album again after %s, even with attempts left',
-          async (_name, failure) => {
-            const reply = await album([null, null, null])
-            albumFailure = failure
-
-            // Resolves: the job is not retried, because the album may have reached the customer
-            await sender.send(job(reply), false)
-
-            expect(sentAlbums).toHaveLength(1)
-            expect(sentMedia).toHaveLength(0)
-            expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
-              'failed',
-              'failed',
-              'failed'
-            ])
-            const message = await messageFlags(reply.id)
-            expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
-            // Left as one that may have gone: the agent can send it again, not throw it away
-            expect(message.failureDefinitive).toBe(false)
-          }
-        )
-
-        it('tries the album again, and never one by one, after a refusal that may be repeated', async () => {
-          const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-            retryable: true,
-            refused: true
-          })
-
-          await expect(sender.send(job(reply), false)).rejects.toBeInstanceOf(Error)
-
-          expect(sentMedia).toHaveLength(0)
-          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
-          expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
-            'queued',
-            'queued'
-          ])
-        })
-
-        it.each([
-          ['a refusal of the upload that may be repeated', { retryable: true, refused: true }],
-          ['a refusal of the upload that cannot', { retryable: false, refused: true }]
-        ])(
-          'sends the images one by one on the last attempt after %s, since none was delivered',
-          async (_name, flags) => {
-            const reply = await album([null, null, null])
-            albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, flags)
-
-            await sender.send(job(reply), true)
-
-            expect(sentAlbums).toHaveLength(1)
-            expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
-              `${reply.id}-0`,
-              `${reply.id}-1`,
-              `${reply.id}-2`
-            ])
-            expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
-          }
-        )
-
-        it('does not send one by one on the last attempt when the refusal is a throttle or the token', async () => {
-          const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
-            retryable: true,
-            refused: true
-          })
-
-          await sender.send(job(reply), true)
-
-          expect(sentMedia).toHaveLength(0)
-          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
-        })
-
-        it('fails the album with the code of the refusal on the last attempt and leaves it to be thrown away', async () => {
-          const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
-            retryable: true,
-            refused: true
-          })
-
-          await sender.send(job(reply), true)
-
-          expect(sentMedia).toHaveLength(0)
-          const message = await messageFlags(reply.id)
-          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
-          expect(message.failureDefinitive).toBe(true)
-        })
-
-        it('treats an answer that makes no sense as an unknown outcome', async () => {
-          const reply = await album([null, null])
-          const registry = app.get(PluginRegistry, { strict: false })
-          const spy = jest
-            .spyOn(registry.get(ALBUM_CHANNEL_ID), 'sendAlbum')
-            .mockResolvedValue({ externalId: '', status: 'sent' } as never)
-
-          try {
-            await sender.send(job(reply), false)
-          } finally {
-            spy.mockRestore()
-          }
-
-          expect(sentMedia).toHaveLength(0)
-          expect((await messageFlags(reply.id)).failureDefinitive).toBe(false)
-          expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
-            'failed',
-            'failed'
-          ])
-        })
-
-        it('fails the album with the code of the window when it closed before the album, and sends nothing', async () => {
-          const reply = await album([null, null, null, null, null])
-          // The first three went on an earlier attempt: the album that follows starts past the first file
-          await owner.media.updateMany({
-            where: { messageId: reply.id, position: { in: [0, 1, 2] } },
-            data: { deliveryStatus: 'sent', channelMessageId: 'earlier' }
-          })
-          await owner.customerIdentity.updateMany({
-            where: { conversations: { some: { id: reply.conversationId } } },
-            data: { lastInboundAt: new Date(Date.now() - 3 * DAY_MS) }
-          })
-
-          await sender.send(job(reply), false)
-
-          expect(sentAlbums).toHaveLength(0)
-          expect(sentMedia).toHaveLength(0)
-          expect((await rowsWithIds(reply.id)).map(row => row.sendErrorCode)).toEqual([
-            null,
-            null,
-            null,
-            ErrorCodes.CHANNEL_WINDOW_EXPIRED,
-            ErrorCodes.CHANNEL_WINDOW_EXPIRED
-          ])
-        })
+        expect(paths).toEqual(['messages', 'messages', 'messages'])
+        expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+        expect((await rowsWithIds(reply.id)).map(row => row.channelMessageId)).toEqual([
+          'mid.1',
+          'mid.2',
+          'mid.3'
+        ])
+        expect(await connectionStatusOf(reply.conversationId)).toBe(ChannelConnectionStatus.ACTIVE)
       })
     })
 
