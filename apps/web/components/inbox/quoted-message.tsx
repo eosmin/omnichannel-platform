@@ -31,7 +31,8 @@ export function QuotedMessage({
   quote,
   replyTo,
   authorName,
-  onJump
+  onJump,
+  file
 }: {
   // null when the original lies outside the conversation or is a note the reader may not see
   quote: Quote | null
@@ -39,6 +40,8 @@ export function QuotedMessage({
   authorName: string | null
   // undefined when the original is not in the loaded part of the thread
   onJump: ((messageId: string) => void) | undefined
+  // Which file of an album it answers ("Image 2 of 4"); null when it answers the message
+  file: { number: number; total: number } | null
 }): ReactElement {
   const t = useTranslations('inbox.thread.quote')
   const body =
@@ -62,6 +65,9 @@ export function QuotedMessage({
         <span className="font-medium">
           {t(`label.${quoteSideOf(quote.authorType)}`, { author: authorName })}
         </span>
+      )}
+      {file === null || quote === null || quote.deleted ? null : (
+        <span className="text-muted-foreground">{t('file', file)}</span>
       )}
       {body}
     </>

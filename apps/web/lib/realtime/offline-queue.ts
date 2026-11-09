@@ -42,6 +42,8 @@ const pendingMessageSchema = z.object({
   mentions: z.array(z.string()).default([]),
   // The message this one answers; absent for a message that quotes none
   replyToMessageId: z.string().min(1).optional(),
+  // The file of an album that it answers (with `replyToMessageId`); absent for a quote of the whole message
+  replyToMediaId: z.string().min(1).optional(),
   createdAt: z.string(),
   lastError: z.string().nullable()
 })
@@ -168,7 +170,12 @@ export class OfflineQueue {
           ...(message.type === MessageType.INTERNAL_NOTE ? { mentions: message.mentions } : {}),
           ...(message.replyToMessageId === undefined
             ? {}
-            : { replyToMessageId: message.replyToMessageId })
+            : {
+                replyToMessageId: message.replyToMessageId,
+                ...(message.replyToMediaId === undefined
+                  ? {}
+                  : { replyToMediaId: message.replyToMediaId })
+              })
         })
         this.discard(message.id)
       } catch (error) {

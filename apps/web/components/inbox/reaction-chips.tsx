@@ -31,10 +31,13 @@ function groupByEmoji(reactions: readonly ReactionView[]): EmojiGroup[] {
 // channel has not taken yet says so, and one that it refused says why.
 export function ReactionChips({
   reactions,
-  authorLabel
+  authorLabel,
+  label
 }: {
   reactions: readonly ReactionView[]
   authorLabel: (type: string, id: string | null) => string
+  // What the list is called when it is the reactions of one file of an album ("Reactions to image 2 of 4")
+  label?: string
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   const codeText = useCodeText()
@@ -52,7 +55,7 @@ export function ReactionChips({
   }
 
   return (
-    <ul aria-label={t('reactions.group')} className="flex flex-wrap gap-1">
+    <ul aria-label={label ?? t('reactions.group')} className="flex flex-wrap gap-1">
       {groupByEmoji(reactions).map(group => {
         const isOpen = openEmoji === group.emoji
         // A warning only for a reaction the channel refused; one that waits has a clock, never a triangle

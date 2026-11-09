@@ -76,6 +76,28 @@ describe('OfflineQueue', () => {
     expect(send.mock.calls[1]?.[1]).not.toHaveProperty('replyToMessageId')
   })
 
+  it('sends the file of an album a reply quotes, only with the message it belongs to', async () => {
+    const { queue, send } = setup()
+    queue.enqueue(draft({ replyToMessageId: 'm-quoted', replyToMediaId: 'f-2' }))
+    queue.enqueue(draft({ replyToMessageId: 'm-quoted' }))
+
+    await queue.flush('u1')
+
+    expect(send.mock.calls[0]?.[1]).toMatchObject({
+      replyToMessageId: 'm-quoted',
+      replyToMediaId: 'f-2'
+    })
+    expect(send.mock.calls[1]?.[1]).not.toHaveProperty('replyToMediaId')
+  })
+
+  it('keeps the file a reply quotes in the storage', () => {
+    const { queue, storage } = setup()
+    queue.enqueue(draft({ replyToMessageId: 'm-quoted', replyToMediaId: 'f-2' }))
+
+    expect(storage.getItem(StorageKeys.PENDING_MESSAGES)).toContain('f-2')
+    expect(queue.all()[0]?.replyToMediaId).toBe('f-2')
+  })
+
   it('keeps the quote of a message that waits in the storage', () => {
     const { queue, storage } = setup()
     queue.enqueue(draft({ replyToMessageId: 'm-quoted' }))

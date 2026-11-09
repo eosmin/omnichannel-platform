@@ -125,6 +125,8 @@ export function addMessageTo(
     captionState?: CaptionState
     // The text of the message is a message of its own after the files, not the text under the first one
     textApart?: boolean
+    // The id the provider gave the message (the first file of an album is the message)
+    channelMessageId?: string
     // For a reply that failed: true when it is known not to have gone out, false or null when it may have
     failureDefinitive?: boolean | null
     // The channel's own data: the place of a location, or the mark of a sticker
@@ -144,6 +146,12 @@ export function addMessageTo(
     }
     if (input.captionState !== undefined) {
       await owner.message.update({ where: { id }, data: { captionState: input.captionState } })
+    }
+    if (input.channelMessageId !== undefined) {
+      await owner.message.update({
+        where: { id },
+        data: { channelMessageId: input.channelMessageId }
+      })
     }
     if (input.textApart !== undefined) {
       await owner.message.update({ where: { id }, data: { textApart: input.textApart } })
@@ -722,6 +730,8 @@ export function addMediaTo(
     sendErrorCode?: string
     // The text under this file
     caption?: string
+    // The id the provider gave it: a file with its own is a target of its own for a reaction or a quote
+    channelMessageId?: string
   }
 ): Promise<{ id: string }> {
   return withOwner(async owner => {
@@ -741,6 +751,9 @@ export function addMediaTo(
         ...(input.delivery === undefined ? {} : { deliveryStatus: input.delivery }),
         ...(input.sendErrorCode === undefined ? {} : { sendErrorCode: input.sendErrorCode }),
         ...(input.caption === undefined ? {} : { caption: input.caption }),
+        ...(input.channelMessageId === undefined
+          ? {}
+          : { channelMessageId: input.channelMessageId }),
         ...settledOf(storeId, id, input.processed)
       }
     })
@@ -892,5 +905,28 @@ export async function addOwnerOfNewStore(email: string, storeName: string): Prom
       roleId: roles[RoleNames.ADMIN].id
     })
     return store.id
+  })
+}
+
+// A reaction of the customer to a message, or to one file of an album (`mediaId`)
+export function addCustomerReactionTo(
+  messageId: string,
+  input: { emoji: string; mediaId?: string }
+): Promise<void> {
+  return withOwner(async owner => {
+    const message = await owner.message.findUniqueOrThrow({
+      where: { id: messageId },
+      select: { storeId: true, conversation: { select: { customerIdentityId: true } } }
+    })
+    await owner.messageReaction.create({
+      data: {
+        storeId: message.storeId,
+        messageId,
+        authorType: AuthorType.CUSTOMER,
+        customerIdentityId: message.conversation.customerIdentityId,
+        emoji: input.emoji,
+        ...(input.mediaId === undefined ? {} : { mediaId: input.mediaId })
+      }
+    })
   })
 }

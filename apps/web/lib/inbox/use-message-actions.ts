@@ -51,7 +51,12 @@ export interface MessageMutations {
 
 // What an agent does to one message. The events of the api make the thread stale as well; reading it
 // again here covers a socket that is down, and shows the pending state of the change at once.
-export function useMessageMutations(conversationId: string, messageId: string): MessageMutations {
+// `mediaId`: the reaction goes under that file of an album, not under the message
+export function useMessageMutations(
+  conversationId: string,
+  messageId: string,
+  mediaId?: string
+): MessageMutations {
   const { storeId } = useStore()
   const queryClient = useQueryClient()
   const refresh = useCallback(async (): Promise<void> => {
@@ -64,7 +69,8 @@ export function useMessageMutations(conversationId: string, messageId: string): 
   }, [queryClient, storeId, conversationId])
 
   const react = useMutation({
-    mutationFn: (emoji: string | null) => reactToMessage(apiClient, storeId, messageId, emoji),
+    mutationFn: (emoji: string | null) =>
+      reactToMessage(apiClient, storeId, messageId, emoji, mediaId),
     onSuccess: refresh
   })
   const resend = useMutation({

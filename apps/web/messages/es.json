@@ -1119,7 +1119,8 @@
           "TEMPLATE": "Plantilla",
           "INTERNAL_NOTE": "Nota interna",
           "unknown": "Mensaje"
-        }
+        },
+        "file": "Imagen {number} de {total}"
       },
       "storyReply": {
         "label": "Respondió a tu historia",
@@ -1135,7 +1136,8 @@
         "chip": "{emoji} {count}",
         "pending": "En espera del canal",
         "failed": "No entregada",
-        "hasProblem": "Algunas reacciones no se entregaron"
+        "hasProblem": "Algunas reacciones no se entregaron",
+        "ofFile": "Reacciones a la imagen {number} de {total}"
       },
       "origin": {
         "kind": {
@@ -1217,7 +1219,9 @@
         "discardDescription": "No llegó al cliente y sale de la conversación para todo el equipo. El texto se conserva 30 días.",
         "resendTitle": "¿Enviar de nuevo esta respuesta?",
         "resendDuplicateDescription": "No pudimos confirmar si el cliente la recibió. Si la envías de nuevo, puede recibirla dos veces.",
-        "resendAnyway": "Enviar de nuevo"
+        "resendAnyway": "Enviar de nuevo",
+        "replyFile": "Responder a la imagen {number} de {total}",
+        "reactFile": "Reaccionar a la imagen {number} de {total}"
       },
       "location": {
         "untitled": "Ubicación compartida",
@@ -1323,7 +1327,8 @@
         "announce": "{count, plural, one {# sugerencia} other {# sugerencias}}. Resaltada: {label}."
       },
       "replying": "Respondiendo a {author}",
-      "cancelReply": "Cancelar la respuesta citada"
+      "cancelReply": "Cancelar la respuesta citada",
+      "replyingFile": "Respondiendo a {author}, imagen {number} de {total}"
     },
     "snooze": {
       "title": "Posponer la conversación",

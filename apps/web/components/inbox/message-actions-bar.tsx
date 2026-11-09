@@ -76,22 +76,27 @@ export function MessageActionsBar({
   conversationId,
   actions,
   userId,
-  authorLabel
+  authorLabel,
+  file
 }: {
   message: MessageView
   conversationId: string
   actions: MessageActions
   userId: string | undefined
   authorLabel: (type: string, id: string | null) => string
+  // One file of an album: the bar over its thumbnail answers and reacts to THAT file (and nothing else: the rest
+  // of the actions are the message's), and its buttons say which one it is
+  file?: { id: string; number: number; total: number }
 }): ReactElement {
   const t = useTranslations('inbox.thread.actions')
   const errorText = useErrorText()
   const [dialog, setDialog] = useState<OpenDialog>(null)
-  const { react, resend } = useMessageMutations(conversationId, message.id)
+  const { react, resend } = useMessageMutations(conversationId, message.id, file?.id)
   const { start: startReply } = useReplyTarget()
   const dialogProps = {
     message,
     conversationId,
+    ...(file === undefined ? {} : { mediaId: file.id }),
     onOpenChange: (open: boolean): void => setDialog(open ? dialog : null)
   }
 
@@ -103,35 +108,47 @@ export function MessageActionsBar({
           reaction =>
             reaction.authorType === String(AuthorType.AGENT) &&
             reaction.authorId === userId &&
-            reaction.mediaId === null
+            reaction.mediaId === (file?.id ?? null)
         )?.emoji
 
   const tell = (promise: Promise<unknown>): void => {
     promise.catch((error: unknown) => toast.error(errorText(error)))
   }
   const hasMore =
-    actions.resend ||
-    actions.discard ||
-    actions.edit ||
-    actions.remove ||
-    actions.revisions ||
-    actions.viewDeleted
+    file === undefined &&
+    (actions.resend ||
+      actions.discard ||
+      actions.edit ||
+      actions.remove ||
+      actions.revisions ||
+      actions.viewDeleted)
 
   return (
-    <div className="flex shrink-0 items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100 pointer-coarse:opacity-100">
+    <div
+      className={cn(
+        'flex shrink-0 items-center opacity-0 transition-opacity max-md:opacity-100 pointer-coarse:opacity-100',
+        // The thumbnail is its own group: hovering the bubble does not light the bars of all its files
+        file === undefined
+          ? 'group-focus-within:opacity-100 group-hover:opacity-100'
+          : 'group-focus-within/file:opacity-100 group-hover/file:opacity-100'
+      )}
+    >
       {actions.reply ? (
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="size-7 pointer-coarse:size-10"
-          aria-label={t('reply')}
+          aria-label={file === undefined ? t('reply') : t('replyFile', file)}
           onClick={() =>
             startReply({
               messageId: message.id,
               type: message.type,
               content: message.content,
-              author: authorLabel(message.authorType, message.authorId)
+              author: authorLabel(message.authorType, message.authorId),
+              ...(file === undefined
+                ? {}
+                : { mediaId: file.id, file: { number: file.number, total: file.total } })
             })
           }
         >
@@ -146,7 +163,7 @@ export function MessageActionsBar({
               variant="ghost"
               size="icon"
               className="size-7 pointer-coarse:size-10"
-              aria-label={t('react')}
+              aria-label={file === undefined ? t('react') : t('reactFile', file)}
             >
               <SmilePlus aria-hidden className="size-4" />
             </Button>

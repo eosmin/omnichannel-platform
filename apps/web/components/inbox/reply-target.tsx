@@ -9,12 +9,17 @@ import {
   useState
 } from 'react'
 
+import { isSameReplyTarget } from '../../lib/inbox/reply-target-match'
+
 // The message the agent is answering: what the chip of the composer shows, and the id the reply carries
 export interface ReplyTarget {
   messageId: string
   type: string
   content: string | null
   author: string
+  // The file of an album the agent answers (with its number among them), when it is one file and not the message
+  mediaId?: string
+  file?: { number: number; total: number }
 }
 
 interface ReplyTargetValue {
@@ -23,7 +28,7 @@ interface ReplyTargetValue {
   cancel: () => void
   // Clears the reply only if it is still the one with this id (a send that took time must not wipe
   // the reply the agent chose in the meantime)
-  cancelIf: (messageId: string) => void
+  cancelIf: (messageId: string, mediaId?: string) => void
 }
 
 const ReplyTargetContext = createContext<ReplyTargetValue | null>(null)
@@ -38,8 +43,8 @@ export function ReplyTargetProvider({ children }: { children: ReactNode }): Reac
       // A new object each time: answering the message that is already chosen is still a request
       start: next => setTarget({ ...next }),
       cancel: () => setTarget(null),
-      cancelIf: messageId =>
-        setTarget(current => (current?.messageId === messageId ? null : current))
+      cancelIf: (messageId, mediaId) =>
+        setTarget(current => (isSameReplyTarget(current, messageId, mediaId) ? null : current))
     }),
     [target]
   )

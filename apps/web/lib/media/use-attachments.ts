@@ -52,7 +52,7 @@ export interface Attachments {
   clear: () => void
   // Sends the files that are ready, in the order they were chosen, with the text as the caption of the
   // first one, as one message. Resolves true when the api took it.
-  send: (caption: string, replyToMessageId?: string) => Promise<boolean>
+  send: (caption: string, replyToMessageId?: string, replyToMediaId?: string) => Promise<boolean>
 }
 
 // The ones the channel of the conversation declares (`capabilities`, and `media`: what it takes of each kind).
@@ -222,7 +222,11 @@ export function useAttachments(
   )
 
   const send = useCallback(
-    async (caption: string, replyToMessageId?: string): Promise<boolean> => {
+    async (
+      caption: string,
+      replyToMessageId?: string,
+      replyToMediaId?: string
+    ): Promise<boolean> => {
       const ready = list.current.filter(item => item.status === 'ready')
       const type = ready[0]?.type
       // A file still on its way is not left behind: sending waits until every file has settled
@@ -248,7 +252,13 @@ export function useAttachments(
         ready.map(item => item.caption)
       )
       // The key names this message: other files, another caption or another quote are another request
-      const ids = JSON.stringify([mediaIds, caption, captions, replyToMessageId ?? null])
+      const ids = JSON.stringify([
+        mediaIds,
+        caption,
+        captions,
+        replyToMessageId ?? null,
+        replyToMediaId ?? null
+      ])
       if (sendKey.current?.ids !== ids) sendKey.current = { ids, key: crypto.randomUUID() }
       const { key } = sendKey.current
       sending.current = true
@@ -261,7 +271,9 @@ export function useAttachments(
           mediaIds,
           ...(caption === '' ? {} : { content: caption }),
           ...(captions === null ? {} : { captions }),
-          ...(replyToMessageId === undefined ? {} : { replyToMessageId }),
+          ...(replyToMessageId === undefined
+            ? {}
+            : { replyToMessageId, ...(replyToMediaId === undefined ? {} : { replyToMediaId }) }),
           idempotencyKey: key
         })
         sendKey.current = null

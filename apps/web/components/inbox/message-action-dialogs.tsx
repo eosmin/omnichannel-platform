@@ -41,6 +41,8 @@ import { Textarea } from '../ui/textarea'
 export interface MessageDialogProps {
   message: MessageView
   conversationId: string
+  // The file of an album a reaction goes under
+  mediaId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -367,12 +369,13 @@ export function DeletedContentDialog({
 export function CustomReactionDialog({
   message,
   conversationId,
+  mediaId,
   open,
   onOpenChange
 }: MessageDialogProps): ReactElement {
   const t = useTranslations('inbox.thread.actions')
   const errorText = useErrorText()
-  const { react } = useMessageMutations(conversationId, message.id)
+  const { react } = useMessageMutations(conversationId, message.id, mediaId)
   const [value, setValue] = useState('')
   const emoji = value.trim()
   const isValid = isWholeEmoji(emoji, InboundLimits.EMOJI_MAX_LENGTH)
