@@ -334,7 +334,11 @@ jobs:
           GITLEAKS_VERSION: 8.28.0
           GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
         run: |
-          curl --fail --silent --show-error --location --output gitleaks.tar.gz \
+          # The release download answered 504 several times in a day and failed the whole scan. curl retries up to 5
+          # times, 5 seconds apart, on any error (`--retry-all-errors`: a 5xx and a dropped connection alike); the
+          # file is still checked against the pinned SHA256 below, so a retry never weakens what is run.
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
+            --output gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
           tar -xzf gitleaks.tar.gz gitleaks
