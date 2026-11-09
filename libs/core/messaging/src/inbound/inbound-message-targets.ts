@@ -24,7 +24,7 @@ export interface InboundTargetEvent {
   targetExternalId: string
   // A reaction is about the whole message, so an id of any of its files, or of the text sent apart under a
   // file, names it. An edit or a deletion is about ONE provider message: it keeps to the id of the message
-  // itself, or the deletion of one file would take the whole album with it.
+  // itself, or the deletion of one file would take the whole message with it.
   namesFilesToo?: boolean
   // The event takes a reaction back: it looks for the one that is there under the file named
   removal?: boolean
@@ -99,7 +99,7 @@ export class InboundMessageTargets {
         return false
       }
       // Only a file the provider can tell apart is a target of its own (see `isTargetOfItsOwn`): the first file is the
-      // message, and the files of an album sent as one message share one id. A message with one file (or none) is
+      // message, and files that share one id cannot be told apart. A message with one file (or none) is
       // reacted to as a whole.
       let mediaId: string | null = null
       if (event.namesFilesToo === true && target._count.media > 1) {

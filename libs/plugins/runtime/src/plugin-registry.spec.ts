@@ -484,29 +484,4 @@ describe('PluginRegistry, the files a channel takes', () => {
       maxBytes: 1024
     })
   })
-  describe('album', () => {
-    const album = { kinds: ['image'], maxFiles: 10 } as const
-    const sendAlbum = (): Promise<never> => Promise.reject(new Error('not used'))
-    const withAlbum = { ...media, maxFilesPerMessage: 10, album }
-
-    it('keeps the album of a channel that declares it and has sendAlbum', () => {
-      const registry = build()
-      registry.register(channel({ id: 'telegram', ...withImages, media: withAlbum, sendAlbum }))
-      expect(registry.mediaOf('telegram')?.album).toEqual(album)
-    })
-
-    it('refuses at boot an album with no sendAlbum, and a sendAlbum with no album', () => {
-      const registry = build()
-      expect(
-        codeOf(() =>
-          registry.register(channel({ id: 'telegram', ...withImages, media: withAlbum }))
-        )
-      ).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
-      expect(
-        codeOf(() => registry.register(channel({ id: 'signal', ...withImages, media, sendAlbum })))
-      ).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
-      expect(registry.has('telegram')).toBe(false)
-      expect(registry.has('signal')).toBe(false)
-    })
-  })
 })

@@ -98,8 +98,6 @@ export interface ChannelPlugin {
   // Outbound messaging — every call receives the connection context
   sendMessage(ctx: ChannelContext, params: SendMessageParams): Promise<ChannelMessageResult>
   sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult>
-  // Several files in ONE message (a native album). Required exactly when `media.album` is declared.
-  sendAlbum?(ctx: ChannelContext, params: SendAlbumParams): Promise<ChannelAlbumResult>
 
   // Optional, gated by declared capabilities
   sendTemplate?(ctx: ChannelContext, params: SendTemplateParams): Promise<ChannelMessageResult>
@@ -635,40 +633,18 @@ export class WhatsAppPlugin implements ChannelPlugin {
 webhook handshake (`META_WEBHOOK_VERIFY_TOKEN`) and the HMAC validation with
 `META_APP_SECRET`; all three Meta plugins share one Meta app.
 
-### 5.1.1 Native albums (`media.album` and `sendAlbum`)
+### 5.1.1 Several files in one message: one by one (native albums discarded)
 
-A channel whose provider takes several files in one message declares it in its `media` block:
-`album: { kinds, maxFiles }` (the kinds that may go together, and how many fit; at most 30) and implements
-`sendAlbum`. The registry checks both ways at boot: an `album` without the method, the method without an `album`,
-a kind the channel does not declare, or a size outside 2..30 refuses the plugin. The core hardcodes no provider
-limit: it reads the frozen copy taken at registration.
+A message of several files is sent as one provider message for each file, in the order the agent gave, through
+`sendMedia`; the text under the first file (or the text of the message, sent apart) follows the rules of §5.1. There is
+no `media.album` declaration and no `sendAlbum` method: a plugin that still carries them is ignored by the core.
 
-What the core does (`OutboundSender`): it takes the consecutive files of a message whose kind is in `album.kinds`,
-in the order of the message and at most `album.maxFiles` at a time, leaves out (with its own error code) any image
-the channel's rules refuse, and hands the rest to `sendAlbum`. A file of another kind, a file with a text of its
-own, or a lone remaining image goes through `sendMedia` as before, so the order of the message holds and the resend
-of one file is a normal file send. The text of the message goes after the album, and only when the album went out
-whole.
-
-What the plugin does: `sendAlbum` is all or nothing, one call that the provider cannot repeat. Everything refusable
-is refused before the first file is opened. A failure before anything reached the customer (the files could not be
-stored) is a refusal (`refused: true`); a timeout, a 5xx or an answer that makes no sense is an unknown outcome
-(`outcomeUnknown: true`) and the core never sends the images again one by one after it. Only a refusal the
-provider gave in so many words lets the core fall back to one message per image.
-
-Ids: `ChannelAlbumResult.externalId` is the id of the message and is written on every file of the album (receipts,
-echoes, reactions and quotes find the one message through it). A provider that answers one id per image returns
-`fileExternalIds` in the order of `files`; a list of another length is ignored.
-
-Channels today: Messenger declares an album (the owner's real test delivered one). Instagram does not (2026-11-09,
-owner's real log): the upload an album needs was refused twice (code 200 / subcode 2534096 with the Messenger form,
-then code 100 "Invalid parameter" on the first image with the form of the Instagram page) and no page of Meta confirms a
-form that works, so Instagram declares no `album`, has no `sendAlbum`, and sends each image as a message of its own. It
-gets the album back only with a form that Meta documents without ambiguity (`IMPLEMENTATION_PLAN.md`, the Instagram
-album items of Step 7.3).
-
-Manifest (remote) plugins cannot declare `album` yet: see the debt in `IMPLEMENTATION_PLAN.md` (Step 5.6), next to
-`caption_per_file`.
+Why (owner, 2026-11-09, MVP): a provider that takes several files as ONE message answers one id for the whole
+album, so a reaction or a quote cannot name a picture alone (Graph's `reply_to` takes no picture), and the upload that
+an album needs was refused twice on the owner's real account. One message for each file gives every picture its own id,
+which is what `targetable`, the reaction under a thumbnail and the quote of one picture need. The core reads that
+from the data (each file's `channelMessageId`), never from the channel. The idea may return in phase 2 as a
+declaration of the plugin once a provider documents a form that works and names each picture.
 
 ### 5.2 Instagram and Messenger
 

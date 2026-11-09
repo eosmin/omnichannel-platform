@@ -415,7 +415,7 @@ export const messageSchema = z.object({
       // message (`captionState`). Null for a server that does not send it yet.
       caption: z.string().nullable().catch(null).default(null),
       // The provider has an id of its own for this file, so a reaction or a quote can name it alone (false in a
-      // native album of Instagram or Messenger and for a file with no id yet; a server that does not send it: false)
+      // a file with no id yet or whose id another file shares; a server that does not send it: false)
       targetable: z.boolean().catch(false).default(false)
     })
   ),
@@ -432,8 +432,8 @@ export const messageSchema = z.object({
   // The text of the message is a message of its own after the files, not the text under the first one (then
   // every file has its own text, the first included); false for a server that does not send it yet
   textApart: z.boolean().catch(false),
-  // The provider took the files as ONE message (a native album): they cannot be named one by one. A server that does
-  // not send it yet: false.
+  // @deprecated The server no longer sends it (every file is sent one by one): always false. Removed with the web's
+  // last reader (tanda 3, session 24).
   albumNative: z.boolean().catch(false).default(false),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),

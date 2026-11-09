@@ -132,10 +132,6 @@ export const MetaMessaging = {
   MAX_EPOCH_MS: 1e14,
   // The key that holds a file in the Send API
   ATTACHMENT_KEY: 'attachment',
-  // The key that holds several files in ONE message (an album: images only), each by its `attachment_id`
-  ATTACHMENTS_KEY: 'attachments',
-  // The edge that stores a file and answers its `attachment_id`, without sending anything to the customer
-  EDGE_MESSAGE_ATTACHMENTS: 'message_attachments',
   ATTACHMENT_IMAGE: 'image',
   ATTACHMENT_VIDEO: 'video',
   ATTACHMENT_AUDIO: 'audio',

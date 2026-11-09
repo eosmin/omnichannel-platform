@@ -25,13 +25,11 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
-  type AlbumFile,
   type ChannelCapabilityType,
   type ChannelContext,
   type ChannelCustomerProfile,
   type ChannelEvent,
   type ChannelHealth,
-  type ChannelAlbumResult,
   type ChannelMessageResult,
   type ChannelOAuth,
   type ChannelPlugin,
@@ -41,17 +39,14 @@ import {
   type ConnectResult,
   type FetchedMedia,
   PluginError,
-  type PluginErrorCode,
   type MarkReadParams,
   PluginTypes,
-  type SendAlbumParams,
   type SendMediaParams,
   type SendMessageParams,
   type SendReactionParams,
   type TypingParams
 } from '@platform/plugins/sdk'
 
-import { isPermissionCode } from './graph-failure'
 import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
 import { messagingToEvents } from './meta-messaging-events'
@@ -67,8 +62,6 @@ const successSchema = z.object({ success: z.boolean() })
 const appIdSchema = z.object({ id: z.string() })
 // The Send API answers with the ids of the recipient and the message
 const sentSchema = z.object({ message_id: z.string().min(1) })
-// What storing a file for an album answers: the id to name it by in the message
-const storedSchema = z.object({ attachment_id: z.string().min(1) })
 // What the User Profile API of either host answers; a person who keeps it private gets an empty object
 const userProfileSchema = z.object({
   name: z.string().nullish(),
@@ -171,19 +164,6 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   // Fields of every send that only one of the two APIs wants
   protected sendFields(): Record<string, unknown> {
     return {}
-  }
-
-  // The form fields that store one image for an album: Messenger takes the attachment with `is_reusable` in its
-  // payload
-  private albumUploadFields(kind: ChannelMediaKind): Record<string, string> {
-    return {
-      message: JSON.stringify({
-        [MetaMessaging.ATTACHMENT_KEY]: {
-          type: MetaAttachmentOfKind[kind],
-          payload: { is_reusable: true }
-        }
-      })
-    }
   }
 
   // Where a reply to a message goes in the Send API
@@ -404,77 +384,6 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     return this.withCaption(ctx, params.channelIdentity, sent, params.caption)
   }
 
-  // Several images in ONE message (a native album). Only a subclass whose channel declares an album exposes it as
-  // `sendAlbum` (the registry refuses a `sendAlbum` without the declaration, and the declaration without it).
-  // Each image is stored on the attachments edge first, which
-  // gives its `attachment_id` and sends nothing to the customer (so it may be tried again), then a single call
-  // sends them all, in order. All or nothing: one call to Meta, which has no idempotency key, so a failure that
-  // may have reached it is an unknown outcome and is never repeated by this plugin. Everything refusable is
-  // refused before the first image is opened.
-  protected async sendNativeAlbum(
-    ctx: ChannelContext,
-    params: SendAlbumParams
-  ): Promise<ChannelAlbumResult> {
-    const album = this.media.album
-    // A plugin that declares no album has no business here (the registry ties the method to the declaration)
-    if (album === undefined) {
-      throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
-    }
-    const files: readonly AlbumFile[] = params.files
-    if (!Array.isArray(params.files) || files.length < 2 || files.length > album.maxFiles) {
-      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
-    }
-    const checked = files.map(file => {
-      if (typeof file.openFile !== 'function') {
-        throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
-      }
-      const contentType = bareContentType(file.contentType)
-      const { kind } = mediaKindOf(contentType)
-      const rule = this.media.kinds[kind]
-      if (rule === undefined || !album.kinds.includes(kind)) {
-        throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
-      }
-      refuseFile(rule, contentType, file.fileSize)
-      return { file, contentType, kind }
-    })
-    const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
-    const owner = this.sendOwner(ctx)
-    const attachments: unknown[] = []
-    for (const [index, { file, contentType, kind }] of checked.entries()) {
-      try {
-        const stored = await this.meta.uploadMedia({
-          origin: this.origin,
-          path: [owner, MetaMessaging.EDGE_MESSAGE_ATTACHMENTS],
-          token: accessToken,
-          fields: this.albumUploadFields(kind),
-          fileField: MetaUpload.SEND_FILE_FIELD,
-          // Only stores the file: asking again changes nothing the customer sees
-          safeToRepeat: true,
-          file: { open: file.openFile, contentType, size: file.fileSize },
-          schema: storedSchema
-        })
-        attachments.push({
-          type: MetaAttachmentOfKind[kind],
-          payload: { attachment_id: stored.attachment_id }
-        })
-      } catch (error) {
-        // Nothing has been sent to the customer yet, whatever the upload went through: the failure is a
-        // refusal that may be tried again, and only its code and its advice to retry are kept
-        if (error instanceof PluginError) {
-          throw withStep(error, `upload ${index + 1}/${checked.length}`, { refused: true })
-        }
-        throw error
-      }
-    }
-    const sent = await this.send(ctx, params.channelIdentity, {
-      message: { [MetaMessaging.ATTACHMENTS_KEY]: attachments },
-      ...this.replyFields(params.replyToExternalId)
-    }).catch((error: unknown) => {
-      throw error instanceof PluginError ? withStep(error, 'send', {}) : error
-    })
-    return this.withCaption(ctx, params.channelIdentity, sent, params.caption)
-  }
-
   // Meta takes a file and no caption: the text is a message of its own after what it belongs to. Its id travels
   // in the metadata (Meta echoes it too); a failure of the text alone never fails what was sent.
   private async withCaption<T extends ChannelMessageResult>(
@@ -650,40 +559,6 @@ function refuseFile(rule: ChannelMediaRule, contentType: string, size: number): 
   const problem = mediaFileProblem(rule, contentType, size)
   if (problem === null) return
   throw new PluginError(ErrorCodeOfMediaProblem[problem], { retryable: false })
-}
-
-// A permission Meta says is missing while it refused one feature of a token that sends text is not a bad token: it is a
-// permission this feature lacks. It is named so, and nothing about the connection changes. Only for a step that is
-// that feature's own (the storing of an image): the final message is the call that sends text, and a permission
-// refused there is the connection's.
-function isPermissionRefusal(error: PluginError): boolean {
-  return (
-    error.code === ErrorCodes.CHANNEL_CREDENTIALS_INVALID &&
-    error.providerCode !== undefined &&
-    isPermissionCode(error.providerCode)
-  )
-}
-
-// The same error with the step that failed named, for the logs. Only the fields a PluginError keeps are copied, so
-// nothing the provider said travels with it; `refused` is set when the caller knows nothing reached the customer.
-function withStep(error: PluginError, step: string, extra: { refused?: boolean }): PluginError {
-  // `refused` is what says that the step stored a file and sent nothing: only then is a permission the feature's
-  const feature = extra.refused === true && isPermissionRefusal(error)
-  return new PluginError(
-    feature ? ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED : (error.code as PluginErrorCode),
-    {
-      ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
-      // Storing an image sends nothing to the customer, so a doubt there is no doubt about the message
-      ...(error.outcomeUnknown && extra.refused !== true ? { outcomeUnknown: true } : {}),
-      ...(extra.refused === true || error.refused ? { refused: true } : {}),
-      ...(error.failedCheck === undefined ? {} : { failedCheck: error.failedCheck }),
-      // The reason of a credentials failure (`permission_missing`) belongs to the connect form, not to this
-      ...(feature || error.reason === undefined ? {} : { reason: error.reason }),
-      ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
-      ...(error.providerSubcode === undefined ? {} : { providerSubcode: error.providerSubcode }),
-      step
-    }
-  )
 }
 
 const MAX_FORM_FILE_NAME = 120

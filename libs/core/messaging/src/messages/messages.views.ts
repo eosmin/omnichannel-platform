@@ -28,7 +28,7 @@ import { enumValueOf } from '../conversations/conversations.support'
 import { type SystemLineMetadata, systemLineMetadataSchema } from '../conversations/system-lines'
 
 import { canRetryLostFile, displayCodeOf, lostFilesSchema } from './lost-files'
-import { isDistinctFile, isNativeAlbum } from './provider-message-match'
+import { isDistinctFile } from './provider-message-match'
 
 // One person's emoji on a message. `authorId` is the user for an agent, the customer identity for the
 // customer, and null for the owner who reacted from the provider's own app.
@@ -39,8 +39,8 @@ export interface ReactionView {
   // The file of an album the reaction is under (one reaction for each person and file); null: the message itself
   mediaId: string | null
   // The file to draw it under, already resolved: `mediaId`, or the first file when the reaction is the message's and
-  // the message IS the first file (one message for each picture). Null: the reaction is the message's (a native album,
-  // a message of one file)
+  // the message IS the first file (one message for each picture). Null: the reaction is the message's (a message of
+  // one file, or files the provider cannot tell apart)
   fileId: string | null
   // Where an agent's reaction stands toward the channel; `failed` says the customer never saw it, with
   // the code of ours in `deliveryError`. The ones the channel reported are `sent`.
@@ -178,8 +178,8 @@ export interface MessageMediaView {
   // (the text of the message is then the one of the first). Text of the agent: drawn escaped.
   caption: string | null
   // The provider has an id of its own for this file, so a reaction or a quote can name it alone: true for each file of
-  // a message with one message at the provider for each (WhatsApp), false when the files share one id (a native album
-  // of Instagram or Messenger) and for a file with no id yet
+  // a message of several files that the provider knows one by one (the first included), false for a file with no id
+  // yet or whose id another file of the message shares
   targetable: boolean
 }
 
@@ -250,9 +250,6 @@ export interface MessageView {
   captionState: CaptionState | null
   // The text of the message (`content`) is a message of its own after the files, not the text under the first one
   textApart: boolean
-  // The provider took the files as ONE message (a native album of Instagram or Messenger): its files share one id,
-  // so they cannot be reacted to or quoted one by one. Derived from the ids, not from the channel.
-  albumNative: boolean
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
   version: number
@@ -282,7 +279,7 @@ export const MESSAGE_SELECT = {
   authorId: true,
   replyToMessageId: true,
   replyToMediaId: true,
-  // Not in the view: the provider's ids decide what the view says of the files (`targetable`, `albumNative`)
+  // Not in the view: the provider's ids decide what the view says of the files (`targetable`)
   channelMessageId: true,
   deliveryStatus: true,
   deliveryError: true,
@@ -388,7 +385,7 @@ interface MessageRow {
 }
 
 // The file a reaction is drawn under. The one it was put under, or, when it is the message's and the message IS the
-// first file of one message for each picture, that file; none in a native album or for a message of one file.
+// first file of one message for each picture, that file; none for a message of one file.
 function reactionFileOf(row: MessageRow, mediaId: string | null): string | null {
   if (mediaId !== null) return mediaId
   if (row.deletedAt !== null || row.channelMessageId === null) return null
@@ -483,7 +480,6 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     unavailableFiles: unavailableFilesOf(row, type),
     captionState: row.deletedAt === null ? captionStateOf(row.captionState) : null,
     textApart: row.textApart,
-    albumNative: row.deletedAt === null && isNativeAlbum(row.media),
     version: row.version,
     // A message edited and then deleted is a deleted message: the deletion wins, so it carries no
     // "edited", no editor and no edit waiting or failed (its text is already hidden above)

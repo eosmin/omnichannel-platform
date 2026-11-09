@@ -1,6 +1,5 @@
 import {
   bareContentType,
-  type ChannelMediaKind,
   ChannelMediaKinds,
   frozenMedia,
   mediaFileProblem,
@@ -74,17 +73,5 @@ describe('mediaFileProblem', () => {
   )
   it('accepts any type when the channel lists none', () => {
     expect(mediaFileProblem({ types: null, maxBytes: 10 }, 'x/y', 10)).toBeNull()
-  })
-})
-
-describe('frozenMedia, the album', () => {
-  it('copies and freezes the album, and has none when none is declared', () => {
-    const kinds: ChannelMediaKind[] = [ChannelMediaKinds.IMAGE]
-    const media = frozenMedia({ maxFilesPerMessage: 10, kinds: {}, album: { kinds, maxFiles: 10 } })
-    kinds.push(ChannelMediaKinds.VIDEO)
-    expect(media.album).toEqual({ kinds: ['image'], maxFiles: 10 })
-    expect(Object.isFrozen(media.album)).toBe(true)
-    expect(Object.isFrozen(media.album?.kinds)).toBe(true)
-    expect(frozenMedia({ maxFilesPerMessage: 1, kinds: {} }).album).toBeUndefined()
   })
 })
