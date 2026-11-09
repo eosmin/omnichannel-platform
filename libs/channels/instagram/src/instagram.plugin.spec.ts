@@ -1204,3 +1204,62 @@ describe('InstagramPlugin, a file over the wire', () => {
     ).rejects.toBeInstanceOf(PluginError)
   })
 })
+
+describe('InstagramPlugin, an album in one message', () => {
+  const image = (overrides: Record<string, unknown> = {}) => ({
+    contentType: 'image/jpeg',
+    fileSize: 1000,
+    openFile: opensTheFile,
+    filename: null,
+    ...overrides
+  })
+  const send = (plugin: InstagramPlugin, files: unknown[]) =>
+    plugin.sendAlbum(ctx, {
+      channelIdentity: '99',
+      files,
+      ...key
+    } as never)
+
+  it('declares an album of up to ten images, with the method that sends it', () => {
+    const { plugin } = build()
+    expect(plugin.media.album).toEqual({ kinds: ['image'], maxFiles: 10 })
+    expect(typeof plugin.sendAlbum).toBe('function')
+  })
+
+  it('stores each image from the host of the connection and sends them in one message', async () => {
+    const { plugin, post, upload } = build()
+    upload
+      .mockResolvedValueOnce({ attachment_id: 'a1' })
+      .mockResolvedValueOnce({ attachment_id: 'a2' })
+    post.mockResolvedValueOnce({ message_id: 'mid.9' })
+
+    const result = await send(plugin, [image(), image({ contentType: 'image/png' })])
+
+    expect(upload.mock.calls.map(([call]) => call.path)).toEqual([
+      ['me', 'message_attachments'],
+      ['me', 'message_attachments']
+    ])
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post.mock.calls[0]?.[0].body).toEqual({
+      recipient: { id: '99' },
+      message: {
+        attachments: [
+          { type: 'image', payload: { attachment_id: 'a1' } },
+          { type: 'image', payload: { attachment_id: 'a2' } }
+        ]
+      }
+    })
+    expect(result).toMatchObject({ externalId: 'mid.9', status: 'sent' })
+  })
+
+  it.each([
+    ['a format Instagram does not take', [image(), image({ contentType: 'image/webp' })]],
+    ['more than ten images', Array.from({ length: 11 }, () => image())],
+    ['a video', [image(), image({ contentType: 'video/mp4' })]]
+  ])('refuses %s before anything is stored or sent', async (_name, files) => {
+    const { plugin, post, upload } = build()
+    await expect(send(plugin, files)).rejects.toMatchObject({ outcomeUnknown: false })
+    expect(upload).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+  })
+})

@@ -53,6 +53,16 @@ export interface ChannelMediaAlbum {
 // `OUTBOUND_MULTI_FILE_ENABLED` is on, and the real test with each provider decides whether it stays.
 export const MetaMediaFilesPerMessage = 10
 
+// The kind of file for a content type: images, videos and audios by their family, and anything else is a document.
+// The one rule for the core and the plugins, so that none of them decides on its own what an album may hold.
+export function mediaKindOfContentType(contentType: string): ChannelMediaKind {
+  const type = (contentType.split(';')[0] ?? '').trim().toLowerCase()
+  if (type.startsWith('image/')) return ChannelMediaKinds.IMAGE
+  if (type.startsWith('video/')) return ChannelMediaKinds.VIDEO
+  if (type.startsWith('audio/')) return ChannelMediaKinds.AUDIO
+  return ChannelMediaKinds.DOCUMENT
+}
+
 export const ChannelMediaLimits = {
   // What no declaration may exceed: the registry refuses a plugin that asks for more
   MAX_FILES_PER_MESSAGE: 30,

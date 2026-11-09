@@ -98,6 +98,8 @@ export interface ChannelPlugin {
   // Outbound messaging — every call receives the connection context
   sendMessage(ctx: ChannelContext, params: SendMessageParams): Promise<ChannelMessageResult>
   sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult>
+  // Several files in ONE message (a native album). Required exactly when `media.album` is declared.
+  sendAlbum?(ctx: ChannelContext, params: SendAlbumParams): Promise<ChannelAlbumResult>
 
   // Optional, gated by declared capabilities
   sendTemplate?(ctx: ChannelContext, params: SendTemplateParams): Promise<ChannelMessageResult>
@@ -632,6 +634,34 @@ export class WhatsAppPlugin implements ChannelPlugin {
 `libs/channels/meta` holds the shared Graph API client (`META_GRAPH_API_VERSION`), the
 webhook handshake (`META_WEBHOOK_VERIFY_TOKEN`) and the HMAC validation with
 `META_APP_SECRET`; all three Meta plugins share one Meta app.
+
+### 5.1.1 Native albums (`media.album` and `sendAlbum`)
+
+A channel whose provider takes several files in one message declares it in its `media` block:
+`album: { kinds, maxFiles }` (the kinds that may go together, and how many fit; at most 30) and implements
+`sendAlbum`. The registry checks both ways at boot: an `album` without the method, the method without an `album`,
+a kind the channel does not declare, or a size outside 2..30 refuses the plugin. The core hardcodes no provider
+limit: it reads the frozen copy taken at registration.
+
+What the core does (`OutboundSender`): it takes the consecutive files of a message whose kind is in `album.kinds`,
+in the order of the message and at most `album.maxFiles` at a time, leaves out (with its own error code) any image
+the channel's rules refuse, and hands the rest to `sendAlbum`. A file of another kind, a file with a text of its
+own, or a lone remaining image goes through `sendMedia` as before, so the order of the message holds and the resend
+of one file is a normal file send. The text of the message goes after the album, and only when the album went out
+whole.
+
+What the plugin does: `sendAlbum` is all or nothing, one call that the provider cannot repeat. Everything refusable
+is refused before the first file is opened. A failure before anything reached the customer (the files could not be
+stored) is a refusal (`refused: true`); a timeout, a 5xx or an answer that makes no sense is an unknown outcome
+(`outcomeUnknown: true`) and the core never sends the images again one by one after it. Only a refusal the
+provider gave in so many words lets the core fall back to one message per image.
+
+Ids: `ChannelAlbumResult.externalId` is the id of the message and is written on every file of the album (receipts,
+echoes, reactions and quotes find the one message through it). A provider that answers one id per image returns
+`fileExternalIds` in the order of `files`; a list of another length is ignored.
+
+Manifest (remote) plugins cannot declare `album` yet: see the debt in `IMPLEMENTATION_PLAN.md` (Step 5.6), next to
+`caption_per_file`.
 
 ### 5.2 Instagram and Messenger
 

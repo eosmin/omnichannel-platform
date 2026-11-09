@@ -5,7 +5,8 @@ import {
   type ChannelMediaCapabilities,
   type ChannelMediaKind,
   ChannelMediaKinds,
-  MetaAttachmentOfKind
+  MetaAttachmentOfKind,
+  mediaKindOfContentType
 } from '@platform/core/channel-media'
 import {
   CaptionState,
@@ -653,14 +654,7 @@ const MAX_FORM_FILE_NAME = 120
 
 // The kind of file, from its content type; anything else goes as a document
 function mediaKindOf(contentType: string): { kind: ChannelMediaKind } {
-  const kind = contentType.startsWith('image/')
-    ? ChannelMediaKinds.IMAGE
-    : contentType.startsWith('video/')
-      ? ChannelMediaKinds.VIDEO
-      : contentType.startsWith('audio/')
-        ? ChannelMediaKinds.AUDIO
-        : ChannelMediaKinds.DOCUMENT
-  return { kind }
+  return { kind: mediaKindOfContentType(contentType) }
 }
 
 // The name of a file as the form carries it: letters, digits and a few marks, at most 120 characters, and
