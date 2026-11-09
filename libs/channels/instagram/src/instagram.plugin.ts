@@ -5,6 +5,7 @@ import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
 import { InstagramMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
+  ChannelIconKeys,
   ChannelIds,
   type ChannelLimits,
   InstagramApi,
@@ -38,6 +39,13 @@ function refused(failedCheck: PluginCheck): PluginError {
 export class InstagramPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.INSTAGRAM
   readonly name = 'Instagram Direct'
+  readonly displayName = { es: 'Instagram', en: 'Instagram' }
+  readonly iconKey = ChannelIconKeys.CAMERA
+  // The avatars of its customers, and the thumbnail of the story one of them answered
+  readonly imageHosts = {
+    avatar: ['https://*.fbcdn.net', 'https://*.cdninstagram.com'],
+    media: ['https://lookaside.fbsbx.com']
+  }
   readonly limits: ChannelLimits = { textMaxLength: 1000 }
   readonly connectFields = [
     {

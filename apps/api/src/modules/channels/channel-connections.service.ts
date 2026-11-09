@@ -69,6 +69,7 @@ import {
   type ListConnectionsQuery
 } from './channel-connections.schemas'
 import { type DirectoryMediaLimits, directoryMedia } from './directory-media'
+import { type PublicChannelDescriptor, publicDescriptorOf } from './public-descriptor'
 
 // One shape for the refusal, with the name of the holder only when the caller may be told
 function accountInUseException(storeName: string | null): PlatformException {
@@ -135,6 +136,8 @@ export type ChannelDirectoryEntry = Pick<
   // The longest text of a message and what goes under a file, as the plugin declared it (null when the
   // plugin is no longer registered): the composer counts against it
   limits: ChannelLimitsView | null
+  // How the channel is named and drawn, as its plugin declared it (null when the plugin is gone)
+  descriptor: PublicChannelDescriptor | null
 }
 
 export interface ChannelTestResult {
@@ -363,7 +366,8 @@ export class ChannelConnectionsService {
         : ChannelConnectionStatus.ERROR,
       capabilities: this.registry.capabilitiesOf(row.pluginId),
       media: directoryMedia(row.pluginId, limitsOf),
-      limits: this.registry.limitsOf(row.pluginId)
+      limits: this.registry.limitsOf(row.pluginId),
+      descriptor: publicDescriptorOf(this.registry.descriptorOf(row.pluginId))
     }))
   }
 

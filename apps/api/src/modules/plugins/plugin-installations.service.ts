@@ -18,10 +18,10 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { PublicApiConfig } from '@platform/core/http'
-import { PluginRegistry } from '@platform/plugins/runtime'
-import type { ConnectField } from '@platform/plugins/sdk'
+import { type ConnectFieldSnapshot, PluginRegistry } from '@platform/plugins/runtime'
 
 import { ChannelConnectionsService } from '../channels/channel-connections.service'
+import { type PublicChannelDescriptor, publicDescriptorOf } from '../channels/public-descriptor'
 import type { Actor } from '../tenancy'
 
 // One plugin of the catalog and where it stands in the store of the request
@@ -44,7 +44,10 @@ export interface PluginCatalogEntry {
 
 export interface ChannelConnectManifest {
   // The connect form, in order. Nothing in it is a value: only what to ask for.
-  connectFields: ConnectField[]
+  connectFields: ConnectFieldSnapshot[]
+  // How the channel is named and drawn, as the plugin declared it (the image hosts are for the build of the
+  // web app and never leave the api)
+  descriptor: PublicChannelDescriptor
   // For a channel the provider calls: the url the owner pastes into the provider's dashboard. It
   // carries no secret; the verify token of Meta is one value for the app, in the environment, and no
   // route returns it (owner decision, 2026-10-29).
@@ -247,8 +250,11 @@ export class PluginInstallationsService {
   private manifestOf(pluginId: string): ChannelConnectManifest | null {
     const manifest = this.registry.connectManifestOf(pluginId)
     if (manifest === null) return null
+    const descriptor = publicDescriptorOf(this.registry.descriptorOf(pluginId))
+    if (descriptor === null) return null
     return {
       connectFields: manifest.connectFields.map(field => ({ ...field })),
+      descriptor,
       callbackUrl: manifest.receivesProviderWebhooks ? this.callbackUrlOf(pluginId) : null,
       facebookLogin:
         this.registry.oauthOf(pluginId) !== null && this.login.redirectUri !== undefined

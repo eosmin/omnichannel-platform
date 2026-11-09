@@ -23,6 +23,7 @@ import {
   printable,
   snapshotCapabilities
 } from './contract-rules'
+import { type ChannelDescriptorSnapshot, snapshotChannelDescriptor } from './descriptor-snapshot'
 import { snapshotChannelLimits, snapshotIdentityKind } from './limits-snapshot'
 import { type ChannelMediaSnapshot, snapshotChannelMedia } from './media-snapshot'
 import { type ChannelOAuthSnapshot, snapshotChannelOAuth } from './oauth-snapshot'
@@ -70,6 +71,7 @@ interface Entry {
   media: ChannelMediaSnapshot | null
   // What the plugin declared for the text of a message and for the handle of a customer, checked and copied
   limits: ChannelLimitsView
+  descriptor: ChannelDescriptorSnapshot
   identityKind: ChannelIdentityKind
   storeIds: ReadonlySet<string> | null
 }
@@ -107,6 +109,7 @@ export class PluginRegistry {
       oauth: snapshotChannelOAuth(plugin, id),
       media: snapshotChannelMedia(plugin, id, capabilities),
       limits: snapshotChannelLimits(plugin, id),
+      descriptor: snapshotChannelDescriptor(plugin, id),
       identityKind: snapshotIdentityKind(plugin, id),
       storeIds
     })
@@ -187,6 +190,12 @@ export class PluginRegistry {
   // The text limits the plugin declared when it registered, or null when it is not registered
   limitsOf(pluginId: string): ChannelLimitsView | null {
     return this.entries.get(pluginId)?.limits ?? null
+  }
+
+  // How the plugin said it is named and drawn, and where its pictures come from, as it declared it when it
+  // registered (frozen), or null when it is not registered
+  descriptorOf(pluginId: string): ChannelDescriptorSnapshot | null {
+    return this.entries.get(pluginId)?.descriptor ?? null
   }
 
   // How the plugin said the handle of a customer is read, or null when it is not registered

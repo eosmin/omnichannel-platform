@@ -5,6 +5,7 @@ import { MetaGraphClient } from '@platform/channels/meta'
 import { WhatsAppMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
+  ChannelIconKeys,
   ChannelIdentityKinds,
   ChannelIds,
   type ChannelLimits,
@@ -147,6 +148,8 @@ function templateStatus(status: string): MessageTemplate['status'] {
 export class WhatsAppPlugin implements ChannelPlugin {
   readonly id = ChannelIds.WHATSAPP
   readonly name = 'WhatsApp Business'
+  readonly displayName = { es: 'WhatsApp', en: 'WhatsApp' }
+  readonly iconKey = ChannelIconKeys.PHONE
   readonly version = '1.0.0'
   readonly author = 'Platform Team'
   readonly type = PluginTypes.CHANNEL

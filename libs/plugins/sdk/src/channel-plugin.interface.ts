@@ -1,5 +1,13 @@
 import { type ChannelMediaCapabilities } from '@platform/core/channel-media'
-import type { ChannelIdentityKind, ChannelLimits, TokenInspection } from '@platform/core/domain'
+import type {
+  ChannelIconKey,
+  ChannelIdentityKind,
+  ChannelImageHosts,
+  ChannelLimits,
+  ChannelManagementSurface,
+  LocalizedText,
+  TokenInspection
+} from '@platform/core/domain'
 
 import type { ChannelCapabilityType } from './channel-capability'
 import type { ChannelOAuth } from './channel-oauth'
@@ -43,6 +51,21 @@ export interface ChannelPlugin {
   readonly limits: ChannelLimits
   // How the handle of a customer is read: a phone (compared as digits) or opaque (kept as sent)
   readonly identityKind: ChannelIdentityKind
+
+  // How the channel is named and drawn, with no channel named in the web (TDD_10 §6.7.2). Every one is
+  // optional: a plugin that says nothing is named by its `name`, drawn with the generic icon, has named
+  // customers, no page of its own in the settings and no image hosts. The registry checks each at boot.
+  readonly displayName?: LocalizedText
+  readonly iconKey?: ChannelIconKey
+  // The customers of this channel have no name or handle of their own that a person would know (a visitor
+  // of a web page): the interface calls them anonymous until they say who they are
+  readonly anonymousCustomers?: boolean
+  readonly managementSurface?: ChannelManagementSurface
+  // The steps the owner takes at the provider before the form (text only, in order)
+  readonly connectHelp?: readonly LocalizedText[]
+  // Where the browser may load the pictures of this channel from (the avatars of its customers, the media it
+  // shows): the CSP of the web app is built from what the registered plugins declare
+  readonly imageHosts?: ChannelImageHosts
 
   // Applied by the core: the plugin has no database
   readonly messagingWindow: MessagingWindowPolicy | null

@@ -8,9 +8,11 @@ import {
 } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
+  ChannelIconKeys,
   ChannelIdentityKinds,
   ChannelIds,
   type ChannelLimits,
+  ChannelManagementSurfaces,
   DeliveryStatus,
   MessageType,
   WIDGET_TOKEN_HEADER,
@@ -89,6 +91,12 @@ const connectSchema = z.object({ siteOrigins: siteOriginsSchema })
 export class WebWidgetPlugin implements ChannelPlugin {
   readonly id = ChannelIds.WEB_WIDGET
   readonly name = 'Web widget'
+  readonly displayName = { es: 'Widget web', en: 'Web widget' }
+  readonly iconKey = ChannelIconKeys.GLOBE
+  // A visitor is somebody the page never named
+  readonly anonymousCustomers = true
+  // The settings of the channel include the snippet to paste into the site
+  readonly managementSurface = ChannelManagementSurfaces.EMBED_SNIPPET
   readonly version = '1.0.0'
   readonly author = 'Platform Team'
   readonly type = PluginTypes.CHANNEL

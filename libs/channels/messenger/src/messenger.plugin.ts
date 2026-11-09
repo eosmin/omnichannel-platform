@@ -5,6 +5,7 @@ import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
 import { MessengerMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
+  ChannelIconKeys,
   ChannelIds,
   type ChannelLimits,
   ChannelSetupStepKeys,
@@ -39,6 +40,13 @@ function isNameNotReadable(error: unknown): boolean {
 export class MessengerPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.MESSENGER
   readonly name = 'Facebook Messenger'
+  readonly displayName = { es: 'Messenger', en: 'Messenger' }
+  readonly iconKey = ChannelIconKeys.MESSAGE_CIRCLE
+  // The avatars of its customers: the signed pictures of the Page-scoped profile
+  readonly imageHosts = {
+    avatar: ['https://*.fbcdn.net', 'https://platform-lookaside.fbsbx.com'],
+    media: []
+  }
   readonly limits: ChannelLimits = { textMaxLength: 2000 }
   readonly connectFields = [
     {
