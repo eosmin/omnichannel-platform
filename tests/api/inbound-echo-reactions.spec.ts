@@ -822,6 +822,7 @@ describe('Echoes and reactions that a channel delivers', () => {
           authorType: AuthorType.CUSTOMER,
           authorId: identity.id,
           mediaId: null,
+          fileId: null,
           deliveryStatus: DeliveryStatus.SENT,
           deliveryError: null
         },
@@ -830,6 +831,7 @@ describe('Echoes and reactions that a channel delivers', () => {
           authorType: AuthorType.EXTERNAL,
           authorId: null,
           mediaId: null,
+          fileId: null,
           deliveryStatus: DeliveryStatus.SENT,
           deliveryError: null
         }

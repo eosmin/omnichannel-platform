@@ -98,6 +98,7 @@ const message = {
   unavailableFiles: [],
   captionState: null,
   textApart: false,
+  albumNative: false,
   contacts: null,
   mentions: [],
   version: 1,

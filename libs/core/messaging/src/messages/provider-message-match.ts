@@ -25,16 +25,32 @@ export const messageOfProviderIdPrefix = (storeId: string, prefix: string): Mess
   ]
 })
 
-// Whether a file of an album is a target of its own at the provider. It is when the album has several files and
-// the file has an id that is not the message's (the first file IS the message: one id) and that no other file of
-// the message shares (Instagram and Messenger send an album as ONE message, so every file carries that one id).
-// When it is not, a reaction or a quote under the file is the message's: the provider cannot tell them apart.
-export function isTargetOfItsOwn(
-  message: { channelMessageId: string | null },
-  files: readonly { id: string; channelMessageId: string | null }[],
+type FileIds = readonly { id: string; channelMessageId: string | null }[]
+
+// Whether the provider has an id for this file that no other file of the message shares, in a message of several
+// files: it can be named alone (WhatsApp: one message for each picture, the first one too). Files that share one id
+// (an album that Instagram or Messenger takes as ONE message) and files with no id yet cannot.
+export function isDistinctFile(
+  files: FileIds,
   file: { id: string; channelMessageId: string | null }
 ): boolean {
   if (files.length < 2 || file.channelMessageId === null) return false
-  if (file.channelMessageId === message.channelMessageId) return false
   return files.filter(item => item.channelMessageId === file.channelMessageId).length === 1
+}
+
+// The provider took the files as ONE message: at least two have an id and every id there is is the same one.
+export function isNativeAlbum(files: FileIds): boolean {
+  const ids = files.flatMap(file => (file.channelMessageId === null ? [] : [file.channelMessageId]))
+  return ids.length >= 2 && new Set(ids).size === 1
+}
+
+// Whether a file is a target of its own for a REACTION, which is one row for each person and target: the distinct
+// files, except the first one, whose id IS the message's (its reaction is the message's, so the two never make two
+// rows for one target).
+export function isTargetOfItsOwn(
+  message: { channelMessageId: string | null },
+  files: FileIds,
+  file: { id: string; channelMessageId: string | null }
+): boolean {
+  return isDistinctFile(files, file) && file.channelMessageId !== message.channelMessageId
 }
