@@ -35,6 +35,7 @@ import {
   withMentions
 } from '../../lib/inbox/composer-triggers'
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
+import { textMaxOf } from '../../lib/inbox/text-max'
 import { useComposerQueue } from '../../lib/inbox/use-composer-queue'
 import { useConversationActions } from '../../lib/inbox/use-conversation-actions'
 import {
@@ -282,6 +283,16 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const status = conversationStatusOf(conversation.data.status)
   const canChangeState =
     status !== ConversationStatus.RESOLVED && status !== ConversationStatus.SNOOZED
+  // A file belongs to a reply to the customer; a note never carries one. The file goes out with the text (under
+  // the first file, or, where the channel has a text under each file, as a message after the files), and only
+  // once it is clean; while it uploads or is scanned nothing is sent, so the text cannot leave without the
+  // file the agent meant to send with it.
+  const isFileReady = !isNote && tray.ready > 0
+  const isFileBusy = !isNote && tray.isBusy
+  const isFileSending = !isNote && tray.isSending
+  // The text of a reply is held to the limit of the channel; with a file ready it is a caption, whose own limit
+  // the tray and the api hold, so the box keeps the general one
+  const textMax = textMaxOf(channelEntry?.limits, isNote || isFileReady)
   const commands = [
     SlashCommand.SNIPPET,
     ...(can(ClientPermissions.CONVERSATIONS_ASSIGN) ? [SlashCommand.ASSIGN] : []),
@@ -299,7 +310,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     members: members.data ?? [],
     selfId: profile.data?.id,
     isMentionFull: mentionedIds(draft, picked).length >= MessageLimits.MAX_MENTIONS,
-    maxLength: MessageLimits.CONTENT_MAX_LENGTH,
+    maxLength: textMax,
     commandHint: command => tMenu(`commands.${command}`),
     roleLabel
   })
@@ -313,15 +324,10 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   }
   // Text that is a command is not a message: nothing sends it, and the button says so by being off
   const isCommandText = typedCommand(content) !== undefined
-  // A file belongs to a reply to the customer; a note never carries one. The file goes out with the text (under
-  // the first file, or, where the channel has a text under each file, as a message after the files), and only
-  // once it is clean; while it uploads or is scanned nothing is sent, so the text cannot leave without the
-  // file the agent meant to send with it.
-  const isFileReady = !isNote && tray.ready > 0
-  const isFileBusy = !isNote && tray.isBusy
-  const isFileSending = !isNote && tray.isSending
+  // A text that went over the limit of the channel (the box was a note, or the channel changed) is not sent
+  const isOverLimit = !isFileReady && content.length > textMax
   const submit = (): void => {
-    if ((content === '' && !isFileReady) || isClosed || !queue.isReady) return
+    if ((content === '' && !isFileReady) || isClosed || !queue.isReady || isOverLimit) return
     // Text that starts with a command is never a message, whether or not the agent may use it or the
     // menu found a match: "/snippet thx" must not reach the customer
     if (isCommandText) return
@@ -449,8 +455,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     if (isNoteMessage ? !mayNote : !mayReply || windowState.kind === 'closed') return 'hidden'
     if (draft.trim() === '') return 'enabled'
     const isSameKind = isNoteMessage === (mode === MessageType.INTERNAL_NOTE)
-    const fits =
-      draft.length + EDIT_JOINER.length + message.content.length <= MessageLimits.CONTENT_MAX_LENGTH
+    const fits = draft.length + EDIT_JOINER.length + message.content.length <= textMax
     return isSameKind && fits ? 'enabled' : 'disabled'
   }
   const edit = (message: PendingMessage): void => {
@@ -673,7 +678,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               onSelect={event => setCaret(event.currentTarget.selectionStart)}
               onKeyDown={onKeyDown}
               aria-controls={entries.length > 0 ? menuId : undefined}
-              maxLength={MessageLimits.CONTENT_MAX_LENGTH}
+              maxLength={textMax}
               aria-label={isNote ? t('noteLabel') : t('replyLabel')}
               placeholder={isNote ? t('notePlaceholder') : t('replyPlaceholder')}
               className="max-h-48 min-h-10 resize-none"
@@ -687,6 +692,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
                 (content === '' && !isFileReady) ||
                 !queue.isReady ||
                 isCommandText ||
+                isOverLimit ||
                 isFileBusy ||
                 isFileSending
               }
@@ -695,7 +701,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               <Send aria-hidden />
             </Button>
           </div>
-          <CharCounter length={draft.length} max={MessageLimits.CONTENT_MAX_LENGTH} />
+          <CharCounter length={draft.length} max={textMax} />
         </div>
       )}
     </div>
