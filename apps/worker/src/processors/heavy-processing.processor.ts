@@ -6,6 +6,7 @@ import { channelIdSchema, OriginMediaSlots, type OriginMediaSlot } from '@platfo
 import {
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
+  exactly,
   JobNames,
   QueueNames,
   type ProcessImageJob,
@@ -21,22 +22,34 @@ import { ProcessorSupport } from './processor-support'
 
 type HeavyJob = ScanFileJob | ProcessImageJob | FetchInboundMediaJob | FetchOriginMediaJob
 
-const originFetchJobSchema = z.object({
-  storeId: z.uuid(),
-  originId: z.uuid(),
-  slot: z.enum(Object.values(OriginMediaSlots) as [OriginMediaSlot, ...OriginMediaSlot[]])
-})
-const mediaJobSchema = z.object({ mediaId: z.uuid() })
-const fetchJobSchema = z.object({
-  messageId: z.uuid(),
-  index: z.number().int().min(0),
-  storeId: z.uuid(),
-  pluginId: channelIdSchema,
-  connectionId: z.string().min(1),
-  mediaRef: z.string().min(1),
-  contentType: z.string(),
-  filename: z.string().nullable()
-})
+const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
+  z.object({
+    storeId: z.uuid(),
+    originId: z.uuid(),
+    slot: z.enum(Object.values(OriginMediaSlots) as [OriginMediaSlot, ...OriginMediaSlot[]]),
+    correlationId: z.string().optional()
+  })
+)
+// A scan and the variants of an image take the same job
+const mediaJobSchema = exactly<ScanFileJob & ProcessImageJob>()(
+  z.object({ mediaId: z.uuid(), correlationId: z.string().optional() })
+)
+// The same keys as the job type, checked when it is compiled: zod drops what it is not told about
+const fetchJobSchema = exactly<FetchInboundMediaJob>()(
+  z.object({
+    messageId: z.uuid(),
+    index: z.number().int().min(0),
+    storeId: z.uuid(),
+    pluginId: channelIdSchema,
+    connectionId: z.string().min(1),
+    mediaRef: z.string().min(1),
+    // The id the web widget chose; the fetcher decides whether it may be used
+    mediaId: z.string().optional(),
+    contentType: z.string(),
+    filename: z.string().nullable(),
+    correlationId: z.string().optional()
+  })
+)
 
 // The worker half of a file: fetch what a customer sent, scan it, then make the variants of a clean
 // image. One processor for the queue, told apart by the name of the job.
