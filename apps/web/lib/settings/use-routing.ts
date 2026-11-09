@@ -112,7 +112,7 @@ export function useChannelChoices(
     queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal),
     select: useCallback(
       (entries: ChannelDirectoryEntryView[]) =>
-        entries.map(entry => ({ ...entry, pluginName: label(entry.pluginId, entry.pluginName) })),
+        entries.map(entry => ({ ...entry, pluginName: label(entry.descriptor, entry.pluginName) })),
       [label]
     ),
     enabled

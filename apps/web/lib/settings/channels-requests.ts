@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { ApiClient } from '@platform/api-client'
+import { type ApiClient, channelDescriptorSchema } from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
 import type { ChannelConnectionListState } from '@platform/core/domain'
 
@@ -89,7 +89,9 @@ const catalogEntrySchema = z.object({
       connectFields: z.array(connectFieldSchema),
       callbackUrl: z.string().nullable(),
       // "Connect with Facebook" is offered for this channel; false from a server older than the page
-      facebookLogin: z.boolean().catch(false)
+      facebookLogin: z.boolean().catch(false),
+      // How the channel is named and drawn; none when the server does not say it or it is not valid
+      descriptor: channelDescriptorSchema.nullable().optional().catch(null)
     })
     .nullable()
 })

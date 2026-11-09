@@ -6,15 +6,16 @@ import { type DragEvent, type ReactElement, useState } from 'react'
 
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import {
-  isOfficialChannelId,
-  type OfficialChannelId,
-  RoutingActionTypes
-} from '@platform/core/domain'
+import { RoutingActionTypes } from '@platform/core/domain'
 
 import { moveBy, moveItem, sameOrder } from '../../lib/settings/routing-order'
 import type { RuleView } from '../../lib/settings/routing-requests'
-import { useDeleteRule, useReorderRules, useUpdateRule } from '../../lib/settings/use-routing'
+import {
+  useChannelChoices,
+  useDeleteRule,
+  useReorderRules,
+  useUpdateRule
+} from '../../lib/settings/use-routing'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
@@ -297,12 +298,13 @@ function RuleSummary({
   tags: TagView[]
 }): ReactElement {
   const t = useTranslations('settings.routing.summary')
-  const tChannels = useTranslations('settings.routing.channelNames')
+  const { storeId, can } = useStore()
+  const channels = useChannelChoices(storeId, can(ClientPermissions.CONVERSATIONS_VIEW))
   const { channelTypes, tagIds, keywords, outsideBusinessHours } = rule.conditions
   const parts: string[] = []
   if (channelTypes !== undefined) {
     parts.push(
-      t('channels', { list: channelTypes.map(id => channelLabel(tChannels, id)).join(', ') })
+      t('channels', { list: channelTypes.map(id => channelNameOf(channels.data, id)).join(', ') })
     )
   }
   if (tagIds !== undefined) {
@@ -328,7 +330,10 @@ function RuleSummary({
   )
 }
 
-// A channel id that is not one of the official ones (a plugin) is shown as it is written
-function channelLabel(t: (id: OfficialChannelId) => string, id: string): string {
-  return isOfficialChannelId(id) ? t(id) : id
+// The name the descriptor of the channel gives it; the id as written where the store's list cannot be read
+function channelNameOf(
+  directory: readonly { pluginId: string; pluginName: string }[] | undefined,
+  id: string
+): string {
+  return directory?.find(entry => entry.pluginId === id)?.pluginName ?? id
 }

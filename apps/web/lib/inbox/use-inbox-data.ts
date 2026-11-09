@@ -75,10 +75,9 @@ export function useChannelDirectory(storeId: string): UseQueryResult<ChannelDire
   return useQuery({
     queryKey: QueryKeys.channels.directory(storeId),
     queryFn: ({ signal }) => fetchChannelDirectory(apiClient, storeId, signal),
-    // The name of an official channel comes from the message files, not from the server
     select: useCallback(
       (entries: ChannelDirectoryEntryView[]) =>
-        entries.map(entry => ({ ...entry, pluginName: label(entry.pluginId, entry.pluginName) })),
+        entries.map(entry => ({ ...entry, pluginName: label(entry.descriptor, entry.pluginName) })),
       [label]
     )
   })
