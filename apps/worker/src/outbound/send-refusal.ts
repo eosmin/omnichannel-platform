@@ -32,10 +32,21 @@ export interface Refusal {
 }
 
 // A plugin says whether to try again (it wins over anything else); a network error or a timeout is
-// tried again, and so is anything else that is not the plugin's word: it is ours or the network's
+// tried again, and so is anything else that is not the plugin's word: it is ours or the network's.
+// That is for what is safe to repeat (reactions, receipts, edits). A message that shows a customer something
+// asks `isRepeatableSend` instead, which does not repeat a doubt.
 export function refusalOf(error: unknown): Refusal {
   if (error instanceof PluginError) {
     return { code: error.code, retryable: error.retryable === true }
   }
   return { code: ErrorCodes.CHANNEL_MESSAGE_FAILED, retryable: true }
+}
+
+// Whether a failed send of a message to a customer may be repeated by the job. The provider has no key that stops a
+// second send, so a repeat after a doubt shows the customer the message twice. Only the plugin's own word counts:
+// a PluginError that says `retryable` and does not say the outcome is unknown (a throttle, a file that could not be
+// stored). A timeout of the worker, an error that is not the plugin's and a retry the plugin flags as unknown fail
+// the send as one that may have gone, and the agent decides.
+export function isRepeatableSend(error: unknown): boolean {
+  return error instanceof PluginError && error.retryable === true && !error.outcomeUnknown
 }
