@@ -125,7 +125,8 @@ working environment with realistic data in under five minutes.
     "validate:deprecations": "tsx scripts/validate-deprecations.ts",
     "validate:rollbacks": "tsx scripts/check-rollbacks.ts",
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm test",
+    "validate:channel-agnostic": "tsx scripts/validate-channel-agnostic.ts",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:channel-agnostic && pnpm test",
     "validate:ci": "pnpm validate:all && pnpm test:integration && pnpm test:contracts && pnpm test:security"
   }
 }
@@ -532,6 +533,17 @@ export default defineConfig([
 **Module boundaries are enforced by lint**, which is what keeps the modular
 monolith from decaying into a tangle. The `scope:core-domain` tag marks the browser-safe
 subset of `libs/core` (`TDD_01` §1).
+
+**Channel-agnostic ratchet** (`scripts/validate-channel-agnostic.ts`, runs in `lint-and-types`
+and in `validate:affected`): counts, per file and apart for code and for comments, the lines that name
+a channel or Meta in the code of `apps/web`, `apps/api`, `apps/worker`, `libs/core`,
+`libs/plugins/sdk`, `libs/plugins/runtime` and `libs/api-client` (tests, e2e, migrations, dev fixtures and
+translations excluded, and a composition root such as `official-plugins.ts` with its reason written in
+the script; `libs/channels/*` is free). The counts that exist today are frozen in
+`scripts/channel-agnostic-baseline.json`, which can only shrink: a file that gains a line, or a file
+without an entry that gains one, fails; an entry above the real count also fails
+(`pnpm validate:channel-agnostic --update-down` lowers it and refuses to raise it), and CI compares the
+baseline with the one of `main`, so it cannot be edited upward to pass (`--require-main`, used in CI, fails when main cannot be found).
 
 **Deprecation scanner** (`scripts/validate-deprecations.ts`, runs in `lint-and-types`):
 greps the codebase for removed or renamed APIs and fails on any hit. The list is the
