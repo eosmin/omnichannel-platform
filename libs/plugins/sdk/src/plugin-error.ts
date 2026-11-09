@@ -14,6 +14,7 @@ export type PluginErrorCode = Extract<
   ErrorCode,
   | typeof ErrorCodes.CHANNEL_MESSAGE_FAILED
   | typeof ErrorCodes.CHANNEL_CREDENTIALS_INVALID
+  | typeof ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED
   | typeof ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED
   | typeof ErrorCodes.CHANNEL_WINDOW_EXPIRED
   | typeof ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
@@ -46,6 +47,9 @@ export class PluginError extends PlatformException {
   // `error_subcode`). Numbers and nothing else, so they cannot carry a token; never sent to a client.
   readonly providerCode: number | undefined
   readonly providerSubcode: number | undefined
+  // Which step of a send that has several failed (`upload 2/3`, `send`), for the logs only: a label made of words and
+  // numbers, never a value of the provider or of the customer
+  readonly step: string | undefined
   // The local check that refused (see PluginChecks), for the logs only: a name, never a value
   readonly failedCheck: PluginCheck | undefined
   // Why a connection failed, in the closed list of ChannelConnectFailureReasons: the one thing about a
@@ -61,6 +65,7 @@ export class PluginError extends PlatformException {
       refused?: boolean
       providerCode?: number
       providerSubcode?: number
+      step?: string
       failedCheck?: PluginCheck
       reason?: ChannelConnectFailureReason
     } = {}
@@ -72,6 +77,7 @@ export class PluginError extends PlatformException {
     this.refused = options.refused === true && options.outcomeUnknown !== true
     this.providerCode = options.providerCode
     this.providerSubcode = options.providerSubcode
+    this.step = options.step
     this.failedCheck = options.failedCheck
     // A check name outside the list (a plugin can be a third party's, and a type does not stop a string) gives
     // no reason, and never makes the construction fail

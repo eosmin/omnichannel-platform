@@ -454,6 +454,7 @@
     "CHANNEL_TOO_MANY_FILES": "The channel does not accept that many files in one message",
     "CHANNEL_CONNECTION_NOT_FOUND": "The channel connection does not exist",
     "CHANNEL_CREDENTIALS_INVALID": "The channel credentials are not valid",
+    "CHANNEL_FEATURE_NOT_PERMITTED": "The channel lacks a permission this feature needs",
     "CHANNEL_MESSAGE_FAILED": "The channel did not accept the message",
     "MESSAGE_DISCARD_OUTCOME_UNKNOWN": "This reply may have reached the customer, so it cannot be discarded. Check with them or send it again",
     "CHANNEL_NOT_CONNECTED": "The channel is not connected",
@@ -1040,7 +1041,8 @@
         "unconfirmed": "Could not confirm delivery",
         "unconfirmedNote": "We could not confirm that the customer received it"
       },
-      "failedWithReason": "Not delivered: {reason}",
+      "failedWithReason": "Not delivered: {reason}. You can try again.",
+      "failedWithChannelHint": "Not delivered: {reason}. Try again or check the channel in Settings > Channels.",
       "mediaLabel": {
         "IMAGE": "Image",
         "VIDEO": "Video",

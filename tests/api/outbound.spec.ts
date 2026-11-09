@@ -2179,6 +2179,55 @@ describe('Replies on their way to a channel', () => {
           ])
         })
 
+        it.each([[false], [true]])(
+          'sends the images one by one, and leaves the connection alone, when Meta says the permission for the attachment is missing (code 200, subcode 2534096; last attempt: %s)',
+          async isLast => {
+            const reply = await album([null, null, null])
+            albumFailure = new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
+              retryable: false,
+              refused: true,
+              providerCode: 200,
+              providerSubcode: 2534096,
+              step: 'upload 1/3'
+            })
+
+            await sender.send(job(reply), isLast)
+
+            expect(sentAlbums).toHaveLength(1)
+            expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
+              `${reply.id}-0`,
+              `${reply.id}-1`,
+              `${reply.id}-2`
+            ])
+            expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+            // Nothing about the connection changes for a permission of one feature
+            const connection = await owner.channelConnection.findFirstOrThrow({
+              where: { conversations: { some: { id: reply.conversationId } } },
+              select: { status: true }
+            })
+            expect(connection.status).toBe(ChannelConnectionStatus.ACTIVE)
+          }
+        )
+
+        it('shows the permission as its own failure, not as credentials, when the images cannot go singly either', async () => {
+          const reply = await album([null, null])
+          albumFailure = new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
+            retryable: false,
+            refused: true
+          })
+          mediaFailure = () =>
+            new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
+              retryable: false,
+              refused: true
+            })
+
+          await sender.send(job(reply), false)
+
+          const message = await messageFlags(reply.id)
+          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+          expect(message.deliveryError).toBe(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED)
+        })
+
         it('does not fall back for a refusal that is not about the album (a token that does not work)', async () => {
           const reply = await album([null, null])
           albumFailure = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
@@ -2244,9 +2293,43 @@ describe('Replies on their way to a channel', () => {
           ])
         })
 
+        it.each([
+          ['a refusal of the upload that may be repeated', { retryable: true, refused: true }],
+          ['a refusal of the upload that cannot', { retryable: false, refused: true }]
+        ])(
+          'sends the images one by one on the last attempt after %s, since none was delivered',
+          async (_name, flags) => {
+            const reply = await album([null, null, null])
+            albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, flags)
+
+            await sender.send(job(reply), true)
+
+            expect(sentAlbums).toHaveLength(1)
+            expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
+              `${reply.id}-0`,
+              `${reply.id}-1`,
+              `${reply.id}-2`
+            ])
+            expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+          }
+        )
+
+        it('does not send one by one on the last attempt when the refusal is a throttle or the token', async () => {
+          const reply = await album([null, null])
+          albumFailure = new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
+            retryable: true,
+            refused: true
+          })
+
+          await sender.send(job(reply), true)
+
+          expect(sentMedia).toHaveLength(0)
+          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+        })
+
         it('fails the album with the code of the refusal on the last attempt and leaves it to be thrown away', async () => {
           const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+          albumFailure = new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
             retryable: true,
             refused: true
           })

@@ -5,6 +5,7 @@ import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { isAlbum } from '../../lib/inbox/album'
 import { initialsOf } from '../../lib/inbox/customer-label'
@@ -63,6 +64,14 @@ export interface MessageBubbleProps {
 }
 
 // The element a quote scrolls to and focuses has to exist for every kind of message, a line included
+// The failures that the owner fixes in the settings of the channel
+function channelSettingsHelp(code: string | null | undefined): boolean {
+  return (
+    code === ClientErrorCodes.CHANNEL_CREDENTIALS_INVALID ||
+    code === ClientErrorCodes.CHANNEL_NOT_CONNECTED
+  )
+}
+
 export function MessageBubble(props: MessageBubbleProps): ReactElement {
   return (
     <div
@@ -166,7 +175,14 @@ function Bubble({
           ? t('ticks.unconfirmedNote')
           : note.kind === 'failed'
             ? t('ticks.failed')
-            : t('failedWithReason', { reason: codeText(message.deliveryError ?? '') }),
+            : t(
+                // Only a failure that is about the connection points at the channel's settings: another refusal of
+                // the provider says nothing about the credentials
+                channelSettingsHelp(message.deliveryError)
+                  ? 'failedWithChannelHint'
+                  : 'failedWithReason',
+                { reason: codeText(message.deliveryError ?? '') }
+              ),
       tone: note.tone
     }))
   ].filter((problem): problem is { text: string; tone: 'red' | 'amber' } => problem !== null)

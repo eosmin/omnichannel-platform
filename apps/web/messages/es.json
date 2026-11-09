@@ -454,6 +454,7 @@
     "CHANNEL_TOO_MANY_FILES": "El canal no acepta tantos archivos en un mensaje",
     "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
     "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
+    "CHANNEL_FEATURE_NOT_PERMITTED": "El canal no tiene un permiso que esta función necesita",
     "CHANNEL_MESSAGE_FAILED": "El canal no aceptó el mensaje",
     "MESSAGE_DISCARD_OUTCOME_UNKNOWN": "Es posible que esta respuesta haya llegado al cliente, así que no se puede descartar. Pregúntale o envíala de nuevo",
     "CHANNEL_NOT_CONNECTED": "El canal no está conectado",
@@ -1040,7 +1041,8 @@
         "unconfirmed": "No se pudo confirmar la entrega",
         "unconfirmedNote": "No pudimos confirmar que el cliente la recibiera"
       },
-      "failedWithReason": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
+      "failedWithReason": "No se entregó: {reason}. Puedes reintentarlo.",
+      "failedWithChannelHint": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
       "mediaLabel": {
         "IMAGE": "Imagen",
         "VIDEO": "Video",

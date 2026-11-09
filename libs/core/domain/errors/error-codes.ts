@@ -46,6 +46,9 @@ export const ErrorCodes = {
   CHANNEL_WINDOW_EXPIRED: 'CHANNEL_WINDOW_EXPIRED',
   CHANNEL_TEMPLATE_NOT_APPROVED: 'CHANNEL_TEMPLATE_NOT_APPROVED',
   CHANNEL_CREDENTIALS_INVALID: 'CHANNEL_CREDENTIALS_INVALID',
+  // The provider refused one feature for a permission the token or the app lacks, while the rest (a text) works:
+  // it is not a bad token and nothing about the connection changes
+  CHANNEL_FEATURE_NOT_PERMITTED: 'CHANNEL_FEATURE_NOT_PERMITTED',
   CHANNEL_ACCOUNT_IN_USE: 'CHANNEL_ACCOUNT_IN_USE', // The account is active in another store
   CHANNEL_WEBHOOK_SIGNATURE_INVALID: 'CHANNEL_WEBHOOK_SIGNATURE_INVALID',
   CHANNEL_CAPABILITY_UNSUPPORTED: 'CHANNEL_CAPABILITY_UNSUPPORTED',

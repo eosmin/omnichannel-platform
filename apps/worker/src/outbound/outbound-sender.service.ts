@@ -927,12 +927,15 @@ export class OutboundSender {
       // by one, each with the key it always had. Never on a doubt, and only for a refusal of the message itself:
       // a token that does not work, a closed window or a file the channel does not take would be refused once for
       // each image.
+      // On the last attempt too: a refusal that could be repeated and was, until the attempts ran out, still left
+      // nothing with the customer.
       if (
         outcomeKnown &&
-        !repeatable &&
+        (!repeatable || args.isLastAttempt) &&
         error instanceof PluginError &&
         error.refused &&
-        error.code === ErrorCodes.CHANNEL_MESSAGE_FAILED
+        (error.code === ErrorCodes.CHANNEL_MESSAGE_FAILED ||
+          error.code === ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED)
       ) {
         return { kind: 'fallback' }
       }
