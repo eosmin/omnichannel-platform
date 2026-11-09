@@ -40,6 +40,9 @@ export const webServer: Extract<PlaywrightTestConfig['webServer'], unknown[]> = 
       DATABASE_URL: databaseUrls.app,
       TRUST_PROXY_HOPS: '1',
       META_GRAPH_ORIGIN: GRAPH_URL,
+      // A third-party channel plugin the repository does not know (`acme_chat`), registered only under
+      // NODE_ENV=test: toy-plugin.spec.ts checks that the web draws it from its descriptor alone
+      E2E_TOY_PLUGIN: '1',
       // Several files in one message: off in a deployment until a real test with each provider passes,
       // on here so that the composer and the thread are exercised with more than one
       OUTBOUND_MULTI_FILE_ENABLED: 'true',

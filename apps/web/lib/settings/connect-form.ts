@@ -8,6 +8,24 @@ import type { ConnectFieldView } from './channels-requests'
 // are looked up, so a key aimed at another part of the interface cannot relabel a field
 export const ChannelMessagePrefix = 'settings.channels.'
 
+// The text a field is drawn with: the message of the page where the field names one this page has (an official
+// plugin), else the text the plugin wrote in the language of the reader (English for any other), else the key.
+// `message` answers null for a key the page does not hold.
+export function fieldLabelOf(
+  field: Pick<ConnectFieldView, 'key' | 'labelKey' | 'label'>,
+  locale: string,
+  message: (key: string) => string | null
+): string {
+  if (field.labelKey?.startsWith(ChannelMessagePrefix) === true) {
+    const text = message(field.labelKey)
+    if (text !== null) return text
+  }
+  if (field.label !== null) {
+    return locale.toLowerCase().startsWith('es') ? field.label.es : field.label.en
+  }
+  return field.key
+}
+
 export type ConnectValues = Record<string, string>
 
 // One entry per line, without blanks or repeats: the form of a field that holds a list

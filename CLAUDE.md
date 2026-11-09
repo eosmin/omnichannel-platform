@@ -152,6 +152,12 @@ same checks and the merge waits for it.
       finding rejected as a false positive needs no entry, a real one that is not fixed does.
     - **Write it down** in a "Decisions" section of the PR description: what was chosen, the best alternative that was rejected, why, and any debt created with where it is tracked.
     - **Stop and ask only** when the choice contradicts an explicit statement of the TDD, cannot be undone (data, secrets, money, a real account) or acts outside the repository.
+13. **Core, SDK, runtime, API, worker, web and api-client know no channel.** No id or name of a channel or of Meta
+    (`whatsapp`, `instagram`, `messenger`, `graph.facebook`, `wamid`, `ChannelIds.<channel>`, ...) outside `libs/channels/*`.
+    Everything is decided by data and by the capabilities and declarations of each plugin, so that a third party can ship
+    a plugin without editing core or the UI. `pnpm validate:channel-agnostic` (CI and pre-push) freezes today's references in
+    `scripts/channel-agnostic-baseline.json`, which can only shrink: lower it with `--update-down` as a file is made agnostic,
+    never raise it, never add an exception to get a green check.
 
 ---
 
