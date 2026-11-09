@@ -1,10 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq'
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
+import { CHANNEL_IDENTITY_KINDS, type ChannelIdentityKindSource } from '@platform/core/domain'
 import {
   ChannelConnectionResolver,
   needsProfileRead,
@@ -23,6 +24,7 @@ export class ProfileRequester {
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
     private readonly connections: ChannelConnectionResolver,
+    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource,
     @InjectQueue(QueueNames.CUSTOMER_PROFILES)
     private readonly queue: Queue<FetchCustomerProfileJob>,
     private readonly logger: PinoLogger
@@ -33,7 +35,9 @@ export class ProfileRequester {
   async request(pluginId: string, connectionId: string, channelIdentity: string): Promise<void> {
     try {
       if (this.registry.find(pluginId)?.fetchProfile === undefined) return
-      const parsed = parseChannelIdentity(pluginId, channelIdentity, { fromChannel: true })
+      const parsed = parseChannelIdentity(this.kinds.kindOf(pluginId), channelIdentity, {
+        fromChannel: true
+      })
       if (parsed === null) return
       const now = new Date()
       // Two lookups by unique index. The store is the connection's, never one that the event names.

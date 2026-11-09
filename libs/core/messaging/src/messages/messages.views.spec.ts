@@ -653,7 +653,7 @@ describe('the file that a quote names', () => {
     expect(quotedView(quote(rows), 'y').file).toBeNull()
   })
 
-  it('is no file once the album turned out to be one message at the provider', () => {
+  it('is no file when the files share one id at the provider', () => {
     const native = own.map(file => ({ ...file, channelMessageId: 'm1' }))
     expect(quotedView(quote(native), 'b').file).toBeNull()
   })
@@ -701,27 +701,23 @@ describe('messageView targets of the files of an album', () => {
       album('w1', [file('a', 'w1', 0), file('b', 'w2', 1), file('c', 'w3', 2)])
     )
     expect(view.media.map(f => f.targetable)).toEqual([true, true, true])
-    expect(view.albumNative).toBe(false)
   })
 
-  it('says a native album shares one id: no file is targetable, and the album is native', () => {
+  it('says no file is targetable when they all share one id', () => {
     const view = messageView(
       album('m1', [file('a', 'm1', 0), file('b', 'm1', 1), file('c', 'm1', 2)])
     )
     expect(view.media.map(f => f.targetable)).toEqual([false, false, false])
-    expect(view.albumNative).toBe(true)
   })
 
-  it('says nothing is targetable, and the album is not native, while no file has an id yet', () => {
+  it('says nothing is targetable while no file has an id yet', () => {
     const view = messageView(album(null, [file('a', null, 0), file('b', null, 1)]))
     expect(view.media.map(f => f.targetable)).toEqual([false, false])
-    expect(view.albumNative).toBe(false)
   })
 
-  it('does not call a single file an album, and does not make it targetable', () => {
+  it('does not make the only file of a message targetable', () => {
     const view = messageView(album('w1', [file('a', 'w1', 0)]))
     expect(view.media.map(f => f.targetable)).toEqual([false])
-    expect(view.albumNative).toBe(false)
   })
 
   it('leaves out the file that has no id yet and keeps the others', () => {
@@ -749,7 +745,7 @@ describe('messageView targets of the files of an album', () => {
       expect(messageView(album('w1', own)).reactions[0]?.fileId).toBe('a')
     })
 
-    it('is none in a native album: the reaction is the message', () => {
+    it('is none when the files share one id: the reaction is the message', () => {
       const native = [file('a', 'm1', 0), file('b', 'm1', 1)]
       expect(messageView(album('m1', native)).reactions[0]?.fileId).toBeNull()
     })

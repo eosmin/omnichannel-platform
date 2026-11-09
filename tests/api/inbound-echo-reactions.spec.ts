@@ -47,6 +47,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 
 const OK = 200
@@ -111,7 +112,7 @@ describe('Echoes and reactions that a channel delivers', () => {
     )
     reactions = new MessageReactionsService(
       prisma,
-      new InboundMessageTargets(prisma, connections),
+      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS),
       events,
       await app.resolve(PinoLogger)
     )

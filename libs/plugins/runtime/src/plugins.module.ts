@@ -1,6 +1,11 @@
 import { type DynamicModule, Module, type Provider, type Type } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
+import {
+  CHANNEL_IDENTITY_KINDS,
+  type ChannelIdentityKindSource,
+  ChannelIdentityKinds
+} from '@platform/core/domain'
 import type { CarrierPlugin, ChannelPlugin } from '@platform/plugins/sdk'
 
 import { CarrierRegistry } from './carrier-registry'
@@ -58,11 +63,24 @@ export class PluginsModule {
       },
       inject: [PinoLogger, ...options.carriers]
     }
+    const identityKinds: Provider = {
+      provide: CHANNEL_IDENTITY_KINDS,
+      useFactory: (registry: PluginRegistry): ChannelIdentityKindSource => ({
+        kindOf: channelType => registry.identityKindOf(channelType) ?? ChannelIdentityKinds.OPAQUE
+      }),
+      inject: [PluginRegistry]
+    }
     return {
       module: PluginsModule,
       imports: [...(options.imports ?? [])],
-      providers: [channelRegistry, carrierRegistry, ...options.channels, ...options.carriers],
-      exports: [PluginRegistry, CarrierRegistry]
+      providers: [
+        channelRegistry,
+        carrierRegistry,
+        identityKinds,
+        ...options.channels,
+        ...options.carriers
+      ],
+      exports: [PluginRegistry, CarrierRegistry, CHANNEL_IDENTITY_KINDS]
     }
   }
 }

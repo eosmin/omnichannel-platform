@@ -1204,17 +1204,3 @@ describe('InstagramPlugin, a file over the wire', () => {
     ).rejects.toBeInstanceOf(PluginError)
   })
 })
-
-describe('InstagramPlugin, no native album', () => {
-  // The owner's real log: Meta answers code 100 ("Invalid parameter") to the upload of the FIRST image (step
-  // "upload 1/3"), and no page of Meta confirms the form of that upload for Instagram. Until one does, every
-  // image goes as a message of its own, which is the path that is known to deliver.
-  it('declares no album and has no method to send one, so the core sends each image on its own', () => {
-    const { plugin } = build()
-    expect(plugin.media.album).toBeUndefined()
-    expect('sendAlbum' in plugin).toBe(false)
-    // The rest of what it takes is untouched
-    expect(plugin.media.maxFilesPerMessage).toBe(10)
-    expect(plugin.media.kinds.image).toMatchObject({ maxBytes: 8 * 1024 * 1024 })
-  })
-})

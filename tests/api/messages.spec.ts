@@ -810,6 +810,26 @@ describe('The messages of a conversation', () => {
         expect(stored).toEqual({ replyToMessageId: target.id, replyToMediaId: at(files, 1).id })
       })
 
+      it('keeps the first file too when each file has an id of its own, and says where it is', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 3)
+
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id, replyToMediaId: at(files, 0).id }))
+
+        expect(response.status).toBe(CREATED)
+        const body = response.body as MessageBody & {
+          replyTo: { file: { mediaId: string; position: number } | null } | null
+        }
+        expect(body.replyTo?.file).toEqual({ mediaId: at(files, 0).id, position: 0 })
+        const stored = await owner.message.findUniqueOrThrow({
+          where: { id: body.id },
+          select: { replyToMediaId: true }
+        })
+        expect(stored.replyToMediaId).toBe(at(files, 0).id)
+      })
+
       it('quotes the message when it has a single file', async () => {
         const { id } = await mk()
         const { target, files } = await withFiles(id, ctx.storeA.id, 1)

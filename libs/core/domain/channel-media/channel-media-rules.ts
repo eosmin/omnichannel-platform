@@ -35,17 +35,6 @@ export interface ChannelMediaCapabilities {
   // per file still declares how many the agent may attach).
   readonly maxFilesPerMessage: number
   readonly kinds: ChannelMediaRules
-  // Present when the provider takes several files in ONE message (a native album). The core then hands the plugin
-  // the consecutive files of those kinds, in order and at most `maxFiles` at a time, through `sendAlbum`. Absent
-  // means one message per file. The plugin declares it; the core hardcodes no provider limit.
-  readonly album?: ChannelMediaAlbum
-}
-
-// Which files a channel sends as one album and how many fit in it. `maxFiles` is at least 2 and at most the
-// files the channel takes in a message; every kind must be one the channel declares (the registry checks).
-export interface ChannelMediaAlbum {
-  readonly kinds: readonly ChannelMediaKind[]
-  readonly maxFiles: number
 }
 
 // Files in one message on the channels of Meta, which send them one by one in the order the agent gave. A
@@ -59,7 +48,7 @@ export function bareContentType(contentType: string): string {
 }
 
 // The kind of file for a content type: images, videos and audios by their family, and anything else is a document.
-// The one rule for the core and the plugins, so that none of them decides on its own what an album may hold.
+// The one rule for the core and the plugins, so that none of them decides on its own what a message may hold.
 export function mediaKindOfContentType(contentType: string): ChannelMediaKind {
   const type = bareContentType(contentType)
   if (type.startsWith('image/')) return ChannelMediaKinds.IMAGE
@@ -109,14 +98,6 @@ export function frozenMedia(media: ChannelMediaCapabilities): ChannelMediaCapabi
   }
   return Object.freeze({
     maxFilesPerMessage: media.maxFilesPerMessage,
-    kinds: Object.freeze(kinds),
-    ...(media.album === undefined
-      ? {}
-      : {
-          album: Object.freeze({
-            kinds: Object.freeze([...media.album.kinds]),
-            maxFiles: media.album.maxFiles
-          })
-        })
+    kinds: Object.freeze(kinds)
   })
 }

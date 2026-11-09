@@ -93,12 +93,12 @@ export class AgentReactionsService {
         throw resourceConflict('the file has no copy in the channel to react to')
       }
       // Only a file the provider can tell apart is a target of its own: the first file IS the message (one id), and
-      // the files of an album sent as ONE message share one id; their reaction is the message's, so the two never
+      // files that share one id at the provider; their reaction is the message's, so the two never
       // make two rows for one target
       let targetMediaId =
         file != null && isTargetOfItsOwn(message, message.media, file) ? file.id : null
       // A reaction being taken back is found under the file that was named even if the file cannot be told apart
-      // now (it lost its id, or a later album shares one): the row that is there is the one that goes
+      // now (it lost its id, or a later file shares one): the row that is there is the one that goes
       if (emoji === null && file != null && targetMediaId === null) {
         const there = await tx.messageReaction.count({
           where: { storeId, messageId, userId: viewer.userId, mediaId: file.id }

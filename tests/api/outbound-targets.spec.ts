@@ -30,6 +30,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 
 describe('A reaction or a quote that points at a message the platform sent', () => {
@@ -88,7 +89,7 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
       logger
     )
-    const targets = new InboundMessageTargets(prisma, connections)
+    const targets = new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS)
     reactions = new MessageReactionsService(prisma, targets, events, logger)
     changes = new InboundMessageChangesService(prisma, targets, events)
   })
@@ -466,7 +467,6 @@ describe('A reaction or a quote that points at a message the platform sent', () 
   describe('what the thread says of the files of an album', () => {
     type ThreadItem = {
       id: string
-      albumNative: boolean
       media: { id: string; targetable: boolean }[]
       reactions: { fileId: string | null; mediaId: string | null }[]
       replyTo: { file: { mediaId: string; position: number } | null } | null
@@ -492,14 +492,13 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       await react(connectionId, from, 'v-3', '🔥')
 
       const item = (await threadItems(from)).find(entry => entry.id === sent.id)
-      expect(item?.albumNative).toBe(false)
       expect(item?.media.map(file => file.targetable)).toEqual([true, true, true])
       const ids = item?.media.map(file => file.id) ?? []
       expect(item?.reactions.map(r => r.fileId).sort()).toEqual([ids[0], ids[2]].sort())
       expect(JSON.stringify(item)).not.toContain('v-1')
     })
 
-    it("says a native album is one message: no file is targetable and the reaction is the message's", async () => {
+    it("says no file is targetable when the files share one id, and the reaction is the message's", async () => {
       const { connectionId, from } = await seeded()
       const sent = await sentByAgent(ctx.storeA.id, from, {
         message: 'n-1',
@@ -508,7 +507,6 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       await react(connectionId, from, 'n-1', '👍')
 
       const item = (await threadItems(from)).find(entry => entry.id === sent.id)
-      expect(item?.albumNative).toBe(true)
       expect(item?.media.map(file => file.targetable)).toEqual([false, false, false])
       expect(item?.reactions.map(r => r.fileId)).toEqual([null])
     })
@@ -532,7 +530,6 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       }
 
       const item = (await threadItems(from)).find(entry => entry.id === sent.id)
-      expect(item?.albumNative).toBe(false)
       expect(item?.media.map(file => file.targetable)).toEqual([false, false])
     })
 

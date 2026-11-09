@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 
 import {
   lockStoreForWrite,
@@ -6,7 +6,11 @@ import {
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { AuthorType } from '@platform/core/domain'
+import {
+  AuthorType,
+  CHANNEL_IDENTITY_KINDS,
+  type ChannelIdentityKindSource
+} from '@platform/core/domain'
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { parseChannelIdentity } from '../customers/identity'
@@ -24,7 +28,7 @@ export interface InboundTargetEvent {
   targetExternalId: string
   // A reaction is about the whole message, so an id of any of its files, or of the text sent apart under a
   // file, names it. An edit or a deletion is about ONE provider message: it keeps to the id of the message
-  // itself, or the deletion of one file would take the whole album with it.
+  // itself, or the deletion of one file would take the whole message with it.
   namesFilesToo?: boolean
   // The event takes a reaction back: it looks for the one that is there under the file named
   removal?: boolean
@@ -49,7 +53,8 @@ export interface InboundTarget {
 export class InboundMessageTargets {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly connections: ChannelConnectionResolver
+    private readonly connections: ChannelConnectionResolver,
+    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource
   ) {}
 
   // Runs `apply` inside the transaction that holds the locks of the store and of the handle, and
@@ -66,7 +71,9 @@ export class InboundMessageTargets {
     const connection = await this.connections.resolve(pluginId, event.connectionId)
     if (connection === null || !connection.active) return false
     const { storeId } = connection
-    const parsed = parseChannelIdentity(pluginId, event.channelIdentity, { fromChannel: true })
+    const parsed = parseChannelIdentity(this.kinds.kindOf(pluginId), event.channelIdentity, {
+      fromChannel: true
+    })
     if (parsed === null) return false
     const identity = await this.prisma.client.customerIdentity.findFirst({
       where: { storeId, channelType: pluginId, channelIdentity: parsed.identity },
@@ -99,7 +106,7 @@ export class InboundMessageTargets {
         return false
       }
       // Only a file the provider can tell apart is a target of its own (see `isTargetOfItsOwn`): the first file is the
-      // message, and the files of an album sent as one message share one id. A message with one file (or none) is
+      // message, and files that share one id cannot be told apart. A message with one file (or none) is
       // reacted to as a whole.
       let mediaId: string | null = null
       if (event.namesFilesToo === true && target._count.media > 1) {

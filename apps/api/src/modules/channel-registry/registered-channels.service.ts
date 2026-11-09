@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common'
 
-import { type ChannelId, isOfficialChannelId } from '@platform/core/domain'
+import {
+  type ChannelId,
+  type ChannelIdentityKind,
+  ChannelIdentityKinds,
+  isOfficialChannelId
+} from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
@@ -27,5 +32,16 @@ export class RegisteredChannels {
         { channels: unknown }
       )
     }
+  }
+
+  // How a handle on the channel is read, for who may use it: the kind a plugin declared is told only to a store
+  // that sees the plugin, so a private plugin of another store cannot be probed through the answer. Any other id
+  // is opaque here, and `require` is what refuses it.
+  identityKindFor(storeId: string, channel: ChannelId): ChannelIdentityKind {
+    return (
+      (this.registry.isVisibleTo(channel, storeId)
+        ? this.registry.identityKindOf(channel)
+        : null) ?? ChannelIdentityKinds.OPAQUE
+    )
   }
 }
