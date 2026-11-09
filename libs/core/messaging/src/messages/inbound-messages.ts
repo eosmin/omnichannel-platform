@@ -9,6 +9,8 @@ import {
 
 import type { InboundMessage } from '../inbound/inbound-event'
 
+import { messageOfProviderId } from './provider-message-match'
+
 // The keys only the platform writes in the metadata of a message: whatever a channel plugin passes
 // through under these names is dropped, so a provider cannot draw a warning in the thread
 const RESERVED_METADATA_KEYS: ReadonlySet<string> = new Set([
@@ -44,7 +46,11 @@ export async function insertInboundMessage(
     message.replyToExternalId === undefined
       ? null
       : await tx.message.findFirst({
-          where: { storeId, conversationId, channelMessageId: message.replyToExternalId },
+          where: {
+            storeId,
+            conversationId,
+            AND: [messageOfProviderId(storeId, message.replyToExternalId)]
+          },
           // The same order as the reaction lookup, so a quote and a reaction find the same row
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           select: { id: true }
