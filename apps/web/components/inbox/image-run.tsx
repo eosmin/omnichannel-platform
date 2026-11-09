@@ -7,10 +7,9 @@ import type { MessageView } from '@platform/api-client'
 
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
-import { useMediaUrls } from '../../lib/media/use-media-urls'
-import { useStore } from '../providers/store-context'
+import { viewerItemsOfRun } from '../../lib/inbox/viewer-items'
 
-import { MediaLightbox } from './media-lightbox'
+import { LazyImageSetViewer } from './image-set-viewer-lazy'
 import { MessageActionsBar } from './message-actions-bar'
 import { messageDomId } from './message-bubble'
 import { RunImage } from './message-media'
@@ -40,6 +39,8 @@ export function ImageRun({
   // The picture that is open is kept by its message, not by its place: the block can change while it is open
   const [openId, setOpenId] = useState<string | null>(null)
   const first = messages[0]
+  // One picture for each message of the block that can be shown, in its order: the arrows of the viewer walk them
+  const items = viewerItemsOfRun(messages)
   return (
     <div className="flex flex-col items-start gap-0.5">
       {showAuthor && first !== undefined ? (
@@ -89,45 +90,9 @@ export function ImageRun({
           )
         })}
       </div>
-      <RunLightbox messages={messages} openId={openId} onOpenId={setOpenId} />
+      {openId === null ? null : (
+        <LazyImageSetViewer items={items} openKey={openId} onOpenKey={setOpenId} />
+      )}
     </div>
-  )
-}
-
-// The large variant of the picture that is open; the arrows walk the pictures of the block (the dialog stays open
-// while the links of the next one load, so the arrows keep their focus)
-function RunLightbox({
-  messages,
-  openId,
-  onOpenId
-}: {
-  messages: readonly MessageView[]
-  openId: string | null
-  onOpenId: (id: string | null) => void
-}): ReactElement {
-  const { storeId } = useStore()
-  const index = openId === null ? -1 : messages.findIndex(message => message.id === openId)
-  const file = index === -1 ? undefined : messages[index]?.media[0]
-  const urls = useMediaUrls(storeId, file?.id ?? '', file !== undefined)
-  const step = (by: number): void => {
-    if (index === -1) return
-    onOpenId(messages[(index + by + messages.length) % messages.length]?.id ?? null)
-  }
-  return (
-    <MediaLightbox
-      file={
-        file === undefined
-          ? null
-          : {
-              kind: 'image',
-              src: urls.data === undefined ? null : (urls.data.variants.full ?? urls.data.url),
-              downloadUrl: urls.data?.url ?? '',
-              filename: file.filename
-            }
-      }
-      onClose={() => onOpenId(null)}
-      onPrevious={messages.length > 1 ? () => step(-1) : undefined}
-      onNext={messages.length > 1 ? () => step(1) : undefined}
-    />
   )
 }
