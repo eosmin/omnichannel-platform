@@ -7,7 +7,7 @@ import {
   MessageType
 } from '@platform/core/domain'
 
-import { messageView } from './messages.views'
+import { messageView, quotedView } from './messages.views'
 
 const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   id: 'm1',
@@ -607,6 +607,62 @@ describe('messageView contacts', () => {
   })
 })
 
+describe('the file that a quote names', () => {
+  const quote = (
+    media: {
+      id: string
+      storeId: string | null
+      position: number | null
+      channelMessageId: string | null
+    }[],
+    over: { deletedAt?: Date | null } = {}
+  ) => ({
+    id: 'q1',
+    storeId: 's1',
+    type: 'IMAGE',
+    authorType: AuthorType.AGENT,
+    authorId: 'u1',
+    content: 'x',
+    deletedAt: null,
+    media,
+    ...over
+  })
+  const own = [
+    { id: 'a', storeId: 's1', position: 0, channelMessageId: 'w1' },
+    { id: 'b', storeId: 's1', position: 1, channelMessageId: 'w2' },
+    { id: 'c', storeId: 's1', position: null, channelMessageId: 'w3' }
+  ]
+
+  it('places the file by its position, else by its order from 0', () => {
+    expect(quotedView(quote(own), 'b').file).toEqual({ mediaId: 'b', position: 1 })
+    expect(quotedView(quote(own), 'c').file).toEqual({ mediaId: 'c', position: 2 })
+  })
+
+  it('is no file when the quote names none, or the file is gone', () => {
+    expect(quotedView(quote(own)).file).toBeNull()
+    expect(quotedView(quote(own), 'zzz').file).toBeNull()
+  })
+
+  it('is no file of a row of another store or with no store', () => {
+    const rows = [
+      { id: 'a', storeId: 's1', position: 0, channelMessageId: 'w1' },
+      { id: 'x', storeId: 's2', position: 1, channelMessageId: 'w2' },
+      { id: 'y', storeId: null, position: 2, channelMessageId: 'w3' }
+    ]
+    expect(quotedView(quote(rows), 'x').file).toBeNull()
+    expect(quotedView(quote(rows), 'y').file).toBeNull()
+  })
+
+  it('is no file once the album turned out to be one message at the provider', () => {
+    const native = own.map(file => ({ ...file, channelMessageId: 'm1' }))
+    expect(quotedView(quote(native), 'b').file).toBeNull()
+  })
+
+  it('is no file of a deleted message', () => {
+    expect(quotedView(quote(own, { deletedAt: new Date() }), 'b').file).toBeNull()
+  })
+})
+
 describe('messageView targets of the files of an album', () => {
   const file = (id: string, channelMessageId: string | null, position: number | null = null) => ({
     id,
@@ -629,7 +685,11 @@ describe('messageView targets of the files of an album', () => {
     deliveryStatus: 'sent',
     deliveryError: null
   })
-  const album = (messageId: string | null, files: ReturnType<typeof file>[], mediaId = null) => ({
+  const album = (
+    messageId: string | null,
+    files: ReturnType<typeof file>[],
+    mediaId: string | null = null
+  ) => ({
     ...row(null),
     channelMessageId: messageId,
     media: files,
@@ -682,7 +742,7 @@ describe('messageView targets of the files of an album', () => {
     const own = [file('a', 'w1', 0), file('b', 'w2', 1)]
 
     it('is the file it was put under', () => {
-      expect(messageView(album('w1', own, 'b' as never)).reactions[0]?.fileId).toBe('b')
+      expect(messageView(album('w1', own, 'b')).reactions[0]?.fileId).toBe('b')
     })
 
     it('is the first file when the reaction is the message and the message is the first file (one message for each picture)', () => {
@@ -692,6 +752,12 @@ describe('messageView targets of the files of an album', () => {
     it('is none in a native album: the reaction is the message', () => {
       const native = [file('a', 'm1', 0), file('b', 'm1', 1)]
       expect(messageView(album('m1', native)).reactions[0]?.fileId).toBeNull()
+    })
+
+    it('is none once the message is deleted', () => {
+      expect(
+        messageView({ ...album('w1', own), deletedAt: new Date() }).reactions[0]?.fileId
+      ).toBeNull()
     })
 
     it('is none for a single file or for no file', () => {

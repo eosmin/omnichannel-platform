@@ -78,7 +78,10 @@ export const QUOTE_SELECT = {
   id: true,
   storeId: true,
   // To place a quoted file in its message
-  media: { select: { id: true, storeId: true, position: true }, orderBy: MEDIA_ORDER },
+  media: {
+    select: { id: true, storeId: true, position: true, channelMessageId: true },
+    orderBy: MEDIA_ORDER
+  },
   type: true,
   authorType: true,
   authorId: true,
@@ -89,7 +92,12 @@ export const QUOTE_SELECT = {
 export interface QuoteRow {
   id: string
   storeId: string
-  media: { id: string; storeId: string | null; position: number | null }[]
+  media: {
+    id: string
+    storeId: string | null
+    position: number | null
+    channelMessageId: string | null
+  }[]
   type: string
   authorType: string
   authorId: string | null
@@ -104,7 +112,10 @@ function quotedFileOf(row: QuoteRow, mediaId: string | null): QuotedFile | null 
   const files = row.media.filter(file => file.storeId === row.storeId)
   const index = files.findIndex(file => file.id === mediaId)
   const file = files[index]
-  return file === undefined ? null : { mediaId, position: file.position ?? index }
+  // Only a file the provider still tells apart is placed: if the album turned out to be one message (the files share
+  // an id), the quote is the message, as the provider took it
+  if (file === undefined || !isDistinctFile(files, file)) return null
+  return { mediaId, position: file.position ?? index }
 }
 
 export function quotedView(row: QuoteRow, replyToMediaId: string | null = null): QuotedMessage {
@@ -380,7 +391,7 @@ interface MessageRow {
 // first file of one message for each picture, that file; none in a native album or for a message of one file.
 function reactionFileOf(row: MessageRow, mediaId: string | null): string | null {
   if (mediaId !== null) return mediaId
-  if (row.channelMessageId === null || isNativeAlbum(row.media)) return null
+  if (row.deletedAt !== null || row.channelMessageId === null) return null
   const first = row.media.find(file => file.channelMessageId === row.channelMessageId)
   return first !== undefined && isDistinctFile(row.media, first) ? first.id : null
 }

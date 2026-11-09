@@ -889,6 +889,27 @@ describe('The messages of a conversation', () => {
         expect(JSON.stringify(thread.body)).not.toContain('quote-')
       })
 
+      it('says no file, and keeps none, when the files of the album share one id', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 3)
+        await owner.media.updateMany({
+          where: { messageId: target.id },
+          data: { channelMessageId: 'one-id-for-all' }
+        })
+
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id, replyToMediaId: at(files, 0).id }))
+
+        expect(response.status).toBe(CREATED)
+        expect((response.body as { replyTo: { file: unknown } | null }).replyTo?.file).toBeNull()
+        const stored = await owner.message.findUniqueOrThrow({
+          where: { id: (response.body as MessageBody).id },
+          select: { replyToMediaId: true }
+        })
+        expect(stored.replyToMediaId).toBeNull()
+      })
+
       it('says no file when the message is quoted as a whole', async () => {
         const { id } = await mk()
         const { target } = await withFiles(id, ctx.storeA.id, 2)
