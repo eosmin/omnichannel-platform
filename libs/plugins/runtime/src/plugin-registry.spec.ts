@@ -485,14 +485,13 @@ describe('PluginRegistry, the files a channel takes', () => {
     })
   })
   describe('album', () => {
-    const album = { kinds: ['image'], maxFiles: 10 }
+    const album = { kinds: ['image'], maxFiles: 10 } as const
+    const sendAlbum = (): Promise<never> => Promise.reject(new Error('not used'))
     const withAlbum = { ...media, maxFilesPerMessage: 10, album }
 
     it('keeps the album of a channel that declares it and has sendAlbum', () => {
       const registry = build()
-      registry.register(
-        channel({ id: 'telegram', ...withImages, media: withAlbum, sendAlbum: fail })
-      )
+      registry.register(channel({ id: 'telegram', ...withImages, media: withAlbum, sendAlbum }))
       expect(registry.mediaOf('telegram')?.album).toEqual(album)
     })
 
@@ -504,9 +503,7 @@ describe('PluginRegistry, the files a channel takes', () => {
         )
       ).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
       expect(
-        codeOf(() =>
-          registry.register(channel({ id: 'signal', ...withImages, media, sendAlbum: fail }))
-        )
+        codeOf(() => registry.register(channel({ id: 'signal', ...withImages, media, sendAlbum })))
       ).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
       expect(registry.has('telegram')).toBe(false)
       expect(registry.has('signal')).toBe(false)
