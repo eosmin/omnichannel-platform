@@ -2035,6 +2035,38 @@ describe('Replies on their way to a channel', () => {
           expect(message.failureDefinitive).toBe(true)
         })
 
+        it.each([
+          ['a timeout of the worker', new Error('the call to the provider timed out')],
+          [
+            'a plugin that says retry but also that the outcome is unknown',
+            new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+              retryable: true,
+              outcomeUnknown: true
+            })
+          ]
+        ])(
+          'does not send the whole album again after %s, even with attempts left',
+          async (_name, failure) => {
+            const reply = await album([null, null, null])
+            albumFailure = failure
+
+            // Resolves: the job is not retried, because the album may have reached the customer
+            await sender.send(job(reply), false)
+
+            expect(sentAlbums).toHaveLength(1)
+            expect(sentMedia).toHaveLength(0)
+            expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
+              'failed',
+              'failed',
+              'failed'
+            ])
+            const message = await messageFlags(reply.id)
+            expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+            // Left as one that may have gone: the agent can send it again, not throw it away
+            expect(message.failureDefinitive).toBe(false)
+          }
+        )
+
         it('tries the album again, and never one by one, after a refusal that may be repeated', async () => {
           const reply = await album([null, null])
           albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {

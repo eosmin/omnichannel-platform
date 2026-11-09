@@ -897,17 +897,22 @@ export class OutboundSender {
         'sending an album failed'
       )
       const outcomeKnown = isDefinitiveRefusal(error)
-      if (refused.retryable && !args.isLastAttempt) {
+      // A job that repeats sends the whole album again, and the provider has no key to stop it: only the plugin's
+      // own word that it can be repeated, with the outcome not in doubt, is taken (a throttle, or images that could
+      // not be stored). Anything else, a timeout of the worker or an error that is not the plugin's included,
+      // may have reached the customer: the files fail as ones that may have gone and the agent decides.
+      const repeatable = refused.retryable && error instanceof PluginError && !error.outcomeUnknown
+      if (repeatable && !args.isLastAttempt) {
         if (outcomeKnown && clearable) await this.clearInFlight(storeId, messageId)
         throw new SendAttemptFailed(refused.code, error)
       }
       // The provider answered that it did not take the album and nothing is to be waited for: the images go one
-      // by one, each with the key it always had. Never on a doubt.
-      // and only for a refusal of the message itself: a token that does not work, a closed window or a file the
-      // channel does not take would be refused once for each image
+      // by one, each with the key it always had. Never on a doubt, and only for a refusal of the message itself:
+      // a token that does not work, a closed window or a file the channel does not take would be refused once for
+      // each image.
       if (
         outcomeKnown &&
-        refused.retryable !== true &&
+        !repeatable &&
         error instanceof PluginError &&
         error.refused &&
         error.code === ErrorCodes.CHANNEL_MESSAGE_FAILED
