@@ -52,11 +52,11 @@ export type DuplicateMatch = (typeof DuplicateMatches)[keyof typeof DuplicateMat
 // expires, so the profile is read again after this many days.
 export const CustomerProfileFetch = {
   STALE_AFTER_DAYS: 7,
-  // A read gets less room than a send, and its queue runs few at a time: Meta's limits count per app
+  // A read gets less room than a send, and its queue runs few at a time: the provider's limits count per app
   TIMEOUT_MS: 10_000,
   CONCURRENCY: 5,
   ATTEMPTS: 3,
-  // Meta throttles for minutes: tries a few seconds apart only prolong a throttle
+  // The provider throttles for minutes: tries a few seconds apart only prolong a throttle
   BACKOFF_MS: 60_000,
   JOB_ID_PREFIX: 'profile',
   // A read that failed for lack of an answer (an outage) is asked again after this, not after a week

@@ -7,7 +7,7 @@ import { RealtimeEvents } from '@platform/core/realtime'
 import { useRealtime } from './realtime-context'
 import { NOBODY_TYPING, TypingTracker, type TypingSnapshot } from './typing-tracker'
 
-// Who is typing in the open conversation: the customer (the widget sends it; Meta does not) and the
+// Who is typing in the open conversation: the customer (the widget sends it; most providers do not) and the
 // teammates, except the person themselves on another tab. The room is joined by the thread.
 export function useTyping(conversationId: string, selfId: string | undefined): TypingSnapshot {
   const realtime = useRealtime()

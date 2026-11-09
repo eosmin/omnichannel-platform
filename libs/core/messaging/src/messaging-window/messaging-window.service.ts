@@ -16,7 +16,7 @@ import {
 } from './messaging-window.policy'
 import { type MessagingWindowState, stateOf } from './messaging-window.state'
 
-// The 24-hour rule of WhatsApp, Instagram and Messenger. The window belongs to the customer and the
+// The messaging window of the providers that have one (24 hours and more). The window belongs to the customer and the
 // channel (it is counted from the last message of that identity), not to one conversation.
 @Injectable()
 export class MessagingWindowService {

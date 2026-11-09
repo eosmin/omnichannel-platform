@@ -21,7 +21,7 @@ const NOTICE_KEYS = {
   [CaptionState.QUEUED]: 'captionQueued'
 } as const
 
-// What the thread says of the text of a message that the channel sent apart from its file (Meta), and the button
+// What the thread says of the text of a message that the channel sent apart from its file, and the button
 // to send only that text again when the person may (the api checks it again); a text that may already be with the
 // customer asks first. Nothing is drawn for a text that went.
 export function CaptionNotice(props: {

@@ -3,7 +3,7 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 
 import { invalidInput } from '../conversations/conversations.support'
 
-// Where a kind of file carries no text of its own on the channel (an audio on WhatsApp), the text goes after
+// Where a kind of file carries no text of its own on the channel (an audio on some of them), the text goes after
 // the file as a message of its own (only for the text of the message: the first file)
 export function carriesNoCaption(limits: ChannelLimitsView | null, type: MessageType): boolean {
   return limits?.caption?.withoutCaption.includes(type) === true
@@ -29,7 +29,7 @@ export function captionProblemOf(
   return null
 }
 
-// The text under a file has the limits of its channel (WhatsApp: 1024, and none under an audio unless it goes
+// The text under a file has the limits of its channel (a number of characters, and none under an audio unless it goes
 // apart). The plugin refuses the same at send time, which the agent would only see as a failed bubble: here
 // it is an answer to the request, before anything is queued.
 export function requireCaptionFits(
