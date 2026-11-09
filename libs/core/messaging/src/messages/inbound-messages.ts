@@ -9,7 +9,7 @@ import {
 
 import type { InboundMessage } from '../inbound/inbound-event'
 
-import { messageOfProviderId } from './provider-message-match'
+import { isDistinctFile, messageOfProviderId } from './provider-message-match'
 
 // The keys only the platform writes in the metadata of a message: whatever a channel plugin passes
 // through under these names is dropped, so a provider cannot draw a warning in the thread
@@ -53,8 +53,17 @@ export async function insertInboundMessage(
           },
           // The same order as the reaction lookup, so a quote and a reaction find the same row
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          select: { id: true }
+          select: {
+            id: true,
+            media: { where: { storeId }, select: { id: true, channelMessageId: true } }
+          }
         })
+  // The file of an album the customer quoted, when the id they quoted names one the provider tells apart (the
+  // quote of the message itself, or of a file that shares its id, is the message)
+  const quotedFile =
+    replyTo === null || message.replyToExternalId === undefined
+      ? undefined
+      : replyTo.media.find(file => file.channelMessageId === message.replyToExternalId)
   const created = await tx.message.create({
     data: {
       storeId,
@@ -66,6 +75,10 @@ export async function insertInboundMessage(
       ...(input.author === AuthorType.EXTERNAL ? { deliveryStatus: DeliveryStatus.SENT } : {}),
       channelMessageId: message.externalId,
       replyToMessageId: replyTo?.id ?? null,
+      replyToMediaId:
+        replyTo !== null && quotedFile !== undefined && isDistinctFile(replyTo.media, quotedFile)
+          ? quotedFile.id
+          : null,
       ...(message.metadata === undefined ? {} : { metadata: ownMetadata(message.metadata) }),
       createdAt: input.createdAt
     },

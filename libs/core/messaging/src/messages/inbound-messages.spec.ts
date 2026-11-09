@@ -48,7 +48,7 @@ describe('insertInboundMessage quote', () => {
   })
 
   it.each([
-    ['a message that is here', { id: 'm0' }, false],
+    ['a message that is here', { id: 'm0', media: [] }, false],
     ['a message that is not here', null, true]
   ])('says whether the quote of %s was found', async (_name, found, unresolved) => {
     const tx = {

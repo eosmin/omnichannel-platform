@@ -31,6 +31,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   unavailableFiles: [],
   captionState: null,
   textApart: false,
+  albumNative: false,
   mentions: [],
   version: 1,
   editedAt: null,
@@ -288,6 +289,7 @@ describe('messageActionsOf', () => {
           delivery: 'sent',
           errorCode: null,
           caption: `text ${at}`,
+          targetable: false,
           captionState
         })) as MessageView['media'],
         ...over
