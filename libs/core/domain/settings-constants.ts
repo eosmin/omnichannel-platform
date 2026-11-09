@@ -6,7 +6,7 @@ export const SettingsLimits = {
   TAG_DESCRIPTION_MAX_LENGTH: 255,
   SNIPPET_SHORTCUT_MAX_LENGTH: 32,
   SNIPPET_TITLE_MAX_LENGTH: 120,
-  // The longest text a WhatsApp message carries
+  // The longest text the channel with the longest limit carries
   SNIPPET_CONTENT_MAX_LENGTH: 4096,
   TIMEZONE_MAX_LENGTH: 64,
   MIN_DAYS: 1,

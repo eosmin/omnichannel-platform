@@ -1,12 +1,12 @@
 import { AuthorType } from '@platform/core/domain'
 import type { TypingParams } from '@platform/plugins/sdk'
 
-// The message of the customer that a typing indicator answers. WhatsApp shows the indicator through the
+// The message of the customer that a typing indicator answers. A provider may show the indicator through the
 // read receipt of the newest message of the customer, so the plugin needs that message; the channels that
 // do not need it ignore it. Pure, so that it is tested without the database.
 
 // Inside the store, never by an id the caller sends. A message the customer took back is not offered:
-// Meta would refuse the id.
+// the provider would refuse the id.
 export function lastInboundQuery(
   storeId: string,
   conversationId: string

@@ -100,7 +100,7 @@ export class TypingSender {
     if (plugin?.sendTypingIndicator === undefined) return
     // Only a start has a message to answer. The read comes after the check of the plugin, so a channel
     // that needs none costs no query; the switch of the store decides whether the indicator may mark
-    // the message as read (WhatsApp shows it through the read receipt).
+    // the message as read (some providers show it through the read receipt).
     const lastInbound = active ? await this.lastInbound(storeId, conversationId) : undefined
     await withTimeout(
       plugin.sendTypingIndicator(this.contexts.contextFor(connection), {
