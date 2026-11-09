@@ -8,6 +8,7 @@ import type {
   ChannelCustomerProfile,
   ChannelEvent,
   ChannelHealth,
+  ChannelAlbumResult,
   ChannelMessageResult,
   ConnectField,
   ConnectInput,
@@ -18,6 +19,7 @@ import type {
   MessagingWindowPolicy,
   SendButtonsParams,
   SendLocationParams,
+  SendAlbumParams,
   SendMediaParams,
   SendMessageParams,
   SendReactionParams,
@@ -81,6 +83,12 @@ export interface ChannelPlugin {
 
   sendMessage(ctx: ChannelContext, params: SendMessageParams): Promise<ChannelMessageResult>
   sendMedia(ctx: ChannelContext, params: SendMediaParams): Promise<ChannelMessageResult>
+
+  // Several files in one message. Required exactly when `media.album` is declared (the registry checks both ways).
+  // All or nothing: it is one call to the provider. A failure that may have reached the provider (a timeout, a
+  // 5xx) is thrown as a PluginError with `outcomeUnknown`, and only a refusal in so many words says that nothing
+  // was delivered.
+  sendAlbum?(ctx: ChannelContext, params: SendAlbumParams): Promise<ChannelAlbumResult>
 
   // Optional, each one required by a declared capability (see the registry)
   sendTemplate?(ctx: ChannelContext, params: SendTemplateParams): Promise<ChannelMessageResult>

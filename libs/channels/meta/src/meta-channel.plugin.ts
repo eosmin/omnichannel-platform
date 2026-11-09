@@ -21,11 +21,13 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
+  type AlbumFile,
   type ChannelCapabilityType,
   type ChannelContext,
   type ChannelCustomerProfile,
   type ChannelEvent,
   type ChannelHealth,
+  type ChannelAlbumResult,
   type ChannelMessageResult,
   type ChannelOAuth,
   type ChannelPlugin,
@@ -34,8 +36,10 @@ import {
   type ConnectResult,
   type FetchedMedia,
   PluginError,
+  type PluginErrorCode,
   type MarkReadParams,
   PluginTypes,
+  type SendAlbumParams,
   type SendMediaParams,
   type SendMessageParams,
   type SendReactionParams,
@@ -57,6 +61,8 @@ const successSchema = z.object({ success: z.boolean() })
 const appIdSchema = z.object({ id: z.string() })
 // The Send API answers with the ids of the recipient and the message
 const sentSchema = z.object({ message_id: z.string().min(1) })
+// What storing a file for an album answers: the id to name it by in the message
+const storedSchema = z.object({ attachment_id: z.string().min(1) })
 // What the User Profile API of either host answers; a person who keeps it private gets an empty object
 const userProfileSchema = z.object({
   name: z.string().nullish(),
@@ -384,14 +390,109 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       status: DeliveryStatus.SENT,
       sentAt: new Date().toISOString()
     }
-    if (!params.caption) return sent
+    return this.withCaption(ctx, params.channelIdentity, sent, params.caption)
+  }
+
+  // Several images in ONE message (a native album). Each image is stored on the attachments edge first, which
+  // gives its `attachment_id` and sends nothing to the customer (so it may be tried again), then a single call
+  // sends them all, in order. All or nothing: one call to Meta, which has no idempotency key, so a failure that
+  // may have reached it is an unknown outcome and is never repeated by this plugin. Everything refusable is
+  // refused before the first image is opened.
+  async sendAlbum(ctx: ChannelContext, params: SendAlbumParams): Promise<ChannelAlbumResult> {
+    const album = this.media.album
+    // A plugin that declares no album has no business here (the registry ties the method to the declaration)
+    if (album === undefined) {
+      throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+    }
+    const files: readonly AlbumFile[] = params.files
+    if (!Array.isArray(params.files) || files.length < 2 || files.length > album.maxFiles) {
+      throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+    }
+    const checked = files.map(file => {
+      if (typeof file.openFile !== 'function') {
+        throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+      }
+      const contentType = bareType(file.contentType)
+      const { kind } = mediaKindOf(contentType)
+      const rule = this.media.kinds[kind]
+      if (rule === undefined || !album.kinds.includes(kind)) {
+        throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
+      }
+      if (rule.types !== null && !rule.types.includes(contentType)) {
+        throw new PluginError(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED, { retryable: false })
+      }
+      if (!Number.isSafeInteger(file.fileSize) || file.fileSize <= 0) {
+        throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
+      }
+      if (file.fileSize > rule.maxBytes) {
+        throw new PluginError(ErrorCodes.CHANNEL_FILE_TOO_LARGE, { retryable: false })
+      }
+      return { file, contentType, kind }
+    })
+    const { accessToken } = parseMetaTokenCredentials(ctx.credentials)
+    const owner = this.sendOwner(ctx)
+    const attachments: unknown[] = []
+    for (const { file, contentType, kind } of checked) {
+      try {
+        const stored = await this.meta.uploadMedia({
+          origin: this.origin,
+          path: [owner, MetaMessaging.EDGE_MESSAGE_ATTACHMENTS],
+          token: accessToken,
+          fields: {
+            message: JSON.stringify({
+              [MetaMessaging.ATTACHMENT_KEY]: {
+                type: MetaAttachmentOfKind[kind],
+                payload: { is_reusable: true }
+              }
+            })
+          },
+          fileField: MetaUpload.SEND_FILE_FIELD,
+          // Only stores the file: asking again changes nothing the customer sees
+          safeToRepeat: true,
+          file: { open: file.openFile, contentType, size: file.fileSize },
+          schema: storedSchema
+        })
+        attachments.push({
+          type: MetaAttachmentOfKind[kind],
+          payload: { attachment_id: stored.attachment_id }
+        })
+      } catch (error) {
+        // Nothing has been sent to the customer yet, whatever the upload went through: the failure is a
+        // refusal that may be tried again, and only its code and its advice to retry are kept
+        if (error instanceof PluginError) {
+          throw new PluginError(error.code as PluginErrorCode, {
+            retryable: error.retryable,
+            refused: true,
+            ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
+            ...(error.providerSubcode === undefined
+              ? {}
+              : { providerSubcode: error.providerSubcode })
+          })
+        }
+        throw error
+      }
+    }
+    const sent = await this.send(ctx, params.channelIdentity, {
+      message: { [MetaMessaging.ATTACHMENTS_KEY]: attachments },
+      ...this.replyFields(params.replyToExternalId)
+    })
+    return this.withCaption(ctx, params.channelIdentity, sent, params.caption)
+  }
+
+  // Meta takes a file and no caption: the text is a message of its own after what it belongs to. Its id travels
+  // in the metadata (Meta echoes it too); a failure of the text alone never fails what was sent.
+  private async withCaption<T extends ChannelMessageResult>(
+    ctx: ChannelContext,
+    channelIdentity: string,
+    sent: T,
+    caption: string | undefined
+  ): Promise<T> {
+    if (!caption) return sent
     try {
-      const caption = await this.send(ctx, params.channelIdentity, {
-        message: { text: params.caption }
-      })
+      const text = await this.send(ctx, channelIdentity, { message: { text: caption } })
       return {
         ...sent,
-        metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: caption.externalId }
+        metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: text.externalId }
       }
     } catch (error) {
       // Meta has no idempotency key on the Send API, so a second call cannot be made safe. What can be

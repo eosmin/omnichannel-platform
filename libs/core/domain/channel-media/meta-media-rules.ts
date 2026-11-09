@@ -27,8 +27,12 @@ export const MetaAttachmentOfKind: Readonly<Record<ChannelMediaKind, MetaMediaKi
 
 // Meta, "Saving assets" (Messenger Platform): 8 MB for an image and 25 MB for any other file. The page lists
 // no formats, so none is filtered here; Meta answers 100/2018047 for a type that does not match the file.
+//
+// Send API: one message may carry several attachments, but only images (Messenger up to 30, Instagram up to 10;
+// Meta, read 2026-11-09). Anything else is a message of its own.
 export const MessengerMedia: ChannelMediaCapabilities = frozenMedia({
   maxFilesPerMessage: MetaMediaFilesPerMessage,
+  album: { kinds: [ChannelMediaKinds.IMAGE], maxFiles: 30 },
   kinds: {
     [ChannelMediaKinds.IMAGE]: { types: null, maxBytes: 8 * MEGABYTE },
     [ChannelMediaKinds.VIDEO]: { types: null, maxBytes: 25 * MEGABYTE },
@@ -42,6 +46,7 @@ export const MessengerMedia: ChannelMediaCapabilities = frozenMedia({
 // file: pdf only, up to 25 MB.
 export const InstagramMedia: ChannelMediaCapabilities = frozenMedia({
   maxFilesPerMessage: MetaMediaFilesPerMessage,
+  album: { kinds: [ChannelMediaKinds.IMAGE], maxFiles: 10 },
   kinds: {
     [ChannelMediaKinds.IMAGE]: {
       types: ['image/jpeg', 'image/png', 'image/gif'],

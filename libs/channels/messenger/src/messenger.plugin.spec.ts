@@ -805,3 +805,162 @@ describe('MessengerPlugin, a file over the wire', () => {
     ).rejects.toBeInstanceOf(PluginError)
   })
 })
+
+describe('MessengerPlugin, an album in one message', () => {
+  const image = (overrides: Record<string, unknown> = {}) => ({
+    contentType: 'image/png',
+    fileSize: 1000,
+    openFile: opensTheFile,
+    filename: null,
+    ...overrides
+  })
+  const album = (overrides: Record<string, unknown> = {}) => ({
+    channelIdentity: '99',
+    files: [image(), image(), image()],
+    idempotencyKey: 'm-album-0',
+    ...overrides
+  })
+  const send = (plugin: MessengerPlugin, params: Record<string, unknown>) =>
+    plugin.sendAlbum(ctx, params as never)
+
+  it('declares an album of images, and the method that sends it', () => {
+    const { plugin } = build()
+    expect(plugin.media.album).toEqual({ kinds: ['image'], maxFiles: 30 })
+    expect(typeof plugin.sendAlbum).toBe('function')
+  })
+
+  it('stores each image on the attachments edge in order, then sends them all in ONE message', async () => {
+    const { plugin, post, upload } = build()
+    upload
+      .mockResolvedValueOnce({ attachment_id: 'a1' })
+      .mockResolvedValueOnce({ attachment_id: 'a2' })
+      .mockResolvedValueOnce({ attachment_id: 'a3' })
+    post.mockResolvedValueOnce({ message_id: 'm_album' })
+
+    const result = await send(plugin, album({ replyToExternalId: 'm_0' }))
+
+    expect(upload).toHaveBeenCalledTimes(3)
+    for (const [call] of upload.mock.calls) {
+      expect(call).toMatchObject({
+        origin: MetaGraph.ORIGIN,
+        path: ['1090000000000001', 'message_attachments'],
+        token: 'EAAB-page-token',
+        fileField: 'filedata',
+        // Storing a file sends nothing to the customer: it may be tried again
+        safeToRepeat: true,
+        file: { contentType: 'image/png', size: 1000, open: opensTheFile }
+      })
+      expect(call.fields).toEqual({
+        message: '{"attachment":{"type":"image","payload":{"is_reusable":true}}}'
+      })
+    }
+    expect(post).toHaveBeenCalledTimes(1)
+    const sent = post.mock.calls[0]?.[0]
+    expect(sent?.path).toEqual(['1090000000000001', 'messages'])
+    expect(sent?.body).toEqual({
+      recipient: { id: '99' },
+      messaging_type: 'RESPONSE',
+      message: {
+        attachments: [
+          { type: 'image', payload: { attachment_id: 'a1' } },
+          { type: 'image', payload: { attachment_id: 'a2' } },
+          { type: 'image', payload: { attachment_id: 'a3' } }
+        ]
+      },
+      reply_to: { mid: 'm_0' }
+    })
+    expect(result).toMatchObject({ externalId: 'm_album', status: 'sent' })
+    expect(result.fileExternalIds).toBeUndefined()
+  })
+
+  it.each([
+    ['fewer than two files', { files: [image()] }],
+    ['more files than the album takes', { files: Array.from({ length: 31 }, () => image()) }],
+    ['a file that is not an image', { files: [image(), image({ contentType: 'video/mp4' })] }],
+    [
+      'a file above the size of an image',
+      { files: [image(), image({ fileSize: 8 * 1024 * 1024 + 1 })] }
+    ],
+    ['a file with no size', { files: [image(), image({ fileSize: 0 })] }],
+    ['a file the host cannot open', { files: [image(), image({ openFile: undefined })] }]
+  ])('refuses %s before anything is stored or sent', async (_name, overrides) => {
+    const { plugin, post, upload } = build()
+    await expect(send(plugin, album(overrides))).rejects.toMatchObject({
+      outcomeUnknown: false,
+      retryable: false
+    })
+    expect(upload).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('fails as a refusal, with nothing sent, when an image cannot be stored', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValueOnce({ attachment_id: 'a1' }).mockRejectedValueOnce(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+        retryable: true,
+        outcomeUnknown: true
+      })
+    )
+
+    const failure: unknown = await send(plugin, album()).catch((error: unknown) => error)
+
+    expect(post).not.toHaveBeenCalled()
+    // No message left for the customer: the failure is known, whatever the upload went through
+    expect(failure).toBeInstanceOf(PluginError)
+    expect(failure).toMatchObject({ refused: true, outcomeUnknown: false, retryable: true })
+  })
+
+  it('leaves the outcome UNKNOWN when the one message got no clear answer', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValue({ attachment_id: 'a' })
+    post.mockRejectedValue(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, outcomeUnknown: true })
+    )
+
+    await expect(send(plugin, album())).rejects.toMatchObject({
+      outcomeUnknown: true,
+      refused: false
+    })
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a refusal of the provider as a refusal', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValue({ attachment_id: 'a' })
+    post.mockRejectedValue(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, refused: true })
+    )
+
+    await expect(send(plugin, album())).rejects.toMatchObject({ refused: true })
+  })
+
+  it('sends the caption as its own message after the album', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValue({ attachment_id: 'a' })
+    post
+      .mockResolvedValueOnce({ message_id: 'm_album' })
+      .mockResolvedValueOnce({ message_id: 'm_c' })
+
+    const result = await send(plugin, album({ caption: 'tus fotos' }))
+
+    expect(post.mock.calls[1]?.[0].body).toMatchObject({ message: { text: 'tus fotos' } })
+    expect(result).toMatchObject({ externalId: 'm_album' })
+    expect(result.metadata).toEqual({ captionExternalId: 'm_c' })
+  })
+
+  it('keeps the album as sent when only its caption fails', async () => {
+    const { plugin, post, upload } = build()
+    upload.mockResolvedValue({ attachment_id: 'a' })
+    post.mockResolvedValueOnce({ message_id: 'm_album' }).mockRejectedValueOnce(
+      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+        retryable: false,
+        outcomeUnknown: true
+      })
+    )
+
+    const result = await send(plugin, album({ caption: 'tus fotos' }))
+
+    expect(result).toMatchObject({ externalId: 'm_album' })
+    expect(result.metadata).toEqual({ captionState: 'unconfirmed' })
+  })
+})
