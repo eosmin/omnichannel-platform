@@ -407,6 +407,10 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
   const login = {
     kind: 'meta-facebook-login',
     scopes: ['pages_show_list'],
+    dialogOrigin: 'https://login.example.test',
+    providerName: { es: 'Ejemplo', en: 'Example' },
+    linkedAccount: null,
+    assetIdPattern: '^\\d{1,32}$',
     authorizationUrl: () => 'https://dialog.example/x',
     exchangeCode: () => Promise.resolve('user-token'),
     grantedScopes: () => Promise.resolve(['pages_show_list']),

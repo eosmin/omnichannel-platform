@@ -1,7 +1,13 @@
 import { z } from 'zod'
 
-import { type ApiClient, channelDescriptorSchema } from '@platform/api-client'
+import {
+  type ApiClient,
+  channelDescriptorSchema,
+  channelOAuthDescriptorSchema,
+  localizedTextSchema
+} from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
+import { ChannelConnectFieldLimits } from '@platform/core/domain'
 import type { ChannelConnectionListState } from '@platform/core/domain'
 
 // Settings → Channels and Plugins: what the api answers to who manages channels. Kept in the page's own
@@ -64,15 +70,25 @@ const testResultSchema = z.object({
 })
 export type ChannelTestView = z.output<typeof testResultSchema>
 
-const connectFieldSchema = z.object({
-  key: z.string(),
-  // A message key (the official plugins) or null for a plugin that names the field with a text of its own, which
-  // the form draws once the settings read it (Step 7.9 B1b); until then such a field shows its key
-  labelKey: z.string().nullable(),
-  secret: z.boolean(),
-  required: z.boolean(),
-  multiple: z.boolean()
-})
+const messageKeySchema = z
+  .string()
+  .max(ChannelConnectFieldLimits.MESSAGE_KEY_MAX_LENGTH)
+  .regex(ChannelConnectFieldLimits.MESSAGE_KEY_PATTERN)
+const connectFieldSchema = z
+  .object({
+    key: z.string(),
+    // A message key (the official plugins) or null for a plugin that names the field with a text of its own, which
+    // the form draws once the settings read it (Step 7.9 B1b); until then such a field shows its key
+    labelKey: messageKeySchema.nullable(),
+    // The text of the plugin itself in each language, and a line of help: null/absent from the official plugins
+    label: localizedTextSchema.nullable().catch(null),
+    helpKey: messageKeySchema.nullable().catch(null),
+    secret: z.boolean(),
+    required: z.boolean(),
+    multiple: z.boolean()
+  })
+  // A field the page cannot name is no field: it is dropped from the form (below), not drawn without a name
+  .refine(field => field.labelKey !== null || field.label !== null)
 export type ConnectFieldView = z.output<typeof connectFieldSchema>
 
 const catalogEntrySchema = z.object({
@@ -86,14 +102,20 @@ const catalogEntrySchema = z.object({
   activeConnections: z.number().int(),
   channel: z
     .object({
+      // One field the browser cannot read makes the channel's whole form unreadable (the channel is then listed
+      // with no way to connect), never a form with a required field missing
       connectFields: z.array(connectFieldSchema),
       callbackUrl: z.string().nullable(),
       // "Connect with Facebook" is offered for this channel; false from a server older than the page
       facebookLogin: z.boolean().catch(false),
-      // How the channel is named and drawn; none when the server does not say it or it is not valid
-      descriptor: channelDescriptorSchema.nullable().optional().catch(null)
+      // How the channel is named and drawn, and its login: none when the server does not say or the descriptor
+      // is not valid (the browser checks it again), never a failure of the page. Until B1b draws the login from
+      // `oauth`, the button still follows the flag above and the address it already knows.
+      descriptor: channelDescriptorSchema.nullable().optional().catch(null),
+      oauth: channelOAuthDescriptorSchema.nullable().catch(null)
     })
     .nullable()
+    .catch(null)
 })
 export type PluginCatalogEntryView = z.output<typeof catalogEntrySchema>
 

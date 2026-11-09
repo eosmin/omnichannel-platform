@@ -9,6 +9,7 @@ import {
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import {
   AppPaths,
+  ASSET_ID_MAX_LENGTH,
   ChannelAuthMethods,
   ChannelHealthLimits,
   ChannelOAuthLimits,
@@ -26,7 +27,8 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import { type ChannelOAuth, pluginFailureLog } from '@platform/plugins/sdk'
+import { type ChannelOAuthSnapshot } from '@platform/plugins/runtime'
+import { pluginFailureLog } from '@platform/plugins/sdk'
 
 import type { Actor } from '../../tenancy'
 import {
@@ -79,7 +81,7 @@ export class ChannelOAuthService {
   }
 
   // The login of a plugin this store may use, or nothing
-  private oauthFor(pluginId: string, storeId: string): ChannelOAuth | null {
+  private oauthFor(pluginId: string, storeId: string): ChannelOAuthSnapshot | null {
     return this.registry.isVisibleTo(pluginId, storeId) ? this.registry.oauthOf(pluginId) : null
   }
 
@@ -109,7 +111,8 @@ export class ChannelOAuthService {
     } catch (error) {
       this.logger.warn({ pluginId, storeId, ...pluginFailureLog(error) }, 'oauth address not made')
     }
-    if (authorizeUrl === null || !keepsTheState(authorizeUrl, state, redirectUri)) {
+    const checked = keepsTheState(authorizeUrl, state, redirectUri, oauth.dialogOrigin)
+    if (checked === null) {
       this.logger.error({ pluginId, storeId }, 'a plugin made no authorization address of ours')
       throw new PlatformException(
         ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
@@ -124,7 +127,7 @@ export class ChannelOAuthService {
       pluginId,
       ...(connectionId === undefined ? {} : { connectionId })
     })
-    return { authorizeUrl }
+    return { authorizeUrl: checked }
   }
 
   // Where the callback sends the browser. It never throws and never echoes what the provider put in the
@@ -223,14 +226,8 @@ export class ChannelOAuthService {
       // Set when the login repairs a connection, so that the screen can say so and show which Page it is
       connectionId: session.connectionId ?? null,
       repairAccountId: await this.repairAccountOf(session),
-      assets: found.slice(0, MAX_ASSETS).map(asset => ({
-        id: asset.id,
-        name: asset.name,
-        linkedAccount:
-          asset.linkedAccount === null
-            ? null
-            : { id: asset.linkedAccount.id, username: asset.linkedAccount.username }
-      }))
+      // Only ids that are ids of the provider as its plugin declared them: one that is not could not be chosen
+      assets: assetsOf(found, oauth.assetId)
     }
   }
 
@@ -243,6 +240,20 @@ export class ChannelOAuthService {
     assetId: string
   ): Promise<ChannelConnectionView> {
     const { session, oauth, userToken } = await this.open(storeId, actor.userId, sessionId)
+    // The id is held to the pattern the plugin declared (the registry kept it as a pattern that cannot backtrack),
+    // since it goes to the provider in a path. Before anything is asked of the provider: an id that can never match is
+    // answered here
+    if (assetId.length > ASSET_ID_MAX_LENGTH || !oauth.assetId.test(assetId)) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'request validation failed',
+        HttpStatusCodes.BAD_REQUEST,
+        {
+          issues: [{ path: 'assetId', code: 'custom', message: 'not an account id' }],
+          truncated: false
+        }
+      )
+    }
     // Here too and not only when the Pages are listed: a call that goes straight to `complete` with a Page
     // number must not connect with a permission the person cleared in the dialog
     await this.requireScopes(session, oauth, userToken)
@@ -314,7 +325,7 @@ export class ChannelOAuthService {
   // The dialog lets a person clear a box: say which, instead of failing later with the provider's own error
   private async requireScopes(
     session: OAuthSessionRecord,
-    oauth: ChannelOAuth,
+    oauth: ChannelOAuthSnapshot,
     userToken: string
   ): Promise<void> {
     const granted = await this.guarded(session, () => oauth.grantedScopes({ userToken }))
@@ -409,17 +420,33 @@ export class ChannelOAuthService {
   }
 }
 
-function keepsTheState(authorizeUrl: string, state: string, redirectUri: string): boolean {
+// The origin too: the plugin declared the one site its dialog is on, and the registry held that declaration to an
+// exact https origin. An address on any other site, whatever it carries, is not the dialog it declared.
+function keepsTheState(
+  authorizeUrl: unknown,
+  state: string,
+  redirectUri: string,
+  dialogOrigin: string
+): string | null {
+  if (typeof authorizeUrl !== 'string') return null
   try {
     const url = new URL(authorizeUrl)
-    return (
+    const keeps =
       url.protocol === 'https:' &&
+      url.origin === dialogOrigin &&
+      // `origin` leaves these out: an address with a login in it, or a fragment, is not the dialog that was declared
+      url.username === '' &&
+      url.password === '' &&
+      url.hash === '' &&
       url.searchParams.getAll(ChannelOAuthQuery.STATE).length === 1 &&
       url.searchParams.get(ChannelOAuthQuery.STATE) === state &&
+      // Once each, so the provider cannot read the last one while the core read the first
+      url.searchParams.getAll(ChannelOAuthQuery.REDIRECT_URI).length === 1 &&
       url.searchParams.get(ChannelOAuthQuery.REDIRECT_URI) === redirectUri
-    )
+    // What is sent is the address that was checked, parsed and written back, not the string the plugin gave
+    return keeps ? url.href : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -441,4 +468,39 @@ function reasonOfProviderError(error: unknown): ChannelConnectFailureReason {
     default:
       return ChannelConnectFailureReasons.REQUEST_REJECTED
   }
+}
+
+const ASSET_TEXT_MAX_LENGTH = 200
+
+// What a plugin lists, as the page may be told it. A third party writes the plugin, so nothing is taken on trust: the
+// answer must be a list, each entry an object whose id is a STRING that fits the pattern the plugin declared (a number
+// or an object would pass a pattern by being turned into text), the names are bounded text, and the account a Page
+// links is held to the same pattern. An entry that is not any of that is left out, not repaired.
+function assetsOf(found: unknown, pattern: RegExp): OAuthAssetView[] {
+  if (!Array.isArray(found)) return []
+  // Cut by characters (never through a pair), and with the control, format and direction characters taken out
+  const text = (value: unknown): string | null =>
+    typeof value === 'string'
+      ? Array.from(value.replace(/\p{C}/gu, '')).slice(0, ASSET_TEXT_MAX_LENGTH).join('')
+      : null
+  const assets: OAuthAssetView[] = []
+  for (const entry of found as unknown[]) {
+    if (assets.length >= MAX_ASSETS) break
+    if (typeof entry !== 'object' || entry === null) continue
+    const { id, name, linkedAccount } = entry as Record<string, unknown>
+    if (typeof id !== 'string' || id.length > ASSET_ID_MAX_LENGTH || !pattern.test(id)) continue
+    let linked: OAuthAssetView['linkedAccount'] = null
+    if (typeof linkedAccount === 'object' && linkedAccount !== null) {
+      const account = linkedAccount as Record<string, unknown>
+      const accountId = account['id']
+      // The account a choice links has ids of its own: only its shape is held (a bounded string), not the pattern of
+      // the choices. One that is not that leaves the choice without a linked account, and a choice that needs one
+      // then cannot be connected.
+      if (typeof accountId === 'string' && accountId.length <= ASSET_ID_MAX_LENGTH) {
+        linked = { id: accountId, username: text(account['username']) }
+      }
+    }
+    assets.push({ id, name: text(name) ?? id, linkedAccount: linked })
+  }
+  return assets
 }

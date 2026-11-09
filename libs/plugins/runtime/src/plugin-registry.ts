@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import {
   CHANNEL_ID_PATTERN,
   type ChannelIdentityKind,
+  type ChannelOAuthDescriptor,
   type ChannelLimitsView,
   isOfficialChannelId
 } from '@platform/core/domain'
@@ -56,6 +57,9 @@ export interface RegisterOptions {
   // Set by the module for the plugins that ship with the platform (and by the suite): the official
   // ids belong to them, so a remote plugin can never take one, whatever the order of registration
   official?: boolean
+  // Registered by the composition of the process (the code of the platform), official or not: the catalog
+  // writes a row for it at boot so that a store can install it. A remote plugin is not, it comes with its own row.
+  fromCode?: boolean
   // A private plugin: only these stores see it in `list`. Without it the plugin is visible to all.
   storeIds?: readonly string[]
 }
@@ -73,6 +77,7 @@ interface Entry {
   limits: ChannelLimitsView
   descriptor: ChannelDescriptorSnapshot
   identityKind: ChannelIdentityKind
+  fromCode: boolean
   storeIds: ReadonlySet<string> | null
 }
 
@@ -111,6 +116,7 @@ export class PluginRegistry {
       limits: snapshotChannelLimits(plugin, id),
       descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),
       identityKind: snapshotIdentityKind(plugin, id),
+      fromCode: options.fromCode === true || options.official === true,
       storeIds
     })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
@@ -163,6 +169,11 @@ export class PluginRegistry {
       .map(entry => entry.plugin)
   }
 
+  // The plugins the composition of this process registered, official or not: what the catalog writes at boot
+  listFromCode(): ChannelPlugin[] {
+    return [...this.entries.values()].filter(entry => entry.fromCode).map(entry => entry.plugin)
+  }
+
   // What the plugin declared when it was registered: the web app draws only the actions a channel can
   // do. A plugin that is not registered declares nothing.
   capabilitiesOf(pluginId: string): ChannelCapabilityType[] {
@@ -201,6 +212,12 @@ export class PluginRegistry {
   // How the plugin said the handle of a customer is read, or null when it is not registered
   identityKindOf(pluginId: string): ChannelIdentityKind | null {
     return this.entries.get(pluginId)?.identityKind ?? null
+  }
+
+  // How the login of the plugin is drawn, as it declared it when it registered (frozen), or null when it has
+  // none or is not registered
+  oauthDescriptorOf(pluginId: string): ChannelOAuthDescriptor | null {
+    return this.entries.get(pluginId)?.oauth?.descriptor ?? null
   }
 
   hasCapability(pluginId: string, capability: ChannelPlugin['capabilities'][number]): boolean {

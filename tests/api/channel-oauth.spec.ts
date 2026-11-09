@@ -109,6 +109,10 @@ describe('"Connect with Facebook": the login of a channel', () => {
     }
     const oauth: ChannelOAuth = {
       kind: 'meta-facebook-login',
+      dialogOrigin: 'https://dialog.example',
+      providerName: { es: 'Ejemplo', en: 'Example' },
+      linkedAccount: null,
+      assetIdPattern: '^\\d{1,32}$',
       scopes: ['pages_show_list', 'pages_messaging'],
       authorizationUrl: ({ state, redirectUri }) =>
         `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,
@@ -230,6 +234,36 @@ describe('"Connect with Facebook": the login of a channel', () => {
         'another callback',
         (state: string) =>
           `https://dialog.example/oauth?state=${state}&redirect_uri=https%3A%2F%2Fevil.example%2Fcb`
+      ],
+      [
+        'a dialog on another site than the one it declared',
+        (state: string, uri: string) =>
+          `https://evil.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a dialog on the declared host with a port',
+        (state: string, uri: string) =>
+          `https://dialog.example:8443/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a dialog on a subdomain of the declared host',
+        (state: string, uri: string) =>
+          `https://evil.dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a repeated callback',
+        (state: string, uri: string) =>
+          `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}&redirect_uri=https%3A%2F%2Fevil.example%2Fcb`
+      ],
+      [
+        'a dialog address with a login in it',
+        (state: string, uri: string) =>
+          `https://user:secret@dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a dialog address with a fragment',
+        (state: string, uri: string) =>
+          `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}#x`
       ],
       ['something that is not an address', () => 'not an address']
     ])('refuses a plugin that makes %s, and keeps no state for it', async (_name, make) => {
@@ -513,6 +547,67 @@ describe('"Connect with Facebook": the login of a channel', () => {
       })
       expect(JSON.stringify(response.body)).not.toContain('LEAK')
       expect(JSON.stringify(response.body)).not.toContain(USER_TOKEN)
+    })
+
+    it('lists only the ids that fit the pattern the plugin declared, whatever they look like', async () => {
+      const { oauth } = login({
+        assetIdPattern: '^[a-z]{8,12}$',
+        listAssets: () =>
+          Promise.resolve([
+            { id: 'abcdefgh', name: 'Letters', linkedAccount: null },
+            { id: '12345678', name: 'Digits', linkedAccount: null },
+            { id: 12345678, name: 'A number', linkedAccount: null } as never
+          ])
+      })
+      const { id } = await register(oauth)
+      const session = await sessionOf(id)
+
+      const response = await asAdmin().get(ApiRoutes.channels.oauthAssets(session))
+
+      expect(response.status).toBe(OK)
+      expect((response.body as SessionBody).assets.map(asset => asset.id)).toEqual(['abcdefgh'])
+    })
+
+    it('keeps the choice when the account it links has an id of another shape, and cuts a name by characters', async () => {
+      const { oauth } = login({
+        assetIdPattern: '^[a-z]{8,12}$',
+        listAssets: () =>
+          Promise.resolve([
+            {
+              id: 'abcdefgh',
+              name: `${'x'.repeat(199)}😀\u202e`,
+              linkedAccount: { id: '17841400000000000', username: 'shop' }
+            }
+          ])
+      })
+      const { id } = await register(oauth)
+      const session = await sessionOf(id)
+
+      const response = await asAdmin().get(ApiRoutes.channels.oauthAssets(session))
+
+      const [asset] = (response.body as SessionBody).assets
+      expect(asset?.linkedAccount).toEqual({ id: '17841400000000000', username: 'shop' })
+      expect(asset?.name).toBe(`${'x'.repeat(199)}😀`)
+    })
+
+    it('holds the id it is given to the declared pattern before it asks the provider anything', async () => {
+      const { oauth, calls } = login({ assetIdPattern: '^[a-z]{8,12}$' })
+      const { id } = await register(oauth)
+      const session = await sessionOf(id)
+      calls.granted.mockClear()
+
+      const digits = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: '12345678' })
+      const letters = await asAdmin()
+        .post(ApiRoutes.channels.oauthComplete(session))
+        .send({ assetId: 'abcdefgh' })
+
+      expect(digits.status).toBe(BAD_REQUEST)
+      expect(codeOf(digits.body)).toBe(ErrorCodes.VALIDATION_FAILED)
+      expect(letters.status).toBe(CREATED)
+      // The provider heard of the second only
+      expect(calls.granted).toHaveBeenCalledTimes(1)
     })
 
     it('names the permission the person cleared in the dialog', async () => {

@@ -38,9 +38,13 @@ const OFFICIAL: PluginsModuleOptions = {
 @Module({})
 export class PluginsModule {
   static forRoot(options: PluginsModuleOptions = OFFICIAL): DynamicModule {
+    const withToy = options === OFFICIAL
     const channelRegistry: Provider = {
       provide: PluginRegistry,
-      useFactory: (logger: PinoLogger, ...plugins: ChannelPlugin[]): PluginRegistry => {
+      useFactory: async (
+        logger: PinoLogger,
+        ...plugins: ChannelPlugin[]
+      ): Promise<PluginRegistry> => {
         const registry = new PluginRegistry(logger)
         // Only an instance of the exact class of an official list owns the official ids. The prototype
         // is read, not `constructor`, which an object can set to anything
@@ -48,7 +52,18 @@ export class PluginsModule {
           const official = OFFICIAL_CHANNEL_PLUGINS.some(
             cls => Object.getPrototypeOf(plugin) === cls.prototype
           )
-          registry.register(plugin, { official })
+          registry.register(plugin, { official, fromCode: official })
+        }
+        // The toy channel of the suites, only in the composition of the apps and only when the environment turns it
+        // on (which a test environment alone accepts).
+        if (withToy) {
+          // The switch first, from a module that holds only the variable: the plugin itself is not loaded, and so
+          // not evaluated, unless the environment (a test one) turned it on
+          const { isToyChannelEnabled } = await import('@platform/channels/toy-env')
+          if (await isToyChannelEnabled()) {
+            const { ToyChannelPlugin } = await import('@platform/channels/toy')
+            registry.register(new ToyChannelPlugin(), { official: false, fromCode: true })
+          }
         }
         return registry
       },

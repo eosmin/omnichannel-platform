@@ -5,6 +5,7 @@ import type { ZodType } from 'zod'
 
 import { webEnvSchema } from '../apps/web/lib/env-schema'
 import { metaEnvShape } from '../libs/channels/meta/src/meta-env'
+import { toyEnvShape } from '../libs/channels/toy/src/toy-env'
 import { envSchema } from '../libs/core/platform/config/env-schema'
 
 import { dbRoleEnvSchema } from './db-role-env'
@@ -77,7 +78,7 @@ function mergedShape(...shapes: Record<string, ZodType>[]): Record<string, ZodTy
 }
 
 const problems = [
-  ...compare('.env.example', mergedShape(envSchema.shape, metaEnvShape), TOOLING_KEYS),
+  ...compare('.env.example', mergedShape(envSchema.shape, metaEnvShape, toyEnvShape), TOOLING_KEYS),
   ...compare('apps/web/.env.example', webEnvSchema.shape, [])
 ]
 

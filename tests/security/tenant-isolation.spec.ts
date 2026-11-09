@@ -1164,6 +1164,10 @@ describe('Tenant isolation', () => {
           id: LOGIN_PLUGIN,
           oauth: {
             kind: 'meta-facebook-login',
+            dialogOrigin: 'https://dialog.example',
+            providerName: { es: 'Ejemplo', en: 'Example' },
+            linkedAccount: null,
+            assetIdPattern: '^\\d{1,32}$',
             scopes: ['pages_show_list'],
             authorizationUrl: ({ state, redirectUri }) =>
               `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,

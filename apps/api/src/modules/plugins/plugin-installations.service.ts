@@ -7,6 +7,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
+  type ChannelOAuthDescriptor,
   PluginCatalogTypes,
   PluginInstallationStatus,
   PluginStatus
@@ -55,6 +56,10 @@ export interface ChannelConnectManifest {
   // "Connect with Facebook" can be offered for this channel: the plugin declares a login and the api has the
   // address Facebook sends the browser back to. A flag and nothing else: no address, scope or app id.
   facebookLogin: boolean
+  // How the login is drawn (the provider's dialog origin, its name, the account it links, the pattern of an id),
+  // as the plugin declared it and the registry checked it; null when the channel has no login or the api cannot
+  // send the browser back (the same condition as `facebookLogin`)
+  oauth: ChannelOAuthDescriptor | null
 }
 
 const CATALOG_SELECT = {
@@ -252,12 +257,14 @@ export class PluginInstallationsService {
     if (manifest === null) return null
     const descriptor = publicDescriptorOf(this.registry.descriptorOf(pluginId))
     if (descriptor === null) return null
+    const hasLogin =
+      this.registry.oauthOf(pluginId) !== null && this.login.redirectUri !== undefined
     return {
       connectFields: manifest.connectFields.map(field => ({ ...field })),
       descriptor,
       callbackUrl: manifest.receivesProviderWebhooks ? this.callbackUrlOf(pluginId) : null,
-      facebookLogin:
-        this.registry.oauthOf(pluginId) !== null && this.login.redirectUri !== undefined
+      facebookLogin: hasLogin,
+      oauth: hasLogin ? this.registry.oauthDescriptorOf(pluginId) : null
     }
   }
 

@@ -1,8 +1,13 @@
 import {
+  type ChannelOAuthDescriptor,
   ChannelOAuthKinds,
   ChannelOAuthLimits,
+  isDialogOrigin,
+  LINKED_ACCOUNT_PLACEHOLDERS,
   MetaOAuth,
-  MetaOAuthScopes
+  MetaOAuthScopes,
+  parseAssetIdPattern,
+  readLocalizedText
 } from '@platform/core/domain'
 import type { ChannelOAuth, ChannelPlugin } from '@platform/plugins/sdk'
 
@@ -28,9 +33,17 @@ const FUNCTIONS = [
 // grows its list afterwards cannot widen what the dialog asks for. The behaviour of the functions is the
 // plugin's own: one that keeps state in the object they are bound to can still change what they do, and a
 // plugin is code the owner reviews, not a sandbox.
-export type ChannelOAuthSnapshot = Pick<
+export type ChannelOAuthSnapshot = {
+  // What the page draws the login from (frozen), and the pattern of an account id, compiled
+  readonly descriptor: ChannelOAuthDescriptor
+  readonly assetId: RegExp
+} & Pick<
   ChannelOAuth,
   | 'kind'
+  | 'dialogOrigin'
+  | 'providerName'
+  | 'linkedAccount'
+  | 'assetIdPattern'
   | 'scopes'
   | 'authorizationUrl'
   | 'exchangeCode'
@@ -68,6 +81,33 @@ export function snapshotChannelOAuth(
   ) {
     refuse('scopes list')
   }
+  const dialogOrigin = block['dialogOrigin']
+  if (!isDialogOrigin(dialogOrigin)) refuse('dialog address')
+  const providerName = readLocalizedText(block['providerName'])
+  if (providerName === null) refuse('provider name')
+  const linked = block['linkedAccount']
+  let linkedAccount: ChannelOAuthDescriptor['linkedAccount'] = null
+  if (linked !== null) {
+    const raw = (typeof linked === 'object' && !Array.isArray(linked) ? linked : {}) as Record<
+      string,
+      unknown
+    >
+    const label = readLocalizedText(raw['label'], undefined, LINKED_ACCOUNT_PLACEHOLDERS)
+    const missingLabel = readLocalizedText(raw['missingLabel'])
+    // Each value is read once: what is kept is what was checked
+    const required = raw['required']
+    if (typeof required !== 'boolean' || label === null || missingLabel === null) {
+      refuse('linked account')
+    }
+    linkedAccount = Object.freeze({
+      required: required as boolean,
+      label: label as NonNullable<typeof label>,
+      missingLabel: missingLabel as NonNullable<typeof missingLabel>
+    })
+  }
+  const assetIdPattern = block['assetIdPattern']
+  const assetId = parseAssetIdPattern(assetIdPattern)
+  if (assetId === null) refuse('account id pattern')
   const functions = {} as Record<(typeof FUNCTIONS)[number], unknown>
   for (const name of FUNCTIONS) {
     const fn = block[name]
@@ -75,6 +115,17 @@ export function snapshotChannelOAuth(
     functions[name] = (fn as (...args: unknown[]) => unknown).bind(declared)
   }
   return Object.freeze({
+    descriptor: Object.freeze({
+      dialogOrigin: dialogOrigin as string,
+      providerName: providerName as NonNullable<typeof providerName>,
+      linkedAccount,
+      assetIdPattern: assetIdPattern as string
+    }),
+    assetId: assetId as RegExp,
+    dialogOrigin: dialogOrigin as string,
+    providerName: providerName as NonNullable<typeof providerName>,
+    linkedAccount,
+    assetIdPattern: assetIdPattern as string,
     kind: kind as ChannelOAuth['kind'],
     scopes: Object.freeze([...(scopes as string[])]),
     authorizationUrl: functions.authorizationUrl as ChannelOAuth['authorizationUrl'],

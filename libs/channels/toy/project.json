@@ -1,0 +1,12 @@
+{
+  "name": "channels-toy",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/channels/toy/src",
+  "projectType": "library",
+  "tags": ["scope:channels", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

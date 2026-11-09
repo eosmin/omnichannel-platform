@@ -7,6 +7,10 @@ function oauth(overrides: Partial<ChannelOAuth> = {}): ChannelOAuth {
   return {
     kind: ChannelOAuthKinds.META_FACEBOOK_LOGIN,
     scopes: ['pages_show_list', 'pages_messaging'],
+    dialogOrigin: 'https://login.example.test',
+    providerName: { es: 'Ejemplo', en: 'Example' },
+    linkedAccount: null,
+    assetIdPattern: '^\\d{1,32}$',
     authorizationUrl: () => 'https://dialog.example/x',
     exchangeCode: () => Promise.resolve('user-token'),
     grantedScopes: () => Promise.resolve(['pages_show_list']),

@@ -44,6 +44,11 @@ class SuitePlugin implements ChannelPlugin {
   handleWebhook = (): Promise<never[]> => Promise.resolve([])
 }
 
+// The toy channel asks the environment of the core whether it is on; a unit spec has no database to parse
+jest.mock('@platform/core/config/env', () => ({
+  envSource: (): Record<string, string> => ({ NODE_ENV: 'test' })
+}))
+
 describe('PluginsModule identity kinds', () => {
   it('tells the core how a plugin reads a handle, and keeps an unknown channel as it came', async () => {
     class PhonePlugin extends SuitePlugin {

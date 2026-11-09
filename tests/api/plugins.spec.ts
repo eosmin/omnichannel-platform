@@ -282,7 +282,8 @@ describe('The plugin catalog and the installations of a store', () => {
             'callbackUrl',
             'connectFields',
             'descriptor',
-            'facebookLogin'
+            'facebookLogin',
+            'oauth'
           ])
           expect(entry.channel?.facebookLogin).toBe(false)
           for (const field of entry.channel?.connectFields ?? []) {
@@ -322,6 +323,7 @@ describe('The plugin catalog and the installations of a store', () => {
             expect.objectContaining({ key: 'apiKey', secret: true, required: false })
           ],
           descriptor: expect.anything() as unknown,
+          oauth: null,
           callbackUrl: `${apiUrl()}/api/v1/webhooks/channels/${id}`,
           facebookLogin: false
         })

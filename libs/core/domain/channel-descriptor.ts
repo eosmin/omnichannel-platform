@@ -70,10 +70,51 @@ const LINKISH =
 const HAS_TEXT = /[\p{L}\p{N}]/u
 
 // A text a person reads: bounded in characters, trimmed, and plain. Counted as characters, not bytes.
+// Whether a placeholder in the text could complete a link or a scheme once the page fills it: any occurrence right after
+// a dot, a colon or a slash; right before a dot, colon or slash that is followed by more text; or right after a letter or
+// digit and before a colon (`tel{username}:`). A colon or a full stop that ends a sentence is punctuation.
+function placeholderJoinsALink(value: string, token: string): boolean {
+  let from = 0
+  for (;;) {
+    const at = value.indexOf(token, from)
+    if (at === -1) return false
+    const before = at === 0 ? '' : (value[at - 1] ?? '')
+    const after = value[at + token.length] ?? ''
+    const next = value[at + token.length + 1] ?? ''
+    if (before === '.' || before === ':' || before === '/') return true
+    if ((after === '.' || after === ':' || after === '/') && next !== '' && next !== ' ')
+      return true
+    if (after === ':' && /[\p{L}\p{N}]/u.test(before)) return true
+    from = at + token.length
+  }
+}
+
 export function isPlainDescriptorText(
   value: unknown,
-  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH
+  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH,
+  placeholders: readonly string[] = []
 ): value is string {
+  // A closed list of placeholders the page fills in (`{username}`): each is replaced by a letter before the text is
+  // judged, so any other brace is still refused, a space beside a placeholder still counts as a space in the text,
+  // and the length and the trimming are those of the text as written
+  if (typeof value === 'string' && placeholders.length > 0) {
+    // The cheap bound first, as for any text: nothing is split or scanned that is far over the limit
+    if (value.length > max * 2) return false
+    const filled = placeholders.reduce((text, name) => text.split(`{${name}}`).join('x'), value)
+    if (filled !== value) {
+      // A name the page fills in must not complete a link or a scheme (`go.{username}`, `javascript{username}:`):
+      // no dot, colon or slash right before it, and none right after it that is followed by more text (a full stop or
+      // a colon that ends the sentence is just punctuation). At most twice.
+      const joinsALink = placeholders.some(name => placeholderJoinsALink(value, `{${name}}`))
+      const repeats = placeholders.some(name => value.split(`{${name}}`).length - 1 > 2)
+      return (
+        !joinsALink &&
+        !repeats &&
+        Array.from(value).length <= max &&
+        isPlainDescriptorText(filled, Number.MAX_SAFE_INTEGER)
+      )
+    }
+  }
   return (
     typeof value === 'string' &&
     value.length > 0 &&
@@ -92,11 +133,17 @@ export function isPlainDescriptorText(
 // Copies a text in both languages when each is plain; null otherwise. Read once: what is returned is what was checked.
 export function readLocalizedText(
   value: unknown,
-  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH
+  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH,
+  placeholders: readonly string[] = []
 ): LocalizedText | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const { es, en } = value as Record<string, unknown>
-  if (!isPlainDescriptorText(es, max) || !isPlainDescriptorText(en, max)) return null
+  if (
+    !isPlainDescriptorText(es, max, placeholders) ||
+    !isPlainDescriptorText(en, max, placeholders)
+  ) {
+    return null
+  }
   return Object.freeze({ es, en })
 }
 
@@ -109,7 +156,20 @@ export function readLocalizedText(
 const IMAGE_HOST =
   /^https:\/\/(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 // Names that are not on the internet: an address of a private network is never a place to load a picture from
-const PRIVATE_TLDS = new Set(['local', 'internal', 'localhost', 'lan', 'corp', 'home', 'intranet'])
+const PRIVATE_TLDS = new Set([
+  'local',
+  'internal',
+  'localhost',
+  'localdomain',
+  'lan',
+  'corp',
+  'home',
+  'intranet',
+  'private',
+  'invalid',
+  'arpa',
+  'onion'
+])
 export function isImageHostOrigin(value: unknown, { wildcard = false } = {}): value is string {
   if (typeof value !== 'string') return false
   if (!wildcard && value.startsWith('https://*.')) return false
@@ -122,3 +182,50 @@ export function isImageHostOrigin(value: unknown, { wildcard = false } = {}): va
     !/^https:\/\/\*\.[a-z0-9-]+$/.test(value)
   )
 }
+
+// The address of the dialog a login sends a person to: the origin of the provider's site, https, exactly: no
+// path, query, credentials, port or wildcard, so the browser is only ever sent to that one site and to
+// nothing a plugin can steer with a string.
+export function isDialogOrigin(value: unknown): value is string {
+  return isImageHostOrigin(value)
+}
+
+// The id of an account of the provider, as a pattern. A third party writes it and the api and the browser run it
+// on what a person types, so it is NOT an arbitrary regular expression (one with nested quantifiers backtracks
+// for ever): it is one run of one class of character with a bound, anchored, which cannot backtrack. Returns the
+// compiled pattern, or null when the text is anything else.
+const ASSET_ID_PATTERN_SOURCE =
+  /^\^(\\d|\\w|\[(?:[0-9]-[0-9]|[a-z]-[a-z]|[A-Z]-[A-Z]|[A-Za-z0-9_])+-?\])\{(\d{1,2})(?:,(\d{1,2}))?\}\$$/
+export const ASSET_ID_MAX_LENGTH = 64
+export function parseAssetIdPattern(source: unknown): RegExp | null {
+  if (typeof source !== 'string' || source.length > 60) return null
+  const match = ASSET_ID_PATTERN_SOURCE.exec(source)
+  if (match === null) return null
+  const min = Number(match[2])
+  const max = match[3] === undefined ? min : Number(match[3])
+  // At least one character (an empty id is no id) and a bound that is short
+  if (min < 1 || max < min || max > ASSET_ID_MAX_LENGTH) return null
+  try {
+    return new RegExp(source)
+  } catch {
+    return null
+  }
+}
+
+// What a login declares for the page to draw it: the provider's name, the account it links (the account of a business
+// profile that a page links) and how to tell an id
+export interface ChannelOAuthLinkedAccount {
+  // The account is needed: a choice without it cannot be connected
+  readonly required: boolean
+  // How the linked account is shown, with `{username}` where its name goes
+  readonly label: LocalizedText
+  // What is shown when the choice has none
+  readonly missingLabel: LocalizedText
+}
+export interface ChannelOAuthDescriptor {
+  readonly dialogOrigin: string
+  readonly providerName: LocalizedText
+  readonly linkedAccount: ChannelOAuthLinkedAccount | null
+  readonly assetIdPattern: string
+}
+export const LINKED_ACCOUNT_PLACEHOLDERS: readonly string[] = ['username']

@@ -3,22 +3,28 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
+  CodePluginAuthor,
   OfficialPluginAuthor,
   PluginCatalogTypes,
   PluginPricingModels,
-  PluginStatus
+  PluginStatus,
+  isOfficialChannelId
 } from '@platform/core/domain'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
 // What the catalog shows of a plugin that ships with the platform, and the manifest it keeps for it
 function officialRow(plugin: ChannelPlugin) {
+  const official = isOfficialChannelId(plugin.id)
   return {
     name: plugin.name,
-    authorName: OfficialPluginAuthor.NAME,
-    authorEmail: OfficialPluginAuthor.EMAIL,
+    // A plugin the code registers that is not official (the toy channel of the suites) is its own author
+    authorName: official
+      ? OfficialPluginAuthor.NAME
+      : String(plugin.author).slice(0, CodePluginAuthor.NAME_MAX_LENGTH),
+    authorEmail: official ? OfficialPluginAuthor.EMAIL : CodePluginAuthor.EMAIL,
     type: PluginCatalogTypes.CHANNEL,
-    isOfficial: true,
+    isOfficial: official,
     manifest: {
       id: plugin.id,
       name: plugin.name,
@@ -31,7 +37,8 @@ function officialRow(plugin: ChannelPlugin) {
   }
 }
 
-// Writes a catalog row for each official plugin of the code registry at boot (D19), so a store can
+// Writes a catalog row for each plugin the code of the platform registers at boot (D19: the official ones, and the
+// toy channel of the suites when the environment turns it on), so a store can
 // install it like any other. Idempotent: a boot with nothing new changes nothing, and a plugin that
 // is renamed or gains a capability is updated.
 @Injectable()
@@ -49,10 +56,24 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
   }
 
   async sync(): Promise<void> {
-    const plugins = this.registry.listOfficial()
+    const plugins = this.registry.listFromCode()
     for (const plugin of plugins) {
       // The status is written once, on creation: a plugin the owner suspended stays suspended
       const { status, ...data } = officialRow(plugin)
+      // A row that is not the platform's own belongs to whoever published it: this one is written when it is not
+      // there, and refreshed only while it carries the marker of a row the code wrote (an address nobody else can
+      // have, not a name the publisher chooses), in one statement so that nothing is read and then overwritten
+      if (!isOfficialChannelId(plugin.id)) {
+        await this.prisma.client.plugin.createMany({
+          data: [{ id: plugin.id, ...data, status }],
+          skipDuplicates: true
+        })
+        await this.prisma.client.plugin.updateMany({
+          where: { id: plugin.id, isOfficial: false, authorEmail: CodePluginAuthor.EMAIL },
+          data
+        })
+        continue
+      }
       const write = () =>
         this.prisma.client.plugin.upsert({
           where: { id: plugin.id },
@@ -67,6 +88,6 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
         await write()
       }
     }
-    this.logger.info({ count: plugins.length }, 'official plugins written to the catalog')
+    this.logger.info({ count: plugins.length }, 'plugins of the platform written to the catalog')
   }
 }
