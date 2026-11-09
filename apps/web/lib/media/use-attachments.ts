@@ -18,6 +18,7 @@ import { errorCodeOf } from '../error-message'
 
 import { type BatchRefusal, type BatchRules, captionsForSend, planAdd } from './attachment-batch'
 import { attachmentMessageType } from './attachment-rules'
+import { canRecheck } from './can-recheck'
 import { uploadGate } from './upload-gate'
 import { UploadAbortedError, UploadFailedError, uploadToUrl } from './upload-to-url'
 import { waitUntilClean } from './wait-until-clean'
@@ -48,6 +49,8 @@ export interface Attachments {
   isSending: boolean
   add: (files: readonly File[]) => void
   remove: (id: string) => void
+  // Asks again for the verdict of a file that is stored but had none when the asking stopped
+  recheck: (id: string) => void
   setCaption: (id: string, caption: string) => void
   clear: () => void
   // Sends the files that are ready, in the order they were chosen, with the text as the caption of the
@@ -139,6 +142,32 @@ export function useAttachments(
     [patch]
   )
 
+  // Waits for the verdict of a stored file. The tries run out as FILE_NOT_READY, which leaves the file
+  // failed but with its media: the agent may check it again instead of uploading it again.
+  const check = useCallback(
+    async (id: string, mediaId: string, controller: AbortController): Promise<void> => {
+      patch(id, { status: 'checking', mediaId, code: null })
+      await waitUntilClean(() => fetchMediaUrls(apiClient, storeId, mediaId), {
+        signal: controller.signal
+      })
+      patch(id, { status: 'ready' })
+    },
+    [patch, storeId]
+  )
+  const fail = useCallback(
+    (id: string, controller: AbortController, error: unknown): void => {
+      if (controller.signal.aborted || error instanceof UploadAbortedError) return
+      patch(id, {
+        status: 'failed',
+        code:
+          error instanceof UploadFailedError
+            ? ClientErrorCodes.FILE_UPLOAD_FAILED
+            : errorCodeOf(error)
+      })
+    },
+    [patch]
+  )
+
   const upload = useCallback(
     async (item: AttachmentItem, controller: AbortController): Promise<void> => {
       const { file, id } = item
@@ -161,23 +190,26 @@ export function useAttachments(
           })
           return media.id
         }, controller.signal)
-        patch(id, { status: 'checking', mediaId })
-        await waitUntilClean(() => fetchMediaUrls(apiClient, storeId, mediaId), {
-          signal: controller.signal
-        })
-        patch(id, { status: 'ready' })
+        await check(id, mediaId, controller)
       } catch (error) {
-        if (controller.signal.aborted || error instanceof UploadAbortedError) return
-        patch(id, {
-          status: 'failed',
-          code:
-            error instanceof UploadFailedError
-              ? ClientErrorCodes.FILE_UPLOAD_FAILED
-              : errorCodeOf(error)
-        })
+        fail(id, controller, error)
       }
     },
-    [patch, storeId]
+    [check, fail, patch, storeId]
+  )
+
+  // A file the agent asked to check again: the same wait, on the media that is already stored
+  const recheck = useCallback(
+    (id: string): void => {
+      const item = list.current.find(candidate => candidate.id === id)
+      if (item === undefined || item.mediaId === null || !canRecheck(item)) return
+      controllers.current.get(id)?.abort()
+      const controller = new AbortController()
+      controllers.current.set(id, controller)
+      setSendError(null)
+      check(id, item.mediaId, controller).catch((error: unknown) => fail(id, controller, error))
+    },
+    [check, fail]
   )
 
   const add = useCallback(
@@ -293,5 +325,5 @@ export function useAttachments(
     [clear, conversationId, queryClient, storeId]
   )
 
-  return { items, notice, sendError, isSending, add, remove, setCaption, clear, send }
+  return { items, notice, sendError, isSending, add, remove, recheck, setCaption, clear, send }
 }

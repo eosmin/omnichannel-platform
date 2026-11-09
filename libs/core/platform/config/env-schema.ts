@@ -81,6 +81,12 @@ export const envSchema = z
     // Redis
     REDIS_URL: z.url(),
     REDIS_QUEUE_URL: z.url().optional(),
+    // Namespaces the queue keys in Redis. Two stacks that share one Redis and have different databases
+    // MUST differ here, or each worker takes the jobs of the other (BullMQ defaults to "bull").
+    QUEUE_PREFIX: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]{1,32}$/)
+      .optional(),
 
     // Auth: login is a magic link, so there are no passwords and no OAuth credentials
     JWT_SECRET: z.string().min(32),

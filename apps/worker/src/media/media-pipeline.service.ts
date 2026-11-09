@@ -56,11 +56,19 @@ export class MediaPipeline {
     this.logger.setContext(MediaPipeline.name)
   }
 
+  // A job whose row is not there. It is a valid end when the row was dropped while the job waited, but it
+  // is also what a worker connected to another database sees when it takes a job of this queue (two
+  // stacks on one Redis without their own QUEUE_PREFIX): it would end as a success with no verdict and
+  // the file would wait for the hourly cleanup. So it is never silent.
+  private noRow(mediaId: string, job: string): void {
+    this.logger.warn({ mediaId, job }, 'a media job found no row for its media and did nothing')
+  }
+
   // `lastAttempt` is true on the last try the job has: a scan that still has no verdict then is given
   // up for good (see `giveUp`), instead of being queued again by the hourly cleanup for ever.
   async scan(mediaId: string, lastAttempt = false): Promise<void> {
     const media = await this.prisma.client.media.findUnique({ where: { id: mediaId } })
-    if (media === null) return
+    if (media === null) return this.noRow(mediaId, JobNames.SCAN_FILE)
     // Scanned by an earlier attempt that may have died before queueing the variants: queue them again
     // (same job id, so never twice)
     if (media.status === String(MediaStatus.CLEAN)) {
@@ -368,7 +376,7 @@ export class MediaPipeline {
 
   async processImage(mediaId: string): Promise<void> {
     const media = await this.prisma.client.media.findUnique({ where: { id: mediaId } })
-    if (media === null) return
+    if (media === null) return this.noRow(mediaId, JobNames.PROCESS_IMAGE)
     if (media.status !== String(MediaStatus.CLEAN) || media.processedAt !== null) return
     // A picture of a person has no store and its own, smaller processing
     if (media.storeId === null) {

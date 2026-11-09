@@ -2,6 +2,8 @@
 // suites run the templates under ts-jest; only the bundle the image runs can show that they still
 // render there (a JSX runtime or a bundling mistake fails with "React is not defined").
 // Needs a running worker, Redis on localhost:6379 and Mailpit on localhost:8025.
+// The worker reads the queues under a prefix (QUEUE_PREFIX, or derived from the name of DATABASE_URL): run this
+// with the same QUEUE_PREFIX the worker has, or with the same database name in DATABASE_URL.
 // Usage: tsx scripts/smoke-email.ts
 import { randomUUID } from 'node:crypto'
 import { exit } from 'node:process'
@@ -11,7 +13,9 @@ import { z } from 'zod'
 
 import { Locales } from '@platform/core/i18n'
 import { EmailTemplates, JobNames, QueueNames } from '@platform/core/queues'
-import { QueueJobOptions } from '@platform/core/queues-module'
+import { QueueJobOptions, queuePrefixFor } from '@platform/core/queues-module'
+
+import { loadQueueEnv } from './queue-env'
 
 const REDIS_URL = 'redis://localhost:6379'
 const MAILPIT = 'http://localhost:8025/api/v1'
@@ -25,8 +29,14 @@ const messageSchema = z.object({ Subject: z.string(), Text: z.string(), HTML: z.
 const recipient = `smoke-${TOKEN.slice(0, 8)}@example.com`
 const search = `${MAILPIT}/search?query=${encodeURIComponent(`to:${recipient}`)}`
 
+const queueEnv = loadQueueEnv()
+if (queueEnv.QUEUE_PREFIX === undefined && queueEnv.DATABASE_URL === undefined) {
+  console.error('smoke-email: set QUEUE_PREFIX or DATABASE_URL, as the worker has them')
+  exit(1)
+}
 const queue = new Queue(QueueNames.EMAIL, {
   connection: { url: REDIS_URL },
+  prefix: queuePrefixFor(queueEnv.DATABASE_URL ?? '', queueEnv.QUEUE_PREFIX),
   defaultJobOptions: QueueJobOptions[QueueNames.EMAIL]
 })
 try {

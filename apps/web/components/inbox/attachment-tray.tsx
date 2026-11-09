@@ -17,6 +17,7 @@ import { ClientErrorCodes } from '@platform/core/errors'
 
 import { takesCaptionPerFile } from '../../lib/media/attachment-batch'
 import { formatBytes } from '../../lib/media/attachment-rules'
+import { canRecheck } from '../../lib/media/can-recheck'
 import {
   type AttachmentItem,
   type AttachmentRules,
@@ -119,7 +120,8 @@ function Chip({
   hasCaption,
   captionMax,
   onCaption,
-  onRemove
+  onRemove,
+  onRecheck
 }: {
   item: AttachmentItem
   isLocked: boolean
@@ -128,6 +130,7 @@ function Chip({
   captionMax: number | undefined
   onCaption: (caption: string) => void
   onRemove: () => void
+  onRecheck: () => void
 }): ReactElement {
   const t = useTranslations('inbox.composer.attach')
   const codeText = useCodeText()
@@ -179,6 +182,18 @@ function Chip({
             ? `${name}: ${t('unsupported')}`
             : `${t('failed', { name })}: ${codeText(item.code)}`}
         </p>
+      ) : null}
+      {canRecheck(item) ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="max-w-full self-start"
+          onClick={onRecheck}
+          disabled={isLocked}
+        >
+          {t('recheck', { name })}
+        </Button>
       ) : null}
     </li>
   )
@@ -244,6 +259,7 @@ export function AttachmentTray({
               captionMax={captionMax}
               onCaption={caption => attachments.setCaption(item.id, caption)}
               onRemove={() => attachments.remove(item.id)}
+              onRecheck={() => attachments.recheck(item.id)}
             />
           ))}
         </ul>

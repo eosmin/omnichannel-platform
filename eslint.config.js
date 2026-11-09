@@ -321,6 +321,7 @@ export default defineConfig([
       'libs/core/platform/config/env.ts',
       'scripts/db-role-env.ts',
       'scripts/bucket-env.ts',
+      'scripts/queue-env.ts',
       'libs/core/database/testing/connection-urls.ts',
       // Its spec sets and restores the variables the function reads
       'libs/core/database/testing/connection-urls.spec.ts',
