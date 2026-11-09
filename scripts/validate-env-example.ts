@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { ZodType } from 'zod'
 
 import { webEnvSchema } from '../apps/web/lib/env-schema'
+import { metaEnvShape } from '../libs/channels/meta/src/meta-env'
 import { envSchema } from '../libs/core/platform/config/env-schema'
 
 import { dbRoleEnvSchema } from './db-role-env'
@@ -60,8 +61,23 @@ function compare(
   return problems
 }
 
+// A variable has ONE owner: two blocks that declare it would disagree about its type and default
+function mergedShape(...shapes: Record<string, ZodType>[]): Record<string, ZodType> {
+  const merged: Record<string, ZodType> = {}
+  for (const shape of shapes) {
+    for (const [key, schema] of Object.entries(shape)) {
+      if (key in merged) {
+        console.error(`${key} is declared by two blocks of variables`)
+        process.exit(1)
+      }
+      merged[key] = schema
+    }
+  }
+  return merged
+}
+
 const problems = [
-  ...compare('.env.example', envSchema.shape, TOOLING_KEYS),
+  ...compare('.env.example', mergedShape(envSchema.shape, metaEnvShape), TOOLING_KEYS),
   ...compare('apps/web/.env.example', webEnvSchema.shape, [])
 ]
 

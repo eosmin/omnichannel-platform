@@ -24,6 +24,7 @@
       "@platform/core/errors": ["libs/core/domain/errors/index.ts"],
       "@platform/core/domain": ["libs/core/domain/index.ts"],
       "@platform/core/channel-media": ["libs/core/domain/channel-media/index.ts"],
+      "@platform/core/env-rules": ["libs/core/domain/env-rules.ts"],
       "@platform/core/auth": ["libs/core/domain/auth/index.ts"],
       "@platform/core/notifications": ["libs/core/domain/notifications/index.ts"],
       "@platform/core/events": ["libs/core/domain/events/index.ts"],
