@@ -336,8 +336,11 @@ jobs:
         run: |
           # The release download answered 504 several times in a day and failed the whole scan. curl retries up to 5
           # times, 5 seconds apart, on any error (`--retry-all-errors`: a 5xx and a dropped connection alike); the
-          # file is still checked against the pinned SHA256 below, so a retry never weakens what is run.
+          # file is still checked against the pinned SHA256 below, so a retry never weakens what is run. Each attempt is
+          # capped (15 s to connect, 60 s in all) and the retries stop after 150 s, so a host that hangs fails the leg in
+          # minutes and not at the job timeout.
           curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 --retry-max-time 150 \
             --output gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
