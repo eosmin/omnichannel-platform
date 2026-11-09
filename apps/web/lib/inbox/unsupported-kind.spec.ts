@@ -1,16 +1,18 @@
 import { bubbleTextOf, unsupportedKindOf } from './unsupported-kind'
 
 describe('unsupportedKindOf', () => {
+  // One sentence for everything a channel does not let the team see; only a file that could not be fetched differs.
+  // No name of a channel or of a form of one provider is known here.
   it.each([
-    ['story_mention', 'storyMention'],
-    ['share', 'share'],
-    ['ig_post', 'share'],
-    ['location', 'location'],
     ['image', 'media'],
     ['audio', 'media'],
-    ['unsupported', 'notDelivered'],
-    ['order', 'other'],
-    ['something_new', 'other']
+    ['sticker', 'media'],
+    ['story_mention', 'notice'],
+    ['ig_post', 'notice'],
+    ['location', 'notice'],
+    ['unsupported', 'notice'],
+    ['order', 'notice'],
+    ['something_new', 'notice']
   ])('names %s as %s', (type, kind) => {
     expect(unsupportedKindOf(type)).toBe(kind)
   })

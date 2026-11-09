@@ -20,7 +20,7 @@ import {
   type MessageKind,
   messageKindOf
 } from '../../lib/inbox/thread-items'
-import { bubbleTextOf, unsupportedKindOf } from '../../lib/inbox/unsupported-kind'
+import { bubbleTextOf, isNoticeType, unsupportedKindOf } from '../../lib/inbox/unsupported-kind'
 import { useAwaitingFiles } from '../../lib/inbox/use-awaiting-files'
 import { useCodeText } from '../../lib/use-error-text'
 import { cn } from '../../lib/utils'
@@ -54,6 +54,9 @@ export interface MessageBubbleProps {
   userId: string | undefined
   // The names a note mentions, to highlight them in its text
   mentionNames: readonly string[]
+  // A run of notices of content the channel does not show is drawn as one bubble, for its last message: how many
+  // messages it covers, and the ids of the others, so that a quote of any of them still finds its place
+  notice?: { count: number; otherIds: readonly string[] }
 }
 
 // The element a quote scrolls to and focuses has to exist for every kind of message, a line included
@@ -62,8 +65,17 @@ export function MessageBubble(props: MessageBubbleProps): ReactElement {
     <div
       id={messageDomId(props.message.id)}
       tabIndex={-1}
-      className="focus-visible:ring-ring scroll-mt-16 rounded-md outline-none focus-visible:ring-2"
+      className="focus-visible:ring-ring relative scroll-mt-16 rounded-md outline-none focus-visible:ring-2"
     >
+      {props.notice?.otherIds.map(id => (
+        // Covers the whole bubble, so a quote of a covered notice scrolls to and focuses the bubble
+        <span
+          key={id}
+          id={messageDomId(id)}
+          tabIndex={-1}
+          className="pointer-events-none absolute inset-0 scroll-mt-16 rounded-md outline-none"
+        />
+      ))}
       <MessageBody {...props} />
     </div>
   )
@@ -113,7 +125,8 @@ function Bubble({
   actions,
   conversationId,
   userId,
-  mentionNames
+  mentionNames,
+  notice
 }: MessageBubbleProps & { kind: Exclude<MessageKind, 'system' | 'neutral'> }): ReactElement {
   const t = useTranslations('inbox.thread')
   const codeText = useCodeText()
@@ -207,6 +220,7 @@ function Bubble({
             canRefetchFile={actions.refetchFile}
             sticker={bubbleless}
             awaitingFiles={awaitingFiles}
+            noticeCount={notice?.count ?? 1}
           />
           {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
@@ -266,7 +280,8 @@ function Content({
   canResendCaption,
   canRefetchFile,
   sticker,
-  awaitingFiles
+  awaitingFiles,
+  noticeCount
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
@@ -278,6 +293,8 @@ function Content({
   sticker: boolean
   // A customer's file that has not been stored yet (the window of `useAwaitingFiles` is open)
   awaitingFiles: boolean
+  // How many notices of content the channel does not show this bubble stands for
+  noticeCount: number
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -368,7 +385,9 @@ function Content({
       )}
       {message.unsupportedType === null ? null : (
         <p className="text-muted-foreground text-xs italic">
-          {t(`unsupportedKind.${unsupportedKindOf(message.unsupportedType)}`)}
+          {isNoticeType(message.unsupportedType) && noticeCount > 1
+            ? t('unsupportedGroup', { count: noticeCount })
+            : t(`unsupportedKind.${unsupportedKindOf(message.unsupportedType)}`)}
         </p>
       )}
       {message.type === String(MessageType.TEMPLATE) ? (
