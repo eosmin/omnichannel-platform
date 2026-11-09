@@ -126,7 +126,7 @@ export class MessageChangeSender {
   }
 
   // The text of a message (under its first file) that an agent asked to send again, as a message of its own. Nothing is read
-  // from the provider's side to make the second call safe (Meta has no idempotency key), so a call that may
+  // from the provider's side to make the second call safe (the provider has no idempotency key), so a call that may
   // have gone out is never repeated here: it ends `unconfirmed`, and the echo of the owner settles it.
   async sendCaption(job: SendOutboundCaptionJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, messageId } = job

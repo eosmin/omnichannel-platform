@@ -31,21 +31,9 @@
     "code": 0,
     "comment": 2
   },
-  "apps/web/components/inbox/caption-notice.tsx": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/components/inbox/contact-card.tsx": {
-    "code": 0,
-    "comment": 1
-  },
   "apps/web/components/inbox/resolve-form.tsx": {
     "code": 1,
     "comment": 0
-  },
-  "apps/web/components/inbox/shared-link.tsx": {
-    "code": 0,
-    "comment": 1
   },
   "apps/web/components/settings/callback-url.tsx": {
     "code": 0,
@@ -71,31 +59,7 @@
     "code": 0,
     "comment": 1
   },
-  "apps/web/lib/inbox/customer-label.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/inbox/failure-state.ts": {
-    "code": 0,
-    "comment": 1
-  },
   "apps/web/lib/inbox/file-targets.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/inbox/inbox-filters.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/inbox/media-kind.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/inbox/window-state.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/realtime/use-typing.ts": {
     "code": 0,
     "comment": 1
   },
@@ -131,43 +95,11 @@
     "code": 4,
     "comment": 1
   },
-  "apps/worker/src/outbound/message-change-sender.service.ts": {
-    "code": 0,
-    "comment": 1
-  },
   "apps/worker/src/outbound/outbound-sender.service.ts": {
     "code": 0,
     "comment": 3
   },
-  "apps/worker/src/outbound/provider-codes.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/worker/src/outbound/typing-inbound.ts": {
-    "code": 0,
-    "comment": 2
-  },
-  "apps/worker/src/outbound/typing-sender.service.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/worker/src/processors/inbound.processor.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "libs/api-client/src/api-schemas.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "libs/core/database/prisma/schema.prisma": {
-    "code": 0,
-    "comment": 6
-  },
   "libs/core/domain/api/api-routes.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "libs/core/domain/channel-capability.ts": {
     "code": 0,
     "comment": 1
   },
@@ -176,8 +108,8 @@
     "comment": 1
   },
   "libs/core/domain/channel-ids.ts": {
-    "code": 10,
-    "comment": 6
+    "code": 4,
+    "comment": 4
   },
   "libs/core/domain/channel-media/channel-media-rules.ts": {
     "code": 1,
@@ -188,8 +120,8 @@
     "comment": 0
   },
   "libs/core/domain/channel-media/meta-media-rules.ts": {
-    "code": 17,
-    "comment": 11
+    "code": 16,
+    "comment": 4
   },
   "libs/core/domain/channel-media/whatsapp-media.ts": {
     "code": 12,
@@ -202,14 +134,6 @@
   "libs/core/domain/channel-token-expiry.ts": {
     "code": 0,
     "comment": 5
-  },
-  "libs/core/domain/conversation-constants.ts": {
-    "code": 0,
-    "comment": 4
-  },
-  "libs/core/domain/customer-constants.ts": {
-    "code": 0,
-    "comment": 2
   },
   "libs/core/domain/errors/channel-connect-failures.ts": {
     "code": 1,
@@ -227,10 +151,6 @@
     "code": 1,
     "comment": 0
   },
-  "libs/core/domain/messaging-window.ts": {
-    "code": 0,
-    "comment": 3
-  },
   "libs/core/domain/meta-constants.ts": {
     "code": 25,
     "comment": 48
@@ -239,17 +159,9 @@
     "code": 12,
     "comment": 5
   },
-  "libs/core/domain/realtime/typing-timing.ts": {
-    "code": 0,
-    "comment": 1
-  },
   "libs/core/domain/redaction-constants.ts": {
     "code": 3,
     "comment": 2
-  },
-  "libs/core/domain/settings-constants.ts": {
-    "code": 0,
-    "comment": 1
   },
   "libs/core/domain/shortcuts.ts": {
     "code": 1,
@@ -263,39 +175,7 @@
     "code": 2,
     "comment": 0
   },
-  "libs/core/messaging/src/customers/identity.ts": {
-    "code": 1,
-    "comment": 0
-  },
-  "libs/core/messaging/src/customers/phone.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "libs/core/messaging/src/inbound/inbound-message.service.ts": {
-    "code": 0,
-    "comment": 2
-  },
-  "libs/core/messaging/src/messages/caption-rules.ts": {
-    "code": 0,
-    "comment": 2
-  },
-  "libs/core/messaging/src/messages/messages.service.ts": {
-    "code": 0,
-    "comment": 2
-  },
   "libs/core/messaging/src/messages/messages.views.ts": {
-    "code": 0,
-    "comment": 4
-  },
-  "libs/core/messaging/src/messages/provider-message-match.ts": {
-    "code": 0,
-    "comment": 3
-  },
-  "libs/core/messaging/src/messaging-window/messaging-window.service.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "libs/core/messaging/src/outbound/read-receipts.service.ts": {
     "code": 0,
     "comment": 1
   },
@@ -322,9 +202,5 @@
   "libs/plugins/sdk/src/channel-types.ts": {
     "code": 0,
     "comment": 4
-  },
-  "libs/plugins/sdk/src/plugin-error.ts": {
-    "code": 0,
-    "comment": 1
   }
 }

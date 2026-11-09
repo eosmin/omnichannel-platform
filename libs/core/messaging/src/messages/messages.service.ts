@@ -105,7 +105,7 @@ export interface ChannelFileLimits {
   // `CAPTION_PER_FILE`, and a kind that has a place for one); otherwise only the text under the first file is taken
   captionsPerFile?: boolean
   // Whether the text of the message may go after its first file, as a message of its own, where the kind has no
-  // place for one (an audio on WhatsApp): a channel that carries the text of a file itself does it
+  // place for one (an audio on some channels): a channel that carries the text of a file itself does it
   textAfterFile?: boolean
   // What the channel holds of a text, as its plugin declared it: the caption rule of this kind and the plain
   // text. null for a plugin that is no longer registered, which holds nothing here (the plugin has the last word)
@@ -629,7 +629,7 @@ export class MessagesService {
     requireCaptionsPlaced(body, limits?.captionsPerFile === true, textApart)
     const captions = captionsOf(body, textApart)
     for (const caption of captions) {
-      // The text of a file is under it or it is refused (an audio on WhatsApp has no place for one): only the
+      // The text of a file is under it or it is refused (an audio has no place for one on some channels): only the
       // text of the message goes apart, and it has the limit of a plain text
       requireCaptionFits(limits?.text ?? null, body.type, caption ?? undefined)
     }
