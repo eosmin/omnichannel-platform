@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { ChannelOAuthLimits, MetaOAuth } from '@platform/core/domain'
+import { ASSET_ID_MAX_LENGTH, ChannelOAuthLimits } from '@platform/core/domain'
 
 // Opaque values made of random bytes, in base64url: 43 characters of that alphabet for 32 bytes, and nothing
 // else. Each is sized by its own constant, so that changing one never makes the other fail in silence.
@@ -15,8 +15,9 @@ export const oauthSessionIdSchema = z.string().regex(SESSION_ID_PATTERN)
 export const startOAuthSchema = z.strictObject({ connectionId: z.uuid().optional() }).optional()
 export type StartOAuthBody = z.output<typeof startOAuthSchema>
 
-// The Page the person chose, or the number of the Page they typed: only digits, because it goes into a path
+// The account the person chose, or the id they typed. The shape is the plugin's (its declared pattern, which the
+// service applies); here only a bound, so nothing long reaches the pattern
 export const completeOAuthSchema = z.strictObject({
-  assetId: z.string().regex(MetaOAuth.ASSET_ID_PATTERN)
+  assetId: z.string().min(1).max(ASSET_ID_MAX_LENGTH)
 })
 export type CompleteOAuthBody = z.output<typeof completeOAuthSchema>

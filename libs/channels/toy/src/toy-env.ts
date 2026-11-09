@@ -1,13 +1,16 @@
 import { z } from 'zod'
 
-import { nodeEnvSchema } from '@platform/core/env-rules'
+import { emptyAsUnset, nodeEnvSchema } from '@platform/core/env-rules'
 
 // The toy channel exists for the suites only: it stands for a plugin that a third party wrote, which no file of
 // the platform names, so that the e2e can show the web draws a channel from what it declares. Its own variable,
 // parsed here, like the plugin of Meta.
 export const toyEnvShape = {
   // Only for the e2e and the contract suites; a deployed environment refuses it
-  E2E_TOY_PLUGIN: z.literal('1').optional()
+  // A variable passed through empty is a variable not set
+  E2E_TOY_PLUGIN: emptyAsUnset.refine(value => value === undefined || value === '1', {
+    message: 'E2E_TOY_PLUGIN must be 1 when it is set'
+  })
 }
 
 export const toyEnvSchema = z.object({ NODE_ENV: nodeEnvSchema, ...toyEnvShape }).check(ctx => {

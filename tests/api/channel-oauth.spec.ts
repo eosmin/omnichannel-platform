@@ -109,7 +109,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
     }
     const oauth: ChannelOAuth = {
       kind: 'meta-facebook-login',
-      dialogOrigin: 'https://login.example.test',
+      dialogOrigin: 'https://dialog.example',
       providerName: { es: 'Ejemplo', en: 'Example' },
       linkedAccount: null,
       assetIdPattern: '^\\d{1,32}$',
@@ -234,6 +234,21 @@ describe('"Connect with Facebook": the login of a channel', () => {
         'another callback',
         (state: string) =>
           `https://dialog.example/oauth?state=${state}&redirect_uri=https%3A%2F%2Fevil.example%2Fcb`
+      ],
+      [
+        'a dialog on another site than the one it declared',
+        (state: string, uri: string) =>
+          `https://evil.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a dialog on the declared host with a port',
+        (state: string, uri: string) =>
+          `https://dialog.example:8443/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a dialog on a subdomain of the declared host',
+        (state: string, uri: string) =>
+          `https://evil.dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
       ],
       ['something that is not an address', () => 'not an address']
     ])('refuses a plugin that makes %s, and keeps no state for it', async (_name, make) => {

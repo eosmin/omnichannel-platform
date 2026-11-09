@@ -32,10 +32,12 @@ if (!LOCAL_HOSTS.has(databaseHost)) {
 // Builds an app with the toy channel of the suites switched on (`E2E_TOY_PLUGIN=1`, which only a test environment
 // accepts) and puts the variable back: the plugins module reads it when the app is built
 export async function withToyChannel<T>(build: () => Promise<T>): Promise<T> {
+  const before = process.env['E2E_TOY_PLUGIN']
   process.env['E2E_TOY_PLUGIN'] = '1'
   try {
     return await build()
   } finally {
-    delete process.env['E2E_TOY_PLUGIN']
+    if (before === undefined) delete process.env['E2E_TOY_PLUGIN']
+    else process.env['E2E_TOY_PLUGIN'] = before
   }
 }

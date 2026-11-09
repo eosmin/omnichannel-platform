@@ -1164,7 +1164,7 @@ describe('Tenant isolation', () => {
           id: LOGIN_PLUGIN,
           oauth: {
             kind: 'meta-facebook-login',
-            dialogOrigin: 'https://login.example.test',
+            dialogOrigin: 'https://dialog.example',
             providerName: { es: 'Ejemplo', en: 'Example' },
             linkedAccount: null,
             assetIdPattern: '^\\d{1,32}$',

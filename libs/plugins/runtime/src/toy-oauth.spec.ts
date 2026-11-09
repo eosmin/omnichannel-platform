@@ -102,6 +102,24 @@ describe('the login descriptor of a plugin nobody named', () => {
     expect(plugins.oauthOf(TOY_ID)?.assetId.test('12a')).toBe(false)
   })
 
+  it('takes a label with a space beside the placeholder', () => {
+    for (const es of ['Cuenta de {username}', '{username} en la red', '@{username}']) {
+      const plugins = registry()
+      plugins.register(
+        toy(
+          login({
+            linkedAccount: {
+              required: false,
+              label: { es, en: es },
+              missingLabel: { es: 'Sin cuenta', en: 'None' }
+            }
+          })
+        )
+      )
+      expect(plugins.oauthDescriptorOf(TOY_ID)?.linkedAccount?.label.es).toBe(es)
+    }
+  })
+
   it('has none for a plugin without a login, or not registered', () => {
     const plugins = registry()
     plugins.register(toy(undefined))
@@ -161,6 +179,8 @@ describe('the login descriptor of a plugin nobody named', () => {
     ['a pattern with an open end', { assetIdPattern: '^\\d+$' }],
     ['a pattern with a huge bound', { assetIdPattern: '^\\d{1,5000}$' }],
     ['a pattern that matches the empty string', { assetIdPattern: '^\\d{0,32}$' }],
+    ['a range across classes of character', { assetIdPattern: '^[0-z]{1,10}$' }],
+    ['a range from capitals to lower case', { assetIdPattern: '^[A-z]{1,10}$' }],
     ['a pattern that is not a pattern', { assetIdPattern: '^[$' }],
     ['a pattern that is huge', { assetIdPattern: `^${'\\d'.repeat(10_000)}$` }]
   ]

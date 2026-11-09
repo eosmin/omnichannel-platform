@@ -1,6 +1,7 @@
 export * from './carrier-registry'
 export * from './official-plugins'
 export type { ChannelDescriptorSnapshot } from './descriptor-snapshot'
+export type { ChannelOAuthSnapshot } from './oauth-snapshot'
 export type { ConnectFieldSnapshot } from './connect-manifest'
 export * from './plugin-registry'
 export * from './plugins.module'

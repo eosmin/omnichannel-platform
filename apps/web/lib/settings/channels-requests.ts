@@ -99,7 +99,8 @@ const catalogEntrySchema = z.object({
       // "Connect with Facebook" is offered for this channel; false from a server older than the page
       facebookLogin: z.boolean().catch(false),
       // How the channel is named and drawn, and its login: none when the server does not say or the descriptor
-      // is not valid (the browser checks it again), never a failure of the page
+      // is not valid (the browser checks it again), never a failure of the page. Until B1b draws the login from
+      // `oauth`, the button still follows `facebookLogin` and the Facebook address.
       descriptor: channelDescriptorSchema.nullable().catch(null),
       oauth: channelOAuthDescriptorSchema.nullable().catch(null)
     })

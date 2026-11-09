@@ -1,7 +1,6 @@
 import { type DynamicModule, Module, type Provider, type Type } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { isToyChannelEnabled, ToyChannelPlugin } from '@platform/channels/toy'
 import {
   CHANNEL_IDENTITY_KINDS,
   type ChannelIdentityKindSource,
@@ -24,10 +23,6 @@ export interface PluginsModuleOptions {
   imports?: readonly Type<unknown>[]
 }
 
-// Whether the toy channel of the suites is registered: asked of the environment when the module is built, and
-// only in the composition of the apps (a spec that passes its own plugins never reaches the environment)
-const TOY_ENABLED = Symbol('TOY_ENABLED')
-
 const OFFICIAL: PluginsModuleOptions = {
   channels: OFFICIAL_CHANNEL_PLUGINS,
   carriers: OFFICIAL_CARRIER_PLUGINS,
@@ -44,17 +39,12 @@ const OFFICIAL: PluginsModuleOptions = {
 export class PluginsModule {
   static forRoot(options: PluginsModuleOptions = OFFICIAL): DynamicModule {
     const withToy = options === OFFICIAL
-    const toyEnabled: Provider = {
-      provide: TOY_ENABLED,
-      useFactory: (): Promise<boolean> => isToyChannelEnabled()
-    }
     const channelRegistry: Provider = {
       provide: PluginRegistry,
-      useFactory: (logger: PinoLogger, ...rest: unknown[]): PluginRegistry => {
-        // With the toy: the last two are the toy channel and whether it is on
-        const plugins = (withToy ? rest.slice(0, -2) : rest) as ChannelPlugin[]
-        if (withToy && rest[rest.length - 1] === true)
-          plugins.push(rest[rest.length - 2] as ChannelPlugin)
+      useFactory: async (
+        logger: PinoLogger,
+        ...plugins: ChannelPlugin[]
+      ): Promise<PluginRegistry> => {
         const registry = new PluginRegistry(logger)
         // Only an instance of the exact class of an official list owns the official ids. The prototype
         // is read, not `constructor`, which an object can set to anything
@@ -64,9 +54,17 @@ export class PluginsModule {
           )
           registry.register(plugin, { official, fromCode: true })
         }
+        // The toy channel of the suites, only in the composition of the apps and only when the environment turns it
+        // on (which a test environment alone accepts). Loaded when asked, so nothing of it runs otherwise.
+        if (withToy) {
+          const toy = await import('@platform/channels/toy')
+          if (await toy.isToyChannelEnabled()) {
+            registry.register(new toy.ToyChannelPlugin(), { official: false, fromCode: true })
+          }
+        }
         return registry
       },
-      inject: [PinoLogger, ...options.channels, ...(withToy ? [ToyChannelPlugin, TOY_ENABLED] : [])]
+      inject: [PinoLogger, ...options.channels]
     }
     const carrierRegistry: Provider = {
       provide: CarrierRegistry,
@@ -92,7 +90,6 @@ export class PluginsModule {
         carrierRegistry,
         identityKinds,
         ...options.channels,
-        ...(withToy ? [ToyChannelPlugin, toyEnabled] : []),
         ...options.carriers
       ],
       exports: [PluginRegistry, CarrierRegistry, CHANNEL_IDENTITY_KINDS]

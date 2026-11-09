@@ -75,19 +75,18 @@ export function isPlainDescriptorText(
   max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH,
   placeholders: readonly string[] = []
 ): value is string {
-  // A closed list of placeholders the page fills in (`{username}`): each is taken out before the text is judged,
-  // so any other brace is still refused
+  // A closed list of placeholders the page fills in (`{username}`): each is replaced by a letter before the text is
+  // judged, so any other brace is still refused, a space beside a placeholder still counts as a space in the text,
+  // and the length and the trimming are those of the text as written
   if (typeof value === 'string' && placeholders.length > 0) {
-    const bare = placeholders.reduce((text, name) => text.split(`{${name}}`).join(''), value)
-    // What is left must be plain on its own, but the placeholders were part of the text for its length and
-    // for it to have something to read
-    if (bare.length === value.length) return isPlainDescriptorText(value, max)
-    return (
-      value.length <= max * 2 &&
-      Array.from(value).length <= max &&
-      value === value.trim() &&
-      (bare === '' || isPlainDescriptorText(bare.trim() === '' ? 'x' : bare, max))
-    )
+    const filled = placeholders.reduce((text, name) => text.split(`{${name}}`).join('x'), value)
+    if (filled !== value) {
+      return (
+        value.length <= max * 2 &&
+        Array.from(value).length <= max &&
+        isPlainDescriptorText(filled, Number.MAX_SAFE_INTEGER)
+      )
+    }
   }
   return (
     typeof value === 'string' &&
@@ -156,7 +155,7 @@ export function isDialogOrigin(value: unknown): value is string {
 // for ever): it is one run of one class of character with a bound, anchored, which cannot backtrack. Returns the
 // compiled pattern, or null when the text is anything else.
 const ASSET_ID_PATTERN_SOURCE =
-  /^\^(\\d|\\w|\[(?:[A-Za-z0-9]-[A-Za-z0-9]|[A-Za-z0-9_])+-?\])\{(\d{1,2})(?:,(\d{1,2}))?\}\$$/
+  /^\^(\\d|\\w|\[(?:[0-9]-[0-9]|[a-z]-[a-z]|[A-Z]-[A-Z]|[A-Za-z0-9_])+-?\])\{(\d{1,2})(?:,(\d{1,2}))?\}\$$/
 export const ASSET_ID_MAX_LENGTH = 64
 export function parseAssetIdPattern(source: unknown): RegExp | null {
   if (typeof source !== 'string' || source.length > 60) return null

@@ -14,12 +14,14 @@ import type { ChannelPlugin } from '@platform/plugins/sdk'
 
 // What the catalog shows of a plugin that ships with the platform, and the manifest it keeps for it
 function officialRow(plugin: ChannelPlugin) {
+  const official = isOfficialChannelId(plugin.id)
   return {
     name: plugin.name,
-    authorName: OfficialPluginAuthor.NAME,
-    authorEmail: OfficialPluginAuthor.EMAIL,
+    // A plugin the code registers that is not official (the toy channel of the suites) is its own author
+    authorName: official ? OfficialPluginAuthor.NAME : plugin.author,
+    authorEmail: official ? OfficialPluginAuthor.EMAIL : 'plugins@localhost',
     type: PluginCatalogTypes.CHANNEL,
-    isOfficial: isOfficialChannelId(plugin.id),
+    isOfficial: official,
     manifest: {
       id: plugin.id,
       name: plugin.name,
@@ -59,7 +61,9 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
         this.prisma.client.plugin.upsert({
           where: { id: plugin.id },
           create: { id: plugin.id, ...data, status },
-          update: data
+          // A row that is not the platform's own is written once and never taken over: whoever published it
+          // keeps its author, name and manifest
+          update: isOfficialChannelId(plugin.id) ? data : {}
         })
       try {
         await write()
