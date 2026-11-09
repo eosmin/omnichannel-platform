@@ -52,7 +52,7 @@ export class PluginsModule {
           const official = OFFICIAL_CHANNEL_PLUGINS.some(
             cls => Object.getPrototypeOf(plugin) === cls.prototype
           )
-          registry.register(plugin, { official, fromCode: true })
+          registry.register(plugin, { official, fromCode: official })
         }
         // The toy channel of the suites, only in the composition of the apps and only when the environment turns it
         // on (which a test environment alone accepts).

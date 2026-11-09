@@ -227,17 +227,7 @@ export class ChannelOAuthService {
       connectionId: session.connectionId ?? null,
       repairAccountId: await this.repairAccountOf(session),
       // Only ids that are ids of the provider as its plugin declared them: one that is not could not be chosen
-      assets: found
-        .filter(asset => oauth.assetId.test(asset.id))
-        .slice(0, MAX_ASSETS)
-        .map(asset => ({
-          id: asset.id,
-          name: asset.name,
-          linkedAccount:
-            asset.linkedAccount === null
-              ? null
-              : { id: asset.linkedAccount.id, username: asset.linkedAccount.username }
-        }))
+      assets: assetsOf(found, oauth.assetId)
     }
   }
 
@@ -444,6 +434,10 @@ function keepsTheState(
     const keeps =
       url.protocol === 'https:' &&
       url.origin === dialogOrigin &&
+      // `origin` leaves these out: an address with a login in it, or a fragment, is not the dialog that was declared
+      url.username === '' &&
+      url.password === '' &&
+      url.hash === '' &&
       url.searchParams.getAll(ChannelOAuthQuery.STATE).length === 1 &&
       url.searchParams.get(ChannelOAuthQuery.STATE) === state &&
       // Once each, so the provider cannot read the last one while the core read the first
@@ -474,4 +468,32 @@ function reasonOfProviderError(error: unknown): ChannelConnectFailureReason {
     default:
       return ChannelConnectFailureReasons.REQUEST_REJECTED
   }
+}
+
+const ASSET_TEXT_MAX_LENGTH = 200
+
+// What a plugin lists, as the page may be told it. A third party writes the plugin, so nothing is taken on trust: the
+// answer must be a list, each entry an object whose id is a STRING that fits the pattern the plugin declared (a number
+// or an object would pass a pattern by being turned into text), the names are bounded text, and the account a Page
+// links is held to the same pattern. An entry that is not any of that is left out, not repaired.
+function assetsOf(found: unknown, pattern: RegExp): OAuthAssetView[] {
+  if (!Array.isArray(found)) return []
+  const text = (value: unknown): string | null =>
+    typeof value === 'string' ? value.slice(0, ASSET_TEXT_MAX_LENGTH) : null
+  const assets: OAuthAssetView[] = []
+  for (const entry of found as unknown[]) {
+    if (assets.length >= MAX_ASSETS) break
+    if (typeof entry !== 'object' || entry === null) continue
+    const { id, name, linkedAccount } = entry as Record<string, unknown>
+    if (typeof id !== 'string' || id.length > ASSET_ID_MAX_LENGTH || !pattern.test(id)) continue
+    let linked: OAuthAssetView['linkedAccount'] = null
+    if (typeof linkedAccount === 'object' && linkedAccount !== null) {
+      const account = linkedAccount as Record<string, unknown>
+      const accountId = account['id']
+      if (typeof accountId !== 'string' || !pattern.test(accountId)) continue
+      linked = { id: accountId, username: text(account['username']) }
+    }
+    assets.push({ id, name: text(name) ?? id, linkedAccount: linked })
+  }
+  return assets
 }

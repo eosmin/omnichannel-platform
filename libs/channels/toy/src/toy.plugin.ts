@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
@@ -56,6 +56,8 @@ export class ToyChannelPlugin implements ChannelPlugin {
       multiple: false
     }
   ]
+  // Nobody can sign a webhook for it: the key is made when the process starts and never leaves it
+  private readonly webhookKey = randomBytes(32)
   readonly imageHosts = { avatar: ['https://img.acme.test'], media: [] }
 
   connect(input: ConnectInput): Promise<ConnectResult> {
@@ -66,7 +68,7 @@ export class ToyChannelPlugin implements ChannelPlugin {
       )
     }
     // The account is named by a digest of the key, never by the key
-    const digest = createHmac('sha256', 'acme-toy').update(parsed.data.apiKey).digest('hex')
+    const digest = createHash('sha256').update(parsed.data.apiKey).digest('hex')
     return Promise.resolve({
       connectionId: `acme-${digest.slice(0, 16)}`,
       displayName: 'Acme account',
@@ -100,7 +102,7 @@ export class ToyChannelPlugin implements ChannelPlugin {
   validateWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {
     const given = headers['x-acme-signature']
     if (given === undefined) return false
-    const expected = createHmac('sha256', 'acme-toy-webhook').update(rawBody).digest('hex')
+    const expected = createHmac('sha256', this.webhookKey).update(rawBody).digest('hex')
     const a = Buffer.from(given)
     const b = Buffer.from(expected)
     return a.length === b.length && timingSafeEqual(a, b)

@@ -255,6 +255,16 @@ describe('"Connect with Facebook": the login of a channel', () => {
         (state: string, uri: string) =>
           `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}&redirect_uri=https%3A%2F%2Fevil.example%2Fcb`
       ],
+      [
+        'a dialog address with a login in it',
+        (state: string, uri: string) =>
+          `https://user:secret@dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}`
+      ],
+      [
+        'a dialog address with a fragment',
+        (state: string, uri: string) =>
+          `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(uri)}#x`
+      ],
       ['something that is not an address', () => 'not an address']
     ])('refuses a plugin that makes %s, and keeps no state for it', async (_name, make) => {
       const { oauth } = login({

@@ -94,11 +94,13 @@ export function snapshotChannelOAuth(
     >
     const label = readLocalizedText(raw['label'], undefined, LINKED_ACCOUNT_PLACEHOLDERS)
     const missingLabel = readLocalizedText(raw['missingLabel'])
-    if (typeof raw['required'] !== 'boolean' || label === null || missingLabel === null) {
+    // Each value is read once: what is kept is what was checked
+    const required = raw['required']
+    if (typeof required !== 'boolean' || label === null || missingLabel === null) {
       refuse('linked account')
     }
     linkedAccount = Object.freeze({
-      required: raw['required'] as boolean,
+      required: required as boolean,
       label: label as NonNullable<typeof label>,
       missingLabel: missingLabel as NonNullable<typeof missingLabel>
     })

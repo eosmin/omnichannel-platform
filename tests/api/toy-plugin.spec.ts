@@ -131,17 +131,21 @@ describe('the catalog row of a plugin the code registers and nobody published', 
 
     await owner.plugin.update({
       where: { id: TOY_ID },
-      data: { authorName: 'Someone else', name: 'Their name' }
+      data: { authorName: 'Someone else', authorEmail: 'them@example.test', name: 'Their name' }
     })
     try {
       await app.get(PluginCatalogSync, { strict: false }).sync()
 
       const after = await owner.plugin.findUniqueOrThrow({ where: { id: TOY_ID } })
-      expect(after).toMatchObject({ authorName: 'Someone else', name: 'Their name' })
+      expect(after).toMatchObject({
+        authorName: 'Someone else',
+        authorEmail: 'them@example.test',
+        name: 'Their name'
+      })
     } finally {
       await owner.plugin.update({
         where: { id: TOY_ID },
-        data: { authorName: 'Acme', name: row.name }
+        data: { authorName: 'Acme', authorEmail: row.authorEmail, name: row.name }
       })
     }
   })

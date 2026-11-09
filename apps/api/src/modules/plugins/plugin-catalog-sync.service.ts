@@ -60,20 +60,19 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
     for (const plugin of plugins) {
       // The status is written once, on creation: a plugin the owner suspended stays suspended
       const { status, ...data } = officialRow(plugin)
-      // A row that is not the platform's own belongs to whoever published it: this one is written when it is
-      // not there, refreshed only while its author is the plugin's own, and never taken over from another
+      // A row that is not the platform's own belongs to whoever published it: this one is written when it is not
+      // there, and refreshed only while it carries the marker of a row the code wrote (an address nobody else can
+      // have, not a name the publisher chooses), in one statement so that nothing is read and then overwritten
       if (!isOfficialChannelId(plugin.id)) {
-        const existing = await this.prisma.client.plugin.findUnique({
-          where: { id: plugin.id },
-          select: { authorName: true, isOfficial: true }
+        await this.prisma.client.plugin.createMany({
+          data: [{ id: plugin.id, ...data, status }],
+          skipDuplicates: true
         })
-        if (existing !== null && (existing.isOfficial || existing.authorName !== data.authorName)) {
-          this.logger.warn(
-            { pluginId: plugin.id },
-            'a catalog row of another publisher is left as it is'
-          )
-          continue
-        }
+        await this.prisma.client.plugin.updateMany({
+          where: { id: plugin.id, isOfficial: false, authorEmail: CodePluginAuthor.EMAIL },
+          data
+        })
+        continue
       }
       const write = () =>
         this.prisma.client.plugin.upsert({

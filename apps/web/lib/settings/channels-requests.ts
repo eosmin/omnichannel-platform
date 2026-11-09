@@ -91,14 +91,6 @@ const connectFieldSchema = z
   .refine(field => field.labelKey !== null || field.label !== null)
 export type ConnectFieldView = z.output<typeof connectFieldSchema>
 
-// The fields of a form, each checked on its own: one the browser refuses leaves the others, and the page
-const connectFieldsSchema = z.array(z.unknown()).transform(items =>
-  items.flatMap(item => {
-    const field = connectFieldSchema.safeParse(item)
-    return field.success ? [field.data] : []
-  })
-)
-
 const catalogEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -110,7 +102,9 @@ const catalogEntrySchema = z.object({
   activeConnections: z.number().int(),
   channel: z
     .object({
-      connectFields: connectFieldsSchema,
+      // One field the browser cannot read makes the channel's whole form unreadable (the channel is then listed
+      // with no way to connect), never a form with a required field missing
+      connectFields: z.array(connectFieldSchema),
       callbackUrl: z.string().nullable(),
       // "Connect with Facebook" is offered for this channel; false from a server older than the page
       facebookLogin: z.boolean().catch(false),
@@ -121,6 +115,7 @@ const catalogEntrySchema = z.object({
       oauth: channelOAuthDescriptorSchema.nullable().catch(null)
     })
     .nullable()
+    .catch(null)
 })
 export type PluginCatalogEntryView = z.output<typeof catalogEntrySchema>
 

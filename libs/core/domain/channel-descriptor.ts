@@ -79,18 +79,28 @@ export function isPlainDescriptorText(
   // judged, so any other brace is still refused, a space beside a placeholder still counts as a space in the text,
   // and the length and the trimming are those of the text as written
   if (typeof value === 'string' && placeholders.length > 0) {
+    // The cheap bound first, as for any text: nothing is split or scanned that is far over the limit
+    if (value.length > max * 2) return false
     const filled = placeholders.reduce((text, name) => text.split(`{${name}}`).join('x'), value)
     if (filled !== value) {
       // A name the page fills in must not complete a link or a scheme (`go.{username}`, `javascript{username}:`):
-      // it never follows a dot, a colon or a slash, and it appears twice at most
-      const joinsALink = placeholders.some(name =>
-        new RegExp(`[./:]\\{${name}\\}|\\{${name}\\}[./:]`).test(value)
+      // no dot, colon or slash right before it, and none right after it that is followed by more text (a full stop or
+      // a colon that ends the sentence is just punctuation). At most twice.
+      const joinsALink = placeholders.some(
+        name =>
+          value.includes(`.{${name}}`) ||
+          value.includes(`:{${name}}`) ||
+          value.includes(`/{${name}}`) ||
+          [`{${name}}.`, `{${name}}:`, `{${name}}/`].some(joined => {
+            const at = value.indexOf(joined)
+            const after = at === -1 ? '' : value.slice(at + joined.length, at + joined.length + 1)
+            return at !== -1 && after !== '' && after !== ' '
+          })
       )
       const repeats = placeholders.some(name => value.split(`{${name}}`).length - 1 > 2)
       return (
         !joinsALink &&
         !repeats &&
-        value.length <= max * 2 &&
         Array.from(value).length <= max &&
         isPlainDescriptorText(filled, Number.MAX_SAFE_INTEGER)
       )
