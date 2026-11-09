@@ -28,7 +28,7 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import { type ChannelContext, type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
 import { MessageChangeStatusWriter, type CaptionSettlement } from './message-change-status.writer'
-import { refusalOf, SendAttemptFailed } from './send-refusal'
+import { isRepeatableSend, refusalOf, SendAttemptFailed } from './send-refusal'
 
 const MESSAGE_SELECT = {
   channelMessageId: true,
@@ -176,7 +176,7 @@ export class MessageChangeSender {
         },
         'sending the text under a file failed'
       )
-      if (!outcomeUnknown && refused.retryable && !isLastAttempt) {
+      if (isRepeatableSend(error) && !isLastAttempt) {
         throw new SendAttemptFailed(refused.code, error, 'a caption')
       }
       return settle({ state: outcomeUnknown ? CaptionState.UNCONFIRMED : CaptionState.FAILED })
