@@ -78,6 +78,9 @@ const TEMPLATE_CHANNEL_ID = 'template_channel'
 const MEDIA_CHANNEL_ID = 'media_channel'
 // Takes up to three small pngs in one message, when sending several is on
 const MULTI_MEDIA_CHANNEL_ID = 'multi_media_channel'
+// A third-party plugin that says its text holds 20 characters: no file of the platform names it
+const TINY_TEXT_CHANNEL_ID = 'tiny_text_channel'
+const TINY_TEXT_LIMIT = 20
 // Takes up to three images in ONE message (a native album) and sends a document apart
 const ALBUM_CHANNEL_ID = 'album_channel'
 const CONFLICT = 409
@@ -149,6 +152,13 @@ describe('Replies on their way to a channel', () => {
     const pluginOf = (id: string): ReturnType<typeof buildChannelPlugin> =>
       buildChannelPlugin({ id, sendMessage: (c, p) => sendMessage(c, p) })
     registry.register(pluginOf(TEST_CHANNEL_ID))
+    registry.register(
+      buildChannelPlugin({
+        id: TINY_TEXT_CHANNEL_ID,
+        limits: { textMaxLength: TINY_TEXT_LIMIT },
+        sendMessage: (c, p) => sendMessage(c, p)
+      })
+    )
     registry.register(
       buildChannelPlugin({
         id: TEMPLATE_CHANNEL_ID,
@@ -1052,6 +1062,26 @@ describe('Replies on their way to a channel', () => {
       })
       expect((await stored(fits.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
       expect(sent).toHaveLength(1)
+    })
+
+    it('holds a channel nobody named to the limit its plugin declared', async () => {
+      const reply = await queuedReply({
+        pluginId: TINY_TEXT_CHANNEL_ID,
+        content: 'x'.repeat(TINY_TEXT_LIMIT + 1)
+      })
+      const fits = await queuedReply({
+        pluginId: TINY_TEXT_CHANNEL_ID,
+        content: 'x'.repeat(TINY_TEXT_LIMIT)
+      })
+
+      await sender.send(job(reply), false)
+      await sender.send(job(fits), false)
+
+      expect(await stored(reply.id)).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: ErrorCodes.CHANNEL_MESSAGE_FAILED
+      })
+      expect((await stored(fits.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
     it('counts characters of text and not bytes: emoji do not eat the limit', async () => {

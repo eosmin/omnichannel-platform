@@ -1,12 +1,12 @@
-import { ChannelCaptionRules, ChannelTextLimits, type MessageType } from '@platform/core/domain'
+import type { ChannelLimitsView, MessageType } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 import { invalidInput } from '../conversations/conversations.support'
 
 // Where a kind of file carries no text of its own on the channel (an audio on WhatsApp), the text goes after
 // the file as a message of its own (only for the text of the message: the first file)
-export function carriesNoCaption(channelType: string, type: MessageType): boolean {
-  return ChannelCaptionRules[channelType]?.withoutCaption.includes(type) === true
+export function carriesNoCaption(limits: ChannelLimitsView | null, type: MessageType): boolean {
+  return limits?.caption?.withoutCaption.includes(type) === true
 }
 
 // Whether a text fits under a file of this kind on this channel: the limit of its caption, or of a plain
@@ -14,17 +14,16 @@ export function carriesNoCaption(channelType: string, type: MessageType): boolea
 // first file leaves, so that no album goes in part for a text that would be refused).
 export type CaptionProblem = 'unsupported' | 'too-long'
 export function captionProblemOf(
-  channelType: string,
+  limits: ChannelLimitsView | null,
   type: MessageType,
   caption: string,
   apartAllowed: boolean
 ): { problem: CaptionProblem; limit?: number } | null {
-  const rule = ChannelCaptionRules[channelType]
-  const apart = carriesNoCaption(channelType, type)
+  const apart = carriesNoCaption(limits, type)
   if (apart && !apartAllowed) return { problem: 'unsupported' }
   const limit = apart
-    ? ChannelTextLimits[channelType]
-    : (rule?.maxLength ?? ChannelTextLimits[channelType])
+    ? limits?.textMaxLength
+    : (limits?.caption?.maxLength ?? limits?.textMaxLength)
   if (limit !== undefined && Array.from(caption).length > limit)
     return { problem: 'too-long', limit }
   return null
@@ -34,13 +33,13 @@ export function captionProblemOf(
 // apart). The plugin refuses the same at send time, which the agent would only see as a failed bubble: here
 // it is an answer to the request, before anything is queued.
 export function requireCaptionFits(
-  channelType: string,
+  limits: ChannelLimitsView | null,
   type: MessageType,
   caption: string | undefined,
   apartAllowed = false
 ): void {
   if (caption === undefined) return
-  const found = captionProblemOf(channelType, type, caption, apartAllowed)
+  const found = captionProblemOf(limits, type, caption, apartAllowed)
   if (found === null) return
   if (found.problem === 'unsupported') {
     throw new PlatformException(
@@ -99,8 +98,8 @@ export function requireCaptionsPlaced(
 
 // The text of a message that goes apart, as a message of its own after the files, has the limit of a plain text
 // of its channel (the same the worker holds it to before anything leaves)
-export function requireTextFits(channelType: string, text: string | undefined): void {
-  const limit = ChannelTextLimits[channelType]
+export function requireTextFits(limits: ChannelLimitsView | null, text: string | undefined): void {
+  const limit = limits?.textMaxLength
   if (text !== undefined && limit !== undefined && Array.from(text).length > limit) {
     throw invalidInput(`the text of the message is longer than the channel holds (${limit})`)
   }

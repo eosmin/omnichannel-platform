@@ -2,18 +2,13 @@ import {
   type ChannelIdentityKind,
   ChannelIdentityKinds,
   type ChannelLimits,
+  type ChannelLimitsView,
   MessageLimits,
   MessageType
 } from '@platform/core/domain'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
 import { contractViolation, printable } from './contract-rules'
-
-// What the registry keeps of `limits`: a copy, with the caption always present or null
-export interface ChannelLimitsSnapshot {
-  textMaxLength: number
-  caption: { maxLength: number; withoutCaption: readonly MessageType[] } | null
-}
 
 // Only a file carries a caption, so only a kind of file can be declared without one
 const FILE_TYPES: ReadonlySet<unknown> = new Set([
@@ -36,7 +31,7 @@ function boundedLength(value: unknown): value is number {
 // A plugin of a third party writes its limits, and the api refuses or accepts a reply by them: they are
 // copied once, property by property, and held to what the platform stores. A plugin that declares
 // nothing valid is refused at boot, like one that lacks a method.
-export function snapshotChannelLimits(plugin: ChannelPlugin, id: string): ChannelLimitsSnapshot {
+export function snapshotChannelLimits(plugin: ChannelPlugin, id: string): ChannelLimitsView {
   const declared: unknown = plugin.limits
   if (typeof declared !== 'object' || declared === null) {
     throw contractViolation(`Plugin ${printable(id)} does not declare its limits`)

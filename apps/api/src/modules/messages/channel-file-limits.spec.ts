@@ -4,9 +4,22 @@ import { MediaMessageLimits } from '@platform/core/storage'
 import { channelFileLimits } from './channel-file-limits'
 
 const png = { types: ['image/png'], maxBytes: 1000 }
-// The capabilities a channel declared when it registered, by channel type
-const registryOf = (media: unknown, capabilities: Record<string, string[]> = {}) =>
-  ({ mediaOf: () => media, capabilitiesOf: (type: string) => capabilities[type] ?? [] }) as never
+// What a plugin with a caption rule declares: an audio carries no caption
+const CAPTION_RULE = {
+  textMaxLength: 4096,
+  caption: { maxLength: 1024, withoutCaption: [MessageType.AUDIO] }
+}
+// What the channels declared when they registered, by channel type
+const registryOf = (
+  media: unknown,
+  capabilities: Record<string, string[]> = {},
+  limits: Record<string, unknown> = {}
+) =>
+  ({
+    mediaOf: () => media,
+    limitsOf: (type: string) => limits[type] ?? null,
+    capabilitiesOf: (type: string) => capabilities[type] ?? []
+  }) as never
 
 describe('channelFileLimits', () => {
   const media = {
@@ -20,7 +33,8 @@ describe('channelFileLimits', () => {
       maxFiles: 1,
       ...png,
       captionsPerFile: false,
-      textAfterFile: false
+      textAfterFile: false,
+      text: null
     })
   })
 
@@ -34,25 +48,36 @@ describe('channelFileLimits', () => {
     )
   })
 
+  it('hands over the limits the plugin declared for a text, and none for a plugin that declared none', () => {
+    const registry = registryOf(media, {}, { acme: CAPTION_RULE })
+    expect(channelFileLimits(registry, true)('acme', MessageType.IMAGE)?.text).toEqual(CAPTION_RULE)
+    expect(channelFileLimits(registry, true)('other', MessageType.IMAGE)?.text).toBeNull()
+  })
+
   it('keeps the rule of the kind: any type when the provider lists none', () => {
     expect(channelFileLimits(registryOf(media), true)('x', MessageType.DOCUMENT)).toEqual({
       maxFiles: 10,
       types: null,
       maxBytes: 5,
       captionsPerFile: false,
-      textAfterFile: false
+      textAfterFile: false,
+      text: null
     })
   })
 
   it('offers a text under each file only to a channel that declares it, for every kind (an audio goes apart)', () => {
     const audio = { ...media, kinds: { audio: png } }
     const registry = registryOf(media, { whatsapp: [ChannelCapability.CAPTION_PER_FILE] })
-    const audioRegistry = registryOf(audio, { whatsapp: [ChannelCapability.CAPTION_PER_FILE] })
+    const audioRegistry = registryOf(
+      audio,
+      { whatsapp: [ChannelCapability.CAPTION_PER_FILE] },
+      { whatsapp: CAPTION_RULE }
+    )
 
     expect(channelFileLimits(registry, true)('whatsapp', MessageType.IMAGE)?.captionsPerFile).toBe(
       true
     )
-    // An audio on WhatsApp has no place for a text: none under a file but the first, and the text of the
+    // An audio whose plugin declares no caption for it has no place for a text: none under a file but the first, and the text of the
     // message goes after the first one
     expect(channelFileLimits(audioRegistry, true)('whatsapp', MessageType.AUDIO)).toMatchObject({
       captionsPerFile: false,

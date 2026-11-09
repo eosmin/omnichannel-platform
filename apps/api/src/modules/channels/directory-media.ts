@@ -2,7 +2,10 @@ import type { ChannelFileLimits } from '@platform/core/messaging'
 import { OutboundMediaTypes, type OutboundMediaType } from '@platform/core/storage'
 
 // What a channel takes of one kind of file in a message, for the directory the inbox reads
-export interface DirectoryMediaLimits extends ChannelFileLimits {
+export interface DirectoryMediaLimits extends Pick<
+  ChannelFileLimits,
+  'maxFiles' | 'types' | 'maxBytes' | 'captionsPerFile'
+> {
   type: OutboundMediaType
 }
 
