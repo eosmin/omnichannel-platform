@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import type { ApiClient } from '@platform/api-client'
+import {
+  type ApiClient,
+  channelDescriptorSchema,
+  channelOAuthDescriptorSchema,
+  localizedTextSchema
+} from '@platform/api-client'
 import { ApiRoutes } from '@platform/core/api'
 import type { ChannelConnectionListState } from '@platform/core/domain'
 
@@ -69,6 +74,9 @@ const connectFieldSchema = z.object({
   // A message key (the official plugins) or null for a plugin that names the field with a text of its own, which
   // the form draws once the settings read it (Step 7.9 B1b); until then such a field shows its key
   labelKey: z.string().nullable(),
+  // The text of the plugin itself in each language, and a line of help: null/absent from the official plugins
+  label: localizedTextSchema.nullable().catch(null),
+  helpKey: z.string().nullable().catch(null),
   secret: z.boolean(),
   required: z.boolean(),
   multiple: z.boolean()
@@ -89,7 +97,11 @@ const catalogEntrySchema = z.object({
       connectFields: z.array(connectFieldSchema),
       callbackUrl: z.string().nullable(),
       // "Connect with Facebook" is offered for this channel; false from a server older than the page
-      facebookLogin: z.boolean().catch(false)
+      facebookLogin: z.boolean().catch(false),
+      // How the channel is named and drawn, and its login: none when the server does not say or the descriptor
+      // is not valid (the browser checks it again), never a failure of the page
+      descriptor: channelDescriptorSchema.nullable().catch(null),
+      oauth: channelOAuthDescriptorSchema.nullable().catch(null)
     })
     .nullable()
 })

@@ -4,6 +4,8 @@ import { credentialsOf, emptyValues, linesOf, missingFields } from './connect-fo
 const field = (key: string, over: Partial<ConnectFieldView> = {}): ConnectFieldView => ({
   key,
   labelKey: `settings.channels.connect.x.${key}`,
+  label: null,
+  helpKey: null,
   secret: false,
   required: true,
   multiple: false,

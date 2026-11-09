@@ -28,3 +28,14 @@ const databaseHost = new URL(connectionUrls().owner).hostname
 if (!LOCAL_HOSTS.has(databaseHost)) {
   throw new Error(`the security suite only runs against a local database, not ${databaseHost}`)
 }
+
+// Builds an app with the toy channel of the suites switched on (`E2E_TOY_PLUGIN=1`, which only a test environment
+// accepts) and puts the variable back: the plugins module reads it when the app is built
+export async function withToyChannel<T>(build: () => Promise<T>): Promise<T> {
+  process.env['E2E_TOY_PLUGIN'] = '1'
+  try {
+    return await build()
+  } finally {
+    delete process.env['E2E_TOY_PLUGIN']
+  }
+}

@@ -7,9 +7,12 @@ import {
   DEFAULT_CHANNEL_ICON_KEY,
   isChannelIconKey,
   isChannelManagementSurface,
+  isDialogOrigin,
   isPlainDescriptorText,
+  LINKED_ACCOUNT_PLACEHOLDERS,
   MediaStatus,
-  MessageType
+  MessageType,
+  parseAssetIdPattern
 } from '@platform/core/domain'
 import { PresenceStatus } from '@platform/core/realtime'
 
@@ -290,6 +293,29 @@ export const channelDescriptorSchema = z.object({
     .catch([])
 })
 export type ChannelDescriptorView = z.output<typeof channelDescriptorSchema>
+
+// How the login of a channel is drawn. The browser checks it again: the address the button sends a person to is
+// an origin the provider's site is reached at and nothing else, and a descriptor that is not valid is none (the
+// channel then has no "connect with" button), never a failure of the list.
+const linkedAccountSchema = z.object({
+  required: z.boolean(),
+  label: z.object({
+    es: z
+      .string()
+      .refine(value => isPlainDescriptorText(value, undefined, LINKED_ACCOUNT_PLACEHOLDERS)),
+    en: z
+      .string()
+      .refine(value => isPlainDescriptorText(value, undefined, LINKED_ACCOUNT_PLACEHOLDERS))
+  }),
+  missingLabel: localizedTextSchema
+})
+export const channelOAuthDescriptorSchema = z.object({
+  dialogOrigin: z.string().refine(value => isDialogOrigin(value)),
+  providerName: localizedTextSchema,
+  linkedAccount: linkedAccountSchema.nullable(),
+  assetIdPattern: z.string().refine(value => parseAssetIdPattern(value) !== null)
+})
+export type ChannelOAuthDescriptorView = z.output<typeof channelOAuthDescriptorSchema>
 
 // GET /channels/directory: the accounts of the store and what each channel can do, so that the
 // inbox names a channel and draws only the actions it supports

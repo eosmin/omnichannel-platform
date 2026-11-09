@@ -72,8 +72,23 @@ const HAS_TEXT = /[\p{L}\p{N}]/u
 // A text a person reads: bounded in characters, trimmed, and plain. Counted as characters, not bytes.
 export function isPlainDescriptorText(
   value: unknown,
-  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH
+  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH,
+  placeholders: readonly string[] = []
 ): value is string {
+  // A closed list of placeholders the page fills in (`{username}`): each is taken out before the text is judged,
+  // so any other brace is still refused
+  if (typeof value === 'string' && placeholders.length > 0) {
+    const bare = placeholders.reduce((text, name) => text.split(`{${name}}`).join(''), value)
+    // What is left must be plain on its own, but the placeholders were part of the text for its length and
+    // for it to have something to read
+    if (bare.length === value.length) return isPlainDescriptorText(value, max)
+    return (
+      value.length <= max * 2 &&
+      Array.from(value).length <= max &&
+      value === value.trim() &&
+      (bare === '' || isPlainDescriptorText(bare.trim() === '' ? 'x' : bare, max))
+    )
+  }
   return (
     typeof value === 'string' &&
     value.length > 0 &&
@@ -92,11 +107,17 @@ export function isPlainDescriptorText(
 // Copies a text in both languages when each is plain; null otherwise. Read once: what is returned is what was checked.
 export function readLocalizedText(
   value: unknown,
-  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH
+  max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH,
+  placeholders: readonly string[] = []
 ): LocalizedText | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
   const { es, en } = value as Record<string, unknown>
-  if (!isPlainDescriptorText(es, max) || !isPlainDescriptorText(en, max)) return null
+  if (
+    !isPlainDescriptorText(es, max, placeholders) ||
+    !isPlainDescriptorText(en, max, placeholders)
+  ) {
+    return null
+  }
   return Object.freeze({ es, en })
 }
 
@@ -122,3 +143,50 @@ export function isImageHostOrigin(value: unknown, { wildcard = false } = {}): va
     !/^https:\/\/\*\.[a-z0-9-]+$/.test(value)
   )
 }
+
+// The address of the dialog a login sends a person to: the origin of the provider's site, https, exactly: no
+// path, query, credentials, port or wildcard, so the browser is only ever sent to that one site and to
+// nothing a plugin can steer with a string.
+export function isDialogOrigin(value: unknown): value is string {
+  return isImageHostOrigin(value)
+}
+
+// The id of an account of the provider, as a pattern. A third party writes it and the api and the browser run it
+// on what a person types, so it is NOT an arbitrary regular expression (one with nested quantifiers backtracks
+// for ever): it is one run of one class of character with a bound, anchored, which cannot backtrack. Returns the
+// compiled pattern, or null when the text is anything else.
+const ASSET_ID_PATTERN_SOURCE =
+  /^\^(\\d|\\w|\[(?:[A-Za-z0-9]-[A-Za-z0-9]|[A-Za-z0-9_])+-?\])\{(\d{1,2})(?:,(\d{1,2}))?\}\$$/
+export const ASSET_ID_MAX_LENGTH = 64
+export function parseAssetIdPattern(source: unknown): RegExp | null {
+  if (typeof source !== 'string' || source.length > 60) return null
+  const match = ASSET_ID_PATTERN_SOURCE.exec(source)
+  if (match === null) return null
+  const min = Number(match[2])
+  const max = match[3] === undefined ? min : Number(match[3])
+  // At least one character (an empty id is no id) and a bound that is short
+  if (min < 1 || max < min || max > ASSET_ID_MAX_LENGTH) return null
+  try {
+    return new RegExp(source)
+  } catch {
+    return null
+  }
+}
+
+// What a login declares for the page to draw it: the provider's name, the account it links (the Instagram
+// account of a Page) and how to tell an id
+export interface ChannelOAuthLinkedAccount {
+  // The account is needed: a choice without it cannot be connected
+  readonly required: boolean
+  // How the linked account is shown, with `{username}` where its name goes
+  readonly label: LocalizedText
+  // What is shown when the choice has none
+  readonly missingLabel: LocalizedText
+}
+export interface ChannelOAuthDescriptor {
+  readonly dialogOrigin: string
+  readonly providerName: LocalizedText
+  readonly linkedAccount: ChannelOAuthLinkedAccount | null
+  readonly assetIdPattern: string
+}
+export const LINKED_ACCOUNT_PLACEHOLDERS: readonly string[] = ['username']

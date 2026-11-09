@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  type ChannelOAuthLinkedAccount,
   ChannelIds,
   ChannelOAuthKinds,
   grantedMetaScopes,
@@ -37,12 +38,29 @@ const pageTokenSchema = z.object({
 export class MetaLogin implements ChannelOAuth {
   readonly kind = ChannelOAuthKinds.META_FACEBOOK_LOGIN
   readonly scopes: readonly string[]
+  // The dialog is on Facebook's site, and the ids of its accounts are digits (MetaOAuth.ASSET_ID_PATTERN)
+  readonly dialogOrigin = MetaOAuth.DIALOG_ORIGIN
+  readonly providerName = { es: 'Facebook', en: 'Facebook' }
+  readonly assetIdPattern = MetaOAuth.ASSET_ID_PATTERN.source
+  // Only Instagram reads the account a Page links: a Page without one cannot be connected for it
+  readonly linkedAccount: ChannelOAuthLinkedAccount | null
 
   constructor(
     private readonly pluginId: string,
     private readonly meta: MetaGraphClient
   ) {
     this.scopes = metaOAuthScopesFor(pluginId)
+    this.linkedAccount =
+      pluginId === ChannelIds.INSTAGRAM
+        ? {
+            required: true,
+            label: { es: 'Instagram: @{username}', en: 'Instagram: @{username}' },
+            missingLabel: {
+              es: 'Sin cuenta de Instagram vinculada',
+              en: 'No Instagram account linked'
+            }
+          }
+        : null
   }
 
   // Only Instagram reads the account a Page links: the field needs `instagram_basic`, which Messenger never asks for

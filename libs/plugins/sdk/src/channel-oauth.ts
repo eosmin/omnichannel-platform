@@ -1,4 +1,8 @@
-import type { ChannelOAuthKind } from '@platform/core/domain'
+import type {
+  ChannelOAuthKind,
+  ChannelOAuthLinkedAccount,
+  LocalizedText
+} from '@platform/core/domain'
 
 import type { ConnectInput } from './channel-types'
 
@@ -26,6 +30,14 @@ export interface OAuthAsset {
 export interface ChannelOAuth {
   // Which sequence the core runs (a constant of `ChannelOAuthKinds`)
   readonly kind: ChannelOAuthKind
+  // How the settings page draws the login, declared by the plugin and checked by the registry at boot (a third
+  // party writes it): the ORIGIN of the provider's dialog (https, exactly, no path, port or credentials: the
+  // page only ever sends the browser there), the provider's name, the account it links when it has one, and
+  // the pattern of an account id (one bounded run of one class of character, which cannot backtrack).
+  readonly dialogOrigin: string
+  readonly providerName: LocalizedText
+  readonly linkedAccount: ChannelOAuthLinkedAccount | null
+  readonly assetIdPattern: string
   // The permissions the dialog asks for, as the provider names them. Checked by the registry: a list, no
   // repeats, each a plain permission name, because the list ends up in an address.
   readonly scopes: readonly string[]

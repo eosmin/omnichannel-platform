@@ -6,7 +6,8 @@ import {
   OfficialPluginAuthor,
   PluginCatalogTypes,
   PluginPricingModels,
-  PluginStatus
+  PluginStatus,
+  isOfficialChannelId
 } from '@platform/core/domain'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
@@ -18,7 +19,7 @@ function officialRow(plugin: ChannelPlugin) {
     authorName: OfficialPluginAuthor.NAME,
     authorEmail: OfficialPluginAuthor.EMAIL,
     type: PluginCatalogTypes.CHANNEL,
-    isOfficial: true,
+    isOfficial: isOfficialChannelId(plugin.id),
     manifest: {
       id: plugin.id,
       name: plugin.name,
@@ -31,7 +32,8 @@ function officialRow(plugin: ChannelPlugin) {
   }
 }
 
-// Writes a catalog row for each official plugin of the code registry at boot (D19), so a store can
+// Writes a catalog row for each plugin the code of the platform registers at boot (D19: the official ones, and the
+// toy channel of the suites when the environment turns it on), so a store can
 // install it like any other. Idempotent: a boot with nothing new changes nothing, and a plugin that
 // is renamed or gains a capability is updated.
 @Injectable()
@@ -49,7 +51,7 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
   }
 
   async sync(): Promise<void> {
-    const plugins = this.registry.listOfficial()
+    const plugins = this.registry.listFromCode()
     for (const plugin of plugins) {
       // The status is written once, on creation: a plugin the owner suspended stays suspended
       const { status, ...data } = officialRow(plugin)
@@ -67,6 +69,6 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
         await write()
       }
     }
-    this.logger.info({ count: plugins.length }, 'official plugins written to the catalog')
+    this.logger.info({ count: plugins.length }, 'plugins of the platform written to the catalog')
   }
 }

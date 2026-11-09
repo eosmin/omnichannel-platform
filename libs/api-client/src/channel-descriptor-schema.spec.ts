@@ -1,4 +1,8 @@
-import { channelDescriptorSchema, channelDirectorySchema } from './api-schemas'
+import {
+  channelDescriptorSchema,
+  channelDirectorySchema,
+  channelOAuthDescriptorSchema
+} from './api-schemas'
 
 const valid = {
   displayName: { es: 'Acme', en: 'Acme' },
@@ -50,5 +54,29 @@ describe('channelDescriptorSchema', () => {
     ])
     expect(list[0]?.descriptor).toBeNull()
     expect(list[1]?.descriptor?.displayName.es).toBe('Acme')
+  })
+})
+
+describe('channelOAuthDescriptorSchema', () => {
+  const login = {
+    dialogOrigin: 'https://login.acme.test',
+    providerName: { es: 'Acme', en: 'Acme' },
+    linkedAccount: null,
+    assetIdPattern: '^\\d{1,32}$'
+  }
+
+  it('keeps a valid login', () => {
+    expect(channelOAuthDescriptorSchema.parse(login)).toEqual(login)
+  })
+
+  it('refuses an address that is more than the origin of a site, and a pattern that can backtrack', () => {
+    for (const bad of [
+      { dialogOrigin: 'https://login.acme.test/x' },
+      { dialogOrigin: 'http://login.acme.test' },
+      { dialogOrigin: 'https://u:p@login.acme.test' },
+      { assetIdPattern: '^(a+)+$' }
+    ]) {
+      expect(channelOAuthDescriptorSchema.safeParse({ ...login, ...bad }).success).toBe(false)
+    }
   })
 })

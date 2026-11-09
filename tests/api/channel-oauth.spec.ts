@@ -109,6 +109,10 @@ describe('"Connect with Facebook": the login of a channel', () => {
     }
     const oauth: ChannelOAuth = {
       kind: 'meta-facebook-login',
+      dialogOrigin: 'https://login.example.test',
+      providerName: { es: 'Ejemplo', en: 'Example' },
+      linkedAccount: null,
+      assetIdPattern: '^\\d{1,32}$',
       scopes: ['pages_show_list', 'pages_messaging'],
       authorizationUrl: ({ state, redirectUri }) =>
         `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,
