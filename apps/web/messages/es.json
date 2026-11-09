@@ -1123,7 +1123,8 @@
           "INTERNAL_NOTE": "Nota interna",
           "unknown": "Mensaje"
         },
-        "file": "Imagen {number} de {total}"
+        "file": "Imagen {number} de {total}",
+        "fileNumber": "Imagen {number}"
       },
       "storyReply": {
         "label": "Respondió a tu historia",
@@ -1224,6 +1225,7 @@
         "resendDuplicateDescription": "No pudimos confirmar si el cliente la recibió. Si la envías de nuevo, puede recibirla dos veces.",
         "resendAnyway": "Enviar de nuevo",
         "replyFile": "Responder a la imagen {number} de {total}",
+        "replyAlbum": "Responder al álbum, desde la imagen {number} de {total}",
         "reactFile": "Reaccionar a la imagen {number} de {total}"
       },
       "location": {

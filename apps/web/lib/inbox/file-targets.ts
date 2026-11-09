@@ -1,7 +1,7 @@
 import type { MessageView } from '@platform/api-client'
 import { AuthorType } from '@platform/core/domain'
 
-type Album = Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions'>
+type Album = Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions' | 'albumNative'>
 
 // Where a file stands among the files of its message: the number of its thumbnail and how many there are
 export interface FilePlace {
@@ -18,38 +18,69 @@ const placeOf = (media: Album['media'], id: string): FilePlace | null => {
 }
 
 // A file the agent may react to or quote on its own: one of a reply of the team with several files, after the
-// first (the first IS the message: its reaction and its quote are the message's). Whether the channel can tell the
-// file from the message is the api's to say: when it cannot, it answers with the message's, and the reaction is
-// drawn there. A message of the customer has one file each, so there is nothing to choose.
+// first (the first IS the message: its quote is the message's, and its reaction is drawn under it by the api), that
+// the channel can tell from the others. The api says it (`targetable`, false for a file with no id of its own yet
+// and for every file of a native album, which the provider took as ONE message): the page never guesses it from the
+// channel. A message of the customer has one file each, so there is nothing to choose.
 export function fileTargetOf(message: Album, fileId: string): FilePlace | null {
   if (message.authorType !== String(AuthorType.AGENT) || message.media.length < 2) return null
+  if (message.albumNative) return null
   // A file with no place (the customer's) has no number to be told by
   if (message.media.some(file => file.position === null)) return null
+  if (message.media.find(file => file.id === fileId)?.targetable !== true) return null
   const place = placeOf(message.media, fileId)
   return place === null || place.number === 1 ? null : place
 }
 
-// The reactions left under one file of the message, by the file they name
+// A reply of the team the provider took as ONE message with several files (an album of Messenger or Instagram): its
+// thumbnails can be answered, which quotes the message, but never reacted to one by one: the reaction is the message's
+export function isNativeAlbumOf(message: Album): boolean {
+  return (
+    message.albumNative &&
+    message.authorType === String(AuthorType.AGENT) &&
+    message.media.length >= 2
+  )
+}
+
+// The file a reaction is drawn under: the one the api resolved (`fileId`, which covers the first file of an album
+// with an id for each picture, whose reaction is stored on the message), else the one it names
+// In a native album the reaction is the message's whatever the reaction says: no thumbnail can hold it
+const fileOfReaction = (message: Album, reaction: Album['reactions'][number]): string | null =>
+  message.albumNative ? null : (reaction.fileId ?? reaction.mediaId)
+
+// The reactions left under one file of the message
 export function reactionsUnderFile(message: Album, fileId: string): Album['reactions'] {
-  return message.reactions.filter(reaction => reaction.mediaId === fileId)
+  return message.reactions.filter(reaction => fileOfReaction(message, reaction) === fileId)
 }
 
 // The reactions that belong to the message as a whole: the ones that name no file, and the ones that name a file
 // the message no longer holds (none is lost)
 export function reactionsOfMessage(message: Album): Album['reactions'] {
   const ids = new Set(message.media.map(file => file.id))
-  return message.reactions.filter(
-    reaction => reaction.mediaId === null || !ids.has(reaction.mediaId)
-  )
+  return message.reactions.filter(reaction => {
+    const file = fileOfReaction(message, reaction)
+    return file === null || !ids.has(file)
+  })
+}
+
+export interface QuotedPlace {
+  number: number
+  total: number | null
 }
 
 // Which file of the quoted message a reply answers, for the preview of the quote; null for a quote of the whole
 // message, of a message that is not loaded, or of a file it does not hold
 export function quotedFileOf(
   quoted: Pick<MessageView, 'media'> | undefined,
-  mediaId: string | null
-): FilePlace | null {
-  if (quoted === undefined || mediaId === null || quoted.media.length < 2) return null
+  mediaId: string | null,
+  // Where the api says the file is in its message (from 0), for a quoted message that is not loaded: its number is
+  // known and the total is not
+  position?: number
+): QuotedPlace | null {
+  if (mediaId === null) return null
+  if (quoted === undefined)
+    return position === undefined ? null : { number: position + 1, total: null }
+  if (quoted.media.length < 2) return null
   return placeOf(quoted.media, mediaId)
 }
 

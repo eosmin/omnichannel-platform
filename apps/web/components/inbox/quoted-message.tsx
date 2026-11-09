@@ -43,8 +43,9 @@ export function QuotedMessage({
   onJump: ((messageId: string, mediaId?: string) => void) | undefined
   // The file of the album it answers: the jump shows that one
   mediaId?: string | undefined
-  // Which file of an album it answers ("Image 2 of 4"); null when it answers the message
-  file: { number: number; total: number } | null
+  // Which file of an album it answers ("Image 2 of 4"); no total when the quoted message is not loaded; null when it
+  // answers the message
+  file: { number: number; total: number | null } | null
 }): ReactElement {
   const t = useTranslations('inbox.thread.quote')
   const body =
@@ -70,7 +71,11 @@ export function QuotedMessage({
         </span>
       )}
       {file === null || quote === null || quote.deleted ? null : (
-        <span className="text-muted-foreground">{t('file', file)}</span>
+        <span className="text-muted-foreground">
+          {file.total === null
+            ? t('fileNumber', { number: file.number })
+            : t('file', { number: file.number, total: file.total })}
+        </span>
       )}
       {body}
     </>

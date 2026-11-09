@@ -472,7 +472,8 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                       mentionNames={item.message.mentions.flatMap(id => memberNames.get(id) ?? [])}
                       quotedFile={quotedFileOf(
                         loadedById.get(item.message.replyToMessageId ?? ''),
-                        item.message.replyToMediaId
+                        item.message.replyTo?.file?.mediaId ?? item.message.replyToMediaId,
+                        item.message.replyTo?.file?.position
                       )}
                     />
                   </li>

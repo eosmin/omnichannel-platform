@@ -58,7 +58,7 @@ export interface MessageBubbleProps {
   // The names a note mentions, to highlight them in its text
   mentionNames: readonly string[]
   // The file of the quoted message that this reply answers (its number among them), when it answers one
-  quotedFile?: { number: number; total: number } | null
+  quotedFile?: { number: number; total: number | null } | null
   // A run of notices of content the channel does not show is drawn as one bubble, for its last message: how many
   // messages it covers, and the ids of the others, so that a quote of any of them still finds its place
   notice?: { count: number; otherIds: readonly string[] }
@@ -231,7 +231,7 @@ function Bubble({
                   : authorLabel(message.replyTo.authorType, message.replyTo.authorId)
               }
               onJump={loadedIds.has(message.replyToMessageId) ? onJumpTo : undefined}
-              mediaId={message.replyToMediaId ?? undefined}
+              mediaId={message.replyTo?.file?.mediaId ?? message.replyToMediaId ?? undefined}
             />
           )}
           {message.storyReply === null ? null : <StoryReplyCard story={message.storyReply} />}
