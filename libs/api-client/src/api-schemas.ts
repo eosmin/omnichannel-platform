@@ -258,8 +258,9 @@ export type InboxBehaviorView = z.output<typeof inboxBehaviorSchema>
 
 // How a channel is named and drawn, as its plugin declared it. A third party wrote it, so the browser checks it
 // again before it draws anything: a text that is not plain, an icon outside the closed set, a surface that does
-// not exist, each falls back to something safe, and a descriptor that is not an object is none. It never makes
-// the whole list fail.
+// not exist, each falls back to something safe. A name or a help text that is not plain is not repaired: the
+// descriptor is then none (null) for that channel, and the interface draws it as a channel with no descriptor. It
+// never makes the whole list fail.
 const plainText = z.string().refine(value => isPlainDescriptorText(value))
 export const localizedTextSchema = z.object({ es: plainText, en: plainText })
 export const channelDescriptorSchema = z.object({

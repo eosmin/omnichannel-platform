@@ -114,6 +114,37 @@ describe('the descriptor of a plugin nobody named', () => {
     ['a name too long', { displayName: { es: 'a'.repeat(81), en: 'Acme' } }],
     ['a name missing a language', { displayName: { es: 'Acme' } as never }],
     ['an empty name', { displayName: { es: ' ', en: 'Acme' } }],
+    ['a name that is a braille blank', { displayName: { es: '\u2800', en: 'Acme' } }],
+    ['a name with a hangul filler', { displayName: { es: 'Acme', en: '\u3164' } }],
+    ['a name with a no-break space', { displayName: { es: 'Acme\u00a0Chat', en: 'Acme' } }],
+    ['a name with no letter or digit', { displayName: { es: '...', en: 'Acme' } }],
+    ['a name that is a bare domain', { displayName: { es: 'evil.com', en: 'Acme' } }],
+    ['a help step with a mailto', { connectHelp: [{ es: 'escribe a mailto:x', en: 'write' }] }],
+    ['a help step that is huge', { connectHelp: [{ es: 'a'.repeat(5_000_000), en: 'x' }] }],
+    ['a list of help steps that is huge', { connectHelp: { length: 2 ** 32 - 1 } as never }],
+    [
+      'a list of hosts that is huge',
+      { imageHosts: { avatar: { length: 2 ** 32 - 1 } as never, media: [] } }
+    ],
+    [
+      'a field named by a key and by a text',
+      {
+        connectFields: [
+          {
+            key: 'a',
+            labelKey: 'settings.channels.connect.acme.a',
+            label: { es: 'a', en: 'a' },
+            secret: false,
+            required: true,
+            multiple: false
+          }
+        ]
+      }
+    ],
+    [
+      'an image host on a private network',
+      { imageHosts: { avatar: ['https://img.corp.internal'], media: [] } }
+    ],
     ['an icon outside the closed set', { iconKey: 'skull' as never }],
     ['an icon with a path', { iconKey: '../../x' as never }],
     ['a surface that does not exist', { managementSurface: 'iframe' as never }],
@@ -201,15 +232,16 @@ describe('the descriptor of a plugin nobody named', () => {
     expect((error as PlatformException).code).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
   })
 
-  it('takes a wildcard only for the subdomains of a host', () => {
-    const plugins = registry()
-    plugins.register(
-      toy({ imageHosts: { avatar: ['https://*.cdn.acme.test'], media: ['https://img.acme.test'] } })
-    )
-    expect(plugins.descriptorOf(TOY_ID)?.imageHosts).toEqual({
-      avatar: ['https://*.cdn.acme.test'],
-      media: ['https://img.acme.test']
-    })
+  it('takes a wildcard for the subdomains of a host from an official plugin only', () => {
+    const hosts = { avatar: ['https://*.cdn.acme.test'], media: ['https://img.acme.test'] }
+    const official = registry()
+    official.register(toy({ imageHosts: hosts }), { official: true })
+    expect(official.descriptorOf(TOY_ID)?.imageHosts).toEqual(hosts)
+    // A host that many tenants share must never be widened to all of them by a third party
+    for (const shared of ['https://*.github.io', 'https://*.s3.amazonaws.com', 'https://*.co.uk']) {
+      const error = refusal(toy({ imageHosts: { avatar: [shared], media: [] } }))
+      expect((error as PlatformException).code).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    }
   })
 
   it('is frozen: nobody who asks the registry can change what it kept', () => {

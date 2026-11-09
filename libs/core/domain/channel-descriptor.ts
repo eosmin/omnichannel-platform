@@ -58,8 +58,16 @@ export interface ChannelImageHosts {
 // Characters that make a text more than text: markup, a placeholder, an escape, a control or format character
 // (a line break, a zero-width joiner)
 const NOT_PLAIN = /[<>&`[\]{}\\|]|\p{C}/u
-// A link or a scheme written in the text
-const LINKISH = /:\/\/|www\.|javascript:|data:/i
+// Blank-looking characters that are not control or format characters: no-break and wide spaces, the line and
+// paragraph separators, the braille blank, the Hangul fillers. Only the plain space may separate words.
+const LOOKS_BLANK =
+  /[\u00a0\u1680\u180e\u2000-\u200a\u2028\u2029\u202f\u205f\u2800\u3000\u3164\u115f\u1160\uffa0]/
+// A link, a scheme or an address written in the text: `://`, `www.`, a scheme that runs code or opens an app, and a
+// domain written bare (`evil.com/login`, a word, a dot and a top level domain with no space between)
+const LINKISH =
+  /:\/\/|www\.|(?:javascript|vbscript|data|mailto|tel|sms|file|blob):|\b[a-z0-9-]+\.[a-z]{2,}\b/i
+// Something a person can read: at least one letter or digit
+const HAS_TEXT = /[\p{L}\p{N}]/u
 
 // A text a person reads: bounded in characters, trimmed, and plain. Counted as characters, not bytes.
 export function isPlainDescriptorText(
@@ -69,9 +77,14 @@ export function isPlainDescriptorText(
   return (
     typeof value === 'string' &&
     value.length > 0 &&
+    // The cheap bound first: a code point is at most two UTF-16 units, so this never refuses a valid text, and
+    // a huge string is turned away before anything is allocated or scanned
+    value.length <= max * 2 &&
     value === value.trim() &&
     Array.from(value).length <= max &&
     !NOT_PLAIN.test(value) &&
+    !LOOKS_BLANK.test(value) &&
+    HAS_TEXT.test(value) &&
     !LINKISH.test(value)
   )
 }
@@ -88,13 +101,21 @@ export function readLocalizedText(
 }
 
 // An origin the CSP of the page may name: https, a host in lower case with at least two labels and a real
-// top level domain, and at most one wildcard, as the first label (the subdomains of a host). No port, path,
+// top level domain. A wildcard (the subdomains of a host, as the first label) only where the caller says so: the
+// registry says so for the official plugins alone, because a wildcard on a host that many tenants share
+// (`*.github.io`, `*.s3.amazonaws.com`) would let any of them load pictures into the inbox, and there is no list
+// of such hosts to check against. No port, path,
 // credentials or address, so it can only widen `img-src` to that host, never to anything else.
 const IMAGE_HOST =
   /^https:\/\/(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
-export function isImageHostOrigin(value: unknown): value is string {
+// Names that are not on the internet: an address of a private network is never a place to load a picture from
+const PRIVATE_TLDS = new Set(['local', 'internal', 'localhost', 'lan', 'corp', 'home', 'intranet'])
+export function isImageHostOrigin(value: unknown, { wildcard = false } = {}): value is string {
+  if (typeof value !== 'string') return false
+  if (!wildcard && value.startsWith('https://*.')) return false
+  const tld = value.slice(value.lastIndexOf('.') + 1)
+  if (PRIVATE_TLDS.has(tld)) return false
   return (
-    typeof value === 'string' &&
     value.length <= ChannelDescriptorLimits.IMAGE_HOST_MAX_LENGTH &&
     IMAGE_HOST.test(value) &&
     // `https://*.com` would be the whole of a top level domain

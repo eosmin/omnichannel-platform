@@ -24,15 +24,18 @@ export interface ChannelDescriptorSnapshot {
   readonly imageHosts: ChannelImageHosts
 }
 
-function readHosts(value: unknown, id: string, which: string): readonly string[] {
+function readHosts(
+  value: unknown,
+  id: string,
+  which: string,
+  official: boolean
+): readonly string[] {
   if (value === undefined) return Object.freeze([])
+  // The size first, then the copy: an array of billions of entries is never walked
+  const bounded = Array.isArray(value) && value.length <= ChannelDescriptorLimits.MAX_IMAGE_HOSTS
   // Copied before it is checked: what is kept is what was checked, whatever the array does on a second read
-  const copy: unknown[] = Array.isArray(value) ? Array.from(value as unknown[]) : []
-  if (
-    !Array.isArray(value) ||
-    copy.length > ChannelDescriptorLimits.MAX_IMAGE_HOSTS ||
-    !copy.every(isImageHostOrigin)
-  ) {
+  const copy: unknown[] = bounded ? Array.from(value as unknown[]) : []
+  if (!bounded || !copy.every(host => isImageHostOrigin(host, { wildcard: official }))) {
     throw contractViolation(`Plugin ${printable(id)} declares invalid ${which} image hosts`)
   }
   return Object.freeze([...new Set(copy)])
@@ -43,7 +46,8 @@ function readHosts(value: unknown, id: string, which: string): readonly string[]
 // wrote is printed in the error.
 export function snapshotChannelDescriptor(
   plugin: ChannelPlugin,
-  id: string
+  id: string,
+  official: boolean
 ): ChannelDescriptorSnapshot {
   const refuse = (what: string): never => {
     throw contractViolation(`Plugin ${printable(id)} declares an invalid ${what}`)
@@ -67,9 +71,14 @@ export function snapshotChannelDescriptor(
   const surface: unknown = plugin.managementSurface
   if (surface !== undefined && !isChannelManagementSurface(surface)) refuse('management surface')
   const help: unknown = plugin.connectHelp
-  const steps: unknown[] =
-    help === undefined ? [] : Array.isArray(help) ? Array.from(help as unknown[]) : [null]
-  if (steps.length > ChannelDescriptorLimits.MAX_HELP_STEPS) refuse('help')
+  // The size first, then the copy
+  if (
+    help !== undefined &&
+    (!Array.isArray(help) || help.length > ChannelDescriptorLimits.MAX_HELP_STEPS)
+  ) {
+    refuse('help')
+  }
+  const steps: unknown[] = help === undefined ? [] : Array.from(help as unknown[])
   const helpSteps = steps.map(
     step => readLocalizedText(step, ChannelDescriptorLimits.HELP_MAX_LENGTH) ?? refuse('help step')
   )
@@ -88,8 +97,8 @@ export function snapshotChannelDescriptor(
     managementSurface: (surface as ChannelManagementSurface | undefined) ?? null,
     helpSteps: Object.freeze(helpSteps),
     imageHosts: Object.freeze({
-      avatar: readHosts(block['avatar'], id, 'avatar'),
-      media: readHosts(block['media'], id, 'media')
+      avatar: readHosts(block['avatar'], id, 'avatar', official),
+      media: readHosts(block['media'], id, 'media', official)
     })
   })
 }

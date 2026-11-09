@@ -59,6 +59,8 @@ export function snapshotConnectManifest(
       (labelKey !== undefined && !messageKey(labelKey)) ||
       (rawLabel !== undefined && label === null) ||
       (labelKey === undefined && label === null) ||
+      // One way to name a field, not two: a text of the plugin does not sit beside a message key it could aim
+      (labelKey !== undefined && label !== null) ||
       (helpKey !== undefined && !messageKey(helpKey)) ||
       typeof secret !== 'boolean' ||
       typeof required !== 'boolean' ||

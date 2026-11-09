@@ -109,7 +109,7 @@ export class PluginRegistry {
       oauth: snapshotChannelOAuth(plugin, id),
       media: snapshotChannelMedia(plugin, id, capabilities),
       limits: snapshotChannelLimits(plugin, id),
-      descriptor: snapshotChannelDescriptor(plugin, id),
+      descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),
       identityKind: snapshotIdentityKind(plugin, id),
       storeIds
     })
