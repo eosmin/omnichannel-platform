@@ -52,6 +52,7 @@
       "@platform/channels/meta": ["libs/channels/meta/src/index.ts"],
       "@platform/channels/web-widget": ["libs/channels/web-widget/src/index.ts"],
       "@platform/channels/whatsapp": ["libs/channels/whatsapp/src/index.ts"],
+      "@platform/channels/whatsapp-constants": ["libs/channels/whatsapp/src/whatsapp-constants.ts"],
       "@platform/core/crypto": ["libs/core/crypto/src/index.ts"],
       "@platform/core/database": ["libs/core/database/src/index.ts"],
       "@platform/core/event-bus": ["libs/core/event-bus/src/index.ts"],

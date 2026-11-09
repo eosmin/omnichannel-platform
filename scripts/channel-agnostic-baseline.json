@@ -107,22 +107,6 @@
     "code": 4,
     "comment": 4
   },
-  "libs/core/domain/channel-media/channel-media-rules.ts": {
-    "code": 1,
-    "comment": 2
-  },
-  "libs/core/domain/channel-media/index.ts": {
-    "code": 1,
-    "comment": 0
-  },
-  "libs/core/domain/channel-media/meta-media-rules.ts": {
-    "code": 16,
-    "comment": 4
-  },
-  "libs/core/domain/channel-media/whatsapp-media.ts": {
-    "code": 12,
-    "comment": 1
-  },
   "libs/core/domain/channel-oauth-constants.ts": {
     "code": 13,
     "comment": 10
@@ -148,8 +132,8 @@
     "comment": 0
   },
   "libs/core/domain/meta-constants.ts": {
-    "code": 25,
-    "comment": 48
+    "code": 9,
+    "comment": 13
   },
   "libs/core/domain/meta-oauth-scopes.ts": {
     "code": 12,
@@ -164,8 +148,8 @@
     "comment": 0
   },
   "libs/core/domain/whatsapp-constants.ts": {
-    "code": 16,
-    "comment": 11
+    "code": 1,
+    "comment": 1
   },
   "libs/core/logger/src/logger-options.ts": {
     "code": 2,

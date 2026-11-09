@@ -6,7 +6,6 @@ import {
   type ChannelMediaKind,
   ChannelMediaKinds,
   type ChannelMediaRule,
-  MetaAttachmentOfKind,
   bareContentType,
   mediaFileProblem,
   mediaKindOfContentType
@@ -19,10 +18,6 @@ import {
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
-  MetaMessaging,
-  MetaSubscription,
-  MetaUpload,
-  type MetaWebhookApp,
   type TokenInspection
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
@@ -49,8 +44,10 @@ import {
   type TypingParams
 } from '@platform/plugins/sdk'
 
+import { MetaMessaging, MetaSubscription, MetaUpload, type MetaWebhookApp } from './meta-constants'
 import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
+import { MetaAttachmentOfKind } from './meta-media-rules'
 import { messagingToEvents } from './meta-messaging-events'
 import { mergeSubscribedFields, readSubscribedFields } from './meta-subscription'
 import { parseMetaTokenCredentials } from './meta-token-credentials'

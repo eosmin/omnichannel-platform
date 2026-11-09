@@ -1,8 +1,13 @@
 import { createHmac } from 'node:crypto'
 import { Readable } from 'node:stream'
 
-import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
-import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
+import {
+  MetaGraphClient,
+  metaTokenCredentialsSchema,
+  InstagramApi,
+  MetaSubscribableFields
+} from '@platform/channels/meta'
+import { MetaGraph } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   type ChannelContext,

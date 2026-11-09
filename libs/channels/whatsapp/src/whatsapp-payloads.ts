@@ -1,15 +1,4 @@
-import {
-  InboundLimits,
-  isSingleEmoji,
-  WHATSAPP_USER_ID_PATTERN,
-  WhatsAppApi,
-  WhatsAppInteractiveTypes,
-  WhatsAppLimits,
-  WhatsAppMediaMaxBytes,
-  WhatsAppMediaTypes,
-  WhatsAppMessageTypes,
-  WhatsAppTemplateComponents
-} from '@platform/core/domain'
+import { InboundLimits, isSingleEmoji, WhatsAppLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   PluginError,
@@ -21,6 +10,16 @@ import {
   type SendReactionParams,
   type SendTemplateParams
 } from '@platform/plugins/sdk'
+
+import {
+  WHATSAPP_USER_ID_PATTERN,
+  WhatsAppApi,
+  WhatsAppInteractiveTypes,
+  WhatsAppMediaMaxBytes,
+  WhatsAppMediaTypes,
+  WhatsAppMessageTypes,
+  WhatsAppTemplateComponents
+} from './whatsapp-constants'
 
 // The bodies of POST /{phone-number-id}/messages. They are pure: what cannot be sent is refused here,
 // before any call, and it will not become sendable by trying again.

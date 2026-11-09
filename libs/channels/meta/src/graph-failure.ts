@@ -1,8 +1,9 @@
 import { z } from 'zod'
 
-import { MetaErrorCodes, MetaTransientStatuses, WhatsAppErrorCodes } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
+
+import { MetaErrorCodes, MetaTransientStatuses, WhatsAppErrorCodes } from './meta-constants'
 
 const graphErrorSchema = z.object({
   error: z.object({ code: z.number().int(), error_subcode: z.number().int().optional() })

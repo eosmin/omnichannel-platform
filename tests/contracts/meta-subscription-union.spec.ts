@@ -1,7 +1,11 @@
 import { InstagramPlugin } from '@platform/channels/instagram'
 import { MessengerPlugin } from '@platform/channels/messenger'
-import { MetaGraphClient } from '@platform/channels/meta'
-import { InstagramApi, MessengerApi, MetaSubscribableFields } from '@platform/core/domain'
+import {
+  MetaGraphClient,
+  InstagramApi,
+  MessengerApi,
+  MetaSubscribableFields
+} from '@platform/channels/meta'
 import { PluginChecks } from '@platform/core/errors'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 

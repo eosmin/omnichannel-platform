@@ -4,7 +4,6 @@ import {
   ChannelIds,
   ChannelOAuthKinds,
   grantedMetaScopes,
-  MetaErrorCodes,
   MetaOAuth,
   metaOAuthScopeParam,
   metaOAuthScopesFor
@@ -12,6 +11,7 @@ import {
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type ChannelOAuth, type OAuthAsset, PluginError } from '@platform/plugins/sdk'
 
+import { MetaErrorCodes } from './meta-constants'
 import type { MetaGraphClient } from './meta-graph.client'
 
 // The Graph writes an id as a string of digits; anything else is not an id of a Page, a portfolio or an account

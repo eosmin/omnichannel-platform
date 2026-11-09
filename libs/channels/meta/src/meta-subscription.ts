@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { MetaSubscription } from '@platform/core/domain'
+import { MetaSubscription } from './meta-constants'
 
 // What Meta answers for `GET <page>/subscribed_apps`: one entry per app, with the fields that app has on
 // the Page. Only `id` and `subscribed_fields` are read (the entry has more, and not always the same:

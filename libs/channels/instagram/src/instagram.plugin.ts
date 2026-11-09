@@ -1,18 +1,21 @@
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
-import { InstagramMedia } from '@platform/core/channel-media'
+import {
+  MetaChannelPlugin,
+  type MetaAccount,
+  InstagramApi,
+  MetaMessaging,
+  type MetaWebhookApp,
+  MetaWebhookApps
+} from '@platform/channels/meta'
+import { InstagramMedia } from '@platform/channels/meta'
 import {
   ChannelConnectFieldKeys,
   ChannelIconKeys,
   ChannelIds,
   type ChannelLimits,
-  InstagramApi,
-  MetaGraph,
-  MetaMessaging,
-  type MetaWebhookApp,
-  MetaWebhookApps
+  MetaGraph
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks, type PluginCheck } from '@platform/core/errors'
 import { ChannelCapability, type ChannelContext, PluginError } from '@platform/plugins/sdk'

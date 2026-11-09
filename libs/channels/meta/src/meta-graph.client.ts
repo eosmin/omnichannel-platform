@@ -5,16 +5,12 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
-  MetaErrorCodes,
   MetaGraph,
   type MetaGraphOrigin,
   MetaLimits,
   MetaGrantedPageScopes,
   MetaOAuth,
-  MetaUpload,
   MetaWebhook,
-  type MetaWebhookApp,
-  MetaWebhookApps,
   TokenExpiryLimits,
   type TokenInspection,
   TokenKinds
@@ -30,6 +26,7 @@ import { type FetchedMedia, PluginError, UnsafeMediaLinkError } from '@platform/
 import { graphFailure, graphFileFailure, graphUnexpected, graphUnreachable } from './graph-failure'
 import { limitBytes } from './limit-bytes'
 import { MetaAppConfig } from './meta-app-config'
+import { MetaErrorCodes, MetaUpload, type MetaWebhookApp, MetaWebhookApps } from './meta-constants'
 import { answerMetaHandshake, isValidMetaSignature } from './meta-webhook'
 
 // An id or an edge name: letters, digits, underscore, dash. No dot, so no `..`, and no slash.

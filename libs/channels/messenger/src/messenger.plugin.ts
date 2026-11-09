@@ -1,19 +1,22 @@
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
-import { MessengerMedia } from '@platform/core/channel-media'
+import {
+  MetaChannelPlugin,
+  type MetaAccount,
+  MessengerApi,
+  MetaErrorCodes,
+  type MetaWebhookApp,
+  MetaWebhookApps
+} from '@platform/channels/meta'
+import { MessengerMedia } from '@platform/channels/meta'
 import {
   ChannelConnectFieldKeys,
   ChannelIconKeys,
   ChannelIds,
   type ChannelLimits,
   ChannelSetupStepKeys,
-  MessengerApi,
-  MetaErrorCodes,
-  MetaGraph,
-  type MetaWebhookApp,
-  MetaWebhookApps
+  MetaGraph
 } from '@platform/core/domain'
 import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
 
