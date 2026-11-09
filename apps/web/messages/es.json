@@ -1273,6 +1273,7 @@
       "attach": {
         "button": "Adjuntar un archivo",
         "remove": "Quitar {name}",
+        "recheck": "Volver a comprobar {name}",
         "uploading": "Subiendo {name}, {percent}%",
         "checking": "Revisando {name}",
         "ready": "{name} está listo para enviar",

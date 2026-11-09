@@ -188,6 +188,8 @@ jobs:
           # The rest of the env is the one of .env.example
           set -a; . ./.env.example; set +a
           export NODE_ENV=test
+          # The api, the worker and the smoke script share the queues under this prefix
+          export QUEUE_PREFIX=ci
           touch api.log worker.log
           trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
           DATABASE_URL=$api_url PORT=8081 node dist/apps/api/main.js > api.log 2>&1 &
