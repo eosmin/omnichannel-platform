@@ -454,6 +454,7 @@
     "CHANNEL_TOO_MANY_FILES": "El canal no acepta tantos archivos en un mensaje",
     "CHANNEL_CONNECTION_NOT_FOUND": "La conexión del canal no existe",
     "CHANNEL_CREDENTIALS_INVALID": "Las credenciales del canal no son válidas",
+    "CHANNEL_FEATURE_NOT_PERMITTED": "El canal no tiene un permiso que esta función necesita",
     "CHANNEL_MESSAGE_FAILED": "El canal no aceptó el mensaje",
     "MESSAGE_DISCARD_OUTCOME_UNKNOWN": "Es posible que esta respuesta haya llegado al cliente, así que no se puede descartar. Pregúntale o envíala de nuevo",
     "CHANNEL_NOT_CONNECTED": "El canal no está conectado",
@@ -721,6 +722,7 @@
         "reason": {
           "CHANNEL_WINDOW_EXPIRED": "La ventana para responder a este cliente se cerró. Espera a que vuelva a escribir.",
           "CHANNEL_CREDENTIALS_INVALID": "La conexión del canal necesita atención. Actualiza su token en Ajustes.",
+          "CHANNEL_FEATURE_NOT_PERMITTED": "El token del canal no tiene un permiso que esta función necesita. Los textos se envían; revisa los permisos del token en Ajustes.",
           "CHANNEL_CAPABILITY_UNSUPPORTED": "Este canal no admite ese tipo de mensaje.",
           "CHANNEL_FILE_TYPE_UNSUPPORTED": "El canal no acepta ese tipo de archivo.",
           "CHANNEL_FILE_TOO_LARGE": "El archivo es más grande de lo que acepta el canal.",
@@ -1040,7 +1042,8 @@
         "unconfirmed": "No se pudo confirmar la entrega",
         "unconfirmedNote": "No pudimos confirmar que el cliente la recibiera"
       },
-      "failedWithReason": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
+      "failedWithReason": "No se entregó: {reason}",
+      "failedWithChannelHint": "No se entregó: {reason}. Reinténtalo o revisa el canal en Ajustes > Canales.",
       "mediaLabel": {
         "IMAGE": "Imagen",
         "VIDEO": "Video",
@@ -1251,7 +1254,9 @@
         "failed": "Este navegador no puede reproducir el audio. Descárgalo para escucharlo.",
         "download": "Descargar el audio"
       },
-      "newMessages": "{count, plural, one {# mensaje nuevo} other {# mensajes nuevos}}"
+      "newMessages": "{count, plural, one {# mensaje nuevo} other {# mensajes nuevos}}",
+      "jumpedMessage": "Mensaje original resaltado",
+      "jumpedPicture": "Imagen original resaltada"
     },
     "composer": {
       "readOnly": "Puedes leer esta conversación pero no responderla.",

@@ -19,7 +19,7 @@ export function StoryReplyCard({
 }): ReactElement {
   const t = useTranslations('inbox.thread.storyReply')
   return (
-    <div className="flex w-[min(160px,100%)] flex-col gap-1">
+    <div className="flex w-40 max-w-full flex-col gap-1">
       <p className="text-muted-foreground text-xs font-medium">{t('label')}</p>
       <div className="bg-muted aspect-[9/16] w-full overflow-hidden rounded-md">
         <RemoteImage

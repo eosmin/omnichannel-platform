@@ -32,14 +32,17 @@ export function QuotedMessage({
   replyTo,
   authorName,
   onJump,
-  file
+  file,
+  mediaId
 }: {
   // null when the original lies outside the conversation or is a note the reader may not see
   quote: Quote | null
   replyTo: string
   authorName: string | null
   // undefined when the original is not in the loaded part of the thread
-  onJump: ((messageId: string) => void) | undefined
+  onJump: ((messageId: string, mediaId?: string) => void) | undefined
+  // The file of the album it answers: the jump shows that one
+  mediaId?: string | undefined
   // Which file of an album it answers ("Image 2 of 4"); null when it answers the message
   file: { number: number; total: number } | null
 }): ReactElement {
@@ -79,7 +82,7 @@ export function QuotedMessage({
     <button
       type="button"
       className={cn(classes, 'focus-visible:ring-ring outline-none focus-visible:ring-2')}
-      onClick={() => onJump(replyTo)}
+      onClick={() => onJump(replyTo, mediaId)}
     >
       {content}
     </button>

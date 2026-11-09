@@ -5,6 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory, ChannelHealthService } from '@platform/channels/connections'
+import { graphFailure, MetaGraphClient } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
@@ -2099,6 +2100,132 @@ describe('Replies on their way to a channel', () => {
         })
       })
 
+      describe('through the real plugins of Instagram and Messenger (only Meta itself is a double)', () => {
+        // A sender whose connections carry a token the plugins can read (the suite's cipher opens to nothing)
+        const realSender = async () =>
+          new OutboundSender(
+            prisma,
+            app.get(PluginRegistry, { strict: false }),
+            new ChannelContextFactory({
+              open: () => ({ accessToken: 'EAAB-test-token' })
+            } as unknown as CredentialCipher),
+            writer,
+            new ConversationsService(prisma, app.get(DomainEvents, { strict: false })),
+            app.get(MessagingWindowService, { strict: false }),
+            app.get(DomainEvents, { strict: false }),
+            app.get(StorageService, { strict: false }),
+            await app.resolve(PinoLogger)
+          )
+        const connectionStatusOf = async (conversationId: string) =>
+          (
+            await owner.channelConnection.findFirstOrThrow({
+              where: { conversations: { some: { id: conversationId } } },
+              select: { status: true }
+            })
+          ).status
+
+        it("Instagram, the owner's case: the upload is refused (code 200, subcode 2534096), the three images go one by one, the message is sent and the connection stays connected", async () => {
+          const reply = await albumOf(ChannelIds.INSTAGRAM, MessageType.IMAGE, [null, null, null])
+          const uploads: { path: readonly string[] }[] = []
+          const upload = jest
+            .spyOn(MetaGraphClient.prototype, 'uploadMedia')
+            .mockImplementation((request: { path: readonly string[] }) => {
+              uploads.push({ path: request.path })
+              return request.path.includes('message_attachments')
+                ? Promise.reject(
+                    graphFailure(403, {
+                      error: { message: 'x', code: 200, error_subcode: 2534096, fbtrace_id: 'y' }
+                    })
+                  )
+                : Promise.resolve({ message_id: `mid.${uploads.length}` } as never)
+            })
+          try {
+            await (await realSender()).send(job(reply), false)
+          } finally {
+            upload.mockRestore()
+          }
+
+          // One refused try at the album, then one message for each image, in order
+          expect(uploads.map(item => item.path[1])).toEqual([
+            'message_attachments',
+            'messages',
+            'messages',
+            'messages'
+          ])
+          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+          expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
+            'sent',
+            'sent',
+            'sent'
+          ])
+          expect(await connectionStatusOf(reply.conversationId)).toBe(
+            ChannelConnectionStatus.ACTIVE
+          )
+        })
+
+        it('Instagram stores each image as its API asks (platform instagram) and sends one message', async () => {
+          const reply = await albumOf(ChannelIds.INSTAGRAM, MessageType.IMAGE, [null, null])
+          const forms: Record<string, string>[] = []
+          const upload = jest
+            .spyOn(MetaGraphClient.prototype, 'uploadMedia')
+            .mockImplementation((request: { fields: Record<string, string> }) => {
+              forms.push(request.fields)
+              return Promise.resolve({ attachment_id: `att${forms.length}` } as never)
+            })
+          const post = jest
+            .spyOn(MetaGraphClient.prototype, 'post')
+            .mockResolvedValue({ message_id: 'mid.album' })
+          const postCalls: unknown[][] = []
+          try {
+            await (await realSender()).send(job(reply), false)
+            postCalls.push(...post.mock.calls)
+          } finally {
+            upload.mockRestore()
+            post.mockRestore()
+          }
+
+          expect(forms.every(form => form['platform'] === 'instagram')).toBe(true)
+          expect(postCalls).toHaveLength(1)
+          expect((await messageFlags(reply.id)).channelMessageId).toBe('mid.album')
+        })
+
+        it('Messenger keeps the native album, with its own form and no platform, untouched by the Instagram hook', async () => {
+          const reply = await albumOf(ChannelIds.MESSENGER, MessageType.IMAGE, [null, null, null])
+          const forms: Record<string, string>[] = []
+          const upload = jest
+            .spyOn(MetaGraphClient.prototype, 'uploadMedia')
+            .mockImplementation((request: { fields: Record<string, string> }) => {
+              forms.push(request.fields)
+              return Promise.resolve({ attachment_id: `att${forms.length}` } as never)
+            })
+          const post = jest
+            .spyOn(MetaGraphClient.prototype, 'post')
+            .mockResolvedValue({ message_id: 'mid.album' })
+          const postCalls: unknown[][] = []
+          try {
+            await (await realSender()).send(job(reply), false)
+            postCalls.push(...post.mock.calls)
+          } finally {
+            upload.mockRestore()
+            post.mockRestore()
+          }
+
+          expect(forms).toHaveLength(3)
+          for (const form of forms) {
+            expect(form['platform']).toBeUndefined()
+            expect(JSON.parse(form['message'] ?? '{}')).toEqual({
+              attachment: { type: 'image', payload: { is_reusable: true } }
+            })
+          }
+          expect(postCalls).toHaveLength(1)
+          expect(
+            (postCalls[0]?.[0] as { body: { message: { attachments: unknown[] } } }).body.message
+              .attachments
+          ).toHaveLength(3)
+          expect((await messageFlags(reply.id)).channelMessageId).toBe('mid.album')
+        })
+      })
+
       describe('when the album fails', () => {
         it('takes a timeout as an unknown outcome: every file fails as one that may have gone, and nothing is sent one by one', async () => {
           const reply = await album([null, null, null])
@@ -2179,6 +2306,55 @@ describe('Replies on their way to a channel', () => {
           ])
         })
 
+        it.each([[false], [true]])(
+          'sends the images one by one, and leaves the connection alone, when Meta says the permission for the attachment is missing (code 200, subcode 2534096; last attempt: %s)',
+          async isLast => {
+            const reply = await album([null, null, null])
+            albumFailure = new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
+              retryable: false,
+              refused: true,
+              providerCode: 200,
+              providerSubcode: 2534096,
+              step: 'upload 1/3'
+            })
+
+            await sender.send(job(reply), isLast)
+
+            expect(sentAlbums).toHaveLength(1)
+            expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
+              `${reply.id}-0`,
+              `${reply.id}-1`,
+              `${reply.id}-2`
+            ])
+            expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+            // Nothing about the connection changes for a permission of one feature
+            const connection = await owner.channelConnection.findFirstOrThrow({
+              where: { conversations: { some: { id: reply.conversationId } } },
+              select: { status: true }
+            })
+            expect(connection.status).toBe(ChannelConnectionStatus.ACTIVE)
+          }
+        )
+
+        it('shows the permission as its own failure, not as credentials, when the images cannot go singly either', async () => {
+          const reply = await album([null, null])
+          albumFailure = new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
+            retryable: false,
+            refused: true
+          })
+          mediaFailure = () =>
+            new PluginError(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED, {
+              retryable: false,
+              refused: true
+            })
+
+          await sender.send(job(reply), false)
+
+          const message = await messageFlags(reply.id)
+          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+          expect(message.deliveryError).toBe(ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED)
+        })
+
         it('does not fall back for a refusal that is not about the album (a token that does not work)', async () => {
           const reply = await album([null, null])
           albumFailure = new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
@@ -2244,9 +2420,43 @@ describe('Replies on their way to a channel', () => {
           ])
         })
 
+        it.each([
+          ['a refusal of the upload that may be repeated', { retryable: true, refused: true }],
+          ['a refusal of the upload that cannot', { retryable: false, refused: true }]
+        ])(
+          'sends the images one by one on the last attempt after %s, since none was delivered',
+          async (_name, flags) => {
+            const reply = await album([null, null, null])
+            albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, flags)
+
+            await sender.send(job(reply), true)
+
+            expect(sentAlbums).toHaveLength(1)
+            expect(sentMedia.map(item => item.idempotencyKey)).toEqual([
+              `${reply.id}-0`,
+              `${reply.id}-1`,
+              `${reply.id}-2`
+            ])
+            expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+          }
+        )
+
+        it('does not send one by one on the last attempt when the refusal is a throttle or the token', async () => {
+          const reply = await album([null, null])
+          albumFailure = new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
+            retryable: true,
+            refused: true
+          })
+
+          await sender.send(job(reply), true)
+
+          expect(sentMedia).toHaveLength(0)
+          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.FAILED)
+        })
+
         it('fails the album with the code of the refusal on the last attempt and leaves it to be thrown away', async () => {
           const reply = await album([null, null])
-          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+          albumFailure = new PluginError(ErrorCodes.RATE_LIMIT_EXCEEDED, {
             retryable: true,
             refused: true
           })

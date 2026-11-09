@@ -5,6 +5,7 @@ import type { ReactElement } from 'react'
 
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { isAlbum } from '../../lib/inbox/album'
 import { initialsOf } from '../../lib/inbox/customer-label'
@@ -48,7 +49,8 @@ export interface MessageBubbleProps {
   authorLabel: (type: string, id: string | null) => string
   // The ids of the messages in the loaded part of the thread: a quote links to one of them only
   loadedIds: ReadonlySet<string>
-  onJumpTo: (messageId: string) => void
+  // `mediaId`: the file of an album the quote answers, so the jump shows THAT one
+  onJumpTo: (messageId: string, mediaId?: string) => void
   // What the agent may do to this message; the thread works it out once for each message
   actions: MessageActions
   conversationId: string
@@ -63,6 +65,14 @@ export interface MessageBubbleProps {
 }
 
 // The element a quote scrolls to and focuses has to exist for every kind of message, a line included
+// The failures that the owner fixes in the settings of the channel
+function channelSettingsHelp(code: string | null | undefined): boolean {
+  return (
+    code === ClientErrorCodes.CHANNEL_CREDENTIALS_INVALID ||
+    code === ClientErrorCodes.CHANNEL_NOT_CONNECTED
+  )
+}
+
 export function MessageBubble(props: MessageBubbleProps): ReactElement {
   return (
     <div
@@ -166,7 +176,14 @@ function Bubble({
           ? t('ticks.unconfirmedNote')
           : note.kind === 'failed'
             ? t('ticks.failed')
-            : t('failedWithReason', { reason: codeText(message.deliveryError ?? '') }),
+            : t(
+                // Only a failure that is about the connection points at the channel's settings: another refusal of
+                // the provider says nothing about the credentials
+                channelSettingsHelp(message.deliveryError)
+                  ? 'failedWithChannelHint'
+                  : 'failedWithReason',
+                { reason: codeText(message.deliveryError ?? '') }
+              ),
       tone: note.tone
     }))
   ].filter((problem): problem is { text: string; tone: 'red' | 'amber' } => problem !== null)
@@ -197,7 +214,9 @@ function Bubble({
             bubbleless ? (isCustomer ? 'items-start' : 'items-end') : 'rounded-lg px-3 py-2',
             !bubbleless && isCustomer && 'bg-card border',
             !bubbleless && !isCustomer && !isNote && 'bg-secondary text-secondary-foreground',
-            isNote && 'bg-note text-note-foreground border-note-border border border-dashed'
+            isNote && 'bg-note text-note-foreground border-note-border border border-dashed',
+            // The card of a story is a fixed thumbnail: the bubble fits it, as a bubble with a picture does
+            message.storyReply !== null && 'max-w-[360px]'
           )}
         >
           {isNote ? <p className="text-xs font-semibold">{t('internalNote')}</p> : null}
@@ -212,6 +231,7 @@ function Bubble({
                   : authorLabel(message.replyTo.authorType, message.replyTo.authorId)
               }
               onJump={loadedIds.has(message.replyToMessageId) ? onJumpTo : undefined}
+              mediaId={message.replyToMediaId ?? undefined}
             />
           )}
           {message.storyReply === null ? null : <StoryReplyCard story={message.storyReply} />}
