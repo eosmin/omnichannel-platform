@@ -11,6 +11,8 @@ export interface ReactionSettlement {
   storeId: string
   messageId: string
   userId: string
+  // The file the reaction is under; null: the message itself
+  mediaId?: string | null | undefined
   // null: the channel took it
   errorCode: ErrorCode | null
   // `updatedAt` of the reaction the job read; null when the job took a reaction back, which has no row
@@ -28,6 +30,7 @@ export class ReactionStatusWriter {
 
   async settle(settlement: ReactionSettlement): Promise<void> {
     const { storeId, messageId, userId, errorCode, expectedVersion } = settlement
+    const mediaId = settlement.mediaId ?? null
     // A reaction taken back has no row to mark: the team already saw it go
     if (expectedVersion === null) return
     await this.prisma.transaction(async tx => {
@@ -37,6 +40,7 @@ export class ReactionStatusWriter {
           messageId,
           authorType: AuthorType.AGENT,
           userId,
+          mediaId,
           deliveryStatus: DeliveryStatus.QUEUED,
           updatedAt: expectedVersion
         },

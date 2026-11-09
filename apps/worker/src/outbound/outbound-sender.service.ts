@@ -139,6 +139,7 @@ export class OutboundSender {
         failureDefinitive: true,
         resentAt: true,
         replyToMessageId: true,
+        replyToMediaId: true,
         createdAt: true,
         conversation: {
           select: {
@@ -213,7 +214,11 @@ export class OutboundSender {
       await this.fail(storeId, messageId, ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, !tainted)
       return
     }
-    const replyToExternalId = await this.externalIdOf(storeId, message.replyToMessageId)
+    const replyToExternalId = await this.externalIdOf(
+      storeId,
+      message.replyToMessageId,
+      message.replyToMediaId
+    )
     if (isMedia && plugin.sendMedia !== undefined) {
       await this.sendFiles({
         storeId,
@@ -1182,8 +1187,22 @@ export class OutboundSender {
     }
   }
 
-  private async externalIdOf(storeId: string, messageId: string | null): Promise<string | null> {
+  // The id the provider knows the quoted message by: the one of the quoted file when the agent chose one file of
+  // an album, else the message's own
+  private async externalIdOf(
+    storeId: string,
+    messageId: string | null,
+    mediaId: string | null
+  ): Promise<string | null> {
     if (messageId === null) return null
+    if (mediaId !== null) {
+      const file = await this.prisma.client.media.findFirst({
+        where: { id: mediaId, storeId, messageId },
+        select: { channelMessageId: true }
+      })
+      // The file has no id at the provider now (a stale row): no quote, and not a quote of another picture
+      return file?.channelMessageId ?? null
+    }
     const target = await this.prisma.client.message.findFirst({
       where: { id: messageId, storeId },
       select: { channelMessageId: true }

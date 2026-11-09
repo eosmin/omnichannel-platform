@@ -38,6 +38,13 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
 
+// An item the case has just made: a missing one is a broken case, not a value to carry on with
+const at = <T>(list: readonly T[], index: number): T => {
+  const item = list[index]
+  if (item === undefined) throw new Error(`the case expected an item at ${index}`)
+  return item
+}
+
 const NO_CONTENT = 204
 const FORBIDDEN = 403
 const NOT_FOUND = 404
@@ -157,6 +164,223 @@ describe('An agent reacting to a message', () => {
     return jobs[0]?.data as SendOutboundReactionJob
   }
 
+  // A message the customer has in the channel as an album: one provider message for each file
+  const albumMessage = async (files: number) => {
+    const message = await customerMessage()
+    const media = []
+    for (let position = 0; position < files; position += 1) {
+      media.push(
+        await owner.media.create({
+          data: {
+            storeId: message.storeId,
+            purpose: 'message',
+            messageId: message.id,
+            key: `${prefix}-key-${randomUUID()}`,
+            filename: `f${position}.jpg`,
+            contentType: 'image/jpeg',
+            fileSize: 10,
+            position,
+            channelMessageId: `file-${randomUUID()}`
+          },
+          select: { id: true, channelMessageId: true }
+        })
+      )
+    }
+    return { ...message, media }
+  }
+  const reactUnder = (messageId: string, emoji: string | null, mediaId: string) =>
+    api(app, ctx.agentA, ctx.storeA)
+      .put(ApiRoutes.messages.reaction(messageId))
+      .send({ emoji, mediaId })
+  const jobsQueued = (): SendOutboundReactionJob[] =>
+    queueOf(app, QueueNames.OUTBOUND)
+      .jobs.filter(item => item.name === JobNames.SEND_OUTBOUND_REACTION)
+      .map(item => item.data as SendOutboundReactionJob)
+
+  describe('a file of an album', () => {
+    it('has a reaction of its own: each file is a message at the provider, and the others are left alone', async () => {
+      const album = await albumMessage(3)
+      const first = at(album.media, 0)
+      const second = at(album.media, 1)
+
+      expect((await reactUnder(album.id, '👍', first.id)).status).toBe(NO_CONTENT)
+      expect((await reactUnder(album.id, '❤️', second.id)).status).toBe(NO_CONTENT)
+
+      const rows = await owner.messageReaction.findMany({
+        where: { messageId: album.id, authorType: AuthorType.AGENT },
+        select: { emoji: true, mediaId: true, deliveryStatus: true }
+      })
+      expect(rows.map(r => `${r.mediaId}:${r.emoji}:${r.deliveryStatus}`).sort()).toEqual(
+        [
+          `${first.id}:👍:${DeliveryStatus.QUEUED}`,
+          `${second.id}:❤️:${DeliveryStatus.QUEUED}`
+        ].sort()
+      )
+      const jobs = jobsQueued()
+      expect(jobs.map(job => job.mediaId).sort()).toEqual([first.id, second.id].sort())
+      // The worker sends each one to the id of ITS file
+      for (const job of jobs) await sender.send(job, false)
+      expect(sentReactions.map(p => `${p.targetExternalId}:${p.emoji}`).sort()).toEqual(
+        [`${first.channelMessageId}:👍`, `${second.channelMessageId}:❤️`].sort()
+      )
+      expect(
+        (
+          await owner.messageReaction.findMany({
+            where: { messageId: album.id },
+            select: { deliveryStatus: true }
+          })
+        ).every(r => r.deliveryStatus === DeliveryStatus.SENT.valueOf())
+      ).toBe(true)
+    })
+
+    it('takes back the reaction of ONE file and sends the removal to the id of that file', async () => {
+      const album = await albumMessage(2)
+      const first = at(album.media, 0)
+      const second = at(album.media, 1)
+      await reactUnder(album.id, '👍', first.id)
+      await reactUnder(album.id, '👍', second.id)
+      queueOf(app, QueueNames.OUTBOUND).jobs.length = 0
+
+      expect((await reactUnder(album.id, null, second.id)).status).toBe(NO_CONTENT)
+
+      const left = await owner.messageReaction.findMany({ where: { messageId: album.id } })
+      expect(left.map(r => r.mediaId)).toEqual([first.id])
+      const removal = at(jobsQueued(), 0)
+      expect(removal.mediaId).toBe(second.id)
+      await sender.send(removal, false)
+      expect(sentReactions).toEqual([
+        expect.objectContaining({ targetExternalId: second.channelMessageId, emoji: null })
+      ])
+    })
+
+    it('keeps the reaction of the message and the one of a file apart', async () => {
+      const album = await albumMessage(2)
+      await react(album.id, '👍')
+      await reactUnder(album.id, '❤️', at(album.media, 1).id)
+
+      const rows = await owner.messageReaction.findMany({ where: { messageId: album.id } })
+      expect(rows.map(r => [r.mediaId, r.emoji]).sort()).toEqual(
+        [
+          [null, '👍'],
+          [at(album.media, 1).id, '❤️']
+        ].sort()
+      )
+    })
+
+    it('is the message for the first file of an album: it shares the id of the message at the provider', async () => {
+      const album = await albumMessage(2)
+      await owner.message.update({
+        where: { id: album.id },
+        data: { channelMessageId: album.media[0]?.channelMessageId ?? null }
+      })
+      await react(album.id, '👍')
+      await reactUnder(album.id, '❤️', at(album.media, 0).id)
+
+      // One row for one target at the provider, the last emoji
+      const rows = await owner.messageReaction.findMany({ where: { messageId: album.id } })
+      expect(rows.map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+    })
+
+    it('is the message when the files of the album share one id (Instagram and Messenger send one message)', async () => {
+      const album = await albumMessage(3)
+      await owner.media.updateMany({
+        where: { messageId: album.id },
+        data: { channelMessageId: 'shared-album-id' }
+      })
+      await react(album.id, '👍')
+      await reactUnder(album.id, '❤️', at(album.media, 1).id)
+      await reactUnder(album.id, '🔥', at(album.media, 2).id)
+
+      // One target at the provider, so one row: the last emoji, on the message
+      const rows = await owner.messageReaction.findMany({ where: { messageId: album.id } })
+      expect(rows.map(r => [r.mediaId, r.emoji])).toEqual([[null, '🔥']])
+      expect(jobsQueued().every(job => job.mediaId === undefined)).toBe(true)
+    })
+
+    it('answers with the capability of the channel before anything about the file', async () => {
+      const plain = await customerMessage({ pluginId: PLAIN_TEXT_CHANNEL })
+      const file = await owner.media.create({
+        data: {
+          storeId: plain.storeId,
+          purpose: 'message',
+          messageId: plain.id,
+          key: `${prefix}-key-${randomUUID()}`,
+          filename: 'f.jpg',
+          contentType: 'image/jpeg',
+          fileSize: 10
+        },
+        select: { id: true }
+      })
+      const response = await reactUnder(plain.id, '👍', file.id)
+      expect(response.status).toBe(CONFLICT)
+      expect((response.body as { error?: { code?: string } }).error?.code).toBe(
+        ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+      )
+    })
+
+    it('can be taken back although the file has lost its id at the provider', async () => {
+      const album = await albumMessage(2)
+      const second = at(album.media, 1)
+      await reactUnder(album.id, '👍', second.id)
+      await owner.media.update({ where: { id: second.id }, data: { channelMessageId: null } })
+
+      expect((await reactUnder(album.id, null, second.id)).status).toBe(NO_CONTENT)
+      expect(await owner.messageReaction.count({ where: { messageId: album.id } })).toBe(0)
+    })
+
+    it('is the message when the message has a single file', async () => {
+      const single = await albumMessage(1)
+      await reactUnder(single.id, '👍', at(single.media, 0).id)
+
+      const [row] = await owner.messageReaction.findMany({ where: { messageId: single.id } })
+      expect(row?.mediaId).toBeNull()
+      expect(jobsQueued()[0]?.mediaId).toBeUndefined()
+    })
+
+    it('is a 404 for a file of another message or of another store, and stores nothing', async () => {
+      const album = await albumMessage(2)
+      const other = await albumMessage(2)
+      const foreignStore = await albumMessage(2)
+      await owner.media.update({
+        where: { id: at(foreignStore.media, 0).id },
+        data: { storeId: ctx.storeB.id }
+      })
+
+      expect((await reactUnder(album.id, '👍', at(other.media, 0).id)).status).toBe(NOT_FOUND)
+      expect((await reactUnder(album.id, '👍', at(foreignStore.media, 0).id)).status).toBe(
+        NOT_FOUND
+      )
+      expect((await reactUnder(album.id, '👍', randomUUID())).status).toBe(NOT_FOUND)
+      // A row of another store that points at this message is no file of it either
+      const stray = await owner.media.update({
+        where: { id: at(album.media, 1).id },
+        data: { storeId: ctx.storeB.id }
+      })
+      expect((await reactUnder(album.id, '👍', stray.id)).status).toBe(NOT_FOUND)
+      expect(await owner.messageReaction.count({ where: { messageId: album.id } })).toBe(0)
+      expect(jobsQueued()).toHaveLength(0)
+    })
+
+    it('is refused when the file has no copy in the channel', async () => {
+      const album = await albumMessage(2)
+      await owner.media.update({
+        where: { id: at(album.media, 1).id },
+        data: { channelMessageId: null }
+      })
+
+      expect((await reactUnder(album.id, '👍', at(album.media, 1).id)).status).toBe(CONFLICT)
+      expect(await owner.messageReaction.count({ where: { messageId: album.id } })).toBe(0)
+    })
+
+    it('is refused as a bad request when the file is not an id', async () => {
+      const album = await albumMessage(2)
+      const response = await api(app, ctx.agentA, ctx.storeA)
+        .put(ApiRoutes.messages.reaction(album.id))
+        .send({ emoji: '👍', mediaId: 'not-an-id' })
+      expect(response.status).toBe(BAD_REQUEST)
+    })
+  })
+
   describe('the endpoint', () => {
     it('stores the reaction as queued, queues one job and shows it in the thread', async () => {
       const message = await customerMessage()
@@ -179,6 +403,7 @@ describe('An agent reacting to a message', () => {
           emoji: '👍',
           authorType: AuthorType.AGENT,
           authorId: ctx.agentA.id,
+          mediaId: null,
           deliveryStatus: DeliveryStatus.QUEUED,
           deliveryError: null
         }

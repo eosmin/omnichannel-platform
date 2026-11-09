@@ -10,7 +10,7 @@ import { AuthorType } from '@platform/core/domain'
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { parseChannelIdentity } from '../customers/identity'
-import { messageOfProviderId } from '../messages/provider-message-match'
+import { isTargetOfItsOwn, messageOfProviderId } from '../messages/provider-message-match'
 
 import {
   countersOf,
@@ -26,12 +26,17 @@ export interface InboundTargetEvent {
   // file, names it. An edit or a deletion is about ONE provider message: it keeps to the id of the message
   // itself, or the deletion of one file would take the whole album with it.
   namesFilesToo?: boolean
+  // The event takes a reaction back: it looks for the one that is there under the file named
+  removal?: boolean
 }
 
 export interface InboundTarget {
   storeId: string
   customerIdentityId: string
   messageId: string
+  // The file of an album that the id named, when the id is a file's and the message has several (a reaction is
+  // under that file); null: the message itself
+  mediaId: string | null
 }
 
 // Finds the stored message that an event of a channel is about (a reaction, an edit, a deletion): the
@@ -86,14 +91,44 @@ export class InboundMessageTargets {
           conversation: { customerIdentityId: identity.id, channelConnectionId: connection.id }
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true }
+        select: { id: true, channelMessageId: true, _count: { select: { media: true } } }
       })
       if (target === null) {
         if (!isLastAttempt) throw new Error(`the ${what} came before the message it points at`)
         missing = true
         return false
       }
-      await apply(tx, { storeId, customerIdentityId: identity.id, messageId: target.id })
+      // Only a file the provider can tell apart is a target of its own (see `isTargetOfItsOwn`): the first file is the
+      // message, and the files of an album sent as one message share one id. A message with one file (or none) is
+      // reacted to as a whole.
+      let mediaId: string | null = null
+      if (event.namesFilesToo === true && target._count.media > 1) {
+        const files = await tx.media.findMany({
+          where: { storeId, messageId: target.id },
+          select: { id: true, channelMessageId: true }
+        })
+        const named = files.find(item => item.channelMessageId === event.targetExternalId)
+        if (named !== undefined && isTargetOfItsOwn(target, files, named)) mediaId = named.id
+        // A removal finds the reaction where it was put even if the file cannot be told apart now (a later file
+        // shares its id): the row under that file is the one that goes
+        if (mediaId === null && named !== undefined && event.removal === true) {
+          const there = await tx.messageReaction.count({
+            where: {
+              storeId,
+              messageId: target.id,
+              customerIdentityId: identity.id,
+              mediaId: named.id
+            }
+          })
+          if (there > 0) mediaId = named.id
+        }
+      }
+      await apply(tx, {
+        storeId,
+        customerIdentityId: identity.id,
+        messageId: target.id,
+        mediaId
+      })
       return true
     })
     // The shape of the id that matched nothing is read once the transaction is over: a count that failed inside it

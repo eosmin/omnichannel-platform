@@ -821,6 +821,7 @@ describe('Echoes and reactions that a channel delivers', () => {
           emoji: '👍',
           authorType: AuthorType.CUSTOMER,
           authorId: identity.id,
+          mediaId: null,
           deliveryStatus: DeliveryStatus.SENT,
           deliveryError: null
         },
@@ -828,6 +829,7 @@ describe('Echoes and reactions that a channel delivers', () => {
           emoji: '🙏',
           authorType: AuthorType.EXTERNAL,
           authorId: null,
+          mediaId: null,
           deliveryStatus: DeliveryStatus.SENT,
           deliveryError: null
         }

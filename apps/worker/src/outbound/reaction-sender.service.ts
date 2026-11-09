@@ -41,8 +41,10 @@ export class ReactionSender {
   // Throws when the attempt should be repeated; returns when the reaction is settled
   async send(job: SendOutboundReactionJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, messageId, userId } = job
+    // The file of an album the reaction is under; null: the message itself
+    const mediaId = job.mediaId ?? null
     const reaction = await this.prisma.client.messageReaction.findFirst({
-      where: { storeId, messageId, authorType: AuthorType.AGENT, userId },
+      where: { storeId, messageId, authorType: AuthorType.AGENT, userId, mediaId },
       select: { emoji: true, deliveryStatus: true, updatedAt: true }
     })
     // A reaction that is there and is not waiting was sent or failed already; one changed since this job
@@ -57,7 +59,12 @@ export class ReactionSender {
     }
     const emoji = reaction?.emoji ?? null
     const settle = (errorCode: ErrorCode | null): Promise<void> =>
-      this.status.settle({ ...job, errorCode, expectedVersion: reaction?.updatedAt ?? null })
+      this.status.settle({
+        ...job,
+        mediaId,
+        errorCode,
+        expectedVersion: reaction?.updatedAt ?? null
+      })
 
     const message = await this.prisma.client.message.findFirst({
       where: { id: messageId, storeId },
@@ -76,7 +83,17 @@ export class ReactionSender {
         }
       }
     })
-    if (message?.channelMessageId == null) {
+    // The id the provider knows the target by: the file's own when the reaction is under a file of an album
+    const targetExternalId =
+      mediaId === null
+        ? message?.channelMessageId
+        : (
+            await this.prisma.client.media.findFirst({
+              where: { id: mediaId, storeId, messageId },
+              select: { channelMessageId: true }
+            })
+          )?.channelMessageId
+    if (message === null || targetExternalId == null) {
       await settle(ErrorCodes.CHANNEL_MESSAGE_FAILED)
       return
     }
@@ -106,7 +123,7 @@ export class ReactionSender {
       await withTimeout(
         plugin.sendReaction(this.contexts.contextFor(connection), {
           channelIdentity: customerIdentity.channelIdentity,
-          targetExternalId: message.channelMessageId,
+          targetExternalId,
           emoji
         }),
         OutboundLimits.SEND_TIMEOUT_MS

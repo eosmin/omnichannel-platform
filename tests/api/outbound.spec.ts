@@ -1323,6 +1323,46 @@ describe('Replies on their way to a channel', () => {
       expect(sent[0]?.replyToExternalId).toBe('ext-target')
     })
 
+    it('hands the plugin the id of the FILE of an album that is replied to, else the id of the message', async () => {
+      const target = await queuedReply({ deliveryStatus: DeliveryStatus.SENT })
+      await owner.message.update({
+        where: { id: target.id },
+        data: { channelMessageId: 'ext-first' }
+      })
+      const file = await owner.media.create({
+        data: {
+          storeId: target.storeId,
+          purpose: 'message',
+          messageId: target.id,
+          key: `${prefix}-key-${randomUUID()}`,
+          filename: 'f2.jpg',
+          contentType: 'image/jpeg',
+          fileSize: 10,
+          channelMessageId: 'ext-second-file'
+        },
+        select: { id: true }
+      })
+      const quoting = await queuedReply()
+      await owner.message.update({
+        where: { id: quoting.id },
+        data: { replyToMessageId: target.id, replyToMediaId: file.id }
+      })
+
+      await sender.send(job(quoting), false)
+      expect(sent[0]?.replyToExternalId).toBe('ext-second-file')
+
+      // A file that has no id at the provider (a stale row) is no quote at all, and not a quote of another picture
+      await owner.media.update({ where: { id: file.id }, data: { channelMessageId: null } })
+      const again = await queuedReply()
+      await owner.message.update({
+        where: { id: again.id },
+        data: { replyToMessageId: target.id, replyToMediaId: file.id }
+      })
+      sent.length = 0
+      await sender.send(job(again), false)
+      expect(sent[0]?.replyToExternalId).toBeUndefined()
+    })
+
     it('marks a reply sent without the provider id when the plugin repeats an id of the conversation', async () => {
       const first = await queuedReply()
       const second = await owner.message.create({

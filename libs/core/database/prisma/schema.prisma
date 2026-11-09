@@ -490,6 +490,8 @@ model Message {
   textApart               Boolean   @default(false) @map("text_apart")
   idempotencyKey          String?   @map("idempotency_key") // Client-generated for outbound (TDD_06 §4)
   replyToMessageId        String?   @map("reply_to_message_id")
+  // The file of an album the reply quotes (an agent chose one file); null: the message, or its first file. Checked when written, no FK (like the id above)
+  replyToMediaId          String?   @map("reply_to_media_id")
   deliveryStatus          String?   @map("delivery_status") // DeliveryStatus, outbound only
   deliveryError           String?   @map("delivery_error") // ErrorCode when FAILED
   // Set with a FAILED status: true when the failure means the provider did NOT take the message (a refusal, a
@@ -577,6 +579,10 @@ model MessageReaction {
   authorType         String   @map("author_type") // AuthorType: customer, agent or external
   customerIdentityId String?  @map("customer_identity_id")
   userId             String?  @map("user_id")
+  // The file of an album the reaction is on (one provider message each); null: the message itself, or the first file
+  // of a message whose files are not told apart. A person has one reaction for each target, so the unique indexes
+  // are raw SQL on `coalesce(media_id, '')` (uq_message_reactions_customer, uq_message_reactions_user).
+  mediaId            String?  @map("media_id")
   emoji              String
   // DeliveryStatus of an agent's reaction toward the channel: queued, sent or failed. The reactions the
   // channel reports (customer, external) are already there, so they are sent.
@@ -589,10 +595,11 @@ model MessageReaction {
   message          Message           @relation(fields: [messageId], references: [id], onDelete: Cascade)
   customerIdentity CustomerIdentity? @relation(fields: [customerIdentityId], references: [id], onDelete: Cascade)
   user             User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media            Media?            @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
-  @@unique([messageId, customerIdentityId])
-  @@unique([messageId, userId])
   @@index([storeId])
+  @@index([messageId])
+  @@index([mediaId])
   @@index([customerIdentityId])
   @@index([userId])
   @@map("message_reactions")
@@ -847,12 +854,13 @@ model Media {
   // of the message was the one of the first). How the text of the message went is on the message.
   caption          String?   @map("caption")
 
-  store    Store?              @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  message  Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  origin   ConversationOrigin? @relation(fields: [originId], references: [id], onDelete: Cascade)
-  customer Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  product  Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
-  order    Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  store     Store?              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message   Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  origin    ConversationOrigin? @relation(fields: [originId], references: [id], onDelete: Cascade)
+  customer  Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  product   Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order     Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  reactions MessageReaction[]
 
   @@index([storeId, createdAt])
   @@index([storeId, customerId, createdAt(sort: Desc)])

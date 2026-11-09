@@ -188,8 +188,13 @@ export class MessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Body(new ZodValidationPipe(reactToMessageSchema)) body: ReactToMessageBody
   ): Promise<void> {
-    await this.reactions.react(store.id, messageId, body.emoji, viewerOf(user.id, held), channel =>
-      this.registry.hasCapability(channel, ChannelCapability.REACTIONS)
+    await this.reactions.react(
+      store.id,
+      messageId,
+      body.emoji,
+      viewerOf(user.id, held),
+      channel => this.registry.hasCapability(channel, ChannelCapability.REACTIONS),
+      body.mediaId
     )
   }
 

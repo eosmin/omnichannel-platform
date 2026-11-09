@@ -280,6 +280,8 @@ const reactionSchema = z.object({
   emoji: z.string(),
   authorType: z.string(),
   authorId: z.string().nullable(),
+  // The file of an album the reaction is under; null: the message (a server that does not send it yet)
+  mediaId: z.string().nullable().default(null),
   deliveryStatus: z.string(),
   deliveryError: z.string().nullable()
 })
@@ -316,6 +318,8 @@ export const messageSchema = z.object({
   authorType: z.string(),
   authorId: z.string().nullable(),
   replyToMessageId: z.string().nullable(),
+  // The file of an album that the reply quotes; null: the message (a server that does not send it yet)
+  replyToMediaId: z.string().nullable().default(null),
   replyTo: quotedMessageSchema.nullable(),
   deliveryStatus: z.string().nullable(),
   deliveryError: z.string().nullable(),

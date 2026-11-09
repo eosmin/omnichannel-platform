@@ -27,6 +27,8 @@ export interface SendMessageInput {
   mentions?: string[]
   // The message this one answers (the channel quotes it when it can)
   replyToMessageId?: string
+  // The file of an album that is quoted (one of the files of `replyToMessageId`); none: the message
+  replyToMediaId?: string
 }
 
 // Files with their text under them: one message, one key. Each file was uploaded and confirmed first
@@ -46,6 +48,7 @@ export interface SendMediaMessageInput {
   captions?: (string | null)[]
   idempotencyKey: string
   replyToMessageId?: string
+  replyToMediaId?: string
 }
 
 export function sendMessage(
@@ -156,16 +159,18 @@ export function refetchFile(
   })
 }
 
-// The reaction of the caller: an emoji sets it, null takes it back. The answer is 204.
+// The reaction of the caller: an emoji sets it, null takes it back. `mediaId` puts it under one file of an album
+// (each file has its own reaction); none: the message. The answer is 204.
 export function reactToMessage(
   client: ApiClient,
   storeId: string,
   messageId: string,
-  emoji: string | null
+  emoji: string | null,
+  mediaId?: string
 ): Promise<void> {
   return client.request(ApiRoutes.messages.reaction(messageId), {
     method: 'PUT',
-    body: { emoji },
+    body: { emoji, ...(mediaId === undefined ? {} : { mediaId }) },
     schema: z.undefined(),
     storeId
   })

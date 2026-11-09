@@ -17,6 +17,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   authorType: AuthorType.CUSTOMER,
   authorId: null,
   replyToMessageId: null,
+  replyToMediaId: null,
   deliveryStatus: null,
   deliveryError: null,
   failureDefinitive: null,

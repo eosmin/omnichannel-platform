@@ -118,13 +118,13 @@ export class OutboundRequeueScheduler {
         userId: { not: null },
         updatedAt: { lt: new Date(now.getTime() - OutboundLimits.REQUEUE_AFTER_MS) }
       },
-      select: { storeId: true, messageId: true, userId: true, updatedAt: true },
+      select: { storeId: true, messageId: true, userId: true, mediaId: true, updatedAt: true },
       orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       take: OutboundLimits.REQUEUE_BATCH
     })
     const giveUpBefore = now.getTime() - OutboundLimits.GIVE_UP_AFTER_MS
     const done = { requeued: 0, gaveUp: 0 }
-    for (const { storeId, messageId, userId, updatedAt } of stale) {
+    for (const { storeId, messageId, userId, mediaId, updatedAt } of stale) {
       if (userId === null) continue
       try {
         if (updatedAt.getTime() < giveUpBefore) {
@@ -132,6 +132,7 @@ export class OutboundRequeueScheduler {
             storeId,
             messageId,
             userId,
+            mediaId,
             errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED,
             expectedVersion: updatedAt
           })
@@ -141,7 +142,8 @@ export class OutboundRequeueScheduler {
             storeId,
             messageId,
             userId,
-            version: updatedAt.getTime()
+            version: updatedAt.getTime(),
+            ...(mediaId === null ? {} : { mediaId })
           })
           done.requeued += 1
         }

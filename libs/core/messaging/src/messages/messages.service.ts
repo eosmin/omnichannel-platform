@@ -69,6 +69,7 @@ import {
   quotedView,
   type MessageView
 } from './messages.views'
+import { isTargetOfItsOwn } from './provider-message-match'
 import {
   type RenderedTemplate,
   type TemplateMetadata,
@@ -188,8 +189,20 @@ export class MessagesService {
       // a template is what the closed window leaves
       if (!isNote && !isTemplate) await this.window.requireOpen(tx, storeId, body.conversationId)
       const replyToMessageId = isTemplate ? undefined : body.replyToMessageId
+      let replyToMediaId: string | null = null
+      // A file is quoted through its message
+      if (replyToMessageId === undefined && 'replyToMediaId' in body && body.replyToMediaId) {
+        throw invalidInput('replyToMediaId needs replyToMessageId')
+      }
       if (replyToMessageId !== undefined) {
-        await this.requireReplyTarget(tx, storeId, body.conversationId, replyToMessageId, isNote)
+        replyToMediaId = await this.requireReplyTarget(
+          tx,
+          storeId,
+          body.conversationId,
+          replyToMessageId,
+          isNote,
+          'replyToMediaId' in body ? body.replyToMediaId : undefined
+        )
       }
       const mentions = body.type === MessageType.INTERNAL_NOTE ? body.mentions : []
       if (mentions.length > 0) await this.requireMentionable(tx, storeId, mentions, current)
@@ -218,6 +231,7 @@ export class MessagesService {
           authorId: viewer.userId,
           idempotencyKey: body.idempotencyKey ?? null,
           replyToMessageId: replyToMessageId ?? null,
+          replyToMediaId,
           ...(isTemplate ? { metadata: templateMetadataOf(body) } : {}),
           deliveryStatus: isNote ? null : DeliveryStatus.QUEUED,
           mentions,
@@ -848,9 +862,12 @@ export class MessagesService {
     storeId: string,
     conversationId: string,
     messageId: string,
-    isNote: boolean
-  ): Promise<void> {
-    const target = await tx.message.count({
+    isNote: boolean,
+    // The file of an album that the reply quotes
+    mediaId?: string
+  ): Promise<string | null> {
+    const target = await tx.message.findFirst({
+      select: { channelMessageId: true },
       where: {
         discardedAt: null,
         id: messageId,
@@ -862,7 +879,24 @@ export class MessagesService {
         }
       }
     })
-    if (target === 0) throw resourceNotFound('message')
+    if (target === null) throw resourceNotFound('message')
+    if (mediaId === undefined) return null
+    // A file of another message or store is no file of this one. Only an album tells its files apart: the quote
+    // of the only file of a message is the quote of the message.
+    const files = await tx.media.findMany({
+      where: { storeId, messageId },
+      select: { id: true, channelMessageId: true }
+    })
+    const file = files.find(item => item.id === mediaId)
+    if (file === undefined) throw resourceNotFound('message')
+    // The provider quotes by the id it gave the file: one without it (a file of the customer, one that did not
+    // go) cannot be quoted, and the message can
+    if (file.channelMessageId === null) {
+      throw resourceConflict('the file has no copy in the channel to quote')
+    }
+    // A file the provider cannot tell apart (the first one, or one that shares its id with the others) is the
+    // message
+    return isTargetOfItsOwn(target, files, file) ? mediaId : null
   }
 
   // The people who will read the note: members of this store today whose role reads the thread and

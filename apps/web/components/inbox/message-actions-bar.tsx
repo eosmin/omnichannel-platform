@@ -101,7 +101,9 @@ export function MessageActionsBar({
       ? undefined
       : message.reactions.find(
           reaction =>
-            reaction.authorType === String(AuthorType.AGENT) && reaction.authorId === userId
+            reaction.authorType === String(AuthorType.AGENT) &&
+            reaction.authorId === userId &&
+            reaction.mediaId === null
         )?.emoji
 
   const tell = (promise: Promise<unknown>): void => {

@@ -96,7 +96,9 @@ const mediaMessageFields = {
     .max(MediaMessageLimits.MAX_FILES)
     .optional(),
   idempotencyKey: idempotencyKeySchema,
-  replyToMessageId: uuidSchema.optional()
+  replyToMessageId: uuidSchema.optional(),
+  // The file of an album that the reply quotes (checked against the quoted message)
+  replyToMediaId: uuidSchema.optional()
 }
 
 export const createMessageSchema = z.discriminatedUnion('type', [
@@ -109,7 +111,8 @@ export const createMessageSchema = z.discriminatedUnion('type', [
     conversationId: uuidSchema,
     content,
     idempotencyKey: idempotencyKeySchema,
-    replyToMessageId: uuidSchema.optional()
+    replyToMessageId: uuidSchema.optional(),
+    replyToMediaId: uuidSchema.optional()
   }),
   // The only way to write to a customer whose messaging window is closed
   z.strictObject({
@@ -143,7 +146,9 @@ export const reactToMessageSchema = z.strictObject({
     .refine(value => isWholeEmoji(value, InboundLimits.EMOJI_MAX_LENGTH), {
       message: 'is not a whole emoji'
     })
-    .nullable()
+    .nullable(),
+  // The file of an album the reaction is under; none: the message itself
+  mediaId: uuidSchema.optional()
 })
 
 // The whole new text. A note also carries the `version` it was read at: an edit of a note that someone
