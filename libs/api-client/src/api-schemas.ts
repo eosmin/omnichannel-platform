@@ -493,9 +493,6 @@ export const messageSchema = z.object({
   // The text of the message is a message of its own after the files, not the text under the first one (then
   // every file has its own text, the first included); false for a server that does not send it yet
   textApart: z.boolean().catch(false),
-  // @deprecated The server no longer sends it (every file is sent one by one): always false. Removed with the web's
-  // last reader (tanda 3, session 24).
-  albumNative: z.boolean().catch(false).default(false),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),
   version: z.number().int(),

@@ -11,7 +11,7 @@ export interface NormalizedPhone {
 
 export interface NormalizePhoneOptions {
   // The number comes from a channel, which hands it over with its country code and no plus (the
-  // `wa_id` of WhatsApp). A person who types digits with no plus and no country code means a
+  // provider's own id of the person). A person who types digits with no plus and no country code means a
   // number of the default region: reading those digits as another country's would store the
   // number of a stranger.
   fromChannel?: boolean

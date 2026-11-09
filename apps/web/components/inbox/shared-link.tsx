@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
 
 import { hostOf } from '../../lib/inbox/link-host'
 
-// What the customer shared on Instagram or Messenger: an untrusted link. Its host is shown, it opens
+// What the customer shared in the channel: an untrusted link. Its host is shown, it opens
 // in a tab of its own without the address of the inbox, and the server never fetched it. A story
 // mention is a signed link that stops working within about a day, hence the note.
 export function SharedLink({ url }: { url: string }): ReactElement | null {

@@ -349,9 +349,9 @@ model CustomerIdentity {
   displayName       String?   @map("display_name") // Profile name as reported by the channel
   channelMetadata   Json?     @map("channel_metadata")
   lastInboundAt     DateTime? @map("last_inbound_at") // Drives messaging windows (TDD_10 §4)
-  // The first message after a click on an ad: the longer window of Instagram and Messenger counts from it
+  // The first message after a click on an ad: the longer window of the providers that have one counts from it
   adWindowOpenedAt  DateTime? @map("ad_window_opened_at")
-  // What the channel keeps for the person (Instagram, Messenger), read by a job after the first message
+  // What the channel keeps for the person (where the provider has them), read by a job after the first message
   // and again once it is stale. The photo link expires and is not stored as a file yet.
   username          String?   @map("username")
   avatarUrl         String?   @map("avatar_url")
@@ -482,7 +482,7 @@ model Message {
   authorType              String    @map("author_type") // AuthorType
   authorId                String?   @map("author_id") // User id for AGENT, null otherwise
   channelMessageId        String?   @map("channel_message_id") // Provider id; unique per conversation
-  // Provider id of the message that carried the caption of a file (Instagram and Messenger send it apart): the echo of it is this message
+  // Provider id of the message that carried the caption of a file (some providers send it apart): the echo of it is this message
   captionChannelMessageId String?   @map("caption_channel_message_id")
   // CaptionState of the text under a file that the channel sends as a message of its own; null otherwise
   captionState            String?   @map("caption_state")
@@ -876,8 +876,8 @@ model Media {
 // ============================================================
 
 // One row per (store, plugin, account). connectionId is what the provider sends as the
-// RECIPIENT of an inbound webhook (WhatsApp phone_number_id, Facebook Page id, Instagram
-// business account id, widget site key, inbound mailbox address). It is unique per plugin
+// RECIPIENT of an inbound webhook (a phone number id, a Page id, an
+// account id, widget site key, inbound mailbox address). It is unique per plugin
 // platform-wide — a phone number belongs to exactly one store — which is how the inbound
 // pipeline resolves the store (TDD_10 §4).
 model ChannelConnection {
@@ -886,7 +886,7 @@ model ChannelConnection {
   pluginId       String    @map("plugin_id") // ChannelType / plugin id
   connectionId   String    @map("connection_id")
   displayName    String    @map("display_name") // "+503 2222-3333", "Mi Empresa (Page)"
-  // The name the owner gave to this connection ("Instagram principal"); null while it has none, and then the
+  // The name the owner gave to this connection ("Main account"); null while it has none, and then the
   // name of the account (`displayName`) is shown. A connect, a reconnect or a new token never write it.
   label          String?
   status         String    @default("active") // ChannelConnectionStatus
@@ -914,7 +914,7 @@ model ChannelConnection {
 // plugins are written here from the code registry at boot (isOfficial true); the owner registers
 // the private ones (isOfficial false, pricingModel 'free', status 'approved'). D19.
 model Plugin {
-  // The manifest's own declared id (TDD_10 §6.1, e.g. "telegram-connector", or "whatsapp"
+  // The manifest's own declared id (TDD_10 §6.1, e.g. "telegram-connector", or a built-in id
   // for an official channel) — not a generated uuid, so it matches PluginInstallation.pluginId
   // and the in-memory registry key exactly.
   id                          String   @id

@@ -3,7 +3,7 @@ import type { ConversationListItemView } from '@platform/api-client'
 type Customer = ConversationListItemView['customer']
 
 // How the list names a customer (Step 2.8, 1c-2): the name, then @username, then the end of the
-// channel identity for the interface to put in "Instagram customer ····1234"
+// channel identity for the interface to put in "Customer ····1234"
 export type CustomerLabel =
   | { kind: 'name'; text: string }
   | { kind: 'username'; text: string }

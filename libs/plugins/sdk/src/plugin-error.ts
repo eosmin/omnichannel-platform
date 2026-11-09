@@ -43,7 +43,7 @@ export class PluginError extends PlatformException {
   // refused (here, or by a code that is a local check made before anything was sent): a plugin that does not
   // say so leaves the reply as one that may have gone.
   readonly refused: boolean
-  // The numeric code and subcode of the provider's own answer, for the logs only (Meta's `code` and
+  // The numeric code and subcode of the provider's own answer, for the logs only (the provider's `code` and
   // `error_subcode`). Numbers and nothing else, so they cannot carry a token; never sent to a client.
   readonly providerCode: number | undefined
   readonly providerSubcode: number | undefined

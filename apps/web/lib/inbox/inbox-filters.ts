@@ -6,7 +6,7 @@ import {
   uuidSchema
 } from '@platform/core/domain'
 
-// The filters of the list live in the address (?assigned=me&status=OPEN&channelType=whatsapp&tagId=...), so
+// The filters of the list live in the address (?assigned=me&status=OPEN&channelType=<plugin id>&tagId=...), so
 // that a view can be shared and survives a reload. What the address carries is text anyone can type:
 // a value that is not valid is dropped, never sent to the api.
 // The names of the filters in the address, so that a change leaves every other parameter alone

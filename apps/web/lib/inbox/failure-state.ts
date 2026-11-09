@@ -25,7 +25,7 @@ export interface FailureNote {
 }
 
 // What is said under a failed reply. The reason is ALWAYS said when the channel gave one, in either state
-// (a reply that "could not be confirmed" still failed for a reason the agent needs to read: "WhatsApp does
+// (a reply that "could not be confirmed" still failed for a reason the agent needs to read: "the channel does
 // not accept this type of file"); the amber state adds that delivery could not be confirmed.
 export function failureNotesOf(message: {
   deliveryStatus: string | null
