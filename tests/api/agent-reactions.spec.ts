@@ -24,6 +24,8 @@ import {
 import { MessageChangeStatusWriter } from '../../apps/worker/src/outbound/message-change-status.writer'
 import { ReactionSender } from '../../apps/worker/src/outbound/reaction-sender.service'
 import { ReactionStatusWriter } from '../../apps/worker/src/outbound/reaction-status.writer'
+import { OutboundProcessor } from '../../apps/worker/src/processors/outbound.processor'
+import type { ProcessorSupport } from '../../apps/worker/src/processors/processor-support'
 import { OutboundRequeueScheduler } from '../../apps/worker/src/schedulers/outbound-requeue.scheduler'
 import {
   buildChannelPlugin,
@@ -57,7 +59,9 @@ describe('An agent reacting to a message', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
-  let sender: ReactionSender
+  // Every job of the suite goes through the processor of the worker, as one that crossed Redis: what its
+  // schema drops never reaches the sender (a reaction under a file of an album lost its `mediaId` there)
+  let sender: { send: (job: SendOutboundReactionJob, isLastAttempt: boolean) => Promise<void> }
   let sweep: OutboundRequeueScheduler
   let sentReactions: SendReactionParams[] = []
   let sendReaction: (ctx: ChannelContext, params: SendReactionParams) => Promise<void>
@@ -78,13 +82,37 @@ describe('An agent reacting to a message', () => {
     const events = app.get(DomainEvents, { strict: false })
     // The rows of the suite hold bytes that are no ciphertext: the context is what the plugin gets
     const cipher = { open: () => ({}) } as unknown as CredentialCipher // test double of the cipher
-    sender = new ReactionSender(
+    const reactions = new ReactionSender(
       prisma,
       registry,
       new ChannelContextFactory(cipher),
       new ReactionStatusWriter(prisma, events),
       await app.resolve(PinoLogger)
     )
+    const support = {
+      run: (_queue: string, current: unknown, work: (job: unknown) => Promise<void>) =>
+        work(current)
+    } as unknown as ProcessorSupport // test double: runs the work with no metrics
+    const processor = new OutboundProcessor(
+      support,
+      {} as never, // the replies are not what is tested
+      reactions,
+      {} as never, // the edits are not what is tested
+      {} as never, // the read receipts are not what is tested
+      {} as never // the typing is not what is tested
+    )
+    sender = {
+      send: (job, isLastAttempt) => {
+        // What the queue stores is JSON: the worker reads the job that crossed Redis
+        const data: unknown = JSON.parse(JSON.stringify(job))
+        return processor.process({
+          name: JobNames.SEND_OUTBOUND_REACTION,
+          data,
+          attemptsMade: isLastAttempt ? 4 : 0,
+          opts: { attempts: 5 }
+        } as unknown as Parameters<OutboundProcessor['process']>[0])
+      }
+    }
     sweep = new OutboundRequeueScheduler(
       { withLock: (_name: string, _seconds: number, work: () => Promise<void>) => work() } as never, // the lock is not what is tested
       prisma,
@@ -250,6 +278,31 @@ describe('An agent reacting to a message', () => {
       await sender.send(removal, false)
       expect(sentReactions).toEqual([
         expect.objectContaining({ targetExternalId: second.channelMessageId, emoji: null })
+      ])
+    })
+
+    it('changes the emoji of ONE file: the new emoji goes to the id of that file and the row settles as sent', async () => {
+      const album = await albumMessage(3)
+      const second = at(album.media, 1)
+      await reactUnder(album.id, '👍', second.id)
+      for (const job of jobsQueued()) await sender.send(job, false)
+      sentReactions = []
+      queueOf(app, QueueNames.OUTBOUND).jobs.length = 0
+
+      expect((await reactUnder(album.id, '🔥', second.id)).status).toBe(NO_CONTENT)
+
+      const change = at(jobsQueued(), 0)
+      expect(change.mediaId).toBe(second.id)
+      await sender.send(change, false)
+      expect(sentReactions).toEqual([
+        expect.objectContaining({ targetExternalId: second.channelMessageId, emoji: '🔥' })
+      ])
+      const rows = await owner.messageReaction.findMany({
+        where: { messageId: album.id, authorType: AuthorType.AGENT },
+        select: { emoji: true, mediaId: true, deliveryStatus: true }
+      })
+      expect(rows).toEqual([
+        { emoji: '🔥', mediaId: second.id, deliveryStatus: DeliveryStatus.SENT }
       ])
     })
 
