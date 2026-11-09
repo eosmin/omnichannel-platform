@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { Readable } from 'node:stream'
 
-import { graphFailure, MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
+import { MetaGraphClient, metaTokenCredentialsSchema } from '@platform/channels/meta'
 import { InstagramApi, MetaGraph, MetaSubscribableFields } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
@@ -1205,164 +1205,16 @@ describe('InstagramPlugin, a file over the wire', () => {
   })
 })
 
-describe('InstagramPlugin, an album in one message', () => {
-  const image = (overrides: Record<string, unknown> = {}) => ({
-    contentType: 'image/jpeg',
-    fileSize: 1000,
-    openFile: opensTheFile,
-    filename: null,
-    ...overrides
-  })
-  const send = (plugin: InstagramPlugin, files: unknown[]) =>
-    plugin.sendAlbum(ctx, {
-      channelIdentity: '99',
-      files,
-      ...key
-    } as never)
-
-  it('declares an album of up to ten images, with the method that sends it', () => {
+describe('InstagramPlugin, no native album', () => {
+  // The owner's real log: Meta answers code 100 ("Invalid parameter") to the upload of the FIRST image (step
+  // "upload 1/3"), and no page of Meta confirms the form of that upload for Instagram. Until one does, every
+  // image goes as a message of its own, which is the path that is known to deliver.
+  it('declares no album and has no method to send one, so the core sends each image on its own', () => {
     const { plugin } = build()
-    expect(plugin.media.album).toEqual({ kinds: ['image'], maxFiles: 10 })
-    expect(typeof plugin.sendAlbum).toBe('function')
-  })
-
-  it('stores each image from the host of the connection and sends them in one message', async () => {
-    const { plugin, post, upload } = build()
-    upload
-      .mockResolvedValueOnce({ attachment_id: 'a1' })
-      .mockResolvedValueOnce({ attachment_id: 'a2' })
-    post.mockResolvedValueOnce({ message_id: 'mid.9' })
-
-    const result = await send(plugin, [image(), image({ contentType: 'image/png' })])
-
-    expect(upload.mock.calls.map(([call]) => call.path)).toEqual([
-      ['me', 'message_attachments'],
-      ['me', 'message_attachments']
-    ])
-    for (const [call] of upload.mock.calls) {
-      expect(call).toMatchObject({
-        origin: MetaGraph.ORIGIN,
-        token: 'PAGE-token',
-        safeToRepeat: true
-      })
-    }
-    expect(post).toHaveBeenCalledTimes(1)
-    expect(post.mock.calls[0]?.[0]).toMatchObject({ origin: MetaGraph.ORIGIN, token: 'PAGE-token' })
-    expect(post.mock.calls[0]?.[0].body).toEqual({
-      recipient: { id: '99' },
-      message: {
-        attachments: [
-          { type: 'image', payload: { attachment_id: 'a1' } },
-          { type: 'image', payload: { attachment_id: 'a2' } }
-        ]
-      }
-    })
-    expect(result).toMatchObject({ externalId: 'mid.9', status: 'sent' })
-  })
-
-  it('stores each image as the Instagram upload API asks: platform instagram, and is_reusable inside the attachment', async () => {
-    const { plugin, post, upload } = build()
-    upload.mockResolvedValue({ attachment_id: 'a' })
-    post.mockResolvedValueOnce({ message_id: 'mid.9' })
-
-    await send(plugin, [image(), image()])
-
-    for (const [call] of upload.mock.calls) {
-      expect(call.fields).toEqual({
-        platform: 'instagram',
-        message: '{"attachment":{"type":"image","is_reusable":"true"}}'
-      })
-    }
-  })
-
-  describe('a permission Meta says is missing for the attachment (the real answer: code 200, subcode 2534096)', () => {
-    const denied = (): PluginError =>
-      graphFailure(403, {
-        error: { message: 'secret text', code: 200, error_subcode: 2534096, fbtrace_id: 'x' }
-      })
-
-    it('is not credentials: the same token sends text, so it is a permission this feature lacks, and it names the step and the numbers', async () => {
-      const { plugin, post, upload } = build()
-      upload.mockRejectedValueOnce(denied())
-
-      const failure: unknown = await send(plugin, [image(), image(), image()]).catch(
-        (error: unknown) => error
-      )
-
-      expect(post).not.toHaveBeenCalled()
-      expect(failure).toBeInstanceOf(PluginError)
-      expect(failure).toMatchObject({
-        code: ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED,
-        refused: true,
-        retryable: false,
-        outcomeUnknown: false,
-        step: 'upload 1/3',
-        providerCode: 200,
-        providerSubcode: 2534096
-      })
-      expect(JSON.stringify(failure)).not.toContain('secret text')
-    })
-
-    it("keeps a permission refused by the final message as the connection's: that call sends text too", async () => {
-      const { plugin, post, upload } = build()
-      upload.mockResolvedValue({ attachment_id: 'a' })
-      post.mockRejectedValue(denied())
-
-      await expect(send(plugin, [image(), image()])).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
-        step: 'send',
-        providerSubcode: 2534096
-      })
-    })
-
-    it('keeps a token that Meta refuses (code 190) as credentials', async () => {
-      const { plugin, upload } = build()
-      upload.mockRejectedValueOnce(graphFailure(401, { error: { code: 190 } }))
-
-      await expect(send(plugin, [image(), image()])).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID
-      })
-    })
-  })
-
-  it('names the step that failed, without a value: the upload of the image and the final message', async () => {
-    const { plugin, post, upload } = build()
-    upload.mockResolvedValueOnce({ attachment_id: 'a' }).mockRejectedValueOnce(
-      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-        retryable: false,
-        providerCode: 100,
-        providerSubcode: 2018047
-      })
-    )
-    const uploadFailure: unknown = await send(plugin, [image(), image(), image()]).catch(
-      (error: unknown) => error
-    )
-    expect(uploadFailure).toMatchObject({
-      step: 'upload 2/3',
-      refused: true,
-      providerCode: 100,
-      providerSubcode: 2018047
-    })
-
-    upload.mockReset()
-    upload.mockResolvedValue({ attachment_id: 'a' })
-    post.mockRejectedValue(
-      new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, refused: true })
-    )
-    await expect(send(plugin, [image(), image()])).rejects.toMatchObject({ step: 'send' })
-  })
-
-  it.each([
-    ['a format Instagram does not take', [image(), image({ contentType: 'image/webp' })]],
-    ['more than ten images', Array.from({ length: 11 }, () => image())],
-    ['a video', [image(), image({ contentType: 'video/mp4' })]]
-  ])('refuses %s before anything is stored or sent', async (_name, files) => {
-    const { plugin, post, upload } = build()
-    await expect(send(plugin, files)).rejects.toMatchObject({
-      outcomeUnknown: false,
-      retryable: false
-    })
-    expect(upload).not.toHaveBeenCalled()
-    expect(post).not.toHaveBeenCalled()
+    expect(plugin.media.album).toBeUndefined()
+    expect('sendAlbum' in plugin).toBe(false)
+    // The rest of what it takes is untouched
+    expect(plugin.media.maxFilesPerMessage).toBe(10)
+    expect(plugin.media.kinds.image).toMatchObject({ maxBytes: 8 * 1024 * 1024 })
   })
 })

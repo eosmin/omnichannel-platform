@@ -13,7 +13,13 @@ import {
   type MetaWebhookApp,
   MetaWebhookApps
 } from '@platform/core/domain'
-import { ChannelCapability, PluginError } from '@platform/plugins/sdk'
+import {
+  ChannelCapability,
+  type ChannelAlbumResult,
+  type ChannelContext,
+  PluginError,
+  type SendAlbumParams
+} from '@platform/plugins/sdk'
 
 const pageIdSchema = z.object({ id: z.string() })
 // `name` is optional: a token without pages_read_engagement may be answered with the id alone
@@ -64,6 +70,12 @@ export class MessengerPlugin extends MetaChannelPlugin {
     ChannelCapability.READ_RECEIPTS,
     ChannelCapability.MESSAGING_WINDOW
   ] as const
+
+  // Several images in ONE message: Messenger declares an album (`MessengerMedia.album`) and the owner's real test
+  // delivered one. Instagram does not (see `InstagramMedia`).
+  sendAlbum(ctx: ChannelContext, params: SendAlbumParams): Promise<ChannelAlbumResult> {
+    return this.sendNativeAlbum(ctx, params)
+  }
 
   // Messenger belongs to the main app, always
   protected readonly webhookApp: MetaWebhookApp = MetaWebhookApps.MAIN

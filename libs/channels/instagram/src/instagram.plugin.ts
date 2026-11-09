@@ -2,11 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { MetaChannelPlugin, type MetaAccount } from '@platform/channels/meta'
-import {
-  type ChannelMediaKind,
-  InstagramMedia,
-  MetaAttachmentOfKind
-} from '@platform/core/channel-media'
+import { InstagramMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
@@ -75,18 +71,6 @@ export class InstagramPlugin extends MetaChannelPlugin {
 
   protected override subscribeOwner(): string {
     return InstagramApi.SUBSCRIBE_OWNER
-  }
-
-  // The Attachment Upload API of Instagram (Meta, "Upload Media for Instagram Messaging", read 2026-11-09) asks for
-  // the platform in the form, and `is_reusable` inside the attachment as a string. Without them the file is stored
-  // for Messenger and the id it answers is not one the Instagram Send API takes.
-  protected override albumUploadFields(kind: ChannelMediaKind): Record<string, string> {
-    return {
-      platform: InstagramApi.UPLOAD_PLATFORM,
-      message: JSON.stringify({
-        [MetaMessaging.ATTACHMENT_KEY]: { type: MetaAttachmentOfKind[kind], is_reusable: 'true' }
-      })
-    }
   }
 
   protected override sendOwner(): string {

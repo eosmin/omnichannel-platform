@@ -174,8 +174,8 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   }
 
   // The form fields that store one image for an album: Messenger takes the attachment with `is_reusable` in its
-  // payload; a plugin whose API asks for another shape overrides it
-  protected albumUploadFields(kind: ChannelMediaKind): Record<string, string> {
+  // payload
+  private albumUploadFields(kind: ChannelMediaKind): Record<string, string> {
     return {
       message: JSON.stringify({
         [MetaMessaging.ATTACHMENT_KEY]: {
@@ -404,12 +404,17 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     return this.withCaption(ctx, params.channelIdentity, sent, params.caption)
   }
 
-  // Several images in ONE message (a native album). Each image is stored on the attachments edge first, which
+  // Several images in ONE message (a native album). Only a subclass whose channel declares an album exposes it as
+  // `sendAlbum` (the registry refuses a `sendAlbum` without the declaration, and the declaration without it).
+  // Each image is stored on the attachments edge first, which
   // gives its `attachment_id` and sends nothing to the customer (so it may be tried again), then a single call
   // sends them all, in order. All or nothing: one call to Meta, which has no idempotency key, so a failure that
   // may have reached it is an unknown outcome and is never repeated by this plugin. Everything refusable is
   // refused before the first image is opened.
-  async sendAlbum(ctx: ChannelContext, params: SendAlbumParams): Promise<ChannelAlbumResult> {
+  protected async sendNativeAlbum(
+    ctx: ChannelContext,
+    params: SendAlbumParams
+  ): Promise<ChannelAlbumResult> {
     const album = this.media.album
     // A plugin that declares no album has no business here (the registry ties the method to the declaration)
     if (album === undefined) {

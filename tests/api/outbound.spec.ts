@@ -2124,20 +2124,14 @@ describe('Replies on their way to a channel', () => {
             })
           ).status
 
-        it("Instagram, the owner's case: the upload is refused (code 200, subcode 2534096), the three images go one by one, the message is sent and the connection stays connected", async () => {
+        it('Instagram sends each image as a message of its own, never stores one on the attachments edge, and stays connected', async () => {
           const reply = await albumOf(ChannelIds.INSTAGRAM, MessageType.IMAGE, [null, null, null])
-          const uploads: { path: readonly string[] }[] = []
+          const paths: string[] = []
           const upload = jest
             .spyOn(MetaGraphClient.prototype, 'uploadMedia')
             .mockImplementation((request: { path: readonly string[] }) => {
-              uploads.push({ path: request.path })
-              return request.path.includes('message_attachments')
-                ? Promise.reject(
-                    graphFailure(403, {
-                      error: { message: 'x', code: 200, error_subcode: 2534096, fbtrace_id: 'y' }
-                    })
-                  )
-                : Promise.resolve({ message_id: `mid.${uploads.length}` } as never)
+              paths.push(request.path[1] ?? '')
+              return Promise.resolve({ message_id: `mid.${paths.length}` } as never)
             })
           try {
             await (await realSender()).send(job(reply), false)
@@ -2145,13 +2139,8 @@ describe('Replies on their way to a channel', () => {
             upload.mockRestore()
           }
 
-          // One refused try at the album, then one message for each image, in order
-          expect(uploads.map(item => item.path[1])).toEqual([
-            'message_attachments',
-            'messages',
-            'messages',
-            'messages'
-          ])
+          // No try at an album: three messages, in order
+          expect(paths).toEqual(['messages', 'messages', 'messages'])
           expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
           expect((await rowsWithIds(reply.id)).map(row => row.deliveryStatus)).toEqual([
             'sent',
@@ -2163,33 +2152,35 @@ describe('Replies on their way to a channel', () => {
           )
         })
 
-        it('Instagram stores each image as its API asks (platform instagram) and sends one message', async () => {
-          const reply = await albumOf(ChannelIds.INSTAGRAM, MessageType.IMAGE, [null, null])
-          const forms: Record<string, string>[] = []
+        it("Messenger, with Meta's answer 100 ('Invalid parameter') to the first image: the three images go one by one and the connection stays connected", async () => {
+          const reply = await albumOf(ChannelIds.MESSENGER, MessageType.IMAGE, [null, null, null])
+          const paths: string[] = []
           const upload = jest
             .spyOn(MetaGraphClient.prototype, 'uploadMedia')
-            .mockImplementation((request: { fields: Record<string, string> }) => {
-              forms.push(request.fields)
-              return Promise.resolve({ attachment_id: `att${forms.length}` } as never)
+            .mockImplementation((request: { path: readonly string[] }) => {
+              paths.push(request.path[1] ?? '')
+              return request.path.includes('message_attachments')
+                ? Promise.reject(
+                    graphFailure(400, {
+                      error: { message: 'x', type: 'OAuthException', code: 100, fbtrace_id: 'y' }
+                    })
+                  )
+                : Promise.resolve({ message_id: `mid.${paths.length}` } as never)
             })
-          const post = jest
-            .spyOn(MetaGraphClient.prototype, 'post')
-            .mockResolvedValue({ message_id: 'mid.album' })
-          const postCalls: unknown[][] = []
           try {
             await (await realSender()).send(job(reply), false)
-            postCalls.push(...post.mock.calls)
           } finally {
             upload.mockRestore()
-            post.mockRestore()
           }
 
-          expect(forms.every(form => form['platform'] === 'instagram')).toBe(true)
-          expect(postCalls).toHaveLength(1)
-          expect((await messageFlags(reply.id)).channelMessageId).toBe('mid.album')
+          expect(paths).toEqual(['message_attachments', 'messages', 'messages', 'messages'])
+          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+          expect(await connectionStatusOf(reply.conversationId)).toBe(
+            ChannelConnectionStatus.ACTIVE
+          )
         })
 
-        it('Messenger keeps the native album, with its own form and no platform, untouched by the Instagram hook', async () => {
+        it('Messenger keeps the native album, with its own form and no platform', async () => {
           const reply = await albumOf(ChannelIds.MESSENGER, MessageType.IMAGE, [null, null, null])
           const forms: Record<string, string>[] = []
           const upload = jest
@@ -2277,6 +2268,22 @@ describe('Replies on their way to a channel', () => {
             'sent',
             'sent'
           ])
+          expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+        })
+
+        it("falls back to one message per image on the shape of the owner's real log (code 100, step 'upload 1/3')", async () => {
+          const reply = await album([null, null, null])
+          albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+            retryable: false,
+            refused: true,
+            providerCode: 100,
+            step: 'upload 1/3'
+          })
+
+          await sender.send(job(reply), true)
+
+          expect(sentAlbums).toHaveLength(1)
+          expect(sentMedia).toHaveLength(3)
           expect((await messageFlags(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
         })
 
