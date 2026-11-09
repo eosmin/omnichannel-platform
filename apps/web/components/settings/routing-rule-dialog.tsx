@@ -4,17 +4,11 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
-import {
-  ChannelIds,
-  isOfficialChannelId,
-  RoutingActionTypes,
-  RoutingLimits
-} from '@platform/core/domain'
+import { RoutingActionTypes, RoutingLimits } from '@platform/core/domain'
 
 import type { RuleView } from '../../lib/settings/routing-requests'
 import {
   type ActionType,
-  type ChannelChoice,
   channelChoicesOf,
   draftOf,
   emptyDraft,
@@ -41,8 +35,6 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
-// Shown when the store's own channels cannot be read (no CONVERSATIONS_VIEW, or the read failed)
-const OFFICIAL_CHOICES: ChannelChoice[] = Object.values(ChannelIds).map(id => ({ id, name: id }))
 const ACTION_CHOICES: readonly ActionType[] = Object.values(RoutingActionTypes)
 
 function toggled(list: readonly string[], value: string): string[] {
@@ -68,7 +60,6 @@ export function RuleDialog({
 }): ReactElement {
   const t = useTranslations('settings.routing.dialog')
   const errorText = useErrorText()
-  const tChannels = useTranslations('settings.routing.channelNames')
   const tCommon = useTranslations('common')
   const { storeId } = useStore()
   const create = useCreateRule(storeId)
@@ -101,17 +92,10 @@ export function RuleDialog({
     else update.mutate({ ruleId: rule.id, input }, { onSuccess: done, onSettled: guard.leave })
   }
 
-  // The channels the store has, not the four official ones: a rule for a channel that is not
-  // connected would never match. Where the store's own list cannot be read, the official ones.
+  // The channels the store has: a rule for a channel that is not connected would never match. Where the
+  // store's own list cannot be read, only the channels the rule already names are shown.
   const channels = useChannelChoices(storeId, listsAvailable)
-  const channelOptions =
-    channels.data === undefined
-      ? listsAvailable && !channels.isError
-        ? channelChoicesOf([], draft.channelTypes)
-        : channelChoicesOf([], draft.channelTypes).concat(
-            OFFICIAL_CHOICES.filter(choice => !draft.channelTypes.includes(choice.id))
-          )
-      : channelChoicesOf(channels.data, draft.channelTypes)
+  const channelOptions = channelChoicesOf(channels.data ?? [], draft.channelTypes)
   const needsPeople = draft.actionType !== RoutingActionTypes.UNASSIGNED
   // A person who left the store is still in the rule until it is saved again: shown, so it can be taken out
   const known = new Set(members.map(member => member.id))
@@ -163,7 +147,7 @@ export function RuleDialog({
                     onChange={() => set({ channelTypes: toggled(draft.channelTypes, channel.id) })}
                     disabled={saving}
                   />
-                  {isOfficialChannelId(channel.id) ? tChannels(channel.id) : channel.name}
+                  {channel.name}
                 </label>
               ))}
               {channelOptions.length === 0 && !channels.isPending ? (

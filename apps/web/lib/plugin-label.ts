@@ -1,17 +1,20 @@
 'use client'
 
-import { useTranslations } from 'next-intl'
+import { useLocale } from 'next-intl'
 import { useCallback } from 'react'
 
-import { isOfficialChannelId } from '@platform/core/domain'
+import type { ChannelDescriptorView } from '@platform/api-client'
 
-// The name a plugin shows in the interface. The server sends the name of the plugin in English; an
-// official channel is named from the message files (the vocabulary: "Widget web"), any other keeps
-// the name its author gave it.
-export function usePluginLabel(): (pluginId: string, serverName: string) => string {
-  const t = useTranslations('settings.routing.channelNames')
+import { pluginNameOf } from './plugin-name'
+
+type NamedByDescriptor = Pick<ChannelDescriptorView, 'displayName'> | null | undefined
+
+// The name a plugin shows in the interface: the one its descriptor declares in the language of the reader,
+// else the name the server sent. No channel id decides it.
+export function usePluginLabel(): (descriptor: NamedByDescriptor, serverName: string) => string {
+  const locale = useLocale()
   return useCallback(
-    (pluginId, serverName) => (isOfficialChannelId(pluginId) ? t(pluginId) : serverName),
-    [t]
+    (descriptor, serverName) => pluginNameOf(descriptor, locale, serverName),
+    [locale]
   )
 }
