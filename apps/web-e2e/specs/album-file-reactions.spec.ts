@@ -91,10 +91,10 @@ test('each picture of an album the team sent has its own reaction and its own re
       0
     )
 
-    // The second picture has its own buttons, named by its number; the first has none of its own
+    // Every picture has its own buttons, named by its number, the first one included
     await expect(
       list.getByRole('button', { name: fill(thread.actions.reactFile, 1, 3) })
-    ).toHaveCount(0)
+    ).toHaveCount(1)
     await list.getByRole('button', { name: fill(thread.actions.reactFile, 2, 3) }).click()
     // The request names the SECOND file, not the message and not the first
     const putRequest = page.waitForRequest(

@@ -1055,7 +1055,7 @@
         "media": "El cliente envió un archivo que no se pudo traer",
         "notice": "El cliente envió contenido que este canal no permite mostrar. Para verlo, ábrelo desde la cuenta o el teléfono del canal."
       },
-      "unsupportedGroup": "El cliente envió {count} elementos que este canal no permite mostrar. Para verlos, ábrelos desde la cuenta o el teléfono del canal.",
+      "unsupportedGroup": "El cliente envió <num>{count}</num> elementos que este canal no permite mostrar. Para verlos, ábrelos desde la cuenta o el teléfono del canal.",
       "captionFailed": "El archivo se envió, pero el texto que lo acompaña no",
       "captionUnconfirmed": "El archivo se envió, pero puede que el texto que lo acompaña no. Revisa el chat antes de volver a enviar el texto",
       "captionQueued": "Enviando el texto que acompaña al archivo",
