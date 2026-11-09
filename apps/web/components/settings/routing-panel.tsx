@@ -43,6 +43,7 @@ export function RoutingPanel({
   const { storeId, can } = useStore()
   const canManage = can(ClientPermissions.SETTINGS_MANAGE_ROUTING)
   const listsAvailable = can(ClientPermissions.CONVERSATIONS_VIEW)
+  const channels = useChannelChoices(storeId, listsAvailable)
   const reorder = useReorderRules(storeId)
   const [editing, setEditing] = useState<Editing>(null)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -107,6 +108,7 @@ export function RoutingPanel({
               total={shown.length}
               members={members}
               tags={tags}
+              channels={channels.data}
               canManage={canManage}
               busy={reorder.isPending}
               dragging={dragging === rule.id}
@@ -143,6 +145,7 @@ function RuleRow({
   total,
   members,
   tags,
+  channels,
   canManage,
   busy,
   dragging,
@@ -157,6 +160,7 @@ function RuleRow({
   total: number
   members: MemberDirectoryEntryView[]
   tags: TagView[]
+  channels: readonly { pluginId: string; pluginName: string }[] | undefined
   canManage: boolean
   busy: boolean
   dragging: boolean
@@ -227,7 +231,7 @@ function RuleRow({
             </span>
           )}
         </h2>
-        <RuleSummary rule={rule} members={members} tags={tags} />
+        <RuleSummary rule={rule} members={members} tags={tags} channels={channels} />
       </div>
       <div className="flex items-center gap-2">
         {canManage ? (
@@ -291,20 +295,21 @@ function RuleRow({
 function RuleSummary({
   rule,
   members,
-  tags
+  tags,
+  channels
 }: {
   rule: RuleView
   members: MemberDirectoryEntryView[]
   tags: TagView[]
+  // The channels of the store by the name their descriptor gives; none where the person cannot read them
+  channels: readonly { pluginId: string; pluginName: string }[] | undefined
 }): ReactElement {
   const t = useTranslations('settings.routing.summary')
-  const { storeId, can } = useStore()
-  const channels = useChannelChoices(storeId, can(ClientPermissions.CONVERSATIONS_VIEW))
   const { channelTypes, tagIds, keywords, outsideBusinessHours } = rule.conditions
   const parts: string[] = []
   if (channelTypes !== undefined) {
     parts.push(
-      t('channels', { list: channelTypes.map(id => channelNameOf(channels.data, id)).join(', ') })
+      t('channels', { list: channelTypes.map(id => channelNameOf(channels, id)).join(', ') })
     )
   }
   if (tagIds !== undefined) {

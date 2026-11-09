@@ -8,6 +8,10 @@ describe('pluginNameOf', () => {
     expect(pluginNameOf(descriptor, 'en', 'The server name')).toBe('Acme Chat')
   })
 
+  it('reads a regional Spanish as Spanish', () => {
+    expect(pluginNameOf(descriptor, 'es-MX', 'x')).toBe('Chat Acme')
+  })
+
   it('takes English for a language the descriptor does not carry', () => {
     expect(pluginNameOf(descriptor, 'fr', 'x')).toBe('Acme Chat')
   })
