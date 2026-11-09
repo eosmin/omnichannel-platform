@@ -4,7 +4,13 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { MetaAppConfig } from '@platform/channels/meta'
 import { WidgetConfig, WidgetEmbedConfig, widgetTokenKey } from '@platform/channels/web-widget'
-import { ChannelIdentityKinds, ChannelIds } from '@platform/core/domain'
+import {
+  CHANNEL_IDENTITY_KINDS,
+  type ChannelIdentityKind,
+  type ChannelIdentityKindSource,
+  ChannelIdentityKinds,
+  ChannelIds
+} from '@platform/core/domain'
 import { ChannelCapability, type ChannelPlugin } from '@platform/plugins/sdk'
 
 import { CarrierRegistry } from './carrier-registry'
@@ -26,7 +32,7 @@ class SuitePlugin implements ChannelPlugin {
   readonly capabilities = [ChannelCapability.TEXT] as const
   readonly messagingWindow = null
   readonly limits = { textMaxLength: 100 }
-  readonly identityKind = ChannelIdentityKinds.OPAQUE
+  readonly identityKind: ChannelIdentityKind = ChannelIdentityKinds.OPAQUE
   readonly connectFields = []
   readonly receivesProviderWebhooks = false
   connect = unused
@@ -37,6 +43,29 @@ class SuitePlugin implements ChannelPlugin {
   validateWebhookSignature = (): boolean => false
   handleWebhook = (): Promise<never[]> => Promise.resolve([])
 }
+
+describe('PluginsModule identity kinds', () => {
+  it('tells the core how a plugin reads a handle, and keeps an unknown channel as it came', async () => {
+    class PhonePlugin extends SuitePlugin {
+      override readonly id = 'acme_phone'
+      override readonly identityKind = ChannelIdentityKinds.PHONE
+    }
+    const moduleRef = await Test.createTestingModule({
+      imports: [PluginsModule.forRoot({ channels: [SuitePlugin, PhonePlugin], carriers: [] })]
+    })
+      .useMocker(token =>
+        token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
+      )
+      .compile()
+    await moduleRef.init()
+
+    const kinds = moduleRef.get<ChannelIdentityKindSource>(CHANNEL_IDENTITY_KINDS)
+    expect(kinds.kindOf('acme_phone')).toBe(ChannelIdentityKinds.PHONE)
+    expect(kinds.kindOf('suite_channel')).toBe(ChannelIdentityKinds.OPAQUE)
+    expect(kinds.kindOf('never_registered')).toBe(ChannelIdentityKinds.OPAQUE)
+    await moduleRef.close()
+  })
+})
 
 describe('PluginsModule', () => {
   it('registers the plugins it is given, at boot, in the registries it exports', async () => {

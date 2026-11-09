@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 
 import {
   lockStoreForWrite,
@@ -6,7 +6,11 @@ import {
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { AuthorType } from '@platform/core/domain'
+import {
+  AuthorType,
+  CHANNEL_IDENTITY_KINDS,
+  type ChannelIdentityKindSource
+} from '@platform/core/domain'
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { parseChannelIdentity } from '../customers/identity'
@@ -49,7 +53,8 @@ export interface InboundTarget {
 export class InboundMessageTargets {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly connections: ChannelConnectionResolver
+    private readonly connections: ChannelConnectionResolver,
+    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource
   ) {}
 
   // Runs `apply` inside the transaction that holds the locks of the store and of the handle, and
@@ -66,7 +71,9 @@ export class InboundMessageTargets {
     const connection = await this.connections.resolve(pluginId, event.connectionId)
     if (connection === null || !connection.active) return false
     const { storeId } = connection
-    const parsed = parseChannelIdentity(pluginId, event.channelIdentity, { fromChannel: true })
+    const parsed = parseChannelIdentity(this.kinds.kindOf(pluginId), event.channelIdentity, {
+      fromChannel: true
+    })
     if (parsed === null) return false
     const identity = await this.prisma.client.customerIdentity.findFirst({
       where: { storeId, channelType: pluginId, channelIdentity: parsed.identity },

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import {
@@ -7,7 +7,13 @@ import {
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
-import { type ChannelId, CustomerLimits, LOCALE_TAG_PATTERN } from '@platform/core/domain'
+import {
+  CHANNEL_IDENTITY_KINDS,
+  type ChannelId,
+  type ChannelIdentityKindSource,
+  CustomerLimits,
+  LOCALE_TAG_PATTERN
+} from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -53,7 +59,8 @@ export interface ResolvedIdentity {
 export class CustomerIdentityService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: DomainEvents
+    private readonly events: DomainEvents,
+    @Inject(CHANNEL_IDENTITY_KINDS) private readonly kinds: ChannelIdentityKindSource
   ) {}
 
   // The inbound pipeline's way in (TDD_10 §4): the customer behind a handle on a channel,
@@ -62,9 +69,13 @@ export class CustomerIdentityService {
   // loses reads what the winner wrote. That read needs a transaction of its own: called from inside
   // another one, the failed insert would have aborted it.
   async findOrCreateByIdentity(input: FindOrCreateByIdentityInput): Promise<ResolvedIdentity> {
-    const parsed = parseChannelIdentity(input.channelType, input.channelIdentity, {
-      fromChannel: true
-    })
+    const parsed = parseChannelIdentity(
+      this.kinds.kindOf(input.channelType),
+      input.channelIdentity,
+      {
+        fromChannel: true
+      }
+    )
     if (parsed === null) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_INVALID_INPUT,

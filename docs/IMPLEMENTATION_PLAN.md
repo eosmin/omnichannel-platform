@@ -1263,7 +1263,7 @@ its provider. The audit and the PR order are in the owner's reports (`auditoria-
 database has no CHECK or enum that blocks a new plugin id (verified), so no migration is planned.
 - [x] A1 (#336) — descriptor in the SDK: `ChannelPlugin.limits` (`ChannelLimits`: text and caption limits) and `identityKind` (`phone | opaque`), checked and copied by the registry at boot (`limits-snapshot.ts`, `limitsOf`, `identityKindOf`), declared by the four official plugins and published in the channel directory (`limits`). The toy third-party plugin suite (`libs/plugins/runtime/src/toy-plugin.spec.ts`, id `acme_chat`) is the lock and grows with each PR below.
 - [x] A2 — read the limits from the registry: `ChannelTextLimits` and `ChannelCaptionRules` are gone; `caption-rules` take the plugin's `ChannelLimitsView`, the outbound sender and `channel-file-limits` use `limitsOf`, and the composer reads `limits` from the directory. A test with a plugin nobody named (limit 20) holds the worker to what the plugin declared.
-- [ ] A3 — customer identity by `identityKind`: drop `case ChannelIds.WHATSAPP` in `identity.ts`.
+- [x] A3 — customer identity by `identityKind`: `parseChannelIdentity`/`normalizeChannelIdentity` take the kind, not the channel id; the plugins module provides `CHANNEL_IDENTITY_KINDS` (from the registry; a channel it does not know is opaque) to the services of core; linking a handle (`IdentitiesService`) normalizes in the service, no longer in the zod transform. A channel nobody named that declares `phone` has its handles read as digits (integration test).
 - [ ] A5 — generic failure reason in place of `PAGE_WITHOUT_INSTAGRAM` (keep the old code as an alias for one release).
 - [ ] B1 — web: connect form, OAuth asset dialog, names and icons, anonymous visitors and composer limits from the descriptor; no channel id in `apps/web` or `libs/api-client`.
 - [ ] A4 — move the Meta and WhatsApp protocol constants, media rules and OAuth constants to `libs/channels/meta` (2-3 mechanical PRs: constants; OAuth; fetch and redaction), each with the CSP, OAuth and env verified.
@@ -1512,7 +1512,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 7.6 | Internal admin console (core) | deferred (Phase 2) | | |
 | 7.7 | Visual polish | todo | | |
 | 7.8 | Connect with Facebook (OAuth) for Messenger and Instagram | done | #202 (PR 1, foundations), #203 (PR 2, server), #204 (PR 3, screen), #205 (PR 4, repair and e2e); the owner's real test passed 2026-11-06; two measures stay open in the step | 2026-11-06 |
-| 7.9 | Channel-agnostic core | in progress | #336 (A1), A2 | |
+| 7.9 | Channel-agnostic core | in progress | #336 (A1), #339 (A2), A3 | |
 | **Milestone 8: Optional enhancements** | | | | |
 | 8.1 | AI assist | deferred (Phase 2) | | |
 | 8.2 | Autonomous chatbot (Scale) | deferred (Phase 2) | | |

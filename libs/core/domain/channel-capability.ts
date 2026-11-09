@@ -40,6 +40,13 @@ export const ChannelIdentityKinds = {
 } as const
 export type ChannelIdentityKind = (typeof ChannelIdentityKinds)[keyof typeof ChannelIdentityKinds]
 
+// Where the core asks how the handle of a customer on a channel is read. The plugins module provides it from the
+// registry; a channel the registry does not know is opaque (kept as it came).
+export interface ChannelIdentityKindSource {
+  kindOf(channelType: string): ChannelIdentityKind
+}
+export const CHANNEL_IDENTITY_KINDS = Symbol('CHANNEL_IDENTITY_KINDS')
+
 // What the registry keeps of `ChannelLimits` after it checked it: the caption is always present or null. This is
 // what the core, the api and the worker read; nobody can change it (the registry freezes it).
 export interface ChannelLimitsView {
