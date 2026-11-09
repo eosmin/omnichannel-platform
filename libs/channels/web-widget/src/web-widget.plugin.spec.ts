@@ -112,6 +112,17 @@ describe('WebWidgetPlugin', () => {
       })
     })
 
+    it('takes no metadata from a visitor: nobody can write a story reply from the widget', async () => {
+      const [event] = await plugin.handleWebhook({
+        ...body,
+        metadata: { storyReply: { url: 'https://lookaside.fbsbx.com/x' } }
+      })
+
+      expect(event).toMatchObject({ type: ChannelEventTypes.MESSAGE_RECEIVED })
+      expect(JSON.stringify(event)).not.toContain('storyReply')
+      expect(event?.message).not.toHaveProperty('metadata')
+    })
+
     it('carries what the visitor typed in the form as the profile of the event', async () => {
       const [event] = await plugin.handleWebhook({
         ...body,

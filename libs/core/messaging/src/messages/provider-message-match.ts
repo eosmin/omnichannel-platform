@@ -24,3 +24,17 @@ export const messageOfProviderIdPrefix = (storeId: string, prefix: string): Mess
     { media: { some: { storeId, channelMessageId: { startsWith: prefix } } } }
   ]
 })
+
+// Whether a file of an album is a target of its own at the provider. It is when the album has several files and
+// the file has an id that is not the message's (the first file IS the message: one id) and that no other file of
+// the message shares (Instagram and Messenger send an album as ONE message, so every file carries that one id).
+// When it is not, a reaction or a quote under the file is the message's: the provider cannot tell them apart.
+export function isTargetOfItsOwn(
+  message: { channelMessageId: string | null },
+  files: readonly { id: string; channelMessageId: string | null }[],
+  file: { id: string; channelMessageId: string | null }
+): boolean {
+  if (files.length < 2 || file.channelMessageId === null) return false
+  if (file.channelMessageId === message.channelMessageId) return false
+  return files.filter(item => item.channelMessageId === file.channelMessageId).length === 1
+}

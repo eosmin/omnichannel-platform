@@ -10,6 +10,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   authorType: 'customer',
   authorId: null,
   replyToMessageId: null,
+  replyToMediaId: null,
   replyTo: null,
   deliveryStatus: null,
   deliveryError: null,

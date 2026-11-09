@@ -161,6 +161,8 @@ export interface SendOutboundReactionJob extends BaseJob {
   messageId: string
   userId: string
   version: number
+  // The file of an album the reaction is under; absent: the message itself
+  mediaId?: string | undefined
 }
 // An agent's edit or deletion of a message of ours. `version` is the `version` of the message when the
 // agent asked: it only gives each request its own job id.

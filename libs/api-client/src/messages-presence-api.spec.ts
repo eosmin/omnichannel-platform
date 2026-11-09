@@ -83,6 +83,7 @@ const message = {
   authorType: 'customer',
   authorId: null,
   replyToMessageId: null,
+  replyToMediaId: null,
   replyTo: null,
   deliveryStatus: null,
   deliveryError: null,

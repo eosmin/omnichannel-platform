@@ -33,7 +33,7 @@ export function outboundJobId(messageId: string): string {
 
 // One job for each version of a reaction: a later emoji is another job, the same one is the same job
 export function reactionJobId(job: SendOutboundReactionJob): string {
-  return `react-${job.messageId}-${job.userId}-${job.version}`
+  return `react-${job.messageId}-${job.userId}-${job.mediaId ?? 'message'}-${job.version}`
 }
 
 // One job for each request of the agent (the `version` of the message after it), so that a request made

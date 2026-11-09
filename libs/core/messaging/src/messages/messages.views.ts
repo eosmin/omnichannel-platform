@@ -35,6 +35,8 @@ export interface ReactionView {
   emoji: string
   authorType: AuthorType
   authorId: string | null
+  // The file of an album the reaction is under (one reaction for each person and file); null: the message itself
+  mediaId: string | null
   // Where an agent's reaction stands toward the channel; `failed` says the customer never saw it, with
   // the code of ours in `deliveryError`. The ones the channel reported are `sent`.
   deliveryStatus: DeliveryStatus
@@ -158,6 +160,8 @@ export interface MessageView {
   authorType: AuthorType
   authorId: string | null
   replyToMessageId: string | null
+  // The file of an album that the reply quotes; null: the message
+  replyToMediaId: string | null
   // Filled by the list of a thread, which joins it; null elsewhere and when the original is not in the
   // thread or the reader may not see it
   replyTo: QuotedMessage | null
@@ -229,6 +233,7 @@ export const MESSAGE_SELECT = {
   authorType: true,
   authorId: true,
   replyToMessageId: true,
+  replyToMediaId: true,
   deliveryStatus: true,
   deliveryError: true,
   failureDefinitive: true,
@@ -254,6 +259,7 @@ export const MESSAGE_SELECT = {
       authorType: true,
       customerIdentityId: true,
       userId: true,
+      mediaId: true,
       deliveryStatus: true,
       deliveryError: true
     },
@@ -285,6 +291,7 @@ interface MessageRow {
   authorType: string
   authorId: string | null
   replyToMessageId: string | null
+  replyToMediaId: string | null
   deliveryStatus: string | null
   deliveryError: string | null
   failureDefinitive: boolean | null
@@ -309,6 +316,7 @@ interface MessageRow {
     authorType: string
     customerIdentityId: string | null
     userId: string | null
+    mediaId: string | null
     deliveryStatus: string
     deliveryError: string | null
   }[]
@@ -363,6 +371,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     authorType: enumValueOf(AuthorTypes, row.authorType, 'message author'),
     authorId: row.authorId,
     replyToMessageId: row.replyToMessageId,
+    replyToMediaId: row.replyToMediaId,
     replyTo,
     deliveryStatus:
       row.deliveryStatus === null
@@ -383,6 +392,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
       emoji: reaction.emoji,
       authorType: enumValueOf(AuthorTypes, reaction.authorType, 'reaction author'),
       authorId: reaction.userId ?? reaction.customerIdentityId,
+      mediaId: reaction.mediaId,
       deliveryStatus: enumValueOf(DeliveryStatuses, reaction.deliveryStatus, 'reaction delivery'),
       deliveryError: reaction.deliveryError
     })),

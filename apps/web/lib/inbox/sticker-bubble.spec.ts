@@ -7,6 +7,7 @@ const sticker = {
   sticker: true,
   content: null,
   replyToMessageId: null,
+  replyToMediaId: null,
   attachmentUrl: null,
   storyReply: null,
   unsupportedType: null,

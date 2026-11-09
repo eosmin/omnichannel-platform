@@ -15,6 +15,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   authorType: 'agent',
   authorId: ME,
   replyToMessageId: null,
+  replyToMediaId: null,
   replyTo: null,
   deliveryStatus: 'sent',
   deliveryError: null,

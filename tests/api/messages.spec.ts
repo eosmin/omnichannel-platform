@@ -46,6 +46,13 @@ interface ThreadBody {
   hasMore: boolean
 }
 
+// An item the case has just made: a missing one is a broken case, not a value to carry on with
+const at = <T>(list: readonly T[], index: number): T => {
+  const item = list[index]
+  if (item === undefined) throw new Error(`the case expected an item at ${index}`)
+  return item
+}
+
 const OK = 200
 const CREATED = 201
 const UNAUTHORIZED = 401
@@ -760,6 +767,144 @@ describe('The messages of a conversation', () => {
 
       expect(response.status).toBe(CREATED)
       expect((response.body as MessageBody).replyToMessageId).toBe(target.id)
+    })
+
+    describe('quoting a file of an album', () => {
+      const withFiles = async (conversationId: string, storeId: string, count: number) => {
+        const target = await createMessage(owner, { storeId, conversationId })
+        const files = []
+        for (let position = 0; position < count; position += 1) {
+          files.push(
+            await owner.media.create({
+              data: {
+                storeId,
+                purpose: 'message',
+                messageId: target.id,
+                key: `${prefix}-key-${randomUUID()}`,
+                filename: `f${position}.jpg`,
+                contentType: 'image/jpeg',
+                fileSize: 10,
+                position,
+                channelMessageId: `quote-${randomUUID()}`
+              },
+              select: { id: true }
+            })
+          )
+        }
+        return { target, files }
+      }
+
+      it('keeps the file that is quoted, when the message has several', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 3)
+
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id, replyToMediaId: at(files, 1).id }))
+
+        expect(response.status).toBe(CREATED)
+        const stored = await owner.message.findUniqueOrThrow({
+          where: { id: (response.body as MessageBody).id },
+          select: { replyToMessageId: true, replyToMediaId: true }
+        })
+        expect(stored).toEqual({ replyToMessageId: target.id, replyToMediaId: at(files, 1).id })
+      })
+
+      it('quotes the message when it has a single file', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 1)
+
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id, replyToMediaId: at(files, 0).id }))
+
+        expect(response.status).toBe(CREATED)
+        const stored = await owner.message.findUniqueOrThrow({
+          where: { id: (response.body as MessageBody).id },
+          select: { replyToMediaId: true }
+        })
+        expect(stored.replyToMediaId).toBeNull()
+      })
+
+      it('quotes the message when the files of the album share one id', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 3)
+        await owner.media.updateMany({
+          where: { messageId: target.id },
+          data: { channelMessageId: 'one-id-for-all' }
+        })
+
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id, replyToMediaId: at(files, 2).id }))
+
+        expect(response.status).toBe(CREATED)
+        const stored = await owner.message.findUniqueOrThrow({
+          where: { id: (response.body as MessageBody).id },
+          select: { replyToMediaId: true }
+        })
+        expect(stored.replyToMediaId).toBeNull()
+      })
+
+      it('refuses a file with no copy in the channel, and the file without its message', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 2)
+        await owner.media.update({
+          where: { id: at(files, 1).id },
+          data: { channelMessageId: null }
+        })
+
+        const noCopy = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id, replyToMediaId: at(files, 1).id }))
+        expect(noCopy.status).toBe(CONFLICT)
+        const alone = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMediaId: at(files, 0).id }))
+        expect(alone.status).toBe(BAD_REQUEST)
+        expect(await messagesOf(id)).toHaveLength(1)
+      })
+
+      it('refuses a file of another message or of another store, and stores nothing', async () => {
+        const { id } = await mk()
+        const { target } = await withFiles(id, ctx.storeA.id, 2)
+        const elsewhere = await mk()
+        const other = await withFiles(elsewhere.id, ctx.storeA.id, 2)
+        const foreignConversation = await createConversationOf(owner, { storeId: ctx.storeB.id })
+        const foreign = await withFiles(foreignConversation.id, ctx.storeB.id, 2)
+
+        for (const mediaId of [at(other.files, 0).id, at(foreign.files, 0).id, randomUUID()]) {
+          const response = await asAgent()
+            .post(ApiRoutes.messages.create)
+            .send(reply(id, { replyToMessageId: target.id, replyToMediaId: mediaId }))
+          expect(response.status).toBe(NOT_FOUND)
+        }
+        expect(await messagesOf(id)).toHaveLength(1)
+      })
+
+      it('is no field of a template, nor of anything the customer or a channel writes', async () => {
+        const { id } = await mk()
+        const response = await asAgent().post(ApiRoutes.messages.create).send({
+          type: MessageType.TEMPLATE,
+          conversationId: id,
+          templateName: 'hello',
+          language: 'es',
+          variables: [],
+          idempotencyKey: randomUUID(),
+          replyToMediaId: randomUUID()
+        })
+        expect(response.status).toBe(BAD_REQUEST)
+      })
+    })
+
+    it('has no way to write the story reply of a message: the body takes no metadata', async () => {
+      const { id } = await mk()
+      const response = await asAgent()
+        .post(ApiRoutes.messages.create)
+        .send(reply(id, { metadata: { storyReply: { url: 'https://lookaside.fbsbx.com/x' } } }))
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(await messagesOf(id)).toHaveLength(0)
     })
 
     it('refuses a message of another conversation, of another store, or that does not exist', async () => {

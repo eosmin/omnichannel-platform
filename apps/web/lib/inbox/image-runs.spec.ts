@@ -19,6 +19,7 @@ function picture(id: string, secondsAfter: number, extra: Partial<MessageView> =
     sticker: false,
     deletedAt: null,
     replyToMessageId: null,
+    replyToMediaId: null,
     attachmentUrl: null,
     storyReply: null,
     location: null,

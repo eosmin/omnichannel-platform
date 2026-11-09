@@ -18,6 +18,7 @@ import {
   requireAnyPermission,
   type Viewer
 } from '../conversations/conversations.support'
+import { isTargetOfItsOwn } from '../messages/provider-message-match'
 import { OutboundQueue } from '../outbound/outbound-queue'
 
 import { MessageReactionsService } from './message-reactions.service'
@@ -47,7 +48,9 @@ export class AgentReactionsService {
     messageId: string,
     emoji: string | null,
     viewer: Viewer,
-    supportsReactions: (channelType: string) => boolean
+    supportsReactions: (channelType: string) => boolean,
+    // The file of an album that the agent reacted under; none: the message itself
+    mediaId?: string
   ): Promise<void> {
     requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
     const target = await this.prisma.client.message.findFirst({
@@ -66,12 +69,34 @@ export class AgentReactionsService {
         select: {
           type: true,
           channelMessageId: true,
-          conversation: { select: { channelType: true } }
+          conversation: { select: { channelType: true } },
+          // The files of this store only, whatever row points at the message
+          media: { where: { storeId }, select: { id: true, channelMessageId: true } }
         }
       })
       if (message === null) throw resourceNotFound('conversation')
       if (NOT_SENT_TO_CHANNEL.includes(message.type) || message.channelMessageId === null) {
         throw resourceConflict('the message has no copy in the channel to react to')
+      }
+      // A file of another message or store is no file of this one: the same answer as a message not seen
+      const file = mediaId === undefined ? null : message.media.find(item => item.id === mediaId)
+      if (mediaId !== undefined && file === undefined) throw resourceNotFound('conversation')
+      // Taking a reaction back is local to the row, the provider id is needed to put one
+      if (emoji !== null && file != null && file.channelMessageId === null) {
+        throw resourceConflict('the file has no copy in the channel to react to')
+      }
+      // Only a file the provider can tell apart is a target of its own: the first file IS the message (one id), and
+      // the files of an album sent as ONE message share one id; their reaction is the message's, so the two never
+      // make two rows for one target
+      let targetMediaId =
+        file != null && isTargetOfItsOwn(message, message.media, file) ? file.id : null
+      // A reaction being taken back is found under the file that was named even if the file cannot be told apart
+      // now (it lost its id, or a later album shares one): the row that is there is the one that goes
+      if (emoji === null && file != null && targetMediaId === null) {
+        const there = await tx.messageReaction.count({
+          where: { storeId, messageId, userId: viewer.userId, mediaId: file.id }
+        })
+        if (there > 0) targetMediaId = file.id
       }
       if (!supportsReactions(message.conversation.channelType)) {
         throw new PlatformException(
@@ -86,7 +111,8 @@ export class AgentReactionsService {
         messageId,
         { authorType: AuthorType.AGENT, userId: viewer.userId },
         emoji,
-        DeliveryStatus.QUEUED
+        DeliveryStatus.QUEUED,
+        targetMediaId
       )
       // Only after the commit: the worker reads the reaction and must find it
       if (changedAt !== null) {
@@ -96,7 +122,8 @@ export class AgentReactionsService {
               storeId,
               messageId,
               userId: viewer.userId,
-              version: changedAt.getTime()
+              version: changedAt.getTime(),
+              ...(targetMediaId === null ? {} : { mediaId: targetMediaId })
             })
             .catch((error: unknown) => {
               this.logger.warn(

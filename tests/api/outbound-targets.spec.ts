@@ -249,6 +249,92 @@ describe('A reaction or a quote that points at a message the platform sent', () 
     expect(await reactionOf(sent.id)).toHaveLength(1)
   })
 
+  it('puts the reaction of the customer under the file it names, one for each file', async () => {
+    const { connectionId, from } = await seeded()
+    const sent = await sentByAgent(ctx.storeA.id, from, {
+      message: 'pf-1',
+      files: ['pf-1', 'pf-2', 'pf-3']
+    })
+    const files = await owner.media.findMany({
+      where: { messageId: sent.id },
+      select: { id: true, channelMessageId: true }
+    })
+    const idOf = (providerId: string) => files.find(f => f.channelMessageId === providerId)?.id
+    // The first file IS the message at the provider (one id): its reaction is the message's
+    await react(connectionId, from, 'pf-1', '👍')
+    await react(connectionId, from, 'pf-2', '❤️')
+    await react(connectionId, from, 'pf-3', '🔥')
+    // The same file again replaces its own emoji and leaves the others
+    await react(connectionId, from, 'pf-2', '🙏')
+
+    const rows = await reactionOf(sent.id)
+    expect(rows.map(r => `${r.mediaId}:${r.emoji}`).sort()).toEqual(
+      [`null:👍`, `${idOf('pf-2')}:🙏`, `${idOf('pf-3')}:🔥`].sort()
+    )
+    // Taking one back leaves the others
+    await react(connectionId, from, 'pf-3', null)
+    await react(connectionId, from, 'pf-1', null)
+    expect((await reactionOf(sent.id)).map(r => r.mediaId)).toEqual([idOf('pf-2')])
+  })
+
+  it('keeps the reaction on the message when the files of the album share one id', async () => {
+    const { connectionId, from } = await seeded()
+    const sent = await sentByAgent(ctx.storeA.id, from, {
+      message: 'shared-1',
+      files: ['shared-1', 'shared-1', 'shared-1']
+    })
+    await react(connectionId, from, 'shared-1', '👍')
+    await react(connectionId, from, 'shared-1', '❤️')
+
+    expect((await reactionOf(sent.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+  })
+
+  it('allows one reaction for each person and target, in the database itself', async () => {
+    const { connectionId, from } = await seeded()
+    const sent = await sentByAgent(ctx.storeA.id, from, {
+      message: 'ix-1',
+      files: ['ix-1', 'ix-2']
+    })
+    const second = await owner.media.findFirstOrThrow({
+      where: { messageId: sent.id, channelMessageId: 'ix-2' }
+    })
+    const identity = await owner.customerIdentity.findFirstOrThrow({
+      where: { storeId: ctx.storeA.id, channelIdentity: from }
+    })
+    const row = (mediaId: string | null) =>
+      owner.messageReaction.create({
+        data: {
+          storeId: ctx.storeA.id,
+          messageId: sent.id,
+          authorType: AuthorType.CUSTOMER,
+          customerIdentityId: identity.id,
+          emoji: '👍',
+          mediaId
+        }
+      })
+    await row(null)
+    await row(second.id)
+    // A second one for the same target is refused, whether the target is the message (a NULL) or a file
+    await expect(row(null)).rejects.toThrow()
+    await expect(row(second.id)).rejects.toThrow()
+    expect(await reactionOf(sent.id)).toHaveLength(2)
+    expect(connectionId).toBeTruthy()
+  })
+
+  it('keeps a reaction to the only file of a message, or to its caption, on the message', async () => {
+    const { connectionId, from } = await seeded()
+    const single = await sentByAgent(ctx.storeA.id, from, {
+      message: 'one-f1',
+      files: ['one-f1'],
+      caption: 'one-cap'
+    })
+    await react(connectionId, from, 'one-f1', '👍')
+    expect((await reactionOf(single.id)).map(r => r.mediaId)).toEqual([null])
+    await react(connectionId, from, 'one-cap', '❤️')
+    // The caption is the message's: it replaces the emoji of the message, it is no file of its own
+    expect((await reactionOf(single.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+  })
+
   it('links the quote of a customer to a file of an album the agent sent', async () => {
     const { connectionId, from } = await seeded()
     const sent = await sentByAgent(ctx.storeA.id, from, {

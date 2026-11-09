@@ -77,7 +77,15 @@ export class MessageReactionsService {
           event.reaction.from === ReactionActors.EXTERNAL
             ? { authorType: AuthorType.EXTERNAL }
             : { authorType: AuthorType.CUSTOMER, customerIdentityId: target.customerIdentityId }
-        await this.set(tx, target.storeId, target.messageId, reactor, event.reaction.emoji)
+        await this.set(
+          tx,
+          target.storeId,
+          target.messageId,
+          reactor,
+          event.reaction.emoji,
+          DeliveryStatus.SENT,
+          target.mediaId
+        )
       },
       found => {
         missing.shape = found
@@ -95,7 +103,7 @@ export class MessageReactionsService {
   }
 
   // Puts the reaction of `reactor` on a message of the store, or takes it back with a null emoji, and
-  // tells the team. The caller holds the store lock and has checked that the message may be reacted to.
+  // tells the team (the file of an album, when it is one of them, has its own reaction). The caller holds the store lock and has checked that the message may be reacted to.
   // `delivery` is where the reaction stands toward the channel: the ones a channel reports are already
   // there (sent); an agent's starts queued. Returns when it changed something (an emoji, or a refused one
   // sent again), or null when it did not: a repeated webhook, or a repeated click on one that is waiting
@@ -106,7 +114,9 @@ export class MessageReactionsService {
     messageId: string,
     reactor: Reactor,
     emoji: string | null,
-    delivery: DeliveryStatus = DeliveryStatus.SENT
+    delivery: DeliveryStatus = DeliveryStatus.SENT,
+    // The file of an album the reaction is under (one reaction for each person and file); null: the message itself
+    mediaId: string | null = null
   ): Promise<Date | null> {
     // Before anything is written: the row carries the store of the caller, and nothing ties it to the
     // store of the message but this look
@@ -122,7 +132,7 @@ export class MessageReactionsService {
     const now = new Date()
     const clean = emoji === null ? '' : safeText(emoji)
     const key = keyOf(reactor)
-    const where = { storeId, messageId, authorType: reactor.authorType, ...key }
+    const where = { storeId, messageId, authorType: reactor.authorType, mediaId, ...key }
     let changed: boolean
     if (clean === '') {
       changed = (await tx.messageReaction.deleteMany({ where })).count > 0
@@ -147,6 +157,7 @@ export class MessageReactionsService {
             emoji: clean,
             deliveryStatus: delivery,
             updatedAt: now,
+            mediaId,
             ...key
           }
         })
