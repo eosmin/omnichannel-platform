@@ -11,11 +11,11 @@ import { MetaPlatformModule } from './meta-platform.module'
 describe('MetaPlatformModule', () => {
   it('provides the client, configured from the env of the app', async () => {
     jest.doMock('@platform/core/config/env', () => ({
-      env: {
+      envSource: () => ({
         META_APP_SECRET: 'sec',
         META_WEBHOOK_VERIFY_TOKEN: 'ver',
         META_GRAPH_API_VERSION: 'v24.0'
-      }
+      })
     }))
     const moduleRef = await Test.createTestingModule({ imports: [MetaPlatformModule] }).compile()
 
@@ -36,12 +36,12 @@ describe('MetaPlatformModule', () => {
     // The first test left its env in the registry: the factory must read this one
     jest.resetModules()
     jest.doMock('@platform/core/config/env', () => ({
-      env: {
+      envSource: () => ({
         META_APP_SECRET: 'sec',
         META_INSTAGRAM_APP_SECRET: 'ig-sec',
         META_WEBHOOK_VERIFY_TOKEN: 'ver',
         META_GRAPH_API_VERSION: 'v24.0'
-      }
+      })
     }))
     const moduleRef = await Test.createTestingModule({ imports: [MetaPlatformModule] }).compile()
 
@@ -65,5 +65,18 @@ describe('MetaPlatformModule', () => {
   // The app secret is the key that forges every webhook: the plugins get the client, not the secret
   it('exports the client and not the config that holds the secret', () => {
     expect(Reflect.getMetadata('exports', MetaPlatformModule)).toEqual([MetaGraphClient])
+  })
+
+  it('refuses to build in a deployed environment without the secret and the verify token', async () => {
+    jest.resetModules()
+    jest.doMock('@platform/core/config/env', () => ({
+      envSource: () => ({ NODE_ENV: 'production' })
+    }))
+    const { MetaPlatformModule: Fresh } = await import('./meta-platform.module')
+
+    await expect(Test.createTestingModule({ imports: [Fresh] }).compile()).rejects.toThrow(
+      /META_APP_SECRET/
+    )
+    jest.dontMock('@platform/core/config/env')
   })
 })

@@ -1,6 +1,7 @@
 export * from './graph-failure'
 export * from './inbound-text'
 export * from './meta-app-config'
+export * from './meta-env'
 export * from './meta-graph.client'
 export * from './meta-login'
 export * from './meta-platform.module'
