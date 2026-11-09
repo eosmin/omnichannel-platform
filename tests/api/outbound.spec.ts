@@ -672,9 +672,10 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.QUEUED)
     })
 
-    it('tries again after a network error, and fails the message on the last attempt', async () => {
+    it('tries again after a refusal the plugin says can be repeated, and fails the message on the last attempt', async () => {
       const reply = await queuedReply()
-      sendMessage = () => Promise.reject(new Error('socket hang up'))
+      sendMessage = () =>
+        Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }))
 
       await expect(sender.send(job(reply), false)).rejects.toThrow(
         `sending a reply failed: ${ErrorCodes.CHANNEL_MESSAGE_FAILED}`
@@ -689,6 +690,116 @@ describe('Replies on their way to a channel', () => {
       expect(eventsOf(Events.MESSAGE_FAILED).map(item => item.payload.errorCode)).toEqual([
         ErrorCodes.CHANNEL_MESSAGE_FAILED
       ])
+    })
+
+    describe('a doubt is never sent again behind the customer (the provider has no key to stop it)', () => {
+      const doubts: [string, Error][] = [
+        ['a timeout of the worker', new Error('the call to the provider timed out')],
+        ["an error that is not the plugin's word", new Error('socket hang up')],
+        [
+          'a plugin that says retry but also that the outcome is unknown',
+          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+            retryable: true,
+            outcomeUnknown: true
+          })
+        ]
+      ]
+
+      it.each(doubts)(
+        'sends a text once after %s, even with attempts left',
+        async (_name, failure) => {
+          const reply = await queuedReply()
+          sendMessage = () => {
+            sent.push({} as SendMessageParams)
+            return Promise.reject(failure)
+          }
+
+          await sender.send(job(reply), false)
+
+          expect(sent).toHaveLength(1)
+          const message = await owner.message.findUniqueOrThrow({
+            where: { id: reply.id },
+            select: { deliveryStatus: true, failureDefinitive: true }
+          })
+          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+          // It may have gone: the agent can send it again, not throw it away
+          expect(message.failureDefinitive).toBe(false)
+        }
+      )
+
+      it('does not try the files that follow a file the provider did not answer for, and leaves them to be sent again', async () => {
+        const reply = await queuedReply({
+          pluginId: MULTI_MEDIA_CHANNEL_ID,
+          type: MessageType.IMAGE
+        })
+        for (let position = 0; position < 3; position += 1) {
+          await owner.media.create({
+            data: {
+              id: randomUUID(),
+              storeId: reply.storeId,
+              messageId: reply.id,
+              purpose: 'message',
+              key: `stores/${reply.storeId}/messages/${randomUUID()}/p.png`,
+              filename: 'p.png',
+              contentType: 'image/png',
+              fileSize: 10,
+              status: 'clean',
+              position,
+              deliveryStatus: 'queued'
+            }
+          })
+        }
+        mediaFailure = () => new Error('the call to the provider timed out')
+
+        await sender.send(job(reply), false)
+
+        // One call, not one full timeout for each file
+        expect(sentMedia).toHaveLength(1)
+        const rows = await owner.media.findMany({
+          where: { messageId: reply.id },
+          orderBy: { position: 'asc' },
+          select: { deliveryStatus: true }
+        })
+        expect(rows.map(row => row.deliveryStatus)).toEqual(['failed', 'failed', 'failed'])
+        const message = await owner.message.findUniqueOrThrow({
+          where: { id: reply.id },
+          select: { failureDefinitive: true }
+        })
+        expect(message.failureDefinitive).toBe(false)
+      })
+
+      it.each(doubts)(
+        'sends a file once after %s, even with attempts left',
+        async (_name, failure) => {
+          const reply = await queuedReply({ pluginId: MEDIA_CHANNEL_ID, type: MessageType.IMAGE })
+          await owner.media.create({
+            data: {
+              id: randomUUID(),
+              storeId: reply.storeId,
+              messageId: reply.id,
+              purpose: 'message',
+              key: `stores/${reply.storeId}/messages/${randomUUID()}/p.png`,
+              filename: 'p.png',
+              contentType: 'image/png',
+              fileSize: 10,
+              status: 'clean',
+              position: 0,
+              deliveryStatus: 'queued'
+            }
+          })
+          mediaFailure = () => failure
+
+          await sender.send(job(reply), false)
+
+          expect(sentMedia).toHaveLength(1)
+          const message = await owner.message.findUniqueOrThrow({
+            where: { id: reply.id },
+            select: { deliveryStatus: true, failureDefinitive: true }
+          })
+          expect(message.deliveryStatus).toBe(DeliveryStatus.FAILED)
+          expect(message.failureDefinitive).toBe(false)
+        }
+      )
     })
 
     it('fails at once, without a retry, what the plugin refuses without saying it can be retried', async () => {
@@ -770,9 +881,10 @@ describe('Replies on their way to a channel', () => {
         expect(await definitive(both.id)).toBe(false)
       })
 
-      it('is not definitive when the outcome is unknown: a timeout, a network error, or a plugin that says so', async () => {
+      it('is not definitive when the outcome is unknown: a retry the plugin allows that fails for good, or a plugin that says so', async () => {
         const network = await queuedReply()
-        sendMessage = () => Promise.reject(new Error('socket hang up'))
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }))
         await expect(sender.send(job(network), false)).rejects.toThrow()
         await sender.send(job(network), true)
         const unknown = await queuedReply()
@@ -791,7 +903,8 @@ describe('Replies on their way to a channel', () => {
 
       it('is not definitive when an earlier attempt may have gone, whatever the last one says', async () => {
         const reply = await queuedReply()
-        sendMessage = () => Promise.reject(new Error('socket hang up'))
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }))
         await expect(sender.send(job(reply), false)).rejects.toThrow()
         sendMessage = () =>
           Promise.reject(new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, { refused: true }))
@@ -879,7 +992,8 @@ describe('Replies on their way to a channel', () => {
 
       it('is not kept once the reply is sent, and a reply that went has none', async () => {
         const reply = await queuedReply()
-        sendMessage = () => Promise.reject(new Error('socket hang up'))
+        sendMessage = () =>
+          Promise.reject(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }))
         await expect(sender.send(job(reply), false)).rejects.toThrow()
         sendMessage = accept
 
@@ -1016,7 +1130,13 @@ describe('Replies on their way to a channel', () => {
 
     it('rethrows for the retry an error that carries nothing the provider said', async () => {
       const reply = await queuedReply()
-      sendMessage = () => Promise.reject(new Error('401 Bearer EAAB-secret-token'))
+      // A retry the plugin allows, whose own text holds a token
+      sendMessage = () =>
+        Promise.reject(
+          Object.assign(new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }), {
+            message: '401 Bearer EAAB-secret-token'
+          })
+        )
 
       const error = (await sender
         .send(job(reply), false)

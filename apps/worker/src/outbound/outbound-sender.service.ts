@@ -46,7 +46,7 @@ import { albumSendBudgetMs, pickAlbum } from './album-groups'
 import { isDefinitiveRefusal } from './definitive-refusal'
 import { MessageStatusWriter, type StatusChange } from './message-status.writer'
 import { providerCodesOf } from './provider-codes'
-import { type Refusal, refusalOf, SendAttemptFailed } from './send-refusal'
+import { isRepeatableSend, type Refusal, refusalOf, SendAttemptFailed } from './send-refusal'
 
 // What a plugin answers is checked: it may be a third party's. The provider may report the message
 // as already delivered or read (an email, a widget), never as queued.
@@ -298,7 +298,7 @@ export class OutboundSender {
       // A provider that refuses in so many words did not take the message; a timeout or a network error
       // says nothing about whether it did
       const outcomeKnown = isDefinitiveRefusal(error)
-      if (refused.retryable && !isLastAttempt) {
+      if (isRepeatableSend(error) && !isLastAttempt) {
         // A refusal that was clean, with nothing before it that may have gone, leaves the message as it was; any
         // other keeps the mark: this attempt, or one before it, may have reached the provider
         if (outcomeKnown && !tainted) await this.clearInFlight(storeId, messageId)
@@ -603,6 +603,9 @@ export class OutboundSender {
     // Whether every failure so far is a refusal in so many words (or a check that failed before anything was sent)
     let allRefused = true
     const failures: ErrorCode[] = []
+    // The provider did not answer (the worker's own timeout, or an error that is not the plugin's): the files that
+    // follow are not tried in this attempt, so that one hung provider does not cost a full timeout for each of them
+    let providerSilent = false
     // What the first file got, from this attempt; the caption goes with it
     let firstAccepted: z.infer<typeof resultSchema> | null = null
     // The images of this message go together when the channel sends an album: the files an album took in (or left
@@ -625,6 +628,14 @@ export class OutboundSender {
             ? (file.earlierErrorCode as ErrorCode)
             : ErrorCodes.CHANNEL_MESSAGE_FAILED
         )
+        continue
+      }
+      if (providerSilent) {
+        // Nothing was sent for it, so it can be sent again by the agent, in its order
+        await this.markFile(storeId, messageId, file.id, {
+          failedWith: ErrorCodes.CHANNEL_MESSAGE_FAILED
+        })
+        failures.push(ErrorCodes.CHANNEL_MESSAGE_FAILED)
         continue
       }
       if (!file.isClean) {
@@ -793,7 +804,7 @@ export class OutboundSender {
         // A provider that refuses in so many words did not take the file; a timeout or a network error says
         // nothing about whether it did
         const outcomeKnown = isDefinitiveRefusal(error)
-        if (refused.retryable && !args.isLastAttempt) {
+        if (isRepeatableSend(error) && !args.isLastAttempt) {
           // A clean refusal with nothing before it that may have gone leaves the message as it was
           if (outcomeKnown && allRefused && !args.tainted && !anySent) {
             await this.clearInFlight(storeId, messageId)
@@ -802,6 +813,7 @@ export class OutboundSender {
           throw new SendAttemptFailed(refused.code, error)
         }
         if (!outcomeKnown) allRefused = false
+        if (!(error instanceof PluginError)) providerSilent = true
         await this.markFile(storeId, messageId, file.id, { failedWith: refused.code })
         failures.push(refused.code)
       }
@@ -906,7 +918,7 @@ export class OutboundSender {
       // own word that it can be repeated, with the outcome not in doubt, is taken (a throttle, or images that could
       // not be stored). Anything else, a timeout of the worker or an error that is not the plugin's included,
       // may have reached the customer: the files fail as ones that may have gone and the agent decides.
-      const repeatable = refused.retryable && error instanceof PluginError && !error.outcomeUnknown
+      const repeatable = isRepeatableSend(error)
       if (repeatable && !args.isLastAttempt) {
         if (outcomeKnown && clearable) await this.clearInFlight(storeId, messageId)
         throw new SendAttemptFailed(refused.code, error)
