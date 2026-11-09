@@ -6,15 +6,16 @@ import { type DragEvent, type ReactElement, useState } from 'react'
 
 import type { MemberDirectoryEntryView, TagView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import {
-  isOfficialChannelId,
-  type OfficialChannelId,
-  RoutingActionTypes
-} from '@platform/core/domain'
+import { RoutingActionTypes } from '@platform/core/domain'
 
 import { moveBy, moveItem, sameOrder } from '../../lib/settings/routing-order'
 import type { RuleView } from '../../lib/settings/routing-requests'
-import { useDeleteRule, useReorderRules, useUpdateRule } from '../../lib/settings/use-routing'
+import {
+  useChannelChoices,
+  useDeleteRule,
+  useReorderRules,
+  useUpdateRule
+} from '../../lib/settings/use-routing'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
@@ -42,6 +43,7 @@ export function RoutingPanel({
   const { storeId, can } = useStore()
   const canManage = can(ClientPermissions.SETTINGS_MANAGE_ROUTING)
   const listsAvailable = can(ClientPermissions.CONVERSATIONS_VIEW)
+  const channels = useChannelChoices(storeId, listsAvailable)
   const reorder = useReorderRules(storeId)
   const [editing, setEditing] = useState<Editing>(null)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -106,6 +108,7 @@ export function RoutingPanel({
               total={shown.length}
               members={members}
               tags={tags}
+              channels={channels.data}
               canManage={canManage}
               busy={reorder.isPending}
               dragging={dragging === rule.id}
@@ -142,6 +145,7 @@ function RuleRow({
   total,
   members,
   tags,
+  channels,
   canManage,
   busy,
   dragging,
@@ -156,6 +160,7 @@ function RuleRow({
   total: number
   members: MemberDirectoryEntryView[]
   tags: TagView[]
+  channels: readonly { pluginId: string; pluginName: string }[] | undefined
   canManage: boolean
   busy: boolean
   dragging: boolean
@@ -226,7 +231,7 @@ function RuleRow({
             </span>
           )}
         </h2>
-        <RuleSummary rule={rule} members={members} tags={tags} />
+        <RuleSummary rule={rule} members={members} tags={tags} channels={channels} />
       </div>
       <div className="flex items-center gap-2">
         {canManage ? (
@@ -290,19 +295,21 @@ function RuleRow({
 function RuleSummary({
   rule,
   members,
-  tags
+  tags,
+  channels
 }: {
   rule: RuleView
   members: MemberDirectoryEntryView[]
   tags: TagView[]
+  // The channels of the store by the name their descriptor gives; none where the person cannot read them
+  channels: readonly { pluginId: string; pluginName: string }[] | undefined
 }): ReactElement {
   const t = useTranslations('settings.routing.summary')
-  const tChannels = useTranslations('settings.routing.channelNames')
   const { channelTypes, tagIds, keywords, outsideBusinessHours } = rule.conditions
   const parts: string[] = []
   if (channelTypes !== undefined) {
     parts.push(
-      t('channels', { list: channelTypes.map(id => channelLabel(tChannels, id)).join(', ') })
+      t('channels', { list: channelTypes.map(id => channelNameOf(channels, id)).join(', ') })
     )
   }
   if (tagIds !== undefined) {
@@ -328,7 +335,10 @@ function RuleSummary({
   )
 }
 
-// A channel id that is not one of the official ones (a plugin) is shown as it is written
-function channelLabel(t: (id: OfficialChannelId) => string, id: string): string {
-  return isOfficialChannelId(id) ? t(id) : id
+// The name the descriptor of the channel gives it; the id as written where the store's list cannot be read
+function channelNameOf(
+  directory: readonly { pluginId: string; pluginName: string }[] | undefined,
+  id: string
+): string {
+  return directory?.find(entry => entry.pluginId === id)?.pluginName ?? id
 }

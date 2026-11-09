@@ -111,7 +111,7 @@ const catalogEntrySchema = z.object({
       // How the channel is named and drawn, and its login: none when the server does not say or the descriptor
       // is not valid (the browser checks it again), never a failure of the page. Until B1b draws the login from
       // `oauth`, the button still follows `facebookLogin` and the Facebook address.
-      descriptor: channelDescriptorSchema.nullable().catch(null),
+      descriptor: channelDescriptorSchema.nullable().optional().catch(null),
       oauth: channelOAuthDescriptorSchema.nullable().catch(null)
     })
     .nullable()

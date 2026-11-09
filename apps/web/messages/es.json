@@ -2184,12 +2184,6 @@
       "on": "Activa",
       "toggle": "Activar o desactivar {name}",
       "edit": "Editar",
-      "channelNames": {
-        "whatsapp": "WhatsApp",
-        "instagram": "Instagram",
-        "messenger": "Messenger",
-        "web_widget": "Widget web"
-      },
       "summary": {
         "always": "Toda conversación",
         "channels": "Canal: {list}",

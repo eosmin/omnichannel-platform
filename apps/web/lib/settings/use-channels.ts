@@ -69,7 +69,7 @@ export function usePluginCatalog(storeId: string): UseQueryResult<PluginCatalogE
     queryFn: ({ signal }) => fetchPluginCatalog(apiClient, storeId, signal),
     select: useCallback(
       (entries: PluginCatalogEntryView[]) =>
-        entries.map(entry => ({ ...entry, name: label(entry.id, entry.name) })),
+        entries.map(entry => ({ ...entry, name: label(entry.channel?.descriptor, entry.name) })),
       [label]
     )
   })

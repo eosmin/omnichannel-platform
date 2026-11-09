@@ -2184,12 +2184,6 @@
       "on": "On",
       "toggle": "Turn {name} on or off",
       "edit": "Edit",
-      "channelNames": {
-        "whatsapp": "WhatsApp",
-        "instagram": "Instagram",
-        "messenger": "Messenger",
-        "web_widget": "Web widget"
-      },
       "summary": {
         "always": "Every conversation",
         "channels": "Channel: {list}",
