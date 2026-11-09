@@ -8,10 +8,13 @@ import {
 } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
+  ChannelIdentityKinds,
   ChannelIds,
+  type ChannelLimits,
   DeliveryStatus,
   MessageType,
   WIDGET_TOKEN_HEADER,
+  WidgetLimits,
   WidgetMetadataKeys
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -92,6 +95,9 @@ export class WebWidgetPlugin implements ChannelPlugin {
   readonly messagingWindow = null
   // The visitor's browser calls the api itself: there is no provider to point at the callback url
   readonly receivesProviderWebhooks = false
+  readonly limits: ChannelLimits = { textMaxLength: WidgetLimits.CONTENT_MAX_LENGTH }
+  // A visitor is an id the widget made up
+  readonly identityKind = ChannelIdentityKinds.OPAQUE
   readonly connectFields = [
     {
       key: 'siteOrigins',

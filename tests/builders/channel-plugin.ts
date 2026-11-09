@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 
 import { CapabilityOfMediaKind, ChannelMediaKinds } from '@platform/core/channel-media'
-import { DeliveryStatus, MessageType } from '@platform/core/domain'
+import { ChannelIdentityKinds, DeliveryStatus, MessageType } from '@platform/core/domain'
 import {
   ChannelCapability,
   type ChannelContext,
@@ -49,6 +49,8 @@ export function buildChannelPlugin(overrides: Partial<ChannelPlugin> = {}): Chan
       ChannelCapability.DELIVERY_RECEIPTS,
       ChannelCapability.MESSAGING_WINDOW
     ],
+    limits: { textMaxLength: 4096 },
+    identityKind: ChannelIdentityKinds.OPAQUE,
     messagingWindow: { hours: 24, requiresTemplateWhenClosed: false },
     connectFields: [
       {

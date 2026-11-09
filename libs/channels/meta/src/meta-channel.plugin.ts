@@ -13,13 +13,15 @@ import {
 } from '@platform/core/channel-media'
 import {
   CaptionState,
+  ChannelIdentityKinds,
+  type ChannelLimits,
   ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
   type MetaGraphOrigin,
   MetaMessaging,
-  MetaUpload,
   MetaSubscription,
+  MetaUpload,
   type MetaWebhookApp,
   type TokenInspection
 } from '@platform/core/domain'
@@ -103,6 +105,10 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
   abstract readonly id: string
   abstract readonly name: string
   abstract readonly capabilities: readonly ChannelCapabilityType[]
+  // The longest text of a message on this channel (the two differ)
+  abstract readonly limits: ChannelLimits
+  // A page-scoped id the provider hands out: kept as it came
+  readonly identityKind = ChannelIdentityKinds.OPAQUE
   // One token names the account (see metaTokenCredentialsSchema); each channel words its label
   abstract readonly connectFields: readonly ConnectField[]
   readonly receivesProviderWebhooks = true

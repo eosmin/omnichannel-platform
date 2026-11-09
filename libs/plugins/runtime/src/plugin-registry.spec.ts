@@ -4,6 +4,7 @@ import { ErrorCodes } from '@platform/core/errors'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
+  ChannelIdentityKinds,
   type ChannelPlugin
 } from '@platform/plugins/sdk'
 
@@ -22,6 +23,8 @@ function channel(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin {
     type: 'channel',
     capabilities: [ChannelCapability.TEXT],
     messagingWindow: null,
+    limits: { textMaxLength: 100 },
+    identityKind: ChannelIdentityKinds.OPAQUE,
     connectFields: [],
     receivesProviderWebhooks: false,
     connect: fail,

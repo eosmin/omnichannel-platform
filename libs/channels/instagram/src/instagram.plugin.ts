@@ -6,6 +6,7 @@ import { InstagramMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
+  type ChannelLimits,
   InstagramApi,
   MetaGraph,
   MetaMessaging,
@@ -37,6 +38,7 @@ function refused(failedCheck: PluginCheck): PluginError {
 export class InstagramPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.INSTAGRAM
   readonly name = 'Instagram Direct'
+  readonly limits: ChannelLimits = { textMaxLength: 1000 }
   readonly connectFields = [
     {
       key: 'accessToken',
