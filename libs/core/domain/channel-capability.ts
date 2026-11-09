@@ -40,6 +40,16 @@ export const ChannelIdentityKinds = {
 } as const
 export type ChannelIdentityKind = (typeof ChannelIdentityKinds)[keyof typeof ChannelIdentityKinds]
 
+// What the registry keeps of `ChannelLimits` after it checked it: the caption is always present or null. This is
+// what the core, the api and the worker read; nobody can change it (the registry freezes it).
+export interface ChannelLimitsView {
+  readonly textMaxLength: number
+  readonly caption: {
+    readonly maxLength: number
+    readonly withoutCaption: readonly MessageType[]
+  } | null
+}
+
 // What a channel holds of the text of a message, declared by its plugin. `POST /messages` caps at
 // MessageLimits.CONTENT_MAX_LENGTH, so a plugin cannot declare more than the platform stores.
 export interface ChannelLimits {

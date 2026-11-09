@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import {
   CHANNEL_ID_PATTERN,
   type ChannelIdentityKind,
+  type ChannelLimitsView,
   isOfficialChannelId
 } from '@platform/core/domain'
 import {
@@ -22,11 +23,7 @@ import {
   printable,
   snapshotCapabilities
 } from './contract-rules'
-import {
-  type ChannelLimitsSnapshot,
-  snapshotChannelLimits,
-  snapshotIdentityKind
-} from './limits-snapshot'
+import { snapshotChannelLimits, snapshotIdentityKind } from './limits-snapshot'
 import { type ChannelMediaSnapshot, snapshotChannelMedia } from './media-snapshot'
 import { type ChannelOAuthSnapshot, snapshotChannelOAuth } from './oauth-snapshot'
 
@@ -72,7 +69,7 @@ interface Entry {
   // The files the plugin takes, checked and copied at registration; null when it declares no kind of file
   media: ChannelMediaSnapshot | null
   // What the plugin declared for the text of a message and for the handle of a customer, checked and copied
-  limits: ChannelLimitsSnapshot
+  limits: ChannelLimitsView
   identityKind: ChannelIdentityKind
   storeIds: ReadonlySet<string> | null
 }
@@ -188,7 +185,7 @@ export class PluginRegistry {
   }
 
   // The text limits the plugin declared when it registered, or null when it is not registered
-  limitsOf(pluginId: string): ChannelLimitsSnapshot | null {
+  limitsOf(pluginId: string): ChannelLimitsView | null {
     return this.entries.get(pluginId)?.limits ?? null
   }
 

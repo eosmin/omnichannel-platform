@@ -15,7 +15,7 @@ const KIND_OF_TYPE: Readonly<Record<OutboundMediaType, ChannelMediaKind>> = {
 // it registered (a frozen copy) and the switch for several files. null when the plugin declares no rule for the
 // kind: the route then lets one file through and the plugin has the last word.
 export function channelFileLimits(
-  registry: Pick<PluginRegistry, 'mediaOf' | 'capabilitiesOf'>,
+  registry: Pick<PluginRegistry, 'mediaOf' | 'capabilitiesOf' | 'limitsOf'>,
   multiFileEnabled: boolean
 ): (channelType: string, messageType: OutboundMediaType) => ChannelFileLimits | null {
   return (channelType, messageType) => {
@@ -25,6 +25,7 @@ export function channelFileLimits(
       .capabilitiesOf(channelType)
       .includes(ChannelCapability.CAPTION_PER_FILE)
     if (media === null || media === undefined || rule === undefined) return null
+    const text = registry.limitsOf(channelType)
     return {
       maxFiles: maxFilesFor(media.maxFilesPerMessage, multiFileEnabled),
       types: rule.types,
@@ -33,8 +34,9 @@ export function channelFileLimits(
       // text of the message is all there is, and a request for more is refused (409) before anything is queued.
       // A kind with no place for a text (an audio on WhatsApp) takes none under a file other than the first:
       // that one goes apart, and only the text of the message does (`textAfterFile`)
-      captionsPerFile: carries && !carriesNoCaption(channelType, messageType),
-      textAfterFile: carries
+      captionsPerFile: carries && !carriesNoCaption(text, messageType),
+      textAfterFile: carries,
+      text
     }
   }
 }

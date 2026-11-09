@@ -7,12 +7,13 @@ import {
   AssignmentReasons,
   AuthorType,
   CaptionState,
+  type ChannelCapabilityType,
+  type ChannelLimitsView,
   ConversationReopenedByReply,
   ConversationStatus,
   ConversationStatusReasons,
-  type ChannelCapabilityType,
-  DeliveryStatus,
   type CursorPage,
+  DeliveryStatus,
   MessageType,
   ResendableCaptionStates
 } from '@platform/core/domain'
@@ -106,6 +107,9 @@ export interface ChannelFileLimits {
   // Whether the text of the message may go after its first file, as a message of its own, where the kind has no
   // place for one (an audio on WhatsApp): a channel that carries the text of a file itself does it
   textAfterFile?: boolean
+  // What the channel holds of a text, as its plugin declared it: the caption rule of this kind and the plain
+  // text. null for a plugin that is no longer registered, which holds nothing here (the plugin has the last word)
+  text: ChannelLimitsView | null
 }
 export type ChannelFileLimitsOf = (
   channelType: string,
@@ -627,9 +631,9 @@ export class MessagesService {
     for (const caption of captions) {
       // The text of a file is under it or it is refused (an audio on WhatsApp has no place for one): only the
       // text of the message goes apart, and it has the limit of a plain text
-      requireCaptionFits(conversation.channelType, body.type, caption ?? undefined)
+      requireCaptionFits(limits?.text ?? null, body.type, caption ?? undefined)
     }
-    if (textApart) requireTextFits(conversation.channelType, body.content)
+    if (textApart) requireTextFits(limits?.text ?? null, body.content)
     const maxFiles = limits?.maxFiles ?? MediaMessageLimits.SINGLE_FILE
     if (body.mediaIds.length > maxFiles) {
       throw new PlatformException(
