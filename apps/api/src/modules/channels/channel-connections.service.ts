@@ -48,7 +48,7 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { enumValueOf } from '@platform/core/messaging'
-import { PluginRegistry } from '@platform/plugins/runtime'
+import { type ChannelLimitsSnapshot, PluginRegistry } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
@@ -131,6 +131,9 @@ export type ChannelDirectoryEntry = Pick<
   // What the channel takes in one message of each kind of file it declares (none for a kind it does not
   // take): how many files, which types and how large, so that the composer offers only that
   media: DirectoryMediaLimits[]
+  // The longest text of a message and what goes under a file, as the plugin declared it (null when the
+  // plugin is no longer registered): the composer counts against it
+  limits: ChannelLimitsSnapshot | null
 }
 
 export interface ChannelTestResult {
@@ -358,7 +361,8 @@ export class ChannelConnectionsService {
         ? enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status')
         : ChannelConnectionStatus.ERROR,
       capabilities: this.registry.capabilitiesOf(row.pluginId),
-      media: directoryMedia(row.pluginId, limitsOf)
+      media: directoryMedia(row.pluginId, limitsOf),
+      limits: this.registry.limitsOf(row.pluginId)
     }))
   }
 

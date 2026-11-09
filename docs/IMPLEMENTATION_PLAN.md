@@ -1252,6 +1252,28 @@ Owner decision (2026-11-05, nine questions answered yes): the provider's own log
 **TDD:** `TDD_10 §2`, `TDD_05` (pentest checklist)
 **Done when:** the owner connects Messenger and Instagram from "Connect with Facebook" with no pasted token, in both orders, with the permission he clears in the dialog named instead of an error of Meta; a state that is reused, expired or of another user or store is refused; the pasted-token path still works; and the bundle of the inbox did not grow.
 
+### Step 7.9 — Channel-agnostic core (owner's mandate, 2026-11-09; before Milestone 4)
+
+Core, SDK, web and api-client must not know a channel by name: everything is decided by data the plugin declares
+(its descriptor), so that a third party adds a channel without editing core or UI. Only `libs/channels/*` knows
+its provider. The audit and the PR order are in the owner's reports (`auditoria-agnostico.md`, 28 findings); the
+database has no CHECK or enum that blocks a new plugin id (verified), so no migration is planned.
+- [x] A1 — descriptor in the SDK: `ChannelPlugin.limits` (`ChannelLimits`: text and caption limits) and `identityKind` (`phone | opaque`), checked and copied by the registry at boot (`limits-snapshot.ts`, `limitsOf`, `identityKindOf`), declared by the four official plugins and published in the channel directory (`limits`). The toy third-party plugin suite (`libs/plugins/runtime/src/toy-plugin.spec.ts`, id `acme_chat`) is the lock and grows with each PR below.
+- [ ] A2 — read the limits from the registry: delete `ChannelTextLimits` and `ChannelCaptionRules`; `caption-rules`, the outbound sender and `channel-file-limits` use `limitsOf`; the composer reads `limits` from the directory.
+- [ ] A3 — customer identity by `identityKind`: drop `case ChannelIds.WHATSAPP` in `identity.ts`.
+- [ ] A5 — generic failure reason in place of `PAGE_WITHOUT_INSTAGRAM` (keep the old code as an alias for one release).
+- [ ] B1 — web: connect form, OAuth asset dialog, names and icons, anonymous visitors and composer limits from the descriptor; no channel id in `apps/web` or `libs/api-client`.
+- [ ] A4 — move the Meta and WhatsApp protocol constants, media rules and OAuth constants to `libs/channels/meta` (2-3 mechanical PRs: constants; OAuth; fetch and redaction), each with the CSP, OAuth and env verified.
+- [ ] A6 — `deliveryMode` and `anonymousCustomers`: drop `WEB_WIDGET` from the webhook controller, the typing relay and the media fetcher; move the widget routes into the plugin module.
+- [ ] A7 — the Meta block of `env-schema.ts` moves to the Meta plugin and is composed.
+- [ ] A8 — `ChannelType`/`isOfficialChannelId` leave the UI and builders; the Meta contract suite moves under `libs/channels/meta`.
+- [ ] B2 — CSP image hosts generated at build from the descriptors of the registered plugins (identical to today for the four official ones, checked by a snapshot).
+- [ ] **Known limit, owner: Step 5.6.** The descriptor is read at build and boot: an external channel plugin is added to the official composition and the app is rebuilt, with no change to core or UI code. A DYNAMIC descriptor (served by the api, CSP hosts included) for remote plugins installed while running is part of Step 5.6.
+- [ ] The ratchet `scripts/validate-channel-agnostic.ts` (session da) lowers its baseline in each PR above.
+
+**TDD:** `TDD_10 §6.7`
+**Done when:** the toy plugin suite passes with no edit in core, api, worker or web, and the ratchet baseline is empty outside `libs/channels/*`.
+
 ### Step 7.5 — Load validation — DEFERRED (Phase 2)
 > Out of scope for the v1.2 MVP.
 
@@ -1487,6 +1509,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 7.6 | Internal admin console (core) | deferred (Phase 2) | | |
 | 7.7 | Visual polish | todo | | |
 | 7.8 | Connect with Facebook (OAuth) for Messenger and Instagram | done | #202 (PR 1, foundations), #203 (PR 2, server), #204 (PR 3, screen), #205 (PR 4, repair and e2e); the owner's real test passed 2026-11-06; two measures stay open in the step | 2026-11-06 |
+| 7.9 | Channel-agnostic core | in progress | A1 | |
 | **Milestone 8: Optional enhancements** | | | | |
 | 8.1 | AI assist | deferred (Phase 2) | | |
 | 8.2 | Autonomous chatbot (Scale) | deferred (Phase 2) | | |

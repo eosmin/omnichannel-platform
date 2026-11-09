@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { CaptionState, ContactCardLimits, MediaStatus } from '@platform/core/domain'
+import { CaptionState, ContactCardLimits, MediaStatus, MessageType } from '@platform/core/domain'
 import { PresenceStatus } from '@platform/core/realtime'
 
 // What the api answers, parsed at the edge: the browser never trusts a body it has not checked.
@@ -269,6 +269,20 @@ export const channelDirectoryEntrySchema = z.object({
         captionsPerFile: z.boolean().optional().default(false)
       })
     )
+    .optional(),
+  // The longest text of a message on the channel, and the caption rule when it has one of its own. Absent
+  // from a server that does not say it, and null for a channel whose plugin is gone.
+  limits: z
+    .object({
+      textMaxLength: z.number().int().min(1),
+      caption: z
+        .object({
+          maxLength: z.number().int().min(1),
+          withoutCaption: z.array(z.enum(MessageType))
+        })
+        .nullable()
+    })
+    .nullable()
     .optional()
 })
 export const channelDirectorySchema = z.array(channelDirectoryEntrySchema)

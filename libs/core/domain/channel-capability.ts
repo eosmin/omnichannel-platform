@@ -1,3 +1,5 @@
+import type { MessageType } from './status-enums'
+
 // What a channel plugin can do, by the name the channel directory sends. It lives with the domain
 // constants so that the browser can ask for a capability by name; the plugin SDK re-exports it.
 export const ChannelCapability = {
@@ -28,3 +30,26 @@ export const ChannelCapability = {
 } as const
 
 export type ChannelCapabilityType = (typeof ChannelCapability)[keyof typeof ChannelCapability]
+
+// How the handle of a customer on a channel is read (TDD_10 §6.7.2). A phone is compared as digits, so the same
+// person is the same row however the channel spelled it; an opaque handle (a page-scoped id, a visitor id, a
+// username) is kept as the channel sent it. A plugin says which one it is; the core never asks for its name.
+export const ChannelIdentityKinds = {
+  PHONE: 'phone',
+  OPAQUE: 'opaque'
+} as const
+export type ChannelIdentityKind = (typeof ChannelIdentityKinds)[keyof typeof ChannelIdentityKinds]
+
+// What a channel holds of the text of a message, declared by its plugin. `POST /messages` caps at
+// MessageLimits.CONTENT_MAX_LENGTH, so a plugin cannot declare more than the platform stores.
+export interface ChannelLimits {
+  // The most characters one message takes
+  textMaxLength: number
+  // Only for a channel that carries a text under a file (its caption) with a limit of its own or for no
+  // kind at all. Absent: the text under a file is held to `textMaxLength`.
+  caption?: {
+    maxLength: number
+    // The kinds of file that carry no caption at all
+    withoutCaption: readonly MessageType[]
+  }
+}

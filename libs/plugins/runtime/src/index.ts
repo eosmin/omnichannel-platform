@@ -1,5 +1,6 @@
 export * from './carrier-registry'
 export * from './official-plugins'
+export type { ChannelLimitsSnapshot } from './limits-snapshot'
 export * from './plugin-registry'
 export * from './plugins.module'
 export * from './registered-channel.schema'

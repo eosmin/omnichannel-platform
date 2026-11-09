@@ -6,6 +6,7 @@ import { MessengerMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
   ChannelIds,
+  type ChannelLimits,
   ChannelSetupStepKeys,
   MessengerApi,
   MetaErrorCodes,
@@ -44,6 +45,7 @@ function isNameNotReadable(error: unknown): boolean {
 export class MessengerPlugin extends MetaChannelPlugin {
   readonly id = ChannelIds.MESSENGER
   readonly name = 'Facebook Messenger'
+  readonly limits: ChannelLimits = { textMaxLength: 2000 }
   readonly connectFields = [
     {
       key: 'accessToken',
