@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
-import { API_PREFIX, ApiRoutes } from '@platform/core/api'
-import { MetaOAuth } from '@platform/core/domain'
+import {
+  emptyAsUnset,
+  isDeployedEnvironment,
+  LOCAL_HOSTNAMES,
+  nodeEnvSchema
+} from '@platform/core/env-rules'
 import { isBase64UrlOfBytes, PushLimits } from '@platform/core/notifications'
 
 import { DURATION_PATTERN, durationToSeconds } from './duration'
@@ -14,28 +18,8 @@ import { DURATION_PATTERN, durationToSeconds } from './duration'
 const PLACEHOLDER_JWT_SECRET_PREFIX = 'change-me'
 const PLACEHOLDER_ENCRYPTION_KEY = /^0{64}$/
 const MAX_SESSION_MAX_AGE_SECONDS = 365 * 86_400
-// The app secret Meta issues is 32 characters; the verify token is chosen by the owner
-const MIN_META_SECRET_LENGTH = 16
-const DEPLOYED_ENVIRONMENTS: readonly string[] = ['staging', 'production']
-const LOCAL_HOSTNAMES: readonly string[] = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0']
-
 // A bare address or "Name <address>", the form providers like Resend accept and customers see.
 const SENDER_WITH_NAME = /^([^<>"\r\n]{1,100}?)\s*<([^<>\s]+)>$/
-// A variable passed through empty (`KEY=${KEY:-}`) is a variable not set
-const emptyAsUnset = z
-  .string()
-  .optional()
-  .transform(value => (value === '' ? undefined : value))
-
-// `new URL` throws on what is not an address; the checks below want a value to ask about
-function urlOrNull(value: string): URL | null {
-  try {
-    return new URL(value)
-  } catch {
-    return null
-  }
-}
-
 const senderAddress = z.string().refine(value => {
   const trimmed = value.trim()
   const address = SENDER_WITH_NAME.exec(trimmed)?.[2] ?? trimmed
@@ -65,7 +49,7 @@ export const AppRoles = { API: 'api', WORKER: 'worker' } as const
 
 export const envSchema = z
   .object({
-    NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
+    NODE_ENV: nodeEnvSchema,
     APP_ROLE: z.enum([AppRoles.API, AppRoles.WORKER]).default(AppRoles.API),
     PORT: z.coerce.number().int().min(1).max(65535).default(8080),
     API_URL: z.url(),
@@ -132,32 +116,6 @@ export const envSchema = z
     VAPID_PUBLIC_KEY: emptyAsUnset,
     VAPID_PRIVATE_KEY: emptyAsUnset,
 
-    // Meta (WhatsApp Cloud API, Instagram, Messenger): one app for all three
-    META_APP_ID: z.string().optional(),
-    META_APP_SECRET: z.string().optional(), // Webhook HMAC + OAuth
-    META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
-    // Optional: the secret of a second Meta app that serves Instagram alone (the account of the owner
-    // cannot live in the portfolio that owns the main app). Set, it is the only key that signs Instagram's
-    // webhooks; unset, the main app's does. The verify token is the same one for both apps.
-    META_INSTAGRAM_APP_SECRET: emptyAsUnset,
-    // Optional: the address Facebook sends the browser back to after "Connect with Facebook", which is the
-    // callback of this api and must be registered, exactly as written, in the app's list of valid OAuth
-    // redirect URIs. Set, the button exists (it needs META_APP_ID and META_APP_SECRET); unset, channels are
-    // connected with a pasted token only. Checked below.
-    META_OAUTH_REDIRECT_URI: emptyAsUnset,
-    // Goes into the url of every Graph call, so its shape is checked
-    META_GRAPH_API_VERSION: z
-      .string()
-      .regex(/^v\d+\.\d+$/)
-      .default('v23.0'),
-    // Only for the e2e suite, which points Facebook's Graph host at a fake one it controls. Every
-    // call carries the connection's access token, so a deployed environment refuses it (see below).
-    META_GRAPH_ORIGIN: z
-      .url({ protocol: /^https?$/ })
-      // A path or a trailing slash would break every url built from it
-      .transform(value => new URL(value).origin)
-      .optional(),
-
     // Virus scanning
     CLAMAV_HOST: z.string().default('localhost'),
     CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
@@ -187,7 +145,7 @@ export const envSchema = z
   })
   .check(ctx => {
     const env = ctx.value
-    const isDeployed = DEPLOYED_ENVIRONMENTS.includes(env.NODE_ENV)
+    const isDeployed = isDeployedEnvironment(env.NODE_ENV)
     if (env.SESSION_MAX_AGE > MAX_SESSION_MAX_AGE_SECONDS) {
       // Far enough to be no cap at all, and past a point where Date overflows into an invalid date,
       // which would fail every login with an error nobody can read
@@ -217,66 +175,6 @@ export const envSchema = z
         input: env.RESEND_API_KEY
       })
     }
-    if (env.NODE_ENV !== 'test' && env.META_GRAPH_ORIGIN !== undefined) {
-      // A host of the operator's choosing would receive the access token of every connection. Only the
-      // test environment may name one: any other value of NODE_ENV could be a deployment.
-      ctx.issues.push({
-        code: 'custom',
-        message:
-          'META_GRAPH_ORIGIN is for NODE_ENV=test only: any other environment calls Meta itself',
-        path: ['META_GRAPH_ORIGIN'],
-        input: env.META_GRAPH_ORIGIN
-      })
-    }
-    if (env.META_OAUTH_REDIRECT_URI !== undefined) {
-      const fail = (message: string, path: string, input?: string): void => {
-        ctx.issues.push({ code: 'custom', message, path: [path], input })
-      }
-      const redirect = urlOrNull(env.META_OAUTH_REDIRECT_URI)
-      const callbackPath = `${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
-      if (redirect === null || (redirect.protocol !== 'https:' && redirect.protocol !== 'http:')) {
-        fail('META_OAUTH_REDIRECT_URI must be an http or https address', 'META_OAUTH_REDIRECT_URI')
-      } else {
-        if (
-          redirect.pathname !== callbackPath ||
-          redirect.search !== '' ||
-          redirect.hash !== '' ||
-          // Meta compares the string it is sent, and the URL parser lowercases the host, drops a default port and
-          // resolves dot segments: only an address already written in that form is the one that was checked
-          redirect.href !== env.META_OAUTH_REDIRECT_URI ||
-          redirect.username !== '' ||
-          redirect.password !== ''
-        ) {
-          // Meta compares the address with the registered one byte by byte, and the api answers on one path
-          fail(
-            `META_OAUTH_REDIRECT_URI must be the callback of this api, ${callbackPath}, with no query, fragment or credentials`,
-            'META_OAUTH_REDIRECT_URI'
-          )
-        }
-        if (
-          isDeployed &&
-          (redirect.protocol !== 'https:' || LOCAL_HOSTNAMES.includes(redirect.hostname))
-        ) {
-          // The browser comes back to it from Facebook with a code that is worth a token
-          fail(
-            'a deployed environment needs the public https address of the callback in META_OAUTH_REDIRECT_URI',
-            'META_OAUTH_REDIRECT_URI'
-          )
-        }
-      }
-      if (env.META_APP_ID === undefined || !MetaOAuth.ASSET_ID_PATTERN.test(env.META_APP_ID)) {
-        fail('META_OAUTH_REDIRECT_URI needs META_APP_ID, the number of the Meta app', 'META_APP_ID')
-      }
-      if (
-        env.META_APP_SECRET === undefined ||
-        env.META_APP_SECRET.length < MIN_META_SECRET_LENGTH
-      ) {
-        fail(
-          `META_OAUTH_REDIRECT_URI needs META_APP_SECRET (at least ${MIN_META_SECRET_LENGTH} characters) to exchange the code for a token`,
-          'META_APP_SECRET'
-        )
-      }
-    }
     // One key without the other: the push would be off with nothing saying why
     if ((env.VAPID_PUBLIC_KEY === undefined) !== (env.VAPID_PRIVATE_KEY === undefined)) {
       ctx.issues.push({
@@ -302,59 +200,6 @@ export const envSchema = z
       })
     }
     if (!isDeployed) return
-    // Without them the webhook of every Meta channel refuses everything and says nothing
-    for (const name of ['META_APP_SECRET', 'META_WEBHOOK_VERIFY_TOKEN'] as const) {
-      const value = env[name]
-      if (value === undefined || value.length < MIN_META_SECRET_LENGTH) {
-        ctx.issues.push({
-          code: 'custom',
-          message: `a deployed environment needs ${name} (at least ${MIN_META_SECRET_LENGTH} characters) to accept Meta webhooks`,
-          path: [name],
-          input: value
-        })
-      }
-    }
-    if (
-      env.META_APP_SECRET !== undefined &&
-      env.META_APP_SECRET === env.META_WEBHOOK_VERIFY_TOKEN
-    ) {
-      // The verify token is shown to Meta in a form; the app secret signs every webhook
-      ctx.issues.push({
-        code: 'custom',
-        message: 'META_WEBHOOK_VERIFY_TOKEN must not be the same value as META_APP_SECRET',
-        path: ['META_WEBHOOK_VERIFY_TOKEN'],
-        input: env.META_WEBHOOK_VERIFY_TOKEN
-      })
-    }
-    if (env.META_INSTAGRAM_APP_SECRET !== undefined) {
-      if (env.META_INSTAGRAM_APP_SECRET.length < MIN_META_SECRET_LENGTH) {
-        ctx.issues.push({
-          code: 'custom',
-          message: `META_INSTAGRAM_APP_SECRET needs at least ${MIN_META_SECRET_LENGTH} characters when it is set`,
-          path: ['META_INSTAGRAM_APP_SECRET'],
-          input: env.META_INSTAGRAM_APP_SECRET
-        })
-      }
-      if (env.META_INSTAGRAM_APP_SECRET === env.META_APP_SECRET) {
-        // Two apps never share a secret: the same value means the main one was copied, and then a leak of
-        // either key forges both channels
-        ctx.issues.push({
-          code: 'custom',
-          message: 'META_INSTAGRAM_APP_SECRET must not be the same value as META_APP_SECRET',
-          path: ['META_INSTAGRAM_APP_SECRET'],
-          input: env.META_INSTAGRAM_APP_SECRET
-        })
-      }
-      if (env.META_INSTAGRAM_APP_SECRET === env.META_WEBHOOK_VERIFY_TOKEN) {
-        ctx.issues.push({
-          code: 'custom',
-          message:
-            'META_INSTAGRAM_APP_SECRET must not be the same value as META_WEBHOOK_VERIFY_TOKEN',
-          path: ['META_INSTAGRAM_APP_SECRET'],
-          input: env.META_INSTAGRAM_APP_SECRET
-        })
-      }
-    }
     if (env.TRUST_PROXY_HOPS === undefined) {
       // Behind a proxy a missing value is not an error anywhere else: every client would share the
       // address of the proxy, and a handful of logins a minute would lock everybody out

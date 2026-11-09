@@ -213,13 +213,16 @@ describe('PluginsModule', () => {
     jest.resetModules()
     jest.doMock('@platform/core/config/env', () => ({
       env: {
-        META_APP_SECRET: 'wiring-secret',
-        META_WEBHOOK_VERIFY_TOKEN: 'wiring-verify',
-        META_GRAPH_API_VERSION: 'v23.0',
         JWT_SECRET: 'j'.repeat(32),
         WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
         API_URL: 'https://api.example.com'
-      }
+      },
+      // The Meta plugin parses its own block from the source the env module read
+      envSource: () => ({
+        META_APP_SECRET: 'wiring-secret',
+        META_WEBHOOK_VERIFY_TOKEN: 'wiring-verify',
+        META_GRAPH_API_VERSION: 'v23.0'
+      })
     }))
     const { PluginsModule: Fresh } = await import('./plugins.module')
     const { PluginRegistry: FreshRegistry } = await import('./plugin-registry')
