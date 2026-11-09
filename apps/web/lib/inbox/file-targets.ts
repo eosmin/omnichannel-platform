@@ -52,3 +52,6 @@ export function quotedFileOf(
   if (quoted === undefined || mediaId === null || quoted.media.length < 2) return null
   return placeOf(quoted.media, mediaId)
 }
+
+// The id the page gives the element of one file of an album, so that a quote of that file can find it
+export const fileDomId = (mediaId: string): string => `file-${mediaId}`

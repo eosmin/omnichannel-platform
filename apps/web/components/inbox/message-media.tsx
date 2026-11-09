@@ -12,7 +12,7 @@ import type { OutboundMediaType } from '@platform/core/storage'
 import { fileDeliveryOf, isAlbum, sayRetryOnlyFailed } from '../../lib/inbox/album'
 import type { AlbumCaptionLine } from '../../lib/inbox/file-caption'
 import { displayFileNameOf } from '../../lib/inbox/file-label'
-import { fileTargetOf, reactionsUnderFile } from '../../lib/inbox/file-targets'
+import { fileDomId, fileTargetOf, reactionsUnderFile } from '../../lib/inbox/file-targets'
 import { mediaKindOf } from '../../lib/inbox/media-kind'
 import {
   type FileType,
@@ -131,7 +131,11 @@ export function MessageMedia({
           const target =
             fileActions === undefined ? null : fileTargetOf(fileActions.message, file.id)
           return (
-            <div key={file.id} className="group/file relative flex min-w-0 flex-col gap-0.5">
+            <div
+              key={file.id}
+              id={fileDomId(file.id)}
+              className="group/file relative flex min-w-0 scroll-mt-16 flex-col gap-0.5 rounded-md"
+            >
               <MarkOf number={numbers.get(file.id)} />
               {fileActions === undefined ||
               target === null ||
@@ -153,7 +157,7 @@ export function MessageMedia({
                     messageType={messageType}
                     inAlbum={album}
                   />
-                  <div className="bg-background/90 absolute top-1 right-1 rounded-md">
+                  <div className="absolute top-1 right-1">
                     <MessageActionsBar
                       message={fileActions.message}
                       conversationId={fileActions.conversationId}
@@ -161,6 +165,7 @@ export function MessageMedia({
                       userId={fileActions.userId}
                       authorLabel={fileActions.authorLabel}
                       file={{ id: file.id, ...target }}
+                      overlay
                     />
                   </div>
                 </div>

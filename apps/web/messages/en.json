@@ -1254,7 +1254,9 @@
         "failed": "This browser cannot play the audio. Download it to listen.",
         "download": "Download the audio"
       },
-      "newMessages": "{count, plural, one {# new message} other {# new messages}}"
+      "newMessages": "{count, plural, one {# new message} other {# new messages}}",
+      "jumpedMessage": "Original message highlighted",
+      "jumpedPicture": "Original picture highlighted"
     },
     "composer": {
       "readOnly": "You can read this conversation but not answer it.",
