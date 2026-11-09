@@ -2,6 +2,9 @@ import { UnrecoverableError } from 'bullmq'
 
 import { JobNames } from '@platform/core/queues'
 
+import type { MessageChangeSender } from '../../apps/worker/src/outbound/message-change-sender.service'
+import type { OutboundSender } from '../../apps/worker/src/outbound/outbound-sender.service'
+import type { ReactionSender } from '../../apps/worker/src/outbound/reaction-sender.service'
 import type { ReadReceiptSender } from '../../apps/worker/src/outbound/read-receipt-sender.service'
 import type { TypingSender } from '../../apps/worker/src/outbound/typing-sender.service'
 import { OutboundProcessor } from '../../apps/worker/src/processors/outbound.processor'
@@ -15,15 +18,20 @@ const job = (name: string, data: unknown, attemptsMade = 0): ProcessorJob =>
 describe('OutboundProcessor', () => {
   const send = jest.fn().mockResolvedValue(undefined)
   const sendTyping = jest.fn().mockResolvedValue(undefined)
+  const sendReaction = jest.fn().mockResolvedValue(undefined)
+  const sendReply = jest.fn().mockResolvedValue(undefined)
+  const sendEdit = jest.fn().mockResolvedValue(undefined)
+  const sendDeletion = jest.fn().mockResolvedValue(undefined)
+  const sendCaption = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
   } as unknown as ProcessorSupport // test double: runs the work with no metrics
   const processor = new OutboundProcessor(
     support,
-    {} as never, // the replies are not what is tested
-    {} as never, // the reactions are not what is tested
-    {} as never, // the edits are not what is tested
+    { send: sendReply } as unknown as OutboundSender,
+    { send: sendReaction } as unknown as ReactionSender,
+    { sendEdit, sendDeletion, sendCaption } as unknown as MessageChangeSender,
     { send } as unknown as ReadReceiptSender,
     { send: sendTyping } as unknown as TypingSender
   )
@@ -36,6 +44,81 @@ describe('OutboundProcessor', () => {
   beforeEach(() => {
     send.mockClear()
     sendTyping.mockClear()
+    sendReaction.mockClear()
+    sendReply.mockClear()
+    sendEdit.mockClear()
+    sendDeletion.mockClear()
+    sendCaption.mockClear()
+  })
+
+  // What the queue stores is JSON: the job the worker reads is the one that crossed Redis
+  const throughRedis = <T>(data: T): T => JSON.parse(JSON.stringify(data)) as T
+
+  it('hands a reply job to the sender with its correlation id', async () => {
+    const reply = { storeId: ids.storeId, messageId: ids.messageId, correlationId: 'req-1' }
+
+    await processor.process(job(JobNames.SEND_OUTBOUND_MESSAGE, throughRedis(reply)))
+
+    expect(sendReply).toHaveBeenCalledWith(reply, false)
+  })
+
+  it.each([
+    [JobNames.SEND_OUTBOUND_EDIT, sendEdit],
+    [JobNames.SEND_OUTBOUND_DELETE, sendDeletion],
+    [JobNames.SEND_OUTBOUND_CAPTION, sendCaption]
+  ])('hands a %s job to its own sender with every field', async (name, sender) => {
+    const change = {
+      storeId: ids.storeId,
+      messageId: ids.messageId,
+      version: 4,
+      correlationId: 'req-1'
+    }
+
+    await processor.process(job(name, throughRedis(change)))
+
+    expect(sender).toHaveBeenCalledWith(change, false)
+  })
+
+  it('hands a reaction under one file of an album to the sender with that file', async () => {
+    const reaction = {
+      storeId: ids.storeId,
+      messageId: ids.messageId,
+      userId: '3e418d96-b051-4f70-8d74-3d4e5f607182',
+      version: 7,
+      mediaId: '4f529ea7-c162-4081-9e85-4e5f60718293',
+      correlationId: 'req-1'
+    }
+
+    await processor.process(job(JobNames.SEND_OUTBOUND_REACTION, throughRedis(reaction)))
+
+    expect(sendReaction).toHaveBeenCalledWith(reaction, false)
+  })
+
+  it('hands a reaction under a message with no file as it came', async () => {
+    const reaction = {
+      storeId: ids.storeId,
+      messageId: ids.messageId,
+      userId: '3e418d96-b051-4f70-8d74-3d4e5f607182',
+      version: 7
+    }
+
+    await processor.process(job(JobNames.SEND_OUTBOUND_REACTION, throughRedis(reaction)))
+
+    expect(sendReaction).toHaveBeenCalledWith(reaction, false)
+  })
+
+  it('refuses for good a reaction whose file is no id', async () => {
+    await expect(
+      processor.process(
+        job(JobNames.SEND_OUTBOUND_REACTION, {
+          ...ids,
+          userId: ids.storeId,
+          version: 1,
+          mediaId: 'x'
+        })
+      )
+    ).rejects.toBeInstanceOf(UnrecoverableError)
+    expect(sendReaction).not.toHaveBeenCalled()
   })
 
   it('hands a read receipt job to the sender, with whether it is the last attempt', async () => {
