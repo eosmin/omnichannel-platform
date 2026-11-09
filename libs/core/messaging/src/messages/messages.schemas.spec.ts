@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
-import { MessageType } from '@platform/core/domain'
+import { MessageType, ValidationMessages } from '@platform/core/domain'
 import { MediaMessageLimits } from '@platform/core/storage'
 
-import { createMessageSchema } from './messages.schemas'
+import { createMessageSchema, reactToMessageSchema } from './messages.schemas'
 
 const media = (over: Record<string, unknown> = {}) => ({
   type: MessageType.IMAGE,
@@ -71,4 +71,23 @@ describe('createMessageSchema, a message with a file', () => {
       createMessageSchema.safeParse(media({ type: MessageType.TEXT, content: 'hi' })).success
     ).toBe(false)
   })
+})
+
+describe('reactToMessageSchema', () => {
+  it.each(['👍', '👍🏽', '🇲🇽', '👨‍👩‍👧‍👦'])('takes %s', emoji => {
+    expect(reactToMessageSchema.safeParse({ emoji }).success).toBe(true)
+  })
+
+  it('takes null, which takes the reaction back', () => {
+    expect(reactToMessageSchema.safeParse({ emoji: null }).success).toBe(true)
+  })
+
+  it.each(['abc', '<b>', 'x😀', '😀😀', '😀 ', '😀\u200B', '', ' ', '😀\n', '1', 'x'.repeat(40)])(
+    'refuses %j with the named message',
+    emoji => {
+      const parsed = reactToMessageSchema.safeParse({ emoji })
+      expect(parsed.success).toBe(false)
+      expect(parsed.error?.issues[0]?.message).toBe(ValidationMessages.EMOJI_NOT_SINGLE)
+    }
+  )
 })

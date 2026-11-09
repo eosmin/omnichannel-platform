@@ -2,13 +2,14 @@ import { z } from 'zod'
 
 import {
   InboundLimits,
-  isWholeEmoji,
   idempotencyKeySchema,
+  isSingleEmoji,
   MessageLimits,
   MessageType,
   MisleadingTextPattern,
   PaginationLimits,
-  uuidSchema
+  uuidSchema,
+  ValidationMessages
 } from '@platform/core/domain'
 import { MediaMessageLimits } from '@platform/core/storage'
 
@@ -142,9 +143,9 @@ export const listMessagesQuerySchema = z.strictObject({
 export const reactToMessageSchema = z.strictObject({
   emoji: z
     .string()
-    .max(InboundLimits.EMOJI_MAX_LENGTH)
-    .refine(value => isWholeEmoji(value, InboundLimits.EMOJI_MAX_LENGTH), {
-      message: 'is not a whole emoji'
+    // What reaches the customer is one emoji, not the lax rule for what a customer sends us
+    .refine(value => isSingleEmoji(value, InboundLimits.EMOJI_MAX_LENGTH), {
+      message: ValidationMessages.EMOJI_NOT_SINGLE
     })
     .nullable(),
   // The file of an album the reaction is under; none: the message itself

@@ -1,5 +1,6 @@
 import {
   InboundLimits,
+  isSingleEmoji,
   WHATSAPP_USER_ID_PATTERN,
   WhatsAppApi,
   WhatsAppInteractiveTypes,
@@ -242,7 +243,7 @@ export function reactionPayload(params: SendReactionParams): object {
     refuse()
   }
   // The core checks the emoji too; a plugin does not trust its caller, as the other builders do not
-  if (emoji !== null && (emoji.trim() === '' || emoji.length > InboundLimits.EMOJI_MAX_LENGTH)) {
+  if (emoji !== null && !isSingleEmoji(emoji, InboundLimits.EMOJI_MAX_LENGTH)) {
     refuse()
   }
   return {
