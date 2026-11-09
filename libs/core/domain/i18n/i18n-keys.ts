@@ -15,6 +15,7 @@ export const NotificationFailureReasons = {
   [NotificationTypes.MESSAGE_FAILED]: [
     ErrorCodes.CHANNEL_WINDOW_EXPIRED,
     ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
+    ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED,
     ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
     ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED,
     ErrorCodes.CHANNEL_FILE_TOO_LARGE,

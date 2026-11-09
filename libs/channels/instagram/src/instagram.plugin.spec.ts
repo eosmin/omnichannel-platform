@@ -1303,14 +1303,13 @@ describe('InstagramPlugin, an album in one message', () => {
       expect(JSON.stringify(failure)).not.toContain('secret text')
     })
 
-    it('is the same when the final message is the one refused', async () => {
+    it("keeps a permission refused by the final message as the connection's: that call sends text too", async () => {
       const { plugin, post, upload } = build()
       upload.mockResolvedValue({ attachment_id: 'a' })
       post.mockRejectedValue(denied())
 
       await expect(send(plugin, [image(), image()])).rejects.toMatchObject({
-        code: ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED,
-        refused: true,
+        code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
         step: 'send',
         providerSubcode: 2534096
       })

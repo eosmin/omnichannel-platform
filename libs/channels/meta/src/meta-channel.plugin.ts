@@ -16,7 +16,6 @@ import {
   ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
-  MetaErrorCodes,
   type MetaGraphOrigin,
   MetaMessaging,
   MetaUpload,
@@ -52,6 +51,7 @@ import {
   type TypingParams
 } from '@platform/plugins/sdk'
 
+import { isPermissionCode } from './graph-failure'
 import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
 import { messagingToEvents } from './meta-messaging-events'
@@ -647,23 +647,23 @@ function refuseFile(rule: ChannelMediaRule, contentType: string, size: number): 
   throw new PluginError(ErrorCodeOfMediaProblem[problem], { retryable: false })
 }
 
-// A permission Meta says is missing (code 10, or 200 to 299) when it refused one feature of a token that sends text is
-// not a bad token: it is a permission this feature lacks. It is named so, and nothing about the connection changes.
+// A permission Meta says is missing while it refused one feature of a token that sends text is not a bad token: it is a
+// permission this feature lacks. It is named so, and nothing about the connection changes. Only for a step that is
+// that feature's own (the storing of an image): the final message is the call that sends text, and a permission
+// refused there is the connection's.
 function isPermissionRefusal(error: PluginError): boolean {
-  const code = error.providerCode
   return (
     error.code === ErrorCodes.CHANNEL_CREDENTIALS_INVALID &&
-    code !== undefined &&
-    (code === MetaErrorCodes.PERMISSION_DENIED ||
-      (code >= MetaErrorCodes.PERMISSION_RANGE_START &&
-        code <= MetaErrorCodes.PERMISSION_RANGE_END))
+    error.providerCode !== undefined &&
+    isPermissionCode(error.providerCode)
   )
 }
 
 // The same error with the step that failed named, for the logs. Only the fields a PluginError keeps are copied, so
 // nothing the provider said travels with it; `refused` is set when the caller knows nothing reached the customer.
 function withStep(error: PluginError, step: string, extra: { refused?: boolean }): PluginError {
-  const feature = isPermissionRefusal(error)
+  // `refused` is what says that the step stored a file and sent nothing: only then is a permission the feature's
+  const feature = extra.refused === true && isPermissionRefusal(error)
   return new PluginError(
     feature ? ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED : (error.code as PluginErrorCode),
     {
