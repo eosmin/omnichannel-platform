@@ -1055,7 +1055,7 @@
         "media": "The customer sent a file that could not be fetched",
         "notice": "The customer sent content that this channel does not let you view. To see it, open it from the channel's account or phone."
       },
-      "unsupportedGroup": "The customer sent {count} items that this channel does not let you view. To see them, open them from the channel's account or phone.",
+      "unsupportedGroup": "The customer sent <num>{count}</num> items that this channel does not let you view. To see them, open them from the channel's account or phone.",
       "captionFailed": "The file was sent, but the text under it was not",
       "captionUnconfirmed": "The file was sent, but the text under it may not have been. Check the chat before sending the text again",
       "captionQueued": "Sending the text under the file",

@@ -2,7 +2,7 @@ import type { MessageView } from '@platform/api-client'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { ChannelCapability } from '@platform/core/domain'
 
-import { type ActionViewer, hasAnyAction, messageActionsOf } from './message-actions'
+import { type ActionViewer, hasAnyAction, messageActionsOf, sideActionsOf } from './message-actions'
 
 const ME = 'user-me'
 const OTHER = 'user-other'
@@ -381,5 +381,45 @@ describe('messageActionsOf reply', () => {
 
   it('counts as an action of the bar', () => {
     expect(hasAnyAction(messageActionsOf(customer(), viewer(AGENT, QUOTING)))).toBe(true)
+  })
+})
+
+describe('sideActionsOf', () => {
+  const file = (id: string, position: number) =>
+    ({
+      id,
+      targetable: true,
+      filename: `${id}.png`,
+      contentType: 'image/png',
+      position
+    }) as unknown as MessageView['media'][number]
+  const several = message({ media: [file('a', 0), file('b', 1)] })
+  const all = messageActionsOf(
+    several,
+    viewer(
+      [...AGENT, Permissions.MESSAGES_DELETE],
+      [...ALL_CAPABILITIES, ChannelCapability.REPLY_TO]
+    )
+  )
+
+  it("drops answer and react beside the bubble of a reply with several pictures, and keeps the message's own actions", () => {
+    expect(all.reply && all.react && all.remove).toBe(true)
+    const side = sideActionsOf(several, all)
+
+    expect(side.reply).toBe(false)
+    expect(side.react).toBe(false)
+    expect(side.remove).toBe(true)
+  })
+
+  it('leaves the actions of a message with one picture as they are', () => {
+    const one = message({ media: [file('a', 0)] })
+
+    expect(sideActionsOf(one, all)).toEqual(all)
+  })
+
+  it('leaves no bar beside the bubble when answer and react were all it had', () => {
+    const side = sideActionsOf(several, { ...all, remove: false, edit: false })
+
+    expect(hasAnyAction(side)).toBe(false)
   })
 })

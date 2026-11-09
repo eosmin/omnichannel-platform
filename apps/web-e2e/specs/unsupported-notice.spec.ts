@@ -54,8 +54,12 @@ test('one notice says the same for every kind of content, and consecutive ones a
       'order'
     ])
     await page.goto(AppPaths.store.conversation(storeId, many))
-    const three = thread.unsupportedGroup.replace('{count}', '3')
+    const three = thread.unsupportedGroup.replace('<num>{count}</num>', '3')
+    // The tag of the highlight is gone from the sentence that is looked for (or the replace did nothing)
+    expect(three).not.toContain('<')
     await expect(page.getByText(three)).toHaveCount(1)
+    // The number is what the agent looks for: it stands out of the sentence
+    await expect(page.getByText(three).locator('strong')).toHaveText('3')
     // The text between them ends the run: the last one is a notice of its own
     await expect(page.getByText('a plain text')).toHaveCount(1)
     await expect(page.getByText(thread.unsupportedKind.notice)).toHaveCount(1)

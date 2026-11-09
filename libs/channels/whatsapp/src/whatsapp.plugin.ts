@@ -5,8 +5,11 @@ import { MetaGraphClient } from '@platform/channels/meta'
 import { WhatsAppMedia } from '@platform/core/channel-media'
 import {
   ChannelConnectFieldKeys,
+  ChannelIdentityKinds,
   ChannelIds,
+  type ChannelLimits,
   DeliveryStatus,
+  MessageType,
   MetaWebhookApps,
   WhatsAppApi,
   WhatsAppLimits,
@@ -149,6 +152,13 @@ export class WhatsAppPlugin implements ChannelPlugin {
   readonly type = PluginTypes.CHANNEL
   readonly messagingWindow = { hours: MESSAGING_WINDOW_HOURS, requiresTemplateWhenClosed: true }
   readonly receivesProviderWebhooks = true
+  // The text of a message and the caption of a file have limits of their own; an audio has no caption
+  readonly limits: ChannelLimits = {
+    textMaxLength: WhatsAppLimits.TEXT_MAX_LENGTH,
+    caption: { maxLength: WhatsAppLimits.CAPTION_MAX_LENGTH, withoutCaption: [MessageType.AUDIO] }
+  }
+  // The handle of a customer is a phone number
+  readonly identityKind = ChannelIdentityKinds.PHONE
   // The three values of the Meta app; `connect` checks them against the Graph API
   readonly connectFields = [
     {

@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { CHANNEL_ID_PATTERN, isOfficialChannelId } from '@platform/core/domain'
+import {
+  CHANNEL_ID_PATTERN,
+  type ChannelIdentityKind,
+  type ChannelLimitsView,
+  isOfficialChannelId
+} from '@platform/core/domain'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
@@ -18,6 +23,7 @@ import {
   printable,
   snapshotCapabilities
 } from './contract-rules'
+import { snapshotChannelLimits, snapshotIdentityKind } from './limits-snapshot'
 import { type ChannelMediaSnapshot, snapshotChannelMedia } from './media-snapshot'
 import { type ChannelOAuthSnapshot, snapshotChannelOAuth } from './oauth-snapshot'
 
@@ -62,6 +68,9 @@ interface Entry {
   oauth: ChannelOAuthSnapshot | null
   // The files the plugin takes, checked and copied at registration; null when it declares no kind of file
   media: ChannelMediaSnapshot | null
+  // What the plugin declared for the text of a message and for the handle of a customer, checked and copied
+  limits: ChannelLimitsView
+  identityKind: ChannelIdentityKind
   storeIds: ReadonlySet<string> | null
 }
 
@@ -97,6 +106,8 @@ export class PluginRegistry {
       manifest: snapshotConnectManifest(plugin, id, capabilities),
       oauth: snapshotChannelOAuth(plugin, id),
       media: snapshotChannelMedia(plugin, id, capabilities),
+      limits: snapshotChannelLimits(plugin, id),
+      identityKind: snapshotIdentityKind(plugin, id),
       storeIds
     })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
@@ -171,6 +182,16 @@ export class PluginRegistry {
   // registered. The scopes are never sent to the browser: only the core builds the address of the dialog.
   oauthOf(pluginId: string): ChannelOAuthSnapshot | null {
     return this.entries.get(pluginId)?.oauth ?? null
+  }
+
+  // The text limits the plugin declared when it registered, or null when it is not registered
+  limitsOf(pluginId: string): ChannelLimitsView | null {
+    return this.entries.get(pluginId)?.limits ?? null
+  }
+
+  // How the plugin said the handle of a customer is read, or null when it is not registered
+  identityKindOf(pluginId: string): ChannelIdentityKind | null {
+    return this.entries.get(pluginId)?.identityKind ?? null
   }
 
   hasCapability(pluginId: string, capability: ChannelPlugin['capabilities'][number]): boolean {

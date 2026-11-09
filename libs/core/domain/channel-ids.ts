@@ -4,9 +4,6 @@ import {
   type ChannelConnectFailureReason,
   ChannelConnectFailureReasons
 } from './errors/channel-connect-failures'
-import { MessageType } from './status-enums'
-import { WhatsAppLimits } from './whatsapp-constants'
-import { WidgetLimits } from './widget-constants'
 
 // The ids of the official channel plugins. A channel is the id of a registered plugin (TDD_10 §6.7),
 // so this list is not the set of all channels: a plugin the owner adds brings an id of its own.
@@ -87,28 +84,6 @@ export const ChannelHealthErrors = {
   // The provider refuses what it accepted before (often a permission or the link of the Page was taken away)
   REQUEST_REJECTED: 'request_rejected'
 } as const
-
-// The most text one message may hold on each official channel (TDD_10 §5). `POST /messages` caps at
-// MessageLimits; the outbound processor checks the channel's own, which is the smaller. A channel
-// that is not here (a plugin of the owner's) is held only by MessageLimits.
-export const ChannelTextLimits: Readonly<Record<string, number>> = {
-  [ChannelIds.WHATSAPP]: WhatsAppLimits.TEXT_MAX_LENGTH,
-  [ChannelIds.MESSENGER]: 2000,
-  [ChannelIds.INSTAGRAM]: 1000,
-  [ChannelIds.WEB_WIDGET]: WidgetLimits.CONTENT_MAX_LENGTH
-}
-
-// What a channel holds for the text under a file (its caption), when that is not the limit of its text:
-// `maxLength`, and the kinds of file that carry no caption at all. A channel that is not here takes the
-// limit of its text. `POST /messages` checks it so that the agent hears of it before the reply is queued.
-export const ChannelCaptionRules: Readonly<
-  Record<string, { maxLength: number; withoutCaption: readonly MessageType[] }>
-> = {
-  [ChannelIds.WHATSAPP]: {
-    maxLength: WhatsAppLimits.CAPTION_MAX_LENGTH,
-    withoutCaption: [MessageType.AUDIO]
-  }
-}
 
 // The send of a reply is one call to the provider, from a job: bounded like the other calls to it
 export const OutboundLimits = {

@@ -1,5 +1,5 @@
 import { type ChannelMediaCapabilities } from '@platform/core/channel-media'
-import type { TokenInspection } from '@platform/core/domain'
+import type { ChannelIdentityKind, ChannelLimits, TokenInspection } from '@platform/core/domain'
 
 import type { ChannelCapabilityType } from './channel-capability'
 import type { ChannelOAuth } from './channel-oauth'
@@ -37,6 +37,12 @@ export interface ChannelPlugin {
   readonly author: string
   readonly type: typeof PluginTypes.CHANNEL
   readonly capabilities: readonly ChannelCapabilityType[]
+
+  // The longest text a message takes on this channel, and what goes under a file. Applied by the core
+  // before a reply is queued and again by the worker; the registry checks it and keeps a copy.
+  readonly limits: ChannelLimits
+  // How the handle of a customer is read: a phone (compared as digits) or opaque (kept as sent)
+  readonly identityKind: ChannelIdentityKind
 
   // Applied by the core: the plugin has no database
   readonly messagingWindow: MessagingWindowPolicy | null

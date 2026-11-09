@@ -13,7 +13,7 @@ import { failureNotesOf, failureStateOf } from '../../lib/inbox/failure-state'
 import { albumCaptionLinesOf } from '../../lib/inbox/file-caption'
 import { reactionsOfMessage } from '../../lib/inbox/file-targets'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
-import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
+import { hasAnyAction, type MessageActions, sideActionsOf } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
 import { drawsWithoutBubble } from '../../lib/inbox/sticker-bubble'
 import {
@@ -188,6 +188,9 @@ function Bubble({
     }))
   ].filter((problem): problem is { text: string; tone: 'red' | 'amber' } => problem !== null)
 
+  // With several pictures each has its own buttons: the bar beside the bubble keeps only the message's own actions
+  const sideActions = sideActionsOf(message, actions)
+
   return (
     <div className={cn('flex flex-col gap-0.5', isCustomer ? 'items-start' : 'items-end')}>
       {showAuthor ? (
@@ -265,11 +268,11 @@ function Bubble({
             )}
           </p>
         </div>
-        {hasAnyAction(actions) ? (
+        {hasAnyAction(sideActions) ? (
           <MessageActionsBar
             message={message}
             conversationId={conversationId}
-            actions={actions}
+            actions={sideActions}
             userId={userId}
             authorLabel={authorLabel}
           />
@@ -422,7 +425,15 @@ function Content({
       {message.unsupportedType === null ? null : (
         <p className="text-muted-foreground text-xs italic">
           {isNoticeType(message.unsupportedType) && noticeCount > 1
-            ? t('unsupportedGroup', { count: noticeCount })
+            ? t.rich('unsupportedGroup', {
+                count: noticeCount,
+                // The number is what the agent looks for: it stands out from the sentence
+                num: chunks => (
+                  <strong className="bg-muted text-foreground rounded px-1 font-semibold tabular-nums">
+                    {chunks}
+                  </strong>
+                )
+              })
             : t(`unsupportedKind.${unsupportedKindOf(message.unsupportedType)}`)}
         </p>
       )}

@@ -4,7 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { MetaAppConfig } from '@platform/channels/meta'
 import { WidgetConfig, WidgetEmbedConfig, widgetTokenKey } from '@platform/channels/web-widget'
-import { ChannelIds } from '@platform/core/domain'
+import { ChannelIdentityKinds, ChannelIds } from '@platform/core/domain'
 import { ChannelCapability, type ChannelPlugin } from '@platform/plugins/sdk'
 
 import { CarrierRegistry } from './carrier-registry'
@@ -25,6 +25,8 @@ class SuitePlugin implements ChannelPlugin {
   readonly type = 'channel' as const
   readonly capabilities = [ChannelCapability.TEXT] as const
   readonly messagingWindow = null
+  readonly limits = { textMaxLength: 100 }
+  readonly identityKind = ChannelIdentityKinds.OPAQUE
   readonly connectFields = []
   readonly receivesProviderWebhooks = false
   connect = unused

@@ -1,8 +1,10 @@
 import type { MessageView } from '@platform/api-client'
 
 import {
+  drawsFileButtons,
   fileTargetOf,
   isNativeAlbumOf,
+  isReactionOfFile,
   quotedFileOf,
   reactionsOfMessage,
   reactionsUnderFile
@@ -35,15 +37,15 @@ const album = (over: Record<string, unknown> = {}) =>
   }) as unknown as Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions' | 'albumNative'>
 
 describe('fileTargetOf', () => {
-  it('is the number of the file among the files, for a file after the first of a reply with several', () => {
+  it('is the number of the file among the files, the first one included, for a reply with several', () => {
     const message = album()
 
+    expect(fileTargetOf(message, 'a')).toEqual({ number: 1, total: 3 })
     expect(fileTargetOf(message, 'b')).toEqual({ number: 2, total: 3 })
     expect(fileTargetOf(message, 'c')).toEqual({ number: 3, total: 3 })
   })
 
-  it('is none for the first file (it is the message), a lone file, or a file of the customer', () => {
-    expect(fileTargetOf(album(), 'a')).toBeNull()
+  it('is none for a lone file or a file with no place', () => {
     expect(fileTargetOf(album({ media: [file('a', 0)] }), 'a')).toBeNull()
     expect(fileTargetOf(album({ media: [file('a', null), file('b', null)] }), 'b')).toBeNull()
     expect(fileTargetOf(album(), 'zzz')).toBeNull()
@@ -143,5 +145,35 @@ describe('quotedFileOf', () => {
   it('knows the number but not the total when the quoted message is not loaded and the api gave the place', () => {
     expect(quotedFileOf(undefined, 'c', 3)).toEqual({ number: 4, total: null })
     expect(quotedFileOf(undefined, null, 3)).toBeNull()
+  })
+})
+
+describe('drawsFileButtons', () => {
+  it('is true for a reply with several files whose first can be told apart: the buttons are the files, not the message', () => {
+    expect(drawsFileButtons(album())).toBe(true)
+  })
+
+  it('is false for one file, a message of the customer, a native album, or files with no place', () => {
+    expect(drawsFileButtons(album({ media: [file('a', 0)] }))).toBe(false)
+    expect(drawsFileButtons(album({ authorType: 'customer' }))).toBe(false)
+    expect(drawsFileButtons(album({ albumNative: true }))).toBe(false)
+    expect(drawsFileButtons(album({ media: [file('a', null), file('b', null)] }))).toBe(false)
+  })
+
+  it('is false when the first file cannot be targeted, so the message keeps its way to a reaction', () => {
+    expect(drawsFileButtons(album({ media: [file('a', 0, false), file('b', 1)] }))).toBe(false)
+  })
+})
+
+describe('isReactionOfFile', () => {
+  it('names the file the api resolved, which for the first file is a reaction stored on the message', () => {
+    expect(isReactionOfFile(reaction('x', null, 'a'), 'a')).toBe(true)
+    expect(isReactionOfFile(reaction('x', 'b'), 'b')).toBe(true)
+    expect(isReactionOfFile(reaction('x', 'b'), 'a')).toBe(false)
+  })
+
+  it('is the reaction of the message when no file is asked', () => {
+    expect(isReactionOfFile(reaction('x', null, null), undefined)).toBe(true)
+    expect(isReactionOfFile(reaction('x', 'b'), undefined)).toBe(false)
   })
 })

@@ -1415,12 +1415,17 @@ describe('The channel connections of a store', () => {
         'capabilities',
         'displayName',
         'id',
+        'limits',
         'media',
         'pluginId',
         'pluginName',
         'status'
       ])
       expect(item?.pluginName).toBe(plugin.name)
+      expect((item as { limits?: unknown } | undefined)?.limits).toEqual({
+        textMaxLength: plugin.limits.textMaxLength,
+        caption: null
+      })
       expect(item?.capabilities.slice().sort()).toEqual([...new Set(plugin.capabilities)].sort())
     })
 
