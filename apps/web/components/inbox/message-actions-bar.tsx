@@ -18,6 +18,7 @@ import type { MessageView } from '@platform/api-client'
 import { AuthorType, QUICK_REACTIONS } from '@platform/core/domain'
 
 import { failureStateOf } from '../../lib/inbox/failure-state'
+import { isReactionOfFile } from '../../lib/inbox/file-targets'
 import type { MessageActions } from '../../lib/inbox/message-actions'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { toast } from '../../lib/toast'
@@ -116,7 +117,7 @@ export function MessageActionsBar({
           reaction =>
             reaction.authorType === String(AuthorType.AGENT) &&
             reaction.authorId === userId &&
-            reaction.mediaId === (file?.id ?? null)
+            isReactionOfFile(reaction, file?.id)
         )?.emoji
 
   const tell = (promise: Promise<unknown>): void => {

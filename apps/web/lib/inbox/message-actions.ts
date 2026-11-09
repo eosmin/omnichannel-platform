@@ -9,6 +9,7 @@ import {
 } from '@platform/core/domain'
 
 import { failureStateOf } from './failure-state'
+import { drawsFileButtons } from './file-targets'
 import { messageKindOf } from './thread-items'
 
 // Who is asking and what the channel of the conversation can do. The interface only decides what to
@@ -157,3 +158,8 @@ export const hasAnyAction = (actions: MessageActions): boolean =>
   actions.discard ||
   actions.viewDeleted ||
   actions.revisions
+
+// What the bar beside the bubble offers: with several pictures the buttons to answer and react are the pictures' own
+// (the first included), so the bar keeps only what is the message's (edit, delete, send again...)
+export const sideActionsOf = (message: MessageView, actions: MessageActions): MessageActions =>
+  drawsFileButtons(message) ? { ...actions, reply: false, react: false } : actions
