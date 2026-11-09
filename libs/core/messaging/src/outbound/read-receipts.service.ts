@@ -20,7 +20,7 @@ export class ReadReceipts {
     this.logger.setContext(ReadReceipts.name)
   }
 
-  // One job for the latest message of the customer that has an id at the channel (Meta marks the
+  // One job for the latest message of the customer that has an id at the channel (the provider marks the
   // earlier ones too). Never on receipt of a webhook: a blue tick says a person read it. Whether the
   // connection is active and its plugin sends read receipts is decided by the worker.
   async queueFor(storeId: string, conversationId: string): Promise<void> {

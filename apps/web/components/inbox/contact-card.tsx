@@ -29,7 +29,7 @@ function Value({
   kind: string | undefined
 }): ReactElement {
   const t = useTranslations('inbox.thread.contacts')
-  // WhatsApp names the kind of a phone or an email from a short list; one it does not know is drawn as it came
+  // The channel names the kind of a phone or an email from a short list; one it does not know is drawn as it came
   const label =
     kind === undefined
       ? undefined

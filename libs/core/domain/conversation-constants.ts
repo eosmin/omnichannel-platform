@@ -99,13 +99,13 @@ export const LocationLinks = {
 } as const
 
 export const MessageLimits = {
-  // The longest text WhatsApp takes in one message; the other channels take less or the same
+  // The longest text any channel takes in one message; the others take less or the same
   CONTENT_MAX_LENGTH: 4096,
   // The name and the address of a place a customer shared, as the thread draws them
   LOCATION_TEXT_MAX_LENGTH: 200,
   IDEMPOTENCY_KEY_MAX_LENGTH: 128,
   MAX_MENTIONS: 10,
-  // A template of WhatsApp: its name, its language code and the values of its numbered variables
+  // A template of the provider: its name, its language code and the values of its numbered variables
   TEMPLATE_NAME_MAX_LENGTH: 512,
   TEMPLATE_LANGUAGE_MAX_LENGTH: 16,
   // How much of the quoted message the bubble of a reply carries
@@ -115,7 +115,7 @@ export const MessageLimits = {
 } as const
 
 // The keys a channel plugin may add to its answer to a send (`ChannelMessageResult.metadata`), and the
-// core keeps. Instagram and Messenger cannot put a caption on a file: the plugin sends it as a second
+// core keeps. Some providers cannot put a caption on a file: the plugin sends it as a second
 // message and gives the id of that one here.
 export const ChannelResultMetadata = {
   CAPTION_EXTERNAL_ID: 'captionExternalId',
@@ -237,7 +237,7 @@ export const InboundLimits = {
   ID_MAX_LENGTH: 255,
   CONTENT_MAX_LENGTH: 65_536,
   MEDIA_REF_MAX_LENGTH: 2048,
-  // Meta takes up to 30 images in one send, so a customer's message can bring as many
+  // A provider takes up to 30 images in one send, so a customer's message can bring as many
   MAX_MEDIA_PER_MESSAGE: 30,
   // The origin of a message (an ad it came from): texts a provider sends are cut to fit, not refused
   ORIGIN_TITLE_MAX_LENGTH: 255,

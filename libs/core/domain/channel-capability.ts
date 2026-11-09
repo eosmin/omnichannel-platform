@@ -23,7 +23,7 @@ export const ChannelCapability = {
   MESSAGING_WINDOW: 'messaging_window',
   CUSTOMER_TYPING: 'customer_typing',
   CUSTOMER_PROFILE: 'customer_profile',
-  // The channel itself carries a different text under each file of a message (WhatsApp: the caption of each
+  // The channel itself carries a different text under each file of a message (the caption of each
   // file). A channel that sends the text of a file as a message of its own does not declare it, and the
   // composer offers it only the one text of the message.
   CAPTION_PER_FILE: 'caption_per_file'

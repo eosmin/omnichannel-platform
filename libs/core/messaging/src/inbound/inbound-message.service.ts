@@ -238,7 +238,7 @@ export class InboundMessageService {
         },
         select: { id: true, authorType: true }
       })) ??
-      // Instagram and Messenger send the caption of a file as a message of its own: the platform
+      // A provider may send the caption of a file as a message of its own: the platform
       // kept its id in the message of the file, and the echo of it is that message, not a new one
       (await tx.message.findFirst({
         where: {
@@ -353,7 +353,7 @@ export class InboundMessageService {
     return file?.message ?? null
   }
 
-  // Meta has no idempotency key, so a caption whose call timed out is neither resent nor written off: it
+  // The provider has no idempotency key, so a caption whose call timed out is neither resent nor written off: it
   // waits as `unconfirmed`. If the provider delivered it, its echo arrives here with an id nobody has; it
   // is that caption when the text is the same, and then it is not a new message of the owner. The oldest
   // waiting caption with that text takes it, and the update names the state it expects so that two echoes

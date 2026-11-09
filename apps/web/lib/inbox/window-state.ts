@@ -6,7 +6,7 @@ const WINDOW_WARNING_MS = 2 * 60 * 60_000
 export type WindowState =
   | { kind: 'open' }
   | { kind: 'closing'; remainingMs: number }
-  // Free text cannot go. `requiresTemplate` says whether a template can: Instagram and Messenger let
+  // Free text cannot go. `requiresTemplate` says whether a template can: some channels let
   // nothing through once the window is over
   | { kind: 'closed'; requiresTemplate: boolean }
 
