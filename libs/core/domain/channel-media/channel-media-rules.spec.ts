@@ -1,4 +1,11 @@
-import { ChannelMediaKinds, frozenMedia } from './channel-media-rules'
+import {
+  bareContentType,
+  type ChannelMediaKind,
+  ChannelMediaKinds,
+  frozenMedia,
+  mediaFileProblem,
+  mediaKindOfContentType
+} from './channel-media-rules'
 
 describe('frozenMedia', () => {
   it('copies and freezes, so the constants of a channel cannot be changed by whoever imports them', () => {
@@ -25,5 +32,59 @@ describe('frozenMedia', () => {
     })
     expect(media.kinds.document).toEqual({ types: null, maxBytes: 5 })
     expect(media.kinds.image).toBeUndefined()
+  })
+})
+
+describe('bareContentType', () => {
+  it('drops the parameters and the case, and trims', () => {
+    expect(bareContentType(' IMAGE/PNG; charset=binary')).toBe('image/png')
+    expect(bareContentType('')).toBe('')
+  })
+})
+
+describe('mediaKindOfContentType', () => {
+  it.each([
+    ['image/png', 'image'],
+    ['IMAGE/JPEG; q=1', 'image'],
+    ['video/mp4', 'video'],
+    ['audio/aac', 'audio'],
+    ['application/pdf', 'document'],
+    ['', 'document']
+  ])('names %s as %s', (contentType, kind) => {
+    expect(mediaKindOfContentType(contentType)).toBe(kind)
+  })
+})
+
+describe('mediaFileProblem', () => {
+  const listed = { types: ['image/png'], maxBytes: 100 }
+  it('takes a listed type up to the largest size, inclusive', () => {
+    expect(mediaFileProblem(listed, 'image/png', 100)).toBeNull()
+    expect(mediaFileProblem(listed, 'Image/PNG; x=1', 1)).toBeNull()
+  })
+  it('names the type first, then an empty size, then a size over the largest', () => {
+    expect(mediaFileProblem(listed, 'image/webp', 0)).toBe('type')
+    expect(mediaFileProblem(listed, 'image/png', 0)).toBe('empty')
+    expect(mediaFileProblem(listed, 'image/png', 101)).toBe('too_large')
+  })
+  it.each([[Number.NaN], [1.5], [-1], [Number.MAX_SAFE_INTEGER + 1]])(
+    'calls %s an empty size',
+    size => {
+      expect(mediaFileProblem(listed, 'image/png', size)).toBe('empty')
+    }
+  )
+  it('accepts any type when the channel lists none', () => {
+    expect(mediaFileProblem({ types: null, maxBytes: 10 }, 'x/y', 10)).toBeNull()
+  })
+})
+
+describe('frozenMedia, the album', () => {
+  it('copies and freezes the album, and has none when none is declared', () => {
+    const kinds: ChannelMediaKind[] = [ChannelMediaKinds.IMAGE]
+    const media = frozenMedia({ maxFilesPerMessage: 10, kinds: {}, album: { kinds, maxFiles: 10 } })
+    kinds.push(ChannelMediaKinds.VIDEO)
+    expect(media.album).toEqual({ kinds: ['image'], maxFiles: 10 })
+    expect(Object.isFrozen(media.album)).toBe(true)
+    expect(Object.isFrozen(media.album?.kinds)).toBe(true)
+    expect(frozenMedia({ maxFilesPerMessage: 1, kinds: {} }).album).toBeUndefined()
   })
 })

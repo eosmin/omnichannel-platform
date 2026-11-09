@@ -7,6 +7,7 @@ import {
   ChannelMediaKinds,
   type ChannelMediaRule,
   MetaAttachmentOfKind,
+  bareContentType,
   mediaFileProblem,
   mediaKindOfContentType
 } from '@platform/core/channel-media'
@@ -34,6 +35,7 @@ import {
   type ChannelMessageResult,
   type ChannelOAuth,
   type ChannelPlugin,
+  ErrorCodeOfMediaProblem,
   type ConnectField,
   type ConnectInput,
   type ConnectResult,
@@ -341,7 +343,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
     if (typeof params.openFile !== 'function') {
       throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
     }
-    const contentType = bareType(params.contentType)
+    const contentType = bareContentType(params.contentType)
     const kind = mediaKindOf(contentType)
     // A kind of file the channel does not declare has no rule (the registry ties the rules to the capabilities):
     // refused here, not left to Meta
@@ -407,7 +409,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
       if (typeof file.openFile !== 'function') {
         throw new PluginError(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, { retryable: false })
       }
-      const contentType = bareType(file.contentType)
+      const contentType = bareContentType(file.contentType)
       const { kind } = mediaKindOf(contentType)
       const rule = this.media.kinds[kind]
       if (rule === undefined || !album.kinds.includes(kind)) {
@@ -641,13 +643,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
 function refuseFile(rule: ChannelMediaRule, contentType: string, size: number): void {
   const problem = mediaFileProblem(rule, contentType, size)
   if (problem === null) return
-  const code =
-    problem === 'type'
-      ? ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED
-      : problem === 'too_large'
-        ? ErrorCodes.CHANNEL_FILE_TOO_LARGE
-        : ErrorCodes.CHANNEL_MESSAGE_FAILED
-  throw new PluginError(code, { retryable: false })
+  throw new PluginError(ErrorCodeOfMediaProblem[problem], { retryable: false })
 }
 
 const MAX_FORM_FILE_NAME = 120
@@ -666,11 +662,6 @@ function plainFileName(name: string): string {
   const dot = plain.lastIndexOf('.')
   const extension = dot > 0 && plain.length - dot <= 10 ? plain.slice(dot) : ''
   return plain.slice(0, MAX_FORM_FILE_NAME - extension.length) + extension
-}
-
-// `image/jpeg; charset=binary` is `image/jpeg`
-function bareType(contentType: string): string {
-  return contentType.split(';')[0]?.trim().toLowerCase() ?? ''
 }
 
 function present(value: string | null | undefined): string | undefined {

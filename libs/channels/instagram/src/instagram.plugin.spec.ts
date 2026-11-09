@@ -1239,7 +1239,15 @@ describe('InstagramPlugin, an album in one message', () => {
       ['me', 'message_attachments'],
       ['me', 'message_attachments']
     ])
+    for (const [call] of upload.mock.calls) {
+      expect(call).toMatchObject({
+        origin: MetaGraph.ORIGIN,
+        token: 'PAGE-token',
+        safeToRepeat: true
+      })
+    }
     expect(post).toHaveBeenCalledTimes(1)
+    expect(post.mock.calls[0]?.[0]).toMatchObject({ origin: MetaGraph.ORIGIN, token: 'PAGE-token' })
     expect(post.mock.calls[0]?.[0].body).toEqual({
       recipient: { id: '99' },
       message: {
@@ -1258,7 +1266,10 @@ describe('InstagramPlugin, an album in one message', () => {
     ['a video', [image(), image({ contentType: 'video/mp4' })]]
   ])('refuses %s before anything is stored or sent', async (_name, files) => {
     const { plugin, post, upload } = build()
-    await expect(send(plugin, files)).rejects.toMatchObject({ outcomeUnknown: false })
+    await expect(send(plugin, files)).rejects.toMatchObject({
+      outcomeUnknown: false,
+      retryable: false
+    })
     expect(upload).not.toHaveBeenCalled()
     expect(post).not.toHaveBeenCalled()
   })

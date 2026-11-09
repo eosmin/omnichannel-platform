@@ -1,11 +1,11 @@
 import {
   type ChannelMediaCapabilities,
-  type MediaFileProblem,
   mediaFileProblem,
   mediaKindOfContentType
 } from '@platform/core/channel-media'
 import { OutboundLimits } from '@platform/core/domain'
-import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
+import type { ErrorCode } from '@platform/core/errors'
+import { ErrorCodeOfMediaProblem } from '@platform/plugins/sdk'
 
 // What the grouping needs to know of a file of a message
 export interface AlbumCandidate {
@@ -51,7 +51,7 @@ export function pickAlbum<T extends AlbumCandidate>(
     if (!album.kinds.includes(kind) || rule === undefined) break
     const problem = mediaFileProblem(rule, file.contentType, file.size)
     if (problem !== null) {
-      picked.rejected.push({ file, code: CODE_OF_PROBLEM[problem] })
+      picked.rejected.push({ file, code: ErrorCodeOfMediaProblem[problem] })
       continue
     }
     if (textOf(file) !== '' && !allowsText(file)) break
@@ -59,12 +59,6 @@ export function pickAlbum<T extends AlbumCandidate>(
     if (picked.group.length === album.maxFiles) break
   }
   return picked
-}
-
-const CODE_OF_PROBLEM: Readonly<Record<MediaFileProblem, ErrorCode>> = {
-  type: ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED,
-  empty: ErrorCodes.CHANNEL_MESSAGE_FAILED,
-  too_large: ErrorCodes.CHANNEL_FILE_TOO_LARGE
 }
 
 // The time an album may take: the plugin stores each image (an upload) and then posts the one message

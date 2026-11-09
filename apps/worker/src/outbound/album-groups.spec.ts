@@ -1,4 +1,5 @@
 import { ChannelMediaKinds, type ChannelMediaCapabilities } from '@platform/core/channel-media'
+import { OutboundLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { type AlbumCandidate, albumSendBudgetMs, pickAlbum } from './album-groups'
@@ -102,10 +103,12 @@ describe('pickAlbum', () => {
 describe('albumSendBudgetMs', () => {
   it('grows with the images, so that it never undercuts the uploads of the plugin', () => {
     expect(albumSendBudgetMs(10)).toBeGreaterThan(albumSendBudgetMs(2))
-    expect(albumSendBudgetMs(2)).toBeGreaterThan(2 * 180_000)
+    expect(albumSendBudgetMs(2)).toBeGreaterThan(2 * OutboundLimits.ALBUM_FILE_TIMEOUT_MS)
   })
 
   it('covers the post of the album and the text that follows it, a call of 15 s each', () => {
-    expect(albumSendBudgetMs(2) - 2 * 180_000).toBeGreaterThanOrEqual(2 * 15_000 + 5_000)
+    expect(albumSendBudgetMs(2) - 2 * OutboundLimits.ALBUM_FILE_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      2 * 15_000 + 5_000
+    )
   })
 })

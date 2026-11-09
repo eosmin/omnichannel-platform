@@ -220,14 +220,14 @@ describe('snapshotChannelMedia', () => {
           'messenger',
           capabilities
         )
-      ).toThrow('invalid media')
+      ).toThrow('the plugin has no sendAlbum')
       expect(() =>
         snapshotChannelMedia(
           plugin(media(), () => undefined),
           'messenger',
           capabilities
         )
-      ).toThrow('invalid media')
+      ).toThrow('sendAlbum is declared with no album')
     })
 
     it('has no album when the plugin declares none', () => {

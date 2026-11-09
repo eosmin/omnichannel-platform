@@ -53,10 +53,15 @@ export interface ChannelMediaAlbum {
 // `OUTBOUND_MULTI_FILE_ENABLED` is on, and the real test with each provider decides whether it stays.
 export const MetaMediaFilesPerMessage = 10
 
+// `image/jpeg; charset=binary` is `image/jpeg`: the type without its parameters, in lower case
+export function bareContentType(contentType: string): string {
+  return (contentType.split(';')[0] ?? '').trim().toLowerCase()
+}
+
 // The kind of file for a content type: images, videos and audios by their family, and anything else is a document.
 // The one rule for the core and the plugins, so that none of them decides on its own what an album may hold.
 export function mediaKindOfContentType(contentType: string): ChannelMediaKind {
-  const type = (contentType.split(';')[0] ?? '').trim().toLowerCase()
+  const type = bareContentType(contentType)
   if (type.startsWith('image/')) return ChannelMediaKinds.IMAGE
   if (type.startsWith('video/')) return ChannelMediaKinds.VIDEO
   if (type.startsWith('audio/')) return ChannelMediaKinds.AUDIO
@@ -73,7 +78,7 @@ export function mediaFileProblem(
   contentType: string,
   size: number
 ): MediaFileProblem | null {
-  const type = (contentType.split(';')[0] ?? '').trim().toLowerCase()
+  const type = bareContentType(contentType)
   if (rule.types !== null && !rule.types.includes(type)) return 'type'
   if (!Number.isSafeInteger(size) || size <= 0) return 'empty'
   if (size > rule.maxBytes) return 'too_large'

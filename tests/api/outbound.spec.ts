@@ -1904,6 +1904,41 @@ describe('Replies on their way to a channel', () => {
         expect(sent).toHaveLength(0)
       })
 
+      it('holds back the text of the message when the album may have gone', async () => {
+        const reply = await album([null, null], 'image/png', 'todo junto')
+        albumFailure = new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+          retryable: false,
+          outcomeUnknown: true
+        })
+
+        await sender.send(job(reply), true)
+
+        // The text would reach the customer before the images, or without them
+        expect(sent).toHaveLength(0)
+        expect((await captionOf(reply.id)).captionState).toBeNull()
+      })
+
+      it('records the state of the caption of an album on the message', async () => {
+        const reply = await album(['mira', null])
+        const registry = app.get(PluginRegistry, { strict: false })
+        const spy = jest.spyOn(registry.get(ALBUM_CHANNEL_ID), 'sendAlbum').mockResolvedValue({
+          externalId: 'album-1',
+          status: 'sent',
+          sentAt: new Date().toISOString(),
+          metadata: { [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: 'text-1' }
+        } as never)
+        try {
+          await sender.send(job(reply), false)
+        } finally {
+          spy.mockRestore()
+        }
+
+        expect(await captionOf(reply.id)).toEqual({
+          captionState: CaptionState.SENT,
+          captionChannelMessageId: 'text-1'
+        })
+      })
+
       describe('when the album fails', () => {
         it('takes a timeout as an unknown outcome: every file fails as one that may have gone, and nothing is sent one by one', async () => {
           const reply = await album([null, null, null])
@@ -2039,8 +2074,11 @@ describe('Replies on their way to a channel', () => {
             .spyOn(registry.get(ALBUM_CHANNEL_ID), 'sendAlbum')
             .mockResolvedValue({ externalId: '', status: 'sent' } as never)
 
-          await sender.send(job(reply), false)
-          spy.mockRestore()
+          try {
+            await sender.send(job(reply), false)
+          } finally {
+            spy.mockRestore()
+          }
 
           expect(sentMedia).toHaveLength(0)
           expect((await messageFlags(reply.id)).failureDefinitive).toBe(false)
