@@ -66,15 +66,25 @@ import {
   messageView,
   QUOTE_SELECT,
   type QuotedMessage,
+  type QuoteRow,
   quotedView,
   type MessageView
 } from './messages.views'
-import { isTargetOfItsOwn } from './provider-message-match'
+import { isDistinctFile } from './provider-message-match'
 import {
   type RenderedTemplate,
   type TemplateMetadata,
   templateMetadataSchema
 } from './template-metadata'
+
+// The message a reply answers, with the file of it that the reply names
+function quoteOf(
+  quoted: ReadonlyMap<string, QuoteRow>,
+  row: { replyToMessageId: string | null; replyToMediaId: string | null }
+): QuotedMessage | null {
+  const quote = row.replyToMessageId === null ? undefined : quoted.get(row.replyToMessageId)
+  return quote === undefined ? null : quotedView(quote, row.replyToMediaId)
+}
 
 // Whether the channel of a conversation declares a capability: the plugin registry lives above this
 // library, so the route hands the answer in
@@ -545,7 +555,11 @@ export class MessagesService {
       [{ replyToMessageId: message.replyToMessageId }],
       viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)
     )
-    return { ...message, replyTo: quoted.get(message.replyToMessageId) ?? null }
+    const quote = quoted.get(message.replyToMessageId)
+    return {
+      ...message,
+      replyTo: quote === undefined ? null : quotedView(quote, message.replyToMediaId)
+    }
   }
 
   private async findReplay(
@@ -814,12 +828,7 @@ export class MessagesService {
     const last = page.at(-1)
     const quoted = await this.quotedOf(storeId, conversationId, page, readsNotes)
     return {
-      data: page.map(row =>
-        messageView(
-          row,
-          row.replyToMessageId === null ? null : (quoted.get(row.replyToMessageId) ?? null)
-        )
-      ),
+      data: page.map(row => messageView(row, quoteOf(quoted, row))),
       nextCursor:
         hasMore && last !== undefined
           ? encodeMessageCursor({ createdAt: last.createdAt, id: last.id })
@@ -836,7 +845,7 @@ export class MessagesService {
     conversationId: string,
     page: readonly { replyToMessageId: string | null }[],
     readsNotes: boolean
-  ): Promise<Map<string, QuotedMessage>> {
+  ): Promise<Map<string, QuoteRow>> {
     const ids = [...new Set(page.map(row => row.replyToMessageId))].filter(
       (id): id is string => id !== null
     )
@@ -852,7 +861,7 @@ export class MessagesService {
       },
       select: { ...QUOTE_SELECT }
     })
-    return new Map(rows.map(row => [row.id, quotedView(row)]))
+    return new Map(rows.map(row => [row.id, row]))
   }
 
   // A message of the same conversation. What the team wrote among themselves is not quoted in
@@ -894,9 +903,9 @@ export class MessagesService {
     if (file.channelMessageId === null) {
       throw resourceConflict('the file has no copy in the channel to quote')
     }
-    // A file the provider cannot tell apart (the first one, or one that shares its id with the others) is the
+    // A file the provider cannot tell apart (it shares its id with the others, or has none) is the
     // message
-    return isTargetOfItsOwn(target, files, file) ? mediaId : null
+    return isDistinctFile(files, file) ? mediaId : null
   }
 
   // The people who will read the note: members of this store today whose role reads the thread and

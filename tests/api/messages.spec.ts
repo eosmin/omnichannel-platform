@@ -857,6 +857,47 @@ describe('The messages of a conversation', () => {
         expect(response.status).toBe(BAD_REQUEST)
       })
 
+      it('tells the thread which file is quoted and where it is, also for the first one', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 3)
+        await owner.message.update({
+          where: { id: target.id },
+          data: {
+            channelMessageId: (
+              await owner.media.findUniqueOrThrow({ where: { id: at(files, 0).id } })
+            ).channelMessageId
+          }
+        })
+        for (const [index, file] of files.entries()) {
+          const response = await asAgent()
+            .post(ApiRoutes.messages.create)
+            .send(reply(id, { replyToMessageId: target.id, replyToMediaId: file.id }))
+          expect(response.status).toBe(CREATED)
+          const body = response.body as { replyTo: { file: unknown } | null }
+          expect(body.replyTo?.file).toEqual({ mediaId: file.id, position: index })
+        }
+        const thread = await asAgent().get(ApiRoutes.conversations.messages(id))
+        const data = (
+          thread.body as { data: { replyTo: { file: { position: number } | null } | null }[] }
+        ).data
+        expect(
+          data
+            .map(item => item.replyTo?.file?.position)
+            .filter(p => p !== undefined)
+            .sort()
+        ).toEqual([0, 1, 2])
+        expect(JSON.stringify(thread.body)).not.toContain('quote-')
+      })
+
+      it('says no file when the message is quoted as a whole', async () => {
+        const { id } = await mk()
+        const { target } = await withFiles(id, ctx.storeA.id, 2)
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(reply(id, { replyToMessageId: target.id }))
+        expect((response.body as { replyTo: { file: unknown } | null }).replyTo?.file).toBeNull()
+      })
+
       it('refuses a file with no copy in the channel, and the file without its message', async () => {
         const { id } = await mk()
         const { target, files } = await withFiles(id, ctx.storeA.id, 2)

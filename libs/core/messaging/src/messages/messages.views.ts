@@ -28,6 +28,7 @@ import { enumValueOf } from '../conversations/conversations.support'
 import { type SystemLineMetadata, systemLineMetadataSchema } from '../conversations/system-lines'
 
 import { canRetryLostFile, displayCodeOf, lostFilesSchema } from './lost-files'
+import { isDistinctFile, isNativeAlbum } from './provider-message-match'
 
 // One person's emoji on a message. `authorId` is the user for an agent, the customer identity for the
 // customer, and null for the owner who reacted from the provider's own app.
@@ -37,6 +38,10 @@ export interface ReactionView {
   authorId: string | null
   // The file of an album the reaction is under (one reaction for each person and file); null: the message itself
   mediaId: string | null
+  // The file to draw it under, already resolved: `mediaId`, or the first file when the reaction is the message's and
+  // the message IS the first file (one message for each picture). Null: the reaction is the message's (a native album,
+  // a message of one file)
+  fileId: string | null
   // Where an agent's reaction stands toward the channel; `failed` says the customer never saw it, with
   // the code of ours in `deliveryError`. The ones the channel reported are `sent`.
   deliveryStatus: DeliveryStatus
@@ -45,6 +50,19 @@ export interface ReactionView {
 
 // The message a reply answers, as the bubble quotes it: who wrote it, what kind it is and the start
 // of its text. A message that was deleted keeps no text here.
+// The order the agent gave the files; the files of the customer have no place and keep their arrival order
+// (a mutable array: Prisma does not take a readonly one)
+const MEDIA_ORDER: (
+  { position: { sort: 'asc'; nulls: 'last' } } | { createdAt: 'asc' } | { id: 'asc' }
+)[] = [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
+
+// The file of an album that a reply quotes: which one, and where it is in the message (the place the agent gave it,
+// else its order, from 0, for the files of a customer that have none)
+export interface QuotedFile {
+  mediaId: string
+  position: number
+}
+
 export interface QuotedMessage {
   id: string
   type: MessageType
@@ -52,10 +70,15 @@ export interface QuotedMessage {
   authorId: string | null
   content: string | null
   deleted: boolean
+  // The file that was quoted when the reply named one of a message of several; null: the message as a whole
+  file: QuotedFile | null
 }
 
 export const QUOTE_SELECT = {
   id: true,
+  storeId: true,
+  // To place a quoted file in its message
+  media: { select: { id: true, storeId: true, position: true }, orderBy: MEDIA_ORDER },
   type: true,
   authorType: true,
   authorId: true,
@@ -63,8 +86,10 @@ export const QUOTE_SELECT = {
   deletedAt: true
 } as const
 
-interface QuoteRow {
+export interface QuoteRow {
   id: string
+  storeId: string
+  media: { id: string; storeId: string | null; position: number | null }[]
   type: string
   authorType: string
   authorId: string | null
@@ -72,8 +97,19 @@ interface QuoteRow {
   deletedAt: Date | null
 }
 
-export function quotedView(row: QuoteRow): QuotedMessage {
+// The file of the quoted message that the reply names, placed by its position or its order. A file that is not of
+// this message and store, or that is gone, is no file: the quote is the message.
+function quotedFileOf(row: QuoteRow, mediaId: string | null): QuotedFile | null {
+  if (mediaId === null) return null
+  const files = row.media.filter(file => file.storeId === row.storeId)
+  const index = files.findIndex(file => file.id === mediaId)
+  const file = files[index]
+  return file === undefined ? null : { mediaId, position: file.position ?? index }
+}
+
+export function quotedView(row: QuoteRow, replyToMediaId: string | null = null): QuotedMessage {
   return {
+    file: row.deletedAt === null ? quotedFileOf(row, replyToMediaId) : null,
     id: row.id,
     type: enumValueOf(MessageTypes, row.type, 'message type'),
     authorType: enumValueOf(AuthorTypes, row.authorType, 'message author'),
@@ -130,6 +166,10 @@ export interface MessageMediaView {
   // The text the agent put under this file; null when none, and for a file sent before each had its own
   // (the text of the message is then the one of the first). Text of the agent: drawn escaped.
   caption: string | null
+  // The provider has an id of its own for this file, so a reaction or a quote can name it alone: true for each file of
+  // a message with one message at the provider for each (WhatsApp), false when the files share one id (a native album
+  // of Instagram or Messenger) and for a file with no id yet
+  targetable: boolean
 }
 
 // A file the customer sent that the platform could not keep: where it was in the message and why. The
@@ -199,6 +239,9 @@ export interface MessageView {
   captionState: CaptionState | null
   // The text of the message (`content`) is a message of its own after the files, not the text under the first one
   textApart: boolean
+  // The provider took the files as ONE message (a native album of Instagram or Messenger): its files share one id,
+  // so they cannot be reacted to or quoted one by one. Derived from the ids, not from the channel.
+  albumNative: boolean
   // Edits. `version` is the one an edit of a note must carry. `pendingEdit` is true while the channel has
   // not taken an edit of ours: `content` is still the text the customer has.
   version: number
@@ -219,12 +262,6 @@ export interface MessageView {
   createdAt: Date
 }
 
-// The order the agent gave the files; the files of the customer have no place and keep their arrival order
-// (a mutable array: Prisma does not take a readonly one)
-const MEDIA_ORDER: (
-  { position: { sort: 'asc'; nulls: 'last' } } | { createdAt: 'asc' } | { id: 'asc' }
-)[] = [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
-
 export const MESSAGE_SELECT = {
   id: true,
   conversationId: true,
@@ -234,6 +271,8 @@ export const MESSAGE_SELECT = {
   authorId: true,
   replyToMessageId: true,
   replyToMediaId: true,
+  // Not in the view: the provider's ids decide what the view says of the files (`targetable`, `albumNative`)
+  channelMessageId: true,
   deliveryStatus: true,
   deliveryError: true,
   failureDefinitive: true,
@@ -275,7 +314,8 @@ export const MESSAGE_SELECT = {
       position: true,
       deliveryStatus: true,
       sendErrorCode: true,
-      caption: true
+      caption: true,
+      channelMessageId: true
     },
     // The order the agent gave; the files of the customer have no place and keep their arrival order
     orderBy: MEDIA_ORDER
@@ -292,6 +332,7 @@ interface MessageRow {
   authorId: string | null
   replyToMessageId: string | null
   replyToMediaId: string | null
+  channelMessageId: string | null
   deliveryStatus: string | null
   deliveryError: string | null
   failureDefinitive: boolean | null
@@ -330,8 +371,18 @@ interface MessageRow {
     deliveryStatus: string | null
     sendErrorCode: string | null
     caption: string | null
+    channelMessageId: string | null
   }[]
   createdAt: Date
+}
+
+// The file a reaction is drawn under. The one it was put under, or, when it is the message's and the message IS the
+// first file of one message for each picture, that file; none in a native album or for a message of one file.
+function reactionFileOf(row: MessageRow, mediaId: string | null): string | null {
+  if (mediaId !== null) return mediaId
+  if (row.channelMessageId === null || isNativeAlbum(row.media)) return null
+  const first = row.media.find(file => file.channelMessageId === row.channelMessageId)
+  return first !== undefined && isDistinctFile(row.media, first) ? first.id : null
 }
 
 function editFieldsOf(
@@ -389,6 +440,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     storyReply: storyReplyOf(row, type),
     unsupportedType: unsupportedTypeOf(row, type),
     reactions: row.reactions.map(reaction => ({
+      fileId: reactionFileOf(row, reaction.mediaId),
       emoji: reaction.emoji,
       authorType: enumValueOf(AuthorTypes, reaction.authorType, 'reaction author'),
       authorId: reaction.userId ?? reaction.customerIdentityId,
@@ -413,12 +465,14 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
             errorCode: file.sendErrorCode,
             // The text under the first file is the text of the message (what an edit settles, and what a
             // message sent before each file had its own carries)
-            caption: file.position === 0 && !row.textApart ? row.content : file.caption
+            caption: file.position === 0 && !row.textApart ? row.content : file.caption,
+            targetable: isDistinctFile(row.media, file)
           }))
         : [],
     unavailableFiles: unavailableFilesOf(row, type),
     captionState: row.deletedAt === null ? captionStateOf(row.captionState) : null,
     textApart: row.textApart,
+    albumNative: row.deletedAt === null && isNativeAlbum(row.media),
     version: row.version,
     // A message edited and then deleted is a deleted message: the deletion wins, so it carries no
     // "edited", no editor and no edit waiting or failed (its text is already hidden above)

@@ -404,6 +404,7 @@ describe('An agent reacting to a message', () => {
           authorType: AuthorType.AGENT,
           authorId: ctx.agentA.id,
           mediaId: null,
+          fileId: null,
           deliveryStatus: DeliveryStatus.QUEUED,
           deliveryError: null
         }

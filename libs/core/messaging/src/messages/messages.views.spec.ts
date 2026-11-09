@@ -18,6 +18,7 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   authorId: null,
   replyToMessageId: null,
   replyToMediaId: null,
+  channelMessageId: null,
   deliveryStatus: null,
   deliveryError: null,
   failureDefinitive: null,
@@ -119,7 +120,8 @@ describe('messageView media', () => {
     position: null,
     deliveryStatus: null,
     sendErrorCode: null,
-    caption: null
+    caption: null,
+    channelMessageId: null
   }
   const shown = {
     id: 'f1',
@@ -130,7 +132,8 @@ describe('messageView media', () => {
     position: null,
     delivery: null,
     errorCode: null,
-    caption: null
+    caption: null,
+    targetable: false
   }
 
   it('lists the files of a message without a link or a key', () => {
@@ -601,5 +604,103 @@ describe('messageView contacts', () => {
       ]
     })
     expect(view.contacts?.map(card => card.name)).toEqual(['555', 'x@example.com'])
+  })
+})
+
+describe('messageView targets of the files of an album', () => {
+  const file = (id: string, channelMessageId: string | null, position: number | null = null) => ({
+    id,
+    filename: `${id}.png`,
+    contentType: 'image/png',
+    fileSize: 10,
+    status: MediaStatus.CLEAN,
+    position,
+    deliveryStatus: null,
+    sendErrorCode: null,
+    caption: null,
+    channelMessageId
+  })
+  const reaction = (mediaId: string | null) => ({
+    emoji: '👍',
+    authorType: AuthorType.CUSTOMER,
+    customerIdentityId: 'i1',
+    userId: null,
+    mediaId,
+    deliveryStatus: 'sent',
+    deliveryError: null
+  })
+  const album = (messageId: string | null, files: ReturnType<typeof file>[], mediaId = null) => ({
+    ...row(null),
+    channelMessageId: messageId,
+    media: files,
+    reactions: [reaction(mediaId)]
+  })
+
+  it('says a file is targetable when the provider has an id of its own for it, the first one too', () => {
+    const view = messageView(
+      album('w1', [file('a', 'w1', 0), file('b', 'w2', 1), file('c', 'w3', 2)])
+    )
+    expect(view.media.map(f => f.targetable)).toEqual([true, true, true])
+    expect(view.albumNative).toBe(false)
+  })
+
+  it('says a native album shares one id: no file is targetable, and the album is native', () => {
+    const view = messageView(
+      album('m1', [file('a', 'm1', 0), file('b', 'm1', 1), file('c', 'm1', 2)])
+    )
+    expect(view.media.map(f => f.targetable)).toEqual([false, false, false])
+    expect(view.albumNative).toBe(true)
+  })
+
+  it('says nothing is targetable, and the album is not native, while no file has an id yet', () => {
+    const view = messageView(album(null, [file('a', null, 0), file('b', null, 1)]))
+    expect(view.media.map(f => f.targetable)).toEqual([false, false])
+    expect(view.albumNative).toBe(false)
+  })
+
+  it('does not call a single file an album, and does not make it targetable', () => {
+    const view = messageView(album('w1', [file('a', 'w1', 0)]))
+    expect(view.media.map(f => f.targetable)).toEqual([false])
+    expect(view.albumNative).toBe(false)
+  })
+
+  it('leaves out the file that has no id yet and keeps the others', () => {
+    const view = messageView(
+      album('w1', [file('a', 'w1', 0), file('b', null, 1), file('c', 'w3', 2)])
+    )
+    expect(view.media.map(f => f.targetable)).toEqual([true, false, true])
+  })
+
+  it('never carries an id of the provider', () => {
+    const view = messageView(
+      album('secret-message', [file('a', 'secret-a', 0), file('b', 'secret-b', 1)])
+    )
+    expect(JSON.stringify(view)).not.toContain('secret')
+  })
+
+  describe('the file a reaction belongs to', () => {
+    const own = [file('a', 'w1', 0), file('b', 'w2', 1)]
+
+    it('is the file it was put under', () => {
+      expect(messageView(album('w1', own, 'b' as never)).reactions[0]?.fileId).toBe('b')
+    })
+
+    it('is the first file when the reaction is the message and the message is the first file (one message for each picture)', () => {
+      expect(messageView(album('w1', own)).reactions[0]?.fileId).toBe('a')
+    })
+
+    it('is none in a native album: the reaction is the message', () => {
+      const native = [file('a', 'm1', 0), file('b', 'm1', 1)]
+      expect(messageView(album('m1', native)).reactions[0]?.fileId).toBeNull()
+    })
+
+    it('is none for a single file or for no file', () => {
+      expect(messageView(album('w1', [file('a', 'w1', 0)])).reactions[0]?.fileId).toBeNull()
+      expect(messageView(album('w1', [])).reactions[0]?.fileId).toBeNull()
+    })
+
+    it('is none when the message id is not the id of one of the files', () => {
+      expect(messageView(album('other', own)).reactions[0]?.fileId).toBeNull()
+    })
   })
 })

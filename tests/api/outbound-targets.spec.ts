@@ -2,6 +2,7 @@ import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
+import { ApiRoutes } from '@platform/core/api'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { AuthorType, DeliveryStatus, MessageType, ReactionActors } from '@platform/core/domain'
@@ -28,6 +29,7 @@ import { buildChannelPlugin, ensurePluginInstallation, TEST_CHANNEL_ID } from '.
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { api } from '../helpers/http'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 
 describe('A reaction or a quote that points at a message the platform sent', () => {
@@ -459,5 +461,118 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       sameLongPrefix: 1
     })
     expect(JSON.stringify(warn.mock.calls)).not.toContain('AAAAAAAAAA3')
+  })
+
+  describe('what the thread says of the files of an album', () => {
+    type ThreadItem = {
+      id: string
+      albumNative: boolean
+      media: { id: string; targetable: boolean }[]
+      reactions: { fileId: string | null; mediaId: string | null }[]
+      replyTo: { file: { mediaId: string; position: number } | null } | null
+      replyToMediaId: string | null
+    }
+    const threadItems = async (from: string): Promise<ThreadItem[]> => {
+      const conversation = await owner.conversation.findFirstOrThrow({
+        where: { storeId: ctx.storeA.id, customerIdentity: { channelIdentity: from } }
+      })
+      const response = await api(app, ctx.agentA, ctx.storeA).get(
+        ApiRoutes.conversations.messages(conversation.id)
+      )
+      return (response.body as { data: ThreadItem[] }).data
+    }
+
+    it('says each file of a message with one message at the provider for each is targetable, and puts the reaction of the first under it', async () => {
+      const { connectionId, from } = await seeded()
+      const sent = await sentByAgent(ctx.storeA.id, from, {
+        message: 'v-1',
+        files: ['v-1', 'v-2', 'v-3']
+      })
+      await react(connectionId, from, 'v-1', '👍')
+      await react(connectionId, from, 'v-3', '🔥')
+
+      const item = (await threadItems(from)).find(entry => entry.id === sent.id)
+      expect(item?.albumNative).toBe(false)
+      expect(item?.media.map(file => file.targetable)).toEqual([true, true, true])
+      const ids = item?.media.map(file => file.id) ?? []
+      expect(item?.reactions.map(r => r.fileId).sort()).toEqual([ids[0], ids[2]].sort())
+      expect(JSON.stringify(item)).not.toContain('v-1')
+    })
+
+    it("says a native album is one message: no file is targetable and the reaction is the message's", async () => {
+      const { connectionId, from } = await seeded()
+      const sent = await sentByAgent(ctx.storeA.id, from, {
+        message: 'n-1',
+        files: ['n-1', 'n-1', 'n-1']
+      })
+      await react(connectionId, from, 'n-1', '👍')
+
+      const item = (await threadItems(from)).find(entry => entry.id === sent.id)
+      expect(item?.albumNative).toBe(true)
+      expect(item?.media.map(file => file.targetable)).toEqual([false, false, false])
+      expect(item?.reactions.map(r => r.fileId)).toEqual([null])
+    })
+
+    it('says nothing is targetable, and breaks nothing, while the files have no id yet', async () => {
+      const { from } = await seeded()
+      const sent = await sentByAgent(ctx.storeA.id, from, { message: null, files: [] })
+      for (const position of [0, 1]) {
+        await owner.media.create({
+          data: {
+            storeId: ctx.storeA.id,
+            purpose: 'message',
+            messageId: sent.id,
+            key: `${prefix}-key-queued-${sent.id}-${position}`,
+            filename: 'q.jpg',
+            contentType: 'image/jpeg',
+            fileSize: 10,
+            position
+          }
+        })
+      }
+
+      const item = (await threadItems(from)).find(entry => entry.id === sent.id)
+      expect(item?.albumNative).toBe(false)
+      expect(item?.media.map(file => file.targetable)).toEqual([false, false])
+    })
+
+    it('keeps the file a customer quoted, also the first one, and the message when the files share an id', async () => {
+      const { connectionId, from } = await seeded()
+      const sent = await sentByAgent(ctx.storeA.id, from, {
+        message: 'qf-1',
+        files: ['qf-1', 'qf-2', 'qf-3']
+      })
+      const native = await sentByAgent(ctx.storeA.id, from, {
+        message: 'qn-1',
+        files: ['qn-1', 'qn-1']
+      })
+      for (const [id, target] of [
+        ['q1', 'qf-1'],
+        ['q2', 'qf-3'],
+        ['q3', 'qn-1']
+      ] as const) {
+        await inbound.handleMessageReceived(
+          TEST_CHANNEL_ID,
+          quoting(connectionId, from, id, target)
+        )
+      }
+
+      const items = await threadItems(from)
+      const quoteOf = async (providerId: string) =>
+        await owner.message.findFirstOrThrow({
+          where: { channelMessageId: providerId, storeId: ctx.storeA.id }
+        })
+      const files = await owner.media.findMany({
+        where: { messageId: sent.id },
+        orderBy: { position: 'asc' }
+      })
+      expect((await quoteOf('q1')).replyToMediaId).toBe(files[0]?.id)
+      expect((await quoteOf('q2')).replyToMediaId).toBe(files[2]?.id)
+      expect((await quoteOf('q3')).replyToMediaId).toBeNull()
+      expect((await quoteOf('q3')).replyToMessageId).toBe(native.id)
+      // The thread places the quoted file where it is in the album
+      const q2 = items.find(entry => entry.replyToMediaId === files[2]?.id)
+      expect(q2?.replyTo?.file).toEqual({ mediaId: files[2]?.id, position: 2 })
+    })
   })
 })

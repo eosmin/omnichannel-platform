@@ -282,6 +282,8 @@ const reactionSchema = z.object({
   authorId: z.string().nullable(),
   // The file of an album the reaction is under; null: the message (a server that does not send it yet)
   mediaId: z.string().nullable().default(null),
+  // The file to draw it under, already resolved by the server; null: the message's
+  fileId: z.string().nullable().default(null),
   deliveryStatus: z.string(),
   deliveryError: z.string().nullable()
 })
@@ -292,7 +294,14 @@ const quotedMessageSchema = z.object({
   authorType: z.string(),
   authorId: z.string().nullable(),
   content: z.string().nullable(),
-  deleted: z.boolean()
+  deleted: z.boolean(),
+  // The file of an album that was quoted, and where it is in the message (its place, else its order from 0); null: the
+  // message as a whole, and a server that does not send it yet
+  file: z
+    .object({ mediaId: z.string(), position: z.number().int() })
+    .nullable()
+    .catch(null)
+    .default(null)
 })
 
 // A system line has no text: the page writes it from the event, the people and the dates
@@ -404,7 +413,10 @@ export const messageSchema = z.object({
       errorCode: z.string().nullable().catch(null).default(null),
       // The text under this file (text of an agent: drawn escaped). How the text of the message went is on the
       // message (`captionState`). Null for a server that does not send it yet.
-      caption: z.string().nullable().catch(null).default(null)
+      caption: z.string().nullable().catch(null).default(null),
+      // The provider has an id of its own for this file, so a reaction or a quote can name it alone (false in a
+      // native album of Instagram or Messenger and for a file with no id yet; a server that does not send it: false)
+      targetable: z.boolean().catch(false).default(false)
     })
   ),
   // Files of the customer the platform could not keep; a code of a newer server is drawn as a generic one
@@ -420,6 +432,9 @@ export const messageSchema = z.object({
   // The text of the message is a message of its own after the files, not the text under the first one (then
   // every file has its own text, the first included); false for a server that does not send it yet
   textApart: z.boolean().catch(false),
+  // The provider took the files as ONE message (a native album): they cannot be named one by one. A server that does
+  // not send it yet: false.
+  albumNative: z.boolean().catch(false).default(false),
   // The ids of the teammates a note mentions; `version` is the one an edit of a note must carry
   mentions: z.array(z.string()),
   version: z.number().int(),
