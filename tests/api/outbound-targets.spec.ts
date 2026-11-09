@@ -30,6 +30,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 
 describe('A reaction or a quote that points at a message the platform sent', () => {
@@ -88,7 +89,7 @@ describe('A reaction or a quote that points at a message the platform sent', () 
       queueOf(app, QueueNames.HEAVY_PROCESSING) as never,
       logger
     )
-    const targets = new InboundMessageTargets(prisma, connections)
+    const targets = new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS)
     reactions = new MessageReactionsService(prisma, targets, events, logger)
     changes = new InboundMessageChangesService(prisma, targets, events)
   })

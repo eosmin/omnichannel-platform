@@ -27,6 +27,7 @@ import { buildChannelPlugin, ensurePluginInstallation, TEST_CHANNEL_ID } from '.
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
 
 describe('Several pictures that a customer sends in a row', () => {
@@ -86,7 +87,7 @@ describe('Several pictures that a customer sends in a row', () => {
     )
     reactions = new MessageReactionsService(
       prisma,
-      new InboundMessageTargets(prisma, connections),
+      new InboundMessageTargets(prisma, connections, TEST_IDENTITY_KINDS),
       events,
       logger
     )

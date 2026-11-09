@@ -1,4 +1,8 @@
-import { type ChannelId, ChannelIds, CustomerLimits } from '@platform/core/domain'
+import {
+  type ChannelIdentityKind,
+  ChannelIdentityKinds,
+  CustomerLimits
+} from '@platform/core/domain'
 
 import { normalizePhone, type NormalizedPhone } from './phone'
 
@@ -18,7 +22,7 @@ export interface ChannelIdentitySource {
 // case, so that the same person is the same row however the channel spelled the handle. Null when
 // the channel could never have produced it, or when it is longer than any handle can be.
 export function parseChannelIdentity(
-  channelType: ChannelId,
+  kind: ChannelIdentityKind,
   raw: string,
   { fromChannel = false }: ChannelIdentitySource = {}
 ): ParsedChannelIdentity | null {
@@ -26,17 +30,17 @@ export function parseChannelIdentity(
   if (text === '' || text.length > CustomerLimits.CHANNEL_IDENTITY_MAX_LENGTH) return null
   // Postgres text cannot hold a NUL character
   if (text.includes('\0')) return null
-  switch (channelType) {
-    case ChannelIds.WHATSAPP: {
+  switch (kind) {
+    case ChannelIdentityKinds.PHONE: {
       const phone = normalizePhone(text, { fromChannel })
       return phone === null ? null : { identity: phone.digits, phone }
     }
-    default:
+    case ChannelIdentityKinds.OPAQUE:
       return { identity: text }
   }
 }
 
 // The handle of a person typing it (a form): see parseChannelIdentity for the one a channel sends
-export function normalizeChannelIdentity(channelType: ChannelId, raw: string): string | null {
-  return parseChannelIdentity(channelType, raw)?.identity ?? null
+export function normalizeChannelIdentity(kind: ChannelIdentityKind, raw: string): string | null {
+  return parseChannelIdentity(kind, raw)?.identity ?? null
 }

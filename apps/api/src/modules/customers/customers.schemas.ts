@@ -10,7 +10,7 @@ import {
   PaginationLimits,
   singleLineText
 } from '@platform/core/domain'
-import { normalizeChannelIdentity, normalizePhone } from '@platform/core/messaging'
+import { normalizePhone } from '@platform/core/messaging'
 import { galleryTypeSchema, GalleryTypes, gallerySearchSchema } from '@platform/core/storage'
 
 import { cursorSchema } from './list-cursor'
@@ -89,24 +89,13 @@ export const updateCustomerSchema = z
     message: 'nothing to change'
   })
 
-export const linkIdentitySchema = z
-  .strictObject({
-    channelType: channelIdSchema,
-    channelIdentity: text().min(1).max(CustomerLimits.CHANNEL_IDENTITY_MAX_LENGTH),
-    displayName: name.optional()
-  })
-  .transform((body, ctx) => {
-    const channelIdentity = normalizeChannelIdentity(body.channelType, body.channelIdentity)
-    if (channelIdentity === null) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['channelIdentity'],
-        message: `not a valid ${body.channelType} handle`
-      })
-      return z.NEVER
-    }
-    return { ...body, channelIdentity }
-  })
+// The handle is RAW here: `IdentitiesService.link` reads it as its channel says (the plugin declares how), so
+// it is the one place that normalizes it
+export const linkIdentitySchema = z.strictObject({
+  channelType: channelIdSchema,
+  channelIdentity: text().min(1).max(CustomerLimits.CHANNEL_IDENTITY_MAX_LENGTH),
+  displayName: name.optional()
+})
 
 const mergeSource = z.enum([MergeFieldSources.SURVIVOR, MergeFieldSources.ABSORBED])
 

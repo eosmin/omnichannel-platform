@@ -10,7 +10,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { lockCustomerForWrite } from '@platform/core/messaging'
+import { lockCustomerForWrite, normalizeChannelIdentity } from '@platform/core/messaging'
 
 import { RegisteredChannels } from '../channel-registry'
 
@@ -33,7 +33,31 @@ export class IdentitiesService {
 
   // Linking a handle the customer already has answers with that identity (`created: false`), so a
   // retry after a timeout is harmless
-  async link(storeId: string, customerId: string, body: LinkIdentityBody): Promise<LinkedIdentity> {
+  async link(storeId: string, customerId: string, raw: LinkIdentityBody): Promise<LinkedIdentity> {
+    // The handle is read as its channel says (a phone as digits, any other as it came): the plugin declared how
+    const channelIdentity = normalizeChannelIdentity(
+      this.channels.identityKindFor(storeId, raw.channelType),
+      raw.channelIdentity
+    )
+    if (channelIdentity === null) {
+      // The shape the zod pipe answers with, which the web reads to say which field to check
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'request validation failed',
+        HttpStatusCodes.BAD_REQUEST,
+        {
+          issues: [
+            {
+              path: 'channelIdentity',
+              code: 'custom',
+              message: `not a valid ${raw.channelType} handle`
+            }
+          ],
+          truncated: false
+        }
+      )
+    }
+    const body = { ...raw, channelIdentity }
     try {
       return await this.prisma.transaction(async tx => {
         await lockCustomerForWrite(tx, storeId, customerId)

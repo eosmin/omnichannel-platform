@@ -6,7 +6,12 @@ import { ChannelContextFactory } from '@platform/channels/connections'
 import type { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { CustomerProfileFetch, DAY_MS, HOUR_MS } from '@platform/core/domain'
+import {
+  CHANNEL_IDENTITY_KINDS,
+  CustomerProfileFetch,
+  DAY_MS,
+  HOUR_MS
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   ChannelConnectionResolver,
@@ -81,6 +86,7 @@ describe('The name and photo of a customer', () => {
       prisma,
       registry,
       new ChannelConnectionResolver(prisma),
+      app.get(CHANNEL_IDENTITY_KINDS, { strict: false }),
       queueOf(app, QueueNames.CUSTOMER_PROFILES) as never,
       await app.resolve(PinoLogger)
     )

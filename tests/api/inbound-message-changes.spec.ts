@@ -22,6 +22,7 @@ import {
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 
 describe('Edits and deletions that a channel delivers', () => {
   const prefix = newRunPrefix()
@@ -41,7 +42,7 @@ describe('Edits and deletions that a channel delivers', () => {
     const events = app.get(DomainEvents, { strict: false })
     changes = new InboundMessageChangesService(
       prisma,
-      new InboundMessageTargets(prisma, new ChannelConnectionResolver(prisma)),
+      new InboundMessageTargets(prisma, new ChannelConnectionResolver(prisma), TEST_IDENTITY_KINDS),
       events
     )
     jest.spyOn(events, 'publish').mockImplementation((_tx, event, payload) => {

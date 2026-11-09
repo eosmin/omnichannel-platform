@@ -40,6 +40,13 @@ export const ChannelIdentityKinds = {
 } as const
 export type ChannelIdentityKind = (typeof ChannelIdentityKinds)[keyof typeof ChannelIdentityKinds]
 
+// Where the core asks how the handle of a customer on a channel is read. The plugins module provides it from the
+// registry; a channel the registry does not know is opaque (kept as it came).
+export interface ChannelIdentityKindSource {
+  kindOf(channelType: string): ChannelIdentityKind
+}
+export const CHANNEL_IDENTITY_KINDS = Symbol('CHANNEL_IDENTITY_KINDS')
+
 // What a channel holds of the text of a message, declared by its plugin. `POST /messages` caps at
 // MessageLimits.CONTENT_MAX_LENGTH, so a plugin cannot declare more than the platform stores.
 export interface ChannelLimits {

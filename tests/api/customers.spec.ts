@@ -6,11 +6,13 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelIds, ChannelType } from '@platform/core/domain'
+import { ChannelIdentityKinds, ChannelIds, ChannelType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelProfile, CustomerIdentityService } from '@platform/core/messaging'
+import { PluginRegistry } from '@platform/plugins/runtime'
 
 import { createConversation, createCustomer, createTag } from '../builders'
+import { buildChannelPlugin } from '../builders/channel-plugin'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -542,6 +544,47 @@ describe('The customers of a store', () => {
       expect((linked.body as { channelIdentity: string }).channelIdentity).toBe('50373330001')
       expect(taken.status).toBe(CONFLICT)
       expect((taken.body as ErrorBody).error.metadata).toMatchObject({ customerId: ana.id })
+    })
+
+    it('reads a handle as a phone when the plugin of a channel nobody named says so', async () => {
+      const registry = app.get(PluginRegistry, { strict: false })
+      registry.register(
+        buildChannelPlugin({ id: 'acme_phone', identityKind: ChannelIdentityKinds.PHONE })
+      )
+      try {
+        const ana = await create({ name: 'Ana P' })
+
+        const linked = await asAdmin()
+          .post(ApiRoutes.customers.identities(ana.id))
+          .send({ channelType: 'acme_phone', channelIdentity: '+503 7333-0009' })
+        // The inbound path reads it the same way: the same person is the same identity
+        const inbound = await identities().findOrCreateByIdentity({
+          storeId: ctx.storeA.id,
+          channelType: 'acme_phone',
+          channelIdentity: '503 7333 0009'
+        })
+
+        expect(linked.status).toBe(CREATED)
+        expect((linked.body as { channelIdentity: string }).channelIdentity).toBe('50373330009')
+        expect(inbound.created).toBe(false)
+        expect(inbound.customerId).toBe(ana.id)
+      } finally {
+        registry.unregister('acme_phone')
+      }
+    })
+
+    it('refuses a handle the channel could not have produced, naming the field like any other', async () => {
+      const ana = await create({ name: 'Ana R' })
+
+      const refused = await asAdmin()
+        .post(ApiRoutes.customers.identities(ana.id))
+        .send({ channelType: ChannelType.WHATSAPP, channelIdentity: '12' })
+
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect((refused.body as ErrorBody).error.code).toBe(ErrorCodes.VALIDATION_FAILED)
+      expect(JSON.stringify((refused.body as ErrorBody).error.metadata)).toContain(
+        'channelIdentity'
+      )
     })
 
     it('answers a link of a handle the customer already has with that identity', async () => {
