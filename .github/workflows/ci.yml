@@ -63,6 +63,8 @@ jobs:
       - run: pnpm validate:env
       - run: pnpm validate:isolation
       - run: pnpm validate:frontend
+      # Rule 13: no new knowledge of a channel or Meta outside libs/channels/*; the baseline only shrinks
+      - run: pnpm validate:channel-agnostic --require-main
       # The web build reads its public variables when it compiles (apps/web/lib/env-schema.ts). The
       # example file holds valid local values, which is all a build that nobody deploys needs
       - name: Public variables of the web build

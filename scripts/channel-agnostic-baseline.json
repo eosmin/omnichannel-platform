@@ -1,0 +1,330 @@
+{
+  "apps/api/src/modules/channels/channel-connections.service.ts": {
+    "code": 0,
+    "comment": 4
+  },
+  "apps/api/src/modules/channels/channel-webhook.controller.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "apps/api/src/modules/channels/oauth/channel-oauth.controller.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "apps/api/src/modules/channels/oauth/channel-oauth.schemas.ts": {
+    "code": 2,
+    "comment": 0
+  },
+  "apps/api/src/modules/channels/oauth/channel-oauth.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/api/src/modules/messages/channel-file-limits.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/api/src/modules/plugins/plugin-installations.service.ts": {
+    "code": 0,
+    "comment": 3
+  },
+  "apps/web/app/s/store-channels-page.tsx": {
+    "code": 0,
+    "comment": 2
+  },
+  "apps/web/components/inbox/caption-notice.tsx": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/components/inbox/contact-card.tsx": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/components/inbox/resolve-form.tsx": {
+    "code": 1,
+    "comment": 0
+  },
+  "apps/web/components/inbox/shared-link.tsx": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/components/settings/callback-url.tsx": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/components/settings/connect-dialog.tsx": {
+    "code": 7,
+    "comment": 2
+  },
+  "apps/web/components/settings/connection-card.tsx": {
+    "code": 1,
+    "comment": 2
+  },
+  "apps/web/components/settings/facebook-login-button.tsx": {
+    "code": 0,
+    "comment": 4
+  },
+  "apps/web/components/settings/oauth-asset-dialog.tsx": {
+    "code": 7,
+    "comment": 2
+  },
+  "apps/web/components/settings/rename-dialog.tsx": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/inbox/customer-label.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/inbox/failure-state.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/inbox/file-targets.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/inbox/inbox-filters.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/inbox/media-kind.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/inbox/window-state.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/realtime/use-typing.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/security-headers.ts": {
+    "code": 4,
+    "comment": 5
+  },
+  "apps/web/lib/settings/channel-keys.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/settings/channels-requests.ts": {
+    "code": 0,
+    "comment": 3
+  },
+  "apps/web/lib/settings/oauth-return.ts": {
+    "code": 3,
+    "comment": 3
+  },
+  "apps/web/lib/settings/use-channels.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/settings/use-oauth-return.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/web/lib/start-path.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/worker/src/media/fetch-helpers.ts": {
+    "code": 4,
+    "comment": 1
+  },
+  "apps/worker/src/outbound/message-change-sender.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/worker/src/outbound/outbound-sender.service.ts": {
+    "code": 0,
+    "comment": 3
+  },
+  "apps/worker/src/outbound/provider-codes.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/worker/src/outbound/typing-inbound.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "apps/worker/src/outbound/typing-sender.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/worker/src/processors/inbound.processor.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/api-client/src/api-schemas.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/database/prisma/schema.prisma": {
+    "code": 0,
+    "comment": 6
+  },
+  "libs/core/domain/api/api-routes.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/domain/channel-capability.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/domain/channel-connect-constants.ts": {
+    "code": 6,
+    "comment": 1
+  },
+  "libs/core/domain/channel-ids.ts": {
+    "code": 10,
+    "comment": 6
+  },
+  "libs/core/domain/channel-media/channel-media-rules.ts": {
+    "code": 1,
+    "comment": 2
+  },
+  "libs/core/domain/channel-media/index.ts": {
+    "code": 1,
+    "comment": 0
+  },
+  "libs/core/domain/channel-media/meta-media-rules.ts": {
+    "code": 17,
+    "comment": 11
+  },
+  "libs/core/domain/channel-media/whatsapp-media.ts": {
+    "code": 12,
+    "comment": 1
+  },
+  "libs/core/domain/channel-oauth-constants.ts": {
+    "code": 13,
+    "comment": 10
+  },
+  "libs/core/domain/channel-token-expiry.ts": {
+    "code": 0,
+    "comment": 5
+  },
+  "libs/core/domain/conversation-constants.ts": {
+    "code": 0,
+    "comment": 4
+  },
+  "libs/core/domain/customer-constants.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/core/domain/errors/channel-connect-failures.ts": {
+    "code": 1,
+    "comment": 4
+  },
+  "libs/core/domain/errors/database-errors.ts": {
+    "code": 1,
+    "comment": 0
+  },
+  "libs/core/domain/errors/plugin-checks.ts": {
+    "code": 0,
+    "comment": 5
+  },
+  "libs/core/domain/index.ts": {
+    "code": 1,
+    "comment": 0
+  },
+  "libs/core/domain/messaging-window.ts": {
+    "code": 0,
+    "comment": 3
+  },
+  "libs/core/domain/meta-constants.ts": {
+    "code": 25,
+    "comment": 48
+  },
+  "libs/core/domain/meta-oauth-scopes.ts": {
+    "code": 12,
+    "comment": 5
+  },
+  "libs/core/domain/realtime/typing-timing.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/domain/redaction-constants.ts": {
+    "code": 3,
+    "comment": 2
+  },
+  "libs/core/domain/settings-constants.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/domain/shortcuts.ts": {
+    "code": 1,
+    "comment": 0
+  },
+  "libs/core/domain/whatsapp-constants.ts": {
+    "code": 16,
+    "comment": 11
+  },
+  "libs/core/logger/src/logger-options.ts": {
+    "code": 2,
+    "comment": 0
+  },
+  "libs/core/messaging/src/customers/identity.ts": {
+    "code": 1,
+    "comment": 0
+  },
+  "libs/core/messaging/src/customers/phone.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/messaging/src/inbound/inbound-message.service.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/core/messaging/src/messages/caption-rules.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/core/messaging/src/messages/messages.service.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/core/messaging/src/messages/messages.views.ts": {
+    "code": 0,
+    "comment": 4
+  },
+  "libs/core/messaging/src/messages/provider-message-match.ts": {
+    "code": 0,
+    "comment": 3
+  },
+  "libs/core/messaging/src/messaging-window/messaging-window.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/messaging/src/outbound/read-receipts.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/platform/cache/cache-keys.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/platform/config/env-schema.ts": {
+    "code": 19,
+    "comment": 11
+  },
+  "libs/plugins/runtime/src/oauth-snapshot.ts": {
+    "code": 4,
+    "comment": 1
+  },
+  "libs/plugins/sdk/src/channel-oauth.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/plugins/sdk/src/channel-plugin.interface.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/plugins/sdk/src/channel-types.ts": {
+    "code": 0,
+    "comment": 4
+  },
+  "libs/plugins/sdk/src/plugin-error.ts": {
+    "code": 0,
+    "comment": 1
+  }
+}

@@ -1271,7 +1271,7 @@ database has no CHECK or enum that blocks a new plugin id (verified), so no migr
 - [ ] A8 — `ChannelType`/`isOfficialChannelId` leave the UI and builders; the Meta contract suite moves under `libs/channels/meta`.
 - [ ] B2 — CSP image hosts generated at build from the descriptors of the registered plugins (identical to today for the four official ones, checked by a snapshot).
 - [ ] **Known limit, owner: Step 5.6.** The descriptor is read at build and boot: an external channel plugin is added to the official composition and the app is rebuilt, with no change to core or UI code. A DYNAMIC descriptor (served by the api, CSP hosts included) for remote plugins installed while running is part of Step 5.6.
-- [ ] The ratchet `scripts/validate-channel-agnostic.ts` (session da) lowers its baseline in each PR above.
+- [x] The ratchet `scripts/validate-channel-agnostic.ts` (session da, CLAUDE.md rule 13, TDD_14 §6) is in CI and `validate:affected`: `scripts/channel-agnostic-baseline.json` counts code and comment lines per file and only shrinks (`--update-down`); each PR above lowers it. **Debts:** the translations (`apps/web/messages/*.json`) are not scanned: B1 decides what is a legitimate label from the manifest and then adds them; a comment trailing code counts as code; a count that went down is accepted without tightening the baseline (so parallel PRs do not conflict), which leaves slack that a later PR could refill in that file: tighten with `--update-down` in cleanup PRs; CLAUDE.md rule 13 is not written yet (the owner decides).
 
 **TDD:** `TDD_10 §6.7`
 **Done when:** the toy plugin suite passes with no edit in core, api, worker or web, and the ratchet baseline is empty outside `libs/channels/*`.
