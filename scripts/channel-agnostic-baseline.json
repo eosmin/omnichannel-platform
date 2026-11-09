@@ -11,10 +11,6 @@
     "code": 0,
     "comment": 2
   },
-  "apps/api/src/modules/channels/oauth/channel-oauth.schemas.ts": {
-    "code": 2,
-    "comment": 0
-  },
   "apps/api/src/modules/channels/oauth/channel-oauth.service.ts": {
     "code": 0,
     "comment": 1

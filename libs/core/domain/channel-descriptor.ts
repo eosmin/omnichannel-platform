@@ -212,8 +212,8 @@ export function parseAssetIdPattern(source: unknown): RegExp | null {
   }
 }
 
-// What a login declares for the page to draw it: the provider's name, the account it links (the Instagram
-// account of a Page) and how to tell an id
+// What a login declares for the page to draw it: the provider's name, the account it links (the account of a business
+// profile that a page links) and how to tell an id
 export interface ChannelOAuthLinkedAccount {
   // The account is needed: a choice without it cannot be connected
   readonly required: boolean
