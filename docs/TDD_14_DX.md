@@ -541,8 +541,9 @@ a channel or Meta in the code of `apps/web`, `apps/api`, `apps/worker`, `libs/co
 translations excluded, and a composition root such as `official-plugins.ts` with its reason written in
 the script; `libs/channels/*` is free). The counts that exist today are frozen in
 `scripts/channel-agnostic-baseline.json`, which can only shrink: a file that gains a line, or a file
-without an entry that gains one, fails; an entry above the real count also fails
-(`pnpm validate:channel-agnostic --update-down` lowers it and refuses to raise it), and CI compares the
+without an entry that gains one, fails. Fewer lines are accepted (parallel cleanups never turn each
+other red) and the script prints a notice; `pnpm validate:channel-agnostic --update-down` tightens
+the baseline and refuses to raise it. CI compares the
 baseline with the one of `main`, so it cannot be edited upward to pass (`--require-main`, used in CI, fails when main cannot be found).
 
 **Deprecation scanner** (`scripts/validate-deprecations.ts`, runs in `lint-and-types`):

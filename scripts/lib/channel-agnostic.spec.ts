@@ -4,7 +4,8 @@ import {
   checkAgainstBaseline,
   countReferences,
   isScanned,
-  lowerBaseline
+  lowerBaseline,
+  slackOf
 } from './channel-agnostic'
 
 describe('isScanned', () => {
@@ -131,17 +132,37 @@ describe('checkAgainstBaseline', () => {
     expect(found).toEqual([expect.objectContaining({ file: 'apps/web/a.ts', kind: 'grew' })])
   })
 
-  it('fails on a stale entry, a file that shrank, vanished or has no match left', () => {
-    const found = checkAgainstBaseline(baseline, { 'apps/web/a.ts': { code: 2, comment: 1 } })
-    expect(found.map(({ file, kind }) => [file, kind])).toEqual([
-      ['apps/web/a.ts', 'stale'],
-      ['apps/web/b.ts', 'stale']
-    ])
+  it('accepts fewer lines than the entry, so that parallel cleanups never turn each other red', () => {
+    expect(
+      checkAgainstBaseline(baseline, {
+        'apps/web/a.ts': { code: 1, comment: 0 }
+      })
+    ).toEqual([])
   })
 
-  it('fails on an entry of zero', () => {
-    const zero = { 'a.ts': { code: 0, comment: 0 } }
-    expect(checkAgainstBaseline(zero, {})).toEqual([expect.objectContaining({ kind: 'stale' })])
+  it('accepts a baselined file that has no match left or is gone', () => {
+    expect(checkAgainstBaseline(baseline, {})).toEqual([])
+  })
+})
+
+describe('slackOf', () => {
+  const baseline = {
+    'apps/web/a.ts': { code: 3, comment: 1 },
+    'apps/web/b.ts': { code: 1, comment: 0 },
+    'apps/web/c.ts': { code: 2, comment: 0 }
+  }
+
+  it('lists the entries above the real count, vanished files included', () => {
+    expect(
+      slackOf(baseline, {
+        'apps/web/a.ts': { code: 2, comment: 1 },
+        'apps/web/c.ts': { code: 2, comment: 0 }
+      })
+    ).toEqual(['apps/web/a.ts', 'apps/web/b.ts'])
+  })
+
+  it('lists nothing when the baseline is tight', () => {
+    expect(slackOf(baseline, baseline)).toEqual([])
   })
 })
 

@@ -72,7 +72,7 @@ export function countReferences(source: string): Counts {
 
 export interface BaselineFinding {
   file: string
-  kind: 'new' | 'grew' | 'stale'
+  kind: 'new' | 'grew'
   allowed: Counts
   found: Counts
 }
@@ -80,22 +80,30 @@ export interface BaselineFinding {
 const ZERO: Counts = { code: 0, comment: 0 }
 const total = ({ code, comment }: Counts): number => code + comment
 
-// "stale" fails too: an entry above the real count, or at zero, would leave room for a new reference
-// to hide
+// Fails only when a count goes UP: a file without an entry that has matches, or more lines than its
+// entry. Fewer lines are accepted, so that parallel pull requests that delete references never turn
+// each other red; see `slackOf` for the entries that can be tightened.
 export function checkAgainstBaseline(baseline: Baseline, current: Baseline): BaselineFinding[] {
   const findings: BaselineFinding[] = []
-  for (const file of [...new Set([...Object.keys(baseline), ...Object.keys(current)])].sort()) {
+  for (const [file, found] of Object.entries(current)) {
     const allowed = baseline[file] ?? ZERO
-    const found = current[file] ?? ZERO
-    if (found.code === allowed.code && found.comment === allowed.comment && total(allowed) > 0) {
-      continue
+    if (found.code > allowed.code || found.comment > allowed.comment) {
+      findings.push({ file, kind: file in baseline ? 'grew' : 'new', allowed, found })
     }
-    if (total(found) === 0 && total(allowed) === 0 && !(file in baseline)) continue
-    const grew = found.code > allowed.code || found.comment > allowed.comment
-    const kind = grew ? (file in baseline ? 'grew' : 'new') : 'stale'
-    findings.push({ file, kind, allowed, found })
   }
-  return findings
+  return findings.sort((a, b) => a.file.localeCompare(b.file))
+}
+
+// Entries above the real count (or of a file that is gone): not a failure, a notice that
+// `--update-down` can tighten the baseline
+export function slackOf(baseline: Baseline, current: Baseline): string[] {
+  return Object.entries(baseline)
+    .filter(([file, allowed]) => {
+      const found = current[file] ?? ZERO
+      return found.code < allowed.code || found.comment < allowed.comment
+    })
+    .map(([file]) => file)
+    .sort()
 }
 
 // Files of `next` that are not in `previous` or that have more of either kind

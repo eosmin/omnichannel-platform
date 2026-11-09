@@ -13,7 +13,8 @@ import {
   checkAgainstBaseline,
   countReferences,
   isScanned,
-  lowerBaseline
+  lowerBaseline,
+  slackOf
 } from './lib/channel-agnostic'
 
 const BASELINE_FILE = 'scripts/channel-agnostic-baseline.json'
@@ -93,9 +94,7 @@ if (previous !== undefined) {
 }
 for (const { file, kind, allowed, found } of checkAgainstBaseline(baseline, current)) {
   failures.push(
-    kind === 'stale'
-      ? `${file}: ${show(found)}, the baseline allows ${show(allowed)}. Lower it: pnpm validate:channel-agnostic --update-down`
-      : `${file}: ${show(found)} name a channel or Meta (${kind === 'new' ? 'new in this file' : `${show(allowed)} allowed`}). Declare it in the plugin (libs/channels/*) and read it as data`
+    `${file}: ${show(found)} name a channel or Meta (${kind === 'new' ? 'new in this file' : `${show(allowed)} allowed`}). Declare it in the plugin (libs/channels/*) and read it as data`
   )
 }
 
@@ -103,6 +102,12 @@ if (failures.length > 0) {
   console.error('Channel knowledge outside libs/channels/* (CLAUDE.md rule 13):')
   for (const failure of failures) console.error(`  ${failure}`)
   exit(1)
+}
+const slack = slackOf(baseline, current)
+if (slack.length > 0) {
+  console.warn(
+    `channel-agnostic: the baseline can go down for ${slack.length} files (not a failure): pnpm validate:channel-agnostic --update-down`
+  )
 }
 console.log(
   `channel-agnostic: ${files.length} files scanned, ${Object.keys(current).length} still in the baseline`
