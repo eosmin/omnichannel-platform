@@ -5,7 +5,7 @@ export const CUSTOMER_AVATAR_IMAGE_HOSTS = [
   'https://*.fbcdn.net',
   'https://*.cdninstagram.com',
   // The signed profile pictures of Messenger. Exact host: other *.fbsbx.com hosts (apps.fbsbx.com)
-  // serve content of third parties (`MetaGraph.MEDIA_CDN_HOSTS` in the Meta library)
+  // serve content of third parties (the media hosts the provider's library keeps)
   'https://platform-lookaside.fbsbx.com'
 ] as const
 
