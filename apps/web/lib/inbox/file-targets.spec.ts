@@ -3,7 +3,6 @@ import type { MessageView } from '@platform/api-client'
 import {
   drawsFileButtons,
   fileTargetOf,
-  isNativeAlbumOf,
   isReactionOfFile,
   quotedFileOf,
   reactionsOfMessage,
@@ -32,9 +31,8 @@ const album = (over: Record<string, unknown> = {}) =>
     authorType: 'agent',
     media: [file('a', 0), file('b', 1), file('c', 2)],
     reactions: [],
-    albumNative: false,
     ...over
-  }) as unknown as Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions' | 'albumNative'>
+  }) as unknown as Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions'>
 
 describe('fileTargetOf', () => {
   it('is the number of the file among the files, the first one included, for a reply with several', () => {
@@ -57,25 +55,11 @@ describe('fileTargetOf', () => {
 })
 
 describe('files the channel cannot tell apart', () => {
-  it('offers no file of a native album to react to or quote on its own, even if the api marked them', () => {
-    const native = album({ albumNative: true })
-
-    expect(fileTargetOf(native, 'b')).toBeNull()
-    expect(fileTargetOf(native, 'c')).toBeNull()
-    expect(isNativeAlbumOf(native)).toBe(true)
-  })
-
   it('offers no file that is not targetable (no id at the provider yet)', () => {
     const message = album({ media: [file('a', 0), file('b', 1, false), file('c', 2)] })
 
     expect(fileTargetOf(message, 'b')).toBeNull()
     expect(fileTargetOf(message, 'c')).toEqual({ number: 3, total: 3 })
-  })
-
-  it('knows a native album only for the team: a message of the customer has none', () => {
-    expect(isNativeAlbumOf(album({ albumNative: true, authorType: 'customer' }))).toBe(false)
-    expect(isNativeAlbumOf(album({ albumNative: true, media: [file('a', 0)] }))).toBe(false)
-    expect(isNativeAlbumOf(album())).toBe(false)
   })
 })
 
@@ -108,13 +92,6 @@ describe('reactionsUnderFile and reactionsOfMessage', () => {
 
     expect(reactionsUnderFile(first, 'a').map(item => item.emoji)).toEqual(['f'])
     expect(reactionsOfMessage(first).map(item => item.emoji)).toEqual(['m'])
-  })
-
-  it('keeps every reaction of a native album with the message, whatever file it names', () => {
-    const native = album({ albumNative: true, reactions: [reaction('n', null, 'a')] })
-
-    expect(reactionsUnderFile(native, 'a')).toEqual([])
-    expect(reactionsOfMessage(native).map(item => item.emoji)).toEqual(['n'])
   })
 
   it('keeps with the message a reaction resolved to a file it no longer holds', () => {
@@ -153,10 +130,9 @@ describe('drawsFileButtons', () => {
     expect(drawsFileButtons(album())).toBe(true)
   })
 
-  it('is false for one file, a message of the customer, a native album, or files with no place', () => {
+  it('is false for one file, a message of the customer, or files with no place', () => {
     expect(drawsFileButtons(album({ media: [file('a', 0)] }))).toBe(false)
     expect(drawsFileButtons(album({ authorType: 'customer' }))).toBe(false)
-    expect(drawsFileButtons(album({ albumNative: true }))).toBe(false)
     expect(drawsFileButtons(album({ media: [file('a', null), file('b', null)] }))).toBe(false)
   })
 

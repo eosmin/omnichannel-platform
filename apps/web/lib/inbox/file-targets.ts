@@ -1,7 +1,7 @@
 import type { MessageView } from '@platform/api-client'
 import { AuthorType } from '@platform/core/domain'
 
-type Album = Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions' | 'albumNative'>
+type Album = Pick<MessageView, 'id' | 'authorType' | 'media' | 'reactions'>
 
 // Where a file stands among the files of its message: the number of its thumbnail and how many there are
 export interface FilePlace {
@@ -19,11 +19,10 @@ const placeOf = (media: Album['media'], id: string): FilePlace | null => {
 
 // A file the agent may react to or quote on its own: one of a reply of the team with several files, the first
 // included, that the channel can tell from the others. The api says it (`targetable`, false for a file with no id of
-// its own yet and for every file of a native album, which the provider took as ONE message): the page never guesses
-// it from the channel. A message of the customer has one file each, so there is nothing to choose.
+// its own yet): the page never guesses it from the channel. A message of the customer has one file each, so there
+// is nothing to choose.
 export function fileTargetOf(message: Album, fileId: string): FilePlace | null {
   if (message.authorType !== String(AuthorType.AGENT) || message.media.length < 2) return null
-  if (message.albumNative) return null
   // A file with no place (the customer's) has no number to be told by
   if (message.media.some(file => file.position === null)) return null
   if (message.media.find(file => file.id === fileId)?.targetable !== true) return null
@@ -49,21 +48,10 @@ export function isReactionOfFile(
     : (reaction.fileId ?? reaction.mediaId) === fileId
 }
 
-// A reply of the team the provider took as ONE message with several files (an album of Messenger or Instagram): its
-// thumbnails can be answered, which quotes the message, but never reacted to one by one: the reaction is the message's
-export function isNativeAlbumOf(message: Album): boolean {
-  return (
-    message.albumNative &&
-    message.authorType === String(AuthorType.AGENT) &&
-    message.media.length >= 2
-  )
-}
-
 // The file a reaction is drawn under: the one the api resolved (`fileId`, which covers the first file of an album
 // with an id for each picture, whose reaction is stored on the message), else the one it names
-// In a native album the reaction is the message's whatever the reaction says: no thumbnail can hold it
 const fileOfReaction = (message: Album, reaction: Album['reactions'][number]): string | null =>
-  message.albumNative ? null : (reaction.fileId ?? reaction.mediaId)
+  reaction.fileId ?? reaction.mediaId
 
 // The reactions left under one file of the message
 export function reactionsUnderFile(message: Album, fileId: string): Album['reactions'] {
