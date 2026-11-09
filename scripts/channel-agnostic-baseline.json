@@ -79,10 +79,6 @@
     "code": 0,
     "comment": 1
   },
-  "apps/web/lib/inbox/file-targets.ts": {
-    "code": 0,
-    "comment": 1
-  },
   "apps/web/lib/inbox/inbox-filters.ts": {
     "code": 0,
     "comment": 1
@@ -155,10 +151,6 @@
     "code": 0,
     "comment": 1
   },
-  "libs/api-client/src/api-schemas.ts": {
-    "code": 0,
-    "comment": 1
-  },
   "libs/core/database/prisma/schema.prisma": {
     "code": 0,
     "comment": 6
@@ -176,8 +168,8 @@
     "comment": 1
   },
   "libs/core/domain/channel-ids.ts": {
-    "code": 10,
-    "comment": 6
+    "code": 4,
+    "comment": 4
   },
   "libs/core/domain/channel-media/channel-media-rules.ts": {
     "code": 1,
@@ -188,8 +180,8 @@
     "comment": 0
   },
   "libs/core/domain/channel-media/meta-media-rules.ts": {
-    "code": 17,
-    "comment": 11
+    "code": 16,
+    "comment": 4
   },
   "libs/core/domain/channel-media/whatsapp-media.ts": {
     "code": 12,
@@ -263,10 +255,6 @@
     "code": 2,
     "comment": 0
   },
-  "libs/core/messaging/src/customers/identity.ts": {
-    "code": 1,
-    "comment": 0
-  },
   "libs/core/messaging/src/customers/phone.ts": {
     "code": 0,
     "comment": 1
@@ -285,11 +273,7 @@
   },
   "libs/core/messaging/src/messages/messages.views.ts": {
     "code": 0,
-    "comment": 4
-  },
-  "libs/core/messaging/src/messages/provider-message-match.ts": {
-    "code": 0,
-    "comment": 3
+    "comment": 1
   },
   "libs/core/messaging/src/messaging-window/messaging-window.service.ts": {
     "code": 0,

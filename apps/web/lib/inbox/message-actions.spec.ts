@@ -31,7 +31,6 @@ const message = (over: Partial<MessageView>): MessageView => ({
   unavailableFiles: [],
   captionState: null,
   textApart: false,
-  albumNative: false,
   mentions: [],
   version: 1,
   editedAt: null,

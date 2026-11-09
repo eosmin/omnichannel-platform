@@ -1225,7 +1225,6 @@
         "resendDuplicateDescription": "We could not confirm whether the customer received it. If you send it again they may get it twice.",
         "resendAnyway": "Send again",
         "replyFile": "Reply to image {number} of {total}",
-        "replyAlbum": "Reply to the album, from image {number} of {total}",
         "reactFile": "React to image {number} of {total}"
       },
       "location": {

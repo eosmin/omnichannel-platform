@@ -27,9 +27,6 @@ const MINUTE_MS = 60_000
 // reading, or a new one the api starts sending, fails the suite: the list is exact, so a field never
 // disappears from the page by accident.
 const NOT_READ_BY_THE_WEB_YET: string[] = []
-// Fields the api no longer sends and the client schema still lists, with a default, until the web drops its last
-// reader (session 24, tanda 3). Empty it, and the field with it, in that PR.
-const DEPRECATED_AND_NOT_SENT: string[] = ['albumNative']
 
 const keysOf = (value: unknown): string[] => Object.keys(value as Record<string, unknown>).sort()
 
@@ -226,9 +223,7 @@ describe('What the web client parses of the inbox api', () => {
         const unread = keysOf(message).filter(key => !known.includes(key))
         expect(unread).toEqual(NOT_READ_BY_THE_WEB_YET)
         // And the client asks for nothing the api does not send
-        expect(
-          known.filter(key => !(key in message) && !DEPRECATED_AND_NOT_SENT.includes(key))
-        ).toEqual([])
+        expect(known.filter(key => !(key in message))).toEqual([])
       }
       // The same for what sits inside a message
       const reactionKeys = Object.keys(messageSchema.shape.reactions.element.shape).sort()
