@@ -30,6 +30,7 @@ import {
   parseMessagingEntry,
   parseMessagingItem
 } from './meta-messaging.schema'
+import { storyReplyMetadata } from './story-reply'
 
 type ReceivedMessage = NonNullable<ChannelEvent['message']>
 
@@ -352,9 +353,6 @@ export function shapeOf(message: MetaMessage, raw: unknown[]): Record<string, un
   }
 }
 
-// The type name of a message that answers a story
-const STORY_REPLY = 'story_reply'
-
 function toReceivedMessage(
   message: MetaMessage,
   timestamp: string,
@@ -366,6 +364,10 @@ function toReceivedMessage(
     timestamp,
     ...(origin ? { origin } : {})
   }
+  // The story an Instagram customer replied to (IG-07): its own key, beside whatever else the message carries
+  // (words, a photo, a share, a like or a place). The link may not come or may not be drawable; the object is
+  // what says it was a story.
+  const storyReply = storyReplyMetadata(message.reply_to?.story)
   const attachments = parseAttachments(message.attachments ?? [])
   const rawText = hasText(message.text) ? message.text : null
   const unsupported = message.is_unsupported === true
@@ -373,7 +375,12 @@ function toReceivedMessage(
   // so it is stored as that text and nothing is fetched.
   const like = unsupported ? undefined : likeOf(attachments)
   if (like && rawText === null && attachments.every(attachment => isPartOfLike(attachment, like))) {
-    return { ...base, type: MessageType.TEXT, content: MetaMessaging.LIKE_TEXT }
+    return {
+      ...base,
+      type: MessageType.TEXT,
+      content: MetaMessaging.LIKE_TEXT,
+      ...(Object.keys(storyReply).length === 0 ? {} : { metadata: storyReply })
+    }
   }
   const files = unsupported ? null : mediaOf(attachments)
   // The placeholder beside a photo is not the customer's text; kept when there is no file to explain it
@@ -388,32 +395,22 @@ function toReceivedMessage(
       ...base,
       type: MessageType.LOCATION,
       content: text ?? place.name,
-      metadata: place.metadata
+      metadata: { ...place.metadata, ...storyReply }
     }
   }
   const shared = unsupported ? null : sharedOf(attachments)
   // The name of a type is the sender's, and it goes into the metadata and the content: only a plain one
   const providerType = shared && PROVIDER_TYPE.test(shared.type) ? shared.type : UNSUPPORTED_TYPE
-  // A shared post or reel keeps its link beside the text or the file, so the team can open it; so does
-  // the story an Instagram customer replied to (IG-07), when nothing else was shared
-  const storyUrl = message.reply_to?.story?.url
-  const link = shared?.url
-    ? {
-        metadata: {
-          [MessageMetadataKeys.ATTACHMENT_TYPE]: providerType,
-          attachmentUrl: shared.url
-        }
-      }
-    : storyUrl && !files
-      ? {
-          metadata: { [MessageMetadataKeys.ATTACHMENT_TYPE]: STORY_REPLY, attachmentUrl: storyUrl }
-        }
-      : {}
+  // A shared post or reel keeps its link beside the text or the file, so the team can open it
+  const linkMetadata = shared?.url
+    ? { [MessageMetadataKeys.ATTACHMENT_TYPE]: providerType, attachmentUrl: shared.url }
+    : {}
+  const extra = { ...linkMetadata, ...storyReply }
   if (files) {
     // MSG-STK: a sticker is an image to the core; the mark lets the thread draw it without a bubble
     const sticker = isStickerOnly(attachments, files.media)
     const metadata = {
-      ...('metadata' in link ? link.metadata : {}),
+      ...extra,
       ...(sticker ? { [MessageMetadataKeys.STICKER]: true } : {})
     }
     return {
@@ -424,7 +421,14 @@ function toReceivedMessage(
       ...(Object.keys(metadata).length === 0 ? {} : { metadata })
     }
   }
-  if (text !== null) return { ...base, type: MessageType.TEXT, content: text, ...link }
+  if (text !== null) {
+    return {
+      ...base,
+      type: MessageType.TEXT,
+      content: text,
+      ...(Object.keys(extra).length === 0 ? {} : { metadata: extra })
+    }
+  }
   return {
     ...base,
     type: MessageType.TEXT,
@@ -433,7 +437,8 @@ function toReceivedMessage(
       [MessageMetadataKeys.ATTACHMENT_TYPE]: providerType,
       [MessageMetadataKeys.UNSUPPORTED_TYPE]: providerType,
       [MessageMetadataKeys.UNSUPPORTED_SHAPE]: shapeOf(message, message.attachments ?? []),
-      ...(shared?.url ? { attachmentUrl: shared.url } : {})
+      ...(shared?.url ? { attachmentUrl: shared.url } : {}),
+      ...storyReply
     }
   }
 }

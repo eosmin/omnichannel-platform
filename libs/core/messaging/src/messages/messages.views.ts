@@ -95,6 +95,15 @@ function previewOf(text: string | null): string | null {
 // link leaves, and anything else in the metadata is no link.
 const attachmentUrlSchema = z.object({ attachmentUrl: httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH) })
 
+// The story of the business that the customer answered (`MessageMetadataKeys.STORY_REPLY`): `{ url? }`. Checked
+// again on the way out like the link above: a link that is not plain http(s), or too long, is no link, but the
+// reply still was one to a story.
+const storyReplySchema = z.object({
+  [MessageMetadataKeys.STORY_REPLY]: z.object({
+    url: httpUrl(InboundLimits.MEDIA_REF_MAX_LENGTH).optional().catch(undefined)
+  })
+})
+
 // The provider's name for a type a channel could not read, kept beside the `[name]` text it stored for
 // it. Only a plain name leaves (what the channel plugins accept), so nothing else of the metadata does.
 const providerTypeSchema = z.object({
@@ -170,6 +179,9 @@ export interface MessageView {
   // Untrusted: drawn as a link with its host visible and never fetched by the server. A story mention
   // is a signed link that expires within about a day.
   attachmentUrl: string | null
+  // The message answers a story of the business: the link of it (untrusted, it expires within about a day, and
+  // it may not come: null) or null when it does not answer one
+  storyReply: { url: string | null } | null
   // The type a channel could not read when `content` is only its `[type]` marker (English, the provider's
   // name): the thread writes its own translated sentence instead of drawing it. Null for any real text.
   unsupportedType: string | null
@@ -365,6 +377,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     contacts: contactsOf(row, type),
     sticker: stickerOf(row, type),
     attachmentUrl: attachmentUrlOf(row, type),
+    storyReply: storyReplyOf(row, type),
     unsupportedType: unsupportedTypeOf(row, type),
     reactions: row.reactions.map(reaction => ({
       emoji: reaction.emoji,
@@ -455,6 +468,14 @@ function locationOf(row: MessageRow, type: MessageType): LocationView | null {
 function attachmentUrlOf(row: MessageRow, type: MessageType): string | null {
   if (row.deletedAt !== null || row.metadata === null || type === MessageTypes.SYSTEM) return null
   return attachmentUrlSchema.safeParse(row.metadata).data?.attachmentUrl ?? null
+}
+
+function storyReplyOf(row: MessageRow, type: MessageType): { url: string | null } | null {
+  // Only what a customer sent: not a deleted message, a system line or an internal note
+  if (row.deletedAt !== null || row.metadata === null) return null
+  if (type === MessageTypes.SYSTEM || type === MessageTypes.INTERNAL_NOTE) return null
+  const story = storyReplySchema.safeParse(row.metadata).data?.[MessageMetadataKeys.STORY_REPLY]
+  return story === undefined ? null : { url: story.url ?? null }
 }
 
 // The channel marks the message when its whole text is the marker `[name]` for a type it cannot read; a

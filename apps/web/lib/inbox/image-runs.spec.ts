@@ -20,6 +20,7 @@ function picture(id: string, secondsAfter: number, extra: Partial<MessageView> =
     deletedAt: null,
     replyToMessageId: null,
     attachmentUrl: null,
+    storyReply: null,
     location: null,
     contacts: null,
     unsupportedType: null,
@@ -50,6 +51,7 @@ describe('isRunImage', () => {
     expect(isRunImage(picture('a', 0, { content: 'look' }))).toBe(false)
     expect(isRunImage(picture('a', 0, { replyToMessageId: 'x' }))).toBe(false)
     expect(isRunImage(picture('a', 0, { attachmentUrl: 'https://example.com' }))).toBe(false)
+    expect(isRunImage(picture('a', 0, { storyReply: { url: null } }))).toBe(false)
     expect(isRunImage(picture('a', 0, { sticker: true }))).toBe(false)
     expect(isRunImage(picture('a', 0, { deletedAt: '2026-11-08T12:00:00Z' }))).toBe(false)
     expect(isRunImage(picture('a', 0, { authorType: AuthorType.AGENT }))).toBe(false)

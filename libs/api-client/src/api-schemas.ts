@@ -367,6 +367,18 @@ export const messageSchema = z.object({
   sticker: z.boolean().default(false),
   // Untrusted: drawn as a link with its host visible, never fetched
   attachmentUrl: z.string().nullable(),
+  // The story of the business that the message answers (untrusted link, expires within about a day, may be
+  // null); a server that does not send it yet (a rolling deploy) draws the message as a plain one
+  storyReply: z
+    .object({
+      // Only https is drawn, whatever a server sends: `data:` and `blob:` are allowed by the CSP
+      url: z
+        .string()
+        .nullable()
+        .transform(url => (url !== null && url.startsWith('https://') ? url : null))
+    })
+    .nullable()
+    .default(null),
   // The type a channel could not read, when the text is only its English `[type]` marker; a server that
   // does not send it yet (a rolling deploy) draws the text as before
   unsupportedType: z.string().nullable().default(null),

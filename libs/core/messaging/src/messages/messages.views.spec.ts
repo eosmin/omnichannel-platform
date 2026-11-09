@@ -66,6 +66,48 @@ describe('messageView attachmentUrl', () => {
   })
 })
 
+describe('messageView storyReply', () => {
+  const key = MessageMetadataKeys.STORY_REPLY
+
+  it('carries the link of the story that the customer answered', () => {
+    expect(
+      messageView(row({ [key]: { url: 'https://lookaside.fbsbx.com/ig_messaging_cdn/?a=1' } }))
+        .storyReply
+    ).toEqual({ url: 'https://lookaside.fbsbx.com/ig_messaging_cdn/?a=1' })
+  })
+
+  it.each([
+    ['no link', { [key]: {} }],
+    ['a javascript link', { [key]: { url: 'javascript:alert(1)' } }],
+    ['a link with credentials', { [key]: { url: 'https://user:pass@example.com/' } }],
+    ['a link that is no text', { [key]: { url: 42 } }]
+  ])('still says it was a story reply, with no link, for %s', (_name, metadata) => {
+    expect(messageView(row(metadata)).storyReply).toEqual({ url: null })
+  })
+
+  it.each([
+    ['no metadata', null],
+    ['metadata of something else', { attachmentUrl: 'https://example.com/a' }],
+    ['a story that is no object', { [key]: 'https://example.com/a' }]
+  ])('is null for %s', (_name, metadata) => {
+    expect(messageView(row(metadata)).storyReply).toBeNull()
+  })
+
+  it('is null on an internal note', () => {
+    expect(
+      messageView({
+        ...row({ [key]: { url: 'https://example.com/a' } }),
+        type: MessageType.INTERNAL_NOTE
+      }).storyReply
+    ).toBeNull()
+  })
+
+  it('is null once the message is deleted', () => {
+    const deleted = { ...row({ [key]: { url: 'https://example.com/a' } }), deletedAt: new Date() }
+    expect(messageView(deleted).storyReply).toBeNull()
+  })
+})
+
 describe('messageView media', () => {
   const file = {
     id: 'f1',

@@ -1,7 +1,10 @@
+import { MetaStoryImageHosts } from '@platform/core/domain'
+
 import {
   buildContentSecurityPolicy,
   CUSTOMER_AVATAR_IMAGE_HOSTS,
-  STATIC_SECURITY_HEADERS
+  STATIC_SECURITY_HEADERS,
+  STORY_REPLY_IMAGE_HOSTS
 } from './security-headers'
 
 const options = {
@@ -31,11 +34,15 @@ describe('buildContentSecurityPolicy', () => {
     expect(buildContentSecurityPolicy(options)).not.toContain('unsafe-eval')
   })
 
-  it('draws images only from the app, inline data and the avatar hosts of Meta', () => {
+  it('draws images only from the app, inline data, the avatar hosts of Meta and the host of story thumbnails', () => {
     const img = directive(buildContentSecurityPolicy(options), 'img-src')
     expect(img).toBe(
-      `img-src 'self' data: blob: https://files.example.com ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`
+      `img-src 'self' data: blob: https://files.example.com ${[...CUSTOMER_AVATAR_IMAGE_HOSTS, ...STORY_REPLY_IMAGE_HOSTS].join(' ')}`
     )
+  })
+
+  it('allows for story thumbnails exactly the hosts the Instagram plugin keeps links by', () => {
+    expect([...STORY_REPLY_IMAGE_HOSTS]).toEqual(MetaStoryImageHosts.map(host => `https://${host}`))
   })
 
   it('plays audio and video only from the app and the bucket origin, never its path', () => {

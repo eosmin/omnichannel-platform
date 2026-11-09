@@ -1,4 +1,10 @@
-import { InboundLimits, MessageType, MetaGraph, OriginKinds } from '@platform/core/domain'
+import {
+  InboundLimits,
+  MessageType,
+  MetaGraph,
+  MetaMessaging,
+  OriginKinds
+} from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { messagingToEvents } from './meta-messaging-events'
@@ -156,13 +162,15 @@ describe('messagingToEvents', () => {
     )
     expect(event?.message).toMatchObject({
       content: 'me encanta',
-      metadata: { attachmentType: 'story_reply', attachmentUrl: story }
+      metadata: { storyReply: { url: story } }
     })
+    // The story is not a shared link: nothing is drawn as one
+    expect(event?.message?.metadata).not.toHaveProperty('attachmentUrl')
     // No reply to a message: the story is not one
     expect(event?.message).toMatchObject({ replyToExternalId: undefined })
   })
 
-  it('reads a reply to both a message and a story, and a story without a link as a plain reply', () => {
+  it('reads a reply to both a message and a story, and a story without a link as a story reply with no link', () => {
     const [both] = messagingToEvents(
       wrap(
         inbound({
@@ -178,10 +186,50 @@ describe('messagingToEvents', () => {
       wrap(inbound({ mid: 'm2', text: 'hola', reply_to: { story: { id: '9' } } })),
       OBJECT
     )
-    expect(noLink?.message).not.toHaveProperty('metadata')
+    expect(noLink?.message).toMatchObject({ metadata: { storyReply: {} } })
+    // Not a story: nothing
+    const [plain] = messagingToEvents(wrap(inbound({ mid: 'm3', text: 'hola' })), OBJECT)
+    expect(plain?.message).not.toHaveProperty('metadata')
   })
 
-  it('prefers what the customer shared over the story they replied to', () => {
+  it('keeps the story reply beside a like', () => {
+    const story = { url: 'https://lookaside.fbsbx.com/x' }
+    const [like] = messagingToEvents(
+      wrap(
+        inbound({
+          mid: 'm5',
+          attachments: [
+            {
+              type: 'image',
+              payload: {
+                url: 'https://scontent.cdninstagram.com/like.png',
+                sticker_id: MetaMessaging.LIKE_STICKER_IDS[0]
+              }
+            }
+          ],
+          reply_to: { story }
+        })
+      ),
+      OBJECT
+    )
+    expect(like?.message).toMatchObject({
+      content: MetaMessaging.LIKE_TEXT,
+      metadata: { storyReply: story }
+    })
+  })
+
+  it('drops the link of a story on a host that is not allowed, and keeps that it was a story', () => {
+    const [event] = messagingToEvents(
+      wrap(
+        inbound({ mid: 'm6', text: 'hi', reply_to: { story: { url: 'https://example.com/x' } } })
+      ),
+      OBJECT
+    )
+    expect(event?.message).toMatchObject({ metadata: { storyReply: {} } })
+    expect(JSON.stringify(event?.message)).not.toContain('example.com')
+  })
+
+  it('keeps both what the customer shared and the story they replied to', () => {
     const [event] = messagingToEvents(
       wrap(
         inbound({
@@ -193,7 +241,10 @@ describe('messagingToEvents', () => {
       OBJECT
     )
     expect(event?.message).toMatchObject({
-      metadata: { attachmentUrl: 'https://www.instagram.com/reel/a/' }
+      metadata: {
+        attachmentUrl: 'https://www.instagram.com/reel/a/',
+        storyReply: { url: 'https://lookaside.fbsbx.com/x' }
+      }
     })
   })
 
@@ -223,7 +274,7 @@ describe('messagingToEvents', () => {
     }
   )
 
-  it('keeps the photo, not the story link, when the customer replies to a story with a file', () => {
+  it('keeps the photo and the story reply when the customer replies to a story with a file', () => {
     const [event] = messagingToEvents(
       wrap(
         inbound({
@@ -234,8 +285,11 @@ describe('messagingToEvents', () => {
       ),
       OBJECT
     )
-    expect(event?.message).toMatchObject({ type: MessageType.IMAGE, media: [{ ref: CDN }] })
-    expect(event?.message).not.toHaveProperty('metadata')
+    expect(event?.message).toMatchObject({
+      type: MessageType.IMAGE,
+      media: [{ ref: CDN }],
+      metadata: { storyReply: { url: 'https://lookaside.fbsbx.com/x' } }
+    })
   })
 
   it('does not put the type name of a sender into the metadata when it is not plain', () => {

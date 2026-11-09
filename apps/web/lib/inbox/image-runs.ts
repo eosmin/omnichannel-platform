@@ -30,6 +30,7 @@ export function isRunImage(message: MessageView): boolean {
     (message.content === null || message.content.trim() === '') &&
     message.replyToMessageId === null &&
     message.attachmentUrl === null &&
+    message.storyReply === null &&
     message.location === null &&
     message.contacts === null &&
     message.unsupportedType === null

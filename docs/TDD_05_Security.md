@@ -395,7 +395,7 @@ const directives = [
   "default-src 'self'",
   `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,   // Next puts the nonce of the request on its own scripts
   "style-src 'self' 'unsafe-inline'",                    // Tailwind 4 needs no inline styles; the Radix portals inject a few. Revisit with a nonce.
-  `img-src 'self' data: blob: ${CUSTOMER_AVATAR_IMAGE_HOSTS.join(' ')}`,   // https://*.fbcdn.net https://*.cdninstagram.com https://platform-lookaside.fbsbx.com: the avatars Meta hands over (untrusted, initials when they fail). The bucket host joins img-src, and media-src is added, with the attachments of Step 3.4
+  `img-src 'self' data: blob: ${[...CUSTOMER_AVATAR_IMAGE_HOSTS, ...STORY_REPLY_IMAGE_HOSTS].join(' ')}`,   // https://*.fbcdn.net https://*.cdninstagram.com https://platform-lookaside.fbsbx.com: the avatars Meta hands over (untrusted, initials when they fail); https://lookaside.fbsbx.com (exact host, `MetaStoryImageHosts`): the thumbnail of the story an Instagram customer answered (untrusted, expires within a day, a notice when it fails; the plugin keeps a story link only on that host). The bucket host joins img-src, and media-src is added, with the attachments of Step 3.4
   `connect-src 'self' <api origin> <websocket origin> [<Sentry dsn origin>]`,
   "font-src 'self'",
   "object-src 'none'",

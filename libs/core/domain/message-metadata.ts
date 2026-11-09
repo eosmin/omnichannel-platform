@@ -12,7 +12,11 @@ export const MessageMetadataKeys = {
   // and the team can map the type. It never leaves in a view of the thread.
   UNSUPPORTED_SHAPE: 'unsupportedShape',
   // The contact cards of a CONTACTS message: a list of `{ name, phones, emails }`, bounded by `ContactCardLimits`
-  CONTACTS: 'contacts'
+  CONTACTS: 'contacts',
+  // Set on a message that answers a story of the business: `{ url? }`, the link of the story as the provider
+  // gave it (it expires within about a day, and may not come). Channel agnostic: the thread draws a card
+  // from it, whatever the channel that wrote it.
+  STORY_REPLY: 'storyReply'
 } as const
 
 // What a contact card a customer shares may carry. Channel agnostic: each plugin cuts what its provider
