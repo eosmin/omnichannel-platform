@@ -610,13 +610,38 @@ describe('An agent reacting to a message', () => {
     })
 
     // Nothing visible, or what the database would refuse
-    it.each(['', ' ', '\0', 'x'.repeat(40)])('refuses %j as an emoji', async emoji => {
+    // Text, more than one emoji, spaces and invisible characters reach the customer as they are written:
+    // only one emoji is a reaction
+    it.each([
+      '',
+      ' ',
+      '\0',
+      'x'.repeat(40),
+      'abc',
+      '<b>',
+      'x😀',
+      '😀😀',
+      '😀 ',
+      '😀\u200B',
+      '👍\u200D',
+      '1'
+    ])('refuses %j as an emoji', async emoji => {
       const message = await customerMessage()
 
       const response = await react(message.id, emoji)
 
       expect(response.status).toBe(BAD_REQUEST)
+      expect(response.body).toMatchObject({ error: { code: ErrorCodes.VALIDATION_FAILED } })
       expect(await stored(message.id)).toBeNull()
+    })
+
+    it.each(['👍', '👍🏽', '🇲🇽', '👨‍👩‍👧‍👦'])('takes %s as an emoji', async emoji => {
+      const message = await customerMessage()
+
+      const response = await react(message.id, emoji)
+
+      expect(response.status).toBe(NO_CONTENT)
+      expect(await stored(message.id)).toMatchObject({ emoji })
     })
   })
 

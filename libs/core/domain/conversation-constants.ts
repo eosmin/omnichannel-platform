@@ -81,6 +81,13 @@ export const TemplateStatuses = {
 } as const
 export type TemplateStatus = (typeof TemplateStatuses)[keyof typeof TemplateStatuses]
 
+// The `message` of a validation issue (`metadata.issues[].message` of a VALIDATION_FAILED): a name, never
+// a sentence, so that the interface chooses the words in the language of the person
+export const ValidationMessages = {
+  // What an agent sends as a reaction is not one emoji
+  EMOJI_NOT_SINGLE: 'EMOJI_NOT_SINGLE'
+} as const
+
 // Characters that reorder or hide text (bidi controls, zero-width ones): they reach the customer as
 // they are written, so they are refused in what an agent types into a template and taken out of what
 // a provider says

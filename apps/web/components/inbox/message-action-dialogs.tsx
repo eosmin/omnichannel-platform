@@ -4,7 +4,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import type { MessageView } from '@platform/api-client'
-import { InboundLimits, isWholeEmoji, MessageLimits, MessageType } from '@platform/core/domain'
+import { InboundLimits, isSingleEmoji, MessageLimits, MessageType } from '@platform/core/domain'
 
 import { failureStateOf } from '../../lib/inbox/failure-state'
 import { currentNoteOf } from '../../lib/inbox/stale-note'
@@ -378,7 +378,7 @@ export function CustomReactionDialog({
   const { react } = useMessageMutations(conversationId, message.id, mediaId)
   const [value, setValue] = useState('')
   const emoji = value.trim()
-  const isValid = isWholeEmoji(emoji, InboundLimits.EMOJI_MAX_LENGTH)
+  const isValid = isSingleEmoji(emoji, InboundLimits.EMOJI_MAX_LENGTH)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>

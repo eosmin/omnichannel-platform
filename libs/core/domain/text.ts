@@ -12,6 +12,17 @@ export const safeText = (text: string): string =>
 export const isWholeEmoji = (value: string, maxLength: number): boolean =>
   value.trim() !== '' && value.length <= maxLength && safeText(value) === value
 
+// One emoji and nothing else, for what an agent sends to a customer: a pictograph with its optional
+// selector and skin tone, a keycap, a flag (two regional indicators, or a black flag with tag letters),
+// or up to four of those joined with ZWJ (the longest real sequence joins four). Not a list of the
+// sequences that exist: two pictographs joined are accepted. No text, no space, no control or invisible character, no second emoji.
+// A regex literal, not `new RegExp`: a call at the top of a module is never dropped by the bundler
+const SINGLE_EMOJI =
+  /^(?:\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F}|\p{Regional_Indicator}{2}|[0-9#*]️?⃣|\p{Extended_Pictographic}(?:️|(?<=\p{Emoji_Modifier_Base})\p{Emoji_Modifier})?)(?:‍\p{Extended_Pictographic}(?:️|(?<=\p{Emoji_Modifier_Base})\p{Emoji_Modifier})?){0,3}$/u
+
+export const isSingleEmoji = (value: string, maxLength: number): boolean =>
+  value.length <= maxLength && SINGLE_EMOJI.test(value)
+
 // The accents of the Latin and Greek letters: the combining marks that "é" splits into. The marks of
 // other scripts (the voicing of a Japanese kana, the vowels of Devanagari) change the word and stay.
 const LATIN_ACCENTS = /[̀-ͯ]/g

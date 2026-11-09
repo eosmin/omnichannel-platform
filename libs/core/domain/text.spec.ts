@@ -1,4 +1,4 @@
-import { phraseMatches, plainText } from './text'
+import { isSingleEmoji, phraseMatches, plainText } from './text'
 
 describe('plainText', () => {
   it('lowers the case and takes the accents off', () => {
@@ -44,5 +44,65 @@ describe('phraseMatches', () => {
     expect(phraseMatches('my shop', 'My shop')).toBe(false)
     expect(phraseMatches('', 'My shop')).toBe(false)
     expect(phraseMatches('My  shop', 'My shop')).toBe(false)
+  })
+})
+
+describe('isSingleEmoji', () => {
+  it.each([
+    ['a face', '😀'],
+    ['a heart with the emoji selector', '❤️'],
+    ['a heart without it', '❤'],
+    ['a thumb with a skin tone', '👍🏽'],
+    ['a family joined with ZWJ', '👨‍👩‍👧‍👦'],
+    ['a couple with skin tones and a heart', '👩🏽‍❤️‍💋‍👨🏻'],
+    ['a flag of two regional indicators', '🇲🇽'],
+    [
+      'a flag of a subdivision (tag sequence)',
+      '🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}'
+    ],
+    ['a keycap', '1️⃣'],
+    ['a rainbow flag (ZWJ)', '🏳️‍🌈'],
+    ['a keycap without the selector', '1\u20E3']
+  ])('takes %s', (_name, value) => {
+    expect(isSingleEmoji(value, 32)).toBe(true)
+  })
+
+  it.each([
+    ['empty', ''],
+    ['blank', ' '],
+    ['letters', 'abc'],
+    ['markup', '<b>'],
+    ['a digit', '1'],
+    ['a letter with an emoji', 'x😀'],
+    ['two emoji', '😀😀'],
+    ['two flags', '🇲🇽🇺🇸'],
+    ['one regional indicator', '🇲'],
+    ['three regional indicators', '🇲🇽🇺'],
+    ['an emoji and a space', '😀 '],
+    ['a space before', ' 😀'],
+    ['an emoji and a line break', '😀\n'],
+    ['a control character', '\u0007😀'],
+    ['a zero-width space', '😀\u200B'],
+    ['a bidi override', '😀\u202E'],
+    ['a trailing ZWJ', '👍\u200D'],
+    ['a leading ZWJ', '\u200D👍'],
+    ['a ZWJ with a letter', '👍\u200Da'],
+    ['a doubled emoji selector', '❤\uFE0F\uFE0F'],
+    ['a lone skin tone', '🏽'],
+    ['a skin tone on a face', '😀🏽'],
+    ['a skin tone after the selector', '👍\uFE0F🏽'],
+    ['too many joined', '👨\u200D👩\u200D👧\u200D👦\u200D👦'],
+    ['a lone selector', '\uFE0F'],
+    ['a lone tag character', '\u{E0067}'],
+    ['a NUL', '😀\0'],
+    ['half of an emoji', '\uD83D'],
+    ['an emoji with a combining mark', '😀\u0301'],
+    ['text over the limit', '😀\u200D'.repeat(20)]
+  ])('refuses %s', (_name, value) => {
+    expect(isSingleEmoji(value, 32)).toBe(false)
+  })
+
+  it('refuses an emoji longer than the limit given', () => {
+    expect(isSingleEmoji('👨‍👩‍👧‍👦', 4)).toBe(false)
   })
 })
