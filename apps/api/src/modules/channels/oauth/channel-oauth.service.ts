@@ -478,8 +478,11 @@ const ASSET_TEXT_MAX_LENGTH = 200
 // links is held to the same pattern. An entry that is not any of that is left out, not repaired.
 function assetsOf(found: unknown, pattern: RegExp): OAuthAssetView[] {
   if (!Array.isArray(found)) return []
+  // Cut by characters (never through a pair), and with the control, format and direction characters taken out
   const text = (value: unknown): string | null =>
-    typeof value === 'string' ? value.slice(0, ASSET_TEXT_MAX_LENGTH) : null
+    typeof value === 'string'
+      ? Array.from(value.replace(/\p{C}/gu, '')).slice(0, ASSET_TEXT_MAX_LENGTH).join('')
+      : null
   const assets: OAuthAssetView[] = []
   for (const entry of found as unknown[]) {
     if (assets.length >= MAX_ASSETS) break
@@ -490,8 +493,12 @@ function assetsOf(found: unknown, pattern: RegExp): OAuthAssetView[] {
     if (typeof linkedAccount === 'object' && linkedAccount !== null) {
       const account = linkedAccount as Record<string, unknown>
       const accountId = account['id']
-      if (typeof accountId !== 'string' || !pattern.test(accountId)) continue
-      linked = { id: accountId, username: text(account['username']) }
+      // The account a choice links has ids of its own: only its shape is held (a bounded string), not the pattern of
+      // the choices. One that is not that leaves the choice without a linked account, and a choice that needs one
+      // then cannot be connected.
+      if (typeof accountId === 'string' && accountId.length <= ASSET_ID_MAX_LENGTH) {
+        linked = { id: accountId, username: text(account['username']) }
+      }
     }
     assets.push({ id, name: text(name) ?? id, linkedAccount: linked })
   }

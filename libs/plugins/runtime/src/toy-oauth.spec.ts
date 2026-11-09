@@ -205,6 +205,26 @@ describe('the login descriptor of a plugin nobody named', () => {
         }
       }
     ],
+    [
+      'a label with a second name that completes a scheme',
+      {
+        linkedAccount: {
+          required: false,
+          label: { es: 'Cuenta {username}: javascript{username}:alert', en: 'x' },
+          missingLabel: { es: 'x', en: 'x' }
+        }
+      }
+    ],
+    [
+      'a label that ends in a scheme',
+      {
+        linkedAccount: {
+          required: false,
+          label: { es: 'tel{username}:', en: 'x' },
+          missingLabel: { es: 'x', en: 'x' }
+        }
+      }
+    ],
     ['a range across classes of character', { assetIdPattern: '^[0-z]{1,10}$' }],
     ['a range from capitals to lower case', { assetIdPattern: '^[A-z]{1,10}$' }],
     ['a pattern that is not a pattern', { assetIdPattern: '^[$' }],

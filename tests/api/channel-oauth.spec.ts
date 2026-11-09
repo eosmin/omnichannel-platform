@@ -568,6 +568,28 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect((response.body as SessionBody).assets.map(asset => asset.id)).toEqual(['abcdefgh'])
     })
 
+    it('keeps the choice when the account it links has an id of another shape, and cuts a name by characters', async () => {
+      const { oauth } = login({
+        assetIdPattern: '^[a-z]{8,12}$',
+        listAssets: () =>
+          Promise.resolve([
+            {
+              id: 'abcdefgh',
+              name: `${'x'.repeat(199)}😀\u202e`,
+              linkedAccount: { id: '17841400000000000', username: 'shop' }
+            }
+          ])
+      })
+      const { id } = await register(oauth)
+      const session = await sessionOf(id)
+
+      const response = await asAdmin().get(ApiRoutes.channels.oauthAssets(session))
+
+      const [asset] = (response.body as SessionBody).assets
+      expect(asset?.linkedAccount).toEqual({ id: '17841400000000000', username: 'shop' })
+      expect(asset?.name).toBe(`${'x'.repeat(199)}😀`)
+    })
+
     it('holds the id it is given to the declared pattern before it asks the provider anything', async () => {
       const { oauth, calls } = login({ assetIdPattern: '^[a-z]{8,12}$' })
       const { id } = await register(oauth)

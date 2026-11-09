@@ -70,6 +70,25 @@ const LINKISH =
 const HAS_TEXT = /[\p{L}\p{N}]/u
 
 // A text a person reads: bounded in characters, trimmed, and plain. Counted as characters, not bytes.
+// Whether a placeholder in the text could complete a link or a scheme once the page fills it: any occurrence right after
+// a dot, a colon or a slash; right before a dot, colon or slash that is followed by more text; or right after a letter or
+// digit and before a colon (`tel{username}:`). A colon or a full stop that ends a sentence is punctuation.
+function placeholderJoinsALink(value: string, token: string): boolean {
+  let from = 0
+  for (;;) {
+    const at = value.indexOf(token, from)
+    if (at === -1) return false
+    const before = at === 0 ? '' : (value[at - 1] ?? '')
+    const after = value[at + token.length] ?? ''
+    const next = value[at + token.length + 1] ?? ''
+    if (before === '.' || before === ':' || before === '/') return true
+    if ((after === '.' || after === ':' || after === '/') && next !== '' && next !== ' ')
+      return true
+    if (after === ':' && /[\p{L}\p{N}]/u.test(before)) return true
+    from = at + token.length
+  }
+}
+
 export function isPlainDescriptorText(
   value: unknown,
   max: number = ChannelDescriptorLimits.TEXT_MAX_LENGTH,
@@ -86,17 +105,7 @@ export function isPlainDescriptorText(
       // A name the page fills in must not complete a link or a scheme (`go.{username}`, `javascript{username}:`):
       // no dot, colon or slash right before it, and none right after it that is followed by more text (a full stop or
       // a colon that ends the sentence is just punctuation). At most twice.
-      const joinsALink = placeholders.some(
-        name =>
-          value.includes(`.{${name}}`) ||
-          value.includes(`:{${name}}`) ||
-          value.includes(`/{${name}}`) ||
-          [`{${name}}.`, `{${name}}:`, `{${name}}/`].some(joined => {
-            const at = value.indexOf(joined)
-            const after = at === -1 ? '' : value.slice(at + joined.length, at + joined.length + 1)
-            return at !== -1 && after !== '' && after !== ' '
-          })
-      )
+      const joinsALink = placeholders.some(name => placeholderJoinsALink(value, `{${name}}`))
       const repeats = placeholders.some(name => value.split(`{${name}}`).length - 1 > 2)
       return (
         !joinsALink &&
