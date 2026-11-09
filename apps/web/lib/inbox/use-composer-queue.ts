@@ -22,6 +22,8 @@ export interface ComposerQueue {
     mentions?: string[]
     // The message this one answers
     replyToMessageId?: string
+    // The file of an album it answers
+    replyToMediaId?: string
   }) => void
   discard: (id: string) => void
   // The agent confirms a message that waited too long

@@ -38,7 +38,7 @@ export interface TrayStatus {
 export const EMPTY_TRAY: TrayStatus = { count: 0, ready: 0, isBusy: false, isSending: false }
 
 export interface TrayHandle {
-  send: (caption: string, replyToMessageId?: string) => Promise<boolean>
+  send: (caption: string, replyToMessageId?: string, replyToMediaId?: string) => Promise<boolean>
   add: (files: readonly File[]) => void
   clear: () => void
 }

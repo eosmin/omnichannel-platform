@@ -10,6 +10,7 @@ import { isAlbum } from '../../lib/inbox/album'
 import { initialsOf } from '../../lib/inbox/customer-label'
 import { failureNotesOf, failureStateOf } from '../../lib/inbox/failure-state'
 import { albumCaptionLinesOf } from '../../lib/inbox/file-caption'
+import { reactionsOfMessage } from '../../lib/inbox/file-targets'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
@@ -54,6 +55,8 @@ export interface MessageBubbleProps {
   userId: string | undefined
   // The names a note mentions, to highlight them in its text
   mentionNames: readonly string[]
+  // The file of the quoted message that this reply answers (its number among them), when it answers one
+  quotedFile?: { number: number; total: number } | null
   // A run of notices of content the channel does not show is drawn as one bubble, for its last message: how many
   // messages it covers, and the ids of the others, so that a quote of any of them still finds its place
   notice?: { count: number; otherIds: readonly string[] }
@@ -126,7 +129,8 @@ function Bubble({
   conversationId,
   userId,
   mentionNames,
-  notice
+  notice,
+  quotedFile
 }: MessageBubbleProps & { kind: Exclude<MessageKind, 'system' | 'neutral'> }): ReactElement {
   const t = useTranslations('inbox.thread')
   const codeText = useCodeText()
@@ -201,6 +205,7 @@ function Bubble({
             <QuotedMessage
               quote={message.replyTo}
               replyTo={message.replyToMessageId}
+              file={quotedFile ?? null}
               authorName={
                 message.replyTo === null
                   ? null
@@ -221,6 +226,7 @@ function Bubble({
             sticker={bubbleless}
             awaitingFiles={awaitingFiles}
             noticeCount={notice?.count ?? 1}
+            fileActions={{ message, actions, conversationId, userId, authorLabel }}
           />
           {message.attachmentUrl === null ? null : <SharedLink url={message.attachmentUrl} />}
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
@@ -261,7 +267,7 @@ function Bubble({
           {problem.text}
         </p>
       ))}
-      <ReactionChips reactions={message.reactions} authorLabel={authorLabel} />
+      <ReactionChips reactions={reactionsOfMessage(message)} authorLabel={authorLabel} />
     </div>
   )
 }
@@ -281,7 +287,8 @@ function Content({
   canRefetchFile,
   sticker,
   awaitingFiles,
-  noticeCount
+  noticeCount,
+  fileActions
 }: {
   message: MessageView
   kind: Exclude<MessageKind, 'system' | 'neutral'>
@@ -295,6 +302,14 @@ function Content({
   awaitingFiles: boolean
   // How many notices of content the channel does not show this bubble stands for
   noticeCount: number
+  // What the agent may do to one file of a reply with several (the bar over its thumbnail)
+  fileActions: {
+    message: MessageView
+    actions: MessageActions
+    conversationId: string
+    userId: string | undefined
+    authorLabel: (type: string, id: string | null) => string
+  }
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
   if (kind === 'deleted') {
@@ -365,6 +380,7 @@ function Content({
           sticker={sticker}
           messageType={message.type}
           textApart={message.textApart}
+          fileActions={fileActions}
           {...(isCaptionListed
             ? {
                 albumCaptions: {

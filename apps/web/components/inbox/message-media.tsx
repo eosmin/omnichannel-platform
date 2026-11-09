@@ -12,6 +12,7 @@ import type { OutboundMediaType } from '@platform/core/storage'
 import { fileDeliveryOf, isAlbum, sayRetryOnlyFailed } from '../../lib/inbox/album'
 import type { AlbumCaptionLine } from '../../lib/inbox/file-caption'
 import { displayFileNameOf } from '../../lib/inbox/file-label'
+import { fileTargetOf, reactionsUnderFile } from '../../lib/inbox/file-targets'
 import { mediaKindOf } from '../../lib/inbox/media-kind'
 import {
   type FileType,
@@ -20,6 +21,7 @@ import {
   isWaitingState,
   pendingShapeOf
 } from '../../lib/inbox/media-state'
+import type { MessageActions } from '../../lib/inbox/message-actions'
 import { useMessageMutations } from '../../lib/inbox/use-message-actions'
 import { viewerItemsOf } from '../../lib/inbox/viewer-items'
 import { formatBytes } from '../../lib/media/attachment-rules'
@@ -34,6 +36,8 @@ import { AlbumCaptionList, AlbumCaptionMark } from './album-captions'
 import { FileCaption } from './file-caption'
 import { LazyImageSetViewer } from './image-set-viewer-lazy'
 import { type LightboxFile, MediaLightbox } from './media-lightbox'
+import { MessageActionsBar } from './message-actions-bar'
+import { ReactionChips } from './reaction-chips'
 
 // A file is drawn in one of two states, a skeleton or its content, and both fill the same box, so the
 // thread never jumps when the file arrives. The rare end states (infected, not scannable, not
@@ -77,7 +81,8 @@ export function MessageMedia({
   sticker = false,
   messageType,
   albumCaptions,
-  textApart = false
+  textApart = false,
+  fileActions
 }: {
   files: readonly MediaFile[]
   unavailable: readonly UnavailableFile[]
@@ -92,7 +97,17 @@ export function MessageMedia({
   albumCaptions?: { lines: readonly AlbumCaptionLine<MediaFile>[]; lead: ReactNode }
   // The text of the message is its own message after the files: every file, the first included, draws its own text
   textApart?: boolean
+  // What the agent may do to ONE file of a reply with several: the message, its actions and who is looking. Without
+  // it (a customer's message, a note) the thumbnails have no bar and no reactions of their own.
+  fileActions?: {
+    message: MessageView
+    actions: MessageActions
+    conversationId: string
+    userId: string | undefined
+    authorLabel: (type: string, id: string | null) => string
+  }
 }): ReactElement | null {
+  const t = useTranslations('inbox.thread')
   const [open, setOpen] = useState<LightboxFile | null>(null)
   // The picture of the message open in the viewer that walks them all (by its file)
   const [viewerKey, setViewerKey] = useState<string | null>(null)
@@ -112,20 +127,65 @@ export function MessageMedia({
   return (
     <div className="flex flex-col gap-1.5">
       <div className={album ? 'grid w-[320px] max-w-full grid-cols-2 gap-1' : 'contents'}>
-        {files.map(file => (
-          <div key={file.id} className="relative flex min-w-0 flex-col gap-0.5">
-            <MarkOf number={numbers.get(file.id)} />
-            <MediaItem
-              file={file}
-              onOpen={openFile}
-              sticker={sticker}
-              messageType={messageType}
-              inAlbum={album}
-            />
-            {states ? <FileDeliveryLine file={file} /> : null}
-            {albumCaptions === undefined ? <FileCaption file={file} textApart={textApart} /> : null}
-          </div>
-        ))}
+        {files.map(file => {
+          const target =
+            fileActions === undefined ? null : fileTargetOf(fileActions.message, file.id)
+          return (
+            <div key={file.id} className="group/file relative flex min-w-0 flex-col gap-0.5">
+              <MarkOf number={numbers.get(file.id)} />
+              {fileActions === undefined ||
+              target === null ||
+              !(fileActions.actions.reply || fileActions.actions.react) ? (
+                <MediaItem
+                  file={file}
+                  onOpen={openFile}
+                  sticker={sticker}
+                  messageType={messageType}
+                  inAlbum={album}
+                />
+              ) : (
+                // Only a thumbnail with a bar of its own is wrapped: every other file keeps the box it had
+                <div className="relative">
+                  <MediaItem
+                    file={file}
+                    onOpen={openFile}
+                    sticker={sticker}
+                    messageType={messageType}
+                    inAlbum={album}
+                  />
+                  <div className="bg-background/90 absolute top-1 right-1 rounded-md">
+                    <MessageActionsBar
+                      message={fileActions.message}
+                      conversationId={fileActions.conversationId}
+                      actions={fileActions.actions}
+                      userId={fileActions.userId}
+                      authorLabel={fileActions.authorLabel}
+                      file={{ id: file.id, ...target }}
+                    />
+                  </div>
+                </div>
+              )}
+              {fileActions === undefined ? null : (
+                <ReactionChips
+                  reactions={reactionsUnderFile(fileActions.message, file.id)}
+                  authorLabel={fileActions.authorLabel}
+                  {...(target === null
+                    ? {}
+                    : {
+                        label: t('reactions.ofFile', {
+                          number: target.number,
+                          total: target.total
+                        })
+                      })}
+                />
+              )}
+              {states ? <FileDeliveryLine file={file} /> : null}
+              {albumCaptions === undefined ? (
+                <FileCaption file={file} textApart={textApart} />
+              ) : null}
+            </div>
+          )
+        })}
       </div>
       {albumCaptions === undefined ? null : (
         <AlbumCaptionList

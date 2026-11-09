@@ -12,6 +12,7 @@ import {
   useState
 } from 'react'
 
+import { quotedFileOf } from '../../lib/inbox/file-targets'
 import { groupImageRuns } from '../../lib/inbox/image-runs'
 import { messageActionsOf } from '../../lib/inbox/message-actions'
 import { groupNoticeRuns } from '../../lib/inbox/notice-runs'
@@ -86,6 +87,16 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
   )
   const memberIds = useMemo(() => memberIdsOf(items), [items])
   const authorLabel = useAuthorLabel(customerName, memberIds)
+  // The messages of the loaded part of the thread by id: a reply to one file of an album says which one
+  const loadedById = useMemo(
+    () =>
+      new Map(
+        items.flatMap(item =>
+          item.kind === 'message' ? [[item.message.id, item.message] as const] : []
+        )
+      ),
+    [items]
+  )
   const loadedIds = useMemo(
     () => new Set(items.flatMap(item => (item.kind === 'message' ? [item.message.id] : []))),
     [items]
@@ -451,6 +462,10 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
                       conversationId={conversationId}
                       userId={viewer.userId}
                       mentionNames={item.message.mentions.flatMap(id => memberNames.get(id) ?? [])}
+                      quotedFile={quotedFileOf(
+                        loadedById.get(item.message.replyToMessageId ?? ''),
+                        item.message.replyToMediaId
+                      )}
                     />
                   </li>
                 )

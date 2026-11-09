@@ -1119,7 +1119,8 @@
           "TEMPLATE": "Template",
           "INTERNAL_NOTE": "Internal note",
           "unknown": "Message"
-        }
+        },
+        "file": "Image {number} of {total}"
       },
       "storyReply": {
         "label": "Replied to your story",
@@ -1135,7 +1136,8 @@
         "chip": "{emoji} {count}",
         "pending": "Waiting for the channel",
         "failed": "Not delivered",
-        "hasProblem": "Some reactions were not delivered"
+        "hasProblem": "Some reactions were not delivered",
+        "ofFile": "Reactions to image {number} of {total}"
       },
       "origin": {
         "kind": {
@@ -1217,7 +1219,9 @@
         "discardDescription": "It did not reach the customer and it leaves the conversation for the whole team. The text is kept for 30 days.",
         "resendTitle": "Send this reply again?",
         "resendDuplicateDescription": "We could not confirm whether the customer received it. If you send it again they may get it twice.",
-        "resendAnyway": "Send again"
+        "resendAnyway": "Send again",
+        "replyFile": "Reply to image {number} of {total}",
+        "reactFile": "React to image {number} of {total}"
       },
       "location": {
         "untitled": "Shared location",
@@ -1323,7 +1327,8 @@
         "announce": "{count, plural, one {# suggestion} other {# suggestions}}. Highlighted: {label}."
       },
       "replying": "Replying to {author}",
-      "cancelReply": "Cancel the quoted reply"
+      "cancelReply": "Cancel the quoted reply",
+      "replyingFile": "Replying to {author}, image {number} of {total}"
     },
     "snooze": {
       "title": "Snooze the conversation",

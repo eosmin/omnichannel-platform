@@ -331,10 +331,10 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     if (isCommandText) return
     if (isFileBusy || isFileSending) return
     if (isFileReady) {
-      void trayHandle.current?.send(content, quoted?.messageId).then(sent => {
+      void trayHandle.current?.send(content, quoted?.messageId, quoted?.mediaId).then(sent => {
         // The text is cleared only if the agent has not changed it while the file was going out
         if (sent) {
-          if (quoted !== undefined) cancelReplyIf(quoted.messageId)
+          if (quoted !== undefined) cancelReplyIf(quoted.messageId, quoted.mediaId)
           setDraft(current => (current.trim() === content ? '' : current))
           setActiveIndex(0)
           keepBox()
@@ -347,7 +347,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       type: mode,
       content,
       ...(mentions.length > 0 ? { mentions } : {}),
-      ...(quoted === undefined ? {} : { replyToMessageId: quoted.messageId })
+      ...(quoted === undefined
+        ? {}
+        : {
+            replyToMessageId: quoted.messageId,
+            ...(quoted.mediaId === undefined ? {} : { replyToMediaId: quoted.mediaId })
+          })
     })
     if (quoted !== undefined) cancelReply()
     setText('')
@@ -592,7 +597,11 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
             <div className="bg-muted/60 border-foreground/30 flex items-center gap-2 rounded-md border-l-2 px-2 py-1 text-xs">
               <CornerUpLeft aria-hidden className="size-3.5 shrink-0" />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="font-medium">{t('replying', { author: quoted.author })}</span>
+                <span className="font-medium">
+                  {quoted.file === undefined
+                    ? t('replying', { author: quoted.author })
+                    : t('replyingFile', { author: quoted.author, ...quoted.file })}
+                </span>
                 <span className="text-muted-foreground truncate">
                   {quoted.content === null || quoted.content === ''
                     ? tQuote(typeKeyOf(quoted.type))
