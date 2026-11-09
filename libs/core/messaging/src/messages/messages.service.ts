@@ -867,7 +867,7 @@ export class MessagesService {
     mediaId?: string
   ): Promise<string | null> {
     const target = await tx.message.findFirst({
-      select: { channelMessageId: true, _count: { select: { media: true } } },
+      select: { channelMessageId: true },
       where: {
         discardedAt: null,
         id: messageId,

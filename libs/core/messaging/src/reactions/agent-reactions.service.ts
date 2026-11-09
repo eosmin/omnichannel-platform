@@ -78,6 +78,13 @@ export class AgentReactionsService {
       if (NOT_SENT_TO_CHANNEL.includes(message.type) || message.channelMessageId === null) {
         throw resourceConflict('the message has no copy in the channel to react to')
       }
+      if (!supportsReactions(message.conversation.channelType)) {
+        throw new PlatformException(
+          ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+          'the channel of this conversation does not take reactions',
+          HttpStatusCodes.CONFLICT
+        )
+      }
       // A file of another message or store is no file of this one: the same answer as a message not seen
       const file = mediaId === undefined ? null : message.media.find(item => item.id === mediaId)
       if (mediaId !== undefined && file === undefined) throw resourceNotFound('conversation')
@@ -97,13 +104,6 @@ export class AgentReactionsService {
           where: { storeId, messageId, userId: viewer.userId, mediaId: file.id }
         })
         if (there > 0) targetMediaId = file.id
-      }
-      if (!supportsReactions(message.conversation.channelType)) {
-        throw new PlatformException(
-          ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
-          'the channel of this conversation does not take reactions',
-          HttpStatusCodes.CONFLICT
-        )
       }
       const changedAt = await this.reactions.set(
         tx,

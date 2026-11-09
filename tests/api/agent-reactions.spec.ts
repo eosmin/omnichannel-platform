@@ -297,6 +297,27 @@ describe('An agent reacting to a message', () => {
       expect(jobsQueued().every(job => job.mediaId === undefined)).toBe(true)
     })
 
+    it('answers with the capability of the channel before anything about the file', async () => {
+      const plain = await customerMessage({ pluginId: PLAIN_TEXT_CHANNEL })
+      const file = await owner.media.create({
+        data: {
+          storeId: plain.storeId,
+          purpose: 'message',
+          messageId: plain.id,
+          key: `${prefix}-key-${randomUUID()}`,
+          filename: 'f.jpg',
+          contentType: 'image/jpeg',
+          fileSize: 10
+        },
+        select: { id: true }
+      })
+      const response = await reactUnder(plain.id, '👍', file.id)
+      expect(response.status).toBe(CONFLICT)
+      expect((response.body as { error?: { code?: string } }).error?.code).toBe(
+        ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
+      )
+    })
+
     it('can be taken back although the file has lost its id at the provider', async () => {
       const album = await albumMessage(2)
       const second = at(album.media, 1)

@@ -289,6 +289,27 @@ describe('A reaction or a quote that points at a message the platform sent', () 
     expect((await reactionOf(sent.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
   })
 
+  it('takes back the reaction under a file even when a later file now shares its id', async () => {
+    const { connectionId, from } = await seeded()
+    const sent = await sentByAgent(ctx.storeA.id, from, {
+      message: 'rm-1',
+      files: ['rm-1', 'rm-2', 'rm-3']
+    })
+    await react(connectionId, from, 'rm-2', '👍')
+    await react(connectionId, from, 'rm-1', '❤️')
+    expect((await reactionOf(sent.id)).map(r => r.emoji).sort()).toEqual(['❤️', '👍'])
+    // The third file now carries the id of the second: the provider can no longer tell them apart
+    await owner.media.updateMany({
+      where: { messageId: sent.id, channelMessageId: 'rm-3' },
+      data: { channelMessageId: 'rm-2' }
+    })
+
+    await react(connectionId, from, 'rm-2', null)
+
+    // The reaction under the second file goes, and the one of the message stays
+    expect((await reactionOf(sent.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+  })
+
   it('allows one reaction for each person and target, in the database itself', async () => {
     const { connectionId, from } = await seeded()
     const sent = await sentByAgent(ctx.storeA.id, from, {

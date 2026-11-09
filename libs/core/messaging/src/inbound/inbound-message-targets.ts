@@ -26,6 +26,8 @@ export interface InboundTargetEvent {
   // file, names it. An edit or a deletion is about ONE provider message: it keeps to the id of the message
   // itself, or the deletion of one file would take the whole album with it.
   namesFilesToo?: boolean
+  // The event takes a reaction back: it looks for the one that is there under the file named
+  removal?: boolean
 }
 
 export interface InboundTarget {
@@ -107,6 +109,19 @@ export class InboundMessageTargets {
         })
         const named = files.find(item => item.channelMessageId === event.targetExternalId)
         if (named !== undefined && isTargetOfItsOwn(target, files, named)) mediaId = named.id
+        // A removal finds the reaction where it was put even if the file cannot be told apart now (a later file
+        // shares its id): the row under that file is the one that goes
+        if (mediaId === null && named !== undefined && event.removal === true) {
+          const there = await tx.messageReaction.count({
+            where: {
+              storeId,
+              messageId: target.id,
+              customerIdentityId: identity.id,
+              mediaId: named.id
+            }
+          })
+          if (there > 0) mediaId = named.id
+        }
       }
       await apply(tx, {
         storeId,

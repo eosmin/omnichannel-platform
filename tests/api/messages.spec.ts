@@ -846,6 +846,17 @@ describe('The messages of a conversation', () => {
         expect(stored.replyToMediaId).toBeNull()
       })
 
+      it('is no field of an internal note: a note quotes a message, and goes to no channel', async () => {
+        const { id } = await mk()
+        const { target, files } = await withFiles(id, ctx.storeA.id, 2)
+
+        const response = await asAgent()
+          .post(ApiRoutes.messages.create)
+          .send(note(id, { replyToMessageId: target.id, replyToMediaId: at(files, 1).id }))
+
+        expect(response.status).toBe(BAD_REQUEST)
+      })
+
       it('refuses a file with no copy in the channel, and the file without its message', async () => {
         const { id } = await mk()
         const { target, files } = await withFiles(id, ctx.storeA.id, 2)

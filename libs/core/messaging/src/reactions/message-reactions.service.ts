@@ -69,7 +69,12 @@ export class MessageReactionsService {
     const missing: { shape?: MissingTargetShape } = {}
     const applied = await this.targets.apply(
       pluginId,
-      { ...event, targetExternalId: event.reaction.targetExternalId, namesFilesToo: true },
+      {
+        ...event,
+        targetExternalId: event.reaction.targetExternalId,
+        namesFilesToo: true,
+        removal: event.reaction.emoji === null
+      },
       'reaction',
       isLastAttempt,
       async (tx, target) => {
@@ -128,6 +133,13 @@ export class MessageReactionsService {
       }
     })
     if (message === null) return null
+    // The FK ties the file to `media` only: a file that is not this message's and this store's is no target
+    if (
+      mediaId !== null &&
+      (await tx.media.count({ where: { id: mediaId, storeId, messageId } })) === 0
+    ) {
+      return null
+    }
     // Set here so that the caller can name this change (the job of an agent's reaction carries it)
     const now = new Date()
     const clean = emoji === null ? '' : safeText(emoji)
