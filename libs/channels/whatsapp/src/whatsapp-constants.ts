@@ -1,7 +1,5 @@
-// The WhatsApp Cloud API as the plugin speaks it. It lives in the WhatsApp library: core, api, worker and web do not know it.
-
-// The WhatsApp Cloud API as the WhatsApp plugin speaks it. The shared Meta pieces (origin, signature,
-// error codes) are in meta-constants.ts.
+// The WhatsApp Cloud API as the WhatsApp plugin speaks it. It lives in the WhatsApp library: core, api, worker and
+// web do not know it. The pieces Meta's channels share (origin, signature, error codes) are in the Meta library.
 export const WhatsAppApi = {
   MESSAGING_PRODUCT: 'whatsapp',
   RECIPIENT_TYPE: 'individual',
