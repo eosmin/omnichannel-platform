@@ -18,7 +18,7 @@ import {
   ChannelCapability,
   ChannelConnectionStatus,
   ChannelHealthErrors,
-  ChannelIds,
+  ChannelManagementSurfaces,
   type DestructiveAction
 } from '@platform/core/domain'
 
@@ -109,7 +109,8 @@ export function ConnectionCard({
               }
             />
           ) : null}
-          {connection.pluginId === ChannelIds.WEB_WIDGET ? (
+          {plugin?.channel?.descriptor?.managementSurface ===
+          ChannelManagementSurfaces.EMBED_SNIPPET ? (
             <Disclosure label={t('widget.toggle')}>
               <WidgetCard connectionId={connection.id} canEdit={canEdit} />
             </Disclosure>

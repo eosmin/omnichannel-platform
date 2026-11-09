@@ -1,6 +1,6 @@
 'use client'
 
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 
 import type {
@@ -10,7 +10,7 @@ import type {
 } from '../../lib/settings/channels-requests'
 import { connectFailureReasonOf, isTokenFailure } from '../../lib/settings/connect-failure'
 import {
-  ChannelMessagePrefix,
+  fieldLabelOf,
   type ConnectValues,
   credentialsOf,
   emptyValues,
@@ -122,6 +122,7 @@ export function ConnectForm({
 }): ReactElement {
   const t = useTranslations('settings.channels.connectDialog')
   const tAll = useTranslations()
+  const locale = useLocale()
   const idPrefix = useId()
   const [values, setValues] = useState<ConnectValues>(() => emptyValues(fields))
   const canSubmit = missingFields(fields, values).length === 0 && !connect.isPending
@@ -147,19 +148,16 @@ export function ConnectForm({
     })
   }
 
-  // A key the page has no text for (a plugin newer than the page) shows the key of the field
-  const labelOf = (key: string, labelKey: string | null): string =>
-    labelKey?.startsWith(ChannelMessagePrefix) === true &&
-    tAll.has(labelKey as Parameters<typeof tAll.has>[0])
-      ? tAll(labelKey as Parameters<typeof tAll>[0])
-      : key
+  // A key the page has no text for (a plugin newer than the page) takes the text of the plugin, else the key
+  const message = (key: string): string | null =>
+    tAll.has(key as Parameters<typeof tAll.has>[0]) ? tAll(key as Parameters<typeof tAll>[0]) : null
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       {fields.map((field, index) => {
         const id = `${idPrefix}-${field.key}`
         const focusIt = autoFocusFirst && index === 0
-        const label = labelOf(field.key, field.labelKey)
+        const label = fieldLabelOf(field, locale, message)
         return (
           <div key={field.key} className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={id}>

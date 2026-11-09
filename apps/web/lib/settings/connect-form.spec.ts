@@ -1,5 +1,5 @@
 import type { ConnectFieldView } from './channels-requests'
-import { credentialsOf, emptyValues, linesOf, missingFields } from './connect-form'
+import { fieldLabelOf, credentialsOf, emptyValues, linesOf, missingFields } from './connect-form'
 
 const field = (key: string, over: Partial<ConnectFieldView> = {}): ConnectFieldView => ({
   key,
@@ -77,5 +77,34 @@ describe('the connect form', () => {
 
   it('sends nothing for a key the plugin did not declare', () => {
     expect(credentialsOf(fields, { ...emptyValues(fields), extra: 'x' })).toEqual({})
+  })
+})
+
+describe('fieldLabelOf', () => {
+  const own = { key: 'apiKey', labelKey: null, label: { es: 'Clave de Acme', en: 'Acme API key' } }
+  const known = (key: string): string | null => (key === 'settings.channels.x' ? 'Known' : null)
+
+  it('draws the message of the page where the field names one it has', () => {
+    expect(
+      fieldLabelOf({ key: 'k', labelKey: 'settings.channels.x', label: null }, 'en', known)
+    ).toBe('Known')
+  })
+
+  it('draws the text the plugin wrote, in the language of the reader', () => {
+    expect(fieldLabelOf(own, 'es', known)).toBe('Clave de Acme')
+    expect(fieldLabelOf(own, 'en', known)).toBe('Acme API key')
+    expect(fieldLabelOf(own, 'es-MX', known)).toBe('Clave de Acme')
+  })
+
+  it('does not let a key aimed at another part of the page relabel a field', () => {
+    expect(fieldLabelOf({ ...own, labelKey: 'common.cancel' }, 'en', () => 'Cancel')).toBe(
+      'Acme API key'
+    )
+  })
+
+  it('shows the key of a field it cannot name', () => {
+    expect(
+      fieldLabelOf({ key: 'k', labelKey: 'settings.channels.unknown', label: null }, 'en', known)
+    ).toBe('k')
   })
 })
