@@ -14,8 +14,6 @@ import {
 
 import { ClientPermissions } from '@platform/core/auth'
 import {
-  ChannelCaptionRules,
-  ChannelTextLimits,
   ConversationStatus,
   MessageLimits,
   MessageType,
@@ -24,6 +22,7 @@ import {
 } from '@platform/core/domain'
 
 import { isAssigneeRefusal } from '../../lib/inbox/assignees'
+import { captionMaxOf } from '../../lib/inbox/caption-max'
 import { publishDraft } from '../../lib/inbox/composer-draft-index'
 import { readDraft, writeDraft } from '../../lib/inbox/composer-drafts'
 import { composerMenu, type MenuEntry } from '../../lib/inbox/composer-menu'
@@ -138,15 +137,14 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const channels = useChannelDirectory(storeId)
   const windowState = useWindowState(storeId, conversationId)
   const queue = useComposerQueue(storeId, conversationId)
-  // Unknown while the directory loads; a connection the directory does not list takes no file
-  const channelCapabilities =
-    channels.data === undefined
-      ? undefined
-      : (channels.data.find(channel => channel.id === conversation.data?.channelConnectionId)
-          ?.capabilities ?? [])
-  const channelMedia = channels.data?.find(
+  // The directory entry of this conversation's connection: unknown while the directory loads, and a
+  // connection the directory does not list takes no file
+  const channelEntry = channels.data?.find(
     channel => channel.id === conversation.data?.channelConnectionId
-  )?.media
+  )
+  const channelCapabilities =
+    channels.data === undefined ? undefined : (channelEntry?.capabilities ?? [])
+  const channelMedia = channelEntry?.media
   // The files the agent attaches live in the tray, which is downloaded the first time a file is chosen:
   // the files chosen before it arrives wait here until it hands over its handle
   const [isTrayWanted, setTrayWanted] = useState(false)
@@ -264,9 +262,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const mode = allowedMode(chosenMode, mayReply, mayNote)
   const isNote = mode === MessageType.INTERNAL_NOTE
   const isClosed = !isNote && windowState.kind === 'closed'
-  const pluginId =
-    channels.data?.find(channel => channel.id === conversation.data.channelConnectionId)
-      ?.pluginId ?? conversation.data.channelType
+  const pluginId = channelEntry?.pluginId ?? conversation.data.channelType
   const mayTemplate = can(ClientPermissions.MESSAGES_SEND_TEMPLATE)
   // Only what the channel takes; empty is a channel that takes no file, which has no paperclip. Until the
   // directory loads the picker offers every allowed type and the check is left to the api.
@@ -625,10 +621,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               storeId={storeId}
               conversationId={conversationId}
               rules={{ capabilities: channelCapabilities, media: channelMedia }}
-              captionMax={
-                ChannelCaptionRules[conversation.data.channelType]?.maxLength ??
-                ChannelTextLimits[conversation.data.channelType]
-              }
+              captionMax={captionMaxOf(channelEntry?.limits)}
               hidden={isNote}
               onStatus={setTray}
               handle={bindTray}

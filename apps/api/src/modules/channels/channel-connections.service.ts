@@ -26,8 +26,9 @@ import {
   ChannelConnectionLimits,
   ChannelConnectionListStates,
   ChannelConnectionStatus,
-  type CursorPage,
   ChannelHealthLimits,
+  type ChannelLimitsView,
+  type CursorPage,
   isInstallationActive,
   MembershipStatus,
   OfActiveInstallation,
@@ -48,7 +49,7 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { enumValueOf } from '@platform/core/messaging'
-import { type ChannelLimitsSnapshot, PluginRegistry } from '@platform/plugins/runtime'
+import { PluginRegistry } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
@@ -133,7 +134,7 @@ export type ChannelDirectoryEntry = Pick<
   media: DirectoryMediaLimits[]
   // The longest text of a message and what goes under a file, as the plugin declared it (null when the
   // plugin is no longer registered): the composer counts against it
-  limits: ChannelLimitsSnapshot | null
+  limits: ChannelLimitsView | null
 }
 
 export interface ChannelTestResult {

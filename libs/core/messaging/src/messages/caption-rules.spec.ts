@@ -1,4 +1,4 @@
-import { ChannelIds, MessageType } from '@platform/core/domain'
+import { type ChannelLimitsView, MessageType } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 
 import {
@@ -7,6 +7,14 @@ import {
   requireCaptionsPlaced,
   requireTextFits
 } from './caption-rules'
+
+// What the plugins declare: the spec holds the rules, not the numbers of any channel in particular
+const WITH_CAPTION_RULE: ChannelLimitsView = {
+  textMaxLength: 4096,
+  caption: { maxLength: 1024, withoutCaption: [MessageType.AUDIO] }
+}
+const SHORT_TEXT: ChannelLimitsView = { textMaxLength: 1000, caption: null }
+const LONG_TEXT: ChannelLimitsView = { textMaxLength: 2000, caption: null }
 
 const codeOf = (work: () => void): unknown => {
   try {
@@ -19,43 +27,35 @@ const codeOf = (work: () => void): unknown => {
 
 describe('requireCaptionFits', () => {
   it('accepts no text, and text within the limit', () => {
+    expect(() => requireCaptionFits(WITH_CAPTION_RULE, MessageType.IMAGE, undefined)).not.toThrow()
     expect(() =>
-      requireCaptionFits(ChannelIds.WHATSAPP, MessageType.IMAGE, undefined)
-    ).not.toThrow()
-    expect(() =>
-      requireCaptionFits(ChannelIds.WHATSAPP, MessageType.IMAGE, 'a'.repeat(1024))
+      requireCaptionFits(WITH_CAPTION_RULE, MessageType.IMAGE, 'a'.repeat(1024))
     ).not.toThrow()
   })
 
-  it('refuses a WhatsApp caption over 1024 characters, counted as characters', () => {
+  it('refuses a caption over the limit its plugin declared (1024 here), counted as characters', () => {
     expect(() =>
-      requireCaptionFits(ChannelIds.WHATSAPP, MessageType.DOCUMENT, 'a'.repeat(1025))
+      requireCaptionFits(WITH_CAPTION_RULE, MessageType.DOCUMENT, 'a'.repeat(1025))
     ).toThrow()
     expect(() =>
-      requireCaptionFits(ChannelIds.WHATSAPP, MessageType.IMAGE, '😀'.repeat(1024))
+      requireCaptionFits(WITH_CAPTION_RULE, MessageType.IMAGE, '😀'.repeat(1024))
     ).not.toThrow()
   })
 
-  it('refuses text under a WhatsApp audio', () => {
-    expect(codeOf(() => requireCaptionFits(ChannelIds.WHATSAPP, MessageType.AUDIO, 'hola'))).toBe(
+  it('refuses text under a kind of file the plugin declares without caption', () => {
+    expect(codeOf(() => requireCaptionFits(WITH_CAPTION_RULE, MessageType.AUDIO, 'hola'))).toBe(
       ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
     )
   })
 
-  it('holds Instagram and Messenger to the limit of their text', () => {
-    expect(() =>
-      requireCaptionFits(ChannelIds.INSTAGRAM, MessageType.IMAGE, 'a'.repeat(1001))
-    ).toThrow()
-    expect(() =>
-      requireCaptionFits(ChannelIds.MESSENGER, MessageType.IMAGE, 'a'.repeat(2001))
-    ).toThrow()
-    expect(() =>
-      requireCaptionFits(ChannelIds.MESSENGER, MessageType.AUDIO, 'a'.repeat(2000))
-    ).not.toThrow()
+  it('holds a channel with no caption rule to the limit of its text', () => {
+    expect(() => requireCaptionFits(SHORT_TEXT, MessageType.IMAGE, 'a'.repeat(1001))).toThrow()
+    expect(() => requireCaptionFits(LONG_TEXT, MessageType.IMAGE, 'a'.repeat(2001))).toThrow()
+    expect(() => requireCaptionFits(LONG_TEXT, MessageType.AUDIO, 'a'.repeat(2000))).not.toThrow()
   })
 
-  it('does not bound a channel it does not know', () => {
-    expect(() => requireCaptionFits('acme', MessageType.IMAGE, 'a'.repeat(5000))).not.toThrow()
+  it('does not bound a channel the registry does not know', () => {
+    expect(() => requireCaptionFits(null, MessageType.IMAGE, 'a'.repeat(5000))).not.toThrow()
   })
 })
 
@@ -107,9 +107,9 @@ describe('requireCaptionsPlaced with the text apart', () => {
 
 describe('requireTextFits', () => {
   it('holds the text of the message to the limit of a plain text of its channel', () => {
-    expect(() => requireTextFits(ChannelIds.WHATSAPP, undefined)).not.toThrow()
-    expect(() => requireTextFits(ChannelIds.WHATSAPP, 'a'.repeat(4096))).not.toThrow()
-    expect(() => requireTextFits(ChannelIds.WHATSAPP, 'a'.repeat(4097))).toThrow()
-    expect(() => requireTextFits('acme', 'a'.repeat(9000))).not.toThrow()
+    expect(() => requireTextFits(WITH_CAPTION_RULE, undefined)).not.toThrow()
+    expect(() => requireTextFits(WITH_CAPTION_RULE, 'a'.repeat(4096))).not.toThrow()
+    expect(() => requireTextFits(WITH_CAPTION_RULE, 'a'.repeat(4097))).toThrow()
+    expect(() => requireTextFits(null, 'a'.repeat(9000))).not.toThrow()
   })
 })

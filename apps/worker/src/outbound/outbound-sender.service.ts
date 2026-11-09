@@ -12,7 +12,6 @@ import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   CaptionState,
   ChannelConnectionStatus,
-  ChannelTextLimits,
   ChannelResultMetadata,
   ConversationStatus,
   DeliveryStatus,
@@ -174,7 +173,7 @@ export class OutboundSender {
     const connectionStatus = isInstallationActive(connection.installation)
       ? connection.status
       : ChannelConnectionStatus.DISCONNECTED
-    const refusal = this.refusalBeforeSending(message, channelType, connectionStatus)
+    const refusal = this.refusalBeforeSending(message, connection.pluginId, connectionStatus)
     if (refusal !== null) {
       await this.fail(storeId, messageId, refusal.code, !tainted)
       return
@@ -230,6 +229,7 @@ export class OutboundSender {
         // Only a channel that declared an album (and so has the method) sends the images of a message together
         sendAlbum: plugin.sendAlbum?.bind(plugin),
         media: this.registry.mediaOf(connection.pluginId),
+        limits: this.registry.limitsOf(connection.pluginId),
         sendText: plugin.sendMessage.bind(plugin),
         conversationId: message.conversation.id,
         channelType,
@@ -472,7 +472,7 @@ export class OutboundSender {
       return { code: ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED, retryable: false }
     }
     const text = message.content ?? ''
-    const limit = ChannelTextLimits[channelType]
+    const limit = this.registry.limitsOf(channelType)?.textMaxLength
     if (
       (!isMedia && text.trim() === '') ||
       (limit !== undefined && Array.from(text).length > limit)
@@ -553,6 +553,8 @@ export class OutboundSender {
     sendAlbum: ChannelPlugin['sendAlbum']
     // What the plugin declared when it registered (a frozen copy): the rules of each kind and its album
     media: ReturnType<PluginRegistry['mediaOf']>
+    // What it declared for a text, from the same registry entry as the rules above
+    limits: ReturnType<PluginRegistry['limitsOf']>
     // The text of a file whose kind has no place for one on the channel goes after it, as a message
     sendText: ChannelPlugin['sendMessage']
     conversationId: string
@@ -587,7 +589,7 @@ export class OutboundSender {
         return (
           text !== '' &&
           // Apart, a file never carries its text as a message of its own: it is under it or it is refused
-          captionProblemOf(args.channelType, args.messageType, text, !args.textApart) !== null
+          captionProblemOf(args.limits, args.messageType, text, !args.textApart) !== null
         )
       })
       if (refused) {
@@ -614,7 +616,7 @@ export class OutboundSender {
     let albumOn =
       args.sendAlbum !== undefined &&
       args.media?.album !== undefined &&
-      !carriesNoCaption(args.channelType, args.messageType)
+      !carriesNoCaption(args.limits, args.messageType)
     const handled = new Set<string>()
     for (const file of files) {
       if (handled.has(file.id)) continue
@@ -733,7 +735,7 @@ export class OutboundSender {
       // refused by it, which fails that file in view. Where the text of the message is its own message after every
       // file (`textApart`), no file sends a text apart.
       const apart =
-        !args.textApart && file.index === 0 && carriesNoCaption(args.channelType, args.messageType)
+        !args.textApart && file.index === 0 && carriesNoCaption(args.limits, args.messageType)
       const base = files.length === 1 ? messageId : `${messageId}-${file.position}`
       const idempotencyKey = args.resentAt === null ? base : `${base}-${args.resentAt.getTime()}`
       // An apart text has its state written BEFORE the file goes: a process that dies between the file and its
