@@ -6,7 +6,10 @@ import { test } from '@playwright/test'
 
 import { MagicLinkThrottle } from '@platform/core/auth'
 
-// The api allows `MagicLinkThrottle.limit` links a minute per address, whatever the IP, and the specs
+import { magicLinkLimitInForce } from './env'
+
+// The api allows `magicLinkLimitInForce` links a minute per address (the real `MagicLinkThrottle.limit`, or the
+// one the suite asked of the api it starts, see env.ts), whatever the IP, and the specs
 // share a handful of addresses (admin@, agent@). A spec file added or sped up can push one address
 // over the limit and make the next spec wait for an email that never comes. Every request for a link
 // goes through here: it waits until the address has room in a sliding window a little wider than the
@@ -19,7 +22,7 @@ const POLL_MS = 500
 // A wait this long means the budget is stuck, not busy: say so instead of a bare test timeout
 const MAX_WAIT_MS = WINDOW_MS * 2
 // One below the limit: a request of another process that the file did not see still fits
-const MAX_IN_WINDOW = Math.max(1, MagicLinkThrottle.limit - 1)
+export const MAX_IN_WINDOW = Math.max(1, magicLinkLimitInForce - 1)
 
 type Stamps = Record<string, number[]>
 

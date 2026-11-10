@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 import { englishLocale, webServer } from './playwright.shared'
-import { isCi, shard, WEB_URL } from './support/env'
+import { E2E_MAGIC_LINK_LIMIT, isCi, shard, WEB_URL } from './support/env'
 
 export default defineConfig({
   testDir: './specs',
@@ -31,5 +31,11 @@ export default defineConfig({
     storageState: englishLocale
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer
+  // The api of this suite counts magic links per address with a higher limit (env.ts says why); the performance run,
+  // which shares these servers, does not get it
+  webServer: webServer.map(server =>
+    server.name === 'api'
+      ? { ...server, env: { ...server.env, E2E_MAGIC_LINK_LIMIT: String(E2E_MAGIC_LINK_LIMIT) } }
+      : server
+  )
 })

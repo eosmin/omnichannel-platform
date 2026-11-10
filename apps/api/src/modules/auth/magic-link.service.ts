@@ -13,6 +13,7 @@ import { hashToken } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import { VerificationTokenType } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import { MAGIC_LINK_EMAIL_LIMIT } from '@platform/core/http'
 import { JobNames, QueueNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
 import { type IssuedSession, type SessionContext, SessionService } from './session.service'
@@ -33,6 +34,7 @@ export class MagicLinkService {
     private readonly sessions: SessionService,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<RequestMagicLinkJob>,
     @Inject(getStorageToken()) private readonly throttleStorage: ThrottlerStorage,
+    @Inject(MAGIC_LINK_EMAIL_LIMIT) private readonly emailLimit: number,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(MagicLinkService.name)
@@ -96,7 +98,7 @@ export class MagicLinkService {
     const record = await this.throttleStorage.increment(
       emailLimitKey(email),
       MagicLinkThrottle.ttlMs,
-      MagicLinkThrottle.limit,
+      this.emailLimit,
       0,
       MAGIC_LINK_EMAIL_THROTTLER
     )
