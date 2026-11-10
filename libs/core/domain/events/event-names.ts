@@ -68,6 +68,9 @@ export const Events = {
   ORDER_PRICE_APPROVAL_REQUESTED: 'order.price_approval_requested',
   ORDER_PRICE_APPROVED: 'order.price_approved',
   ORDER_PRICE_REJECTED: 'order.price_rejected',
+  // The packing note changed (ids only: the text of a note never travels in an event)
+  ORDER_PACKING_NOTE_CHANGED: 'order.packing_note_changed',
+  ORDER_PAYMENT_RECORDED: 'order.payment_recorded',
 
   // Products and inventory
   PRODUCT_CREATED: 'product.created',

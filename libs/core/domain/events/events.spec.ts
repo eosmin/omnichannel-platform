@@ -1,4 +1,4 @@
-import { Events } from './event-names'
+import { BridgedEvents, Events } from './event-names'
 
 describe('Events', () => {
   it('uses unique dotted names', () => {
@@ -19,5 +19,11 @@ describe('Events', () => {
     for (const [key, value] of Object.entries(Events)) {
       expect(key).toBe(value.replace('.', '_').toUpperCase())
     }
+  })
+
+  it('keeps the packing note event on the server: it never crosses the bridge to a browser', () => {
+    expect(Events.ORDER_PACKING_NOTE_CHANGED).toBe('order.packing_note_changed')
+    const bridged: readonly string[] = BridgedEvents
+    expect(bridged).not.toContain(Events.ORDER_PACKING_NOTE_CHANGED)
   })
 })

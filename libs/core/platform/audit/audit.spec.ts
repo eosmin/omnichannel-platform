@@ -17,3 +17,16 @@ describe('AuditAction', () => {
     expect(Object.values(AuditAction).filter(name => forbidden.test(name))).toEqual([])
   })
 })
+
+describe('order audit actions', () => {
+  it('audits the scheduled day and both internal notes with an action of their own', () => {
+    expect(AuditAction.ORDER_SCHEDULE_CHANGED).toBe('order.schedule_changed')
+    expect(AuditAction.ORDER_INTERNAL_NOTE_CHANGED).toBe('order.internal_note_changed')
+    expect(AuditAction.ORDER_PACKING_NOTE_CHANGED).toBe('order.packing_note_changed')
+  })
+
+  it('audits a payment recorded by hand and its status, without naming a payment method', () => {
+    expect(AuditAction.ORDER_PAYMENT_RECORDED).toBe('order.payment_recorded')
+    expect(AuditAction.ORDER_PAYMENT_STATUS_CHANGED).toBe('order.payment_status_changed')
+  })
+})

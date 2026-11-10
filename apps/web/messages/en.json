@@ -48,7 +48,8 @@
           "payment_failed": "Payment failed",
           "message_not_sent": "Order message not sent",
           "price_approval_requested": "Price approval requested",
-          "price_overridden": "Price overridden"
+          "price_overridden": "Price overridden",
+          "packing_note_changed": "Packing note changed"
         },
         "inventory": {
           "low": "Low stock"
@@ -499,14 +500,19 @@
     "INVENTORY_WAREHOUSE_INACTIVE": "The warehouse is switched off",
     "ORDER_ALREADY_CONFIRMED": "The order is already confirmed",
     "ORDER_CANNOT_BE_CANCELLED": "The order can no longer be cancelled",
+    "ORDER_DISCOUNT_EXCEEDS_SUBTOTAL": "The discount is larger than the subtotal of the order",
     "ORDER_FIELD_NOT_EDITABLE": "That field cannot be edited at this stage",
     "ORDER_INVALID_STATUS_TRANSITION": "The order cannot change to that status",
     "ORDER_MESSAGE_VARIABLE_UNKNOWN": "The message uses a variable that does not exist",
+    "ORDER_PAYMENT_INVALID_STATUS_TRANSITION": "The payment cannot change to that status",
+    "ORDER_PAYMENT_NOT_ALLOWED": "This order cannot take that payment right now",
+    "ORDER_PRICE_APPROVAL_NOT_PENDING": "No price change is waiting for approval",
     "ORDER_PRICE_APPROVAL_PENDING": "The price change waits for approval",
     "ORDER_PRICE_OVERRIDE_FORBIDDEN": "You cannot change the price",
     "ORDER_PRICE_REASON_REQUIRED": "Say why you are changing the price",
     "ORDER_PRICE_SELF_APPROVAL": "You cannot approve your own price change",
     "ORDER_STATUS_DRIVEN_BY_SHIPMENT": "The shipment decides the status of this order",
+    "ORDER_TOTAL_OUT_OF_RANGE": "The total of the order is too large",
     "PERMISSION_DENIED": "You do not have permission for this. Ask an administrator to give it to you.",
     "PICKUP_CUTOFF_PASSED": "The pickup cutoff has passed",
     "PLUGIN_ALREADY_INSTALLED": "The plugin is already installed",
@@ -748,6 +754,10 @@
       "message_not_sent": {
         "title": "Order message not sent",
         "body": "The message about an order could not be sent to the customer."
+      },
+      "packing_note_changed": {
+        "title": "Packing note changed",
+        "body": "The packing note of a confirmed order changed. Read it before you pack."
       },
       "payment_failed": {
         "title": "Payment failed",

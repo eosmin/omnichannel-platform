@@ -399,27 +399,80 @@ export const OrderStatusColors: Record<OrderStatus, string> = {
   [OrderStatus.RETURNED]: 'bg-red-100 text-red-800'
 }
 
+// The three notes of an order are three fields, each with its own audience (TDD_09 §5.2, decided 2026-11-10):
+// customerNotes (the customer's own words, also on the carrier label), internalNotes (customer care: members with a
+// permission on the order, never the customer, a channel, a plugin or the label) and packingNotes (for whoever packs
+// the order, same audience as internalNotes).
 export type OrderEditableField =
-  'items' | 'shipping' | 'discount' | 'address' | 'paymentMethod' | 'notes' | 'trackingNumber'
+  | 'items'
+  | 'shipping'
+  | 'discount'
+  | 'address'
+  | 'recipientPhones'
+  | 'scheduledDeliveryDate'
+  | 'paymentMethod'
+  | 'customerNotes'
+  | 'internalNotes'
+  | 'packingNotes'
+  | 'trackingNumber'
 
 // Which order statuses allow which edits: encodes the business rule once. trackingNumber is
 // read-only while the order has an active shipment (TDD_17 §4.1); the service enforces that.
+// packingNotes ends when the order leaves the warehouse: nobody packs a SHIPPED order, so its note has no reader.
 export const OrderEditableFields = {
   [OrderStatus.PENDING_CONFIRMATION]: [
     'items',
     'shipping',
     'discount',
     'address',
+    'recipientPhones',
+    'scheduledDeliveryDate',
     'paymentMethod',
-    'notes'
+    'customerNotes',
+    'internalNotes',
+    'packingNotes'
   ],
-  [OrderStatus.CONFIRMED]: ['items', 'shipping', 'discount', 'address', 'paymentMethod', 'notes'],
-  [OrderStatus.PREPARING]: ['shipping', 'address', 'notes'],
-  [OrderStatus.SHIPPED]: ['address', 'notes', 'trackingNumber'],
-  [OrderStatus.DELIVERED]: ['notes'],
+  [OrderStatus.CONFIRMED]: [
+    'items',
+    'shipping',
+    'discount',
+    'address',
+    'recipientPhones',
+    'scheduledDeliveryDate',
+    'paymentMethod',
+    'customerNotes',
+    'internalNotes',
+    'packingNotes'
+  ],
+  [OrderStatus.PREPARING]: [
+    'shipping',
+    'address',
+    'recipientPhones',
+    'scheduledDeliveryDate',
+    'customerNotes',
+    'internalNotes',
+    'packingNotes'
+  ],
+  [OrderStatus.SHIPPED]: [
+    'address',
+    'recipientPhones',
+    'customerNotes',
+    'internalNotes',
+    'trackingNumber'
+  ],
+  [OrderStatus.DELIVERED]: ['customerNotes', 'internalNotes'],
   [OrderStatus.CANCELLED]: [],
-  [OrderStatus.RETURNED]: ['notes']
+  [OrderStatus.RETURNED]: ['customerNotes', 'internalNotes']
 } as const satisfies Record<OrderStatus, readonly OrderEditableField[]>
+
+// A payment recorded by hand (v1.2 has no online payment). A failed attempt can be tried again or end up paid; a paid
+// order can be refunded; a refund is final.
+export const PaymentStatusTransitions: Record<PaymentStatus, readonly PaymentStatus[]> = {
+  [PaymentStatus.PENDING]: [PaymentStatus.COMPLETED, PaymentStatus.FAILED],
+  [PaymentStatus.FAILED]: [PaymentStatus.PENDING, PaymentStatus.COMPLETED],
+  [PaymentStatus.COMPLETED]: [PaymentStatus.REFUNDED],
+  [PaymentStatus.REFUNDED]: []
+}
 
 // Valid state transitions: they prevent illegal jumps. SHIPPED is reachable straight from
 // CONFIRMED because a guide may be created and picked up without the packing step (TDD_17 §3).

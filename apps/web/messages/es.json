@@ -48,7 +48,8 @@
           "payment_failed": "Pago fallido",
           "message_not_sent": "Mensaje del pedido no enviado",
           "price_approval_requested": "Aprobación de precio solicitada",
-          "price_overridden": "Precio modificado"
+          "price_overridden": "Precio modificado",
+          "packing_note_changed": "Cambió la nota de empaque"
         },
         "inventory": {
           "low": "Existencias bajas"
@@ -499,14 +500,19 @@
     "INVENTORY_WAREHOUSE_INACTIVE": "La bodega está desactivada",
     "ORDER_ALREADY_CONFIRMED": "El pedido ya está confirmado",
     "ORDER_CANNOT_BE_CANCELLED": "El pedido ya no se puede cancelar",
+    "ORDER_DISCOUNT_EXCEEDS_SUBTOTAL": "El descuento es mayor que el subtotal del pedido",
     "ORDER_FIELD_NOT_EDITABLE": "Ese campo no se puede editar en esta etapa",
     "ORDER_INVALID_STATUS_TRANSITION": "El pedido no puede pasar a ese estado",
     "ORDER_MESSAGE_VARIABLE_UNKNOWN": "El mensaje usa una variable que no existe",
+    "ORDER_PAYMENT_INVALID_STATUS_TRANSITION": "El pago no puede pasar a ese estado",
+    "ORDER_PAYMENT_NOT_ALLOWED": "Este pedido no puede recibir ese pago por ahora",
+    "ORDER_PRICE_APPROVAL_NOT_PENDING": "No hay un cambio de precio esperando aprobación",
     "ORDER_PRICE_APPROVAL_PENDING": "El cambio de precio espera aprobación",
     "ORDER_PRICE_OVERRIDE_FORBIDDEN": "No puedes cambiar el precio",
     "ORDER_PRICE_REASON_REQUIRED": "Indica por qué cambias el precio",
     "ORDER_PRICE_SELF_APPROVAL": "No puedes aprobar tu propio cambio de precio",
     "ORDER_STATUS_DRIVEN_BY_SHIPMENT": "El envío decide el estado de este pedido",
+    "ORDER_TOTAL_OUT_OF_RANGE": "El total del pedido es demasiado grande",
     "PERMISSION_DENIED": "No tienes permiso para esto. Pide a un administrador que te lo dé.",
     "PICKUP_CUTOFF_PASSED": "Ya pasó la hora límite de recolección",
     "PLUGIN_ALREADY_INSTALLED": "El plugin ya está instalado",
@@ -748,6 +754,10 @@
       "message_not_sent": {
         "title": "No se envió el mensaje del pedido",
         "body": "No se pudo enviar al cliente el mensaje sobre un pedido."
+      },
+      "packing_note_changed": {
+        "title": "Cambió la nota de empaque",
+        "body": "Cambió la nota de empaque de un pedido confirmado. Léela antes de empacar."
       },
       "payment_failed": {
         "title": "El pago falló",

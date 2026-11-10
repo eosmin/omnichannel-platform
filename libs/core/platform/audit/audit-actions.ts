@@ -78,6 +78,18 @@ export const AuditAction = {
   ORDER_PRICE_APPROVAL_REQUESTED: 'order.price_approval_requested',
   ORDER_PRICE_APPROVED: 'order.price_approved',
   ORDER_PRICE_REJECTED: 'order.price_rejected',
+  ORDER_CREATED: 'order.created',
+  // Fields changed by an edit: the names, never the values of the notes (those have their own actions)
+  ORDER_UPDATED: 'order.updated',
+  ORDER_STATUS_CHANGED: 'order.status_changed',
+  // The scheduled delivery day moved (old and new day, decision D18)
+  ORDER_SCHEDULE_CHANGED: 'order.schedule_changed',
+  // The two internal notes: the old and the new text, because the audit log is where an edit of a note is found
+  ORDER_INTERNAL_NOTE_CHANGED: 'order.internal_note_changed',
+  ORDER_PACKING_NOTE_CHANGED: 'order.packing_note_changed',
+  // A payment was recorded by hand, and its status moved (the v1.2 orders carry no online payment)
+  ORDER_PAYMENT_RECORDED: 'order.payment_recorded',
+  ORDER_PAYMENT_STATUS_CHANGED: 'order.payment_status_changed',
 
   // Inventory (TDD_16 §3)
   WAREHOUSE_CREATED: 'warehouse.created',

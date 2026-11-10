@@ -153,6 +153,8 @@ export const OrderReturnStatusTransitions: Record<OrderReturnStatus, readonly Or
 
 // PENDING appears when a discount is above the store's limit or a shipping fee is outside the
 // carrier's range; PENDING returns to NOT_REQUIRED when the order is brought back within both.
+// An approved order whose edit brings the discount and the fee back inside the limit and the range is
+// NOT_REQUIRED again, and a rejected one can still be approved later (TDD_17 §4.13).
 export const PriceApprovalTransitions: Record<PriceApprovalStatus, readonly PriceApprovalStatus[]> =
   {
     [PriceApprovalStatus.NOT_REQUIRED]: [PriceApprovalStatus.PENDING],
@@ -161,8 +163,12 @@ export const PriceApprovalTransitions: Record<PriceApprovalStatus, readonly Pric
       PriceApprovalStatus.REJECTED,
       PriceApprovalStatus.NOT_REQUIRED
     ],
-    [PriceApprovalStatus.APPROVED]: [PriceApprovalStatus.PENDING],
-    [PriceApprovalStatus.REJECTED]: [PriceApprovalStatus.PENDING, PriceApprovalStatus.NOT_REQUIRED]
+    [PriceApprovalStatus.APPROVED]: [PriceApprovalStatus.PENDING, PriceApprovalStatus.NOT_REQUIRED],
+    [PriceApprovalStatus.REJECTED]: [
+      PriceApprovalStatus.APPROVED,
+      PriceApprovalStatus.PENDING,
+      PriceApprovalStatus.NOT_REQUIRED
+    ]
   }
 
 // NOT_APPLICABLE and VOID are terminal. REMITTED returns to PENDING_REMITTANCE when a remittance
