@@ -8,9 +8,10 @@ import { inviteAsAgent, signInByApi } from '../support/api'
 import { databaseUrls } from '../support/env'
 import { signIn } from '../support/login'
 import { invitationTokenIn, nextEmailTo } from '../support/mailbox'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin3@test.com'
+const ADMIN = personOf('admin', import.meta.url)
 
 const newAddress = (): string => `invited-${randomUUID().slice(0, 8)}@example.com`
 
@@ -64,7 +65,7 @@ test.describe('the page of an invitation', () => {
     const invited = newAddress()
     const link = await inviteAndTakeLink(invited)
 
-    await signIn(page, 'viewer@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
     await page.goto(link)
 
     await expect(page.getByRole('heading', { name: en.invitation.mismatchTitle })).toBeVisible()

@@ -9,6 +9,7 @@ import { inviteAsAgent, signInByApi } from '../support/api'
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { invitationTokenIn, nextEmailTo } from '../support/mailbox'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const team = en.settings.team
@@ -41,7 +42,7 @@ test.describe('Settings → Team', () => {
     const freeRole = `E2E free ${suffix}`
     const email = `e2e-${suffix}@example.com`
 
-    await signIn(page, 'admin3@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.TEAM))
 
@@ -101,7 +102,7 @@ test.describe('Settings → Team', () => {
   })
 
   test('a viewer who may not see the team gets the permission message', async ({ page }) => {
-    await signIn(page, 'viewer@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\//)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.TEAM))
     await expect(
@@ -118,7 +119,7 @@ test.describe('Settings → Team', () => {
     const email = `suspend-${suffix}@example.com`
 
     // A new person joins the store through an invitation, and is working in it
-    await inviteAsAgent(await signInByApi('admin3@test.com'), email)
+    await inviteAsAgent(await signInByApi(personOf('admin', import.meta.url)), email)
     const guest = await browser.newContext()
     try {
       await reachServicesFromOwnAddress(guest)
@@ -130,7 +131,7 @@ test.describe('Settings → Team', () => {
       const inboxPath = new URL(guestPage.url()).pathname
 
       // The administrator suspends them after being asked to confirm
-      await signIn(page, 'admin3@test.com')
+      await signIn(page, personOf('admin', import.meta.url))
       await page.waitForURL(/\/s\/[^/]+\/inbox/)
       await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.TEAM))
       const row = page

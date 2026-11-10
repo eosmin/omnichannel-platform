@@ -13,6 +13,7 @@ import {
 } from '../support/database'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -37,7 +38,7 @@ test.describe.serial('a reply with several files in the thread', () => {
     context = await browser.newContext()
     newAddress = await reachServicesFromOwnAddress(context)
     page = await context.newPage()
-    await signIn(page, 'admin@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.beforeEach(async () => {

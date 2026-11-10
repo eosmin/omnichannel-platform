@@ -9,10 +9,11 @@ import {
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { addMessageTo, newConversationIn, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent2@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const REMINDER = 'Call back about the invoice'
 
 // Its own session and address: the api limits the requests of each address

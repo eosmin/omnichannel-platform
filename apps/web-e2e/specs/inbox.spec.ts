@@ -14,6 +14,7 @@ import {
 import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -48,8 +49,8 @@ test.describe.serial('the inbox list', () => {
     newAddress = await reachServicesFromOwnAddress(context)
     page = await context.newPage()
     // The days the page draws are the days of UTC, whatever the machine of the browser is in
-    restoreZone = await pinAccountToUtc('admin@test.com')
-    await signIn(page, 'admin@test.com')
+    restoreZone = await pinAccountToUtc(personOf('admin', import.meta.url))
+    await signIn(page, personOf('admin', import.meta.url))
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.afterAll(async () => {

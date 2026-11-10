@@ -3,6 +3,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -15,7 +16,7 @@ test.describe.serial('the Back of the browser with a dialog open', () => {
   test('closes the dialog of Settings and stays on the page, and the next Back leaves it', async ({
     page
   }) => {
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     const storeId = await storeIdNamed(FIRST_STORE)
     await page.goto(AppPaths.store.inbox(storeId))
     const tagsPage = AppPaths.store.settings(storeId, StoreSettingsSections.TAGS)
@@ -36,7 +37,7 @@ test.describe.serial('the Back of the browser with a dialog open', () => {
   test('a dialog closed with Escape: the next Back still leaves the page in one press', async ({
     page
   }) => {
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     const storeId = await storeIdNamed(FIRST_STORE)
     await page.goto(AppPaths.store.inbox(storeId))
     const tagsPage = AppPaths.store.settings(storeId, StoreSettingsSections.TAGS)
@@ -55,7 +56,7 @@ test.describe.serial('the Back of the browser with a dialog open', () => {
   test('a dialog opened after another closed with Escape closes with Back and stays', async ({
     page
   }) => {
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     const storeId = await storeIdNamed(FIRST_STORE)
     await page.goto(AppPaths.store.inbox(storeId))
     const tagsPage = AppPaths.store.settings(storeId, StoreSettingsSections.TAGS)
@@ -82,7 +83,7 @@ test.describe.serial('the Back of the browser with a dialog open', () => {
   test('after a dialog closed and the app navigated, Back returns to the page it was on', async ({
     page
   }) => {
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     const storeId = await storeIdNamed(FIRST_STORE)
     await page.goto(AppPaths.store.inbox(storeId))
     const tagsPage = AppPaths.store.settings(storeId, StoreSettingsSections.TAGS)

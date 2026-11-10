@@ -26,10 +26,11 @@ import {
   startFakeGraph
 } from '../support/fake-graph'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin2@test.com'
-const VIEWER = 'viewer2@test.com'
+const ADMIN = personOf('admin', import.meta.url)
+const VIEWER = personOf('viewer', import.meta.url)
 const WIDGET_NAME = 'Web widget'
 
 const channels = en.settings.channels

@@ -20,6 +20,7 @@ import {
 import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -27,7 +28,7 @@ const FIRST_STORE = 'Main Store'
 // limited to 5 requests a minute for each address, and the other specs already spend that one
 // (the realtime cases failed for lack of their e-mail). This user is an administrator of the first
 // store too.
-const ADMIN = 'multi-store@test.com'
+const ADMIN = personOf('multi', import.meta.url)
 const MERGE_WORD = en.customers.merge.confirmWord
 
 // A name no other run has used: the database keeps what a case writes, and the case finds the

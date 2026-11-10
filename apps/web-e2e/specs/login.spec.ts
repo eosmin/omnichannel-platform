@@ -2,17 +2,18 @@ import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 test.describe('magic link login', () => {
   test('a person with an account signs in with the link and lands in a store', async ({ page }) => {
-    await signIn(page, 'agent@test.com')
+    await signIn(page, personOf('agent', import.meta.url))
 
     await expect(page).toHaveURL(/\/s\/[^/]+\/inbox$/)
   })
 
   test('a link works once', async ({ page, browser }) => {
-    const token = await signIn(page, 'viewer@test.com')
+    const token = await signIn(page, personOf('viewer', import.meta.url))
     // The token is out of the address bar once it is traded
     expect(await page.evaluate(() => window.location.hash)).toBe('')
 

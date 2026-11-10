@@ -5,10 +5,11 @@ import { AppPaths } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { filesSentIn, newWhatsAppConversationWrittenAgo, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const MINUTE_MS = 60_000
 // Each file is uploaded and scanned (ClamAV, the worker) before the message can leave: slower in CI than on a laptop
 const SCAN_TIMEOUT_MS = 60_000

@@ -7,6 +7,7 @@ import { AppPaths, type StoreSettingsSection, StoreSettingsSections } from '@pla
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 const tags = en.settings.tags
@@ -31,7 +32,7 @@ async function openSection(page: Page, section: StoreSettingsSection): Promise<v
 test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
   test('an administrator makes, edits and deletes a tag', async ({ page }) => {
     const name = `E2E tag ${randomUUID().slice(0, 8)}`
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await openSection(page, StoreSettingsSections.TAGS)
     await expect(page.getByRole('heading', { name: tags.title, level: 1 })).toBeVisible()
@@ -90,7 +91,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
   test('an administrator makes, edits and deletes a snippet', async ({ page }) => {
     const suffix = randomUUID().slice(0, 8)
     const title = `E2E snippet ${suffix}`
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await openSection(page, StoreSettingsSections.SNIPPETS)
     await expect(page.getByRole('heading', { name: snippets.title, level: 1 })).toBeVisible()
@@ -134,7 +135,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
   test('an administrator changes the inbox behavior and the read receipts, and they stay', async ({
     page
   }) => {
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await openSection(page, StoreSettingsSections.INBOX)
     await expect(page.getByRole('heading', { name: inbox.title, level: 1 })).toBeVisible()
@@ -191,7 +192,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
   test('the settings navigation asks before it leaves a form with changes that were not saved', async ({
     page
   }) => {
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await openSection(page, StoreSettingsSections.INBOX)
     const behavior = page.getByRole('form', { name: inbox.behaviorLabel })
@@ -229,7 +230,7 @@ test.describe('Settings → Tags, Snippets and Inbox behavior', () => {
   test('a viewer reads tags and snippets without any action, and cannot open the inbox settings', async ({
     page
   }) => {
-    await signIn(page, 'viewer2@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\//)
     await openSection(page, StoreSettingsSections.TAGS)
     await expect(page.getByRole('heading', { name: tags.title, level: 1 })).toBeVisible()

@@ -8,6 +8,7 @@ import { addMediaTo, addMessageTo, newConversationIn, storeIdNamed } from '../su
 import { seedAnchor } from '../support/day-anchor'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -32,7 +33,7 @@ test('draws the pictures a customer sent together as one block and walks them in
     await page.route(`${STORAGE_URL}/**`, route =>
       route.fulfill({ status: 200, contentType: 'image/png', body: ONE_PIXEL_PNG })
     )
-    await signIn(page, 'admin3@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     const storeId = await storeIdNamed(FIRST_STORE)
     const conversationId = await newConversationIn(storeId)
     // One reading of the clock, and a window that does not cross midnight

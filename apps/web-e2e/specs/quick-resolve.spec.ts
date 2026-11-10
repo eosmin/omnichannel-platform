@@ -4,10 +4,11 @@ import { ConversationStatus } from '@platform/core/domain'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { newConversationIn, setResolveBehavior, statusOf, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent2@test.com'
+const AGENT = personOf('agent', import.meta.url)
 
 // Its own session and its own address: the api limits the requests of each address, and the long run of
 // the thread cases already uses the whole budget of its own

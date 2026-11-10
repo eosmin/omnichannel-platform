@@ -9,10 +9,11 @@ import {
   storeIdNamed
 } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const EMAIL = 'admin4@test.com'
+const EMAIL = personOf('admin', import.meta.url)
 const DAY_MS = 86_400_000
 
 // The wall clock of an instant in a zone, as the digits of a datetime-local value

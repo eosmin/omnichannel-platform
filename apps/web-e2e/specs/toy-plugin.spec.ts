@@ -5,6 +5,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { installChannel, signInByApi, uninstallChannel } from '../support/api'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 // The "toy third-party plugin" test of the web (channel-agnostic refactor, lane B). A channel that this repository
@@ -14,7 +15,7 @@ import { expect, test } from '../support/test'
 // labelled { es: 'Clave de Acme', en: 'Acme API key' } with no message key, and no login.
 const TOY_PLUGIN = { id: 'acme_chat', name: 'Acme Chat', secretLabel: 'Acme API key' } as const
 
-const ADMIN = 'admin2@test.com'
+const ADMIN = personOf('admin', import.meta.url)
 const channels = en.settings.channels
 
 function storeIdOf(page: Page): string {

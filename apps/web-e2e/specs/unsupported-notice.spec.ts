@@ -6,10 +6,11 @@ import { AuthorType, MessageType } from '@platform/core/domain'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { addMessageTo, newWhatsAppConversationWrittenAgo, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const MINUTE_MS = 60_000
 const thread = en.inbox.thread
 

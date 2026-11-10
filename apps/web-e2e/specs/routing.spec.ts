@@ -7,6 +7,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 const routing = en.settings.routing
@@ -43,7 +44,7 @@ test.describe('Settings → Routing and Business hours', () => {
     const first = `E2E first ${suffix}`
     const second = `E2E second ${suffix}`
 
-    await signIn(page, 'admin3@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.ROUTING))
     await expect(page.getByRole('heading', { name: routing.title, level: 1 })).toBeVisible()
@@ -101,7 +102,7 @@ test.describe('Settings → Routing and Business hours', () => {
   test('an administrator sets the business hours and they stay after a reload', async ({
     page
   }) => {
-    await signIn(page, 'admin3@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\/inbox/)
     await page.goto(AppPaths.store.settings(storeIdOf(page), StoreSettingsSections.BUSINESS_HOURS))
     await expect(page.getByRole('heading', { name: hours.title, level: 1 })).toBeVisible()
@@ -132,7 +133,7 @@ test.describe('Settings → Routing and Business hours', () => {
   })
 
   test('a viewer who may not see settings gets the permission message', async ({ page }) => {
-    await signIn(page, 'viewer@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
     await page.waitForURL(/\/s\/[^/]+\//)
     const storeId = storeIdOf(page)
     for (const section of [StoreSettingsSections.ROUTING, StoreSettingsSections.BUSINESS_HOURS]) {

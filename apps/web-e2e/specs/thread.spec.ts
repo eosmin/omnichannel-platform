@@ -35,13 +35,14 @@ import {
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
 // An agent reads the thread, writes notes and resolves, so it is what the cases need. The magic link is
 // limited to 5 requests a minute for each address and the whole suite runs inside that minute: the
 // address of the administrator is already spent by the other specs.
-const AGENT = 'agent2@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const MINUTE_MS = 60_000
 // A valid 1x1 image, what the bucket would answer for the thumbnail of an ad
 const ONE_PIXEL_PNG = Buffer.from(

@@ -12,10 +12,11 @@ import {
 } from '../support/database'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const MINUTE_MS = 60_000
 const ONE_PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',

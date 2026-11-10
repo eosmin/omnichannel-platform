@@ -14,12 +14,13 @@ import {
 } from '../support/database'
 import { STORAGE_URL } from '../support/env'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 // The first message of a Socket.IO connection: the socket is up
 const SOCKET_IO_CONNECTED = '40'
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent2@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const MINUTE_MS = 60_000
 // A valid 1x1 image, what the bucket would answer for the variants
 const ONE_PIXEL_PNG = Buffer.from(

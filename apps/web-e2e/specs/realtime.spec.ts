@@ -5,6 +5,7 @@ import { AppPaths } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { messagesOf, newConversationIn, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const START_SCREEN = /\/s\/[^/]+\/inbox$/
@@ -37,7 +38,7 @@ test.describe('the realtime client in the inbox', () => {
     test.setTimeout(RECONNECTION_TEST_TIMEOUT_MS)
     const storeId = await storeIdNamed(FIRST_STORE)
     const conversationId = await newConversationIn(storeId)
-    await openConversation(page, 'admin@test.com', conversationId)
+    await openConversation(page, personOf('admin', import.meta.url), conversationId)
 
     await writeReply(page, 'written with no connection')
     await context.setOffline(true)
@@ -63,13 +64,13 @@ test.describe('the realtime client in the inbox', () => {
   test('two sockets of one store hear each other', async ({ page, browser }) => {
     const storeId = await storeIdNamed(FIRST_STORE)
     const conversationId = await newConversationIn(storeId)
-    await openConversation(page, 'admin@test.com', conversationId)
+    await openConversation(page, personOf('admin', import.meta.url), conversationId)
 
     const agentContext = await browser.newContext()
     await reachServicesFromOwnAddress(agentContext)
     try {
       const agentPage = await agentContext.newPage()
-      await openConversation(agentPage, 'agent@test.com', conversationId)
+      await openConversation(agentPage, personOf('agent', import.meta.url), conversationId)
 
       await writeReply(agentPage, 'seen by the other socket')
       await agentPage.getByRole('button', { name: en.inbox.composer.send }).click()
@@ -85,7 +86,7 @@ test.describe('the realtime client in the inbox', () => {
     const foreignStoreId = await storeIdNamed(OTHER_STORE)
 
     // The viewer belongs to Main Store only
-    await signIn(page, 'viewer@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
     await page.waitForURL(START_SCREEN)
     await page.goto(AppPaths.store.inbox(foreignStoreId))
 

@@ -3,6 +3,7 @@ import { AppPaths } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -20,7 +21,7 @@ test('the links of the top bar are whole on a phone', async ({ browser }) => {
   try {
     await reachServicesFromOwnAddress(context)
     const page = await context.newPage()
-    await signIn(page, 'admin2@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     const storeId = await storeIdNamed(FIRST_STORE)
     await page.goto(AppPaths.store.inbox(storeId))
     const nav = page.getByRole('navigation', { name: en.shell.nav.label })

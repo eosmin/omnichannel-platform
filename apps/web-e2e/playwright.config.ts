@@ -6,6 +6,7 @@ import { isCi, shard, WEB_URL } from './support/env'
 export default defineConfig({
   testDir: './specs',
   globalSetup: './support/global-setup.ts',
+  globalTeardown: './support/global-teardown.ts',
   outputDir: './test-results',
   // The specs share one database and one mailbox, and the rate limit of the magic link counts per address
   fullyParallel: false,

@@ -2,14 +2,15 @@ import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
-const MULTI_STORE_USER = 'multi-store@test.com'
+const MULTI_STORE_USER = personOf('multi', import.meta.url)
 const SECOND_STORE = 'Tienda Escalón'
 
 test.describe('a person sees what their permissions allow', () => {
   test('an administrator opens the stores of the organization', async ({ page }) => {
-    await signIn(page, 'admin3@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
 
     await page.goto(AppPaths.org.stores)
 
@@ -18,7 +19,7 @@ test.describe('a person sees what their permissions allow', () => {
   })
 
   test('a viewer is sent away from the stores of the organization', async ({ page }) => {
-    await signIn(page, 'viewer@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
 
     await page.goto(AppPaths.org.stores)
 
@@ -33,7 +34,7 @@ test.describe('a person sees what their permissions allow', () => {
   test('the address of a store goes to its inbox, and a refused page names what it needs', async ({
     page
   }) => {
-    await signIn(page, 'viewer@test.com')
+    await signIn(page, personOf('viewer', import.meta.url))
     await expect(page).toHaveURL(/\/s\/([^/]+)\/inbox/)
     const storeId = /\/s\/([^/]+)\//.exec(new URL(page.url()).pathname)?.[1] ?? ''
 

@@ -12,6 +12,7 @@ import {
   storeIdNamed
 } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -32,7 +33,7 @@ test.describe.serial('a snoozed conversation that wakes up', () => {
     context = await browser.newContext()
     await reachServicesFromOwnAddress(context)
     page = await context.newPage()
-    await signIn(page, 'admin2@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     storeId = await storeIdNamed(FIRST_STORE)
   })
   test.afterAll(async () => {

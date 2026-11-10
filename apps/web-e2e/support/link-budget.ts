@@ -6,6 +6,8 @@ import { test } from '@playwright/test'
 
 import { MagicLinkThrottle } from '@platform/core/auth'
 
+import { PEOPLE_DOMAIN, specSlug } from './people'
+
 // The api allows `MagicLinkThrottle.limit` links a minute per address, whatever the IP, and the specs
 // share a handful of addresses (admin@, agent@). A spec file added or sped up can push one address
 // over the limit and make the next spec wait for an email that never comes. Every request for a link
@@ -52,6 +54,76 @@ function writeStamps(stamps: Stamps): void {
 
 export function resetLinkBudget(): void {
   rmSync(STAMPS_FILE, { force: true })
+  rmSync(LEDGER_FILE, { force: true })
+}
+
+// The links each address asked for in this run, and which spec files asked: the run fails at its end (global
+// teardown) if an address asked for more than the window of the api holds, because past that point it waits
+// for the clock and the suite gets slower without any test failing. One below the limit, as the wait.
+const LEDGER_FILE = join(tmpdir(), 'platform-e2e-magic-link-ledger.json')
+type Ledger = Record<string, { count: number; specs: string[] }>
+
+function readLedger(): Ledger {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(LEDGER_FILE, 'utf8'))
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Ledger)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function currentSpecFile(): string | undefined {
+  try {
+    return test.info().file
+  } catch {
+    return undefined
+  }
+}
+
+// The people of the fixtures that every spec used to share, and the people made for one spec file: a spec
+// signs in as neither the shared ones nor those of another file, so its links are never competing
+const SHARED_FIXTURE_PEOPLE = new RegExp(
+  `^(?:(?:admin|agent|viewer)\\d*|multi-store)@${PEOPLE_DOMAIN}$`
+)
+const SPEC_PEOPLE = new RegExp(`^(?:admin|agent|viewer|multi)\\d*\\.([a-z0-9-]+)@${PEOPLE_DOMAIN}$`)
+
+function refuseAddressNotOfThisSpec(email: string, specFile: string | undefined): void {
+  // The specs of the browser suite only: the performance run signs in on its own
+  if (specFile === undefined || !specFile.includes('/specs/')) return
+  const slug = specSlug(specFile)
+  if (SHARED_FIXTURE_PEOPLE.test(email)) {
+    throw new Error(
+      `${slug}: ${email} is shared by every spec and its links run out; sign in as personOf('<role>', import.meta.url)`
+    )
+  }
+  const owner = SPEC_PEOPLE.exec(email)?.[1]
+  if (owner !== undefined && owner !== slug) {
+    throw new Error(
+      `${slug}: ${email} belongs to the spec ${owner}; ask personOf('<role>', import.meta.url)`
+    )
+  }
+}
+
+function recordRequest(email: string, specFile: string | undefined): void {
+  const ledger = readLedger()
+  const entry = ledger[email] ?? { count: 0, specs: [] }
+  const slug = specFile === undefined ? 'setup' : specSlug(specFile)
+  ledger[email] = { count: entry.count + 1, specs: [...new Set([...entry.specs, slug])] }
+  const draft = `${LEDGER_FILE}.${process.pid}`
+  writeFileSync(draft, JSON.stringify(ledger))
+  renameSync(draft, LEDGER_FILE)
+}
+
+// What the global teardown reports: the addresses that asked for more links than fit in the window
+export function addressesOverTheLinkBudget(): string[] {
+  return Object.entries(readLedger())
+    .filter(([, entry]) => entry.count > MAX_IN_WINDOW)
+    .map(
+      ([email, entry]) =>
+        `${email} asked for ${entry.count} links (at most ${MAX_IN_WINDOW} fit in the window of the api) in: ${entry.specs.join(', ')}`
+    )
 }
 
 // How long until the address has room: the oldest stamps that fill the window leave it after that
@@ -85,6 +157,9 @@ export function seedLinkBudget(address: string, stamps: number[]): void {
 export async function waitForLinkBudget(address: string): Promise<void> {
   // The api looks the user up with lower(email): one bucket for any spelling
   const email = address.toLowerCase()
+  const specFile = currentSpecFile()
+  refuseAddressNotOfThisSpec(email, specFile)
+  recordRequest(email, specFile)
   const startedAt = Date.now()
   let hasWaited = false
   for (;;) {

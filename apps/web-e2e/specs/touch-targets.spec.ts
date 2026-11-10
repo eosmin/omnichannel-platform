@@ -5,6 +5,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { newConversationIn, storeIdNamed, withWhatsAppChannel } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -28,7 +29,7 @@ test.describe.serial('touch targets on a phone', () => {
     })
     await reachServicesFromOwnAddress(context)
     page = await context.newPage()
-    await signIn(page, 'admin4@test.com')
+    await signIn(page, personOf('admin', import.meta.url))
     storeId = await storeIdNamed(FIRST_STORE)
     conversationId = await newConversationIn(storeId)
   })

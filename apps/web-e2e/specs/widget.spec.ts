@@ -23,14 +23,15 @@ import {
 } from '../support/database'
 import { pinAccountToUtc, seedAnchor } from '../support/day-anchor'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 import { openSite, SITE_ORIGIN, startSite, STRICT_CSP } from '../support/widget-site'
 
 const FIRST_STORE = 'Main Store'
 // An administrator connects the widget and an agent answers. The magic link is limited for each
 // address, so each person is one that the other specs spend the least.
-const OWNER = 'multi-store@test.com'
-const AGENT = 'agent3@test.com'
+const OWNER = personOf('multi', import.meta.url)
+const AGENT = personOf('agent', import.meta.url)
 const OTHER_SITE = 'https://other.example.com'
 const WIDGET_TEXT = {
   open: 'Open the chat',

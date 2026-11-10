@@ -7,9 +7,10 @@ import en from '../../web/messages/en.json' with { type: 'json' }
 import { installChannel, signInByApi } from '../support/api'
 import { addConnectionWithTokenInfo, removeConnections, setUserTimezone } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
-const ADMIN = 'admin3@test.com'
+const ADMIN = personOf('admin', import.meta.url)
 const health = en.settings.channels.health.token
 const DAY = 86_400_000
 

@@ -13,6 +13,7 @@ import {
   storeIdNamed
 } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -36,7 +37,7 @@ const hourIn = (zone: string): string =>
 // one zone and the account changes: the hours follow the account, not the machine.
 test('the hours of a message follow the time zone of the account', async ({ browser }) => {
   test.setTimeout(120_000)
-  const email = 'admin4@test.com'
+  const email = personOf('admin', import.meta.url)
   const storeId = await storeIdNamed(FIRST_STORE)
   const conversationId = await newConversationIn(storeId)
   const text = `Zone check ${Date.now()}`
@@ -81,7 +82,7 @@ test('the hours of a message follow the zone of the account, else the one of the
   browser
 }) => {
   test.setTimeout(120_000)
-  const email = 'admin4@test.com'
+  const email = personOf('admin', import.meta.url)
   const storeId = await storeIdNamed(FIRST_STORE)
   const conversationId = await newConversationIn(storeId)
   const text = `Store zone check ${Date.now()}`

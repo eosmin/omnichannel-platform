@@ -7,6 +7,7 @@ import { profileOf, signInByApi, writeNote } from '../support/api'
 import { newConversationIn, storeIdNamed } from '../support/database'
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 const START_SCREEN = /\/s\/[^/]+\/inbox$/
@@ -18,8 +19,8 @@ let adminToken = ''
 let agentId = ''
 
 test.beforeAll(async () => {
-  adminToken = await signInByApi('admin@test.com')
-  agentId = (await profileOf(await signInByApi('agent@test.com'))).id
+  adminToken = await signInByApi(personOf('admin', import.meta.url))
+  agentId = (await profileOf(await signInByApi(personOf('agent', import.meta.url)))).id
 })
 
 test.describe('the notification center', () => {
@@ -29,7 +30,7 @@ test.describe('the notification center', () => {
     const storeId = await storeIdNamed('Main Store')
     const conversationId = await newConversationIn(storeId)
 
-    await signIn(page, 'agent@test.com')
+    await signIn(page, personOf('agent', import.meta.url))
     await page.waitForURL(START_SCREEN)
     await expect(page.getByRole('button', { name: bell.open })).toBeVisible()
 
@@ -59,7 +60,7 @@ test.describe('the notification center', () => {
     const conversationId = await newConversationIn(storeId)
     await writeNote(adminToken, storeId, conversationId, 'one more', [agentId])
 
-    await signIn(page, 'agent@test.com')
+    await signIn(page, personOf('agent', import.meta.url))
     await page.waitForURL(START_SCREEN)
     await page.getByRole('button', { name: /Notifications, \d+ unread/ }).click()
 

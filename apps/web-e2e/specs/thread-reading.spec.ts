@@ -7,6 +7,7 @@ import en from '../../web/messages/en.json' with { type: 'json' }
 import { addMessageTo, newConversationIn, storeIdNamed } from '../support/database'
 import { noonUtcDaysAgo, pinAccountToUtc } from '../support/day-anchor'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 // The day of the top of the view floats while the reader scrolls a long thread (W3c). The pill of new
@@ -22,8 +23,8 @@ test.describe('reading a long thread', () => {
     await reachServicesFromOwnAddress(context)
     page = await context.newPage()
     // The days the page draws are the days of UTC, whatever the machine of the browser is in
-    restoreZone = await pinAccountToUtc('admin@test.com')
-    await signIn(page, 'admin@test.com')
+    restoreZone = await pinAccountToUtc(personOf('admin', import.meta.url))
+    await signIn(page, personOf('admin', import.meta.url))
   })
   test.afterAll(async () => {
     // The zone goes back even when the browser does not close well

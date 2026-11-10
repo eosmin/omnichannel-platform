@@ -4,10 +4,11 @@ import { ConversationStatus } from '@platform/core/domain'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { newConversationIn, setResolveBehavior, statusOf, storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent2@test.com'
+const AGENT = personOf('agent', import.meta.url)
 
 const startsWith = (template: string): RegExp => new RegExp(`^${template.split('{')[0] ?? ''}`)
 

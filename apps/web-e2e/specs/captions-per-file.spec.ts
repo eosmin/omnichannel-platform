@@ -10,10 +10,11 @@ import {
   storeIdNamed
 } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const AGENT = 'agent@test.com'
+const AGENT = personOf('agent', import.meta.url)
 const MINUTE_MS = 60_000
 const SCAN_TIMEOUT_MS = 60_000
 const ONE_PIXEL_PNG = Buffer.from(

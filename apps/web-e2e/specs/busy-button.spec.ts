@@ -3,6 +3,7 @@ import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { storeIdNamed } from '../support/database'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
@@ -14,7 +15,7 @@ const behavior = en.settings.inbox
 test('a button that waits for the server keeps its size when the spinner shows', async ({
   page
 }) => {
-  await signIn(page, 'admin4@test.com')
+  await signIn(page, personOf('admin', import.meta.url))
   const storeId = await storeIdNamed(FIRST_STORE)
   await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.INBOX))
 

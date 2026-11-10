@@ -7,11 +7,12 @@ import { AppPaths } from '@platform/api-client'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
-const ADMIN = 'admin2@test.com'
-const VIEWER = 'viewer2@test.com'
-const AGENT = 'agent3@test.com'
+const ADMIN = personOf('admin', import.meta.url)
+const VIEWER = personOf('viewer', import.meta.url)
+const AGENT = personOf('agent', import.meta.url)
 
 const newStoreName = (): string => `E2E Shop ${randomUUID().slice(0, 8)}`
 

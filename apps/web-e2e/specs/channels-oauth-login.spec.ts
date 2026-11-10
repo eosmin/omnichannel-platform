@@ -25,11 +25,12 @@ import {
   startFakeGraph
 } from '../support/fake-graph'
 import { signIn } from '../support/login'
+import { personOf } from '../support/people'
 import { expect, test } from '../support/test'
 
 // An administrator of two stores, with a magic link budget of his own: admin@test.com is the one the specs that
 // follow this one sign in as, and a spec that spends its budget makes the next ones wait
-const ADMIN = 'multi-store@test.com'
+const ADMIN = personOf('multi', import.meta.url)
 const channels = en.settings.channels
 const CALLBACK = `${API_URL}${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
 const MESSENGER_NAME = 'Messenger'
