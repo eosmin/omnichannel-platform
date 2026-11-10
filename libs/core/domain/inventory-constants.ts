@@ -72,3 +72,10 @@ export const DefaultWarehouse = {
 
 // The priority of the first warehouse of a store (TDD_16 §4.1: 1 is reserved first)
 export const FIRST_WAREHOUSE_PRIORITY = 1
+
+// Why the platform refuses a movement or an adjustment with a 409: the `metadata.conflict` of the answer, next to the
+// error code. One key can be used for one movement only (TDD_16 §4.2: a retry gives the same answer, a different
+// request under the same key is a mistake).
+export const InventoryConflicts = {
+  IDEMPOTENCY_KEY_REUSED: 'idempotency_key_reused'
+} as const

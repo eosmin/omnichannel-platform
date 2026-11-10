@@ -1,4 +1,5 @@
 export * from './actor'
+export * from './cost-access'
 export * from './decorators'
 export * from './tenancy.module'
 export * from './tenant-context'
