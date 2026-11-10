@@ -40,11 +40,17 @@ runs:
           'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
           | sudo tee /etc/apt/apt.conf.d/99keep-archives > /dev/null
       shell: bash
+    # The runner exports the version of its image as a variable, which the `env` context of an expression does not see
+    - name: Image of the runner
+      id: image
+      run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      shell: bash
     - name: Cache the apt packages
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: apt
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.apt-archives/*.deb
-        key: apt-${{ runner.os }}-${{ env.ImageVersion }}-${{ steps.playwright.outputs.version }}
+        key: apt-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ steps.playwright.outputs.version }}
     - name: Cache the browsers
       id: browsers
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -60,3 +66,10 @@ runs:
       if: steps.browsers.outputs.cache-hit == 'true'
       run: pnpm exec playwright install-deps chromium
       shell: bash
+    # Saved here, and not by the post step of a cache action, so a job that fails later still keeps it
+    - name: Save the apt packages
+      if: always() && steps.apt.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.apt-archives/*.deb
+        key: apt-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ steps.playwright.outputs.version }}
