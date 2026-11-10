@@ -109,36 +109,29 @@ export class PluginRegistry {
     if (storeIds !== null && isOfficialChannelId(id)) {
       throw contractViolation(`Official plugin ${printable(id)} cannot be private to a store`)
     }
+    // The login ceiling trusts only the plugins that own a reserved id: the flag alone does not make one
+    const official = options.official === true && isOfficialChannelId(id)
     this.entries.set(id, {
       plugin,
       capabilities: new Set(capabilities),
       manifest: snapshotConnectManifest(plugin, id, capabilities),
-      oauth: snapshotChannelOAuth(
-        plugin,
-        id,
-        this.oauthCeilingFor(plugin, options.official === true)
-      ),
+      oauth: snapshotChannelOAuth(plugin, id, kind => this.oauthCeilingFor(kind, official)),
       media: snapshotChannelMedia(plugin, id, capabilities),
       limits: snapshotChannelLimits(plugin, id),
       descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),
       identityKind: snapshotIdentityKind(plugin, id),
       fromCode: options.fromCode === true || options.official === true,
-      official: options.official === true,
+      official,
       storeIds
     })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
   }
 
   // What the login of a plugin may ask for (see `snapshotChannelOAuth`): nothing limits an official plugin; any
-  // other is held to the permissions that the official plugins with the same kind of login ask for. Read from the
-  // plugin once, here, so that the kind checked is the kind of the login that is kept.
-  private oauthCeilingFor(plugin: ChannelPlugin, official: boolean): ReadonlySet<string> | null {
+  // other is held to the permissions that the official plugins with the same kind of login ask for. The kind is
+  // the one the snapshot read from the declaration, so the ceiling and the login that is kept cannot differ.
+  private oauthCeilingFor(kind: string, official: boolean): ReadonlySet<string> | null {
     if (official) return null
-    const declared: unknown = plugin.oauth
-    const kind: unknown =
-      typeof declared === 'object' && declared !== null
-        ? (declared as { kind?: unknown }).kind
-        : undefined
     const ceiling = new Set<string>()
     for (const entry of this.entries.values()) {
       if (!entry.official || entry.oauth === null || entry.oauth.kind !== kind) continue

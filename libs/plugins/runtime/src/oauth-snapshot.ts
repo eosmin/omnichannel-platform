@@ -48,7 +48,7 @@ export type ChannelOAuthSnapshot = {
 // one that lacks a method: the permissions go into an address the person is sent to, so they are held to the
 // shape of a permission name, and nothing about the declaration is printed (it is not trusted).
 //
-// `ceiling` is what the login may ask for: null for an official plugin (the code of the platform, which the
+// `ceilingOf` answers, for the kind this very declaration has (read once, here), what the login may ask for: null for an official plugin (the code of the platform, which the
 // owner reviews, holds only to the shape of a permission name), and for any other plugin the permissions that
 // the official plugins with the same kind of login already ask for. A third party therefore cannot make the
 // platform's app ask a person for ads, publishing or anything the official channels do not need, and the core
@@ -56,7 +56,7 @@ export type ChannelOAuthSnapshot = {
 export function snapshotChannelOAuth(
   plugin: ChannelPlugin,
   id: string,
-  ceiling: ReadonlySet<string> | null
+  ceilingOf: (kind: string) => ReadonlySet<string> | null
 ): ChannelOAuthSnapshot | null {
   const declared: unknown = plugin.oauth
   if (declared === undefined) return null
@@ -67,6 +67,7 @@ export function snapshotChannelOAuth(
   const block = declared as Record<string, unknown>
   const kind = block['kind']
   if (!KINDS.includes(kind)) refuse('kind')
+  const ceiling = ceilingOf(kind as string)
   const scopes = block['scopes']
   if (
     !Array.isArray(scopes) ||

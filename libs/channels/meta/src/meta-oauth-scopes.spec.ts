@@ -104,3 +104,27 @@ describe('grantedMetaScopes', () => {
     expect(grantedMetaScopes(answer)).toEqual([])
   })
 })
+
+// The scopes the platform's app asks for are the ones named here, and the ceiling of a third party's login is
+// read from them: a typo or an added permission must show in a test, not in the dialog
+describe('the permissions of the official logins', () => {
+  it.each([ChannelIds.MESSENGER, ChannelIds.INSTAGRAM])(
+    '%s asks only for named permissions',
+    id => {
+      for (const scope of metaOAuthScopesFor(id)) {
+        expect(Object.values(MetaOAuthScopes)).toContain(scope)
+      }
+    }
+  )
+
+  it('names exactly the six permissions of the dialog, none for ads or publishing', () => {
+    expect(Object.values(MetaOAuthScopes).sort()).toEqual([
+      'instagram_basic',
+      'instagram_manage_messages',
+      'pages_manage_metadata',
+      'pages_messaging',
+      'pages_read_engagement',
+      'pages_show_list'
+    ])
+  })
+})

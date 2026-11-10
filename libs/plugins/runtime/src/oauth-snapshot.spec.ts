@@ -32,7 +32,7 @@ function refuses(
   ceiling: ReadonlySet<string> | null = CEILING
 ): string | undefined {
   try {
-    snapshotChannelOAuth(plugin(declared), 'messenger', ceiling)
+    snapshotChannelOAuth(plugin(declared), 'messenger', () => ceiling)
   } catch (error) {
     return (error as { message?: string }).message
   }
@@ -41,11 +41,11 @@ function refuses(
 
 describe('snapshotChannelOAuth', () => {
   it('is null for a plugin with no login, which is nearly all of them', () => {
-    expect(snapshotChannelOAuth(plugin(undefined), 'whatsapp', null)).toBeNull()
+    expect(snapshotChannelOAuth(plugin(undefined), 'whatsapp', () => null)).toBeNull()
   })
 
   it('keeps what a well formed login declares', () => {
-    const snapshot = snapshotChannelOAuth(plugin(oauth()), 'messenger', CEILING)
+    const snapshot = snapshotChannelOAuth(plugin(oauth()), 'messenger', () => CEILING)
     expect(snapshot?.kind).toBe('authorization-code-with-assets')
     expect(snapshot?.scopes).toEqual(['pages_show_list', 'pages_messaging'])
   })
@@ -53,7 +53,7 @@ describe('snapshotChannelOAuth', () => {
   it('copies the scopes, so a list the plugin keeps changing grows nothing nobody checked', () => {
     const declared = oauth()
     const scopes = declared.scopes as string[]
-    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', CEILING)
+    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING)
     scopes.push('ads_management')
     expect(snapshot?.scopes).toEqual(['pages_show_list', 'pages_messaging'])
     expect(Object.isFrozen(snapshot?.scopes)).toBe(true)
@@ -63,7 +63,7 @@ describe('snapshotChannelOAuth', () => {
     const declared = oauth({
       listAssets: () => Promise.resolve([{ id: '1', name: 'A', linkedAccount: null }])
     })
-    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', CEILING)
+    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING)
     ;(declared as { listAssets: unknown }).listAssets = () => Promise.resolve([])
     await expect(snapshot?.listAssets({ userToken: 't' })).resolves.toHaveLength(1)
   })
@@ -100,9 +100,9 @@ describe('snapshotChannelOAuth', () => {
   describe('the ceiling of the permissions', () => {
     it('holds an official plugin (no ceiling) only to the shape of a permission name', () => {
       const scopes = ['pages_show_list', 'a_permission_only_this_provider_has']
-      expect(snapshotChannelOAuth(plugin(oauth({ scopes })), 'messenger', null)?.scopes).toEqual(
-        scopes
-      )
+      expect(
+        snapshotChannelOAuth(plugin(oauth({ scopes })), 'messenger', () => null)?.scopes
+      ).toEqual(scopes)
       expect(refuses({ ...oauth(), scopes: ['Not A Name'] }, null)).toMatch(/scopes/)
     })
 
@@ -110,7 +110,7 @@ describe('snapshotChannelOAuth', () => {
       const snapshot = snapshotChannelOAuth(
         plugin(oauth({ scopes: ['pages_messaging'] })),
         'acme_chat',
-        CEILING
+        () => CEILING
       )
       expect(snapshot?.scopes).toEqual(['pages_messaging'])
     })

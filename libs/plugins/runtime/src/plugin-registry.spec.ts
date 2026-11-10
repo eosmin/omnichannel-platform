@@ -447,6 +447,19 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     expect(registry.has('telegram')).toBe(false)
   })
 
+  it('does not take the flag for an official plugin where the id is not a reserved one', () => {
+    const registry = build()
+    registerOfficial(registry)
+    const wide = { ...login, scopes: ['pages_show_list', 'ads_management'] }
+    // The flag alone neither skips the ceiling nor widens it for the plugins that come after
+    expect(
+      codeOf(() => registry.register(channel({ id: 'evil_chat', oauth: wide }), { official: true }))
+    ).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    expect(codeOf(() => registry.register(channel({ id: 'telegram', oauth: wide })))).toBe(
+      ErrorCodes.PLUGIN_CONTRACT_VIOLATION
+    )
+  })
+
   it('refuses at boot a plugin whose login is malformed', () => {
     const registry = build()
     registerOfficial(registry)
