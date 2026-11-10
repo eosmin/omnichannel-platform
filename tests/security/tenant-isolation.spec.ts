@@ -32,6 +32,7 @@ import {
   createCustomer,
   createCustomerIdentity,
   createCustomerMerge,
+  createProduct,
   createChannelConnection,
   createInvitation,
   createMember,
@@ -201,6 +202,25 @@ const resources: IsolationResource[] = [
       countIn: (owner, storeId) => owner.tag.count({ where: { storeId } }),
       storeOf: async (owner, id) =>
         (await owner.tag.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ?? null
+    }
+  },
+  {
+    name: 'product',
+    create: createProduct,
+    readPath: ApiRoutes.products.byId,
+    listPath: ApiRoutes.products.list,
+    modify: { path: ApiRoutes.products.byId, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.product.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.products.create,
+      body: name => ({ name, priceCents: 1000 }),
+      strict: true,
+      countIn: (owner, storeId) => owner.product.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.product.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
+        null
     }
   },
   {

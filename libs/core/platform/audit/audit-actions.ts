@@ -53,6 +53,12 @@ export const AuditAction = {
   CUSTOMER_CAUTION_SET: 'customer.caution_set',
   CUSTOMER_CAUTION_CLEARED: 'customer.caution_cleared',
   ORDER_CANCELLED: 'order.cancelled',
+  PRODUCT_DELETED: 'product.deleted',
+  PRODUCT_VARIANT_DELETED: 'product.variant_deleted',
+  // The price a product or variant is sold at changed (old and new, in cents)
+  PRODUCT_PRICE_CHANGED: 'product.price_changed',
+  // The reference cost changed (old and new, in cents): it is the margin the finance module will read
+  PRODUCT_COST_CHANGED: 'product.cost_changed',
   CONVERSATION_DELETED: 'conversation.deleted',
   BULK_ACTION_EXECUTED: 'conversation.bulk_action',
   // A person resolved a conversation, and took it back with the Undo of the toast: the thread keeps no

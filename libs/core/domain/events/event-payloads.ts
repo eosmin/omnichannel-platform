@@ -189,6 +189,11 @@ export interface CustomerCreatedPayload {
   customerId: string
 }
 
+export interface ProductChangedPayload {
+  storeId: string
+  productId: string
+}
+
 export interface CustomerUpdatedPayload {
   storeId: string
   customerId: string
@@ -310,6 +315,9 @@ export interface DomainEventPayloads {
   [Events.CUSTOMER_MERGED]: CustomerMergedPayload
   [Events.CUSTOMER_UNMERGED]: CustomerUnmergedPayload
   [Events.CUSTOMER_IDENTITY_LINKED]: CustomerIdentityLinkedPayload
+  [Events.PRODUCT_CREATED]: ProductChangedPayload
+  [Events.PRODUCT_UPDATED]: ProductChangedPayload
+  [Events.PRODUCT_DELETED]: ProductChangedPayload
 }
 
 // What crosses the bridge from the worker to the api instances: the same payloads with the text taken

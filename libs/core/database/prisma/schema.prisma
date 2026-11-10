@@ -758,10 +758,11 @@ model Product {
   name              String
   description       String?
   priceCents        Int      @map("price_cents")
+  costCents         Int?     @map("cost_cents") // Reference cost per unit in USD cents; the cost of a unit in stock is the one of its movements (Step 4.2)
   sku               String?
   imageMediaId      String?  @map("image_media_id")
   trackInventory    Boolean  @default(true) @map("track_inventory")
-  lowStockThreshold Int      @default(5) @map("low_stock_threshold")
+  lowStockThreshold Int?     @map("low_stock_threshold") // Null = no low-stock alert (TDD_16 §4.4)
   active            Boolean  @default(true)
   freeShipping      Boolean  @default(false) @map("free_shipping") // The price already includes shipping (TDD_17 §4.13)
   createdAt         DateTime @default(now()) @map("created_at")
@@ -785,6 +786,7 @@ model ProductVariant {
   name       String // Display: "42", "Rojo / L"
   sku        String?
   priceCents Int?     @map("price_cents") // Null = inherits Product.priceCents
+  costCents  Int?     @map("cost_cents") // Null = inherits Product.costCents
   attributes Json // { size: "42", color: "red" }
   active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at")
@@ -794,6 +796,7 @@ model ProductVariant {
   orderItems OrderItem[]
 
   @@unique([productId, name])
+  @@unique([productId, sku])
   @@index([productId, active])
   @@map("product_variants")
 }
