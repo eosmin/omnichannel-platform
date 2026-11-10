@@ -21,14 +21,21 @@ export function specSlug(specFile: string): string {
   )
 }
 
+// A short stable tag of a spec file name, for the display name: a name made of the file name would put words
+// like "team" on the page of the specs that read it
+function tagOf(text: string): string {
+  let hash = 5381
+  for (const char of text) hash = (hash * 33 + char.charCodeAt(0)) % 0xffffff
+  return hash.toString(16).padStart(6, '0')
+}
+
 function personFor(role: string, slug: string, slot: number): E2ePerson {
   if (!ROLES.includes(role))
     throw new Error(`personOf: "${role}" is not one of ${ROLES.join(', ')}`)
   const tag = slot === 0 ? role : `${role}${slot + 1}`
-  const label = `${role[0]?.toUpperCase() ?? ''}${role.slice(1)}${slot === 0 ? '' : ` ${slot + 1}`}`
   return {
     email: `${tag}.${slug}@${PEOPLE_DOMAIN}`,
-    name: `${label} ${slug}`,
+    name: `Tester ${tagOf(`${tag}.${slug}`)}`,
     role: role as E2ePerson['role']
   }
 }

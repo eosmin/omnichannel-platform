@@ -31,6 +31,8 @@ import { expect, test } from '../support/test'
 
 const ADMIN = personOf('admin', import.meta.url)
 const VIEWER = personOf('viewer', import.meta.url)
+// The last case has an administrator of its own: six links to one address would be more than a minute holds
+const SECOND_ADMIN = personOf('admin', import.meta.url, 1)
 const WIDGET_NAME = 'Web widget'
 
 const channels = en.settings.channels
@@ -337,10 +339,10 @@ test.describe('Settings → Channels and Plugins', () => {
     const name = `E2E Channels ${randomUUID().slice(0, 8)}`
     // A store that holds nothing is deleted by the case itself; if it stops half way, the store goes
     // anyway, so that a laptop does not collect one per failed run
-    const token = await signInByApi(ADMIN)
+    const token = await signInByApi(SECOND_ADMIN)
     let storeId: string | undefined
     try {
-      await signIn(page, ADMIN)
+      await signIn(page, SECOND_ADMIN)
       await page.goto(AppPaths.org.stores)
       await page.getByRole('button', { name: en.org.newStore }).click()
       const create = page.getByRole('dialog', { name: en.org.create.title })
