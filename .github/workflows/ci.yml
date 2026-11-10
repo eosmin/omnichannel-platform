@@ -75,9 +75,9 @@ jobs:
       - name: Lint, type-check and build (affected on pull requests, everything on main)
         run: |
           if [ "${{ github.event_name }}" = "MEASURE-everything" ]; then
-            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
+            pnpm exec nx affected --targets=lint,type-check,build --parallel=4
           else
-            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
+            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=4
           fi
 
   # The unit tests with their coverage. The thresholds live in the jest.config of each project that
@@ -105,9 +105,9 @@ jobs:
       - name: Unit tests with coverage (affected on pull requests, everything on main)
         run: |
           if [ "${{ github.event_name }}" = "MEASURE-everything" ]; then
-            pnpm exec nx affected --targets=test --parallel=3 --coverage
+            pnpm exec nx affected --targets=test --parallel=4 --coverage
           else
-            pnpm exec nx run-many --targets=test --all --parallel=3 --coverage
+            pnpm exec nx run-many --targets=test --all --parallel=4 --coverage
           fi
 
   # The suites that need a real database. The api connects as platform_app, never as the owner.
