@@ -7,4 +7,6 @@ export const PLUGIN_AVATAR_IMAGE_HOSTS: readonly string[] = [
   'https://platform-lookaside.fbsbx.com'
 ]
 
-export const PLUGIN_MEDIA_IMAGE_HOSTS: readonly string[] = ['https://lookaside.fbsbx.com']
+export const PLUGIN_MEDIA_IMAGE_HOSTS: readonly string[] = [
+  'https://lookaside.fbsbx.com'
+]
