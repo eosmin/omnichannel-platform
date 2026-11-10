@@ -15,7 +15,7 @@ delete process.env['DATABASE_REPLICA_URL']
 
 export const isCi = isCiRun()
 
-// The slice of the suite this run owns, `E2E_SHARD=2/5`: CI runs each slice in its own job, with its own database,
+// The slice of the suite this run owns, `E2E_SHARD=2/3`: CI runs each slice in its own job, with its own database,
 // mailbox and queues, so the specs never share state across slices. Not set, the whole suite runs. A malformed value
 // stops the run instead of silently running everything (or nothing).
 const shardMatch = /^(\d+)\/(\d+)$/.exec(process.env['E2E_SHARD'] ?? '')
@@ -24,7 +24,7 @@ if (
   process.env['E2E_SHARD'] !== '' &&
   shardMatch === null
 ) {
-  throw new Error(`E2E_SHARD must look like 2/5, got "${process.env['E2E_SHARD']}"`)
+  throw new Error(`E2E_SHARD must look like 2/3, got "${process.env['E2E_SHARD']}"`)
 }
 export const shard =
   shardMatch === null ? undefined : { current: Number(shardMatch[1]), total: Number(shardMatch[2]) }

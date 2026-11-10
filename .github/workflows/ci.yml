@@ -506,7 +506,7 @@ jobs:
 
   # The web app against the real api and worker, in a real browser: the bundles that `nx build`
   # writes, the fixtures of the development database, the magic links read from Mailpit. SeaweedFS
-  # is one of the services since Step 3.4 (readiness asks the bucket). The suite runs in five slices
+  # is one of the services since Step 3.4 (readiness asks the bucket). The suite runs in six slices
   # (`E2E_SHARD`), each in its own job with its own services, so the specs never share a database, a
   # mailbox or a queue across slices. The required check is `e2e-tests`, below, which waits for them.
   e2e-shards:
@@ -516,9 +516,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
         # The number of slices, once: the name, E2E_SHARD and the summary read it from here. It must equal the length of the list above
-        total: [5]
+        total: [6]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
