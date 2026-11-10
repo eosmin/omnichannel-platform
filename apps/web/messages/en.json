@@ -1845,7 +1845,8 @@
         "businessHours": "Business hours",
         "tags": "Tags",
         "snippets": "Snippets",
-        "inbox": "Inbox behavior"
+        "inbox": "Inbox behavior",
+        "inventory": "Inventory"
       },
       "org": {
         "label": "Organization",
@@ -2445,6 +2446,33 @@
         "saving": "Saving…",
         "saved": "Read receipts saved",
         "readOnly": "You can see this setting but not change it."
+      }
+    },
+    "inventory": {
+      "title": "Inventory",
+      "description": "How this store sells and counts its stock.",
+      "formLabel": "Inventory settings",
+      "readOnly": "You can see these settings but not change them.",
+      "save": "Save",
+      "saved": "Inventory settings saved",
+      "negative": {
+        "legend": "Selling without stock",
+        "switch": "Accept orders beyond the stock",
+        "hint": "Off by default. With it on, an order is accepted even when no warehouse has the units, and a shipment or an adjustment may take a balance below zero.",
+        "warning": "Orders will be accepted without stock. The units you do not have are shown as oversold, and you will have to receive or adjust stock to bring the balance back to zero. A transfer between warehouses still needs real stock. Turning this off later does not change any data."
+      },
+      "split": {
+        "legend": "Order fulfillment",
+        "switch": "Allow one order to be served from several warehouses",
+        "hint": "Off by default. With it off, an order is served from a single warehouse and is refused when none covers every line. With it on, what the first warehouse lacks is taken from the next ones, in the order of their priority."
+      },
+      "threshold": {
+        "label": "Default low-stock threshold",
+        "placeholder": "None",
+        "hint": "A new product starts with this number as its low-stock alert: you are told when its available stock reaches it. Leave it empty for no alert. Products that already exist keep their own threshold."
+      },
+      "problems": {
+        "threshold": "The threshold must be a whole number of 0 or more, or empty."
       }
     }
   },
