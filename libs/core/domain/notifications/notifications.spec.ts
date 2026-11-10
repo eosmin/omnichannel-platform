@@ -116,9 +116,8 @@ describe('isDailyDigestHour', () => {
 describe('NotificationTypesWithoutEmitter', () => {
   it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
     for (const type of [
-      NotificationTypes.ORDER_CREATED,
-      // Declared in Step 4.3 PR A, raised by the orders service of PR B, which then takes it off this list
-      NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
+      NotificationTypes.ORDER_PAYMENT_FAILED,
+      NotificationTypes.ORDER_MESSAGE_NOT_SENT,
       NotificationTypes.TRANSFER_DISPATCHED,
       NotificationTypes.COUNT_AWAITING_APPLY,
       NotificationTypes.REMITTANCE_OVERDUE,
@@ -133,7 +132,13 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.MEMBER_JOINED,
       NotificationTypes.CHANNEL_DISCONNECTED,
       NotificationTypes.EXPORT_READY,
-      NotificationTypes.INVENTORY_LOW
+      NotificationTypes.INVENTORY_LOW,
+      // Raised by the orders of Step 4.3 PR B
+      NotificationTypes.ORDER_CREATED,
+      NotificationTypes.ORDER_STATUS_CHANGED,
+      NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
+      NotificationTypes.ORDER_PRICE_OVERRIDDEN,
+      NotificationTypes.ORDER_PACKING_NOTE_CHANGED
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
     }

@@ -207,7 +207,11 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
 // runtime (Step 5.6) raises `plugin.error`. The constants, texts and defaults stay: the emitter step
 // only removes its types from this list.
 export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = new Set([
-  ...NotificationGroupTypes[ORDERS],
+  // The orders raise `order.created`, `order.status_changed`, `order.price_approval_requested`, `order.price_overridden` and
+  // `order.packing_note_changed` since Step 4.3 PR B; the payment failure waits for the online gateway (Phase 2) and the
+  // message that was not sent for the customer messages (Step 4.9)
+  NotificationTypes.ORDER_PAYMENT_FAILED,
+  NotificationTypes.ORDER_MESSAGE_NOT_SENT,
   // `inventory.low` has an emitter since Step 4.2 PR C; the transfer and the count wait for Steps 4.5 and 4.6
   NotificationTypes.TRANSFER_DISPATCHED,
   NotificationTypes.COUNT_AWAITING_APPLY,

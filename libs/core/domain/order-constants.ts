@@ -1,3 +1,4 @@
+import { Permissions, type Permission } from './auth/permissions'
 import { OrderStatus } from './status-enums'
 
 export const OrderMessageKind = {
@@ -127,9 +128,78 @@ export const OrderSorts = {
 } as const
 export type OrderSort = (typeof OrderSorts)[keyof typeof OrderSorts]
 
+export const OrderResourceTypes = {
+  ORDER: 'order'
+} as const
+
+// The order number of a store counts from 1 and is shown with at least this many digits ('00001'): a number is
+// searched by its prefix (TDD_08 §5.4), so every number of a store has the same length until it passes 99 999
+export const OrderNumber = {
+  MIN_DIGITS: 5,
+  // The counter is an Int column: a store never gets near it
+  MAX: ORDER_MAX_AMOUNT_CENTS
+} as const
+
+export function formatOrderNumber(sequence: number): string {
+  return String(sequence).padStart(OrderNumber.MIN_DIGITS, '0')
+}
+
+// What the answer of a create or an edit says the server did not do that the request asked for (`notices`)
+export const OrderNotices = {
+  // confirmOnCreate was checked but the order waits for a price approval: it is created pending (TDD_17 §4.3)
+  CONFIRMATION_SKIPPED_PRICE_APPROVAL: 'confirmation_skipped_price_approval'
+} as const
+
+// What `metadata.conflict` says when a 409 of an order has several causes
+export const OrderConflicts = {
+  CUSTOMER_ERASED: 'customer_erased',
+  PRODUCT_INACTIVE: 'product_inactive',
+  VARIANT_INACTIVE: 'variant_inactive',
+  VARIANT_REQUIRED: 'variant_required',
+  DELIVERED_IN_THE_FUTURE: 'delivered_in_the_future',
+  DELIVERED_BEFORE_SHIPPED: 'delivered_before_shipped'
+} as const
+
 // Who is told when the packing note changes on an order that is already confirmed: the members who may prepare or
 // ship orders of the store (the permissions are named in libs/core/domain/auth/permissions.ts)
 export const PackingNoteNotice = {
   // The statuses in which a change of the note warns the warehouse (a PENDING_CONFIRMATION order is not packed yet)
-  STATUSES: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] as readonly OrderStatus[]
+  STATUSES: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] as readonly OrderStatus[],
+  // The members told: whoever may move an order to PREPARING or SHIPPED by hand, and whoever makes its guide
+  PERMISSIONS: [
+    Permissions.ORDERS_CHANGE_STATUS,
+    Permissions.SHIPPING_MANAGE
+  ] as readonly Permission[]
 } as const
+
+// The lock that makes the orders of a store take turns while their stock is allocated (one scope, one order of locks:
+// the order, this one, then the levels)
+export const OrderLockScopes = {
+  ALLOCATION: 'order-allocation'
+} as const
+
+// What an order does to its stock, per allocation (TDD_16 §4.1); each is the last part of the idempotency key
+export const OrderStockEffects = {
+  RESERVE: 'reserve',
+  RELEASE: 'release',
+  ISSUE: 'issue',
+  RETURN: 'return'
+} as const
+export type OrderStockEffect = (typeof OrderStockEffects)[keyof typeof OrderStockEffects]
+
+// The key of one movement of an order: the same effect on the same allocation never applies twice
+export function orderMovementKey(
+  orderId: string,
+  itemId: string,
+  warehouseId: string,
+  effect: OrderStockEffect
+): string {
+  return `order:${orderId}:${itemId}:${warehouseId}:${effect}`
+}
+
+// The statuses in which the price of an order can still be decided (approved or rejected): the ones that can still change
+export const OrderEditablePriceStatuses: readonly OrderStatus[] = [
+  OrderStatus.PENDING_CONFIRMATION,
+  OrderStatus.CONFIRMED,
+  OrderStatus.PREPARING
+]
