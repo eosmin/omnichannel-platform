@@ -7,6 +7,7 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
+  ChannelIds,
   ConversationStatus,
   DeliveryStatus,
   MembershipStatus,
@@ -1281,7 +1282,7 @@ describe('The messages of a conversation', () => {
     })
 
     it('counts characters and not UTF-16 units: 4096 emoji fit and 4097 do not', async () => {
-      const { id } = await mk()
+      const { id } = await mk({ channelType: ChannelIds.WHATSAPP }) // the channel whose text holds the general limit
 
       const fits = await asAgent()
         .post(ApiRoutes.messages.create)
@@ -1297,7 +1298,7 @@ describe('The messages of a conversation', () => {
     })
 
     it('takes a text of the longest length', async () => {
-      const { id } = await mk()
+      const { id } = await mk({ channelType: ChannelIds.WHATSAPP }) // the channel whose text holds the general limit
 
       const response = await asAgent()
         .post(ApiRoutes.messages.create)
