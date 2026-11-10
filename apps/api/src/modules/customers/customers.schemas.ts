@@ -7,6 +7,7 @@ import {
   LOCALE_TAG_PATTERN,
   MergeableFields,
   MergeFieldSources,
+  OrderStatus,
   PaginationLimits,
   singleLineText
 } from '@platform/core/domain'
@@ -63,6 +64,12 @@ export const listTimelineQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   type: z.enum(Object.values(CustomerTimelineTypes)).optional()
+})
+
+export const listCustomerOrdersQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
+  status: z.enum(OrderStatus).optional()
 })
 
 export const mergePreviewQuerySchema = z.strictObject({ absorbedId: z.uuid() })
@@ -158,6 +165,7 @@ export const createNoteSchema = z.strictObject({
 export const attachTagSchema = z.strictObject({ tagId: z.uuid() })
 
 export type ListTimelineQuery = z.output<typeof listTimelineQuerySchema>
+export type ListCustomerOrdersQuery = z.output<typeof listCustomerOrdersQuerySchema>
 export type MergePreviewQuery = z.output<typeof mergePreviewQuerySchema>
 export type ListMediaQuery = z.output<typeof listMediaQuerySchema>
 export type ListCustomersQuery = z.output<typeof listCustomersQuerySchema>

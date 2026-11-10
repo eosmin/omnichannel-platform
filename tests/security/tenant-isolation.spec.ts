@@ -13,6 +13,7 @@ import {
   InvitationStatus,
   MembershipStatus,
   MessageType,
+  PaymentMethod,
   RoutingActionTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -1723,6 +1724,7 @@ describe('Tenant isolation', () => {
 
       const responses = await Promise.all([
         asA().get(ApiRoutes.customers.timeline(theirs.id)),
+        asA().get(ApiRoutes.customers.orders(theirs.id)),
         asA().get(ApiRoutes.customers.conversations(theirs.id)),
         asA().get(ApiRoutes.customers.mergePreview(mine.id)).query({ absorbedId: theirs.id }),
         asA().get(ApiRoutes.customers.mergePreview(theirs.id)).query({ absorbedId: mine.id })
@@ -1732,6 +1734,85 @@ describe('Tenant isolation', () => {
         expect(response.status).toBe(404)
         expect(JSON.stringify(response.body)).not.toContain('secret note')
       }
+    })
+  })
+
+  // The orders of a customer, in its list and in its timeline, are those of the store of the request: an
+  // order of another store is not shown even when it names a customer of this one, and an order of this
+  // store is not shown to the other
+  describe('the orders of a customer', () => {
+    it('are the ones of the store of the request, in the list, the figures and the timeline', async () => {
+      const mine = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const theirs = await createCustomer(owner, { storeId: ctx.storeB.id })
+      const make = (storeId: string, customerId: string, orderNumber: string, totalCents: number) =>
+        owner.order.create({
+          data: {
+            storeId,
+            customerId,
+            orderNumber: `${prefix}-${orderNumber}`,
+            status: 'CONFIRMED',
+            subtotalCents: totalCents,
+            totalCents,
+            paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+            createdBy: storeId === ctx.storeA.id ? ctx.adminA.id : ctx.adminB.id
+          },
+          select: { id: true }
+        })
+      const own = await make(ctx.storeA.id, mine.id, 'own', 1000)
+      // Names a customer of store A while belonging to store B
+      const crossed = await make(ctx.storeB.id, mine.id, 'crossed', 777_000)
+      const foreign = await make(ctx.storeB.id, theirs.id, 'foreign', 555_000)
+
+      const list = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.customers.orders(mine.id))
+      const timeline = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.customers.timeline(mine.id)
+      )
+
+      expect(list.status).toBe(200)
+      const ids = (list.body as { data: { id: string }[] }).data.map(order => order.id)
+      expect(ids).toEqual([own.id])
+      // The figures add up the orders of the store only
+      expect((list.body as { figures: { totalSpentCents: number } }).figures.totalSpentCents).toBe(
+        1000
+      )
+      const entries = (timeline.body as { data: { type: string; id: string }[] }).data
+      expect(entries.filter(entry => entry.type === 'order').map(entry => entry.id)).toEqual([
+        own.id
+      ])
+      for (const hidden of [crossed.id, foreign.id]) {
+        expect(JSON.stringify([list.body, timeline.body])).not.toContain(hidden)
+      }
+    })
+
+    it('are not listed to a member who may not view orders, in the list or in the timeline', async () => {
+      const mine = await createCustomer(owner, { storeId: ctx.storeA.id })
+      await owner.order.create({
+        data: {
+          storeId: ctx.storeA.id,
+          customerId: mine.id,
+          orderNumber: `${prefix}-noperm`,
+          subtotalCents: 10,
+          totalCents: 10,
+          paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+          createdBy: ctx.adminA.id
+        }
+      })
+      const viewer = await actorWithPermissions(owner, app, {
+        prefix,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        name: 'customersOnlyOrders',
+        permissions: [Permissions.CUSTOMERS_VIEW]
+      })
+
+      const list = await api(app, viewer, ctx.storeA).get(ApiRoutes.customers.orders(mine.id))
+      const timeline = await api(app, viewer, ctx.storeA).get(ApiRoutes.customers.timeline(mine.id))
+
+      expect(list.status).toBe(403)
+      expect(timeline.status).toBe(200)
+      expect(
+        (timeline.body as { data: { type: string }[] }).data.filter(e => e.type === 'order')
+      ).toEqual([])
     })
   })
 

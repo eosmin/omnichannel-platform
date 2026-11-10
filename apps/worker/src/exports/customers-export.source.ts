@@ -1,11 +1,14 @@
 import type { PrismaService } from '@platform/core/database'
+import { CustomerFigureOrderStatuses, customerOrderFigures } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
 import { customerSearchWhere, type CustomersExportFilters } from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
 
-// MVP_TRIM_CHECKLIST.md §10 item 25. The notes stay out (their text is internal). The order columns
-// are empty until Milestone 4 gives the customer orders to count.
+// MVP_TRIM_CHECKLIST.md §10 item 25. The notes stay out (their text is internal). The order columns are
+// the figures of the profile (`customerOrderFigures`: only the orders the store has taken on), `total_spent`
+// and `average_order` in integer cents of the order currency (0 and an empty average and dates for a customer
+// with no counted order).
 export const CUSTOMER_COLUMNS = [
   'id',
   'name',
@@ -96,10 +99,35 @@ export function customersExportSource(
           _max: { createdAt: true }
         })
         const spanOf = new Map(spans.map(span => [span.customerId, span]))
+        // The orders of the whole page in ONE grouped read, as the conversation dates are
+        const sums = await prisma.client.order.groupBy({
+          by: ['customerId'],
+          where: {
+            storeId,
+            customerId: { in: customers.map(customer => customer.id) },
+            status: { in: [...CustomerFigureOrderStatuses] }
+          },
+          _count: { _all: true },
+          _sum: { totalCents: true },
+          _min: { createdAt: true },
+          _max: { createdAt: true }
+        })
+        const sumOf = new Map(sums.map(sum => [sum.customerId, sum]))
 
         for (const customer of customers) {
           const home = customer.addresses.find(address => address.isDefault)
           const span = spanOf.get(customer.id)
+          const sum = sumOf.get(customer.id)
+          const figures = customerOrderFigures(
+            sum === undefined
+              ? undefined
+              : {
+                  orders: sum._count._all,
+                  totalSpentCents: sum._sum.totalCents ?? 0,
+                  firstOrderAt: sum._min.createdAt,
+                  lastOrderAt: sum._max.createdAt
+                }
+          )
           yield [
             customer.id,
             customer.name,
@@ -123,11 +151,11 @@ export function customersExportSource(
             customer._count.conversations,
             span?._min.createdAt,
             span?._max.createdAt,
-            null,
-            null,
-            null,
-            null,
-            null
+            figures.orders,
+            figures.totalSpentCents,
+            figures.averageOrderCents,
+            figures.firstOrderAt,
+            figures.lastOrderAt
           ]
         }
       }

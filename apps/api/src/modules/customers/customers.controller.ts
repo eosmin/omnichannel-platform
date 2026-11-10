@@ -55,6 +55,7 @@ import { CustomerMediaService } from './customer-media.service'
 import type { GalleryPage } from './customer-media.views'
 import { CustomerMergePreviewService, type MergePreview } from './customer-merge-preview.service'
 import { CustomerMergeService } from './customer-merge.service'
+import { CustomerOrdersService, type CustomerOrdersPage } from './customer-orders.service'
 import { CustomerTagsService } from './customer-tags.service'
 import { CustomerTimelineService, type TimelinePage } from './customer-timeline.service'
 import {
@@ -73,6 +74,8 @@ import {
   listCustomersQuerySchema,
   type ListMediaQuery,
   listMediaQuerySchema,
+  type ListCustomerOrdersQuery,
+  listCustomerOrdersQuerySchema,
   type ListTimelineQuery,
   listTimelineQuerySchema,
   type MergePreviewQuery,
@@ -112,6 +115,7 @@ export class CustomersController {
     private readonly merges: CustomerMergeService,
     private readonly mergePreviews: CustomerMergePreviewService,
     private readonly timeline: CustomerTimelineService,
+    private readonly customerOrders: CustomerOrdersService,
     private readonly gallery: CustomerMediaService,
     private readonly conversations: ConversationsService,
     private readonly exports: ExportsService,
@@ -261,8 +265,8 @@ export class CustomersController {
     return this.mergePreviews.preview(store.id, survivorId, query.absorbedId)
   }
 
-  // Conversations, notes and merges of the customer. The conversations follow the visibility of the
-  // inbox, so a viewer without CONVERSATIONS_VIEW gets the rest only.
+  // Conversations, orders, notes and merges of the customer. The conversations follow the visibility of
+  // the inbox, so a viewer without CONVERSATIONS_VIEW gets the rest only; the orders need ORDERS_VIEW.
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
   @Get(ApiRoutes.customers.timeline(':id'))
   listTimeline(
@@ -273,6 +277,18 @@ export class CustomersController {
     @Query(new ZodValidationPipe(listTimelineQuerySchema)) query: ListTimelineQuery
   ): Promise<TimelinePage> {
     return this.timeline.list(store.id, customerId, query, viewerOf(user.id, held))
+  }
+
+  // The orders of the customer with the figures of the profile. The orders have their own permission,
+  // and the notes of an order never come with them.
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.ORDERS_VIEW)
+  @Get(ApiRoutes.customers.orders(':id'))
+  listOrders(
+    @CurrentStore() store: { id: string },
+    @Param('id', id()) customerId: string,
+    @Query(new ZodValidationPipe(listCustomerOrdersQuerySchema)) query: ListCustomerOrdersQuery
+  ): Promise<CustomerOrdersPage> {
+    return this.customerOrders.list(store.id, customerId, query)
   }
 
   // The gallery of the customer: the files that came in or went out in the conversations the viewer

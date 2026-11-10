@@ -43,7 +43,7 @@ export class WidgetDownloads {
       select: { id: true }
     })
     if (owned === null) throw resourceNotFound('widget file')
-    const urls = await this.media.urlsFor(site.storeId, owned.id)
+    const urls = await this.media.urlsFor(site.storeId, owned.id, null)
     return {
       url: urls.url,
       filename: urls.filename,

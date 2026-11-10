@@ -305,6 +305,39 @@ describe('Creating an order', () => {
 
       expect(wrong.status).toBe(NOT_FOUND)
       expect(right.status).toBe(CREATED)
+      // The thread says so, with ids and figures and no text of the order
+      const lines = await owner.message.findMany({
+        where: { conversationId: ownThread.id, type: 'ORDER_SUMMARY' }
+      })
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toMatchObject({ authorType: 'system', content: null })
+      expect(lines[0]?.metadata).toMatchObject({
+        event: 'created',
+        orderId: (right.body as CreatedBody).order.id,
+        status: 'PENDING_CONFIRMATION',
+        previousStatus: null
+      })
+      expect(
+        await owner.message.count({
+          where: { conversationId: foreignThread.id, type: 'ORDER_SUMMARY' }
+        })
+      ).toBe(0)
+
+      const confirm = await kit
+        .asAdmin()
+        .post(ApiRoutes.orders.confirm((right.body as CreatedBody).order.id))
+        .send({ via: 'call' })
+      expect(confirm.status).toBe(OK)
+      const after = await owner.message.findMany({
+        where: { conversationId: ownThread.id, type: 'ORDER_SUMMARY' },
+        orderBy: { createdAt: 'asc' }
+      })
+      expect(after).toHaveLength(2)
+      expect(JSON.stringify(after.map(row => row.metadata))).not.toMatch(/71234567|door/)
+      expect(after.map(row => (row.metadata as { event: string }).event).sort()).toEqual([
+        'created',
+        'status_changed'
+      ])
     })
   })
 

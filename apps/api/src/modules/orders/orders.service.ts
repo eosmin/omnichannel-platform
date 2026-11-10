@@ -24,6 +24,7 @@ import {
   OrderLockScopes,
   OrderNotices,
   OrderScheduleFilters,
+  OrderSummaryEvents,
   OrderSorts,
   OrderStatus,
   orderFieldsOfEdit,
@@ -37,6 +38,7 @@ import {
 import { ErrorCodes, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { writeOrderSummaryLine } from '@platform/core/messaging'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
 import type { Actor } from '../tenancy'
@@ -315,6 +317,20 @@ export class OrdersService {
         lines: toAllocatable(lines, itemIds),
         createdBy: actor.userId
       })
+
+      // The thread of the conversation the order came from says so, in the same transaction
+      if (body.conversationId !== undefined) {
+        await writeOrderSummaryLine(tx, storeId, body.conversationId, {
+          event: OrderSummaryEvents.CREATED,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status,
+          totalCents: totals.totalCents,
+          currency: store.currency,
+          itemCount: lines.length,
+          actor: actorRef(actor)
+        })
+      }
 
       const common = {
         storeId,

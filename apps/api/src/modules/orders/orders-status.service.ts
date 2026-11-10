@@ -22,6 +22,7 @@ import {
   OrderConflicts,
   OrderEditablePriceStatuses,
   OrderLockScopes,
+  OrderSummaryEvents,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -36,6 +37,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { writeOrderSummaryLine } from '@platform/core/messaging'
 import { MediaPurpose } from '@platform/core/storage'
 
 import type { Actor } from '../tenancy'
@@ -87,7 +89,11 @@ export class OrdersStatusService {
           orderNumber: true,
           status: true,
           priceApprovalStatus: true,
-          shippedAt: true
+          shippedAt: true,
+          conversationId: true,
+          totalCents: true,
+          currency: true,
+          _count: { select: { items: true } }
         }
       })
       const from = order.status as OrderStatus
@@ -184,6 +190,20 @@ export class OrdersStatusService {
         orderId,
         orderNumber: order.orderNumber,
         actor: actorRef(actor)
+      }
+      // The thread of the conversation the order came from says so, in the same transaction
+      if (order.conversationId !== null) {
+        await writeOrderSummaryLine(tx, storeId, order.conversationId, {
+          event: OrderSummaryEvents.STATUS_CHANGED,
+          orderId,
+          orderNumber: order.orderNumber,
+          status: to,
+          previousStatus: from,
+          totalCents: order.totalCents,
+          currency: order.currency,
+          itemCount: order._count.items,
+          actor: actorRef(actor)
+        })
       }
       this.events.publish(tx, Events.ORDER_STATUS_CHANGED, { ...common, from, to })
       if (to === OrderStatus.CONFIRMED) this.events.publish(tx, Events.ORDER_CONFIRMED, common)
