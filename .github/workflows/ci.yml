@@ -74,7 +74,7 @@ jobs:
       # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
       - name: Lint, type-check and build (affected on pull requests, everything on main)
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "MEASURE-everything" ]; then
             pnpm exec nx affected --targets=lint,type-check,build --parallel=3
           else
             pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
@@ -104,7 +104,7 @@ jobs:
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - name: Unit tests with coverage (affected on pull requests, everything on main)
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "MEASURE-everything" ]; then
             pnpm exec nx affected --targets=test --parallel=3 --coverage
           else
             pnpm exec nx run-many --targets=test --all --parallel=3 --coverage
