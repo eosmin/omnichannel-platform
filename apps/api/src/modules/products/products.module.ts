@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 
 import { TenancyModule } from '../tenancy'
 
+import { ProductSearchService } from './product-search.service'
 import { ProductVariantsService } from './product-variants.service'
 import { ProductsController } from './products.controller'
 import { ProductsService } from './products.service'
@@ -10,7 +11,7 @@ import { ProductsService } from './products.service'
 @Module({
   imports: [TenancyModule],
   controllers: [ProductsController],
-  providers: [ProductsService, ProductVariantsService],
+  providers: [ProductsService, ProductVariantsService, ProductSearchService],
   exports: [ProductsService]
 })
 export class ProductsModule {}

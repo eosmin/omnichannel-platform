@@ -44,3 +44,14 @@ export const ProductResourceTypes = {
 export const ProductLockScopes = {
   VARIANT_SKU: 'product_variant_sku'
 } as const
+
+// The autocomplete of products (Step 4.1, TDD_08 §5). A text shorter than the minimum is not a search: it
+// answers an empty list without touching the database (one letter would match half the catalog, and a
+// wildcard typed alone is never a name). The ceiling keeps a search a small, fast answer; the text is cut
+// at a length no name or sku reaches.
+export const ProductSearchConfig = {
+  MIN_QUERY_LENGTH: 2,
+  MAX_QUERY_LENGTH: 100,
+  DEFAULT_LIMIT: 8,
+  MAX_LIMIT: 20
+} as const

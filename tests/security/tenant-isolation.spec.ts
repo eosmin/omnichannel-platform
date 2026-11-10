@@ -33,6 +33,7 @@ import {
   createCustomerIdentity,
   createCustomerMerge,
   createProduct,
+  createProductVariant,
   createChannelConnection,
   createInvitation,
   createMember,
@@ -865,6 +866,46 @@ describe('Tenant isolation', () => {
       ).toEqual({ storeId: ctx.storeB.id, key: row.key, uploadedBy: null, status: 'pending' })
       expect(await owner.media.count({ where: { id: row.id, storeId: ctx.storeA.id } })).toBe(0)
       await storage.delete(stagingKey)
+    })
+  })
+
+  // The autocomplete of products reads the store of the header only: the products and the variants of another
+  // store are never in its answer, by name, by sku or by the sku of a variant, and a store the user does not belong
+  // to is refused before the search runs.
+  describe('product search', () => {
+    it('never finds the products or variants of another store', async () => {
+      const word = `iso${randomUUID().slice(0, 6)}`
+      const foreign = await createProduct(owner, {
+        storeId: ctx.storeB.id,
+        name: `${word} theirs`,
+        sku: `${word}-SKU`
+      })
+      await createProductVariant(owner, {
+        productId: foreign.id,
+        name: `${word} variant`,
+        sku: `${word}-VAR`
+      })
+
+      for (const q of [word, `${word}-SKU`, `${word}-VAR`, `${word} variant`]) {
+        const found = await api(app, ctx.adminA, ctx.storeA)
+          .get(ApiRoutes.products.search)
+          .query({ q })
+        expect(found.status).toBe(200)
+        expect((found.body as { data: unknown[] }).data).toEqual([])
+      }
+      const own = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.products.search)
+        .query({ q: word })
+      expect((own.body as { data: { id: string }[] }).data.map(item => item.id)).toEqual([
+        foreign.id
+      ])
+    })
+
+    it('is refused in a store the user does not belong to', async () => {
+      const refused = await api(app, ctx.adminA, ctx.storeB)
+        .get(ApiRoutes.products.search)
+        .query({ q: 'anything' })
+      expect(refused.status).toBe(403)
     })
   })
 

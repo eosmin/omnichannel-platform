@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { PaginationLimits, ProductLimits, singleLineText } from '@platform/core/domain'
+import {
+  PaginationLimits,
+  ProductLimits,
+  ProductSearchConfig,
+  singleLineText
+} from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
@@ -92,3 +97,22 @@ export type CreateProductBody = z.infer<typeof createProductSchema>
 export type UpdateProductBody = z.infer<typeof updateProductSchema>
 export type CreateVariantBody = z.infer<typeof createVariantSchema>
 export type UpdateVariantBody = z.infer<typeof updateVariantSchema>
+
+// What the autocomplete asks: a text (it may be empty or short: the answer is then an empty list), how many
+// rows, and whether archived products and variants count
+export const searchProductsQuerySchema = z.strictObject({
+  q: z
+    .string()
+    .trim()
+    .max(ProductSearchConfig.MAX_QUERY_LENGTH)
+    .refine(value => !value.includes('\0'), { message: 'contains a NUL character' }),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(ProductSearchConfig.MAX_LIMIT)
+    .default(ProductSearchConfig.DEFAULT_LIMIT),
+  includeArchived: flag.default(false)
+})
+
+export type SearchProductsQuery = z.infer<typeof searchProductsQuerySchema>

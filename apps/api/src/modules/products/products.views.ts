@@ -102,3 +102,26 @@ export function variantView(
     effectiveCostCents: row.costCents ?? product.costCents
   }
 }
+
+// What the autocomplete shows of a product: enough to pick it and to price it, nothing more (no description, no
+// cost). The picture is the id of the file; the client asks for its signed address as everywhere else.
+export interface ProductSuggestion {
+  id: string
+  name: string
+  sku: string | null
+  priceCents: number
+  imageMediaId: string | null
+  active: boolean
+  // The variant the text matched (its name or its sku), or null when the product matched by itself
+  matchedVariant: {
+    id: string
+    name: string
+    sku: string | null
+    priceCents: number | null
+    effectivePriceCents: number
+  } | null
+}
+
+export interface ProductSuggestions {
+  data: ProductSuggestion[]
+}
