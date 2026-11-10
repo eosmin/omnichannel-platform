@@ -113,7 +113,8 @@ export async function ensureDefaultWarehouse(
 ): Promise<{ id: string }> {
   const existing = await prisma.warehouse.findFirst({
     where: { organizationId },
-    orderBy: [{ createdAt: 'asc' }, { code: 'asc' }],
+    // An active warehouse first: a store is not linked to one the owner switched off
+    orderBy: [{ active: 'desc' }, { createdAt: 'asc' }, { code: 'asc' }],
     select: { id: true }
   })
   const warehouse =

@@ -818,7 +818,7 @@ model ProductVariant {
 
 // The ledger of stock (TDD_16 §2): append-only, the audit trail of InventoryLevel and the source of reconciliation.
 // `quantity` is always positive and `type` carries the direction. The database refuses UPDATE and DELETE on it to
-// the application roles (a store that is deleted takes its movements with it through the foreign key).
+// the application roles, and a store with stock cannot be deleted (TDD_16 §4.9: the foreign keys restrict it).
 model InventoryMovement {
   id             String   @id @default(uuid())
   storeId        String   @map("store_id")
@@ -893,7 +893,8 @@ model StoreWarehouse {
   warehouse Warehouse @relation(fields: [organizationId, warehouseId], references: [organizationId, id], onDelete: Cascade)
 
   @@unique([storeId, warehouseId])
-  @@unique([storeId, priority])
+  // One warehouse per priority of a store: (store_id, priority) is a DEFERRABLE unique constraint in the raw SQL of the
+  // migration, so that the priorities can be swapped or shifted inside one transaction (Prisma cannot declare it)
   @@index([warehouseId])
   @@map("store_warehouses")
 }

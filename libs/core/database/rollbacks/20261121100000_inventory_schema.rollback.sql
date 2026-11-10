@@ -13,7 +13,8 @@ DROP TRIGGER IF EXISTS trg_inventory_levels_belong_together ON inventory_levels;
 DROP FUNCTION IF EXISTS check_stock_row_belongs_together();
 
 -- The ledger first: it refers to warehouses and to the composite key of products
-GRANT UPDATE, DELETE, TRUNCATE ON TABLE inventory_movements TO platform_app, platform_worker;
+-- Back to what the default privileges gave (no TRUNCATE: the roles never held it)
+GRANT UPDATE, DELETE ON TABLE inventory_movements TO platform_app, platform_worker;
 DELETE FROM inventory_movements;
 ALTER TABLE inventory_movements DROP CONSTRAINT IF EXISTS chk_inventory_movements_quantity_positive;
 ALTER TABLE inventory_movements DROP CONSTRAINT IF EXISTS chk_inventory_movements_unit_cost;

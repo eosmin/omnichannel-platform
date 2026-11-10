@@ -105,9 +105,6 @@ CREATE INDEX "store_warehouses_warehouse_id_idx" ON "store_warehouses"("warehous
 CREATE UNIQUE INDEX "store_warehouses_store_id_warehouse_id_key" ON "store_warehouses"("store_id", "warehouse_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "store_warehouses_store_id_priority_key" ON "store_warehouses"("store_id", "priority");
-
--- CreateIndex
 CREATE INDEX "inventory_levels_store_id_warehouse_id_idx" ON "inventory_levels"("store_id", "warehouse_id");
 
 -- CreateIndex
@@ -222,16 +219,26 @@ REVOKE UPDATE, DELETE, TRUNCATE ON TABLE inventory_movements FROM platform_app, 
 -- Warehouse codes are printed on documents: one organization cannot hold two that read the same, whatever the case,
 -- and a code or a name has no stray spaces and keeps the lengths of InventoryLimits.
 CREATE UNIQUE INDEX uq_warehouses_code_lower ON warehouses (organization_id, lower(code));
+-- A code is ASCII letters and digits with . _ - inside (so no space, control or look-alike character, and lower() folds
+-- it the same under any collation); a name has no control character and no stray ASCII space
 ALTER TABLE warehouses
-  ADD CONSTRAINT chk_warehouses_code CHECK (code = btrim(code) AND char_length(code) BETWEEN 1 AND 20),
-  ADD CONSTRAINT chk_warehouses_name CHECK (name = btrim(name) AND char_length(name) BETWEEN 1 AND 100);
+  ADD CONSTRAINT chk_warehouses_code CHECK (code ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$'),
+  ADD CONSTRAINT chk_warehouses_name CHECK (
+    name = btrim(name) AND char_length(name) BETWEEN 1 AND 100 AND name !~ '[[:cntrl:]]'
+  );
+
+-- One warehouse per priority of a store, checked at the end of the transaction so that a reorder (swap, shift) can
+-- take its steps in any order (Prisma cannot declare a deferrable constraint)
+ALTER TABLE store_warehouses
+  ADD CONSTRAINT store_warehouses_store_id_priority_key UNIQUE (store_id, priority) DEFERRABLE INITIALLY DEFERRED;
 
 -- Stock names the store AND a warehouse, and the foreign keys cannot say that the two belong to the same
 -- organization (a level is not a link: a store may keep stock in a warehouse it was unlinked from, TDD_16 §4.7), nor
 -- that a variant is a variant of the product the row names, nor that an allocation is of an order line of the store
 -- it names. These checks do, for every insert and every change of those columns, whoever writes.
 CREATE FUNCTION check_stock_row_belongs_together() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql
+SET search_path = public, pg_temp AS $$
 DECLARE
   row jsonb := to_jsonb(NEW);
 BEGIN

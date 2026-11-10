@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import { RoleNames, RolePresets, Permissions } from '@platform/core/auth'
 import {
   connectionUrls,
   createOwnerClient,
   ensureDefaultWarehouse,
+  ensureStore,
   ensureStoreWarehouse,
   ensureWarehouse,
   type OwnerClient
@@ -141,10 +144,19 @@ describe('The tables of stock and warehouses', () => {
         createWarehouse(owner, { organizationId: ctx.orgA.id, code: extra.code.toLowerCase() }),
         /uq_warehouses_code_lower/
       )
-      await refused(
-        createWarehouse(owner, { organizationId: ctx.orgA.id, code: ' PADDED' }),
-        /chk_warehouses_code/
-      )
+      for (const code of [
+        ' PADDED',
+        'TAB\t',
+        'NB\u00a0SP',
+        '\u00c1LMAC\u00c9N',
+        'has space',
+        '-lead'
+      ]) {
+        await refused(
+          createWarehouse(owner, { organizationId: ctx.orgA.id, code }),
+          /chk_warehouses_code/
+        )
+      }
       await refused(
         createWarehouse(owner, { organizationId: ctx.orgA.id, code: 'X'.repeat(21) }),
         /chk_warehouses_code/
@@ -152,6 +164,42 @@ describe('The tables of stock and warehouses', () => {
       await refused(
         createWarehouse(owner, { organizationId: ctx.orgA.id, name: '  ' }),
         /chk_warehouses_name/
+      )
+    })
+
+    it('can be reordered inside one transaction: the priorities are checked at its end', async () => {
+      const store = await ensureStore(owner, ctx.orgA.id, `${prefix}-reorder`)
+      const one = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      const two = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      const first = await linkWarehouse(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: store.id,
+        warehouseId: one.id
+      })
+      const second = await linkWarehouse(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: store.id,
+        warehouseId: two.id
+      })
+
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      await owner.$transaction(async tx => {
+        await tx.storeWarehouse.update({ where: { id: first.id }, data: { priority: 2 } })
+        await tx.storeWarehouse.update({ where: { id: second.id }, data: { priority: 1 } })
+      })
+
+      const links = await owner.storeWarehouse.findMany({
+        where: { storeId: store.id },
+        orderBy: { priority: 'asc' }
+      })
+      expect(links.map(link => link.warehouseId)).toEqual([two.id, one.id])
+      // But two with the same priority at the end of the transaction are still refused
+      await refused(
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        owner.$transaction(async tx => {
+          await tx.storeWarehouse.update({ where: { id: first.id }, data: { priority: 1 } })
+        }),
+        /unique/i
       )
     })
 
@@ -311,6 +359,42 @@ describe('The tables of stock and warehouses', () => {
       )
     })
 
+    it('keeps the checks when a row is changed, not only when it is written', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      const other = await createProduct(owner, { storeId: ctx.storeA.id })
+      const foreignVariant = await createProductVariant(owner, { productId: other.id })
+      const level = await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: product.id,
+        warehouseId: ctx.warehouseA.id
+      })
+      const movement = await createInventoryMovement(owner, {
+        storeId: ctx.storeA.id,
+        productId: product.id,
+        warehouseId: ctx.warehouseA.id
+      })
+
+      await refused(
+        owner.inventoryLevel.update({
+          where: { id: level.id },
+          data: { variantId: foreignVariant.id }
+        }),
+        /not a variant of its product/
+      )
+      // Pointing the row at a store of another organization (its warehouse is not of that one)
+      await refused(
+        owner.$executeRaw`UPDATE inventory_levels SET store_id = ${ctx.storeB.id} WHERE id = ${level.id}`,
+        /foreign key|different organizations/i
+      )
+      await refused(
+        owner.$executeRaw`UPDATE inventory_movements SET warehouse_id = ${ctx.warehouseB.id} WHERE id = ${movement.id}`,
+        /different organizations/
+      )
+      expect(
+        (await owner.inventoryLevel.findUniqueOrThrow({ where: { id: level.id } })).warehouseId
+      ).toBe(ctx.warehouseA.id)
+    })
+
     it('keeps its stock in a warehouse the store was unlinked from (a level is not a link)', async () => {
       const product = await createProduct(owner, { storeId: ctx.storeA2.id })
       const extra = await createWarehouse(owner, { organizationId: ctx.orgA.id })
@@ -358,8 +442,18 @@ describe('The tables of stock and warehouses', () => {
       await refused(owner.store.delete({ where: { id: store.id } }), /foreign key/i)
       await refused(owner.organization.delete({ where: { id: org.id } }), /foreign key/i)
       expect(await owner.inventoryMovement.count({ where: { storeId: store.id } })).toBe(1)
-      // The owner of the database clears it by hand, as the suites do
+      // With the movement gone, a level alone still keeps the store (and the warehouse) from being deleted
       await owner.inventoryMovement.deleteMany({ where: { storeId: store.id } })
+      await createInventoryLevel(owner, {
+        storeId: store.id,
+        productId: product.id,
+        warehouseId: warehouse.id,
+        onHand: 1
+      })
+      await refused(owner.store.delete({ where: { id: store.id } }), /foreign key/i)
+      await refused(owner.organization.delete({ where: { id: org.id } }), /foreign key/i)
+      // The owner of the database clears it by hand, as the suites do
+      await owner.inventoryLevel.deleteMany({ where: { storeId: store.id } })
       await owner.product.deleteMany({ where: { storeId: store.id } })
       await owner.organization.delete({ where: { id: org.id } })
     })
@@ -421,6 +515,7 @@ describe('The tables of stock and warehouses', () => {
         }),
         /order line of another store/
       )
+      await refused(allocate(1, ctx.warehouseB.id), /different organizations/)
       await refused(allocate(0), /chk_order_item_allocations_quantity_positive/)
       await allocate(2)
       await refused(allocate(1), /unique/i)
@@ -604,6 +699,43 @@ describe('The tables of stock and warehouses', () => {
   })
 
   describe('the permission to see costs', () => {
+    it('reaches the Admin roles that exist through the backfill of the migration', async () => {
+      // The SQL of the migration, run where an Admin role made before it lacks the permission; rolled back after
+      const migration = readFileSync(
+        resolve(
+          __dirname,
+          '../../libs/core/database/prisma/migrations/20261121100000_inventory_schema/migration.sql'
+        ),
+        'utf8'
+      )
+      const backfill =
+        /INSERT INTO "permissions"[\s\S]*?ON CONFLICT \("role_id", "name"\) DO NOTHING;/.exec(
+          migration
+        )?.[0]
+      expect(backfill).toBeDefined()
+      const count = (tx: OwnerClient): Promise<number> =>
+        tx.permission.count({
+          where: {
+            name: Permissions.PRODUCTS_VIEW_COST,
+            role: { isSystem: true, name: RoleNames.ADMIN }
+          }
+        })
+      const rollback = new Error('rolled back on purpose')
+
+      await expect(
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        owner.$transaction(async tx => {
+          await tx.permission.deleteMany({ where: { name: Permissions.PRODUCTS_VIEW_COST } })
+          expect(await count(tx as unknown as OwnerClient)).toBe(0)
+          await tx.$executeRawUnsafe(backfill ?? '')
+          expect(await count(tx as unknown as OwnerClient)).toBe(1)
+          throw rollback
+        })
+      ).rejects.toBe(rollback)
+      // Nothing of it stayed
+      expect(await count(owner)).toBe(1)
+    })
+
     it('is held by the Admin preset and the Admin role of the database, and by no other role', async () => {
       expect(RolePresets[RoleNames.ADMIN]).toContain(Permissions.PRODUCTS_VIEW_COST)
       for (const role of [RoleNames.SUPERVISOR, RoleNames.AGENT, RoleNames.VIEWER]) {
