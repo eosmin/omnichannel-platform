@@ -1,4 +1,4 @@
-import { JobNames, QueueNames } from './queue-names'
+import { JobNames, QueueNames, reconcileInventoryJobId } from './queue-names'
 import { LockNames, Schedules } from './schedules'
 
 describe('QueueNames', () => {
@@ -21,6 +21,16 @@ describe('JobNames', () => {
   it('has no billing, referral or chatbot jobs', () => {
     const forbidden = /(stripe|payout|chatbot)/
     expect(Object.values(JobNames).filter(name => forbidden.test(name))).toEqual([])
+  })
+})
+
+describe('reconcileInventoryJobId', () => {
+  it('is one id for a store and a day, with no colon (BullMQ refuses it)', () => {
+    const id = reconcileInventoryJobId('store-1', '2026-11-12')
+    expect(id).toBe('reconcile-inventory-store-1-2026-11-12')
+    expect(id).not.toContain(':')
+    expect(reconcileInventoryJobId('store-2', '2026-11-12')).not.toBe(id)
+    expect(reconcileInventoryJobId('store-1', '2026-11-13')).not.toBe(id)
   })
 })
 

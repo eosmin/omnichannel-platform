@@ -117,7 +117,8 @@ describe('NotificationTypesWithoutEmitter', () => {
   it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
     for (const type of [
       NotificationTypes.ORDER_CREATED,
-      NotificationTypes.INVENTORY_LOW,
+      NotificationTypes.TRANSFER_DISPATCHED,
+      NotificationTypes.COUNT_AWAITING_APPLY,
       NotificationTypes.REMITTANCE_OVERDUE,
       NotificationTypes.WEBHOOK_AUTO_DISABLED,
       NotificationTypes.PLUGIN_ERROR
@@ -129,7 +130,8 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.MESSAGE_FAILED,
       NotificationTypes.MEMBER_JOINED,
       NotificationTypes.CHANNEL_DISCONNECTED,
-      NotificationTypes.EXPORT_READY
+      NotificationTypes.EXPORT_READY,
+      NotificationTypes.INVENTORY_LOW
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
     }

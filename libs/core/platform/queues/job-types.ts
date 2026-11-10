@@ -128,6 +128,10 @@ export interface FetchOriginMediaJob extends BaseJob {
   originId: string
   slot: OriginMediaSlot
 }
+// The daily check of the stock of one store against its ledger (TDD_16 §4.8): read only
+export interface ReconcileInventoryJob extends BaseJob {
+  storeId: string
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

@@ -437,6 +437,8 @@ Transfer and count responses include only the lines of stores the caller belongs
 
 ## 12. Not in this phase
 
+**POS is Phase 2 (owner decision, 2026-11-10).** The point of sale and the cash register are not built in the v1.2 MVP; the boundary of §11 (a sale as an `ISSUE` movement through `InventoryService`) is the only thing kept ready for it.
+
 Purchase orders and suppliers; lots, serial numbers and expiry dates; costing (average or FIFO); a backorder workflow (customer notification, supplier ETA; the negative-stock setting of §4.10 only lets orders through); barcode generation and camera scanning; bulk CSV import of opening stock (use adjustments); POS and cash register; inter-store sales of stock (catalogs are not shared); Shopify as an alternative provider.
 
 ---

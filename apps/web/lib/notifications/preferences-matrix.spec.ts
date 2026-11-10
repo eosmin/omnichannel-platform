@@ -32,7 +32,7 @@ describe('groupPreferences', () => {
     const groups = groupPreferences([
       row(NotificationTypes.CONVERSATION_ASSIGNED),
       row(NotificationTypes.ORDER_CREATED),
-      row(NotificationTypes.INVENTORY_LOW),
+      row(NotificationTypes.TRANSFER_DISPATCHED),
       row(NotificationTypes.PICKUP_MANUAL_REQUIRED),
       row(NotificationTypes.PLUGIN_ERROR),
       row(NotificationTypes.WEBHOOK_AUTO_DISABLED),
@@ -42,6 +42,15 @@ describe('groupPreferences', () => {
     expect(groups[1]?.rows.map(entry => entry.type)).toEqual([
       NotificationTypes.CHANNEL_DISCONNECTED
     ])
+  })
+
+  it('shows the switch of the low stock warning, which the inventory raises since Step 4.2', () => {
+    const groups = groupPreferences([
+      row(NotificationTypes.INVENTORY_LOW),
+      row(NotificationTypes.COUNT_AWAITING_APPLY)
+    ])
+    expect(groups.map(entry => entry.group)).toEqual(['inventory'])
+    expect(groups[0]?.rows.map(entry => entry.type)).toEqual([NotificationTypes.INVENTORY_LOW])
   })
 
   it('draws nothing for an empty answer', () => {

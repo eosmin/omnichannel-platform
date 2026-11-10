@@ -86,4 +86,9 @@ export const JobNames = {
 export const originMediaJobId = (originId: string, slot: string): string =>
   `${JobNames.FETCH_ORIGIN_MEDIA}-${originId}-${slot}`
 
+// One reconciliation per store and UTC day (TDD_16 §4.8): the scheduler run twice in a day asks for the same job. Dashes,
+// because BullMQ refuses a custom id with a colon.
+export const reconcileInventoryJobId = (storeId: string, day: string): string =>
+  `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
+
 export type JobName = (typeof JobNames)[keyof typeof JobNames]

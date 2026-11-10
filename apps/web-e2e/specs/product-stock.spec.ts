@@ -91,7 +91,7 @@ test.describe('the stock of a product', () => {
     await openProducts()
     await page.getByLabel(PRODUCTS.searchLabel).fill(FIXTURE)
     const row = page.getByRole('row').filter({ hasText: FIXTURE })
-    await expect(row).toContainText(STOCK.list.available.replace('{count}', '20'))
+    await expect(row).toContainText('20 available')
     await expect(page.getByRole('columnheader', { name: PRODUCTS.columns.stock })).toBeVisible()
 
     await row.getByRole('button', { name: FIXTURE, exact: true }).click()
@@ -188,9 +188,7 @@ test.describe('the stock of a product', () => {
     await expect(sheet().getByText('7 available, alert at 8.')).toHaveCount(0)
     await page.keyboard.press('Escape')
     await expect(page.getByRole('row').filter({ hasText: name })).not.toContainText(STOCK.list.low)
-    await expect(page.getByRole('row').filter({ hasText: name })).toContainText(
-      STOCK.list.available.replace('{count}', '17')
-    )
+    await expect(page.getByRole('row').filter({ hasText: name })).toContainText('17 available')
   })
 
   test('does not offer the adjustment or the cost to a member who may only read stock', async ({
