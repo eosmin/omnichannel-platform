@@ -70,7 +70,7 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       username: null,
       avatarUrl: null
     },
-    conversation.data?.channelType ?? ''
+    conversation.data?.anonymousCustomers ?? false
   )
   // Typing and the read marks of the open conversation come through its room
   useConversationRoom(conversationId)

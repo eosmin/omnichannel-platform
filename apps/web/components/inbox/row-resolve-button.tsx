@@ -23,18 +23,18 @@ const BUTTON_CLASS =
 // both. It does not open the conversation (it is not inside the link). The flow itself is run by the list.
 export function RowResolveButton({
   customer,
-  channelType,
+  anonymous,
   defaultMode,
   onResolve
 }: {
   customer: ConversationListItemView['customer']
-  channelType: string
+  anonymous: boolean
   // Null until the settings of the store are read: the menu then marks none
   defaultMode: ResolveModeType | null
   onResolve: (way: 'default' | ResolveModeType) => void
 }): ReactElement {
   const t = useTranslations('inbox.actions')
-  const { name } = useCustomerName(customer, channelType)
+  const { name } = useCustomerName(customer, anonymous)
   // The box lets the click through to the link; only the buttons catch it, and only when they show
   return (
     <div className="group/resolve pointer-events-none absolute right-12 bottom-1.5 flex pointer-coarse:right-14">

@@ -42,7 +42,7 @@ export function ConversationItem({
   const tStatus = useTranslations('conversations.status')
   const locale = useLocale()
 
-  const { label, name } = useCustomerName(item.customer, item.channelType)
+  const { label, name } = useCustomerName(item.customer, item.anonymousCustomers)
   const preview = previewOf(item.lastMessage)
   const body = previewText(preview)
 
