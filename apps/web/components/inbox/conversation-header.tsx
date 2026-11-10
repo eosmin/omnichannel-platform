@@ -90,12 +90,13 @@ export function ConversationHeader({ conversationId }: { conversationId: string 
     )
   }
 
-  const { customer, channelType, status } = conversation.data
+  const { customer, channelType, anonymousCustomers, status } = conversation.data
   return (
     <LoadedHeader
       conversationId={conversationId}
       customer={customer}
       channelType={channelType}
+      anonymous={anonymousCustomers}
       status={status}
       backLink={backLink}
     />
@@ -106,12 +107,14 @@ function LoadedHeader({
   conversationId,
   customer,
   channelType,
+  anonymous,
   status,
   backLink
 }: {
   conversationId: string
   customer: ConversationListItemView['customer']
   channelType: string
+  anonymous: boolean
   status: string
   backLink: ReactElement
 }): ReactElement {
@@ -119,7 +122,7 @@ function LoadedHeader({
   const { openCustomer } = useCustomerDrawer()
   const t = useTranslations('inbox')
   const channelName = useChannelName(storeId, channelType)
-  const { label, name } = useCustomerName(customer, channelType)
+  const { label, name } = useCustomerName(customer, anonymous)
   // On a phone the list the agent tapped is gone and the focus with it: it goes to the heading of the
   // conversation. On a desktop the list stays and keeps the focus.
   const heading = useRef<HTMLHeadingElement>(null)

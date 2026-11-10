@@ -1,5 +1,4 @@
 import type { CustomerDetailView } from '@platform/api-client'
-import { ChannelIds } from '@platform/core/domain'
 
 // How many characters of an identity the interface shows when a customer has no name ("····ab98")
 const IDENTITY_TAIL = 4
@@ -10,9 +9,9 @@ export function customerDisplayName(
   customer: Pick<CustomerDetailView, 'name' | 'email' | 'phone' | 'identities'>
 ): string | null {
   const first = customer.identities[0]
-  // The identity of a visitor of the web widget is a random id: not a name, so the visitor is named
-  // as the inbox names them (`visitorTail`)
-  const isVisitor = first?.channelType === ChannelIds.WEB_WIDGET
+  // The identity of an anonymous customer (the channel declares it) is a random id: not a name, so they are
+  // named as the inbox names them (`visitorTail`)
+  const isVisitor = first?.anonymousCustomers === true
   const candidates = [
     customer.name,
     customer.email,
@@ -25,11 +24,11 @@ export function customerDisplayName(
   )
 }
 
-// The end of the id of a web widget visitor nothing else names, for "Visitante ····ab98"; null when
+// The end of the id of an anonymous customer nothing else names, for "Visitante ····ab98"; null when
 // there is no identity to take it from
 export function visitorTail(customer: Pick<CustomerDetailView, 'identities'>): string | null {
   const first = customer.identities[0]
-  return first?.channelType === ChannelIds.WEB_WIDGET && first.channelIdentity !== ''
+  return first?.anonymousCustomers === true && first.channelIdentity !== ''
     ? first.channelIdentity.slice(-IDENTITY_TAIL)
     : null
 }
