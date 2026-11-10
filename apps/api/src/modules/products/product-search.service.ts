@@ -58,7 +58,8 @@ export class ProductSearchService {
               WHERE v.product_id = p.id AND lower(v.sku) = lower(${text}) AND (${archived}::boolean OR v.active)
             ) THEN 0
             WHEN p.name ILIKE ${startsWith} ESCAPE '\\' OR p.sku ILIKE ${startsWith} ESCAPE '\\' THEN 1
-            WHEN EXISTS (
+            WHEN NOT (p.name ILIKE ${contains} ESCAPE '\\' OR coalesce(p.sku ILIKE ${contains} ESCAPE '\\', false))
+              AND EXISTS (
               SELECT 1 FROM product_variants v
               WHERE v.product_id = p.id
                 AND (v.name ILIKE ${startsWith} ESCAPE '\\' OR v.sku ILIKE ${startsWith} ESCAPE '\\')

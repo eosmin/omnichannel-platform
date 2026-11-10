@@ -445,6 +445,14 @@ describe('The search of products for the autocomplete', () => {
       )
     })
 
+    it('reads the text as the names were stored: one space for any kind, composed accents', async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Rojo / L café' })
+
+      expect(names((await search('rojo  /\u00a0L')).data)).toEqual(['Rojo / L café'])
+      // "café" typed as e + combining accent finds the composed one
+      expect(names((await search('caf\u0065\u0301')).data)).toEqual(['Rojo / L café'])
+    })
+
     it('answers an empty list, without searching, for a text shorter than the minimum', async () => {
       expect(ProductSearchConfig.MIN_QUERY_LENGTH).toBe(2)
       for (const text of ['', ' ', 'a', ' a ', 'A', '😀', '𝒜']) {

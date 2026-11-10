@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   PaginationLimits,
+  plainName,
   ProductLimits,
   ProductSearchConfig,
   singleLineText
@@ -98,12 +99,15 @@ export type UpdateProductBody = z.infer<typeof updateProductSchema>
 export type CreateVariantBody = z.infer<typeof createVariantSchema>
 export type UpdateVariantBody = z.infer<typeof updateVariantSchema>
 
-// What the autocomplete asks: a text (it may be empty or short: the answer is then an empty list), how many
-// rows, and whether archived products and variants count
+// What the autocomplete asks: a text (required; an empty or short one is a valid request and answers an empty
+// list), how many rows, and whether archived products and variants count. The text is read as the names it is
+// compared with were stored: NFC, every kind of space one space.
 export const searchProductsQuerySchema = z.strictObject({
   q: z
     .string()
-    .trim()
+    // Cheap bound before anything walks the text: a character is at most two UTF-16 units
+    .max(ProductSearchConfig.MAX_QUERY_LENGTH * 2)
+    .transform(plainName)
     .refine(value => [...value].length <= ProductSearchConfig.MAX_QUERY_LENGTH, {
       message: `at most ${ProductSearchConfig.MAX_QUERY_LENGTH} characters`
     })
