@@ -15,7 +15,7 @@ import {
   installPlugin,
   saveWidgetOrigins,
   saveWidgetPreChat,
-  startFacebookLogin,
+  startOAuthLogin,
   testConnection,
   uninstallPlugin
 } from './channels-requests'
@@ -282,20 +282,33 @@ describe('the login with Facebook requests', () => {
     activeConnections: 0
   }
 
-  it('reads whether a channel has the login, and takes a server that does not say as having none', async () => {
-    const on = setup([
-      { ...entry, channel: { connectFields: [], callbackUrl: null, facebookLogin: true } }
-    ])
-    expect((await fetchPluginCatalog(on.client, 'store-1'))[0]?.channel?.facebookLogin).toBe(true)
+  it('reads the login a plugin declares, and takes a server that does not say as having none', async () => {
+    const oauth = {
+      dialogOrigin: 'https://login.acme.test',
+      providerName: { es: 'Acme', en: 'Acme' },
+      linkedAccount: null,
+      assetIdPattern: '^\\d{1,32}$'
+    }
+    const on = setup([{ ...entry, channel: { connectFields: [], callbackUrl: null, oauth } }])
+    expect((await fetchPluginCatalog(on.client, 'store-1'))[0]?.channel?.oauth).toEqual(oauth)
     const older = setup([{ ...entry, channel: { connectFields: [], callbackUrl: null } }])
-    expect((await fetchPluginCatalog(older.client, 'store-1'))[0]?.channel?.facebookLogin).toBe(
-      false
-    )
+    expect((await fetchPluginCatalog(older.client, 'store-1'))[0]?.channel?.oauth).toBeNull()
+    const bad = setup([
+      {
+        ...entry,
+        channel: {
+          connectFields: [],
+          callbackUrl: null,
+          oauth: { ...oauth, dialogOrigin: 'http://login.acme.test/x' }
+        }
+      }
+    ])
+    expect((await fetchPluginCatalog(bad.client, 'store-1'))[0]?.channel?.oauth).toBeNull()
   })
 
   it('starts with a POST to the plugin and reads the address back', async () => {
     const { client, call } = setup({ authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth' })
-    await expect(startFacebookLogin(client, 'store-1', 'messenger')).resolves.toEqual({
+    await expect(startOAuthLogin(client, 'store-1', 'messenger')).resolves.toEqual({
       authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth'
     })
     expect(call()[0]).toBe(
@@ -306,14 +319,14 @@ describe('the login with Facebook requests', () => {
 
   it('starts a repair with the connection in the body and never in the address', async () => {
     const { client, call } = setup({ authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth' })
-    await startFacebookLogin(client, 'store-1', 'messenger', 'c1')
+    await startOAuthLogin(client, 'store-1', 'messenger', 'c1')
     expect(bodyOf(call()[1])).toEqual({ connectionId: 'c1' })
     expect(call()[0]).not.toContain('c1')
   })
 
   it('sends no body to start a login that repairs nothing', async () => {
     const { client, call } = setup({ authorizeUrl: 'https://www.facebook.com/v23.0/dialog/oauth' })
-    await startFacebookLogin(client, 'store-1', 'messenger')
+    await startOAuthLogin(client, 'store-1', 'messenger')
     expect(bodyOf(call()[1])).toBeUndefined()
   })
 

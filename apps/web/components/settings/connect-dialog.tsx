@@ -3,6 +3,8 @@
 import { useLocale, useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
 
+import type { ChannelOAuthDescriptorView } from '@platform/api-client'
+
 import type {
   ChannelConnectionView,
   ConnectFieldView,
@@ -16,6 +18,7 @@ import {
   emptyValues,
   missingFields
 } from '../../lib/settings/connect-form'
+import { localizedText } from '../../lib/settings/oauth-descriptor'
 import { useConnect } from '../../lib/settings/use-channels'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
@@ -35,7 +38,7 @@ import { Textarea } from '../ui/textarea'
 
 import { CallbackUrl } from './callback-url'
 import { ConnectError } from './connect-error'
-import { FacebookLoginButton } from './facebook-login-button'
+import { OAuthLoginButton } from './oauth-login-button'
 
 // Connect a channel (TDD_09 §13, TDD_10 §10): the form is what the plugin asks for, nothing here knows
 // a channel by name. A secret is typed in a masked field and is never shown again; the plugin checks
@@ -50,9 +53,11 @@ export function ConnectDialog({
   const t = useTranslations('settings.channels.connectDialog')
   const { storeId } = useStore()
   const connect = useConnect(storeId, plugin.id)
-  // "Connect with Facebook" is the way in where the channel has it; the pasted token stays one link away, always
-  const facebook = plugin.channel?.facebookLogin === true
-  const [manual, setManual] = useState(!facebook)
+  const locale = useLocale()
+  // The login of the provider is the way in where the plugin declares one; the pasted token stays one link away,
+  // always
+  const oauth = plugin.channel?.oauth ?? null
+  const [manual, setManual] = useState(oauth === null)
   // The request is not abandoned half way: its answer (the toast, the error) needs this dialog open
   return (
     <Dialog open onOpenChange={open => (open || connect.isPending ? undefined : onClose())}>
@@ -60,30 +65,24 @@ export function ConnectDialog({
         <DialogHeader>
           <DialogTitle>{t('title', { name: plugin.name })}</DialogTitle>
           <DialogDescription>
-            {t(facebook ? 'descriptionFacebook' : 'description')}
+            {oauth !== null
+              ? t('descriptionOAuth', { provider: localizedText(oauth.providerName, locale) })
+              : t('description')}
           </DialogDescription>
         </DialogHeader>
-        {facebook ? (
-          <div className="flex flex-col items-start gap-2">
-            <FacebookLoginButton pluginId={plugin.id} idleLabel={t('facebook')} />
-            <p className="text-muted-foreground text-xs">{t('facebookHint')}</p>
-            {manual ? null : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="px-0 underline"
-                onClick={() => setManual(true)}
-              >
-                {t('useToken')}
-              </Button>
-            )}
-          </div>
+        {oauth !== null ? (
+          <LoginOption
+            pluginId={plugin.id}
+            oauth={oauth}
+            manualShown={manual}
+            onShowManual={() => setManual(true)}
+          />
         ) : null}
         {manual ? (
           <ConnectForm
             fields={plugin.channel?.connectFields ?? []}
             // The form appears only because the person asked for it when the login is the way in
-            autoFocusFirst={facebook && manual}
+            autoFocusFirst={oauth !== null && manual}
             callbackUrl={plugin.channel?.callbackUrl ?? null}
             connect={connect}
             texts={{ submit: t('submit'), pending: t('connecting') }}
@@ -213,5 +212,37 @@ export function ConnectForm({
         </Button>
       </DialogFooter>
     </form>
+  )
+}
+
+// The way in through the provider the plugin declares: its button, what it will do, and the link to the token
+function LoginOption({
+  pluginId,
+  oauth,
+  manualShown,
+  onShowManual
+}: {
+  pluginId: string
+  oauth: ChannelOAuthDescriptorView
+  manualShown: boolean
+  onShowManual: () => void
+}): ReactElement {
+  const t = useTranslations('settings.channels.connectDialog')
+  const provider = localizedText(oauth.providerName, useLocale())
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <OAuthLoginButton
+        pluginId={pluginId}
+        dialogOrigin={oauth.dialogOrigin}
+        provider={provider}
+        idleLabel={t('login', { provider })}
+      />
+      <p className="text-muted-foreground text-xs">{t('loginHint', { provider })}</p>
+      {manualShown ? null : (
+        <Button type="button" variant="ghost" className="px-0 underline" onClick={onShowManual}>
+          {t('useToken')}
+        </Button>
+      )}
+    </div>
   )
 }

@@ -10,9 +10,10 @@ import {
   Pencil,
   Unplug
 } from 'lucide-react'
-import { useFormatter, useTranslations } from 'next-intl'
+import { useFormatter, useLocale, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useId, useState } from 'react'
 
+import type { ChannelOAuthDescriptorView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import {
   ChannelCapability,
@@ -28,17 +29,19 @@ import type {
 } from '../../lib/settings/channels-requests'
 import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
 import { needsNewToken } from '../../lib/settings/health-reconnect'
+import { localizedText } from '../../lib/settings/oauth-descriptor'
 import { tokenNotice } from '../../lib/settings/token-expiry'
 import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
 import { toast } from '../../lib/toast'
 import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
 import { useStore } from '../providers/store-context'
+import { ChannelIcon } from '../shared/channel-icon'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
 
 import { CallbackUrl } from './callback-url'
-import { FacebookLoginButton } from './facebook-login-button'
+import { OAuthLoginButton } from './oauth-login-button'
 import { RenameDialog } from './rename-dialog'
 import { TemplatesList } from './templates-list'
 import { WidgetCard } from './widget-card'
@@ -75,7 +78,11 @@ export function ConnectionCard({
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 className="truncate font-medium">{connection.displayName}</h2>
-          <span className="text-muted-foreground text-sm">
+          <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
+            <ChannelIcon
+              iconKey={plugin?.channel?.descriptor?.iconKey}
+              className="size-3.5 shrink-0"
+            />
             {plugin?.name ?? connection.pluginId}
           </span>
         </div>
@@ -96,9 +103,10 @@ export function ConnectionCard({
             <Actions
               connection={connection}
               onRename={() => setRenaming(true)}
-              reconnectWithFacebook={
-                plugin?.channel?.facebookLogin === true &&
+              reconnectLogin={
                 connection.status === String(ChannelConnectionStatus.ERROR)
+                  ? (plugin?.channel?.oauth ?? null)
+                  : null
               }
               onUpdateToken={
                 plugin !== undefined &&
@@ -266,15 +274,16 @@ function Actions({
   connection,
   onRename,
   onUpdateToken,
-  reconnectWithFacebook
+  reconnectLogin
 }: {
   connection: ChannelConnectionView
   onRename: () => void
   onUpdateToken: (() => void) | undefined
-  // The connection is in error and its channel has the login: it can be made again from Facebook
-  reconnectWithFacebook: boolean
+  // The connection is in error and its channel declares a login: it can be made again from the provider
+  reconnectLogin: ChannelOAuthDescriptorView | null
 }): ReactElement {
   const t = useTranslations('settings.channels')
+  const locale = useLocale()
   const errorText = useErrorText()
   const { storeId } = useStore()
   const run = useDestructiveAction()
@@ -311,13 +320,17 @@ function Actions({
           {test.isPending ? t('test.running') : t('test.action')}
           <span className="sr-only"> {connection.displayName}</span>
         </Button>
-        {reconnectWithFacebook ? (
-          <FacebookLoginButton
+        {reconnectLogin !== null ? (
+          <OAuthLoginButton
             pluginId={connection.pluginId}
+            dialogOrigin={reconnectLogin.dialogOrigin}
+            provider={localizedText(reconnectLogin.providerName, locale)}
             connectionId={connection.id}
             variant="outline"
             size="sm"
-            idleLabel={t('oauth.reconnect')}
+            idleLabel={t('oauth.reconnect', {
+              provider: localizedText(reconnectLogin.providerName, locale)
+            })}
             accessibleSuffix={connection.displayName}
           />
         ) : null}

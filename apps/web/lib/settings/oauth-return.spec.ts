@@ -1,7 +1,7 @@
 import { ChannelConnectFailureReasons } from '@platform/core/errors'
 
 import {
-  isFacebookDialogUrl,
+  isOAuthDialogUrl,
   missingPermissionsOf,
   readOAuthReturn,
   withoutOAuthParams
@@ -96,11 +96,26 @@ describe('withoutOAuthParams', () => {
   })
 })
 
-describe('isFacebookDialogUrl', () => {
+const ORIGIN = 'https://www.facebook.com'
+
+describe('isOAuthDialogUrl', () => {
   it('accepts the dialog of Facebook, over https', () => {
     expect(
-      isFacebookDialogUrl('https://www.facebook.com/v23.0/dialog/oauth?client_id=1&state=s')
+      isOAuthDialogUrl('https://www.facebook.com/v23.0/dialog/oauth?client_id=1&state=s', ORIGIN)
     ).toBe(true)
+  })
+
+  it('follows the origin the plugin declares, not a fixed one', () => {
+    expect(
+      isOAuthDialogUrl('https://login.acme.test/dialog?state=s', 'https://login.acme.test')
+    ).toBe(true)
+    expect(isOAuthDialogUrl('https://www.facebook.com/dialog', 'https://login.acme.test')).toBe(
+      false
+    )
+  })
+
+  it('refuses everything when there is no declared origin', () => {
+    expect(isOAuthDialogUrl('https://www.facebook.com/dialog', null)).toBe(false)
   })
 
   it.each([
@@ -120,7 +135,7 @@ describe('isFacebookDialogUrl', () => {
     'not an address',
     ''
   ])('refuses %j', value => {
-    expect(isFacebookDialogUrl(value)).toBe(false)
+    expect(isOAuthDialogUrl(value, ORIGIN)).toBe(false)
   })
 })
 
