@@ -113,7 +113,7 @@
   },
   "libs/core/domain/errors/channel-connect-failures.ts": {
     "code": 1,
-    "comment": 4
+    "comment": 1
   },
   "libs/core/domain/errors/database-errors.ts": {
     "code": 1,
@@ -121,7 +121,7 @@
   },
   "libs/core/domain/errors/plugin-checks.ts": {
     "code": 0,
-    "comment": 5
+    "comment": 3
   },
   "libs/core/domain/index.ts": {
     "code": 1,

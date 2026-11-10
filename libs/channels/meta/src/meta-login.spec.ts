@@ -661,7 +661,7 @@ describe('MetaLogin', () => {
       const error = await failure(() =>
         login().credentialsFor({ userToken: USER_TOKEN, assetId: PAGE })
       )
-      expect(error.reason).toBe(ChannelConnectFailureReasons.PAGE_WITHOUT_INSTAGRAM)
+      expect(error.reason).toBe(ChannelConnectFailureReasons.LINKED_ACCOUNT_MISSING)
     })
 
     it('says the person lacks the task that gives a token, when Meta leaves it out', async () => {
@@ -697,7 +697,7 @@ describe('MetaLogin', () => {
       const error = await failure(() =>
         login(ChannelIds.MESSENGER).credentialsFor({ userToken: USER_TOKEN, assetId: PAGE })
       )
-      expect(error.failedCheck).toBe(PluginChecks.PAGE_ID_MISMATCH)
+      expect(error.failedCheck).toBe(PluginChecks.PARENT_ID_MISMATCH)
     })
 
     it.each(['', '12ab', '../me', '1 2', '1/2', 'me'])(
@@ -707,7 +707,7 @@ describe('MetaLogin', () => {
         const error = await failure(() =>
           login().credentialsFor({ userToken: USER_TOKEN, assetId: value })
         )
-        expect(error.failedCheck).toBe(PluginChecks.PAGE_ID_NOT_NUMERIC)
+        expect(error.failedCheck).toBe(PluginChecks.PARENT_ID_NOT_NUMERIC)
         expect(graph.requests).toHaveLength(0)
       }
     )

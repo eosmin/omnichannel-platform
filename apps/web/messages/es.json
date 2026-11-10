@@ -1774,7 +1774,8 @@
         "subscription_failed": "No se pudo suscribir la Página a los mensajes: reintenta; si se repite, revisa los permisos de la app.",
         "subscription_unreadable": "No se pudo comprobar la suscripción de la Página a los mensajes. Prueba otra vez en unos minutos.",
         "no_assets": "Facebook no mostró ninguna Página que puedas conectar. Comprueba que tienes acceso a la Página, vuelve a intentarlo y márcala en el diálogo de Facebook; si no aparece, escribe su número de identificación.",
-        "page_without_instagram": "Esta Página no tiene una cuenta de Instagram vinculada. Vincúlala en los ajustes de la Página o elige otra Página.",
+        "linked_account_missing": "Lo que elegiste no tiene la cuenta vinculada que el canal necesita. Vincúlala en los ajustes del proveedor o elige otra opción.",
+        "page_without_instagram": "Lo que elegiste no tiene la cuenta vinculada que el canal necesita. Vincúlala en los ajustes del proveedor o elige otra opción.",
         "oauth_cancelled": "Cancelaste el acceso con Facebook, así que no se conectó nada. Puedes intentarlo otra vez cuando quieras.",
         "oauth_expired": "El acceso con Facebook no se pudo completar: tardó demasiado, ya se usó o la respuesta no era válida. Empieza de nuevo."
       },

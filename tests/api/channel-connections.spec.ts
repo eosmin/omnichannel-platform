@@ -897,7 +897,7 @@ describe('The channel connections of a store', () => {
             ? Promise.resolve({ healthy: true, checkedAt: new Date().toISOString() })
             : Promise.reject(
                 new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
-                  failedCheck: PluginChecks.PAGE_ID_MISMATCH
+                  failedCheck: PluginChecks.PARENT_ID_MISMATCH
                 })
               ),
         connect: input =>
