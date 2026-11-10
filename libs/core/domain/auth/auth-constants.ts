@@ -32,6 +32,10 @@ export const ChannelWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const
 
+// The provider of that limit for the per-address count: the limit of the code unless the test environment raised it
+// (see `MagicLinkLimitPlatformModule`)
+export const MAGIC_LINK_EMAIL_LIMIT = Symbol('MAGIC_LINK_EMAIL_LIMIT')
+
 // What the browser suite may ask for instead of that limit, in NODE_ENV=test only (E2E_MAGIC_LINK_LIMIT): it can
 // only be raised, never turned off, and never past a bound. The suite signs in as the same few people dozens of
 // times, and waiting for the clock was half of its time.

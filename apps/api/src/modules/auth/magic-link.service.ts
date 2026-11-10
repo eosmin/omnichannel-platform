@@ -5,6 +5,7 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import {
+  MAGIC_LINK_EMAIL_LIMIT,
   MAGIC_LINK_EMAIL_THROTTLER,
   MagicLinkThrottle,
   RETRY_AFTER_METADATA_KEY
@@ -13,7 +14,6 @@ import { hashToken } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import { VerificationTokenType } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { MAGIC_LINK_EMAIL_LIMIT } from '@platform/core/http'
 import { JobNames, QueueNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
 import { type IssuedSession, type SessionContext, SessionService } from './session.service'

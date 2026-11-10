@@ -8,7 +8,11 @@ import type { Redis } from 'ioredis'
 import pg from 'pg'
 
 import { AuditModule } from '@platform/core/audit-module'
-import { MAGIC_LINK_EMAIL_THROTTLER, MagicLinkThrottle } from '@platform/core/auth'
+import {
+  MAGIC_LINK_EMAIL_LIMIT,
+  MAGIC_LINK_EMAIL_THROTTLER,
+  MagicLinkThrottle
+} from '@platform/core/auth'
 import { AccessTokenModule, type AuthSettings } from '@platform/core/auth-module'
 import { CacheKeys } from '@platform/core/cache'
 import { DatabaseModule, PrismaService } from '@platform/core/database'
@@ -17,7 +21,6 @@ import {
   BullBoardModule,
   configureHttpApp,
   HttpErrorsModule,
-  MAGIC_LINK_EMAIL_LIMIT,
   StoragePlatformModule,
   ThrottlerPlatformModule
 } from '@platform/core/http'
