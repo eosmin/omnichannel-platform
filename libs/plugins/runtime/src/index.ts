@@ -1,4 +1,5 @@
 export * from './carrier-registry'
+export * from './image-hosts-file'
 export * from './official-plugins'
 export type { ChannelDescriptorSnapshot } from './descriptor-snapshot'
 export type { ChannelOAuthSnapshot } from './oauth-snapshot'

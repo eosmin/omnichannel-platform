@@ -13,8 +13,8 @@ import { JobNames, QueueNames, type SendOutboundTypingJob } from '@platform/core
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, type ChannelContext, type TypingParams } from '@platform/plugins/sdk'
 
+import { DIRECT_TYPING_DELIVERIES } from '../../apps/api/src/modules/channel-registry/direct-typing'
 import { AgentTypingRelay } from '../../apps/api/src/modules/realtime/agent-typing-relay.service'
-import { WidgetDelivery } from '../../apps/api/src/modules/widget/widget-delivery.service'
 import { TypingSender } from '../../apps/worker/src/outbound/typing-sender.service'
 import {
   buildChannelPlugin,
@@ -100,8 +100,26 @@ describe('Showing the customer that an agent is typing', () => {
         app.get(PrismaService, { strict: false }),
         app.get(PluginRegistry, { strict: false }),
         app.get(OutboundQueue, { strict: false }),
-        app.get(WidgetDelivery, { strict: false })
+        app.get(DIRECT_TYPING_DELIVERIES, { strict: false })
       )
+
+    it('tells a channel the api reaches itself directly, and queues nothing for it', async () => {
+      const { storeId, conversationId } = await conversationOf()
+      const told: boolean[] = []
+      const relay = new AgentTypingRelay(
+        app.get(PrismaService, { strict: false }),
+        app.get(PluginRegistry, { strict: false }),
+        app.get(OutboundQueue, { strict: false }),
+        [{ pluginId: TEST_CHANNEL_ID, typing: (_site, _who, active) => told.push(active) }]
+      )
+
+      await relay.relay(storeId, conversationId, true)
+      await relay.relay(storeId, conversationId, false)
+
+      expect(told).toEqual([true, false])
+      expect(queued()).toEqual([])
+      expect(shown).toEqual([])
+    })
 
     it('queues a start for a channel that shows typing, once for the repeats of the agent', async () => {
       const { storeId, conversationId } = await conversationOf()

@@ -28,7 +28,9 @@ const EXCLUDED =
 // writing; this is not a place to put a file that fails the check.
 export const ALLOWED_FILES: Readonly<Record<string, string>> = {
   'libs/plugins/runtime/src/official-plugins.ts':
-    'Composition root: the one place that imports the official plugins to register them; nothing else may.'
+    'Composition root: the one place that imports the official plugins to register them; nothing else may.',
+  'apps/web/lib/generated/plugin-image-hosts.ts':
+    'Written by pnpm gen:image-hosts from the imageHosts the plugins declare; a stale copy fails validate:image-hosts. The hosts are data of the plugins, not knowledge of the web app.'
 }
 
 export function isScanned(file: string): boolean {

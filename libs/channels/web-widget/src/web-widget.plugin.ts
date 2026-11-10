@@ -121,7 +121,9 @@ export class WebWidgetPlugin implements ChannelPlugin {
     ChannelCapability.DOCUMENT,
     ChannelCapability.TYPING_INDICATOR,
     ChannelCapability.CUSTOMER_TYPING,
-    ChannelCapability.READ_RECEIPTS
+    ChannelCapability.READ_RECEIPTS,
+    // The visitor is told the id of a file when the message is taken
+    ChannelCapability.NAMES_INBOUND_FILES
   ] as const
 
   // The platform's own rules for an upload: the visitor is given a link to the stored file, so what it takes
