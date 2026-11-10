@@ -226,6 +226,102 @@ describe('The search of products for the autocomplete', () => {
       expect(found.data.map(item => item.id)).toEqual([bySku.id, contains.id])
     })
 
+    it('names the variant whose sku is the text even when the product matched by itself', async () => {
+      const word = `cam${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Shirt ${word}-9`
+      })
+      const variant = await createProductVariant(owner, {
+        productId: product.id,
+        name: 'Large',
+        sku: `${word}-9`
+      })
+
+      const found = await search(`${word}-9`)
+
+      expect(found.data).toHaveLength(1)
+      expect(found.data[0]?.matchedVariant?.id).toBe(variant.id)
+    })
+
+    it('shows a product once, with the best variant, when several of its variants match', async () => {
+      const word = `dup${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Plain shirt' })
+      for (const suffix of ['a', 'b', 'c']) {
+        await createProductVariant(owner, {
+          productId: product.id,
+          name: `${word} ${suffix}`,
+          sku: `${word}-${suffix}`
+        })
+      }
+
+      const found = await search(word)
+
+      expect(found.data).toHaveLength(1)
+      // No sku is exactly the text: the first by name
+      expect(found.data[0]?.matchedVariant?.name).toBe(`${word} a`)
+    })
+
+    it('never names an archived variant of a product that matched through another one', async () => {
+      const word = `arc${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Plain shirt' })
+      const live = await createProductVariant(owner, { productId: product.id, name: `${word} red` })
+      await owner.productVariant.create({
+        data: {
+          productId: product.id,
+          name: `${word} blue`,
+          sku: `${word}-BLUE`,
+          attributes: {},
+          active: false
+        }
+      })
+
+      const byName = await search(`${word} blue`)
+      expect(byName.data).toEqual([])
+      // The text matches both names' start; the archived one is never the variant named, nor does its exact sku rank
+      const both = await search(word)
+      expect(both.data).toHaveLength(1)
+      expect(both.data[0]?.matchedVariant?.id).toBe(live.id)
+      const bySku = await search(`${word}-blue`)
+      expect(bySku.data).toEqual([])
+    })
+
+    it('ranks a variant whose name starts with the text above a product that only contains it', async () => {
+      const word = `rojo${randomUUID().slice(0, 4)}`
+      const contains = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Aaa camisa ${word}`
+      })
+      const withVariant = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Zzz shirt' })
+      await createProductVariant(owner, { productId: withVariant.id, name: `${word} L` })
+
+      const found = await search(word)
+
+      expect(found.data.map(item => item.id)).toEqual([withVariant.id, contains.id])
+    })
+
+    it('keeps the best ranked rows when there are more matches than the limit', async () => {
+      const word = `top${randomUUID().slice(0, 5)}`
+      await owner.product.createMany({
+        data: Array.from({ length: 30 }, (_, index) => ({
+          storeId: ctx.storeA.id,
+          name: `Aaa ${word} ${String(index).padStart(2, '0')}`,
+          priceCents: 100
+        }))
+      })
+      // Last by name, first by rank: an exact sku
+      const exact = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: 'Zzz last by name',
+        sku: word.toUpperCase()
+      })
+
+      const found = await search(word, { limit: 5 })
+
+      expect(found.data).toHaveLength(5)
+      expect(found.data[0]?.id).toBe(exact.id)
+    })
+
     it('answers with the small shape the autocomplete needs and nothing else', async () => {
       await createProduct(owner, { storeId: ctx.storeA.id, name: `${tag} Shape` })
 
@@ -290,6 +386,9 @@ describe('The search of products for the autocomplete', () => {
     beforeAll(async () => {
       await createProduct(owner, { storeId: ctx.storeA.id, name: 'Abc plain' })
       await createProduct(owner, { storeId: ctx.storeA.id, name: 'Sale 10% off' })
+      // Unescaped, '10%' would find this one too, and 'snake_c' the next
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Sale 10x off' })
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Snakexcase item' })
       await createProduct(owner, { storeId: ctx.storeA.id, name: 'Snake_case item' })
       await createProduct(owner, { storeId: ctx.storeA.id, name: 'Back\\slash item' })
     })
@@ -331,6 +430,19 @@ describe('The search of products for the autocomplete', () => {
       }
 
       expect(await owner.product.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
+    })
+
+    it('counts characters and not UTF-16 units: one emoji is too short, an emoji and a letter is a search', async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Gift 😀 box' })
+
+      expect((await search('😀')).data).toEqual([])
+      expect(names((await search('😀 ')).data)).toEqual([])
+      expect(names((await search('😀 b')).data)).toEqual(['Gift 😀 box'])
+      // Sixty characters that are two units each are within the ceiling
+      expect((await search('😀'.repeat(60))).status).toBe(OK)
+      expect((await search('😀'.repeat(ProductSearchConfig.MAX_QUERY_LENGTH + 1))).status).toBe(
+        BAD_REQUEST
+      )
     })
 
     it('answers an empty list, without searching, for a text shorter than the minimum', async () => {

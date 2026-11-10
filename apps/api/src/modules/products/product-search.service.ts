@@ -58,6 +58,12 @@ export class ProductSearchService {
               WHERE v.product_id = p.id AND lower(v.sku) = lower(${text}) AND (${archived}::boolean OR v.active)
             ) THEN 0
             WHEN p.name ILIKE ${startsWith} ESCAPE '\\' OR p.sku ILIKE ${startsWith} ESCAPE '\\' THEN 1
+            WHEN EXISTS (
+              SELECT 1 FROM product_variants v
+              WHERE v.product_id = p.id
+                AND (v.name ILIKE ${startsWith} ESCAPE '\\' OR v.sku ILIKE ${startsWith} ESCAPE '\\')
+                AND (${archived}::boolean OR v.active)
+            ) THEN 1
             ELSE 2
           END AS rank
         FROM products p
@@ -81,10 +87,13 @@ export class ProductSearchService {
         FROM product_variants v
         WHERE v.product_id = h.id
           -- A product that matched by itself (its name or its sku) is shown as itself: the variant is only
-          -- named when it is the reason the product is in the answer
-          AND NOT (
-            h.name ILIKE ${contains} ESCAPE '\\'
-            OR coalesce(h.sku ILIKE ${contains} ESCAPE '\\', false)
+          -- named when it is the reason the product is in the answer, or when its sku is exactly the text
+          AND (
+            coalesce(lower(v.sku) = lower(${text}), false)
+            OR NOT (
+              h.name ILIKE ${contains} ESCAPE '\\'
+              OR coalesce(h.sku ILIKE ${contains} ESCAPE '\\', false)
+            )
           )
           AND (v.name ILIKE ${contains} ESCAPE '\\' OR v.sku ILIKE ${contains} ESCAPE '\\')
           AND (${archived}::boolean OR v.active)

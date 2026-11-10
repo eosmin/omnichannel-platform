@@ -104,7 +104,9 @@ export const searchProductsQuerySchema = z.strictObject({
   q: z
     .string()
     .trim()
-    .max(ProductSearchConfig.MAX_QUERY_LENGTH)
+    .refine(value => [...value].length <= ProductSearchConfig.MAX_QUERY_LENGTH, {
+      message: `at most ${ProductSearchConfig.MAX_QUERY_LENGTH} characters`
+    })
     .refine(value => !value.includes('\0'), { message: 'contains a NUL character' }),
   limit: z.coerce
     .number()
