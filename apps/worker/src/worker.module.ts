@@ -17,7 +17,7 @@ import {
   MessagingWindowService,
   OutboundQueue
 } from '@platform/core/messaging'
-import { PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
+import { officialRedactedKeys, PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
 import { AnalyticsModule } from './analytics/analytics.module'
 import { ExportsModule } from './exports/exports.module'
@@ -50,7 +50,7 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
 // ScheduleModule is imported only here: the api never runs crons
 @Module({
   imports: [
-    HttpPlatformModule,
+    HttpPlatformModule.forRoot({ redactedKeys: officialRedactedKeys() }),
     AuditModule,
     QueuesPlatformModule,
     EmailPlatformModule,

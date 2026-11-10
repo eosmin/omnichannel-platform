@@ -1,5 +1,7 @@
 // What a store of objects calls a file whose type it does not know
 export const GENERIC_CONTENT_TYPE = 'application/octet-stream'
+// An audio clip in an mp4 container (an m4a): the one type that a server may call by another name
+export const AUDIO_MP4_CONTENT_TYPE = 'audio/mp4'
 
 // The window of the counters of signed urls: one hour, and a counter outlives its window by one more
 export const QUOTA_WINDOW_MS = 3_600_000

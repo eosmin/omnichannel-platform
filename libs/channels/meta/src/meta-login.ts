@@ -4,16 +4,14 @@ import {
   type ChannelOAuthLinkedAccount,
   ChannelIds,
   ChannelOAuthKinds,
-  grantedMetaScopes,
-  MetaOAuth,
-  metaOAuthScopeParam,
-  metaOAuthScopesFor
+  MetaOAuth
 } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type ChannelOAuth, type OAuthAsset, PluginError } from '@platform/plugins/sdk'
 
 import { MetaErrorCodes } from './meta-constants'
 import type { MetaGraphClient } from './meta-graph.client'
+import { grantedMetaScopes, metaOAuthScopeParam, metaOAuthScopesFor } from './meta-oauth-scopes'
 
 // The Graph writes an id as a string of digits; anything else is not an id of a Page, a portfolio or an account
 const assetId = z.string().regex(MetaOAuth.ASSET_ID_PATTERN)

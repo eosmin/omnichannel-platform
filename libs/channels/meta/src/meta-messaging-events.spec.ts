@@ -1,7 +1,7 @@
-import { InboundLimits, MessageType, MetaGraph, OriginKinds } from '@platform/core/domain'
+import { InboundLimits, MessageType, OriginKinds } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
-import { MetaMessaging } from './meta-constants'
+import { MetaMessaging, MetaGraph } from './meta-constants'
 import { messagingToEvents } from './meta-messaging-events'
 
 const ACCOUNT = '17841400000000001'

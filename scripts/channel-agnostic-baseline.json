@@ -84,7 +84,7 @@
     "comment": 1
   },
   "apps/worker/src/media/fetch-helpers.ts": {
-    "code": 4,
+    "code": 0,
     "comment": 1
   },
   "apps/worker/src/outbound/outbound-sender.service.ts": {
@@ -123,32 +123,16 @@
     "code": 0,
     "comment": 5
   },
-  "libs/core/domain/index.ts": {
-    "code": 1,
-    "comment": 0
-  },
   "libs/core/domain/meta-constants.ts": {
-    "code": 9,
-    "comment": 13
-  },
-  "libs/core/domain/meta-oauth-scopes.ts": {
-    "code": 12,
-    "comment": 5
+    "code": 1,
+    "comment": 3
   },
   "libs/core/domain/redaction-constants.ts": {
-    "code": 3,
-    "comment": 2
+    "code": 0,
+    "comment": 1
   },
   "libs/core/domain/shortcuts.ts": {
     "code": 1,
-    "comment": 0
-  },
-  "libs/core/domain/whatsapp-constants.ts": {
-    "code": 1,
-    "comment": 1
-  },
-  "libs/core/logger/src/logger-options.ts": {
-    "code": 2,
     "comment": 0
   },
   "libs/core/messaging/src/messages/messages.views.ts": {

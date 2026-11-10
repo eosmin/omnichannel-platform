@@ -129,3 +129,18 @@ export const WhatsAppMediaMaxBytes: Readonly<
 // `US.13491208655302741918`, or `BR.ENT.9988776655` for a business that uses parent ids. Once a
 // customer adopts a username the phone stops arriving, and this is all there is to write back to.
 export const WHATSAPP_USER_ID_PATTERN = /^[A-Z]{2}\.(?:ENT\.)?[A-Za-z0-9]{1,64}$/
+
+export const WhatsAppLimits = {
+  TEXT_MAX_LENGTH: 4096,
+  // https://developers.facebook.com/docs/whatsapp/cloud-api/reference/messages
+  CAPTION_MAX_LENGTH: 1024,
+  FILENAME_MAX_LENGTH: 240,
+  BUTTONS_MAX: 3,
+  BUTTON_TITLE_MAX_LENGTH: 20,
+  BUTTON_ID_MAX_LENGTH: 256,
+  BUTTONS_BODY_MAX_LENGTH: 1024,
+  LOCATION_NAME_MAX_LENGTH: 1000,
+  // A page of a listing (templates, phone numbers), and how many pages one reads before it stops
+  PAGE_SIZE: 100,
+  MAX_PAGES: 5
+} as const

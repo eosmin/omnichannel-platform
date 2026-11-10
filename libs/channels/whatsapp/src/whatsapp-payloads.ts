@@ -1,4 +1,4 @@
-import { InboundLimits, isSingleEmoji, WhatsAppLimits } from '@platform/core/domain'
+import { InboundLimits, isSingleEmoji } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
   PluginError,
@@ -18,7 +18,8 @@ import {
   WhatsAppMediaMaxBytes,
   WhatsAppMediaTypes,
   WhatsAppMessageTypes,
-  WhatsAppTemplateComponents
+  WhatsAppTemplateComponents,
+  WhatsAppLimits
 } from './whatsapp-constants'
 
 // The bodies of POST /{phone-number-id}/messages. They are pure: what cannot be sent is refused here,
