@@ -46,6 +46,9 @@ export const Permissions = {
   PRODUCTS_CREATE: 'products:create',
   PRODUCTS_EDIT: 'products:edit',
   PRODUCTS_DELETE: 'products:delete',
+  // The reference cost of a product and of its variants (and, from Step 4.2, the cost of the units in stock): the
+  // margin of the store. Only the Admin preset holds it (requirements of the finance module, 2026-11-10)
+  PRODUCTS_VIEW_COST: 'products:view_cost',
   INVENTORY_VIEW: 'inventory:view',
   INVENTORY_ADJUST: 'inventory:adjust',
   INVENTORY_MANAGE_TRANSFERS: 'inventory:manage_transfers',

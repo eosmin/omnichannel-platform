@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import { defineConfig } from 'eslint/config'
@@ -17,6 +18,10 @@ const conversationStatusBan = {
     "CallExpression[callee.property.name='update'][callee.object.property.name='conversation'] > ObjectExpression > Property[key.name='data'] > ObjectExpression > Property[key.name='status']",
   message: 'Change conversation status through ConversationsService.updateStatus'
 }
+
+// The stock of the platform changes in ONE place (TDD_16 §8): see eslint-inventory-bans.cjs, where the rule lives so
+// that a spec can run it (scripts/lib/inventory-write-bans.spec.ts)
+const { inventoryWriteBans } = createRequire(import.meta.url)('./eslint-inventory-bans.cjs')
 
 const prismaTransactionBan = {
   selector: "CallExpression[callee.property.name='$transaction']",
@@ -122,6 +127,7 @@ export default defineConfig([
         processEnvBan,
         conversationStatusBan,
         prismaTransactionBan,
+        ...inventoryWriteBans,
         ...httpStatusBans
       ],
 
@@ -341,6 +347,21 @@ export default defineConfig([
     rules: {
       'no-restricted-syntax': [
         'error',
+        conversationStatusBan,
+        prismaTransactionBan,
+        ...inventoryWriteBans,
+        ...httpStatusBans
+      ]
+    }
+  },
+
+  // InventoryService and everything of the inventory engine: the one place that writes levels and movements
+  {
+    files: ['libs/core/inventory/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        processEnvBan,
         conversationStatusBan,
         prismaTransactionBan,
         ...httpStatusBans

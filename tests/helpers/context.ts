@@ -2,10 +2,13 @@ import type { INestApplication } from '@nestjs/common'
 
 import { type RoleName, RoleNames } from '@platform/core/auth'
 import {
+  ensureDefaultWarehouse,
   ensureMembership,
   ensureStore,
+  ensureStoreWarehouse,
   ensureSystemRoles,
   ensureUser,
+  ensureWarehouse,
   type OwnerClient
 } from '@platform/core/database-testing'
 
@@ -19,6 +22,9 @@ import type { Actor, StoreRef } from './http'
 //                     store A2      adminA2        <- a sibling store of the same organization
 //   organization B    store B       adminB
 //
+// Warehouse A (the default of organization A) serves stores A and A2, a second one serves store A only, and
+// warehouse B serves store B: stock can be put in any of them by the builders.
+//
 // Nobody is a member of more than one store, so each attack below is an attack and not a feature.
 export interface TestContext {
   orgA: { id: string }
@@ -31,6 +37,11 @@ export interface TestContext {
   viewerA: Actor
   adminA2: Actor
   adminB: Actor
+  // The warehouses: A is the default one of organization A, shared by store A and its sibling store A2 (priority 1
+  // in both); ASecond is only store A's, at priority 2; B is organization B's, for store B
+  warehouseA: { id: string }
+  warehouseASecond: { id: string }
+  warehouseB: { id: string }
   // The system roles, by name
   roleIds: Record<RoleName, string>
 }
@@ -82,6 +93,15 @@ export async function seedTestContext(
   const storeA = await ensureStore(owner, orgA.id, `${prefix}-store-a`)
   const storeA2 = await ensureStore(owner, orgA.id, `${prefix}-store-a2`)
   const storeB = await ensureStore(owner, orgB.id, `${prefix}-store-b`)
+  const warehouseA = await ensureDefaultWarehouse(owner, orgA.id, storeA.id)
+  await ensureDefaultWarehouse(owner, orgA.id, storeA2.id)
+  const warehouseASecond = await ensureWarehouse(owner, orgA.id, { code: 'SECOND', name: 'Second' })
+  await ensureStoreWarehouse(owner, {
+    organizationId: orgA.id,
+    storeId: storeA.id,
+    warehouseId: warehouseASecond.id
+  })
+  const warehouseB = await ensureDefaultWarehouse(owner, orgB.id, storeB.id)
 
   const actor = (
     name: string,
@@ -106,6 +126,9 @@ export async function seedTestContext(
     },
     orgA,
     orgB,
+    warehouseA,
+    warehouseASecond,
+    warehouseB,
     storeA,
     storeA2,
     storeB,

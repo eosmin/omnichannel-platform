@@ -6,6 +6,9 @@ import {
   ChannelIds,
   ConversationStatus,
   DeliveryStatus,
+  InventoryAdjustmentReason,
+  InventoryMovementType,
+  InventoryReferenceType,
   MessageType,
   OfficialPluginAuthor,
   PluginCatalogTypes,
@@ -16,10 +19,22 @@ import {
 
 import type { PrismaClient } from '../generated/client/client'
 
-import { ensureMembership, ensureStore, ensureSystemRoles, ensureUser } from './bootstrap-owner'
+import {
+  ensureDefaultWarehouse,
+  ensureMembership,
+  ensureStore,
+  ensureStoreWarehouse,
+  ensureSystemRoles,
+  ensureUser,
+  ensureWarehouse
+} from './bootstrap-owner'
 
 const PRODUCT_COUNT = 30
 const CUSTOMER_COUNT = 25
+// The second warehouse of the main store, after the default one: priority 2, so the allocation across warehouses has
+// something to choose between
+const SECOND_WAREHOUSE = { code: 'SECOND', name: 'Second warehouse' } as const
+const OPENING_STOCK_UNITS = 20
 const CONVERSATION_STATUSES = [
   ConversationStatus.OPEN,
   ConversationStatus.PENDING,
@@ -53,6 +68,15 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
   // The second store exists so that switching between stores can be tested
   const main = await ensureStore(prisma, organization.id, 'Main Store')
   const escalon = await ensureStore(prisma, organization.id, 'Tienda Escalón')
+  // Both stores sell from the default warehouse of the organization; the main one also from a second
+  const warehouse = await ensureDefaultWarehouse(prisma, organization.id, main.id)
+  await ensureDefaultWarehouse(prisma, organization.id, escalon.id)
+  const second = await ensureWarehouse(prisma, organization.id, SECOND_WAREHOUSE)
+  await ensureStoreWarehouse(prisma, {
+    organizationId: organization.id,
+    storeId: main.id,
+    warehouseId: second.id
+  })
 
   const admin = await ensureUser(prisma, 'admin@test.com', 'Admin User')
   const agent = await ensureUser(prisma, 'agent@test.com', 'Agent User')
@@ -163,16 +187,24 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
 
   for (let index = 0; index < PRODUCT_COUNT; index++) {
     const sku = `SKU-${String(index).padStart(4, '0')}`
-    await prisma.product.upsert({
+    const product = await prisma.product.upsert({
       where: { storeId_sku: { storeId: main.id, sku } },
       create: {
         storeId: main.id,
         sku,
         name: `Fixture product ${index}`,
         description: `Description of fixture product ${index}`,
-        priceCents: 500 + index * 650
+        priceCents: 500 + index * 650,
+        costCents: 200 + index * 300
       },
-      update: {}
+      update: {},
+      select: { id: true, costCents: true }
+    })
+    await loadOpeningStock(prisma, {
+      storeId: main.id,
+      productId: product.id,
+      warehouseId: warehouse.id,
+      unitCostCents: product.costCents
     })
   }
 
@@ -184,6 +216,55 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
       index
     })
   }
+}
+
+interface OpeningStock {
+  storeId: string
+  productId: string
+  warehouseId: string
+  unitCostCents: number | null
+}
+
+// The opening stock of a product in a warehouse: its level and the movement that explains it, together or not at
+// all. The fixtures write them as the owner of the database, which InventoryService (the only writer of the api)
+// does not need to be: this is data for a development database, with the cost of its units.
+async function loadOpeningStock(prisma: PrismaClient, stock: OpeningStock): Promise<void> {
+  const existing = await prisma.inventoryLevel.findFirst({
+    where: {
+      storeId: stock.storeId,
+      productId: stock.productId,
+      variantId: null,
+      warehouseId: stock.warehouseId
+    },
+    select: { id: true }
+  })
+  if (existing !== null) return
+  await prisma.$transaction(async tx => {
+    await tx.inventoryLevel.create({
+      data: {
+        storeId: stock.storeId,
+        productId: stock.productId,
+        warehouseId: stock.warehouseId,
+        onHand: OPENING_STOCK_UNITS,
+        valueCents: BigInt(OPENING_STOCK_UNITS) * BigInt(stock.unitCostCents ?? 0)
+      }
+    })
+    await tx.inventoryMovement.create({
+      data: {
+        storeId: stock.storeId,
+        productId: stock.productId,
+        warehouseId: stock.warehouseId,
+        type: InventoryMovementType.RECEIPT,
+        quantity: OPENING_STOCK_UNITS,
+        reason: InventoryAdjustmentReason.OPENING_STOCK,
+        referenceType: InventoryReferenceType.MANUAL,
+        idempotencyKey: `fixture:opening-stock:${stock.productId}:${stock.warehouseId}`,
+        unitCostCents: stock.unitCostCents,
+        onHandAfter: OPENING_STOCK_UNITS,
+        reservedAfter: 0
+      }
+    })
+  })
 }
 
 interface FixtureCustomer {

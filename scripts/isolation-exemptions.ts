@@ -16,11 +16,27 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
+  InventoryLevel: {
+    step: '4.2',
+    reason: 'Read through the stock endpoints and written by InventoryService (PR A2)'
+  },
   InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   Order: { step: '4.3', reason: 'Has no endpoint yet' },
+  OrderItemAllocation: {
+    step: '4.3',
+    reason: 'Written when an order is created and read with it: the orders have no endpoint yet'
+  },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
+  StoreWarehouse: {
+    step: '4.2',
+    reason: 'Replaced through the warehouses endpoints (PR B), which have no route yet'
+  },
+  Warehouse: {
+    step: '4.2',
+    reason: 'Created and edited through the warehouses endpoints (PR B), which have no route yet'
+  },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }
