@@ -15,7 +15,8 @@ export const Budgets = {
 export const ScriptCeilingsKb = {
   LOGIN: 260,
   INBOX: 340,
-  PRODUCTS: 300
+  PRODUCTS: 300,
+  INVENTORY_SETTINGS: 350
 } as const
 
 // Shared load and CPU noise of a runner: the median of a few runs is what the budget is asserted on
