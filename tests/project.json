@@ -23,7 +23,7 @@
       "cache": false,
       "dependsOn": ["^prisma-generate"],
       "options": {
-        "command": "if [ -n \"$SECURITY_SHARD\" ]; then jest --config jest.config.cts --runInBand --shard=\"$SECURITY_SHARD\"; else status=0; jest --config jest.config.cts --runInBand --shard=1/2 || status=1; jest --config jest.config.cts --runInBand --shard=2/2 || status=1; exit $status; fi",
+        "command": "if [ -n \"$SECURITY_SHARD\" ]; then echo \"security shard $SECURITY_SHARD only\"; jest --config jest.config.cts --runInBand --shard=\"$SECURITY_SHARD\"; else status=0; jest --config jest.config.cts --runInBand --shard=1/2 || status=1; jest --config jest.config.cts --runInBand --shard=2/2 || status=1; exit $status; fi",
         "cwd": "{projectRoot}",
         "env": {
           "NODE_OPTIONS": "--experimental-vm-modules --max-old-space-size=4096 --no-warnings=ExperimentalWarning"
