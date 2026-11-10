@@ -490,7 +490,7 @@ jobs:
 
   # The web app against the real api and worker, in a real browser: the bundles that `nx build`
   # writes, the fixtures of the development database, the magic links read from Mailpit. SeaweedFS
-  # is one of the services since Step 3.4 (readiness asks the bucket). The suite runs in four slices
+  # is one of the services since Step 3.4 (readiness asks the bucket). The suite runs in five slices
   # (`E2E_SHARD`), each in its own job with its own services, so the specs never share a database, a
   # mailbox or a queue across slices. The required check is `e2e-tests`, below, which waits for them.
   e2e-shards:
@@ -500,9 +500,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
         # The number of slices, once: the name, E2E_SHARD and the summary read it from here. It must equal the length of the list above
-        total: [4]
+        total: [5]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -554,6 +554,16 @@ jobs:
       DB_APP_PASSWORD: ci_app_password
       DB_WORKER_PASSWORD: ci_worker_password
     steps:
+      # The list of slices and `total` say the same number, or a slice would never run (and the check would stay green)
+      - name: The slices are all there
+        env:
+          SLICES: ${{ strategy.job-total }}
+          TOTAL: ${{ matrix.total }}
+        run: |
+          if [ "$SLICES" != "$TOTAL" ]; then
+            echo "::error::The matrix has $SLICES slices but total says $TOTAL"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/web-stack
       # Builds the api, the worker and the web app, starts them, and runs the specs
