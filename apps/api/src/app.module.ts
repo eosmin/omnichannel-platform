@@ -17,6 +17,7 @@ import { MessagingWindowModule } from './modules/messaging-window/messaging-wind
 import { NotificationsModule } from './modules/notifications'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
+import { ProductsModule } from './modules/products/products.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
 import { RoutingModule } from './modules/routing/routing.module'
 import { SettingsModule } from './modules/settings/settings.module'
@@ -48,6 +49,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     MessagingWindowModule,
     RoutingModule,
     RealtimeModule,
+    ProductsModule,
     SettingsModule,
     InvitationsModule,
     WebhooksModule,
