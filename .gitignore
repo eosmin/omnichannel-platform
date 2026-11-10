@@ -36,5 +36,6 @@ libs/core/database/generated/
 # Playwright
 test-results/
 playwright-report/
+playwright-timing/
 lighthouse-report/
 lighthouse-results/

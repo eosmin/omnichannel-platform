@@ -27,6 +27,30 @@ runs:
       id: playwright
       run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       shell: bash
+    # The system libraries of Chromium come from the apt mirror of the runner, which some runs reach at 80 kB/s
+    # (a run waited 4.5 minutes for 22 MB). The downloaded packages are cached by image and Playwright version:
+    # the same packages are installed, only without the download. A package that changed on the mirror is
+    # fetched as before, and a cache miss is the old behavior.
+    - name: Keep the packages apt downloads
+      run: |
+        mkdir -p "$HOME/.apt-archives"
+        printf '%s\n' \
+          "Dir::Cache::archives \"$HOME/.apt-archives\";" \
+          'APT::Keep-Downloaded-Packages "true";' \
+          'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+          | sudo tee /etc/apt/apt.conf.d/99keep-archives > /dev/null
+      shell: bash
+    # The runner exports the version of its image as a variable, which the `env` context of an expression does not see
+    - name: Image of the runner
+      id: image
+      run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      shell: bash
+    - name: Cache the apt packages
+      id: apt
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.apt-archives/*.deb
+        key: apt-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ steps.playwright.outputs.version }}
     - name: Cache the browsers
       id: browsers
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -42,3 +66,10 @@ runs:
       if: steps.browsers.outputs.cache-hit == 'true'
       run: pnpm exec playwright install-deps chromium
       shell: bash
+    # Saved here, and not by the post step of a cache action, so a job that fails later still keeps it
+    - name: Save the apt packages
+      if: always() && steps.apt.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.apt-archives/*.deb
+        key: apt-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ steps.playwright.outputs.version }}
