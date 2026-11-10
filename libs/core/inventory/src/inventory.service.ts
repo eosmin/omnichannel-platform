@@ -179,19 +179,20 @@ export class InventoryService {
       })
       if (variant === null) throw resourceNotFound('variant')
     }
-    // A warehouse of the organization of the store: another organization's is a warehouse that does not exist
-    const warehouse = await tx.warehouse.findFirst({
-      where: { id: warehouseId, organization: { stores: { some: { id: storeId } } } },
-      select: { active: true }
-    })
+    // A warehouse of the organization of the store: another organization's is a warehouse that does not exist. What
+    // adds stock or promises it takes the row of the warehouse and the link of the store FOR SHARE until the end of the
+    // transaction: switching the warehouse off (FOR UPDATE) or unlinking the store waits for the movement and then
+    // reads its stock, and a movement that starts after them sees the change and is refused. What takes stock out reads
+    // them with no lock: it must work in a warehouse that is off or unlinked.
+    const warehouse = await this.readWarehouse(tx, { storeId, warehouseId, lock: addsOrPromises })
     if (warehouse === null) throw resourceNotFound('warehouse')
-    if (NEEDS_ACTIVE_LINKED_WAREHOUSE.includes(type)) {
+    if (addsOrPromises) {
       if (!warehouse.active) throw warehouseInactive(warehouseId)
-      const link = await tx.storeWarehouse.findUnique({
-        where: { storeId_warehouseId: { storeId, warehouseId } },
-        select: { id: true }
-      })
-      if (link === null) throw warehouseNotLinked(warehouseId)
+      const links = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM store_warehouses
+        WHERE store_id = ${storeId} AND warehouse_id = ${warehouseId}
+        FOR SHARE`
+      if (links.length === 0) throw warehouseNotLinked(warehouseId)
     }
     const settings = await tx.storeSettings.findUnique({
       where: { storeId },
@@ -248,6 +249,23 @@ export class InventoryService {
     })
     await this.warnIfLow(tx, { storeId, productId, type, quantity }, product.lowStockThreshold)
     return { movement: recordOf(created), replayed: false }
+  }
+
+  private async readWarehouse(
+    tx: PrismaTransaction,
+    where: { storeId: string; warehouseId: string; lock: boolean }
+  ): Promise<{ active: boolean } | null> {
+    const rows = where.lock
+      ? await tx.$queryRaw<{ active: boolean }[]>`
+          SELECT w.active FROM warehouses w
+          JOIN stores s ON s.organization_id = w.organization_id
+          WHERE w.id = ${where.warehouseId} AND s.id = ${where.storeId}
+          FOR SHARE OF w`
+      : await tx.$queryRaw<{ active: boolean }[]>`
+          SELECT w.active FROM warehouses w
+          JOIN stores s ON s.organization_id = w.organization_id
+          WHERE w.id = ${where.warehouseId} AND s.id = ${where.storeId}`
+    return rows[0] ?? null
   }
 
   // The level of the item in the warehouse, made if it is missing, and locked until the transaction ends
