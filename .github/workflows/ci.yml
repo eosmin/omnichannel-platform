@@ -72,13 +72,12 @@ jobs:
       - name: Public variables of the web build
         run: cp apps/web/.env.example apps/web/.env.local
       # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
-      - name: Lint, type-check and build (affected on pull requests, everything on main)
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
-          else
-            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
-          fi
+      - name: MEASURE lint
+        run: pnpm exec nx run-many --targets=lint --all --parallel=3
+      - name: MEASURE type-check
+        run: pnpm exec nx run-many --targets=type-check --all --parallel=3
+      - name: MEASURE build
+        run: pnpm exec nx run-many --targets=build --all --parallel=3
 
   # The unit tests with their coverage. The thresholds live in the jest.config of each project that
   # has one (TDD_13 section 9, only for the paths that exist so far): `--coverage` is what makes jest
