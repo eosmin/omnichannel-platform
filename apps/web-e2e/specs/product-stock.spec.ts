@@ -178,7 +178,7 @@ test.describe('the stock of a product', () => {
     await expect(page.getByText(PRODUCTS.form.saved)).toBeVisible()
     await openStock()
     // 7 available, alert at 8
-    await expect(sheet().getByText(STOCK.low, { exact: false }).first()).toBeVisible()
+    await expect(sheet().getByRole('status').filter({ hasText: STOCK.low })).toBeVisible()
     await expect(sheet().getByText('7 available, alert at 8.')).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.getByRole('row').filter({ hasText: name })).toContainText(STOCK.list.low)
@@ -216,7 +216,9 @@ test.describe('the stock of a product', () => {
       await expect(
         dialog.getByRole('columnheader', { name: STOCK.kardex.columns.cost })
       ).toHaveCount(0)
-      await expect(dialog.getByRole('row').filter({ hasText: STOCK.types.receipt })).toBeVisible()
+      await expect(
+        dialog.getByRole('row').filter({ hasText: STOCK.types.receipt }).first()
+      ).toBeVisible()
     } finally {
       await viewerContext.close()
     }
