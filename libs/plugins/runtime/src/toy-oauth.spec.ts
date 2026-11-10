@@ -21,7 +21,7 @@ const unused = (): never => {
 
 function login(overrides: Record<string, unknown> = {}): ChannelOAuth {
   return {
-    kind: ChannelOAuthKinds.META_FACEBOOK_LOGIN,
+    kind: ChannelOAuthKinds.AUTHORIZATION_CODE_WITH_ASSETS,
     scopes: ['pages_show_list'],
     redirectUri: null,
     dialogOrigin: 'https://login.acme.test',
@@ -61,8 +61,14 @@ function toy(oauth: ChannelOAuth | undefined): ChannelPlugin {
   }
 }
 
+// With the official login the toy is held to: a third party asks for what the official plugins ask, or less
 function registry(): PluginRegistry {
-  return new PluginRegistry({ setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger)
+  const plugins = new PluginRegistry({
+    setContext: jest.fn(),
+    info: jest.fn()
+  } as unknown as PinoLogger)
+  plugins.register({ ...toy(login()), id: 'messenger' }, { official: true })
+  return plugins
 }
 function refusal(plugin: ChannelPlugin): unknown {
   try {

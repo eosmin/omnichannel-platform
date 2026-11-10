@@ -7,7 +7,7 @@ const CALLBACK = 'https://api.example.test/api/v1/channels/oauth/callback'
 
 function oauth(overrides: Partial<ChannelOAuth> = {}): ChannelOAuth {
   return {
-    kind: ChannelOAuthKinds.META_FACEBOOK_LOGIN,
+    kind: ChannelOAuthKinds.AUTHORIZATION_CODE_WITH_ASSETS,
     scopes: ['pages_show_list', 'pages_messaging'],
     redirectUri: CALLBACK,
     dialogOrigin: 'https://login.example.test',
@@ -27,9 +27,15 @@ function plugin(declared: unknown): ChannelPlugin {
   return { id: 'messenger', oauth: declared } as unknown as ChannelPlugin
 }
 
-function refuses(declared: unknown): string | undefined {
+// What the official plugins with this kind of login ask for: the ceiling of anyone else's
+const CEILING = new Set(['pages_show_list', 'pages_messaging', 'pages_manage_metadata'])
+
+function refuses(
+  declared: unknown,
+  ceiling: ReadonlySet<string> | null = CEILING
+): string | undefined {
   try {
-    snapshotChannelOAuth(plugin(declared), 'messenger', CALLBACK)
+    snapshotChannelOAuth(plugin(declared), 'messenger', () => ceiling, CALLBACK)
   } catch (error) {
     return (error as { message?: string }).message
   }
@@ -38,19 +44,19 @@ function refuses(declared: unknown): string | undefined {
 
 describe('snapshotChannelOAuth', () => {
   it('is null for a plugin with no login, which is nearly all of them', () => {
-    expect(snapshotChannelOAuth(plugin(undefined), 'whatsapp', CALLBACK)).toBeNull()
+    expect(snapshotChannelOAuth(plugin(undefined), 'whatsapp', () => null, CALLBACK)).toBeNull()
   })
 
   it('keeps what a well formed login declares', () => {
-    const snapshot = snapshotChannelOAuth(plugin(oauth()), 'messenger', CALLBACK)
-    expect(snapshot?.kind).toBe('meta-facebook-login')
+    const snapshot = snapshotChannelOAuth(plugin(oauth()), 'messenger', () => CEILING, CALLBACK)
+    expect(snapshot?.kind).toBe('authorization-code-with-assets')
     expect(snapshot?.scopes).toEqual(['pages_show_list', 'pages_messaging'])
   })
 
   it('copies the scopes, so a list the plugin keeps changing grows nothing nobody checked', () => {
     const declared = oauth()
     const scopes = declared.scopes as string[]
-    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', CALLBACK)
+    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING, CALLBACK)
     scopes.push('ads_management')
     expect(snapshot?.scopes).toEqual(['pages_show_list', 'pages_messaging'])
     expect(Object.isFrozen(snapshot?.scopes)).toBe(true)
@@ -60,7 +66,7 @@ describe('snapshotChannelOAuth', () => {
     const declared = oauth({
       listAssets: () => Promise.resolve([{ id: '1', name: 'A', linkedAccount: null }])
     })
-    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', CALLBACK)
+    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING, CALLBACK)
     ;(declared as { listAssets: unknown }).listAssets = () => Promise.resolve([])
     await expect(snapshot?.listAssets({ userToken: 't' })).resolves.toHaveLength(1)
   })
@@ -94,6 +100,36 @@ describe('snapshotChannelOAuth', () => {
     expect(refuses({ ...oauth(), scopes })).toMatch(/scopes/)
   })
 
+  describe('the ceiling of the permissions', () => {
+    it('holds an official plugin (no ceiling) only to the shape of a permission name', () => {
+      const scopes = ['pages_show_list', 'a_permission_only_this_provider_has']
+      expect(
+        snapshotChannelOAuth(plugin(oauth({ scopes })), 'messenger', () => null, CALLBACK)?.scopes
+      ).toEqual(scopes)
+      expect(refuses({ ...oauth(), scopes: ['Not A Name'] }, null)).toMatch(/scopes/)
+    })
+
+    it('lets any other plugin ask for what the official ones ask, or less', () => {
+      const snapshot = snapshotChannelOAuth(
+        plugin(oauth({ scopes: ['pages_messaging'] })),
+        'acme_chat',
+        () => CEILING,
+        CALLBACK
+      )
+      expect(snapshot?.scopes).toEqual(['pages_messaging'])
+    })
+
+    it('refuses any other plugin that asks for one permission more than the official ones', () => {
+      expect(
+        refuses(oauth({ scopes: ['pages_show_list', 'a_permission_nobody_official_asks'] }))
+      ).toMatch(/scopes/)
+    })
+
+    it('refuses any other plugin when no official plugin has that kind of login', () => {
+      expect(refuses(oauth(), new Set())).toMatch(/scopes/)
+    })
+  })
+
   it.each(['authorizationUrl', 'exchangeCode', 'grantedScopes', 'listAssets', 'credentialsFor'])(
     'refuses a login without %s',
     name => {
@@ -114,16 +150,17 @@ describe('the address a login sends the browser back to', () => {
 
   it('is kept when it is exactly the callback of this platform', () => {
     expect(
-      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', CALLBACK)?.redirectUri
+      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', () => null, CALLBACK)
+        ?.redirectUri
     ).toBe(CALLBACK)
   })
 
   it('may be none, which is a login that is off', () => {
     expect(
-      snapshotChannelOAuth(plugin(declare(null)), 'messenger', CALLBACK)?.redirectUri
+      snapshotChannelOAuth(plugin(declare(null)), 'messenger', () => null, CALLBACK)?.redirectUri
     ).toBeNull()
     expect(
-      snapshotChannelOAuth(plugin(declare(null)), 'messenger', undefined)?.redirectUri
+      snapshotChannelOAuth(plugin(declare(null)), 'messenger', () => null, undefined)?.redirectUri
     ).toBeNull()
   })
 
@@ -153,8 +190,8 @@ describe('the address a login sends the browser back to', () => {
   })
 
   it('is refused when the platform does not know its own address, unless the login is off', () => {
-    expect(() => snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', undefined)).toThrow(
-      'redirect address'
-    )
+    expect(() =>
+      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', () => null, undefined)
+    ).toThrow('redirect address')
   })
 })

@@ -4,13 +4,7 @@ import { Readable } from 'node:stream'
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import {
-  MetaGrantedPageScopes,
-  MetaOAuth,
-  TokenExpiryLimits,
-  type TokenInspection,
-  TokenKinds
-} from '@platform/core/domain'
+import { TokenExpiryLimits, type TokenInspection, TokenKinds } from '@platform/core/domain'
 import {
   ChannelConnectFailureReasons,
   ErrorCodes,
@@ -32,6 +26,7 @@ import {
   MetaLimits,
   MetaWebhook
 } from './meta-constants'
+import { MetaGrantedPageScopes, MetaOAuth } from './meta-oauth-constants'
 import { answerMetaHandshake, isValidMetaSignature } from './meta-webhook'
 
 // An id or an edge name: letters, digits, underscore, dash. No dot, so no `..`, and no slash.

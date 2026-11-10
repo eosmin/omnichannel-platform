@@ -4,8 +4,6 @@ import {
   ChannelOAuthLimits,
   isDialogOrigin,
   LINKED_ACCOUNT_PLACEHOLDERS,
-  MetaOAuth,
-  MetaOAuthScopes,
   parseAssetIdPattern,
   readLocalizedText
 } from '@platform/core/domain'
@@ -14,12 +12,6 @@ import type { ChannelOAuth, ChannelPlugin } from '@platform/plugins/sdk'
 import { contractViolation, printable } from './contract-rules'
 
 const KINDS: readonly unknown[] = Object.values(ChannelOAuthKinds)
-// The permissions a kind of login may ask for. A name outside the list is refused at boot, so that a plugin
-// cannot make the platform's app ask a person for ads, publishing or anything else the channels do not need
-// (the constants of `MetaOAuthScopes` are the whole list; adding a permission is a change of the core).
-const SCOPES_BY_KIND: Readonly<Record<string, readonly string[]>> = {
-  [ChannelOAuthKinds.META_FACEBOOK_LOGIN]: Object.values(MetaOAuthScopes)
-}
 const FUNCTIONS = [
   'authorizationUrl',
   'exchangeCode',
@@ -56,9 +48,16 @@ export type ChannelOAuthSnapshot = {
 // A plugin with no login is the normal case (null). One that declares a login badly is refused at boot, like
 // one that lacks a method: the permissions go into an address the person is sent to, so they are held to the
 // shape of a permission name, and nothing about the declaration is printed (it is not trusted).
+//
+// `ceilingOf` answers, for the kind this very declaration has (read once, here), what the login may ask for: null for an official plugin (the code of the platform, which the
+// owner reviews, holds only to the shape of a permission name), and for any other plugin the permissions that
+// the official plugins with the same kind of login already ask for. A third party therefore cannot make the
+// platform's app ask a person for ads, publishing or anything the official channels do not need, and the core
+// names no provider to know it.
 export function snapshotChannelOAuth(
   plugin: ChannelPlugin,
   id: string,
+  ceilingOf: (kind: string) => ReadonlySet<string> | null,
   callbackUrl: string | undefined
 ): ChannelOAuthSnapshot | null {
   const declared: unknown = plugin.oauth
@@ -70,16 +69,17 @@ export function snapshotChannelOAuth(
   const block = declared as Record<string, unknown>
   const kind = block['kind']
   if (!KINDS.includes(kind)) refuse('kind')
+  const ceiling = ceilingOf(kind as string)
   const scopes = block['scopes']
   if (
     !Array.isArray(scopes) ||
     scopes.length === 0 ||
     scopes.length > ChannelOAuthLimits.MAX_SCOPES ||
     !scopes.every(
-      (scope: unknown) => typeof scope === 'string' && MetaOAuth.SCOPE_PATTERN.test(scope)
+      (scope: unknown) => typeof scope === 'string' && ChannelOAuthLimits.SCOPE_PATTERN.test(scope)
     ) ||
     new Set<unknown>(scopes).size !== scopes.length ||
-    !scopes.every((scope: string) => SCOPES_BY_KIND[kind as string]?.includes(scope))
+    (ceiling !== null && !scopes.every((scope: string) => ceiling.has(scope)))
   ) {
     refuse('scopes list')
   }

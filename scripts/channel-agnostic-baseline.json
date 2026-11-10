@@ -68,8 +68,8 @@
     "comment": 4
   },
   "libs/core/domain/channel-oauth-constants.ts": {
-    "code": 13,
-    "comment": 10
+    "code": 0,
+    "comment": 2
   },
   "libs/core/domain/channel-token-expiry.ts": {
     "code": 0,
@@ -105,10 +105,6 @@
   },
   "libs/core/platform/cache/cache-keys.ts": {
     "code": 0,
-    "comment": 1
-  },
-  "libs/plugins/runtime/src/oauth-snapshot.ts": {
-    "code": 4,
     "comment": 1
   },
   "libs/plugins/sdk/src/channel-oauth.ts": {

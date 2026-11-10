@@ -3,14 +3,14 @@ import { z } from 'zod'
 import {
   type ChannelOAuthLinkedAccount,
   ChannelIds,
-  ChannelOAuthKinds,
-  MetaOAuth
+  ChannelOAuthKinds
 } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type ChannelOAuth, type OAuthAsset, PluginError } from '@platform/plugins/sdk'
 
 import { MetaErrorCodes } from './meta-constants'
 import type { MetaGraphClient } from './meta-graph.client'
+import { MetaOAuth } from './meta-oauth-constants'
 import { grantedMetaScopes, metaOAuthScopeParam, metaOAuthScopesFor } from './meta-oauth-scopes'
 
 // The Graph writes an id as a string of digits; anything else is not an id of a Page, a portfolio or an account
@@ -34,7 +34,7 @@ const pageTokenSchema = z.object({
 // 2026-11-07, with a token WITHOUT `business_management` and an administrator of the app in development mode,
 // they still did, so the login does not ask for that permission).
 export class MetaLogin implements ChannelOAuth {
-  readonly kind = ChannelOAuthKinds.META_FACEBOOK_LOGIN
+  readonly kind = ChannelOAuthKinds.AUTHORIZATION_CODE_WITH_ASSETS
   readonly scopes: readonly string[]
   // The dialog is on Facebook's site, and the ids of its accounts are digits (MetaOAuth.ASSET_ID_PATTERN)
   readonly dialogOrigin = MetaOAuth.DIALOG_ORIGIN

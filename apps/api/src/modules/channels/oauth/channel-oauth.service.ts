@@ -267,7 +267,7 @@ export class ChannelOAuthService {
     if (session.connectionId !== undefined) {
       await this.connections.assertRepairable(storeId, session.connectionId, session.pluginId)
     }
-    const options = { authMethod: ChannelAuthMethods.FACEBOOK_LOGIN }
+    const options = { authMethod: ChannelAuthMethods.PROVIDER_LOGIN }
     // A login that repairs a connection takes only the Page that connection already is: another Page is
     // `other_account` and nothing is written, as for a pasted token. Any other login makes or finds its own.
     const view =
