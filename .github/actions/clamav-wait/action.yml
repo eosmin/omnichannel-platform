@@ -1,0 +1,18 @@
+name: Wait for ClamAV
+description: Waits until the container that clamav-start began answers its health check; fails the job if it never does.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        for _ in $(seq 1 90); do
+          status=$(docker inspect -f '{{.State.Health.Status}}' clamav)
+          if [ "$status" = "healthy" ]; then
+            echo "ClamAV is healthy"
+            exit 0
+          fi
+          sleep 4
+        done
+        echo "::error::ClamAV did not become healthy (status: $status)"
+        docker logs --tail 40 clamav
+        exit 1

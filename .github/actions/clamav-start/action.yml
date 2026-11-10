@@ -1,0 +1,14 @@
+name: Start ClamAV
+description: >-
+  Starts the virus scanner of the media suites in the background, so that its signature database loads
+  while the job installs and builds, instead of holding the start of the job as a service container does
+  (about 15 s). The job must run clamav-wait before the first step that scans a file.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        docker run -d --name clamav -p 3310:3310 \
+          --health-cmd "clamdcheck.sh" \
+          --health-start-period 180s --health-interval 10s --health-timeout 10s --health-retries 20 \
+          clamav/clamav:1.5.4-debian
