@@ -40,6 +40,8 @@ export function VariantsTab({ product }: { product: ProductDetailView }): ReactE
   const mayCreate = can(ClientPermissions.PRODUCTS_CREATE)
   const mayEdit = can(ClientPermissions.PRODUCTS_EDIT)
   const mayDelete = can(ClientPermissions.PRODUCTS_DELETE)
+  // Without the permission the column is not drawn and no cost is sent (the api's own half is PR A2)
+  const mayViewCost = can(ClientPermissions.PRODUCTS_VIEW_COST)
   const money = (cents: number): string => formatCents(format, cents)
 
   return (
@@ -68,7 +70,9 @@ export function VariantsTab({ product }: { product: ProductDetailView }): ReactE
                 <th className="py-2 pr-3 font-medium">{t('columns.name')}</th>
                 <th className="py-2 pr-3 font-medium">{t('columns.sku')}</th>
                 <th className="py-2 pr-3 font-medium">{t('columns.price')}</th>
-                <th className="py-2 pr-3 font-medium">{t('columns.cost')}</th>
+                {mayViewCost ? (
+                  <th className="py-2 pr-3 font-medium">{t('columns.cost')}</th>
+                ) : null}
                 <th className="py-2 font-medium">
                   <span className="sr-only">{t('columns.actions')}</span>
                 </th>
@@ -94,13 +98,15 @@ export function VariantsTab({ product }: { product: ProductDetailView }): ReactE
                         money(variant.priceCents)
                       )}
                     </td>
-                    <td className="py-2 pr-3">
-                      {variant.costCents === null ? (
-                        <span className="text-muted-foreground">{t('usesProductCost')}</span>
-                      ) : (
-                        money(variant.costCents)
-                      )}
-                    </td>
+                    {mayViewCost ? (
+                      <td className="py-2 pr-3">
+                        {variant.costCents === null ? (
+                          <span className="text-muted-foreground">{t('usesProductCost')}</span>
+                        ) : (
+                          money(variant.costCents)
+                        )}
+                      </td>
+                    ) : null}
                     <td className="py-2 whitespace-nowrap">
                       {mayEdit ? (
                         <Button
@@ -174,7 +180,8 @@ function VariantRow({
 }): ReactElement {
   const t = useTranslations('products.variants')
   const tAll = useTranslations()
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
+  const mayViewCost = can(ClientPermissions.PRODUCTS_VIEW_COST)
   const guard = useSubmitGuard()
   const writes = useVariantWrites(storeId, productId)
   const [values, setValues] = useState<VariantFormValues>(
@@ -192,7 +199,7 @@ function VariantRow({
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (variant === null) {
-      const result = variantInputFrom(values)
+      const result = variantInputFrom(values, mayViewCost)
       if (!result.ok) return setWrong(result.field)
       if (!guard.enter()) return
       writes.add.mutate(result.value, {
@@ -204,7 +211,7 @@ function VariantRow({
       })
       return
     }
-    const result = variantChangesFrom(variant, values)
+    const result = variantChangesFrom(variant, values, mayViewCost)
     if (!result.ok) return setWrong(result.field)
     if (Object.keys(result.value).length === 0) {
       toast(t('unchanged'))
@@ -245,7 +252,7 @@ function VariantRow({
         {cell('name', t('name'), ProductLimits.VARIANT_NAME_MAX_LENGTH)}
         {cell('sku', t('columns.sku'), ProductLimits.SKU_MAX_LENGTH)}
         {cell('price', t('columns.price'))}
-        {cell('cost', t('columns.cost'))}
+        {mayViewCost ? cell('cost', t('columns.cost')) : null}
         <td className="py-2 whitespace-nowrap">
           <form id={formId} onSubmit={submit} noValidate className="flex gap-1">
             <Button type="submit" size="sm" disabled={pending} busy={pending}>
@@ -259,7 +266,7 @@ function VariantRow({
       </tr>
       {wrong !== null || writes.add.error !== null || writes.edit.error !== null ? (
         <tr>
-          <td colSpan={5} className="pb-2">
+          <td colSpan={mayViewCost ? 5 : 4} className="pb-2">
             {wrong !== null ? (
               <p id={`${formId}-error`} role="alert" className="text-destructive text-sm">
                 {t(`errors.${wrong}`)}

@@ -17,10 +17,11 @@ export function conflictOf(error: unknown): ProductConflict | null {
 export interface HistoryCounts {
   orderItems: number
   inventoryMovements: number
+  inventoryLevels: number
   media: number
 }
 
-// What a refused delete says holds the product: the number of order lines, stock movements and files
+// What a refused delete says holds the product: the number of order lines, stock movements, stock levels and files
 export function historyCountsOf(error: unknown): HistoryCounts {
   const metadata = error instanceof ApiError ? error.metadata : {}
   const count = (key: string): number => {
@@ -30,6 +31,7 @@ export function historyCountsOf(error: unknown): HistoryCounts {
   return {
     orderItems: count(ProductHistoryTables.ORDER_ITEMS),
     inventoryMovements: count(ProductHistoryTables.INVENTORY_MOVEMENTS),
+    inventoryLevels: count(ProductHistoryTables.INVENTORY_LEVELS),
     media: count(ProductHistoryTables.MEDIA)
   }
 }

@@ -30,6 +30,7 @@ export const ClientPermissions = {
   PRODUCTS_DELETE: 'products:delete',
   PRODUCTS_EDIT: 'products:edit',
   PRODUCTS_VIEW: 'products:view',
+  PRODUCTS_VIEW_COST: 'products:view_cost',
   SETTINGS_EDIT: 'settings:edit',
   SETTINGS_MANAGE_PLUGINS: 'settings:manage_plugins',
   SETTINGS_MANAGE_PREFERENCES: 'settings:manage_preferences',
