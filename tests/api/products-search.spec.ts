@@ -173,6 +173,59 @@ describe('The search of products for the autocomplete', () => {
       ])
     })
 
+    it('shows a product as itself, with no variant, when its own name or sku matched', async () => {
+      const word = `pick${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: `Plain ${word}x` })
+      const own = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Other thing`,
+        sku: word.toUpperCase()
+      })
+      await createProductVariant(owner, { productId: product.id, name: `A ${word} mini` })
+      await createProductVariant(owner, { productId: own.id, name: `${word} variant` })
+
+      const found = await search(word)
+
+      const byProduct = new Map(found.data.map(item => [item.id, item]))
+      // `product` matched by its name: shown as itself
+      expect(byProduct.get(product.id)?.matchedVariant).toBeNull()
+      // `own` matched by its exact sku: shown as itself too, and ranked first
+      expect(byProduct.get(own.id)?.matchedVariant).toBeNull()
+      expect(found.data[0]?.id).toBe(own.id)
+    })
+
+    it('picks, among the variants that match, the one whose sku is the text', async () => {
+      const word = `sk${randomUUID().slice(0, 6)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Shirt plain' })
+      await createProductVariant(owner, { productId: product.id, name: `A ${word} mini` })
+      const exact = await createProductVariant(owner, {
+        productId: product.id,
+        name: 'Large',
+        sku: word
+      })
+
+      const found = await search(word)
+
+      expect(found.data[0]?.matchedVariant?.id).toBe(exact.id)
+    })
+
+    it('ranks a sku that starts with the text with the names that start with it', async () => {
+      const word = `rk${randomUUID().slice(0, 5)}`
+      const contains = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Aaa cable ${word} 2m`
+      })
+      const bySku = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: 'Zzz plain',
+        sku: `${word}-100`
+      })
+
+      const found = await search(word)
+
+      expect(found.data.map(item => item.id)).toEqual([bySku.id, contains.id])
+    })
+
     it('answers with the small shape the autocomplete needs and nothing else', async () => {
       await createProduct(owner, { storeId: ctx.storeA.id, name: `${tag} Shape` })
 
@@ -282,7 +335,7 @@ describe('The search of products for the autocomplete', () => {
 
     it('answers an empty list, without searching, for a text shorter than the minimum', async () => {
       expect(ProductSearchConfig.MIN_QUERY_LENGTH).toBe(2)
-      for (const text of ['', ' ', 'a', ' a ', 'A']) {
+      for (const text of ['', ' ', 'a', ' a ', 'A', '😀', '𝒜']) {
         const found = await search(text)
         expect(found.status).toBe(OK)
         expect(found.data).toEqual([])

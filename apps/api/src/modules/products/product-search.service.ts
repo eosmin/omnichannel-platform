@@ -22,8 +22,9 @@ const rowSchema = z.object({
   variant_price_cents: z.number().nullable()
 })
 
-// The autocomplete of the products of the store of the request. The store comes from TenantGuard and is the first
-// condition of every part of the statement; the text is ALWAYS a bind parameter, with the wildcards of LIKE
+// The autocomplete of the products of the store of the request. The store comes from TenantGuard and filters the
+// products; the variants are only ever read through those products (`v.product_id = p.id|h.id`), so a variant of
+// another store cannot come in. The text is ALWAYS a bind parameter, with the wildcards of LIKE
 // (% _ and the backslash) escaped, so it is only ever read as the characters it is.
 @Injectable()
 export class ProductSearchService {
@@ -32,14 +33,15 @@ export class ProductSearchService {
   async search(storeId: string, query: SearchProductsQuery): Promise<ProductSuggestions> {
     const text = query.q
     // Too short to be a name: nothing is asked of the database
-    if (text.length < ProductSearchConfig.MIN_QUERY_LENGTH) return { data: [] }
+    // Characters, not UTF-16 units: one emoji is one character
+    if ([...text].length < ProductSearchConfig.MIN_QUERY_LENGTH) return { data: [] }
 
     const escaped = escapeLike(text)
     const contains = `%${escaped}%`
     const startsWith = `${escaped}%`
-    const exact = text.toLowerCase()
     const archived = query.includeArchived
-    // `ESCAPE '\'` names the escape character, so that the result does not depend on a server setting. Everything
+    // `ESCAPE '\'` names the escape character (a plain string literal: `standard_conforming_strings` is on, the default
+    // of Postgres since 9.1 and what the platform's databases run with). Everything
     // that changes is a bind parameter, the text and the flag alike: no piece of the statement is built from input.
     const rows = await this.prisma.client.$queryRaw<unknown[]>`
       SELECT
@@ -50,12 +52,12 @@ export class ProductSearchService {
         SELECT
           p.id, p.name, p.sku, p.price_cents, p.image_media_id, p.active,
           CASE
-            WHEN lower(p.sku) = ${exact} THEN 0
+            WHEN lower(p.sku) = lower(${text}) THEN 0
             WHEN EXISTS (
               SELECT 1 FROM product_variants v
-              WHERE v.product_id = p.id AND lower(v.sku) = ${exact} AND (${archived}::boolean OR v.active)
+              WHERE v.product_id = p.id AND lower(v.sku) = lower(${text}) AND (${archived}::boolean OR v.active)
             ) THEN 0
-            WHEN p.name ILIKE ${startsWith} ESCAPE '\\' THEN 1
+            WHEN p.name ILIKE ${startsWith} ESCAPE '\\' OR p.sku ILIKE ${startsWith} ESCAPE '\\' THEN 1
             ELSE 2
           END AS rank
         FROM products p
@@ -78,9 +80,15 @@ export class ProductSearchService {
         SELECT v.id, v.name, v.sku, v.price_cents
         FROM product_variants v
         WHERE v.product_id = h.id
+          -- A product that matched by itself (its name or its sku) is shown as itself: the variant is only
+          -- named when it is the reason the product is in the answer
+          AND NOT (
+            h.name ILIKE ${contains} ESCAPE '\\'
+            OR coalesce(h.sku ILIKE ${contains} ESCAPE '\\', false)
+          )
           AND (v.name ILIKE ${contains} ESCAPE '\\' OR v.sku ILIKE ${contains} ESCAPE '\\')
           AND (${archived}::boolean OR v.active)
-        ORDER BY (lower(v.sku) = ${exact}) DESC, v.name, v.id
+        ORDER BY coalesce(lower(v.sku) = lower(${text}), false) DESC, v.name, v.id
         LIMIT 1
       ) mv ON TRUE
       ORDER BY h.rank, h.name, h.id
