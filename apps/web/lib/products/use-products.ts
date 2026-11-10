@@ -42,9 +42,9 @@ import { MediaPurpose } from '@platform/core/storage'
 import { apiClient } from '../api'
 import { uploadToUrl } from '../media/upload-to-url'
 
-// The filter of the catalog page: the products the store sells, the archived ones or both
-export const ProductFilters = { ALL: 'all', ACTIVE: 'active', ARCHIVED: 'archived' } as const
-export type ProductFilter = (typeof ProductFilters)[keyof typeof ProductFilters]
+import { ProductFilters, type ProductFilter } from './product-filter'
+
+export { ProductFilters, type ProductFilter }
 
 const ACTIVE_OF: Record<ProductFilter, boolean | undefined> = {
   [ProductFilters.ALL]: undefined,
