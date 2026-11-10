@@ -1,4 +1,4 @@
-import { normalizePhone } from './phone'
+import { nationalPhoneNumber, normalizePhone } from './phone'
 
 describe('normalizePhone', () => {
   it('reads a number with its country code', () => {
@@ -42,5 +42,27 @@ describe('normalizePhone', () => {
     const forms = ['+50371234567', '+503 7123 4567', '(503) 7123-4567', '7123 4567']
     // Each form gives the same digits, and they are the digits of the number
     expect(forms.map(form => normalizePhone(form)?.digits)).toEqual(forms.map(() => '50371234567'))
+  })
+})
+
+describe('nationalPhoneNumber', () => {
+  it('drops the country code of a stored number', () => {
+    expect(nationalPhoneNumber('50371234567')).toBe('71234567')
+  })
+
+  it('reads the country from the digits, not from a default', () => {
+    // Mexico: +52 with a ten-digit national number
+    expect(nationalPhoneNumber('525512345678')).toBe('5512345678')
+  })
+
+  it('gives what normalizePhone stored, back as the national number', () => {
+    const stored = normalizePhone('7123-4567')?.digits ?? ''
+    expect(nationalPhoneNumber(stored)).toBe('71234567')
+  })
+
+  it('refuses what is not a valid number', () => {
+    expect(nationalPhoneNumber('123')).toBeNull()
+    expect(nationalPhoneNumber('')).toBeNull()
+    expect(nationalPhoneNumber('not digits')).toBeNull()
   })
 })

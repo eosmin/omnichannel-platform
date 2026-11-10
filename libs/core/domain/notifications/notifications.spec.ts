@@ -117,6 +117,8 @@ describe('NotificationTypesWithoutEmitter', () => {
   it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
     for (const type of [
       NotificationTypes.ORDER_CREATED,
+      // Declared in Step 4.3 PR A, raised by the orders service of PR B, which then takes it off this list
+      NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
       NotificationTypes.TRANSFER_DISPATCHED,
       NotificationTypes.COUNT_AWAITING_APPLY,
       NotificationTypes.REMITTANCE_OVERDUE,
@@ -140,5 +142,18 @@ describe('NotificationTypesWithoutEmitter', () => {
   it('only names types that exist', () => {
     const all = new Set<string>(Object.values(NotificationTypes))
     for (const type of NotificationTypesWithoutEmitter) expect(all.has(type)).toBe(true)
+  })
+})
+
+describe('the packing note notice', () => {
+  it('is an order notification that warns, and reaches people away from the app', () => {
+    expect(NotificationDefaults[NotificationTypes.ORDER_PACKING_NOTE_CHANGED]).toEqual({
+      severity: NotificationSeverity.WARNING,
+      channels: [NotificationChannel.IN_APP, NotificationChannel.PUSH]
+    })
+    expect(NotificationGroupTypes.orders).toContain(NotificationTypes.ORDER_PACKING_NOTE_CHANGED)
+    expect(notificationMessageKey(NotificationTypes.ORDER_PACKING_NOTE_CHANGED)).toBe(
+      'notifications.order.packing_note_changed'
+    )
   })
 })

@@ -700,9 +700,14 @@ model Order {
   currency                   String    @default("USD")
   paymentMethod              String    @map("payment_method") // PaymentMethod
   paymentStatus              String    @default("PENDING") @map("payment_status") // PaymentStatus
+  paymentReference           String?   @map("payment_reference") // The transfer or deposit number of a payment recorded by hand (v1.2: no online payment)
+  paymentProofMediaId        String?   @map("payment_proof_media_id") // The receipt, a file of purpose order; plain column like proofOfDeliveryMediaId
   shippingAddress            Json?     @map("shipping_address")
   customerNotes              String?   @map("customer_notes")
-  internalNotes              String?   @map("internal_notes")
+  internalNotes              String?   @map("internal_notes") // Customer-care note: members with a permission on the order only, never the customer, a channel, a plugin or the label
+  packingNotes               String?   @map("packing_notes") // For whoever packs the order: same audience as internalNotes, and the warehouse is told when it changes on a confirmed order
+  recipientPhones            String[]  @default([]) @map("recipient_phones") // National digits, no country code (the carriers take none); the first is the main number (TDD_02 §13)
+  scheduledDeliveryDate      DateTime? @map("scheduled_delivery_date") @db.Date // A calendar day in the store timezone, no time of day (D18)
   trackingNumber             String?   @map("tracking_number")
   cancellationReason         String?   @map("cancellation_reason")
   cancelledBy                String?   @map("cancelled_by")
@@ -736,6 +741,7 @@ model Order {
   @@unique([storeId, orderNumber])
   @@index([storeId, status, createdAt(sort: Desc)])
   @@index([storeId, customerId])
+  @@index([storeId, scheduledDeliveryDate])
   @@index([conversationId])
   @@map("orders")
 }
@@ -760,6 +766,8 @@ model OrderItem {
   allocations OrderItemAllocation[]
 
   @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
   @@map("order_items")
 }
 

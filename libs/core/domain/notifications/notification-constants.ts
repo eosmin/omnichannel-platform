@@ -18,6 +18,8 @@ export const NotificationTypes = {
   ORDER_MESSAGE_NOT_SENT: 'order.message_not_sent',
   ORDER_PRICE_APPROVAL_REQUESTED: 'order.price_approval_requested',
   ORDER_PRICE_OVERRIDDEN: 'order.price_overridden',
+  // The packing note changed after the order was confirmed: the warehouse reads it before it packs
+  ORDER_PACKING_NOTE_CHANGED: 'order.packing_note_changed',
 
   INVENTORY_LOW: 'inventory.low',
   TRANSFER_DISPATCHED: 'transfer.dispatched',
@@ -101,6 +103,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
     channels: [IN_APP, PUSH]
   },
   [NotificationTypes.ORDER_PRICE_OVERRIDDEN]: { severity: INFO, channels: [IN_APP] },
+  [NotificationTypes.ORDER_PACKING_NOTE_CHANGED]: { severity: WARNING, channels: [IN_APP, PUSH] },
   [NotificationTypes.INVENTORY_LOW]: { severity: WARNING, channels: [IN_APP] },
   [NotificationTypes.TRANSFER_DISPATCHED]: { severity: INFO, channels: [IN_APP, PUSH] },
   [NotificationTypes.COUNT_AWAITING_APPLY]: { severity: INFO, channels: [IN_APP] },
@@ -166,7 +169,8 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.ORDER_PAYMENT_FAILED,
     NotificationTypes.ORDER_MESSAGE_NOT_SENT,
     NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
-    NotificationTypes.ORDER_PRICE_OVERRIDDEN
+    NotificationTypes.ORDER_PRICE_OVERRIDDEN,
+    NotificationTypes.ORDER_PACKING_NOTE_CHANGED
   ],
   [INVENTORY]: [
     NotificationTypes.INVENTORY_LOW,

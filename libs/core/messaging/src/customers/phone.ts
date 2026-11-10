@@ -35,3 +35,13 @@ export function normalizePhone(
   if (parsed === undefined || !parsed.isValid() || parsed.ext !== undefined) return null
   return { display: parsed.formatInternational(), digits: parsed.number.slice(1) }
 }
+
+// The national number of a stored phone (`Customer.phoneNormalized`, E.164 digits with no plus): what the carriers take
+// and what Order.recipientPhones holds, with no country code (TDD_02 §13). The country is read from the digits
+// themselves, never assumed, so a Mexican customer keeps their ten digits and a Salvadoran one their eight. A number
+// that is not valid gives null: the form leaves the list empty for the agent to type rather than send a stranger's.
+export function nationalPhoneNumber(digits: string): string | null {
+  const parsed = parsePhoneNumberFromString(`+${digits}`, { extract: false })
+  if (parsed === undefined || !parsed.isValid() || parsed.ext !== undefined) return null
+  return parsed.nationalNumber
+}
