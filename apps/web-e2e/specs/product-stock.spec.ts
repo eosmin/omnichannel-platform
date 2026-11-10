@@ -61,6 +61,8 @@ test.describe('the stock of a product', () => {
     await page.getByRole('button', { name: STOCK.adjust }).first().click()
     const dialog = adjustDialog()
     await expect(dialog).toBeVisible()
+    // The button of the panel header has no row to start from, and the store has two warehouses
+    await dialog.getByLabel(STOCK.dialog.warehouse).selectOption({ label: 'MAIN · Main warehouse' })
     await dialog.getByLabel(STOCK.dialog.action).selectOption({ label: options.action })
     if (options.reason !== undefined) {
       await dialog.getByLabel(STOCK.dialog.reason).selectOption({ label: options.reason })
