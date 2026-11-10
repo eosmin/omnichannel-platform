@@ -59,6 +59,11 @@ describe('healthErrorOfReason', () => {
     expect(healthErrorOfReason(undefined)).toBe(ChannelHealthErrors.CHECK_FAILED)
   })
 
+  it('treats a missing linked account, and its old name, as the plain failure: the login ends before a connection exists', () => {
+    expect(healthErrorOfReason('linked_account_missing')).toBe(ChannelHealthErrors.CHECK_FAILED)
+    expect(healthErrorOfReason('page_without_instagram')).toBe(ChannelHealthErrors.CHECK_FAILED)
+  })
+
   it('never throws for a name it does not know: it is called from the catch of a health check', () => {
     expect(healthErrorOfReason('a_reason_of_a_newer_plugin' as never)).toBe(
       ChannelHealthErrors.CHECK_FAILED

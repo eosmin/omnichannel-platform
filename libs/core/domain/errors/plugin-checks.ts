@@ -6,14 +6,13 @@ export const PluginChecks = {
   TOKEN_NOT_HEADER_SAFE: 'token_not_header_safe',
   ACCOUNT_ID_NOT_NUMERIC: 'account_id_not_numeric',
   ACCOUNT_ID_MISMATCH: 'account_id_mismatch',
-  // Instagram, token of a Page: the Page links no account, or the account it names is not shaped as
-  // Meta documents
+  // The token's parent asset links no account, or the account it names is not shaped as the provider documents
   ACCOUNT_NOT_FOUND: 'account_not_found',
   ACCOUNT_SHAPE_INVALID: 'account_shape_invalid',
-  // The id of the Page the token is of is not digits
-  PAGE_ID_NOT_NUMERIC: 'page_id_not_numeric',
-  // The token is not of the Page recorded for the connection, or none is recorded
-  PAGE_ID_MISMATCH: 'page_id_mismatch',
+  // The id of the parent asset the token is of is not digits
+  PARENT_ID_NOT_NUMERIC: 'parent_id_not_numeric',
+  // The token is not of the parent asset recorded for the connection, or none is recorded
+  PARENT_ID_MISMATCH: 'parent_id_mismatch',
   // Which call of a connect failed: the read of the account (the token's own node) or the subscription of
   // the app (the POST). It does not say Meta refused: a timeout or a 5xx is named the same, and the numbers of
   // Meta's answer (`providerCode`), when there is one, go with it.

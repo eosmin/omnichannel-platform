@@ -20,18 +20,21 @@ export const ChannelConnectFailureReasons = {
   // The provider answered something that is not what its API says
   PROVIDER_ANSWER_UNEXPECTED: 'provider_answer_unexpected',
   SUBSCRIPTION_NOT_CONFIRMED: 'subscription_not_confirmed',
-  // Instagram, through the Page: the account the Page links could not be read
+  // The account the parent asset links could not be read
   ACCOUNT_UNREADABLE: 'account_unreadable',
-  // The Page could not be subscribed to messages (a refusal, a timeout, an outage): the owner tries again, and
+  // The asset could not be subscribed to messages (a refusal, a timeout, an outage): the owner tries again, and
   // checks the permissions of the app if it repeats
   SUBSCRIPTION_FAILED: 'subscription_failed',
-  // The subscription of the Page could not be checked: trying again is the whole advice
+  // The subscription could not be checked: trying again is the whole advice
   SUBSCRIPTION_UNREADABLE: 'subscription_unreadable',
   // The provider asks to wait, or did not answer: trying again later is the whole advice
-  // "Connect with Facebook" (Step 7.8): the login ended with nothing the person can connect, with a Page
-  // that links no Instagram account for the channel that needs one, with the person cancelling in the
-  // dialog, or with a state that was reused, expired or never made here
+  // The provider login (Step 7.8): the login ended with nothing the person can connect, with an asset that
+  // links no account for a channel that needs one, with the person cancelling in the dialog, or with a
+  // state that was reused, expired or never made here
   NO_ASSETS: 'no_assets',
+  LINKED_ACCOUNT_MISSING: 'linked_account_missing',
+  // Deprecated alias of LINKED_ACCOUNT_MISSING, kept for one release so a plugin built before the rename
+  // is still believed; no plugin of this repository names it. Remove with the next release (Step 7.9).
   PAGE_WITHOUT_INSTAGRAM: 'page_without_instagram',
   OAUTH_CANCELLED: 'oauth_cancelled',
   OAUTH_EXPIRED: 'oauth_expired',
@@ -59,10 +62,10 @@ export function connectReasonOfCheck(check: PluginCheck): ChannelConnectFailureR
       return ChannelConnectFailureReasons.TOKEN_MALFORMED
     case PluginChecks.ACCOUNT_ID_NOT_NUMERIC:
     case PluginChecks.ACCOUNT_SHAPE_INVALID:
-    case PluginChecks.PAGE_ID_NOT_NUMERIC:
+    case PluginChecks.PARENT_ID_NOT_NUMERIC:
       return ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
     case PluginChecks.ACCOUNT_ID_MISMATCH:
-    case PluginChecks.PAGE_ID_MISMATCH:
+    case PluginChecks.PARENT_ID_MISMATCH:
       return ChannelConnectFailureReasons.OTHER_ACCOUNT
     case PluginChecks.ACCOUNT_NOT_FOUND:
       return ChannelConnectFailureReasons.ACCOUNT_NOT_LINKED

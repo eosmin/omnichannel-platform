@@ -1774,7 +1774,8 @@
         "subscription_failed": "The Page could not be subscribed to messages: try again; if it repeats, check the permissions of the app.",
         "subscription_unreadable": "The subscription of the Page to messages could not be checked. Try again in a few minutes.",
         "no_assets": "Facebook did not show any Page you can connect. Check that you have access to the Page, try again and tick it in the Facebook dialog; if it does not appear, type its ID number.",
-        "page_without_instagram": "This Page has no linked Instagram account. Link one in the Page settings or choose another Page.",
+        "linked_account_missing": "What you chose has no linked account that the channel needs. Link one in the provider settings or choose another option.",
+        "page_without_instagram": "What you chose has no linked account that the channel needs. Link one in the provider settings or choose another option.",
         "oauth_cancelled": "You cancelled the access with Facebook, so nothing was connected. You can try again whenever you like.",
         "oauth_expired": "The access with Facebook could not be completed: it took too long, was already used or the answer was not valid. Start again."
       },
