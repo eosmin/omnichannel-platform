@@ -4,6 +4,7 @@ import { TenancyModule } from '../tenancy'
 
 import { BusinessHoursService } from './business-hours.service'
 import { InboxSettingsService } from './inbox-settings.service'
+import { InventorySettingsService } from './inventory-settings.service'
 import { PreferencesService } from './preferences.service'
 import { SettingsController } from './settings.controller'
 import { SnippetsService } from './snippets.service'
@@ -18,6 +19,7 @@ import { TagsService } from './tags.service'
     SnippetsService,
     BusinessHoursService,
     InboxSettingsService,
+    InventorySettingsService,
     PreferencesService
   ]
 })

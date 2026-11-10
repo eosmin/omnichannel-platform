@@ -31,6 +31,7 @@ import {
   type InboxSettingsView,
   InboxSettingsService
 } from './inbox-settings.service'
+import { type InventorySettingsView, InventorySettingsService } from './inventory-settings.service'
 import { PreferencesService } from './preferences.service'
 import {
   type CreateSnippetBody,
@@ -42,6 +43,8 @@ import {
   putBusinessHoursSchema,
   type UpdateInboxSettingsBody,
   updateInboxSettingsSchema,
+  type UpdateInventorySettingsBody,
+  updateInventorySettingsSchema,
   type UpdateSnippetBody,
   updateSnippetSchema,
   type UpdateTagBody,
@@ -64,6 +67,7 @@ export class SettingsController {
     private readonly snippets: SnippetsService,
     private readonly businessHours: BusinessHoursService,
     private readonly inbox: InboxSettingsService,
+    private readonly inventory: InventorySettingsService,
     private readonly preferences: PreferencesService
   ) {}
 
@@ -221,5 +225,22 @@ export class SettingsController {
     @Req() req: AuthenticatedRequest
   ): Promise<StorePreferences> {
     return this.preferences.update(store.id, body, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @Get(ApiRoutes.settings.inventory)
+  getInventory(@CurrentStore() store: Store): Promise<InventorySettingsView> {
+    return this.inventory.get(store.id)
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @Patch(ApiRoutes.settings.inventory)
+  updateInventory(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateInventorySettingsSchema)) body: UpdateInventorySettingsBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<InventorySettingsView> {
+    return this.inventory.update(store.id, body, actorOf(user, store, req))
   }
 }
