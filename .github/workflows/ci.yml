@@ -472,9 +472,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1]
         # The number of slices, once: the name, E2E_SHARD and the summary read it from here. It must equal the length of the list above
-        total: [4]
+        total: [1]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -550,9 +550,12 @@ jobs:
               | map({file, n: (.cases | length), s: (([.cases[].results[]?.duration] | add // 0) / 1000 | round)})
               | sort_by(-.s)[] | "| \(.file) | \(.n) | \(.s) |"' "$file"
             echo
+            echo '### Slowest cases'
+            jq -r '[.. | objects | select(has("tests")) | {f: .file, t: .title, s: (([.tests[].results[]?.duration] | add // 0) / 1000 | round)}] | sort_by(-.s)[:60][] | "| \(.f) | \(.t) | \(.s) |"' "$file"
+            echo
             echo '### Cases that passed only on a retry'
             jq -r '[.. | objects | select(has("tests")) | select(any(.tests[]; .status == "flaky")) | "- \(.file): \(.title)"] | if length == 0 then "none" else .[] end' "$file"
-          } >> "$GITHUB_STEP_SUMMARY" || echo "::warning::The timing report could not be read"
+          } | tee -a "$GITHUB_STEP_SUMMARY" || echo "::warning::The timing report could not be read"
       - name: Playwright report
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
