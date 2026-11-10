@@ -74,6 +74,9 @@ test.describe('the page of an invitation', () => {
   test('a link that does not exist says so', async ({ page }) => {
     await page.goto(AppPaths.invitation('not-a-real-token'))
 
-    await expect(page.getByRole('alert')).toBeVisible()
+    // The route announcer of Next is also a role=alert: the one that says why is picked by its message
+    await expect(
+      page.getByRole('alert').filter({ hasText: en.errors.TENANT_INVITATION_INVALID })
+    ).toBeVisible()
   })
 })
