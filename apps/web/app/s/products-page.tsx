@@ -15,6 +15,7 @@ import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { formatCents } from '../../lib/products/money'
+import { matchesFilter } from '../../lib/products/product-filter'
 import { matchesProduct } from '../../lib/products/product-search'
 import {
   ProductFilters,
@@ -28,7 +29,7 @@ import { useMountedOnce } from '../../lib/use-mounted-once'
 
 // The panel loads when the first product is opened (or a new one asked for): the form, the pictures and the
 // variants are not needed to read the list
-const SEARCH_DELAY_MS = 300
+const SEARCH_DELAY_MS = 250
 
 const ProductSheet = dynamic(
   () => import('../../components/products/product-sheet').then(module => module.ProductSheet),
@@ -105,13 +106,14 @@ export function ProductsPage(): ReactElement {
   const mayView = can(ClientPermissions.PRODUCTS_VIEW)
   const products = useProductList(storeId, filter, mayView)
   const q = useDebouncedValue(text.trim(), SEARCH_DELAY_MS)
-  const isSearching = q.length >= SEARCH_MIN_CHARS && text.trim().length >= SEARCH_MIN_CHARS
+  const typed = text.trim()
+  const isSearching = typed.length >= SEARCH_MIN_CHARS
   const search = useProductSearch(storeId, q, filter, mayView)
   const loaded = products.data?.pages.flatMap(page => page.data) ?? []
+  // The rows of an earlier text stay on the screen, dimmed, until the answer for the current one arrives
+  const isStale = isSearching && (q !== typed || search.isPlaceholderData)
   const rows: RowView[] = isSearching
-    ? (search.data ?? [])
-        .filter(product => filter !== ProductFilters.ARCHIVED || !product.active)
-        .map(fromSearch)
+    ? (search.data ?? []).filter(product => matchesFilter(filter, product.active)).map(fromSearch)
     : loaded.filter(product => matchesProduct(product, text)).map(fromList)
 
   if (!mayView) {
@@ -200,7 +202,10 @@ export function ProductsPage(): ReactElement {
       ) : null}
 
       {rows.length === 0 ? null : (
-        <div className="overflow-x-auto">
+        <div
+          className={isStale ? 'overflow-x-auto opacity-60' : 'overflow-x-auto'}
+          aria-busy={isStale}
+        >
           <table className="w-full text-left">
             <thead>
               <tr className="border-b text-sm">

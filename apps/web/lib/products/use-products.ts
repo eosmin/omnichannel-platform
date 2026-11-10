@@ -75,8 +75,9 @@ export function useProductList(
 export const SEARCH_MIN_CHARS = 2
 
 // The autocomplete of the api, for the search box of the page. `q` is the text already trimmed and
-// debounced by the caller; under the minimum nothing is asked. Archived products answer unless the filter
-// is Active.
+// debounced by the caller; under the minimum nothing is asked. The Active filter asks the api to leave the
+// archived ones out (so the cap of the answer is spent on products that can show); All and Archived ask for
+// them, and Archived narrows after (the api has no archived-only mode).
 export function useProductSearch(
   storeId: string,
   q: string,

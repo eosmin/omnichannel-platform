@@ -135,12 +135,36 @@ test.describe('the catalog of products', () => {
       .filter({ hasText: 'Size 42' })
       .getByRole('button', { name: PRODUCTS.variants.edit })
       .click()
-    await dialog.getByLabel(PRODUCTS.variants.columns.price).fill('30')
+    // The details form stays mounted behind this tab, so the field is asked of the table
+    await dialog.getByRole('table').getByLabel(PRODUCTS.variants.columns.price).fill('30')
     await dialog.getByRole('button', { name: PRODUCTS.variants.save }).click()
     await expect(dialog.getByRole('row').filter({ hasText: 'Size 42' })).toContainText('$30.00')
 
     const stored = await productNamed(name)
     expect(stored?.variants).toEqual([{ name: 'Size 42', priceCents: 3000 }])
+  })
+
+  test('finds the product by its name and by the name of one of its variants', async () => {
+    await openProducts()
+    const box = page.getByLabel(PRODUCTS.searchLabel)
+
+    // One character is not a search: the list stays as it is, with no error
+    await box.fill('C')
+    await expect(page.getByText(PRODUCTS.failed)).toHaveCount(0)
+    // ... and the list is what it was: the product made above is still in it
+    await expect(page.getByRole('button', { name })).toBeVisible()
+
+    await box.fill(name.slice(0, name.length - 3))
+    await expect(page.getByRole('button', { name })).toBeVisible()
+
+    // A variant answers for its product, and the row says which variant matched
+    await box.fill('Size 42')
+    const row = page.getByRole('row').filter({ hasText: name })
+    await expect(row).toBeVisible()
+    await expect(row).toContainText('Size 42')
+
+    await box.fill(`${name} nothing like it`)
+    await expect(page.getByText(PRODUCTS.noMatches)).toBeVisible()
   })
 
   test('uploads a picture for the product and makes it the cover once it is clean', async () => {
@@ -214,6 +238,13 @@ test.describe('the catalog of products', () => {
     await openProducts()
     await page.getByLabel(PRODUCTS.filter.label).selectOption('archived')
     await expect(page.getByRole('button', { name })).toBeVisible()
+    // The search finds it there too, and not under Active (the api is asked to leave archived products out)
+    await page.getByLabel(PRODUCTS.searchLabel).fill(name)
+    await expect(page.getByRole('button', { name })).toBeVisible()
+    await page.getByLabel(PRODUCTS.filter.label).selectOption('active')
+    await expect(page.getByText(PRODUCTS.noMatches)).toBeVisible()
+    await page.getByLabel(PRODUCTS.searchLabel).fill('')
+    await page.getByLabel(PRODUCTS.filter.label).selectOption('archived')
     await page.getByLabel(PRODUCTS.filter.label).selectOption('active')
     await expect(page.getByRole('button', { name })).toHaveCount(0)
   })
