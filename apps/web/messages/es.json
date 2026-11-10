@@ -1979,7 +1979,8 @@
           "view": "Ver productos",
           "create": "Crear productos",
           "edit": "Editar productos",
-          "delete": "Eliminar productos"
+          "delete": "Eliminar productos",
+          "view_cost": "Ver costos de productos"
         },
         "inventory": {
           "view": "Ver inventario",

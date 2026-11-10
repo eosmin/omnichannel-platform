@@ -119,6 +119,17 @@ export class ProductsService {
     const id = await this.write(() =>
       this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
+        // A product that does not say starts with the default of the store (none until the owner sets one); one that
+        // says null has no alert on purpose. Changing the default later never touches the products that exist.
+        const lowStockThreshold =
+          body.lowStockThreshold === undefined
+            ? ((
+                await tx.storeSettings.findUnique({
+                  where: { storeId },
+                  select: { defaultLowStockThreshold: true }
+                })
+              )?.defaultLowStockThreshold ?? null)
+            : body.lowStockThreshold
         const created = await tx.product.create({
           data: {
             storeId,
@@ -128,9 +139,7 @@ export class ProductsService {
             ...(body.costCents === undefined ? {} : { costCents: body.costCents }),
             ...(body.sku === undefined ? {} : { sku: body.sku }),
             ...(body.trackInventory === undefined ? {} : { trackInventory: body.trackInventory }),
-            ...(body.lowStockThreshold === undefined
-              ? {}
-              : { lowStockThreshold: body.lowStockThreshold }),
+            lowStockThreshold,
             ...(body.active === undefined ? {} : { active: body.active }),
             ...(body.freeShipping === undefined ? {} : { freeShipping: body.freeShipping })
           },
@@ -223,24 +232,23 @@ export class ProductsService {
   async remove(storeId: string, productId: string, actor: Actor): Promise<void> {
     const removed = await this.prisma.transaction(async tx => {
       const product = await lockProduct(tx, storeId, productId)
-      const [orderItems, inventoryMovements, media] = await Promise.all([
+      const [orderItems, inventoryMovements, inventoryLevels, media] = await Promise.all([
         tx.orderItem.count({ where: { productId } }),
         tx.inventoryMovement.count({ where: { storeId, productId } }),
+        tx.inventoryLevel.count({ where: { storeId, productId } }),
         // A file the scan refused or could not clear is never served and nobody can remove it: it does not keep the product
         tx.media.count({
           where: { storeId, productId, status: { in: LIVE_MEDIA_STATUSES } }
         })
       ])
-      if (orderItems > 0 || inventoryMovements > 0 || media > 0) {
-        throw resourceConflict(
-          'a product with orders, stock movements or files cannot be deleted',
-          {
-            conflict: ProductConflicts.HAS_HISTORY,
-            [ProductHistoryTables.ORDER_ITEMS]: orderItems,
-            [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
-            [ProductHistoryTables.MEDIA]: media
-          }
-        )
+      if (orderItems > 0 || inventoryMovements > 0 || inventoryLevels > 0 || media > 0) {
+        throw resourceConflict('a product with orders, stock or files cannot be deleted', {
+          conflict: ProductConflicts.HAS_HISTORY,
+          [ProductHistoryTables.ORDER_ITEMS]: orderItems,
+          [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
+          [ProductHistoryTables.INVENTORY_LEVELS]: inventoryLevels,
+          [ProductHistoryTables.MEDIA]: media
+        })
       }
       await tx.product.delete({ where: { id: productId } })
       this.events.publish(tx, Events.PRODUCT_DELETED, { storeId, productId })

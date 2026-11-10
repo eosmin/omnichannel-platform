@@ -31,6 +31,8 @@ export type ProductConflict = (typeof ProductConflicts)[keyof typeof ProductConf
 export const ProductHistoryTables = {
   ORDER_ITEMS: 'orderItems',
   INVENTORY_MOVEMENTS: 'inventoryMovements',
+  // The stock level of the item in a warehouse (even one at zero): a product that has one is kept, not deleted
+  INVENTORY_LEVELS: 'inventoryLevels',
   MEDIA: 'media'
 } as const
 

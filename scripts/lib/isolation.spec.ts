@@ -1,6 +1,7 @@
 import {
   checkExemptions,
   checkIsolationCoverage,
+  organizationScopedModels,
   planSteps,
   storeScopedModels,
   suiteResources
@@ -58,6 +59,51 @@ describe('storeScopedModels', () => {
 
   it('answers nothing for a schema with no store_id', () => {
     expect(storeScopedModels('model A {\n  id String @id\n}\n')).toEqual([])
+  })
+})
+
+describe('organizationScopedModels', () => {
+  const organizationSchema = `
+model Store {
+  id             String @id
+  organizationId String @map("organization_id")
+}
+
+model Warehouse {
+  id             String @id
+  organizationId String @map("organization_id")
+}
+
+model StoreWarehouse {
+  id             String @id
+  organizationId String @map("organization_id")
+  storeId        String @map("store_id")
+}
+
+model Role {
+  id        String  @id
+  // organizationId String @map("organization_id")
+  name      String
+}
+
+model Spaced {
+  id             String @id
+  organizationId String @map( "organization_id" )
+}
+`
+
+  it('lists the models of an organization that name no store, and leaves the stores themselves out', () => {
+    expect(organizationScopedModels(organizationSchema)).toEqual(['Spaced', 'Warehouse'])
+  })
+
+  it('leaves to the store-scoped list a model that has both columns', () => {
+    expect(organizationScopedModels(organizationSchema)).not.toContain('StoreWarehouse')
+    expect(storeScopedModels(organizationSchema)).toEqual(['StoreWarehouse'])
+  })
+
+  it('ignores a commented-out column and answers nothing for a schema with none', () => {
+    expect(organizationScopedModels(organizationSchema)).not.toContain('Role')
+    expect(organizationScopedModels('model A {\n  id String @id\n}\n')).toEqual([])
   })
 })
 

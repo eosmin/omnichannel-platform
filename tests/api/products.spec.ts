@@ -4,8 +4,8 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { Permissions } from '@platform/core/auth'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { Permissions, RoleNames } from '@platform/core/auth'
+import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
   InventoryMovementType,
   MediaStatus,
@@ -16,11 +16,17 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { createCustomer, createProduct, createProductVariant } from '../builders'
+import {
+  createCustomer,
+  createInventoryLevel,
+  createInventoryMovement,
+  createProduct,
+  createProductVariant
+} from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
-import { seedTestContext, type TestContext } from '../helpers/context'
+import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
@@ -77,10 +83,6 @@ describe('The products of a store', () => {
     ctx = await seedTestContext(owner, app, prefix)
   })
   afterAll(async () => {
-    // A product is held by its movements (no cascade): they go before the store does, even after a failed test
-    await owner.inventoryMovement.deleteMany({
-      where: { store: { organization: { slug: { startsWith: prefix } } } }
-    })
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
@@ -157,6 +159,44 @@ describe('The products of a store', () => {
         freeShipping: true,
         active: false
       })
+    })
+
+    it('starts with the default threshold of the store, unless the body says one, or none', async () => {
+      const store = await ensureStore(owner, ctx.orgA.id, `${prefix}-threshold`)
+      const admin = await createActor(owner, app, {
+        prefix,
+        name: 'threshold-admin',
+        organizationId: ctx.orgA.id,
+        storeId: store.id,
+        roleId: ctx.roleIds[RoleNames.ADMIN]
+      })
+      const agent = api(app, admin, store)
+      const make = async (body: Record<string, unknown>): Promise<ProductBody> =>
+        (await agent.post(ApiRoutes.products.create).send({ name: 'T', priceCents: 1, ...body }))
+          .body as ProductBody
+
+      // Until the owner sets one, no alert
+      expect((await make({})).lowStockThreshold).toBeNull()
+      await owner.storeSettings.update({
+        where: { storeId: store.id },
+        data: { defaultLowStockThreshold: 7 }
+      })
+      const before = await make({ name: 'Before' })
+      expect(before.lowStockThreshold).toBe(7)
+      expect((await make({ lowStockThreshold: 2 })).lowStockThreshold).toBe(2)
+      expect((await make({ lowStockThreshold: 0 })).lowStockThreshold).toBe(0)
+      // Said on purpose: no alert for this one
+      expect((await make({ lowStockThreshold: null })).lowStockThreshold).toBeNull()
+
+      // Changing the default never touches the products that exist
+      await owner.storeSettings.update({
+        where: { storeId: store.id },
+        data: { defaultLowStockThreshold: 9 }
+      })
+      expect(
+        (await agent.get(ApiRoutes.products.byId(before.id))).body as ProductBody
+      ).toMatchObject({ lowStockThreshold: 7 })
+      expect((await make({ name: 'After' })).lowStockThreshold).toBe(9)
     })
 
     it('refuses a body that names the store, or anything else it does not know', async () => {
@@ -565,16 +605,39 @@ describe('The products of a store', () => {
       expect(response.status).toBe(NO_CONTENT)
     })
 
+    it('answers 409 for a product that has a stock level, even at zero, and for a variant that has one', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      const variant = await createProductVariant(owner, { productId: product.id })
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: product.id,
+        variantId: variant.id,
+        warehouseId: ctx.warehouseA.id
+      })
+
+      const variantResponse = await asAdmin().delete(
+        ApiRoutes.products.variantById(product.id, variant.id)
+      )
+      const productResponse = await asAdmin().delete(ApiRoutes.products.byId(product.id))
+
+      for (const response of [variantResponse, productResponse]) {
+        expect(response.status).toBe(CONFLICT)
+        expect(errorOf(response).metadata).toMatchObject({
+          conflict: ProductConflicts.HAS_HISTORY,
+          [ProductHistoryTables.INVENTORY_LEVELS]: 1
+        })
+      }
+      expect(await owner.product.findUnique({ where: { id: product.id } })).not.toBeNull()
+    })
+
     it('answers 409 for a product with stock movements', async () => {
       const product = await createProduct(owner, { storeId: ctx.storeA.id })
-      const movement = await owner.inventoryMovement.create({
-        data: {
-          storeId: ctx.storeA.id,
-          productId: product.id,
-          type: InventoryMovementType.RECEIPT,
-          quantity: 3
-        },
-        select: { id: true }
+      const movement = await createInventoryMovement(owner, {
+        storeId: ctx.storeA.id,
+        productId: product.id,
+        warehouseId: ctx.warehouseA.id,
+        type: InventoryMovementType.RECEIPT,
+        quantity: 3
       })
       expect(movement.id).toBeDefined()
 

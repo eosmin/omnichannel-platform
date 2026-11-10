@@ -7,6 +7,7 @@ import { ISOLATION_EXEMPTIONS } from './isolation-exemptions'
 import {
   checkExemptions,
   checkIsolationCoverage,
+  organizationScopedModels,
   planSteps,
   storeScopedModels,
   suiteResources
@@ -16,10 +17,16 @@ const SCHEMA = 'libs/core/database/prisma/schema.prisma'
 const SUITE = 'tests/security/tenant-isolation.spec.ts'
 const PLAN = 'docs/IMPLEMENTATION_PLAN.md'
 
-const models = storeScopedModels(readFileSync(SCHEMA, 'utf8'))
+const schema = readFileSync(SCHEMA, 'utf8')
+// Store-scoped and organization-scoped (TDD_16 §1, §8): both are tenant data
+const models = [
+  ...new Set([...storeScopedModels(schema), ...organizationScopedModels(schema)])
+].sort()
 // No model at all means that the schema was not read as expected, not that nothing needs a case
 if (models.length === 0) {
-  console.error(`no model with a store_id found in ${SCHEMA}: the schema convention changed?`)
+  console.error(
+    `no model with a store_id or an organization_id found in ${SCHEMA}: the schema convention changed?`
+  )
   exit(1)
 }
 const exemptionProblems = checkExemptions(
@@ -52,11 +59,13 @@ const { uncovered, stale } = checkIsolationCoverage(
 
 if (uncovered.length > 0) {
   console.error(
-    `Models with a store_id and no case in ${SUITE} (add one, or exempt the model with a reason):\n  ${uncovered.join('\n  ')}`
+    `Models with a store_id or an organization_id and no case in ${SUITE} (add one, or exempt the model with a reason):\n  ${uncovered.join('\n  ')}`
   )
 }
 if (stale.length > 0) {
-  console.error(`Entries that match no model with a store_id:\n  ${stale.join('\n  ')}`)
+  console.error(
+    `Entries that match no model with a store_id or an organization_id:\n  ${stale.join('\n  ')}`
+  )
 }
 if (uncovered.length > 0 || stale.length > 0) exit(1)
-console.log(`${models.length} models with a store_id, all covered`)
+console.log(`${models.length} models with a store_id or an organization_id, all covered`)

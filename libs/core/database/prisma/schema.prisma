@@ -26,6 +26,7 @@ model Organization {
   memberships         Membership[]
   invitations         Invitation[]
   dataSubjectRequests DataSubjectRequest[]
+  warehouses          Warehouse[]
 
   @@map("organizations")
 }
@@ -41,42 +42,47 @@ model Store {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  settings            StoreSettings?
-  businessHours       BusinessHours?
-  routingRules        RoutingRule[]
-  memberships         Membership[]
-  invitations         Invitation[]
-  roles               Role[]
-  conversations       Conversation[]
-  messages            Message[]
-  conversationOrigins ConversationOrigin[]
-  messageReactions    MessageReaction[]
-  messageRevisions    MessageRevision[]
-  customers           Customer[]
-  customerIdentities  CustomerIdentity[]
-  customerMerges      CustomerMerge[]
-  orders              Order[]
-  products            Product[]
-  inventoryMovements  InventoryMovement[]
-  tags                Tag[]
-  snippets            Snippet[]
-  media               Media[]
-  channelConnections  ChannelConnection[]
-  pluginInstallations PluginInstallation[]
-  webhooks            Webhook[]
-  apiKeys             ApiKey[]
-  notifications       Notification[]
-  notificationPrefs   NotificationPreference[]
-  retentionSettings   RetentionSettings?
-  scheduledReports    ScheduledReport[]
-  analyticsEvents     AnalyticsEvent[]
-  metricsHourly       MetricHourly[]
-  metricsDaily        MetricDaily[]
-  consentRecords      ConsentRecord[]
-  exports             Export[]
+  organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settings             StoreSettings?
+  businessHours        BusinessHours?
+  routingRules         RoutingRule[]
+  memberships          Membership[]
+  invitations          Invitation[]
+  roles                Role[]
+  conversations        Conversation[]
+  messages             Message[]
+  conversationOrigins  ConversationOrigin[]
+  messageReactions     MessageReaction[]
+  messageRevisions     MessageRevision[]
+  customers            Customer[]
+  customerIdentities   CustomerIdentity[]
+  customerMerges       CustomerMerge[]
+  orders               Order[]
+  products             Product[]
+  inventoryMovements   InventoryMovement[]
+  inventoryLevels      InventoryLevel[]
+  storeWarehouses      StoreWarehouse[]
+  orderItemAllocations OrderItemAllocation[]
+  tags                 Tag[]
+  snippets             Snippet[]
+  media                Media[]
+  channelConnections   ChannelConnection[]
+  pluginInstallations  PluginInstallation[]
+  webhooks             Webhook[]
+  apiKeys              ApiKey[]
+  notifications        Notification[]
+  notificationPrefs    NotificationPreference[]
+  retentionSettings    RetentionSettings?
+  scheduledReports     ScheduledReport[]
+  analyticsEvents      AnalyticsEvent[]
+  metricsHourly        MetricHourly[]
+  metricsDaily         MetricDaily[]
+  consentRecords       ConsentRecord[]
+  exports              Export[]
 
   @@unique([organizationId, slug])
+  // So that a link to a store can name its organization and the database check that they go together (StoreWarehouse)
+  @@unique([organizationId, id])
   @@map("stores")
 }
 
@@ -97,6 +103,10 @@ model StoreSettings {
   returnShippingPayer        String   @default("sender") @map("return_shipping_payer")
   defaultCarrierConnectionId String?  @map("default_carrier_connection_id") // Plain column until Step 4.8
   bulkLabelRetentionDays     Int      @default(7) @map("bulk_label_retention_days")
+  // Inventory (TDD_16 §2, §4.1, §4.4, §4.10): the three are edited in Settings -> Inventory
+  defaultLowStockThreshold   Int?     @map("default_low_stock_threshold") // The threshold a new product starts with; null = none
+  allowNegativeStock         Boolean  @default(false) @map("allow_negative_stock")
+  allowSplitFulfillment      Boolean  @default(false) @map("allow_split_fulfillment")
   updatedAt                  DateTime @updatedAt @map("updated_at")
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -744,9 +754,10 @@ model OrderItem {
   priceOverriddenBy      String? @map("price_overridden_by")
   freeShipping           Boolean @default(false) @map("free_shipping") // Snapshot of Product.freeShipping at order time
 
-  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product         @relation(fields: [productId], references: [id])
-  variant ProductVariant? @relation(fields: [variantId], references: [id])
+  order       Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product               @relation(fields: [productId], references: [id])
+  variant     ProductVariant?       @relation(fields: [variantId], references: [id])
+  allocations OrderItemAllocation[]
 
   @@index([orderId])
   @@map("order_items")
@@ -768,13 +779,16 @@ model Product {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  store      Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  variants   ProductVariant[]
-  inventory  InventoryMovement[]
-  orderItems OrderItem[]
-  media      Media[]
+  store           Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variants        ProductVariant[]
+  inventory       InventoryMovement[]
+  inventoryLevels InventoryLevel[]
+  orderItems      OrderItem[]
+  media           Media[]
 
   @@unique([storeId, sku])
+  // So that the stock of a product can name its store and the database check that they go together
+  @@unique([storeId, id])
   @@index([storeId, active])
   @@map("products")
 }
@@ -791,9 +805,10 @@ model ProductVariant {
   active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  product    Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  inventory  InventoryMovement[]
-  orderItems OrderItem[]
+  product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory       InventoryMovement[]
+  inventoryLevels InventoryLevel[]
+  orderItems      OrderItem[]
 
   @@unique([productId, name])
   @@unique([productId, sku])
@@ -801,23 +816,134 @@ model ProductVariant {
   @@map("product_variants")
 }
 
+// The ledger of stock (TDD_16 §2): append-only, the audit trail of InventoryLevel and the source of reconciliation.
+// `quantity` is always positive and `type` carries the direction. The database refuses UPDATE and DELETE on it to
+// the application roles, and a store with stock cannot be deleted (TDD_16 §4.9: the foreign keys restrict it).
 model InventoryMovement {
-  id        String   @id @default(uuid())
-  storeId   String   @map("store_id")
-  productId String   @map("product_id")
-  variantId String?  @map("variant_id")
-  type      String // InventoryMovementType
-  quantity  Int
-  reference String? // Order id or manual adjustment note
-  createdBy String?  @map("created_by")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  storeId        String   @map("store_id")
+  productId      String   @map("product_id")
+  variantId      String?  @map("variant_id")
+  warehouseId    String   @map("warehouse_id")
+  type           String // InventoryMovementType
+  quantity       Int
+  reason         String? // InventoryAdjustmentReason, set for the manual types
+  note           String?
+  referenceType  String?  @map("reference_type") // InventoryReferenceType
+  referenceId    String?  @map("reference_id")
+  idempotencyKey String   @map("idempotency_key")
+  // The cost of ONE unit, in whole USD cents, for the movements that bring units in (receipts, opening stock,
+  // returns); null for the rest (a reserve has no cost) and for units whose cost is not known. The weighted-average
+  // cost of a level is kept from these (InventoryLevel.valueCents), and FIFO lots can later be built from the receipts
+  // without changing this table.
+  unitCostCents  Int?     @map("unit_cost_cents")
+  onHandAfter    Int      @map("on_hand_after")
+  reservedAfter  Int      @map("reserved_after")
+  createdBy      String?  @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
 
-  store   Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  product Product         @relation(fields: [productId], references: [id])
-  variant ProductVariant? @relation(fields: [variantId], references: [id])
+  store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  product   Product         @relation(fields: [storeId, productId], references: [storeId, id])
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id])
 
+  // The key is the caller's, so it is unique inside a store: tenants never share a namespace
+  @@unique([storeId, idempotencyKey])
   @@index([productId, variantId, type, createdAt(sort: Desc)])
+  @@index([storeId, warehouseId, createdAt(sort: Desc)])
+  @@index([warehouseId])
+  @@index([variantId])
   @@map("inventory_movements")
+}
+
+// A place where stock is kept. It belongs to the ORGANIZATION and can supply several of its stores (TDD_16 §1).
+// The transfers and counts that refer to it (StockTransfer, StockCount) arrive with Steps 4.5 and 4.6.
+model Warehouse {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String
+  code           String // Short, printed on documents. Unique per organization
+  address        Json?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stores       StoreWarehouse[]
+  levels       InventoryLevel[]
+  movements    InventoryMovement[]
+  allocations  OrderItemAllocation[]
+
+  @@unique([organizationId, code])
+  // So that a link can name its organization and the database check that they go together (StoreWarehouse)
+  @@unique([organizationId, id])
+  @@map("warehouses")
+}
+
+// Which warehouses a store sells from; priority 1 is reserved first (TDD_16 §4.1). Both foreign keys carry the
+// organization, so the database itself refuses to link a store to a warehouse of another organization.
+model StoreWarehouse {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  storeId        String @map("store_id")
+  warehouseId    String @map("warehouse_id")
+  priority       Int
+
+  store     Store     @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [organizationId, warehouseId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([storeId, warehouseId])
+  // One warehouse per priority of a store: (store_id, priority) is a DEFERRABLE unique constraint in the raw SQL of the
+  // migration, so that the priorities can be swapped or shifted inside one transaction (Prisma cannot declare it)
+  @@index([warehouseId])
+  @@map("store_warehouses")
+}
+
+// The current stock of one item in one warehouse; variantId is null for a product without variants. Reads use this
+// table and the ledger above is the trail; both change in ONE transaction (TDD_16 §4.2).
+model InventoryLevel {
+  id          String   @id @default(uuid())
+  storeId     String   @map("store_id")
+  productId   String   @map("product_id")
+  variantId   String?  @map("variant_id")
+  warehouseId String   @map("warehouse_id")
+  onHand      Int      @default(0) @map("on_hand")
+  reserved    Int      @default(0)
+  // What the units on hand are worth at their cost, in USD cents (weighted-average costing: the average cost is
+  // this divided by onHand). BigInt because a big stock of a dear item does not fit in 32 bits of cents.
+  valueCents  BigInt   @default(0) @map("value_cents")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  product   Product         @relation(fields: [storeId, productId], references: [storeId, id])
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id])
+
+  @@index([storeId, warehouseId])
+  @@index([productId, variantId])
+  @@index([warehouseId])
+  @@index([variantId])
+  @@map("inventory_levels")
+}
+
+// Which warehouse serves how many units of an order line; with split fulfillment (TDD_16 §4.1) a line can have
+// several. The quantities of a line's allocations add up to OrderItem.quantity (checked by InventoryService).
+model OrderItemAllocation {
+  id          String   @id @default(uuid())
+  storeId     String   @map("store_id")
+  orderItemId String   @map("order_item_id")
+  warehouseId String   @map("warehouse_id")
+  quantity    Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  store     Store     @relation(fields: [storeId], references: [id])
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([orderItemId, warehouseId])
+  @@index([storeId])
+  @@index([warehouseId])
+  @@map("order_item_allocations")
 }
 
 // ============================================================

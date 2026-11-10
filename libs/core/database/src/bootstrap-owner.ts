@@ -1,5 +1,5 @@
 import { RoleNames, RolePresets, type RoleName } from '@platform/core/auth'
-import { MembershipStatus } from '@platform/core/domain'
+import { DefaultWarehouse, FIRST_WAREHOUSE_PRIORITY, MembershipStatus } from '@platform/core/domain'
 
 import type { PrismaClient } from '../generated/client/client'
 
@@ -67,6 +67,73 @@ export async function ensureStore(
   return store
 }
 
+// A warehouse of the organization, by its code: made once, whatever the number of runs
+export async function ensureWarehouse(
+  prisma: PrismaClient,
+  organizationId: string,
+  warehouse: { code: string; name: string }
+): Promise<{ id: string }> {
+  return prisma.warehouse.upsert({
+    where: { organizationId_code: { organizationId, code: warehouse.code } },
+    create: { organizationId, code: warehouse.code, name: warehouse.name },
+    update: {},
+    select: { id: true }
+  })
+}
+
+// Links a store to a warehouse of its organization (the database refuses another organization's). A link that
+// exists is left as it is, priority included; a new one takes the given priority, or the next free one of the store.
+export async function ensureStoreWarehouse(
+  prisma: PrismaClient,
+  ids: { organizationId: string; storeId: string; warehouseId: string },
+  priority?: number
+): Promise<void> {
+  const existing = await prisma.storeWarehouse.findUnique({
+    where: { storeId_warehouseId: { storeId: ids.storeId, warehouseId: ids.warehouseId } },
+    select: { id: true }
+  })
+  if (existing !== null) return
+  const taken = await prisma.storeWarehouse.aggregate({
+    where: { storeId: ids.storeId },
+    _max: { priority: true }
+  })
+  await prisma.storeWarehouse.create({
+    data: { ...ids, priority: priority ?? (taken._max.priority ?? 0) + 1 }
+  })
+}
+
+// The warehouse every store needs to hold stock in. Idempotent and safe in production, and it never undoes what the
+// owner did: the default warehouse is made only when the organization has NO warehouse at all (so a renamed, recoded
+// or unlinked one does not come back as a twin), and the store is linked only when it has no link at all (so a
+// store the owner reorganized keeps its priorities). The link goes to the oldest warehouse of the organization.
+export async function ensureDefaultWarehouse(
+  prisma: PrismaClient,
+  organizationId: string,
+  storeId: string
+): Promise<{ id: string }> {
+  const existing = await prisma.warehouse.findFirst({
+    where: { organizationId },
+    // An active warehouse first: a store is not linked to one the owner switched off
+    orderBy: [{ active: 'desc' }, { createdAt: 'asc' }, { code: 'asc' }],
+    select: { id: true }
+  })
+  const warehouse =
+    existing ??
+    (await ensureWarehouse(prisma, organizationId, {
+      code: DefaultWarehouse.CODE,
+      name: DefaultWarehouse.NAME
+    }))
+  const links = await prisma.storeWarehouse.count({ where: { storeId } })
+  if (links === 0) {
+    await ensureStoreWarehouse(
+      prisma,
+      { organizationId, storeId, warehouseId: warehouse.id },
+      FIRST_WAREHOUSE_PRIORITY
+    )
+  }
+  return warehouse
+}
+
 export async function ensureUser(
   prisma: PrismaClient,
   email: string,
@@ -111,6 +178,7 @@ export async function bootstrapOwner(
     update: {}
   })
   const store = await ensureStore(prisma, organization.id, input.storeName)
+  await ensureDefaultWarehouse(prisma, organization.id, store.id)
   const owner = await ensureUser(prisma, input.ownerEmail, input.ownerName)
   await ensureMembership(prisma, {
     userId: owner.id,

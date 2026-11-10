@@ -61,6 +61,12 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   ])
   // The audit log keeps its rows for the users; the owner may clear them, the api never can
   await owner.auditLog.deleteMany({ where: { user: { email: { startsWith: prefix } } } })
+  // Stock is not deleted with its product or warehouse either (the foreign keys restrict it), and the ledger is the
+  // append-only table: the owner removes what the run wrote before the organization goes
+  const ofRun = { store: { organization: { slug: { startsWith: prefix } } } }
+  await owner.inventoryMovement.deleteMany({ where: ofRun })
+  await owner.inventoryLevel.deleteMany({ where: ofRun })
+  await owner.orderItemAllocation.deleteMany({ where: ofRun })
   // An order is not deleted with its store (it is kept for the tax window), so the owner removes the
   // ones of the run first
   await owner.order.deleteMany({

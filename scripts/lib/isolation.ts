@@ -1,7 +1,11 @@
-// Every model that carries a store_id must be in the tenant isolation suite (TDD_13 §6), or be
-// exempt for a stated reason. The suite lists its resources as { name: 'conversation', create, ... }.
+// Every model that carries a store_id, or an organization_id (the resources of an ORGANIZATION: the warehouses,
+// TDD_16 §1), must be in the tenant isolation suite (TDD_13 §6, TDD_16 §8), or be exempt for a stated reason. The suite lists its resources as { name: 'conversation', create, ... }.
 const MODEL_BLOCK = /^model (\w+) \{([\s\S]*?)^\}/gm
 const STORE_ID_COLUMN = /@map\(\s*"store_id"\s*\)/
+const ORGANIZATION_ID_COLUMN = /@map\(\s*"organization_id"\s*\)/
+// The tenants themselves: a store carries its organization_id because it BELONGS to it, and is what the guards
+// resolve, not a resource they protect (the isolation of the stores is the whole of the suite)
+const TENANT_ROOTS: readonly string[] = ['Store']
 const LINE_COMMENT = /\/\/.*$/gm
 // A resource is an object that starts with its name and then says how to create one: any other
 // `{ name: '...' }` of the file (a body that renames something, for example) is not one
@@ -10,6 +14,22 @@ const SUITE_RESOURCE = /\{\s*name:\s*'([A-Za-z0-9]+)',\s*create:/g
 export function storeScopedModels(schema: string): string[] {
   return [...schema.matchAll(MODEL_BLOCK)]
     .filter(([, , body]) => STORE_ID_COLUMN.test((body ?? '').replace(LINE_COMMENT, '')))
+    .map(([, name]) => name ?? '')
+    .sort()
+}
+
+// The models of an organization that name no store: they are visible to the members of any store of the
+// organization, and a member of another organization must never reach them
+export function organizationScopedModels(schema: string): string[] {
+  return [...schema.matchAll(MODEL_BLOCK)]
+    .filter(([, name, body]) => {
+      const columns = (body ?? '').replace(LINE_COMMENT, '')
+      return (
+        !TENANT_ROOTS.includes(name ?? '') &&
+        ORGANIZATION_ID_COLUMN.test(columns) &&
+        !STORE_ID_COLUMN.test(columns)
+      )
+    })
     .map(([, name]) => name ?? '')
     .sort()
 }

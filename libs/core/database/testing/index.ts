@@ -3,10 +3,13 @@
 export * from './connection-urls'
 export * from './owner-client'
 export {
+  ensureDefaultWarehouse,
   ensureMembership,
   ensureStore,
+  ensureStoreWarehouse,
   ensureSystemRoles,
   ensureUser,
+  ensureWarehouse,
   slugify
 } from '../src/bootstrap-owner'
 export { loadDevFixtures } from '../src/dev-fixtures'
