@@ -2585,6 +2585,7 @@
         "archive": "Archive product",
         "orderItems": "{count, plural, one {# order line} other {# order lines}}",
         "inventoryMovements": "{count, plural, one {# stock movement} other {# stock movements}}",
+        "inventoryLevels": "{count, plural, one {# stock level} other {# stock levels}}",
         "media": "{count, plural, one {# picture} other {# pictures}}"
       }
     },

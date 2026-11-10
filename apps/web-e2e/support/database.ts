@@ -892,6 +892,46 @@ export async function addReadOnlySettingsUser(
     })
 }
 
+// A person who runs the catalog (sees, creates, edits and deletes products) without the permission to see
+// costs: no seeded role but Admin holds PRODUCTS_VIEW_COST, and Admin holds everything, so the case makes one
+// role. Returns what removes it again.
+export async function addCatalogUserWithoutCost(
+  storeId: string,
+  email: string
+): Promise<() => Promise<void>> {
+  const { roleId, userId } = await withOwner(async owner => {
+    const store = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const role = await createRole(owner, {
+      storeId,
+      name: `E2E catalog no cost ${randomUUID().slice(0, 8)}`,
+      permissions: [
+        Permissions.PRODUCTS_VIEW,
+        Permissions.PRODUCTS_CREATE,
+        Permissions.PRODUCTS_EDIT,
+        Permissions.PRODUCTS_DELETE,
+        Permissions.MEDIA_VIEW
+      ]
+    })
+    const user = await ensureUser(owner, email, 'Catalog Without Cost')
+    await ensureMembership(owner, {
+      userId: user.id,
+      organizationId: store.organizationId,
+      storeId,
+      roleId: role.id
+    })
+    return { roleId: role.id, userId: user.id }
+  })
+  return () =>
+    withOwner(async owner => {
+      await owner.membership.deleteMany({ where: { userId } })
+      await owner.user.deleteMany({ where: { id: userId } })
+      await owner.role.deleteMany({ where: { id: roleId } })
+    })
+}
+
 // The one thing a person does before the first screen: a new account with an organization and a
 // store of its own, as the Admin of both (nothing in the product creates the first owner, the
 // bootstrap does). Nothing else in the database is theirs, so what a case does there cannot reach
@@ -943,9 +983,10 @@ export function addCustomerReactionTo(
 export async function productNamed(name: string): Promise<{
   id: string
   priceCents: number
+  costCents: number | null
   active: boolean
   imageMediaId: string | null
-  variants: { name: string; priceCents: number | null }[]
+  variants: { name: string; priceCents: number | null; costCents: number | null }[]
   media: { id: string; purpose: string; storeId: string | null }[]
 } | null> {
   return withOwner(async owner => {
@@ -954,9 +995,13 @@ export async function productNamed(name: string): Promise<{
       select: {
         id: true,
         priceCents: true,
+        costCents: true,
         active: true,
         imageMediaId: true,
-        variants: { select: { name: true, priceCents: true }, orderBy: { createdAt: 'asc' } },
+        variants: {
+          select: { name: true, priceCents: true, costCents: true },
+          orderBy: { createdAt: 'asc' }
+        },
         media: { select: { id: true, purpose: true, storeId: true } }
       }
     })
