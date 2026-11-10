@@ -29,6 +29,8 @@ export type ChannelOAuthSnapshot = {
   // What the page draws the login from (frozen), and the pattern of an account id, compiled
   readonly descriptor: ChannelOAuthDescriptor
   readonly assetId: RegExp
+  // The plugin declared an address that is not the callback of this platform, so its login was turned off
+  readonly redirectRefused: boolean
 } & Pick<
   ChannelOAuth,
   | 'kind'
@@ -37,6 +39,7 @@ export type ChannelOAuthSnapshot = {
   | 'linkedAccount'
   | 'assetIdPattern'
   | 'scopes'
+  | 'redirectUri'
   | 'authorizationUrl'
   | 'exchangeCode'
   | 'grantedScopes'
@@ -56,7 +59,8 @@ export type ChannelOAuthSnapshot = {
 export function snapshotChannelOAuth(
   plugin: ChannelPlugin,
   id: string,
-  ceilingOf: (kind: string) => ReadonlySet<string> | null
+  ceilingOf: (kind: string) => ReadonlySet<string> | null,
+  callbackUrl: string | undefined
 ): ChannelOAuthSnapshot | null {
   const declared: unknown = plugin.oauth
   if (declared === undefined) return null
@@ -81,6 +85,17 @@ export function snapshotChannelOAuth(
   ) {
     refuse('scopes list')
   }
+  // The address the code of a person is sent to: none (the login is off) or exactly the callback of this
+  // platform, which the registry was given. Compared as a string, so a look-alike host, another port or scheme,
+  // a login in the address, another path, a query or a fragment are all a different string. An address that is
+  // not that one never reaches the dialog: the login of THAT plugin is turned off and the registry says so in
+  // its log, because a mismatch is a mistake of configuration (a tunnel that is not API_URL) and must not take
+  // the webhooks and every other channel of the platform down with it. Something that is not text is a broken
+  // declaration and is refused like any other.
+  const declaredRedirect = block['redirectUri']
+  if (declaredRedirect !== null && typeof declaredRedirect !== 'string') refuse('redirect address')
+  const redirectRefused = declaredRedirect !== null && declaredRedirect !== callbackUrl
+  const redirectUri = redirectRefused ? null : (declaredRedirect as string | null)
   const dialogOrigin = block['dialogOrigin']
   if (!isDialogOrigin(dialogOrigin)) refuse('dialog address')
   const providerName = readLocalizedText(block['providerName'])
@@ -127,6 +142,8 @@ export function snapshotChannelOAuth(
     linkedAccount,
     assetIdPattern: assetIdPattern as string,
     kind: kind as ChannelOAuth['kind'],
+    redirectUri,
+    redirectRefused,
     scopes: Object.freeze([...(scopes as string[])]),
     authorizationUrl: functions.authorizationUrl as ChannelOAuth['authorizationUrl'],
     exchangeCode: functions.exchangeCode as ChannelOAuth['exchangeCode'],

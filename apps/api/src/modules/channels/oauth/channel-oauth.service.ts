@@ -92,9 +92,11 @@ export class ChannelOAuthService {
     connectionId?: string
   ): Promise<{ authorizeUrl: string }> {
     const oauth = this.oauthFor(pluginId, storeId)
-    const redirectUri = this.config.redirectUri
+    const redirectUri = oauth?.redirectUri
     // Off, no login for the plugin, or a plugin this store cannot see: all the same answer
-    if (oauth === null || redirectUri === undefined) throw resourceNotFound('channel login')
+    if (oauth === null || redirectUri === null || redirectUri === undefined) {
+      throw resourceNotFound('channel login')
+    }
     // Before the person leaves for the provider: a plugin the store has not installed cannot be connected
     await this.connections.ensureInstalled(storeId, pluginId)
     // A login that repairs a connection says which one in the record of its state, after the connection was
@@ -173,8 +175,8 @@ export class ChannelOAuthService {
     }
     const code = oneOf(query[ChannelOAuthQuery.CODE], CODE_PATTERN)
     const oauth = this.oauthFor(pluginId, storeId)
-    const redirectUri = this.config.redirectUri
-    if (code === undefined || oauth === null || redirectUri === undefined) {
+    const redirectUri = oauth?.redirectUri
+    if (code === undefined || oauth === null || redirectUri === null || redirectUri === undefined) {
       return this.refuse(storeId, ChannelConnectFailureReasons.OAUTH_EXPIRED, 'no code or no login')
     }
     let userToken: unknown

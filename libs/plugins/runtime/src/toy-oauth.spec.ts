@@ -23,6 +23,7 @@ function login(overrides: Record<string, unknown> = {}): ChannelOAuth {
   return {
     kind: ChannelOAuthKinds.AUTHORIZATION_CODE_WITH_ASSETS,
     scopes: ['pages_show_list'],
+    redirectUri: null,
     dialogOrigin: 'https://login.acme.test',
     providerName: { es: 'Acme', en: 'Acme' },
     linkedAccount: null,

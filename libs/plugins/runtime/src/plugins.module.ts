@@ -47,7 +47,10 @@ export class PluginsModule {
         logger: PinoLogger,
         ...plugins: ChannelPlugin[]
       ): Promise<PluginRegistry> => {
-        const registry = new PluginRegistry(logger)
+        const registry = new PluginRegistry(
+          logger,
+          await (await import('@platform/channels/oauth-callback')).oauthCallbackUrl()
+        )
         // Only an instance of the exact class of an official list owns the official ids. The prototype
         // is read, not `constructor`, which an object can set to anything
         const isOfficial = (plugin: ChannelPlugin): boolean =>

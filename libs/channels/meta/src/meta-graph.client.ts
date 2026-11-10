@@ -146,6 +146,11 @@ export interface UploadRequest<T> {
 export class MetaGraphClient {
   constructor(private readonly config: MetaAppConfig) {}
 
+  // Where Meta sends the browser back after the login, or null where the login is off
+  get oauthRedirectUri(): string | null {
+    return this.config.oauthRedirectUri ?? null
+  }
+
   // The secret is the one of the app that sends the webhook. Instagram's own app, when there is one, is
   // the only key for Instagram: the main key does not also pass there, or a leak of either would forge
   // what the other signs. Every other channel answers to the main key alone. The app is a required

@@ -41,6 +41,11 @@ export interface ChannelOAuth {
   // The permissions the dialog asks for, as the provider names them. Checked by the registry: a list, no
   // repeats, each a plain permission name, because the list ends up in an address.
   readonly scopes: readonly string[]
+  // The address the provider sends the browser back to, which the plugin's app registered with the provider:
+  // null where the login is off (the app is not configured for it). It must be the callback of this platform
+  // exactly (its public origin, the api prefix and the callback route); the registry refuses any other address
+  // at registration, so a plugin cannot carry the code of a person anywhere else.
+  readonly redirectUri: string | null
   // The address of the provider's dialog for this `state`. Pure: it reads the plugin's own app id and
   // calls nothing. The core made `state` (256 random bits) and `redirectUri` (its callback), and the
   // plugin only places them, so it cannot weaken the state.

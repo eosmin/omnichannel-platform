@@ -412,6 +412,7 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     linkedAccount: null,
     assetIdPattern: '^\\d{1,32}$',
     authorizationUrl: () => 'https://dialog.example/x',
+    redirectUri: null,
     exchangeCode: () => Promise.resolve('user-token'),
     grantedScopes: () => Promise.resolve(['pages_show_list']),
     listAssets: () => Promise.resolve([]),
@@ -465,6 +466,28 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     expect(codeOf(() => registry.register(channel({ id: 'telegram', oauth: wide })))).toBe(
       ErrorCodes.PLUGIN_CONTRACT_VIOLATION
     )
+  })
+
+  it('keeps the plugin but turns its login off, and says so, when the login sends the code of a person to an address that is not our callback', () => {
+    const callback = 'https://api.example.test/api/v1/channels/oauth/callback'
+    const logger = { setContext: jest.fn(), info: jest.fn(), error: jest.fn() }
+    const registry = new PluginRegistry(logger as unknown as PinoLogger, callback)
+    registerOfficial(registry)
+    const foreign = channel({
+      id: 'telegram',
+      oauth: { ...login, redirectUri: 'https://evil.example/api/v1/channels/oauth/callback' }
+    })
+
+    registry.register(foreign)
+
+    expect(registry.has('telegram')).toBe(true)
+    expect(registry.oauthOf('telegram')?.redirectUri).toBeNull()
+    expect(logger.error).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('evil.example')
+
+    registry.register(channel({ id: 'signal', oauth: { ...login, redirectUri: callback } }))
+    expect(registry.oauthOf('signal')?.redirectUri).toBe(callback)
+    expect(logger.error).toHaveBeenCalledTimes(1)
   })
 
   it('refuses at boot a plugin whose login is malformed', () => {

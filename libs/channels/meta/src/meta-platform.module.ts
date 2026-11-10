@@ -22,6 +22,7 @@ import { MetaGraphClient } from './meta-graph.client'
         return {
           appSecret: env.META_APP_SECRET,
           appId: env.META_APP_ID,
+          oauthRedirectUri: env.META_OAUTH_REDIRECT_URI,
           instagramAppSecret: env.META_INSTAGRAM_APP_SECRET,
           verifyToken: env.META_WEBHOOK_VERIFY_TOKEN,
           graphVersion: env.META_GRAPH_API_VERSION,

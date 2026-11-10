@@ -3,10 +3,13 @@ import type { ChannelOAuth, ChannelPlugin } from '@platform/plugins/sdk'
 
 import { snapshotChannelOAuth } from './oauth-snapshot'
 
+const CALLBACK = 'https://api.example.test/api/v1/channels/oauth/callback'
+
 function oauth(overrides: Partial<ChannelOAuth> = {}): ChannelOAuth {
   return {
     kind: ChannelOAuthKinds.AUTHORIZATION_CODE_WITH_ASSETS,
     scopes: ['pages_show_list', 'pages_messaging'],
+    redirectUri: CALLBACK,
     dialogOrigin: 'https://login.example.test',
     providerName: { es: 'Ejemplo', en: 'Example' },
     linkedAccount: null,
@@ -32,7 +35,7 @@ function refuses(
   ceiling: ReadonlySet<string> | null = CEILING
 ): string | undefined {
   try {
-    snapshotChannelOAuth(plugin(declared), 'messenger', () => ceiling)
+    snapshotChannelOAuth(plugin(declared), 'messenger', () => ceiling, CALLBACK)
   } catch (error) {
     return (error as { message?: string }).message
   }
@@ -41,11 +44,11 @@ function refuses(
 
 describe('snapshotChannelOAuth', () => {
   it('is null for a plugin with no login, which is nearly all of them', () => {
-    expect(snapshotChannelOAuth(plugin(undefined), 'whatsapp', () => null)).toBeNull()
+    expect(snapshotChannelOAuth(plugin(undefined), 'whatsapp', () => null, CALLBACK)).toBeNull()
   })
 
   it('keeps what a well formed login declares', () => {
-    const snapshot = snapshotChannelOAuth(plugin(oauth()), 'messenger', () => CEILING)
+    const snapshot = snapshotChannelOAuth(plugin(oauth()), 'messenger', () => CEILING, CALLBACK)
     expect(snapshot?.kind).toBe('authorization-code-with-assets')
     expect(snapshot?.scopes).toEqual(['pages_show_list', 'pages_messaging'])
   })
@@ -53,7 +56,7 @@ describe('snapshotChannelOAuth', () => {
   it('copies the scopes, so a list the plugin keeps changing grows nothing nobody checked', () => {
     const declared = oauth()
     const scopes = declared.scopes as string[]
-    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING)
+    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING, CALLBACK)
     scopes.push('ads_management')
     expect(snapshot?.scopes).toEqual(['pages_show_list', 'pages_messaging'])
     expect(Object.isFrozen(snapshot?.scopes)).toBe(true)
@@ -63,7 +66,7 @@ describe('snapshotChannelOAuth', () => {
     const declared = oauth({
       listAssets: () => Promise.resolve([{ id: '1', name: 'A', linkedAccount: null }])
     })
-    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING)
+    const snapshot = snapshotChannelOAuth(plugin(declared), 'messenger', () => CEILING, CALLBACK)
     ;(declared as { listAssets: unknown }).listAssets = () => Promise.resolve([])
     await expect(snapshot?.listAssets({ userToken: 't' })).resolves.toHaveLength(1)
   })
@@ -101,7 +104,7 @@ describe('snapshotChannelOAuth', () => {
     it('holds an official plugin (no ceiling) only to the shape of a permission name', () => {
       const scopes = ['pages_show_list', 'a_permission_only_this_provider_has']
       expect(
-        snapshotChannelOAuth(plugin(oauth({ scopes })), 'messenger', () => null)?.scopes
+        snapshotChannelOAuth(plugin(oauth({ scopes })), 'messenger', () => null, CALLBACK)?.scopes
       ).toEqual(scopes)
       expect(refuses({ ...oauth(), scopes: ['Not A Name'] }, null)).toMatch(/scopes/)
     })
@@ -110,7 +113,8 @@ describe('snapshotChannelOAuth', () => {
       const snapshot = snapshotChannelOAuth(
         plugin(oauth({ scopes: ['pages_messaging'] })),
         'acme_chat',
-        () => CEILING
+        () => CEILING,
+        CALLBACK
       )
       expect(snapshot?.scopes).toEqual(['pages_messaging'])
     })
@@ -138,5 +142,86 @@ describe('snapshotChannelOAuth', () => {
     const message = refuses({ ...oauth(), scopes: ['pages_show_list&secret=abc'] })
     expect(message).toContain('"messenger"')
     expect(message).not.toContain('secret=abc')
+  })
+})
+
+describe('the address a login sends the browser back to', () => {
+  const declare = (redirectUri: unknown) => oauth({ redirectUri } as Partial<ChannelOAuth>)
+
+  it('is kept when it is exactly the callback of this platform', () => {
+    expect(
+      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', () => null, CALLBACK)
+        ?.redirectUri
+    ).toBe(CALLBACK)
+  })
+
+  it('may be none, which is a login that is off', () => {
+    expect(
+      snapshotChannelOAuth(plugin(declare(null)), 'messenger', () => null, CALLBACK)?.redirectUri
+    ).toBeNull()
+    expect(
+      snapshotChannelOAuth(plugin(declare(null)), 'messenger', () => null, undefined)?.redirectUri
+    ).toBeNull()
+  })
+
+  // The code of a person is worth a token: every address that is not the callback exactly turns the login of
+  // that plugin off, whoever declared it and however close it looks, and says so (a configuration mistake must
+  // not stop the platform from booting)
+  it.each([
+    ['another site', 'https://evil.example/api/v1/channels/oauth/callback'],
+    ['a look-alike host', 'https://api.example.test.evil.example/api/v1/channels/oauth/callback'],
+    ['a sibling subdomain', 'https://api2.example.test/api/v1/channels/oauth/callback'],
+    ['another port', 'https://api.example.test:8443/api/v1/channels/oauth/callback'],
+    [
+      'a login in the address',
+      'https://user:secret@api.example.test/api/v1/channels/oauth/callback'
+    ],
+    ['another scheme', 'http://api.example.test/api/v1/channels/oauth/callback'],
+    ['a path outside the prefix', 'https://api.example.test/channels/oauth/callback'],
+    ['another route', 'https://api.example.test/api/v1/channels/oauth/other'],
+    ['a query', `${CALLBACK}?next=https://evil.example`],
+    ['a fragment', `${CALLBACK}#x`],
+    ['a trailing slash', `${CALLBACK}/`],
+    ['an upper case host', 'https://API.example.test/api/v1/channels/oauth/callback'],
+    ['text that is not an address', 'callback'],
+    ['an empty text', '']
+  ])('turns the login off when the address has %s', (_name, redirectUri) => {
+    const snapshot = snapshotChannelOAuth(
+      plugin(declare(redirectUri)),
+      'messenger',
+      () => null,
+      CALLBACK
+    )
+    expect(snapshot?.redirectUri).toBeNull()
+    expect(snapshot?.redirectRefused).toBe(true)
+  })
+
+  it.each([
+    ['nothing at all (not even null)', undefined],
+    ['a value that is not text', 7]
+  ])('refuses a declaration whose address is %s', (_name, redirectUri) => {
+    expect(refuses(declare(redirectUri))).toContain('redirect address')
+  })
+
+  it('turns the login off when the platform does not know its own address, and says so', () => {
+    const snapshot = snapshotChannelOAuth(
+      plugin(declare(CALLBACK)),
+      'messenger',
+      () => null,
+      undefined
+    )
+    expect(snapshot?.redirectUri).toBeNull()
+    expect(snapshot?.redirectRefused).toBe(true)
+  })
+
+  it('does not say it refused anything for a login that is off or exact', () => {
+    expect(
+      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', () => null, CALLBACK)
+        ?.redirectRefused
+    ).toBe(false)
+    expect(
+      snapshotChannelOAuth(plugin(declare(null)), 'messenger', () => null, CALLBACK)
+        ?.redirectRefused
+    ).toBe(false)
   })
 })

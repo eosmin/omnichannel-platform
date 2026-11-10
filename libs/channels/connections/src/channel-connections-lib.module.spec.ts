@@ -1,7 +1,5 @@
 import { type ChannelOAuthConfig } from './channel-oauth-config'
 
-const callback = '/api/v1/channels/oauth/callback'
-
 // Only the provider of the login is under test: the module also builds the crypto of the app, which needs the real env
 async function configWith(source: Record<string, string>): Promise<ChannelOAuthConfig> {
   jest.resetModules()
@@ -30,19 +28,9 @@ async function configWith(source: Record<string, string>): Promise<ChannelOAuthC
 }
 
 describe('ChannelConnectionsLibModule, the config of the login', () => {
-  it('has the login off when the provider block says no redirect address', async () => {
+  it('holds the address of the web app and no redirect address: each plugin declares its own', async () => {
     const config = await configWith({ NODE_ENV: 'development' })
-    expect(config.redirectUri).toBeUndefined()
     expect(config.frontendUrl).toBe('http://localhost:3000')
-  })
-
-  it('takes the redirect address from the provider block, validated by its schema', async () => {
-    const config = await configWith({
-      NODE_ENV: 'development',
-      META_APP_ID: '950161111253304',
-      META_APP_SECRET: 's'.repeat(32),
-      META_OAUTH_REDIRECT_URI: `http://localhost:8080${callback}`
-    })
-    expect(config.redirectUri).toBe(`http://localhost:8080${callback}`)
+    expect('redirectUri' in config).toBe(false)
   })
 })

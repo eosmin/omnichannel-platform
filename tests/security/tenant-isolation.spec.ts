@@ -120,8 +120,6 @@ const setPreferencePush = async (
   })
 }
 
-const LOGIN_REDIRECT_URI = 'https://api.example.com/api/v1/channels/oauth/callback'
-
 const resources: IsolationResource[] = [
   {
     name: 'customer',
@@ -698,7 +696,7 @@ describe('Tenant isolation', () => {
     app = await createTestApp([], builder =>
       builder
         .overrideProvider(ChannelOAuthConfig)
-        .useValue({ redirectUri: LOGIN_REDIRECT_URI, frontendUrl: 'https://app.example.com' })
+        .useValue({ frontendUrl: 'https://app.example.com' })
     )
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
@@ -1164,6 +1162,7 @@ describe('Tenant isolation', () => {
           id: LOGIN_PLUGIN,
           oauth: {
             kind: 'authorization-code-with-assets',
+            redirectUri: registry.oauthCallbackUrl ?? null,
             dialogOrigin: 'https://dialog.example',
             providerName: { es: 'Ejemplo', en: 'Example' },
             linkedAccount: null,
