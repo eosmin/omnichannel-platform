@@ -12,6 +12,7 @@ import { AddressesService } from './addresses.service'
 import { CustomerMediaService } from './customer-media.service'
 import { CustomerMergePreviewService } from './customer-merge-preview.service'
 import { CustomerMergeService } from './customer-merge.service'
+import { CustomerOrdersService } from './customer-orders.service'
 import { CustomerTagsService } from './customer-tags.service'
 import { CustomerTimelineService } from './customer-timeline.service'
 import { CustomersController } from './customers.controller'
@@ -34,6 +35,7 @@ import { NotesService } from './notes.service'
     CustomerMergePreviewService,
     CustomerTimelineService,
     CustomerMediaService,
+    CustomerOrdersService,
     CustomerIdentityService
   ],
   exports: [CustomersService, CustomerIdentityService]

@@ -11,6 +11,7 @@ export const MergeFieldSources = {
 // What the activity timeline of a customer is made of (TDD_09 §6). Orders join it in Step 4.3.
 export const CustomerTimelineTypes = {
   CONVERSATION: 'conversation',
+  ORDER: 'order',
   NOTE: 'note',
   MERGE: 'merge'
 } as const

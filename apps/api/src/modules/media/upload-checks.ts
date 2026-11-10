@@ -6,6 +6,7 @@ import {
   type ClientUploadPurpose,
   FILE_SIGNATURE_WINDOW_BYTES,
   MediaPurpose,
+  type MediaPurposeType,
   matchesDeclaredType,
   maxBytesFor,
   QUOTA_WINDOW_MS,
@@ -15,25 +16,69 @@ import {
 } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
-// What a member must hold, besides MEDIA_UPLOAD (the route's), to upload a file for a purpose: attaching a
-// picture to a product changes the product, so it asks for what editing it asks for. A purpose of a
-// client is in this table (it does not compile without), so none is added without saying who may use it.
-const PURPOSE_PERMISSIONS: Record<ClientUploadPurpose, Permission | null> = {
-  [MediaPurpose.MESSAGE]: null,
-  [MediaPurpose.PRODUCT]: Permissions.PRODUCTS_EDIT
+// What a member must hold, besides MEDIA_UPLOAD (the route's), to upload a file for a purpose: every
+// permission of `all`, and one of `any` when it is not empty. Attaching a picture to a product changes the
+// product, so it asks for what editing it asks for. A file of an order (a proof of delivery, a receipt) is
+// attached by who may see the order and edits it or moves its status: asking for ORDERS_VIEW too means the
+// answer for an order id never tells more than reading the order would. A purpose of a client is in this
+// table (it does not compile without), so none is added without saying who may use it.
+interface UploadRule {
+  readonly all: readonly Permission[]
+  readonly any: readonly Permission[]
+}
+const PURPOSE_PERMISSIONS: Record<ClientUploadPurpose, UploadRule> = {
+  [MediaPurpose.MESSAGE]: { all: [], any: [] },
+  [MediaPurpose.PRODUCT]: { all: [Permissions.PRODUCTS_EDIT], any: [] },
+  [MediaPurpose.ORDER]: {
+    all: [Permissions.ORDERS_VIEW],
+    any: [Permissions.ORDERS_EDIT, Permissions.ORDERS_CHANGE_STATUS]
+  }
 }
 
 export function refuseUnlessMayUpload(
   purpose: ClientUploadPurpose,
   held: readonly Permission[]
 ): void {
-  const needed = PURPOSE_PERMISSIONS[purpose]
-  if (needed === null || held.includes(needed)) return
+  const { all, any } = PURPOSE_PERMISSIONS[purpose]
+  const missing = all.filter(permission => !held.includes(permission))
+  const anyMet = any.length === 0 || any.some(permission => held.includes(permission))
+  if (missing.length === 0 && anyMet) return
   throw new PlatformException(
     ErrorCodes.PERMISSION_DENIED,
     'Missing permission for this kind of file',
     HttpStatusCodes.FORBIDDEN,
-    { required: [needed] }
+    { required: [...missing, ...(anyMet ? [] : any)] }
+  )
+}
+
+// What a reader must hold, besides MEDIA_VIEW (the route's), to be given the signed link of a file of a
+// purpose: the proof of a delivery or the receipt of a payment is customer data of an order, so it asks
+// for what viewing orders asks for. Every purpose is listed (it does not compile without), so a purpose
+// that starts to be stored as media cannot be served by default: null says "the route's permission alone".
+// `held` null is a reader that is not a member (a widget visitor): it only gets a purpose with null.
+const READ_PERMISSIONS: Record<MediaPurposeType, Permission | null> = {
+  [MediaPurpose.MESSAGE]: null,
+  [MediaPurpose.ORIGIN]: null,
+  [MediaPurpose.PRODUCT]: null,
+  [MediaPurpose.ORDER]: Permissions.ORDERS_VIEW,
+  [MediaPurpose.AVATAR]: null,
+  [MediaPurpose.EXPORT]: null,
+  [MediaPurpose.SHIPPING_LABEL]: null,
+  [MediaPurpose.BULK_LABELS]: null,
+  [MediaPurpose.REMITTANCE_FILE]: null
+}
+
+export function refuseUnlessMayRead(purpose: string, held: readonly Permission[] | null): void {
+  // A value the table does not know is refused, never served
+  const known = Object.hasOwn(READ_PERMISSIONS, purpose)
+  const needed = known ? READ_PERMISSIONS[purpose as MediaPurposeType] : undefined
+  if (needed === null) return
+  if (needed !== undefined && held !== null && held.includes(needed)) return
+  throw new PlatformException(
+    ErrorCodes.PERMISSION_DENIED,
+    'Missing permission for this kind of file',
+    HttpStatusCodes.FORBIDDEN,
+    { required: needed === undefined ? [] : [needed] }
   )
 }
 

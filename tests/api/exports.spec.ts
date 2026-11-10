@@ -11,7 +11,15 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AuthorType, BulkActions, BulkLimits, ChannelIds, MessageType } from '@platform/core/domain'
+import {
+  AuthorType,
+  BulkActions,
+  BulkLimits,
+  ChannelIds,
+  MessageType,
+  OrderStatus,
+  PaymentMethod
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -196,6 +204,50 @@ describe('Exports', () => {
       // The text of a note is internal: only how many there are leaves
       expect(file).not.toContain('private note text')
       expect(file.endsWith('\r\n')).toBe(true)
+    })
+
+    it('fills the order columns with the figures of the orders the store took on, in cents', async () => {
+      const buyer = await createCustomer(owner, { storeId: ctx.storeA.id, name: 'Buyer Orders' })
+      const idle = await createCustomer(owner, { storeId: ctx.storeA.id, name: 'Idle Orders' })
+      const make = (status: OrderStatus, totalCents: number, createdAt: string) =>
+        owner.order.create({
+          data: {
+            storeId: ctx.storeA.id,
+            customerId: buyer.id,
+            orderNumber: `${prefix}-${randomUUID().slice(0, 8)}`,
+            status,
+            subtotalCents: totalCents,
+            totalCents,
+            paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+            createdBy: ctx.adminA.id,
+            createdAt: new Date(createdAt)
+          }
+        })
+      await make(OrderStatus.CONFIRMED, 1000, '2026-01-01T10:00:00.000Z')
+      await make(OrderStatus.DELIVERED, 2501, '2026-01-03T10:00:00.000Z')
+      // Not counted: not taken on yet, cancelled, returned
+      await make(OrderStatus.PENDING_CONFIRMATION, 7000, '2026-01-04T10:00:00.000Z')
+      await make(OrderStatus.CANCELLED, 9000, '2026-01-05T10:00:00.000Z')
+      await make(OrderStatus.RETURNED, 500, '2026-01-06T10:00:00.000Z')
+      const groupBy = jest.spyOn(app.get(PrismaService, { strict: false }).client.order, 'groupBy')
+
+      const view = await request(ApiRoutes.customers.export)
+      const file = await made(view.id)
+
+      const orderCells = (id: string) =>
+        (file.split('\r\n').find(line => line.startsWith(id)) ?? '').split(',').slice(-5)
+      // orders, total_spent, average_order (1750.5 rounds to 1751), first_order_at, last_order_at
+      expect(orderCells(buyer.id)).toEqual([
+        '2',
+        '3501',
+        '1751',
+        '2026-01-01T10:00:00.000Z',
+        '2026-01-03T10:00:00.000Z'
+      ])
+      expect(orderCells(idle.id)).toEqual(['0', '0', '', '', ''])
+      // One grouped read for the page, not one per customer
+      expect(groupBy).toHaveBeenCalledTimes(1)
+      groupBy.mockRestore()
     })
 
     it('keeps the search text of the list, and audits the file with its row count', async () => {

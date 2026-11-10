@@ -58,6 +58,13 @@ export const ProductImageUpload = {
   CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
 } as const
 
+// A file of an order is the proof of a delivery or the receipt of a payment: a photo or a PDF, nothing that
+// moves or runs. The images are the three the pipeline re-encodes and sanitizes. 10 MB, as a message file.
+export const OrderFileUpload = {
+  MAX_SIZE_BYTES: 10 * 1024 * 1024, // 10 MB
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+} as const
+
 export const AllAllowedContentTypes: ReadonlySet<string> = new Set(
   Object.values(AllowedContentTypes).flat()
 )
