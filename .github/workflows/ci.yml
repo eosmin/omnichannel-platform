@@ -200,7 +200,9 @@ jobs:
           pnpm exec tsx scripts/smoke-email.ts
       - name: Service logs
         if: failure()
-        run: tail -n 40 api.log worker.log
+        run: |
+          tail -n 40 api.log worker.log
+          docker logs --tail 40 clamav || true
       # Last, because it empties the database: the rollbacks must run cleanly, newest first
       - name: Rollbacks run
         run: |
@@ -583,6 +585,9 @@ jobs:
             echo '### Cases that passed only on a retry'
             jq -r '[.. | objects | select(has("tests")) | select(any(.tests[]; .status == "flaky")) | "- \(.file): \(.title)"] | if length == 0 then "none" else .[] end' "$file"
           } >> "$GITHUB_STEP_SUMMARY" || echo "::warning::The timing report could not be read"
+      - name: Log of the virus scanner
+        if: failure()
+        run: docker logs --tail 40 clamav || true
       - name: Playwright report
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
