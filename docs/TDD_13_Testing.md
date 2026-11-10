@@ -809,7 +809,7 @@ export default {
 7. lighthouse                performance budgets (PRs)
 ```
 
-Nx Affected limits steps 1-2 to changed projects. Steps 3-6 always run in full, except that a change that cannot affect the web app skips the slices of the browser suite and `lighthouse` (a `changes` job decides); the browser suite runs in four slices (`e2e-shard (i/4)`, each with its own services) and `e2e-tests`, the required check, is the job that waits for them and passes only when all four passed (or were skipped because the web app is untouched), and `lighthouse` runs on pull requests only.
+Nx Affected limits steps 1-2 to changed projects. Steps 3-6 always run in full, except that a change that cannot affect the web app skips the slices of the browser suite and `lighthouse` (a `changes` job decides); the browser suite runs in five slices (`e2e-shard (i/5)`, each with its own services) and `e2e-tests`, the required check, is the job that waits for them and passes only when all five passed (or were skipped because the web app is untouched), and `lighthouse` runs on pull requests only.
 
 ---
 
