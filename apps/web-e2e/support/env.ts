@@ -14,6 +14,23 @@ delete process.env['DATABASE_REPLICA_URL']
 
 export const isCi = isCiRun()
 
+// The slice of the suite this run owns, `E2E_SHARD=2/4`: CI runs each slice in its own job, with its own database,
+// mailbox and queues, so the specs never share state across slices. Not set, the whole suite runs. A malformed value
+// stops the run instead of silently running everything (or nothing).
+const shardMatch = /^(\d+)\/(\d+)$/.exec(process.env['E2E_SHARD'] ?? '')
+if (
+  process.env['E2E_SHARD'] !== undefined &&
+  process.env['E2E_SHARD'] !== '' &&
+  shardMatch === null
+) {
+  throw new Error(`E2E_SHARD must look like 2/4, got "${process.env['E2E_SHARD']}"`)
+}
+export const shard =
+  shardMatch === null ? undefined : { current: Number(shardMatch[1]), total: Number(shardMatch[2]) }
+if (shard !== undefined && (shard.total < 1 || shard.current < 1 || shard.current > shard.total)) {
+  throw new Error(`E2E_SHARD must have 1 <= slice <= total, got "${process.env['E2E_SHARD']}"`)
+}
+
 // A server that is already listening on the ports of the specs is used only when the person says so:
 // on a laptop it is usually `pnpm dev`, connected to the development database (playwright.shared.ts)
 export const reuseExistingServers = !isCi && process.env['E2E_REUSE_SERVERS'] === '1'

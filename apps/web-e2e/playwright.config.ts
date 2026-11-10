@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 import { englishLocale, webServer } from './playwright.shared'
-import { isCi, WEB_URL } from './support/env'
+import { isCi, shard, WEB_URL } from './support/env'
 
 export default defineConfig({
   testDir: './specs',
@@ -11,6 +11,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: isCi ? 1 : 0,
+  ...(shard === undefined ? {} : { shard }),
   reporter: isCi
     ? [
         ['github'],

@@ -107,7 +107,8 @@ always pinned to SHAs):
   the supported way to share task results between runs; it is a later option, not an MVP dependency.
 - **Docker:** `docker/build-push-action` with the GitHub cache backend (`cache-from` and `cache-to` of `type=gha`,
   one scope per image) in `security-scan`, and the Trivy vulnerability database cached.
-- **Playwright:** the browsers directory cached by Playwright version in `e2e-tests`; system dependencies installed on every run.
+- **Browser suite in slices:** `e2e-shards` runs the Playwright suite in four jobs (`e2e-shard (i/4)`, `E2E_SHARD`), each with its own Postgres, Redis, Mailpit, SeaweedFS and ClamAV; `e2e-tests`, the required check, is an aggregator that waits for them (`if: always()`, red unless all four passed, or were skipped because `changes` says the web app is untouched). Playwright splits by file and by test count, not by duration; the summary of each slice shows its time, and a slice that grows near its 20 minutes is rebalanced from those numbers.
+- **Playwright:** the browsers directory cached by Playwright version in `e2e-shards`; system dependencies installed on every run.
 - **Jobs in parallel:** no `needs` chain between the test jobs, so the wall time is the slowest job, and each job
   that is not needed for a change is skipped with a **job-level `if`** (a `changes` job decides). A job skipped by
   `if` reports success to a required check; a workflow-level `paths` filter would leave the check pending and

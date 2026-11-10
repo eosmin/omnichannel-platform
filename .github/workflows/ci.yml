@@ -462,11 +462,19 @@ jobs:
 
   # The web app against the real api and worker, in a real browser: the bundles that `nx build`
   # writes, the fixtures of the development database, the magic links read from Mailpit. SeaweedFS
-  # is one of the services since Step 3.4 (readiness asks the bucket). A required check: when
-  # `changes` skips it, GitHub counts it as passed.
-  e2e-tests:
+  # is one of the services since Step 3.4 (readiness asks the bucket). The suite runs in four slices
+  # (`E2E_SHARD`), each in its own job with its own services, so the specs never share a database, a
+  # mailbox or a queue across slices. The required check is `e2e-tests`, below, which waits for them.
+  e2e-shards:
+    name: e2e-shard (${{ matrix.shard }}/${{ matrix.total }})
     needs: changes
     if: needs.changes.outputs.web == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+        # The number of slices, once: the name, E2E_SHARD and the summary read it from here. It must equal the length of the list above
+        total: [4]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -522,16 +530,20 @@ jobs:
       - uses: ./.github/actions/web-stack
       # Builds the api, the worker and the web app, starts them, and runs the specs
       - name: End to end specs
+        env:
+          E2E_SHARD: ${{ matrix.shard }}/${{ matrix.total }}
         run: pnpm exec nx run web-e2e:e2e --skip-nx-cache
       # Time per file and the cases that needed their retry, in the summary of the run, from the json of the reporter.
       # It is not uploaded: the json holds the errors and the output of the cases, and the repository is public
       - name: Time of the specs
         if: always()
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.total }}
         run: |
           file=apps/web-e2e/playwright-timing/results.json
           if [ ! -s "$file" ]; then echo "::warning::No timing report at $file"; exit 0; fi
           {
-            echo '### Time per spec file'
+            echo "### Slice $SLICE: $(jq '(.stats.expected // 0) + (.stats.unexpected // 0) + (.stats.flaky // 0) + (.stats.skipped // 0)' "$file") cases, $(jq '((.stats.duration // 0) / 1000 | round)' "$file") s"
             echo '| File | Cases | Seconds |'
             echo '| --- | --- | --- |'
             jq -r '[.suites[] | {file, cases: [.. | objects | select(has("tests")) | .tests[]?] }]
@@ -542,14 +554,47 @@ jobs:
             jq -r '[.. | objects | select(has("tests")) | select(any(.tests[]; .status == "flaky")) | "- \(.file): \(.title)"] | if length == 0 then "none" else .[] end' "$file"
           } >> "$GITHUB_STEP_SUMMARY" || echo "::warning::The timing report could not be read"
       - name: Playwright report
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             apps/web-e2e/playwright-report
             apps/web-e2e/test-results
           retention-days: 7
+
+  # The required check. It keeps the name of the job that used to run the whole suite, and it is the only
+  # place that says what the slices mean: it runs whatever happened upstream (`always()`), so a slice that
+  # failed, was cancelled or was skipped because something before it failed can never read as a pass. The
+  # slices are skipped on purpose only when `changes` finished and says the web app is untouched.
+  e2e-tests:
+    needs: [changes, e2e-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The slices decide
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          WEB: ${{ needs.changes.outputs.web }}
+          SHARDS: ${{ needs.e2e-shards.result }}
+        run: |
+          echo "changes=$CHANGES web=$WEB e2e-shards=$SHARDS"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::The change detection did not succeed ($CHANGES)"
+            exit 1
+          fi
+          if [ "$WEB" = "true" ]; then
+            if [ "$SHARDS" = "success" ]; then exit 0; fi
+            echo "::error::The slices of the suite did not all succeed ($SHARDS)"
+            exit 1
+          fi
+          if [ "$WEB" = "false" ] && [ "$SHARDS" = "skipped" ]; then
+            echo "The web app is untouched: the slices did not run"
+            exit 0
+          fi
+          echo "::error::Unexpected state (web=$WEB, slices=$SHARDS)"
+          exit 1
 
   # The performance budgets of TDD_08 §4.4 over the built app, in the browser of Playwright, signed in
   # with a magic link like e2e-tests. Pull requests only, and not a required check: the numbers of a
