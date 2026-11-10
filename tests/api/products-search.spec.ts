@@ -1,0 +1,545 @@
+import { randomUUID } from 'node:crypto'
+
+import type { INestApplication } from '@nestjs/common'
+
+import { ApiRoutes } from '@platform/core/api'
+import { Permissions } from '@platform/core/auth'
+import type { OwnerClient } from '@platform/core/database-testing'
+import { ProductSearchConfig } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
+
+import { createProduct, createProductVariant } from '../builders'
+import { actorWithPermissions } from '../helpers/actors'
+import { createTestApp } from '../helpers/app'
+import { seedTestContext, type TestContext } from '../helpers/context'
+import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { api } from '../helpers/http'
+
+interface Suggestion {
+  id: string
+  name: string
+  sku: string | null
+  priceCents: number
+  imageMediaId: string | null
+  active: boolean
+  matchedVariant: {
+    id: string
+    name: string
+    sku: string | null
+    priceCents: number | null
+    effectivePriceCents: number
+  } | null
+}
+interface SearchBody {
+  data: Suggestion[]
+}
+
+const OK = 200
+const BAD_REQUEST = 400
+const FORBIDDEN = 403
+
+describe('The search of products for the autocomplete', () => {
+  const prefix = newRunPrefix()
+  let app: INestApplication
+  let owner: OwnerClient
+  let ctx: TestContext
+  // Everything of this run carries this word, so that a search is never answered by another test's rows
+  const tag = `zq${randomUUID().slice(0, 6)}`
+
+  beforeAll(async () => {
+    owner = ownerClient()
+    app = await createTestApp()
+    ctx = await seedTestContext(owner, app, prefix)
+  })
+  afterAll(async () => {
+    await cleanUp(owner, prefix)
+    await app.close()
+    await owner.$disconnect()
+  })
+
+  const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
+  const search = async (
+    q: string,
+    extra: Record<string, unknown> = {}
+  ): Promise<{ status: number; data: Suggestion[]; body: unknown }> => {
+    const response = await asAdmin()
+      .get(ApiRoutes.products.search)
+      .query({ q, ...extra })
+    const body = response.body as SearchBody
+    return { status: response.status, data: body.data ?? [], body: response.body }
+  }
+  const names = (data: Suggestion[]): string[] => data.map(item => item.name)
+
+  describe('what it finds', () => {
+    it('finds a product by a part of its name, whatever the case, and by its sku', async () => {
+      const shoe = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `${tag} Running Shoe`,
+        sku: `${tag}-SHOE-1`,
+        priceCents: 4500
+      })
+
+      const byName = await search(`${tag} RUNNING`)
+      expect(byName.status).toBe(OK)
+      expect(byName.data.map(item => item.id)).toEqual([shoe.id])
+      expect(byName.data[0]).toEqual({
+        id: shoe.id,
+        name: `${tag} Running Shoe`,
+        sku: `${tag}-SHOE-1`,
+        priceCents: 4500,
+        imageMediaId: null,
+        active: true,
+        matchedVariant: null
+      })
+
+      expect((await search(`${tag}-shoe`)).data.map(item => item.id)).toEqual([shoe.id])
+      expect((await search('hoe-1')).data.map(item => item.id)).toContain(shoe.id)
+    })
+
+    it('finds a variant by its name or its sku and says which one matched, with its price', async () => {
+      const product = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `${tag} Jacket`,
+        priceCents: 8000
+      })
+      const red = await createProductVariant(owner, {
+        productId: product.id,
+        name: `${tag} Crimson L`,
+        sku: `${tag}-JKT-RED-L`,
+        priceCents: 8500
+      })
+      await createProductVariant(owner, {
+        productId: product.id,
+        name: `${tag} Navy M`,
+        sku: `${tag}-JKT-NAVY-M`
+      })
+
+      const byVariantName = await search(`${tag} crimson`)
+      expect(byVariantName.data).toHaveLength(1)
+      expect(byVariantName.data[0]).toMatchObject({
+        id: product.id,
+        name: `${tag} Jacket`,
+        matchedVariant: {
+          id: red.id,
+          name: `${tag} Crimson L`,
+          sku: `${tag}-JKT-RED-L`,
+          priceCents: 8500,
+          effectivePriceCents: 8500
+        }
+      })
+
+      const bySku = await search(`${tag}-jkt-navy`)
+      expect(bySku.data).toHaveLength(1)
+      // A variant with no price of its own is sold at the price of its product
+      expect(bySku.data[0]?.matchedVariant).toMatchObject({
+        name: `${tag} Navy M`,
+        priceCents: null,
+        effectivePriceCents: 8000
+      })
+    })
+
+    it('shows a product once, with no variant, when only its own name matches', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: `${tag} Scarf` })
+      await createProductVariant(owner, { productId: product.id, name: 'One size' })
+      await createProductVariant(owner, { productId: product.id, name: 'Kids' })
+
+      const found = await search(`${tag} scarf`)
+
+      expect(found.data.map(item => item.id)).toEqual([product.id])
+      expect(found.data[0]?.matchedVariant).toBeNull()
+    })
+
+    it('puts an exact sku first, then names that start with the text, then the rest, then by name', async () => {
+      const word = `ord${randomUUID().slice(0, 5)}`
+      const contains = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Big ${word} box`
+      })
+      const prefixB = await createProduct(owner, { storeId: ctx.storeA.id, name: `${word} B` })
+      const prefixA = await createProduct(owner, { storeId: ctx.storeA.id, name: `${word} A` })
+      const exact = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Zeta thing`,
+        sku: word.toUpperCase()
+      })
+
+      const found = await search(word)
+
+      expect(found.data.map(item => item.id)).toEqual([
+        exact.id,
+        prefixA.id,
+        prefixB.id,
+        contains.id
+      ])
+    })
+
+    it('shows a product as itself, with no variant, when its own name or sku matched', async () => {
+      const word = `pick${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: `Plain ${word}x` })
+      const own = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Other thing`,
+        sku: word.toUpperCase()
+      })
+      await createProductVariant(owner, { productId: product.id, name: `A ${word} mini` })
+      await createProductVariant(owner, { productId: own.id, name: `${word} variant` })
+
+      const found = await search(word)
+
+      const byProduct = new Map(found.data.map(item => [item.id, item]))
+      // `product` matched by its name: shown as itself
+      expect(byProduct.get(product.id)?.matchedVariant).toBeNull()
+      // `own` matched by its exact sku: shown as itself too, and ranked first
+      expect(byProduct.get(own.id)?.matchedVariant).toBeNull()
+      expect(found.data[0]?.id).toBe(own.id)
+    })
+
+    it('picks, among the variants that match, the one whose sku is the text', async () => {
+      const word = `sk${randomUUID().slice(0, 6)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Shirt plain' })
+      await createProductVariant(owner, { productId: product.id, name: `A ${word} mini` })
+      const exact = await createProductVariant(owner, {
+        productId: product.id,
+        name: 'Large',
+        sku: word
+      })
+
+      const found = await search(word)
+
+      expect(found.data[0]?.matchedVariant?.id).toBe(exact.id)
+    })
+
+    it('ranks a sku that starts with the text with the names that start with it', async () => {
+      const word = `rk${randomUUID().slice(0, 5)}`
+      const contains = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Aaa cable ${word} 2m`
+      })
+      const bySku = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: 'Zzz plain',
+        sku: `${word}-100`
+      })
+
+      const found = await search(word)
+
+      expect(found.data.map(item => item.id)).toEqual([bySku.id, contains.id])
+    })
+
+    it('names the variant whose sku is the text even when the product matched by itself', async () => {
+      const word = `cam${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Shirt ${word}-9`
+      })
+      const variant = await createProductVariant(owner, {
+        productId: product.id,
+        name: 'Large',
+        sku: `${word}-9`
+      })
+
+      const found = await search(`${word}-9`)
+
+      expect(found.data).toHaveLength(1)
+      expect(found.data[0]?.matchedVariant?.id).toBe(variant.id)
+    })
+
+    it('shows a product once, with the best variant, when several of its variants match', async () => {
+      const word = `dup${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Plain shirt' })
+      for (const suffix of ['a', 'b', 'c']) {
+        await createProductVariant(owner, {
+          productId: product.id,
+          name: `${word} ${suffix}`,
+          sku: `${word}-${suffix}`
+        })
+      }
+
+      const found = await search(word)
+
+      expect(found.data).toHaveLength(1)
+      // No sku is exactly the text: the first by name
+      expect(found.data[0]?.matchedVariant?.name).toBe(`${word} a`)
+    })
+
+    it('never names an archived variant of a product that matched through another one', async () => {
+      const word = `arc${randomUUID().slice(0, 5)}`
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Plain shirt' })
+      const live = await createProductVariant(owner, { productId: product.id, name: `${word} red` })
+      await owner.productVariant.create({
+        data: {
+          productId: product.id,
+          name: `${word} blue`,
+          sku: `${word}-BLUE`,
+          attributes: {},
+          active: false
+        }
+      })
+
+      const byName = await search(`${word} blue`)
+      expect(byName.data).toEqual([])
+      // The text matches both names' start; the archived one is never the variant named, nor does its exact sku rank
+      const both = await search(word)
+      expect(both.data).toHaveLength(1)
+      expect(both.data[0]?.matchedVariant?.id).toBe(live.id)
+      const bySku = await search(`${word}-blue`)
+      expect(bySku.data).toEqual([])
+    })
+
+    it('ranks a variant whose name starts with the text above a product that only contains it', async () => {
+      const word = `rojo${randomUUID().slice(0, 4)}`
+      const contains = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `Aaa camisa ${word}`
+      })
+      const withVariant = await createProduct(owner, { storeId: ctx.storeA.id, name: 'Zzz shirt' })
+      await createProductVariant(owner, { productId: withVariant.id, name: `${word} L` })
+
+      const found = await search(word)
+
+      expect(found.data.map(item => item.id)).toEqual([withVariant.id, contains.id])
+    })
+
+    it('keeps the best ranked rows when there are more matches than the limit', async () => {
+      const word = `top${randomUUID().slice(0, 5)}`
+      await owner.product.createMany({
+        data: Array.from({ length: 30 }, (_, index) => ({
+          storeId: ctx.storeA.id,
+          name: `Aaa ${word} ${String(index).padStart(2, '0')}`,
+          priceCents: 100
+        }))
+      })
+      // Last by name, first by rank: an exact sku
+      const exact = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: 'Zzz last by name',
+        sku: word.toUpperCase()
+      })
+
+      const found = await search(word, { limit: 5 })
+
+      expect(found.data).toHaveLength(5)
+      expect(found.data[0]?.id).toBe(exact.id)
+    })
+
+    it('answers with the small shape the autocomplete needs and nothing else', async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: `${tag} Shape` })
+
+      const found = await search(`${tag} shape`)
+
+      expect(Object.keys(found.data[0] ?? {}).sort()).toEqual([
+        'active',
+        'id',
+        'imageMediaId',
+        'matchedVariant',
+        'name',
+        'priceCents',
+        'sku'
+      ])
+    })
+
+    it('leaves archived products and variants out, unless they are asked for', async () => {
+      const archived = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        name: `${tag} Archived thing`,
+        active: false
+      })
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, name: `${tag} Live` })
+      await owner.productVariant.create({
+        data: { productId: product.id, name: `${tag} Hidden size`, attributes: {}, active: false }
+      })
+
+      expect((await search(`${tag} archived`)).data).toEqual([])
+      expect((await search(`${tag} hidden`)).data).toEqual([])
+
+      const withArchived = await search(`${tag} archived`, { includeArchived: 'true' })
+      expect(withArchived.data.map(item => item.id)).toEqual([archived.id])
+      expect(withArchived.data[0]?.active).toBe(false)
+      const variant = await search(`${tag} hidden`, { includeArchived: 'true' })
+      expect(variant.data[0]?.matchedVariant?.name).toBe(`${tag} Hidden size`)
+    })
+  })
+
+  describe('the size of the answer', () => {
+    it('gives the default number of rows, the number asked for, and never more than the ceiling', async () => {
+      const word = `many${randomUUID().slice(0, 5)}`
+      await owner.product.createMany({
+        data: Array.from({ length: ProductSearchConfig.MAX_LIMIT + 5 }, (_, index) => ({
+          storeId: ctx.storeA.id,
+          name: `${word} ${String(index).padStart(3, '0')}`,
+          priceCents: 100
+        }))
+      })
+
+      expect((await search(word)).data).toHaveLength(ProductSearchConfig.DEFAULT_LIMIT)
+      expect((await search(word, { limit: 3 })).data).toHaveLength(3)
+      expect((await search(word, { limit: ProductSearchConfig.MAX_LIMIT })).data).toHaveLength(
+        ProductSearchConfig.MAX_LIMIT
+      )
+      for (const limit of [0, -1, ProductSearchConfig.MAX_LIMIT + 1, 1.5, 'many']) {
+        expect((await search(word, { limit })).status).toBe(BAD_REQUEST)
+      }
+    })
+  })
+
+  describe('a text that is not a name', () => {
+    beforeAll(async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Abc plain' })
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Sale 10% off' })
+      // Unescaped, '10%' would find this one too, and 'snake_c' the next
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Sale 10x off' })
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Snakexcase item' })
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Snake_case item' })
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Back\\slash item' })
+    })
+
+    it.each([
+      ['%'],
+      ['%%'],
+      ['%%%%'],
+      ['_'],
+      ['__'],
+      ['\\'],
+      ['\\\\'],
+      ['%_'],
+      [' % '],
+      ['.*'],
+      ['%a%']
+    ])('returns nothing for %p, which is not a wildcard', async text => {
+      const found = await search(text)
+
+      expect(found.status).toBe(OK)
+      expect(found.data).toEqual([])
+    })
+
+    it('reads % _ and \\ as the characters they are', async () => {
+      expect(names((await search('10%')).data)).toEqual(['Sale 10% off'])
+      expect(names((await search('snake_c')).data)).toEqual(['Snake_case item'])
+      // "a_c" is not "abc": the underscore is not a wildcard
+      expect(names((await search('a_c')).data)).toEqual([])
+      expect(names((await search('k\\s')).data)).toEqual(['Back\\slash item'])
+    })
+
+    it('is not a way into the query: it is a value, never a piece of the statement', async () => {
+      const before = await owner.product.count({ where: { storeId: ctx.storeA.id } })
+
+      for (const text of ["'; DROP TABLE products; --", "' OR '1'='1", '") OR TRUE --']) {
+        const found = await search(text)
+        expect(found.status).toBe(OK)
+        expect(found.data).toEqual([])
+      }
+
+      expect(await owner.product.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
+    })
+
+    it('counts characters and not UTF-16 units: one emoji is too short, an emoji and a letter is a search', async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Gift 😀 box' })
+
+      expect((await search('😀')).data).toEqual([])
+      expect(names((await search('😀 ')).data)).toEqual([])
+      expect(names((await search('😀 b')).data)).toEqual(['Gift 😀 box'])
+      // Sixty characters that are two units each are within the ceiling
+      expect((await search('😀'.repeat(60))).status).toBe(OK)
+      expect((await search('😀'.repeat(ProductSearchConfig.MAX_QUERY_LENGTH + 1))).status).toBe(
+        BAD_REQUEST
+      )
+    })
+
+    it('reads the text as the names were stored: one space for any kind, composed accents', async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: 'Rojo / L café' })
+
+      expect(names((await search('rojo  /\u00a0L')).data)).toEqual(['Rojo / L café'])
+      // "café" typed as e + combining accent finds the composed one
+      expect(names((await search('caf\u0065\u0301')).data)).toEqual(['Rojo / L café'])
+    })
+
+    it('answers an empty list, without searching, for a text shorter than the minimum', async () => {
+      expect(ProductSearchConfig.MIN_QUERY_LENGTH).toBe(2)
+      for (const text of ['', ' ', 'a', ' a ', 'A', '😀', '𝒜']) {
+        const found = await search(text)
+        expect(found.status).toBe(OK)
+        expect(found.data).toEqual([])
+      }
+      // Two characters is a search
+      expect(names((await search('ab')).data)).toContain('Abc plain')
+    })
+
+    it('refuses a request with no text, one that is too long, and a parameter it does not know', async () => {
+      const missing = await asAdmin().get(ApiRoutes.products.search)
+      expect(missing.status).toBe(BAD_REQUEST)
+      expect((missing.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.VALIDATION_FAILED
+      )
+      const long = await search('x'.repeat(ProductSearchConfig.MAX_QUERY_LENGTH + 1))
+      expect(long.status).toBe(BAD_REQUEST)
+      const nul = await search('nul\0')
+      expect(nul.status).toBe(BAD_REQUEST)
+      const stranger = await search('abc', { storeId: ctx.storeB.id })
+      expect(stranger.status).toBe(BAD_REQUEST)
+    })
+
+    it('is served by its own route and not taken for the id of a product', async () => {
+      const response = await asAdmin().get(ApiRoutes.products.search).query({ q: 'ab' })
+
+      expect(response.status).toBe(OK)
+    })
+  })
+
+  describe('the other stores', () => {
+    it('never finds the products or the variants of another store, even by their exact sku', async () => {
+      const word = `foreign${randomUUID().slice(0, 5)}`
+      const foreign = await createProduct(owner, {
+        storeId: ctx.storeB.id,
+        name: `${word} thing`,
+        sku: `${word}-SKU`
+      })
+      await createProductVariant(owner, {
+        productId: foreign.id,
+        name: `${word} variant`,
+        sku: `${word}-VAR`
+      })
+      const sibling = await createProduct(owner, {
+        storeId: ctx.storeA2.id,
+        name: `${word} sibling`
+      })
+
+      for (const text of [word, `${word}-SKU`, `${word}-VAR`, `${word} variant`]) {
+        expect((await search(text)).data).toEqual([])
+      }
+      const fromB = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.products.search)
+        .query({ q: word })
+      expect((fromB.body as SearchBody).data.map(item => item.id)).toEqual([foreign.id])
+      const fromSibling = await api(app, ctx.adminA2, ctx.storeA2)
+        .get(ApiRoutes.products.search)
+        .query({ q: word })
+      expect((fromSibling.body as SearchBody).data.map(item => item.id)).toEqual([sibling.id])
+    })
+  })
+
+  describe('permissions', () => {
+    it('needs products:view, and gives it to a member who only views', async () => {
+      await createProduct(owner, { storeId: ctx.storeA.id, name: `${tag} Visible` })
+      const viewer = await api(app, ctx.viewerA, ctx.storeA)
+        .get(ApiRoutes.products.search)
+        .query({ q: `${tag} visible` })
+      expect(viewer.status).toBe(OK)
+      expect((viewer.body as SearchBody).data).toHaveLength(1)
+
+      const editor = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'search-editor',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.PRODUCTS_EDIT, Permissions.PRODUCTS_CREATE]
+      })
+      const denied = await api(app, editor, ctx.storeA)
+        .get(ApiRoutes.products.search)
+        .query({ q: `${tag} visible` })
+      expect(denied.status).toBe(FORBIDDEN)
+      expect((denied.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.PERMISSION_DENIED
+      )
+    })
+  })
+})

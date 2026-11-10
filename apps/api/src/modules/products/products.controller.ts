@@ -20,6 +20,7 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
+import { ProductSearchService } from './product-search.service'
 import { ProductVariantsService } from './product-variants.service'
 import {
   type CreateProductBody,
@@ -29,13 +30,21 @@ import {
   idSchema,
   type ListProductsQuery,
   listProductsQuerySchema,
+  type SearchProductsQuery,
+  searchProductsQuerySchema,
   type UpdateProductBody,
   updateProductSchema,
   type UpdateVariantBody,
   updateVariantSchema
 } from './products.schemas'
 import { ProductsService } from './products.service'
-import type { ProductDetail, ProductImageView, ProductPage, VariantView } from './products.views'
+import type {
+  ProductDetail,
+  ProductImageView,
+  ProductPage,
+  ProductSuggestions,
+  VariantView
+} from './products.views'
 
 const id = () => new ZodValidationPipe(idSchema)
 
@@ -45,7 +54,8 @@ const id = () => new ZodValidationPipe(idSchema)
 export class ProductsController {
   constructor(
     private readonly products: ProductsService,
-    private readonly variants: ProductVariantsService
+    private readonly variants: ProductVariantsService,
+    private readonly productSearch: ProductSearchService
   ) {}
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
@@ -55,6 +65,16 @@ export class ProductsController {
     @Query(new ZodValidationPipe(listProductsQuerySchema)) query: ListProductsQuery
   ): Promise<ProductPage> {
     return this.products.list(store.id, query)
+  }
+
+  // Declared before `:id`, or "search" would be read as an id
+  @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @Get(ApiRoutes.products.search)
+  search(
+    @CurrentStore() store: { id: string },
+    @Query(new ZodValidationPipe(searchProductsQuerySchema)) query: SearchProductsQuery
+  ): Promise<ProductSuggestions> {
+    return this.productSearch.search(store.id, query)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_CREATE)

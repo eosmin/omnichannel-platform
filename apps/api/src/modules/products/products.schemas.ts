@@ -1,6 +1,12 @@
 import { z } from 'zod'
 
-import { PaginationLimits, ProductLimits, singleLineText } from '@platform/core/domain'
+import {
+  PaginationLimits,
+  plainName,
+  ProductLimits,
+  ProductSearchConfig,
+  singleLineText
+} from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
@@ -94,3 +100,27 @@ export type CreateProductBody = z.infer<typeof createProductSchema>
 export type UpdateProductBody = z.infer<typeof updateProductSchema>
 export type CreateVariantBody = z.infer<typeof createVariantSchema>
 export type UpdateVariantBody = z.infer<typeof updateVariantSchema>
+
+// What the autocomplete asks: a text (required; an empty or short one is a valid request and answers an empty
+// list), how many rows, and whether archived products and variants count. The text is read as the names it is
+// compared with were stored: NFC, every kind of space one space.
+export const searchProductsQuerySchema = z.strictObject({
+  q: z
+    .string()
+    // Cheap bound before anything walks the text: a character is at most two UTF-16 units
+    .max(ProductSearchConfig.MAX_QUERY_LENGTH * 2)
+    .transform(plainName)
+    .refine(value => [...value].length <= ProductSearchConfig.MAX_QUERY_LENGTH, {
+      message: `at most ${ProductSearchConfig.MAX_QUERY_LENGTH} characters`
+    })
+    .refine(value => !value.includes('\0'), { message: 'contains a NUL character' }),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(ProductSearchConfig.MAX_LIMIT)
+    .default(ProductSearchConfig.DEFAULT_LIMIT),
+  includeArchived: flag.default(false)
+})
+
+export type SearchProductsQuery = z.infer<typeof searchProductsQuerySchema>
