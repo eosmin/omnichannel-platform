@@ -907,4 +907,172 @@ describe('The products of a store', () => {
       expect(response.status).toBe(NOT_FOUND)
     })
   })
+  describe('the pictures of a product', () => {
+    async function file(
+      storeId: string,
+      productId: string | null,
+      overrides: Record<string, unknown> = {}
+    ): Promise<string> {
+      const row = await owner.media.create({
+        data: {
+          storeId,
+          productId,
+          purpose: 'product',
+          filename: 'photo.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          key: `${prefix}/${randomUUID()}`,
+          status: 'clean',
+          ...overrides
+        },
+        select: { id: true }
+      })
+      return row.id
+    }
+
+    it('lists the files of the product, oldest first, and no file of another product or kind', async () => {
+      const product = await create({})
+      const other = await create({})
+      const first = await file(ctx.storeA.id, product.id)
+      const second = await file(ctx.storeA.id, product.id, { status: 'pending' })
+      await file(ctx.storeA.id, other.id)
+      await file(ctx.storeA.id, product.id, { purpose: 'message' })
+      await file(ctx.storeA.id, product.id, { status: MediaStatus.INFECTED })
+      await file(ctx.storeA.id, product.id, { status: MediaStatus.UNSCANNABLE })
+
+      const response = await asAdmin().get(ApiRoutes.products.images(product.id))
+
+      expect(response.status).toBe(OK)
+      const ids = (response.body as { id: string; status: string }[]).map(item => item.id)
+      expect(ids).toEqual([first, second])
+    })
+
+    it('answers 404 for the pictures of a product of another store, as for one that does not exist', async () => {
+      const foreign = await createProduct(owner, { storeId: ctx.storeB.id })
+      await file(ctx.storeB.id, foreign.id)
+
+      const theirs = await asAdmin().get(ApiRoutes.products.images(foreign.id))
+      const missing = await asAdmin().get(ApiRoutes.products.images(randomUUID()))
+
+      expect(theirs.status).toBe(NOT_FOUND)
+      expect(missing.status).toBe(NOT_FOUND)
+    })
+
+    it('asks for products:view to list them', async () => {
+      const product = await create({})
+      const nobody = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'noProductsA',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.MEDIA_VIEW]
+      })
+
+      const response = await api(app, nobody, ctx.storeA).get(ApiRoutes.products.images(product.id))
+
+      expect(response.status).toBe(FORBIDDEN)
+    })
+
+    it('sets the cover to a file of the same product, and clears it with null', async () => {
+      const product = await create({})
+      const cover = await file(ctx.storeA.id, product.id)
+
+      const set = await asAdmin()
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ imageMediaId: cover })
+      expect(set.status).toBe(OK)
+      expect((set.body as { imageMediaId: string | null }).imageMediaId).toBe(cover)
+
+      const cleared = await asAdmin()
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ imageMediaId: null })
+      expect((cleared.body as { imageMediaId: string | null }).imageMediaId).toBeNull()
+    })
+
+    it.each([
+      [
+        'a file of another product of the store',
+        async (_product: ProductBody) => {
+          const other = await create({})
+          return file(ctx.storeA.id, other.id)
+        }
+      ],
+      [
+        'a file of a product of another store',
+        async () => {
+          const foreign = await createProduct(owner, { storeId: ctx.storeB.id })
+          return file(ctx.storeB.id, foreign.id)
+        }
+      ],
+      [
+        'a message file',
+        async (product: ProductBody) => file(ctx.storeA.id, product.id, { purpose: 'message' })
+      ],
+      [
+        'a file the scan has not cleared yet',
+        async (product: ProductBody) =>
+          file(ctx.storeA.id, product.id, { status: MediaStatus.PENDING })
+      ],
+      [
+        'a file the scan refused',
+        async (product: ProductBody) =>
+          file(ctx.storeA.id, product.id, { status: MediaStatus.INFECTED })
+      ],
+      ['a file that does not exist', () => Promise.resolve(randomUUID())]
+    ])('refuses %s as the cover with the same 404', async (_name, make) => {
+      const product = await create({})
+      const target = await make(product)
+
+      const response = await asAdmin()
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ imageMediaId: target })
+
+      expect(response.status).toBe(NOT_FOUND)
+      expect(errorOf(response).code).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+      expect(
+        (await owner.product.findUniqueOrThrow({ where: { id: product.id } })).imageMediaId
+      ).toBeNull()
+    })
+
+    it('refuses the whole change when the cover is not valid: the name is not saved either', async () => {
+      const product = await create({ name: `Atomic ${randomUUID().slice(0, 8)}` })
+      const foreign = await createProduct(owner, { storeId: ctx.storeB.id })
+      const target = await file(ctx.storeB.id, foreign.id)
+
+      const response = await asAdmin()
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ name: 'Changed', imageMediaId: target })
+
+      expect(response.status).toBe(NOT_FOUND)
+      expect((await owner.product.findUniqueOrThrow({ where: { id: product.id } })).name).toBe(
+        product.name
+      )
+    })
+
+    it('asks for products:edit to set the cover', async () => {
+      const product = await create({})
+      const cover = await file(ctx.storeA.id, product.id)
+      const viewer = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'viewOnlyCoverA',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.PRODUCTS_VIEW]
+      })
+
+      const response = await api(app, viewer, ctx.storeA)
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ imageMediaId: cover })
+
+      expect(response.status).toBe(FORBIDDEN)
+    })
+
+    it('refuses a cover that is not a UUID', async () => {
+      const product = await create({})
+      const response = await asAdmin()
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ imageMediaId: 'nope' })
+      expect(response.status).toBe(BAD_REQUEST)
+    })
+  })
 })

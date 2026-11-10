@@ -893,6 +893,7 @@
       "label": "Páginas de la tienda",
       "inbox": "Bandeja",
       "customers": "Clientes",
+      "products": "Productos",
       "exports": "Exportaciones",
       "settings": "Ajustes"
     },
@@ -2469,5 +2470,144 @@
       "currency": "la moneda",
       "locale": "el idioma"
     }
+  },
+  "products": {
+    "title": "Productos",
+    "description": "Los datos, las imágenes y las variantes de un producto.",
+    "noAccess": "No tienes acceso a los productos de esta tienda.",
+    "newProduct": "Nuevo producto",
+    "searchLabel": "Buscar productos",
+    "searchPlaceholder": "Buscar por nombre o SKU",
+    "filter": {
+      "label": "Mostrar",
+      "all": "Todos",
+      "active": "Activos",
+      "archived": "Archivados"
+    },
+    "empty": "Esta tienda aún no tiene productos.",
+    "noMatches": "Ningún producto coincide.",
+    "failed": "No se pudieron cargar los productos.",
+    "loadMore": "Mostrar más productos",
+    "none": "Ninguno",
+    "columns": {
+      "name": "Nombre",
+      "sku": "SKU",
+      "price": "Precio",
+      "variants": "Variantes",
+      "status": "Estado"
+    },
+    "status": {
+      "active": "Activo",
+      "archived": "Archivado"
+    },
+    "sheet": {
+      "newTitle": "Nuevo producto",
+      "editTitle": "Producto",
+      "failed": "No se pudo cargar el producto.",
+      "tabs": {
+        "label": "Secciones del producto",
+        "data": "Datos",
+        "images": "Imágenes",
+        "variants": "Variantes"
+      },
+      "saveFirst": "Guarda primero el producto para añadir imágenes y variantes."
+    },
+    "form": {
+      "name": "Nombre",
+      "sku": "SKU",
+      "description": "Descripción",
+      "price": "Precio (USD)",
+      "cost": "Costo (USD)",
+      "costHelp": "Costo de referencia de una unidad. Déjalo vacío si no lo llevas.",
+      "trackInventory": "Llevar el inventario de este producto",
+      "lowStockThreshold": "Avisar con poco inventario en",
+      "lowStockHelp": "Déjalo vacío para no recibir avisos.",
+      "freeShipping": "El precio ya incluye el envío",
+      "active": "Activo, disponible para vender",
+      "create": "Crear producto",
+      "save": "Guardar cambios",
+      "saved": "Cambios guardados",
+      "created": "Producto creado",
+      "unchanged": "No hay nada que guardar.",
+      "archive": "Archivar",
+      "restore": "Restaurar",
+      "archived": "Producto archivado",
+      "restored": "Producto restaurado",
+      "delete": "Eliminar producto",
+      "errors": {
+        "name": "Escribe un nombre.",
+        "price": "Escribe un precio con hasta dos decimales, por ejemplo 19.99.",
+        "cost": "Escribe un costo con hasta dos decimales, o déjalo vacío.",
+        "lowStockThreshold": "Escribe un número entero, o déjalo vacío."
+      }
+    },
+    "delete": {
+      "title": "¿Eliminar este producto?",
+      "body": "“{name}” se eliminará con sus variantes. No se puede deshacer.",
+      "confirm": "Eliminar",
+      "deleted": "Producto eliminado",
+      "history": {
+        "title": "Este producto no se puede eliminar",
+        "body": "Forma parte del historial de la tienda: {parts}. Archívalo: deja de venderse pero conserva su historial.",
+        "archive": "Archivar producto",
+        "orderItems": "{count, plural, one {# línea de pedido} other {# líneas de pedido}}",
+        "inventoryMovements": "{count, plural, one {# movimiento de inventario} other {# movimientos de inventario}}",
+        "media": "{count, plural, one {# imagen} other {# imágenes}}"
+      }
+    },
+    "images": {
+      "heading": "Imágenes",
+      "description": "JPEG, PNG o WebP, de hasta {size} MB cada una.",
+      "upload": "Añadir una imagen",
+      "uploading": "Subiendo",
+      "empty": "Este producto aún no tiene imágenes.",
+      "failed": "No se pudieron cargar las imágenes.",
+      "cover": "Portada",
+      "setCover": "Usar de portada",
+      "clearCover": "Quitar la portada",
+      "checking": "Revisando el archivo",
+      "noPreview": "Sin vista previa",
+      "tileLabel": "Imagen {name}",
+      "noMediaAccess": "No puedes ver las vistas previas de las imágenes."
+    },
+    "variants": {
+      "heading": "Variantes",
+      "description": "Una variante sin precio o costo propio usa los del producto.",
+      "add": "Añadir variante",
+      "empty": "Este producto no tiene variantes: se vende tal cual.",
+      "failed": "No se pudieron cargar las variantes.",
+      "columns": {
+        "name": "Nombre",
+        "sku": "SKU",
+        "price": "Precio (USD)",
+        "cost": "Costo (USD)",
+        "actions": "Acciones"
+      },
+      "usesProduct": "Precio del producto",
+      "usesProductCost": "Costo del producto",
+      "name": "Nombre de la variante",
+      "edit": "Editar",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "delete": "Eliminar",
+      "added": "Variante añadida",
+      "saved": "Variante guardada",
+      "deleted": "Variante eliminada",
+      "deleteTitle": "¿Eliminar esta variante?",
+      "deleteBody": "“{name}” se eliminará. No se puede deshacer.",
+      "unchanged": "No hay nada que guardar.",
+      "errors": {
+        "name": "Escribe un nombre.",
+        "price": "Escribe un precio con hasta dos decimales, o déjalo vacío.",
+        "cost": "Escribe un costo con hasta dos decimales, o déjalo vacío."
+      }
+    },
+    "conflicts": {
+      "sku_in_use": "Otro producto o variante de esta tienda ya usa ese SKU.",
+      "variant_name_in_use": "Este producto ya tiene una variante con ese nombre.",
+      "too_many_variants": "Un producto puede tener hasta {max} variantes.",
+      "has_history": "Este producto forma parte del historial de la tienda, así que no se puede eliminar. Archívalo."
+    },
+    "noMatchesYet": "Ningún producto cargado hasta ahora coincide. Muestra más productos para seguir buscando."
   }
 }

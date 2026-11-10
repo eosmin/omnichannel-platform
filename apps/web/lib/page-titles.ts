@@ -14,6 +14,7 @@ export const PageTitles = {
   notFound: ['notFound.title'],
   inbox: ['shell.nav.inbox'],
   customers: ['shell.nav.customers'],
+  products: ['shell.nav.products'],
   exports: ['shell.nav.exports'],
   settings: ['shell.nav.settings'],
   settingsGeneral: ['settings.nav.store.general', 'shell.nav.settings'],

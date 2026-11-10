@@ -33,6 +33,16 @@ export interface ProductItem {
   updatedAt: Date
 }
 
+// A live picture of a product (not refused by the scan); its links are asked on GET /media/:id
+export interface ProductImageView {
+  id: string
+  filename: string
+  contentType: string
+  fileSize: number
+  status: string
+  createdAt: Date
+}
+
 export interface ProductListItem extends ProductItem {
   variantCount: number
 }

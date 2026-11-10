@@ -893,6 +893,7 @@
       "label": "Store pages",
       "inbox": "Inbox",
       "customers": "Customers",
+      "products": "Products",
       "exports": "Exports",
       "settings": "Settings"
     },
@@ -2469,5 +2470,144 @@
       "currency": "the currency",
       "locale": "the language"
     }
+  },
+  "products": {
+    "title": "Products",
+    "description": "The details, pictures and variants of a product.",
+    "noAccess": "You do not have access to the products of this store.",
+    "newProduct": "New product",
+    "searchLabel": "Search products",
+    "searchPlaceholder": "Search by name or SKU",
+    "filter": {
+      "label": "Show",
+      "all": "All",
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "empty": "This store has no products yet.",
+    "noMatches": "No product matches.",
+    "failed": "The products could not be loaded.",
+    "loadMore": "Show more products",
+    "none": "None",
+    "columns": {
+      "name": "Name",
+      "sku": "SKU",
+      "price": "Price",
+      "variants": "Variants",
+      "status": "Status"
+    },
+    "status": {
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "sheet": {
+      "newTitle": "New product",
+      "editTitle": "Product",
+      "failed": "The product could not be loaded.",
+      "tabs": {
+        "label": "Sections of the product",
+        "data": "Details",
+        "images": "Pictures",
+        "variants": "Variants"
+      },
+      "saveFirst": "Save the product first to add pictures and variants."
+    },
+    "form": {
+      "name": "Name",
+      "sku": "SKU",
+      "description": "Description",
+      "price": "Price (USD)",
+      "cost": "Cost (USD)",
+      "costHelp": "Reference cost of one unit. Leave empty if you do not track it.",
+      "trackInventory": "Track the stock of this product",
+      "lowStockThreshold": "Low stock alert at",
+      "lowStockHelp": "Leave empty for no alert.",
+      "freeShipping": "The price already includes shipping",
+      "active": "Active, available to sell",
+      "create": "Create product",
+      "save": "Save changes",
+      "saved": "Changes saved",
+      "created": "Product created",
+      "unchanged": "Nothing to save.",
+      "archive": "Archive",
+      "restore": "Restore",
+      "archived": "Product archived",
+      "restored": "Product restored",
+      "delete": "Delete product",
+      "errors": {
+        "name": "Write a name.",
+        "price": "Write a price with up to two decimals, for example 19.99.",
+        "cost": "Write a cost with up to two decimals, or leave it empty.",
+        "lowStockThreshold": "Write a whole number, or leave it empty."
+      }
+    },
+    "delete": {
+      "title": "Delete this product?",
+      "body": "“{name}” will be deleted with its variants. This cannot be undone.",
+      "confirm": "Delete",
+      "deleted": "Product deleted",
+      "history": {
+        "title": "This product cannot be deleted",
+        "body": "It is part of the history of the store: {parts}. Archive it instead, and it stops being sold but keeps its history.",
+        "archive": "Archive product",
+        "orderItems": "{count, plural, one {# order line} other {# order lines}}",
+        "inventoryMovements": "{count, plural, one {# stock movement} other {# stock movements}}",
+        "media": "{count, plural, one {# picture} other {# pictures}}"
+      }
+    },
+    "images": {
+      "heading": "Pictures",
+      "description": "JPEG, PNG or WebP, up to {size} MB each.",
+      "upload": "Add a picture",
+      "uploading": "Uploading",
+      "empty": "This product has no pictures yet.",
+      "failed": "The pictures could not be loaded.",
+      "cover": "Cover",
+      "setCover": "Make cover",
+      "clearCover": "Remove cover",
+      "checking": "Checking the file",
+      "noPreview": "No preview",
+      "tileLabel": "Picture {name}",
+      "noMediaAccess": "You cannot see the previews of the pictures."
+    },
+    "variants": {
+      "heading": "Variants",
+      "description": "A variant with no price or cost of its own uses those of the product.",
+      "add": "Add variant",
+      "empty": "This product has no variants: it is sold as it is.",
+      "failed": "The variants could not be loaded.",
+      "columns": {
+        "name": "Name",
+        "sku": "SKU",
+        "price": "Price (USD)",
+        "cost": "Cost (USD)",
+        "actions": "Actions"
+      },
+      "usesProduct": "Product price",
+      "usesProductCost": "Product cost",
+      "name": "Variant name",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "added": "Variant added",
+      "saved": "Variant saved",
+      "deleted": "Variant deleted",
+      "deleteTitle": "Delete this variant?",
+      "deleteBody": "“{name}” will be deleted. This cannot be undone.",
+      "unchanged": "Nothing to save.",
+      "errors": {
+        "name": "Write a name.",
+        "price": "Write a price with up to two decimals, or leave it empty.",
+        "cost": "Write a cost with up to two decimals, or leave it empty."
+      }
+    },
+    "conflicts": {
+      "sku_in_use": "Another product or variant of this store already uses that SKU.",
+      "variant_name_in_use": "This product already has a variant with that name.",
+      "too_many_variants": "A product can have up to {max} variants.",
+      "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead."
+    },
+    "noMatchesYet": "No product loaded so far matches. Show more products to keep looking."
   }
 }

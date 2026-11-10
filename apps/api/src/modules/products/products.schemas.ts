@@ -62,7 +62,9 @@ export const updateProductSchema = z
     trackInventory: z.boolean().optional(),
     lowStockThreshold: lowStockThreshold.nullable().optional(),
     active: z.boolean().optional(),
-    freeShipping: z.boolean().optional()
+    freeShipping: z.boolean().optional(),
+    // The cover: a live file of THIS product (checked by the service), or null for none
+    imageMediaId: z.uuid().nullable().optional()
   })
   .refine(notEmpty, { message: 'nothing to change' })
 

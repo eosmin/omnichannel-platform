@@ -14,7 +14,8 @@ export const Budgets = {
 // goal is the 200 KB of TDD_08 §4.4.
 export const ScriptCeilingsKb = {
   LOGIN: 260,
-  INBOX: 340
+  INBOX: 340,
+  PRODUCTS: 300
 } as const
 
 // Shared load and CPU noise of a runner: the median of a few runs is what the budget is asserted on

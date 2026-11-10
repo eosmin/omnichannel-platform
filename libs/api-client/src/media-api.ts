@@ -38,6 +38,14 @@ const mediaUrlsSchema = z.object({
 })
 export type MediaUrlsView = z.infer<typeof mediaUrlsSchema>
 
+// Where a file is attached: a message file has no parent, a product picture names its product (the api
+// checks it is one of the store and that the member may edit products)
+export type UploadTarget =
+  | { purpose: typeof MediaPurpose.MESSAGE }
+  | { purpose: typeof MediaPurpose.PRODUCT; parentId: string }
+
+const MESSAGE_TARGET: UploadTarget = { purpose: MediaPurpose.MESSAGE }
+
 export interface UploadFileInfo {
   filename: string
   contentType: string
@@ -48,11 +56,12 @@ export interface UploadFileInfo {
 export function requestUploadUrl(
   client: ApiClient,
   storeId: string,
-  file: UploadFileInfo
+  file: UploadFileInfo,
+  target: UploadTarget = MESSAGE_TARGET
 ): Promise<UploadUrlView> {
   return client.request(ApiRoutes.media.uploadUrl, {
     method: 'POST',
-    body: { purpose: MediaPurpose.MESSAGE, ...file },
+    body: { ...target, ...file },
     schema: uploadUrlSchema,
     storeId
   })
@@ -62,11 +71,12 @@ export function requestUploadUrl(
 export function confirmUpload(
   client: ApiClient,
   storeId: string,
-  input: UploadFileInfo & { mediaId: string; key: string }
+  input: UploadFileInfo & { mediaId: string; key: string },
+  target: UploadTarget = MESSAGE_TARGET
 ): Promise<ConfirmedMediaView> {
   return client.request(ApiRoutes.media.confirmUpload, {
     method: 'POST',
-    body: { purpose: MediaPurpose.MESSAGE, ...input },
+    body: { ...target, ...input },
     schema: confirmedMediaSchema,
     storeId
   })

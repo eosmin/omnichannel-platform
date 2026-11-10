@@ -64,7 +64,15 @@ export const QueryKeys = {
     byId: (storeId: string, id: string) => ['orders', storeId, id] as const
   },
   products: {
-    search: (storeId: string, q: string) => ['products', storeId, 'search', q] as const
+    all: (storeId: string) => ['products', storeId] as const,
+    // The page of the catalog, by the active filter ('all' | 'active' | 'archived')
+    list: (storeId: string, filter: string) => ['products', storeId, 'list', filter] as const,
+    // Under the product: whatever makes the product stale makes its variants and its pictures stale too
+    byId: (storeId: string, id: string) => ['products', storeId, id] as const,
+    images: (storeId: string, id: string) => ['products', storeId, id, 'images'] as const,
+    // The autocomplete: by text, and by whether archived products may answer (a filter of the page)
+    search: (storeId: string, q: string, includeArchived: boolean) =>
+      ['products', storeId, 'search', q, includeArchived] as const
   },
   search: {
     global: (storeId: string, q: string) => ['search', storeId, q] as const

@@ -35,7 +35,7 @@ import {
   updateVariantSchema
 } from './products.schemas'
 import { ProductsService } from './products.service'
-import type { ProductDetail, ProductPage, VariantView } from './products.views'
+import type { ProductDetail, ProductImageView, ProductPage, VariantView } from './products.views'
 
 const id = () => new ZodValidationPipe(idSchema)
 
@@ -74,6 +74,15 @@ export class ProductsController {
     @Param('id', id()) productId: string
   ): Promise<ProductDetail> {
     return this.products.get(store.id, productId)
+  }
+
+  @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @Get(ApiRoutes.products.images(':id'))
+  images(
+    @CurrentStore() store: { id: string },
+    @Param('id', id()) productId: string
+  ): Promise<ProductImageView[]> {
+    return this.products.images(store.id, productId)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_EDIT)

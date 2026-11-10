@@ -821,6 +821,41 @@ describe('Tenant isolation', () => {
       expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
     })
 
+    it('does not list the pictures of a product of another store, nor take its file as a cover', async () => {
+      const foreign = await owner.product.create({
+        data: { storeId: ctx.storeB.id, name: `${prefix}-cover-product`, priceCents: 100 },
+        select: { id: true }
+      })
+      const file = await owner.media.create({
+        data: {
+          storeId: ctx.storeB.id,
+          productId: foreign.id,
+          purpose: 'product',
+          key: StorageKeys.message(ctx.storeB.id, randomUUID(), 'photo.png'),
+          filename: 'photo.png',
+          contentType: 'image/png',
+          fileSize: 68,
+          status: 'clean'
+        },
+        select: { id: true }
+      })
+      const mine = await owner.product.create({
+        data: { storeId: ctx.storeA.id, name: `${prefix}-mine`, priceCents: 100 },
+        select: { id: true }
+      })
+      const listed = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.products.images(foreign.id)
+      )
+      expect(listed.status).toBe(404)
+      const cover = await api(app, ctx.adminA, ctx.storeA)
+        .patch(ApiRoutes.products.byId(mine.id))
+        .send({ imageMediaId: file.id })
+      expect(cover.status).toBe(404)
+      expect(
+        (await owner.product.findUniqueOrThrow({ where: { id: mine.id } })).imageMediaId
+      ).toBeNull()
+    })
+
     it('does not let the id of a media of another store be taken over from this one', async () => {
       const row = await owner.media.create({
         data: {
