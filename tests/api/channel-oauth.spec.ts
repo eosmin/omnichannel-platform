@@ -108,7 +108,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
       credentials: jest.fn()
     }
     const oauth: ChannelOAuth = {
-      kind: 'meta-facebook-login',
+      kind: 'authorization-code-with-assets',
       dialogOrigin: 'https://dialog.example',
       providerName: { es: 'Ejemplo', en: 'Example' },
       linkedAccount: null,
@@ -782,7 +782,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
       })
       expect(row.storeId).toBe(ctx.storeA.id)
       // How it was connected is ours to say, whatever the plugin put in its metadata
-      expect(row.metadata).toEqual({ region: 'sv', authMethod: ChannelAuthMethods.FACEBOOK_LOGIN })
+      expect(row.metadata).toEqual({ region: 'sv', authMethod: ChannelAuthMethods.PROVIDER_LOGIN })
       const key = app.get(CredentialCipher, { strict: false })
       expect(key.open(row.credentials)).toEqual({ token: `${PAGE_TOKEN_PREFIX}1100` })
       // The credentials are not in the metadata, and the token of the person is nowhere in the row
@@ -797,7 +797,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(entries).toHaveLength(1)
       expect(entries[0]?.metadata).toEqual({
         pluginId: id,
-        authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
+        authMethod: ChannelAuthMethods.PROVIDER_LOGIN
       })
 
       // The session is gone: it cannot make a second connection
@@ -985,7 +985,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(after.lastError).toBeNull()
       expect(after.metadata).toEqual({
         region: 'sv',
-        authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
+        authMethod: ChannelAuthMethods.PROVIDER_LOGIN
       })
       expect(await owner.channelConnection.count({ where: { pluginId: id } })).toBe(1)
       // Written after the answer: waited for, not read at once
@@ -996,7 +996,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(entries).toHaveLength(1)
       expect(entries[0]?.metadata).toEqual({
         pluginId: id,
-        authMethod: ChannelAuthMethods.FACEBOOK_LOGIN
+        authMethod: ChannelAuthMethods.PROVIDER_LOGIN
       })
       // Used up
       expect((await asAdmin().get(ApiRoutes.channels.oauthAssets(session))).status).toBe(NOT_FOUND)

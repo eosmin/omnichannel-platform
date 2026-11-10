@@ -1,7 +1,6 @@
 import { z } from 'zod'
 
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
-import { MetaOAuth } from '@platform/core/domain'
 import {
   emptyAsUnset,
   isDeployedEnvironment,
@@ -9,6 +8,8 @@ import {
   nodeEnvSchema,
   urlOrNull
 } from '@platform/core/env-rules'
+
+import { MetaOAuth } from './meta-oauth-constants'
 
 // The variables of the platform's Meta app (WhatsApp Cloud API, Instagram, Messenger). They belong to the plugin: the
 // core knows no provider, so this schema is parsed here, from the same source the core's `env` reads

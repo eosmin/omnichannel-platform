@@ -1,5 +1,6 @@
-import { ChannelIds, MetaOAuth, MetaOAuthScopes } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 
+import { MetaOAuth, MetaOAuthScopes } from './meta-oauth-constants'
 import { grantedMetaScopes, metaOAuthScopesFor, metaOAuthScopeParam } from './meta-oauth-scopes'
 
 describe('metaOAuthScopesFor', () => {

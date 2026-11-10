@@ -405,7 +405,7 @@ describe('registeredChannelSchema', () => {
 
 describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
   const login = {
-    kind: 'meta-facebook-login',
+    kind: 'authorization-code-with-assets',
     scopes: ['pages_show_list'],
     dialogOrigin: 'https://login.example.test',
     providerName: { es: 'Ejemplo', en: 'Example' },
@@ -418,8 +418,13 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     credentialsFor: () => Promise.resolve({ accessToken: 'page-token' })
   } as const
 
+  // The official login the others are held to: the permissions it asks for are the ceiling
+  const registerOfficial = (registry: PluginRegistry) =>
+    registry.register(channel({ id: 'messenger', oauth: login }), { official: true })
+
   it('keeps the login of a plugin that declares one, and none for one that does not', () => {
     const registry = build()
+    registerOfficial(registry)
     registry.register(channel({ id: 'telegram', oauth: login }))
     registry.register(channel({ id: 'signal' }))
     expect(registry.oauthOf('telegram')?.scopes).toEqual(['pages_show_list'])
@@ -427,8 +432,24 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     expect(registry.oauthOf('nobody')).toBeNull()
   })
 
+  it('refuses a third party whose login asks for more than the official one, or when there is none', () => {
+    const wider = channel({
+      id: 'telegram',
+      oauth: { ...login, scopes: ['pages_show_list', 'ads_management'] }
+    })
+    const alone = build()
+    expect(codeOf(() => alone.register(channel({ id: 'telegram', oauth: login })))).toBe(
+      ErrorCodes.PLUGIN_CONTRACT_VIOLATION
+    )
+    const registry = build()
+    registerOfficial(registry)
+    expect(codeOf(() => registry.register(wider))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    expect(registry.has('telegram')).toBe(false)
+  })
+
   it('refuses at boot a plugin whose login is malformed', () => {
     const registry = build()
+    registerOfficial(registry)
     const bad = channel({ id: 'telegram', oauth: { ...login, scopes: ['a&b'] } })
     expect(codeOf(() => registry.register(bad))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
     expect(registry.has('telegram')).toBe(false)
@@ -436,6 +457,7 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
 
   it('does not follow a login the plugin changes after it registered', () => {
     const registry = build()
+    registerOfficial(registry)
     const plugin = channel({ id: 'telegram', oauth: { ...login, scopes: ['pages_show_list'] } })
     registry.register(plugin)
     ;(plugin as { oauth: unknown }).oauth = {

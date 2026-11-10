@@ -1,4 +1,6 @@
-import { ChannelIds, ChannelOAuthLimits, MetaOAuth, MetaOAuthScopes } from '@platform/core/domain'
+import { ChannelIds, ChannelOAuthLimits } from '@platform/core/domain'
+
+import { MetaOAuth, MetaOAuthScopes } from './meta-oauth-constants'
 
 // Pure helpers over the permissions of "Connect with Facebook". No call to Meta is made here: the plugin
 // asks the Graph, and these decide what to ask for and what is missing from the answer.

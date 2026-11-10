@@ -78,6 +78,8 @@ interface Entry {
   descriptor: ChannelDescriptorSnapshot
   identityKind: ChannelIdentityKind
   fromCode: boolean
+  // One of the plugins that ship with the platform (the ceiling of a third party's login is read from these)
+  official: boolean
   storeIds: ReadonlySet<string> | null
 }
 
@@ -111,15 +113,38 @@ export class PluginRegistry {
       plugin,
       capabilities: new Set(capabilities),
       manifest: snapshotConnectManifest(plugin, id, capabilities),
-      oauth: snapshotChannelOAuth(plugin, id),
+      oauth: snapshotChannelOAuth(
+        plugin,
+        id,
+        this.oauthCeilingFor(plugin, options.official === true)
+      ),
       media: snapshotChannelMedia(plugin, id, capabilities),
       limits: snapshotChannelLimits(plugin, id),
       descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),
       identityKind: snapshotIdentityKind(plugin, id),
       fromCode: options.fromCode === true || options.official === true,
+      official: options.official === true,
       storeIds
     })
     this.logger.info({ pluginId: id, version: plugin.version }, 'plugin registered')
+  }
+
+  // What the login of a plugin may ask for (see `snapshotChannelOAuth`): nothing limits an official plugin; any
+  // other is held to the permissions that the official plugins with the same kind of login ask for. Read from the
+  // plugin once, here, so that the kind checked is the kind of the login that is kept.
+  private oauthCeilingFor(plugin: ChannelPlugin, official: boolean): ReadonlySet<string> | null {
+    if (official) return null
+    const declared: unknown = plugin.oauth
+    const kind: unknown =
+      typeof declared === 'object' && declared !== null
+        ? (declared as { kind?: unknown }).kind
+        : undefined
+    const ceiling = new Set<string>()
+    for (const entry of this.entries.values()) {
+      if (!entry.official || entry.oauth === null || entry.oauth.kind !== kind) continue
+      for (const scope of entry.oauth.scopes) ceiling.add(scope)
+    }
+    return ceiling
   }
 
   // An official plugin is part of the code and is never removed
