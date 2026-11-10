@@ -77,6 +77,7 @@ function AdjustForm({
 }): ReactElement {
   const t = useTranslations('products.stock.dialog')
   const tStock = useTranslations('products.stock')
+  const tAll = useTranslations()
   const { storeId, can } = useStore()
   const guard = useSubmitGuard()
   const warehouses = useWarehousesOfStore(storeId, true)
@@ -93,8 +94,12 @@ function AdjustForm({
   const keys = useRef(new Map<string, string>())
   const list = warehouses.data ?? []
   // The first warehouse, when the person did not come from a row and there is only one to choose
-  const warehouseId =
-    values.warehouseId === '' && list.length === 1 ? (list[0]?.id ?? '') : values.warehouseId
+  // What the select shows is what is sent: a warehouse that is not among the options (switched off, unlinked, or the list
+  // is still on its way) is not kept as a hidden value
+  const chosen = list.some(warehouse => warehouse.id === values.warehouseId)
+    ? values.warehouseId
+    : ''
+  const warehouseId = chosen === '' && list.length === 1 ? (list[0]?.id ?? '') : chosen
   const activeVariants = product.variants.filter(variant => variant.active)
 
   const set = <K extends keyof StockFormValues>(key: K, value: StockFormValues[K]): void => {
@@ -168,6 +173,24 @@ function AdjustForm({
               </option>
             ))}
           </select>
+          {warehouses.isPending ? (
+            <p role="status" className="text-muted-foreground text-sm">
+              {tAll('common.loading')}
+            </p>
+          ) : null}
+          {warehouses.isError ? (
+            <div role="alert" className="flex flex-col items-start gap-2 text-sm">
+              <p>{t('warehousesFailed')}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void warehouses.refetch()}
+              >
+                {tAll('common.tryAgain')}
+              </Button>
+            </div>
+          ) : null}
           {warehouses.isSuccess && list.length === 0 ? (
             <p role="status" className="text-muted-foreground text-sm">
               {t('noWarehouses')}

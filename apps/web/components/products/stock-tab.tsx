@@ -2,7 +2,7 @@
 
 import { ArrowLeftRight, Plus, TriangleAlert } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
-import { type ReactElement, useState } from 'react'
+import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import type { ProductDetailView, StockLevelView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -41,6 +41,11 @@ export function StockTab({ product }: { product: ProductDetailView }): ReactElem
     from: null
   })
   const [shown, setShown] = useState<Item | null>(null)
+  // Opening the movements of a row moves the focus to their heading, so the keyboard and a screen reader follow
+  const movementsHeading = useRef<HTMLHeadingElement | null>(null)
+  useEffect(() => {
+    if (shown !== null) movementsHeading.current?.focus()
+  }, [shown])
 
   if (!mayView) return <p className="text-sm">{t('noAccess')}</p>
   if (!product.trackInventory) {
@@ -108,10 +113,21 @@ export function StockTab({ product }: { product: ProductDetailView }): ReactElem
         >
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
           <span>
-            <span className="font-medium">{t('low')}.</span>{' '}
-            {t('lowDetail', { available, threshold: lowStockThreshold })}
+            {t.rich('lowBanner', {
+              b: chunks => <span className="font-medium">{chunks}</span>,
+              available,
+              threshold: lowStockThreshold
+            })}
           </span>
         </p>
+      ) : null}
+      {inventory.isError ? (
+        <div role="alert" className="flex flex-col items-start gap-2 text-sm">
+          <p>{t('refreshFailed')}</p>
+          <Button variant="outline" size="sm" onClick={() => void inventory.refetch()}>
+            {tAll('common.tryAgain')}
+          </Button>
+        </div>
       ) : null}
 
       {levels.length === 0 ? (
@@ -173,6 +189,10 @@ export function StockTab({ product }: { product: ProductDetailView }): ReactElem
                       variant="ghost"
                       size="sm"
                       aria-pressed={shown?.levelId === level.id}
+                      aria-label={t('movementsOf', {
+                        item: level.variantName ?? t('productRow'),
+                        warehouse: level.warehouseCode
+                      })}
                       onClick={() => setShown(shown?.levelId === level.id ? null : itemOf(level))}
                     >
                       <ArrowLeftRight aria-hidden />
@@ -183,6 +203,10 @@ export function StockTab({ product }: { product: ProductDetailView }): ReactElem
                         type="button"
                         variant="ghost"
                         size="sm"
+                        aria-label={t('adjustFor', {
+                          item: level.variantName ?? t('productRow'),
+                          warehouse: level.warehouseCode
+                        })}
                         onClick={() => setAdjusting({ open: true, from: itemOf(level) })}
                       >
                         {t('adjust')}
@@ -200,9 +224,14 @@ export function StockTab({ product }: { product: ProductDetailView }): ReactElem
         <div
           className="flex flex-col gap-2"
           role="region"
-          aria-label={t('movementsOf', { item: shown.label, warehouse: shown.warehouseLabel })}
+          aria-labelledby="product-stock-movements"
         >
-          <h4 className="font-medium">
+          <h4
+            id="product-stock-movements"
+            ref={movementsHeading}
+            tabIndex={-1}
+            className="font-medium outline-none"
+          >
             {t('movementsOf', { item: shown.label, warehouse: shown.warehouseLabel })}
           </h4>
           <StockKardex

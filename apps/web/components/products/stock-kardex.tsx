@@ -105,6 +105,18 @@ export function StockKardex({
           </tbody>
         </table>
       </div>
+      {kardex.isError ? (
+        <div role="alert" className="flex flex-col items-start gap-2 text-sm">
+          <p>{t('kardex.failed')}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void (kardex.hasNextPage ? kardex.fetchNextPage() : kardex.refetch())}
+          >
+            {tAll('common.tryAgain')}
+          </Button>
+        </div>
+      ) : null}
       {kardex.hasNextPage ? (
         <Button
           variant="outline"

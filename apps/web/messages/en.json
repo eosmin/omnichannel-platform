@@ -2641,14 +2641,14 @@
       "productRow": "The product",
       "oversold": "Oversold",
       "low": "Low stock",
-      "lowDetail": "{available} available, alert at {threshold}.",
       "adjust": "Adjust stock",
       "movements": "Movements",
       "movementsOf": "Movements of {item} in {warehouse}",
       "list": {
         "notTracked": "Not tracked",
-        "available": "{count} available",
-        "low": "Low stock"
+        "available": "{count, plural, one {# available} other {# available}}",
+        "low": "Low stock",
+        "failed": "The stock could not be loaded."
       },
       "kardex": {
         "empty": "No movements yet.",
@@ -2714,8 +2714,12 @@
           "quantity": "Write a whole number of units, from 1 up.",
           "note": "The note is too long or has a line break.",
           "unitCost": "Write a cost with up to two decimals, or leave it empty."
-        }
-      }
+        },
+        "warehousesFailed": "The warehouses could not be loaded."
+      },
+      "refreshFailed": "The stock could not be refreshed. What is shown may be out of date.",
+      "lowBanner": "<b>Low stock.</b> {available, plural, one {# available} other {# available}}, alert at {threshold}.",
+      "adjustFor": "Adjust stock of {item} in {warehouse}"
     }
   }
 }

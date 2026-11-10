@@ -278,6 +278,11 @@ export function ProductsPage(): ReactElement {
           </table>
         </div>
       )}
+      {mayReadStock && stock.isError ? (
+        <p role="status" className="text-muted-foreground text-sm">
+          {t('stock.list.failed')}
+        </p>
+      ) : null}
       {!isSearching && products.hasNextPage ? (
         <Button
           variant="outline"

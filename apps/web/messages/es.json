@@ -2641,14 +2641,14 @@
       "productRow": "El producto",
       "oversold": "Sobrevendido",
       "low": "Existencias bajas",
-      "lowDetail": "{available} disponibles, alerta en {threshold}.",
       "adjust": "Ajustar existencias",
       "movements": "Movimientos",
       "movementsOf": "Movimientos de {item} en {warehouse}",
       "list": {
         "notTracked": "Sin conteo",
-        "available": "{count} disponibles",
-        "low": "Existencias bajas"
+        "available": "{count, plural, one {# disponible} other {# disponibles}}",
+        "low": "Existencias bajas",
+        "failed": "No se pudieron cargar las existencias."
       },
       "kardex": {
         "empty": "Todavía no hay movimientos.",
@@ -2714,8 +2714,12 @@
           "quantity": "Escribe un número entero de unidades, desde 1.",
           "note": "La nota es demasiado larga o tiene un salto de línea.",
           "unitCost": "Escribe un costo con hasta dos decimales, o déjalo vacío."
-        }
-      }
+        },
+        "warehousesFailed": "No se pudieron cargar las bodegas."
+      },
+      "refreshFailed": "No se pudieron actualizar las existencias. Lo que se ve puede estar desactualizado.",
+      "lowBanner": "<b>Existencias bajas.</b> {available, plural, one {# disponible} other {# disponibles}}, alerta en {threshold}.",
+      "adjustFor": "Ajustar existencias de {item} en {warehouse}"
     }
   }
 }

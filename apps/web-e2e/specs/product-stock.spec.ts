@@ -29,7 +29,7 @@ test.describe('the stock of a product', () => {
   let storeId: string
   const name = uniqueName('Stock shoe')
 
-  const sheet = () => page.getByRole('dialog', { name: PRODUCTS.sheet.editTitle })
+  const sheet = () => page.getByRole('dialog', { name: PRODUCTS.sheet.editTitle, exact: true })
   const adjustDialog = () => page.getByRole('dialog', { name: STOCK.dialog.title })
 
   async function openProducts(on: Page = page): Promise<void> {
@@ -98,7 +98,17 @@ test.describe('the stock of a product', () => {
     await openStock()
     const level = sheet().getByRole('row').filter({ hasText: 'MAIN' })
     await expect(level).toContainText('20')
-    await expect(totals()).toContainText(STOCK.totals.onHand)
+    for (const [label, units] of [
+      [STOCK.totals.onHand, '20'],
+      [STOCK.totals.reserved, '0'],
+      [STOCK.totals.available, '20']
+    ] as const) {
+      await expect(
+        totals()
+          .locator('div')
+          .filter({ has: page.getByText(label, { exact: true }) })
+      ).toContainText(units)
+    }
     // The administrator holds products:view_cost: the value of the units and their average cost are columns
     await expect(
       sheet().getByRole('columnheader', { name: STOCK.columns.averageCost })
