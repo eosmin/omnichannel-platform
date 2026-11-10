@@ -65,6 +65,8 @@ jobs:
       - run: pnpm validate:frontend
       # Rule 13: no new knowledge of a channel or Meta outside libs/channels/*; the baseline only shrinks
       - run: pnpm validate:channel-agnostic --require-main
+      # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file
+      - run: pnpm validate:image-hosts
       # The web build reads its public variables when it compiles (apps/web/lib/env-schema.ts). The
       # example file holds valid local values, which is all a build that nobody deploys needs
       - name: Public variables of the web build

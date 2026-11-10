@@ -72,7 +72,15 @@ function setup(options: {
     }
   }
   const storage = { put: jest.fn().mockResolvedValue(undefined) }
-  const registry = { find: jest.fn().mockReturnValue(options.plugin) }
+  // A plugin of a third party that names the files of its customers: the fetcher asks the registry, it does
+  // not know any channel
+  const registry = {
+    find: jest.fn().mockReturnValue(options.plugin),
+    hasCapability: jest.fn(
+      (pluginId: string, capability: string) =>
+        pluginId === 'visitor_site' && capability === 'names_inbound_files'
+    )
+  }
   const contexts = { contextFor: jest.fn().mockReturnValue({}) }
   const queue = { add: jest.fn().mockResolvedValue(undefined) }
   const logger = { setContext: jest.fn(), warn: jest.fn() }
@@ -562,7 +570,7 @@ describe('InboundMediaFetcher', () => {
 
   describe('an id chosen by the plugin', () => {
     const CHOSEN = '33333333-3333-4333-8333-333333333333'
-    const chosen = { ...job, pluginId: 'web_widget', mediaId: CHOSEN }
+    const chosen = { ...job, pluginId: 'visitor_site', mediaId: CHOSEN }
     const plugin = () => ({
       fetchMedia: jest.fn().mockResolvedValue(file(JPEG))
     })
@@ -571,7 +579,7 @@ describe('InboundMediaFetcher', () => {
     it('gives the stored file that id and queues the scan for it', async () => {
       const { fetcher, media, storage, queue } = setup({
         plugin: plugin(),
-        connection: { pluginId: 'web_widget' }
+        connection: { pluginId: 'visitor_site' }
       })
 
       await fetcher.fetch(chosen, false)
@@ -600,12 +608,12 @@ describe('InboundMediaFetcher', () => {
     })
 
     it.each([
-      ['a plugin that is not the web widget', { ...chosen, pluginId: 'whatsapp' }],
+      ['a plugin that does not name its files', { ...chosen, pluginId: 'whatsapp' }],
       ['an id that is not a uuid', { ...chosen, mediaId: '../../other' }]
     ])('derives the id from message and place for %s', async (_name, data) => {
       const { fetcher, storage } = setup({
         plugin: plugin(),
-        connection: { pluginId: 'web_widget' }
+        connection: { pluginId: 'visitor_site' }
       })
 
       await fetcher.fetch(data, false)

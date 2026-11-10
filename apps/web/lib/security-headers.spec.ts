@@ -1,11 +1,4 @@
-import { MetaStoryImageHosts } from '@platform/core/domain'
-
-import {
-  buildContentSecurityPolicy,
-  CUSTOMER_AVATAR_IMAGE_HOSTS,
-  STATIC_SECURITY_HEADERS,
-  STORY_REPLY_IMAGE_HOSTS
-} from './security-headers'
+import { buildContentSecurityPolicy, STATIC_SECURITY_HEADERS } from './security-headers'
 
 const options = {
   nonce: 'abc123',
@@ -34,15 +27,12 @@ describe('buildContentSecurityPolicy', () => {
     expect(buildContentSecurityPolicy(options)).not.toContain('unsafe-eval')
   })
 
-  it('draws images only from the app, inline data, the avatar hosts of Meta and the host of story thumbnails', () => {
-    const img = directive(buildContentSecurityPolicy(options), 'img-src')
-    expect(img).toBe(
-      `img-src 'self' data: blob: https://files.example.com ${[...CUSTOMER_AVATAR_IMAGE_HOSTS, ...STORY_REPLY_IMAGE_HOSTS].join(' ')}`
+  // The policy of the images as it was before it was generated from the plugins: pinned as text, so that a change
+  // in what the plugins declare cannot widen or narrow it without this test being edited on purpose
+  it('draws images only from the app, inline data and the hosts the plugins declare, exactly as before', () => {
+    expect(directive(buildContentSecurityPolicy(options), 'img-src')).toBe(
+      "img-src 'self' data: blob: https://files.example.com https://*.fbcdn.net https://*.cdninstagram.com https://platform-lookaside.fbsbx.com https://lookaside.fbsbx.com"
     )
-  })
-
-  it('allows for story thumbnails exactly the hosts the Instagram plugin keeps links by', () => {
-    expect([...STORY_REPLY_IMAGE_HOSTS]).toEqual(MetaStoryImageHosts.map(host => `https://${host}`))
   })
 
   it('plays audio and video only from the app and the bucket origin, never its path', () => {

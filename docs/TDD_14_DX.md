@@ -126,7 +126,9 @@ working environment with realistic data in under five minutes.
     "validate:rollbacks": "tsx scripts/check-rollbacks.ts",
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
     "validate:channel-agnostic": "tsx scripts/validate-channel-agnostic.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:channel-agnostic && pnpm test",
+    "gen:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts",
+    "validate:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts --check",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:channel-agnostic && pnpm validate:image-hosts && pnpm test",
     "validate:ci": "pnpm validate:all && pnpm test:integration && pnpm test:contracts && pnpm test:security"
   }
 }

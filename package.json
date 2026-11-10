@@ -40,7 +40,9 @@
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
     "validate:frontend": "tsx scripts/check-frontend-coverage.ts",
     "validate:channel-agnostic": "tsx scripts/validate-channel-agnostic.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm test && pnpm test:contracts",
+    "gen:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts",
+    "validate:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts --check",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
     "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {
@@ -158,7 +160,7 @@
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "eslint --fix --max-warnings=0",
+      "eslint --fix --max-warnings=0 --no-warn-ignored",
       "prettier --write"
     ],
     "*.{js,cjs,mjs,cts,mts,json,md,yml,yaml}": "prettier --write --ignore-unknown",

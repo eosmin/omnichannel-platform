@@ -47,9 +47,15 @@ describe('isScanned', () => {
   it('leaves out a composition root that has its reason written', () => {
     expect(Object.keys(ALLOWED_FILES)).toContain('libs/plugins/runtime/src/official-plugins.ts')
     // Adding a file here is a decision to review: it has to change this list too
-    expect(Object.keys(ALLOWED_FILES)).toEqual(['libs/plugins/runtime/src/official-plugins.ts'])
+    expect(Object.keys(ALLOWED_FILES)).toEqual([
+      'libs/plugins/runtime/src/official-plugins.ts',
+      'apps/web/lib/generated/plugin-image-hosts.ts'
+    ])
     for (const reason of Object.values(ALLOWED_FILES)) expect(reason.length).toBeGreaterThan(20)
     expect(isScanned('libs/plugins/runtime/src/official-plugins.ts')).toBe(false)
+    expect(isScanned('apps/web/lib/generated/plugin-image-hosts.ts')).toBe(false)
+    // Only that one file: a hand-written neighbour is still scanned
+    expect(isScanned('apps/web/lib/generated/other.ts')).toBe(true)
   })
 })
 

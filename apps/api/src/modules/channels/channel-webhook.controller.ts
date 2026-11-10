@@ -17,7 +17,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { ApiRoutes } from '@platform/core/api'
 import { ChannelWebhookThrottle } from '@platform/core/auth'
 import { Public } from '@platform/core/auth-module'
-import { CHANNEL_ID_PATTERN, ChannelIds } from '@platform/core/domain'
+import { CHANNEL_ID_PATTERN } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -126,10 +126,12 @@ export class ChannelWebhookController {
 
   // The same answer for a channel that is not registered and for one that is malformed: nothing to learn
   private pluginOf(pluginId: string): ReturnType<PluginRegistry['get']> {
-    // The widget has doors of its own, which check the site, its origins and the limits of a visitor;
-    // this one would let a token past all three
+    // A channel whose customers do not come through a provider's webhook (`receivesProviderWebhooks` false) has
+    // doors of its own, which check the site, its origins and the limits of a customer; this one would let a
+    // token past all three
     const plugin =
-      CHANNEL_ID_PATTERN.test(pluginId) && pluginId !== ChannelIds.WEB_WIDGET
+      CHANNEL_ID_PATTERN.test(pluginId) &&
+      this.registry.connectManifestOf(pluginId)?.receivesProviderWebhooks === true
         ? this.registry.find(pluginId)
         : undefined
     if (plugin === undefined) throw resourceNotFound('channel')
