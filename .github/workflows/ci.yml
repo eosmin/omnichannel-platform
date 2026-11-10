@@ -476,7 +476,7 @@ jobs:
         # The number of slices, once: the name, E2E_SHARD and the summary read it from here. It must equal the length of the list above
         total: [4]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.shard == 2 && 1 || 20 }}
     services:
       postgres:
         image: postgres:18.6-alpine
