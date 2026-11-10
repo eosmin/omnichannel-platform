@@ -86,26 +86,31 @@ describe('the public doors of the web widget', () => {
 
 describe('the settings routes of the web widget', () => {
   it.each([
-    ['embed', ApiRoutes.channels.widgetEmbed(':id'), RequestMethod.GET, Permissions.SETTINGS_VIEW],
+    ['embed', '/channels/connections/:id/widget', RequestMethod.GET, Permissions.SETTINGS_VIEW],
     [
       'updateOrigins',
-      ApiRoutes.channels.widgetOrigins(':id'),
+      '/channels/connections/:id/widget/origins',
       RequestMethod.PUT,
       Permissions.SETTINGS_EDIT
     ],
     [
       'updatePreChat',
-      ApiRoutes.channels.widgetPreChat(':id'),
+      '/channels/connections/:id/widget/pre-chat',
       RequestMethod.PUT,
       Permissions.SETTINGS_EDIT
     ]
   ])(
-    'asks %s for the permission of the store, behind the guards',
+    'asks %s for the permission of the store and is not public',
     (handler, path, method, permission) => {
       const found = door(WidgetSettingsController, handler)
 
       expect(found).toMatchObject({ path, method, permissions: [permission] })
+      // Not public as a class, nor on the handler
+      const target = (WidgetSettingsController.prototype as unknown as Record<string, object>)[
+        handler
+      ] as object
       expect(Reflect.getMetadata(IS_PUBLIC_KEY, WidgetSettingsController)).toBeUndefined()
+      expect(Reflect.getMetadata(IS_PUBLIC_KEY, target)).toBeUndefined()
     }
   )
 })
