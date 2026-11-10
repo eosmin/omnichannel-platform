@@ -157,6 +157,10 @@ export const QueryKeys = {
   inboxBehavior: {
     store: (storeId: string) => ['inbox-behavior', storeId] as const
   },
+  // The inventory switches of the store (Settings → Inventory)
+  inventorySettings: {
+    store: (storeId: string) => ['inventory-settings', storeId] as const
+  },
   presence: {
     team: (storeId: string) => ['presence', storeId] as const
   },

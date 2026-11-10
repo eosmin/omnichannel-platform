@@ -50,7 +50,7 @@ describe('settings entries', () => {
     ).toEqual(['general'])
   })
 
-  it('shows Channels, Plugins, Routing, Business hours, Tags, Snippets and Inbox behavior to who may see settings, and General only to who manages stores', () => {
+  it('shows Channels, Plugins, Routing, Business hours, Tags, Snippets, Inbox behavior and Inventory to who may see settings, and General only to who manages stores', () => {
     const entries = storeSettingsEntries('s-1')
     expect(
       visibleEntries(
@@ -64,7 +64,8 @@ describe('settings entries', () => {
       '/s/s-1/settings/business-hours',
       '/s/s-1/settings/tags',
       '/s/s-1/settings/snippets',
-      '/s/s-1/settings/inbox'
+      '/s/s-1/settings/inbox',
+      '/s/s-1/settings/inventory'
     ])
   })
 
