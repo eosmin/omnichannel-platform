@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 
-import { PrismaService } from '@platform/core/database'
-import { AuthorType } from '@platform/core/domain'
-import { Events, type MessageStatusPayload } from '@platform/core/events'
-
-import { WidgetDelivery } from './widget-delivery.service'
 import {
   LIVE_DELIVERY_CONNECTION,
   WIDGET_FILES_SELECT,
   WIDGET_VISIBLE_TYPES,
   widgetMessageView
-} from './widget-message-view'
+} from '@platform/channels/web-widget'
+import { PrismaService } from '@platform/core/database'
+import { AuthorType } from '@platform/core/domain'
+import { Events, type MessageStatusPayload } from '@platform/core/events'
+
+import { WidgetDelivery } from './widget-delivery.service'
 
 // A reply (text or file) the channel has taken goes to the visitor who is waiting for it. The domain event carries
 // ids only, so the message is read here, and only a reply on a conversation of the widget is passed on.

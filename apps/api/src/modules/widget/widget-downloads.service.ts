@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common'
 
+import { WIDGET_FILES_SELECT, visitorMessagesWhere } from '@platform/channels/web-widget'
 import { PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
 import { ImageVariants } from '@platform/core/storage'
 
 import { MediaService } from '../media/media.service'
 
-import { WIDGET_FILES_SELECT, visitorMessagesWhere } from './widget-message-view'
 import type { WidgetSite } from './widget-sites.service'
 
 // What the visitor is given to open a file: the download of the original, and the picture shown inline

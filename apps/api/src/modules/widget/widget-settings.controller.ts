@@ -1,5 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Put, Req } from '@nestjs/common'
 
+import {
+  type WidgetOriginsBody,
+  widgetOriginsSchema,
+  type WidgetPreChatBody,
+  widgetPreChatSchema
+} from '@platform/channels/web-widget'
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
@@ -10,12 +16,6 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
-import {
-  type WidgetOriginsBody,
-  widgetOriginsSchema,
-  type WidgetPreChatBody,
-  widgetPreChatSchema
-} from './widget-settings.schemas'
 import { type WidgetEmbedView, WidgetSettings } from './widget-settings.service'
 
 type Store = ResolvedTenant['store']
