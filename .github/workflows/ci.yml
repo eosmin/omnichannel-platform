@@ -19,7 +19,10 @@ env:
   HUSKY: '0'
 
 jobs:
-  lint-and-types:
+  # The required check `lint-and-types` is made of two jobs that run side by side: the code (what takes the
+  # time: lint, type-check and build) and the checks (the audit, the format, the messages and the validators).
+  # The aggregator at the end keeps the name of the job that used to run everything.
+  lint-and-types-code:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # nx-set-shas reads the last successful run of this workflow to find the base commit on main
@@ -38,6 +41,35 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --prefer-offline
       - uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
+      # The web build reads its public variables when it compiles (apps/web/lib/env-schema.ts). The
+      # example file holds valid local values, which is all a build that nobody deploys needs
+      - name: Public variables of the web build
+        run: cp apps/web/.env.example apps/web/.env.local
+      # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
+      - name: Lint, type-check and build (affected on pull requests, everything on main)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
+          else
+            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
+          fi
+
+  lint-and-types-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
       # Production dependencies of every workspace package (dependencies, not devDependencies). A new high advisory in a
       # production dependency fails every pull request until it is fixed: on purpose. An advisory with
       # no fix goes to auditConfig.ignoreGhsas in pnpm-workspace.yaml with the reason, and to Step 7.1
@@ -67,18 +99,24 @@ jobs:
       - run: pnpm validate:channel-agnostic --require-main
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file
       - run: pnpm validate:image-hosts
-      # The web build reads its public variables when it compiles (apps/web/lib/env-schema.ts). The
-      # example file holds valid local values, which is all a build that nobody deploys needs
-      - name: Public variables of the web build
-        run: cp apps/web/.env.example apps/web/.env.local
-      # build too: a project that type-checks can still fail to compile, and the widget has no Dockerfile
-      - name: Lint, type-check and build (affected on pull requests, everything on main)
+
+  # The required check. It runs whatever happened upstream (`always()`): a job that failed, was cancelled or
+  # was skipped can never read as a pass, and only `success` of both is a green.
+  lint-and-types:
+    needs: [lint-and-types-code, lint-and-types-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The two jobs decide
+        env:
+          CODE: ${{ needs.lint-and-types-code.result }}
+          CHECKS: ${{ needs.lint-and-types-checks.result }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pnpm exec nx affected --targets=lint,type-check,build --parallel=3
-          else
-            pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
-          fi
+          echo "lint-and-types-code=$CODE lint-and-types-checks=$CHECKS"
+          if [ "$CODE" = "success" ] && [ "$CHECKS" = "success" ]; then exit 0; fi
+          echo "::error::The code job or the checks job of lint-and-types did not succeed"
+          exit 1
 
   # The unit tests with their coverage. The thresholds live in the jest.config of each project that
   # has one (TDD_13 section 9, only for the paths that exist so far): `--coverage` is what makes jest
