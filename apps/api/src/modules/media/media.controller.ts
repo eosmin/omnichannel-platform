@@ -42,9 +42,10 @@ export class MediaController {
   uploadUrl(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
     @Body(new ZodValidationPipe(requestUploadUrlSchema)) body: RequestUploadUrlBody
   ): Promise<UploadUrlResult> {
-    return this.media.requestUploadUrl(store.id, user.id, body)
+    return this.media.requestUploadUrl(store.id, user.id, held, body)
   }
 
   @RequirePermissions(Permissions.MEDIA_UPLOAD)
@@ -53,9 +54,10 @@ export class MediaController {
   confirmUpload(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
     @Body(new ZodValidationPipe(confirmUploadSchema)) body: ConfirmUploadBody
   ): Promise<MediaView> {
-    return this.media.confirmUpload(store.id, user.id, body)
+    return this.media.confirmUpload(store.id, user.id, held, body)
   }
 
   @RequirePermissions(Permissions.MEDIA_VIEW)

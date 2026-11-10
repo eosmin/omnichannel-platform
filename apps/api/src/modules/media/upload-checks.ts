@@ -1,9 +1,11 @@
 import type { Redis } from 'ioredis'
 
-import { RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
+import { type Permission, Permissions, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import {
+  type ClientUploadPurpose,
   FILE_SIGNATURE_WINDOW_BYTES,
+  MediaPurpose,
   matchesDeclaredType,
   maxBytesFor,
   QUOTA_WINDOW_MS,
@@ -12,6 +14,28 @@ import {
   UploadRefusals
 } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
+
+// What a member must hold, besides MEDIA_UPLOAD (the route's), to upload a file for a purpose: attaching a
+// picture to a product changes the product, so it asks for what editing it asks for. A purpose of a
+// client is in this table (it does not compile without), so none is added without saying who may use it.
+const PURPOSE_PERMISSIONS: Record<ClientUploadPurpose, Permission | null> = {
+  [MediaPurpose.MESSAGE]: null,
+  [MediaPurpose.PRODUCT]: Permissions.PRODUCTS_EDIT
+}
+
+export function refuseUnlessMayUpload(
+  purpose: ClientUploadPurpose,
+  held: readonly Permission[]
+): void {
+  const needed = PURPOSE_PERMISSIONS[purpose]
+  if (needed === null || held.includes(needed)) return
+  throw new PlatformException(
+    ErrorCodes.PERMISSION_DENIED,
+    'Missing permission for this kind of file',
+    HttpStatusCodes.FORBIDDEN,
+    { required: [needed] }
+  )
+}
 
 // The one answer for an upload that cannot be trusted: the object is missing, is not what was
 // declared, or is not the one signed for this media. It says nothing about which of those.
