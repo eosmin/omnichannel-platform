@@ -468,6 +468,23 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     )
   })
 
+  it('refuses at boot a plugin whose login sends the code of a person to an address that is not our callback', () => {
+    const callback = 'https://api.example.test/api/v1/channels/oauth/callback'
+    const registry = new PluginRegistry(
+      { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger,
+      callback
+    )
+    const foreign = channel({
+      id: 'telegram',
+      oauth: { ...login, redirectUri: 'https://evil.example/api/v1/channels/oauth/callback' }
+    })
+    expect(codeOf(() => registry.register(foreign))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    expect(registry.has('telegram')).toBe(false)
+
+    registry.register(channel({ id: 'signal', oauth: { ...login, redirectUri: callback } }))
+    expect(registry.oauthOf('signal')?.redirectUri).toBe(callback)
+  })
+
   it('refuses at boot a plugin whose login is malformed', () => {
     const registry = build()
     registerOfficial(registry)

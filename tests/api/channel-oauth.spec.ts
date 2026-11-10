@@ -1114,15 +1114,13 @@ describe('"Connect with Facebook": the login of a channel', () => {
       expect(text).not.toContain('pages_show_list')
     })
 
-    it('is off, as if it did not exist, where no redirect address is set', async () => {
+    it('is off, as if it did not exist, for a plugin that declares no redirect address', async () => {
       const off = await createTestApp([], builder =>
-        builder
-          .overrideProvider(ChannelOAuthConfig)
-          .useValue({ redirectUri: undefined, frontendUrl: FRONTEND })
+        builder.overrideProvider(ChannelOAuthConfig).useValue({ frontendUrl: FRONTEND })
       )
       try {
         const offRegistry = off.get(PluginRegistry, { strict: false })
-        const { oauth } = login()
+        const oauth = { ...login().oauth, redirectUri: null }
         counter += 1
         const id = `oa_${counter}`
         offRegistry.register(buildChannelPlugin({ id, oauth }))
