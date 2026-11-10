@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
@@ -16,6 +17,7 @@ import type { Response } from 'express'
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { CHANNEL_ANONYMITY, type ChannelAnonymitySource } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -31,6 +33,14 @@ import {
 } from '@platform/core/messaging'
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
+import {
+  type WithAnonymous,
+  withAnonymousIdentities,
+  type WithAnonymousIdentities,
+  withAnonymousCustomers,
+  withAnonymousPage,
+  type WithAnonymousPage
+} from '../channel-registry'
 import { ExportsService, type ExportView } from '../exports'
 import {
   actorOf,
@@ -104,7 +114,8 @@ export class CustomersController {
     private readonly timeline: CustomerTimelineService,
     private readonly gallery: CustomerMediaService,
     private readonly conversations: ConversationsService,
-    private readonly exports: ExportsService
+    private readonly exports: ExportsService,
+    @Inject(CHANNEL_ANONYMITY) private readonly anonymity: ChannelAnonymitySource
   ) {}
 
   // Declared before `:id`, or "export" would be read as an id. The file is made in the background:
@@ -142,8 +153,10 @@ export class CustomersController {
     @CurrentStore() store: { id: string },
     @CurrentPermissions() permissions: readonly Permission[],
     @Body(new ZodValidationPipe(createCustomerSchema)) body: CreateCustomerBody
-  ): Promise<CreatedCustomer> {
-    return this.customers.create(store.id, body, permissions.includes(Permissions.CUSTOMERS_VIEW))
+  ): Promise<WithAnonymousIdentities<CreatedCustomer>> {
+    return this.customers
+      .create(store.id, body, permissions.includes(Permissions.CUSTOMERS_VIEW))
+      .then(created => withAnonymousIdentities(this.anonymity, created))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
@@ -151,8 +164,10 @@ export class CustomersController {
   get(
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string
-  ): Promise<CustomerDetail> {
-    return this.customers.get(store.id, customerId)
+  ): Promise<WithAnonymousIdentities<CustomerDetail>> {
+    return this.customers
+      .get(store.id, customerId)
+      .then(customer => withAnonymousIdentities(this.anonymity, customer))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
@@ -161,8 +176,10 @@ export class CustomersController {
     @CurrentStore() store: { id: string },
     @Param('id', id()) customerId: string,
     @Body(new ZodValidationPipe(updateCustomerSchema)) body: UpdateCustomerBody
-  ): Promise<CustomerDetail> {
-    return this.customers.update(store.id, customerId, body)
+  ): Promise<WithAnonymousIdentities<CustomerDetail>> {
+    return this.customers
+      .update(store.id, customerId, body)
+      .then(customer => withAnonymousIdentities(this.anonymity, customer))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_DELETE)
@@ -185,11 +202,11 @@ export class CustomersController {
     @Param('id', id()) customerId: string,
     @Body(new ZodValidationPipe(linkIdentitySchema)) body: LinkIdentityBody,
     @Res({ passthrough: true }) res: Response
-  ): Promise<IdentityView> {
+  ): Promise<WithAnonymous<IdentityView>> {
     const { identity, created } = await this.identities.link(store.id, customerId, body)
     // 201 for a new identity, 200 for the one the customer already had
     if (!created) res.status(HttpStatusCodes.OK)
-    return identity
+    return withAnonymousCustomers(this.anonymity, identity)
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
@@ -212,8 +229,10 @@ export class CustomersController {
     @Param('id', id()) survivorId: string,
     @Body(new ZodValidationPipe(mergeCustomersSchema)) body: MergeCustomersBody,
     @Req() req: AuthenticatedRequest
-  ): Promise<CustomerDetail> {
-    return this.merges.merge(store.id, survivorId, body, actorOf(user, store, req))
+  ): Promise<WithAnonymousIdentities<CustomerDetail>> {
+    return this.merges
+      .merge(store.id, survivorId, body, actorOf(user, store, req))
+      .then(customer => withAnonymousIdentities(this.anonymity, customer))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_MERGE)
@@ -225,8 +244,10 @@ export class CustomersController {
     @Param('id', id()) survivorId: string,
     @Body(new ZodValidationPipe(unmergeCustomersSchema)) body: UnmergeCustomersBody,
     @Req() req: AuthenticatedRequest
-  ): Promise<CustomerDetail> {
-    return this.merges.unmerge(store.id, survivorId, body.mergeId, actorOf(user, store, req))
+  ): Promise<WithAnonymousIdentities<CustomerDetail>> {
+    return this.merges
+      .unmerge(store.id, survivorId, body.mergeId, actorOf(user, store, req))
+      .then(customer => withAnonymousIdentities(this.anonymity, customer))
   }
 
   // What a merge would do, for the confirmation step of the dialog. Declared with the merge routes.
@@ -277,12 +298,15 @@ export class CustomersController {
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) customerId: string,
     @Query(new ZodValidationPipe(listConversationsQuerySchema)) query: ListConversationsQuery
-  ): Promise<ConversationPage> {
+  ): Promise<WithAnonymousPage<ConversationPage>> {
     // The counts are the business of GET /conversations; this route answers pages only
     if (query.countsOnly) throw invalidInput('countsOnly is not a filter of this route')
     // 404 for a customer that is not in this store, not an empty page
     await this.timeline.requireCustomer(store.id, customerId)
-    return this.conversations.list(store.id, query, viewerOf(user.id, held), customerId)
+    return withAnonymousPage(
+      this.anonymity,
+      await this.conversations.list(store.id, query, viewerOf(user.id, held), customerId)
+    )
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)

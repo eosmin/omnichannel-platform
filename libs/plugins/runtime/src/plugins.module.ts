@@ -2,7 +2,9 @@ import { type DynamicModule, Module, type Provider, type Type } from '@nestjs/co
 import { PinoLogger } from 'nestjs-pino'
 
 import {
+  CHANNEL_ANONYMITY,
   CHANNEL_IDENTITY_KINDS,
+  type ChannelAnonymitySource,
   type ChannelIdentityKindSource,
   ChannelIdentityKinds
 } from '@platform/core/domain'
@@ -88,6 +90,13 @@ export class PluginsModule {
       }),
       inject: [PluginRegistry]
     }
+    const anonymity: Provider = {
+      provide: CHANNEL_ANONYMITY,
+      useFactory: (registry: PluginRegistry): ChannelAnonymitySource => ({
+        anonymousOf: channelType => registry.descriptorOf(channelType)?.anonymousCustomers ?? false
+      }),
+      inject: [PluginRegistry]
+    }
     return {
       module: PluginsModule,
       imports: [...(options.imports ?? [])],
@@ -95,10 +104,11 @@ export class PluginsModule {
         channelRegistry,
         carrierRegistry,
         identityKinds,
+        anonymity,
         ...options.channels,
         ...options.carriers
       ],
-      exports: [PluginRegistry, CarrierRegistry, CHANNEL_IDENTITY_KINDS]
+      exports: [PluginRegistry, CarrierRegistry, CHANNEL_IDENTITY_KINDS, CHANNEL_ANONYMITY]
     }
   }
 }

@@ -154,6 +154,8 @@ export const conversationListItemSchema = z.object({
   id: z.string(),
   status: z.string(),
   channelType: z.string(),
+  // Declared by the plugin of the channel: nobody gives these customers a name (a visitor of a site)
+  anonymousCustomers: z.boolean().catch(false),
   assignedTo: z.string().nullable(),
   unreadCount: z.number().int(),
   lastMessageAt: z.string().nullable(),
@@ -627,7 +629,9 @@ export const customerDetailSchema = z.object({
       channelType: z.string(),
       channelIdentity: z.string(),
       displayName: z.string().nullable(),
-      lastInboundAt: z.string().nullable()
+      lastInboundAt: z.string().nullable(),
+      // As on a conversation: declared by the plugin of the channel of the identity
+      anonymousCustomers: z.boolean().catch(false)
     })
   ),
   addresses: z.array(

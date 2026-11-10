@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Inject,
   HttpCode,
   Param,
   Patch,
@@ -16,7 +17,12 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { ConversationStatus, uuidSchema } from '@platform/core/domain'
+import {
+  CHANNEL_ANONYMITY,
+  type ChannelAnonymitySource,
+  ConversationStatus,
+  uuidSchema
+} from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -49,6 +55,12 @@ import {
 } from '@platform/core/messaging'
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
+import {
+  type WithAnonymous,
+  withAnonymousCustomers,
+  withAnonymousPage,
+  type WithAnonymousPage
+} from '../channel-registry'
 import { ExportsService, type ExportView } from '../exports'
 import {
   actorOf,
@@ -83,8 +95,13 @@ export class ConversationsController {
     private readonly readReceipts: ReadReceipts,
     private readonly widgetRead: WidgetReadNotifier,
     private readonly exports: ExportsService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @Inject(CHANNEL_ANONYMITY) private readonly anonymity: ChannelAnonymitySource
   ) {}
+
+  private marked(detail: ConversationDetail): WithAnonymous<ConversationDetail> {
+    return withAnonymousCustomers(this.anonymity, detail)
+  }
 
   // Declared before `:id`, or "export" would be read as an id. The file holds what the member can see
   // now, with the filters of the list; it is made in the background and the answer is the export to
@@ -121,11 +138,13 @@ export class ConversationsController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Query(new ZodValidationPipe(listConversationsQuerySchema)) query: ListConversationsQuery
-  ): Promise<ConversationPage | ConversationCounts> {
+  ): Promise<WithAnonymousPage<ConversationPage> | ConversationCounts> {
     const viewer = viewerOf(user.id, held)
     return query.countsOnly
       ? this.counts.counts(store.id, viewer)
-      : this.conversations.list(store.id, query, viewer)
+      : this.conversations
+          .list(store.id, query, viewer)
+          .then(page => withAnonymousPage(this.anonymity, page))
   }
 
   // Declared before `:id` routes, or "bulk" would be read as an id. The answer says which
@@ -150,8 +169,10 @@ export class ConversationsController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string
-  ): Promise<ConversationDetail> {
-    return this.conversations.get(store.id, conversationId, viewerOf(user.id, held))
+  ): Promise<WithAnonymous<ConversationDetail>> {
+    return this.conversations
+      .get(store.id, conversationId, viewerOf(user.id, held))
+      .then(detail => this.marked(detail))
   }
 
   // The ads and posts the customer came from, for the card on top of the thread
@@ -175,7 +196,7 @@ export class ConversationsController {
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(changeStatusSchema)) body: ChangeStatusBody,
     @Req() req: AuthenticatedRequest
-  ): Promise<ConversationDetail> {
+  ): Promise<WithAnonymous<ConversationDetail>> {
     const actor = actorOf(user, store, req)
     const options = {
       actor: viewerOf(user.id, held),
@@ -204,9 +225,11 @@ export class ConversationsController {
         })
       }
     }
-    return body.closingSnippetId !== undefined
-      ? this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
-      : this.conversations.updateStatus(store.id, conversationId, body.status, options)
+    const changed =
+      body.closingSnippetId !== undefined
+        ? this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
+        : this.conversations.updateStatus(store.id, conversationId, body.status, options)
+    return changed.then(detail => this.marked(detail))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)
@@ -218,14 +241,10 @@ export class ConversationsController {
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) body: SnoozeBody
-  ): Promise<ConversationDetail> {
-    return this.conversations.snooze(
-      store.id,
-      conversationId,
-      body.until,
-      viewerOf(user.id, held),
-      body.note ?? null
-    )
+  ): Promise<WithAnonymous<ConversationDetail>> {
+    return this.conversations
+      .snooze(store.id, conversationId, body.until, viewerOf(user.id, held), body.note ?? null)
+      .then(detail => this.marked(detail))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
@@ -236,8 +255,10 @@ export class ConversationsController {
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(assignSchema)) body: AssignBody
-  ): Promise<ConversationDetail> {
-    return this.conversations.assign(store.id, conversationId, body.userId, viewerOf(user.id, held))
+  ): Promise<WithAnonymous<ConversationDetail>> {
+    return this.conversations
+      .assign(store.id, conversationId, body.userId, viewerOf(user.id, held))
+      .then(detail => this.marked(detail))
   }
 
   // It writes what the whole team sees (the unread count), so it is for who works the conversation
@@ -249,7 +270,7 @@ export class ConversationsController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string
-  ): Promise<ConversationDetail> {
+  ): Promise<WithAnonymous<ConversationDetail>> {
     const detail = await this.conversations.markRead(
       store.id,
       conversationId,
@@ -260,7 +281,7 @@ export class ConversationsController {
     // failures and never rejects.
     void this.readReceipts.queueFor(store.id, conversationId)
     void this.widgetRead.notify(store.id, conversationId)
-    return detail
+    return this.marked(detail)
   }
 
   // Keeps a conversation to come back to: it counts as unread again, for the whole team
@@ -272,8 +293,10 @@ export class ConversationsController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) conversationId: string
-  ): Promise<ConversationDetail> {
-    return this.conversations.markUnread(store.id, conversationId, viewerOf(user.id, held))
+  ): Promise<WithAnonymous<ConversationDetail>> {
+    return this.conversations
+      .markUnread(store.id, conversationId, viewerOf(user.id, held))
+      .then(detail => this.marked(detail))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
