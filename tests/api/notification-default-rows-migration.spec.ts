@@ -17,7 +17,7 @@ const MIGRATION = join(
 )
 
 // Runs the unscoped DELETE of the migration on the test database, so it relies on the suites running one
-// at a time (`--runInBand`, as the security-tests job and `nx run tests:test-security` do).
+// at a time (`--runInBand`, as each shard of the security-tests check and `nx run tests:test-security` do).
 // The data migration that removes the rows holding exactly the old default of the two types that push by
 // default now (owner, 2026-11-08). It is run here against the test database over rows made for the case.
 describe('Migration push_default_rows', () => {

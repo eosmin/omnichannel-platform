@@ -214,10 +214,18 @@ jobs:
 
   # The tenant isolation suite (TDD_13 section 6) and the endpoint specs of tests/api: the real app of
   # the api, the real Postgres and Redis, the database role the api runs with. A failure in the
-  # isolation suite means a user could reach the data of a store they do not belong to. A job of its
-  # own so that it is seen on its own in a pull request; it also needs SeaweedFS, for the
-  # media suites (Step 3.4).
-  security-tests:
+  # isolation suite means a user could reach the data of a store they do not belong to. It runs in two
+  # jobs (`SECURITY_SHARD`; the denominator must match the `--shard=i/2` of tests/project.json), each
+  # with its own services; it also needs SeaweedFS, for the media suites (Step 3.4). The required check
+  # is `security-tests`, below.
+  security-shards:
+    name: security-shard (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The two halves of the suite, one shard of jest each, in a job of its own with its own services
+        # (`SECURITY_SHARD`, read by `tests/project.json`; empty runs both, as `pnpm test:security` does on a laptop)
+        shard: ['1/2', '2/2']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -267,7 +275,27 @@ jobs:
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
       - name: Tenant isolation suite and endpoint specs
+        env:
+          SECURITY_SHARD: ${{ matrix.shard }}
         run: pnpm test:security
+
+  # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
+  # happened upstream (`always()`): a shard that failed, was cancelled or was skipped can never read as a pass,
+  # and only `success` of both is a green.
+  security-tests:
+    needs: [security-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The shards decide
+        env:
+          SHARDS: ${{ needs.security-shards.result }}
+        run: |
+          echo "security-shards=$SHARDS"
+          if [ "$SHARDS" = "success" ]; then exit 0; fi
+          echo "::error::The shards of the security suite did not all succeed ($SHARDS)"
+          exit 1
 
   # Builds the image of each service and scans it. A critical or high vulnerability that has a fix
   # fails the job; the ones nobody has fixed yet do not.
