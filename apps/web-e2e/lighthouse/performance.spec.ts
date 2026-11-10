@@ -105,4 +105,25 @@ test.describe('performance budgets', () => {
       ScriptCeilingsKb.INBOX
     )
   })
+  // The catalog loads its panel (the form, the pictures, the variants) only when a product is opened, so the
+  // page that is measured is the list
+  test('the products page', async () => {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    async function signInAfresh(): Promise<void> {
+      await context.clearCookies()
+      await context.addCookies([englishLocaleCookie])
+      await reachServicesFromOwnAddress(context)
+      try {
+        await signIn(page, 'admin@test.com')
+      } finally {
+        await context.unrouteAll()
+      }
+      await page.goto('about:blank')
+    }
+    expectWithinBudgets(
+      'products',
+      await measure(`${WEB_URL}${AppPaths.store.products(storeId)}`, debuggingPort, signInAfresh),
+      ScriptCeilingsKb.PRODUCTS
+    )
+  })
 })

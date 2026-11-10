@@ -31,6 +31,11 @@ export function StoreNav(): ReactElement {
       isShown: can(ClientPermissions.CUSTOMERS_VIEW)
     },
     {
+      href: AppPaths.store.products(storeId),
+      label: t('products'),
+      isShown: can(ClientPermissions.PRODUCTS_VIEW)
+    },
+    {
       href: AppPaths.store.exports(storeId),
       label: t('exports'),
       isShown: mayOpenExports(can)
@@ -43,8 +48,13 @@ export function StoreNav(): ReactElement {
       isShown: mayOpenStoreSettings(can)
     }
   ].filter(entry => entry.isShown)
+  // On a phone the links wrap onto a second line instead of scrolling: five of them do not fit one line at
+  // 360 px, and a scrolling row cut a word ("Custome"). From `md` they scroll if they ever overflow.
   return (
-    <nav aria-label={t('label')} className="flex min-w-0 items-center gap-1 overflow-x-auto">
+    <nav
+      aria-label={t('label')}
+      className="flex min-w-0 items-center gap-1 max-md:flex-wrap md:overflow-x-auto"
+    >
       {entries.map(entry => {
         const isCurrent = pathname.startsWith(entry.match ?? entry.href)
         return (

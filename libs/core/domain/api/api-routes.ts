@@ -107,6 +107,7 @@ export const ApiRoutes = {
     create: '/products',
     byId: (id: string) => `/products/${id}`,
     variants: (id: string) => `/products/${id}/variants`,
+    images: (id: string) => `/products/${id}/images`, // The live pictures of a product, oldest first
     variantById: (id: string, variantId: string) => `/products/${id}/variants/${variantId}`,
     search: '/products/search',
     inventory: (id: string) => `/products/${id}/inventory` // Levels per warehouse, read only

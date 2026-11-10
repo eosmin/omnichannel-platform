@@ -12,15 +12,17 @@ import {
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
+import { MediaPurpose } from '@platform/core/storage'
 
 import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
 import type { CreateProductBody, ListProductsQuery, UpdateProductBody } from './products.schemas'
-import { lockProduct } from './products.support'
+import { LIVE_MEDIA_STATUSES, lockProduct } from './products.support'
 import {
   PRODUCT_SELECT,
   type ProductDetail,
+  type ProductImageView,
   type ProductPage,
   VARIANT_SELECT,
   variantView
@@ -86,6 +88,33 @@ export class ProductsService {
     }
   }
 
+  // The live files of a product, oldest first: the cover is one of them. Their links are asked one by one on
+  // GET /media/:id, which asks for media:view.
+  async images(storeId: string, productId: string): Promise<ProductImageView[]> {
+    const product = await this.prisma.client.product.findFirst({
+      where: { id: productId, storeId },
+      select: { id: true }
+    })
+    if (product === null) throw resourceNotFound('product')
+    return this.prisma.client.media.findMany({
+      where: {
+        storeId,
+        productId,
+        purpose: MediaPurpose.PRODUCT,
+        status: { in: LIVE_MEDIA_STATUSES }
+      },
+      select: {
+        id: true,
+        filename: true,
+        contentType: true,
+        fileSize: true,
+        status: true,
+        createdAt: true
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    })
+  }
+
   async create(storeId: string, body: CreateProductBody): Promise<ProductDetail> {
     const id = await this.write(() =>
       this.prisma.transaction(async tx => {
@@ -123,6 +152,23 @@ export class ProductsService {
     const previous = await this.write(() =>
       this.prisma.transaction(async tx => {
         const before = await lockProduct(tx, storeId, productId)
+        if (typeof body.imageMediaId === 'string') {
+          // The cover is a clean picture of this product: a file of another product or store, a message file, one
+          // the scan has not cleared or refused and one that does not exist are the same answer
+          const cover = await tx.media.findFirst({
+            where: {
+              id: body.imageMediaId,
+              storeId,
+              productId,
+              purpose: MediaPurpose.PRODUCT,
+              // Clean, not just live: a file the scan has not judged yet could still be refused, and the cover
+              // would then point at a file that is never served
+              status: MediaStatus.CLEAN
+            },
+            select: { id: true }
+          })
+          if (cover === null) throw resourceNotFound('media')
+        }
         await tx.product.update({
           where: { id: productId },
           data: {
@@ -136,7 +182,8 @@ export class ProductsService {
               ? {}
               : { lowStockThreshold: body.lowStockThreshold }),
             ...(body.active === undefined ? {} : { active: body.active }),
-            ...(body.freeShipping === undefined ? {} : { freeShipping: body.freeShipping })
+            ...(body.freeShipping === undefined ? {} : { freeShipping: body.freeShipping }),
+            ...(body.imageMediaId === undefined ? {} : { imageMediaId: body.imageMediaId })
           }
         })
         this.events.publish(tx, Events.PRODUCT_UPDATED, { storeId, productId })
@@ -181,7 +228,7 @@ export class ProductsService {
         tx.inventoryMovement.count({ where: { storeId, productId } }),
         // A file the scan refused or could not clear is never served and nobody can remove it: it does not keep the product
         tx.media.count({
-          where: { storeId, productId, status: { in: [MediaStatus.PENDING, MediaStatus.CLEAN] } }
+          where: { storeId, productId, status: { in: LIVE_MEDIA_STATUSES } }
         })
       ])
       if (orderItems > 0 || inventoryMovements > 0 || media > 0) {

@@ -938,3 +938,36 @@ export function addCustomerReactionTo(
     })
   })
 }
+
+// What the catalog cases read back from the database: the product by its name, with the files that name it
+export async function productNamed(name: string): Promise<{
+  id: string
+  priceCents: number
+  active: boolean
+  imageMediaId: string | null
+  variants: { name: string; priceCents: number | null }[]
+  media: { id: string; purpose: string; storeId: string | null }[]
+} | null> {
+  return withOwner(async owner => {
+    const product = await owner.product.findFirst({
+      where: { name },
+      select: {
+        id: true,
+        priceCents: true,
+        active: true,
+        imageMediaId: true,
+        variants: { select: { name: true, priceCents: true }, orderBy: { createdAt: 'asc' } },
+        media: { select: { id: true, purpose: true, storeId: true } }
+      }
+    })
+    return product
+  })
+}
+
+// The scan of a picture is the worker's and takes as long as ClamAV does: the cases that need a clean file say
+// so here, so that what they check is the screen and not the scanner
+export async function markMediaClean(mediaId: string): Promise<void> {
+  await withOwner(async owner => {
+    await owner.media.update({ where: { id: mediaId }, data: { status: MediaStatus.CLEAN } })
+  })
+}

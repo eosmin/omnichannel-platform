@@ -1,4 +1,5 @@
 import type { PrismaTransaction } from '@platform/core/database'
+import { MediaStatus } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 export interface LockedProduct {
@@ -24,3 +25,7 @@ export async function lockProduct(
   if (row === undefined) throw resourceNotFound('product')
   return { priceCents: row.price_cents, costCents: row.cost_cents, name: row.name, sku: row.sku }
 }
+
+// The files of a product that count: one the scan has not judged yet or found clean. A refused or unscannable
+// file is gone for every purpose of the catalog (the list of pictures, the delete guard).
+export const LIVE_MEDIA_STATUSES = [MediaStatus.PENDING, MediaStatus.CLEAN]

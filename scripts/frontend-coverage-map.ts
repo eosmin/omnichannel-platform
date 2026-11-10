@@ -86,6 +86,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'products.create': { step: '4.1' },
   'products.byId': { step: '4.1' },
   'products.variants': { step: '4.1' },
+  'products.images': { step: '4.1' },
   'products.variantById': { step: '4.1' },
   'products.search': { step: '4.1' },
   'products.inventory': { step: '4.2' },

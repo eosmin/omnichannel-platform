@@ -42,6 +42,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/inbox/page.tsx': 'inbox',
   's/[storeId]/inbox/[conversationId]/page.tsx': 'inbox',
   's/[storeId]/customers/page.tsx': 'customers',
+  's/[storeId]/products/page.tsx': 'products',
   's/[storeId]/exports/page.tsx': 'exports',
   's/[storeId]/settings/page.tsx': 'settings',
   's/[storeId]/settings/general/page.tsx': 'settingsGeneral',

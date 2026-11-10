@@ -24,10 +24,11 @@ test('the links of the top bar are whole on a phone', async ({ browser }) => {
     const storeId = await storeIdNamed(FIRST_STORE)
     await page.goto(AppPaths.store.inbox(storeId))
     const nav = page.getByRole('navigation', { name: en.shell.nav.label })
-    // The four of them, the one that was cut among them: a bar with fewer would measure nothing
+    // The five of them, the one that was cut among them: a bar with fewer would measure nothing
     for (const label of [
       en.shell.nav.inbox,
       en.shell.nav.customers,
+      en.shell.nav.products,
       en.shell.nav.exports,
       en.shell.nav.settings
     ]) {
