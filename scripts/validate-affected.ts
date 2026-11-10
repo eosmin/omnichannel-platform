@@ -85,6 +85,7 @@ const STEPS: { name: string; command: string[] }[] = [
   { name: 'validate:isolation', command: ['validate:isolation'] },
   { name: 'validate:frontend', command: ['validate:frontend'] },
   { name: 'validate:channel-agnostic', command: ['validate:channel-agnostic'] },
+  { name: 'validate:image-hosts', command: ['validate:image-hosts'] },
   // Pure code, a second to run: a contract that breaks is seen before the push and not in CI
   { name: 'test:contracts', command: ['test:contracts'] }
 ]
