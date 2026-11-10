@@ -444,7 +444,14 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     const registry = build()
     registerOfficial(registry)
     expect(codeOf(() => registry.register(wider))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    // Refused when it is registered, and nothing of it is left: not the plugin, not its login, and the
+    // official one is as it was
     expect(registry.has('telegram')).toBe(false)
+    expect(registry.oauthOf('telegram')).toBeNull()
+    expect(registry.oauthOf('messenger')?.scopes).toEqual(['pages_show_list'])
+    // The same id can be registered afterwards with a login inside the ceiling
+    registry.register(channel({ id: 'telegram', oauth: login }))
+    expect(registry.oauthOf('telegram')?.scopes).toEqual(['pages_show_list'])
   })
 
   it('does not take the flag for an official plugin where the id is not a reserved one', () => {
