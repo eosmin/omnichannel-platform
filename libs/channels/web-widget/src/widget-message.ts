@@ -29,7 +29,8 @@ const contentSchema = z
 // What a visitor sends: the token from the bootstrap, an id the browser made for the message (sending
 // it again stores it once), the text and the files it asked `upload-url` for. The token travels in the
 // body, beside what it authorizes, so that the plugin can check it where it reads the message. A
-// message has text, files or both. Unknown keys are dropped, so `attachments` below cannot be sent.
+// message has text, files or both. Unknown keys are refused, like in the other bodies of the widget,
+// so `attachments` below cannot be sent.
 // What both forms of the message share, so that a rule changed here changes for the api and the plugin
 const messageBase = {
   visitorToken: z.string().min(1).max(512),
@@ -44,7 +45,7 @@ const messageBase = {
 }
 
 export const widgetMessageSchema = z
-  .object({
+  .strictObject({
     ...messageBase,
     uploadIds: z.array(z.uuid()).max(WidgetLimits.UPLOADS_PER_MESSAGE).optional()
   })

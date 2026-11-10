@@ -1,3 +1,4 @@
+import { widgetMessageSchema } from './widget-message'
 import { widgetBootstrapSchema, widgetDownloadSchema, widgetUploadSchema } from './widget.schemas'
 
 // The bodies of the public doors of the widget are the only thing between a script on any site and the api
@@ -49,5 +50,20 @@ describe('the bodies of the public doors', () => {
     expect(widgetDownloadSchema.safeParse({ visitorToken: 't', mediaId, extra: 1 }).success).toBe(
       false
     )
+  })
+
+  it('takes the fields a message declares and refuses any other, so that the doors are alike', () => {
+    const message = { visitorToken: 't', clientMessageId: 'id-1', content: 'hola' }
+    expect(widgetMessageSchema.safeParse(message).success).toBe(true)
+    expect(
+      widgetMessageSchema.safeParse({
+        ...message,
+        uploadIds: [visitorId],
+        profile: { name: 'Ana', email: 'a@b.co', phone: '+5215555550100' }
+      }).success
+    ).toBe(true)
+    for (const extra of [{ extra: 1 }, { attachments: [] }, { profile: { name: 'a', x: 1 } }]) {
+      expect(widgetMessageSchema.safeParse({ ...message, ...extra }).success).toBe(false)
+    }
   })
 })
