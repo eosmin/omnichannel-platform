@@ -15,3 +15,7 @@ ALTER TABLE "products"
 ALTER TABLE "product_variants"
   ADD CONSTRAINT chk_product_variants_price_cents CHECK (price_cents IS NULL OR price_cents >= 0),
   ADD CONSTRAINT chk_product_variants_cost_cents CHECK (cost_cents IS NULL OR cost_cents >= 0);
+
+-- The pictures of a product are read (and counted before a delete) by (product, store); product_id leads because
+-- the foreign key (ON DELETE SET NULL) looks the rows up by product_id alone
+CREATE INDEX "media_product_id_store_id_idx" ON "media"("product_id", "store_id");

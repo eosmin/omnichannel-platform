@@ -871,6 +871,7 @@ model Media {
   @@index([originId])
   @@index([status, createdAt])
   @@index([storeId, channelMessageId])
+  @@index([productId, storeId])
   @@map("media")
 }
 

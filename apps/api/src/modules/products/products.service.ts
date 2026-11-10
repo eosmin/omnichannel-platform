@@ -3,7 +3,12 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
-import { ProductConflicts, ProductHistoryTables, ProductResourceTypes } from '@platform/core/domain'
+import {
+  MediaStatus,
+  ProductConflicts,
+  ProductHistoryTables,
+  ProductResourceTypes
+} from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -174,15 +179,21 @@ export class ProductsService {
       const [orderItems, inventoryMovements, media] = await Promise.all([
         tx.orderItem.count({ where: { productId } }),
         tx.inventoryMovement.count({ where: { storeId, productId } }),
-        tx.media.count({ where: { storeId, productId } })
+        // A file the scan refused or could not clear is never served and nobody can remove it: it does not keep the product
+        tx.media.count({
+          where: { storeId, productId, status: { in: [MediaStatus.PENDING, MediaStatus.CLEAN] } }
+        })
       ])
       if (orderItems > 0 || inventoryMovements > 0 || media > 0) {
-        throw resourceConflict('a product with orders or stock movements cannot be deleted', {
-          conflict: ProductConflicts.HAS_HISTORY,
-          [ProductHistoryTables.ORDER_ITEMS]: orderItems,
-          [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
-          [ProductHistoryTables.MEDIA]: media
-        })
+        throw resourceConflict(
+          'a product with orders, stock movements or files cannot be deleted',
+          {
+            conflict: ProductConflicts.HAS_HISTORY,
+            [ProductHistoryTables.ORDER_ITEMS]: orderItems,
+            [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
+            [ProductHistoryTables.MEDIA]: media
+          }
+        )
       }
       await tx.product.delete({ where: { id: productId } })
       this.events.publish(tx, Events.PRODUCT_DELETED, { storeId, productId })

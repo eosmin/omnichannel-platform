@@ -8,6 +8,7 @@ import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   InventoryMovementType,
+  MediaStatus,
   PaymentMethod,
   ProductConflicts,
   ProductHistoryTables,
@@ -542,6 +543,26 @@ describe('The products of a store', () => {
         [ProductHistoryTables.MEDIA]: 1
       })
       expect(await owner.product.findUnique({ where: { id: product.id } })).not.toBeNull()
+    })
+
+    it('deletes a product whose only file was refused by the scan', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      await owner.media.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: product.id,
+          purpose: 'product',
+          filename: 'bad.png',
+          contentType: 'image/png',
+          fileSize: 10,
+          key: `${prefix}/${randomUUID()}`,
+          status: MediaStatus.INFECTED
+        }
+      })
+
+      const response = await asAdmin().delete(ApiRoutes.products.byId(product.id))
+
+      expect(response.status).toBe(NO_CONTENT)
     })
 
     it('answers 409 for a product with stock movements', async () => {
