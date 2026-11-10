@@ -1,6 +1,5 @@
+import { WidgetTypingThrottle } from '@platform/channels/web-widget'
 import { WidgetLimits } from '@platform/core/domain'
-
-import { WidgetTypingThrottle } from '../../apps/api/src/modules/widget/widget-typing-throttle'
 
 const GAP = WidgetLimits.CUSTOMER_TYPING_GAP_MS
 const SITE_MAX = WidgetLimits.CUSTOMER_TYPING_SITE_PER_MINUTE

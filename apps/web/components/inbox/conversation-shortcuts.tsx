@@ -93,7 +93,7 @@ export function ConversationShortcuts({
       operation,
       { conversationIds: [conversationId] },
       [detail],
-      nameOf(detail.customer, detail.channelType)
+      nameOf(detail.customer, detail.anonymousCustomers)
     )
   }
   const keyboard = { priority: ShortcutPriority.OPEN_CONVERSATION }

@@ -10,7 +10,7 @@ import {
 import { PinoLogger } from 'nestjs-pino'
 import type { Namespace, Socket } from 'socket.io'
 
-import { isAllowedOrigin } from '@platform/channels/web-widget'
+import { isAllowedOrigin, WidgetTypingThrottle } from '@platform/channels/web-widget'
 import { Public } from '@platform/core/auth-module'
 import { WIDGET_TOKEN_AUTH_KEY, WidgetClientEvents, WidgetLimits } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
@@ -20,7 +20,6 @@ import { WidgetCustomerTyping } from './widget-customer-typing.service'
 import { WidgetDelivery } from './widget-delivery.service'
 import { WidgetSites } from './widget-sites.service'
 import { WidgetTokens } from './widget-tokens.service'
-import { WidgetTypingThrottle } from './widget-typing-throttle'
 
 // What the client is told when it is refused; the reason is in `data.code`
 const REFUSED_MESSAGE = 'refused'

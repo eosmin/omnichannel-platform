@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import type { Namespace } from 'socket.io'
 
+import type { WidgetMessageView } from '@platform/channels/web-widget'
 import { WidgetSocketEvents } from '@platform/core/domain'
 import { RoomNames } from '@platform/core/realtime'
-
-import type { WidgetMessageView } from './widget-message-view'
 
 // The one way the api talks to the browsers of the visitors: a message into the room of one visitor,
 // on whichever instance holds their socket. A visitor who is not connected loses nothing: the message

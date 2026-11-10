@@ -186,7 +186,7 @@ export function ConversationList({
   // On the row that has the focus. With rows ticked the bar's handlers come first, and with none the
   // open conversation's come after these
   const nameOfRow = (item: (typeof items)[number]): string =>
-    nameOf(item.customer, item.channelType)
+    nameOf(item.customer, item.anonymousCustomers)
   const focusedItem = (): (typeof items)[number] | undefined => {
     const id = rowIdOf(document.activeElement)
     return id === undefined ? undefined : items.find(item => item.id === id)
@@ -369,7 +369,7 @@ export function ConversationList({
                   />
                   <RowCheckbox
                     customer={item.customer}
-                    channelType={item.channelType}
+                    anonymous={item.anonymousCustomers}
                     isChecked={selection.ids.has(item.id)}
                     isSelecting={isSelecting}
                     onToggle={() => setSelection(toggleId(selection, item.id))}
@@ -377,7 +377,7 @@ export function ConversationList({
                   {mayResolve && canChangeState(item.status) ? (
                     <RowResolveButton
                       customer={item.customer}
-                      channelType={item.channelType}
+                      anonymous={item.anonymousCustomers}
                       defaultMode={defaultResolveMode}
                       onResolve={way => {
                         if (!runner.claim()) return
@@ -388,7 +388,7 @@ export function ConversationList({
                   {maySnooze && canChangeState(item.status) ? (
                     <RowSnooze
                       customer={item.customer}
-                      channelType={item.channelType}
+                      anonymous={item.anonymousCustomers}
                       onSnooze={() => setSnoozeFor(item.id)}
                     />
                   ) : null}

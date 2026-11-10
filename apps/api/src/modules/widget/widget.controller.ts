@@ -4,8 +4,15 @@ import type { Response } from 'express'
 
 import {
   type VisitorClaims,
+  type WidgetBootstrapBody,
+  widgetBootstrapSchema,
+  type WidgetDownloadBody,
+  widgetDownloadSchema,
   type WidgetMessage,
-  widgetMessageSchema
+  widgetMessageSchema,
+  type WidgetMessageView,
+  type WidgetUploadBody,
+  widgetUploadSchema
 } from '@platform/channels/web-widget'
 import { ApiRoutes } from '@platform/core/api'
 import { Public } from '@platform/core/auth-module'
@@ -22,19 +29,10 @@ import { InboundEventQueue } from '../channels/inbound-event-queue.service'
 import { WidgetAway } from './widget-away.service'
 import { WidgetDownloads, type WidgetFileLink } from './widget-downloads.service'
 import { WidgetHistory } from './widget-history.service'
-import type { WidgetMessageView } from './widget-message-view'
 import { allowOrigin } from './widget-origin'
 import { type WidgetSite, WidgetSites } from './widget-sites.service'
 import { WidgetTokens } from './widget-tokens.service'
 import { WidgetUploads } from './widget-uploads.service'
-import {
-  type WidgetBootstrapBody,
-  widgetBootstrapSchema,
-  type WidgetDownloadBody,
-  widgetDownloadSchema,
-  type WidgetUploadBody,
-  widgetUploadSchema
-} from './widget.schemas'
 
 // A phone the core cannot read would be dropped without a word, and the visitor would think the
 // store has it. It is refused before anything else is done, naming the field, so the form can say so.

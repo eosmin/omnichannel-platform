@@ -54,7 +54,7 @@ export function UnassignedQueueWidget(): ReactElement {
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2">
         {items.map(item => {
-          const name = nameOf(item.customer, item.channelType)
+          const name = nameOf(item.customer, item.anonymousCustomers)
           return (
             <li key={item.id} className="flex items-center gap-2 text-sm">
               <Link

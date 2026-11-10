@@ -28,10 +28,10 @@ describe('customerDisplayName', () => {
   })
 })
 
-describe('a visitor of the web widget', () => {
+describe('an anonymous customer, as the channel declares it', () => {
   const visitor = {
     id: 'i2',
-    channelType: 'web_widget',
+    channelType: 'acme_chat',
     channelIdentity: '3f0c1d52-0000-4000-8000-00000000ab98',
     displayName: null,
     lastInboundAt: null,
@@ -45,7 +45,15 @@ describe('a visitor of the web widget', () => {
   it('is named by the end of the id, as the inbox does', () => {
     expect(visitorTail({ identities: [visitor] })).toBe('ab98')
     expect(visitorTail({ identities: [] })).toBeNull()
-    expect(visitorTail({ identities: [{ ...visitor, channelType: 'instagram' }] })).toBeNull()
+    expect(visitorTail({ identities: [{ ...visitor, anonymousCustomers: false }] })).toBeNull()
+  })
+
+  it('is decided by the flag and never by the id of the channel', () => {
+    const widgetNamed = { ...visitor, channelType: 'web_widget', anonymousCustomers: false }
+    expect(visitorTail({ identities: [widgetNamed] })).toBeNull()
+    expect(customerDisplayName({ ...base, identities: [widgetNamed] })).toBe(
+      widgetNamed.channelIdentity
+    )
   })
 })
 
