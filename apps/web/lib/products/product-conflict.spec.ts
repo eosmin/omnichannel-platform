@@ -24,18 +24,33 @@ describe('conflictOf', () => {
 describe('historyCountsOf', () => {
   it('reads the counts the refusal names and zero for the rest', () => {
     expect(
-      historyCountsOf(conflict({ conflict: ProductConflicts.HAS_HISTORY, orderItems: 3, media: 1 }))
-    ).toEqual({ orderItems: 3, inventoryMovements: 0, media: 1 })
+      historyCountsOf(
+        conflict({
+          conflict: ProductConflicts.HAS_HISTORY,
+          orderItems: 3,
+          inventoryLevels: 2,
+          media: 1
+        })
+      )
+    ).toEqual({ orderItems: 3, inventoryMovements: 0, inventoryLevels: 2, media: 1 })
   })
 
   it('ignores a value that is not a count', () => {
     expect(
-      historyCountsOf(conflict({ orderItems: '3', media: -2, inventoryMovements: 1.5 }))
+      historyCountsOf(
+        conflict({ orderItems: '3', media: -2, inventoryMovements: 1.5, inventoryLevels: 0 })
+      )
     ).toEqual({
       orderItems: 0,
       inventoryMovements: 0,
+      inventoryLevels: 0,
       media: 0
     })
-    expect(historyCountsOf(null)).toEqual({ orderItems: 0, inventoryMovements: 0, media: 0 })
+    expect(historyCountsOf(null)).toEqual({
+      orderItems: 0,
+      inventoryMovements: 0,
+      inventoryLevels: 0,
+      media: 0
+    })
   })
 })

@@ -52,6 +52,9 @@ export function ProductForm({
   const [isRemoving, setRemoving] = useState(false)
   const mayEdit =
     product === null ? can(ClientPermissions.PRODUCTS_CREATE) : can(ClientPermissions.PRODUCTS_EDIT)
+  // Without the permission the form neither draws the cost nor sends it. Dropping it from the answers and
+  // refusing it in the writes is the api's own job (PR A2): this is the screen's half, not the guard
+  const mayViewCost = can(ClientPermissions.PRODUCTS_VIEW_COST)
   const mayDelete = product !== null && can(ClientPermissions.PRODUCTS_DELETE)
   // Archiving is a change of the product: asking it of who may only delete would end in a 403
   const mayArchive = product !== null && can(ClientPermissions.PRODUCTS_EDIT)
@@ -66,7 +69,7 @@ export function ProductForm({
     event.preventDefault()
     if (!mayEdit) return
     if (product === null) {
-      const result = productInputFrom(values)
+      const result = productInputFrom(values, mayViewCost)
       if (!result.ok) return setWrong(result.field)
       if (!guard.enter()) return
       writes.create.mutate(result.value, {
@@ -78,7 +81,7 @@ export function ProductForm({
       })
       return
     }
-    const result = productChangesFrom(product, values)
+    const result = productChangesFrom(product, values, mayViewCost)
     if (!result.ok) return setWrong(result.field)
     if (Object.keys(result.value).length === 0) {
       toast(t('form.unchanged'))
@@ -132,7 +135,7 @@ export function ProductForm({
   const history = writes.remove.error
   const hasHistory = conflictOf(history) === ProductConflicts.HAS_HISTORY
   const counts = historyCountsOf(history)
-  const parts = (['orderItems', 'inventoryMovements', 'media'] as const)
+  const parts = (['orderItems', 'inventoryMovements', 'inventoryLevels', 'media'] as const)
     .filter(key => counts[key] > 0)
     .map(key => t(`delete.history.${key}`, { count: counts[key] }))
     .join(', ')
@@ -164,19 +167,21 @@ export function ProductForm({
           />
           {fieldError('price')}
         </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="product-cost">{t('form.cost')}</Label>
-          <Input
-            id="product-cost"
-            inputMode="decimal"
-            value={values.cost}
-            disabled={!mayEdit}
-            onChange={event => set('cost', event.target.value)}
-            {...invalid('cost')}
-          />
-          <p className="text-muted-foreground text-xs">{t('form.costHelp')}</p>
-          {fieldError('cost')}
-        </div>
+        {mayViewCost ? (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="product-cost">{t('form.cost')}</Label>
+            <Input
+              id="product-cost"
+              inputMode="decimal"
+              value={values.cost}
+              disabled={!mayEdit}
+              onChange={event => set('cost', event.target.value)}
+              {...invalid('cost')}
+            />
+            <p className="text-muted-foreground text-xs">{t('form.costHelp')}</p>
+            {fieldError('cost')}
+          </div>
+        ) : null}
       </div>
       <div className="flex flex-col gap-1">
         <Label htmlFor="product-sku">{t('form.sku')}</Label>
