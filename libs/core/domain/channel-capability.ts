@@ -47,6 +47,13 @@ export interface ChannelIdentityKindSource {
 }
 export const CHANNEL_IDENTITY_KINDS = Symbol('CHANNEL_IDENTITY_KINDS')
 
+// Where the core asks whether the customers of a channel are anonymous (nobody gives a name: a visitor of a
+// site). The plugins module provides it from the registry; a channel it does not know is not anonymous.
+export interface ChannelAnonymitySource {
+  anonymousOf(channelType: string): boolean
+}
+export const CHANNEL_ANONYMITY = Symbol('CHANNEL_ANONYMITY')
+
 // What the registry keeps of `ChannelLimits` after it checked it: the caption is always present or null. This is
 // what the core, the api and the worker read; nobody can change it (the registry freezes it).
 export interface ChannelLimitsView {

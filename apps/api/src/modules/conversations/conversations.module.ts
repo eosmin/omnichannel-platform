@@ -9,6 +9,7 @@ import {
   RoutingService
 } from '@platform/core/messaging'
 
+import { ChannelRegistryModule } from '../channel-registry'
 import { ExportsModule } from '../exports'
 import { MessagingWindowModule } from '../messaging-window'
 import { TenancyModule } from '../tenancy'
@@ -25,6 +26,7 @@ import { ConversationsController } from './conversations.controller'
 @Module({
   imports: [
     TenancyModule,
+    ChannelRegistryModule,
     QueuesPlatformModule,
     ExportsModule,
     MessagingWindowModule,

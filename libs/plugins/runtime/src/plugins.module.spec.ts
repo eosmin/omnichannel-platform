@@ -5,7 +5,9 @@ import { PinoLogger } from 'nestjs-pino'
 import { MetaAppConfig } from '@platform/channels/meta'
 import { WidgetConfig, WidgetEmbedConfig, widgetTokenKey } from '@platform/channels/web-widget'
 import {
+  CHANNEL_ANONYMITY,
   CHANNEL_IDENTITY_KINDS,
+  type ChannelAnonymitySource,
   type ChannelIdentityKind,
   type ChannelIdentityKindSource,
   ChannelIdentityKinds,
@@ -68,6 +70,29 @@ describe('PluginsModule identity kinds', () => {
     expect(kinds.kindOf('acme_phone')).toBe(ChannelIdentityKinds.PHONE)
     expect(kinds.kindOf('suite_channel')).toBe(ChannelIdentityKinds.OPAQUE)
     expect(kinds.kindOf('never_registered')).toBe(ChannelIdentityKinds.OPAQUE)
+    await moduleRef.close()
+  })
+})
+
+describe('PluginsModule anonymity', () => {
+  it('tells the core which channels have customers nobody names, and treats an unknown channel as named', async () => {
+    class VisitorPlugin extends SuitePlugin {
+      override readonly id = 'acme_visitors'
+      readonly anonymousCustomers = true
+    }
+    const moduleRef = await Test.createTestingModule({
+      imports: [PluginsModule.forRoot({ channels: [SuitePlugin, VisitorPlugin], carriers: [] })]
+    })
+      .useMocker(token =>
+        token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
+      )
+      .compile()
+    await moduleRef.init()
+
+    const anonymity = moduleRef.get<ChannelAnonymitySource>(CHANNEL_ANONYMITY)
+    expect(anonymity.anonymousOf('acme_visitors')).toBe(true)
+    expect(anonymity.anonymousOf('suite_channel')).toBe(false)
+    expect(anonymity.anonymousOf('never_registered')).toBe(false)
     await moduleRef.close()
   })
 })

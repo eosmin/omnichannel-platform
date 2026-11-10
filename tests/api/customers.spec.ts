@@ -1016,6 +1016,55 @@ describe('The customers of a store', () => {
       expect(response.status).toBe(NO_CONTENT)
     })
 
+    it('says on each identity, and on each conversation of the customer, whether its channel has anonymous customers', async () => {
+      const customer = await create({ name: 'Mixto' })
+      const visitor = await owner.customerIdentity.create({
+        data: {
+          storeId: ctx.storeA.id,
+          customerId: customer.id,
+          channelType: ChannelIds.WEB_WIDGET,
+          channelIdentity: `${prefix}-anon`
+        }
+      })
+      await owner.customerIdentity.create({
+        data: {
+          storeId: ctx.storeA.id,
+          customerId: customer.id,
+          channelType: ChannelIds.MESSENGER,
+          channelIdentity: `${prefix}-named`
+        }
+      })
+      const conversation = await createConversation(owner, {
+        storeId: ctx.storeA.id,
+        customerId: customer.id,
+        customerIdentityId: visitor.id,
+        channelType: ChannelType.WEB_WIDGET
+      })
+
+      const detail = await asAdmin().get(ApiRoutes.customers.byId(customer.id))
+      const listed = await asAdmin().get(ApiRoutes.customers.conversations(customer.id))
+      const single = await asAdmin().get(ApiRoutes.conversations.byId(conversation.id))
+      const inbox = await asAdmin().get(ApiRoutes.conversations.list)
+
+      const flags = Object.fromEntries(
+        (
+          detail.body as { identities: { channelType: string; anonymousCustomers: boolean }[] }
+        ).identities.map(identity => [identity.channelType, identity.anonymousCustomers])
+      )
+      expect(flags).toEqual({ [ChannelIds.WEB_WIDGET]: true, [ChannelIds.MESSENGER]: false })
+      expect(
+        (listed.body as { data: { anonymousCustomers: boolean }[] }).data.map(
+          row => row.anonymousCustomers
+        )
+      ).toEqual([true])
+      expect((single.body as { anonymousCustomers: boolean }).anonymousCustomers).toBe(true)
+      expect(
+        (inbox.body as { data: { id: string; anonymousCustomers: boolean }[] }).data.find(
+          row => row.id === conversation.id
+        )?.anonymousCustomers
+      ).toBe(true)
+    })
+
     it('deletes a customer with no history and keeps one that has conversations', async () => {
       const alone = await create({ name: 'Solo' })
       const withHistory = await create({ name: 'Con historia' })

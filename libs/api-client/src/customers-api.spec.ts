@@ -260,7 +260,8 @@ describe('the identities', () => {
       channelType: 'whatsapp',
       channelIdentity: '50370000000',
       displayName: null,
-      lastInboundAt: null
+      lastInboundAt: null,
+      anonymousCustomers: false
     }
     const link = setup(json(201, identity))
     await expect(
