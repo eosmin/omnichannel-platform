@@ -178,3 +178,20 @@ export function movementView(row: MovementRow, canSeeCost: boolean): MovementVie
   }
   return canSeeCost ? { ...view, unitCostCents: row.unitCostCents } : view
 }
+
+// The available stock of one product of the store (all its items, all the warehouses), for the catalog list
+export interface StockSummaryRow {
+  productId: string
+  trackInventory: boolean
+  onHand: number
+  reserved: number
+  available: number
+  // Null: no alert for this product
+  lowStockThreshold: number | null
+  // The product tracks stock, has a threshold and its available stock is at or under it (TDD_16 §4.4)
+  isLow: boolean
+}
+
+export interface StockSummary {
+  data: StockSummaryRow[]
+}

@@ -128,7 +128,12 @@ export interface ProductWrites {
 export function useProductWrites(storeId: string, productId: string | null): ProductWrites {
   const queryClient = useQueryClient()
   const refresh = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: QueryKeys.products.all(storeId) })
+    // The stock column says "low" by the alert threshold of the product, and an untracked product has no count: both
+    // are changed here
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: QueryKeys.products.all(storeId) }),
+      queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) })
+    ])
   }
   const create = useMutation({
     mutationFn: (input: ProductInput) => createProduct(apiClient, storeId, input),

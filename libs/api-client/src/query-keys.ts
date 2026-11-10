@@ -89,8 +89,19 @@ export const QueryKeys = {
 
   // Inventory (TDD_16 §3)
   inventory: {
+    all: (storeId: string) => ['inventory', storeId] as const,
     levels: (storeId: string) => ['inventory', storeId, 'levels'] as const,
-    movements: (storeId: string) => ['inventory', storeId, 'movements'] as const
+    movements: (storeId: string) => ['inventory', storeId, 'movements'] as const,
+    // The stock column of the catalog: the products of a page, by their ids
+    summary: (storeId: string, productIds: readonly string[]) =>
+      ['inventory', storeId, 'summary', ...productIds] as const,
+    // The levels of one product, one row per item and warehouse
+    product: (storeId: string, productId: string) =>
+      ['inventory', storeId, 'product', productId] as const,
+    // The kardex of one item in one warehouse
+    kardex: (storeId: string, productId: string, variantId: string | null, warehouseId: string) =>
+      ['inventory', storeId, 'kardex', productId, variantId, warehouseId] as const,
+    warehouses: (storeId: string) => ['inventory', storeId, 'warehouses'] as const
   },
   warehouses: {
     all: (organizationId: string) => ['warehouses', organizationId] as const

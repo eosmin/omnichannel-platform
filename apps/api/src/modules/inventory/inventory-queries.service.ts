@@ -18,7 +18,8 @@ import {
   MOVEMENT_SELECT,
   type MovementPage,
   movementView,
-  type ProductInventory
+  type ProductInventory,
+  type StockSummary
 } from './inventory.views'
 
 // The most products a "low stock" filter looks at: a store whose catalog is mostly low is paged by the other filters
@@ -83,6 +84,43 @@ export class InventoryQueriesService {
           ? encodeCursor({ createdAt: last.updatedAt, id: last.id })
           : null,
       hasMore
+    }
+  }
+
+  // The available stock of the products asked for, one row each: a product of another store (or one that does not
+  // exist) is simply not in the answer. A product with no level has nothing on hand.
+  async summary(storeId: string, productIds: string[]): Promise<StockSummary> {
+    const [products, sums] = await Promise.all([
+      this.prisma.client.product.findMany({
+        where: { storeId, id: { in: productIds } },
+        select: { id: true, trackInventory: true, lowStockThreshold: true }
+      }),
+      this.prisma.client.inventoryLevel.groupBy({
+        by: ['productId'],
+        where: { storeId, productId: { in: productIds } },
+        _sum: { onHand: true, reserved: true }
+      })
+    ])
+    const sumOf = new Map(sums.map(row => [row.productId, row._sum]))
+    return {
+      data: products.map(product => {
+        const sum = sumOf.get(product.id)
+        const onHand = sum?.onHand ?? 0
+        const reserved = sum?.reserved ?? 0
+        const available = onHand - reserved
+        return {
+          productId: product.id,
+          trackInventory: product.trackInventory,
+          onHand,
+          reserved,
+          available,
+          lowStockThreshold: product.lowStockThreshold,
+          isLow:
+            product.trackInventory &&
+            product.lowStockThreshold !== null &&
+            available <= product.lowStockThreshold
+        }
+      })
     }
   }
 

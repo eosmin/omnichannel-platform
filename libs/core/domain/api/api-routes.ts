@@ -123,6 +123,8 @@ export const ApiRoutes = {
 
   inventory: {
     levels: '/inventory/levels',
+    // The available stock of up to 100 products of the store, one row each (the stock column of the catalog)
+    summary: '/inventory/summary',
     movements: '/inventory/movements',
     kardex: '/inventory/kardex',
     adjustments: '/inventory/adjustments'

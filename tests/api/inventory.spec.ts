@@ -534,6 +534,89 @@ describe('The stock of a store', () => {
     })
   })
 
+  describe('the summary for the catalog', () => {
+    it('answers the available stock of the products asked for, one row each, and nothing for a product of another store', async () => {
+      const low = await product({ threshold: 5 })
+      const fine = await product({ threshold: 2 })
+      const empty = await product()
+      const untracked = await product()
+      await owner.product.update({ where: { id: untracked.id }, data: { trackInventory: false } })
+      const foreign = await createProduct(owner, { storeId: ctx.storeB.id })
+      await receive(low.id, 6)
+      await post(adjustment(low.id, { warehouseId: ctx.warehouseASecond.id, quantity: 4 }))
+      await post(adjustment(low.id, { type: 'adjustment_out', quantity: 6, reason: 'lost' })) // 4 left
+      await receive(fine.id, 9)
+      const ids = [low.id, fine.id, empty.id, untracked.id, foreign.id, randomUUID()]
+
+      const response = await asAdmin()
+        .get(ApiRoutes.inventory.summary)
+        .query({ productIds: ids.join(',') })
+
+      expect(response.status).toBe(OK)
+      const rows = (
+        response.body as {
+          data: {
+            productId: string
+            onHand: number
+            reserved: number
+            available: number
+            isLow: boolean
+            trackInventory: boolean
+          }[]
+        }
+      ).data
+      const byId = new Map(rows.map(row => [row.productId, row]))
+      expect(rows).toHaveLength(4)
+      expect(byId.get(low.id)).toMatchObject({ onHand: 4, available: 4, isLow: true })
+      expect(byId.get(fine.id)).toMatchObject({ onHand: 9, isLow: false })
+      expect(byId.get(empty.id)).toMatchObject({ onHand: 0, reserved: 0, isLow: false })
+      expect(byId.get(untracked.id)).toMatchObject({ trackInventory: false, isLow: false })
+      expect(byId.has(foreign.id)).toBe(false)
+    })
+
+    it.each([
+      ['no product', {}],
+      ['an empty list', { productIds: '' }],
+      ['an id that is not one', { productIds: 'nope' }],
+      [
+        'too many products',
+        { productIds: Array.from({ length: 101 }, () => randomUUID()).join(',') }
+      ],
+      ['a parameter it does not know', { productIds: randomUUID(), storeId: randomUUID() }]
+    ])('answers 400 for %s', async (_label, query) => {
+      expect((await asAdmin().get(ApiRoutes.inventory.summary).query(query)).status).toBe(
+        BAD_REQUEST
+      )
+    })
+
+    it('asks inventory:view', async () => {
+      const adjuster = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'summary-no-view',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.INVENTORY_ADJUST]
+        }),
+        ctx.storeA
+      )
+
+      const denied = await adjuster
+        .get(ApiRoutes.inventory.summary)
+        .query({ productIds: randomUUID() })
+
+      expect(denied.status).toBe(FORBIDDEN)
+      expect(
+        (
+          await api(app, ctx.viewerA, ctx.storeA)
+            .get(ApiRoutes.inventory.summary)
+            .query({ productIds: randomUUID() })
+        ).status
+      ).toBe(OK)
+    })
+  })
+
   describe('the movements and the kardex', () => {
     it('lists the movements newest first and filters them by type and by product', async () => {
       const made = await product()

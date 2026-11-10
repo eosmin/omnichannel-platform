@@ -28,9 +28,17 @@ import {
   type ListLevelsQuery,
   listLevelsQuerySchema,
   type ListMovementsQuery,
-  listMovementsQuerySchema
+  listMovementsQuerySchema,
+  type StockSummaryQuery,
+  stockSummaryQuerySchema
 } from './inventory.schemas'
-import type { AdjustmentView, LevelPage, MovementPage, ProductInventory } from './inventory.views'
+import type {
+  AdjustmentView,
+  LevelPage,
+  MovementPage,
+  ProductInventory,
+  StockSummary
+} from './inventory.views'
 
 const id = () => new ZodValidationPipe(idSchema)
 
@@ -51,6 +59,16 @@ export class InventoryController {
     @Query(new ZodValidationPipe(listLevelsQuerySchema)) query: ListLevelsQuery
   ): Promise<LevelPage> {
     return this.queries.listLevels(store.id, query, mayViewCost(held))
+  }
+
+  // Declared with the other fixed routes, before any `:id`
+  @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @Get(ApiRoutes.inventory.summary)
+  summary(
+    @CurrentStore() store: { id: string },
+    @Query(new ZodValidationPipe(stockSummaryQuerySchema)) query: StockSummaryQuery
+  ): Promise<StockSummary> {
+    return this.queries.summary(store.id, query.productIds)
   }
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)

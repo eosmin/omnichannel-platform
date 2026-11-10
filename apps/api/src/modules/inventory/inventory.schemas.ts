@@ -46,6 +46,14 @@ export const listLevelsQuerySchema = z.strictObject({
   lowStock: flag.optional()
 })
 
+// The stock column of the catalog asks for the products of one page at once
+export const stockSummaryQuerySchema = z.strictObject({
+  productIds: z
+    .string()
+    .transform(text => text.split(','))
+    .pipe(z.array(idSchema).min(1).max(PaginationLimits.MAX))
+})
+
 export const listMovementsQuerySchema = z.strictObject({
   cursor: seqCursorSchema.optional(),
   limit,
@@ -86,6 +94,7 @@ export const createAdjustmentSchema = z.strictObject({
 })
 
 export type ListLevelsQuery = z.infer<typeof listLevelsQuerySchema>
+export type StockSummaryQuery = z.infer<typeof stockSummaryQuerySchema>
 export type ListMovementsQuery = z.infer<typeof listMovementsQuerySchema>
 export type KardexQuery = z.infer<typeof kardexQuerySchema>
 export type CreateAdjustmentBody = z.infer<typeof createAdjustmentSchema>
