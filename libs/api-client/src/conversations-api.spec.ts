@@ -47,6 +47,20 @@ const item = {
 }
 
 describe('fetchConversationsPage', () => {
+  it('reads whether the customers of a channel are anonymous, and says no when an older server leaves it out', async () => {
+    const { client } = setup(
+      json(200, {
+        data: [{ ...item, anonymousCustomers: true }, item],
+        nextCursor: null,
+        hasMore: false
+      })
+    )
+
+    const page = await fetchConversationsPage(client, 's1', {}, null)
+
+    expect(page.data.map(row => row.anonymousCustomers)).toEqual([true, false])
+  })
+
   it('asks for the filters and the cursor, and for nothing that is not named', async () => {
     const { client, fetchImpl } = setup(json(200, { data: [item], nextCursor: 'n', hasMore: true }))
 
