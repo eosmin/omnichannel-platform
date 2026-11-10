@@ -169,3 +169,4 @@ Exact pins for every dependency: `TDD_01_Architecture.md` §2.4. That table is t
 
 When a document says "Phase 2" or "MATURE", that work is explicitly **out of scope
 for the first implementation pass** unless the plan says otherwise.
+
