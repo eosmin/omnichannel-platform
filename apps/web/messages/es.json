@@ -2527,7 +2527,8 @@
       "sku": "SKU",
       "price": "Precio",
       "variants": "Variantes",
-      "status": "Estado"
+      "status": "Estado",
+      "stock": "Existencias"
     },
     "status": {
       "active": "Activo",
@@ -2541,7 +2542,8 @@
         "label": "Secciones del producto",
         "data": "Datos",
         "images": "Imágenes",
-        "variants": "Variantes"
+        "variants": "Variantes",
+        "stock": "Existencias"
       },
       "saveFirst": "Guarda primero el producto para añadir imágenes y variantes."
     },
@@ -2642,6 +2644,111 @@
       "too_many_variants": "Un producto puede tener hasta {max} variantes.",
       "has_history": "Este producto forma parte del historial de la tienda, así que no se puede eliminar. Archívalo."
     },
-    "noMatchesYet": "Ningún producto cargado hasta ahora coincide. Muestra más productos para seguir buscando."
+    "noMatchesYet": "Ningún producto cargado hasta ahora coincide. Muestra más productos para seguir buscando.",
+    "stock": {
+      "heading": "Existencias",
+      "description": "Lo que hay en cada bodega de la tienda. Las unidades reservadas están prometidas a pedidos.",
+      "noAccess": "No puedes ver las existencias de esta tienda.",
+      "failed": "No se pudieron cargar las existencias.",
+      "notTracked": "Este producto no lleva conteo de existencias. Activa el control de existencias en Datos para contarlo.",
+      "empty": "Todavía no se registraron existencias de este producto.",
+      "totals": {
+        "onHand": "Físicas",
+        "reserved": "Reservadas",
+        "available": "Disponibles"
+      },
+      "columns": {
+        "warehouse": "Bodega",
+        "item": "Artículo",
+        "onHand": "Físicas",
+        "reserved": "Reservadas",
+        "available": "Disponibles",
+        "value": "Valor (USD)",
+        "averageCost": "Costo promedio (USD)",
+        "actions": "Acciones"
+      },
+      "productRow": "El producto",
+      "oversold": "Sobrevendido",
+      "low": "Existencias bajas",
+      "adjust": "Ajustar existencias",
+      "movements": "Movimientos",
+      "movementsOf": "Movimientos de {item} en {warehouse}",
+      "list": {
+        "notTracked": "Sin conteo",
+        "available": "{count, plural, one {# disponible} other {# disponibles}}",
+        "low": "Existencias bajas",
+        "failed": "No se pudieron cargar las existencias."
+      },
+      "kardex": {
+        "empty": "Todavía no hay movimientos.",
+        "failed": "No se pudieron cargar los movimientos.",
+        "loadMore": "Mostrar movimientos anteriores",
+        "columns": {
+          "date": "Fecha",
+          "type": "Movimiento",
+          "quantity": "Unidades",
+          "onHand": "Físicas después",
+          "reserved": "Reservadas después",
+          "cost": "Costo unitario",
+          "reason": "Motivo"
+        }
+      },
+      "types": {
+        "receipt": "Recepción",
+        "issue": "Despachado",
+        "reserve": "Reservado",
+        "release": "Liberado",
+        "adjustment_in": "Ajuste de entrada",
+        "adjustment_out": "Ajuste de salida",
+        "transfer_out": "Salida por traslado",
+        "transfer_in": "Entrada por traslado",
+        "count_in": "Conteo: sobrante",
+        "count_out": "Conteo: faltante",
+        "return_in": "Devolución"
+      },
+      "reasons": {
+        "opening_stock": "Existencias iniciales",
+        "damaged": "Dañado",
+        "lost": "Perdido",
+        "found": "Encontrado",
+        "correction": "Corrección",
+        "other": "Otro"
+      },
+      "dialog": {
+        "title": "Ajustar existencias",
+        "description": "Recibe existencias o corrige lo que hay. Cada cambio queda registrado con su motivo.",
+        "warehouse": "Bodega",
+        "warehouseNone": "Elige una bodega",
+        "noWarehouses": "Esta tienda no vende desde ninguna bodega activa.",
+        "item": "Artículo",
+        "itemChoose": "Elige una variante",
+        "action": "Qué pasó",
+        "actions": {
+          "receive": "Recibir existencias",
+          "add": "Sumar unidades (corrección)",
+          "remove": "Quitar unidades"
+        },
+        "quantity": "Unidades",
+        "reason": "Motivo",
+        "note": "Nota (opcional)",
+        "unitCost": "Costo de una unidad (USD)",
+        "unitCostHelp": "Opcional. Fija el costo de las unidades que entran.",
+        "submit": "Guardar",
+        "cancel": "Cancelar",
+        "saved": "Existencias actualizadas",
+        "savedAgain": "Este ajuste ya se había guardado.",
+        "errors": {
+          "warehouse": "Elige una bodega.",
+          "variant": "Elige la variante a la que pertenecen las existencias.",
+          "quantity": "Escribe un número entero de unidades, desde 1.",
+          "note": "La nota es demasiado larga o tiene un salto de línea.",
+          "unitCost": "Escribe un costo con hasta dos decimales, o déjalo vacío."
+        },
+        "warehousesFailed": "No se pudieron cargar las bodegas."
+      },
+      "refreshFailed": "No se pudieron actualizar las existencias. Lo que se ve puede estar desactualizado.",
+      "lowBanner": "<b>Existencias bajas.</b> {available, plural, one {# disponible} other {# disponibles}}, alerta en {threshold}.",
+      "adjustFor": "Ajustar existencias de {item} en {warehouse}"
+    }
   }
 }

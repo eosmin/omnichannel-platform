@@ -1,11 +1,15 @@
 'use client'
 
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, TriangleAlert } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useFormatter, useTranslations } from 'next-intl'
-import { type ReactElement, useState } from 'react'
+import { type ReactElement, useMemo, useState } from 'react'
 
-import type { ProductListItemView, ProductSearchItemView } from '@platform/api-client'
+import type {
+  ProductListItemView,
+  ProductSearchItemView,
+  StockSummaryView
+} from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 
 import type { ProductTarget } from '../../components/products/product-sheet'
@@ -14,6 +18,7 @@ import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
+import { useStockSummaries } from '../../lib/inventory/use-stock-summaries'
 import { formatCents } from '../../lib/products/money'
 import { matchesFilter } from '../../lib/products/product-filter'
 import { matchesProduct } from '../../lib/products/product-search'
@@ -65,7 +70,36 @@ const fromSearch = (product: ProductSearchItemView): RowView => ({
   variants: { matched: product.matchedVariant?.name ?? null }
 })
 
-function Row({ product, onOpen }: { product: RowView; onOpen: () => void }): ReactElement {
+// What the stock column says of a product: how many are available, the warning when it is at its alert threshold, or
+// that it keeps no count. Nothing while the answer for the page is on its way.
+function StockCell({ stock }: { stock: StockSummaryView | undefined }): ReactElement | null {
+  const t = useTranslations('products.stock.list')
+  if (stock === undefined) return null
+  if (!stock.trackInventory) return <span className="text-muted-foreground">{t('notTracked')}</span>
+  return (
+    <span className="flex flex-wrap items-center gap-x-2">
+      <span className="tabular-nums">{t('available', { count: stock.available })}</span>
+      {stock.isLow ? (
+        <span className="flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300">
+          <TriangleAlert aria-hidden className="size-3.5" />
+          {t('low')}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+function Row({
+  product,
+  onOpen,
+  stock,
+  showStock
+}: {
+  product: RowView
+  onOpen: () => void
+  stock: StockSummaryView | undefined
+  showStock: boolean
+}): ReactElement {
   const t = useTranslations('products')
   const format = useFormatter()
   return (
@@ -86,6 +120,11 @@ function Row({ product, onOpen }: { product: RowView; onOpen: () => void }): Rea
       <td className="py-2 pr-3 text-sm">
         {'count' in product.variants ? product.variants.count : (product.variants.matched ?? '')}
       </td>
+      {showStock ? (
+        <td className="py-2 pr-3 text-sm">
+          <StockCell stock={stock} />
+        </td>
+      ) : null}
       <td className="py-2 text-sm">{product.active ? t('status.active') : t('status.archived')}</td>
     </tr>
   )
@@ -104,6 +143,7 @@ export function ProductsPage(): ReactElement {
   // The panel is downloaded when it is first asked for and stays mounted, so that it can close with its animation
   const isSheetLoaded = useMountedOnce(target !== null)
   const mayView = can(ClientPermissions.PRODUCTS_VIEW)
+  const mayReadStock = can(ClientPermissions.INVENTORY_VIEW)
   const products = useProductList(storeId, filter, mayView)
   const q = useDebouncedValue(text.trim(), SEARCH_DELAY_MS)
   const typed = text.trim()
@@ -115,6 +155,11 @@ export function ProductsPage(): ReactElement {
   const rows: RowView[] = isSearching
     ? (search.data ?? []).filter(product => matchesFilter(filter, product.active)).map(fromSearch)
     : loaded.filter(product => matchesProduct(product, text)).map(fromList)
+
+  // The stock of the products on the screen, asked together: one request for each hundred of them
+  const idsKey = rows.map(row => row.id).join(',')
+  const shownIds = useMemo(() => (idsKey === '' ? [] : idsKey.split(',')), [idsKey])
+  const stock = useStockSummaries(storeId, shownIds, mayView && mayReadStock)
 
   if (!mayView) {
     return (
@@ -213,6 +258,9 @@ export function ProductsPage(): ReactElement {
                 <th className="py-2 pr-3 font-medium">{t('columns.sku')}</th>
                 <th className="py-2 pr-3 font-medium">{t('columns.price')}</th>
                 <th className="py-2 pr-3 font-medium">{t('columns.variants')}</th>
+                {mayReadStock ? (
+                  <th className="py-2 pr-3 font-medium">{t('columns.stock')}</th>
+                ) : null}
                 <th className="py-2 font-medium">{t('columns.status')}</th>
               </tr>
             </thead>
@@ -222,12 +270,19 @@ export function ProductsPage(): ReactElement {
                   key={product.id}
                   product={product}
                   onOpen={() => setTarget({ kind: 'product', id: product.id })}
+                  stock={stock.byProduct.get(product.id)}
+                  showStock={mayReadStock}
                 />
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {mayReadStock && stock.isError ? (
+        <p role="status" className="text-muted-foreground text-sm">
+          {t('stock.list.failed')}
+        </p>
+      ) : null}
       {!isSearching && products.hasNextPage ? (
         <Button
           variant="outline"

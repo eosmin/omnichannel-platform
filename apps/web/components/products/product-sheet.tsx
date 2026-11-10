@@ -3,6 +3,8 @@
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
+import { ClientPermissions } from '@platform/core/auth'
+
 import { useProduct } from '../../lib/products/use-products'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -11,12 +13,13 @@ import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 
 import { ImagesTab } from './images-tab'
 import { ProductForm } from './product-form'
+import { StockTab } from './stock-tab'
 import { VariantsTab } from './variants-tab'
 
 // What the page asked the sheet to show: a form for a new product, or one product by its id
 export type ProductTarget = { kind: 'new' } | { kind: 'product'; id: string }
 
-const Sections = { DATA: 'data', IMAGES: 'images', VARIANTS: 'variants' } as const
+const Sections = { DATA: 'data', IMAGES: 'images', VARIANTS: 'variants', STOCK: 'stock' } as const
 type Section = (typeof Sections)[keyof typeof Sections]
 
 // The panel of a product: Details, Pictures and Variants. It reads nothing while closed; it loads with the
@@ -71,7 +74,7 @@ function Body({
 }): ReactElement {
   const t = useTranslations('products.sheet')
   const tAll = useTranslations()
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
   const product = useProduct(storeId, productId)
   const [section, setSection] = useState<Section>(Sections.DATA)
 
@@ -100,6 +103,9 @@ function Body({
           <TabsTrigger value={Sections.DATA}>{t('tabs.data')}</TabsTrigger>
           <TabsTrigger value={Sections.IMAGES}>{t('tabs.images')}</TabsTrigger>
           <TabsTrigger value={Sections.VARIANTS}>{t('tabs.variants')}</TabsTrigger>
+          {can(ClientPermissions.INVENTORY_VIEW) ? (
+            <TabsTrigger value={Sections.STOCK}>{t('tabs.stock')}</TabsTrigger>
+          ) : null}
         </TabsList>
       </Tabs>
       {/* Kept mounted while another tab is shown: what was typed and not saved is not lost by looking at the
@@ -114,6 +120,7 @@ function Body({
       </div>
       {section === Sections.IMAGES ? <ImagesTab product={loaded} /> : null}
       {section === Sections.VARIANTS ? <VariantsTab product={loaded} /> : null}
+      {section === Sections.STOCK ? <StockTab product={loaded} /> : null}
     </div>
   )
 }

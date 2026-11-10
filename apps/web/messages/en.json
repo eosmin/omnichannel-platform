@@ -2527,7 +2527,8 @@
       "sku": "SKU",
       "price": "Price",
       "variants": "Variants",
-      "status": "Status"
+      "status": "Status",
+      "stock": "Stock"
     },
     "status": {
       "active": "Active",
@@ -2541,7 +2542,8 @@
         "label": "Sections of the product",
         "data": "Details",
         "images": "Pictures",
-        "variants": "Variants"
+        "variants": "Variants",
+        "stock": "Stock"
       },
       "saveFirst": "Save the product first to add pictures and variants."
     },
@@ -2642,6 +2644,111 @@
       "too_many_variants": "A product can have up to {max} variants.",
       "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead."
     },
-    "noMatchesYet": "No product loaded so far matches. Show more products to keep looking."
+    "noMatchesYet": "No product loaded so far matches. Show more products to keep looking.",
+    "stock": {
+      "heading": "Stock",
+      "description": "What is on hand in each warehouse of the store. Reserved units are promised to orders.",
+      "noAccess": "You cannot see the stock of this store.",
+      "failed": "The stock could not be loaded.",
+      "notTracked": "This product does not keep a stock count. Turn on stock tracking in Details to count it.",
+      "empty": "No stock has been recorded for this product yet.",
+      "totals": {
+        "onHand": "On hand",
+        "reserved": "Reserved",
+        "available": "Available"
+      },
+      "columns": {
+        "warehouse": "Warehouse",
+        "item": "Item",
+        "onHand": "On hand",
+        "reserved": "Reserved",
+        "available": "Available",
+        "value": "Value (USD)",
+        "averageCost": "Average cost (USD)",
+        "actions": "Actions"
+      },
+      "productRow": "The product",
+      "oversold": "Oversold",
+      "low": "Low stock",
+      "adjust": "Adjust stock",
+      "movements": "Movements",
+      "movementsOf": "Movements of {item} in {warehouse}",
+      "list": {
+        "notTracked": "Not tracked",
+        "available": "{count, plural, one {# available} other {# available}}",
+        "low": "Low stock",
+        "failed": "The stock could not be loaded."
+      },
+      "kardex": {
+        "empty": "No movements yet.",
+        "failed": "The movements could not be loaded.",
+        "loadMore": "Show older movements",
+        "columns": {
+          "date": "Date",
+          "type": "Movement",
+          "quantity": "Units",
+          "onHand": "On hand after",
+          "reserved": "Reserved after",
+          "cost": "Unit cost",
+          "reason": "Reason"
+        }
+      },
+      "types": {
+        "receipt": "Receipt",
+        "issue": "Shipped",
+        "reserve": "Reserved",
+        "release": "Released",
+        "adjustment_in": "Adjustment in",
+        "adjustment_out": "Adjustment out",
+        "transfer_out": "Transfer out",
+        "transfer_in": "Transfer in",
+        "count_in": "Count: surplus",
+        "count_out": "Count: shortage",
+        "return_in": "Return"
+      },
+      "reasons": {
+        "opening_stock": "Opening stock",
+        "damaged": "Damaged",
+        "lost": "Lost",
+        "found": "Found",
+        "correction": "Correction",
+        "other": "Other"
+      },
+      "dialog": {
+        "title": "Adjust stock",
+        "description": "Receive stock or correct what is on hand. Every change is recorded with its reason.",
+        "warehouse": "Warehouse",
+        "warehouseNone": "Choose a warehouse",
+        "noWarehouses": "This store sells from no active warehouse.",
+        "item": "Item",
+        "itemChoose": "Choose a variant",
+        "action": "What happened",
+        "actions": {
+          "receive": "Receive stock",
+          "add": "Add units (correction)",
+          "remove": "Remove units"
+        },
+        "quantity": "Units",
+        "reason": "Reason",
+        "note": "Note (optional)",
+        "unitCost": "Cost of one unit (USD)",
+        "unitCostHelp": "Optional. Sets the cost of the units that come in.",
+        "submit": "Save",
+        "cancel": "Cancel",
+        "saved": "Stock updated",
+        "savedAgain": "This adjustment had already been saved.",
+        "errors": {
+          "warehouse": "Choose a warehouse.",
+          "variant": "Choose the variant the stock is for.",
+          "quantity": "Write a whole number of units, from 1 up.",
+          "note": "The note is too long or has a line break.",
+          "unitCost": "Write a cost with up to two decimals, or leave it empty."
+        },
+        "warehousesFailed": "The warehouses could not be loaded."
+      },
+      "refreshFailed": "The stock could not be refreshed. What is shown may be out of date.",
+      "lowBanner": "<b>Low stock.</b> {available, plural, one {# available} other {# available}}, alert at {threshold}.",
+      "adjustFor": "Adjust stock of {item} in {warehouse}"
+    }
   }
 }

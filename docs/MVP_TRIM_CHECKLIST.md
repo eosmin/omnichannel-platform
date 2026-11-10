@@ -290,6 +290,7 @@ file where they conflict.
 - Isolation: organization-scoped resources join the isolation suite and `check-isolation-coverage` (`TDD_16 §8`).
 - `TDD_01 §4` `InventoryMovement` comment "Order id or manual adjustment note" and the v1.1 movement-type enum are replaced by `TDD_16`.
 - Anything in `TDD_08`, `TDD_09`, `TDD_13` that computes stock from movements alone now reads `InventoryLevel` (the movement ledger is the audit trail and the reconciliation source).
+- POS and the cash register (`TDD_16 §11`, `§12`) are Phase 2 (owner decision, 2026-11-10): the MVP builds no point of sale; `InventoryService` is the only boundary kept ready for it.
 
 **Integration plugins (`TDD_10 §6`, `§7`)**
 - Keep the `Plugin` and `PluginInstallation` models. Every plugin, official or private, has a `Plugin` row and is installed per store with a `PluginInstallation` (D19, which replaces the earlier "official channel plugins stay in the code registry with no `Plugin` rows"); private plugins are registered by the owner (D10). Add `ApiRoutes.plugins.register` (`POST /plugins/register`, `SETTINGS_MANAGE_PLUGINS`) for the pasted-manifest registration of Step 5.6.
