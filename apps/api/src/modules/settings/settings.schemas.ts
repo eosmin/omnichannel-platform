@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  ProductLimits,
   SettingsLimits,
   singleLineText,
   SNIPPET_SHORTCUT_PATTERN,
@@ -107,3 +108,21 @@ export type CreateSnippetBody = z.output<typeof createSnippetSchema>
 export type UpdateSnippetBody = z.output<typeof updateSnippetSchema>
 export type PutBusinessHoursBody = z.output<typeof putBusinessHoursSchema>
 export type UpdateInboxSettingsBody = z.output<typeof updateInboxSettingsSchema>
+
+// Settings → Inventory (TDD_16 §4.10). Each key is optional and keeps its value when it is left out. The default
+// threshold is held to the same limits as the one of a product, since a new product starts with it.
+export const updateInventorySettingsSchema = z
+  .strictObject({
+    allowNegativeStock: z.boolean().optional(),
+    allowSplitFulfillment: z.boolean().optional(),
+    defaultLowStockThreshold: z
+      .number()
+      .int()
+      .min(0)
+      .max(ProductLimits.MAX_LOW_STOCK_THRESHOLD)
+      .nullable()
+      .optional()
+  })
+  .refine(changesSomething, nothingToChange)
+
+export type UpdateInventorySettingsBody = z.infer<typeof updateInventorySettingsSchema>

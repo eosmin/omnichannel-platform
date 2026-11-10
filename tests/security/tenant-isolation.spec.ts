@@ -37,6 +37,8 @@ import {
   createProduct,
   createProductVariant,
   itemOfStockRow,
+  createWarehouse,
+  linkWarehouse,
   createChannelConnection,
   createInvitation,
   createMember,
@@ -81,6 +83,16 @@ import {
 // with the reason and the step that will build it, in scripts/isolation-exemptions.ts.
 const prefix = newRunPrefix()
 // Set once the context exists: the role a member is moved to in the modification check
+// The organization a store belongs to: the warehouses are the organization's, and the suite names a store
+async function organizationOfStore(owner: OwnerClient, storeId: string): Promise<string> {
+  return (
+    await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+  ).organizationId
+}
+
 let viewerRoleId = ''
 let agentRoleId = ''
 // A user for the reactions the suite writes as the owner
@@ -246,6 +258,52 @@ const resources: IsolationResource[] = [
     },
     listPath: ApiRoutes.inventory.movements,
     untouched: () => Promise.resolve(true)
+  },
+  {
+    name: 'warehouse',
+    create: async (owner, { storeId }) => ({
+      id: (
+        await createWarehouse(owner, {
+          organizationId: await organizationOfStore(owner, storeId)
+        })
+      ).id
+    }),
+    // The organization's: every store of it sees it (TDD_16 §1), a member of another organization never does
+    scope: 'organization',
+    readPath: ApiRoutes.warehouses.byId,
+    listPath: ApiRoutes.warehouses.list,
+    modify: { path: ApiRoutes.warehouses.byId, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.warehouse.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.warehouses.create,
+      body: name => ({ name, code: `W${randomUUID().slice(0, 8)}` }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.warehouse.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.warehouse.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  {
+    name: 'storeWarehouse',
+    create: async (owner, { storeId }) => {
+      // A link of a store to a warehouse has no route of its own: its row is the warehouse it belongs to, which is
+      // read with the warehouse and changed by replacing the links of the warehouse
+      const organizationId = await organizationOfStore(owner, storeId)
+      const warehouse = await createWarehouse(owner, { organizationId })
+      await linkWarehouse(owner, { organizationId, storeId, warehouseId: warehouse.id })
+      return { id: warehouse.id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.warehouses.byId,
+    modify: { path: ApiRoutes.warehouses.stores, method: 'put', body: { stores: [] } },
+    untouched: async (owner, id) =>
+      (await owner.storeWarehouse.count({ where: { warehouseId: id } })) === 1
   },
   {
     name: 'snippet',
@@ -761,6 +819,97 @@ describe('Tenant isolation', () => {
         await isolationChecks[check](scene, resource)
       })
     }
+  })
+
+  // The warehouses belong to the organization (TDD_16 §1, §8): the checks above prove that another organization reaches
+  // none of them; these prove the rest of the rules of an organization-scoped resource, through the api
+  describe('warehouses of an organization', () => {
+    it('are the same for a member of any store of the organization, and none of the other organization', async () => {
+      const own = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      const foreign = await createWarehouse(owner, { organizationId: ctx.orgB.id })
+
+      const fromSibling = await api(app, ctx.adminA2, ctx.storeA2)
+        .get(ApiRoutes.warehouses.list)
+        .query({ limit: 100 })
+
+      expect(fromSibling.status).toBe(200)
+      const ids = (fromSibling.body as { data: { id: string }[] }).data.map(row => row.id)
+      expect(ids).toContain(own.id)
+      expect(ids).not.toContain(foreign.id)
+    })
+
+    it('are not linked to a store of another organization, and nothing is written', async () => {
+      const warehouse = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      const linksOfB = await owner.storeWarehouse.count({ where: { storeId: ctx.storeB.id } })
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .put(ApiRoutes.warehouses.stores(warehouse.id))
+        .send({ stores: [{ storeId: ctx.storeA.id }, { storeId: ctx.storeB.id }] })
+
+      expect(response.status).toBe(404)
+      expect(await owner.storeWarehouse.count({ where: { warehouseId: warehouse.id } })).toBe(0)
+      expect(await owner.storeWarehouse.count({ where: { storeId: ctx.storeB.id } })).toBe(linksOfB)
+    })
+
+    it('of another organization cannot be linked, unlinked, renamed or switched off', async () => {
+      const foreign = await createWarehouse(owner, { organizationId: ctx.orgB.id, name: 'theirs' })
+      await linkWarehouse(owner, {
+        organizationId: ctx.orgB.id,
+        storeId: ctx.storeB.id,
+        warehouseId: foreign.id
+      })
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const attempts = [
+        await agent
+          .put(ApiRoutes.warehouses.stores(foreign.id))
+          .send({ stores: [{ storeId: ctx.storeA.id }] }),
+        await agent.put(ApiRoutes.warehouses.stores(foreign.id)).send({ stores: [] }),
+        await agent
+          .patch(ApiRoutes.warehouses.byId(foreign.id))
+          .send({ name: 'mine now', active: false })
+      ]
+
+      expect(attempts.map(attempt => attempt.status)).toEqual([404, 404, 404])
+      const row = await owner.warehouse.findUniqueOrThrow({ where: { id: foreign.id } })
+      expect(row).toMatchObject({ name: 'theirs', active: true })
+      const links = await owner.storeWarehouse.findMany({ where: { warehouseId: foreign.id } })
+      expect(links.map(link => link.storeId)).toEqual([ctx.storeB.id])
+    })
+
+    it('are not reached through the header of a store of another organization', async () => {
+      const own = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+
+      const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.warehouses.byId(own.id))
+
+      expect(response.status).toBe(403)
+    })
+  })
+
+  // The inventory switches belong to the store of the header: the settings row is one per store
+  describe('inventory settings', () => {
+    it('are changed only in the store of the header, never in one the user does not belong to', async () => {
+      const before = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeB.id }
+      })
+
+      const response = await api(app, ctx.adminA, ctx.storeB)
+        .patch(ApiRoutes.settings.inventory)
+        .send({ allowNegativeStock: true, defaultLowStockThreshold: 9 })
+      const read = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.settings.inventory)
+      const named = await api(app, ctx.adminA, ctx.storeA)
+        .patch(ApiRoutes.settings.inventory)
+        .send({ allowNegativeStock: true, storeId: ctx.storeB.id })
+
+      expect(response.status).toBe(403)
+      expect(read.status).toBe(403)
+      expect(named.status).toBe(400)
+      const after = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeB.id }
+      })
+      expect(after.allowNegativeStock).toBe(before.allowNegativeStock)
+      expect(after.defaultLowStockThreshold).toBe(before.defaultLowStockThreshold)
+    })
   })
 
   // The read of a media is in the list of resources above. The upload routes are proven here: the

@@ -25,13 +25,5 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
-  StoreWarehouse: {
-    step: '4.2',
-    reason: 'Replaced through the warehouses endpoints (PR B), which have no route yet'
-  },
-  Warehouse: {
-    step: '4.2',
-    reason: 'Created and edited through the warehouses endpoints (PR B), which have no route yet'
-  },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }

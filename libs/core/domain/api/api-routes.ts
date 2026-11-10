@@ -326,6 +326,8 @@ export const ApiRoutes = {
     inboxBehavior: '/settings/inbox/behavior',
     safety: '/settings/safety',
     preferences: '/settings/preferences', // GET, and PUT of the keys that change (the others keep their value)
+    // Settings → Inventory (TDD_16 §4.10): GET, and PATCH of the switches that change
+    inventory: '/settings/inventory',
     members: '/settings/team/members',
     memberById: (id: string) => `/settings/team/members/${id}`,
     // POST: the member keeps the role and the history but cannot enter the store until reactivated
