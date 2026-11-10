@@ -34,6 +34,58 @@ describe('parseEnv', () => {
     expect(env.BULL_BOARD_ENABLED).toBe(false)
   })
 
+  describe('E2E_MAGIC_LINK_LIMIT, the limit of magic links raised for the e2e suite', () => {
+    it('is unset by default, and the test environment may raise it to a number', () => {
+      expect(parseEnv(validEnv).E2E_MAGIC_LINK_LIMIT).toBeUndefined()
+      expect(
+        parseEnv({ ...validEnv, NODE_ENV: 'test', E2E_MAGIC_LINK_LIMIT: '50' }).E2E_MAGIC_LINK_LIMIT
+      ).toBe(50)
+    })
+
+    it('treats an empty value as not set, like the other optional variables', () => {
+      expect(
+        parseEnv({ ...validEnv, E2E_MAGIC_LINK_LIMIT: '' }).E2E_MAGIC_LINK_LIMIT
+      ).toBeUndefined()
+    })
+
+    it('is refused where mail is really sent, even with NODE_ENV=test', () => {
+      expect(() =>
+        parseEnv({
+          ...validEnv,
+          NODE_ENV: 'test',
+          E2E_MAGIC_LINK_LIMIT: '50',
+          RESEND_API_KEY: 're_key'
+        })
+      ).toThrow(/E2E_MAGIC_LINK_LIMIT/)
+    })
+
+    it.each(['development', 'production', 'staging'])(
+      'is refused, not ignored, when NODE_ENV is %s',
+      nodeEnv => {
+        expect(() =>
+          parseEnv({
+            ...validEnv,
+            NODE_ENV: nodeEnv,
+            E2E_MAGIC_LINK_LIMIT: '50',
+            RESEND_API_KEY: 're_key',
+            FRONTEND_URL: 'https://app.example.com',
+            WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+            TRUST_PROXY_HOPS: '1'
+          })
+        ).toThrow(/E2E_MAGIC_LINK_LIMIT/)
+      }
+    )
+
+    it.each(['5', '0', '-1', '101', '1000', 'many', '7.5', 'Infinity'])(
+      'takes only a whole number above the real limit and within the bound, not %s',
+      value => {
+        expect(() =>
+          parseEnv({ ...validEnv, NODE_ENV: 'test', E2E_MAGIC_LINK_LIMIT: value })
+        ).toThrow(/E2E_MAGIC_LINK_LIMIT/)
+      }
+    )
+  })
+
   it('refuses to start without a required variable, naming it', () => {
     const withoutDatabase = { ...validEnv }
     delete withoutDatabase.DATABASE_URL

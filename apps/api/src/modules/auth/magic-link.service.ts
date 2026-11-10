@@ -5,6 +5,7 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import {
+  MAGIC_LINK_EMAIL_LIMIT,
   MAGIC_LINK_EMAIL_THROTTLER,
   MagicLinkThrottle,
   RETRY_AFTER_METADATA_KEY
@@ -33,6 +34,7 @@ export class MagicLinkService {
     private readonly sessions: SessionService,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<RequestMagicLinkJob>,
     @Inject(getStorageToken()) private readonly throttleStorage: ThrottlerStorage,
+    @Inject(MAGIC_LINK_EMAIL_LIMIT) private readonly emailLimit: number,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(MagicLinkService.name)
@@ -96,7 +98,7 @@ export class MagicLinkService {
     const record = await this.throttleStorage.increment(
       emailLimitKey(email),
       MagicLinkThrottle.ttlMs,
-      MagicLinkThrottle.limit,
+      this.emailLimit,
       0,
       MAGIC_LINK_EMAIL_THROTTLER
     )

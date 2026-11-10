@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 
 import { config } from 'dotenv-flow'
 
+import { E2eMagicLinkLimit, MagicLinkThrottle } from '@platform/core/auth'
 import { connectionUrls, isCiRun } from '@platform/core/database-testing'
 
 // The base is the one of the integration suites and of CI: the laptop's .env.local first, then
@@ -34,6 +35,23 @@ if (shard !== undefined && (shard.total < 1 || shard.current < 1 || shard.curren
 // A server that is already listening on the ports of the specs is used only when the person says so:
 // on a laptop it is usually `pnpm dev`, connected to the development database (playwright.shared.ts)
 export const reuseExistingServers = !isCi && process.env['E2E_REUSE_SERVERS'] === '1'
+
+// The suite signs in as the same few people dozens of times, and waiting for the real limit of magic links (five a
+// minute per address) was half of its time, so the api that the specs' config starts is told to accept more
+// (E2E_MAGIC_LINK_LIMIT, which only NODE_ENV=test accepts; the code of the limiter is untouched). The config that
+// does it says so with this flag, set where the servers are built (playwright.shared.ts), so that the wait of
+// the specs follows the limit of the api they talk to: the performance run, or a server that was already running
+// (E2E_REUSE_SERVERS), keeps the real one.
+export const RAISED_LIMIT_FLAG = 'E2E_MAGIC_LINK_LIMIT_RAISED'
+// Said by the config that starts an api with the raised limit, before any spec asks
+export function declareRaisedMagicLinkLimit(): void {
+  process.env[RAISED_LIMIT_FLAG] = '1'
+}
+export function magicLinkLimitInForce(): number {
+  return !reuseExistingServers && process.env[RAISED_LIMIT_FLAG] === '1'
+    ? E2eMagicLinkLimit.suite
+    : MagicLinkThrottle.limit
+}
 
 // The addresses of .env.example: the web app must be at FRONTEND_URL and the api at API_URL, because
 // the cookie of the session and the CORS list are built from them

@@ -2,6 +2,7 @@ import type { ThrottlerStorage } from '@nestjs/throttler'
 import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
+import { E2eMagicLinkLimit, MagicLinkThrottle, magicLinkEmailLimitOf } from '@platform/core/auth'
 import { JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
 import { MagicLinkService } from './magic-link.service'
@@ -47,10 +48,23 @@ function build() {
     {} as SessionService,
     queue as unknown as Queue<RequestMagicLinkJob>,
     storage as unknown as ThrottlerStorage,
+    MagicLinkThrottle.limit,
     { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger
   )
   return { service, calls, queue, storage }
 }
+
+describe('the per-address limit in force', () => {
+  it('is the real one of five a minute unless the test environment raised it', () => {
+    expect(magicLinkEmailLimitOf(undefined)).toBe(5)
+    expect(magicLinkEmailLimitOf(E2eMagicLinkLimit.suite)).toBe(E2eMagicLinkLimit.suite)
+  })
+
+  it('keeps what the suite asks for above the real limit and within the bound the schema enforces', () => {
+    expect(E2eMagicLinkLimit.suite).toBeGreaterThan(MagicLinkThrottle.limit)
+    expect(E2eMagicLinkLimit.suite).toBeLessThanOrEqual(E2eMagicLinkLimit.max)
+  })
+})
 
 describe('MagicLinkService.request', () => {
   it('does the same operations, in the same order, for any address', async () => {
@@ -78,6 +92,21 @@ describe('MagicLinkService.request', () => {
     expect(optionsB).toEqual(optionsA)
     expect(dataA).toEqual({ email: 'a@example.com' })
     expect(dataB).toEqual({ email: 'b@example.com' }) // Trimmed and lower-cased before it is counted or queued
+  })
+
+  it('counts every address against the limit it was built with: the real one is five a minute', async () => {
+    const { service, storage } = build()
+
+    await service.request('x@example.com', 'corr')
+
+    expect(MagicLinkThrottle).toEqual({ limit: 5, ttlMs: 60_000 })
+    expect(storage.increment).toHaveBeenCalledWith(
+      expect.any(String),
+      MagicLinkThrottle.ttlMs,
+      5,
+      0,
+      expect.any(String)
+    )
   })
 
   it('counts the limit before it queues anything, so a refused request queues nothing', async () => {

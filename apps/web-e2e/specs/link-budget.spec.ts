@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { seedLinkBudget, waitForLinkBudget } from '../support/link-budget'
+import { maxInWindow, seedLinkBudget, waitForLinkBudget } from '../support/link-budget'
 
 // The wait for room in the window of the magic link is not the time of the case (a case that signs in as
 // an address the others have just used waited, and failed at 30 s before it began). The proof is a case
@@ -10,10 +10,13 @@ test.describe('the wait for the budget of the magic link', () => {
   test('grows the timeout of the case by what it waits, and by nothing more', async () => {
     test.setTimeout(1_500)
     const address = `probe-${Date.now()}@test.com`
-    // Four links in the last seconds fill the window (one below the limit of the api); the oldest leaves
+    // Enough links in the last seconds to fill the window (one below the limit of the api); the oldest leaves
     // it in about two and a half seconds
     const now = Date.now()
-    seedLinkBudget(address, [now - 59_500, now - 5_000, now - 4_000, now - 3_000])
+    seedLinkBudget(address, [
+      now - 59_500,
+      ...Array.from({ length: maxInWindow() - 1 }, (_, i) => now - 5_000 + i)
+    ])
 
     const before = test.info().timeout
     const startedAt = Date.now()

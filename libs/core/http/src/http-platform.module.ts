@@ -11,6 +11,7 @@ import { RedisModule } from '@platform/core/redis'
 import { AuthPlatformModule } from './auth-platform.module'
 import { HealthModule } from './health/health.module'
 import { HttpErrorsModule } from './http-errors.module'
+import { MagicLinkLimitPlatformModule } from './magic-link-limit-platform.module'
 import { OutboundFlagsPlatformModule } from './outbound-flags-platform.module'
 import { StoragePlatformModule } from './storage-platform.module'
 import { ThrottlerPlatformModule } from './throttler'
@@ -51,6 +52,7 @@ export class HttpPlatformModule {
         EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
         RedisModule.forRoot({ url: env.REDIS_URL }),
         StoragePlatformModule,
+        MagicLinkLimitPlatformModule,
         OutboundFlagsPlatformModule,
         ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
         AuthPlatformModule,

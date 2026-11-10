@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-import { englishLocale, webServer } from './playwright.shared'
+import { englishLocale, webServers } from './playwright.shared'
 import { isCi, shard, WEB_URL } from './support/env'
 
 export default defineConfig({
@@ -31,5 +31,5 @@ export default defineConfig({
     storageState: englishLocale
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer
+  webServer: webServers({ raisedMagicLinkLimit: true })
 })
