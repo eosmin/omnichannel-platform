@@ -1,10 +1,10 @@
-import { ChannelOAuthLimits, MetaOAuth } from '@platform/core/domain'
+import { ChannelOAuthLimits, isDialogOrigin } from '@platform/core/domain'
 import {
   type ChannelConnectFailureReason,
   ChannelConnectFailureReasons
 } from '@platform/core/errors'
 
-// What "Connect with Facebook" leaves in the address of the web app when the browser comes back (Step 7.8),
+// What "Connect with the provider" leaves in the address of the web app when the browser comes back (Step 7.8),
 // and what is read of it. The api sends one of two things, and only these: the opaque id of a session
 // (`oauth`), or a reason of a closed list (`oauth_error`). Nothing else the provider said reaches here.
 const SESSION_PARAM = 'oauth'
@@ -20,7 +20,7 @@ const RETURN_REASONS: ReadonlySet<string> = new Set([
   ChannelConnectFailureReasons.OAUTH_CANCELLED,
   ChannelConnectFailureReasons.OAUTH_EXPIRED,
   ChannelConnectFailureReasons.PROVIDER_UNAVAILABLE,
-  // Meta asking to wait while the code is traded is a reason the person can act on
+  // The provider asking to wait while the code is traded is a reason the person can act on
   ChannelConnectFailureReasons.PROVIDER_BUSY,
   ChannelConnectFailureReasons.REQUEST_REJECTED,
   ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
@@ -71,16 +71,15 @@ export function withoutOAuthParams(pathname: string, search: string, hash: strin
   return `${pathname}${rest === '' ? '' : `?${rest}`}${hash}`
 }
 
-// The address the api gave for the dialog of Facebook. The page goes there only when it is exactly the
-// origin of that dialog, over https and with nothing in front of the host, so that an answer that was
-// tampered with cannot take the person anywhere else with their session in the address.
-export function isFacebookDialogUrl(value: string): boolean {
+// The address the api gave for the dialog of the provider. The page goes there only when it is exactly the
+// origin the plugin declared for its login (`oauth.dialogOrigin` of its descriptor), over https and with nothing in
+// front of the host, so that an answer that was tampered with cannot take the person anywhere else with their
+// session in the address. Without a declared origin there is nowhere to go.
+export function isOAuthDialogUrl(value: string, dialogOrigin: string | null): boolean {
+  if (dialogOrigin === null || !isDialogOrigin(dialogOrigin)) return false
   try {
     const url = new URL(value)
-    return (
-      // The origin carries the scheme and the port: it is https, on the default port, on that host
-      url.origin === MetaOAuth.DIALOG_ORIGIN && url.username === '' && url.password === ''
-    )
+    return url.origin === dialogOrigin && url.username === '' && url.password === ''
   } catch {
     return false
   }
@@ -94,7 +93,8 @@ export function missingPermissionsOf(metadata: Record<string, unknown>): string[
   // Each name once, in the order the api gave them
   const names = new Set(
     (listed as unknown[]).filter(
-      (name): name is string => typeof name === 'string' && MetaOAuth.SCOPE_PATTERN.test(name)
+      (name): name is string =>
+        typeof name === 'string' && ChannelOAuthLimits.SCOPE_PATTERN.test(name)
     )
   )
   return [...names].slice(0, ChannelOAuthLimits.MAX_SCOPES)

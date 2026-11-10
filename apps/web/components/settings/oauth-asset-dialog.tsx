@@ -1,16 +1,33 @@
 'use client'
 
-import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
+import {
+  type FormEvent,
+  type ReactElement,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 
-import { ApiError } from '@platform/api-client'
-import { ChannelIds, MetaOAuth } from '@platform/core/domain'
+import { ApiError, type ChannelOAuthDescriptorView } from '@platform/api-client'
 import { ChannelConnectFailureReasons } from '@platform/core/errors'
 
 import type { OAuthAssetView } from '../../lib/settings/channels-requests'
 import { connectFailureReasonOf } from '../../lib/settings/connect-failure'
+import {
+  assetIdMatcher,
+  linkedAccountText,
+  localizedText
+} from '../../lib/settings/oauth-descriptor'
 import { missingPermissionsOf } from '../../lib/settings/oauth-return'
-import { dropOAuthSession, useCompleteOAuth, useOAuthAssets } from '../../lib/settings/use-channels'
+import {
+  dropOAuthSession,
+  useCompleteOAuth,
+  useOAuthAssets,
+  usePluginCatalog
+} from '../../lib/settings/use-channels'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
@@ -28,7 +45,7 @@ import { Label } from '../ui/label'
 
 import { ConnectError } from './connect-error'
 
-// What is painted of the name of a Page or of an Instagram account: text, cut. It comes from Meta.
+// What is painted of the name of an account: text, cut. It comes from the provider.
 const MAX_SHOWN = 80
 // By characters and not by code units: a name with emoji must not be cut in the middle of one
 const cut = (value: string): string => {
@@ -36,7 +53,7 @@ const cut = (value: string): string => {
   return characters.length > MAX_SHOWN ? `${characters.slice(0, MAX_SHOWN).join('')}…` : value
 }
 
-// The Pages of a login that Facebook sent the person back from (Step 7.8): the person picks one, and that is
+// The accounts of a login that the provider sent the person back from (Step 7.8): the person picks one, and that is
 // what is connected. The session behind it holds their token on the server and is dropped if they leave
 // without finishing.
 export function OAuthAssetDialog({
@@ -49,6 +66,14 @@ export function OAuthAssetDialog({
   const t = useTranslations('settings.channels.oauth.pick')
   const { storeId } = useStore()
   const assets = useOAuthAssets(storeId, sessionId)
+  const catalog = usePluginCatalog(storeId)
+  // What the plugin declared for its login: how a linked account is shown and how an id is told. The form waits
+  // for the catalog, so the rules that pick the first choice are never decided without it; if the catalog fails,
+  // every account can be picked and a plain id typed (the server checks both).
+  const oauth =
+    assets.data === undefined
+      ? null
+      : (catalog.data?.find(entry => entry.id === assets.data.pluginId)?.channel?.oauth ?? null)
   const complete = useCompleteOAuth(storeId, sessionId)
 
   // The session is dropped when the dialog goes away without a connection: closing it, going to another store
@@ -80,9 +105,9 @@ export function OAuthAssetDialog({
         </DialogHeader>
         {/* A region that is there from the start, so that the change of its text is announced */}
         <p aria-live="polite" className="sr-only">
-          {assets.isPending ? t('loading') : ''}
+          {assets.isPending || catalog.isPending ? t('loading') : ''}
         </p>
-        {assets.isPending ? (
+        {assets.isPending || catalog.isPending ? (
           <p aria-hidden className="text-muted-foreground text-sm">
             {t('loading')}
           </p>
@@ -90,7 +115,7 @@ export function OAuthAssetDialog({
           <LoadFailure error={assets.error} onClose={onClose} />
         ) : (
           <PickForm
-            pluginId={assets.data.pluginId}
+            oauth={oauth}
             repairing={assets.data.connectionId !== null}
             repairAccountId={assets.data.repairAccountId}
             assets={assets.data.assets}
@@ -140,7 +165,7 @@ function LoadFailure({ error, onClose }: { error: Error; onClose: () => void }):
 }
 
 function PickForm({
-  pluginId,
+  oauth,
   repairing,
   repairAccountId,
   assets,
@@ -148,7 +173,8 @@ function PickForm({
   onDone,
   onClose
 }: {
-  pluginId: string
+  // What the plugin declared for its login, none when it is not known
+  oauth: ChannelOAuthDescriptorView | null
   // The login repairs a connection: only the Page it already is will do
   repairing: boolean
   // The account the connection is, to mark the Page that is its own
@@ -161,9 +187,11 @@ function PickForm({
   const t = useTranslations('settings.channels.oauth.pick')
   const tCommon = useTranslations('common')
   const idPrefix = useId()
-  const needsInstagram = pluginId === ChannelIds.INSTAGRAM
+  const locale = useLocale()
+  const linked = oauth?.linkedAccount ?? null
+  const needsLinked = linked?.required === true
   const selectable = (asset: OAuthAssetView): boolean =>
-    !needsInstagram || asset.linkedAccount !== null
+    !needsLinked || asset.linkedAccount !== null
   const onlyChoice = assets.filter(selectable)
   // The Page that is the account of the connection being repaired: the only one that will do
   const isCurrent = (asset: OAuthAssetView): boolean =>
@@ -180,7 +208,8 @@ function PickForm({
   // Nothing was found, or the person does not see theirs: they type the number of the Page
   const [typing, setTyping] = useState(assets.length === 0)
   const [typed, setTyped] = useState('')
-  const typedValid = MetaOAuth.ASSET_ID_PATTERN.test(typed.trim())
+  const idMatcher = useMemo(() => assetIdMatcher(oauth?.assetIdPattern ?? null), [oauth])
+  const typedValid = idMatcher.test(typed.trim())
   const assetId = typing ? (typedValid ? typed.trim() : null) : choice
   const guard = useSubmitGuard()
   const errorId = `${idPrefix}-error`
@@ -228,13 +257,15 @@ function PickForm({
                         {t('currentPage')}
                       </span>
                     ) : null}
-                    {needsInstagram ? (
+                    {linked !== null ? (
                       <span className="text-muted-foreground truncate text-sm">
                         {asset.linkedAccount === null
-                          ? t('noInstagram')
-                          : t('instagram', {
-                              username: cut(asset.linkedAccount.username ?? asset.linkedAccount.id)
-                            })}
+                          ? localizedText(linked.missingLabel, locale)
+                          : linkedAccountText(
+                              linked.label,
+                              locale,
+                              asset.linkedAccount.username ?? asset.linkedAccount.id
+                            )}
                       </span>
                     ) : null}
                   </span>
@@ -254,7 +285,7 @@ function PickForm({
           <Label htmlFor={`${idPrefix}-typed`}>{t('typedLabel')}</Label>
           <Input
             id={`${idPrefix}-typed`}
-            inputMode="numeric"
+            inputMode="text"
             autoComplete="off"
             spellCheck={false}
             value={typed}

@@ -33,6 +33,10 @@ const channels = en.settings.channels
 const CALLBACK = `${API_URL}${API_PREFIX}${ApiRoutes.channels.oauthCallback}`
 const MESSENGER_NAME = 'Messenger'
 const INSTAGRAM_NAME = 'Instagram'
+// What the plugin of Meta declares for its login: the page draws these from the descriptor
+const PROVIDER = 'Facebook'
+const LOGIN_BUTTON = channels.connectDialog.login.replace('{provider}', PROVIDER)
+const NO_LINKED_ACCOUNT = 'No Instagram account linked'
 
 // A name as a pattern, with nothing in it taken for a metacharacter
 function exactly(text: string): string {
@@ -118,9 +122,7 @@ test.describe('Connect with Facebook', () => {
         state => `${CALLBACK}?code=${FAKE_LOGIN_CODE}&state=${state}`
       )
       let dialog = await openConnectDialog()
-      await expect(
-        dialog.getByRole('button', { name: channels.connectDialog.facebook })
-      ).toBeVisible()
+      await expect(dialog.getByRole('button', { name: LOGIN_BUTTON })).toBeVisible()
       await expect(dialog.getByLabel(channels.connect.messenger.accessToken)).toHaveCount(0)
       await expect(
         dialog.getByRole('button', { name: channels.connectDialog.useToken })
@@ -128,7 +130,7 @@ test.describe('Connect with Facebook', () => {
       await expectDialogHoldsItsContent(page, dialog)
 
       // 2. Facebook says yes: the Pages of the person come back, found through the portfolio
-      await dialog.getByRole('button', { name: channels.connectDialog.facebook }).click()
+      await dialog.getByRole('button', { name: LOGIN_BUTTON }).click()
       let pick = page.getByRole('dialog', { name: channels.oauth.pick.title })
       await expect(pick).toBeVisible({ timeout: 30_000 })
       // The page asked the right app for the right permissions, with the callback of the api, and a state
@@ -177,7 +179,7 @@ test.describe('Connect with Facebook', () => {
         state => `${CALLBACK}?code=${FAKE_LOGIN_CODE_CLEARED}&state=${state}`
       )
       dialog = await openConnectDialog()
-      await dialog.getByRole('button', { name: channels.connectDialog.facebook }).click()
+      await dialog.getByRole('button', { name: LOGIN_BUTTON }).click()
       pick = page.getByRole('dialog', { name: channels.oauth.pick.title })
       await expect(pick).toBeVisible({ timeout: 30_000 })
       await expect(pick.getByRole('alert')).toHaveText(channels.connectFailure.permission_missing)
@@ -205,7 +207,7 @@ test.describe('Connect with Facebook', () => {
         state => `${CALLBACK}?error=access_denied&error_reason=user_denied&state=${state}`
       )
       dialog = await openConnectDialog()
-      await dialog.getByRole('button', { name: channels.connectDialog.facebook }).click()
+      await dialog.getByRole('button', { name: LOGIN_BUTTON }).click()
       const notice = page
         .getByRole('alert')
         .filter({ hasText: channels.connectFailure.oauth_cancelled })
@@ -218,7 +220,7 @@ test.describe('Connect with Facebook', () => {
       await page.unroute('https://www.facebook.com/**')
       await facebookSays(page, state => `${CALLBACK}?code=${FAKE_LOGIN_CODE}&state=${state}`)
       dialog = await openConnectDialog()
-      await dialog.getByRole('button', { name: channels.connectDialog.facebook }).click()
+      await dialog.getByRole('button', { name: LOGIN_BUTTON }).click()
       pick = page.getByRole('dialog', { name: channels.oauth.pick.title })
       await expect(pick).toBeVisible({ timeout: 30_000 })
       const left = session.current()
@@ -282,7 +284,7 @@ test.describe('Connect with Facebook', () => {
         const dialog = page.getByRole('dialog', {
           name: channels.connectDialog.title.replace('{name}', name)
         })
-        await dialog.getByRole('button', { name: channels.connectDialog.facebook }).click()
+        await dialog.getByRole('button', { name: LOGIN_BUTTON }).click()
         const pick = page.getByRole('dialog', { name: channels.oauth.pick.title })
         await expect(pick).toBeVisible({ timeout: 30_000 })
         return pick
@@ -313,7 +315,7 @@ test.describe('Connect with Facebook', () => {
         await expect(
           pick.getByRole('radio', { name: new RegExp(FAKE_NO_IG_PAGE_NAME) })
         ).toBeDisabled()
-        await expect(pick.getByText(channels.oauth.pick.noInstagram)).toBeVisible()
+        await expect(pick.getByText(NO_LINKED_ACCOUNT)).toBeVisible()
         await submit(pick)
         await expect(
           page.getByText(channels.oauth.pick.connected.replace('{name}', FAKE_IG_USERNAME))
@@ -348,7 +350,7 @@ test.describe('Connect with Facebook', () => {
         .getByRole('button', { name: `${channels.test.action} ${FAKE_PAGE_NAME}`, exact: true })
         .click()
       const reconnect = page.getByRole('button', {
-        name: `${channels.oauth.reconnect} ${FAKE_PAGE_NAME}`,
+        name: `${channels.oauth.reconnect.replace('{provider}', PROVIDER)} ${FAKE_PAGE_NAME}`,
         exact: true
       })
       await expect(reconnect).toBeVisible({ timeout: 30_000 })
