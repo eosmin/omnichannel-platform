@@ -341,5 +341,8 @@ export const CAPABILITY_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   MESSAGING_WINDOW: { step: '3.2' },
   CUSTOMER_TYPING: { step: '3.2' },
   CUSTOMER_PROFILE: { step: '3.2' },
-  CAPTION_PER_FILE: { step: '3.4' }
+  CAPTION_PER_FILE: { step: '3.4' },
+  NAMES_INBOUND_FILES: {
+    none: 'A server-side agreement between the plugin and the worker about the id of a stored file; nothing is drawn'
+  }
 }
