@@ -360,7 +360,7 @@ test.describe('Conversation to order flow', () => {
 
     // Simulate an inbound WhatsApp webhook against the seeded connection
     await simulateInboundMessage({
-      channel: ChannelType.WHATSAPP,
+      channel: ChannelIds.WHATSAPP,
       connectionId: SeedConnections.WHATSAPP_MAIN,
       from: '50370001234',
       text: 'Quiero el zapato deportivo talla 42',
@@ -522,7 +522,7 @@ describe('Tenant isolation', () => {
   })
 
   it('routes an inbound webhook to the store that owns the recipient connection', async () => {
-    await simulateInboundMessage({ channel: ChannelType.WHATSAPP, connectionId: ctx.connectionB.connectionId, from: '50370009999', text: 'hola' })
+    await simulateInboundMessage({ channel: ChannelIds.WHATSAPP, connectionId: ctx.connectionB.connectionId, from: '50370009999', text: 'hola' })
     await waitForInboundQueue()
 
     await expect(prisma.client.conversation.count({ where: { storeId: ctx.storeB.id } })).resolves.toBe(1)

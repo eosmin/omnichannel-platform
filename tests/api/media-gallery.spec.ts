@@ -10,7 +10,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType, ConversationStatus } from '@platform/core/domain'
+import { ChannelIds, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import {
@@ -208,7 +208,7 @@ describe('Media gallery', () => {
       const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
       const conversation = await createConversationOf(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const message = await createMessage(owner, {
         storeId: ctx.storeA.id,
@@ -242,7 +242,7 @@ describe('Media gallery', () => {
       expect(body.data[0]).toMatchObject({
         type: 'document',
         filename: 'recent.pdf',
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       expect(body.data[2]?.channelType).toBeNull()
       expect(body.counts).toEqual({ all: 3, image: 1, video: 1, audio: 0, document: 1 })
@@ -389,7 +389,7 @@ describe('Media gallery', () => {
     // One customer with a file in each kind of conversation: free, assigned to the admin, archived,
     // and a file with no message
     async function scene() {
-      const base = { storeId: ctx.storeA.id, channelType: ChannelType.WHATSAPP }
+      const base = { storeId: ctx.storeA.id, channelType: ChannelIds.WHATSAPP }
       const free = await createConversationOf(owner, base)
       const customerId = free.customerId
       const identity = free.customerIdentityId

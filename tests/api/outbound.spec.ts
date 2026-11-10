@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory, ChannelHealthService } from '@platform/channels/connections'
 import { MetaGraphClient } from '@platform/channels/meta'
+import { WhatsAppLimits } from '@platform/channels/whatsapp'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CredentialCipher } from '@platform/core/crypto'
@@ -20,8 +21,7 @@ import {
   PluginInstallationStatus,
   ChannelIds,
   DeliveryStatus,
-  MessageType,
-  WhatsAppLimits
+  MessageType
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'

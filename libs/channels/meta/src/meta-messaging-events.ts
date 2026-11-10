@@ -6,7 +6,6 @@ import {
   isWholeEmoji,
   MessageMetadataKeys,
   MessageType,
-  MetaGraph,
   OriginKinds,
   OriginMediaTypes,
   placeTextOf,
@@ -17,7 +16,7 @@ import { type ChannelEvent, ChannelEventTypes, type ChannelOrigin } from '@platf
 
 import { cut, hasText, replyTarget } from './inbound-text'
 import { coordinatesOfMapLink } from './map-link'
-import { MapLinks, MetaMessaging } from './meta-constants'
+import { MapLinks, MetaMessaging, MetaGraph } from './meta-constants'
 import {
   metaAttachmentRawLinkSchema,
   metaAttachmentSchema,

@@ -1,12 +1,9 @@
-import { MetaWebhook } from './meta-constants'
-
 // Broad on purpose: a log line that hides a harmless `state=open` costs nothing, one that shows a
 // secret costs a rotation.
-// Query params whose value is a secret or a one-time credential: the handshake token of a Meta
-// webhook, and the names an OAuth redirect or an API call uses. The request log and the error
+// Query params whose value is a secret or a one-time credential: the names an OAuth redirect, a webhook
+// handshake or an API call uses (a provider's own `*_token` is caught by the suffixes below). The request log and the error
 // reports keep the name and drop the value. Compared in lower case, after decoding the name.
 export const SENSITIVE_QUERY_PARAMS: readonly string[] = [
-  MetaWebhook.VERIFY_TOKEN_PARAM,
   'token',
   'access_token',
   'api_key',
@@ -54,9 +51,7 @@ export const REPORT_REDACTED_HEADERS: readonly string[] = [
   'cookie',
   'set-cookie',
   'x-api-key',
-  'proxy-authorization',
-  MetaWebhook.SIGNATURE_HEADER,
-  'x-hub-signature'
+  'proxy-authorization'
 ]
 
 // A header that proves who sent a request, or lets whoever reads it act as them: a signature (svix,
@@ -73,3 +68,26 @@ export const REFERER_HEADER = 'referer'
 
 // Spans whose description is "<METHOD> <url>"
 export const HTTP_SPAN_OP_PREFIX = 'http'
+
+// What a plugin may declare as `redactedKeys`: names of fields that hold a secret in what it logs, which the
+// core cannot guess (a provider that calls its secret `acmeSecret` is not caught by a name rule). A name, never
+// a path: a dot, a wildcard or a bracket would reach into the redaction paths of the logger.
+export const REDACTED_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
+export const MAX_DECLARED_REDACTED_KEYS = 32
+
+// The names a plugin declared, checked: a list of at most MAX_DECLARED_REDACTED_KEYS names of REDACTED_KEY_PATTERN,
+// without repeats. Absent is no key. Throws on anything else, so that a bad declaration fails the boot.
+export function declaredRedactedKeys(declared: unknown): readonly string[] {
+  if (declared === undefined) return []
+  if (!Array.isArray(declared) || declared.length > MAX_DECLARED_REDACTED_KEYS) {
+    throw new Error('the redacted keys of a plugin must be a short list of names')
+  }
+  const names: string[] = []
+  for (const name of declared as unknown[]) {
+    if (typeof name !== 'string' || !REDACTED_KEY_PATTERN.test(name)) {
+      throw new Error('a redacted key of a plugin is not a plain name')
+    }
+    if (!names.includes(name)) names.push(name)
+  }
+  return Object.freeze(names)
+}

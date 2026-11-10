@@ -71,7 +71,7 @@ export type ChannelCapabilityType = typeof ChannelCapability[keyof typeof Channe
 // libs/plugins/sdk/src/channel-plugin.interface.ts
 export interface ChannelPlugin {
   // Identity
-  readonly id: string                      // 'whatsapp' — the id of a registered plugin (§6.7); the official ones are the ChannelType constants. Also the Plugin.id and ChannelConnection.pluginId
+  readonly id: string                      // 'whatsapp' — the id of a registered plugin (§6.7); the official ones are the ChannelIds constants. Also the Plugin.id and ChannelConnection.pluginId
   readonly name: string                    // 'WhatsApp Business'
   readonly version: string                 // '1.0.0'
   readonly author: string
@@ -518,7 +518,7 @@ queue. `PlanFeatures.ROUTING` gates rule *creation*; stores without it simply ha
 // libs/channels/whatsapp/src/whatsapp.plugin.ts
 @Injectable()
 export class WhatsAppPlugin implements ChannelPlugin {
-  readonly id = ChannelType.WHATSAPP
+  readonly id = ChannelIds.WHATSAPP
   readonly name = 'WhatsApp Business'
   readonly version = '1.0.0'
   readonly author = 'Platform Team'
@@ -679,7 +679,7 @@ export abstract class MetaChannelPlugin implements ChannelPlugin {
 
 @Injectable()
 export class InstagramPlugin extends MetaChannelPlugin {
-  readonly id = ChannelType.INSTAGRAM
+  readonly id = ChannelIds.INSTAGRAM
   readonly name = 'Instagram Direct'
   readonly capabilities = [
     ChannelCapability.TEXT, ChannelCapability.IMAGE, ChannelCapability.VIDEO,
@@ -690,7 +690,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
 
 @Injectable()
 export class MessengerPlugin extends MetaChannelPlugin {
-  readonly id = ChannelType.MESSENGER
+  readonly id = ChannelIds.MESSENGER
   readonly name = 'Facebook Messenger'
   readonly capabilities = [
     ChannelCapability.TEXT, ChannelCapability.IMAGE, ChannelCapability.VIDEO, ChannelCapability.DOCUMENT,
@@ -1018,9 +1018,8 @@ or hostile can lose its own messages, never another store's data and never the p
 
 | Name | Where | Meaning |
 | --- | --- | --- |
-| `ChannelIds` | `libs/core/domain` | The ids of the official plugins (`whatsapp`, `instagram`, `messenger`, `web_widget`) as constants. `ChannelType` is kept as an alias of this list for the code that is about official channels only. |
+| `ChannelIds` | `libs/core/domain` | The ids of the official plugins (`whatsapp`, `instagram`, `messenger`, `web_widget`) as constants. Only the registry policy, the composition of the official plugins, fixtures and tests name them (Step 7.9). |
 | `CHANNEL_ID_PATTERN` | `libs/core/domain` | `^[a-z][a-z0-9_-]{2,31}$`: what an id must look like. |
-| `officialChannelSchema` | `libs/core/domain` | Zod: one of `ChannelIds`. For the public webhook route of §4, which exists only for official plugins. |
 | `registeredChannelSchema` | `libs/plugins/runtime` | Zod: a string that matches `CHANNEL_ID_PATTERN` **and** that the registry knows, for the routes that take a channel (filters, routing conditions, the connection routes of §10). |
 | `RemoteChannelPlugin` | `libs/plugins/runtime` | The adapter of this section. |
 | `OUTBOUND` | `QueueNames`, `TDD_07` | The queue of messages to send (Step 2.6), for official and remote plugins alike (§6.7.5). |
@@ -1138,8 +1137,7 @@ plugin's if it gives one, else the moment of the answer); `healthCheck` is `conn
 capability is declared; `fetchMedia` is the fetch of §6.7.6. `connect` does not exist for a remote
 plugin: `POST /channels/:pluginId/connect` (§10) answers `409` with the `ui.settings` URL, because the
 connection is made in the plugin. `validateWebhookSignature` and `handleWebhook` are not used: there
-is no `/webhooks/channels/` route for a remote plugin (the route validates with
-`officialChannelSchema`, so its id is a `404` like any unknown one), and its events arrive at
+is no `/webhooks/channels/` route for a remote plugin (the route answers `404` for a channel whose manifest says `receivesProviderWebhooks: false`, like any unknown id), and its events arrive at
 `POST /events`. The contract suite of §9 does not apply to the adapter; §6.7.9 is its suite.
 
 *Retries.* A send is a job of the `OUTBOUND` queue, whose policy is the same for every plugin: 5

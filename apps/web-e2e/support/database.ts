@@ -15,7 +15,7 @@ import {
   AuthorType,
   type CaptionState,
   ChannelConnectionStatus,
-  ChannelType,
+  ChannelIds,
   type DeliveryStatus,
   MediaStatus,
   MessageType,
@@ -512,7 +512,7 @@ export function mentionsOf(conversationId: string): Promise<string[][]> {
 async function whatsAppConnectionOf(owner: OwnerClient, storeId: string): Promise<string> {
   const installation = await ensurePluginInstallation(owner, {
     storeId,
-    pluginId: ChannelType.WHATSAPP
+    pluginId: ChannelIds.WHATSAPP
   })
   const credentials = encryptJson(
     {
@@ -524,11 +524,11 @@ async function whatsAppConnectionOf(owner: OwnerClient, storeId: string): Promis
   )
   const row = await owner.channelConnection.upsert({
     where: {
-      pluginId_connectionId: { pluginId: ChannelType.WHATSAPP, connectionId: FAKE_PHONE_NUMBER_ID }
+      pluginId_connectionId: { pluginId: ChannelIds.WHATSAPP, connectionId: FAKE_PHONE_NUMBER_ID }
     },
     create: {
       storeId,
-      pluginId: ChannelType.WHATSAPP,
+      pluginId: ChannelIds.WHATSAPP,
       installationId: installation.id,
       connectionId: FAKE_PHONE_NUMBER_ID,
       displayName: '+503 4444-5555',
@@ -553,7 +553,7 @@ export function newWhatsAppConversationWrittenAgo(storeId: string, agoMs: number
   return withOwner(async owner => {
     const identity = await createCustomerIdentity(owner, {
       storeId,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       handle: `5037${randomInt(1_000_000, 10_000_000)}`,
       lastInboundAt: WRITTEN_AT
     })
@@ -561,7 +561,7 @@ export function newWhatsAppConversationWrittenAgo(storeId: string, agoMs: number
       storeId,
       customerId: identity.customerId,
       customerIdentityId: identity.id,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       channelConnectionId: await whatsAppConnectionOf(owner, storeId),
       lastMessageAt: new Date()
     })
@@ -622,7 +622,7 @@ export function newCustomerIn(
       await createCustomerIdentity(owner, {
         storeId,
         customerId: customer.id,
-        channelType: input.channelType ?? ChannelType.WHATSAPP,
+        channelType: input.channelType ?? ChannelIds.WHATSAPP,
         handle: input.handle
       })
     }
@@ -649,7 +649,7 @@ export function addConnectionWithTokenInfo(
   return withOwner(async owner => {
     const connection = await createChannelConnection(owner, {
       storeId,
-      channelType: ChannelType.MESSENGER
+      channelType: ChannelIds.MESSENGER
     })
     await owner.channelConnection.update({
       where: { id: connection.id },

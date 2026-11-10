@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType, ConversationStatus } from '@platform/core/domain'
+import { ChannelIds, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { createConversation, createCustomer, createCustomerIdentity, createTag } from '../builders'
@@ -64,13 +64,13 @@ describe('The activity of a customer', () => {
     const identity = await createCustomerIdentity(owner, {
       storeId: storeId(),
       customerId: customer.id,
-      channelType: ChannelType.INSTAGRAM
+      channelType: ChannelIds.INSTAGRAM
     })
     const conversation = await createConversation(owner, {
       storeId: storeId(),
       customerId: customer.id,
       customerIdentityId: identity.id,
-      channelType: ChannelType.INSTAGRAM,
+      channelType: ChannelIds.INSTAGRAM,
       ...input
     })
     return { customer, identity, conversation }
@@ -155,7 +155,7 @@ describe('The activity of a customer', () => {
         customerIdentityId: (
           await createCustomerIdentity(owner, { storeId: storeId(), customerId: customer.id })
         ).id,
-        channelType: ChannelType.INSTAGRAM,
+        channelType: ChannelIds.INSTAGRAM,
         assignedTo: ctx.adminA.id
       })
       const spam = await createConversation(owner, {
@@ -164,7 +164,7 @@ describe('The activity of a customer', () => {
         customerIdentityId: (
           await createCustomerIdentity(owner, { storeId: storeId(), customerId: customer.id })
         ).id,
-        channelType: ChannelType.INSTAGRAM,
+        channelType: ChannelIds.INSTAGRAM,
         status: ConversationStatus.SPAM
       })
 
@@ -210,7 +210,7 @@ describe('The activity of a customer', () => {
         storeId: storeId(),
         customerId: mine.customer.id,
         customerIdentityId: mine.identity.id,
-        channelType: ChannelType.INSTAGRAM,
+        channelType: ChannelIds.INSTAGRAM,
         assignedTo: ctx.adminA.id
       })
 

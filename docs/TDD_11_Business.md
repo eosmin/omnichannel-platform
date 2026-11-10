@@ -56,24 +56,24 @@ export const SupportTiers = {
 export type SupportTier = typeof SupportTiers[keyof typeof SupportTiers]
 
 // Which official channel plugins a tier unlocks. Enforced by ChannelGuard (§6.5) at
-// connect time. Channel ids ARE plugin ids (ChannelId, TDD_02 §5); `ChannelType`/`ChannelIds` list the official ones. Phase 2: v1.2 made the channel an open id, so `Object.values(ChannelType)` below means the official ids and a plan must say how it treats a plugin the owner adds.
+// connect time. Channel ids ARE plugin ids (ChannelId, TDD_02 §5); `ChannelIds` lists the official ones. Phase 2: v1.2 made the channel an open id, so `Object.values(ChannelIds)` below means the official ids and a plan must say how it treats a plugin the owner adds.
 // Third-party marketplace channels are separate: gated by maxChannels count and, if
 // plan_gated, by their own manifest.pricing.allowedTiers.
 export const AvailableChannels: Record<PlanTier, {
-  included: readonly ChannelType[]
+  included: readonly OfficialChannelId[]
   // Starter can activate exactly one of these — not both. Upgrading to
   // Growth is what removes the choice and unlocks every social channel.
-  chooseOneOf?: readonly ChannelType[]
+  chooseOneOf?: readonly OfficialChannelId[]
 }> = {
-  [PlanTiers.FREE]:    { included: [ChannelType.WEB_WIDGET] },
-  [PlanTiers.MICRO]:   { included: [ChannelType.WEB_WIDGET] },
+  [PlanTiers.FREE]:    { included: [ChannelIds.WEB_WIDGET] },
+  [PlanTiers.MICRO]:   { included: [ChannelIds.WEB_WIDGET] },
   [PlanTiers.STARTER]: {
-    included: [ChannelType.WEB_WIDGET],
-    chooseOneOf: [ChannelType.INSTAGRAM, ChannelType.MESSENGER],
+    included: [ChannelIds.WEB_WIDGET],
+    chooseOneOf: [ChannelIds.INSTAGRAM, ChannelIds.MESSENGER],
   },
-  [PlanTiers.GROWTH]:     { included: Object.values(ChannelType) },
-  [PlanTiers.SCALE]:      { included: Object.values(ChannelType) },
-  [PlanTiers.ENTERPRISE]: { included: Object.values(ChannelType) },
+  [PlanTiers.GROWTH]:     { included: Object.values(ChannelIds) },
+  [PlanTiers.SCALE]:      { included: Object.values(ChannelIds) },
+  [PlanTiers.ENTERPRISE]: { included: Object.values(ChannelIds) },
 }
 
 export interface PlanLimitsShape {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 
 export interface CustomerInput {
   storeId: string
@@ -48,7 +48,7 @@ export async function createCustomerIdentity(
     data: {
       storeId: input.storeId,
       customerId,
-      channelType: input.channelType ?? ChannelType.INSTAGRAM,
+      channelType: input.channelType ?? ChannelIds.INSTAGRAM,
       channelIdentity: input.handle ?? `ig-${randomUUID().slice(0, 12)}`,
       // A customer who has just written: the channels of the suite have a messaging window, and a
       // conversation with no inbound message could not be answered

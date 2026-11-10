@@ -3,7 +3,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Options } from 'pino-http'
 
 import { API_PREFIX, InfraRoutes } from '@platform/core/api'
-import { isRecord, isSecretHeader, REDACTED, scrubQuery, scrubUrl } from '@platform/core/domain'
+import {
+  declaredRedactedKeys,
+  isRecord,
+  isSecretHeader,
+  REDACTED,
+  scrubQuery,
+  scrubUrl
+} from '@platform/core/domain'
 
 import type { AuthenticatedRequest } from './authenticated-request'
 
@@ -13,6 +20,9 @@ export interface LoggerOptions {
   level: LogLevel
   // Human-readable output locally, JSON in every deployed environment
   pretty: boolean
+  // Names of secret fields that the plugins declared (`declaredRedactedKeys` checks them), removed wherever they
+  // are, like REDACTED_SECRET_KEYS. The core lists no provider's own spelling.
+  redactedKeys?: readonly string[]
 }
 
 // Probes and scrapes live outside the /api/v1 prefix and would drown the log
@@ -53,8 +63,6 @@ export const REDACTED_SECRET_KEYS: readonly string[] = [
   'clientSecret',
   'appSecret',
   'app_secret',
-  'instagramAppSecret',
-  'instagram_app_secret',
   'verifyToken',
   'verify_token',
   'webhookSecret',
@@ -67,8 +75,6 @@ export const REDACTED_PATHS: readonly string[] = [
   'req.headers.cookie',
   'req.headers["x-api-key"]',
   'req.headers["proxy-authorization"]',
-  'req.headers["x-hub-signature"]',
-  'req.headers["x-hub-signature-256"]',
   'req.headers["svix-signature"]',
   'req.body.password',
   'req.body.token',
@@ -151,7 +157,16 @@ export function logLevelFor(statusCode: number, error: Error | undefined): LogLe
   return 'info'
 }
 
-export function buildPinoHttpOptions({ level }: Pick<LoggerOptions, 'level'>): Options {
+// The paths of the core and, at every depth, the keys the plugins declared. The names are checked here too:
+// a name that is a path would reach into the others
+export function redactedPathsFor(declared: readonly string[]): string[] {
+  return [...REDACTED_PATHS, ...declaredRedactedKeys([...declared]).flatMap(atEveryDepth)]
+}
+
+export function buildPinoHttpOptions({
+  level,
+  redactedKeys = []
+}: Pick<LoggerOptions, 'level' | 'redactedKeys'>): Options {
   return {
     level,
 
@@ -166,7 +181,7 @@ export function buildPinoHttpOptions({ level }: Pick<LoggerOptions, 'level'>): O
       }
     },
 
-    redact: { paths: [...REDACTED_PATHS], remove: true },
+    redact: { paths: redactedPathsFor(redactedKeys), remove: true },
     serializers: { req: scrubRequest },
 
     autoLogging: {

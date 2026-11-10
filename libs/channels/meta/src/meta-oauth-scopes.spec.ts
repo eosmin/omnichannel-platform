@@ -1,11 +1,6 @@
-import { ChannelIds } from './channel-ids'
-import { MetaOAuth, MetaOAuthScopes } from './channel-oauth-constants'
-import {
-  grantedMetaScopes,
-  metaOAuthScopesFor,
-  metaOAuthScopeParam,
-  missingOAuthScopes
-} from './meta-oauth-scopes'
+import { ChannelIds, MetaOAuth, MetaOAuthScopes } from '@platform/core/domain'
+
+import { grantedMetaScopes, metaOAuthScopesFor, metaOAuthScopeParam } from './meta-oauth-scopes'
 
 describe('metaOAuthScopesFor', () => {
   it('asks Messenger for the Page permissions and no Instagram one', () => {
@@ -106,36 +101,5 @@ describe('grantedMetaScopes', () => {
   it('ignores an entry with a name that is not a permission', () => {
     const answer = { data: [{ permission: 'drop table', status: 'granted' }] }
     expect(grantedMetaScopes(answer)).toEqual([])
-  })
-})
-
-describe('missingOAuthScopes', () => {
-  const required = metaOAuthScopesFor(ChannelIds.INSTAGRAM)
-
-  it('is empty when everything asked was granted', () => {
-    expect(missingOAuthScopes(required, required)).toEqual([])
-  })
-
-  it('names the permission the person cleared in the dialog (pages_read_engagement)', () => {
-    const granted = required.filter(scope => scope !== MetaOAuthScopes.PAGES_READ_ENGAGEMENT)
-    expect(missingOAuthScopes(required, granted)).toEqual(['pages_read_engagement'])
-  })
-
-  it('lists every missing one in the order they were asked, not the order they were granted', () => {
-    const granted = ['instagram_manage_messages', 'pages_show_list']
-    expect(missingOAuthScopes(required, granted)).toEqual([
-      'pages_messaging',
-      'pages_manage_metadata',
-      'pages_read_engagement',
-      'instagram_basic'
-    ])
-  })
-
-  it('does not mind extra permissions the person granted', () => {
-    expect(missingOAuthScopes(required, [...required, 'public_profile'])).toEqual([])
-  })
-
-  it('asks for all of them when nothing was granted', () => {
-    expect(missingOAuthScopes(required, [])).toEqual(required)
   })
 })

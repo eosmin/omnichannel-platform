@@ -1,5 +1,4 @@
-import { ChannelIds } from './channel-ids'
-import { ChannelOAuthLimits, MetaOAuth, MetaOAuthScopes } from './channel-oauth-constants'
+import { ChannelIds, ChannelOAuthLimits, MetaOAuth, MetaOAuthScopes } from '@platform/core/domain'
 
 // Pure helpers over the permissions of "Connect with Facebook". No call to Meta is made here: the plugin
 // asks the Graph, and these decide what to ask for and what is missing from the answer.
@@ -58,14 +57,4 @@ export function grantedMetaScopes(answer: unknown): string[] {
     }
   }
   return granted
-}
-
-// What was asked for and is not granted, in the order it was asked. The dialog lets a person clear any box,
-// so this is what turns "Meta answered error 100" into "grant pages_read_engagement".
-export function missingOAuthScopes(
-  required: readonly string[],
-  granted: readonly string[]
-): string[] {
-  const have = new Set(granted)
-  return required.filter(scope => !have.has(scope))
 }

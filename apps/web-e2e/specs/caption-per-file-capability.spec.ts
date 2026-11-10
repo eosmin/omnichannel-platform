@@ -1,5 +1,5 @@
 import { AppPaths } from '@platform/api-client'
-import { ChannelType } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import {
@@ -44,7 +44,7 @@ test('the field for the text under each file is offered where the channel carrie
     await expect(fieldOf('two.png')).toBeVisible()
 
     // Messenger sends the text of a file as a message of its own: no field, and the text is the one of the message
-    const messenger = await newConversationOnChannel(storeId, ChannelType.MESSENGER, MINUTE_MS)
+    const messenger = await newConversationOnChannel(storeId, ChannelIds.MESSENGER, MINUTE_MS)
     await page.goto(AppPaths.store.conversation(storeId, messenger))
     // The picker takes several once the directory of channels has answered: only then are its capabilities known
     await expect(page.locator('input[type=file]')).toHaveAttribute('multiple', '')

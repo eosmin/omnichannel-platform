@@ -17,7 +17,6 @@ import {
   ChannelResultMetadata,
   DeliveryStatus,
   isPlainHttpsUrl,
-  type MetaGraphOrigin,
   type TokenInspection
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks } from '@platform/core/errors'
@@ -44,7 +43,14 @@ import {
   type TypingParams
 } from '@platform/plugins/sdk'
 
-import { MetaMessaging, MetaSubscription, MetaUpload, type MetaWebhookApp } from './meta-constants'
+import {
+  MetaMessaging,
+  MetaRedactedKeys,
+  MetaSubscription,
+  MetaUpload,
+  type MetaWebhookApp,
+  type MetaGraphOrigin
+} from './meta-constants'
 import { isMetaMediaLink, MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
 import { MetaAttachmentOfKind } from './meta-media-rules'
@@ -92,6 +98,9 @@ export interface MetaAccount {
 // may already have gone out.
 @Injectable()
 export abstract class MetaChannelPlugin implements ChannelPlugin {
+  // Secret fields the logger removes (see `officialRedactedKeys`); the channels of Meta inherit it
+  static readonly redactedKeys: readonly string[] = MetaRedactedKeys
+
   abstract readonly id: string
   abstract readonly name: string
   abstract readonly capabilities: readonly ChannelCapabilityType[]

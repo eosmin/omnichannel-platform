@@ -3,7 +3,7 @@ import { encryptJson } from '@platform/core/crypto'
 import {
   AuthorType,
   ChannelConnectionStatus,
-  ChannelType,
+  ChannelIds,
   ConversationStatus,
   DeliveryStatus,
   MessageType,
@@ -104,9 +104,9 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
 
   // The catalog row of WhatsApp, which the api rewrites at boot, and its installation in the store
   await prisma.plugin.upsert({
-    where: { id: ChannelType.WHATSAPP },
+    where: { id: ChannelIds.WHATSAPP },
     create: {
-      id: ChannelType.WHATSAPP,
+      id: ChannelIds.WHATSAPP,
       name: 'WhatsApp',
       authorName: OfficialPluginAuthor.NAME,
       authorEmail: OfficialPluginAuthor.EMAIL,
@@ -119,10 +119,10 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
     update: {}
   })
   const installation = await prisma.pluginInstallation.upsert({
-    where: { storeId_pluginId: { storeId: main.id, pluginId: ChannelType.WHATSAPP } },
+    where: { storeId_pluginId: { storeId: main.id, pluginId: ChannelIds.WHATSAPP } },
     create: {
       storeId: main.id,
-      pluginId: ChannelType.WHATSAPP,
+      pluginId: ChannelIds.WHATSAPP,
       scopes: [],
       status: PluginInstallationStatus.ACTIVE,
       installedBy: admin.id
@@ -134,13 +134,13 @@ export async function loadDevFixtures(prisma: PrismaClient, encryptionKey: Buffe
   const connection = await prisma.channelConnection.upsert({
     where: {
       pluginId_connectionId: {
-        pluginId: ChannelType.WHATSAPP,
+        pluginId: ChannelIds.WHATSAPP,
         connectionId: 'fixture-phone-number-id'
       }
     },
     create: {
       storeId: main.id,
-      pluginId: ChannelType.WHATSAPP,
+      pluginId: ChannelIds.WHATSAPP,
       installationId: installation.id,
       connectionId: 'fixture-phone-number-id',
       displayName: '+503 2222-3333',
@@ -203,7 +203,7 @@ async function loadFixtureCustomer(prisma: PrismaClient, fixture: FixtureCustome
     where: {
       storeId_channelType_channelIdentity: {
         storeId,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: phoneDigits
       }
     }
@@ -224,7 +224,7 @@ async function loadFixtureCustomer(prisma: PrismaClient, fixture: FixtureCustome
       data: {
         storeId,
         customerId: customer.id,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: phoneDigits,
         lastInboundAt: new Date()
       }
@@ -235,7 +235,7 @@ async function loadFixtureCustomer(prisma: PrismaClient, fixture: FixtureCustome
         customerId: customer.id,
         customerIdentityId: identity.id,
         channelConnectionId: connectionId,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         status:
           CONVERSATION_STATUSES[index % CONVERSATION_STATUSES.length] ?? ConversationStatus.OPEN,
         lastMessageAt: new Date()

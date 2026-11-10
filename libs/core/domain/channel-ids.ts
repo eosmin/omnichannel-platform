@@ -6,7 +6,9 @@ import {
 } from './errors/channel-connect-failures'
 
 // The ids of the official channel plugins. A channel is the id of a registered plugin (TDD_10 §6.7),
-// so this list is not the set of all channels: a plugin the owner adds brings an id of its own.
+// so this list is not the set of all channels: a plugin the owner adds brings an id of its own. Only the
+// registry policy, the composition of the official plugins, the development fixtures and the tests name these:
+// the web, the api and the worker decide by what a plugin declares (`pnpm validate:channel-agnostic`).
 export const ChannelIds = {
   WHATSAPP: 'whatsapp',
   INSTAGRAM: 'instagram',
@@ -25,17 +27,10 @@ export function isOfficialChannelId(id: unknown): id is OfficialChannelId {
 // What the id of any channel plugin must look like, official or not
 export const CHANNEL_ID_PATTERN = /^[a-z][a-z0-9_-]{2,31}$/
 
-// For the routes that exist only for official plugins (the public webhook of TDD_10 §4)
-export const officialChannelSchema = z.enum(ChannelIds)
-
 // The id of any channel: the id of a registered plugin. The registry says whether it is registered;
 // this is only its shape, for a schema that cannot reach the registry (the service checks it).
 export type ChannelId = string
 export const channelIdSchema = z.string().regex(CHANNEL_ID_PATTERN)
-
-// The official ids under their old name, for the code that is about official channels only
-export const ChannelType = ChannelIds
-export type ChannelType = OfficialChannelId
 
 // The health check of the connections (TDD_10 §10): one call to the provider each, so it is bounded
 export const ChannelHealthLimits = {

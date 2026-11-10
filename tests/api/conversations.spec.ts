@@ -9,7 +9,7 @@ import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
-  ChannelType,
+  ChannelIds,
   ConversationAssignedFilters,
   ConversationStatus,
   MembershipStatus,
@@ -189,7 +189,7 @@ describe('The conversations of a store', () => {
 
       const tie = minutesAgo(30)
       const made = [
-        await make({ lastMessageAt: minutesAgo(5), channelType: ChannelType.WHATSAPP }),
+        await make({ lastMessageAt: minutesAgo(5), channelType: ChannelIds.WHATSAPP }),
         await make({ lastMessageAt: tie, assignedTo: agentId }),
         await make({ lastMessageAt: tie, assignedTo: ctx.adminA2.id }),
         await make({ lastMessageAt: minutesAgo(60), status: ConversationStatus.PENDING }),
@@ -288,7 +288,7 @@ describe('The conversations of a store', () => {
       const mine = await query({ assigned: agentId })
       const unassigned = await query({ assigned: ConversationAssignedFilters.UNASSIGNED })
       const pending = await query({ status: ConversationStatus.PENDING })
-      const whatsapp = await query({ channelType: ChannelType.WHATSAPP })
+      const whatsapp = await query({ channelType: ChannelIds.WHATSAPP })
 
       const myOwn = await admin
         .get(ApiRoutes.conversations.list)
@@ -512,7 +512,7 @@ describe('The conversations of a store', () => {
       expect(full.byStatus[ConversationStatus.SPAM]).toBeUndefined()
       expect(full.unassigned).toBe(5)
       expect(full.mine).toBe(1)
-      expect(full.byChannel[ChannelType.WHATSAPP]).toBe(1)
+      expect(full.byChannel[ChannelIds.WHATSAPP]).toBe(1)
       expect(full.byAgent.map(item => item.userId).sort()).toEqual([agentId, ctx.adminA2.id].sort())
       // Every figure is a sum of the same groups
       for (const counts of [full, narrow]) {
@@ -1371,11 +1371,11 @@ describe('The conversations of a store', () => {
     it('opens a conversation over an identity and a connection of the store', async () => {
       const identity = await createCustomerIdentity(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const connection = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
 
       const created = await service().create(ctx.storeA.id, {
@@ -1385,7 +1385,7 @@ describe('The conversations of a store', () => {
       })
 
       expect(created.status).toBe(ConversationStatus.OPEN)
-      expect(created.channelType).toBe(ChannelType.WHATSAPP)
+      expect(created.channelType).toBe(ChannelIds.WHATSAPP)
       expect(created.customer.id).toBe(identity.customerId)
     })
 
@@ -1395,7 +1395,7 @@ describe('The conversations of a store', () => {
       const identity = await createCustomerIdentity(owner, {
         storeId: ctx.storeA.id,
         customerId: survivor.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       await owner.customer.update({
         where: { id: absorbed.id },
@@ -1403,7 +1403,7 @@ describe('The conversations of a store', () => {
       })
       const connection = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
 
       const created = await service().create(ctx.storeA.id, {
@@ -1418,15 +1418,15 @@ describe('The conversations of a store', () => {
     it('refuses an identity or a connection of another store, and channels that do not match', async () => {
       const identity = await createCustomerIdentity(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const foreignConnection = await createChannelConnection(owner, {
         storeId: ctx.storeB.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const instagram = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.INSTAGRAM
+        channelType: ChannelIds.INSTAGRAM
       })
       const foreignIdentity = await createCustomerIdentity(owner, { storeId: ctx.storeB.id })
       const input = { customerId: identity.customerId, customerIdentityId: identity.id }
@@ -1616,11 +1616,11 @@ describe('The conversations of a store', () => {
       const identity = await createCustomerIdentity(owner, {
         storeId: ctx.storeA.id,
         customerId: last?.id ?? '',
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const connection = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       return {
         first: first?.id ?? '',
@@ -1654,11 +1654,11 @@ describe('The conversations of a store', () => {
       const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
       const foreign = await createCustomerIdentity(owner, {
         storeId: ctx.storeB.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const connection = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
 
       await expect(
@@ -1770,7 +1770,7 @@ describe('The conversations of a store', () => {
       })
       for (const filter of [
         { cursor },
-        { channelType: ChannelType.WHATSAPP },
+        { channelType: ChannelIds.WHATSAPP },
         { status: ConversationStatus.SPAM },
         { assigned: ConversationAssignedFilters.ME },
         { tagId: '00000000-0000-4000-8000-000000000000' }
@@ -1911,11 +1911,11 @@ describe('The conversations of a store', () => {
       const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
       const other = await createCustomerIdentity(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       const connection = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
 
       await expect(
