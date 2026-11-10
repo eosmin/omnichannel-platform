@@ -226,6 +226,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'settings.safety': { step: '5.4' },
   // The sendReadReceipts switch is drawn in Step 3.6; the rest of the page (cancellation reasons) is Step 4.14
   'settings.preferences': { step: '3.6' },
+  // The switches of Settings → Inventory (negative stock, split fulfillment, default threshold) are drawn by PR D of Step 4.2
+  'settings.inventory': { step: '4.2' },
   'settings.members': { step: '3.6' },
   'settings.memberById': { step: '3.6' },
   'settings.memberSuspend': { step: '3.6' },

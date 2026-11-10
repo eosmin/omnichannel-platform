@@ -13,6 +13,11 @@ import { api, type TestAgent } from './http'
 // description to the suite, and scripts/check-isolation-coverage.ts fails the build if it is not.
 export interface IsolationResource {
   name: string
+  // 'organization' for the resources of an ORGANIZATION (the warehouses and their links, TDD_16 §1): every store of the
+  // organization sees them, so a sibling store of the same organization reaches the row, and the row a creation makes
+  // belongs to the organization of the header (`storeOf` then answers the organization id). Another organization
+  // reaches none of it. The default is a resource of one store.
+  scope?: 'organization'
   // A row of the resource in the given store, written as the owner
   create: (owner: OwnerClient, input: { storeId: string }) => Promise<{ id: string }>
   // Where one row is read. A resource with no route for that (a member is only listed and changed)
@@ -151,9 +156,16 @@ export const isolationChecks = {
     const fromOwnStore = await reach(api(app, ctx.adminA, ctx.storeA), resource, row.id)
     const fromTheSibling = await reach(api(app, ctx.adminA, ctx.storeA2), resource, row.id)
 
-    expect(fromOwnStore.status).toBe(404)
+    // What belongs to the organization is the same for both of its stores: only the membership tells them apart
+    if (resource.scope === 'organization') {
+      expect(fromOwnStore.status).toBe(200)
+    } else {
+      expect(fromOwnStore.status).toBe(404)
+    }
     expect(fromTheSibling.status).toBe(403) // The user is not a member of the sibling
-    await expectUntouchedIfChangedToReach(owner, resource, row.id)
+    if (resource.scope !== 'organization') {
+      await expectUntouchedIfChangedToReach(owner, resource, row.id)
+    }
   },
 
   // A resource with one row per store: two stores each have a row with its own marker, and the
@@ -244,7 +256,9 @@ export const isolationChecks = {
     const created = strict ? await agent.post(path).send(body('created-by-the-suite')) : named
 
     expect(created.status).toBe(201)
-    expect(await storeOf(owner, (created.body as { id: string }).id)).toBe(ctx.storeA.id)
+    expect(await storeOf(owner, (created.body as { id: string }).id)).toBe(
+      resource.scope === 'organization' ? ctx.orgA.id : ctx.storeA.id
+    )
   }
 }
 
