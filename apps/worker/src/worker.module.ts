@@ -41,6 +41,7 @@ import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
 import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
+import { InventoryReconcileScheduler } from './schedulers/inventory-reconcile.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
@@ -98,7 +99,8 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     ExpiredExportsScheduler,
     EmailDigestScheduler,
     SnoozeWakeScheduler,
-    AutoArchiveScheduler
+    AutoArchiveScheduler,
+    InventoryReconcileScheduler
   ]
 })
 export class WorkerModule {}

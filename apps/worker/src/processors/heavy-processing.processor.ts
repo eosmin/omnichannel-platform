@@ -10,9 +10,11 @@ import {
   JobNames,
   QueueNames,
   type ProcessImageJob,
+  type ReconcileInventoryJob,
   type ScanFileJob
 } from '@platform/core/queues'
 
+import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
@@ -20,7 +22,8 @@ import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
-type HeavyJob = ScanFileJob | ProcessImageJob | FetchInboundMediaJob | FetchOriginMediaJob
+type HeavyJob =
+  ScanFileJob | ProcessImageJob | FetchInboundMediaJob | FetchOriginMediaJob | ReconcileInventoryJob
 
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
@@ -29,6 +32,9 @@ const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
     slot: z.enum(Object.values(OriginMediaSlots) as [OriginMediaSlot, ...OriginMediaSlot[]]),
     correlationId: z.string().optional()
   })
+)
+const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
+  z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
 )
 // A scan and the variants of an image take the same job
 const mediaJobSchema = exactly<ScanFileJob & ProcessImageJob>()(
@@ -59,7 +65,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     support: ProcessorSupport,
     private readonly pipeline: MediaPipeline,
     private readonly fetcher: InboundMediaFetcher,
-    private readonly originFetcher: OriginMediaFetcher
+    private readonly originFetcher: OriginMediaFetcher,
+    private readonly reconciler: InventoryReconciler
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -75,6 +82,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const fetch = originFetchJobSchema.safeParse(job.data)
       if (!fetch.success) throw new UnrecoverableError('the fetch job does not fit its schema')
       return this.originFetcher.fetch(fetch.data)
+    }
+    if (job.name === JobNames.RECONCILE_INVENTORY) {
+      const reconcile = reconcileJobSchema.safeParse(job.data)
+      if (!reconcile.success)
+        throw new UnrecoverableError('the reconcile job does not fit its schema')
+      await this.reconciler.reconcileStore(reconcile.data.storeId)
+      return
     }
     const parsed = mediaJobSchema.safeParse(job.data)
     if (!parsed.success) throw new UnrecoverableError('the media job does not fit its schema')
