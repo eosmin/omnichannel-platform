@@ -6,6 +6,15 @@ import type { ApiClient } from './api-client'
 
 // What GET /products and /products/:id answer. Money is whole USD cents (never a float); a variant with
 // no price of its own has `priceCents: null` and sells at the price of its product.
+// The api leaves the cost keys out for a caller without products:view_cost: they read as "no cost" here, and the
+// screens hide the fields for those callers (Step 4.2)
+const costField = z
+  .number()
+  .int()
+  .nullable()
+  .optional()
+  .transform(value => value ?? null)
+
 const variantSchema = z.object({
   id: z.string(),
   productId: z.string(),
@@ -13,8 +22,8 @@ const variantSchema = z.object({
   sku: z.string().nullable(),
   priceCents: z.number().int().nullable(),
   effectivePriceCents: z.number().int(),
-  costCents: z.number().int().nullable(),
-  effectiveCostCents: z.number().int().nullable(),
+  costCents: costField,
+  effectiveCostCents: costField,
   attributes: z.record(z.string(), z.string()),
   active: z.boolean(),
   createdAt: z.string()
@@ -26,7 +35,7 @@ const productFields = {
   name: z.string(),
   description: z.string().nullable(),
   priceCents: z.number().int(),
-  costCents: z.number().int().nullable(),
+  costCents: costField,
   sku: z.string().nullable(),
   imageMediaId: z.string().nullable(),
   trackInventory: z.boolean(),

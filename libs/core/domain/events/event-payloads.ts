@@ -114,6 +114,15 @@ export interface InventoryMovedPayload {
   quantity: number
 }
 
+// The available stock of a product (all its items, all the warehouses of the store) fell to its threshold or under it
+// from above (TDD_16 §4.4): once per downward crossing, re-armed when it goes back above
+export interface InventoryLowPayload {
+  storeId: string
+  productId: string
+  available: number
+  threshold: number
+}
+
 // The mark of attention of a conversation changed: `reason` is the new one, null when it was taken off.
 // Never the note of the agent: no text crosses the bridge, the client reads the row again.
 export interface ConversationAttentionChangedPayload {
@@ -315,6 +324,8 @@ export interface DomainEventPayloads {
   [Events.CUSTOMER_MERGED]: CustomerMergedPayload
   [Events.CUSTOMER_UNMERGED]: CustomerUnmergedPayload
   [Events.CUSTOMER_IDENTITY_LINKED]: CustomerIdentityLinkedPayload
+  [Events.INVENTORY_MOVED]: InventoryMovedPayload
+  [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.PRODUCT_CREATED]: ProductChangedPayload
   [Events.PRODUCT_UPDATED]: ProductChangedPayload
   [Events.PRODUCT_DELETED]: ProductChangedPayload
