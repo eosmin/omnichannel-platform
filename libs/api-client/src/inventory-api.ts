@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
+import { type InventoryMovementType, PaginationLimits } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 
@@ -93,7 +94,10 @@ export interface StockAdjustmentInput {
   warehouseId: string
   productId: string
   variantId?: string
-  type: 'receipt' | 'adjustment_in' | 'adjustment_out'
+  type:
+    | InventoryMovementType.RECEIPT
+    | InventoryMovementType.ADJUSTMENT_IN
+    | InventoryMovementType.ADJUSTMENT_OUT
   quantity: number
   reason?: string
   note?: string
@@ -166,16 +170,30 @@ export function createStockAdjustment(
   })
 }
 
-// The active warehouses of the organization the store sells from (the adjustment names one of them)
+// The active warehouses of the organization the store sells from (the adjustment names one of them): every page of
+// them is read, since the ones of this store may be on any
 export async function fetchWarehousesOfStore(
   client: ApiClient,
   storeId: string,
   signal?: AbortSignal
 ): Promise<WarehouseView[]> {
-  const page = await client.request(`${ApiRoutes.warehouses.list}?limit=100&active=true`, {
-    schema: warehousePageSchema,
-    storeId,
-    signal
-  })
-  return page.data.filter(warehouse => warehouse.stores.some(link => link.storeId === storeId))
+  const found: WarehouseView[] = []
+  let cursor: string | null = null
+  for (let pages = 0; pages < MAX_WAREHOUSE_PAGES; pages += 1) {
+    const page: z.output<typeof warehousePageSchema> = await client.request(
+      `${ApiRoutes.warehouses.list}${query({
+        limit: String(PaginationLimits.MAX),
+        active: 'true',
+        cursor: cursor ?? undefined
+      })}`,
+      { schema: warehousePageSchema, storeId, signal }
+    )
+    found.push(...page.data)
+    if (!page.hasMore || page.nextCursor === null) break
+    cursor = page.nextCursor
+  }
+  return found.filter(warehouse => warehouse.stores.some(link => link.storeId === storeId))
 }
+
+// More pages than a store has warehouses for: the loop stops here rather than follow a cursor that never ends
+const MAX_WAREHOUSE_PAGES = 20

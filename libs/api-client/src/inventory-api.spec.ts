@@ -1,3 +1,5 @@
+import { InventoryMovementType } from '@platform/core/domain'
+
 import { createApiClient } from './api-client'
 import {
   createStockAdjustment,
@@ -119,7 +121,7 @@ describe('createStockAdjustment', () => {
     const result = await createStockAdjustment(client, 's1', {
       warehouseId: 'w1',
       productId: 'p1',
-      type: 'adjustment_in',
+      type: InventoryMovementType.ADJUSTMENT_IN,
       quantity: 5,
       reason: 'found',
       idempotencyKey: 'key-1'
@@ -141,6 +143,38 @@ describe('createStockAdjustment', () => {
 })
 
 describe('fetchWarehousesOfStore', () => {
+  it('follows the pages of the organization to find the warehouses of the store', async () => {
+    const link = (storeId: string) => [{ storeId, storeName: storeId, priority: 1 }]
+    const pages = [
+      {
+        data: [{ id: 'w1', name: 'One', code: 'ONE', active: true, stores: link('s2') }],
+        nextCursor: 'c2',
+        hasMore: true
+      },
+      {
+        data: [{ id: 'w2', name: 'Two', code: 'TWO', active: true, stores: link('s1') }],
+        nextCursor: null,
+        hasMore: false
+      }
+    ]
+    const fetchImpl = jest
+      .fn<Promise<Response>, [string, RequestInit]>()
+      .mockImplementation(url =>
+        Promise.resolve(json(200, url.includes('cursor=c2') ? pages[1] : pages[0]))
+      )
+    const client = createApiClient({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'token',
+      refreshAccessToken: () => Promise.resolve('token'),
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+
+    const warehouses = await fetchWarehousesOfStore(client, 's1')
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(warehouses.map(warehouse => warehouse.id)).toEqual(['w2'])
+  })
+
   it('keeps the warehouses the store sells from, asked active', async () => {
     const { client, fetchImpl } = setup(
       json(200, {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useRef, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react'
 
 import type { ProductDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -41,12 +41,23 @@ export function StockAdjustDialog({
   // Where the form starts: the warehouse and variant of the row the person came from
   initial?: { warehouseId: string; variantId: string | null }
 }): ReactElement {
+  const { storeId } = useStore()
+  // Held here, not in the form, so that the dialog knows a send is in flight: closing it then would lose the answer
+  const adjust = useStockAdjustment(storeId)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={next => (next || !adjust.isPending ? onOpenChange(next) : undefined)}
+    >
       <DialogContent>
-        {/* Mounted only while open: every opening starts a form and a key of its own */}
+        {/* Mounted only while open: every opening starts a form of its own */}
         {open ? (
-          <AdjustForm product={product} initial={initial} onDone={() => onOpenChange(false)} />
+          <AdjustForm
+            product={product}
+            initial={initial}
+            adjust={adjust}
+            onDone={() => onOpenChange(false)}
+          />
         ) : null}
       </DialogContent>
     </Dialog>
@@ -56,10 +67,12 @@ export function StockAdjustDialog({
 function AdjustForm({
   product,
   initial,
+  adjust,
   onDone
 }: {
   product: ProductDetailView
   initial: { warehouseId: string; variantId: string | null } | undefined
+  adjust: ReturnType<typeof useStockAdjustment>
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('products.stock.dialog')
@@ -67,7 +80,8 @@ function AdjustForm({
   const { storeId, can } = useStore()
   const guard = useSubmitGuard()
   const warehouses = useWarehousesOfStore(storeId, true)
-  const adjust = useStockAdjustment(storeId)
+  // A mutation outlives the form: the one of the last opening must not show its refusal in this one
+  useEffect(() => adjust.reset(), [adjust.reset])
   const canSetCost = can(ClientPermissions.PRODUCTS_VIEW_COST)
   const [values, setValues] = useState<StockFormValues>(() => ({
     ...emptyStockForm(initial?.warehouseId ?? ''),
@@ -76,7 +90,7 @@ function AdjustForm({
   const [wrong, setWrong] = useState<StockFormField | null>(null)
   // One key per request: the same request sent again (a lost answer, a second click) carries the key it had, so it
   // cannot apply twice; a request that was changed after it failed is another one and gets a key of its own
-  const attempt = useRef<{ body: string; key: string } | null>(null)
+  const keys = useRef(new Map<string, string>())
   const list = warehouses.data ?? []
   // The first warehouse, when the person did not come from a row and there is only one to choose
   const warehouseId =
@@ -86,6 +100,8 @@ function AdjustForm({
   const set = <K extends keyof StockFormValues>(key: K, value: StockFormValues[K]): void => {
     setValues(current => ({ ...current, [key]: value }))
     setWrong(null)
+    // The refusal of the api was about what was written before
+    adjust.reset()
   }
   const chooseAction = (action: StockFormValues['action']): void => {
     // The reasons change with the action: the first of the new ones, unless the one chosen is also there
@@ -97,6 +113,7 @@ function AdjustForm({
         : (ReasonsOf[action][0] ?? current.reason)
     }))
     setWrong(null)
+    adjust.reset()
   }
 
   const submit = (event: FormEvent): void => {
@@ -105,9 +122,8 @@ function AdjustForm({
     if (!result.ok) return setWrong(result.field)
     if (!guard.enter()) return
     const body = JSON.stringify(result.value)
-    const idempotencyKey =
-      attempt.current?.body === body ? attempt.current.key : crypto.randomUUID()
-    attempt.current = { body, key: idempotencyKey }
+    const idempotencyKey = keys.current.get(body) ?? crypto.randomUUID()
+    keys.current.set(body, idempotencyKey)
     adjust.mutate(
       { ...result.value, idempotencyKey },
       {
@@ -252,7 +268,7 @@ function AdjustForm({
         </div>
         <MutationError error={adjust.error} />
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={onDone}>
+          <Button type="button" variant="outline" disabled={adjust.isPending} onClick={onDone}>
             {t('cancel')}
           </Button>
           <Button type="submit" busy={adjust.isPending} disabled={adjust.isPending}>

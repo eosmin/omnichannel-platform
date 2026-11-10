@@ -94,7 +94,7 @@ export const QueryKeys = {
     movements: (storeId: string) => ['inventory', storeId, 'movements'] as const,
     // The stock column of the catalog: the products of a page, by their ids
     summary: (storeId: string, productIds: readonly string[]) =>
-      ['inventory', storeId, 'summary', ...productIds] as const,
+      ['inventory', storeId, 'summary', [...productIds].sort().join(',')] as const,
     // The levels of one product, one row per item and warehouse
     product: (storeId: string, productId: string) =>
       ['inventory', storeId, 'product', productId] as const,

@@ -1,5 +1,11 @@
 import type { ProductDetailView, StockAdjustmentInput } from '@platform/api-client'
-import { InventoryAdjustmentReason, InventoryLimits, ProductLimits } from '@platform/core/domain'
+import {
+  InventoryAdjustmentReason,
+  InventoryLimits,
+  InventoryMovementEffects,
+  InventoryMovementType,
+  ProductLimits
+} from '@platform/core/domain'
 
 import { parseCents } from '../products/money'
 
@@ -9,9 +15,9 @@ export const StockActions = { RECEIVE: 'receive', ADD: 'add', REMOVE: 'remove' }
 export type StockAction = (typeof StockActions)[keyof typeof StockActions]
 
 const TYPE_OF: Record<StockAction, StockAdjustmentInput['type']> = {
-  [StockActions.RECEIVE]: 'receipt',
-  [StockActions.ADD]: 'adjustment_in',
-  [StockActions.REMOVE]: 'adjustment_out'
+  [StockActions.RECEIVE]: InventoryMovementType.RECEIPT,
+  [StockActions.ADD]: InventoryMovementType.ADJUSTMENT_IN,
+  [StockActions.REMOVE]: InventoryMovementType.ADJUSTMENT_OUT
 }
 
 // The reasons each action offers, the first one being what the form starts with
@@ -113,32 +119,16 @@ export function adjustmentFrom(
   }
 }
 
-// The sign a movement shows in the kardex: units in are positive, units out negative, and a reservation is neither
-const ENTERING = new Set(['receipt', 'adjustment_in', 'transfer_in', 'count_in', 'return_in'])
-const LEAVING = new Set(['issue', 'adjustment_out', 'transfer_out', 'count_out'])
-
+// The sign a movement shows in the kardex: units in are positive, units out negative, and a reservation is neither (the
+// table of what each type does to the level is the one of the engine)
 export function signedQuantity(type: string, quantity: number): number {
-  if (ENTERING.has(type)) return quantity
-  if (LEAVING.has(type)) return -quantity
-  return 0
+  if (!isMovementType(type)) return 0
+  return InventoryMovementEffects[type].onHand * quantity
 }
 
-export const MOVEMENT_TYPES = [
-  'receipt',
-  'issue',
-  'reserve',
-  'release',
-  'adjustment_in',
-  'adjustment_out',
-  'transfer_out',
-  'transfer_in',
-  'count_in',
-  'count_out',
-  'return_in'
-] as const
-export type MovementType = (typeof MOVEMENT_TYPES)[number]
+export const MOVEMENT_TYPES = Object.values(InventoryMovementType)
 
-export const isMovementType = (type: string): type is MovementType =>
+export const isMovementType = (type: string): type is InventoryMovementType =>
   (MOVEMENT_TYPES as readonly string[]).includes(type)
 
 export const isAdjustmentReason = (reason: string): reason is InventoryAdjustmentReason =>

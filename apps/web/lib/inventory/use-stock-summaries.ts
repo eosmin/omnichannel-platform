@@ -1,6 +1,6 @@
 'use client'
 
-import { useQueries } from '@tanstack/react-query'
+import { keepPreviousData, useQueries } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { fetchStockSummary, QueryKeys, type StockSummaryView } from '@platform/api-client'
@@ -31,7 +31,8 @@ export function useStockSummaries(
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         fetchStockSummary(apiClient, storeId, ids, signal),
       enabled: enabled && ids.length > 0,
-      // What was shown stays while a new page of products is asked
+      // What was shown stays on the screen while the answer for the new rows is on its way
+      placeholderData: keepPreviousData,
       staleTime: 15_000
     }))
   })

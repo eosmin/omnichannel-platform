@@ -85,8 +85,9 @@ export function useStockAdjustment(
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: StockAdjustmentInput) => createStockAdjustment(apiClient, storeId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) })
+    // The numbers are made stale and read again in the background: the dialog does not wait for them
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) })
     }
   })
 }
