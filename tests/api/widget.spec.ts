@@ -461,7 +461,10 @@ describe('The web widget', () => {
         { ...base, content: '   ' },
         { ...base, content: 'x'.repeat(2001) },
         { ...base, clientMessageId: 'has space' },
-        { visitorToken: visitor.visitorToken, content: 'hola' }
+        { visitorToken: visitor.visitorToken, content: 'hola' },
+        // A field the message does not declare is refused like in the other bodies of the widget
+        { ...base, extra: 1 },
+        { ...base, attachments: [] }
       ]) {
         expect((await send(bad)).status).toBe(BAD_REQUEST)
       }
@@ -1916,16 +1919,19 @@ describe('The web widget', () => {
       expect(data.event.message).toMatchObject({ type: MessageType.IMAGE, content: null })
     })
 
-    it('ignores what a script adds beside the ids', async () => {
+    it('refuses what a script adds beside the ids and takes only the files it signed', async () => {
       const visitor = await enter(siteKey)
       queued().length = 0
       const uploadId = await uploaded(visitor.visitorToken)
 
-      await sendFiles(visitor.visitorToken, [uploadId], {
+      const response = await sendFiles(visitor.visitorToken, [uploadId], {
         content: 'hola',
         attachments: [{ id: randomUUID(), filename: 'x.exe', contentType: 'image/png' }]
-      }).expect(OK)
+      })
 
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(queued()).toEqual([])
+      await sendFiles(visitor.visitorToken, [uploadId], { content: 'hola' }).expect(OK)
       const data = queued()[0]?.data as ProcessChannelEventJob
       expect(data.event.message?.media).toEqual([
         { id: uploadId, ref: uploadId, contentType: 'image/png', filename: 'foto.png' }
