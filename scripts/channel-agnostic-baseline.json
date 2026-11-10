@@ -23,10 +23,6 @@
     "code": 0,
     "comment": 3
   },
-  "apps/web/app/s/store-channels-page.tsx": {
-    "code": 0,
-    "comment": 2
-  },
   "apps/web/components/inbox/resolve-form.tsx": {
     "code": 1,
     "comment": 0
@@ -36,20 +32,12 @@
     "comment": 1
   },
   "apps/web/components/settings/connect-dialog.tsx": {
-    "code": 7,
-    "comment": 2
+    "code": 0,
+    "comment": 1
   },
   "apps/web/components/settings/connection-card.tsx": {
-    "code": 1,
-    "comment": 2
-  },
-  "apps/web/components/settings/facebook-login-button.tsx": {
     "code": 0,
-    "comment": 4
-  },
-  "apps/web/components/settings/oauth-asset-dialog.tsx": {
-    "code": 7,
-    "comment": 2
+    "comment": 1
   },
   "apps/web/components/settings/rename-dialog.tsx": {
     "code": 0,
@@ -60,26 +48,6 @@
     "comment": 5
   },
   "apps/web/lib/settings/channel-keys.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/settings/channels-requests.ts": {
-    "code": 0,
-    "comment": 3
-  },
-  "apps/web/lib/settings/oauth-return.ts": {
-    "code": 3,
-    "comment": 3
-  },
-  "apps/web/lib/settings/use-channels.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/settings/use-oauth-return.ts": {
-    "code": 0,
-    "comment": 1
-  },
-  "apps/web/lib/start-path.ts": {
     "code": 0,
     "comment": 1
   },

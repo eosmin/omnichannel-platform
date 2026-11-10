@@ -1722,9 +1722,9 @@
         "connecting": "Connecting…",
         "submit": "Connect",
         "connected": "{name} is connected.",
-        "descriptionFacebook": "Connect with your Facebook account and choose the Page. You do not have to copy a token.",
-        "facebook": "Connect with Facebook",
-        "facebookHint": "We take you to Facebook to give your permission, and you come back here to choose the Page.",
+        "descriptionOAuth": "Connect with your {provider} account and choose the account. You do not have to copy a token.",
+        "login": "Connect with {provider}",
+        "loginHint": "We take you to {provider} to give your permission, and you come back here to choose the account.",
         "useToken": "Use a manual token"
       },
       "widget": {
@@ -1773,11 +1773,11 @@
         "account_unreadable": "The Instagram account of the Page could not be read: check that the token is the Page's and that the account is still linked.",
         "subscription_failed": "The Page could not be subscribed to messages: try again; if it repeats, check the permissions of the app.",
         "subscription_unreadable": "The subscription of the Page to messages could not be checked. Try again in a few minutes.",
-        "no_assets": "Facebook did not show any Page you can connect. Check that you have access to the Page, try again and tick it in the Facebook dialog; if it does not appear, type its ID number.",
+        "no_assets": "No account you can connect was shown. Check that you have access to it, try again and tick it in the provider dialog; if it does not appear, type its ID number.",
         "linked_account_missing": "What you chose has no linked account that the channel needs. Link one in the provider settings or choose another option.",
         "page_without_instagram": "What you chose has no linked account that the channel needs. Link one in the provider settings or choose another option.",
-        "oauth_cancelled": "You cancelled the access with Facebook, so nothing was connected. You can try again whenever you like.",
-        "oauth_expired": "The access with Facebook could not be completed: it took too long, was already used or the answer was not valid. Start again."
+        "oauth_cancelled": "You cancelled the access, so nothing was connected. You can try again whenever you like.",
+        "oauth_expired": "The access could not be completed: it took too long, was already used or the answer was not valid. Start again."
       },
       "rename": {
         "action": "Rename",
@@ -1798,34 +1798,32 @@
         "done": "Token of {name} updated."
       },
       "oauth": {
-        "opening": "Opening Facebook…",
-        "badAddress": "The address we got to go to Facebook is not the expected one, so we did not send you there. Try again or use a manual token.",
-        "reconnect": "Reconnect with Facebook",
+        "opening": "Opening {provider}…",
+        "badAddress": "The address we got to go to {provider} is not the expected one, so we did not send you there. Try again or use a manual token.",
+        "reconnect": "Reconnect with {provider}",
         "dismiss": "Dismiss",
-        "failedGeneric": "The access with Facebook could not be completed. Try again.",
+        "failedGeneric": "The access could not be completed. Try again.",
         "pick": {
-          "title": "Choose the Page",
-          "description": "These are the Pages your Facebook account gives access to.",
-          "loading": "Loading your Pages…",
+          "title": "Choose the account",
+          "description": "These are the accounts this login gives access to.",
+          "loading": "Loading your accounts…",
           "close": "Close",
-          "legend": "Available Pages",
-          "none": "Facebook did not show any Page. Connect again and tick your Page in the Facebook dialog, or type the ID number of your Page.",
-          "noInstagram": "No Instagram account linked",
-          "instagram": "Instagram: @{username}",
-          "typedLabel": "ID number of the Page",
-          "typedHint": "You find it in the information of your Facebook Page. It is only digits.",
+          "legend": "Available accounts",
+          "none": "No account was shown. Connect again and tick your account in the provider dialog, or type its ID number.",
+          "typedLabel": "ID number of the account",
+          "typedHint": "You find it in the information of your account. It follows the format the provider uses.",
           "notListed": "My Page is not listed",
           "backToList": "Back to the list",
           "submit": "Connect",
           "connecting": "Connecting…",
           "connected": "{name} is connected.",
           "missingIntro": "When you gave access you cleared these permissions:",
-          "missingHelp": "Connect with Facebook again and leave every permission it asks for ticked.",
-          "noneSelectable": "None of these Pages has a linked Instagram account. Link one in the Page settings, or type the number of another Page.",
-          "repairHint": "You are reconnecting an existing connection: choose the same Page it already had.",
-          "otherAccount": "That is a different Page from the one you are reconnecting. Choose the Page this connection already uses.",
+          "missingHelp": "Connect again and leave every permission it asks for ticked.",
+          "noneSelectable": "None of these accounts has the linked account this channel needs. Link one at the provider, or type the number of another account.",
+          "repairHint": "You are reconnecting an existing connection: choose the same account it already had.",
+          "otherAccount": "That is a different account from the one you are reconnecting. Choose the account this connection already uses.",
           "repaired": "{name} is connected again.",
-          "currentPage": "The Page of the connection"
+          "currentPage": "The account of the connection"
         }
       }
     },

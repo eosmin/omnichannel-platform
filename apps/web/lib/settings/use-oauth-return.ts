@@ -6,7 +6,7 @@ import { type OAuthReturn, readOAuthReturn, withoutOAuthParams } from './oauth-r
 
 const EMPTY: OAuthReturn = { session: null, failure: null }
 
-// What the browser brought back from Facebook (Step 7.8), read once and taken out of the address at once: the id
+// What the browser brought back from the provider (Step 7.8), read once and taken out of the address at once: the id
 // of a session must not stay in the history, in a bookmark or in a `Referer`. It then lives only in this state,
 // in memory: not in storage, not in a link, not in a log.
 export function useOAuthReturn(): OAuthReturn & { clear: () => void } {

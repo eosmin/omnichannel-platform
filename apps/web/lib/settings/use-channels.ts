@@ -36,7 +36,7 @@ import {
   renameConnection,
   saveWidgetOrigins,
   saveWidgetPreChat,
-  startFacebookLogin,
+  startOAuthLogin,
   testConnection,
   uninstallPlugin,
   updateConnectionToken,
@@ -200,15 +200,15 @@ export function useUninstallPlugin(
   })
 }
 
-// "Connect with Facebook" (Step 7.8). Starting it makes the state on the server and answers the address of the
+// The provider login of a channel (Step 7.8). Starting it makes the state on the server and answers the address of the
 // dialog; leaving the page is the caller's.
-export function useStartFacebookLogin(
+export function useStartOAuthLogin(
   storeId: string,
   pluginId: string,
   connectionId?: string
 ): UseMutationResult<{ authorizeUrl: string }, Error, void> {
   return useMutation({
-    mutationFn: () => startFacebookLogin(apiClient, storeId, pluginId, connectionId),
+    mutationFn: () => startOAuthLogin(apiClient, storeId, pluginId, connectionId),
     // The answer holds the state of the login: it is used once and not kept
     gcTime: 0
   })

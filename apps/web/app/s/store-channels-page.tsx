@@ -15,6 +15,7 @@ import { ConnectionCard } from '../../components/settings/connection-card'
 import { OAuthAssetDialog } from '../../components/settings/oauth-asset-dialog'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
 import { UpdateTokenDialog } from '../../components/settings/update-token-dialog'
+import { ChannelIcon } from '../../components/shared/channel-icon'
 import { Button } from '../../components/ui/button'
 import type {
   ChannelConnectionView,
@@ -31,7 +32,7 @@ type LoginReturn = ReturnType<typeof useOAuthReturn>
 // plugin adds needs no change here. The inbox sends the owner here when it has nothing to show.
 export function StoreChannelsPage(): ReactElement {
   const { can } = useStore()
-  // What Facebook sent the person back with is read here, before anything that can keep the page from drawing
+  // What the provider sent the person back with is read here, before anything that can keep the page from drawing
   // (no permission, a list that loads or fails): the id of the session must leave the address in every case
   const login = useOAuthReturn()
   const canEdit = can(ClientPermissions.SETTINGS_EDIT)
@@ -154,7 +155,10 @@ function ChannelsBody({
                 key={entry.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
               >
-                <span className="font-medium">{entry.name}</span>
+                <span className="flex items-center gap-2 font-medium">
+                  <ChannelIcon iconKey={entry.channel?.descriptor?.iconKey} />
+                  {entry.name}
+                </span>
                 {canEdit ? (
                   <Button type="button" size="sm" onClick={() => setConnecting(entry)}>
                     {t('add.connect')}
@@ -230,7 +234,7 @@ function ChannelsBody({
   )
 }
 
-// Why a login with Facebook ended with nothing to connect: the text of a reason of the closed list, or the
+// Why a provider login ended with nothing to connect: the text of a reason of the closed list, or the
 // generic one. The reason is mapped by a table and never painted as it came.
 function LoginFailed({
   failure,
