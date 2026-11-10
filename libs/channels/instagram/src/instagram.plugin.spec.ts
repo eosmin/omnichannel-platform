@@ -383,12 +383,12 @@ describe('InstagramPlugin', () => {
       [
         'a Page id that is not digits',
         page({ id: ACCOUNT, username: 'tienda' }, '../x'),
-        PluginChecks.PAGE_ID_NOT_NUMERIC
+        PluginChecks.PARENT_ID_NOT_NUMERIC
       ],
       [
         'a Page id that is not digits, whatever the account looks like',
         page({ id: '1' }, '../x'),
-        PluginChecks.PAGE_ID_NOT_NUMERIC
+        PluginChecks.PARENT_ID_NOT_NUMERIC
       ]
     ])('refuses %s, naming the check, and subscribes nothing', async (_name, answer, check) => {
       const { plugin, get, post } = build()
@@ -443,7 +443,7 @@ describe('InstagramPlugin', () => {
       await expect(plugin.healthCheck(ctx)).rejects.toMatchObject({
         code: ErrorCodes.CHANNEL_CREDENTIALS_INVALID,
         retryable: false,
-        failedCheck: PluginChecks.PAGE_ID_MISMATCH
+        failedCheck: PluginChecks.PARENT_ID_MISMATCH
       })
     })
 
@@ -460,7 +460,7 @@ describe('InstagramPlugin', () => {
       const { plugin, get } = build()
       get.mockResolvedValue(page())
       await expect(plugin.healthCheck({ ...ctx, metadata: {} })).rejects.toMatchObject({
-        failedCheck: PluginChecks.PAGE_ID_MISMATCH
+        failedCheck: PluginChecks.PARENT_ID_MISMATCH
       })
     })
 
@@ -510,7 +510,7 @@ describe('InstagramPlugin', () => {
 
       await expect(
         buildReal().healthCheck({ ...ctx, credentials: { accessToken: 'PAGE-ok' } })
-      ).rejects.toMatchObject({ failedCheck: PluginChecks.PAGE_ID_MISMATCH })
+      ).rejects.toMatchObject({ failedCheck: PluginChecks.PARENT_ID_MISMATCH })
       graph.restore()
     })
   })

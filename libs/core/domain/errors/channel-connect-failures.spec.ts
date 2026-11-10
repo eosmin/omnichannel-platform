@@ -49,10 +49,10 @@ describe('the reasons a channel does not connect', () => {
   })
 
   it('gives the checks of the Page the reasons the owner can act on', () => {
-    expect(connectReasonOfCheck(PluginChecks.PAGE_ID_MISMATCH)).toBe(
+    expect(connectReasonOfCheck(PluginChecks.PARENT_ID_MISMATCH)).toBe(
       ChannelConnectFailureReasons.OTHER_ACCOUNT
     )
-    expect(connectReasonOfCheck(PluginChecks.PAGE_ID_NOT_NUMERIC)).toBe(
+    expect(connectReasonOfCheck(PluginChecks.PARENT_ID_NOT_NUMERIC)).toBe(
       ChannelConnectFailureReasons.PROVIDER_ANSWER_UNEXPECTED
     )
     for (const check of [
@@ -78,6 +78,13 @@ describe('the reasons a channel does not connect', () => {
     [7, false]
   ])('believes %p only when it is a name of the list (%p)', (value, expected) => {
     expect(isChannelConnectFailureReason(value)).toBe(expected)
+  })
+
+  it('names the missing linked account generically and keeps the old name as an alias for one release', () => {
+    expect(ChannelConnectFailureReasons.LINKED_ACCOUNT_MISSING).toBe('linked_account_missing')
+    // A plugin built before the rename still names it, and the web page still has its text
+    expect(isChannelConnectFailureReason('page_without_instagram')).toBe(true)
+    expect(ChannelConnectFailureReasons.PAGE_WITHOUT_INSTAGRAM).toBe('page_without_instagram')
   })
 
   it('does not put a check it does not know in the message of its error', () => {

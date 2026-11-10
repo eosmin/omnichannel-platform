@@ -106,11 +106,9 @@ const catalogEntrySchema = z.object({
       // with no way to connect), never a form with a required field missing
       connectFields: z.array(connectFieldSchema),
       callbackUrl: z.string().nullable(),
-      // "Connect with Facebook" is offered for this channel; false from a server older than the page
-      facebookLogin: z.boolean().catch(false),
       // How the channel is named and drawn, and its login: none when the server does not say or the descriptor
-      // is not valid (the browser checks it again), never a failure of the page. Until B1b draws the login from
-      // `oauth`, the button still follows the flag above and the address it already knows.
+      // is not valid (the browser checks it again), never a failure of the page. A channel with no `oauth` has no
+      // "connect with" button.
       descriptor: channelDescriptorSchema.nullable().optional().catch(null),
       oauth: channelOAuthDescriptorSchema.nullable().catch(null)
     })
@@ -297,7 +295,7 @@ export function uninstallPlugin(
   })
 }
 
-// "Connect with Facebook" (Step 7.8). The api makes the state and answers the address of the dialog; the
+// The login of the provider (Step 7.8). The api makes the state and answers the address of the dialog; the
 // browser goes there, and comes back with the id of a session that holds the person's token on the server:
 // the page only ever holds that id, and only in memory.
 const startSchema = z.object({ authorizeUrl: z.string() })
@@ -313,13 +311,13 @@ const assetsSchema = z.object({
   pluginId: z.string(),
   // The connection this login repairs, when it was started from one
   connectionId: z.string().nullable().catch(null),
-  // The account that connection is (the id of its Page, or of its Instagram account), to show which Page it is
+  // The account that connection is to show which account it is
   repairAccountId: z.string().nullable().catch(null),
   assets: z.array(assetSchema)
 })
 export type OAuthAssetsView = z.output<typeof assetsSchema>
 
-export function startFacebookLogin(
+export function startOAuthLogin(
   client: ApiClient,
   storeId: string,
   pluginId: string,

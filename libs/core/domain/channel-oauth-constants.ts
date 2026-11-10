@@ -30,6 +30,9 @@ export const ChannelOAuthLimits = {
   SESSION_ID_BYTES: 32,
   // No provider asks for this many permissions; a longer list is not a login a plugin meant to declare
   MAX_SCOPES: 20,
+  // A permission name: lowercase words (digits allowed) joined by single underscores, 64 characters at most;
+  // no leading, trailing or doubled underscore
+  SCOPE_PATTERN: /^(?=.{1,64}$)[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/,
   // The time the person has to finish the provider's dialog, and then to pick the account. The state is
   // read once and removed, so a second try with the same address fails whatever the time left.
   STATE_TTL_SECONDS: 10 * 60,
@@ -109,9 +112,7 @@ export const MetaOAuth = {
   OWNED_PAGES_CONCURRENCY: 5,
   // The id of a Page or a portfolio, as the Graph writes it
   ASSET_ID_PATTERN: /^\d{1,32}$/,
-  // A permission name: lowercase words (digits allowed) joined by single underscores, 64 characters at most;
-  // no leading, trailing or doubled underscore
-  SCOPE_PATTERN: /^(?=.{1,64}$)[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/,
+  SCOPE_PATTERN: ChannelOAuthLimits.SCOPE_PATTERN,
   // The dialog separates scopes with a comma
   SCOPE_SEPARATOR: ','
 } as const

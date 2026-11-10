@@ -229,7 +229,7 @@ export class MetaLogin implements ChannelOAuth {
     if (!MetaOAuth.ASSET_ID_PATTERN.test(ctx.assetId)) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
         retryable: false,
-        failedCheck: PluginChecks.PAGE_ID_NOT_NUMERIC
+        failedCheck: PluginChecks.PARENT_ID_NOT_NUMERIC
       })
     }
     const needsInstagram = this.pluginId === ChannelIds.INSTAGRAM
@@ -261,7 +261,7 @@ export class MetaLogin implements ChannelOAuth {
     if (page.id !== ctx.assetId) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
         retryable: false,
-        failedCheck: PluginChecks.PAGE_ID_MISMATCH
+        failedCheck: PluginChecks.PARENT_ID_MISMATCH
       })
     }
     if (page.access_token === undefined) {
@@ -274,7 +274,7 @@ export class MetaLogin implements ChannelOAuth {
     if (needsInstagram && page.instagram_business_account === undefined) {
       throw new PluginError(ErrorCodes.CHANNEL_CREDENTIALS_INVALID, {
         retryable: false,
-        reason: ChannelConnectFailureReasons.PAGE_WITHOUT_INSTAGRAM
+        reason: ChannelConnectFailureReasons.LINKED_ACCOUNT_MISSING
       })
     }
     return { accessToken: page.access_token }
