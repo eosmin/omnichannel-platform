@@ -22,6 +22,16 @@ export interface ConversationTimelineEntry {
   status: string
 }
 
+export interface OrderTimelineEntry {
+  type: typeof CustomerTimelineTypes.ORDER
+  id: string
+  at: Date
+  orderNumber: string
+  status: string
+  totalCents: number
+  currency: string
+}
+
 export interface NoteTimelineEntry {
   type: typeof CustomerTimelineTypes.NOTE
   id: string
@@ -42,7 +52,8 @@ export interface MergeTimelineEntry {
   unmergedAt: Date | null
 }
 
-export type TimelineEntry = ConversationTimelineEntry | NoteTimelineEntry | MergeTimelineEntry
+export type TimelineEntry =
+  ConversationTimelineEntry | OrderTimelineEntry | NoteTimelineEntry | MergeTimelineEntry
 export type TimelinePage = CursorPage<TimelineEntry>
 
 const wants = (query: ListTimelineQuery, type: CustomerTimelineType): boolean =>
@@ -50,8 +61,8 @@ const wants = (query: ListTimelineQuery, type: CustomerTimelineType): boolean =>
 
 // The activity of a customer, the newest first, from the tables that hold it: one query for each,
 // each cut to a page past the cursor, merged by (date, id). What a viewer may not see is not here:
-// a conversation follows the visibility of the inbox, and the notes and merges need the permissions
-// of their own routes.
+// a conversation follows the visibility of the inbox, the orders need ORDERS_VIEW (and never carry the
+// notes of the order), and the notes and merges need the permissions of their own routes.
 @Injectable()
 export class CustomerTimelineService {
   constructor(private readonly prisma: PrismaService) {}
@@ -77,8 +88,9 @@ export class CustomerTimelineService {
     const take = limit + 1
     const seesConversations = viewer.held.includes(Permissions.CONVERSATIONS_VIEW)
     const seesHidden = viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE)
+    const seesOrders = viewer.held.includes(Permissions.ORDERS_VIEW)
 
-    const [conversations, notes, merges] = await Promise.all([
+    const [conversations, orders, notes, merges] = await Promise.all([
       wants(query, CustomerTimelineTypes.CONVERSATION) && seesConversations
         ? this.prisma.client.conversation.findMany({
             where: {
@@ -88,6 +100,21 @@ export class CustomerTimelineService {
               AND: [visibleTo(viewer), before('createdAt')]
             },
             select: { id: true, createdAt: true, channelType: true, status: true },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take
+          })
+        : [],
+      wants(query, CustomerTimelineTypes.ORDER) && seesOrders
+        ? this.prisma.client.order.findMany({
+            where: { storeId, customerId, ...before('createdAt') },
+            select: {
+              id: true,
+              createdAt: true,
+              orderNumber: true,
+              status: true,
+              totalCents: true,
+              currency: true
+            },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take
           })
@@ -128,6 +155,15 @@ export class CustomerTimelineService {
         at: row.createdAt,
         channelType: row.channelType,
         status: row.status
+      })),
+      ...orders.map((row): OrderTimelineEntry => ({
+        type: CustomerTimelineTypes.ORDER,
+        id: row.id,
+        at: row.createdAt,
+        orderNumber: row.orderNumber,
+        status: row.status,
+        totalCents: row.totalCents,
+        currency: row.currency
       })),
       ...notes.map((row): NoteTimelineEntry => ({
         type: CustomerTimelineTypes.NOTE,

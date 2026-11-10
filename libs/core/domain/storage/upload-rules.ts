@@ -3,6 +3,7 @@ import {
   AllAllowedContentTypes,
   AllowedContentTypes,
   AvatarUpload,
+  OrderFileUpload,
   ProductImageUpload,
   UploadLimits
 } from './upload-constants'
@@ -18,7 +19,10 @@ export type UploadRefusal = (typeof UploadRefusals)[keyof typeof UploadRefusals]
 // The purposes whose rules are written here; a purpose a client may upload for must be one of them
 // (upload-schemas.ts checks it at compile time), so a new one cannot get the message rules by default
 export type UploadRulePurpose =
-  typeof MediaPurpose.MESSAGE | typeof MediaPurpose.AVATAR | typeof MediaPurpose.PRODUCT
+  | typeof MediaPurpose.MESSAGE
+  | typeof MediaPurpose.AVATAR
+  | typeof MediaPurpose.PRODUCT
+  | typeof MediaPurpose.ORDER
 
 // The purposes with rules of their own: a few still image types and a smaller limit. Any other is a
 // message file.
@@ -29,6 +33,7 @@ interface ImageRules {
 function imageRulesOf(purpose: UploadRulePurpose): ImageRules | null {
   if (purpose === MediaPurpose.AVATAR) return AvatarUpload
   if (purpose === MediaPurpose.PRODUCT) return ProductImageUpload
+  if (purpose === MediaPurpose.ORDER) return OrderFileUpload
   return null
 }
 
@@ -42,7 +47,7 @@ export function maxBytesFor(contentType: string, purpose: UploadRulePurpose): nu
 
 // The one rule for what may be uploaded, used when the URL is signed and again when the upload is
 // confirmed (the object in the bucket is not trusted because a client says it was checked). A purpose
-// with rules of its own (an avatar: three image types, 2 MB; a product picture: the same types, 5 MB) is held to them; any other is a message
+// with rules of its own (an avatar: three image types, 2 MB; a product picture: the same types, 5 MB; an order file: those and a PDF, 10 MB) is held to them; any other is a message
 // file. The purpose is required, so a caller cannot get the permissive rules by leaving it out.
 export function refuseUpload(
   contentType: string,
