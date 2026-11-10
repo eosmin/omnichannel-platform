@@ -1551,7 +1551,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 4: Commerce** | | | | |
 | 4.1 | Products and variants | done | PR A #391 (products and variants CRUD, api), B #392 (search), C #390 (upload purpose `product`), D #393 (web catalog) | 2026-11-10 |
 | 4.2 | Warehouses and stock | done | PR A1 #394 (schema), B #395 (warehouses api), A2 #396 (stock engine), D2a #397 (cost gate), D1 #398 (inventory settings web), C #399 (reconciliation + low stock), D3 #400 (stock in the catalog) | 2026-11-10 |
-| 4.3 | Orders | in progress | PR A #TBD (schema and pure rules) | |
+| 4.3 | Orders | in progress | PR A #401 (schema and pure rules) | |
 | 4.4 | Order UI | todo | | |
 | 4.5 | Transfers between warehouses | todo | | |
 | 4.6 | Physical counts | todo | | |
