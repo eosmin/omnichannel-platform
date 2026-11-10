@@ -523,6 +523,31 @@ jobs:
       # Builds the api, the worker and the web app, starts them, and runs the specs
       - name: End to end specs
         run: pnpm exec nx run web-e2e:e2e --skip-nx-cache
+      # Time per file and the cases that needed their retry, in the summary of the run, from the json of the reporter
+      - name: Time of the specs
+        if: always()
+        run: |
+          file=apps/web-e2e/playwright-timing/results.json
+          [ -f "$file" ] || exit 0
+          {
+            echo '### Time per spec file'
+            echo '| File | Cases | Seconds |'
+            echo '| --- | --- | --- |'
+            jq -r '[.suites[] | {file, cases: [.. | objects | select(has("tests")) | .tests[]?] }]
+              | map({file, n: (.cases | length), s: (([.cases[].results[]?.duration] | add // 0) / 1000 | round)})
+              | sort_by(-.s)[] | "| \(.file) | \(.n) | \(.s) |"' "$file"
+            echo
+            echo '### Cases that passed only on a retry'
+            jq -r '.. | objects | select(has("tests")) | select(.tests[0].status == "flaky") | "- \(.file): \(.title)"' "$file"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Playwright timing
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-timing
+          path: apps/web-e2e/playwright-timing
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

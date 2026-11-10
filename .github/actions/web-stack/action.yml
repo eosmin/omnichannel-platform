@@ -27,6 +27,24 @@ runs:
       id: playwright
       run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       shell: bash
+    # The system libraries of Chromium come from the apt mirror of the runner, which some runs reach at 80 kB/s
+    # (a run waited 4.5 minutes for 22 MB). The downloaded packages are cached by image and Playwright version:
+    # the same packages are installed, only without the download. A package that changed on the mirror is
+    # fetched as before, and a cache miss is the old behavior.
+    - name: Keep the packages apt downloads
+      run: |
+        mkdir -p "$HOME/.apt-archives"
+        printf '%s\n' \
+          "Dir::Cache::archives \"$HOME/.apt-archives\";" \
+          'APT::Keep-Downloaded-Packages "true";' \
+          'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+          | sudo tee /etc/apt/apt.conf.d/99keep-archives > /dev/null
+      shell: bash
+    - name: Cache the apt packages
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.apt-archives
+        key: apt-${{ runner.os }}-${{ env.ImageVersion }}-${{ steps.playwright.outputs.version }}
     - name: Cache the browsers
       id: browsers
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

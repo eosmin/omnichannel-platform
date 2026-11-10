@@ -12,7 +12,13 @@ export default defineConfig({
   workers: 1,
   retries: isCi ? 1 : 0,
   reporter: isCi
-    ? [['github'], ['html', { open: 'never', outputFolder: './playwright-report' }]]
+    ? [
+        ['github'],
+        ['html', { open: 'never', outputFolder: './playwright-report' }],
+        // The duration of every case and file, kept by the job even when the run is green: it is what decides how
+        // to split the suite into shards and shows which cases need a retry (`.github/workflows/ci.yml`)
+        ['json', { outputFile: './playwright-timing/results.json' }]
+      ]
     : 'list',
   use: {
     baseURL: WEB_URL,
