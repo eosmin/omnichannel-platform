@@ -128,12 +128,10 @@ export const envSchema = z
     // The limit of magic links per address, raised for the browser suite alone: a number between the real limit
     // and a bound, never "no limit". A deployed or development environment refuses it (checked below); the limit
     // of the code stays the one every other environment runs with.
-    E2E_MAGIC_LINK_LIMIT: z.coerce
-      .number()
-      .int()
-      .min(E2eMagicLinkLimit.min)
-      .max(E2eMagicLinkLimit.max)
-      .optional(),
+    E2E_MAGIC_LINK_LIMIT: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z.coerce.number().int().min(E2eMagicLinkLimit.min).max(E2eMagicLinkLimit.max).optional()
+    ),
 
     // Bull Board and the dead-letter tooling: a JWT plus this allowlist (empty = nobody)
     BULL_BOARD_ENABLED: z.stringbool().default(false),
@@ -163,6 +161,16 @@ export const envSchema = z
         code: 'custom',
         message:
           'E2E_MAGIC_LINK_LIMIT is for NODE_ENV=test only: any other environment keeps the real limit',
+        path: ['E2E_MAGIC_LINK_LIMIT'],
+        input: env.E2E_MAGIC_LINK_LIMIT
+      })
+    }
+    if (env.E2E_MAGIC_LINK_LIMIT !== undefined && env.RESEND_API_KEY !== undefined) {
+      // NODE_ENV=test is also what a copy of the CI settings carries: a real mail transport means real inboxes
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'E2E_MAGIC_LINK_LIMIT cannot be set where mail is really sent (RESEND_API_KEY is set)',
         path: ['E2E_MAGIC_LINK_LIMIT'],
         input: env.E2E_MAGIC_LINK_LIMIT
       })

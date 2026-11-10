@@ -1,6 +1,6 @@
 import { Global, Module } from '@nestjs/common'
 
-import { MAGIC_LINK_EMAIL_LIMIT, MagicLinkThrottle } from '@platform/core/auth'
+import { MAGIC_LINK_EMAIL_LIMIT, magicLinkEmailLimitOf } from '@platform/core/auth'
 import { env } from '@platform/core/config/env'
 
 // Provides `MAGIC_LINK_EMAIL_LIMIT`: the number of magic links one address may ask for in a minute. The limit of the
@@ -11,7 +11,7 @@ import { env } from '@platform/core/config/env'
   providers: [
     {
       provide: MAGIC_LINK_EMAIL_LIMIT,
-      useFactory: (): number => env.E2E_MAGIC_LINK_LIMIT ?? MagicLinkThrottle.limit
+      useFactory: (): number => magicLinkEmailLimitOf(env.E2E_MAGIC_LINK_LIMIT)
     }
   ],
   exports: [MAGIC_LINK_EMAIL_LIMIT]

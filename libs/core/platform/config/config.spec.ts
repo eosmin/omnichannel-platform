@@ -42,6 +42,23 @@ describe('parseEnv', () => {
       ).toBe(50)
     })
 
+    it('treats an empty value as not set, like the other optional variables', () => {
+      expect(
+        parseEnv({ ...validEnv, E2E_MAGIC_LINK_LIMIT: '' }).E2E_MAGIC_LINK_LIMIT
+      ).toBeUndefined()
+    })
+
+    it('is refused where mail is really sent, even with NODE_ENV=test', () => {
+      expect(() =>
+        parseEnv({
+          ...validEnv,
+          NODE_ENV: 'test',
+          E2E_MAGIC_LINK_LIMIT: '50',
+          RESEND_API_KEY: 're_key'
+        })
+      ).toThrow(/E2E_MAGIC_LINK_LIMIT/)
+    })
+
     it.each(['development', 'production', 'staging'])(
       'is refused, not ignored, when NODE_ENV is %s',
       nodeEnv => {

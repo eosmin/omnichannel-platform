@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { MAX_IN_WINDOW, seedLinkBudget, waitForLinkBudget } from '../support/link-budget'
+import { maxInWindow, seedLinkBudget, waitForLinkBudget } from '../support/link-budget'
 
 // The wait for room in the window of the magic link is not the time of the case (a case that signs in as
 // an address the others have just used waited, and failed at 30 s before it began). The proof is a case
@@ -15,7 +15,7 @@ test.describe('the wait for the budget of the magic link', () => {
     const now = Date.now()
     seedLinkBudget(address, [
       now - 59_500,
-      ...Array.from({ length: MAX_IN_WINDOW - 1 }, (_, i) => now - 5_000 + i)
+      ...Array.from({ length: maxInWindow() - 1 }, (_, i) => now - 5_000 + i)
     ])
 
     const before = test.info().timeout

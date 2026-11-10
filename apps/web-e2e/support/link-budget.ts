@@ -22,7 +22,9 @@ const POLL_MS = 500
 // A wait this long means the budget is stuck, not busy: say so instead of a bare test timeout
 const MAX_WAIT_MS = WINDOW_MS * 2
 // One below the limit: a request of another process that the file did not see still fits
-export const MAX_IN_WINDOW = Math.max(1, magicLinkLimitInForce - 1)
+export function maxInWindow(): number {
+  return Math.max(1, magicLinkLimitInForce() - 1)
+}
 
 type Stamps = Record<string, number[]>
 
@@ -59,7 +61,7 @@ export function resetLinkBudget(): void {
 
 // How long until the address has room: the oldest stamps that fill the window leave it after that
 function msUntilRoom(recent: number[], now: number): number {
-  const blocking = recent[recent.length - MAX_IN_WINDOW]
+  const blocking = recent[recent.length - maxInWindow()]
   return blocking === undefined ? 0 : Math.max(0, blocking + WINDOW_MS - now)
 }
 
@@ -94,7 +96,7 @@ export async function waitForLinkBudget(address: string): Promise<void> {
     const now = Date.now()
     const stamps = readStamps()
     const recent = (stamps[email] ?? []).filter(at => now - at < WINDOW_MS)
-    if (recent.length < MAX_IN_WINDOW) {
+    if (recent.length < maxInWindow()) {
       // The other addresses are pruned here too, so the file does not grow with every address seen
       const live = Object.fromEntries(
         Object.entries(stamps)

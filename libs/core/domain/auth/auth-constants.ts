@@ -39,7 +39,12 @@ export const MAGIC_LINK_EMAIL_LIMIT = Symbol('MAGIC_LINK_EMAIL_LIMIT')
 // What the browser suite may ask for instead of that limit, in NODE_ENV=test only (E2E_MAGIC_LINK_LIMIT): it can
 // only be raised, never turned off, and never past a bound. The suite signs in as the same few people dozens of
 // times, and waiting for the clock was half of its time.
-export const E2eMagicLinkLimit = { min: MagicLinkThrottle.limit + 1, max: 100 } as const
+export const E2eMagicLinkLimit = { min: MagicLinkThrottle.limit + 1, max: 100, suite: 50 } as const
+
+// The per-address limit in force: the real one, unless the test environment asked for a higher one
+export function magicLinkEmailLimitOf(raisedForTests: number | undefined): number {
+  return raisedForTests ?? MagicLinkThrottle.limit
+}
 
 // Accepting an invitation: the old signup profile of D2, 3 an hour per IP. It can create an account.
 export const InvitationAcceptThrottle = { limit: 3, ttlMs: 3_600_000 } as const

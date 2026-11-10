@@ -36,15 +36,22 @@ if (shard !== undefined && (shard.total < 1 || shard.current < 1 || shard.curren
 // on a laptop it is usually `pnpm dev`, connected to the development database (playwright.shared.ts)
 export const reuseExistingServers = !isCi && process.env['E2E_REUSE_SERVERS'] === '1'
 
-// The limit of magic links per address that the api of the suite runs with. The suite signs in as the same few
-// people dozens of times, and waiting for the real limit (five a minute) was half of its time, so the api that
-// this config starts is told to accept this many (E2E_MAGIC_LINK_LIMIT, which only NODE_ENV=test accepts; the
-// code of the limiter is untouched). A server that was already running (E2E_REUSE_SERVERS) was not told: it
-// keeps the real limit, and the wait of the specs follows it.
-export const E2E_MAGIC_LINK_LIMIT = Math.min(50, E2eMagicLinkLimit.max)
-export const magicLinkLimitInForce = reuseExistingServers
-  ? MagicLinkThrottle.limit
-  : E2E_MAGIC_LINK_LIMIT
+// The suite signs in as the same few people dozens of times, and waiting for the real limit of magic links (five a
+// minute per address) was half of its time, so the api that the specs' config starts is told to accept more
+// (E2E_MAGIC_LINK_LIMIT, which only NODE_ENV=test accepts; the code of the limiter is untouched). The config that
+// does it says so with this flag, set where the servers are built (playwright.shared.ts), so that the wait of
+// the specs follows the limit of the api they talk to: the performance run, or a server that was already running
+// (E2E_REUSE_SERVERS), keeps the real one.
+export const RAISED_LIMIT_FLAG = 'E2E_MAGIC_LINK_LIMIT_RAISED'
+// Said by the config that starts an api with the raised limit, before any spec asks
+export function declareRaisedMagicLinkLimit(): void {
+  process.env[RAISED_LIMIT_FLAG] = '1'
+}
+export function magicLinkLimitInForce(): number {
+  return !reuseExistingServers && process.env[RAISED_LIMIT_FLAG] === '1'
+    ? E2eMagicLinkLimit.suite
+    : MagicLinkThrottle.limit
+}
 
 // The addresses of .env.example: the web app must be at FRONTEND_URL and the api at API_URL, because
 // the cookie of the session and the CORS list are built from them

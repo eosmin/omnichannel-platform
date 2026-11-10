@@ -2,7 +2,7 @@ import type { ThrottlerStorage } from '@nestjs/throttler'
 import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { MagicLinkThrottle } from '@platform/core/auth'
+import { E2eMagicLinkLimit, MagicLinkThrottle, magicLinkEmailLimitOf } from '@platform/core/auth'
 import { JobNames, type RequestMagicLinkJob } from '@platform/core/queues'
 
 import { MagicLinkService } from './magic-link.service'
@@ -53,6 +53,18 @@ function build() {
   )
   return { service, calls, queue, storage }
 }
+
+describe('the per-address limit in force', () => {
+  it('is the real one of five a minute unless the test environment raised it', () => {
+    expect(magicLinkEmailLimitOf(undefined)).toBe(5)
+    expect(magicLinkEmailLimitOf(E2eMagicLinkLimit.suite)).toBe(E2eMagicLinkLimit.suite)
+  })
+
+  it('keeps what the suite asks for above the real limit and within the bound the schema enforces', () => {
+    expect(E2eMagicLinkLimit.suite).toBeGreaterThan(MagicLinkThrottle.limit)
+    expect(E2eMagicLinkLimit.suite).toBeLessThanOrEqual(E2eMagicLinkLimit.max)
+  })
+})
 
 describe('MagicLinkService.request', () => {
   it('does the same operations, in the same order, for any address', async () => {
