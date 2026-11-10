@@ -6,7 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelIdentityKinds, ChannelIds, ChannelType } from '@platform/core/domain'
+import { ChannelIdentityKinds, ChannelIds } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChannelProfile, CustomerIdentityService } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -535,7 +535,7 @@ describe('The customers of a store', () => {
       const link = (id: string, handle: string) =>
         asAdmin()
           .post(ApiRoutes.customers.identities(id))
-          .send({ channelType: ChannelType.WHATSAPP, channelIdentity: handle })
+          .send({ channelType: ChannelIds.WHATSAPP, channelIdentity: handle })
 
       const linked = await link(ana.id, '7333-0001')
       const taken = await link(bea.id, '+503 73330001')
@@ -578,7 +578,7 @@ describe('The customers of a store', () => {
 
       const refused = await asAdmin()
         .post(ApiRoutes.customers.identities(ana.id))
-        .send({ channelType: ChannelType.WHATSAPP, channelIdentity: '12' })
+        .send({ channelType: ChannelIds.WHATSAPP, channelIdentity: '12' })
 
       expect(refused.status).toBe(BAD_REQUEST)
       expect((refused.body as ErrorBody).error.code).toBe(ErrorCodes.VALIDATION_FAILED)
@@ -592,7 +592,7 @@ describe('The customers of a store', () => {
       const link = () =>
         asAdmin()
           .post(ApiRoutes.customers.identities(ana.id))
-          .send({ channelType: ChannelType.INSTAGRAM, channelIdentity: 'ana_l' })
+          .send({ channelType: ChannelIds.INSTAGRAM, channelIdentity: 'ana_l' })
 
       const first = await link()
       const again = await link()
@@ -606,7 +606,7 @@ describe('The customers of a store', () => {
       const ana = await create({ name: 'Ana J' })
       const response = await asAdmin()
         .post(ApiRoutes.customers.identities(ana.id))
-        .send({ channelType: ChannelType.WHATSAPP, channelIdentity: 'not a phone' })
+        .send({ channelType: ChannelIds.WHATSAPP, channelIdentity: 'not a phone' })
 
       expect(response.status).toBe(BAD_REQUEST)
     })
@@ -616,13 +616,13 @@ describe('The customers of a store', () => {
       const identity = (
         await asAdmin()
           .post(ApiRoutes.customers.identities(ana.id))
-          .send({ channelType: ChannelType.INSTAGRAM, channelIdentity: 'ana_k' })
+          .send({ channelType: ChannelIds.INSTAGRAM, channelIdentity: 'ana_k' })
       ).body as { id: string }
       const conversation = await createConversation(owner, {
         storeId: ctx.storeA.id,
         customerId: ana.id,
         customerIdentityId: identity.id,
-        channelType: ChannelType.INSTAGRAM
+        channelType: ChannelIds.INSTAGRAM
       })
 
       const blocked = await asAdmin().delete(ApiRoutes.customers.identityById(ana.id, identity.id))
@@ -642,7 +642,7 @@ describe('The customers of a store', () => {
     const resolve = (storeId: string, handle: string, displayName?: string) =>
       identities().findOrCreateByIdentity({
         storeId,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: handle,
         profile: displayName === undefined ? undefined : { displayName }
       })
@@ -772,20 +772,20 @@ describe('The customers of a store', () => {
     it('does not trust the profile a channel sends', async () => {
       const blank = await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: '50370006666',
         profile: { displayName: '   ', locale: 'x$' }
       })
       const long = await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: '50370007777',
         profile: { displayName: 'N'.repeat(10_000) }
       })
       // A later event without a usable name does not erase the one the identity has
       await identities().findOrCreateByIdentity({
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: '50370007777',
         profile: { displayName: '' }
       })
@@ -804,7 +804,7 @@ describe('The customers of a store', () => {
       const named = async (handle: string, displayName: string) => {
         const resolved = await identities().findOrCreateByIdentity({
           storeId: ctx.storeA.id,
-          channelType: ChannelType.WHATSAPP,
+          channelType: ChannelIds.WHATSAPP,
           channelIdentity: handle,
           profile: { displayName, locale: 'es-AAAAAAAA-BBBBBBBB' }
         })
@@ -1031,7 +1031,7 @@ describe('The customers of a store', () => {
         storeId: ctx.storeA.id,
         customerId: withHistory.id,
         customerIdentityId: identity.id,
-        channelType: ChannelType.WEB_WIDGET
+        channelType: ChannelIds.WEB_WIDGET
       })
 
       const removed = await asAdmin().delete(ApiRoutes.customers.byId(alone.id))

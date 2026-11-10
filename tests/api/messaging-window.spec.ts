@@ -6,7 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
-  ChannelType,
+  ChannelIds,
   ConversationStatus,
   type MessagingWindowPolicy,
   MessageType
@@ -70,7 +70,7 @@ describe('The messaging window of a conversation', () => {
     await owner.$disconnect()
   })
   beforeEach(() => {
-    policies = { [ChannelType.WHATSAPP]: WHATSAPP, [ChannelType.INSTAGRAM]: INSTAGRAM }
+    policies = { [ChannelIds.WHATSAPP]: WHATSAPP, [ChannelIds.INSTAGRAM]: INSTAGRAM }
   })
 
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
@@ -83,7 +83,7 @@ describe('The messaging window of a conversation', () => {
   ) => {
     const made = await createConversationOf(owner, {
       storeId: ctx.storeA.id,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       ...extra
     })
     // The builder gives a customer who has just written: this suite sets the date itself, or none
@@ -130,7 +130,7 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('is closed and asks for no template on a channel that lets none through', async () => {
-      const made = await conversation(25, { channelType: ChannelType.INSTAGRAM })
+      const made = await conversation(25, { channelType: ChannelIds.INSTAGRAM })
 
       const body = (await windowOf(made.id)).body as WindowBody
 
@@ -146,7 +146,7 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('has no window on a channel with no policy', async () => {
-      const made = await conversation(null, { channelType: ChannelType.WEB_WIDGET })
+      const made = await conversation(null, { channelType: ChannelIds.WEB_WIDGET })
 
       const body = (await windowOf(made.id)).body as WindowBody
 
@@ -157,7 +157,7 @@ describe('The messaging window of a conversation', () => {
       const first = await conversation(1)
       const second = await createConversationOf(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.WHATSAPP
+        channelType: ChannelIds.WHATSAPP
       })
       // The second conversation is of the same identity
       await owner.conversation.update({
@@ -247,7 +247,7 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('says no template would do on a channel that has none', async () => {
-      const made = await conversation(30, { channelType: ChannelType.INSTAGRAM })
+      const made = await conversation(30, { channelType: ChannelIds.INSTAGRAM })
 
       const response = await asAgent().post(ApiRoutes.messages.create).send(reply(made.id))
 
@@ -318,7 +318,7 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('stores the reply on a channel with no window, whenever the customer wrote', async () => {
-      const made = await conversation(null, { channelType: ChannelType.WEB_WIDGET })
+      const made = await conversation(null, { channelType: ChannelIds.WEB_WIDGET })
 
       const response = await asAgent().post(ApiRoutes.messages.create).send(reply(made.id))
 
@@ -326,8 +326,8 @@ describe('The messaging window of a conversation', () => {
     })
 
     it('does not look at the window of another channel', async () => {
-      policies = { [ChannelType.INSTAGRAM]: INSTAGRAM }
-      const made = await conversation(null, { channelType: ChannelType.WHATSAPP })
+      policies = { [ChannelIds.INSTAGRAM]: INSTAGRAM }
+      const made = await conversation(null, { channelType: ChannelIds.WHATSAPP })
 
       const response = await asAgent().post(ApiRoutes.messages.create).send(reply(made.id))
 

@@ -3,7 +3,7 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType, PaymentMethod } from '@platform/core/domain'
+import { ChannelIds, PaymentMethod } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { createConversation, createCustomer, createCustomerIdentity, createTag } from '../builders'
@@ -79,19 +79,19 @@ describe('Merging customers', () => {
     const whatsapp = await createCustomerIdentity(owner, {
       storeId: storeId(),
       customerId: survivor.id,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       handle: `503${digits}`
     })
     const instagram = await createCustomerIdentity(owner, {
       storeId: storeId(),
       customerId: absorbed.id,
-      channelType: ChannelType.INSTAGRAM
+      channelType: ChannelIds.INSTAGRAM
     })
     const conversation = await createConversation(owner, {
       storeId: storeId(),
       customerId: absorbed.id,
       customerIdentityId: instagram.id,
-      channelType: ChannelType.INSTAGRAM
+      channelType: ChannelIds.INSTAGRAM
     })
     const order = await owner.order.create({
       data: {
@@ -162,8 +162,8 @@ describe('Merging customers', () => {
     const merged = response.body as CustomerBody
     expect(merged.id).toBe(s.survivor.id)
     expect(merged.identities.map(identity => identity.channelType).sort()).toEqual([
-      ChannelType.INSTAGRAM,
-      ChannelType.WHATSAPP
+      ChannelIds.INSTAGRAM,
+      ChannelIds.WHATSAPP
     ])
     // The survivor's name and phone stay, the gap in the e-mail is filled, the caution is kept
     expect(merged).toMatchObject({
@@ -354,7 +354,7 @@ describe('Merging customers', () => {
       storeId: storeId(),
       customerId: s.survivor.id,
       customerIdentityId: s.instagram.id,
-      channelType: ChannelType.INSTAGRAM
+      channelType: ChannelIds.INSTAGRAM
     })
 
     await asAdmin().post(ApiRoutes.customers.unmerge(s.survivor.id)).send({ mergeId: mergeRow.id })

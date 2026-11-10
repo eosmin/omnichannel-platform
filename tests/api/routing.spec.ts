@@ -9,7 +9,7 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
-  ChannelType,
+  ChannelIds,
   ConversationStatus,
   MembershipStatus,
   RoutingActionTypes,
@@ -134,7 +134,7 @@ describe('The routing rules of a store', () => {
 
       const response = await create({
         conditions: {
-          channelTypes: [ChannelType.WHATSAPP, ChannelType.INSTAGRAM],
+          channelTypes: [ChannelIds.WHATSAPP, ChannelIds.INSTAGRAM],
           tagIds: [tag.id],
           keywords: ['Envío', 'precio'],
           outsideBusinessHours: true
@@ -145,7 +145,7 @@ describe('The routing rules of a store', () => {
       expect(response.status).toBe(CREATED)
       expect(response.body).toMatchObject({
         conditions: {
-          channelTypes: [ChannelType.WHATSAPP, ChannelType.INSTAGRAM],
+          channelTypes: [ChannelIds.WHATSAPP, ChannelIds.INSTAGRAM],
           tagIds: [tag.id],
           keywords: ['Envío', 'precio'],
           outsideBusinessHours: true
@@ -530,7 +530,7 @@ describe('The routing rules of a store', () => {
     it('replaces the conditions as a whole, not field by field', async () => {
       const made = await createRoutingRule(owner, {
         storeId: storeId(),
-        conditions: { keywords: ['hola'], channelTypes: [ChannelType.WEB_WIDGET] }
+        conditions: { keywords: ['hola'], channelTypes: [ChannelIds.WEB_WIDGET] }
       })
 
       const response = await asAdmin()
@@ -895,7 +895,7 @@ describe('The routing rules of a store', () => {
     const arriving = async (extra: Partial<Parameters<typeof createConversationOf>[1]> = {}) =>
       createConversationOf(owner, {
         storeId: storeId(),
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         ...extra
       })
     // The channel and the customer are the conversation's: the context is what was said, and when
@@ -945,7 +945,7 @@ describe('The routing rules of a store', () => {
       const made = await arriving()
       await createRoutingRule(owner, {
         storeId: storeId(),
-        conditions: { channelTypes: [ChannelType.WEB_WIDGET] },
+        conditions: { channelTypes: [ChannelIds.WEB_WIDGET] },
         action: assignTo(ana.id)
       })
 
@@ -1087,12 +1087,12 @@ describe('The routing rules of a store', () => {
       it('matches any of the channels listed', async () => {
         const rule = await createRoutingRule(owner, {
           storeId: storeId(),
-          conditions: { channelTypes: [ChannelType.INSTAGRAM, ChannelType.WHATSAPP] },
+          conditions: { channelTypes: [ChannelIds.INSTAGRAM, ChannelIds.WHATSAPP] },
           action: assignTo(ana.id)
         })
 
         const whatsapp = await apply(await arriving())
-        const widget = await apply(await arriving({ channelType: ChannelType.WEB_WIDGET }))
+        const widget = await apply(await arriving({ channelType: ChannelIds.WEB_WIDGET }))
 
         expect(whatsapp.ruleId).toBe(rule.id)
         expect(widget.ruleId).toBeNull()
@@ -1307,13 +1307,13 @@ describe('The routing rules of a store', () => {
     it('needs every condition of a rule, not one', async () => {
       await createRoutingRule(owner, {
         storeId: storeId(),
-        conditions: { channelTypes: [ChannelType.WHATSAPP], keywords: ['precio'] },
+        conditions: { channelTypes: [ChannelIds.WHATSAPP], keywords: ['precio'] },
         action: assignTo(ana.id)
       })
 
       const right = await apply(await arriving(), { text: 'el precio?' })
       const wrongWords = await apply(await arriving(), { text: 'hola' })
-      const wrongChannel = await apply(await arriving({ channelType: ChannelType.WEB_WIDGET }), {
+      const wrongChannel = await apply(await arriving({ channelType: ChannelIds.WEB_WIDGET }), {
         text: 'el precio?'
       })
 

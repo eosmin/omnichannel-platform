@@ -8,7 +8,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { ChannelType } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { CustomerIdentityService } from '@platform/core/messaging'
 
@@ -212,7 +212,7 @@ describe('Writing data of a store while the store is deleted', () => {
     const service = app.get(CustomerIdentityService, { strict: false })
     await service.findOrCreateByIdentity({
       storeId,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       channelIdentity: '50370004444'
     })
     const prisma = app.get(PrismaService, { strict: false })
@@ -226,7 +226,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
     const resolving = service.findOrCreateByIdentity({
       storeId,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       channelIdentity: '50370004444',
       profile: { displayName: 'Renamed' }
     })
@@ -251,14 +251,14 @@ describe('Writing data of a store while the store is deleted', () => {
     const identity = await createCustomerIdentity(owner, {
       storeId,
       customerId: absorbed.id,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       handle: '50370005555'
     })
     const conversation = await createConversation(owner, {
       storeId,
       customerId: absorbed.id,
       customerIdentityId: identity.id,
-      channelType: ChannelType.WHATSAPP
+      channelType: ChannelIds.WHATSAPP
     })
     // A lock on the conversation of the absorbed customer: the merge reaches it after it has locked
     // both customers and moved the identity, and waits there with the merge half done
@@ -277,7 +277,7 @@ describe('Writing data of a store while the store is deleted', () => {
 
     const resolving = service.findOrCreateByIdentity({
       storeId,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       channelIdentity: '50370005555'
     })
     // Two backends wait now: the merge for us, and the resolution for the merge

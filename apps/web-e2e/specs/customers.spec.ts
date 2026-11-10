@@ -3,7 +3,7 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { type BrowserContext, type Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
-import { ChannelType } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 import { GalleryTypes } from '@platform/core/storage'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
@@ -229,7 +229,7 @@ test.describe('customer merge and identities', () => {
     const handle = uniqueHandle()
     const customerId = await newCustomerIn(storeId, {
       name,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       handle: handle.digits
     })
     // One reading of the clock, and a window that does not cross midnight

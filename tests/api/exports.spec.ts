@@ -11,13 +11,7 @@ import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import {
-  AuthorType,
-  BulkActions,
-  BulkLimits,
-  ChannelType,
-  MessageType
-} from '@platform/core/domain'
+import { AuthorType, BulkActions, BulkLimits, ChannelIds, MessageType } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -585,7 +579,7 @@ describe('Exports', () => {
         // The builder opens its conversations on Instagram
         const response = await bulk(ctx.adminA, {
           action: BulkActions.EXPORT_CSV,
-          filter: { channelType: ChannelType.INSTAGRAM }
+          filter: { channelType: ChannelIds.INSTAGRAM }
         })
         expect(response.status).toBe(OK)
         const body = response.body as BulkBody
