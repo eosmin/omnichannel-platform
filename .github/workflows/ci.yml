@@ -274,11 +274,11 @@ jobs:
         run: pnpm db:migrate
       - name: Tenant isolation suite and endpoint specs
         env:
-          SECURITY_SHARD: ${{ matrix.shard == 'all' && '' || matrix.shard }}
+          SECURITY_SHARD: ${{ matrix.shard != 'all' && matrix.shard || '' }}
         run: |
           # The memory of the runner and of the node processes every two seconds, to know the peak of each shard
           (while true; do
-            echo "$(date +%s) $(ps -eo rss,comm | awk '$2 ~ /node/ {s+=$1} END {print int(s/1024)}') $(free -m | awk '/Mem:/ {print $3}')"
+            echo "$(date +%s) $(ps -eo rss,args | awk '/node|jest/ {s+=$1} END {print int(s/1024)}') $(free -m | awk '/Mem:/ {print $3}')"
             sleep 2
           done > mem.log) &
           sampler=$!
