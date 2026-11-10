@@ -523,6 +523,24 @@ jobs:
       # Builds the api, the worker and the web app, starts them, and runs the specs
       - name: End to end specs
         run: pnpm exec nx run web-e2e:e2e --skip-nx-cache
+      # Time per file and the cases that needed their retry, in the summary of the run, from the json of the reporter.
+      # It is not uploaded: the json holds the errors and the output of the cases, and the repository is public
+      - name: Time of the specs
+        if: always()
+        run: |
+          file=apps/web-e2e/playwright-timing/results.json
+          if [ ! -s "$file" ]; then echo "::warning::No timing report at $file"; exit 0; fi
+          {
+            echo '### Time per spec file'
+            echo '| File | Cases | Seconds |'
+            echo '| --- | --- | --- |'
+            jq -r '[.suites[] | {file, cases: [.. | objects | select(has("tests")) | .tests[]?] }]
+              | map({file, n: (.cases | length), s: (([.cases[].results[]?.duration] | add // 0) / 1000 | round)})
+              | sort_by(-.s)[] | "| \(.file) | \(.n) | \(.s) |"' "$file"
+            echo
+            echo '### Cases that passed only on a retry'
+            jq -r '[.. | objects | select(has("tests")) | select(any(.tests[]; .status == "flaky")) | "- \(.file): \(.title)"] | if length == 0 then "none" else .[] end' "$file"
+          } >> "$GITHUB_STEP_SUMMARY" || echo "::warning::The timing report could not be read"
       - name: Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
