@@ -21,6 +21,8 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
 // The engine of stock (TDD_16 §4, §9), through the real service on the real database: the movements of an order are
 // not routes yet (Step 4.3), so this is how they are proven.
+type OwnerTransaction = Parameters<Parameters<OwnerClient['$transaction']>[0]>[0]
+
 describe('InventoryService', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -159,11 +161,21 @@ describe('InventoryService', () => {
         quantity: 1,
         reason: InventoryAdjustmentReason.LOST
       })
+      // A return follows the item it refers to, and a variant that is switched off does not count
+      await inventory.restock({
+        storeId: ctx.storeA.id,
+        productId: stock.productId,
+        warehouseId: ctx.warehouseA.id,
+        quantity: 1,
+        idempotencyKey: key()
+      })
+      await owner.productVariant.update({ where: { id: variant.id }, data: { active: false } })
+      await stock.move({ type: Type.RECEIPT, quantity: 1, reason: InventoryAdjustmentReason.FOUND })
 
       const levels = await owner.inventoryLevel.findMany({ where: { productId: stock.productId } })
       expect(levels.map(level => [level.variantId, level.onHand]).sort()).toEqual(
         [
-          [null, 3],
+          [null, 5],
           [variant.id, 6]
         ].sort()
       )
@@ -212,6 +224,32 @@ describe('InventoryService', () => {
         )
       }
       expect(await owner.inventoryLevel.count({ where: { productId: stock.productId } })).toBe(0)
+    })
+
+    it('makes no phantom stock for a product that never tracked it, even where negative stock is allowed', async () => {
+      await setNegativeStock(true)
+      try {
+        const service = await item()
+        await owner.product.update({
+          where: { id: service.productId },
+          data: { trackInventory: false }
+        })
+
+        for (const type of [Type.ADJUSTMENT_OUT, Type.COUNT_OUT]) {
+          await refusal(
+            service.move({ type, quantity: 2, reason: InventoryAdjustmentReason.LOST }),
+            ErrorCodes.INVENTORY_PRODUCT_NOT_TRACKED
+          )
+        }
+        expect(await owner.inventoryLevel.count({ where: { productId: service.productId } })).toBe(
+          0
+        )
+        expect(
+          await owner.inventoryMovement.count({ where: { productId: service.productId } })
+        ).toBe(0)
+      } finally {
+        await setNegativeStock(false)
+      }
     })
 
     it('lets what a product still holds be released, shipped or written off after it stops tracking stock', async () => {
@@ -337,6 +375,14 @@ describe('InventoryService', () => {
   describe('a warehouse that is switched off or unlinked at the same moment', () => {
     const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
     const HELD_MS = 400
+    // The competing transaction says when it holds its lock, so that the other side starts then and not after a guess
+    const signal = () => {
+      let release: () => void = () => undefined
+      const done = new Promise<void>(resolve => {
+        release = resolve
+      })
+      return { done, release }
+    }
     const reserveOn = (productId: string, warehouseId: string) => ({
       storeId: ctx.storeA.id,
       productId,
@@ -364,18 +410,25 @@ describe('InventoryService', () => {
       return { warehouse, link, product }
     }
 
+    const asOwner = <T>(work: (tx: OwnerTransaction) => Promise<T>): Promise<T> =>
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      owner.$transaction(work)
+    const switchOff = (warehouseId: string, locked: ReturnType<typeof signal>) =>
+      asOwner(async tx => {
+        await tx.$queryRaw`SELECT id FROM warehouses WHERE id = ${warehouseId} FOR UPDATE`
+        await tx.warehouse.update({ where: { id: warehouseId }, data: { active: false } })
+        locked.release()
+        await pause(HELD_MS)
+      })
+
     it('refuses a reservation that arrives while the warehouse is being switched off, once it is off', async () => {
       const { warehouse, product } = await aWarehouse()
+      const locked = signal()
       const started = Date.now()
 
       const [, reservation] = await Promise.allSettled([
-        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-        owner.$transaction(async tx => {
-          await tx.$queryRaw`SELECT id FROM warehouses WHERE id = ${warehouse.id} FOR UPDATE`
-          await tx.warehouse.update({ where: { id: warehouse.id }, data: { active: false } })
-          await pause(HELD_MS)
-        }),
-        pause(100).then(() => inventory.reserve(reserveOn(product.id, warehouse.id)))
+        switchOff(warehouse.id, locked),
+        locked.done.then(() => inventory.reserve(reserveOn(product.id, warehouse.id)))
       ])
 
       expect(reservation).toMatchObject({
@@ -389,18 +442,19 @@ describe('InventoryService', () => {
 
     it('makes the switch-off wait for a reservation that is in progress, and then sees what it reserved', async () => {
       const { warehouse, product } = await aWarehouse()
+      const locked = signal()
       let sawReserved = -1
       let waited = 0
 
       await Promise.all([
         prisma.transaction(async tx => {
           await inventory.reserve(reserveOn(product.id, warehouse.id), tx)
+          locked.release()
           await pause(HELD_MS)
         }),
-        pause(100).then(async () => {
+        locked.done.then(async () => {
           const started = Date.now()
-          // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-          await owner.$transaction(async tx => {
+          await asOwner(async tx => {
             await tx.$queryRaw`SELECT id FROM warehouses WHERE id = ${warehouse.id} FOR UPDATE`
             waited = Date.now() - started
             const levels = await tx.inventoryLevel.findMany({
@@ -411,20 +465,21 @@ describe('InventoryService', () => {
         })
       ])
 
-      expect(waited).toBeGreaterThanOrEqual(HELD_MS - 200)
+      expect(waited).toBeGreaterThanOrEqual(HELD_MS - 150)
       expect(sawReserved).toBe(1)
     })
 
     it('refuses a reservation that arrives while the store is being unlinked, once it is unlinked', async () => {
       const { warehouse, link, product } = await aWarehouse()
+      const locked = signal()
 
       const [, reservation] = await Promise.allSettled([
-        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-        owner.$transaction(async tx => {
+        asOwner(async tx => {
           await tx.storeWarehouse.delete({ where: { id: link.id } })
+          locked.release()
           await pause(HELD_MS)
         }),
-        pause(100).then(() => inventory.reserve(reserveOn(product.id, warehouse.id)))
+        locked.done.then(() => inventory.reserve(reserveOn(product.id, warehouse.id)))
       ])
 
       expect(reservation).toMatchObject({
@@ -436,18 +491,19 @@ describe('InventoryService', () => {
 
     it('makes the unlinking wait for a reservation that is in progress, and then sees what it reserved', async () => {
       const { warehouse, link, product } = await aWarehouse()
+      const locked = signal()
       let sawReserved = -1
       let waited = 0
 
       await Promise.all([
         prisma.transaction(async tx => {
           await inventory.reserve(reserveOn(product.id, warehouse.id), tx)
+          locked.release()
           await pause(HELD_MS)
         }),
-        pause(100).then(async () => {
+        locked.done.then(async () => {
           const started = Date.now()
-          // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-          await owner.$transaction(async tx => {
+          await asOwner(async tx => {
             // Delete first, then read what is reserved: the order the unlinking uses
             await tx.storeWarehouse.delete({ where: { id: link.id } })
             waited = Date.now() - started
@@ -459,22 +515,18 @@ describe('InventoryService', () => {
         })
       ])
 
-      expect(waited).toBeGreaterThanOrEqual(HELD_MS - 200)
+      expect(waited).toBeGreaterThanOrEqual(HELD_MS - 150)
       expect(sawReserved).toBe(1)
     })
 
     it('does not make a movement that takes stock out wait for the switch-off, nor refuse it', async () => {
       const { warehouse, product } = await aWarehouse()
+      const locked = signal()
       const started = Date.now()
 
       const [, out] = await Promise.allSettled([
-        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
-        owner.$transaction(async tx => {
-          await tx.$queryRaw`SELECT id FROM warehouses WHERE id = ${warehouse.id} FOR UPDATE`
-          await tx.warehouse.update({ where: { id: warehouse.id }, data: { active: false } })
-          await pause(HELD_MS)
-        }),
-        pause(100).then(() =>
+        switchOff(warehouse.id, locked),
+        locked.done.then(() =>
           inventory.move({
             storeId: ctx.storeA.id,
             productId: product.id,
@@ -489,6 +541,66 @@ describe('InventoryService', () => {
 
       expect(out.status).toBe('fulfilled')
       expect(Date.now() - started).toBeLessThan(HELD_MS + 800)
+    })
+
+    it('makes a product that is being given its first variant, or switched off, wait for a movement, and the other way round', async () => {
+      const { warehouse, product } = await aWarehouse()
+      const locked = signal()
+
+      // The movement holds the product while the variant is created under lockProduct (FOR UPDATE)
+      let waited = 0
+      await Promise.all([
+        prisma.transaction(async tx => {
+          await inventory.move(
+            {
+              storeId: ctx.storeA.id,
+              productId: product.id,
+              warehouseId: warehouse.id,
+              type: Type.RECEIPT,
+              quantity: 1,
+              reason: InventoryAdjustmentReason.FOUND,
+              idempotencyKey: key()
+            },
+            tx
+          )
+          locked.release()
+          await pause(HELD_MS)
+        }),
+        locked.done.then(async () => {
+          const started = Date.now()
+          await asOwner(async tx => {
+            await tx.$queryRaw`SELECT id FROM products WHERE id = ${product.id} FOR UPDATE`
+            waited = Date.now() - started
+          })
+        })
+      ])
+      expect(waited).toBeGreaterThanOrEqual(HELD_MS - 150)
+
+      // And the product, locked by who changes it, makes a movement that adds stock wait and then see the change
+      const switching = signal()
+      const [, receipt] = await Promise.allSettled([
+        asOwner(async tx => {
+          await tx.$queryRaw`SELECT id FROM products WHERE id = ${product.id} FOR UPDATE`
+          await tx.product.update({ where: { id: product.id }, data: { trackInventory: false } })
+          switching.release()
+          await pause(HELD_MS)
+        }),
+        switching.done.then(() =>
+          inventory.move({
+            storeId: ctx.storeA.id,
+            productId: product.id,
+            warehouseId: warehouse.id,
+            type: Type.RECEIPT,
+            quantity: 1,
+            reason: InventoryAdjustmentReason.FOUND,
+            idempotencyKey: key()
+          })
+        )
+      ])
+      expect(receipt).toMatchObject({
+        status: 'rejected',
+        reason: { code: ErrorCodes.INVENTORY_PRODUCT_NOT_TRACKED }
+      })
     })
   })
 

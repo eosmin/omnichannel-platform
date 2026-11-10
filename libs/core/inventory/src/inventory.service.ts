@@ -35,6 +35,13 @@ const NEEDS_ACTIVE_LINKED_WAREHOUSE: readonly InventoryMovementType[] = [
   ...InventoryMovementsThatBringUnitsIn
 ]
 
+// What a person adds or an order promises must name the variant when the product has some
+const VARIANT_REQUIRED_FOR: readonly InventoryMovementType[] = [
+  InventoryMovementType.RECEIPT,
+  InventoryMovementType.ADJUSTMENT_IN,
+  InventoryMovementType.RESERVE
+]
+
 interface LockedLevel {
   id: string
   on_hand: number
@@ -157,19 +164,28 @@ export class InventoryService {
       return { movement: stored, replayed: true }
     }
 
-    const product = await tx.product.findFirst({
-      where: { id: productId, storeId },
-      select: { trackInventory: true, lowStockThreshold: true }
-    })
-    if (product === null) throw resourceNotFound('product')
     // A product switched off still has reservations and stock that must be released, shipped or written off: only
     // what adds stock or promises it is refused
     const addsOrPromises = NEEDS_ACTIVE_LINKED_WAREHOUSE.includes(type)
+    // What adds or promises takes the product row FOR KEY SHARE: giving the product its first variant, switching its
+    // stock off or deleting it (all under lockProduct, FOR UPDATE) waits for the movement, and a movement that starts
+    // after them sees the change
+    const product = await this.readProduct(tx, { storeId, productId, lock: addsOrPromises })
+    if (product === null) throw resourceNotFound('product')
     if (addsOrPromises && !product.trackInventory) throw productNotTracked(productId)
-    // An item with variants is sold by variant (TDD_16 §2): stock added or promised to its bare row would be invisible
-    // to every variant. Stock already on the row can still be taken out.
-    if (addsOrPromises && variantId === null) {
-      const variants = await tx.productVariant.count({ where: { productId } })
+    // A product that does not track stock holds none: what takes stock out must find the level it left (a product that
+    // was switched off), and does not make a phantom one for a service that never had any
+    if (!addsOrPromises && !product.trackInventory) {
+      const held = await tx.inventoryLevel.count({
+        where: { storeId, productId, warehouseId, variantId }
+      })
+      if (held === 0) throw productNotTracked(productId)
+    }
+    // An item with variants is sold by variant (TDD_16 §2): what a person adds or an order promises to the bare row
+    // would be invisible to every variant. The other movements follow the item they refer to (a return, a transfer
+    // in, a count), and stock already on the row can still leave it.
+    if (VARIANT_REQUIRED_FOR.includes(type) && variantId === null) {
+      const variants = await tx.productVariant.count({ where: { productId, active: true } })
       if (variants > 0) throw variantRequired(productId)
     }
     if (variantId !== null) {
@@ -180,8 +196,9 @@ export class InventoryService {
       if (variant === null) throw resourceNotFound('variant')
     }
     // A warehouse of the organization of the store: another organization's is a warehouse that does not exist. What
-    // adds stock or promises it takes the row of the warehouse and the link of the store FOR SHARE until the end of the
-    // transaction: switching the warehouse off (FOR UPDATE) or unlinking the store waits for the movement and then
+    // adds stock or promises it takes the row of the warehouse and the link of the store FOR KEY SHARE until the end of
+    // the transaction (it keeps out what switches the warehouse off, FOR UPDATE, and what deletes the link, but not a
+    // rename or a reorder): switching it off or unlinking the store waits for the movement and then
     // reads its stock, and a movement that starts after them sees the change and is refused. What takes stock out reads
     // them with no lock: it must work in a warehouse that is off or unlinked.
     const warehouse = await this.readWarehouse(tx, { storeId, warehouseId, lock: addsOrPromises })
@@ -191,7 +208,7 @@ export class InventoryService {
       const links = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM store_warehouses
         WHERE store_id = ${storeId} AND warehouse_id = ${warehouseId}
-        FOR SHARE`
+        FOR KEY SHARE`
       if (links.length === 0) throw warehouseNotLinked(warehouseId)
     }
     const settings = await tx.storeSettings.findUnique({
@@ -251,6 +268,24 @@ export class InventoryService {
     return { movement: recordOf(created), replayed: false }
   }
 
+  private async readProduct(
+    tx: PrismaTransaction,
+    where: { storeId: string; productId: string; lock: boolean }
+  ): Promise<{ trackInventory: boolean; lowStockThreshold: number | null } | null> {
+    const rows = where.lock
+      ? await tx.$queryRaw<{ track_inventory: boolean; low_stock_threshold: number | null }[]>`
+          SELECT track_inventory, low_stock_threshold FROM products
+          WHERE id = ${where.productId} AND store_id = ${where.storeId}
+          FOR KEY SHARE`
+      : await tx.$queryRaw<{ track_inventory: boolean; low_stock_threshold: number | null }[]>`
+          SELECT track_inventory, low_stock_threshold FROM products
+          WHERE id = ${where.productId} AND store_id = ${where.storeId}`
+    const row = rows[0]
+    return row === undefined
+      ? null
+      : { trackInventory: row.track_inventory, lowStockThreshold: row.low_stock_threshold }
+  }
+
   private async readWarehouse(
     tx: PrismaTransaction,
     where: { storeId: string; warehouseId: string; lock: boolean }
@@ -260,7 +295,7 @@ export class InventoryService {
           SELECT w.active FROM warehouses w
           JOIN stores s ON s.organization_id = w.organization_id
           WHERE w.id = ${where.warehouseId} AND s.id = ${where.storeId}
-          FOR SHARE OF w`
+          FOR KEY SHARE OF w`
       : await tx.$queryRaw<{ active: boolean }[]>`
           SELECT w.active FROM warehouses w
           JOIN stores s ON s.organization_id = w.organization_id

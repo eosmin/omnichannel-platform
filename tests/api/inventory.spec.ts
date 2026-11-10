@@ -597,23 +597,40 @@ describe('The stock of a store', () => {
       ])
     })
 
-    it('pages the movements without repeating or skipping one', async () => {
+    it('pages the movements without repeating or skipping one, even those of one transaction', async () => {
       const made = await product()
-      for (let index = 0; index < 5; index += 1) await receive(made.id, 1)
+      await receive(made.id, 10)
+      const inventory = app.get(InventoryService, { strict: false })
+      const prisma = app.get(PrismaService, { strict: false })
+      const base = { storeId: ctx.storeA.id, productId: made.id, warehouseId: ctx.warehouseA.id }
+      // Four movements with one created_at: only the order of the ledger can page them
+      await prisma.transaction(async tx => {
+        for (let index = 0; index < 4; index += 1) {
+          await inventory.reserve({ ...base, quantity: 1, idempotencyKey: randomUUID() }, tx)
+        }
+      })
+      const whole = (
+        (
+          await asAdmin()
+            .get(ApiRoutes.inventory.movements)
+            .query({ productId: made.id, limit: 100 })
+        ).body as PageBody<MovementBody>
+      ).data.map(row => row.id)
 
-      const seen: string[] = []
-      let cursor: string | null = null
-      do {
-        const response: { body: unknown } = await asAdmin()
-          .get(ApiRoutes.inventory.movements)
-          .query({ productId: made.id, limit: 2, ...(cursor === null ? {} : { cursor }) })
-        const page = response.body as PageBody<MovementBody>
-        seen.push(...page.data.map(row => row.id))
-        cursor = page.nextCursor
-      } while (cursor !== null)
-
-      expect(seen).toHaveLength(5)
-      expect(new Set(seen).size).toBe(5)
+      for (const limit of [1, 2, 3]) {
+        const seen: string[] = []
+        let cursor: string | null = null
+        do {
+          const response: { body: unknown } = await asAdmin()
+            .get(ApiRoutes.inventory.movements)
+            .query({ productId: made.id, limit, ...(cursor === null ? {} : { cursor }) })
+          const page = response.body as PageBody<MovementBody>
+          seen.push(...page.data.map(row => row.id))
+          cursor = page.nextCursor
+        } while (cursor !== null)
+        expect(seen).toEqual(whole)
+      }
+      expect(whole).toHaveLength(5)
       expect(
         (await asAdmin().get(ApiRoutes.inventory.movements).query({ cursor: 'nope' })).status
       ).toBe(BAD_REQUEST)
