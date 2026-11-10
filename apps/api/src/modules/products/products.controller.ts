@@ -22,6 +22,7 @@ import {
   actorOf,
   CurrentPermissions,
   CurrentStore,
+  mayViewCost,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -44,7 +45,7 @@ import {
   updateVariantSchema
 } from './products.schemas'
 import { ProductsService } from './products.service'
-import { assertMayWriteCost, mayViewCost } from './products.support'
+import { assertMayWriteCost } from './products.support'
 import {
   type ProductDetail,
   type ProductImageView,

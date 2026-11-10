@@ -5,9 +5,11 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { InventoryAdjustmentReason, InventoryConflicts } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { InventoryService } from '@platform/core/inventory'
 
 import { createProduct, createProductVariant } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -413,10 +415,10 @@ describe('The stock of a store', () => {
   describe('the levels', () => {
     it('lists them newest change first in pages that never repeat a row, with what is available', async () => {
       const made = await product()
-      const variant = await createProductVariant(owner, { productId: made.id })
       await receive(made.id, 4)
-      await post(adjustment(made.id, { variantId: variant.id, quantity: 6 }))
       await post(adjustment(made.id, { warehouseId: ctx.warehouseASecond.id, quantity: 2 }))
+      const variant = await createProductVariant(owner, { productId: made.id })
+      await post(adjustment(made.id, { variantId: variant.id, quantity: 6 }))
 
       const seen: LevelBody[] = []
       let cursor: string | null = null
@@ -437,10 +439,10 @@ describe('The stock of a store', () => {
 
     it('filters by warehouse, by product and by item', async () => {
       const made = await product()
-      const variant = await createProductVariant(owner, { productId: made.id })
       await receive(made.id, 3)
-      await post(adjustment(made.id, { variantId: variant.id, quantity: 5 }))
       await post(adjustment(made.id, { warehouseId: ctx.warehouseASecond.id, quantity: 7 }))
+      const variant = await createProductVariant(owner, { productId: made.id })
+      await post(adjustment(made.id, { variantId: variant.id, quantity: 5 }))
       const query = (filter: Record<string, string>) =>
         asAdmin()
           .get(ApiRoutes.inventory.levels)
@@ -472,6 +474,25 @@ describe('The stock of a store', () => {
       expect(productIds).toContain(low.id)
       expect(productIds).not.toContain(fine.id)
       expect(productIds).not.toContain(noThreshold.id)
+    })
+
+    it('keeps the product filter when it is asked together with the low-stock one', async () => {
+      const low = await product({ threshold: 5 })
+      const alsoLow = await product({ threshold: 5 })
+      await receive(low.id, 2)
+      await receive(alsoLow.id, 2)
+
+      const both = await asAdmin()
+        .get(ApiRoutes.inventory.levels)
+        .query({ lowStock: 'true', productId: low.id })
+      const none = await asAdmin()
+        .get(ApiRoutes.inventory.levels)
+        .query({ lowStock: 'true', productId: randomUUID() })
+
+      expect((both.body as PageBody<LevelBody>).data.map(level => level.productId)).toEqual([
+        low.id
+      ])
+      expect((none.body as PageBody<LevelBody>).data).toEqual([])
     })
 
     it('answers the stock of a product with its totals, and 404 for a product that is not of the store', async () => {
@@ -548,6 +569,80 @@ describe('The stock of a store', () => {
         ['adjustment_out', 6],
         ['receipt', 10]
       ])
+    })
+
+    it('reads the ledger in the order it was written, even for the movements of one transaction', async () => {
+      const made = await product()
+      await receive(made.id, 10)
+      const inventory = app.get(InventoryService, { strict: false })
+      const prisma = app.get(PrismaService, { strict: false })
+      const base = { storeId: ctx.storeA.id, productId: made.id, warehouseId: ctx.warehouseA.id }
+      // An order reserves, then changes its mind: three movements with one created_at
+      await prisma.transaction(async tx => {
+        await inventory.reserve({ ...base, quantity: 4, idempotencyKey: randomUUID() }, tx)
+        await inventory.release({ ...base, quantity: 1, idempotencyKey: randomUUID() }, tx)
+        await inventory.reserve({ ...base, quantity: 2, idempotencyKey: randomUUID() }, tx)
+      })
+
+      const kardex = await asAdmin()
+        .get(ApiRoutes.inventory.kardex)
+        .query({ productId: made.id, warehouseId: ctx.warehouseA.id })
+
+      const rows = (kardex.body as PageBody<MovementBody>).data
+      expect(rows.map(row => [row.type, row.reservedAfter])).toEqual([
+        ['reserve', 5],
+        ['release', 3],
+        ['reserve', 4],
+        ['receipt', 0]
+      ])
+    })
+
+    it('pages the movements without repeating or skipping one', async () => {
+      const made = await product()
+      for (let index = 0; index < 5; index += 1) await receive(made.id, 1)
+
+      const seen: string[] = []
+      let cursor: string | null = null
+      do {
+        const response: { body: unknown } = await asAdmin()
+          .get(ApiRoutes.inventory.movements)
+          .query({ productId: made.id, limit: 2, ...(cursor === null ? {} : { cursor }) })
+        const page = response.body as PageBody<MovementBody>
+        seen.push(...page.data.map(row => row.id))
+        cursor = page.nextCursor
+      } while (cursor !== null)
+
+      expect(seen).toHaveLength(5)
+      expect(new Set(seen).size).toBe(5)
+      expect(
+        (await asAdmin().get(ApiRoutes.inventory.movements).query({ cursor: 'nope' })).status
+      ).toBe(BAD_REQUEST)
+    })
+
+    it('answers an adjustment with the fields of the contract and nothing else', async () => {
+      const made = await product()
+
+      const response = await post(adjustment(made.id))
+
+      expect(Object.keys((response.body as AdjustmentBody).movement).sort()).toEqual(
+        [
+          'createdAt',
+          'createdBy',
+          'id',
+          'note',
+          'onHandAfter',
+          'productId',
+          'quantity',
+          'reason',
+          'referenceId',
+          'referenceType',
+          'reservedAfter',
+          'type',
+          'unitCostCents',
+          'variantId',
+          'warehouseId'
+        ].sort()
+      )
     })
 
     it('needs the item and the warehouse, and answers 404 for a product that is not of the store', async () => {

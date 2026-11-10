@@ -493,6 +493,7 @@
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "The origin and the destination must differ",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "The warehouse still has stock",
     "INVENTORY_WAREHOUSE_NOT_LINKED": "The warehouse is not linked to this store",
+    "INVENTORY_VARIANT_REQUIRED": "Choose the variant the stock is for",
     "INVENTORY_PRODUCT_NOT_TRACKED": "This product does not track stock",
     "INVENTORY_RESERVATION_EXCEEDED": "More units than are reserved",
     "INVENTORY_WAREHOUSE_INACTIVE": "The warehouse is switched off",

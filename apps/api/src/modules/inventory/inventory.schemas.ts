@@ -11,6 +11,21 @@ import {
 
 import { cursorSchema } from '../customers/list-cursor'
 
+// Where the next page of the ledger starts: the `seq` of the last movement it returned (opaque to clients)
+export const seqCursorSchema = z.string().transform((text, ctx): bigint => {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'))
+    if (typeof parsed === 'string' && /^[0-9]{1,18}$/.test(parsed)) return BigInt(parsed)
+  } catch {
+    // Not JSON: the issue below says so
+  }
+  ctx.addIssue({ code: 'custom', message: 'not a cursor of this api' })
+  return z.NEVER
+})
+
+export const encodeSeqCursor = (seq: bigint): string =>
+  Buffer.from(JSON.stringify(seq.toString())).toString('base64url')
+
 export const idSchema = z.uuid()
 
 const limit = z.coerce
@@ -32,7 +47,7 @@ export const listLevelsQuerySchema = z.strictObject({
 })
 
 export const listMovementsQuerySchema = z.strictObject({
-  cursor: cursorSchema.optional(),
+  cursor: seqCursorSchema.optional(),
   limit,
   warehouseId: idSchema.optional(),
   productId: idSchema.optional(),
@@ -42,7 +57,7 @@ export const listMovementsQuerySchema = z.strictObject({
 
 // The kardex is one item in one warehouse: its running balance is the onHandAfter of each movement
 export const kardexQuerySchema = z.strictObject({
-  cursor: cursorSchema.optional(),
+  cursor: seqCursorSchema.optional(),
   limit,
   productId: idSchema,
   variantId: idSchema.optional(),

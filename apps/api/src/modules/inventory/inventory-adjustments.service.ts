@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { type Permission, Permissions } from '@platform/core/auth'
+import type { Permission } from '@platform/core/auth'
 import { InventoryReferenceType, ProductResourceTypes } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { InventoryService } from '@platform/core/inventory'
 
-import type { Actor } from '../tenancy'
+import { type Actor, mayViewCost } from '../tenancy'
 
 import type { CreateAdjustmentBody } from './inventory.schemas'
 import { type AdjustmentView, movementView } from './inventory.views'
@@ -27,7 +27,7 @@ export class InventoryAdjustmentsService {
     actor: Actor,
     held: readonly Permission[]
   ): Promise<AdjustmentView> {
-    const canSeeCost = held.includes(Permissions.PRODUCTS_VIEW_COST)
+    const canSeeCost = mayViewCost(held)
     // The cost of the units is the margin of the store: a caller who may not see it may not set it either
     if (body.unitCostCents !== undefined && !canSeeCost) {
       throw new PlatformException(

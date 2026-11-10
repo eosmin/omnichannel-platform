@@ -12,6 +12,7 @@ import {
   actorOf,
   CurrentPermissions,
   CurrentStore,
+  mayViewCost,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
@@ -32,8 +33,6 @@ import {
 import type { AdjustmentView, LevelPage, MovementPage, ProductInventory } from './inventory.views'
 
 const id = () => new ZodValidationPipe(idSchema)
-const mayViewCost = (held: readonly Permission[]): boolean =>
-  held.includes(Permissions.PRODUCTS_VIEW_COST)
 
 // The stock of the store in X-Store-Id. Reading asks for inventory:view, an adjustment for inventory:adjust; the cost
 // fields come only with products:view_cost. The warehouses themselves (organization scope) are their own routes.

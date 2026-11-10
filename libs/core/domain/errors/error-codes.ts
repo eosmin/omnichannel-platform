@@ -93,6 +93,8 @@ export const ErrorCodes = {
   INVENTORY_ADJUSTMENT_REASON_REQUIRED: 'INVENTORY_ADJUSTMENT_REASON_REQUIRED',
   // The product has trackInventory off: it has no stock to move (TDD_16 §2)
   INVENTORY_PRODUCT_NOT_TRACKED: 'INVENTORY_PRODUCT_NOT_TRACKED',
+  // The product has variants: stock is added to a variant, never to the bare product
+  INVENTORY_VARIANT_REQUIRED: 'INVENTORY_VARIANT_REQUIRED',
   // The warehouse is switched off: it takes no new stock and no reservation
   INVENTORY_WAREHOUSE_INACTIVE: 'INVENTORY_WAREHOUSE_INACTIVE',
   // A release or an issue for more units than are reserved there

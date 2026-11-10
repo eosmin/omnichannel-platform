@@ -821,6 +821,9 @@ model ProductVariant {
 // the application roles, and a store with stock cannot be deleted (TDD_16 §4.9: the foreign keys restrict it).
 model InventoryMovement {
   id             String   @id @default(uuid())
+  // The order in which the ledger was written: the kardex reads by it, because every movement of a transaction has
+  // the same created_at (the database default is the start of the transaction) and ids are random
+  seq            BigInt   @unique @default(autoincrement())
   storeId        String   @map("store_id")
   productId      String   @map("product_id")
   variantId      String?  @map("variant_id")

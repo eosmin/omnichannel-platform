@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { PinoLogger } from 'nestjs-pino'
 
 import { lockStoreScope, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
@@ -20,6 +19,7 @@ import {
   productNotTracked,
   reasonRequired,
   stockRefused,
+  variantRequired,
   warehouseInactive,
   warehouseNotLinked
 } from './inventory-errors'
@@ -50,11 +50,8 @@ interface LockedLevel {
 export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: DomainEvents,
-    private readonly logger: PinoLogger
-  ) {
-    this.logger.setContext(InventoryService.name)
-  }
+    private readonly events: DomainEvents
+  ) {}
 
   // Applies one movement. The same key twice applies it once and answers the original (`replayed`); the same key with
   // another request is a 409.
@@ -165,7 +162,16 @@ export class InventoryService {
       select: { trackInventory: true, lowStockThreshold: true }
     })
     if (product === null) throw resourceNotFound('product')
-    if (!product.trackInventory) throw productNotTracked(productId)
+    // A product switched off still has reservations and stock that must be released, shipped or written off: only
+    // what adds stock or promises it is refused
+    const addsOrPromises = NEEDS_ACTIVE_LINKED_WAREHOUSE.includes(type)
+    if (addsOrPromises && !product.trackInventory) throw productNotTracked(productId)
+    // An item with variants is sold by variant (TDD_16 §2): stock added or promised to its bare row would be invisible
+    // to every variant. Stock already on the row can still be taken out.
+    if (addsOrPromises && variantId === null) {
+      const variants = await tx.productVariant.count({ where: { productId } })
+      if (variants > 0) throw variantRequired(productId)
+    }
     if (variantId !== null) {
       const variant = await tx.productVariant.findFirst({
         where: { id: variantId, productId },
@@ -289,10 +295,6 @@ export class InventoryService {
         available,
         threshold
       })
-      this.logger.info(
-        { storeId: movement.storeId, productId: movement.productId, available, threshold },
-        'a product fell to its low-stock threshold'
-      )
     }
   }
 }

@@ -68,3 +68,11 @@ export const reasonRequired = (message: string): PlatformException =>
 
 export const invalidMovement = (message: string): PlatformException =>
   new PlatformException(ErrorCodes.VALIDATION_FAILED, message, HttpStatusCodes.BAD_REQUEST)
+
+export const variantRequired = (productId: string): PlatformException =>
+  new PlatformException(
+    ErrorCodes.INVENTORY_VARIANT_REQUIRED,
+    'the product has variants: name the one the stock is of',
+    HttpStatusCodes.CONFLICT,
+    { productId }
+  )

@@ -135,22 +135,35 @@ describe('InventoryService', () => {
       expect(await levelOf(cancelled.productId)).toMatchObject({ onHand: 5, reserved: 0 })
     })
 
-    it('keeps a level per variant of a product, apart from the product row itself', async () => {
+    it('keeps a level per variant of a product, apart from the product row itself, and sends stock to a variant when there are some', async () => {
       const stock = await item()
+      await stock.move({ type: Type.RECEIPT, quantity: 4, reason: InventoryAdjustmentReason.FOUND })
       const variant = await createProductVariant(owner, { productId: stock.productId })
 
-      await stock.move({ type: Type.RECEIPT, quantity: 4, reason: InventoryAdjustmentReason.FOUND })
       await stock.move({
         type: Type.RECEIPT,
         quantity: 6,
         variantId: variant.id,
         reason: InventoryAdjustmentReason.FOUND
       })
+      // Stock added or promised to the bare row of a product that has variants would be invisible to all of them
+      for (const type of [Type.RECEIPT, Type.RESERVE]) {
+        await refusal(
+          stock.move({ type, quantity: 1, reason: InventoryAdjustmentReason.FOUND }),
+          ErrorCodes.INVENTORY_VARIANT_REQUIRED
+        )
+      }
+      // What is already on the row can still leave it
+      await stock.move({
+        type: Type.ADJUSTMENT_OUT,
+        quantity: 1,
+        reason: InventoryAdjustmentReason.LOST
+      })
 
       const levels = await owner.inventoryLevel.findMany({ where: { productId: stock.productId } })
       expect(levels.map(level => [level.variantId, level.onHand]).sort()).toEqual(
         [
-          [null, 4],
+          [null, 3],
           [variant.id, 6]
         ].sort()
       )
@@ -192,11 +205,32 @@ describe('InventoryService', () => {
         data: { trackInventory: false }
       })
 
-      await refusal(
-        stock.move({ type: Type.RECEIPT, quantity: 1, reason: InventoryAdjustmentReason.FOUND }),
-        ErrorCodes.INVENTORY_PRODUCT_NOT_TRACKED
-      )
+      for (const type of [Type.RECEIPT, Type.RESERVE]) {
+        await refusal(
+          stock.move({ type, quantity: 1, reason: InventoryAdjustmentReason.FOUND }),
+          ErrorCodes.INVENTORY_PRODUCT_NOT_TRACKED
+        )
+      }
       expect(await owner.inventoryLevel.count({ where: { productId: stock.productId } })).toBe(0)
+    })
+
+    it('lets what a product still holds be released, shipped or written off after it stops tracking stock', async () => {
+      const stock = await item({ onHand: 5 })
+      await stock.move({ type: Type.RESERVE, quantity: 3 })
+      await owner.product.update({
+        where: { id: stock.productId },
+        data: { trackInventory: false }
+      })
+
+      await stock.move({ type: Type.RELEASE, quantity: 1 })
+      await stock.move({ type: Type.ISSUE, quantity: 2 })
+      await stock.move({
+        type: Type.ADJUSTMENT_OUT,
+        quantity: 3,
+        reason: InventoryAdjustmentReason.LOST
+      })
+
+      expect(await levelOf(stock.productId)).toMatchObject({ onHand: 0, reserved: 0 })
     })
 
     it.each([

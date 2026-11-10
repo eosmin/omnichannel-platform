@@ -493,6 +493,7 @@
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "El origen y el destino deben ser distintos",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "La bodega todavía tiene existencias",
     "INVENTORY_WAREHOUSE_NOT_LINKED": "La bodega no está vinculada a esta tienda",
+    "INVENTORY_VARIANT_REQUIRED": "Elige la variante a la que pertenecen las existencias",
     "INVENTORY_PRODUCT_NOT_TRACKED": "Este producto no lleva control de existencias",
     "INVENTORY_RESERVATION_EXCEEDED": "Más unidades de las que están reservadas",
     "INVENTORY_WAREHOUSE_INACTIVE": "La bodega está desactivada",

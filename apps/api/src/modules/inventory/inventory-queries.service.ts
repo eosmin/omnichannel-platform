@@ -5,7 +5,12 @@ import { resourceNotFound } from '@platform/core/errors'
 
 import { encodeCursor } from '../customers/list-cursor'
 
-import type { KardexQuery, ListLevelsQuery, ListMovementsQuery } from './inventory.schemas'
+import {
+  encodeSeqCursor,
+  type KardexQuery,
+  type ListLevelsQuery,
+  type ListMovementsQuery
+} from './inventory.schemas'
 import {
   LEVEL_SELECT,
   type LevelPage,
@@ -39,7 +44,21 @@ export class InventoryQueriesService {
         ...(query.warehouseId === undefined ? {} : { warehouseId: query.warehouseId }),
         ...(query.productId === undefined ? {} : { productId: query.productId }),
         ...(query.variantId === undefined ? {} : { variantId: query.variantId }),
-        ...(lowStockProducts === null ? {} : { productId: { in: lowStockProducts } }),
+        // Both filters together are an intersection, not one over the other
+        ...(lowStockProducts === null
+          ? {}
+          : {
+              AND: [
+                {
+                  productId: {
+                    in:
+                      query.productId === undefined
+                        ? lowStockProducts
+                        : lowStockProducts.filter(id => id === query.productId)
+                  }
+                }
+              ]
+            }),
         // After the last row of the previous page in (updatedAt, id) order, wherever that row is now
         ...(cursor === undefined
           ? {}
@@ -135,34 +154,22 @@ export class InventoryQueriesService {
 
   private async pageOfMovements(
     where: Record<string, unknown>,
-    query: { limit: number; cursor?: { createdAt: Date; id: string } | undefined },
+    query: { limit: number; cursor?: bigint | undefined },
     canSeeCost: boolean
   ): Promise<MovementPage> {
-    const { cursor } = query
     const rows = await this.prisma.client.inventoryMovement.findMany({
-      where: {
-        AND: [
-          where,
-          cursor === undefined
-            ? {}
-            : {
-                OR: [
-                  { createdAt: { lt: cursor.createdAt } },
-                  { createdAt: cursor.createdAt, id: { lt: cursor.id } }
-                ]
-              }
-        ]
-      },
+      where: { ...where, ...(query.cursor === undefined ? {} : { seq: { lt: query.cursor } }) },
       select: MOVEMENT_SELECT,
       take: query.limit + 1,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+      // The order the ledger was written in (see InventoryMovement.seq): the movements of one transaction share a created_at
+      orderBy: { seq: 'desc' }
     })
     const hasMore = rows.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
     const last = page.at(-1)
     return {
       data: page.map(row => movementView(row, canSeeCost)),
-      nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
+      nextCursor: hasMore && last !== undefined ? encodeSeqCursor(last.seq) : null,
       hasMore
     }
   }
@@ -176,6 +183,7 @@ export class InventoryQueriesService {
       WHERE p.store_id = ${storeId} AND p.track_inventory AND p.low_stock_threshold IS NOT NULL
       GROUP BY p.id, p.low_stock_threshold
       HAVING SUM(l.on_hand - l.reserved) <= p.low_stock_threshold
+      ORDER BY p.id
       LIMIT ${LOW_STOCK_PRODUCTS_MAX}`
     return rows.map(row => row.id)
   }

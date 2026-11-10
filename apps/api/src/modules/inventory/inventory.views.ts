@@ -1,4 +1,5 @@
 import type { CursorPage } from '@platform/core/domain'
+import { roundedDivision } from '@platform/core/inventory'
 
 // What stock looks like to the api (TDD_16 §6). The cost fields (`valueCents`, `averageCostCents`, `unitCostCents`)
 // are there only for a caller who holds products:view_cost: for the others the keys are absent.
@@ -115,9 +116,7 @@ export function levelView(row: LevelRow, canSeeCost: boolean): LevelView {
     ...view,
     valueCents: Number(row.valueCents),
     averageCostCents:
-      row.onHand > 0
-        ? Number((2n * row.valueCents + BigInt(row.onHand)) / (2n * BigInt(row.onHand)))
-        : null
+      row.onHand > 0 ? Number(roundedDivision(row.valueCents, BigInt(row.onHand))) : null
   }
 }
 
@@ -141,6 +140,7 @@ interface MovementRow {
 
 export const MOVEMENT_SELECT = {
   id: true,
+  seq: true,
   productId: true,
   variantId: true,
   warehouseId: true,
@@ -157,7 +157,24 @@ export const MOVEMENT_SELECT = {
   createdAt: true
 } as const
 
+// The fields are named one by one: whatever else a row carries (the key, the store) never reaches the answer, and a
+// new column cannot get round the cost rule by being spread in
 export function movementView(row: MovementRow, canSeeCost: boolean): MovementView {
-  const { unitCostCents, ...rest } = row
-  return canSeeCost ? { ...rest, unitCostCents } : rest
+  const view: MovementView = {
+    id: row.id,
+    productId: row.productId,
+    variantId: row.variantId,
+    warehouseId: row.warehouseId,
+    type: row.type,
+    quantity: row.quantity,
+    reason: row.reason,
+    note: row.note,
+    referenceType: row.referenceType,
+    referenceId: row.referenceId,
+    onHandAfter: row.onHandAfter,
+    reservedAfter: row.reservedAfter,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt
+  }
+  return canSeeCost ? { ...view, unitCostCents: row.unitCostCents } : view
 }
