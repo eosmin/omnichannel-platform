@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 import { z } from 'zod'
 
-import type { WidgetAttachment } from '@platform/channels/web-widget'
+import type { WidgetAttachment, WidgetUploadBody } from '@platform/channels/web-widget'
 import { CacheKeys } from '@platform/core/cache'
 import { WidgetLimits } from '@platform/core/domain'
 import { REDIS_CLIENT } from '@platform/core/redis'
@@ -23,7 +23,6 @@ import {
 } from '../media/upload-checks'
 
 import type { WidgetSite } from './widget-sites.service'
-import type { WidgetUploadBody } from './widget.schemas'
 
 // What the api wrote down when it signed the url. A visitor sends back only the id, so the name, the
 // type and the size that count are these and never what comes with the message.

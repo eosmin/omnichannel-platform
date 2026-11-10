@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common'
 
-import { PrismaService } from '@platform/core/database'
-import { AuthorType, ChannelIds, WidgetLimits } from '@platform/core/domain'
-import { readStorePreferences } from '@platform/core/store-preferences'
-
 import {
   type WidgetMessageView,
   WIDGET_FILES_SELECT,
   WIDGET_VISIBLE_TYPES,
   visitorMessagesWhere,
   widgetMessageView
-} from './widget-message-view'
+} from '@platform/channels/web-widget'
+import { PrismaService } from '@platform/core/database'
+import { AuthorType, ChannelIds, WidgetLimits } from '@platform/core/domain'
+import { readStorePreferences } from '@platform/core/store-preferences'
+
 import type { WidgetSite } from './widget-sites.service'
 
 // What a visitor may read of their own conversation with the store
