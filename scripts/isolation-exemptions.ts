@@ -16,11 +16,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
-  InventoryLevel: {
-    step: '4.2',
-    reason: 'Read through the stock endpoints and written by InventoryService (PR A2)'
-  },
-  InventoryMovement: { step: '4.2', reason: 'Written by the stock operations' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   Order: { step: '4.3', reason: 'Has no endpoint yet' },

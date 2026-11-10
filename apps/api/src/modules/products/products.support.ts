@@ -1,6 +1,12 @@
+import { type Permission, Permissions } from '@platform/core/auth'
 import type { PrismaTransaction } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 
 export interface LockedProduct {
   priceCents: number
@@ -29,3 +35,20 @@ export async function lockProduct(
 // The files of a product that count: one the scan has not judged yet or found clean. A refused or unscannable
 // file is gone for every purpose of the catalog (the list of pictures, the delete guard).
 export const LIVE_MEDIA_STATUSES = [MediaStatus.PENDING, MediaStatus.CLEAN]
+
+export const mayViewCost = (held: readonly Permission[]): boolean =>
+  held.includes(Permissions.PRODUCTS_VIEW_COST)
+
+// Setting a cost, even to null, needs the permission to see it: whoever may not see the margin may not change it
+export function assertMayWriteCost(
+  held: readonly Permission[],
+  body: { costCents?: number | null | undefined }
+): void {
+  if (body.costCents !== undefined && !mayViewCost(held)) {
+    throw new PlatformException(
+      ErrorCodes.PERMISSION_DENIED,
+      'the cost of a product needs products:view_cost',
+      HttpStatusCodes.FORBIDDEN
+    )
+  }
+}

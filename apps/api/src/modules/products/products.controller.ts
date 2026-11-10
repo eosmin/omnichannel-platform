@@ -12,13 +12,19 @@ import {
 } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentPermissions,
+  CurrentStore,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import { ProductSearchService } from './product-search.service'
 import { ProductVariantsService } from './product-variants.service'
@@ -38,12 +44,16 @@ import {
   updateVariantSchema
 } from './products.schemas'
 import { ProductsService } from './products.service'
-import type {
-  ProductDetail,
-  ProductImageView,
-  ProductPage,
-  ProductSuggestions,
-  VariantView
+import { assertMayWriteCost, mayViewCost } from './products.support'
+import {
+  type ProductDetail,
+  type ProductImageView,
+  type ProductPage,
+  type ProductSuggestions,
+  redactDetail,
+  redactPage,
+  redactVariant,
+  type VariantView
 } from './products.views'
 
 const id = () => new ZodValidationPipe(idSchema)
@@ -60,11 +70,13 @@ export class ProductsController {
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
   @Get(ApiRoutes.products.list)
-  list(
+  async list(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
     @Query(new ZodValidationPipe(listProductsQuerySchema)) query: ListProductsQuery
   ): Promise<ProductPage> {
-    return this.products.list(store.id, query)
+    const page = await this.products.list(store.id, query)
+    return mayViewCost(held) ? page : redactPage(page)
   }
 
   // Declared before `:id`, or "search" would be read as an id
@@ -80,20 +92,25 @@ export class ProductsController {
   @RequirePermissions(Permissions.PRODUCTS_CREATE)
   @Post(ApiRoutes.products.create)
   @HttpCode(HttpStatusCodes.CREATED)
-  create(
+  async create(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
     @Body(new ZodValidationPipe(createProductSchema)) body: CreateProductBody
   ): Promise<ProductDetail> {
-    return this.products.create(store.id, body)
+    assertMayWriteCost(held, body)
+    const created = await this.products.create(store.id, body)
+    return mayViewCost(held) ? created : redactDetail(created)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
   @Get(ApiRoutes.products.byId(':id'))
-  get(
+  async get(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) productId: string
   ): Promise<ProductDetail> {
-    return this.products.get(store.id, productId)
+    const product = await this.products.get(store.id, productId)
+    return mayViewCost(held) ? product : redactDetail(product)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
@@ -107,14 +124,17 @@ export class ProductsController {
 
   @RequirePermissions(Permissions.PRODUCTS_EDIT)
   @Patch(ApiRoutes.products.byId(':id'))
-  update(
+  async update(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) productId: string,
     @Body(new ZodValidationPipe(updateProductSchema)) body: UpdateProductBody,
     @Req() req: AuthenticatedRequest
   ): Promise<ProductDetail> {
-    return this.products.update(store.id, productId, body, actorOf(user, store, req))
+    assertMayWriteCost(held, body)
+    const updated = await this.products.update(store.id, productId, body, actorOf(user, store, req))
+    return mayViewCost(held) ? updated : redactDetail(updated)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_DELETE)
@@ -132,25 +152,37 @@ export class ProductsController {
   @RequirePermissions(Permissions.PRODUCTS_CREATE)
   @Post(ApiRoutes.products.variants(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
-  createVariant(
+  async createVariant(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) productId: string,
     @Body(new ZodValidationPipe(createVariantSchema)) body: CreateVariantBody
   ): Promise<VariantView> {
-    return this.variants.create(store.id, productId, body)
+    assertMayWriteCost(held, body)
+    const created = await this.variants.create(store.id, productId, body)
+    return mayViewCost(held) ? created : redactVariant(created)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_EDIT)
   @Patch(ApiRoutes.products.variantById(':id', ':variantId'))
-  updateVariant(
+  async updateVariant(
     @CurrentStore() store: ResolvedTenant['store'],
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) productId: string,
     @Param('variantId', id()) variantId: string,
     @Body(new ZodValidationPipe(updateVariantSchema)) body: UpdateVariantBody,
     @Req() req: AuthenticatedRequest
   ): Promise<VariantView> {
-    return this.variants.update(store.id, productId, variantId, body, actorOf(user, store, req))
+    assertMayWriteCost(held, body)
+    const updated = await this.variants.update(
+      store.id,
+      productId,
+      variantId,
+      body,
+      actorOf(user, store, req)
+    )
+    return mayViewCost(held) ? updated : redactVariant(updated)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_DELETE)
