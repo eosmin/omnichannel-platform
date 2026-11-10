@@ -3,6 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import type { Redis } from 'ioredis'
 
+import type { Permission } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
@@ -19,6 +20,7 @@ import {
   AllowedContentTypes,
   type ConfirmUploadBody,
   ImageVariants,
+  MediaPurpose,
   type MediaPurposeType,
   type MediaUrls,
   mediaVariantsSchema,
@@ -36,6 +38,7 @@ import { StorageService } from '@platform/core/storage-module'
 import {
   countWithinQuota,
   refuseSignatureMismatch,
+  refuseUnlessMayUpload,
   refuseTypeOrSize,
   uploadVerificationFailed
 } from './upload-checks'
@@ -64,7 +67,8 @@ const MEDIA_SELECT = {
   key: true,
   variants: true,
   processedAt: true,
-  uploadedBy: true
+  uploadedBy: true,
+  productId: true
 } as const
 
 type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
@@ -74,6 +78,7 @@ type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   variants: unknown
   processedAt: Date | null
   uploadedBy: string | null
+  productId: string | null
 }
 
 interface UploadKeys {
@@ -111,10 +116,14 @@ export class MediaService {
   async requestUploadUrl(
     storeId: string,
     userId: string,
+    held: readonly Permission[],
     body: RequestUploadUrlBody
   ): Promise<UploadUrlResult> {
+    refuseUnlessMayUpload(body.purpose, held)
     refuseTypeOrSize(body.contentType, body.fileSizeBytes, body.purpose)
+    // The quota first: a refused parent counts too, so ids cannot be probed without limit
     await this.takeQuota(storeId, userId)
+    await this.requireParent(storeId, body)
 
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key, so a client
     // cannot confirm a key it was not given
@@ -159,8 +168,10 @@ export class MediaService {
   async confirmUpload(
     storeId: string,
     userId: string,
+    held: readonly Permission[],
     body: ConfirmUploadBody
   ): Promise<MediaView> {
+    refuseUnlessMayUpload(body.purpose, held)
     // A key of another store is a cross-tenant attempt, whatever else is wrong with the request
     if (!body.key.startsWith(StorageKeys.storePrefix(storeId))) {
       throw new PlatformException(
@@ -175,12 +186,15 @@ export class MediaService {
     // could attach an export or another message's file as their own upload.
     if (body.key !== keys.upload) throw uploadVerificationFailed()
     refuseTypeOrSize(body.contentType, body.fileSizeBytes, body.purpose)
-
     // A retry of a confirmation that already went through answers with the same media. The scan is
     // queued again (under the same job id, so never twice): the first attempt may have died between
     // writing the row and queueing it.
     const existing = await this.find(storeId, body.mediaId)
-    if (existing !== null) return this.again(existing, keys, userId)
+    if (existing !== null) return this.again(existing, keys, userId, body)
+
+    // The parent is checked again: the request that signed the url was another one. After the retry
+    // above, so a retry of a file that was kept is not refused because its product went away since.
+    await this.requireParent(storeId, body)
 
     // Only who asked for the signed url confirms it. Same answer as any other bad upload.
     const requester = await this.redis.get(CacheKeys.upload.requester(storeId, body.mediaId))
@@ -216,6 +230,7 @@ export class MediaService {
           id: body.mediaId,
           storeId,
           purpose: body.purpose,
+          productId: parentOf(body),
           uploadedBy: userId,
           key: keys.final,
           filename,
@@ -226,11 +241,13 @@ export class MediaService {
         select: MEDIA_SELECT
       })
     } catch (error) {
+      // The product was deleted after it was checked: the same answer as a product that is not there
+      if (isForeignKeyViolation(error)) throw resourceNotFound('product')
       if (!isUniqueViolation(error)) throw error
       // Two confirmations at once: the other one won
       const winner = await this.find(storeId, body.mediaId)
       if (winner === null) throw uploadVerificationFailed()
-      return this.again(winner, keys, userId)
+      return this.again(winner, keys, userId, body)
     }
 
     await this.queueScan(media.id)
@@ -294,8 +311,37 @@ export class MediaService {
     })
   }
 
-  private async again(media: MediaRow, keys: UploadKeys, userId: string): Promise<MediaView> {
-    if (media.key !== keys.final || media.uploadedBy !== userId) throw uploadVerificationFailed()
+  // The parent a file names must be a product of THIS store (the id of the header, never of the body). A
+  // product of another store and one that does not exist get the same answer, so the id of a foreign
+  // product cannot be probed. Not read at all for a purpose that has no parent.
+  private async requireParent(
+    storeId: string,
+    body: RequestUploadUrlBody | ConfirmUploadBody
+  ): Promise<void> {
+    const productId = parentOf(body)
+    if (productId === null) return
+    const product = await this.prisma.client.product.findFirst({
+      where: { id: productId, storeId },
+      select: { id: true }
+    })
+    if (product === null) throw resourceNotFound('product')
+  }
+
+  private async again(
+    media: MediaRow,
+    keys: UploadKeys,
+    userId: string,
+    body: ConfirmUploadBody
+  ): Promise<MediaView> {
+    // The same file, member, purpose and parent: a retry never moves a picture to another product or kind
+    if (
+      media.key !== keys.final ||
+      media.uploadedBy !== userId ||
+      media.purpose !== body.purpose ||
+      media.productId !== parentOf(body)
+    ) {
+      throw uploadVerificationFailed()
+    }
     if (media.status === String(MediaStatus.PENDING)) {
       await this.queueScan(media.id)
       await this.dropStaging(keys.upload)
@@ -329,6 +375,21 @@ export class MediaService {
       select: MEDIA_SELECT
     })
   }
+}
+
+// The product a file is for, or null when its purpose has no parent
+function parentOf(body: RequestUploadUrlBody | ConfirmUploadBody): string | null {
+  return body.purpose === MediaPurpose.PRODUCT ? body.parentId : null
+}
+
+const FOREIGN_KEY_CONSTRAINT_FAILED = 'P2003'
+function isForeignKeyViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === FOREIGN_KEY_CONSTRAINT_FAILED
+  )
 }
 
 function view(row: MediaRow): MediaView {

@@ -1,5 +1,5 @@
 import { MediaPurpose } from './media-purpose'
-import { AvatarUpload, UploadLimits } from './upload-constants'
+import { AvatarUpload, ProductImageUpload, UploadLimits } from './upload-constants'
 import { refuseUpload, UploadRefusals } from './upload-rules'
 import { ClientUploadPurposes, confirmUploadSchema, requestUploadUrlSchema } from './upload-schemas'
 
@@ -76,10 +76,34 @@ describe('refuseUpload for an avatar', () => {
   })
 })
 
+describe('refuseUpload for a product', () => {
+  it('takes the three still image types within the limit of a product picture', () => {
+    for (const type of ProductImageUpload.CONTENT_TYPES) {
+      expect(refuseUpload(type, ProductImageUpload.MAX_SIZE_BYTES, MediaPurpose.PRODUCT)).toBeNull()
+    }
+  })
+
+  it.each(['image/gif', 'video/mp4', 'application/pdf', 'image/svg+xml', 'text/html'])(
+    'refuses %s, which a message file may be',
+    type => {
+      expect(refuseUpload(type, 10, MediaPurpose.PRODUCT)).toBe(UploadRefusals.TYPE_NOT_ALLOWED)
+    }
+  )
+
+  it('refuses one byte over the limit, and the type is compared as it is signed', () => {
+    expect(
+      refuseUpload('image/png', ProductImageUpload.MAX_SIZE_BYTES + 1, MediaPurpose.PRODUCT)
+    ).toBe(UploadRefusals.TOO_LARGE)
+    expect(refuseUpload('Image/PNG', 10, MediaPurpose.PRODUCT)).toBe(
+      UploadRefusals.TYPE_NOT_ALLOWED
+    )
+  })
+})
+
 describe('the upload schemas', () => {
   it('accept a request for a purpose a client may upload for', () => {
     expect(requestUploadUrlSchema.parse(request)).toEqual(request)
-    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE])
+    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE, MediaPurpose.PRODUCT])
   })
 
   it('refuse the avatar as a purpose of a store: it has routes of its own', () => {
@@ -88,18 +112,46 @@ describe('the upload schemas', () => {
     ).toBe(false)
   })
 
-  it.each([
-    MediaPurpose.EXPORT,
-    MediaPurpose.PRODUCT,
-    MediaPurpose.ORDER,
-    MediaPurpose.SHIPPING_LABEL
-  ])('refuse the purpose %s: the server writes it or its step has not built it', purpose => {
-    expect(requestUploadUrlSchema.safeParse({ ...request, purpose }).success).toBe(false)
+  it.each([MediaPurpose.EXPORT, MediaPurpose.ORDER, MediaPurpose.SHIPPING_LABEL])(
+    'refuse the purpose %s: the server writes it or its step has not built it',
+    purpose => {
+      expect(requestUploadUrlSchema.safeParse({ ...request, purpose }).success).toBe(false)
+    }
+  )
+
+  it('refuse fields they do not know: a storeId in the body is not read', () => {
+    expect(requestUploadUrlSchema.safeParse({ ...request, storeId: 'x' }).success).toBe(false)
   })
 
-  it('refuse fields they do not know: a storeId or a parentId in the body is not read', () => {
-    expect(requestUploadUrlSchema.safeParse({ ...request, storeId: 'x' }).success).toBe(false)
-    expect(requestUploadUrlSchema.safeParse({ ...request, parentId: 'x' }).success).toBe(false)
+  it('refuse a parentId on a message file: it has no parent', () => {
+    expect(
+      requestUploadUrlSchema.safeParse({ ...request, parentId: crypto.randomUUID() }).success
+    ).toBe(false)
+  })
+
+  describe('for a product', () => {
+    const product = { ...request, purpose: MediaPurpose.PRODUCT, parentId: crypto.randomUUID() }
+
+    it('need the id of the product, a UUID, on both routes', () => {
+      expect(requestUploadUrlSchema.safeParse(product).success).toBe(true)
+      expect(requestUploadUrlSchema.safeParse({ ...product, parentId: undefined }).success).toBe(
+        false
+      )
+      expect(requestUploadUrlSchema.safeParse({ ...product, parentId: 'nope' }).success).toBe(false)
+      const confirmProduct = {
+        ...product,
+        mediaId: crypto.randomUUID(),
+        key: 'stores/s/uploads/m/a.png'
+      }
+      expect(confirmUploadSchema.safeParse(confirmProduct).success).toBe(true)
+      expect(
+        confirmUploadSchema.safeParse({ ...confirmProduct, parentId: undefined }).success
+      ).toBe(false)
+    })
+
+    it('refuse a storeId beside the parentId', () => {
+      expect(requestUploadUrlSchema.safeParse({ ...product, storeId: 'x' }).success).toBe(false)
+    })
   })
 
   it.each([0, -1, 1.5, '10'])('refuse the size %j', fileSizeBytes => {

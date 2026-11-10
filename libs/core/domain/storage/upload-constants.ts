@@ -50,6 +50,14 @@ export const AvatarUpload = {
   CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
 } as const
 
+// A product picture is a still image shown in a catalog and an order: the three types the pipeline re-encodes
+// and sanitizes, no gif, no video, no document. 5 MB is above what a phone photo of a product weighs once
+// shared, and half of the limit of a message file.
+export const ProductImageUpload = {
+  MAX_SIZE_BYTES: 5 * 1024 * 1024, // 5 MB
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp']
+} as const
+
 export const AllAllowedContentTypes: ReadonlySet<string> = new Set(
   Object.values(AllowedContentTypes).flat()
 )
