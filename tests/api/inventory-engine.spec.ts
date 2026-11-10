@@ -887,6 +887,58 @@ describe('InventoryService', () => {
     })
   })
 
+  describe('checking a level against its ledger', () => {
+    it('finds the level the engine kept equal to what its ledger says, with the value, and a forged one different', async () => {
+      const stock = await item({ onHand: 10, unitCostCents: 200 })
+      await stock.move({
+        type: Type.RECEIPT,
+        quantity: 5,
+        unitCostCents: 340,
+        reason: InventoryAdjustmentReason.FOUND
+      })
+      await stock.move({ type: Type.RESERVE, quantity: 4 })
+      await stock.move({ type: Type.ISSUE, quantity: 3 })
+      await stock.move({
+        type: Type.ADJUSTMENT_OUT,
+        quantity: 2,
+        reason: InventoryAdjustmentReason.LOST
+      })
+      const item0 = {
+        storeId: ctx.storeA.id,
+        productId: stock.productId,
+        warehouseId: ctx.warehouseA.id
+      }
+
+      const honest = await inventory.checkLevel(item0)
+      expect(honest.matches).toBe(true)
+      expect(honest.actual).toMatchObject({ onHand: 10, reserved: 1 })
+
+      // A level that was changed behind the engine: the check sees it on each of the three numbers
+      for (const forged of [{ onHand: 99 }, { reserved: 0 }, { valueCents: 1n }]) {
+        const before = await levelOf(stock.productId)
+        await owner.inventoryLevel.update({ where: { id: before.id }, data: forged })
+        const check = await inventory.checkLevel(item0)
+        expect(check.matches).toBe(false)
+        expect(check.expected).toEqual(honest.expected)
+        await owner.inventoryLevel.update({
+          where: { id: before.id },
+          data: { onHand: before.onHand, reserved: before.reserved, valueCents: before.valueCents }
+        })
+      }
+      expect((await inventory.checkLevel(item0)).matches).toBe(true)
+    })
+
+    it('finds a level that never moved equal to its empty ledger', async () => {
+      const stock = await item()
+      const check = await inventory.checkLevel({
+        storeId: ctx.storeA.id,
+        productId: stock.productId,
+        warehouseId: ctx.warehouseA.id
+      })
+      expect(check).toMatchObject({ matches: true, expected: { onHand: 0, reserved: 0 } })
+    })
+  })
+
   describe('the events', () => {
     function listen<E extends typeof Events.INVENTORY_MOVED | typeof Events.INVENTORY_LOW>(
       event: E

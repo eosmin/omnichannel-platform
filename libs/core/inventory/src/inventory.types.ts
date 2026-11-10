@@ -53,3 +53,10 @@ export interface MovementResult {
   // true when the key had been used by the same request: nothing was applied now, `movement` is the original
   replayed: boolean
 }
+
+// A level and what its ledger says it must be (the reconciliation of TDD_16 §4.8)
+export interface LevelCheck {
+  actual: { onHand: number; reserved: number; valueCents: bigint }
+  expected: { onHand: number; reserved: number; valueCents: bigint }
+  matches: boolean
+}

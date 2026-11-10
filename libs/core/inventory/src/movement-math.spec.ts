@@ -1,6 +1,6 @@
 import { InventoryMovementType as Type } from '@platform/core/domain'
 
-import { planMovement, roundedDivision } from './movement-math'
+import { planMovement, replayLedger, roundedDivision } from './movement-math'
 
 const level = (onHand: number, reserved = 0, valueCents = 0n) => ({ onHand, reserved, valueCents })
 const plan = (
@@ -188,3 +188,48 @@ describe('weighted-average cost', () => {
     expect(out.unitCostCents).toBe(100_000_000)
   })
 })
+
+describe('replayLedger', () => {
+  const row = (type: Type, quantity: number, unitCostCents: number | null = null) => ({
+    type,
+    quantity,
+    unitCostCents
+  })
+
+  it('is an empty level for an empty ledger', () => {
+    expect(replayLedger([])).toEqual({ onHand: 0, reserved: 0, valueCents: 0n })
+  })
+
+  it('rebuilds the level the engine kept: counters and value, in the order of the ledger', () => {
+    const rows = [
+      row(Type.RECEIPT, 10, 200),
+      row(Type.RECEIPT, 10, 300),
+      row(Type.RESERVE, 5),
+      row(Type.ISSUE, 3),
+      row(Type.RELEASE, 2),
+      row(Type.ADJUSTMENT_OUT, 4, 250),
+      row(Type.RETURN_IN, 1, 250)
+    ]
+    // The same steps through the engine
+    let level = level0()
+    for (const next of rows)
+      level = applied(
+        plan(level, next.type, next.quantity, { unitCostCents: next.unitCostCents })
+      ).next
+    expect(replayLedger(rows)).toEqual(level)
+  })
+
+  it('applies as written what the rules would refuse now: the ledger is what happened', () => {
+    // A level that went negative while the store allowed it
+    const rows = [row(Type.RECEIPT, 2, 100), row(Type.ADJUSTMENT_OUT, 5, null)]
+    expect(replayLedger(rows)).toMatchObject({ onHand: -3, reserved: 0, valueCents: 0n })
+    // A release of more than was reserved never takes the reservation below zero
+    expect(replayLedger([row(Type.RESERVE, 1), row(Type.RELEASE, 3)])).toMatchObject({
+      reserved: 0
+    })
+  })
+})
+
+function level0() {
+  return level(0)
+}

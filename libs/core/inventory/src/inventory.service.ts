@@ -23,8 +23,8 @@ import {
   warehouseInactive,
   warehouseNotLinked
 } from './inventory-errors'
-import type { MovementInput, MovementRecord, MovementResult } from './inventory.types'
-import { planMovement } from './movement-math'
+import type { LevelCheck, MovementInput, MovementRecord, MovementResult } from './inventory.types'
+import { planMovement, replayLedger } from './movement-math'
 import { isSameRequest } from './same-request'
 
 // The movements that add stock or promise it need a warehouse the store sells from and that is on; the ones that take
@@ -108,6 +108,53 @@ export class InventoryService {
   // A returned order put back on the shelf
   restock(input: Omit<MovementInput, 'type'>, tx?: PrismaTransaction): Promise<MovementResult> {
     return this.move({ ...input, type: InventoryMovementType.RETURN_IN }, tx)
+  }
+
+  // The reconciliation of one level (TDD_16 §4.8): what the level says, and what its ledger says it must be, in the
+  // order the ledger was written. It only reads: a mismatch is reported by whoever calls this and never fixed here.
+  async checkLevel(
+    item: { storeId: string; productId: string; variantId?: string | null; warehouseId: string },
+    tx?: PrismaTransaction
+  ): Promise<LevelCheck> {
+    const db = tx ?? this.prisma.client
+    const variantId = item.variantId ?? null
+    const [level, ledger] = await Promise.all([
+      db.inventoryLevel.findFirst({
+        where: {
+          storeId: item.storeId,
+          productId: item.productId,
+          variantId,
+          warehouseId: item.warehouseId
+        },
+        select: { onHand: true, reserved: true, valueCents: true }
+      }),
+      db.inventoryMovement.findMany({
+        where: {
+          storeId: item.storeId,
+          productId: item.productId,
+          variantId,
+          warehouseId: item.warehouseId
+        },
+        select: { type: true, quantity: true, unitCostCents: true },
+        orderBy: { seq: 'asc' }
+      })
+    ])
+    const expected = replayLedger(
+      ledger.map(row => ({
+        type: row.type as InventoryMovementType,
+        quantity: row.quantity,
+        unitCostCents: row.unitCostCents
+      }))
+    )
+    const actual = level ?? { onHand: 0, reserved: 0, valueCents: 0n }
+    return {
+      actual,
+      expected,
+      matches:
+        actual.onHand === expected.onHand &&
+        actual.reserved === expected.reserved &&
+        actual.valueCents === expected.valueCents
+    }
   }
 
   private validate(input: MovementInput): void {

@@ -130,3 +130,37 @@ function refusalOf(
       return null
   }
 }
+
+// One row of the ledger as the replay reads it
+export interface LedgerRow {
+  type: InventoryMovementType
+  quantity: number
+  unitCostCents: number | null
+}
+
+// What a level must be, from its ledger alone, in the order the ledger was written (`seq`): the reconciliation job
+// compares this with the level (TDD_16 §4.8). A movement the engine refused is never in the ledger, so a row that
+// the rules would refuse now (a setting turned off since) is applied as written: the ledger is what happened. Any
+// movement is applied with negative stock allowed, and the value follows the same weighted-average rules as the engine.
+export function replayLedger(rows: readonly LedgerRow[]): LevelState {
+  let level: LevelState = { onHand: 0, reserved: 0, valueCents: 0n }
+  for (const row of rows) {
+    const plan = planMovement(level, row.type, row.quantity, {
+      allowNegativeStock: true,
+      // The cost the movement recorded: the one it brought, or the average it left at (the engine recomputes the same)
+      unitCostCents: bringsUnitsIn(row.type) ? row.unitCostCents : null
+    })
+    if (plan.ok) {
+      level = plan.next
+    } else {
+      // Only a release or an issue beyond what was reserved can still be refused: the counters follow the table
+      const effect = InventoryMovementEffects[row.type]
+      level = {
+        onHand: level.onHand + effect.onHand * row.quantity,
+        reserved: Math.max(0, level.reserved + effect.reserved * row.quantity),
+        valueCents: level.valueCents
+      }
+    }
+  }
+  return level
+}
