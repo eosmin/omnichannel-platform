@@ -709,8 +709,9 @@ export enum InvitationStatus {
 }
 
 // v1.2 (Step 2.5): a channel is the id of a registered plugin, a string (TDD_10 §6.7), not a value
-// of a closed enum. These are the ids of the official plugins; `ChannelType` is kept as their
-// old name for the code that is about official channels only. Shape: CHANNEL_ID_PATTERN.
+// of a closed enum. These are the ids of the official plugins, named only by the registry policy, the
+// composition of the official plugins, fixtures and tests (the old alias `ChannelType` is gone, Step 7.9 A8).
+// Shape: CHANNEL_ID_PATTERN.
 // libs/core/domain/channel-ids.ts
 export const ChannelIds = {
   WHATSAPP: 'whatsapp',
@@ -722,8 +723,6 @@ export const ChannelIds = {
 export type OfficialChannelId = (typeof ChannelIds)[keyof typeof ChannelIds]
 export type ChannelId = string // the id of any registered plugin
 export const CHANNEL_ID_PATTERN = /^[a-z][a-z0-9_-]{2,31}$/
-export const ChannelType = ChannelIds
-export type ChannelType = OfficialChannelId
 
 export enum ChannelConnectionStatus {
   ACTIVE = 'active',

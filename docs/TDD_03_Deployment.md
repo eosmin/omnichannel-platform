@@ -738,7 +738,7 @@ import { faker } from '@faker-js/faker'
 import { hash } from '@node-rs/argon2'
 import { RoleNames, RolePresets } from '@platform/core/auth'
 import {
-  ConversationStatus, MembershipStatus, ChannelType, ChannelConnectionStatus,
+  ConversationStatus, MembershipStatus, ChannelIds, ChannelConnectionStatus,
   MessageType, AuthorType, DeliveryStatus,
 } from '@platform/core/domain'
 import { PlanTiers, BillingIntervals, SubscriptionStatus } from '@platform/core/billing'
@@ -832,9 +832,9 @@ async function main(): Promise<void> {
 
   // 5. A WhatsApp connection for the main store (credentials are dummies, encrypted like real ones)
   const connection = await prisma.channelConnection.upsert({
-    where: { pluginId_connectionId: { pluginId: ChannelType.WHATSAPP, connectionId: 'seed-phone-number-id' } },
+    where: { pluginId_connectionId: { pluginId: ChannelIds.WHATSAPP, connectionId: 'seed-phone-number-id' } },
     create: {
-      storeId: main.id, pluginId: ChannelType.WHATSAPP, connectionId: 'seed-phone-number-id',
+      storeId: main.id, pluginId: ChannelIds.WHATSAPP, connectionId: 'seed-phone-number-id',
       displayName: '+503 2222-3333', status: ChannelConnectionStatus.ACTIVE,
       credentials: encryptJson({ accessToken: 'seed-token', businessAccountId: 'seed-waba' }),
     },
@@ -879,12 +879,12 @@ async function main(): Promise<void> {
         },
       })
       const identity = await prisma.customerIdentity.create({
-        data: { storeId: main.id, customerId: customer.id, channelType: ChannelType.WHATSAPP, channelIdentity: phone.replace('+', ''), lastInboundAt: new Date() },
+        data: { storeId: main.id, customerId: customer.id, channelType: ChannelIds.WHATSAPP, channelIdentity: phone.replace('+', ''), lastInboundAt: new Date() },
       })
       const conv = await prisma.conversation.create({
         data: {
           storeId: main.id, customerId: customer.id, customerIdentityId: identity.id,
-          channelConnectionId: connection.id, channelType: ChannelType.WHATSAPP,
+          channelConnectionId: connection.id, channelType: ChannelIds.WHATSAPP,
           status: faker.helpers.arrayElement([ConversationStatus.OPEN, ConversationStatus.PENDING, ConversationStatus.RESOLVED]),
           lastMessageAt: faker.date.recent({ days: 7 }),
         },

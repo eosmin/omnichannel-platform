@@ -267,7 +267,7 @@ import { ConversationItem } from './ConversationItem';
 import {
   ConversationStatus,
   ConversationHandler,
-  ChannelType,
+  ChannelIds,
   AuthorType,
   MessageType,
 } from '@platform/core-domain';
@@ -290,7 +290,7 @@ export const Open: Story = {
     conversation: buildConversationListItem({
       status: ConversationStatus.OPEN,
       handler: ConversationHandler.HUMAN,
-      channelType: ChannelType.WHATSAPP,
+      channelType: ChannelIds.WHATSAPP,
       unreadCount: 3,
       customer: {
         id: 'cust_1',
