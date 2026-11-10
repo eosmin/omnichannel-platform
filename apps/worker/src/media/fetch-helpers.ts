@@ -1,6 +1,6 @@
-import { MetaGraph } from '@platform/core/domain'
 import {
   AllowedContentTypes,
+  AUDIO_MP4_CONTENT_TYPE,
   GENERIC_CONTENT_TYPE,
   sniffDeclarableType
 } from '@platform/core/storage'
@@ -67,9 +67,9 @@ const VIDEO_MP4 = 'video/mp4'
 export function keptContentType(declared: string, webhookType: string): string {
   const fromWebhook = bareType(webhookType)
   const type = GENERIC_TYPES.has(declared) ? fromWebhook : declared
-  if (AUDIO_MP4_ALIASES.has(type)) return MetaGraph.AUDIO_HINT_CONTENT_TYPE
-  if (type === VIDEO_MP4 && fromWebhook === MetaGraph.AUDIO_HINT_CONTENT_TYPE) {
-    return MetaGraph.AUDIO_HINT_CONTENT_TYPE
+  if (AUDIO_MP4_ALIASES.has(type)) return AUDIO_MP4_CONTENT_TYPE
+  if (type === VIDEO_MP4 && fromWebhook === AUDIO_MP4_CONTENT_TYPE) {
+    return AUDIO_MP4_CONTENT_TYPE
   }
   return type
 }

@@ -1,7 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 
-import { MetaLimits, MetaWebhook } from '@platform/core/domain'
-
+import { MetaLimits, MetaWebhook } from './meta-constants'
 const HEX_SHA256 = /^[0-9a-f]{64}$/
 const CHALLENGE = new RegExp(`^\\d{1,${MetaLimits.CHALLENGE_MAX_DIGITS}}$`)
 

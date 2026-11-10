@@ -5,9 +5,9 @@ import {
   MetaGraphClient,
   metaTokenCredentialsSchema,
   InstagramApi,
-  MetaSubscribableFields
+  MetaSubscribableFields,
+  MetaGraph
 } from '@platform/channels/meta'
-import { MetaGraph } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import {
   type ChannelContext,

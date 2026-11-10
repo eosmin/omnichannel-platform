@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { MetaGraphClient, MetaWebhookApps } from '@platform/channels/meta'
+import { MetaGraphClient, MetaRedactedKeys, MetaWebhookApps } from '@platform/channels/meta'
 import {
   ChannelConnectFieldKeys,
   ChannelIconKeys,
@@ -9,8 +9,7 @@ import {
   ChannelIds,
   type ChannelLimits,
   DeliveryStatus,
-  MessageType,
-  WhatsAppLimits
+  MessageType
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -39,7 +38,8 @@ import {
 import {
   WhatsAppApi,
   WhatsAppTemplateComponents,
-  WhatsAppTemplateStatuses
+  WhatsAppTemplateStatuses,
+  WhatsAppLimits
 } from './whatsapp-constants'
 import { parseWhatsAppCredentials, type WhatsAppCredentials } from './whatsapp-credentials'
 import { webhookToEvents } from './whatsapp-events'
@@ -147,6 +147,9 @@ function templateStatus(status: string): MessageTemplate['status'] {
 // may already have gone out.
 @Injectable()
 export class WhatsAppPlugin implements ChannelPlugin {
+  // Secret fields the logger removes (see `officialRedactedKeys`)
+  static readonly redactedKeys: readonly string[] = MetaRedactedKeys
+
   readonly id = ChannelIds.WHATSAPP
   readonly name = 'WhatsApp Business'
   readonly displayName = { es: 'WhatsApp', en: 'WhatsApp' }

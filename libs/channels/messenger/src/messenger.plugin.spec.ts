@@ -4,9 +4,10 @@ import {
   MetaGraphClient,
   metaTokenCredentialsSchema,
   MessengerApi,
-  MetaSubscribableFields
+  MetaSubscribableFields,
+  MetaGraph
 } from '@platform/channels/meta'
-import { ChannelSetupStepKeys, MetaGraph } from '@platform/core/domain'
+import { ChannelSetupStepKeys } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, ErrorCodes, PluginChecks } from '@platform/core/errors'
 import { type ChannelContext, ChannelCapability, PluginError } from '@platform/plugins/sdk'
 

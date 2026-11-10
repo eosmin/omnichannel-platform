@@ -1,7 +1,7 @@
-import { MessageType, MetaGraph } from '@platform/core/domain'
+import { MessageType } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
-import { MetaMessaging } from './meta-constants'
+import { MetaMessaging, MetaGraph } from './meta-constants'
 import { messagingToEvents } from './meta-messaging-events'
 
 const ACCOUNT = '112233445566778'

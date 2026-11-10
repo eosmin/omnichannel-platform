@@ -10,6 +10,7 @@ import type { AuthenticatedRequest } from './authenticated-request'
 import {
   buildPinoHttpOptions,
   logLevelFor,
+  redactedPathsFor,
   REDACTED_PATHS,
   REDACTED_SECRET_KEYS,
   scrubRequest
@@ -61,14 +62,13 @@ describe('buildPinoHttpOptions', () => {
 })
 
 describe('redaction', () => {
-  // The secret of the second Meta app signs Instagram's webhooks: it must never reach a log under the
-  // name the config gives it
-  it.each(['appSecret', 'instagramAppSecret', 'instagram_app_secret'])(
-    'lists %s among the secret keys',
-    name => {
-      expect(REDACTED_SECRET_KEYS).toContain(name)
-    }
-  )
+  it('lists the generic spellings of an app secret, and no provider by name', () => {
+    expect(REDACTED_SECRET_KEYS).toContain('appSecret')
+    expect(REDACTED_SECRET_KEYS).toContain('app_secret')
+    expect(
+      REDACTED_SECRET_KEYS.filter(name => /instagram|meta|whatsapp|messenger/i.test(name))
+    ).toEqual([])
+  })
 
   it('removes the decrypted credentials of a connection, whatever their keys', () => {
     const output = logged({
@@ -166,7 +166,6 @@ describe('redaction', () => {
           cookie: 'sid=1',
           'x-api-key': 'k',
           'proxy-authorization': 'Basic xyz',
-          'x-hub-signature-256': 'sha256=deadbeef',
           accept: 'json'
         },
         body: {
@@ -192,8 +191,7 @@ describe('redaction', () => {
       '"s"',
       'a2',
       'r2',
-      'Basic xyz',
-      'deadbeef'
+      'Basic xyz'
     ]) {
       expect(output).not.toContain(secret)
     }
@@ -208,6 +206,7 @@ describe('scrubRequest, headers', () => {
     'svix-signature': 'v1,Zm9vYmFy',
     'x-signature': 'sig-1',
     'x-hub-signature': 'sha1=sig-2',
+    'x-hub-signature-256': 'sha256=deadbeef',
     'x-twilio-signature': 'sig-3',
     'stripe-signature': 't=1,v1=sig-4',
     'x-webhook-signature': 'sig-5',
@@ -505,5 +504,44 @@ describe('scrubRequest', () => {
     const req = serializers?.['req'] as (value: object) => { url: string }
 
     expect(req({ url: `/api/v1/invitations/${TOKEN}` }).url).not.toContain(TOKEN)
+  })
+})
+
+describe('redactedPathsFor, the keys a plugin declares', () => {
+  const declared = ['acmeSecret', 'acme_token_x']
+
+  function logged(payload: object, keys: readonly string[]): string {
+    let output = ''
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        output += chunk.toString()
+        done()
+      }
+    })
+    pino({ redact: { paths: redactedPathsFor(keys), remove: true } }, stream).info(payload, 'x')
+    return output
+  }
+
+  describe.each(declared)('the declared key %s', key => {
+    it.each([0, 1, 2, 3, 4])('is removed at %i levels of depth', depth => {
+      let payload: Record<string, unknown> = { [key]: 'leak-value' }
+      for (let level = 0; level < depth; level += 1) payload = { [`layer${level}`]: payload }
+
+      const output = logged({ ...payload, kept: 'still-here' }, declared)
+
+      expect(output).not.toContain('leak-value')
+      expect(output).toContain('still-here')
+    })
+  })
+
+  it('keeps every path of the core and removes nothing else', () => {
+    expect(redactedPathsFor([])).toEqual([...REDACTED_PATHS])
+    expect(logged({ other: 'visible', credentials: { x: 'leak' } }, declared)).not.toContain('leak')
+    expect(logged({ other: 'visible' }, declared)).toContain('visible')
+  })
+
+  it('is what the options of the http logger redact', () => {
+    const options = buildPinoHttpOptions({ level: 'debug', redactedKeys: declared })
+    expect(options.redact).toEqual({ paths: redactedPathsFor(declared), remove: true })
   })
 })

@@ -10,12 +10,12 @@ import {
   type MetaWebhookApp,
   MetaWebhookApps
 } from '@platform/channels/meta'
+import { MetaGraph } from '@platform/channels/meta'
 import {
   ChannelConnectFieldKeys,
   ChannelIconKeys,
   ChannelIds,
-  type ChannelLimits,
-  MetaGraph
+  type ChannelLimits
 } from '@platform/core/domain'
 import { ErrorCodes, PluginChecks, type PluginCheck } from '@platform/core/errors'
 import { ChannelCapability, type ChannelContext, PluginError } from '@platform/plugins/sdk'

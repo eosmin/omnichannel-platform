@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common'
+import { type DynamicModule, Module } from '@nestjs/common'
 
 import { AppRoles } from '@platform/core/config'
 import { env } from '@platform/core/config/env'
@@ -22,24 +22,42 @@ const BRIDGE_MODES = {
   [AppRoles.WORKER]: EventsBridgeModes.PUBLISH
 } as const
 
+export interface HttpPlatformOptions {
+  // The names of secret fields that the plugins declare, which the logger removes besides its own list. The app
+  // that composes the plugins passes them: the core knows no plugin.
+  redactedKeys?: readonly string[]
+}
+
 // What every HTTP service of the platform (api and worker) is made of, configured from the validated
 // env: logging, metrics, the database, the event bus, Redis, object storage, the rate limit, the access tokens, the
 // error contract and the health routes. The apps never read the env themselves.
-@Module({
-  imports: [
-    LoggerModule.forRoot({ level: env.LOG_LEVEL, pretty: env.NODE_ENV === 'development' }),
-    MetricsModule,
-    DatabaseModule.forRoot({ databaseUrl: env.DATABASE_URL, replicaUrl: env.DATABASE_REPLICA_URL }),
-    // The worker has no sockets: what it announces goes to the api instances through Redis
-    EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
-    RedisModule.forRoot({ url: env.REDIS_URL }),
-    StoragePlatformModule,
-    OutboundFlagsPlatformModule,
-    ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
-    AuthPlatformModule,
-    TrustProxyModule,
-    HttpErrorsModule,
-    HealthModule
-  ]
-})
-export class HttpPlatformModule {}
+@Module({})
+export class HttpPlatformModule {
+  static forRoot(options: HttpPlatformOptions = {}): DynamicModule {
+    return {
+      module: HttpPlatformModule,
+      imports: [
+        LoggerModule.forRoot({
+          level: env.LOG_LEVEL,
+          pretty: env.NODE_ENV === 'development',
+          redactedKeys: options.redactedKeys ?? []
+        }),
+        MetricsModule,
+        DatabaseModule.forRoot({
+          databaseUrl: env.DATABASE_URL,
+          replicaUrl: env.DATABASE_REPLICA_URL
+        }),
+        // The worker has no sockets: what it announces goes to the api instances through Redis
+        EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
+        RedisModule.forRoot({ url: env.REDIS_URL }),
+        StoragePlatformModule,
+        OutboundFlagsPlatformModule,
+        ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
+        AuthPlatformModule,
+        TrustProxyModule,
+        HttpErrorsModule,
+        HealthModule
+      ]
+    }
+  }
+}

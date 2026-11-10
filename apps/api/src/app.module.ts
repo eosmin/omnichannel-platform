@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 
 import { AuditModule } from '@platform/core/audit-module'
 import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http'
+import { officialRedactedKeys } from '@platform/plugins/runtime'
 
 import { AuthModule } from './modules/auth/auth.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
@@ -28,7 +29,7 @@ import { WidgetModule } from './modules/widget/widget.module'
 // limit and the token check come first
 @Module({
   imports: [
-    HttpPlatformModule,
+    HttpPlatformModule.forRoot({ redactedKeys: officialRedactedKeys() }),
     AuditModule,
     TenancyModule,
     BullBoardPlatformModule,
