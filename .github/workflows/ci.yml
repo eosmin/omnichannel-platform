@@ -99,6 +99,7 @@ jobs:
       - run: pnpm validate:channel-agnostic --require-main
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file
       - run: pnpm validate:image-hosts
+      - run: exit 1
 
   # The required check. It runs whatever happened upstream (`always()`): a job that failed, was cancelled or
   # was skipped can never read as a pass, and only `success` of both is a green.
