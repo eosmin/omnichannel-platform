@@ -150,14 +150,6 @@ jobs:
         options: >-
           --health-cmd "wget -qO- http://127.0.0.1:8333/healthz"
           --health-interval 5s --health-timeout 3s --health-retries 10
-      # The virus scanner of the media suites of the worker (a real scan of the EICAR test string). It
-      # loads its signature database before it answers, so the job waits for it to be healthy.
-      clamav:
-        image: clamav/clamav:1.5.4-debian
-        ports: ['3310:3310']
-        options: >-
-          --health-cmd "clamdcheck.sh"
-          --health-start-period 180s --health-interval 10s --health-timeout 10s --health-retries 20
     env:
       DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
       DB_APP_PASSWORD: ci_app_password
@@ -169,6 +161,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      # The virus scanner of the media suites of the worker (a real scan of the EICAR test string). It loads its
+      # signature database in the background while the job installs, and the suites wait for it below
+      - uses: ./.github/actions/clamav-start
       - run: pnpm install --frozen-lockfile --prefer-offline
       # The SeaweedFS container creates the bucket after its health check passes
       - name: Wait for the bucket
@@ -177,6 +172,7 @@ jobs:
         run: pnpm db:migrate
       - name: Every migration has a rollback
         run: pnpm validate:rollbacks
+      - uses: ./.github/actions/clamav-wait
       # The api suite holds the coverage gates of the auth (95%) and tenancy (100%) folders (apps/api/jest.integration.config.cts), core-redis and core-audit their own
       - name: Integration suites
         run: pnpm exec nx run-many --target=test-integration --projects=core-database,core-redis,core-audit,worker,api
@@ -204,7 +200,9 @@ jobs:
           pnpm exec tsx scripts/smoke-email.ts
       - name: Service logs
         if: failure()
-        run: tail -n 40 api.log worker.log
+        run: |
+          tail -n 40 api.log worker.log
+          docker logs --tail 40 clamav || true
       # Last, because it empties the database: the rollbacks must run cleanly, newest first
       - name: Rollbacks run
         run: |
@@ -556,15 +554,6 @@ jobs:
         options: >-
           --health-cmd "wget -qO- http://127.0.0.1:8333/healthz"
           --health-interval 5s --health-timeout 3s --health-retries 10
-      # The virus scanner: a file an agent attaches in the composer is held until it is scanned clean, and
-      # without a scanner every file ends unscannable. It loads its signature database before it answers,
-      # so the job waits for it to be healthy.
-      clamav:
-        image: clamav/clamav:1.5.4-debian
-        ports: ['3310:3310']
-        options: >-
-          --health-cmd "clamdcheck.sh"
-          --health-start-period 180s --health-interval 10s --health-timeout 10s --health-retries 20
     env:
       DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
       DB_APP_PASSWORD: ci_app_password
@@ -581,7 +570,12 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The virus scanner: a file an agent attaches in the composer is held until it is scanned clean, and
+      # without a scanner every file ends unscannable. It loads its signature database in the background
+      # while the stack is prepared, and the job waits for it to be healthy before the specs
+      - uses: ./.github/actions/clamav-start
       - uses: ./.github/actions/web-stack
+      - uses: ./.github/actions/clamav-wait
       # Builds the api, the worker and the web app, starts them, and runs the specs
       - name: End to end specs
         env:
@@ -607,6 +601,9 @@ jobs:
             echo '### Cases that passed only on a retry'
             jq -r '[.. | objects | select(has("tests")) | select(any(.tests[]; .status == "flaky")) | "- \(.file): \(.title)"] | if length == 0 then "none" else .[] end' "$file"
           } >> "$GITHUB_STEP_SUMMARY" || echo "::warning::The timing report could not be read"
+      - name: Log of the virus scanner
+        if: failure()
+        run: docker logs --tail 40 clamav || true
       - name: Playwright report
         if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
