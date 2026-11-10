@@ -318,10 +318,11 @@ test.describe('the cost of a product', () => {
 
     const edit = sheetOf(admin)
     await edit.getByRole('tab', { name: PRODUCTS.sheet.tabs.variants }).click()
+    // A product with no variants has no table: it is drawn once the row to add one is open
+    await edit.getByRole('button', { name: PRODUCTS.variants.add }).click()
     await expect(
       edit.getByRole('columnheader', { name: PRODUCTS.variants.columns.cost })
     ).toBeVisible()
-    await edit.getByRole('button', { name: PRODUCTS.variants.add }).click()
     await edit.getByLabel(PRODUCTS.variants.name).fill('Size 9')
     await edit.getByRole('table').getByLabel(PRODUCTS.variants.columns.cost).fill('11')
     await edit.getByRole('button', { name: PRODUCTS.variants.save }).click()
