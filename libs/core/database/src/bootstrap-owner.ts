@@ -102,22 +102,34 @@ export async function ensureStoreWarehouse(
   })
 }
 
-// The warehouse every store needs to hold stock in: the default one of the organization, linked to the store
-// (first in its order if the store has no other). Idempotent and safe in production, like the rest of the bootstrap.
+// The warehouse every store needs to hold stock in. Idempotent and safe in production, and it never undoes what the
+// owner did: the default warehouse is made only when the organization has NO warehouse at all (so a renamed, recoded
+// or unlinked one does not come back as a twin), and the store is linked only when it has no link at all (so a
+// store the owner reorganized keeps its priorities). The link goes to the oldest warehouse of the organization.
 export async function ensureDefaultWarehouse(
   prisma: PrismaClient,
   organizationId: string,
   storeId: string
 ): Promise<{ id: string }> {
-  const warehouse = await ensureWarehouse(prisma, organizationId, {
-    code: DefaultWarehouse.CODE,
-    name: DefaultWarehouse.NAME
+  const existing = await prisma.warehouse.findFirst({
+    where: { organizationId },
+    orderBy: [{ createdAt: 'asc' }, { code: 'asc' }],
+    select: { id: true }
   })
-  await ensureStoreWarehouse(
-    prisma,
-    { organizationId, storeId, warehouseId: warehouse.id },
-    FIRST_WAREHOUSE_PRIORITY
-  )
+  const warehouse =
+    existing ??
+    (await ensureWarehouse(prisma, organizationId, {
+      code: DefaultWarehouse.CODE,
+      name: DefaultWarehouse.NAME
+    }))
+  const links = await prisma.storeWarehouse.count({ where: { storeId } })
+  if (links === 0) {
+    await ensureStoreWarehouse(
+      prisma,
+      { organizationId, storeId, warehouseId: warehouse.id },
+      FIRST_WAREHOUSE_PRIORITY
+    )
+  }
   return warehouse
 }
 

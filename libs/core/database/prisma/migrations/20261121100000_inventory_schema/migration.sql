@@ -4,7 +4,9 @@
 -- ledger: its free-text `reference` becomes `reference_type` and `reference_id`, and it gains required columns.
 --
 -- Nothing writes to inventory_movements before this step (there is no endpoint and no service), so the table is
--- empty everywhere; the migration REFUSES to run if it is not, instead of inventing a warehouse for old rows.
+-- empty everywhere; the migration REFUSES to run if it is not, instead of inventing a warehouse for old rows. The table
+-- is locked first, so that the check and the ALTERs that follow see the same table.
+LOCK TABLE "inventory_movements" IN ACCESS EXCLUSIVE MODE;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "inventory_movements") THEN
@@ -12,6 +14,8 @@ BEGIN
   END IF;
 END $$;
 
+-- DropForeignKey
+ALTER TABLE "inventory_movements" DROP CONSTRAINT "inventory_movements_store_id_fkey";
 
 -- DropForeignKey
 ALTER TABLE "inventory_movements" DROP CONSTRAINT "inventory_movements_product_id_fkey";
@@ -131,9 +135,6 @@ CREATE UNIQUE INDEX "stores_organization_id_id_key" ON "stores"("organization_id
 CREATE UNIQUE INDEX "products_store_id_id_key" ON "products"("store_id", "id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "inventory_movements_idempotency_key_key" ON "inventory_movements"("idempotency_key");
-
--- CreateIndex
 CREATE INDEX "inventory_movements_store_id_warehouse_id_created_at_idx" ON "inventory_movements"("store_id", "warehouse_id", "created_at" DESC);
 
 -- CreateIndex
@@ -141,6 +142,12 @@ CREATE INDEX "inventory_movements_warehouse_id_idx" ON "inventory_movements"("wa
 
 -- CreateIndex
 CREATE INDEX "inventory_movements_variant_id_idx" ON "inventory_movements"("variant_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "inventory_movements_store_id_idempotency_key_key" ON "inventory_movements"("store_id", "idempotency_key");
+
+-- AddForeignKey
+ALTER TABLE "inventory_movements" ADD CONSTRAINT "inventory_movements_store_id_fkey" FOREIGN KEY ("store_id") REFERENCES "stores"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "inventory_movements" ADD CONSTRAINT "inventory_movements_store_id_product_id_fkey" FOREIGN KEY ("store_id", "product_id") REFERENCES "products"("store_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -155,16 +162,13 @@ ALTER TABLE "inventory_movements" ADD CONSTRAINT "inventory_movements_warehouse_
 ALTER TABLE "warehouses" ADD CONSTRAINT "warehouses_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "store_warehouses" ADD CONSTRAINT "store_warehouses_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "store_warehouses" ADD CONSTRAINT "store_warehouses_organization_id_store_id_fkey" FOREIGN KEY ("organization_id", "store_id") REFERENCES "stores"("organization_id", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "store_warehouses" ADD CONSTRAINT "store_warehouses_organization_id_warehouse_id_fkey" FOREIGN KEY ("organization_id", "warehouse_id") REFERENCES "warehouses"("organization_id", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "inventory_levels" ADD CONSTRAINT "inventory_levels_store_id_fkey" FOREIGN KEY ("store_id") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "inventory_levels" ADD CONSTRAINT "inventory_levels_store_id_fkey" FOREIGN KEY ("store_id") REFERENCES "stores"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "inventory_levels" ADD CONSTRAINT "inventory_levels_store_id_product_id_fkey" FOREIGN KEY ("store_id", "product_id") REFERENCES "products"("store_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -209,10 +213,61 @@ ALTER TABLE store_warehouses
 ALTER TABLE store_settings
   ADD CONSTRAINT chk_store_settings_default_low_stock CHECK (default_low_stock_threshold IS NULL OR default_low_stock_threshold >= 0);
 
--- The ledger is append-only (TDD_16 §2): the application roles can read and add, never change or remove a movement
--- (the way audit_logs is kept). A store or an organization that is deleted takes its movements through the foreign
--- keys, which run with the rights of the table owner.
-REVOKE UPDATE, DELETE ON TABLE inventory_movements FROM platform_app, platform_worker;
+-- The ledger is append-only (TDD_16 §2): the application roles can read and add, never change, remove or empty it
+-- (the way audit_logs is kept). Nothing deletes it by cascade either: a store or a warehouse with stock cannot be
+-- deleted (the foreign keys restrict it, TDD_16 §4.9). The security suite checks these privileges, so a later
+-- GRANT ... ON ALL TABLES that gives them back fails the build.
+REVOKE UPDATE, DELETE, TRUNCATE ON TABLE inventory_movements FROM platform_app, platform_worker;
+
+-- Warehouse codes are printed on documents: one organization cannot hold two that read the same, whatever the case,
+-- and a code or a name has no stray spaces and keeps the lengths of InventoryLimits.
+CREATE UNIQUE INDEX uq_warehouses_code_lower ON warehouses (organization_id, lower(code));
+ALTER TABLE warehouses
+  ADD CONSTRAINT chk_warehouses_code CHECK (code = btrim(code) AND char_length(code) BETWEEN 1 AND 20),
+  ADD CONSTRAINT chk_warehouses_name CHECK (name = btrim(name) AND char_length(name) BETWEEN 1 AND 100);
+
+-- Stock names the store AND a warehouse, and the foreign keys cannot say that the two belong to the same
+-- organization (a level is not a link: a store may keep stock in a warehouse it was unlinked from, TDD_16 §4.7), nor
+-- that a variant is a variant of the product the row names, nor that an allocation is of an order line of the store
+-- it names. These checks do, for every insert and every change of those columns, whoever writes.
+CREATE FUNCTION check_stock_row_belongs_together() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+  row jsonb := to_jsonb(NEW);
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM warehouses w JOIN stores s ON s.organization_id = w.organization_id
+    WHERE w.id = NEW.warehouse_id AND s.id = NEW.store_id
+  ) THEN
+    RAISE EXCEPTION 'the warehouse and the store of a stock row belong to different organizations'
+      USING ERRCODE = 'integrity_constraint_violation', CONSTRAINT = 'stock_row_same_organization';
+  END IF;
+  IF row ->> 'variant_id' IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM product_variants v
+    WHERE v.id = row ->> 'variant_id' AND v.product_id = row ->> 'product_id'
+  ) THEN
+    RAISE EXCEPTION 'the variant of a stock row is not a variant of its product'
+      USING ERRCODE = 'integrity_constraint_violation', CONSTRAINT = 'stock_row_variant_of_product';
+  END IF;
+  IF TG_TABLE_NAME = 'order_item_allocations' AND NOT EXISTS (
+    SELECT 1 FROM order_items i JOIN orders o ON o.id = i.order_id
+    WHERE i.id = row ->> 'order_item_id' AND o.store_id = NEW.store_id
+  ) THEN
+    RAISE EXCEPTION 'the allocation is of an order line of another store'
+      USING ERRCODE = 'integrity_constraint_violation', CONSTRAINT = 'stock_row_order_of_store';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_inventory_levels_belong_together
+  BEFORE INSERT OR UPDATE OF store_id, warehouse_id, product_id, variant_id ON inventory_levels
+  FOR EACH ROW EXECUTE FUNCTION check_stock_row_belongs_together();
+CREATE TRIGGER trg_inventory_movements_belong_together
+  BEFORE INSERT OR UPDATE OF store_id, warehouse_id, product_id, variant_id ON inventory_movements
+  FOR EACH ROW EXECUTE FUNCTION check_stock_row_belongs_together();
+CREATE TRIGGER trg_order_item_allocations_belong_together
+  BEFORE INSERT OR UPDATE OF store_id, warehouse_id, order_item_id ON order_item_allocations
+  FOR EACH ROW EXECUTE FUNCTION check_stock_row_belongs_together();
 
 -- PRODUCTS_VIEW_COST: who may see and change the reference cost of a product. The Admin role holds every
 -- permission, so the stores that exist get it as the ones made from now on do (RolePresets).

@@ -27,7 +27,6 @@ model Organization {
   invitations         Invitation[]
   dataSubjectRequests DataSubjectRequest[]
   warehouses          Warehouse[]
-  storeWarehouses     StoreWarehouse[]
 
   @@map("organizations")
 }
@@ -832,7 +831,7 @@ model InventoryMovement {
   note           String?
   referenceType  String?  @map("reference_type") // InventoryReferenceType
   referenceId    String?  @map("reference_id")
-  idempotencyKey String   @unique @map("idempotency_key")
+  idempotencyKey String   @map("idempotency_key")
   // The cost of ONE unit, in whole USD cents, for the movements that bring units in (receipts, opening stock,
   // returns); null for the rest (a reserve has no cost) and for units whose cost is not known. The weighted-average
   // cost of a level is kept from these (InventoryLevel.valueCents), and FIFO lots can later be built from the receipts
@@ -843,11 +842,13 @@ model InventoryMovement {
   createdBy      String?  @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  store     Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
   product   Product         @relation(fields: [storeId, productId], references: [storeId, id])
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
   warehouse Warehouse       @relation(fields: [warehouseId], references: [id])
 
+  // The key is the caller's, so it is unique inside a store: tenants never share a namespace
+  @@unique([storeId, idempotencyKey])
   @@index([productId, variantId, type, createdAt(sort: Desc)])
   @@index([storeId, warehouseId, createdAt(sort: Desc)])
   @@index([warehouseId])
@@ -888,9 +889,8 @@ model StoreWarehouse {
   warehouseId    String @map("warehouse_id")
   priority       Int
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  store        Store        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Cascade)
-  warehouse    Warehouse    @relation(fields: [organizationId, warehouseId], references: [organizationId, id], onDelete: Cascade)
+  store     Store     @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [organizationId, warehouseId], references: [organizationId, id], onDelete: Cascade)
 
   @@unique([storeId, warehouseId])
   @@unique([storeId, priority])
@@ -913,7 +913,7 @@ model InventoryLevel {
   valueCents  BigInt   @default(0) @map("value_cents")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  store     Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
   product   Product         @relation(fields: [storeId, productId], references: [storeId, id])
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
   warehouse Warehouse       @relation(fields: [warehouseId], references: [id])
