@@ -74,6 +74,12 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'inbox',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.INBOX),
       permission: ClientPermissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.INVENTORY,
+      labelKey: 'inventory',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.INVENTORY),
+      permission: ClientPermissions.SETTINGS_VIEW
     }
   ]
 }

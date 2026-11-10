@@ -493,6 +493,10 @@
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "El origen y el destino deben ser distintos",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "La bodega todavía tiene existencias",
     "INVENTORY_WAREHOUSE_NOT_LINKED": "La bodega no está vinculada a esta tienda",
+    "INVENTORY_VARIANT_REQUIRED": "Elige la variante a la que pertenecen las existencias",
+    "INVENTORY_PRODUCT_NOT_TRACKED": "Este producto no lleva control de existencias",
+    "INVENTORY_RESERVATION_EXCEEDED": "Más unidades de las que están reservadas",
+    "INVENTORY_WAREHOUSE_INACTIVE": "La bodega está desactivada",
     "ORDER_ALREADY_CONFIRMED": "El pedido ya está confirmado",
     "ORDER_CANNOT_BE_CANCELLED": "El pedido ya no se puede cancelar",
     "ORDER_FIELD_NOT_EDITABLE": "Ese campo no se puede editar en esta etapa",
@@ -1841,7 +1845,8 @@
         "businessHours": "Horario de atención",
         "tags": "Etiquetas",
         "snippets": "Respuestas guardadas",
-        "inbox": "Bandeja"
+        "inbox": "Bandeja",
+        "inventory": "Inventario"
       },
       "org": {
         "label": "Organización",
@@ -2441,6 +2446,33 @@
         "saving": "Guardando…",
         "saved": "Confirmaciones de lectura guardadas",
         "readOnly": "Puedes ver este ajuste pero no cambiarlo."
+      }
+    },
+    "inventory": {
+      "title": "Inventario",
+      "description": "Cómo vende y cuenta sus existencias esta tienda.",
+      "formLabel": "Ajustes de inventario",
+      "readOnly": "Puedes ver estos ajustes pero no cambiarlos.",
+      "save": "Guardar",
+      "saved": "Ajustes de inventario guardados",
+      "negative": {
+        "legend": "Vender sin existencias",
+        "switch": "Aceptar pedidos más allá de las existencias",
+        "hint": "Desactivado por defecto. Activado, un pedido se acepta aunque ninguna bodega tenga las unidades, y un envío o un ajuste puede dejar un saldo por debajo de cero.",
+        "warning": "Se aceptarán pedidos sin existencias. Las unidades que no tienes se muestran como sobrevendidas y tendrás que recibir o ajustar existencias para volver el saldo a cero. Un traslado entre bodegas sigue necesitando existencias reales. Desactivarlo después no cambia ningún dato."
+      },
+      "split": {
+        "legend": "Surtido de pedidos",
+        "switch": "Permitir surtir un pedido desde varias bodegas",
+        "hint": "Desactivado por defecto. Desactivado, un pedido se surte desde una sola bodega y se rechaza si ninguna cubre todas las líneas. Activado, lo que le falta a la primera bodega se toma de las siguientes, según su prioridad."
+      },
+      "threshold": {
+        "label": "Umbral de existencias bajas por defecto",
+        "placeholder": "Ninguno",
+        "hint": "Un producto nuevo empieza con este número como alerta de existencias bajas: se te avisa cuando sus existencias disponibles lo alcanzan. Déjalo vacío para no tener alerta. Los productos que ya existen conservan su propio umbral."
+      },
+      "problems": {
+        "threshold": "El umbral debe ser un número entero de 0 o más, o quedar vacío."
       }
     }
   },

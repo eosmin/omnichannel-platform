@@ -32,8 +32,11 @@ import {
   createCustomer,
   createCustomerIdentity,
   createCustomerMerge,
+  createLevelOf,
+  createMovementOf,
   createProduct,
   createProductVariant,
+  itemOfStockRow,
   createWarehouse,
   linkWarehouse,
   createChannelConnection,
@@ -235,6 +238,26 @@ const resources: IsolationResource[] = [
         (await owner.product.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
         null
     }
+  },
+  // Stock has no route by its own id: it is read through the item (the product, and the kardex of the item in a
+  // warehouse), so the reads below name the item the row belongs to. Writing stock is the adjustment route, checked in
+  // `describe('inventory')` below, and the engine itself in tests/api/inventory-engine.spec.ts.
+  {
+    name: 'inventoryLevel',
+    create: createLevelOf,
+    readPath: id => ApiRoutes.products.inventory(itemOfStockRow.get(id)?.productId ?? randomUUID()),
+    listPath: ApiRoutes.inventory.levels,
+    untouched: () => Promise.resolve(true)
+  },
+  {
+    name: 'inventoryMovement',
+    create: createMovementOf,
+    readPath: id => {
+      const item = itemOfStockRow.get(id)
+      return `${ApiRoutes.inventory.kardex}?productId=${item?.productId ?? randomUUID()}&warehouseId=${item?.warehouseId ?? randomUUID()}`
+    },
+    listPath: ApiRoutes.inventory.movements,
+    untouched: () => Promise.resolve(true)
   },
   {
     name: 'warehouse',
@@ -1056,6 +1079,95 @@ describe('Tenant isolation', () => {
   // The autocomplete of products reads the store of the header only: the products and the variants of another
   // store are never in its answer, by name, by sku or by the sku of a variant, and a store the user does not belong
   // to is refused before the search runs.
+  // The adjustment is the one route that writes stock: it never takes the store from the body, and what it names (the
+  // product, the warehouse) must be of the store of the header and of its organization.
+  describe('stock adjustments', () => {
+    const adjust = (
+      agent: ReturnType<typeof api>,
+      body: Record<string, unknown>
+    ): ReturnType<ReturnType<typeof api>['post']> =>
+      agent.post(ApiRoutes.inventory.adjustments).send({
+        type: 'adjustment_in',
+        quantity: 1,
+        reason: 'found',
+        idempotencyKey: randomUUID(),
+        ...body
+      })
+
+    it('does not take the store from the body', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      const before = await owner.inventoryMovement.count({ where: { storeId: ctx.storeB.id } })
+
+      const response = await adjust(api(app, ctx.adminA, ctx.storeA), {
+        productId: product.id,
+        warehouseId: ctx.warehouseA.id,
+        storeId: ctx.storeB.id
+      })
+
+      expect(response.status).toBe(400)
+      expect(await owner.inventoryMovement.count({ where: { storeId: ctx.storeB.id } })).toBe(
+        before
+      )
+    })
+
+    it('answers 404 for the product of another store and for the warehouse of another organization', async () => {
+      const mine = await createProduct(owner, { storeId: ctx.storeA.id })
+      const theirs = await createProduct(owner, { storeId: ctx.storeB.id })
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const foreignProduct = await adjust(agent, {
+        productId: theirs.id,
+        warehouseId: ctx.warehouseA.id
+      })
+      const foreignWarehouse = await adjust(agent, {
+        productId: mine.id,
+        warehouseId: ctx.warehouseB.id
+      })
+
+      expect(foreignProduct.status).toBe(404)
+      expect(foreignWarehouse.status).toBe(404)
+      expect(await owner.inventoryMovement.count({ where: { productId: mine.id } })).toBe(0)
+      expect(await owner.inventoryMovement.count({ where: { productId: theirs.id } })).toBe(0)
+      expect(
+        await owner.inventoryLevel.count({ where: { productId: { in: [mine.id, theirs.id] } } })
+      ).toBe(0)
+    })
+
+    it('is refused in a store the user does not belong to', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeB.id })
+
+      const response = await adjust(api(app, ctx.adminA, ctx.storeB), {
+        productId: product.id,
+        warehouseId: ctx.warehouseB.id
+      })
+
+      expect(response.status).toBe(403)
+      expect(await owner.inventoryMovement.count({ where: { productId: product.id } })).toBe(0)
+    })
+
+    it('keeps the idempotency keys of a store to itself', async () => {
+      const mine = await createProduct(owner, { storeId: ctx.storeA.id })
+      const theirs = await createProduct(owner, { storeId: ctx.storeB.id })
+      const key = randomUUID()
+      const first = await adjust(api(app, ctx.adminB, ctx.storeB), {
+        productId: theirs.id,
+        warehouseId: ctx.warehouseB.id,
+        idempotencyKey: key
+      })
+      expect(first.status).toBe(201)
+
+      // The same key in another store is a new movement: no conflict, no replay of somebody else's answer
+      const second = await adjust(api(app, ctx.adminA, ctx.storeA), {
+        productId: mine.id,
+        warehouseId: ctx.warehouseA.id,
+        idempotencyKey: key
+      })
+
+      expect(second.status).toBe(201)
+      expect((second.body as { movement: { productId: string } }).movement.productId).toBe(mine.id)
+    })
+  })
+
   describe('product search', () => {
     it('never finds the products or variants of another store', async () => {
       const word = `iso${randomUUID().slice(0, 6)}`

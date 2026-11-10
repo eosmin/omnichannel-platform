@@ -99,6 +99,19 @@ describe('fetchProducts', () => {
     expect(page.data[0]?.variantCount).toBe(2)
   })
 
+  it('reads an answer with no cost keys (a caller without products:view_cost) as no cost', async () => {
+    const withoutCost = Object.fromEntries(
+      Object.entries(product).filter(([key]) => key !== 'costCents')
+    )
+    const { client } = setup(
+      json(200, { data: [{ ...withoutCost, variantCount: 0 }], nextCursor: null, hasMore: false })
+    )
+
+    const page = await fetchProducts(client, 's1', {})
+
+    expect(page.data[0]?.costCents).toBeNull()
+  })
+
   it('sends no query string when nothing narrows the list', async () => {
     const { client, fetchImpl } = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
     await fetchProducts(client, 's1', {})

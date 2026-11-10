@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { type BrowserContext, chromium, type Page } from '@playwright/test'
 
-import { AppPaths } from '@platform/api-client'
+import { AppPaths, StoreSettingsSections } from '@platform/api-client'
 
 import { englishLocaleCookie } from '../playwright.shared'
 import { storeIdNamed } from '../support/database'
@@ -124,6 +124,30 @@ test.describe('performance budgets', () => {
       'products',
       await measure(`${WEB_URL}${AppPaths.store.products(storeId)}`, debuggingPort, signInAfresh),
       ScriptCeilingsKb.PRODUCTS
+    )
+  })
+  // A page of Settings: a route of its own, so its form is not in the bundle of the inbox
+  test('the inventory settings page', async () => {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    async function signInAfresh(): Promise<void> {
+      await context.clearCookies()
+      await context.addCookies([englishLocaleCookie])
+      await reachServicesFromOwnAddress(context)
+      try {
+        await signIn(page, 'admin@test.com')
+      } finally {
+        await context.unrouteAll()
+      }
+      await page.goto('about:blank')
+    }
+    expectWithinBudgets(
+      'inventory settings',
+      await measure(
+        `${WEB_URL}${AppPaths.store.settings(storeId, StoreSettingsSections.INVENTORY)}`,
+        debuggingPort,
+        signInAfresh
+      ),
+      ScriptCeilingsKb.INVENTORY_SETTINGS
     )
   })
 })

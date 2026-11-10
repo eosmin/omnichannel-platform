@@ -493,6 +493,10 @@
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "The origin and the destination must differ",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "The warehouse still has stock",
     "INVENTORY_WAREHOUSE_NOT_LINKED": "The warehouse is not linked to this store",
+    "INVENTORY_VARIANT_REQUIRED": "Choose the variant the stock is for",
+    "INVENTORY_PRODUCT_NOT_TRACKED": "This product does not track stock",
+    "INVENTORY_RESERVATION_EXCEEDED": "More units than are reserved",
+    "INVENTORY_WAREHOUSE_INACTIVE": "The warehouse is switched off",
     "ORDER_ALREADY_CONFIRMED": "The order is already confirmed",
     "ORDER_CANNOT_BE_CANCELLED": "The order can no longer be cancelled",
     "ORDER_FIELD_NOT_EDITABLE": "That field cannot be edited at this stage",
@@ -1841,7 +1845,8 @@
         "businessHours": "Business hours",
         "tags": "Tags",
         "snippets": "Snippets",
-        "inbox": "Inbox behavior"
+        "inbox": "Inbox behavior",
+        "inventory": "Inventory"
       },
       "org": {
         "label": "Organization",
@@ -2441,6 +2446,33 @@
         "saving": "Saving…",
         "saved": "Read receipts saved",
         "readOnly": "You can see this setting but not change it."
+      }
+    },
+    "inventory": {
+      "title": "Inventory",
+      "description": "How this store sells and counts its stock.",
+      "formLabel": "Inventory settings",
+      "readOnly": "You can see these settings but not change them.",
+      "save": "Save",
+      "saved": "Inventory settings saved",
+      "negative": {
+        "legend": "Selling without stock",
+        "switch": "Accept orders beyond the stock",
+        "hint": "Off by default. With it on, an order is accepted even when no warehouse has the units, and a shipment or an adjustment may take a balance below zero.",
+        "warning": "Orders will be accepted without stock. The units you do not have are shown as oversold, and you will have to receive or adjust stock to bring the balance back to zero. A transfer between warehouses still needs real stock. Turning this off later does not change any data."
+      },
+      "split": {
+        "legend": "Order fulfillment",
+        "switch": "Allow one order to be served from several warehouses",
+        "hint": "Off by default. With it off, an order is served from a single warehouse and is refused when none covers every line. With it on, what the first warehouse lacks is taken from the next ones, in the order of their priority."
+      },
+      "threshold": {
+        "label": "Default low-stock threshold",
+        "placeholder": "None",
+        "hint": "A new product starts with this number as its low-stock alert: you are told when its available stock reaches it. Leave it empty for no alert. Products that already exist keep their own threshold."
+      },
+      "problems": {
+        "threshold": "The threshold must be a whole number of 0 or more, or empty."
       }
     }
   },

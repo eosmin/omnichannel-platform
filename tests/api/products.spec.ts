@@ -932,6 +932,154 @@ describe('The products of a store', () => {
     })
   })
 
+  describe('the cost', () => {
+    const memberWith = async (
+      name: string,
+      permissions: (typeof Permissions)[keyof typeof Permissions][]
+    ) =>
+      api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions
+        }),
+        ctx.storeA
+      )
+    const costKeys = ['costCents', 'effectiveCostCents']
+    const hasNoCost = (item: Record<string, unknown>): void => {
+      for (const key of costKeys) expect(item).not.toHaveProperty(key)
+    }
+
+    it('is in every view of the product and its variants for who holds products:view_cost', async () => {
+      const made = await create({ costCents: 800 })
+      const variant = await addVariant(made.id, { costCents: 900 })
+
+      const list = await asAdmin().get(ApiRoutes.products.list).query({ limit: 100 })
+      const detail = await asAdmin().get(ApiRoutes.products.byId(made.id))
+
+      expect((list.body as PageBody).data.find(item => item.id === made.id)).toMatchObject({
+        costCents: 800
+      })
+      expect(detail.body as ProductBody).toMatchObject({
+        costCents: 800,
+        variants: [{ id: variant.id, costCents: 900, effectiveCostCents: 900 }]
+      })
+    })
+
+    it('is left out of every read for who cannot see it: the agent, the viewer, a custom role', async () => {
+      const made = await create({ costCents: 800 })
+      await addVariant(made.id, { costCents: 900 })
+      const custom = await memberWith('view-products-no-cost', [Permissions.PRODUCTS_VIEW])
+
+      for (const reader of [
+        api(app, ctx.agentA, ctx.storeA),
+        api(app, ctx.viewerA, ctx.storeA),
+        custom
+      ]) {
+        const list = await reader.get(ApiRoutes.products.list).query({ limit: 100 })
+        expect(list.status).toBe(OK)
+        const item = (list.body as PageBody).data.find(row => row.id === made.id)
+        expect(item).toBeDefined()
+        hasNoCost(item as unknown as Record<string, unknown>)
+        const detail = await reader.get(ApiRoutes.products.byId(made.id))
+        expect(detail.status).toBe(OK)
+        hasNoCost(detail.body as Record<string, unknown>)
+        for (const variant of (detail.body as ProductBody).variants) {
+          hasNoCost(variant as unknown as Record<string, unknown>)
+        }
+        // The search is no way round it
+        const found = await reader.get(ApiRoutes.products.search).query({ q: made.name })
+        expect(JSON.stringify(found.body)).not.toContain('cost')
+      }
+    })
+
+    it('cannot be set or changed by who cannot see it, and nothing is written', async () => {
+      const made = await create({ costCents: 800 })
+      const variant = await addVariant(made.id, { costCents: 900 })
+      const editor = await memberWith('edit-no-cost', [
+        Permissions.PRODUCTS_VIEW,
+        Permissions.PRODUCTS_CREATE,
+        Permissions.PRODUCTS_EDIT
+      ])
+      const before = await owner.product.count({ where: { storeId: ctx.storeA.id } })
+
+      const attempts = [
+        editor
+          .post(ApiRoutes.products.create)
+          .send({ name: 'Costed', priceCents: 1, costCents: 5 }),
+        editor
+          .post(ApiRoutes.products.create)
+          .send({ name: 'Costed', priceCents: 1, costCents: null }),
+        editor.patch(ApiRoutes.products.byId(made.id)).send({ costCents: 1 }),
+        editor.patch(ApiRoutes.products.byId(made.id)).send({ name: 'Renamed', costCents: null }),
+        editor.post(ApiRoutes.products.variants(made.id)).send({ name: 'Costed', costCents: 5 }),
+        editor.patch(ApiRoutes.products.variantById(made.id, variant.id)).send({ costCents: null })
+      ]
+      for (const attempt of attempts) {
+        const response = await attempt
+        expect(response.status).toBe(FORBIDDEN)
+        expect(errorOf(response).code).toBe(ErrorCodes.PERMISSION_DENIED)
+      }
+
+      expect(await owner.product.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
+      const row = await owner.product.findUniqueOrThrow({ where: { id: made.id } })
+      expect(row).toMatchObject({ costCents: 800, name: made.name })
+      expect(
+        (await owner.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).costCents
+      ).toBe(900)
+    })
+
+    it('lets who cannot see the cost do the rest of the work, with answers that carry no cost', async () => {
+      const editor = await memberWith('edit-rest', [
+        Permissions.PRODUCTS_VIEW,
+        Permissions.PRODUCTS_CREATE,
+        Permissions.PRODUCTS_EDIT
+      ])
+
+      const created = await editor
+        .post(ApiRoutes.products.create)
+        .send({ name: `No cost ${randomUUID().slice(0, 6)}`, priceCents: 500 })
+      expect(created.status).toBe(CREATED)
+      hasNoCost(created.body as Record<string, unknown>)
+      const id = (created.body as ProductBody).id
+      const renamed = await editor.patch(ApiRoutes.products.byId(id)).send({ name: 'Renamed' })
+      expect(renamed.status).toBe(OK)
+      hasNoCost(renamed.body as Record<string, unknown>)
+      const variant = await editor.post(ApiRoutes.products.variants(id)).send({ name: 'Plain' })
+      expect(variant.status).toBe(CREATED)
+      hasNoCost(variant.body as Record<string, unknown>)
+      const changed = await editor
+        .patch(ApiRoutes.products.variantById(id, (variant.body as VariantBody).id))
+        .send({ priceCents: 900 })
+      expect(changed.status).toBe(OK)
+      hasNoCost(changed.body as Record<string, unknown>)
+    })
+
+    it('can be changed by who holds the permission, with the audit as before', async () => {
+      const made = await create({ costCents: 800 })
+      const costEditor = await memberWith('edit-with-cost', [
+        Permissions.PRODUCTS_VIEW,
+        Permissions.PRODUCTS_EDIT,
+        Permissions.PRODUCTS_VIEW_COST
+      ])
+
+      const response = await costEditor
+        .patch(ApiRoutes.products.byId(made.id))
+        .send({ costCents: 700 })
+
+      expect(response.status).toBe(OK)
+      expect(response.body).toMatchObject({ costCents: 700 })
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.PRODUCT_COST_CHANGED,
+        resourceId: made.id
+      })
+      expect(entries[0]?.metadata).toMatchObject({ fromCents: 800, toCents: 700 })
+    })
+  })
+
   describe('the other stores', () => {
     it('does not show, change or delete the product of another store, and does not take its variant', async () => {
       const foreign = await createProduct(owner, { storeId: ctx.storeB.id })

@@ -1016,3 +1016,21 @@ export async function markMediaClean(mediaId: string): Promise<void> {
     await owner.media.update({ where: { id: mediaId }, data: { status: MediaStatus.CLEAN } })
   })
 }
+
+// The inventory switches of a store as the database holds them
+export function inventorySettingsOf(storeId: string): Promise<{
+  allowNegativeStock: boolean
+  allowSplitFulfillment: boolean
+  defaultLowStockThreshold: number | null
+}> {
+  return withOwner(owner =>
+    owner.storeSettings.findUniqueOrThrow({
+      where: { storeId },
+      select: {
+        allowNegativeStock: true,
+        allowSplitFulfillment: true,
+        defaultLowStockThreshold: true
+      }
+    })
+  )
+}
