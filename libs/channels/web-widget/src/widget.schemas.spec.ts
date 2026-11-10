@@ -3,7 +3,7 @@ import { widgetBootstrapSchema, widgetDownloadSchema, widgetUploadSchema } from 
 // The bodies of the public doors of the widget are the only thing between a script on any site and the api
 // before the site key is looked at: what they refuse is pinned here, wherever the controllers live
 describe('the bodies of the public doors', () => {
-  const visitorId = 'a'.repeat(36)
+  const visitorId = '33333333-3333-4333-8333-333333333333'
 
   it('takes a well-formed bootstrap and refuses an extra field, a long key and a bad visitor id', () => {
     expect(widgetBootstrapSchema.safeParse({ siteKey: 'site', visitorId }).success).toBe(true)
