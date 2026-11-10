@@ -214,7 +214,7 @@ jobs:
 
   # The tenant isolation suite (TDD_13 section 6) and the endpoint specs of tests/api: the real app of
   # the api, the real Postgres and Redis, the database role the api runs with. A failure in the
-  # isolation suite means a user could reach the data of a store they do not belong to. It runs in three
+  # isolation suite means a user could reach the data of a store they do not belong to. It runs in four
   # jobs (`SECURITY_SHARD`; the denominator must match the `--shard` of tests/project.json), each
   # with its own services; it also needs SeaweedFS, for the media suites (Step 3.4). The required check
   # is `security-tests`, below.
@@ -223,10 +223,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The thirds of the suite, one shard of jest each, in a job of its own with its own services
-        # (`SECURITY_SHARD`, read by `tests/project.json`; empty runs all three, as `pnpm test:security` does on a laptop).
+        # The quarters of the suite, one shard of jest each, in a job of its own with its own services
+        # (`SECURITY_SHARD`, read by `tests/project.json`; empty runs all four, as `pnpm test:security` does on a laptop).
         # Jest cuts the sorted list of files into slices of the same size, so the weight of a slice is luck: with
-        # two the heavy specs (team, realtime, conversations-performance, ~28 s each) ended up 184 s against 242 s
+        # two the heavy specs (team, realtime, conversations-performance, ~28 s each) ended up 184 s against 242 s;
+        # with four the slowest job took 156 s (134, 131, 156 and 127 s), peak memory 3.5-3.9 GB of the 16 GB of the runner
         shard: ['1/4', '2/4', '3/4', '4/4']
     runs-on: ubuntu-latest
     timeout-minutes: 15
