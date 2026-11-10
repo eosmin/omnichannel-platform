@@ -20,7 +20,8 @@ describe('customerDisplayName', () => {
       channelType: 'whatsapp',
       channelIdentity: '5037',
       displayName: null,
-      lastInboundAt: null
+      lastInboundAt: null,
+      anonymousCustomers: false
     }
     expect(customerDisplayName({ ...base, identities: [identity] })).toBe('5037')
     expect(customerDisplayName({ ...base, name: '  ' })).toBeNull()
@@ -33,7 +34,8 @@ describe('a visitor of the web widget', () => {
     channelType: 'web_widget',
     channelIdentity: '3f0c1d52-0000-4000-8000-00000000ab98',
     displayName: null,
-    lastInboundAt: null
+    lastInboundAt: null,
+    anonymousCustomers: true
   }
 
   it('is not named by its random id', () => {
