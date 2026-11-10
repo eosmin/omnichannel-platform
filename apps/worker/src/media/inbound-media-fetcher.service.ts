@@ -12,7 +12,6 @@ import {
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   ChannelConnectionStatus,
-  ChannelIds,
   MediaStatus,
   MediaUnavailableCodes,
   OfActiveInstallation,
@@ -41,7 +40,7 @@ import {
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
-import { UnsafeMediaLinkError } from '@platform/plugins/sdk'
+import { ChannelCapability, UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
 import { refusalOf } from '../outbound/send-refusal'
 
@@ -91,11 +90,12 @@ export class InboundMediaFetcher {
   // Throws when the attempt should be repeated; returns when the file is stored or will never be
   async fetch(job: FetchInboundMediaJob, isLastAttempt: boolean): Promise<void> {
     const { storeId, messageId, index } = job
-    // Only the web widget names its files (the visitor was told the id when the message was taken); for
-    // any other plugin, or an id that is not a uuid, the id is the one derived from message and place
+    // Only a plugin that declares NAMES_INBOUND_FILES names its files (its customer was told the id when the
+    // message was taken); for any other plugin, or an id that is not a uuid, the id is the one derived
+    // from message and place
     const mediaId =
       job.mediaId !== undefined &&
-      job.pluginId === ChannelIds.WEB_WIDGET &&
+      this.registry.hasCapability(job.pluginId, ChannelCapability.NAMES_INBOUND_FILES) &&
       CHOSEN_ID.test(job.mediaId)
         ? job.mediaId
         : inboundMediaId(messageId, index)

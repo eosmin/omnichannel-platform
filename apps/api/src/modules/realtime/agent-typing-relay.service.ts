@@ -1,15 +1,18 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { ChannelConnectionStatus, ChannelIds, OutboundLimits } from '@platform/core/domain'
+import { ChannelConnectionStatus, OutboundLimits } from '@platform/core/domain'
 import { OutboundQueue } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
-import { WidgetDelivery } from '../widget/widget-delivery.service'
+import {
+  DIRECT_TYPING_DELIVERIES,
+  type DirectTypingDelivery
+} from '../channel-registry/direct-typing'
 
-// Shows the customer that an agent is typing, on the channels that can: the web widget through its
-// socket, the others through the outbound queue and the worker (only when the plugin declares
+// Shows the customer that an agent is typing, on the channels that can: the channels the api reaches
+// itself (a socket it holds), the others through the outbound queue and the worker (only when the plugin declares
 // TYPING_INDICATOR). Best effort. Calls for one conversation run one after another, so a start and the
 // stop that follows it reach the channel in that order. The first start in a slot does the work and the
 // repeats the client sends while the agent types are dropped before the database; a stop goes only after
@@ -37,7 +40,7 @@ export class AgentTypingRelay {
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
     private readonly outbound: OutboundQueue,
-    private readonly widget: WidgetDelivery
+    @Inject(DIRECT_TYPING_DELIVERIES) private readonly direct: readonly DirectTypingDelivery[]
   ) {}
 
   relay(
@@ -88,16 +91,19 @@ export class AgentTypingRelay {
       this.forget(conversationId, active)
       return
     }
-    const isWidget = pluginId === ChannelIds.WEB_WIDGET
+    // A channel the api reaches itself is told directly; any other goes through the queue and the worker
+    const direct = this.direct.find(delivery => delivery.pluginId === pluginId)
     const queued =
-      !isWidget && this.registry.hasCapability(pluginId, ChannelCapability.TYPING_INDICATOR)
+      direct === undefined &&
+      this.registry.hasCapability(pluginId, ChannelCapability.TYPING_INDICATOR)
     // A channel with nobody to tell is remembered too, so that its repeats stop at the memory and not at
     // the database
-    if (active && (isWidget || queued) && mayStart !== undefined && !(await mayStart())) return
+    if (active && (direct !== undefined || queued) && mayStart !== undefined && !(await mayStart()))
+      return
     // Remembered after the delivery, and only for a conversation of this store: a start that could not
     // be queued leaves no slot behind
-    if (isWidget) {
-      this.widget.typingToVisitor(siteKey, conversation.customerIdentity.channelIdentity, active)
+    if (direct !== undefined) {
+      direct.typing(siteKey, conversation.customerIdentity.channelIdentity, active)
     } else if (queued) {
       await this.outbound.enqueueTyping({ storeId, conversationId, active, at: this.stamp(now) })
     }

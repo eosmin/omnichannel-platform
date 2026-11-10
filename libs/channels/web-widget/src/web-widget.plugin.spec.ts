@@ -43,7 +43,7 @@ describe('WebWidgetPlugin', () => {
     expect(plugin.receivesProviderWebhooks).toBe(false)
   })
 
-  it('declares text, images, documents, typing and read receipts, with no window', () => {
+  it('declares text, images, documents, typing, read receipts and the ids of its files, with no window', () => {
     expect(plugin.id).toBe(ChannelIds.WEB_WIDGET)
     expect(plugin.capabilities).toEqual([
       ChannelCapability.TEXT,
@@ -51,7 +51,8 @@ describe('WebWidgetPlugin', () => {
       ChannelCapability.DOCUMENT,
       ChannelCapability.TYPING_INDICATOR,
       ChannelCapability.CUSTOMER_TYPING,
-      ChannelCapability.READ_RECEIPTS
+      ChannelCapability.READ_RECEIPTS,
+      ChannelCapability.NAMES_INBOUND_FILES
     ])
     expect(plugin.messagingWindow).toBeNull()
   })

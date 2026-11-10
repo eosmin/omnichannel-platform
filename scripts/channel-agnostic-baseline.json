@@ -43,10 +43,6 @@
     "code": 0,
     "comment": 1
   },
-  "apps/web/lib/security-headers.ts": {
-    "code": 4,
-    "comment": 5
-  },
   "apps/web/lib/settings/channel-keys.ts": {
     "code": 0,
     "comment": 1

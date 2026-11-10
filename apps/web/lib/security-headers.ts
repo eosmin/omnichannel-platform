@@ -1,21 +1,9 @@
-// The hosts that serve the avatars that Meta hands over for Instagram and Messenger customers
-// (CustomerIdentity.avatarUrl). A plugin chose that url, so the image is untrusted: it is drawn
-// from these hosts only, and the interface falls back to initials when it fails.
-export const CUSTOMER_AVATAR_IMAGE_HOSTS = [
-  'https://*.fbcdn.net',
-  'https://*.cdninstagram.com',
-  // The signed profile pictures of Messenger. Exact host: other *.fbsbx.com hosts (apps.fbsbx.com)
-  // serve content of third parties (the media hosts the provider's library keeps)
-  'https://platform-lookaside.fbsbx.com'
-] as const
-
-// The hosts that serve the thumbnail of the story an Instagram customer answered (`MessageView.storyReply`). A
-// provider chose that link, so the image is untrusted: it is drawn from this exact host only (not
-// `*.fbsbx.com`, whose other hosts serve content of third parties), it expires within about a day, and the
-// card falls back to a notice when it fails.
-// (No import here: `next.config.ts` loads this file before the aliases exist. `security-headers.spec.ts` checks the
-// list against `MetaStoryImageHosts`, the one the plugin keeps story links by.)
-export const STORY_REPLY_IMAGE_HOSTS = ['https://lookaside.fbsbx.com'] as const
+// The hosts the pictures of the channels are drawn from (the avatar of a customer and the thumbnail of a story they
+// answered) are what the plugins declare, written into a committed file by `pnpm gen:image-hosts` (CI refuses a stale
+// one): this file knows no channel. A plugin chose those urls, so the image is untrusted: it is drawn from these hosts only, and the
+// interface falls back to initials or a notice when it fails.
+// (The generated file has no imports: `next.config.ts` loads this one before the aliases exist.)
+import { PLUGIN_AVATAR_IMAGE_HOSTS, PLUGIN_MEDIA_IMAGE_HOSTS } from './generated/plugin-image-hosts'
 
 export interface ContentSecurityPolicyOptions {
   nonce: string
@@ -54,7 +42,7 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: ${storageOrigin} ${[...CUSTOMER_AVATAR_IMAGE_HOSTS, ...STORY_REPLY_IMAGE_HOSTS].join(' ')}`,
+    `img-src 'self' data: blob: ${storageOrigin} ${[...PLUGIN_AVATAR_IMAGE_HOSTS, ...PLUGIN_MEDIA_IMAGE_HOSTS].join(' ')}`,
     `media-src 'self' blob: ${storageOrigin}`,
     `connect-src ${[...connectSources].join(' ')}`,
     "font-src 'self'",
