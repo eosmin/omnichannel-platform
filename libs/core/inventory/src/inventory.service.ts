@@ -116,19 +116,17 @@ export class InventoryService {
     item: { storeId: string; productId: string; variantId?: string | null; warehouseId: string },
     tx?: PrismaTransaction
   ): Promise<LevelCheck> {
-    const db = tx ?? this.prisma.client
     const variantId = item.variantId ?? null
-    const [level, ledger] = await Promise.all([
-      db.inventoryLevel.findFirst({
-        where: {
-          storeId: item.storeId,
-          productId: item.productId,
-          variantId,
-          warehouseId: item.warehouseId
-        },
-        select: { onHand: true, reserved: true, valueCents: true }
-      }),
-      db.inventoryMovement.findMany({
+    const read = async (db: PrismaTransaction): Promise<LevelCheck> => {
+      // The level is held FOR SHARE while its ledger is read: a movement (FOR UPDATE) waits, so the two agree
+      const levels = await db.$queryRaw<
+        { on_hand: number; reserved: number; value_cents: bigint }[]
+      >`
+        SELECT on_hand, reserved, value_cents FROM inventory_levels
+        WHERE store_id = ${item.storeId} AND product_id = ${item.productId}
+          AND warehouse_id = ${item.warehouseId} AND variant_id IS NOT DISTINCT FROM ${variantId}::text
+        FOR SHARE`
+      const ledger = await db.inventoryMovement.findMany({
         where: {
           storeId: item.storeId,
           productId: item.productId,
@@ -138,23 +136,28 @@ export class InventoryService {
         select: { type: true, quantity: true, unitCostCents: true },
         orderBy: { seq: 'asc' }
       })
-    ])
-    const expected = replayLedger(
-      ledger.map(row => ({
-        type: row.type as InventoryMovementType,
-        quantity: row.quantity,
-        unitCostCents: row.unitCostCents
-      }))
-    )
-    const actual = level ?? { onHand: 0, reserved: 0, valueCents: 0n }
-    return {
-      actual,
-      expected,
-      matches:
-        actual.onHand === expected.onHand &&
-        actual.reserved === expected.reserved &&
-        actual.valueCents === expected.valueCents
+      const expected = replayLedger(
+        ledger.map(row => ({
+          type: row.type as InventoryMovementType,
+          quantity: row.quantity,
+          unitCostCents: row.unitCostCents
+        }))
+      )
+      const level = levels[0]
+      const actual =
+        level === undefined
+          ? { onHand: 0, reserved: 0, valueCents: 0n }
+          : { onHand: level.on_hand, reserved: level.reserved, valueCents: level.value_cents }
+      return {
+        actual,
+        expected,
+        matches:
+          actual.onHand === expected.onHand &&
+          actual.reserved === expected.reserved &&
+          actual.valueCents === expected.valueCents
+      }
     }
+    return tx === undefined ? this.prisma.transaction(read) : read(tx)
   }
 
   private validate(input: MovementInput): void {
@@ -231,9 +234,8 @@ export class InventoryService {
     // An item with variants is sold by variant (TDD_16 §2): what a person adds or an order promises to the bare row
     // would be invisible to every variant. The other movements follow the item they refer to (a return, a transfer
     // in, a count), and stock already on the row can still leave it.
-    if (VARIANT_REQUIRED_FOR.includes(type) && variantId === null) {
-      const variants = await tx.productVariant.count({ where: { productId, active: true } })
-      if (variants > 0) throw variantRequired(productId)
+    if (VARIANT_REQUIRED_FOR.includes(type) && variantId === null && product.hasActiveVariants) {
+      throw variantRequired(productId)
     }
     if (variantId !== null) {
       const variant = await tx.productVariant.findFirst({
@@ -318,19 +320,36 @@ export class InventoryService {
   private async readProduct(
     tx: PrismaTransaction,
     where: { storeId: string; productId: string; lock: boolean }
-  ): Promise<{ trackInventory: boolean; lowStockThreshold: number | null } | null> {
+  ): Promise<{
+    trackInventory: boolean
+    lowStockThreshold: number | null
+    hasActiveVariants: boolean
+  } | null> {
+    type Row = {
+      track_inventory: boolean
+      low_stock_threshold: number | null
+      has_active_variants: boolean
+    }
     const rows = where.lock
-      ? await tx.$queryRaw<{ track_inventory: boolean; low_stock_threshold: number | null }[]>`
-          SELECT track_inventory, low_stock_threshold FROM products
+      ? await tx.$queryRaw<Row[]>`
+          SELECT track_inventory, low_stock_threshold,
+            EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = products.id AND v.active) AS has_active_variants
+          FROM products
           WHERE id = ${where.productId} AND store_id = ${where.storeId}
           FOR KEY SHARE`
-      : await tx.$queryRaw<{ track_inventory: boolean; low_stock_threshold: number | null }[]>`
-          SELECT track_inventory, low_stock_threshold FROM products
+      : await tx.$queryRaw<Row[]>`
+          SELECT track_inventory, low_stock_threshold,
+            EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = products.id AND v.active) AS has_active_variants
+          FROM products
           WHERE id = ${where.productId} AND store_id = ${where.storeId}`
     const row = rows[0]
     return row === undefined
       ? null
-      : { trackInventory: row.track_inventory, lowStockThreshold: row.low_stock_threshold }
+      : {
+          trackInventory: row.track_inventory,
+          lowStockThreshold: row.low_stock_threshold,
+          hasActiveVariants: row.has_active_variants
+        }
   }
 
   private async readWarehouse(

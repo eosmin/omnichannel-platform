@@ -18,3 +18,6 @@ ALTER TABLE "inventory_movements" ALTER COLUMN "seq" SET NOT NULL;
 ALTER SEQUENCE "inventory_movements_seq_seq" OWNED BY "inventory_movements"."seq";
 
 CREATE UNIQUE INDEX "inventory_movements_seq_key" ON "inventory_movements"("seq");
+
+-- The kardex and the reconciliation read one item in one warehouse in the order of the ledger
+CREATE INDEX "inventory_movements_store_id_product_id_warehouse_id_varian_idx" ON "inventory_movements"("store_id", "product_id", "warehouse_id", "variant_id", "seq" DESC);

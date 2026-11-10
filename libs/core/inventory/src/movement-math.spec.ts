@@ -223,10 +223,10 @@ describe('replayLedger', () => {
     // A level that went negative while the store allowed it
     const rows = [row(Type.RECEIPT, 2, 100), row(Type.ADJUSTMENT_OUT, 5, null)]
     expect(replayLedger(rows)).toMatchObject({ onHand: -3, reserved: 0, valueCents: 0n })
-    // A release of more than was reserved never takes the reservation below zero
-    expect(replayLedger([row(Type.RESERVE, 1), row(Type.RELEASE, 3)])).toMatchObject({
-      reserved: 0
-    })
+    // What the rules would refuse (a transfer out of reserved stock) is applied as written, value included
+    expect(
+      replayLedger([row(Type.RECEIPT, 4, 100), row(Type.RESERVE, 4), row(Type.TRANSFER_OUT, 2)])
+    ).toMatchObject({ onHand: 2, reserved: 4, valueCents: 200n })
   })
 })
 

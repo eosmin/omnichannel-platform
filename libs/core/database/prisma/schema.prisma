@@ -854,6 +854,8 @@ model InventoryMovement {
   @@unique([storeId, idempotencyKey])
   @@index([productId, variantId, type, createdAt(sort: Desc)])
   @@index([storeId, warehouseId, createdAt(sort: Desc)])
+  // The kardex and the reconciliation of one item in one warehouse, in the order of the ledger
+  @@index([storeId, productId, warehouseId, variantId, seq(sort: Desc)])
   @@index([warehouseId])
   @@index([variantId])
   @@map("inventory_movements")
