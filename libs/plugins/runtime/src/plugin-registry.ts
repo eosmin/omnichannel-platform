@@ -116,16 +116,24 @@ export class PluginRegistry {
     }
     // The login ceiling trusts only the plugins that own a reserved id: the flag alone does not make one
     const official = options.official === true && isOfficialChannelId(id)
+    const oauth = snapshotChannelOAuth(
+      plugin,
+      id,
+      kind => this.oauthCeilingFor(kind, official),
+      this.oauthCallbackUrl
+    )
+    if (oauth?.redirectRefused === true) {
+      // The declared address is not logged: a plugin of a third party wrote it. The expected one is ours.
+      this.logger.error(
+        { pluginId: id, expected: this.oauthCallbackUrl ?? null },
+        'the login of a plugin declares a redirect address that is not the callback of this platform, so its login is off (API_URL must be the public address the provider is told)'
+      )
+    }
     this.entries.set(id, {
       plugin,
       capabilities: new Set(capabilities),
       manifest: snapshotConnectManifest(plugin, id, capabilities),
-      oauth: snapshotChannelOAuth(
-        plugin,
-        id,
-        kind => this.oauthCeilingFor(kind, official),
-        this.oauthCallbackUrl
-      ),
+      oauth,
       media: snapshotChannelMedia(plugin, id, capabilities),
       limits: snapshotChannelLimits(plugin, id),
       descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),

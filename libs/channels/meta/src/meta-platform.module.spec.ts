@@ -61,6 +61,27 @@ describe('MetaPlatformModule', () => {
     jest.dontMock('@platform/core/config/env')
   })
 
+  it('hands the address of the login from the env to the client, which the Meta login declares', async () => {
+    jest.resetModules()
+    const address = 'http://localhost:4000/api/v1/channels/oauth/callback'
+    jest.doMock('@platform/core/config/env', () => ({
+      envSource: () => ({
+        NODE_ENV: 'development',
+        META_APP_ID: '950161111253304',
+        META_APP_SECRET: 's'.repeat(32),
+        META_WEBHOOK_VERIFY_TOKEN: 'ver',
+        META_OAUTH_REDIRECT_URI: address
+      })
+    }))
+    const { MetaPlatformModule: Fresh } = await import('./meta-platform.module')
+    const { MetaGraphClient: FreshClient } = await import('./meta-graph.client')
+    const { MetaLogin } = await import('./meta-login')
+    const moduleRef = await Test.createTestingModule({ imports: [Fresh] }).compile()
+
+    expect(new MetaLogin('messenger', moduleRef.get(FreshClient)).redirectUri).toBe(address)
+    jest.dontMock('@platform/core/config/env')
+  })
+
   // The app secret is the key that forges every webhook: the plugins get the client, not the secret
   it('exports the client and not the config that holds the secret', () => {
     expect(Reflect.getMetadata('exports', MetaPlatformModule)).toEqual([MetaGraphClient])

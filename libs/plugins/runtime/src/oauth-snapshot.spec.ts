@@ -164,8 +164,9 @@ describe('the address a login sends the browser back to', () => {
     ).toBeNull()
   })
 
-  // The code of a person is worth a token: every address that is not the callback exactly is refused at
-  // registration, whoever declared it and however close it looks
+  // The code of a person is worth a token: every address that is not the callback exactly turns the login of
+  // that plugin off, whoever declared it and however close it looks, and says so (a configuration mistake must
+  // not stop the platform from booting)
   it.each([
     ['another site', 'https://evil.example/api/v1/channels/oauth/callback'],
     ['a look-alike host', 'https://api.example.test.evil.example/api/v1/channels/oauth/callback'],
@@ -182,16 +183,45 @@ describe('the address a login sends the browser back to', () => {
     ['a fragment', `${CALLBACK}#x`],
     ['a trailing slash', `${CALLBACK}/`],
     ['an upper case host', 'https://API.example.test/api/v1/channels/oauth/callback'],
-    ['nothing at all (not even null)', undefined],
     ['text that is not an address', 'callback'],
+    ['an empty text', '']
+  ])('turns the login off when the address has %s', (_name, redirectUri) => {
+    const snapshot = snapshotChannelOAuth(
+      plugin(declare(redirectUri)),
+      'messenger',
+      () => null,
+      CALLBACK
+    )
+    expect(snapshot?.redirectUri).toBeNull()
+    expect(snapshot?.redirectRefused).toBe(true)
+  })
+
+  it.each([
+    ['nothing at all (not even null)', undefined],
     ['a value that is not text', 7]
-  ])('is refused when it is %s', (_name, redirectUri) => {
+  ])('refuses a declaration whose address is %s', (_name, redirectUri) => {
     expect(refuses(declare(redirectUri))).toContain('redirect address')
   })
 
-  it('is refused when the platform does not know its own address, unless the login is off', () => {
-    expect(() =>
-      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', () => null, undefined)
-    ).toThrow('redirect address')
+  it('turns the login off when the platform does not know its own address, and says so', () => {
+    const snapshot = snapshotChannelOAuth(
+      plugin(declare(CALLBACK)),
+      'messenger',
+      () => null,
+      undefined
+    )
+    expect(snapshot?.redirectUri).toBeNull()
+    expect(snapshot?.redirectRefused).toBe(true)
+  })
+
+  it('does not say it refused anything for a login that is off or exact', () => {
+    expect(
+      snapshotChannelOAuth(plugin(declare(CALLBACK)), 'messenger', () => null, CALLBACK)
+        ?.redirectRefused
+    ).toBe(false)
+    expect(
+      snapshotChannelOAuth(plugin(declare(null)), 'messenger', () => null, CALLBACK)
+        ?.redirectRefused
+    ).toBe(false)
   })
 })

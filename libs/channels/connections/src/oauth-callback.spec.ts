@@ -1,3 +1,5 @@
+import { parseMetaEnv } from '@platform/channels/meta'
+
 import { oauthCallbackUrlOf } from './oauth-callback'
 
 describe('the callback address of the login of this platform', () => {
@@ -22,4 +24,25 @@ describe('the callback address of the login of this platform', () => {
       expect(oauthCallbackUrlOf(value)).toBeUndefined()
     }
   )
+
+  // The registry holds a login to this address and the Meta block of the environment checks its own variable
+  // by shape: the address this platform composes must be one the Meta block accepts, or a valid environment
+  // would turn the login off
+  it.each([
+    'https://api.example.com',
+    'https://api.example.com/',
+    'http://localhost:4000',
+    'http://127.0.0.1:8080/',
+    'https://api.example.com:8443'
+  ])('is accepted by the Meta block of the environment for API_URL %s', apiUrl => {
+    const callback = oauthCallbackUrlOf(apiUrl)
+    const source = {
+      NODE_ENV: apiUrl.startsWith('https') ? 'production' : 'development',
+      META_APP_ID: '950161111253304',
+      META_APP_SECRET: 's'.repeat(32),
+      META_WEBHOOK_VERIFY_TOKEN: 'v'.repeat(32),
+      META_OAUTH_REDIRECT_URI: callback
+    }
+    expect(parseMetaEnv(source).META_OAUTH_REDIRECT_URI).toBe(callback)
+  })
 })
