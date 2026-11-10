@@ -2,7 +2,7 @@ name: Web stack
 description: >-
   Everything a job that drives the built web app in a browser needs, except its services (a composite
   action cannot declare them): Node and pnpm, the dependencies, a migrated database and Chromium.
-  Used by e2e-tests and lighthouse. The job sets DIRECT_DATABASE_URL, DB_APP_PASSWORD and
+  Used by the slices of the browser suite (`e2e-shards`) and lighthouse. The job sets DIRECT_DATABASE_URL, DB_APP_PASSWORD and
   DB_WORKER_PASSWORD, and checks out the repository first, or this file is not found.
 
 runs:
