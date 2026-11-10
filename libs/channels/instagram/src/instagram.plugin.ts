@@ -103,7 +103,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
       schema: pageSchema
     })
     if (!MetaMessaging.RECIPIENT_ID_PATTERN.test(page.id)) {
-      throw refused(PluginChecks.PAGE_ID_NOT_NUMERIC)
+      throw refused(PluginChecks.PARENT_ID_NOT_NUMERIC)
     }
     const linked = page[InstagramApi.PAGE_ACCOUNT_KEY]
     if (linked === undefined || linked === null) throw refused(PluginChecks.ACCOUNT_NOT_FOUND)
@@ -134,7 +134,7 @@ export class InstagramPlugin extends MetaChannelPlugin {
       typeof expected !== 'string' ||
       account.metadata?.[InstagramApi.METADATA_PAGE_ID] !== expected
     ) {
-      throw refused(PluginChecks.PAGE_ID_MISMATCH)
+      throw refused(PluginChecks.PARENT_ID_MISMATCH)
     }
   }
 }
