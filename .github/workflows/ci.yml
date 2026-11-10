@@ -218,6 +218,12 @@ jobs:
   # own so that it is seen on its own in a pull request; it also needs SeaweedFS, for the
   # media suites (Step 3.4).
   security-tests:
+    name: security-tests (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1/2 and 2/2 are one shard of jest each in a job of their own; all is today's one job, for the baseline
+        shard: ['1/2', '2/2', 'all']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -267,7 +273,24 @@ jobs:
       - name: Migrate an empty database and give the roles their passwords
         run: pnpm db:migrate
       - name: Tenant isolation suite and endpoint specs
-        run: pnpm test:security
+        env:
+          SECURITY_SHARD: ${{ matrix.shard == 'all' && '' || matrix.shard }}
+        run: |
+          # The memory of the runner and of the node processes every two seconds, to know the peak of each shard
+          (while true; do
+            echo "$(date +%s) $(ps -eo rss,comm | awk '$2 ~ /node/ {s+=$1} END {print int(s/1024)}') $(free -m | awk '/Mem:/ {print $3}')"
+            sleep 2
+          done > mem.log) &
+          sampler=$!
+          start=$(date +%s)
+          status=0
+          pnpm test:security || status=$?
+          kill "$sampler" || true
+          echo "### security-tests (${{ matrix.shard }}): $(( $(date +%s) - start )) s of tests, exit $status" | tee -a "$GITHUB_STEP_SUMMARY"
+          awk '{ if ($2 > n) n = $2; if ($3 > u) u = $3 } END { printf "peak of the node processes: %d MB, peak of the runner in use: %d MB\n", n, u }' mem.log | tee -a "$GITHUB_STEP_SUMMARY"
+          free -m | tee -a "$GITHUB_STEP_SUMMARY"
+          (sudo dmesg 2>/dev/null | grep -iE 'out of memory|killed process' || echo 'no OOM kill in dmesg') | tee -a "$GITHUB_STEP_SUMMARY"
+          exit $status
 
   # Builds the image of each service and scans it. A critical or high vulnerability that has a fix
   # fails the job; the ones nobody has fixed yet do not.
