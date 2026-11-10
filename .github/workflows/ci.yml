@@ -280,18 +280,22 @@ jobs:
         env:
           SECURITY_SHARD: ${{ matrix.shard }}
         run: |
-          # The peak of memory used, in the summary: the suite once ran out of heap, and nothing measured it
-          (while sleep 3; do free -m | awk '/^Mem:/ {print $3}'; done > "$RUNNER_TEMP/memory.txt") &
+          # The peak of memory used on the whole runner (jest, services and tooling), in the summary: the suite
+          # once ran out of heap and nothing measured it. A trap writes it even if the step is cancelled
+          memory="$RUNNER_TEMP/memory.txt"
+          (while sleep 3; do free -m | awk '/^Mem:/ {print $3}'; done > "$memory") &
           sampler=$!
-          status=0
-          pnpm test:security || status=$?
-          kill "$sampler" 2>/dev/null || true
-          echo "security shard ${{ matrix.shard }}: peak memory used $(sort -n "$RUNNER_TEMP/memory.txt" | tail -1) MB" >> "$GITHUB_STEP_SUMMARY"
-          exit $status
+          report() {
+            kill "$sampler" 2>/dev/null || true
+            peak=$(sort -n "$memory" | tail -1)
+            echo "security shard ${{ matrix.shard }}: peak memory used on the runner ${peak:-unknown} MB" >> "$GITHUB_STEP_SUMMARY"
+          }
+          trap report EXIT
+          pnpm test:security
 
   # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
   # happened upstream (`always()`): a shard that failed, was cancelled or was skipped can never read as a pass,
-  # and only `success` of both is a green.
+  # and only `success` of the matrix (every shard) is a green.
   security-tests:
     needs: [security-shards]
     if: always()
