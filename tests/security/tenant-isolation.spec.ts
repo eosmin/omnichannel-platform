@@ -790,6 +790,37 @@ describe('Tenant isolation', () => {
       expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
     })
 
+    it('does not attach a file to a product of another store, on either route, and writes no row', async () => {
+      const foreignProduct = await owner.product.create({
+        data: { storeId: ctx.storeB.id, name: `${prefix}-foreign-product`, priceCents: 100 },
+        select: { id: true }
+      })
+      const productBody = { ...uploadBody, purpose: 'product', parentId: foreignProduct.id }
+      const signed = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.uploadUrl)
+        .send(productBody)
+      const missing = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.uploadUrl)
+        .send({ ...productBody, parentId: randomUUID() })
+      // Another store's product and one that does not exist are the same answer: no probing of ids
+      expect(signed.status).toBe(404)
+      expect(missing.status).toBe(404)
+      expect((signed.body as { error: unknown }).error).toEqual(
+        (missing.body as { error: unknown }).error
+      )
+      const mediaId = randomUUID()
+      const confirmed = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.media.confirmUpload)
+        .send({
+          ...productBody,
+          mediaId,
+          key: StorageKeys.messageUpload(ctx.storeA.id, mediaId, 'photo.png')
+        })
+      expect(confirmed.status).toBe(404)
+      expect(await owner.media.count({ where: { productId: foreignProduct.id } })).toBe(0)
+      expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
+    })
+
     it('does not let the id of a media of another store be taken over from this one', async () => {
       const row = await owner.media.create({
         data: {
