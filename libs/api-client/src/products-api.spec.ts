@@ -48,6 +48,42 @@ const product = {
 const bodyOf = (call: [string, RequestInit] | undefined): unknown =>
   JSON.parse((call?.[1].body as string | undefined) ?? 'null')
 
+describe('an answer without cost keys (a caller without the cost permission)', () => {
+  const withoutCost: Partial<typeof product> = { ...product }
+  delete withoutCost.costCents
+
+  it('reads the missing cost of a product, of a variant and its effective cost as null', async () => {
+    const variant = {
+      id: 'v1',
+      productId: 'p1',
+      name: '42',
+      sku: null,
+      priceCents: null,
+      effectivePriceCents: 1500,
+      attributes: {},
+      active: true,
+      createdAt: '2026-11-10T10:00:00.000Z'
+    }
+    const { client } = setup(
+      json(200, { data: [{ ...withoutCost, variantCount: 1 }], nextCursor: null, hasMore: false })
+    )
+    const page = await fetchProducts(client, 's1', {})
+    expect(page.data[0]?.costCents).toBeNull()
+
+    const created = setup(json(201, { ...withoutCost, variants: [variant] }))
+    const view = await createProduct(created.client, 's1', { name: 'Shoe', priceCents: 1500 })
+    expect(view.costCents).toBeNull()
+    expect(view.variants[0]?.costCents).toBeNull()
+    expect(view.variants[0]?.effectiveCostCents).toBeNull()
+  })
+
+  it('still reads a cost that is there', async () => {
+    const { client } = setup(json(201, { ...product, costCents: 700, variants: [] }))
+    const view = await createProduct(client, 's1', { name: 'Shoe', priceCents: 1500 })
+    expect(view.costCents).toBe(700)
+  })
+})
+
 describe('fetchProducts', () => {
   it('asks for the filter and the cursor it was given and for nothing else', async () => {
     const { client, fetchImpl } = setup(

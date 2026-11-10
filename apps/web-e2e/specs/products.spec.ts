@@ -5,7 +5,12 @@ import { type BrowserContext, type Page } from '@playwright/test'
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { markMediaClean, productNamed, storeIdNamed } from '../support/database'
+import {
+  addCatalogUserWithoutCost,
+  markMediaClean,
+  productNamed,
+  storeIdNamed
+} from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -141,7 +146,7 @@ test.describe('the catalog of products', () => {
     await expect(dialog.getByRole('row').filter({ hasText: 'Size 42' })).toContainText('$30.00')
 
     const stored = await productNamed(name)
-    expect(stored?.variants).toEqual([{ name: 'Size 42', priceCents: 3000 }])
+    expect(stored?.variants).toEqual([{ name: 'Size 42', priceCents: 3000, costCents: null }])
   })
 
   test('finds the product by its name and by the name of one of its variants', async () => {
@@ -265,5 +270,114 @@ test.describe('the catalog of products', () => {
     await page.getByRole('button', { name: PRODUCTS.delete.confirm }).click()
     await expect(page.getByText(PRODUCTS.delete.deleted)).toBeVisible()
     expect(await productNamed(lonely)).toBeNull()
+  })
+})
+
+test.describe('the cost of a product', () => {
+  test.describe.configure({ mode: 'serial' })
+
+  const NO_COST = `no-cost-${randomUUID().slice(0, 8)}@test.com`
+  const name = uniqueName('Costed boot')
+  let storeId: string
+  let removeUser: () => Promise<void>
+  let adminContext: BrowserContext
+  let admin: Page
+
+  test.beforeAll(async ({ browser }) => {
+    storeId = await storeIdNamed(FIRST_STORE)
+    removeUser = await addCatalogUserWithoutCost(storeId, NO_COST)
+    adminContext = await browser.newContext({ locale: 'en' })
+    await reachServicesFromOwnAddress(adminContext)
+    admin = await adminContext.newPage()
+    await signIn(admin, ADMIN)
+  })
+  test.afterAll(async () => {
+    await adminContext.close()
+    await removeUser()
+  })
+
+  const sheetOf = (page: Page) => page.getByRole('dialog', { name: PRODUCTS.sheet.editTitle })
+
+  async function open(page: Page): Promise<void> {
+    await page.goto(AppPaths.store.products(storeId))
+    await expect(page.getByRole('heading', { name: PRODUCTS.title })).toBeVisible()
+    await page.getByRole('button', { name }).click()
+    await expect(sheetOf(page)).toBeVisible()
+  }
+
+  test('who holds the permission sees the cost of the product and of its variants and sets it', async () => {
+    await admin.goto(AppPaths.store.products(storeId))
+    await admin.getByRole('button', { name: PRODUCTS.newProduct }).click()
+    const dialog = admin.getByRole('dialog', { name: PRODUCTS.sheet.newTitle })
+    await dialog.getByLabel(PRODUCTS.form.name, { exact: true }).fill(name)
+    await dialog.getByLabel(PRODUCTS.form.price).fill('30')
+    await dialog.getByLabel(PRODUCTS.form.cost).fill('12.50')
+    await dialog.getByRole('button', { name: PRODUCTS.form.create }).click()
+    await expect(sheetOf(admin)).toBeVisible()
+    expect((await productNamed(name))?.costCents).toBe(1250)
+
+    const edit = sheetOf(admin)
+    await edit.getByRole('tab', { name: PRODUCTS.sheet.tabs.variants }).click()
+    await expect(
+      edit.getByRole('columnheader', { name: PRODUCTS.variants.columns.cost })
+    ).toBeVisible()
+    await edit.getByRole('button', { name: PRODUCTS.variants.add }).click()
+    await edit.getByLabel(PRODUCTS.variants.name).fill('Size 9')
+    await edit.getByRole('table').getByLabel(PRODUCTS.variants.columns.cost).fill('11')
+    await edit.getByRole('button', { name: PRODUCTS.variants.save }).click()
+    await expect(edit.getByRole('row').filter({ hasText: 'Size 9' })).toContainText('$11.00')
+    expect((await productNamed(name))?.variants).toEqual([
+      { name: 'Size 9', priceCents: null, costCents: 1100 }
+    ])
+  })
+
+  test('who does not hold it sees no cost anywhere and changing the price leaves the cost as it was', async ({
+    browser
+  }) => {
+    const context = await browser.newContext({ locale: 'en' })
+    try {
+      await reachServicesFromOwnAddress(context)
+      const page = await context.newPage()
+      await signIn(page, NO_COST)
+      await open(page)
+      const dialog = sheetOf(page)
+
+      // The details form has the price and no cost (nor the help text of the cost)
+      await expect(dialog.getByLabel(PRODUCTS.form.price)).toBeVisible()
+      await expect(dialog.getByLabel(PRODUCTS.form.cost)).toHaveCount(0)
+      await expect(dialog.getByText(PRODUCTS.form.costHelp)).toHaveCount(0)
+
+      await dialog.getByLabel(PRODUCTS.form.price).fill('31')
+      await dialog.getByRole('button', { name: PRODUCTS.form.save }).click()
+      await expect(page.getByText(PRODUCTS.form.saved)).toBeVisible()
+
+      // The variants table has no cost column and no cost to type, and a new variant carries none
+      await dialog.getByRole('tab', { name: PRODUCTS.sheet.tabs.variants }).click()
+      await expect(
+        dialog.getByRole('columnheader', { name: PRODUCTS.variants.columns.price })
+      ).toBeVisible()
+      await expect(
+        dialog.getByRole('columnheader', { name: PRODUCTS.variants.columns.cost })
+      ).toHaveCount(0)
+      await expect(dialog.getByText('$11.00')).toHaveCount(0)
+      await dialog.getByRole('button', { name: PRODUCTS.variants.add }).click()
+      await expect(
+        dialog.getByRole('table').getByLabel(PRODUCTS.variants.columns.cost)
+      ).toHaveCount(0)
+      await dialog.getByLabel(PRODUCTS.variants.name).fill('Size 10')
+      await dialog.getByRole('button', { name: PRODUCTS.variants.save }).click()
+      await expect(dialog.getByRole('row').filter({ hasText: 'Size 10' })).toBeVisible()
+
+      // What the person could not see was not overwritten
+      const stored = await productNamed(name)
+      expect(stored?.priceCents).toBe(3100)
+      expect(stored?.costCents).toBe(1250)
+      expect(stored?.variants).toEqual([
+        { name: 'Size 9', priceCents: null, costCents: 1100 },
+        { name: 'Size 10', priceCents: null, costCents: null }
+      ])
+    } finally {
+      await context.close()
+    }
   })
 })

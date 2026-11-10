@@ -4,6 +4,15 @@ import { ApiRoutes } from '@platform/core/api'
 
 import type { ApiClient } from './api-client'
 
+// The api drops the cost keys for a caller without `products:view_cost` (PR A2), so a missing key reads as
+// null. The schema cannot know the permission: the screen decides whether to draw cost from the permission,
+// never from the value.
+const costSchema = z
+  .number()
+  .int()
+  .nullish()
+  .transform(value => value ?? null)
+
 // What GET /products and /products/:id answer. Money is whole USD cents (never a float); a variant with
 // no price of its own has `priceCents: null` and sells at the price of its product.
 const variantSchema = z.object({
@@ -13,8 +22,8 @@ const variantSchema = z.object({
   sku: z.string().nullable(),
   priceCents: z.number().int().nullable(),
   effectivePriceCents: z.number().int(),
-  costCents: z.number().int().nullable(),
-  effectiveCostCents: z.number().int().nullable(),
+  costCents: costSchema,
+  effectiveCostCents: costSchema,
   attributes: z.record(z.string(), z.string()),
   active: z.boolean(),
   createdAt: z.string()
@@ -26,7 +35,7 @@ const productFields = {
   name: z.string(),
   description: z.string().nullable(),
   priceCents: z.number().int(),
-  costCents: z.number().int().nullable(),
+  costCents: costSchema,
   sku: z.string().nullable(),
   imageMediaId: z.string().nullable(),
   trackInventory: z.boolean(),

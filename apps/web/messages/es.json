@@ -2553,6 +2553,7 @@
         "archive": "Archivar producto",
         "orderItems": "{count, plural, one {# línea de pedido} other {# líneas de pedido}}",
         "inventoryMovements": "{count, plural, one {# movimiento de inventario} other {# movimientos de inventario}}",
+        "inventoryLevels": "{count, plural, one {# nivel de stock} other {# niveles de stock}}",
         "media": "{count, plural, one {# imagen} other {# imágenes}}"
       }
     },
