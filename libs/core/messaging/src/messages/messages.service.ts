@@ -111,6 +111,10 @@ export interface ChannelFileLimits {
   // text. null for a plugin that is no longer registered, which holds nothing here (the plugin has the last word)
   text: ChannelLimitsView | null
 }
+// What a plain text holds on the channel of a conversation, from what the plugin declared; null when the channel
+// is not registered (the worker then holds the text to the general limit)
+export type ChannelTextLimitsOf = (channelType: string) => ChannelLimitsView | null
+
 export type ChannelFileLimitsOf = (
   channelType: string,
   messageType: OutboundMediaType
@@ -149,9 +153,18 @@ export class MessagesService {
     viewer: Viewer,
     rendered?: RenderedTemplate,
     supports?: ChannelSupportsFile,
-    limitsOf?: ChannelFileLimitsOf
+    limitsOf?: ChannelFileLimitsOf,
+    textLimitsOf?: ChannelTextLimitsOf
   ): Promise<CreatedMessage> {
-    const stored = await this.store(storeId, body, viewer, rendered, supports, limitsOf)
+    const stored = await this.store(
+      storeId,
+      body,
+      viewer,
+      rendered,
+      supports,
+      limitsOf,
+      textLimitsOf
+    )
     return { ...stored, message: await this.withQuote(storeId, stored.message, viewer) }
   }
 
@@ -161,7 +174,8 @@ export class MessagesService {
     viewer: Viewer,
     rendered?: RenderedTemplate,
     supports?: ChannelSupportsFile,
-    limitsOf?: ChannelFileLimitsOf
+    limitsOf?: ChannelFileLimitsOf,
+    textLimitsOf?: ChannelTextLimitsOf
   ): Promise<CreatedMessage> {
     const isNote = body.type === MessageType.INTERNAL_NOTE
     const isTemplate = body.type === MessageType.TEMPLATE
@@ -198,6 +212,16 @@ export class MessagesService {
           HttpStatusCodes.CONFLICT,
           { from, to: ConversationStatus.OPEN }
         )
+      }
+      // A plain text is held to what its channel holds BEFORE the message exists and before the window is asked (a text that can never go is not a closed window): the agent hears it at once,
+      // instead of reading a reply that the worker failed for good (a note never leaves the team)
+      if (body.type === MessageType.TEXT) {
+        const channel = await tx.conversation.findFirst({
+          where: { id: body.conversationId, storeId },
+          select: { channelType: true }
+        })
+        if (channel === null) throw resourceNotFound('conversation')
+        requireTextFits(textLimitsOf?.(channel.channelType) ?? null, body.content)
       }
       // Free text goes out only while the channel lets it; a note is the team's and has no window, and
       // a template is what the closed window leaves

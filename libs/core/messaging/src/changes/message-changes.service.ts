@@ -24,7 +24,9 @@ import {
   requireAnyPermission,
   type Viewer
 } from '../conversations/conversations.support'
+import { requireTextFits } from '../messages/caption-rules'
 import type { EditMessageBody } from '../messages/messages.schemas'
+import type { ChannelTextLimitsOf } from '../messages/messages.service'
 import { MESSAGE_SELECT, messageView, type MessageView } from '../messages/messages.views'
 import { OutboundQueue } from '../outbound/outbound-queue'
 
@@ -124,7 +126,8 @@ export class MessageChangesService {
     messageId: string,
     body: EditMessageBody,
     viewer: Viewer,
-    supportsEdit: ChannelSupports
+    supportsEdit: ChannelSupports,
+    textLimitsOf?: ChannelTextLimitsOf
   ): Promise<MessageView> {
     const conversationId = await this.conversationOf(storeId, messageId)
     return this.prisma.transaction(async tx => {
@@ -136,7 +139,16 @@ export class MessageChangesService {
       if (isNote(message)) {
         await this.editNote(tx, storeId, messageId, message, body, viewer)
       } else if (message.type === MessageType.TEXT.valueOf() && isReplyOfTeam(message)) {
-        await this.requestEdit(tx, storeId, messageId, message, body, viewer, supportsEdit)
+        await this.requestEdit(
+          tx,
+          storeId,
+          messageId,
+          message,
+          body,
+          viewer,
+          supportsEdit,
+          textLimitsOf
+        )
       } else {
         throw resourceConflict('only a note or a reply of the team can be edited')
       }
@@ -420,7 +432,8 @@ export class MessageChangesService {
     message: Target,
     body: EditMessageBody,
     viewer: Viewer,
-    supportsEdit: ChannelSupports
+    supportsEdit: ChannelSupports,
+    textLimitsOf?: ChannelTextLimitsOf
   ): Promise<void> {
     requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
     // Nobody edits the message of another person: a correction is a new message
@@ -433,6 +446,8 @@ export class MessageChangesService {
       throw resourceConflict('an edit of this message is already on its way')
     }
     if (body.content === message.content) return
+    // The new text is held to what the channel holds before it is queued, like the first one
+    requireTextFits(textLimitsOf?.(message.conversation.channelType) ?? null, body.content)
     const version = message.version + 1
     await tx.message.update({
       where: { id: messageId },

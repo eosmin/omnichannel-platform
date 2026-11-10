@@ -98,7 +98,8 @@ export class MessagesController {
       viewer,
       rendered,
       (channel, capability) => this.registry.hasCapability(channel, capability),
-      channelFileLimits(this.registry, this.multiFileEnabled)
+      channelFileLimits(this.registry, this.multiFileEnabled),
+      channelType => this.registry.limitsOf(channelType)
     )
     if (!created) res.status(HttpStatusCodes.OK)
     return message
@@ -211,8 +212,13 @@ export class MessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Body(new ZodValidationPipe(editMessageSchema)) body: EditMessageBody
   ): Promise<MessageView> {
-    return this.changes.edit(store.id, messageId, body, viewerOf(user.id, held), channel =>
-      this.registry.hasCapability(channel, ChannelCapability.EDIT_MESSAGE)
+    return this.changes.edit(
+      store.id,
+      messageId,
+      body,
+      viewerOf(user.id, held),
+      channel => this.registry.hasCapability(channel, ChannelCapability.EDIT_MESSAGE),
+      channel => this.registry.limitsOf(channel)
     )
   }
 
