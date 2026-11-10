@@ -1038,7 +1038,7 @@ describe('The customers of a store', () => {
         storeId: ctx.storeA.id,
         customerId: customer.id,
         customerIdentityId: visitor.id,
-        channelType: ChannelType.WEB_WIDGET
+        channelType: ChannelIds.WEB_WIDGET
       })
 
       const detail = await asAdmin().get(ApiRoutes.customers.byId(customer.id))
