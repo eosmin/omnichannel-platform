@@ -26,7 +26,11 @@ export const ChannelCapability = {
   // The channel itself carries a different text under each file of a message (the caption of each
   // file). A channel that sends the text of a file as a message of its own does not declare it, and the
   // composer offers it only the one text of the message.
-  CAPTION_PER_FILE: 'caption_per_file'
+  CAPTION_PER_FILE: 'caption_per_file',
+  // The channel gives the id of each file its customer sends (the customer was told it when the message was
+  // taken), so the worker stores the file under that id instead of one derived from the message.
+  // The ids of the files of ONE message must be different (the worker takes a repeated id for a retry)
+  NAMES_INBOUND_FILES: 'names_inbound_files'
 } as const
 
 export type ChannelCapabilityType = (typeof ChannelCapability)[keyof typeof ChannelCapability]
