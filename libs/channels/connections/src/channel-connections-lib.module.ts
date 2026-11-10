@@ -21,14 +21,8 @@ import { ChannelTokenExpiryService } from './channel-token-expiry.service'
       // The env is imported when the provider is built and not at the top of the file: a unit spec that
       // loads the barrel has no DATABASE_URL to parse (as MetaPlatformModule does)
       useFactory: async (): Promise<ChannelOAuthConfig> => {
-        const { env, envSource } = await import('@platform/core/config/env')
-        // The address of the login is a variable of the provider's block (`META_OAUTH_REDIRECT_URI`, checked by the
-        // plugin's schema): this lib is a channel lib and may read the one shared lib of its provider
-        const { META_ENV_KEYS, parseMetaEnv } = await import('@platform/channels/meta')
-        return {
-          redirectUri: parseMetaEnv(envSource(META_ENV_KEYS)).META_OAUTH_REDIRECT_URI,
-          frontendUrl: env.FRONTEND_URL
-        }
+        const { env } = await import('@platform/core/config/env')
+        return { frontendUrl: env.FRONTEND_URL }
       }
     }
   ],

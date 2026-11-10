@@ -50,6 +50,7 @@
       "@platform/channels/instagram": ["libs/channels/instagram/src/index.ts"],
       "@platform/channels/messenger": ["libs/channels/messenger/src/index.ts"],
       "@platform/channels/toy": ["libs/channels/toy/src/index.ts"],
+      "@platform/channels/oauth-callback": ["libs/channels/connections/src/oauth-callback.ts"],
       "@platform/channels/toy-env": ["libs/channels/toy/src/toy-env.ts"],
       "@platform/channels/meta": ["libs/channels/meta/src/index.ts"],
       "@platform/channels/web-widget": ["libs/channels/web-widget/src/index.ts"],

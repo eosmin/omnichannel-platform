@@ -40,6 +40,8 @@ export class MetaLogin implements ChannelOAuth {
   readonly dialogOrigin = MetaOAuth.DIALOG_ORIGIN
   readonly providerName = { es: 'Facebook', en: 'Facebook' }
   readonly assetIdPattern = MetaOAuth.ASSET_ID_PATTERN.source
+  // The address the app registered with Meta, read from its own block of the environment; null: the login is off
+  readonly redirectUri: string | null
   // Only Instagram reads the account a Page links: a Page without one cannot be connected for it
   readonly linkedAccount: ChannelOAuthLinkedAccount | null
 
@@ -48,6 +50,7 @@ export class MetaLogin implements ChannelOAuth {
     private readonly meta: MetaGraphClient
   ) {
     this.scopes = metaOAuthScopesFor(pluginId)
+    this.redirectUri = meta.oauthRedirectUri
     this.linkedAccount =
       pluginId === ChannelIds.INSTAGRAM
         ? {

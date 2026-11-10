@@ -45,6 +45,7 @@ export type ChannelOAuthSnapshot = {
   | 'linkedAccount'
   | 'assetIdPattern'
   | 'scopes'
+  | 'redirectUri'
   | 'authorizationUrl'
   | 'exchangeCode'
   | 'grantedScopes'
@@ -57,7 +58,8 @@ export type ChannelOAuthSnapshot = {
 // shape of a permission name, and nothing about the declaration is printed (it is not trusted).
 export function snapshotChannelOAuth(
   plugin: ChannelPlugin,
-  id: string
+  id: string,
+  callbackUrl: string | undefined
 ): ChannelOAuthSnapshot | null {
   const declared: unknown = plugin.oauth
   if (declared === undefined) return null
@@ -80,6 +82,13 @@ export function snapshotChannelOAuth(
     !scopes.every((scope: string) => SCOPES_BY_KIND[kind as string]?.includes(scope))
   ) {
     refuse('scopes list')
+  }
+  // The address the code of a person is sent to: none (the login is off) or exactly the callback of this
+  // platform, which the registry was given. Compared as a string, so a look-alike host, another port or scheme,
+  // a login in the address, another path, a query or a fragment are all a different string.
+  const redirectUri = block['redirectUri']
+  if (redirectUri !== null && (typeof redirectUri !== 'string' || redirectUri !== callbackUrl)) {
+    refuse('redirect address')
   }
   const dialogOrigin = block['dialogOrigin']
   if (!isDialogOrigin(dialogOrigin)) refuse('dialog address')
@@ -127,6 +136,7 @@ export function snapshotChannelOAuth(
     linkedAccount,
     assetIdPattern: assetIdPattern as string,
     kind: kind as ChannelOAuth['kind'],
+    redirectUri: redirectUri as string | null,
     scopes: Object.freeze([...(scopes as string[])]),
     authorizationUrl: functions.authorizationUrl as ChannelOAuth['authorizationUrl'],
     exchangeCode: functions.exchangeCode as ChannelOAuth['exchangeCode'],

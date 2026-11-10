@@ -412,6 +412,7 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
     linkedAccount: null,
     assetIdPattern: '^\\d{1,32}$',
     authorizationUrl: () => 'https://dialog.example/x',
+    redirectUri: null,
     exchangeCode: () => Promise.resolve('user-token'),
     grantedScopes: () => Promise.resolve(['pages_show_list']),
     listAssets: () => Promise.resolve([]),

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common'
 
-import { ChannelOAuthConfig } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -79,8 +78,7 @@ export class PluginInstallationsService {
     private readonly registry: PluginRegistry,
     private readonly connections: ChannelConnectionsService,
     private readonly publicApi: PublicApiConfig,
-    private readonly audit: AuditService,
-    private readonly login: ChannelOAuthConfig
+    private readonly audit: AuditService
   ) {}
 
   // The approved plugins this store may see: the official ones and the private ones the registry
@@ -257,8 +255,7 @@ export class PluginInstallationsService {
     if (manifest === null) return null
     const descriptor = publicDescriptorOf(this.registry.descriptorOf(pluginId))
     if (descriptor === null) return null
-    const hasLogin =
-      this.registry.oauthOf(pluginId) !== null && this.login.redirectUri !== undefined
+    const hasLogin = this.registry.oauthOf(pluginId)?.redirectUri != null
     return {
       connectFields: manifest.connectFields.map(field => ({ ...field })),
       descriptor,

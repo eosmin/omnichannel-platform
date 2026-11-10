@@ -40,7 +40,8 @@ const CONFLICT = 409
 const TOO_MANY = 429
 
 const FRONTEND = 'https://app.example.com'
-const REDIRECT_URI = 'https://api.example.com/api/v1/channels/oauth/callback'
+// The callback of this platform, as the registry of the app composed it from API_URL (set once the app is up)
+let REDIRECT_URI = ''
 const USER_TOKEN = 'USER-token-that-must-never-leave'
 const PAGE_TOKEN_PREFIX = 'PAGE-token-'
 const GOOD_CODE = 'good-code'
@@ -69,13 +70,11 @@ describe('"Connect with Facebook": the login of a channel', () => {
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp([], builder =>
-      builder.overrideProvider(ChannelOAuthConfig).useValue({
-        redirectUri: REDIRECT_URI,
-        frontendUrl: FRONTEND
-      })
+      builder.overrideProvider(ChannelOAuthConfig).useValue({ frontendUrl: FRONTEND })
     )
     ctx = await seedTestContext(owner, app, prefix)
     registry = app.get(PluginRegistry, { strict: false })
+    REDIRECT_URI = registry.oauthCallbackUrl ?? ''
     redis = app.get<Redis>(REDIS_CLIENT, { strict: false })
     otherAdminA = await createActor(owner, app, {
       prefix,
@@ -114,6 +113,7 @@ describe('"Connect with Facebook": the login of a channel', () => {
       linkedAccount: null,
       assetIdPattern: '^\\d{1,32}$',
       scopes: ['pages_show_list', 'pages_messaging'],
+      redirectUri: REDIRECT_URI,
       authorizationUrl: ({ state, redirectUri }) =>
         `https://dialog.example/oauth?state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,
       exchangeCode: ctxIn => {

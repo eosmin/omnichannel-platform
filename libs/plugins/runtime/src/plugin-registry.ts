@@ -87,7 +87,12 @@ interface Entry {
 export class PluginRegistry {
   private readonly entries = new Map<string, Entry>()
 
-  constructor(private readonly logger: PinoLogger) {
+  // `oauthCallbackUrl` is the public address of this platform's login callback, the one address a login may send
+  // the browser back to; unset where the process does not know it (a login then has to say it is off)
+  constructor(
+    private readonly logger: PinoLogger,
+    readonly oauthCallbackUrl?: string
+  ) {
     // Not @InjectPinoLogger(name): see ProcessorSupport
     this.logger.setContext(PluginRegistry.name)
   }
@@ -111,7 +116,7 @@ export class PluginRegistry {
       plugin,
       capabilities: new Set(capabilities),
       manifest: snapshotConnectManifest(plugin, id, capabilities),
-      oauth: snapshotChannelOAuth(plugin, id),
+      oauth: snapshotChannelOAuth(plugin, id, this.oauthCallbackUrl),
       media: snapshotChannelMedia(plugin, id, capabilities),
       limits: snapshotChannelLimits(plugin, id),
       descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),

@@ -23,6 +23,7 @@ function login(overrides: Record<string, unknown> = {}): ChannelOAuth {
   return {
     kind: ChannelOAuthKinds.META_FACEBOOK_LOGIN,
     scopes: ['pages_show_list'],
+    redirectUri: null,
     dialogOrigin: 'https://login.acme.test',
     providerName: { es: 'Acme', en: 'Acme' },
     linkedAccount: null,

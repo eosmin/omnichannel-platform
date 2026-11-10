@@ -72,10 +72,15 @@ const asUser = (answer: unknown): Handler => {
     bearer(init) === `Bearer ${USER_TOKEN}` ? json(200, answer) : graphError(401, 190)
 }
 
-function login(pluginId: string = ChannelIds.INSTAGRAM, appId: string | null = '950161111253304') {
+function login(
+  pluginId: string = ChannelIds.INSTAGRAM,
+  appId: string | null = '950161111253304',
+  oauthRedirectUri?: string
+) {
   const client = new MetaGraphClient({
     appSecret: 'the-app-secret-of-32-characters!!',
     appId: appId ?? undefined,
+    oauthRedirectUri,
     verifyToken: 'v',
     graphVersion: 'v23.0'
   })
@@ -726,6 +731,14 @@ describe('MetaLogin', () => {
       expect(login(ChannelIds.INSTAGRAM).scopes).toHaveLength(6)
       expect(login(ChannelIds.MESSENGER).scopes).toHaveLength(4)
       expect(login().kind).toBe('meta-facebook-login')
+    })
+  })
+
+  describe('the address the dialog sends the browser back to', () => {
+    it('is the one the app config holds, and none where the login is off', () => {
+      const address = 'https://api.example.test/api/v1/channels/oauth/callback'
+      expect(login(ChannelIds.MESSENGER, undefined, address).redirectUri).toBe(address)
+      expect(login(ChannelIds.MESSENGER).redirectUri).toBeNull()
     })
   })
 })
