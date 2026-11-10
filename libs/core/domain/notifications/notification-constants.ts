@@ -204,7 +204,9 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
 // only removes its types from this list.
 export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = new Set([
   ...NotificationGroupTypes[ORDERS],
-  ...NotificationGroupTypes[INVENTORY],
+  // `inventory.low` has an emitter since Step 4.2 PR C; the transfer and the count wait for Steps 4.5 and 4.6
+  NotificationTypes.TRANSFER_DISPATCHED,
+  NotificationTypes.COUNT_AWAITING_APPLY,
   ...NotificationGroupTypes[SHIPPING],
   NotificationTypes.WEBHOOK_AUTO_DISABLED,
   NotificationTypes.PLUGIN_ERROR

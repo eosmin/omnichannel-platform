@@ -10,6 +10,7 @@ type ProcessorJob = Parameters<HeavyProcessingProcessor['process']>[0]
 
 describe('HeavyProcessingProcessor', () => {
   const fetch = jest.fn().mockResolvedValue(undefined)
+  const reconcileStore = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -18,7 +19,8 @@ describe('HeavyProcessingProcessor', () => {
     support,
     {} as never, // the pipeline is not what is tested
     { fetch } as never, // the inbound fetcher: what it is handed is what is tested
-    {} as never // the origin fetcher is not what is tested
+    {} as never, // the origin fetcher is not what is tested
+    { reconcileStore } as never // the reconciler of the stock: what it is handed is what is tested
   )
 
   const base = {
@@ -40,7 +42,10 @@ describe('HeavyProcessingProcessor', () => {
       opts: { attempts: 5 }
     } as unknown as ProcessorJob)
 
-  beforeEach(() => fetch.mockClear())
+  beforeEach(() => {
+    fetch.mockClear()
+    reconcileStore.mockClear()
+  })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
     const data = {
@@ -67,5 +72,32 @@ describe('HeavyProcessingProcessor', () => {
   ])('refuses for good a job with %s', async (_name, data) => {
     await expect(run(data)).rejects.toBeInstanceOf(UnrecoverableError)
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  describe('the reconciliation of the stock', () => {
+    const STORE_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const reconcile = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.RECONCILE_INVENTORY,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('reconciles the store the job names, and fetches nothing', async () => {
+      await reconcile({ storeId: STORE_ID, correlationId: 'c' })
+
+      expect(reconcileStore).toHaveBeenCalledWith(STORE_ID)
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no store', {}],
+      ['a store that is not an id', { storeId: 'all' }],
+      ['a store that is not text', { storeId: 7 }]
+    ])('refuses for good a job with %s, and reconciles nothing', async (_name, data) => {
+      await expect(reconcile(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(reconcileStore).not.toHaveBeenCalled()
+    })
   })
 })

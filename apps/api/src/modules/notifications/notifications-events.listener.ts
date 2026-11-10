@@ -3,13 +3,15 @@ import { OnEvent } from '@nestjs/event-emitter'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
+import { Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import {
   AppPaths,
   AuthorType,
   ConversationStatus,
   ConversationStatusReasons,
-  MembershipStatus
+  MembershipStatus,
+  ProductResourceTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -18,6 +20,7 @@ import {
   type ConversationSnoozeExpiredPayload,
   type ExportSettledPayload,
   Events,
+  type InventoryLowPayload,
   type MessageChangedPayload,
   type MessageMentionPayload,
   type MessageReceivedPayload
@@ -226,6 +229,36 @@ export class NotificationsEventsListener {
       this.logger.error(
         { conversationId, type, err: String(error) },
         'a conversation notification could not be sent'
+      )
+    }
+  }
+
+  // The available stock of a product fell to its threshold or under it (TDD_16 §4.4). The engine raises the event once for
+  // each downward crossing, after the commit, so this tells once too. The members who may see the stock are found now, not
+  // when the movement happened, and the product is read under the store of the event: an id of another store tells nobody.
+  @OnEvent(Events.INVENTORY_LOW)
+  async onInventoryLow(payload: InventoryLowPayload): Promise<void> {
+    const { storeId, productId, available, threshold } = payload
+    try {
+      const product = await this.prisma.client.product.findFirst({
+        where: { id: productId, storeId },
+        select: { name: true }
+      })
+      if (product === null) return
+      const name = textForParams(product.name)
+      await this.notifications.sendToStore({
+        storeId,
+        type: NotificationTypes.INVENTORY_LOW,
+        params: { ...(name === null ? {} : { product: name }), available, threshold },
+        resourceType: ProductResourceTypes.PRODUCT,
+        resourceId: productId,
+        actionPath: AppPaths.store.products(storeId),
+        requiredPermission: Permissions.INVENTORY_VIEW
+      })
+    } catch (error) {
+      this.logger.error(
+        { productId, err: String(error) },
+        'a low stock warning could not be notified'
       )
     }
   }

@@ -7,13 +7,16 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
+  InventoryAdjustmentReason,
   InventoryLimits,
+  InventoryMovementType,
   WarehouseConflicts,
   WarehouseLimits,
   WarehouseResourceTypes,
   WarehouseStockBlocks
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { InventoryService } from '@platform/core/inventory'
 
 import { createInventoryLevel, createProduct, createWarehouse, linkWarehouse } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -770,5 +773,114 @@ describe('The warehouses of an organization', () => {
     const response = await asAdmin().get(ApiRoutes.warehouses.byId(other.id))
 
     expect(response.status).toBe(NOT_FOUND)
+  })
+  // The routes against the engine, both real: a movement and the switch-off (or the unlinking) of the warehouse start
+  // together, and whoever wins, the warehouse is never left switched off or unlinked with units in it (TDD_16 §4.7). Each
+  // round has a warehouse of its own; the outcome of a round is one of the two orders, never a mix.
+  describe('a warehouse switched off or unlinked while stock moves in it', () => {
+    const ROUNDS = 12
+    const key = (): string => `${prefix}-${randomUUID()}`
+    // Made by the owner, not through the api: the rate limit of the api counts the requests of the whole suite, and
+    // every round needs only the one request that is being raced
+    async function aLinkedWarehouse() {
+      const warehouse = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      await linkWarehouse(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        warehouseId: warehouse.id
+      })
+      return warehouse
+    }
+
+    it('never ends switched off with units in it when a receipt arrives at the same moment', async () => {
+      const inventory = app.get(InventoryService, { strict: false })
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const body = await aLinkedWarehouse()
+        const product = await createProduct(owner, { storeId: ctx.storeA.id })
+
+        const [off, receipt] = await Promise.allSettled([
+          asAdmin().patch(ApiRoutes.warehouses.byId(body.id)).send({ active: false }),
+          inventory.move({
+            storeId: ctx.storeA.id,
+            productId: product.id,
+            warehouseId: body.id,
+            type: InventoryMovementType.RECEIPT,
+            quantity: 2,
+            reason: InventoryAdjustmentReason.FOUND,
+            idempotencyKey: key()
+          })
+        ])
+
+        const row = await owner.warehouse.findUniqueOrThrow({ where: { id: body.id } })
+        const units = await owner.inventoryLevel.aggregate({
+          where: { warehouseId: body.id },
+          _sum: { onHand: true, reserved: true }
+        })
+        const held = (units._sum.onHand ?? 0) + (units._sum.reserved ?? 0)
+        expect(off.status).toBe('fulfilled')
+        const offStatus = off.status === 'fulfilled' ? off.value.status : 0
+        // Only the two orders of the race are answers: a 429 or a 500 is a failure of the test, not a third order
+        expect([OK, CONFLICT]).toContain(offStatus)
+        if (offStatus === OK) {
+          // Switched off first: the receipt was refused and nothing came in
+          expect(receipt).toMatchObject({
+            status: 'rejected',
+            reason: { code: ErrorCodes.INVENTORY_WAREHOUSE_INACTIVE }
+          })
+          expect([row.active, held]).toEqual([false, 0])
+        } else {
+          // The receipt first: the switch-off saw the units and was refused
+          expect(off).toMatchObject({ status: 'fulfilled', value: { status: CONFLICT } })
+          expect(receipt.status).toBe('fulfilled')
+          expect([row.active, held]).toEqual([true, 2])
+        }
+      }
+    })
+
+    it('never ends unlinked with units reserved when a reservation arrives at the same moment', async () => {
+      const inventory = app.get(InventoryService, { strict: false })
+      for (let round = 0; round < ROUNDS; round += 1) {
+        const body = await aLinkedWarehouse()
+        const product = await createProduct(owner, { storeId: ctx.storeA.id })
+        await createInventoryLevel(owner, {
+          storeId: ctx.storeA.id,
+          productId: product.id,
+          warehouseId: body.id,
+          onHand: 5
+        })
+
+        const [unlink, reservation] = await Promise.allSettled([
+          asAdmin().put(ApiRoutes.warehouses.stores(body.id)).send({ stores: [] }),
+          inventory.reserve({
+            storeId: ctx.storeA.id,
+            productId: product.id,
+            warehouseId: body.id,
+            quantity: 1,
+            idempotencyKey: key()
+          })
+        ])
+
+        const linked = await owner.storeWarehouse.count({
+          where: { storeId: ctx.storeA.id, warehouseId: body.id }
+        })
+        const level = await owner.inventoryLevel.findFirstOrThrow({
+          where: { warehouseId: body.id, productId: product.id }
+        })
+        expect(unlink.status).toBe('fulfilled')
+        const unlinkStatus = unlink.status === 'fulfilled' ? unlink.value.status : 0
+        expect([OK, CONFLICT]).toContain(unlinkStatus)
+        if (unlinkStatus === OK) {
+          expect(reservation).toMatchObject({
+            status: 'rejected',
+            reason: { code: ErrorCodes.INVENTORY_WAREHOUSE_NOT_LINKED }
+          })
+          expect([linked, level.reserved]).toEqual([0, 0])
+        } else {
+          expect(unlink).toMatchObject({ status: 'fulfilled', value: { status: CONFLICT } })
+          expect(reservation.status).toBe('fulfilled')
+          expect([linked, level.reserved]).toEqual([1, 1])
+        }
+      }
+    })
   })
 })

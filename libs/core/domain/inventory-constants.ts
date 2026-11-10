@@ -60,7 +60,10 @@ export const InventoryLimits = {
   WAREHOUSE_NAME_MAX_LENGTH: 100,
   WAREHOUSE_CODE_MAX_LENGTH: 20,
   // One movement moves at most this many units: a typo of a zero too many is a 400 and not a million units
-  MAX_MOVEMENT_QUANTITY: 1_000_000
+  MAX_MOVEMENT_QUANTITY: 1_000_000,
+  // The daily reconciliation (TDD_16 §4.8) reads the levels of a store, and the stores, in pages of this many rows
+  RECONCILE_PAGE_SIZE: 200,
+  RECONCILE_STORES_PAGE_SIZE: 200
 } as const
 
 // The warehouse the owner bootstrap makes for an organization (and the dev fixtures use): a place for the stock of
