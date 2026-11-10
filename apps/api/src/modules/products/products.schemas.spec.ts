@@ -1,9 +1,10 @@
-import { ProductLimits } from '@platform/core/domain'
+import { ProductLimits, ProductSearchConfig } from '@platform/core/domain'
 
 import {
   createProductSchema,
   createVariantSchema,
   listProductsQuerySchema,
+  searchProductsQuerySchema,
   updateProductSchema,
   updateVariantSchema
 } from './products.schemas'
@@ -68,5 +69,31 @@ describe('the schemas of the catalog', () => {
     expect(createVariantSchema.safeParse({ name: 'x', attributes: { size: '' } }).success).toBe(
       false
     )
+  })
+
+  it('reads a search: the text trimmed, the limit and the archived flag with their defaults', () => {
+    expect(searchProductsQuerySchema.parse({ q: '  shoe ' })).toEqual({
+      q: 'shoe',
+      limit: ProductSearchConfig.DEFAULT_LIMIT,
+      includeArchived: false
+    })
+    expect(
+      searchProductsQuerySchema.parse({ q: 'a', limit: '3', includeArchived: 'true' })
+    ).toEqual({ q: 'a', limit: 3, includeArchived: true })
+    expect(searchProductsQuerySchema.parse({ q: 'a\u00a0\u00a0b  c' }).q).toBe('a b c')
+    // A short or empty text is a valid request (it answers an empty list), a missing one is not
+    expect(searchProductsQuerySchema.safeParse({ q: '' }).success).toBe(true)
+    expect(searchProductsQuerySchema.safeParse({}).success).toBe(false)
+  })
+
+  it('refuses a search that is too long, with a NUL, a limit out of range or a parameter it does not know', () => {
+    const parse = (query: object) => searchProductsQuerySchema.safeParse(query).success
+    expect(parse({ q: 'x'.repeat(ProductSearchConfig.MAX_QUERY_LENGTH) })).toBe(true)
+    expect(parse({ q: 'x'.repeat(ProductSearchConfig.MAX_QUERY_LENGTH + 1) })).toBe(false)
+    expect(parse({ q: 'a\0b' })).toBe(false)
+    expect(parse({ q: 'x'.repeat(ProductSearchConfig.MAX_QUERY_LENGTH * 2 + 1) })).toBe(false)
+    expect(parse({ q: 'ab', limit: '0' })).toBe(false)
+    expect(parse({ q: 'ab', limit: String(ProductSearchConfig.MAX_LIMIT + 1) })).toBe(false)
+    expect(parse({ q: 'ab', storeId: 'x' })).toBe(false)
   })
 })
