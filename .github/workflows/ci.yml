@@ -53,6 +53,7 @@ jobs:
           else
             pnpm exec nx run-many --targets=lint,type-check,build --all --parallel=3
           fi
+      - run: exit 1
 
   lint-and-types-checks:
     runs-on: ubuntu-latest
