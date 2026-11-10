@@ -227,7 +227,7 @@ jobs:
         # (`SECURITY_SHARD`, read by `tests/project.json`; empty runs all three, as `pnpm test:security` does on a laptop).
         # Jest cuts the sorted list of files into slices of the same size, so the weight of a slice is luck: with
         # two the heavy specs (team, realtime, conversations-performance, ~28 s each) ended up 184 s against 242 s
-        shard: ['1/3', '2/3', '3/3']
+        shard: ['1/4', '2/4', '3/4', '4/4']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -288,7 +288,8 @@ jobs:
           report() {
             kill "$sampler" 2>/dev/null || true
             peak=$(sort -n "$memory" | tail -1)
-            echo "security shard ${{ matrix.shard }}: peak memory used on the runner ${peak:-unknown} MB" >> "$GITHUB_STEP_SUMMARY"
+            line="security shard ${{ matrix.shard }}: peak memory used on the runner ${peak:-unknown} MB"
+            echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
           }
           trap report EXIT
           pnpm test:security
