@@ -474,6 +474,7 @@ describe('PluginRegistry and the login of a channel (Step 7.8)', () => {
       { setContext: jest.fn(), info: jest.fn() } as unknown as PinoLogger,
       callback
     )
+    registerOfficial(registry)
     const foreign = channel({
       id: 'telegram',
       oauth: { ...login, redirectUri: 'https://evil.example/api/v1/channels/oauth/callback' }
