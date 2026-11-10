@@ -1,9 +1,10 @@
 import type { Locator, Page } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
+import { MetaOAuthScopes } from '@platform/channels/meta-oauth-constants'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { TenantHeaders } from '@platform/core/auth'
-import { ChannelIds, MetaOAuthScopes } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
 import en from '../../web/messages/en.json' with { type: 'json' }

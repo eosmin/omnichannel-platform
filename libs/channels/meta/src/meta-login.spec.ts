@@ -1,9 +1,10 @@
-import { ChannelIds, MetaOAuth } from '@platform/core/domain'
+import { ChannelIds } from '@platform/core/domain'
 import { ChannelConnectFailureReasons, PluginChecks } from '@platform/core/errors'
 import { PluginError } from '@platform/plugins/sdk'
 
 import { MetaGraphClient } from './meta-graph.client'
 import { MetaLogin } from './meta-login'
+import { MetaOAuth } from './meta-oauth-constants'
 
 const USER_TOKEN = 'USER-token-value'
 const SHORT = 'SHORT-token-value'
@@ -725,7 +726,7 @@ describe('MetaLogin', () => {
     it('declares the scopes of its channel and a kind the core knows', () => {
       expect(login(ChannelIds.INSTAGRAM).scopes).toHaveLength(6)
       expect(login(ChannelIds.MESSENGER).scopes).toHaveLength(4)
-      expect(login().kind).toBe('meta-facebook-login')
+      expect(login().kind).toBe('authorization-code-with-assets')
     })
   })
 })

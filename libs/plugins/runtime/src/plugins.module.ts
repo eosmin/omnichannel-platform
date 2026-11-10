@@ -50,10 +50,13 @@ export class PluginsModule {
         const registry = new PluginRegistry(logger)
         // Only an instance of the exact class of an official list owns the official ids. The prototype
         // is read, not `constructor`, which an object can set to anything
-        for (const plugin of plugins) {
-          const official = OFFICIAL_CHANNEL_PLUGINS.some(
-            cls => Object.getPrototypeOf(plugin) === cls.prototype
-          )
+        const isOfficial = (plugin: ChannelPlugin): boolean =>
+          OFFICIAL_CHANNEL_PLUGINS.some(cls => Object.getPrototypeOf(plugin) === cls.prototype)
+        // The official ones first, whatever the order of the list: the login of any other plugin is held to what
+        // the official ones ask for, so they must be registered before it
+        const ordered = [...plugins.filter(isOfficial), ...plugins.filter(p => !isOfficial(p))]
+        for (const plugin of ordered) {
+          const official = isOfficial(plugin)
           registry.register(plugin, { official, fromCode: official })
         }
         // The toy channel of the suites, only in the composition of the apps and only when the environment turns it

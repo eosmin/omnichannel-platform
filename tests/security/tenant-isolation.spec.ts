@@ -1163,7 +1163,7 @@ describe('Tenant isolation', () => {
         buildChannelPlugin({
           id: LOGIN_PLUGIN,
           oauth: {
-            kind: 'meta-facebook-login',
+            kind: 'authorization-code-with-assets',
             dialogOrigin: 'https://dialog.example',
             providerName: { es: 'Ejemplo', en: 'Example' },
             linkedAccount: null,
