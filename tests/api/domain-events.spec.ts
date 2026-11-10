@@ -7,7 +7,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { RoleNames } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
-  ChannelType,
+  ChannelIds,
   ConversationStatus,
   ConversationStatusReasons,
   MessageType
@@ -486,7 +486,7 @@ describe('The domain events of the services', () => {
       const link = () =>
         asAdmin()
           .post(ApiRoutes.customers.identities(ana.id))
-          .send({ channelType: ChannelType.WHATSAPP, channelIdentity: '7444-0001' })
+          .send({ channelType: ChannelIds.WHATSAPP, channelIdentity: '7444-0001' })
 
       const first = await link()
       const again = await link()
@@ -499,7 +499,7 @@ describe('The domain events of the services', () => {
           storeId: ctx.storeA.id,
           customerId: ana.id,
           identityId: (first.body as { id: string }).id,
-          channelType: ChannelType.WHATSAPP
+          channelType: ChannelIds.WHATSAPP
         }
       ])
       expect(JSON.stringify(heard)).not.toContain('7444')

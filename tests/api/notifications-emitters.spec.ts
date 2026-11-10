@@ -11,7 +11,7 @@ import {
   AppPaths,
   AuthorType,
   ChannelConnectionStatus,
-  ChannelType,
+  ChannelIds,
   ConversationStatus,
   ConversationStatusReasons,
   DeliveryStatus,
@@ -353,7 +353,7 @@ describe('Notification emitters (QA Q2)', () => {
       conversationId,
       messageId: randomUUID(),
       customerId: randomUUID(),
-      channelType: ChannelType.INSTAGRAM,
+      channelType: ChannelIds.INSTAGRAM,
       authorType: AuthorType.CUSTOMER,
       receivedAt: new Date().toISOString(),
       visibility: { hidden: false, assignedTo }
@@ -416,7 +416,7 @@ describe('Notification emitters (QA Q2)', () => {
       conversationId,
       messageId: randomUUID(),
       customerId: randomUUID(),
-      channelType: ChannelType.INSTAGRAM,
+      channelType: ChannelIds.INSTAGRAM,
       authorType: overrides.authorType ?? AuthorType.CUSTOMER,
       contentPreview: 'hi',
       receivedAt: new Date().toISOString(),
@@ -752,7 +752,7 @@ describe('Notification emitters (QA Q2)', () => {
     async function connection(status: string) {
       const { id } = await createChannelConnection(owner, {
         storeId: ctx.storeA.id,
-        channelType: ChannelType.INSTAGRAM
+        channelType: ChannelIds.INSTAGRAM
       })
       await owner.channelConnection.update({ where: { id }, data: { status } })
       return id
@@ -763,7 +763,7 @@ describe('Notification emitters (QA Q2)', () => {
     ) => ({
       storeId: ctx.storeA.id,
       channelConnectionId,
-      pluginId: ChannelType.INSTAGRAM,
+      pluginId: ChannelIds.INSTAGRAM,
       reason
     })
 
@@ -813,7 +813,7 @@ describe('Notification emitters (QA Q2)', () => {
     it('does not tell for a connection of another store', async () => {
       const { id } = await createChannelConnection(owner, {
         storeId: ctx.storeB.id,
-        channelType: ChannelType.INSTAGRAM
+        channelType: ChannelIds.INSTAGRAM
       })
       await owner.channelConnection.update({
         where: { id },
@@ -830,13 +830,13 @@ describe('Notification emitters (QA Q2)', () => {
     const expiring = (channelConnectionId: string, storeId = ctx.storeA.id) => ({
       storeId,
       channelConnectionId,
-      pluginId: ChannelType.INSTAGRAM,
+      pluginId: ChannelIds.INSTAGRAM,
       expiresAt: '2026-11-14T10:00:00.000Z'
     })
     const connectionIn = async (storeId: string, status: string) => {
       const { id } = await createChannelConnection(owner, {
         storeId,
-        channelType: ChannelType.INSTAGRAM
+        channelType: ChannelIds.INSTAGRAM
       })
       await owner.channelConnection.update({ where: { id }, data: { status } })
       return id

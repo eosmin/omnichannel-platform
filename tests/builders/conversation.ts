@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
-  ChannelType,
+  ChannelIds,
   type ChannelConnectionStatus,
   type ConversationStatus,
   DeliveryStatus,
@@ -94,7 +94,7 @@ export async function createConversationOf(
     channelType?: string
   }
 ): Promise<{ id: string; customerId: string; customerIdentityId: string }> {
-  const channelType = input.channelType ?? ChannelType.INSTAGRAM
+  const channelType = input.channelType ?? ChannelIds.INSTAGRAM
   const identity = await createCustomerIdentity(owner, { storeId: input.storeId, channelType })
   const conversation = await createConversation(owner, {
     ...input,

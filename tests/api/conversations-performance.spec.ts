@@ -7,7 +7,7 @@ import { RoleNames } from '@platform/core/auth'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
-  ChannelType,
+  ChannelIds,
   ConversationAssignedFilters,
   ConversationStatus,
   MessageType
@@ -97,13 +97,13 @@ describe('The list of conversations at the size of a real inbox', () => {
         id: customer.identityId,
         storeId,
         customerId: customer.id,
-        channelType: ChannelType.WHATSAPP,
+        channelType: ChannelIds.WHATSAPP,
         channelIdentity: `${prefix}-${i}`
       }))
     })
     const connection = await createChannelConnection(owner, {
       storeId,
-      channelType: ChannelType.WHATSAPP
+      channelType: ChannelIds.WHATSAPP
     })
     const now = Date.now()
     const ids = Array.from({ length: ROWS }, () => randomUUID())
@@ -118,7 +118,7 @@ describe('The list of conversations at the size of a real inbox', () => {
             customerId: customer?.id ?? '',
             customerIdentityId: customer?.identityId ?? '',
             channelConnectionId: connection.id,
-            channelType: ChannelType.WHATSAPP,
+            channelType: ChannelIds.WHATSAPP,
             status: isHidden(i)
               ? ConversationStatus.ARCHIVED
               : (STATUSES[i % STATUSES.length] ?? ConversationStatus.OPEN),
