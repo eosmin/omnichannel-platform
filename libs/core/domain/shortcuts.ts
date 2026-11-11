@@ -71,7 +71,7 @@ export const ListKeyAliases = {
 
 // The bindings the screen handles today. The help sheet lists only these: the search of conversations
 // waits for Step 5.1, and until then `Mod+K` goes to the search of customers (the palette of Step 5.1
-// takes the binding over); the jump to orders and `Shift+O` wait for the pages they open.
+// takes the binding over); the jump to orders waits for the page it opens.
 export const AvailableShortcuts = {
   list: [
     'NEXT_CONVERSATION',
@@ -95,6 +95,7 @@ export const AvailableShortcuts = {
     'MARK_RESOLVED',
     'MARK_RESOLVED_OTHER_WAY',
     'SNOOZE',
+    'CREATE_ORDER',
     'OPEN_CUSTOMER'
   ],
   global: ['COMMAND_PALETTE', 'SEND_MESSAGE', 'GO_TO_INBOX', 'GO_TO_CUSTOMERS']

@@ -963,7 +963,8 @@
         "removeCustomer": "Remove the filter by customer {name}",
         "aCustomer": "one customer",
         "clear": "{count, plural, one {Clear # filter} other {Clear # filters}}"
-      }
+      },
+      "newOrder": "New order"
     },
     "detail": {
       "title": "Order",
@@ -1186,6 +1187,136 @@
         "customerNote": "Customer note",
         "packed": "Packed"
       }
+    },
+    "create": {
+      "title": "New order",
+      "description": "Create an order for a customer. The server calculates the totals from the catalog prices.",
+      "close": "Close",
+      "cancel": "Cancel",
+      "submit": "Create order",
+      "customer": {
+        "label": "Customer",
+        "change": "Change customer",
+        "searchLabel": "Search customers",
+        "searchPlaceholder": "Name, e-mail or phone",
+        "searching": "Searching…",
+        "noResults": "No customer matches.",
+        "unnamed": "Unnamed customer",
+        "pick": "Choose {name}",
+        "new": "New customer",
+        "newName": "Name",
+        "newEmail": "E-mail",
+        "newPhone": "Phone",
+        "newHelp": "A name, an e-mail or a phone is enough.",
+        "save": "Save customer",
+        "cancelNew": "Back to the search",
+        "failedSearch": "The customers could not be searched.",
+        "needsPermission": "You cannot search customers. Open this form from a conversation or ask for the permission.",
+        "loading": "Loading the customer…",
+        "duplicates": {
+          "title": "This customer may already exist",
+          "help": "These customers share the e-mail or the phone. Nothing was blocked: you can keep both or merge them.",
+          "matchedOn": {
+            "email": "Same e-mail",
+            "phone": "Same phone"
+          },
+          "merge": "Merge instead: {name}"
+        },
+        "conversationFailed": "The conversation could not be read, so the customer could not be filled in. Search for the customer."
+      },
+      "lines": {
+        "label": "Items",
+        "searchLabel": "Add a product",
+        "searchPlaceholder": "Search by name or SKU",
+        "noResults": "No product matches.",
+        "failedSearch": "The products could not be searched.",
+        "empty": "No items yet. Search a product to add it.",
+        "chooseVariant": "Choose a variant of {name}",
+        "variantFailed": "The product could not be loaded.",
+        "inactive": "Archived",
+        "quantity": "Quantity of {name}",
+        "remove": "Remove {name}",
+        "unitPrice": "Price of {name}",
+        "priceLocked": "Only members who may change prices can edit it.",
+        "catalogPrice": "Catalog price: {price}",
+        "priceReason": "Reason for the price of {name}",
+        "subtotal": "Estimated subtotal: {amount}",
+        "estimateNote": "The server calculates the real totals when the order is saved."
+      },
+      "stock": {
+        "title": "Stock of {name}",
+        "available": "{count} available in {warehouse}",
+        "automatic": "Warehouses: automatic, by priority",
+        "manual": "Warehouses: chosen",
+        "choose": "Choose warehouses",
+        "useAutomatic": "Use the automatic plan",
+        "units": "Units from {warehouse}",
+        "availableShort": "{count} available",
+        "planned": "Would ship from: {plan}",
+        "short": "No warehouse can serve this quantity with the stock shown.",
+        "loading": "Loading the stock…",
+        "failed": "The stock could not be loaded. The server will choose the warehouses.",
+        "problem": {
+          "quantity_mismatch": "The units must add up to the quantity of the line.",
+          "split_not_allowed": "This store ships each line from one warehouse.",
+          "insufficient": "A warehouse has fewer units than you asked.",
+          "not_linked": "A warehouse is not one the store sells from."
+        }
+      },
+      "prices": {
+        "shipping": "Shipping fee",
+        "discount": "Discount",
+        "discountReason": "Reason for the discount",
+        "discountHelp": "Above the limit of the store, the order waits for a price approval."
+      },
+      "delivery": {
+        "scheduledDate": "Scheduled delivery date",
+        "scheduledHelp": "Optional. A day that has passed is accepted."
+      },
+      "phones": {
+        "label": "Recipient phones",
+        "help": "Digits only, without the country code. The first one is the main number.",
+        "field": "Phone {index}",
+        "add": "Add a phone",
+        "remove": "Remove phone {index}"
+      },
+      "address": {
+        "label": "Shipping address",
+        "none": "No address yet",
+        "option": "{line1}, {city}"
+      },
+      "payment": {
+        "label": "How the order is paid"
+      },
+      "notes": {
+        "customer": "Notes from the customer",
+        "customerHelp": "Printed on the shipping label.",
+        "internal": "Customer care notes",
+        "internalHelp": "Only your team sees them. Never the customer.",
+        "packing": "Packing note",
+        "packingHelp": "For whoever packs the order: a change inside the box, something the customer asked for."
+      },
+      "confirm": {
+        "label": "Confirm the order now",
+        "help": "The customer already agreed."
+      },
+      "errors": {
+        "customer": "Choose the customer.",
+        "lines": "Add at least one item.",
+        "quantity": "Write a whole quantity of 1 or more.",
+        "price": "Write a price like 15.50.",
+        "priceReason": "Write the reason for the new price.",
+        "allocations": "Check the warehouses of this item.",
+        "shipping": "Write a fee like 5.00.",
+        "discount": "Write a discount like 2.50.",
+        "discountReason": "A discount needs its reason.",
+        "phones": "Write at least one phone, with digits only and not repeated.",
+        "scheduledDate": "Choose a valid day."
+      },
+      "created": "Order {number} created.",
+      "createdAwaitingApproval": "Order {number} created. Its price waits for an approval.",
+      "confirmationSkipped": "It was not confirmed: the price waits for an approval.",
+      "open": "Open the order"
     }
   },
   "org": {
@@ -2059,7 +2190,8 @@
           "MARK_RESOLVED": "Mark resolved",
           "MARK_RESOLVED_OTHER_WAY": "Resolve the other way (the dialog, or at once)",
           "SNOOZE": "Snooze",
-          "OPEN_CUSTOMER": "Open the customer profile"
+          "OPEN_CUSTOMER": "Open the customer profile",
+          "CREATE_ORDER": "Create an order for the customer"
         },
         "global": {
           "COMMAND_PALETTE": "Search customers",

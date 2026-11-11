@@ -1,6 +1,6 @@
 import type { CursorPage, DuplicateMatch } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
-import { type Db } from '@platform/core/messaging'
+import { type Db, nationalPhoneNumber } from '@platform/core/messaging'
 
 export interface TagView {
   id: string
@@ -44,6 +44,9 @@ export interface CustomerDetail {
   name: string | null
   email: string | null
   phone: string | null
+  // The phone without its country code (what the carriers take): the create-order form pre-fills its recipient phones
+  // with it. Null when there is no phone or it is not a valid number.
+  nationalPhone: string | null
   locale: string | null
   isCaution: boolean
   cautionReason: string | null
@@ -135,6 +138,7 @@ export async function customerDetail(
       name: true,
       email: true,
       phone: true,
+      phoneNormalized: true,
       locale: true,
       isCaution: true,
       cautionReason: true,
@@ -146,5 +150,9 @@ export async function customerDetail(
     }
   })
   if (row === null) throw resourceNotFound('customer')
-  return row
+  const { phoneNormalized, ...detail } = row
+  return {
+    ...detail,
+    nationalPhone: phoneNormalized === null ? null : nationalPhoneNumber(phoneNormalized)
+  }
 }

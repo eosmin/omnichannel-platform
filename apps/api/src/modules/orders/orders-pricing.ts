@@ -35,6 +35,11 @@ export interface OrderLine {
   // Snapshot of Product.freeShipping at the moment of the order
   freeShipping: boolean
   trackInventory: boolean
+  // The warehouses the agent chose for the units of this line in THIS request (never stored on the line)
+  requestedAllocations?: readonly { warehouseId: string; quantity: number }[] | undefined
+  // Where this line's units were before an edit that did not touch it: kept when they still can be served, otherwise
+  // the line is planned again (a soft wish, never an error)
+  preferredAllocations?: readonly { warehouseId: string; quantity: number }[] | undefined
 }
 
 export interface LineRequest {
@@ -43,6 +48,7 @@ export interface LineRequest {
   quantity: number
   unitPriceCents?: number | undefined
   priceReason?: string | null | undefined
+  allocations?: readonly { warehouseId: string; quantity: number }[] | undefined
 }
 
 // The lines of a request, read from the catalog of the store. A product or variant of another store is one that does not
@@ -117,7 +123,12 @@ export async function resolveLines(
       ) {
         throw orderRefusal(ErrorCodes.ORDER_PRICE_OVERRIDE_FORBIDDEN)
       }
-      return { ...before, quantity: request.quantity, trackInventory: product.trackInventory }
+      return {
+        ...before,
+        quantity: request.quantity,
+        trackInventory: product.trackInventory,
+        requestedAllocations: request.allocations
+      }
     }
     // A variant with no price of its own sells at the price of its product
     const catalogCents = variant?.priceCents ?? product.priceCents
@@ -137,7 +148,8 @@ export async function resolveLines(
       priceOverrideReason: overridden ? reason : null,
       priceOverriddenBy: overridden ? who.userId : null,
       freeShipping: product.freeShipping,
-      trackInventory: product.trackInventory
+      trackInventory: product.trackInventory,
+      requestedAllocations: request.allocations
     }
   })
   return { lines, priceChanged }

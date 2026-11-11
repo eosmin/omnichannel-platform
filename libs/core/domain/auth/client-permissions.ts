@@ -11,6 +11,7 @@ export const ClientPermissions = {
   CONVERSATIONS_SNOOZE: 'conversations:snooze',
   CONVERSATIONS_VIEW: 'conversations:view',
   CONVERSATIONS_VIEW_ALL: 'conversations:view_all',
+  CUSTOMERS_CREATE: 'customers:create',
   CUSTOMERS_DELETE: 'customers:delete',
   CUSTOMERS_EDIT: 'customers:edit',
   CUSTOMERS_EXPORT: 'customers:export',

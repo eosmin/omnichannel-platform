@@ -963,7 +963,8 @@
         "removeCustomer": "Quitar el filtro por el cliente {name}",
         "aCustomer": "un cliente",
         "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}"
-      }
+      },
+      "newOrder": "Nuevo pedido"
     },
     "detail": {
       "title": "Pedido",
@@ -1186,6 +1187,136 @@
         "customerNote": "Nota del cliente",
         "packed": "Empacado"
       }
+    },
+    "create": {
+      "title": "Nuevo pedido",
+      "description": "Crea un pedido para un cliente. El servidor calcula los totales con los precios del catálogo.",
+      "close": "Cerrar",
+      "cancel": "Cancelar",
+      "submit": "Crear pedido",
+      "customer": {
+        "label": "Cliente",
+        "change": "Cambiar de cliente",
+        "searchLabel": "Buscar clientes",
+        "searchPlaceholder": "Nombre, correo o teléfono",
+        "searching": "Buscando…",
+        "noResults": "Ningún cliente coincide.",
+        "unnamed": "Cliente sin nombre",
+        "pick": "Elegir a {name}",
+        "new": "Cliente nuevo",
+        "newName": "Nombre",
+        "newEmail": "Correo",
+        "newPhone": "Teléfono",
+        "newHelp": "Basta con un nombre, un correo o un teléfono.",
+        "save": "Guardar cliente",
+        "cancelNew": "Volver a la búsqueda",
+        "failedSearch": "No se pudo buscar entre los clientes.",
+        "needsPermission": "No puedes buscar clientes. Abre este formulario desde una conversación o pide el permiso.",
+        "loading": "Cargando el cliente…",
+        "duplicates": {
+          "title": "Este cliente quizá ya existe",
+          "help": "Estos clientes comparten el correo o el teléfono. No se bloqueó nada: puedes conservar ambos o fusionarlos.",
+          "matchedOn": {
+            "email": "Mismo correo",
+            "phone": "Mismo teléfono"
+          },
+          "merge": "Fusionar en su lugar: {name}"
+        },
+        "conversationFailed": "No se pudo leer la conversación, así que no se llenó el cliente. Busca al cliente."
+      },
+      "lines": {
+        "label": "Artículos",
+        "searchLabel": "Agregar un producto",
+        "searchPlaceholder": "Buscar por nombre o SKU",
+        "noResults": "Ningún producto coincide.",
+        "failedSearch": "No se pudo buscar entre los productos.",
+        "empty": "Aún no hay artículos. Busca un producto para agregarlo.",
+        "chooseVariant": "Elige una variante de {name}",
+        "variantFailed": "No se pudo cargar el producto.",
+        "inactive": "Archivado",
+        "quantity": "Cantidad de {name}",
+        "remove": "Quitar {name}",
+        "unitPrice": "Precio de {name}",
+        "priceLocked": "Solo quien puede cambiar precios lo edita.",
+        "catalogPrice": "Precio de catálogo: {price}",
+        "priceReason": "Motivo del precio de {name}",
+        "subtotal": "Subtotal estimado: {amount}",
+        "estimateNote": "El servidor calcula los totales reales al guardar el pedido."
+      },
+      "stock": {
+        "title": "Existencias de {name}",
+        "available": "{count} disponibles en {warehouse}",
+        "automatic": "Bodegas: automático, por prioridad",
+        "manual": "Bodegas: elegidas",
+        "choose": "Elegir bodegas",
+        "useAutomatic": "Usar el plan automático",
+        "units": "Unidades de {warehouse}",
+        "availableShort": "{count} disponibles",
+        "planned": "Saldría de: {plan}",
+        "short": "Ninguna bodega puede surtir esta cantidad con las existencias que se ven.",
+        "loading": "Cargando las existencias…",
+        "failed": "No se pudieron cargar las existencias. El servidor elegirá las bodegas.",
+        "problem": {
+          "quantity_mismatch": "Las unidades deben sumar la cantidad de la línea.",
+          "split_not_allowed": "Esta tienda surte cada línea desde una sola bodega.",
+          "insufficient": "Una bodega tiene menos unidades de las que pides.",
+          "not_linked": "Una bodega no es de las que vende la tienda."
+        }
+      },
+      "prices": {
+        "shipping": "Costo de envío",
+        "discount": "Descuento",
+        "discountReason": "Motivo del descuento",
+        "discountHelp": "Si pasa del límite de la tienda, el pedido espera una aprobación de precio."
+      },
+      "delivery": {
+        "scheduledDate": "Fecha de entrega programada",
+        "scheduledHelp": "Opcional. Se acepta un día que ya pasó."
+      },
+      "phones": {
+        "label": "Teléfonos del destinatario",
+        "help": "Solo dígitos, sin el código de país. El primero es el número principal.",
+        "field": "Teléfono {index}",
+        "add": "Agregar un teléfono",
+        "remove": "Quitar el teléfono {index}"
+      },
+      "address": {
+        "label": "Dirección de envío",
+        "none": "Aún sin dirección",
+        "option": "{line1}, {city}"
+      },
+      "payment": {
+        "label": "Cómo se paga el pedido"
+      },
+      "notes": {
+        "customer": "Notas del cliente",
+        "customerHelp": "Se imprimen en la etiqueta de envío.",
+        "internal": "Notas de atención al cliente",
+        "internalHelp": "Solo las ve tu equipo. Nunca el cliente.",
+        "packing": "Nota de empaque",
+        "packingHelp": "Para quien empaca el pedido: un cambio dentro de la caja, algo que pidió el cliente."
+      },
+      "confirm": {
+        "label": "Confirmar el pedido ahora",
+        "help": "El cliente ya está de acuerdo."
+      },
+      "errors": {
+        "customer": "Elige al cliente.",
+        "lines": "Agrega al menos un artículo.",
+        "quantity": "Escribe una cantidad entera de 1 o más.",
+        "price": "Escribe un precio como 15.50.",
+        "priceReason": "Escribe el motivo del nuevo precio.",
+        "allocations": "Revisa las bodegas de este artículo.",
+        "shipping": "Escribe un costo como 5.00.",
+        "discount": "Escribe un descuento como 2.50.",
+        "discountReason": "Un descuento necesita su motivo.",
+        "phones": "Escribe al menos un teléfono, solo con dígitos y sin repetir.",
+        "scheduledDate": "Elige un día válido."
+      },
+      "created": "Pedido {number} creado.",
+      "createdAwaitingApproval": "Pedido {number} creado. Su precio espera una aprobación.",
+      "confirmationSkipped": "No se confirmó: el precio espera una aprobación.",
+      "open": "Abrir el pedido"
     }
   },
   "org": {
@@ -2059,7 +2190,8 @@
           "MARK_RESOLVED": "Resolver la conversación",
           "MARK_RESOLVED_OTHER_WAY": "Resolver de la otra forma (el diálogo, o al instante)",
           "SNOOZE": "Posponer",
-          "OPEN_CUSTOMER": "Abrir el perfil del cliente"
+          "OPEN_CUSTOMER": "Abrir el perfil del cliente",
+          "CREATE_ORDER": "Crear un pedido para el cliente"
         },
         "global": {
           "COMMAND_PALETTE": "Buscar clientes",

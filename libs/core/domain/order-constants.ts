@@ -87,6 +87,8 @@ export const OrderLimits = {
   // Lines of one order; a cart longer than this is a purchase order, which this module does not take
   MAX_LINES: 100,
   MAX_QUANTITY_PER_LINE: 10_000,
+  // Warehouses one line can be split across (a store has few; the server checks the real links)
+  MAX_ALLOCATIONS_PER_LINE: 20,
   CUSTOMER_NOTES_MAX_LENGTH: 1000,
   // The same ceiling as the customer's notes (owner, 2026-11-10)
   INTERNAL_NOTES_MAX_LENGTH: 1000,

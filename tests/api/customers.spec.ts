@@ -28,6 +28,7 @@ interface CustomerBody {
   name: string | null
   email: string | null
   phone: string | null
+  nationalPhone: string | null
   isCaution: boolean
   identities: { id: string; channelType: string; channelIdentity: string }[]
   addresses: { id: string; line1: string; isDefault: boolean }[]
@@ -72,6 +73,22 @@ describe('The customers of a store', () => {
     expect(response.status).toBe(CREATED)
     return response.body as CustomerBody
   }
+
+  describe('the national phone', () => {
+    it('gives the phone without its country code, and null for a customer with no phone', async () => {
+      const withPhone = await create({ name: 'National', phone: '+503 7123 4567' })
+      expect(withPhone.nationalPhone).toBe('71234567')
+      const read = await asAdmin().get(ApiRoutes.customers.byId(withPhone.id))
+      expect((read.body as CustomerBody).nationalPhone).toBe('71234567')
+      // The normalized digits are the api's own: the view never lists them
+      expect(read.body).not.toHaveProperty('phoneNormalized')
+      const without = await create({
+        name: 'No phone',
+        email: `${randomUUID().slice(0, 8)}@example.com`
+      })
+      expect(without.nationalPhone).toBeNull()
+    })
+  })
 
   describe('a possible duplicate', () => {
     interface Hint {
