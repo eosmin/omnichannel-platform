@@ -3204,8 +3204,7 @@
         "reserved": "Reserved",
         "available": "Available",
         "value": "Value (USD)",
-        "averageCost": "Average cost (USD)",
-        "actions": "Actions"
+        "averageCost": "Average cost (USD)"
       },
       "productRow": "The product",
       "oversold": "Oversold",
