@@ -18,20 +18,23 @@ import {
 } from '../../lib/settings/entries'
 
 // The organization pages are asked of the api through one of the person's stores (it reads the
-// organization from X-Store-Id), so the area needs a store where they may open them. A store where
-// they manage stores comes first, because it opens every page; one where they may only look at
-// settings still opens the organization profile. Nobody else has anything to do here.
+// organization from X-Store-Id), so the area needs a store where they may open them. The store that
+// opens the most pages comes first: where they manage stores, then where they may see the
+// inventory (the warehouses page); one where they may only look at settings still opens the
+// organization profile. Nobody else has anything to do here.
+const ORG_AREA_PERMISSIONS = [
+  ClientPermissions.ORG_MANAGE_STORES,
+  ClientPermissions.INVENTORY_VIEW,
+  ClientPermissions.SETTINGS_VIEW
+] as const
+
 export function OrgShell({ children }: { children: ReactNode }): ReactElement {
   return (
     <SessionGate>
       {profile => {
-        const membership =
-          profile.memberships.find(item =>
-            item.permissions.includes(ClientPermissions.ORG_MANAGE_STORES)
-          ) ??
-          profile.memberships.find(item =>
-            item.permissions.includes(ClientPermissions.SETTINGS_VIEW)
-          )
+        const membership = ORG_AREA_PERMISSIONS.map(permission =>
+          profile.memberships.find(item => item.permissions.includes(permission))
+        ).find(item => item !== undefined)
         return membership === undefined ? (
           <NoAccess />
         ) : (

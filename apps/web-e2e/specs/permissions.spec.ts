@@ -17,17 +17,20 @@ test.describe('a person sees what their permissions allow', () => {
     await expect(page.getByText('Main Store', { exact: true })).toBeVisible()
   })
 
-  test('a viewer is sent away from the stores of the organization', async ({ page }) => {
+  test('a viewer cannot manage the stores of the organization', async ({ page }) => {
     await signIn(page, 'viewer@test.com')
 
     await page.goto(AppPaths.org.stores)
 
-    await expect(page).toHaveURL(AppPaths.noAccess)
-    // The viewer has a store: the screen does not say they have none, and offers the way back
-    await expect(page.getByRole('heading', { name: en.noAccess.hereTitle })).toBeVisible()
-    await expect(page.getByText(en.noAccess.body)).toBeHidden()
-    await page.getByRole('button', { name: en.noAccess.goToMyStore }).click()
-    await expect(page).toHaveURL(/\/s\/[^/]+\/inbox/)
+    // The viewer may see the inventory, so the organization area opens for them, with the pages they may use
+    // and none of the stores page: it says what is missing instead of listing the stores
+    await expect(page.getByText(en.emptyStates.permissionDenied.title)).toBeVisible()
+    await expect(page.getByText('Main Store', { exact: true })).toBeHidden()
+    const navigation = page.getByRole('navigation', { name: en.settings.nav.org.label })
+    await expect(
+      navigation.getByRole('link', { name: en.settings.nav.org.warehouses })
+    ).toBeVisible()
+    await expect(navigation.getByRole('link', { name: en.settings.nav.org.stores })).toHaveCount(0)
   })
 
   test('the address of a store goes to its inbox, and a refused page names what it needs', async ({

@@ -898,6 +898,82 @@
     },
     "settings": "Settings"
   },
+  "warehouses": {
+    "title": "Warehouses",
+    "description": "Where the organization keeps its stock. A warehouse serves the stores you link to it, and each store reserves from its warehouses in the order of their priority.",
+    "new": "New warehouse",
+    "empty": "There are no warehouses yet.",
+    "inactive": "Switched off",
+    "noStores": "Not linked to any store",
+    "servesStores": "{count, plural, one {Serves # store: {stores}} other {Serves # stores: {stores}}}",
+    "formLabel": "Warehouse",
+    "readOnly": "You can see the warehouses but not change them.",
+    "create": {
+      "title": "New warehouse",
+      "description": "Give it a name and a short code. You link it to stores once it is made.",
+      "submit": "Create warehouse",
+      "done": "Warehouse {name} created."
+    },
+    "edit": {
+      "title": "Warehouse",
+      "description": "Change its details, switch it on or off, and choose the stores it serves.",
+      "save": "Save details",
+      "saved": "Warehouse saved."
+    },
+    "form": {
+      "name": "Name",
+      "code": "Code",
+      "codeHint": "Letters, digits and . _ - only, up to 20. It is printed on documents.",
+      "addressLegend": "Address",
+      "addressHint": "Optional. If you fill any part, the first line and the city are required.",
+      "line1": "Address line 1",
+      "line2": "Address line 2",
+      "city": "City",
+      "state": "State or province",
+      "postalCode": "Postal code",
+      "country": "Country",
+      "countryHint": "Two letters, for example MX."
+    },
+    "problems": {
+      "name": "Enter a name.",
+      "code": "Enter a code of letters, digits and . _ - (up to 20, starting with a letter or digit).",
+      "codeInUse": "Another warehouse already uses that code.",
+      "line1": "Enter the first line of the address.",
+      "city": "Enter the city.",
+      "country": "Use two letters for the country."
+    },
+    "state": {
+      "on": "The warehouse is active",
+      "off": "The warehouse is switched off",
+      "onHint": "Switching it off keeps its history but stops every store from reserving from it. It needs to hold no stock and no transfer on its way.",
+      "offHint": "While it is off, no store reserves from it and no store can be linked to it.",
+      "switchOff": "Switch off",
+      "switchOn": "Switch on",
+      "switchedOff": "Warehouse switched off.",
+      "switchedOn": "Warehouse switched on."
+    },
+    "stores": {
+      "legend": "Stores it serves",
+      "hint": "A store reserves from its warehouses in this order: the first one is reserved first.",
+      "empty": "No store is linked yet.",
+      "position": "Priority {position}",
+      "moveUp": "Move {store} up",
+      "moveDown": "Move {store} down",
+      "remove": "Unlink {store}",
+      "addLabel": "Add a store",
+      "pick": "Choose a store",
+      "noneToAdd": "Every store is already linked",
+      "add": "Add",
+      "inactiveHint": "Switch the warehouse on to link more stores.",
+      "save": "Save stores",
+      "saved": "Stores saved."
+    },
+    "stockBlock": {
+      "deactivate": "The warehouse still holds units or reservations. Move or use them first, then switch it off.",
+      "unlink": "That store has stock reserved in this warehouse. Wait until its orders are served or cancelled, then unlink it.",
+      "openTransfer": "A transfer on its way leaves from or arrives at this warehouse. Receive or cancel it first."
+    }
+  },
   "realtime": {
     "reconnecting": "Reconnecting…",
     "disconnected": "No connection. New messages will not arrive. What you write is kept and sent when the connection returns; after a long wait, you will be asked first."
@@ -907,6 +983,7 @@
     "selectStore": "Select a store",
     "stores": "Stores",
     "manageStores": "Manage stores",
+    "warehouses": "Warehouses",
     "account": "Account",
     "accountMenu": "Account menu",
     "nav": {
@@ -1868,6 +1945,7 @@
         "label": "Organization",
         "title": "Organization",
         "stores": "Stores",
+        "warehouses": "Warehouses",
         "profile": "Profile"
       },
       "account": {
