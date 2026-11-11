@@ -58,6 +58,7 @@ export const AppPaths = {
     warehouses: '/org/warehouses',
     transfers: '/org/transfers',
     counts: '/org/counts',
+    count: (countId: string) => `/org/counts/${countId}`,
     auditLog: '/org/audit-log',
     compliance: '/org/compliance'
   },

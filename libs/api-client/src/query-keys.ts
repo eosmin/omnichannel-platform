@@ -89,6 +89,7 @@ export const QueryKeys = {
 
   // Inventory (TDD_16 §3)
   inventory: {
+    root: ['inventory'] as const,
     all: (storeId: string) => ['inventory', storeId] as const,
     levels: (storeId: string) => ['inventory', storeId, 'levels'] as const,
     movements: (storeId: string) => ['inventory', storeId, 'movements'] as const,
@@ -109,8 +110,15 @@ export const QueryKeys = {
   transfers: {
     all: (organizationId: string) => ['transfers', organizationId] as const
   },
+  // Keyed by the store the request goes through (the api reads the organization from X-Store-Id)
   counts: {
-    all: (organizationId: string) => ['counts', organizationId] as const
+    // Every store's cache: a count belongs to the organization, so a change makes the list of every store stale
+    root: ['counts'] as const,
+    all: (storeId: string) => ['counts', storeId] as const,
+    list: (storeId: string, status: string | null) => ['counts', storeId, 'list', status] as const,
+    // The whole sheet of one count: its header, its totals and every line
+    detail: (storeId: string, countId: string) => ['counts', storeId, 'detail', countId] as const,
+    warehouses: (storeId: string) => ['counts', storeId, 'warehouses'] as const
   },
 
   // Shipping (TDD_17 §3)

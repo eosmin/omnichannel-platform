@@ -127,6 +127,7 @@ describe('DestructiveActionTiers', () => {
     for (const action of [
       'CANCEL_IN_TRANSIT_TRANSFER',
       'APPLY_STOCK_COUNT',
+      'CANCEL_STOCK_COUNT',
       'CANCEL_ORDER_WITH_SHIPMENT',
       'DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS',
       'MARK_GUIDE_VOIDED_BY_HAND',
