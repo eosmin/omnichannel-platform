@@ -1,6 +1,7 @@
 import { FailedAttemptMessagePolicy, OrderMessageKind } from './order-constants'
 import {
   carrierPollInterval,
+  defaultAutoSend,
   failedAttemptVariables,
   isFailedAttemptMessageDue,
   orderMessageAutoSendSchema,
@@ -114,6 +115,26 @@ describe('orderMessageAutoSendSchema (TDD_17 §4.7)', () => {
       OrderMessageKind.ORDER_CANCELLED
     ]) {
       expect(orderMessageAutoSendSchema.safeParse({ kind, autoSend: true }).success).toBe(true)
+    }
+  })
+})
+
+describe('defaultAutoSend (TDD_17 §4.7)', () => {
+  it('starts the shipment-progress messages and the cancellation automatic, and nothing else', () => {
+    const automatic = Object.values(OrderMessageKind).filter(defaultAutoSend)
+    expect(automatic).toEqual([
+      OrderMessageKind.ORDER_SHIPPED,
+      OrderMessageKind.ORDER_OUT_FOR_DELIVERY,
+      OrderMessageKind.ORDER_DELIVERED,
+      OrderMessageKind.ORDER_CANCELLED
+    ])
+  })
+
+  it('never starts automatic a kind that a store preference decides', () => {
+    for (const kind of Object.values(OrderMessageKind)) {
+      expect(
+        orderMessageAutoSendSchema.safeParse({ kind, autoSend: defaultAutoSend(kind) }).success
+      ).toBe(true)
     }
   })
 })

@@ -73,6 +73,7 @@ export const AuditAction = {
   MESSAGE_DELETED_CONTENT_VIEWED: 'message.deleted_content_viewed',
   ORDER_MESSAGE_SENT: 'order.message_sent',
   ORDER_TEMPLATE_UPDATED: 'order.template_updated',
+  ORDER_TEMPLATE_DELETED: 'order.template_deleted',
   ORDER_PRICE_OVERRIDDEN: 'order.price_overridden',
   ORDER_DISCOUNT_APPLIED: 'order.discount_applied',
   ORDER_PRICE_APPROVAL_REQUESTED: 'order.price_approval_requested',

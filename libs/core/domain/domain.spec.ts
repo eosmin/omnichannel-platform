@@ -195,5 +195,6 @@ describe('failed-attempt customer messages', () => {
   it('lets a template say which attempt it was and how many the carrier makes', () => {
     expect(OrderMessageVariables.ATTEMPT_NUMBER).toBe('attemptNumber')
     expect(OrderMessageVariables.MAX_ATTEMPTS).toBe('maxAttempts')
+    expect(OrderMessageVariables.SCHEDULED_DELIVERY_DATE).toBe('scheduledDeliveryDate')
   })
 })

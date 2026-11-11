@@ -15,6 +15,7 @@ import {
   InvitationStatus,
   MembershipStatus,
   MessageType,
+  OrderMessageKind,
   PaymentMethod,
   RoutingActionTypes,
   ShipmentStatus,
@@ -22,6 +23,7 @@ import {
   TransferStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { Locales } from '@platform/core/i18n'
 import {
   NotificationSeverity,
   notificationMessageKey,
@@ -69,6 +71,7 @@ import {
   createRole,
   createRoutingRule,
   ensurePluginInstallation,
+  createOrderMessageTemplate,
   createSnippet,
   createTag,
   resetStoreSettings,
@@ -110,6 +113,8 @@ async function organizationOfStore(owner: OwnerClient, storeId: string): Promise
 let viewerRoleId = ''
 // Two warehouses of organization A, for the body of the creation check of the transfers
 let transferWarehouses = { from: '', to: '' }
+// The stores of the suite, in the order of the shares of kinds the templates take (store A, its sibling, store B)
+let templateStores: string[] = []
 let agentRoleId = ''
 // A user for the reactions the suite writes as the owner
 let reactorId = ''
@@ -129,6 +134,48 @@ const conversationOf = (messageId: string): string => {
 const countOfLine = new Map<string, string>()
 // The connection a service of the suite belongs to: a service is reached through its connection
 const connectionOfRow = new Map<string, string>()
+// The kind and language of each template row the suite made. A store takes pairs of its own (kinds named here, two languages),
+// so that a row of one never answers a request of another by sharing its address: only the filter by the store keeps them apart.
+// Pairs are never reused: a store that runs out of them fails loudly, instead of an old id pointing at a replaced row.
+const templateOfRow = new Map<string, { kind: string; locale: string }>()
+const TEMPLATE_KINDS_OF_STORE_A = [
+  OrderMessageKind.ORDER_SHIPPED,
+  OrderMessageKind.ORDER_OUT_FOR_DELIVERY,
+  OrderMessageKind.ORDER_DELIVERED
+]
+const TEMPLATE_KINDS_OF_SIBLING = [OrderMessageKind.ORDER_CANCELLED, OrderMessageKind.ORDER_SUMMARY]
+const TEMPLATE_KINDS_OF_STORE_B = [
+  OrderMessageKind.ORDER_FAILED_ATTEMPT,
+  OrderMessageKind.RETURN_APPROVED,
+  OrderMessageKind.EXCHANGE_SHIPPED
+]
+const templateTurns = new Map<string, number>()
+const templateAddress = (id: string): string => {
+  // An id the suite did not make (the one of the "does not exist" check) asks for a pair that only store B of the suite holds
+  const pair = templateOfRow.get(id) ?? {
+    kind: TEMPLATE_KINDS_OF_STORE_B[2] ?? OrderMessageKind.EXCHANGE_SHIPPED,
+    locale: Locales.EN
+  }
+  return ApiRoutes.orderTemplates.byKindAndLocale(pair.kind, pair.locale)
+}
+async function createTemplateOfSuite(owner: OwnerClient, storeId: string): Promise<{ id: string }> {
+  const kinds = [TEMPLATE_KINDS_OF_STORE_A, TEMPLATE_KINDS_OF_SIBLING, TEMPLATE_KINDS_OF_STORE_B][
+    Math.max(0, templateStores.indexOf(storeId))
+  ]
+  const pairs = (kinds ?? []).flatMap(kind =>
+    [Locales.ES, Locales.EN].map(locale => ({ kind: String(kind), locale: String(locale) }))
+  )
+  const turn = templateTurns.get(storeId) ?? 0
+  const pair = pairs[turn]
+  if (pair === undefined) {
+    throw new Error('the store ran out of pairs of kind and language for the template case')
+  }
+  templateTurns.set(storeId, turn + 1)
+  const row = await createOrderMessageTemplate(owner, { storeId, ...pair })
+  templateOfRow.set(row.id, pair)
+  return { id: row.id }
+}
+
 // The shipment each history row of the cases belongs to: the history is changed through its shipment
 const shipmentOfEvent = new Map<string, string>()
 // Counts the numbers of the sheets the suite writes: unique inside an organization with no luck involved
@@ -270,6 +317,23 @@ const resources: IsolationResource[] = [
         (await owner.carrierConnection.findUnique({ where: { id }, select: { storeId: true } }))
           ?.storeId ?? null
     }
+  },
+  // The templates of the messages of an order (Step 4.9, PR C1). A template is addressed by its kind and language, not by an
+  // id, so the suite keeps which pair each row it makes has. The stores of the suite take kinds of their own, so that a row of
+  // one never answers a request of another by sharing its address: only the filter by the store keeps them apart. The route
+  // writes by address (a PUT of the own store makes a row of its own), so the change a stranger tries is the deletion.
+  {
+    name: 'orderMessageTemplate',
+    create: async (owner, input) => {
+      const row = await createTemplateOfSuite(owner, input.storeId)
+      return { id: row.id }
+    },
+    readPath: id => templateAddress(id),
+    listPath: ApiRoutes.orderTemplates.list,
+    modify: { path: id => templateAddress(id), method: 'delete', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.orderMessageTemplate.findUnique({ where: { id }, select: { id: true } })) !==
+      null
   },
   {
     name: 'carrierService',
@@ -1163,6 +1227,7 @@ describe('Tenant isolation', () => {
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
     transferWarehouses = { from: ctx.warehouseA.id, to: ctx.warehouseASecond.id }
+    templateStores = [ctx.storeA.id, ctx.storeA2.id, ctx.storeB.id]
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
     reactorId = ctx.adminA.id
     conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id

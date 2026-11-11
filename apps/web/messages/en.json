@@ -459,6 +459,31 @@
       "center": "Open the app",
       "settings": "You get this email because of your notification settings.",
       "settingsLink": "Change it in your notification preferences"
+    },
+    "orderMessage": {
+      "subject": "Order {order} from {store}",
+      "heading": "News about your order {order}",
+      "footer": "You are receiving this message because you placed an order with {store}.",
+      "sample": {
+        "customerName": "Maria Lopez",
+        "storeName": "My Store",
+        "itemOne": "Running shoes",
+        "variantOne": "Size 40",
+        "itemTwo": "Sports socks",
+        "addressLine": "5th Street No. 10, Escalon",
+        "city": "San Salvador",
+        "carrierName": "Courier"
+      },
+      "summary": {
+        "title": "Order summary",
+        "order": "Order",
+        "customer": "Customer",
+        "items": "Items",
+        "total": "Total",
+        "address": "Shipping address",
+        "deliveryDate": "Delivery date",
+        "codAmount": "To collect on delivery"
+      }
     }
   },
   "errorPage": {
