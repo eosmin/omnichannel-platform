@@ -1,5 +1,6 @@
 import {
   FailedAttemptMessagePolicy,
+  type FailedAttemptMessagePolicyType,
   OrderMessageKind,
   OrderStatusMessageKinds
 } from './order-constants'
@@ -169,8 +170,11 @@ describe('carrierPollInterval (TDD_17 §4.9)', () => {
 
 describe('customerMessageOfShipment (TDD_17 §4.9)', () => {
   const every = FailedAttemptMessagePolicy.EVERY_ATTEMPT
-  const of = (to: ShipmentStatus, failedAttempts = 0, policy = every) =>
-    customerMessageOfShipment({ to, failedAttempts, policy })
+  const of = (
+    to: ShipmentStatus,
+    failedAttempts = 0,
+    policy: FailedAttemptMessagePolicyType = every
+  ) => customerMessageOfShipment({ to, failedAttempts, policy })
 
   it('tells that the package left once, whichever of picked up and in transit comes first', () => {
     const shipped = { kind: OrderMessageKind.ORDER_SHIPPED, status: ShipmentStatus.PICKED_UP }
