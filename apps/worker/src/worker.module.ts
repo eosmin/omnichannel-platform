@@ -39,6 +39,7 @@ import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
 import { AutoArchiveScheduler } from './schedulers/auto-archive.scheduler'
+import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
@@ -50,6 +51,7 @@ import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.schedule
 import { ShipmentPollScheduler } from './schedulers/shipment-poll.scheduler'
 import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
 import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
+import { ShippingWorkerModule } from './shipping/shipping.module'
 
 // ScheduleModule is imported only here: the api never runs crons
 @Module({
@@ -68,7 +70,9 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     ExportsModule,
     NotificationsModule,
     AnalyticsModule,
-    CarriersWorkerModule
+    CarriersWorkerModule,
+    // The cleanup of the bulk labels is run by the scheduler below
+    ShippingWorkerModule
   ],
   providers: [
     ProcessorSupport,
@@ -106,7 +110,8 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     SnoozeWakeScheduler,
     AutoArchiveScheduler,
     InventoryReconcileScheduler,
-    ShipmentPollScheduler
+    ShipmentPollScheduler,
+    BulkLabelsScheduler
   ]
 })
 export class WorkerModule {}

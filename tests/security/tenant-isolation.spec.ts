@@ -503,6 +503,36 @@ const resources: IsolationResource[] = [
       return (await owner.orderMessageDispatch.count({ where: { orderId: row.orderId } })) === 1
     }
   },
+  // A bulk run of labels (Step 4.10, PR D1): read by its id, started by the bulk route (which takes the store of the header and
+  // refuses a body that names another). No route changes it: the worker is the only one that writes its progress.
+  {
+    name: 'bulkLabelJob',
+    create: async (owner, input) => {
+      const orderIds = [randomUUID()]
+      return owner.bulkLabelJob.create({
+        data: {
+          storeId: input.storeId,
+          orderIds,
+          total: orderIds.length,
+          requestedBy: await adminOf(owner, input.storeId)
+        },
+        select: { id: true }
+      })
+    },
+    readPath: ApiRoutes.shipments.bulkJob,
+    untouched: async (owner, id) => (await owner.bulkLabelJob.count({ where: { id } })) === 1,
+    creation: {
+      path: ApiRoutes.shipments.bulk,
+      body: () => ({ orderIds: [randomUUID()] }),
+      strict: true,
+      // The run is queued for the worker: accepted, not created
+      status: 202,
+      countIn: (owner, storeId) => owner.bulkLabelJob.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.bulkLabelJob.findUnique({ where: { id }, select: { storeId: true } }))
+          ?.storeId ?? null
+    }
+  },
   // Uninstalling is the one change a user can make; the installation is reached by its id
   {
     name: 'pluginInstallation',

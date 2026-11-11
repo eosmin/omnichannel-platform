@@ -10,6 +10,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  BulkLabelLimits,
   CarrierCapability,
   CarrierConnectionStatus,
   CarrierHealthReasons,
@@ -51,6 +52,7 @@ import {
   type PickupBatchResult,
   LabelPaymentKinds,
   PickupBatchOutcomes,
+  type ShipmentCreationMode,
   ShipmentCreationModes
 } from '@platform/plugins/sdk'
 
@@ -86,6 +88,15 @@ import { type ShipmentIdentity, ShipmentWrites } from './shipment-writes'
 export type ShipmentOutcome =
   | { ok: true; orderId: string; shipmentId: string; status: ShipmentStatus }
   | { ok: false; orderId: string; error: PlatformException; shipmentId?: string }
+
+// Where a request would send its guide and at what pace its carrier takes them (`routesOf`)
+export interface ShipmentRoute {
+  connectionId: string
+  mode: ShipmentCreationMode
+  // The most guides to ask of this connection at the same time (standalone and internal carriers; a pickup-bound one gets one
+  // call per batch)
+  concurrency: number
+}
 
 export interface ShipmentChange {
   shipmentId: string
@@ -266,6 +277,39 @@ export class ShippingService {
           )
         : outcome
     )
+  }
+
+  // Where each request would send its guide: the connection (the one asked for, else the planned carrier of the order, else the
+  // default one of the store) and how its carrier makes guides. A request with no connection, or whose carrier is not available,
+  // is left out: asking for its guide gives the refusal. A caller that makes many guides at once (a bulk run) uses this to keep
+  // the pace the carrier allows; nothing here writes or calls a carrier.
+  async routesOf(
+    storeId: string,
+    requests: readonly ShipmentRequest[],
+    plugins: PluginLookup
+  ): Promise<Map<string, ShipmentRoute>> {
+    const planned = await this.connectionsOf(storeId, requests)
+    const carriers = new Map<string, string | null>()
+    const routes = new Map<string, ShipmentRoute>()
+    for (const request of requests) {
+      const connectionId = request.connectionId ?? planned.get(request.orderId) ?? null
+      if (connectionId === null) continue
+      if (!carriers.has(connectionId)) {
+        carriers.set(connectionId, await this.carrierOf(storeId, connectionId))
+      }
+      const carrierId = carriers.get(connectionId)
+      const plugin = carrierId === null || carrierId === undefined ? undefined : plugins(carrierId)
+      if (plugin === undefined) continue
+      routes.set(request.orderId, {
+        connectionId,
+        mode: plugin.shipmentCreation,
+        concurrency: Math.min(
+          plugin.maxConcurrency ?? BulkLabelLimits.DEFAULT_CONCURRENCY,
+          BulkLabelLimits.MAX_CONCURRENCY
+        )
+      })
+    }
+    return routes
   }
 
   // The one guide of a standalone or internal carrier

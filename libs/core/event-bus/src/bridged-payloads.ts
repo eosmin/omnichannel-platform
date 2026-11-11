@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   AttentionReasons,
   AuthorType,
+  BulkLabelJobStatus,
   CarrierStatusLimits,
   CHANNEL_ID_PATTERN,
   ConversationStatus,
@@ -169,6 +170,22 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     connectionId: id,
     providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH)
+  }),
+  // A bulk run of labels: ids and counts, never what was made of each order
+  [Events.BULK_LABELS_PROGRESS]: z.object({
+    storeId: id,
+    jobId: id,
+    requestedBy: id,
+    done: z.number().int().min(0),
+    total: z.number().int().min(1),
+    failed: z.number().int().min(0)
+  }),
+  [Events.BULK_LABELS_DONE]: z.object({
+    storeId: id,
+    jobId: id,
+    requestedBy: id,
+    status: z.enum(BulkLabelJobStatus),
+    mergedMediaId: id.nullable()
   }),
   [Events.MESSAGE_NOTE_ADDED]: z.object({
     storeId: id,

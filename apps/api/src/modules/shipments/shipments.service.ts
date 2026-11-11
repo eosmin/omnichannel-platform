@@ -9,6 +9,7 @@ import {
   type CursorPage,
   MediaStatus,
   type SetShipmentStatusBody,
+  ShipmentPrintableStatuses,
   ShipmentResourceTypes,
   ShipmentStatus
 } from '@platform/core/domain'
@@ -157,17 +158,10 @@ export class ShipmentsService {
   // file the scan did not clear is not a label (TDD_17 §4.6)
   async label(storeId: string, shipmentId: string): Promise<LabelLinkView> {
     const row = await this.rowOf(storeId, shipmentId)
-    const printable: ShipmentStatus[] = [
-      ShipmentStatus.LABEL_CREATED,
-      ShipmentStatus.PICKED_UP,
-      ShipmentStatus.IN_TRANSIT,
-      ShipmentStatus.OUT_FOR_DELIVERY,
-      ShipmentStatus.FAILED_ATTEMPT,
-      ShipmentStatus.DELIVERED,
-      ShipmentStatus.RETURNING,
-      ShipmentStatus.RETURNED
-    ]
-    if (row.labelMediaId === null || !printable.includes(row.status as ShipmentStatus)) {
+    if (
+      row.labelMediaId === null ||
+      !ShipmentPrintableStatuses.includes(row.status as ShipmentStatus)
+    ) {
       throw this.noLabel()
     }
     const media = await this.prisma.client.media.findFirst({

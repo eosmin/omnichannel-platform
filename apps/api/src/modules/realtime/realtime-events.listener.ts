@@ -4,6 +4,8 @@ import { OnEvent } from '@nestjs/event-emitter'
 import { Permissions } from '@platform/core/auth'
 import {
   type BridgedPayloads,
+  type BulkLabelsDonePayload,
+  type BulkLabelsProgressPayload,
   type ConversationAssignedPayload,
   type ConversationAttentionChangedPayload,
   type ConversationReadPayload,
@@ -165,6 +167,37 @@ export class RealtimeEventsListener {
     this.realtime.toStoreUser(payload.storeId, payload.requestedBy, RealtimeEvents.EXPORT_UPDATED, {
       exportId: payload.exportId
     })
+  }
+
+  // A bulk run of labels is the requester's alone (TDD_17 §4.6): their tabs of this store see the bar move and the file arrive. Counts
+  // and ids; what became of each order is read from the run through the api, which asks for the permission.
+  @OnEvent(Events.BULK_LABELS_PROGRESS)
+  onBulkLabelsProgress(payload: BulkLabelsProgressPayload): void {
+    this.realtime.toStoreUser(
+      payload.storeId,
+      payload.requestedBy,
+      RealtimeEvents.BULK_LABELS_PROGRESS,
+      {
+        jobId: payload.jobId,
+        done: payload.done,
+        total: payload.total,
+        failed: payload.failed
+      }
+    )
+  }
+
+  @OnEvent(Events.BULK_LABELS_DONE)
+  onBulkLabelsDone(payload: BulkLabelsDonePayload): void {
+    this.realtime.toStoreUser(
+      payload.storeId,
+      payload.requestedBy,
+      RealtimeEvents.BULK_LABELS_DONE,
+      {
+        jobId: payload.jobId,
+        status: payload.status,
+        mergedMediaId: payload.mergedMediaId
+      }
+    )
   }
 
   // An order was made: who may read orders hears its id and its customer's, nothing of what it holds (not the

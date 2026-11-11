@@ -147,6 +147,16 @@ export interface ReprocessCarrierEventsJob extends BaseJob {
   // The person who mapped the code: the moves of the replay say whose mapping they follow (the shipment moves are the system's)
   requestedBy?: string
 }
+// One bulk run of labels (TDD_17 §4.6): the orders, in the order the agent selected them, and who asked are on the BulkLabelJob row
+// and are read from it when the job runs. What the request chose for every order of the run (the carrier, the pickup) and whether
+// the person could override the price travel here, because the row has no column for them.
+export interface BulkLabelsMergeJob extends BaseJob {
+  storeId: string
+  jobId: string
+  connectionId?: string
+  pickup?: { date: string; from: string; to: string }
+  canOverridePrice: boolean
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

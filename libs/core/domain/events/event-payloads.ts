@@ -2,6 +2,7 @@ import type { ErrorCode } from '../errors/error-codes'
 import type {
   AttentionReason,
   AuthorType,
+  BulkLabelJobStatus,
   ChannelId,
   ConversationStatus,
   ConversationStatusReason,
@@ -148,6 +149,24 @@ export interface CarrierStatusUnmappedPayload {
   storeId: string
   connectionId: string
   providerCode: string
+}
+
+// A bulk run of labels (TDD_17 §4.6): ids and counts. What was made of each order is read from the job, never from the event.
+export interface BulkLabelsProgressPayload {
+  storeId: string
+  jobId: string
+  requestedBy: string
+  done: number
+  total: number
+  failed: number
+}
+
+export interface BulkLabelsDonePayload {
+  storeId: string
+  jobId: string
+  requestedBy: string
+  status: BulkLabelJobStatus
+  mergedMediaId: string | null
 }
 
 export interface OrderStatusChangedPayload extends OrderEventPayload {
@@ -421,6 +440,8 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
   [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
+  [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
+  [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.COUNT_SUBMITTED]: CountSubmittedPayload

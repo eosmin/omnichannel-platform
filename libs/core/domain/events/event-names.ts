@@ -96,6 +96,9 @@ export const Events = {
   SHIPMENT_REQUIRES_REVIEW: 'shipment.requires_review',
   // A carrier sent a status nobody has mapped, for the first time: the people who manage carriers are told (TDD_17 §4.17)
   CARRIER_STATUS_UNMAPPED: 'carrier.status_unmapped',
+  // A bulk run of labels advanced, and ended: the person who asked hears it, and is told when the file is ready (TDD_17 §4.6)
+  BULK_LABELS_PROGRESS: 'bulk_labels.progress',
+  BULK_LABELS_DONE: 'bulk_labels.done',
   PICKUP_REQUESTED: 'pickup.requested',
   PICKUP_UPDATED: 'pickup.updated',
   RETURN_REQUESTED: 'return.requested',
@@ -210,7 +213,10 @@ export const BridgedEvents = [
   Events.SHIPMENT_STATUS_CHANGED,
   Events.SHIPMENT_REQUIRES_REVIEW,
   // The worker reads what the carriers push: the owner is told in the api
-  Events.CARRIER_STATUS_UNMAPPED
+  Events.CARRIER_STATUS_UNMAPPED,
+  // The worker runs the bulk generation of labels: the requester hears it in the api
+  Events.BULK_LABELS_PROGRESS,
+  Events.BULK_LABELS_DONE
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]
