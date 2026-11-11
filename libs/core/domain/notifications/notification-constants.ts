@@ -212,8 +212,7 @@ export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = ne
   // message that was not sent for the customer messages (Step 4.9)
   NotificationTypes.ORDER_PAYMENT_FAILED,
   NotificationTypes.ORDER_MESSAGE_NOT_SENT,
-  // `inventory.low` has an emitter since Step 4.2 PR C; the transfer and the count wait for Steps 4.5 and 4.6
-  NotificationTypes.TRANSFER_DISPATCHED,
+  // `inventory.low` has an emitter since Step 4.2 PR C and `transfer.dispatched` since Step 4.5; the count waits for 4.6
   NotificationTypes.COUNT_AWAITING_APPLY,
   ...NotificationGroupTypes[SHIPPING],
   NotificationTypes.WEBHOOK_AUTO_DISABLED,

@@ -23,7 +23,10 @@ export const ProductConflicts = {
   VARIANT_NAME_IN_USE: 'variant_name_in_use',
   TOO_MANY_VARIANTS: 'too_many_variants',
   // A product or variant that an order or a stock movement names is history of the store: it is archived, not deleted
-  HAS_HISTORY: 'has_history'
+  HAS_HISTORY: 'has_history',
+  // Switching off the stock of a product whose units are on the road in a transfer in transit: the receipt (or the
+  // return of a cancel) would be refused and the units stranded (Step 4.5)
+  IN_TRANSIT: 'in_transit'
 } as const
 export type ProductConflict = (typeof ProductConflicts)[keyof typeof ProductConflicts]
 
@@ -33,6 +36,8 @@ export const ProductHistoryTables = {
   INVENTORY_MOVEMENTS: 'inventoryMovements',
   // The stock level of the item in a warehouse (even one at zero): a product that has one is kept, not deleted
   INVENTORY_LEVELS: 'inventoryLevels',
+  // A line of a transfer between warehouses, whatever its status (Step 4.5): its history names the product
+  TRANSFER_LINES: 'transferLines',
   MEDIA: 'media'
 } as const
 

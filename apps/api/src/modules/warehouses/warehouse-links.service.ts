@@ -9,6 +9,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  TransferStatus,
   WarehouseConflicts,
   WarehouseLockScopes,
   WarehouseResourceTypes,
@@ -154,6 +155,26 @@ export class WarehouseLinksService {
         'the store has units reserved in the warehouse',
         HttpStatusCodes.CONFLICT,
         { reason: WarehouseStockBlocks.UNLINK, storeId: reserved.storeId }
+      )
+    }
+    // Units of the store that are on the road to or from the warehouse come back to it (a receipt, or the return of a
+    // cancel), and that needs the link (TDD_16 §4.5)
+    const travelling = await tx.stockTransferLine.findFirst({
+      where: {
+        storeId: { in: storeIds },
+        transfer: {
+          status: TransferStatus.IN_TRANSIT,
+          OR: [{ fromWarehouseId: warehouseId }, { toWarehouseId: warehouseId }]
+        }
+      },
+      select: { storeId: true }
+    })
+    if (travelling !== null) {
+      throw new PlatformException(
+        ErrorCodes.INVENTORY_WAREHOUSE_HAS_STOCK,
+        'the store has units in a transfer in transit to or from the warehouse',
+        HttpStatusCodes.CONFLICT,
+        { reason: WarehouseStockBlocks.OPEN_TRANSFER, storeId: travelling.storeId }
       )
     }
   }
