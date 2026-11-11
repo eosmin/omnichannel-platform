@@ -102,6 +102,20 @@ export class CarrierConnectionsController {
     return this.connections.test(store.id, connectionId)
   }
 
+  // The answer holds the new secret, once: nothing may keep a copy of it
+  @NoStore()
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
+  @Post(ApiRoutes.carriers.webhookSecret(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  rotateWebhookSecret(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) connectionId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ webhookSecret: string }> {
+    return this.connections.rotateWebhookSecret(store.id, connectionId, actorOf(user, store, req))
+  }
+
   @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
   @Post(ApiRoutes.carriers.disconnect(':id'))
   @HttpCode(HttpStatusCodes.OK)

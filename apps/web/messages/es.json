@@ -569,6 +569,7 @@
     "SHIPPING_CARRIER_CREDENTIALS_INVALID": "El transportista no aceptó las credenciales",
     "SHIPPING_CARRIER_CAPABILITY_MISSING": "El transportista no admite esa acción",
     "SHIPPING_CARRIER_NOT_ACTIVE": "El transportista no está activo",
+    "CARRIER_WEBHOOK_SIGNATURE_INVALID": "No se pudo verificar la notificación del transportista",
     "SHIPPING_CARRIER_REJECTED": "El transportista rechazó la solicitud",
     "SHIPPING_CARRIER_UNAVAILABLE": "El transportista no está disponible. Inténtalo más tarde",
     "SHIPPING_FEE_OUT_OF_RANGE": "El costo de envío está fuera de rango",

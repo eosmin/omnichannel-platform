@@ -583,6 +583,43 @@ export class CarrierConnectionsService {
     return this.get(storeId, connectionId)
   }
 
+  // A new secret for the webhook of a connection (TDD_17 §4.9): the owner lost the old one, or it leaked. It takes the place
+  // of the old one at once (the carrier's panel has to be updated), and, like the one made at connect, it is given in this
+  // answer only: nothing can show it again. A connection that was let go has no webhook, and a carrier that pushes no status
+  // has nothing to sign.
+  async rotateWebhookSecret(
+    storeId: string,
+    connectionId: string,
+    actor: Actor
+  ): Promise<{ webhookSecret: string }> {
+    const row = await this.rowOf(this.prisma.client, storeId, connectionId)
+    if (row.status === String(CarrierConnectionStatus.DISABLED)) throw notActive()
+    if (!this.registry.hasCapability(row.carrierId, CarrierCapability.WEBHOOK_STATUS)) {
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING,
+        'the carrier does not push status updates',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    const secret = generateToken(CARRIER_WEBHOOK_SECRET_BYTES)
+    const sealed = this.cipher.seal({ secret })
+    await this.prisma.transaction(async tx => {
+      // The same lock as a disconnect: a secret is never written to a connection that is being let go
+      await lockStoreForWrite(tx, storeId)
+      await lockStoreScope(tx, storeId, CarrierLockScopes.CONNECTIONS)
+      const updated = await tx.carrierConnection.updateMany({
+        where: { id: connectionId, storeId, status: { not: CarrierConnectionStatus.DISABLED } },
+        data: { webhookSecret: sealed }
+      })
+      if (updated.count !== 1) throw notActive()
+    })
+    // The secret is not in the audit row: only that it was made
+    this.record(AuditAction.CARRIER_WEBHOOK_SECRET_ROTATED, storeId, connectionId, actor, {
+      carrierId: row.carrierId
+    })
+    return { webhookSecret: secret }
+  }
+
   // Every connection of the store that is not disconnected: what uninstalling the shipping plugin does (D19)
   async disconnectAll(storeId: string, actor: Actor): Promise<void> {
     const open = await this.prisma.client.carrierConnection.findMany({
@@ -867,7 +904,8 @@ export class CarrierConnectionsService {
     action:
       | typeof AuditAction.CARRIER_CONNECTED
       | typeof AuditAction.CARRIER_UPDATED
-      | typeof AuditAction.CARRIER_DISCONNECTED,
+      | typeof AuditAction.CARRIER_DISCONNECTED
+      | typeof AuditAction.CARRIER_WEBHOOK_SECRET_ROTATED,
     storeId: string,
     connectionId: string,
     actor: Actor,
