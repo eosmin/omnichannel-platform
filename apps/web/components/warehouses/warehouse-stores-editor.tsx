@@ -13,6 +13,7 @@ import { useReplaceWarehouseStores } from '../../lib/warehouses/use-warehouses'
 import {
   addableStores,
   addLink,
+  fitLinks,
   linkInputsOf,
   linksChanged,
   linksOf,
@@ -56,25 +57,26 @@ export function WarehouseStoresEditor({
   const guard = useSubmitGuard()
   const save = useReplaceWarehouseStores(storeId)
   const [saved, setSaved] = useState<WarehouseStoreLink[]>(() => linksOf(warehouse))
-  const [links, setLinks] = useState<WarehouseStoreLink[]>(() => linksOf(warehouse))
+  const [draft, setDraft] = useState<WarehouseStoreLink[]>(() => linksOf(warehouse))
   const [pick, setPick] = useState('')
   const [refusal, setRefusal] = useState<string | null>(null)
   const pickId = useId()
+  const places = placesOf(warehouses, warehouse)
+  const links = fitLinks(draft, places)
   const changed = linksChanged(saved, links)
   // What the api now says the warehouse serves (a save of the details, another person's change): shown while the
   // person has nothing unsaved, and the baseline of "unsaved" either way
   const served = linksOf(warehouse)
   if (linksChanged(saved, served)) {
     setSaved(served)
-    if (!changed) setLinks(served)
+    if (!changed) setDraft(served)
   }
-  const places = placesOf(warehouses, warehouse)
   const candidates = addableStores(stores, links)
   const pickable = warehouse.active && canEdit
   const disabled = !canEdit || save.isPending
 
   const edit = (next: WarehouseStoreLink[]): void => {
-    setLinks(next)
+    setDraft(next)
     setRefusal(null)
   }
 
@@ -93,7 +95,7 @@ export function WarehouseStoresEditor({
         onSuccess: view => {
           const next = linksOf(view)
           setSaved(next)
-          setLinks(next)
+          setDraft(next)
           setRefusal(null)
           onSaved(view)
           toast.success(t('saved'))

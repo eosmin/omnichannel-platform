@@ -3,6 +3,7 @@ import { ApiError, type WarehouseDetailView } from '@platform/api-client'
 import {
   addableStores,
   addLink,
+  fitLinks,
   createInputOf,
   emptyWarehouseDraft,
   isCodeInUse,
@@ -153,6 +154,21 @@ describe('the priority of the warehouse in each store', () => {
       { storeId: 's2', priority: 1 },
       { storeId: 's1', priority: 1 }
     ])
+  })
+
+  it('puts a priority above the last place of its store at the last place', () => {
+    const tooHigh = [{ storeId: 's1', storeName: 'Shop', priority: 5 }]
+    expect(fitLinks(tooHigh, places)[0]?.priority).toBe(2)
+    expect(fitLinks(links, places)).toEqual(links)
+  })
+
+  it('treats a store with no other warehouse as a list of one place', () => {
+    const empty = new Map<string, number>()
+    expect(placesIn(empty, 's9')).toBe(1)
+    const added = addLink([], { storeId: 's9', storeName: 'Kiosk' }, empty)
+    expect(added).toEqual([{ storeId: 's9', storeName: 'Kiosk', priority: 1 }])
+    expect(moveLink(added, 's9', 1, empty)[0]?.priority).toBe(1)
+    expect(moveLink(added, 's9', -1, empty)[0]?.priority).toBe(1)
   })
 
   it('removes a store without touching the others', () => {

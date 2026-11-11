@@ -109,6 +109,16 @@ test.describe('Organization → Warehouses', () => {
     )
     const rowIn = (stores: Locator, storeName: string) =>
       stores.getByRole('listitem').filter({ hasText: storeName })
+    // The save is over when the api has answered, not when a toast shows (the first save leaves its own)
+    const saveStores = async (stores: Locator): Promise<void> => {
+      const answered = page.waitForResponse(
+        response =>
+          response.request().method() === 'PUT' &&
+          /\/warehouses\/[^/]+\/stores$/.test(new URL(response.url()).pathname)
+      )
+      await stores.getByRole('button', { name: text.stores.save }).click()
+      expect((await answered).ok()).toBe(true)
+    }
     const position = (place: number, total: number): string =>
       text.stores.position.replace('{position}', String(place)).replace('{total}', String(total))
 
@@ -119,8 +129,7 @@ test.describe('Organization → Warehouses', () => {
     await stores.getByRole('button', { name: text.stores.add }).click()
     await stores.getByLabel(text.stores.addLabel).selectOption({ label: outletName })
     await stores.getByRole('button', { name: text.stores.add }).click()
-    await stores.getByRole('button', { name: text.stores.save }).click()
-    await expect(page.getByText(text.stores.saved).first()).toBeVisible()
+    await saveStores(stores)
     expect(puts).toHaveLength(1)
     expect(new Map(puts[0]?.stores.map(link => [link.storeId, link.priority]))).toEqual(
       new Map([
@@ -146,8 +155,7 @@ test.describe('Organization → Warehouses', () => {
       .getByRole('button', { name: text.stores.moveUp.replace('{store}', mainName) })
       .click()
     await expect(rowIn(stores, mainName)).toContainText(position(1, 2))
-    await stores.getByRole('button', { name: text.stores.save }).click()
-    await expect(page.getByText(text.stores.saved).first()).toBeVisible()
+    await saveStores(stores)
     expect(puts).toHaveLength(2)
     expect(puts[1]?.stores).toEqual([{ storeId, priority: 1 }])
 

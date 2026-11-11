@@ -153,6 +153,17 @@ export function placesOf(
 export const placesIn = (places: ReadonlyMap<string, number>, storeId: string): number =>
   places.get(storeId) ?? 1
 
+// The links as the screen shows and sends them: a priority above the last place of its store (the list of that
+// store got shorter while the person was editing) stands at the last place, which is where the api would put it
+export const fitLinks = (
+  links: readonly WarehouseStoreLink[],
+  places: ReadonlyMap<string, number>
+): WarehouseStoreLink[] =>
+  links.map(link => ({
+    ...link,
+    priority: Math.min(link.priority, placesIn(places, link.storeId))
+  }))
+
 // One place earlier (-1) or later (+1) in that store's list, never outside it
 export function moveLink(
   links: readonly WarehouseStoreLink[],
