@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
 import { ChannelsModule } from './modules/channels/channels.module'
 import { ConversationsModule } from './modules/conversations/conversations.module'
+import { CountsModule } from './modules/counts/counts.module'
 import { CustomersModule } from './modules/customers/customers.module'
 import { ExportsModule } from './modules/exports'
 import { InventoryModule } from './modules/inventory/inventory.module'
@@ -52,6 +53,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     RoutingModule,
     RealtimeModule,
     InventoryModule,
+    CountsModule,
     ProductsModule,
     WarehousesModule,
     SettingsModule,

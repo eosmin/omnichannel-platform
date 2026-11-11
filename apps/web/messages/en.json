@@ -490,6 +490,8 @@
     "NETWORK_UNAVAILABLE": "No connection. What you wrote is still here: try again when it is back",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Say why you are adjusting the stock",
     "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "The stock count cannot change to that status",
+    "INVENTORY_COUNT_STORES_NOT_ALLOWED": "You cannot apply this count: it changes stock in stores where you may not apply counts",
+    "INVENTORY_COUNT_LINES_REFUSED": "Some lines of the count cannot be applied: review them or cancel the count",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "The transfer cannot change to that status",
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "The origin and the destination must differ",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "The warehouse still has stock",
@@ -663,7 +665,7 @@
     "count": {
       "awaiting_apply": {
         "title": "Stock count waiting",
-        "body": "A stock count is complete and waits to be applied."
+        "body": "Stock count {number} is complete and waits to be applied."
       }
     },
     "dsr": {

@@ -147,6 +147,8 @@ export const ApiRoutes = {
     start: (id: string) => `/counts/${id}/start`,
     lines: (id: string) => `/counts/${id}/lines`,
     submit: (id: string) => `/counts/${id}/submit`,
+    // Sends a count in review back to counting: the approver asks for a recount
+    reopen: (id: string) => `/counts/${id}/reopen`,
     apply: (id: string) => `/counts/${id}/apply`,
     cancel: (id: string) => `/counts/${id}/cancel`
   },

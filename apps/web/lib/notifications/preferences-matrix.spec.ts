@@ -44,13 +44,17 @@ describe('groupPreferences', () => {
     ])
   })
 
-  it('shows the switch of the low stock warning, which the inventory raises since Step 4.2', () => {
+  it('shows the switches of the low stock warning and of the count awaiting apply, which the inventory raises', () => {
     const groups = groupPreferences([
       row(NotificationTypes.INVENTORY_LOW),
-      row(NotificationTypes.COUNT_AWAITING_APPLY)
+      row(NotificationTypes.COUNT_AWAITING_APPLY),
+      row(NotificationTypes.TRANSFER_DISPATCHED)
     ])
     expect(groups.map(entry => entry.group)).toEqual(['inventory'])
-    expect(groups[0]?.rows.map(entry => entry.type)).toEqual([NotificationTypes.INVENTORY_LOW])
+    expect(groups[0]?.rows.map(entry => entry.type)).toEqual([
+      NotificationTypes.INVENTORY_LOW,
+      NotificationTypes.COUNT_AWAITING_APPLY
+    ])
   })
 
   it('draws nothing for an empty answer', () => {

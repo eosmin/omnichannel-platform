@@ -10,6 +10,7 @@ import {
   AuthorType,
   ConversationStatus,
   ConversationStatusReasons,
+  CountResourceTypes,
   MembershipStatus,
   ProductResourceTypes
 } from '@platform/core/domain'
@@ -18,6 +19,7 @@ import {
   type ConversationAssignedPayload,
   type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
+  type CountSubmittedPayload,
   type ExportSettledPayload,
   Events,
   type InventoryLowPayload,
@@ -259,6 +261,62 @@ export class NotificationsEventsListener {
       this.logger.error(
         { productId, err: String(error) },
         'a low stock warning could not be notified'
+      )
+    }
+  }
+
+  // A count went to review (TDD_16 §4.6): the people who may apply it are told. The count belongs to the organization, so
+  // they are found among the members of ALL its stores who hold inventory:apply_counts, now and not when the count was
+  // submitted. A notification is kept in a store: each person is told once, in the store of the submitter when they
+  // belong to it, otherwise in the first store where they hold the permission.
+  @OnEvent(Events.COUNT_SUBMITTED)
+  async onCountSubmitted(payload: CountSubmittedPayload): Promise<void> {
+    const { organizationId, storeId, countId, number } = payload
+    try {
+      const approvers = await this.prisma.client.membership.findMany({
+        where: {
+          organizationId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.INVENTORY_APPLY_COUNTS } } }
+        },
+        select: { userId: true, storeId: true },
+        orderBy: [{ storeId: 'asc' }]
+      })
+      const storeOf = new Map<string, string>()
+      for (const member of approvers) {
+        const known = storeOf.get(member.userId)
+        if (known === undefined || (member.storeId === storeId && known !== storeId)) {
+          storeOf.set(member.userId, member.storeId)
+        }
+      }
+      const byStore = new Map<string, string[]>()
+      for (const [userId, memberStore] of storeOf) {
+        byStore.set(memberStore, [...(byStore.get(memberStore) ?? []), userId])
+      }
+      // A store that fails does not leave the approvers of the next ones untold
+      for (const [memberStore, userIds] of byStore) {
+        try {
+          // Once: a count sent back and submitted again does not stack a second unread line for the same sheet
+          await this.notifications.sendToUsersOnce(userIds, {
+            storeId: memberStore,
+            type: NotificationTypes.COUNT_AWAITING_APPLY,
+            params: { number },
+            resourceType: CountResourceTypes.COUNT,
+            resourceId: countId,
+            actionPath: AppPaths.org.counts
+          })
+        } catch (error) {
+          this.logger.error(
+            { countId, storeId: memberStore, err: String(error) },
+            'a count awaiting apply could not be notified in a store'
+          )
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        { countId, err: String(error) },
+        'a count awaiting apply could not be notified'
       )
     }
   }

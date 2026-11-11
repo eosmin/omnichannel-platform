@@ -123,6 +123,15 @@ export interface InventoryLowPayload {
   threshold: number
 }
 
+// A count went to review. The count belongs to the organization, so the event names the store of the person who
+// submitted it: the notification of an approver is kept in the store where they are told.
+export interface CountSubmittedPayload {
+  organizationId: string
+  storeId: string
+  countId: string
+  number: string
+}
+
 // The mark of attention of a conversation changed: `reason` is the new one, null when it was taken off.
 // Never the note of the agent: no text crosses the bridge, the client reads the row again.
 export interface ConversationAttentionChangedPayload {
@@ -326,6 +335,7 @@ export interface DomainEventPayloads {
   [Events.CUSTOMER_IDENTITY_LINKED]: CustomerIdentityLinkedPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
+  [Events.COUNT_SUBMITTED]: CountSubmittedPayload
   [Events.PRODUCT_CREATED]: ProductChangedPayload
   [Events.PRODUCT_UPDATED]: ProductChangedPayload
   [Events.PRODUCT_DELETED]: ProductChangedPayload

@@ -3,6 +3,7 @@ import { NotificationChannel } from '../index'
 import {
   isDailyDigestHour,
   NotificationDefaults,
+  NotificationGroups,
   NotificationGroupTypes,
   NotificationSeverity,
   NotificationTypes,
@@ -120,13 +121,17 @@ describe('NotificationTypesWithoutEmitter', () => {
       // Declared in Step 4.3 PR A, raised by the orders service of PR B, which then takes it off this list
       NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
       NotificationTypes.TRANSFER_DISPATCHED,
-      NotificationTypes.COUNT_AWAITING_APPLY,
       NotificationTypes.REMITTANCE_OVERDUE,
       NotificationTypes.WEBHOOK_AUTO_DISABLED,
       NotificationTypes.PLUGIN_ERROR
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
     }
+    // Raised since Step 4.6 (a count that goes to review), so its switch is shown
+    expect(NotificationTypesWithoutEmitter.has(NotificationTypes.COUNT_AWAITING_APPLY)).toBe(false)
+    expect(NotificationGroupTypes[NotificationGroups.INVENTORY]).toContain(
+      NotificationTypes.COUNT_AWAITING_APPLY
+    )
     for (const type of [
       NotificationTypes.CONVERSATION_ASSIGNED,
       NotificationTypes.MESSAGE_FAILED,
