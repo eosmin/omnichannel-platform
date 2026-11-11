@@ -15,7 +15,8 @@ const ADMIN = 'multi-store@test.com'
 const CREATE = en.orders.create
 const EDIT = en.orders.edit
 // The dev fixtures give each of their 30 products 20 units in the default warehouse
-const FIXTURE = 'Fixture product 7'
+// Not the products other specs count (the stock of those is asserted): an order reserves units of the one it sells
+const FIXTURE = 'Fixture product 24'
 
 test.describe('the edit-order drawer', () => {
   test.describe.configure({ mode: 'serial' })
