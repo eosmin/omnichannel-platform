@@ -1,4 +1,5 @@
 export * from './carrier-errors'
+export * from './carrier-label'
 export * from './carrier-plugin.interface'
 export * from './carrier-types'
 export * from './channel-capability'

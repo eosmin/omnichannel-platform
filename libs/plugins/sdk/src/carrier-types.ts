@@ -1,8 +1,13 @@
-import type { LabelFormatType, ShipmentStatus, ShippingPayer } from '@platform/core/domain'
+import type {
+  GuideRefundStatus,
+  LabelFormatType,
+  ShipmentStatus,
+  ShippingPayer
+} from '@platform/core/domain'
 
-// The contract of a carrier plugin. The fields TDD_17 names are here; the ones it leaves to the carrier
-// documents (a pickup's details, a location's ids) are the smallest shape the core needs and
-// Step 4.8 refines them against the real APIs.
+// The contract of a carrier plugin (TDD_17 §4.1). Each params and result type is the smallest shape the
+// core needs, refined in Step 4.8 against §4.4, §4.5, §4.8 and §4.9: what the core writes first and sends,
+// what it must read back to finish a shipment, and what it needs to recover one after an unknown outcome.
 
 export interface CarrierServiceDescriptor {
   code: string // the carrier's own code
@@ -82,6 +87,8 @@ export interface CreateShipmentParams {
   shippingPayer: ShippingPayer
   cod: { amountCents: number; currency: string } | null
   labelFormat: LabelFormatType
+  // What the customer or the agent wrote for the courier; never the packing notes (TDD_17 §4.6)
+  notes?: string
 }
 
 export interface CarrierLabel {
@@ -90,9 +97,17 @@ export interface CarrierLabel {
   data: Uint8Array
 }
 
+export interface CarrierCost {
+  amountCents: number
+  currency: string
+}
+
 export interface CreateShipmentResult {
   guideNumber: string
   providerShipmentId?: string
+  trackingUrl?: string
+  // What the carrier charged for the guide, when it says so
+  cost?: CarrierCost
   label?: CarrierLabel // absent when fetchLabel is needed
 }
 
@@ -108,18 +123,31 @@ export interface CreatePickupBatchParams {
   shipments: readonly CreateShipmentParams[]
 }
 
+// One shipment of a batch: a guide, or the carrier's refusal of that shipment alone (TDD_17 §4.5: partial
+// success is normal). A refusal of the whole call is a CarrierRejectedError, not a batch of refusals.
+export const PickupBatchOutcomes = { CREATED: 'created', REJECTED: 'rejected' } as const
+export type PickupBatchEntry =
+  | { outcome: typeof PickupBatchOutcomes.CREATED; shipment: CreateShipmentResult }
+  | { outcome: typeof PickupBatchOutcomes.REJECTED; message: string }
+
 export interface PickupBatchResult {
   pickupRef: string
   // One entry per shipment of the batch, in the same order
-  shipments: readonly CreateShipmentResult[]
+  shipments: readonly PickupBatchEntry[]
 }
 
 export interface PickupRef {
   pickupRef: string
 }
 
+// The guides a pickup holds, each with the reference (order number) it was created for, so the core can match
+// them to its own CREATING rows after an unknown outcome
+export interface PickupGuide extends CreateShipmentResult {
+  reference: string
+}
+
 export interface PickupDetails extends PickupRef {
-  shipments: readonly CreateShipmentResult[]
+  shipments: readonly PickupGuide[]
 }
 
 export interface PickupParams {
@@ -141,21 +169,31 @@ export interface PickupResult extends PickupRef {
   packageCount: number
 }
 
-// How the core names a shipment to the carrier: by the guide, or by the carrier's own id
+// How the core names a shipment to the carrier. The reference (order number) is the one thing the core always
+// has, even when the outcome of a create is unknown and no guide came back: "check with the carrier"
+// (TDD_17 §4.5) looks a shipment up by it.
 export interface ShipmentRef {
-  guideNumber: string
+  reference: string
+  guideNumber?: string
   providerShipmentId?: string
 }
 
-export interface CancelShipmentParams extends ShipmentRef {
+// A shipment that has a guide: what cancelling and fetching a label need
+export interface GuidedShipmentRef extends ShipmentRef {
+  guideNumber: string
+}
+
+export interface CancelShipmentParams extends GuidedShipmentRef {
   idempotencyKey: string
 }
 
+// The carrier voided the guide. What it says about the refund is recorded as is (TDD_17 §4.8); a carrier that
+// cannot void answers with a CarrierRejectedError, and one that cannot be reached with a CarrierUnavailableError
 export interface CancelShipmentResult {
-  cancelled: boolean
+  refundStatus: GuideRefundStatus.PENDING | GuideRefundStatus.CONFIRMED
 }
 
-export interface FetchLabelParams extends ShipmentRef {
+export interface FetchLabelParams extends GuidedShipmentRef {
   format: LabelFormatType
 }
 
@@ -180,4 +218,6 @@ export interface CarrierEvent {
   occurredAt: string
   guideNumber?: string
   providerShipmentId?: string
+  // The order number, when the carrier echoes it: it names a shipment whose guide the core never stored
+  reference?: string
 }

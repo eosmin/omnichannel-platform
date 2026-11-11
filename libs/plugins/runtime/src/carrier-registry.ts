@@ -24,6 +24,7 @@ import {
 } from './contract-rules'
 
 const METHODS_BY_CAPABILITY = [
+  [CarrierCapability.INTERNAL_GUIDE, 'buildLabelLayout'],
   [CarrierCapability.CANCEL_SHIPMENT, 'cancelShipment'],
   [CarrierCapability.FETCH_STATUS, 'fetchStatus'],
   [CarrierCapability.WEBHOOK_STATUS, 'handleWebhook'],

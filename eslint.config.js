@@ -23,6 +23,12 @@ const conversationStatusBan = {
 // that a spec can run it (scripts/lib/inventory-write-bans.spec.ts)
 const { inventoryWriteBans } = createRequire(import.meta.url)('./eslint-inventory-bans.cjs')
 
+// The states of the shipping module change in the service that owns them (TDD_17 §8): see eslint-shipping-bans.cjs,
+// where the rules live so that a spec can run them (scripts/lib/shipping-state-bans.spec.ts)
+const { shippingStateBans, orderPriceApprovalBans } = createRequire(import.meta.url)(
+  './eslint-shipping-bans.cjs'
+)
+
 const prismaTransactionBan = {
   selector: "CallExpression[callee.property.name='$transaction']",
   message: 'Use PrismaService.transaction(fn) so the tenant context is set (TDD_01 §3.2)'
@@ -128,6 +134,8 @@ export default defineConfig([
         conversationStatusBan,
         prismaTransactionBan,
         ...inventoryWriteBans,
+        ...shippingStateBans,
+        ...orderPriceApprovalBans,
         ...httpStatusBans
       ],
 
@@ -190,6 +198,11 @@ export default defineConfig([
                 'scope:core-domain',
                 'scope:channels-shared'
               ]
+            },
+            {
+              // A carrier plugin sees only what a third-party plugin sees: the SDK and the domain
+              sourceTag: 'scope:carriers',
+              onlyDependOnLibsWithTags: ['scope:plugins-sdk', 'scope:core-domain']
             },
             {
               sourceTag: 'scope:plugins',
@@ -350,6 +363,8 @@ export default defineConfig([
         conversationStatusBan,
         prismaTransactionBan,
         ...inventoryWriteBans,
+        ...shippingStateBans,
+        ...orderPriceApprovalBans,
         ...httpStatusBans
       ]
     }
@@ -364,6 +379,43 @@ export default defineConfig([
         processEnvBan,
         conversationStatusBan,
         prismaTransactionBan,
+        ...shippingStateBans,
+        ...orderPriceApprovalBans,
+        ...httpStatusBans
+      ]
+    }
+  },
+
+  // The shipping services: the one place that writes the states of the shipping module. The specs keep their own
+  // block above, which leaves these bans out
+  {
+    files: ['libs/core/shipping/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        processEnvBan,
+        conversationStatusBan,
+        prismaTransactionBan,
+        ...inventoryWriteBans,
+        ...orderPriceApprovalBans,
+        ...httpStatusBans
+      ]
+    }
+  },
+
+  // OrdersService and its module: the one place that writes the approval of a price
+  {
+    files: ['apps/api/src/modules/orders/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        processEnvBan,
+        conversationStatusBan,
+        prismaTransactionBan,
+        ...inventoryWriteBans,
+        ...shippingStateBans,
         ...httpStatusBans
       ]
     }
