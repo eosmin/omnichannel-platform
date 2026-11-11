@@ -1,4 +1,4 @@
-import { isDocsOnly, selectSteps } from './affected'
+import { isDocsOnly, parseArgs, selectSteps } from './affected'
 
 describe('isDocsOnly', () => {
   it('is true when every changed file is under docs/', () => {
@@ -28,5 +28,22 @@ describe('selectSteps', () => {
 
   it('keeps every step with --full', () => {
     expect(selectSteps(steps, { full: true }).map(s => s.name)).toEqual(['lint', 'test'])
+  })
+})
+
+describe('parseArgs', () => {
+  it('reads --since with and without the lone -- that pnpm passes through', () => {
+    expect(parseArgs(['--since', 'abc'])).toEqual({ full: false, since: 'abc', unknown: [] })
+    expect(parseArgs(['--', '--since', 'abc'])).toEqual({ full: false, since: 'abc', unknown: [] })
+  })
+
+  it('reads --full', () => {
+    expect(parseArgs(['--full']).full).toBe(true)
+  })
+
+  it('still rejects an unknown flag or a --since with no value', () => {
+    expect(parseArgs(['--', '--ful']).unknown).toEqual(['--ful'])
+    expect(parseArgs(['--since']).unknown).toEqual(['--since'])
+    expect(parseArgs(['--since', '--full']).unknown).toEqual(['--since'])
   })
 })
