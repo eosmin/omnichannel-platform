@@ -39,6 +39,7 @@ import {
   type MessageReceivedPayload,
   type OrderCreatedPayload,
   type OrderEventPayload,
+  type OrderMessageNotSentPayload,
   type OrderStatusChangedPayload,
   type ShipmentEventPayload,
   type ShipmentStatusChangedPayload,
@@ -526,6 +527,31 @@ export class NotificationsEventsListener {
       this.logger.error(
         { orderId, err: String(error) },
         'a packing note warning could not be notified'
+      )
+    }
+  }
+
+  // A message about an order was due and did not go (TDD_17 §4.7, Step 4.9): the members who may send order messages are told,
+  // so a customer is never left uninformed without somebody knowing. The event carries the kind and the reason, never the text.
+  // Once per order while the earlier warning is unread: three packages that cannot be told about are one line in the center.
+  @OnEvent(Events.ORDER_MESSAGE_NOT_SENT)
+  async onOrderMessageNotSent(payload: OrderMessageNotSentPayload): Promise<void> {
+    const { storeId, orderId, orderNumber, kind, reason, actor } = payload
+    try {
+      // Not the member who pressed "send": the answer of their request already told them (the id is null for the system)
+      const members = await this.membersWith(storeId, [Permissions.ORDERS_SEND_MESSAGES], actor.id)
+      await this.notifications.sendToUsersOnce(members, {
+        storeId,
+        type: NotificationTypes.ORDER_MESSAGE_NOT_SENT,
+        params: { orderNumber, kind, reason },
+        resourceType: OrderResourceTypes.ORDER,
+        resourceId: orderId,
+        actionPath: AppPaths.store.order(storeId, orderId)
+      })
+    } catch (error) {
+      this.logger.error(
+        { orderId, err: String(error) },
+        'an unsent order message could not be notified'
       )
     }
   }
