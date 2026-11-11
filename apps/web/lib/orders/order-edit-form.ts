@@ -1,8 +1,10 @@
 import type { OrderDetailView } from '@platform/api-client'
-import type { UpdateOrderInput } from '@platform/core/domain'
+import type { Permission } from '@platform/core/auth'
+import { PaymentStatus, type UpdateOrderInput } from '@platform/core/domain'
 
 import { centsToInput, parseCents } from '../products/money'
 
+import { canEditField } from './order-detail-rules'
 import {
   allocationProblem,
   chosenAllocations,
@@ -36,6 +38,7 @@ export function draftFromOrder(order: OrderDetailView): EditDraft {
       variantName: item.variantName,
       sku: null,
       catalogPriceCents: item.originalUnitPriceCents ?? item.unitPriceCents,
+      soldPriceCents: item.unitPriceCents,
       quantity: String(item.quantity),
       priceText: centsToInput(item.unitPriceCents),
       priceReason: item.priceOverrideReason ?? '',
@@ -47,10 +50,33 @@ export function draftFromOrder(order: OrderDetailView): EditDraft {
   }
 }
 
+// The units each existing line holds in each warehouse, by the key of the line: an edit gives them back before it plans again
+export function releasedOf(
+  order: OrderDetailView
+): Map<string, readonly { warehouseId: string; quantity: number }[]> {
+  return new Map(
+    order.items.map(item => [lineKey(item.productId, item.variantId), item.allocations])
+  )
+}
+
 export interface EditableParts {
   items: boolean
   shipping: boolean
   discount: boolean
+}
+
+// Which of the three the order accepts now: the status table, the permission to edit, and the payment (once a payment is
+// COMPLETED the items, the fee and the discount are fixed: refund it and the order is open again, as the api checks)
+export function editablePartsOf(
+  order: Pick<OrderDetailView, 'status' | 'paymentStatus'>,
+  can: (permission: Permission) => boolean
+): EditableParts {
+  const isPaid = order.paymentStatus === (PaymentStatus.COMPLETED as string)
+  return {
+    items: !isPaid && canEditField(order.status, 'items', can),
+    shipping: !isPaid && canEditField(order.status, 'shipping', can),
+    discount: !isPaid && canEditField(order.status, 'discount', can)
+  }
 }
 
 export type UpdateResult =
@@ -128,10 +154,16 @@ export function buildUpdate(
     if (cents === null) return { ok: false, field: 'discount' }
     const reason = draft.discountReason.trim()
     if (cents > 0 && reason === '') return { ok: false, field: 'discountReason' }
-    if (cents !== order.discountCents || (cents > 0 && reason !== (order.discountReason ?? ''))) {
+    const reasonChanged = reason !== (order.discountReason ?? '')
+    // The one reason field also carries the reason of a shipping fee outside its range: a reason typed next to a new fee
+    // travels with it even when the discount stays at 0
+    const travelsWithPrice = body.shippingCents !== undefined || body.items !== undefined
+    if (cents !== order.discountCents || (cents > 0 && reasonChanged)) {
       body.discountCents = cents
-      // A discount taken back loses its reason with it
-      body.discountReason = cents > 0 ? reason : null
+      // A discount taken back loses its reason with it, unless the same request needs one for the fee
+      body.discountReason = cents > 0 || (travelsWithPrice && reason !== '') ? reason : null
+    } else if (reasonChanged && travelsWithPrice) {
+      body.discountReason = reason === '' ? null : reason
     }
   }
 

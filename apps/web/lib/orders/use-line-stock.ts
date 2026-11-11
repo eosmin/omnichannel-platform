@@ -4,20 +4,30 @@ import { useMemo } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
 
-import type { StockOfLine } from '../../components/orders/order-line-row'
 import { useStore } from '../../components/providers/store-context'
 import { useWarehousesOfStore } from '../inventory/use-inventory'
 
-import type { DraftLine } from './order-form'
-import { stockRulesOf } from './order-form'
+import { type DraftLine, stockRulesOf } from './order-form'
+import type { StockOfLine } from './stock-of-line'
 import { useLineStocks, useStockSwitches } from './use-create-order'
 
 // What each line of an order form knows of its stock: the warehouses of the store with what each holds of the item, and the
 // two switches that decide how a line may be served. Only a member with `inventory:view` and `settings:view` has them (the
 // switches live behind `settings:view`); the others get lines with no stock block and the server plans the warehouses.
-export function useStockOfLines(lines: readonly DraftLine[]): (line: DraftLine) => StockOfLine {
+//
+// `enabled` false reads nothing (a form whose items are locked draws no stock). `released` holds, by line, the units an
+// existing order already reserves: an edit gives them back before it plans again, so they count as available here.
+export function useStockOfLines(
+  lines: readonly DraftLine[],
+  options: {
+    enabled?: boolean
+    released?: ReadonlyMap<string, readonly { warehouseId: string; quantity: number }[]>
+  } = {}
+): (line: DraftLine) => StockOfLine {
+  const { enabled = true, released } = options
   const { storeId, can } = useStore()
-  const mayShowStock = can(ClientPermissions.INVENTORY_VIEW) && can(ClientPermissions.SETTINGS_VIEW)
+  const mayShowStock =
+    enabled && can(ClientPermissions.INVENTORY_VIEW) && can(ClientPermissions.SETTINGS_VIEW)
   const productIds = useMemo(() => [...new Set(lines.map(line => line.productId))], [lines])
   const warehouses = useWarehousesOfStore(storeId, mayShowStock)
   const switches = useStockSwitches(storeId, mayShowStock)
@@ -53,6 +63,21 @@ export function useStockOfLines(lines: readonly DraftLine[]): (line: DraftLine) 
       allowSplitFulfillment: switches.data.allowSplitFulfillment,
       allowNegativeStock: switches.data.allowNegativeStock
     })
-    return { ...none, rules, canChoose: true }
+    const own = released?.get(line.key) ?? []
+    return {
+      ...none,
+      rules: {
+        ...rules,
+        warehouses: rules.warehouses.map(row => ({
+          ...row,
+          available:
+            row.available +
+            own
+              .filter(held => held.warehouseId === row.warehouseId)
+              .reduce((sum, held) => sum + held.quantity, 0)
+        }))
+      },
+      canChoose: true
+    }
   }
 }

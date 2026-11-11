@@ -10,22 +10,13 @@ import {
   type FormField,
   parseQuantity,
   plannedAllocations,
-  type StockRules
+  shownPriceCents
 } from '../../lib/orders/order-form'
+import type { StockOfLine } from '../../lib/orders/stock-of-line'
 import { centsToInput, formatCents, parseCents } from '../../lib/products/money'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
-
-export interface StockOfLine {
-  // Null while it loads or when the member may not read the inventory
-  rules: StockRules | null
-  isLoading: boolean
-  isFailed: boolean
-  names: ReadonlyMap<string, string>
-  // The member may read the stock and the settings, so the choice can be checked here as the server checks it
-  canChoose: boolean
-}
 
 // One item of the order: its quantity, its price (the catalog's, or another one for who may override it), and where its
 // units come from. The server decides every one of these again.
@@ -125,7 +116,7 @@ export function OrderLineRow({
                 id={`${id}-price`}
                 readOnly
                 aria-describedby={`${id}-price-help`}
-                value={formatCents(format, line.catalogPriceCents)}
+                value={formatCents(format, shownPriceCents(line))}
               />
               <p id={`${id}-price-help`} className="text-muted-foreground text-xs">
                 {tLines('priceLocked')}
@@ -255,6 +246,11 @@ export function OrderLineRow({
             </div>
           )}
         </div>
+      ) : null}
+      {problem === 'quantity' || problem === 'price' || problem === 'priceReason' ? (
+        <p role="alert" className="text-destructive text-sm">
+          {t(`errors.${problem}`)}
+        </p>
       ) : null}
       {problem === 'allocations' ? (
         <p role="alert" className="text-destructive text-sm">

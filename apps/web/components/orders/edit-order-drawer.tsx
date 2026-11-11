@@ -3,11 +3,17 @@
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
+import type { OrderDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { PriceApprovalStatus } from '@platform/core/domain'
 
-import { canEditField } from '../../lib/orders/order-detail-rules'
-import { buildUpdate, draftFromOrder, type EditDraft } from '../../lib/orders/order-edit-form'
+import {
+  buildUpdate,
+  draftFromOrder,
+  type EditDraft,
+  editablePartsOf,
+  releasedOf
+} from '../../lib/orders/order-edit-form'
 import type { FormField, StockRules } from '../../lib/orders/order-form'
 import { useStockOfLines } from '../../lib/orders/use-line-stock'
 import { useOrder, useOrderWrites } from '../../lib/orders/use-order'
@@ -74,14 +80,22 @@ function Body({
   const writes = useOrderWrites(storeId, orderId)
   const guard = useSubmitGuard()
   // What the form holds is made once from the order: a refresh of the order while it is open must not rewrite what was typed
-  const [draft, setDraft] = useState<EditDraft | null>(null)
+  // and what the draft was made from is kept with it: the changes are taken against that order, not against a refresh that
+  // somebody else's change brought in meanwhile (that would send their change back as if it were ours)
+  const [made, setMade] = useState<{ base: OrderDetailView; draft: EditDraft } | null>(null)
+  const draft = made?.draft ?? null
   const [wrong, setWrong] = useState<{ field: FormField; line?: string | undefined } | null>(null)
   const data = order.data
-  if (data !== undefined && draft === null) setDraft(draftFromOrder(data))
-  const stockOf = useStockOfLines(draft?.lines ?? [])
+  if (data !== undefined && made === null) setMade({ base: data, draft: draftFromOrder(data) })
+  const base = made?.base ?? null
+  const editable = data === undefined ? null : editablePartsOf(data, can)
+  const stockOf = useStockOfLines(draft?.lines ?? [], {
+    enabled: editable?.items === true,
+    ...(base === null ? {} : { released: releasedOf(base) })
+  })
   const canOverridePrice = can(ClientPermissions.ORDERS_OVERRIDE_PRICE)
 
-  if (data === undefined || draft === null) {
+  if (data === undefined || draft === null || base === null || editable === null) {
     return (
       <div className="p-4">
         {order.isError ? (
@@ -100,13 +114,19 @@ function Body({
     )
   }
 
-  const editable = {
-    items: canEditField(data.status, 'items', can),
-    shipping: canEditField(data.status, 'shipping', can),
-    discount: canEditField(data.status, 'discount', can)
-  }
+  // A line taken out and put back is the line the order had (its price, its units), not a new one at today's catalog price
+  const original = new Map(draftFromOrder(base).lines.map(line => [line.key, line]))
   const patch = (changes: Partial<EditDraft>): void => {
-    setDraft({ ...draft, ...changes })
+    const next = { ...draft, ...changes }
+    if (changes.lines !== undefined) {
+      const kept = new Set(draft.lines.map(line => line.key))
+      next.lines = changes.lines.map(line =>
+        !kept.has(line.key) && original.has(line.key)
+          ? (original.get(line.key) as typeof line)
+          : line
+      )
+    }
+    setMade({ base, draft: next })
     setWrong(null)
     writes.update.reset()
   }
@@ -117,7 +137,7 @@ function Body({
       const rules = stockOf(line).rules
       if (rules !== null) stock.set(line.key, rules)
     }
-    const result = buildUpdate(draft, data, editable, { canOverridePrice }, stock)
+    const result = buildUpdate(draft, base, editable, { canOverridePrice }, stock)
     if (!result.ok) return setWrong({ field: result.field, line: result.line })
     if (!guard.enter()) return
     onBusy(true)
@@ -157,6 +177,11 @@ function Body({
           shippingLocked={!editable.shipping}
           discountLocked={!editable.discount}
         />
+        {data.updatedAt !== base.updatedAt ? (
+          <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
+            {t('changedMeanwhile')}
+          </p>
+        ) : null}
         {wrong?.field === 'nothing' ? (
           <p role="alert" className="text-destructive text-sm">
             {t('nothing')}

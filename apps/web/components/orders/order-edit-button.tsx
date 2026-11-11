@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
 
 import type { OrderDetailView } from '@platform/api-client'
 
-import { canEditField } from '../../lib/orders/order-detail-rules'
+import { editablePartsOf } from '../../lib/orders/order-edit-form'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
@@ -18,9 +18,8 @@ export function OrderEditButton({ order }: { order: OrderDetailView }): ReactEle
   const t = useTranslations('orders.edit')
   const { can } = useStore()
   const { openEdit } = useOrderDrawer()
-  const isOffered = (['items', 'shipping', 'discount'] as const).some(field =>
-    canEditField(order.status, field, can)
-  )
+  const parts = editablePartsOf(order, can)
+  const isOffered = parts.items || parts.shipping || parts.discount
   if (!isOffered) return null
   return (
     <Button type="button" variant="outline" size="sm" onClick={() => openEdit(order.id)}>

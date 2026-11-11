@@ -1329,7 +1329,8 @@
       "locked": "Este pedido ya no acepta cambios en sus artículos, su costo de envío ni su descuento.",
       "nothing": "No cambió nada.",
       "saved": "El pedido se actualizó.",
-      "savedAwaitingApproval": "El pedido se actualizó. Su precio espera una aprobación."
+      "savedAwaitingApproval": "El pedido se actualizó. Su precio espera una aprobación.",
+      "changedMeanwhile": "El pedido cambió mientras lo editabas. Solo se guarda lo que tú cambiaste."
     }
   },
   "org": {

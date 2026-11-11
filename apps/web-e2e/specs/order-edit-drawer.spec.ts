@@ -68,6 +68,13 @@ test.describe('the edit-order drawer', () => {
 
     await quantity().fill('3')
     await editDrawer().getByLabel(CREATE.prices.shipping, { exact: true }).fill('4.00')
+    await editDrawer().getByLabel(CREATE.prices.discount, { exact: true }).fill('1.00')
+    // A discount without its reason is refused on the screen, with the field named
+    await editDrawer().getByRole('button', { name: EDIT.submit, exact: true }).click()
+    await expect(editDrawer().getByText(CREATE.errors.discountReason)).toBeVisible()
+    await editDrawer()
+      .getByLabel(CREATE.prices.discountReason, { exact: true })
+      .fill('Loyal customer')
     await editDrawer().getByRole('button', { name: EDIT.submit, exact: true }).click()
     await expect(page.getByText(EDIT.saved, { exact: true })).toBeVisible()
     await expect(editDrawer()).toHaveCount(0)
@@ -77,6 +84,9 @@ test.describe('the edit-order drawer', () => {
     await expect(quantity()).toHaveValue('3')
     await expect(editDrawer().getByLabel(CREATE.prices.shipping, { exact: true })).toHaveValue(
       '4.00'
+    )
+    await expect(editDrawer().getByLabel(CREATE.prices.discount, { exact: true })).toHaveValue(
+      '1.00'
     )
   })
 })

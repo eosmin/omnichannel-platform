@@ -3,10 +3,17 @@
 import { useFormatter, useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
-import { addLine, type DraftLine, type FormField, parseQuantity } from '../../lib/orders/order-form'
+import {
+  addLine,
+  type DraftLine,
+  type FormField,
+  parseQuantity,
+  shownPriceCents
+} from '../../lib/orders/order-form'
+import type { StockOfLine } from '../../lib/orders/stock-of-line'
 import { formatCents } from '../../lib/products/money'
 
-import { OrderLineRow, type StockOfLine } from './order-line-row'
+import { OrderLineRow } from './order-line-row'
 import { OrderProductPicker } from './order-product-picker'
 
 // The items of an order form, shared by the create drawer and the edit drawer: the autocomplete of the catalog, the rows
@@ -30,7 +37,7 @@ export function OrderLinesSection({
   const tLines = useTranslations('orders.create.lines')
   const format = useFormatter()
   const subtotal = lines.reduce(
-    (sum, line) => sum + line.catalogPriceCents * (parseQuantity(line.quantity) ?? 0),
+    (sum, line) => sum + shownPriceCents(line) * (parseQuantity(line.quantity) ?? 0),
     0
   )
   return (

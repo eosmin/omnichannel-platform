@@ -1329,7 +1329,8 @@
       "locked": "This order no longer accepts changes to its items, its shipping fee or its discount.",
       "nothing": "Nothing changed.",
       "saved": "The order was updated.",
-      "savedAwaitingApproval": "The order was updated. Its price waits for an approval."
+      "savedAwaitingApproval": "The order was updated. Its price waits for an approval.",
+      "changedMeanwhile": "The order changed while you were editing. Only what you changed is saved."
     }
   },
   "org": {
