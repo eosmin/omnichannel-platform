@@ -30,7 +30,7 @@ test.describe('Organization → Warehouses', () => {
 
   test.beforeAll(async () => {
     storeId = await addOwnerOfNewStore(ownerEmail, mainName)
-    await addStoreToOrganizationOf(storeId, outletName)
+    await addStoreToOrganizationOf(storeId, outletName, ownerEmail)
     removeViewer = await addInventoryViewer(storeId, viewerEmail)
   })
 

@@ -945,14 +945,27 @@ export function addCatalogUserWithoutCost(
   })
 }
 
-// A second store in the organization of a store, for the cases that link a warehouse to more than one. Returns its id.
-export function addStoreToOrganizationOf(storeId: string, storeName: string): Promise<string> {
+// A second store in the organization of a store, with its Admin (the api lists the stores a person belongs to), for
+// the cases that link a warehouse to more than one. Returns its id.
+export function addStoreToOrganizationOf(
+  storeId: string,
+  storeName: string,
+  adminEmail: string
+): Promise<string> {
   return withOwner(async owner => {
     const { organizationId } = await owner.store.findUniqueOrThrow({
       where: { id: storeId },
       select: { organizationId: true }
     })
+    const roles = await ensureSystemRoles(owner)
     const store = await ensureStore(owner, organizationId, storeName)
+    const user = await ensureUser(owner, adminEmail, 'Done When Owner')
+    await ensureMembership(owner, {
+      userId: user.id,
+      organizationId,
+      storeId: store.id,
+      roleId: roles[RoleNames.ADMIN].id
+    })
     return store.id
   })
 }
