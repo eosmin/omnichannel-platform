@@ -856,7 +856,7 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       expect((await asAdmin().post(ApiRoutes.shipments.cancel(body.id))).status).toBe(CONFLICT)
       await owner.shipment.update({
         where: { id: body.id },
-        data: { cancelRequestedAt: new Date(Date.now() - 10 * 60 * 1000) }
+        data: { cancelRequestedAt: new Date(Date.now() - 20 * 60 * 1000) }
       })
       const again = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
       expect(again.status).toBe(OK)
@@ -894,7 +894,7 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
       const manual = await waitForAuditEntries(owner, {
         storeId: ctx.storeA.id,
-        action: AuditAction.SHIPMENT_STATUS_SET_MANUALLY,
+        action: AuditAction.SHIPMENT_CANCEL_REQUESTED,
         resourceId: body.id
       })
       expect(manual).toHaveLength(1)

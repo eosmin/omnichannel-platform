@@ -345,7 +345,8 @@ export const ShipmentFailureReasons = {
   CREDENTIALS_UNREADABLE: 'credentials_unreadable', // the stored credentials do not open
   LABEL_INVALID: 'label_invalid', // the label the carrier gave is not a PDF the platform can keep
   RECORD_FAILED: 'record_failed', // the carrier made the guide and the platform could not write it down
-  MARKED_FAILED: 'marked_failed' // an agent decided it failed
+  MARKED_FAILED: 'marked_failed', // an agent decided it failed
+  NOT_QUEUED: 'not_queued' // the void could not be handed to the queue: an agent asks again
 } as const
 export type ShipmentFailureReason =
   (typeof ShipmentFailureReasons)[keyof typeof ShipmentFailureReasons]
@@ -425,7 +426,8 @@ export const GuideAffectingFields = {
   RECIPIENT_PHONES: 'recipient_phones',
   PAYMENT_METHOD: 'payment_method',
   ITEMS: 'items',
-  COD_TOTAL: 'cod_total'
+  COD_TOTAL: 'cod_total',
+  CARRIER: 'carrier'
 } as const
 export type GuideAffectingField = (typeof GuideAffectingFields)[keyof typeof GuideAffectingFields]
 

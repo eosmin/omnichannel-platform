@@ -12,20 +12,26 @@ export interface GuideSource {
   paymentMethod: string
   items: readonly { productId: string; variantId: string | null; quantity: number }[]
   totalCents: number
+  // The carrier the order plans to use (a guide made for another one is the wrong guide)
+  carrierConnectionId: string | null
 }
 
-// Same value whatever the order of the keys: a form that sends the address again with its fields in another order changes nothing
+// Same value whatever the order of the keys, and a key that says nothing (missing, null or blank) is no key: a form that sends
+// the address again with a `line2: null` where the stored one has none changes nothing
 function canonical(value: unknown): string {
   if (value === null || value === undefined) return 'null'
+  if (typeof value === 'string') return JSON.stringify(value.trim())
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
+      .filter(([, item]) => item !== undefined && item !== null && !isBlank(item))
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`
   }
   return JSON.stringify(value)
 }
+
+const isBlank = (value: unknown): boolean => typeof value === 'string' && value.trim() === ''
 
 const itemKey = (item: GuideSource['items'][number]): string =>
   `${item.productId}:${item.variantId ?? ''}:${item.quantity}`
@@ -52,6 +58,9 @@ export function guideAffectingChanges(
     changed.push(GuideAffectingFields.PAYMENT_METHOD)
   }
   if (!sameItems(before.items, after.items)) changed.push(GuideAffectingFields.ITEMS)
+  if (before.carrierConnectionId !== after.carrierConnectionId) {
+    changed.push(GuideAffectingFields.CARRIER)
+  }
   // What the carrier collects is the total of a cash-on-delivery order; a prepaid one collects nothing
   const cashOnDelivery: string = PaymentMethod.CASH_ON_DELIVERY
   const collects = before.paymentMethod === cashOnDelivery || after.paymentMethod === cashOnDelivery

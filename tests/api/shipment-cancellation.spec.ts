@@ -292,18 +292,22 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       expect(new Set(keys).size).toBe(1)
     })
 
-    it('does not start a second void for a guide that is already being voided', async () => {
-      const order = await reserved()
-      const shipmentId = await guide(order.id, forzaId)
-      await owner.shipment.update({
-        where: { id: shipmentId },
-        data: { status: ShipmentStatus.CANCEL_PENDING, cancelRequestedAt: new Date() }
-      })
-      const cancelled = await cancelOrder(order.id)
-      expect(cancelled.status).toBe(OK)
-      expect(voidJobs()).toHaveLength(0)
-      expect(forza.callsTo('cancelShipment')).toHaveLength(0)
-    })
+    it.each([ShipmentStatus.CANCEL_PENDING, ShipmentStatus.CANCEL_FAILED])(
+      'does not start a second void for a guide that is %s: the agent settles it',
+      async status => {
+        const order = await reserved()
+        const shipmentId = await guide(order.id, forzaId)
+        await owner.shipment.update({
+          where: { id: shipmentId },
+          data: { status, cancelRequestedAt: new Date() }
+        })
+        const cancelled = await cancelOrder(order.id)
+        expect(cancelled.status).toBe(OK)
+        expect(voidJobs()).toHaveLength(0)
+        expect(forza.callsTo('cancelShipment')).toHaveLength(0)
+        expect((await shipmentOf(shipmentId)).status).toBe(status)
+      }
+    )
 
     it('refuses to cancel the order of a package that left or whose outcome is unknown, and changes nothing', async () => {
       const left = await reserved()
@@ -398,6 +402,61 @@ describe('Cancelling guides: with the order, by an edit, by hand (TDD_17 §4.8)'
       ).toBe(OK)
       expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.LABEL_CREATED)
       expect(voidJobs()).toHaveLength(0)
+    })
+
+    it('voids the guide when the planned carrier changes', async () => {
+      const order = await reserved()
+      const shipmentId = await guide(order.id, forzaId)
+      const edited = await edit(order.id, { carrierConnectionId: localId })
+      expect(edited.status).toBe(OK)
+      expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.CANCEL_PENDING)
+    })
+
+    it('lets the address of a package that already left be edited, and leaves its guide alone', async () => {
+      const order = await reserved()
+      const shipmentId = await guide(order.id, localId)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await owner.shipment.update({
+        where: { id: shipmentId },
+        data: { status: ShipmentStatus.IN_TRANSIT }
+      })
+      await owner.order.update({ where: { id: order.id }, data: { status: OrderStatus.SHIPPED } })
+      const edited = await edit(order.id, { shippingAddress: { ...ADDRESS, line1: 'Calle 9 #1' } })
+      expect(edited.status).toBe(OK)
+      expect((await shipmentOf(shipmentId)).status).toBe(ShipmentStatus.IN_TRANSIT)
+    })
+
+    it('names the guide that blocks an order, and changes nothing', async () => {
+      const order = await reserved()
+      forza.state.create = FakeCarrierBehaviors.TIMEOUT_AFTER
+      const made = await ship(order.id, forzaId)
+      const reviewId =
+        (made.body as { error: { metadata?: { shipmentId?: string } } }).error.metadata
+          ?.shipmentId ?? ''
+      const refused = await cancelOrder(order.id)
+      expect(
+        (refused.body as { error: { metadata?: { shipmentId?: string } } }).error.metadata
+      ).toMatchObject({ shipmentId: reviewId })
+    })
+
+    it('leaves the guide cancel-failed, which tells the team, when the void cannot be queued', async () => {
+      const order = await reserved()
+      const shipmentId = await guide(order.id, forzaId)
+      const spy = jest.spyOn(queue, 'add').mockRejectedValueOnce(new Error('redis down'))
+      try {
+        expect((await cancelOrder(order.id)).status).toBe(OK)
+      } finally {
+        spy.mockRestore()
+      }
+      expect(await shipmentOf(shipmentId)).toMatchObject({
+        status: ShipmentStatus.CANCEL_FAILED,
+        lastError: 'not_queued'
+      })
+      const told = await until(
+        () => notices(shipmentId),
+        rows => rows.length >= 1
+      )
+      expectOneLinePerMember(told)
     })
 
     it('does not change an order whose guide may exist at the carrier', async () => {

@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common'
 
 import type { PrismaTransaction } from '@platform/core/database'
-import { ShipmentInactiveStatuses, ShipmentKind } from '@platform/core/domain'
+import {
+  ShipmentInactiveStatuses,
+  ShipmentKind,
+  ShipmentPastPickupStatuses,
+  type ShipmentStatus
+} from '@platform/core/domain'
 import type { ActorRef } from '@platform/core/events'
 import { ShipmentCancellation, type VoidJob } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
@@ -34,7 +39,10 @@ export class OrderGuides {
     tx: PrismaTransaction,
     storeId: string,
     orderId: string,
-    actor: ActorRef
+    actor: ActorRef,
+    // An edit of a package that already left has no guide to void and is not refused for it (its address is still editable);
+    // cancelling the order is refused
+    options: { leftPackages: 'refuse' | 'ignore' } = { leftPackages: 'refuse' }
   ): Promise<VoidedGuides> {
     const live = await tx.shipment.findMany({
       where: {
@@ -43,11 +51,17 @@ export class OrderGuides {
         kind: ShipmentKind.OUTBOUND,
         status: { notIn: [...ShipmentInactiveStatuses] }
       },
-      select: { id: true },
+      select: { id: true, status: true },
       orderBy: { id: 'asc' }
     })
     const voided: VoidedGuides = { shipmentIds: [], jobs: [] }
-    for (const { id } of live) {
+    for (const { id, status } of live) {
+      if (
+        options.leftPackages === 'ignore' &&
+        ShipmentPastPickupStatuses.includes(status as ShipmentStatus)
+      ) {
+        continue
+      }
       const started = await this.cancellation.start(tx, storeId, id, actor, this.plugins, {
         refusePending: false
       })

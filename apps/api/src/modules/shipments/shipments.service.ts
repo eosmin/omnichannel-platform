@@ -246,12 +246,14 @@ export class ShipmentsService {
     }
   }
 
-  // A guide that is voided is a cancellation; one that is only on its way to be (pending, or failed to be) is a status set by hand
+  // A guide that is voided is a cancellation; one that is on its way to be is a request to void it
   private audited(storeId: string, change: VoidChange, actor: Actor): void {
     const action =
       change.to === ShipmentStatus.CANCELLED
         ? AuditAction.SHIPMENT_CANCELLED
-        : AuditAction.SHIPMENT_STATUS_SET_MANUALLY
+        : change.to === ShipmentStatus.CANCEL_PENDING
+          ? AuditAction.SHIPMENT_CANCEL_REQUESTED
+          : AuditAction.SHIPMENT_STATUS_SET_MANUALLY
     this.record(storeId, action, change.shipmentId, actor, {
       orderId: change.orderId,
       from: change.from,

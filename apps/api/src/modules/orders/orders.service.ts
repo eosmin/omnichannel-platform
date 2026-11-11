@@ -667,6 +667,7 @@ export class OrdersService {
         body.discountReason !== undefined
       const data: OrderUncheckedUpdateInput = {}
       let newTotalCents = order.totalCents
+      let newCarrierConnectionId = order.carrierConnectionId
       let lines: OrderLine[] | null = null
       let overridden = false
       let becamePending = false
@@ -789,6 +790,7 @@ export class OrdersService {
           priceTouched
         discountChanged = discountCents !== order.discountCents && discountCents > 0
         newTotalCents = pricing.totals.totalCents
+        if (carrierChanged) newCarrierConnectionId = planned.connectionId
         const next = pricing.control.approvalStatus
         becamePending =
           next === PriceApprovalStatus.PENDING && before !== PriceApprovalStatus.PENDING
@@ -853,7 +855,8 @@ export class OrdersService {
               recipientPhones: order.recipientPhones,
               paymentMethod: order.paymentMethod,
               items: order.items,
-              totalCents: order.totalCents
+              totalCents: order.totalCents,
+              carrierConnectionId: order.carrierConnectionId
             },
             {
               address:
@@ -861,14 +864,17 @@ export class OrdersService {
               recipientPhones: body.recipientPhones ?? order.recipientPhones,
               paymentMethod: body.paymentMethod ?? order.paymentMethod,
               items: lines === null ? order.items : lines,
-              totalCents: newTotalCents
+              totalCents: newTotalCents,
+              carrierConnectionId: newCarrierConnectionId
             }
           )
         : []
       const voided: VoidedGuides =
         guideChanges.length === 0
           ? { shipmentIds: [], jobs: [] }
-          : await this.guides.voidLive(tx, storeId, orderId, actorRef(actor))
+          : await this.guides.voidLive(tx, storeId, orderId, actorRef(actor), {
+              leftPackages: 'ignore'
+            })
 
       const common = {
         storeId,

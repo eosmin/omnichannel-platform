@@ -16,6 +16,7 @@ import {
   PickupLeaveNotes,
   PickupStatus,
   ShipmentEventSource,
+  ShipmentFailureReasons,
   ShipmentInactiveStatuses,
   ShipmentLockScopes,
   ShipmentPastPickupStatuses,
@@ -48,8 +49,9 @@ import {
 import { type ShipmentIdentity, ShipmentWrites } from './shipment-writes'
 
 // A cancel that asked nobody (the process died after it was written) may be asked again after this, never before: the call
-// may still be in flight
-const CANCEL_STALE_MS = 5 * 60 * 1000
+// may still be in flight. It is longer than the whole schedule of the job (five calls of up to 30 s with pauses of 30, 60, 120
+// and 240 s: ten minutes), so a request never finds a job that is still retrying and takes it for a forgotten one.
+const CANCEL_STALE_MS = 15 * 60 * 1000
 
 export interface VoidChange {
   shipmentId: string
@@ -198,19 +200,26 @@ export class ShipmentCancellation {
       throw new PlatformException(
         ErrorCodes.SHIPPING_OUTCOME_UNKNOWN,
         'a guide may exist: resolve it first',
-        HttpStatusCodes.CONFLICT
+        HttpStatusCodes.CONFLICT,
+        { shipmentId }
       )
     }
     if (ShipmentPastPickupStatuses.includes(from)) {
       throw new PlatformException(
         ErrorCodes.SHIPPING_CANNOT_CANCEL_AFTER_PICKUP,
         'the package has left',
-        HttpStatusCodes.CONFLICT
+        HttpStatusCodes.CONFLICT,
+        { shipmentId }
       )
     }
     if (ShipmentInactiveStatuses.includes(from)) {
       if (options.refusePending)
         throw conflict(`a shipment cannot go from ${from} to cancel_pending`)
+      return { change: unchanged, job: null }
+    }
+    // A void that failed is settled by an agent (retry or "mark as voided"): an order that is cancelled or edited does not ask the
+    // carrier again behind their back
+    if (from === ShipmentStatus.CANCEL_FAILED && !options.refusePending) {
       return { change: unchanged, job: null }
     }
     if (from === ShipmentStatus.CANCEL_PENDING) {
@@ -361,14 +370,34 @@ export class ShipmentCancellation {
           pickupId: null,
           // Only what the contract allows is kept: a plugin that says anything else is read as a refund still pending
           refundStatus:
+            typeof answer === 'object' &&
+            answer !== null &&
             answer.refundStatus === GuideRefundStatus.CONFIRMED
               ? GuideRefundStatus.CONFIRMED
               : GuideRefundStatus.PENDING
         }
       }
     )
-    await this.tellCarrierOfPickup(storeId, left, plugins)
+    await this.tellCarrierOfPickup(storeId, left, plugins).catch(() => undefined)
     return VoidSettlements.CANCELLED
+  }
+
+  // The void could not be handed to the queue (it was down): the guide is left CANCEL_FAILED, which tells the team, and an
+  // agent asks again from there (a retry moves it back to CANCEL_PENDING and queues the job)
+  async markNotQueued(storeId: string, shipmentId: string, actor: ActorRef): Promise<void> {
+    await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      const row = await this.lockedRow(tx, storeId, shipmentId)
+      if (row.status !== String(ShipmentStatus.CANCEL_PENDING)) return
+      await this.writes.move(
+        tx,
+        identityOf(row),
+        ShipmentStatus.CANCEL_PENDING,
+        ShipmentStatus.CANCEL_FAILED,
+        { lastError: ShipmentFailureReasons.NOT_QUEUED },
+        { actor, source: ShipmentEventSource.SYSTEM }
+      )
+    })
   }
 
   // The agent voided the guide at the carrier herself: HIGH-tier, audited (TDD_17 §4.8)
@@ -396,7 +425,7 @@ export class ShipmentCancellation {
         change: { shipmentId, orderId: row.orderId, from, to: ShipmentStatus.CANCELLED }
       }
     })
-    await this.tellCarrierOfPickup(storeId, done.left, plugins)
+    await this.tellCarrierOfPickup(storeId, done.left, plugins).catch(() => undefined)
     return done.change
   }
 
@@ -473,6 +502,9 @@ export class ShipmentCancellation {
       select: { id: true, connectionId: true, status: true, providerPickupId: true }
     })
     if (pickup === null) return null
+    const current = pickup.status as PickupStatus
+    // A pickup that is over keeps what it was
+    if (current === PickupStatus.CANCELLED || current === PickupStatus.FAILED) return null
     const remaining = await tx.shipment.count({
       where: {
         storeId: row.storeId,
@@ -485,9 +517,18 @@ export class ShipmentCancellation {
       where: { id: pickup.id, storeId: row.storeId },
       data: { packageCount: remaining, revision: { increment: 1 } }
     })
-    const status = pickup.status as PickupStatus
+    const status = current
     if (remaining === 0 && status === PickupStatus.MANUAL_REQUIRED) {
       await this.writes.movePickup(tx, row.storeId, pickup.id, status, PickupStatus.CANCELLED, {})
+    } else if (
+      remaining === 0 &&
+      (status === PickupStatus.PENDING || status === PickupStatus.REQUIRES_REVIEW)
+    ) {
+      // A request that may exist at the carrier and has no packages any more: the agent settles it there
+      await tx.pickupRequest.updateMany({
+        where: { id: pickup.id, storeId: row.storeId },
+        data: { lastError: PickupLeaveNotes.EMPTY_NOT_CANCELLED }
+      })
     }
     return {
       pickupId: pickup.id,
@@ -547,22 +588,32 @@ export class ShipmentCancellation {
       if (empty && plugin.cancelPickup !== undefined) {
         const cancelPickup = plugin.cancelPickup.bind(plugin)
         await withDeadline(() => cancelPickup(context, { pickupRef }))
-        await this.prisma.transaction(async tx => {
-          await lockStoreForWrite(tx, storeId)
-          await this.writes.movePickup(
-            tx,
-            storeId,
-            left.pickupId,
-            left.status,
-            PickupStatus.CANCELLED,
-            {
-              lastError: null
-            }
-          )
-        })
+        // The carrier did cancel it: a pickup that moved meanwhile is not a reason to tell the agent otherwise
+        await this.prisma
+          .transaction(async tx => {
+            await lockStoreForWrite(tx, storeId)
+            await this.writes.movePickup(
+              tx,
+              storeId,
+              left.pickupId,
+              left.status,
+              PickupStatus.CANCELLED,
+              { lastError: null }
+            )
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              { pickupId: left.pickupId, errorName: errorName(error) },
+              'a pickup the carrier cancelled changed meanwhile'
+            )
+          })
       } else if (!empty && plugin.modifyPickup !== undefined) {
         const modifyPickup = plugin.modifyPickup.bind(plugin)
         await withDeadline(() => modifyPickup(context, { pickupRef, packageCount: left.remaining }))
+        await this.prisma.client.pickupRequest.updateMany({
+          where: { id: left.pickupId, storeId },
+          data: { lastError: null }
+        })
       } else {
         await note(empty ? PickupLeaveNotes.EMPTY_NOT_CANCELLED : PickupLeaveNotes.NOT_UPDATED)
       }
@@ -571,9 +622,10 @@ export class ShipmentCancellation {
         { pickupId: left.pickupId, errorName: errorName(error) },
         'the carrier could not be told that a guide left its pickup'
       )
+      // The note is a courtesy: a database that cannot take it must not fail a guide that is already voided
       await note(
         left.remaining === 0 ? PickupLeaveNotes.EMPTY_NOT_CANCELLED : PickupLeaveNotes.NOT_UPDATED
-      )
+      ).catch(() => undefined)
     }
   }
 }

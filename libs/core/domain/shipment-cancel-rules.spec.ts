@@ -10,7 +10,8 @@ const base: GuideSource = {
     { productId: 'p1', variantId: null, quantity: 2 },
     { productId: 'p2', variantId: 'v1', quantity: 1 }
   ],
-  totalCents: 5000
+  totalCents: 5000,
+  carrierConnectionId: 'c1'
 }
 
 describe('guideAffectingChanges (TDD_17 §4.8)', () => {
@@ -21,6 +22,15 @@ describe('guideAffectingChanges (TDD_17 §4.8)', () => {
   it('reads the address the same whatever the order of its keys, and a missing key as no key', () => {
     const reordered = { line1: 'Calle 1', country: 'SV', city: 'San Salvador', note: undefined }
     expect(guideAffectingChanges(base, { ...base, address: reordered })).toEqual([])
+    // A key that says nothing is no key, and the spaces around a word are not a change
+    const blank = {
+      line1: ' Calle 1 ',
+      line2: null,
+      line3: '  ',
+      city: 'San Salvador',
+      country: 'SV'
+    }
+    expect(guideAffectingChanges(base, { ...base, address: blank })).toEqual([])
   })
 
   it('finds an address that changed, one that was added and one that was removed', () => {
@@ -61,6 +71,15 @@ describe('guideAffectingChanges (TDD_17 §4.8)', () => {
     ).toEqual([GuideAffectingFields.ITEMS])
     expect(guideAffectingChanges(base, { ...base, items: [first] })).toEqual([
       GuideAffectingFields.ITEMS
+    ])
+  })
+
+  it('finds a new planned carrier', () => {
+    expect(guideAffectingChanges(base, { ...base, carrierConnectionId: 'c2' })).toEqual([
+      GuideAffectingFields.CARRIER
+    ])
+    expect(guideAffectingChanges(base, { ...base, carrierConnectionId: null })).toEqual([
+      GuideAffectingFields.CARRIER
     ])
   })
 
