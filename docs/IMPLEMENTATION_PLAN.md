@@ -1561,7 +1561,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.2 | Warehouses and stock | done | PR A1 #394 (schema), B #395 (warehouses api), A2 #396 (stock engine), D2a #397 (cost gate), D1 #398 (inventory settings web), C #399 (reconciliation + low stock), D3 #400 (stock in the catalog) | 2026-11-10 |
 | 4.3 | Orders | done | PR A #401 (schema and pure rules), B #403 (service and routes), C #402 (customer orders, order files, `ORDER_SUMMARY` writer, CSV columns) | 2026-11-11 |
 | 4.4 | Order UI | in progress | PR A1 (base: api-client, orders list, orders export) | |
-| 4.4 | Order UI | todo | | |
+| 4.5 | Transfers between warehouses | done | PR #404 (transfers api: schema, service, routes, notification) | 2026-11-11 |
 | 4.6 | Physical counts | todo | | |
 | 4.7 | Inventory UI | todo | | |
 | 4.8 | Carrier SDK, shipment engine and the `local` carrier | todo | | |
