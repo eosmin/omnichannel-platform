@@ -121,6 +121,7 @@ export const AuditAction = {
   CARRIER_WEBHOOK_SECRET_ROTATED: 'carrier.webhook_secret_rotated',
   SHIPMENT_CREATED: 'shipment.created',
   SHIPMENT_CANCELLED: 'shipment.cancelled',
+  SHIPMENT_CANCEL_REQUESTED: 'shipment.cancel_requested',
   SHIPMENT_STATUS_SET_MANUALLY: 'shipment.status_set_manually',
   PICKUP_REQUESTED: 'pickup.requested',
   PICKUP_MODIFIED: 'pickup.modified',

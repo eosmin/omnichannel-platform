@@ -16,7 +16,10 @@ module.exports = {
     '!src/shipment-writes.ts',
     // Reads and writes the history inside a transaction: tests/api/carrier-event-processing.spec.ts covers it
     '!src/shipment-replay.ts',
-    '!src/shipping.service.ts'
+    '!src/shipping.service.ts',
+    // The void of a guide: reads and writes the shipment and its pickup inside transactions and calls the carrier. Covered by
+    // tests/api/shipment-cancellation.spec.ts
+    '!src/shipment-cancellation.ts'
   ],
   coverageThreshold: { global: { lines: 90, branches: 85 } }
 }

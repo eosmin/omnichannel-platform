@@ -180,6 +180,13 @@ export function mayRetryCreate(error: unknown, idempotent: boolean): boolean {
   return idempotent && error instanceof CarrierUnavailableError
 }
 
+// A void that is asked again (TDD_17 §4.8): the carrier did not answer, or answered something the platform cannot read. The key of
+// a void is the same each time, so asking twice is safe. A refusal, rejected credentials or credentials that do not open do not
+// change by waiting: those end the void at once.
+export function mayRetryVoid(error: unknown): boolean {
+  return classifyCarrierError(error) === CarrierCallOutcomes.UNKNOWN
+}
+
 // What a carrier said, kept as one bounded line (TDD_17 §4.5 step 5). A carrier's words are the carrier's: they are shown to
 // the agent and never trusted as markup, and a control character or a very long text is cut here.
 export function clampCarrierMessage(message: string): string {

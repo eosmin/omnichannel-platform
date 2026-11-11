@@ -94,6 +94,8 @@ export const Events = {
   SHIPMENT_STATUS_CHANGED: 'shipment.status_changed',
   SHIPMENT_CANCELLED: 'shipment.cancelled',
   SHIPMENT_REQUIRES_REVIEW: 'shipment.requires_review',
+  // The carrier could not void a guide, or has no way to: the people who manage shipments are told to settle it (TDD_17 §4.8)
+  SHIPMENT_CANCEL_FAILED: 'shipment.cancel_failed',
   // A carrier sent a status nobody has mapped, for the first time: the people who manage carriers are told (TDD_17 §4.17)
   CARRIER_STATUS_UNMAPPED: 'carrier.status_unmapped',
   // A bulk run of labels advanced, and ended: the person who asked hears it, and is told when the file is ready (TDD_17 §4.6)
@@ -212,6 +214,8 @@ export const BridgedEvents = [
   // The worker moves shipments (a carrier event, a poll): the order follows, and the team is told, in the api
   Events.SHIPMENT_STATUS_CHANGED,
   Events.SHIPMENT_REQUIRES_REVIEW,
+  // The worker voids the guides: the team is told in the api when the carrier could not
+  Events.SHIPMENT_CANCEL_FAILED,
   // The worker reads what the carriers push: the owner is told in the api
   Events.CARRIER_STATUS_UNMAPPED,
   // The worker runs the bulk generation of labels: the requester hears it in the api

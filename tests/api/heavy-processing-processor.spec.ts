@@ -15,6 +15,7 @@ describe('HeavyProcessingProcessor', () => {
   const clean = { read: 1, applied: 1, stored: 0, left: 0, unconfirmed: 0, failed: 0 }
   const reprocess = jest.fn().mockResolvedValue(clean)
   const runBulk = jest.fn().mockResolvedValue(undefined)
+  const runVoid = jest.fn().mockResolvedValue('cancelled')
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -27,7 +28,8 @@ describe('HeavyProcessingProcessor', () => {
     { reconcileStore } as never, // the reconciler of the stock: what it is handed is what is tested
     { poll } as never, // the poller of the carriers: what it is handed is what is tested
     { reprocess } as never, // the replay of carrier events: what it is handed is what is tested
-    { run: runBulk } as never // the bulk labels: what it is handed is what is tested
+    { run: runBulk } as never, // the bulk labels: what it is handed is what is tested
+    { run: runVoid } as never // the void of a guide: what it is handed is what is tested
   )
 
   const base = {
@@ -55,6 +57,7 @@ describe('HeavyProcessingProcessor', () => {
     poll.mockClear()
     reprocess.mockClear()
     runBulk.mockClear()
+    runVoid.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -244,6 +247,60 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and runs nothing', async (_name, data) => {
       await expect(bulkJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(runBulk).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the void of a guide (TDD_17 §4.8)', () => {
+    const STORE_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const SHIPMENT_ID = '5b0e7c7a-2f3b-4a53-8f0e-6f5d2c1b9a10'
+    const USER_ID = '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0'
+    const voidJob = (data: unknown, attemptsMade = 0): Promise<void> =>
+      processor.process({
+        name: JobNames.CANCEL_SHIPMENT,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade,
+        opts: { attempts: 5 }
+      } as unknown as ProcessorJob)
+
+    it('hands the guide to the canceller with who asked, and keeps nothing else', async () => {
+      await voidJob({
+        storeId: STORE_ID,
+        shipmentId: SHIPMENT_ID,
+        requestedBy: USER_ID,
+        extra: 'dropped'
+      })
+
+      expect(runVoid).toHaveBeenCalledWith(
+        { storeId: STORE_ID, shipmentId: SHIPMENT_ID, requestedBy: USER_ID },
+        false
+      )
+    })
+
+    it('tells the canceller when this is the last of the five attempts, and takes the system as who asked', async () => {
+      await voidJob({ storeId: STORE_ID, shipmentId: SHIPMENT_ID, requestedBy: null }, 4)
+
+      expect(runVoid).toHaveBeenCalledWith(
+        { storeId: STORE_ID, shipmentId: SHIPMENT_ID, requestedBy: null },
+        true
+      )
+    })
+
+    it('lets the queue ask again when the canceller says the carrier did not answer', async () => {
+      runVoid.mockRejectedValueOnce(new Error('asking again'))
+
+      await expect(
+        voidJob({ storeId: STORE_ID, shipmentId: SHIPMENT_ID, requestedBy: null })
+      ).rejects.not.toBeInstanceOf(UnrecoverableError)
+    })
+
+    it.each([
+      ['no shipment', { storeId: STORE_ID, requestedBy: null }],
+      ['a shipment that is no id', { storeId: STORE_ID, shipmentId: 'x', requestedBy: null }],
+      ['no store', { shipmentId: SHIPMENT_ID, requestedBy: null }],
+      ['no word on who asked', { storeId: STORE_ID, shipmentId: SHIPMENT_ID }]
+    ])('refuses for good a job with %s, and voids nothing', async (_name, data) => {
+      await expect(voidJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(runVoid).not.toHaveBeenCalled()
     })
   })
 })

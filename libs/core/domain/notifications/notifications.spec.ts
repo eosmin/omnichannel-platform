@@ -131,18 +131,18 @@ describe('NotificationTypesWithoutEmitter', () => {
     expect(NotificationGroupTypes[NotificationGroups.ORDERS]).toContain(
       NotificationTypes.ORDER_MESSAGE_NOT_SENT
     )
-    // Raised since Step 4.8 PR C2b and C2c and Step 4.10 PR D1 (the labels that are ready), so their switches are shown; the
-    // cancel that failed (Step 4.10) is not
+    // Raised since Step 4.8 PR C2b and C2c and Step 4.10 PR D1 (the labels that are ready) and D2 (the cancel that failed), so their
+    // switches are shown
     for (const type of [
       NotificationTypes.SHIPMENT_REQUIRES_REVIEW,
       NotificationTypes.SHIPMENT_FAILED_ATTEMPT,
       NotificationTypes.CARRIER_STATUS_UNMAPPED,
-      NotificationTypes.BULK_LABELS_READY
+      NotificationTypes.BULK_LABELS_READY,
+      NotificationTypes.SHIPMENT_CANCEL_FAILED
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
       expect(NotificationGroupTypes[NotificationGroups.SHIPPING]).toContain(type)
     }
-    expect(NotificationTypesWithoutEmitter.has(NotificationTypes.SHIPMENT_CANCEL_FAILED)).toBe(true)
     // Raised since Step 4.6 (a count that goes to review), so its switch is shown
     expect(NotificationTypesWithoutEmitter.has(NotificationTypes.COUNT_AWAITING_APPLY)).toBe(false)
     expect(NotificationGroupTypes[NotificationGroups.INVENTORY]).toContain(

@@ -466,11 +466,19 @@ export class NotificationsEventsListener {
     await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_REQUIRES_REVIEW)
   }
 
+  // The carrier could not void a guide, or has no way to (TDD_17 §4.8): the order is cancelled and its stock released either way,
+  // and the agent voids the guide at the carrier and presses "mark as voided"
+  @OnEvent(Events.SHIPMENT_CANCEL_FAILED)
+  async onShipmentCancelFailed(payload: ShipmentEventPayload): Promise<void> {
+    await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_CANCEL_FAILED)
+  }
+
   private async tellShipmentManagers(
     payload: ShipmentEventPayload,
     type:
       | typeof NotificationTypes.SHIPMENT_FAILED_ATTEMPT
       | typeof NotificationTypes.SHIPMENT_REQUIRES_REVIEW
+      | typeof NotificationTypes.SHIPMENT_CANCEL_FAILED
   ): Promise<void> {
     const { storeId, shipmentId, orderId, orderNumber } = payload
     try {
@@ -483,9 +491,9 @@ export class NotificationsEventsListener {
         resourceId: shipmentId,
         actionPath: AppPaths.store.order(storeId, orderId)
       }
-      // Every failed attempt is told (three attempts are three lines); a shipment that needs review is told while the earlier
-      // warning is unread, so a package that keeps failing its effects is one line
-      if (type === NotificationTypes.SHIPMENT_REQUIRES_REVIEW) {
+      // Every failed attempt is told (three attempts are three lines); a shipment that needs review, or whose void failed, is told
+      // while the earlier warning is unread, so a package that keeps failing is one line
+      if (type !== NotificationTypes.SHIPMENT_FAILED_ATTEMPT) {
         await this.notifications.sendToUsersOnce(members, notice)
       } else {
         await this.notifications.sendToUsers(members, notice)

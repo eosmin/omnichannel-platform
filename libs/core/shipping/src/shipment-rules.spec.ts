@@ -25,6 +25,7 @@ import {
   isShipmentTransitionAllowed,
   isUsableGuideNumber,
   mayRetryCreate,
+  mayRetryVoid,
   nextPickupDate,
   orderBlockOf,
   wallClockOf
@@ -252,6 +253,14 @@ describe('what a carrier answered', () => {
     expect(mayRetryCreate(new CarrierUnavailableError('x'), false)).toBe(false)
     expect(mayRetryCreate(new CarrierRejectedError('x'), true)).toBe(false)
     expect(mayRetryCreate(new TypeError('x'), true)).toBe(false)
+  })
+
+  it('asks a void again when the carrier did not answer, never when it said no (the key of a void is the same each time)', () => {
+    expect(mayRetryVoid(new CarrierUnavailableError('timeout'))).toBe(true)
+    expect(mayRetryVoid(new TypeError('a bug of the plugin'))).toBe(true)
+    expect(mayRetryVoid(new CarrierRejectedError('the guide was used'))).toBe(false)
+    expect(mayRetryVoid(new CarrierAuthError('bad credentials'))).toBe(false)
+    expect(mayRetryVoid(new CarrierCredentialsUnreadableError())).toBe(false)
   })
 
   it('names the reason of a failure that the platform decided', () => {
