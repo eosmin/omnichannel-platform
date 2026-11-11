@@ -279,12 +279,8 @@ const resources: IsolationResource[] = [
   {
     name: 'orderItemAllocation',
     create: createAllocationOf,
-    readPath: id => {
-      const order = orderOfAllocation.get(id)
-      if (order === undefined)
-        throw new Error(`the allocation ${id} was not made by createAllocationOf`)
-      return ApiRoutes.orders.byId(order)
-    },
+    // An id the builder did not make (the check asks for a random one to compare the answers) reads an order that does not exist
+    readPath: id => ApiRoutes.orders.byId(orderOfAllocation.get(id) ?? randomUUID()),
     untouched: async (owner, id) => (await owner.orderItemAllocation.count({ where: { id } })) === 1
   },
   {
