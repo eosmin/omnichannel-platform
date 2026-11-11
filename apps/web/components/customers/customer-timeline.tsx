@@ -1,12 +1,12 @@
 'use client'
 
-import { MessageSquare, GitMerge, StickyNote, Trash2 } from 'lucide-react'
+import { MessageSquare, GitMerge, ShoppingBag, StickyNote, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { AppPaths, type CustomerTimelineEntryView } from '@platform/api-client'
-import { ClientPermissions } from '@platform/core/auth'
+import { ClientPermissions, type Permission } from '@platform/core/auth'
 import { CustomerTimelineTypes } from '@platform/core/domain'
 
 import { canUnmerge } from '../../lib/customers/merge-form'
@@ -18,6 +18,8 @@ import {
 } from '../../lib/customers/use-customer-data'
 import { conversationStatusOf } from '../../lib/inbox/conversation-status'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
+import { orderStatusKey } from '../../lib/orders/order-status'
+import { formatCents } from '../../lib/products/money'
 import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'
 import {
@@ -37,12 +39,25 @@ import { MutationError } from './mutation-error'
 const ALL = 'all'
 // Merges stay in the "All" view: they are an event of the record, not something to filter for
 type Filter =
-  typeof ALL | typeof CustomerTimelineTypes.CONVERSATION | typeof CustomerTimelineTypes.NOTE
+  | typeof ALL
+  | typeof CustomerTimelineTypes.CONVERSATION
+  | typeof CustomerTimelineTypes.ORDER
+  | typeof CustomerTimelineTypes.NOTE
 const FILTERS: readonly Filter[] = [
   ALL,
   CustomerTimelineTypes.CONVERSATION,
+  CustomerTimelineTypes.ORDER,
   CustomerTimelineTypes.NOTE
 ]
+
+// A filter the viewer may not use: the api leaves out what the viewer has no permission for
+function mayUseFilter(filter: Filter, can: (permission: Permission) => boolean): boolean {
+  if (filter === CustomerTimelineTypes.CONVERSATION) {
+    return can(ClientPermissions.CONVERSATIONS_VIEW)
+  }
+  if (filter === CustomerTimelineTypes.ORDER) return can(ClientPermissions.ORDERS_VIEW)
+  return true
+}
 
 function ConversationEntry({
   entry,
@@ -71,6 +86,42 @@ function ConversationEntry({
         className="text-sm underline-offset-4 hover:underline"
       >
         {t('openConversation')}
+      </Link>
+    </div>
+  )
+}
+
+// An order of the customer: its number, its state and its total. The link opens the order; no note, address or
+// phone of the order comes with the entry.
+function OrderEntry({
+  entry,
+  onNavigate
+}: {
+  entry: Extract<CustomerTimelineEntryView, { type: 'order' }>
+  onNavigate: () => void
+}): ReactElement {
+  const t = useTranslations('customers.timeline')
+  const tOrders = useTranslations('orders')
+  const format = useFormatter()
+  const { storeId } = useStore()
+  const statusKey = orderStatusKey(entry.status)
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="flex items-center gap-2 text-sm font-medium">
+        <ShoppingBag aria-hidden className="size-4" />
+        {t('order', { number: entry.orderNumber })}
+      </p>
+      <p className="text-muted-foreground text-xs">
+        {statusKey === null ? tOrders('list.unknownStatus') : tOrders(`status.${statusKey}`)}
+        {' · '}
+        {formatCents(format, entry.totalCents)}
+      </p>
+      <Link
+        href={AppPaths.store.order(storeId, entry.id)}
+        onClick={onNavigate}
+        className="text-sm underline-offset-4 hover:underline"
+      >
+        {t('openOrder')}
       </Link>
     </div>
   )
@@ -129,6 +180,8 @@ function Entry({
   switch (entry.type) {
     case 'conversation':
       return <ConversationEntry entry={entry} onNavigate={onNavigate} />
+    case 'order':
+      return <OrderEntry entry={entry} onNavigate={onNavigate} />
     case 'note':
       return <NoteEntry entry={entry} customerId={customerId} />
     case 'merge':
@@ -212,8 +265,7 @@ function MergeEntry({
   )
 }
 
-// The activity of a customer, the newest first, grouped by day (TDD_09 §6). Orders join the filters
-// with Step 4.3.
+// The activity of a customer, the newest first, grouped by day (TDD_09 §6)
 export function CustomerTimeline({
   customerId,
   onNavigate
@@ -234,11 +286,7 @@ export function CustomerTimeline({
     <div className="flex flex-col gap-4">
       <Tabs value={filter} onValueChange={value => setFilter(value as Filter)}>
         <TabsList aria-label={t('filterLabel')}>
-          {FILTERS.filter(
-            item =>
-              item !== CustomerTimelineTypes.CONVERSATION ||
-              can(ClientPermissions.CONVERSATIONS_VIEW)
-          ).map(item => (
+          {FILTERS.filter(item => mayUseFilter(item, can)).map(item => (
             <TabsTrigger key={item} value={item}>
               {t(`filters.${item}`)}
             </TabsTrigger>
