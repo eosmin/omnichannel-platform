@@ -1,4 +1,4 @@
-import { isUniqueViolation, type PrismaService } from '@platform/core/database'
+import type { PrismaService } from '@platform/core/database'
 import { CarrierStatusLimits, isStorableProviderCode } from '@platform/core/domain'
 
 export interface UnmappedStatusInput {
@@ -60,17 +60,15 @@ export async function recordUnmappedStatus(
   })
   if (reopened.count > 0) return { recorded: true, firstSighting: true }
 
-  try {
-    await client.carrierUnmappedStatus.create({
-      data: { ...key, sampleRawStatus: sample, firstSeenAt: now, lastSeenAt: now }
-    })
-    return { recorded: true, firstSighting: true }
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error
-    await client.carrierUnmappedStatus.updateMany({
-      where: key,
-      data: { occurrences: { increment: 1 }, lastSeenAt: now }
-    })
-    return { recorded: true, firstSighting: false }
-  }
+  // `skipDuplicates` is INSERT ... ON CONFLICT DO NOTHING: the loser of a race does not abort the transaction it may be in
+  const created = await client.carrierUnmappedStatus.createMany({
+    data: [{ ...key, sampleRawStatus: sample, firstSeenAt: now, lastSeenAt: now }],
+    skipDuplicates: true
+  })
+  if (created.count > 0) return { recorded: true, firstSighting: true }
+  await client.carrierUnmappedStatus.updateMany({
+    where: key,
+    data: { occurrences: { increment: 1 }, lastSeenAt: now }
+  })
+  return { recorded: true, firstSighting: false }
 }

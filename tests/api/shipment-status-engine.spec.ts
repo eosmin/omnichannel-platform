@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
@@ -14,10 +15,14 @@ import {
   ShipmentStatus,
   ShippingPayer
 } from '@platform/core/domain'
+import { DomainEvents } from '@platform/core/event-bus'
+import { MetricNames } from '@platform/core/metrics'
 import { JobNames, pollShipmentStatusJobId, QueueNames } from '@platform/core/queues'
 import { ShipmentStatusEngine, ShipmentWrites } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
+import { CarrierEventApplier } from '../../apps/worker/src/carriers/carrier-event-applier.service'
+import { CarrierEventResolver } from '../../apps/worker/src/carriers/carrier-event-resolver.service'
 import { ShipmentPollScheduler } from '../../apps/worker/src/schedulers/shipment-poll.scheduler'
 import { ShipmentPoller } from '../../apps/worker/src/shipping/shipment-poller.service'
 import {
@@ -60,13 +65,25 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
     forza = buildFakeCarrier({ id: CarrierId.FORZA, fetchStatus: true, webhook: false })
     registry.register(forza.plugin)
     engine = new ShipmentStatusEngine(prisma, app.get(ShipmentWrites, { strict: false }))
-    poller = new ShipmentPoller(
+    const cipher = app.get(CredentialCipher, { strict: false })
+    const writes = app.get(ShipmentWrites, { strict: false })
+    const applier = new CarrierEventApplier(
       prisma,
-      registry,
-      app.get(CredentialCipher, { strict: false }),
+      new CarrierEventResolver(prisma, quietLogger),
       engine,
+      writes,
+      app.get(DomainEvents, { strict: false }),
+      registry,
+      cipher,
+      new Counter({
+        name: MetricNames.SHIPMENT_UNKNOWN_STATUS_TOTAL,
+        help: 'test',
+        labelNames: ['carrier'],
+        registers: [new Registry()]
+      }),
       quietLogger
     )
+    poller = new ShipmentPoller(prisma, registry, cipher, applier, quietLogger)
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -249,10 +266,11 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
       expect(await poll(connectionId)).toMatchObject({ asked: 0 })
     })
 
-    it('leaves a status it cannot read alone', async () => {
+    it('keeps a status nobody mapped in the history and leaves the shipment alone, once however often it is asked', async () => {
       const { shipmentId, connectionId, guideNumber } = await polled()
       forza.setRawStatus(guideNumber, 'info')
-      expect(await poll(connectionId)).toMatchObject({ asked: 1, applied: 0, unreadable: 1 })
+      expect(await poll(connectionId)).toMatchObject({ asked: 1, applied: 0, stored: 1 })
+      expect(await poll(connectionId)).toMatchObject({ applied: 0, stored: 0, duplicate: 1 })
       expect(await statusOf(shipmentId)).toBe(ShipmentStatus.LABEL_CREATED)
     })
 

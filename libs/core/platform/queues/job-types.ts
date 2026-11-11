@@ -138,6 +138,13 @@ export interface PollShipmentStatusJob extends BaseJob {
   connectionId: string
   includeOld: boolean
 }
+// The owner mapped a code of a carrier (TDD_17 §4.17): the events kept under that code are applied again, in order. The code is
+// the normalized one (`providerStatusCodeOf`), the same the mapping row holds.
+export interface ReprocessCarrierEventsJob extends BaseJob {
+  storeId: string
+  connectionId: string
+  providerCode: string
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

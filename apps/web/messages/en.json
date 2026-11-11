@@ -661,7 +661,7 @@
     "carrier": {
       "status_unmapped": {
         "title": "Unknown carrier status",
-        "body": "A carrier sent a status the platform does not know. Review the shipment."
+        "body": "{carrier} sent the status \"{code}\", which the platform does not know. Map it in Settings, Carriers, so its shipment updates are applied."
       }
     },
     "channel": {

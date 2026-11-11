@@ -45,14 +45,17 @@ function fakeClient(rows: Row[], options: { raceOnCreate?: boolean } = {}) {
         },
         count: ({ where }: { where: Record<string, unknown> }) =>
           Promise.resolve(rows.filter(row => matches(row, where)).length),
-        create: ({ data }: { data: Row }) => {
+        createMany: ({ data }: { data: Row[] }) => {
+          const [row] = data
+          if (row === undefined) return Promise.resolve({ count: 0 })
           if (options.raceOnCreate === true && !raced) {
+            // The winner's row lands between the reads and this insert: ON CONFLICT DO NOTHING, nothing created
             raced = true
-            rows.push({ ...data, occurrences: 1, resolvedAt: null })
-            return Promise.reject(Object.assign(new Error('unique'), { code: 'P2002' }))
+            rows.push({ ...row, occurrences: 1, resolvedAt: null })
+            return Promise.resolve({ count: 0 })
           }
-          rows.push({ ...data, occurrences: 1, resolvedAt: null })
-          return Promise.resolve(data)
+          rows.push({ ...row, occurrences: 1, resolvedAt: null })
+          return Promise.resolve({ count: 1 })
         }
       }
     } as never

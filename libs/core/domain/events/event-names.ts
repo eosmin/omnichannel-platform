@@ -92,6 +92,8 @@ export const Events = {
   SHIPMENT_STATUS_CHANGED: 'shipment.status_changed',
   SHIPMENT_CANCELLED: 'shipment.cancelled',
   SHIPMENT_REQUIRES_REVIEW: 'shipment.requires_review',
+  // A carrier sent a status nobody has mapped, for the first time: the people who manage carriers are told (TDD_17 §4.17)
+  CARRIER_STATUS_UNMAPPED: 'carrier.status_unmapped',
   PICKUP_REQUESTED: 'pickup.requested',
   PICKUP_UPDATED: 'pickup.updated',
   RETURN_REQUESTED: 'return.requested',
@@ -204,7 +206,9 @@ export const BridgedEvents = [
   Events.CHANNEL_HEALTH_RESTORED,
   // The worker moves shipments (a carrier event, a poll): the order follows, and the team is told, in the api
   Events.SHIPMENT_STATUS_CHANGED,
-  Events.SHIPMENT_REQUIRES_REVIEW
+  Events.SHIPMENT_REQUIRES_REVIEW,
+  // The worker reads what the carriers push: the owner is told in the api
+  Events.CARRIER_STATUS_UNMAPPED
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   AttentionReasons,
   AuthorType,
+  CarrierStatusLimits,
   CHANNEL_ID_PATTERN,
   ConversationStatus,
   ConversationStatusReasons,
@@ -158,9 +159,17 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
   // A shipment moved: ids, the two statuses and who did it; no address, no phone, no carrier text
   [Events.SHIPMENT_STATUS_CHANGED]: shipmentEvent.extend({
     from: z.enum(ShipmentStatus),
-    to: z.enum(ShipmentStatus)
+    to: z.enum(ShipmentStatus),
+    // The move replays an event kept under a code the owner has just mapped: nobody outside the team hears of it
+    replay: z.boolean().optional()
   }),
   [Events.SHIPMENT_REQUIRES_REVIEW]: shipmentEvent,
+  // The ids of the connection and the carrier's code, normalized and bounded: no description, no customer data
+  [Events.CARRIER_STATUS_UNMAPPED]: z.object({
+    storeId: id,
+    connectionId: id,
+    providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH)
+  }),
   [Events.MESSAGE_NOTE_ADDED]: z.object({
     storeId: id,
     conversationId: id,

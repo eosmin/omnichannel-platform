@@ -12,6 +12,7 @@ describe('HeavyProcessingProcessor', () => {
   const fetch = jest.fn().mockResolvedValue(undefined)
   const reconcileStore = jest.fn().mockResolvedValue(undefined)
   const poll = jest.fn().mockResolvedValue(undefined)
+  const reprocess = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -22,7 +23,8 @@ describe('HeavyProcessingProcessor', () => {
     { fetch } as never, // the inbound fetcher: what it is handed is what is tested
     {} as never, // the origin fetcher is not what is tested
     { reconcileStore } as never, // the reconciler of the stock: what it is handed is what is tested
-    { poll } as never // the poller of the carriers: what it is handed is what is tested
+    { poll } as never, // the poller of the carriers: what it is handed is what is tested
+    { reprocess } as never // the replay of carrier events: what it is handed is what is tested
   )
 
   const base = {
@@ -48,6 +50,7 @@ describe('HeavyProcessingProcessor', () => {
     fetch.mockClear()
     reconcileStore.mockClear()
     poll.mockClear()
+    reprocess.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -75,6 +78,38 @@ describe('HeavyProcessingProcessor', () => {
   ])('refuses for good a job with %s', async (_name, data) => {
     await expect(run(data)).rejects.toBeInstanceOf(UnrecoverableError)
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  describe('the replay of carrier events', () => {
+    const data = {
+      storeId: '8d88e80f-cecb-408a-bd99-9da2db20a7da',
+      connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
+      providerCode: '16:115'
+    }
+    const replay = (payload: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.REPROCESS_CARRIER_EVENTS,
+        data: JSON.parse(JSON.stringify(payload)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('hands the code of the connection to the replay, and keeps nothing else the job carries', async () => {
+      await replay({ ...data, extra: 'dropped', correlationId: 'c' })
+
+      expect(reprocess).toHaveBeenCalledWith({ ...data, correlationId: 'c' })
+    })
+
+    it.each([
+      ['a store that is not an id', { ...data, storeId: 'all' }],
+      ['a connection that is not an id', { ...data, connectionId: 'x' }],
+      ['no code', { storeId: data.storeId, connectionId: data.connectionId }],
+      ['an empty code', { ...data, providerCode: '' }],
+      ['a code too long to be one', { ...data, providerCode: 'x'.repeat(500) }]
+    ])('refuses for good a job with %s', async (_name, payload) => {
+      await expect(replay(payload)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(reprocess).not.toHaveBeenCalled()
+    })
   })
 
   describe('the reconciliation of the stock', () => {

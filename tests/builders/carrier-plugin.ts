@@ -7,6 +7,7 @@ import {
   type CarrierCapabilityType,
   CarrierId,
   type CarrierIdType,
+  CarrierWebhookTrust,
   GuideRefundStatus,
   LabelFormat,
   normalizeProviderStatusCode,
@@ -56,6 +57,9 @@ export interface FakeCarrierOptions {
   // The carrier pushes no status (no WEBHOOK_STATUS)
   webhook?: boolean
   fetchStatus?: boolean
+  // The webhook sends a shared secret and no signature (as C807 does): the job confirms DELIVERED and RETURNED by asking
+  // fetchStatus before it applies them (TDD_17 §4.9). Needs `webhook` and `fetchStatus`
+  sharedSecret?: boolean
   // Pickup capabilities, each with the method behind it
   pickupRequest?: boolean
   pickupModify?: boolean
@@ -259,6 +263,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
     author: 'suite',
     type: PluginTypes.CARRIER,
     capabilities,
+    ...(options.sharedSecret === true ? { webhookTrust: CarrierWebhookTrust.SHARED_SECRET } : {}),
     serviceCatalog: () => [
       { code: 'standard', label: 'Standard', defaultForNextDay: false },
       { code: 'next_day', label: 'Next day', defaultForNextDay: true }

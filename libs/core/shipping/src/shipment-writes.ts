@@ -51,6 +51,9 @@ export interface ShipmentMoveMeta {
   rawStatus?: string | undefined
   // A redacted extract of what the carrier sent (never an address or a phone, TDD_17 §4.12)
   payload?: Record<string, string | number | boolean | null> | undefined
+  // The move applies an event that was kept and is read again (the replay of TDD_17 §4.17): what hears it writes to the team
+  // only, never to the customer
+  replay?: boolean | undefined
 }
 
 function conflict(message: string): PlatformException {
@@ -130,7 +133,7 @@ export class ShipmentWrites {
         payload: { actorId: meta.actor.id, from, ...(meta.payload ?? {}) }
       }
     })
-    this.announce(tx, identity, from, to, meta.actor)
+    this.announce(tx, identity, from, to, meta.actor, meta.replay === true)
   }
 
   // A line of the history with no move: an event that arrived too late, or says what the platform does not take from a
@@ -184,7 +187,8 @@ export class ShipmentWrites {
     identity: ShipmentIdentity,
     from: ShipmentStatus,
     to: ShipmentStatus,
-    actor: ActorRef
+    actor: ActorRef,
+    replay: boolean
   ): void {
     const common = {
       storeId: identity.storeId,
@@ -194,7 +198,12 @@ export class ShipmentWrites {
       connectionId: identity.connectionId,
       actor
     }
-    this.events.publish(tx, Events.SHIPMENT_STATUS_CHANGED, { ...common, from, to })
+    this.events.publish(tx, Events.SHIPMENT_STATUS_CHANGED, {
+      ...common,
+      from,
+      to,
+      ...(replay ? { replay } : {})
+    })
     // A guide made is announced once: when it first reaches LABEL_CREATED
     if (to === ShipmentStatus.LABEL_CREATED)
       this.events.publish(tx, Events.SHIPMENT_CREATED, common)

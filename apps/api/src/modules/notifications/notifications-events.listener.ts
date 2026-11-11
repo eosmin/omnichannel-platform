@@ -8,6 +8,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   AppPaths,
   AuthorType,
+  CarrierResourceTypes,
   ConversationStatus,
   ConversationStatusReasons,
   CountResourceTypes,
@@ -18,6 +19,7 @@ import {
   ProductResourceTypes,
   ShipmentResourceTypes,
   ShipmentStatus,
+  StoreSettingsSections,
   TransferResourceTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -25,6 +27,7 @@ import {
   type ConversationAssignedPayload,
   type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
+  type CarrierStatusUnmappedPayload,
   type CountSubmittedPayload,
   type ExportSettledPayload,
   Events,
@@ -274,6 +277,38 @@ export class NotificationsEventsListener {
       this.logger.error(
         { productId, err: String(error) },
         'a low stock warning could not be notified'
+      )
+    }
+  }
+
+  // A carrier sent a status nobody has mapped, and it is the first time (TDD_17 §4.17): until the owner maps it the shipment
+  // updates under that code are kept and not applied, so the people who manage carriers are told once. The connection is read
+  // under the store of the event (an id of another store tells nobody) and who may be told is decided now.
+  @OnEvent(Events.CARRIER_STATUS_UNMAPPED)
+  async onCarrierStatusUnmapped(payload: CarrierStatusUnmappedPayload): Promise<void> {
+    const { storeId, connectionId, providerCode } = payload
+    try {
+      const connection = await this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { displayName: true }
+      })
+      const carrier = connection === null ? null : textForParams(connection.displayName)
+      const code = textForParams(providerCode)
+      // A connection that is gone, or names that are only control characters: there is nothing to say
+      if (carrier === null || code === null) return
+      await this.notifications.sendToStore({
+        storeId,
+        type: NotificationTypes.CARRIER_STATUS_UNMAPPED,
+        params: { carrier, code },
+        resourceType: CarrierResourceTypes.CARRIER_CONNECTION,
+        resourceId: connectionId,
+        actionPath: AppPaths.store.settings(storeId, StoreSettingsSections.CARRIERS),
+        requiredPermission: Permissions.SETTINGS_MANAGE_CARRIERS
+      })
+    } catch (error) {
+      this.logger.error(
+        { connectionId, err: String(error) },
+        'an unmapped carrier status could not be notified'
       )
     }
   }

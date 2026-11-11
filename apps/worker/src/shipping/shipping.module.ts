@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common'
 
 import { CryptoPlatformModule } from '@platform/core/http'
-import { ShipmentStatusEngine, ShipmentWrites } from '@platform/core/shipping'
 import { PluginsModule } from '@platform/plugins/runtime'
+
+import { CarriersWorkerModule } from '../carriers/carriers.module'
 
 import { ShipmentPoller } from './shipment-poller.service'
 
@@ -10,8 +11,8 @@ import { ShipmentPoller } from './shipment-poller.service'
 // announces each move on the event bus; the database, the bus and the logger are the global modules of the worker, and the
 // carriers come from the plugins module.
 @Module({
-  imports: [CryptoPlatformModule, PluginsModule.forRoot()],
-  providers: [ShipmentPoller, ShipmentStatusEngine, ShipmentWrites],
+  imports: [CryptoPlatformModule, PluginsModule.forRoot(), CarriersWorkerModule],
+  providers: [ShipmentPoller],
   exports: [ShipmentPoller]
 })
 export class ShippingWorkerModule {}

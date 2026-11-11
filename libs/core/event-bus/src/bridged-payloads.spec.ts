@@ -146,7 +146,8 @@ describe('bridgedPayload', () => {
       connectionId: randomUUID(),
       actor: { type: 'system', id: null },
       from: ShipmentStatus.PICKED_UP,
-      to: ShipmentStatus.DELIVERED
+      to: ShipmentStatus.DELIVERED,
+      replay: true
     },
     [Events.SHIPMENT_REQUIRES_REVIEW]: {
       storeId: randomUUID(),
@@ -155,6 +156,11 @@ describe('bridgedPayload', () => {
       orderNumber: 'ORD-1',
       connectionId: randomUUID(),
       actor: { type: 'system', id: null }
+    },
+    [Events.CARRIER_STATUS_UNMAPPED]: {
+      storeId: randomUUID(),
+      connectionId: randomUUID(),
+      providerCode: '16:115'
     }
   }
 
@@ -172,15 +178,25 @@ describe('bridgedPayload', () => {
     }
   })
 
+  // Fields that may be left out: a move that is a replay says so, and every other move says nothing
+  const OPTIONAL_FIELDS: ReadonlySet<string> = new Set(['replay'])
+
   it('drops a payload of a bridged event with any one of its fields missing', () => {
     for (const event of BridgedEvents) {
       const fields = Object.keys(whole[event] as Record<string, unknown>)
-      for (const field of fields) {
+      for (const field of fields.filter(name => !OPTIONAL_FIELDS.has(name))) {
         const incomplete = { ...(whole[event] as Record<string, unknown>) }
         delete incomplete[field]
         expect([event, field, bridgedPayload(event, incomplete)]).toEqual([event, field, null])
       }
     }
+  })
+
+  it('passes a shipment move with no replay flag, and refuses one whose flag is not a boolean', () => {
+    const move = whole[Events.SHIPMENT_STATUS_CHANGED] as Record<string, unknown>
+    const plain = Object.fromEntries(Object.entries(move).filter(([key]) => key !== 'replay'))
+    expect(bridgedPayload(Events.SHIPMENT_STATUS_CHANGED, plain)).toEqual(plain)
+    expect(bridgedPayload(Events.SHIPMENT_STATUS_CHANGED, { ...plain, replay: 'yes' })).toBeNull()
   })
 
   it('keeps the fields of each event and drops any other', () => {

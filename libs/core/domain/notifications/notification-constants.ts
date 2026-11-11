@@ -214,12 +214,13 @@ export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = ne
   NotificationTypes.ORDER_MESSAGE_NOT_SENT,
   // `inventory.low` has an emitter since Step 4.2 PR C, `transfer.dispatched` since Step 4.5 and `count.awaiting_apply` since
   // Step 4.6
-  // `shipment.requires_review` and `shipment.failed_attempt` have an emitter since Step 4.8 PR C2b; the cancel that failed and
-  // the status nobody mapped (PR C2c) and the rest of the shipping group do not yet
+  // `shipment.requires_review` and `shipment.failed_attempt` have an emitter since Step 4.8 PR C2b and `carrier.status_unmapped`
+  // since PR C2c; the cancel that failed (Step 4.10) and the rest of the shipping group do not yet
   ...NotificationGroupTypes[SHIPPING].filter(
     type =>
       type !== NotificationTypes.SHIPMENT_REQUIRES_REVIEW &&
-      type !== NotificationTypes.SHIPMENT_FAILED_ATTEMPT
+      type !== NotificationTypes.SHIPMENT_FAILED_ATTEMPT &&
+      type !== NotificationTypes.CARRIER_STATUS_UNMAPPED
   ),
   NotificationTypes.WEBHOOK_AUTO_DISABLED,
   NotificationTypes.PLUGIN_ERROR
