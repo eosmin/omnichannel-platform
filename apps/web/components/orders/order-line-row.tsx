@@ -95,7 +95,10 @@ export function OrderLineRow({
             inputMode="numeric"
             autoComplete="off"
             value={line.quantity}
-            onChange={event => onChange({ ...line, quantity: event.target.value })}
+            // The units changed: a choice of warehouses made for the old quantity no longer adds up
+            onChange={event =>
+              onChange({ ...line, quantity: event.target.value, allocations: null })
+            }
             {...wrong('quantity')}
           />
         </div>

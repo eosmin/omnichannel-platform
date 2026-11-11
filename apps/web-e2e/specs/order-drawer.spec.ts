@@ -39,12 +39,12 @@ test.describe('the create-order drawer', () => {
     phone?: string
   }): Promise<void> {
     await drawer().getByRole('button', { name: CREATE.customer.new, exact: true }).click()
-    await drawer().getByLabel(CREATE.customer.newName).fill(values.name)
+    await drawer().getByLabel(CREATE.customer.newName, { exact: true }).fill(values.name)
     if (values.email !== undefined) {
-      await drawer().getByLabel(CREATE.customer.newEmail).fill(values.email)
+      await drawer().getByLabel(CREATE.customer.newEmail, { exact: true }).fill(values.email)
     }
     if (values.phone !== undefined) {
-      await drawer().getByLabel(CREATE.customer.newPhone).fill(values.phone)
+      await drawer().getByLabel(CREATE.customer.newPhone, { exact: true }).fill(values.phone)
     }
     await drawer().getByRole('button', { name: CREATE.customer.save, exact: true }).click()
     await expect(drawer().getByTestId('order-customer')).toContainText(values.name)
@@ -67,18 +67,24 @@ test.describe('the create-order drawer', () => {
     await saveNewCustomer({ name: customerName, phone: '+50371234567' })
 
     // The recipient phone is the national number of the customer, with no country code
-    await expect(drawer().getByLabel(CREATE.phones.field.replace('{index}', '1'))).toHaveValue(
-      '71234567'
-    )
+    await expect(
+      drawer().getByLabel(CREATE.phones.field.replace('{index}', '1'), { exact: true })
+    ).toHaveValue('71234567')
 
     await drawer().getByLabel(CREATE.lines.searchLabel, { exact: true }).fill(FIXTURE)
     await drawer()
       .getByRole('button', { name: new RegExp(`^${FIXTURE}\\b`) })
       .click()
-    await drawer().getByLabel(CREATE.lines.quantity.replace('{name}', FIXTURE)).fill('2')
+    await drawer()
+      .getByLabel(CREATE.lines.quantity.replace('{name}', FIXTURE), { exact: true })
+      .fill('2')
     // The stock of each warehouse is read for the member who may see it
-    await expect(drawer().getByText(/available in/)).toBeVisible()
-    await drawer().getByLabel(CREATE.notes.packing).fill('Wrap it twice')
+    await expect(
+      drawer()
+        .getByText(/available in/)
+        .first()
+    ).toBeVisible()
+    await drawer().getByLabel(CREATE.notes.packing, { exact: true }).fill('Wrap it twice')
 
     await drawer().getByRole('button', { name: CREATE.submit, exact: true }).click()
 

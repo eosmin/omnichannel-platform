@@ -29,13 +29,21 @@ import { fetchInventorySettings, type InventorySettingsView } from '../settings/
 
 // POST /orders. The server prices the order and plans the stock; what the screens show afterwards (the lists of orders, the stock
 // of the products, the activity of the customer and the thread of the conversation) is read again.
+// The callbacks are those of the mutation, not of one `mutate` call: a drawer closed by Back while the order is on its
+// way still gets its toast and frees its guard.
 export function useCreateOrder(
-  storeId: string
+  storeId: string,
+  handlers: {
+    onSuccess: (created: CreatedOrderView) => void
+    onSettled: () => void
+  }
 ): UseMutationResult<CreatedOrderView, Error, CreateOrderInput> {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateOrderInput) => createOrder(apiClient, storeId, input),
-    onSuccess: () => {
+    onSettled: handlers.onSettled,
+    onSuccess: created => {
+      handlers.onSuccess(created)
       void queryClient.invalidateQueries({ queryKey: QueryKeys.orders.all(storeId) })
       void queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) })
       void queryClient.invalidateQueries({ queryKey: QueryKeys.customers.all(storeId) })

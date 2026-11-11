@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState
 } from 'react'
 
@@ -41,7 +42,11 @@ interface Request extends OpenCreateOrder {
 export function OrderDrawerProvider({ children }: { children: ReactNode }): ReactElement {
   const [request, setRequest] = useState<Request | null>(null)
   const [isOpen, setOpen] = useState(false)
+  // Asking again while the drawer is open (the shortcut, a button) must not start a new, empty form over the one in use
+  const isOpenRef = useRef(false)
+  isOpenRef.current = isOpen
   const openCreate = useCallback((options: OpenCreateOrder = {}) => {
+    if (isOpenRef.current) return
     setRequest(previous => ({ ...options, openingId: (previous?.openingId ?? 0) + 1 }))
     setOpen(true)
   }, [])

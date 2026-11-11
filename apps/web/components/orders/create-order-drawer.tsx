@@ -76,7 +76,11 @@ export function CreateOrderDrawer({
         if (!open && !isBusy) onClose()
       }}
     >
-      <SheetContent className="md:w-[520px] md:max-w-[90vw]">
+      <SheetContent
+        className="md:w-[520px] md:max-w-[90vw]"
+        // A click on the dimmed page (the thread beside the drawer) must not throw away what was typed
+        onInteractOutside={event => event.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle>{t('title')}</SheetTitle>
           <SheetDescription>{t('description')}</SheetDescription>
@@ -117,7 +121,26 @@ function Body({
   const router = useRouter()
   const { storeId, can } = useStore()
   const guard = useSubmitGuard()
-  const create = useCreateOrder(storeId)
+  const create = useCreateOrder(storeId, {
+    onSuccess: ({ order, notices }) => {
+      const number = tAll('orders.list.number', { number: order.orderNumber })
+      const isHeld = order.priceApprovalStatus === (PriceApprovalStatus.PENDING as string)
+      toast.success(t(isHeld ? 'createdAwaitingApproval' : 'created', { number }), {
+        action: {
+          label: t('open'),
+          onClick: () => router.push(AppPaths.store.order(storeId, order.id))
+        }
+      })
+      if (notices.includes(OrderNotices.CONFIRMATION_SKIPPED_PRICE_APPROVAL)) {
+        toast.info(t('confirmationSkipped'))
+      }
+      onClose()
+    },
+    onSettled: () => {
+      guard.leave()
+      onBusy(false)
+    }
+  })
 
   const canOverridePrice = can(ClientPermissions.ORDERS_OVERRIDE_PRICE)
   const canConfirm = can(ClientPermissions.ORDERS_CONFIRM)
@@ -157,10 +180,18 @@ function Body({
   const prefilled = useRef<string | null>(null)
   useEffect(() => {
     const data = customer.data
-    if (data === undefined || phonesTouched || prefilled.current === data.id) return
+    // A copy from the cache that is being read again is not trusted: the phone may have changed since
+    if (
+      data === undefined ||
+      customer.isFetching ||
+      phonesTouched ||
+      prefilled.current === data.id
+    ) {
+      return
+    }
     prefilled.current = data.id
     setForm(current => ({ ...current, phones: initialPhones(data.nationalPhone) }))
-  }, [customer.data, phonesTouched])
+  }, [customer.data, customer.isFetching, phonesTouched])
 
   const productIds = useMemo(
     () => [...new Set(form.lines.map(line => line.productId))],
@@ -232,26 +263,7 @@ function Body({
         : { ...result.value, shippingAddress: shippingAddressOf(address) }
     if (!guard.enter()) return
     onBusy(true)
-    create.mutate(body, {
-      onSuccess: ({ order, notices }) => {
-        const number = tAll('orders.list.number', { number: order.orderNumber })
-        const isHeld = order.priceApprovalStatus === (PriceApprovalStatus.PENDING as string)
-        toast.success(t(isHeld ? 'createdAwaitingApproval' : 'created', { number }), {
-          action: {
-            label: t('open'),
-            onClick: () => router.push(AppPaths.store.order(storeId, order.id))
-          }
-        })
-        if (notices.includes(OrderNotices.CONFIRMATION_SKIPPED_PRICE_APPROVAL)) {
-          toast.info(t('confirmationSkipped'))
-        }
-        onClose()
-      },
-      onSettled: () => {
-        guard.leave()
-        onBusy(false)
-      }
-    })
+    create.mutate(body)
   }
 
   const fieldError = (field: FormField): ReactElement | null =>
@@ -287,8 +299,8 @@ function Body({
           />
           {fieldError('customer')}
           {fromConversation.isFailed ? (
-            <p role="status" className="text-muted-foreground text-sm">
-              {t('customer.needsPermission')}
+            <p role="alert" className="text-destructive text-sm">
+              {t('customer.conversationFailed')}
             </p>
           ) : null}
         </div>

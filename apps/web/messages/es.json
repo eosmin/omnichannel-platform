@@ -980,7 +980,8 @@
             "phone": "Mismo teléfono"
           },
           "merge": "Fusionar en su lugar: {name}"
-        }
+        },
+        "conversationFailed": "No se pudo leer la conversación, así que no se llenó el cliente. Busca al cliente."
       },
       "lines": {
         "label": "Artículos",

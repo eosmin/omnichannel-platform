@@ -330,7 +330,8 @@ export function buildOrder(
       packingNotes: note(form.packingNotes),
       scheduledDeliveryDate: form.scheduledDate === '' ? null : form.scheduledDate,
       confirmOnCreate: allowed.canConfirm && form.confirmOnCreate,
-      sendConfirmationMessage: true
+      // The form has no choice for it yet (Step 4.14): no message goes to the customer that the agent did not ask for
+      sendConfirmationMessage: false
     }
   }
 }

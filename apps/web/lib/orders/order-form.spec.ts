@@ -66,7 +66,9 @@ describe('buildOrder', () => {
       paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
       recipientPhones: ['71234567'],
       scheduledDeliveryDate: null,
-      confirmOnCreate: false
+      confirmOnCreate: false,
+      // no message goes to the customer that the agent did not ask for
+      sendConfirmationMessage: false
     })
     expect(Object.keys(result.value)).not.toEqual(
       expect.arrayContaining(['totalCents', 'subtotalCents', 'status'])

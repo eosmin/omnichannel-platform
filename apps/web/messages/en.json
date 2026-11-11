@@ -980,7 +980,8 @@
             "phone": "Same phone"
           },
           "merge": "Merge instead: {name}"
-        }
+        },
+        "conversationFailed": "The conversation could not be read, so the customer could not be filled in. Search for the customer."
       },
       "lines": {
         "label": "Items",
