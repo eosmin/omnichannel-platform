@@ -35,6 +35,11 @@ export default function StoreSwitcherPopup({
   const canManageStores = memberships.some(membership =>
     membership.permissions.includes(ClientPermissions.ORG_MANAGE_STORES)
   )
+  // The warehouses belong to the organization, not to a store: whoever may see the inventory of any store reaches
+  // them from here
+  const canSeeWarehouses = memberships.some(membership =>
+    membership.permissions.includes(ClientPermissions.INVENTORY_VIEW)
+  )
   return (
     <DropdownMenu defaultOpen={defaultOpen}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
@@ -55,13 +60,16 @@ export default function StoreSwitcherPopup({
             <span className="text-muted-foreground text-xs">{t('accessSuspended')}</span>
           </DropdownMenuItem>
         ))}
+        {(canManageStores || canSeeWarehouses) && <DropdownMenuSeparator />}
         {canManageStores && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href={AppPaths.org.stores}>{t('manageStores')}</Link>
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem asChild>
+            <Link href={AppPaths.org.stores}>{t('manageStores')}</Link>
+          </DropdownMenuItem>
+        )}
+        {canSeeWarehouses && (
+          <DropdownMenuItem asChild>
+            <Link href={AppPaths.org.warehouses}>{t('warehouses')}</Link>
+          </DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

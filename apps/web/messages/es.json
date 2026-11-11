@@ -896,6 +896,82 @@
     },
     "settings": "Ajustes"
   },
+  "warehouses": {
+    "title": "Bodegas",
+    "description": "Donde la organización guarda sus existencias. Una bodega surte a las tiendas que le vinculas, y cada tienda reserva de sus bodegas en el orden de su prioridad.",
+    "new": "Nueva bodega",
+    "empty": "Todavía no hay bodegas.",
+    "inactive": "Desactivada",
+    "noStores": "Sin tiendas vinculadas",
+    "servesStores": "{count, plural, one {Surte a # tienda: {stores}} other {Surte a # tiendas: {stores}}}",
+    "formLabel": "Bodega",
+    "readOnly": "Puedes ver las bodegas, pero no cambiarlas.",
+    "create": {
+      "title": "Nueva bodega",
+      "description": "Ponle un nombre y un código corto. La vinculas a tiendas una vez creada.",
+      "submit": "Crear bodega",
+      "done": "Bodega {name} creada."
+    },
+    "edit": {
+      "title": "Bodega",
+      "description": "Cambia sus datos, actívala o desactívala y elige las tiendas que surte.",
+      "save": "Guardar datos",
+      "saved": "Bodega guardada."
+    },
+    "form": {
+      "name": "Nombre",
+      "code": "Código",
+      "codeHint": "Solo letras, dígitos y . _ -, hasta 20. Se imprime en los documentos.",
+      "addressLegend": "Dirección",
+      "addressHint": "Opcional. Si llenas una parte, la primera línea y la ciudad son obligatorias.",
+      "line1": "Dirección, línea 1",
+      "line2": "Dirección, línea 2",
+      "city": "Ciudad",
+      "state": "Estado o provincia",
+      "postalCode": "Código postal",
+      "country": "País",
+      "countryHint": "Dos letras, por ejemplo MX."
+    },
+    "problems": {
+      "name": "Escribe un nombre.",
+      "code": "Escribe un código de letras, dígitos y . _ - (hasta 20, que empiece con letra o dígito).",
+      "codeInUse": "Otra bodega ya usa ese código.",
+      "line1": "Escribe la primera línea de la dirección.",
+      "city": "Escribe la ciudad.",
+      "country": "Usa dos letras para el país."
+    },
+    "state": {
+      "on": "La bodega está activa",
+      "off": "La bodega está desactivada",
+      "onHint": "Desactivarla conserva su historial, pero ninguna tienda reserva de ella. No debe tener existencias ni un traslado en camino.",
+      "offHint": "Mientras esté desactivada, ninguna tienda reserva de ella y no se le puede vincular otra tienda.",
+      "switchOff": "Desactivar",
+      "switchOn": "Activar",
+      "switchedOff": "Bodega desactivada.",
+      "switchedOn": "Bodega activada."
+    },
+    "stores": {
+      "legend": "Tiendas que surte",
+      "hint": "Una tienda reserva de sus bodegas en este orden: se reserva primero de la primera.",
+      "empty": "Todavía no hay tiendas vinculadas.",
+      "position": "Prioridad {position}",
+      "moveUp": "Subir {store}",
+      "moveDown": "Bajar {store}",
+      "remove": "Desvincular {store}",
+      "addLabel": "Agregar una tienda",
+      "pick": "Elige una tienda",
+      "noneToAdd": "Todas las tiendas ya están vinculadas",
+      "add": "Agregar",
+      "inactiveHint": "Activa la bodega para vincularle más tiendas.",
+      "save": "Guardar tiendas",
+      "saved": "Tiendas guardadas."
+    },
+    "stockBlock": {
+      "deactivate": "La bodega todavía tiene unidades o reservas. Muévelas o úsalas primero y luego desactívala.",
+      "unlink": "Esa tienda tiene existencias reservadas en esta bodega. Espera a que sus pedidos se surtan o se cancelen y luego desvincúlala.",
+      "openTransfer": "Un traslado en camino sale de esta bodega o llega a ella. Recíbelo o cancélalo primero."
+    }
+  },
   "realtime": {
     "reconnecting": "Reconectando…",
     "disconnected": "Sin conexión. No llegarán mensajes nuevos. Lo que escribas se guarda y se envía al volver la conexión; si tarda mucho, se te preguntará antes."
@@ -905,6 +981,7 @@
     "selectStore": "Elige una tienda",
     "stores": "Tiendas",
     "manageStores": "Administrar tiendas",
+    "warehouses": "Bodegas",
     "account": "Cuenta",
     "accountMenu": "Menú de la cuenta",
     "nav": {
@@ -1866,6 +1943,7 @@
         "label": "Organización",
         "title": "Organización",
         "stores": "Tiendas",
+        "warehouses": "Bodegas",
         "profile": "Perfil"
       },
       "account": {

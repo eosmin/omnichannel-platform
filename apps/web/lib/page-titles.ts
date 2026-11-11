@@ -33,7 +33,8 @@ export const PageTitles = {
   accountSecurity: ['settings.nav.account.security', 'settings.nav.account.title'],
   org: ['settings.nav.org.title'],
   orgProfile: ['settings.nav.org.profile', 'settings.nav.org.title'],
-  orgStores: ['settings.nav.org.stores', 'settings.nav.org.title']
+  orgStores: ['settings.nav.org.stores', 'settings.nav.org.title'],
+  orgWarehouses: ['settings.nav.org.warehouses', 'settings.nav.org.title']
 } as const satisfies Record<string, readonly string[]>
 
 export type PageTitleName = keyof typeof PageTitles

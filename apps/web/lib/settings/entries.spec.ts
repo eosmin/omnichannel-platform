@@ -20,11 +20,26 @@ const holding =
 
 describe('settings entries', () => {
   it('shows an organization admin both organization pages', () => {
-    const can = holding(Permissions.ORG_MANAGE_STORES, Permissions.SETTINGS_VIEW)
+    const can = holding(
+      Permissions.ORG_MANAGE_STORES,
+      Permissions.INVENTORY_VIEW,
+      Permissions.SETTINGS_VIEW
+    )
     expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual([
       'stores',
+      'warehouses',
       'profile'
     ])
+  })
+
+  it('keeps the warehouses page from who only manages stores', () => {
+    const can = holding(Permissions.ORG_MANAGE_STORES)
+    expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual(['stores'])
+  })
+
+  it('shows the warehouses page to who may see the inventory, with no other organization page', () => {
+    const can = holding(Permissions.INVENTORY_VIEW)
+    expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual(['warehouses'])
   })
 
   it('hides the stores page from who cannot manage stores, and keeps the profile', () => {

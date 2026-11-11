@@ -4,6 +4,9 @@ export const WarehouseLimits = {
   // One organization holds at most this many warehouses, so the answer of a list has a size
   MAX_PER_ORGANIZATION: 200,
   ADDRESS_FIELD_MAX_LENGTH: 200,
+  // The longest code the box takes (CODE_PATTERN holds the same bound) and the letters of a country
+  CODE_MAX_LENGTH: 20,
+  COUNTRY_LENGTH: 2,
   // The links one request may name: a warehouse serves the stores of one organization
   MAX_STORES_PER_REQUEST: 50,
   // What the owner types in the code box: ASCII letters, digits and . _ - (the database holds the same rule)
