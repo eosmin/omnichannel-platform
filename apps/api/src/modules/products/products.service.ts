@@ -7,7 +7,8 @@ import {
   MediaStatus,
   ProductConflicts,
   ProductHistoryTables,
-  ProductResourceTypes
+  ProductResourceTypes,
+  TransferStatus
 } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -178,6 +179,17 @@ export class ProductsService {
           })
           if (cover === null) throw resourceNotFound('media')
         }
+        if (body.trackInventory === false) {
+          const travelling = await tx.stockTransferLine.count({
+            where: { storeId, productId, transfer: { status: TransferStatus.IN_TRANSIT } }
+          })
+          if (travelling > 0) {
+            throw resourceConflict('the product has units in a transfer in transit', {
+              conflict: ProductConflicts.IN_TRANSIT,
+              [ProductHistoryTables.TRANSFER_LINES]: travelling
+            })
+          }
+        }
         await tx.product.update({
           where: { id: productId },
           data: {
@@ -232,23 +244,35 @@ export class ProductsService {
   async remove(storeId: string, productId: string, actor: Actor): Promise<void> {
     const removed = await this.prisma.transaction(async tx => {
       const product = await lockProduct(tx, storeId, productId)
-      const [orderItems, inventoryMovements, inventoryLevels, media] = await Promise.all([
-        tx.orderItem.count({ where: { productId } }),
-        tx.inventoryMovement.count({ where: { storeId, productId } }),
-        tx.inventoryLevel.count({ where: { storeId, productId } }),
-        // A file the scan refused or could not clear is never served and nobody can remove it: it does not keep the product
-        tx.media.count({
-          where: { storeId, productId, status: { in: LIVE_MEDIA_STATUSES } }
-        })
-      ])
-      if (orderItems > 0 || inventoryMovements > 0 || inventoryLevels > 0 || media > 0) {
-        throw resourceConflict('a product with orders, stock or files cannot be deleted', {
-          conflict: ProductConflicts.HAS_HISTORY,
-          [ProductHistoryTables.ORDER_ITEMS]: orderItems,
-          [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
-          [ProductHistoryTables.INVENTORY_LEVELS]: inventoryLevels,
-          [ProductHistoryTables.MEDIA]: media
-        })
+      const [orderItems, inventoryMovements, inventoryLevels, transferLines, media] =
+        await Promise.all([
+          tx.orderItem.count({ where: { productId } }),
+          tx.inventoryMovement.count({ where: { storeId, productId } }),
+          tx.inventoryLevel.count({ where: { storeId, productId } }),
+          tx.stockTransferLine.count({ where: { storeId, productId } }),
+          // A file the scan refused or could not clear is never served and nobody can remove it: it does not keep the product
+          tx.media.count({
+            where: { storeId, productId, status: { in: LIVE_MEDIA_STATUSES } }
+          })
+        ])
+      if (
+        orderItems > 0 ||
+        inventoryMovements > 0 ||
+        inventoryLevels > 0 ||
+        transferLines > 0 ||
+        media > 0
+      ) {
+        throw resourceConflict(
+          'a product with orders, stock, transfers or files cannot be deleted',
+          {
+            conflict: ProductConflicts.HAS_HISTORY,
+            [ProductHistoryTables.ORDER_ITEMS]: orderItems,
+            [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
+            [ProductHistoryTables.INVENTORY_LEVELS]: inventoryLevels,
+            [ProductHistoryTables.TRANSFER_LINES]: transferLines,
+            [ProductHistoryTables.MEDIA]: media
+          }
+        )
       }
       await tx.product.delete({ where: { id: productId } })
       this.events.publish(tx, Events.PRODUCT_DELETED, { storeId, productId })

@@ -1,4 +1,8 @@
-import { readStorePreferences, updateStorePreferencesSchema } from './store-preferences'
+import {
+  readOrderPreferences,
+  readStorePreferences,
+  updateStorePreferencesSchema
+} from './store-preferences'
 
 describe('readStorePreferences', () => {
   it('reads the factory defaults from an empty column', () => {
@@ -53,4 +57,63 @@ describe('updateStorePreferencesSchema', () => {
   ])('refuses %s', (_name, body) => {
     expect(updateStorePreferencesSchema.safeParse(body).success).toBe(false)
   })
+})
+
+describe('readOrderPreferences', () => {
+  const factory = {
+    discountLimitPercent: 0,
+    freeShippingRule: 'all_items',
+    notifyOnPriceOverride: true
+  }
+
+  it('reads the factory defaults from an empty column or one with no orders block', () => {
+    expect(readOrderPreferences({})).toEqual(factory)
+    expect(readOrderPreferences({ sendReadReceipts: false })).toEqual(factory)
+  })
+
+  it('keeps what the store chose', () => {
+    expect(
+      readOrderPreferences({ orders: { discountLimitPercent: 15, freeShippingRule: 'any_item' } })
+    ).toEqual({
+      discountLimitPercent: 15,
+      freeShippingRule: 'any_item',
+      notifyOnPriceOverride: true
+    })
+    expect(
+      readOrderPreferences({ orders: { notifyOnPriceOverride: false } }).notifyOnPriceOverride
+    ).toBe(false)
+    expect(
+      readOrderPreferences({ orders: { notifyOnPriceOverride: 'no' } }).notifyOnPriceOverride
+    ).toBe(true)
+  })
+
+  it('gives each key its own default, so one bad value never resets the other', () => {
+    expect(
+      readOrderPreferences({
+        orders: { discountLimitPercent: 'a lot', freeShippingRule: 'any_item' }
+      })
+    ).toEqual({
+      discountLimitPercent: 0,
+      freeShippingRule: 'any_item',
+      notifyOnPriceOverride: true
+    })
+    expect(
+      readOrderPreferences({ orders: { discountLimitPercent: 20, freeShippingRule: 'never' } })
+    ).toEqual({
+      discountLimitPercent: 20,
+      freeShippingRule: 'all_items',
+      notifyOnPriceOverride: true
+    })
+  })
+
+  it.each([101, -1, 2.5])('reads a limit of %s as the strictest one, none', limit => {
+    expect(readOrderPreferences({ orders: { discountLimitPercent: limit } })).toEqual(factory)
+  })
+
+  it.each([null, 'text', 42, [], { orders: null }, { orders: 'x' }, { orders: [] }])(
+    'reads the defaults from a value that does not fit: %j',
+    raw => {
+      expect(readOrderPreferences(raw)).toEqual(factory)
+    }
+  )
 })

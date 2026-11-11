@@ -492,8 +492,12 @@
     "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "El conteo no puede pasar a ese estado",
     "INVENTORY_COUNT_STORES_NOT_ALLOWED": "No puedes aplicar este conteo: cambia existencias de tiendas donde no puedes aplicar conteos",
     "INVENTORY_COUNT_LINES_REFUSED": "Algunas líneas del conteo no se pueden aplicar: revísalas o cancela el conteo",
+    "INVENTORY_TRANSFER_EMPTY": "El traslado no tiene productos. Agrega al menos uno antes de enviarlo.",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "El traslado no puede pasar a ese estado",
+    "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Parte de lo que no llegó es de tiendas a las que no perteneces. Pide a alguien que las integre que cierre el traslado.",
+    "INVENTORY_TRANSFER_RECEIVE_EXCEEDS_DISPATCHED": "No puedes recibir más unidades de las que faltan por llegar.",
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "El origen y el destino deben ser distintos",
+    "INVENTORY_TRANSFER_SHORTAGE_ACTION_INVALID": "Elige qué hacer con cada producto que no llegó completo, y solo con esos.",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "La bodega todavía tiene existencias",
     "INVENTORY_WAREHOUSE_NOT_LINKED": "La bodega no está vinculada a esta tienda",
     "INVENTORY_VARIANT_REQUIRED": "Elige la variante a la que pertenecen las existencias",
@@ -2654,7 +2658,8 @@
       "sku_in_use": "Otro producto o variante de esta tienda ya usa ese SKU.",
       "variant_name_in_use": "Este producto ya tiene una variante con ese nombre.",
       "too_many_variants": "Un producto puede tener hasta {max} variantes.",
-      "has_history": "Este producto forma parte del historial de la tienda, así que no se puede eliminar. Archívalo."
+      "has_history": "Este producto forma parte del historial de la tienda, así que no se puede eliminar. Archívalo.",
+      "in_transit": "Este producto tiene unidades en camino en un traslado en tránsito, así que todavía no se puede dejar de controlar su stock. Espera a que llegue o cancela el traslado."
     },
     "noMatchesYet": "Ningún producto cargado hasta ahora coincide. Muestra más productos para seguir buscando.",
     "stock": {

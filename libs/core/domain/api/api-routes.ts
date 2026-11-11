@@ -98,6 +98,7 @@ export const ApiRoutes = {
     confirmBulk: '/orders/confirm-bulk',
     copy: (id: string) => `/orders/${id}/copy`, // A prefilled draft: nothing is written
     messages: (id: string) => `/orders/${id}/messages`, // ?preview=true renders without sending
+    payment: (id: string) => `/orders/${id}/payment`, // POST records a payment by hand (v1.2: no online gateway)
     priceApprovalApprove: (id: string) => `/orders/${id}/price-approval/approve`,
     priceApprovalReject: (id: string) => `/orders/${id}/price-approval/reject`
   },

@@ -15,7 +15,8 @@ import {
   MembershipStatus,
   MessageType,
   PaymentMethod,
-  RoutingActionTypes
+  RoutingActionTypes,
+  TransferStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -34,11 +35,15 @@ import {
   createCustomer,
   createCustomerIdentity,
   createCustomerMerge,
+  createAllocationOf,
   createLevelOf,
   createMovementOf,
+  createOrder,
+  orderOfAllocation,
   createProduct,
   createProductVariant,
   itemOfStockRow,
+  createTransfer,
   createWarehouse,
   linkWarehouse,
   createChannelConnection,
@@ -97,6 +102,8 @@ async function organizationOfStore(owner: OwnerClient, storeId: string): Promise
 }
 
 let viewerRoleId = ''
+// Two warehouses of organization A, for the body of the creation check of the transfers
+let transferWarehouses = { from: '', to: '' }
 let agentRoleId = ''
 // A user for the reactions the suite writes as the owner
 let reactorId = ''
@@ -295,6 +302,25 @@ const resources: IsolationResource[] = [
     listPath: ApiRoutes.inventory.movements,
     untouched: () => Promise.resolve(true)
   },
+  // An order has its own routes; its allocations are read with it, and written only with it (OrdersService), so the
+  // reads below name the order the allocation belongs to. The rest of the rules of orders is in `describe('orders')` below
+  {
+    name: 'order',
+    create: createOrder,
+    readPath: ApiRoutes.orders.byId,
+    listPath: ApiRoutes.orders.list,
+    modify: { path: ApiRoutes.orders.byId, body: { customerNotes: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.order.findUnique({ where: { id }, select: { customerNotes: true } }))
+        ?.customerNotes !== 'hacked'
+  },
+  {
+    name: 'orderItemAllocation',
+    create: createAllocationOf,
+    // An id the builder did not make (the check asks for a random one to compare the answers) reads an order that does not exist
+    readPath: id => ApiRoutes.orders.byId(orderOfAllocation.get(id) ?? randomUUID()),
+    untouched: async (owner, id) => (await owner.orderItemAllocation.count({ where: { id } })) === 1
+  },
   {
     name: 'warehouse',
     create: async (owner, { storeId }) => ({
@@ -372,6 +398,56 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.stockCountLine.findUnique({ where: { id }, select: { countedQuantity: true } }))
         ?.countedQuantity === null
+  },
+  {
+    name: 'stockTransfer',
+    create: async (owner, { storeId }) => ({
+      id: (
+        await createTransfer(owner, { organizationId: await organizationOfStore(owner, storeId) })
+      ).id
+    }),
+    // The header belongs to the organization (TDD_16 §1): every store of it sees it, another organization never does
+    scope: 'organization',
+    readPath: ApiRoutes.transfers.byId,
+    listPath: ApiRoutes.transfers.list,
+    modify: { path: ApiRoutes.transfers.byId, body: { note: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.stockTransfer.findUnique({ where: { id }, select: { note: true } }))?.note !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.transfers.create,
+      body: () => ({
+        fromWarehouseId: transferWarehouses.from,
+        toWarehouseId: transferWarehouses.to
+      }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.stockTransfer.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.stockTransfer.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  // A line has no route of its own: it is read with its transfer, and only by the members of ITS store (the cases
+  // of the block of the transfers below prove the rest)
+  {
+    name: 'stockTransferLine',
+    create: async (owner, { storeId }) => ({
+      id: (
+        await createTransfer(owner, {
+          organizationId: await organizationOfStore(owner, storeId),
+          storeId
+        })
+      ).id
+    }),
+    // A store's: a member of a sibling store of the organization gets the same answer as a stranger
+    readPath: ApiRoutes.transfers.byId,
+    modify: { path: ApiRoutes.transfers.byId, body: { note: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.stockTransfer.findUnique({ where: { id }, select: { note: true } }))?.note !==
+      'hacked'
   },
   {
     name: 'snippet',
@@ -870,6 +946,7 @@ describe('Tenant isolation', () => {
     )
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
+    transferWarehouses = { from: ctx.warehouseA.id, to: ctx.warehouseASecond.id }
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
     reactorId = ctx.adminA.id
     conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
@@ -951,6 +1028,83 @@ describe('Tenant isolation', () => {
       const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.warehouses.byId(own.id))
 
       expect(response.status).toBe(403)
+    })
+  })
+
+  // The transfers belong to the organization, their lines to the stores whose products travel (TDD_16 §1, §8): the
+  // checks above prove that another organization reaches none of them; these prove that line visibility is the
+  // caller's stores
+  describe('transfers of an organization', () => {
+    it("show a member only the lines of their stores, though the header is the organization's", async () => {
+      const own = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id
+      })
+      const sibling = await owner.product.create({
+        data: { storeId: ctx.storeA2.id, name: `p-${randomUUID().slice(0, 6)}`, priceCents: 100 },
+        select: { id: true }
+      })
+      await owner.stockTransferLine.create({
+        data: { transferId: own.id, storeId: ctx.storeA2.id, productId: sibling.id, quantity: 2 }
+      })
+
+      const fromA = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.transfers.byId(own.id))
+      const fromA2 = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.transfers.byId(own.id))
+
+      const storesOf = (response: { body: unknown }): string[] =>
+        (response.body as { lines: { storeId: string }[] }).lines.map(line => line.storeId)
+      expect(fromA.status).toBe(200)
+      expect(storesOf(fromA)).toEqual([ctx.storeA.id])
+      expect(fromA2.status).toBe(200)
+      expect(storesOf(fromA2)).toEqual([ctx.storeA2.id])
+    })
+
+    it('are not reached through the header of a store of another organization', async () => {
+      const own = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id
+      })
+
+      const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.transfers.byId(own.id))
+
+      expect(response.status).toBe(403)
+    })
+
+    it('of another organization cannot be edited, dispatched, received, closed or cancelled', async () => {
+      const foreign = await createTransfer(owner, {
+        organizationId: ctx.orgB.id,
+        storeId: ctx.storeB.id,
+        status: TransferStatus.IN_TRANSIT
+      })
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const attempts = [
+        await agent.patch(ApiRoutes.transfers.byId(foreign.id)).send({ note: 'mine now' }),
+        await agent.post(ApiRoutes.transfers.dispatch(foreign.id)),
+        await agent
+          .post(ApiRoutes.transfers.receive(foreign.id))
+          .send({ receiptKey: randomUUID(), lines: [{ lineId: foreign.lineId, quantity: 1 }] }),
+        await agent.post(ApiRoutes.transfers.close(foreign.id)).send({ lines: [] }),
+        await agent.post(ApiRoutes.transfers.cancel(foreign.id))
+      ]
+
+      expect(attempts.map(attempt => attempt.status)).toEqual([404, 404, 404, 404, 404])
+      const row = await owner.stockTransfer.findUniqueOrThrow({
+        where: { id: foreign.id },
+        include: { lines: true }
+      })
+      expect(row).toMatchObject({ status: TransferStatus.IN_TRANSIT, note: null })
+      expect(row.lines.map(line => line.receivedQuantity)).toEqual([0])
+    })
+
+    it('do not take a warehouse of another organization', async () => {
+      const mine = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.transfers.create)
+        .send({ fromWarehouseId: mine.id, toWarehouseId: ctx.warehouseB.id })
+
+      expect(response.status).toBe(404)
     })
   })
 
@@ -1985,6 +2139,190 @@ describe('Tenant isolation', () => {
         .set(TenantHeaders.STORE_ID, ctx.storeA.id)
 
       expect(response.status).toBe(403)
+    })
+  })
+
+  // Orders: the store of every query is the one of the header; the three notes belong to the members of that store who
+  // may read orders, and nothing of them leaves through the label, an event or the plugin API (TDD_17 §8)
+  describe('orders', () => {
+    const asA = () => api(app, ctx.adminA, ctx.storeA)
+    const asB = () => api(app, ctx.adminB, ctx.storeB)
+
+    it('are not read, edited, moved, paid or decided through another store, and nothing of them changes', async () => {
+      const theirs = await createOrder(owner, {
+        storeId: ctx.storeB.id,
+        customerNotes: 'their customer note',
+        internalNotes: 'their care note',
+        packingNotes: 'their packing note'
+      })
+      const before = await owner.order.findUniqueOrThrow({ where: { id: theirs.id } })
+
+      const responses = await Promise.all([
+        asA().get(ApiRoutes.orders.byId(theirs.id)),
+        asA()
+          .patch(ApiRoutes.orders.byId(theirs.id))
+          .send({ packingNotes: 'hacked', internalNotes: 'hacked' }),
+        asA().post(ApiRoutes.orders.status(theirs.id)).send({ status: 'CONFIRMED' }),
+        asA().post(ApiRoutes.orders.confirm(theirs.id)).send({ via: 'call' }),
+        asA().post(ApiRoutes.orders.cancel(theirs.id)).send({ cancellationReason: 'x' }),
+        asA()
+          .post(ApiRoutes.orders.payment(theirs.id))
+          .send({ method: 'CASH', status: 'COMPLETED' }),
+        asA().post(ApiRoutes.orders.priceApprovalApprove(theirs.id)).send({}),
+        asA().post(ApiRoutes.orders.priceApprovalReject(theirs.id)).send({})
+      ])
+
+      for (const response of responses) {
+        expect(response.status).toBe(404)
+        expect(JSON.stringify(response.body)).not.toMatch(/their (customer|care|packing) note/)
+      }
+      expect(await owner.order.findUniqueOrThrow({ where: { id: theirs.id } })).toEqual(before)
+    })
+
+    it('do not take the store from the body: another store named there is refused, and what is made lands in the header store', async () => {
+      const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      await owner.product.update({ where: { id: product.id }, data: { trackInventory: false } })
+      const body = {
+        customerId: customer.id,
+        items: [{ productId: product.id, quantity: 1 }],
+        paymentMethod: 'CASH',
+        recipientPhones: ['71234567']
+      }
+      const orders = () => owner.order.count({ where: { customerId: customer.id } })
+
+      const named = await asA()
+        .post(ApiRoutes.orders.create)
+        .send({ ...body, storeId: ctx.storeB.id })
+      expect(named.status).toBe(400)
+      expect(await orders()).toBe(0)
+
+      const made = await asA().post(ApiRoutes.orders.create).send(body)
+      expect(made.status).toBe(201)
+      const row = await owner.order.findFirstOrThrow({ where: { customerId: customer.id } })
+      expect(row.storeId).toBe(ctx.storeA.id)
+    })
+
+    it('are not made for a customer, a product or a conversation of another store', async () => {
+      const mine = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const theirCustomer = await createCustomer(owner, { storeId: ctx.storeB.id })
+      const theirProduct = await createProduct(owner, { storeId: ctx.storeB.id })
+      const myProduct = await createProduct(owner, { storeId: ctx.storeA.id })
+      const theirConversation = await createConversationOf(owner, { storeId: ctx.storeB.id })
+      const base = { paymentMethod: 'CASH', recipientPhones: ['71234567'] }
+
+      const responses = await Promise.all([
+        asA()
+          .post(ApiRoutes.orders.create)
+          .send({
+            ...base,
+            customerId: theirCustomer.id,
+            items: [{ productId: myProduct.id, quantity: 1 }]
+          }),
+        asA()
+          .post(ApiRoutes.orders.create)
+          .send({
+            ...base,
+            customerId: mine.id,
+            items: [{ productId: theirProduct.id, quantity: 1 }]
+          }),
+        asA()
+          .post(ApiRoutes.orders.create)
+          .send({
+            ...base,
+            customerId: mine.id,
+            conversationId: theirConversation.id,
+            items: [{ productId: myProduct.id, quantity: 1 }]
+          })
+      ])
+
+      for (const response of responses) expect(response.status).toBe(404)
+      expect(
+        await owner.order.count({ where: { customerId: { in: [mine.id, theirCustomer.id] } } })
+      ).toBe(0)
+    })
+
+    it('are listed by the store of the header, with the scheduled delivery filters inside it', async () => {
+      const day = new Date('2026-12-24T00:00:00Z')
+      const mine = await createOrder(owner, { storeId: ctx.storeA.id, scheduledDeliveryDate: day })
+      const theirs = await createOrder(owner, {
+        storeId: ctx.storeB.id,
+        scheduledDeliveryDate: day
+      })
+
+      const filtered = await asA().get(
+        `${ApiRoutes.orders.list}?scheduledDeliveryFrom=2026-12-24&scheduledDeliveryTo=2026-12-24`
+      )
+      const claiming = await asA().get(`${ApiRoutes.orders.list}?customerId=${randomUUID()}`)
+
+      expect(filtered.status).toBe(200)
+      const ids = (filtered.body as { data: { id: string }[] }).data.map(row => row.id)
+      expect(ids).toContain(mine.id)
+      expect(ids).not.toContain(theirs.id)
+      expect((claiming.body as { data: unknown[] }).data).toEqual([])
+      expect((await asB().get(ApiRoutes.orders.list)).status).toBe(200)
+    })
+
+    it('keep the allocations of the order in its own store: stock of another store is never reserved for it', async () => {
+      const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      const outsider = await createProduct(owner, { storeId: ctx.storeB.id })
+      const body = {
+        customerId: customer.id,
+        paymentMethod: 'CASH',
+        recipientPhones: ['71234567']
+      }
+
+      // No stock in store A for its product: refused, and the stock of store B is not touched
+      const refused = await asA()
+        .post(ApiRoutes.orders.create)
+        .send({ ...body, items: [{ productId: product.id, quantity: 1 }] })
+      expect(refused.status).toBe(409)
+      expect(
+        await owner.orderItemAllocation.count({
+          where: { orderItem: { order: { customerId: customer.id } } }
+        })
+      ).toBe(0)
+      expect(await owner.inventoryLevel.count({ where: { productId: outsider.id } })).toBe(0)
+    })
+
+    it('hide the notes from a member who cannot read orders: 403 and no note in the answer', async () => {
+      const made = await createOrder(owner, {
+        storeId: ctx.storeA.id,
+        customerNotes: 'a customer note',
+        internalNotes: 'a customer care note',
+        packingNotes: 'a packing note'
+      })
+      const stranger = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'no-orders',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [
+          Permissions.CUSTOMERS_VIEW,
+          Permissions.ORDERS_CREATE,
+          Permissions.ORDERS_EDIT
+        ]
+      })
+      const denied = await api(app, stranger, ctx.storeA).get(ApiRoutes.orders.byId(made.id))
+      const listed = await api(app, stranger, ctx.storeA).get(ApiRoutes.orders.list)
+      const edited = await api(app, stranger, ctx.storeA)
+        .patch(ApiRoutes.orders.byId(made.id))
+        .send({ customerNotes: 'edited' })
+
+      expect(denied.status).toBe(403)
+      expect(listed.status).toBe(403)
+      for (const response of [denied, listed, edited]) {
+        expect(JSON.stringify(response.body)).not.toMatch(/care note|packing note/)
+      }
+      expect(edited.status).toBe(200)
+      expect('internalNotes' in (edited.body as object)).toBe(false)
+      // The member who may read orders reads all three
+      const reader = await asA().get(ApiRoutes.orders.byId(made.id))
+      expect(reader.body).toMatchObject({
+        internalNotes: 'a customer care note',
+        packingNotes: 'a packing note'
+      })
     })
   })
 })

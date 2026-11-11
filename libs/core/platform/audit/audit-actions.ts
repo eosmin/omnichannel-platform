@@ -95,6 +95,10 @@ export const AuditAction = {
   WAREHOUSE_CREATED: 'warehouse.created',
   WAREHOUSE_UPDATED: 'warehouse.updated',
   INVENTORY_ADJUSTED: 'inventory.adjusted',
+  // A draft transfer made or changed (the lines and the warehouses): what the TDD does not name but §8 asks for
+  // ("every mutation is audited")
+  TRANSFER_CREATED: 'transfer.created',
+  TRANSFER_UPDATED: 'transfer.updated',
   TRANSFER_DISPATCHED: 'transfer.dispatched',
   TRANSFER_RECEIVED: 'transfer.received',
   TRANSFER_CLOSED_WITH_SHORTAGE: 'transfer.closed_with_shortage',

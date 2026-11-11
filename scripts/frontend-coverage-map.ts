@@ -74,6 +74,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'orders.cancel': { step: '4.4' },
   'orders.status': { step: '4.4' },
   'orders.items': { step: '4.4' },
+  'orders.payment': { step: '4.4' },
   'orders.print': { step: '4.4' },
   'orders.export': { step: '4.4' },
   'orders.confirm': { step: '4.14' },

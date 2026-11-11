@@ -1,13 +1,15 @@
 // What CI would fail on, for the projects that the branch touches (pre-push hook). No Docker, no
 // database. A push that only changes docs/ is not checked, except for the validators that read the plan.
-// Usage: tsx scripts/validate-affected.ts [--since <sha>]
+// Usage: tsx scripts/validate-affected.ts [--since <sha>] [--full]
+//   --full: also run the unit tests (`nx affected --targets=test`), which the hook leaves to CI (required
+//   check `unit-tests`, with the coverage thresholds).
 //   --since: the commit the remote branch is at, which the pre-push hook passes. What is pushed is
 //   then the commits after it, so a documentation commit on top of code that was already checked
 //   is not checked again.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { argv, exit } from 'node:process'
 
-import { isDocsOnly } from './lib/affected'
+import { type AffectedStep, isDocsOnly, selectSteps } from './lib/affected'
 
 function git(...args: string[]): string {
   try {
@@ -31,6 +33,16 @@ function isAncestorOfHead(commit: string): boolean {
 
 function changedSince(commit: string): string[] {
   return git('diff', '--name-only', '--no-renames', commit, 'HEAD').split('\n').filter(Boolean)
+}
+
+const KNOWN_FLAGS = ['--since', '--full']
+const sinceAt = argv.indexOf('--since')
+const unknown = argv
+  .slice(2)
+  .filter((arg, i) => arg.startsWith('--') && !KNOWN_FLAGS.includes(arg) && i + 2 !== sinceAt + 1)
+if (unknown.length > 0) {
+  console.error(`unknown argument(s): ${unknown.join(' ')} (known: ${KNOWN_FLAGS.join(' ')})`)
+  exit(1)
 }
 
 const baseRef = ['origin/main', 'main'].find(exists)
@@ -65,17 +77,22 @@ if (docsOnly && !pushed.includes(PLAN_FILE)) {
   exit(0)
 }
 
-const STEPS: { name: string; command: string[] }[] = [
+const STEPS: AffectedStep[] = [
   {
-    name: 'lint, type-check and test (affected)',
+    name: 'lint and type-check (affected)',
     command: [
       'exec',
       'nx',
       'affected',
-      '--targets=lint,type-check,test',
+      '--targets=lint,type-check',
       `--base=${base}`,
       '--head=HEAD'
     ]
+  },
+  {
+    name: 'test (affected)',
+    tests: true,
+    command: ['exec', 'nx', 'affected', '--targets=test', `--base=${base}`, '--head=HEAD']
   },
   { name: 'format:check', command: ['format:check'] },
   { name: 'validate:env', command: ['validate:env'] },
@@ -90,9 +107,11 @@ const STEPS: { name: string; command: string[] }[] = [
   { name: 'test:contracts', command: ['test:contracts'] }
 ]
 
+const full = argv.includes('--full')
+const toRun = selectSteps(STEPS, { full })
 for (const { name, command } of docsOnly
-  ? STEPS.filter(({ name }) => PLAN_CHECKS.includes(name))
-  : STEPS) {
+  ? toRun.filter(({ name }) => PLAN_CHECKS.includes(name))
+  : toRun) {
   console.log(`\n> ${name}`)
   const result = spawnSync('pnpm', command, { stdio: 'inherit' })
   if (result.error !== undefined) console.error(`could not run pnpm: ${result.error.message}`)
@@ -101,4 +120,8 @@ for (const { name, command } of docsOnly
     exit(result.status ?? 1)
   }
 }
-console.log('\nall checks passed')
+console.log(
+  full
+    ? '\nall checks passed'
+    : '\nall checks passed (the tests run in CI: `pnpm validate:affected --full` runs them here)'
+)

@@ -66,6 +66,10 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   const ofRun = { store: { organization: { slug: { startsWith: prefix } } } }
   // The lines of a physical count restrict the deletion of their store and product
   await owner.stockCountLine.deleteMany({ where: ofRun })
+  // The transfers of the run (their lines go with them): the lines restrict the deletion of stores and products
+  await owner.stockTransfer.deleteMany({
+    where: { organization: { slug: { startsWith: prefix } } }
+  })
   await owner.inventoryMovement.deleteMany({ where: ofRun })
   await owner.inventoryLevel.deleteMany({ where: ofRun })
   await owner.orderItemAllocation.deleteMany({ where: ofRun })

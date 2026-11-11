@@ -17,6 +17,7 @@ import { MediaModule } from './modules/media/media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
 import { NotificationsModule } from './modules/notifications'
+import { OrdersModule } from './modules/orders/orders.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { ProductsModule } from './modules/products/products.module'
@@ -25,6 +26,7 @@ import { RoutingModule } from './modules/routing/routing.module'
 import { SettingsModule } from './modules/settings/settings.module'
 import { TeamModule } from './modules/team/team.module'
 import { TenancyModule } from './modules/tenancy'
+import { TransfersModule } from './modules/transfers/transfers.module'
 import { WarehousesModule } from './modules/warehouses/warehouses.module'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
 import { WidgetModule } from './modules/widget/widget.module'
@@ -54,7 +56,9 @@ import { WidgetModule } from './modules/widget/widget.module'
     RealtimeModule,
     InventoryModule,
     CountsModule,
+    OrdersModule,
     ProductsModule,
+    TransfersModule,
     WarehousesModule,
     SettingsModule,
     InvitationsModule,
