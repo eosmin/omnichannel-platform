@@ -347,7 +347,7 @@ describe('Settings → Carriers: the connections of a store', () => {
       expect(fresh.headers['cache-control']).toContain('no-store')
     })
 
-    it('tells the carrier that an account it made was not kept when the connection could not be written', async () => {
+    it('does not tell the carrier to forget an account whose name is taken: it may be the account of a live connection', async () => {
       const original = fake.plugin.connect.bind(fake.plugin)
       const taken = made(await external())
       const told = fake.callsTo('disconnect').length
@@ -364,7 +364,55 @@ describe('Settings → Carriers: the connections of a store', () => {
       } finally {
         fake.plugin.connect = original
       }
-      expect(fake.callsTo('disconnect')).toHaveLength(told + 1)
+      expect(fake.callsTo('disconnect')).toHaveLength(told)
+    })
+
+    it('never hands the error of a plugin that failed in an unexpected way to the reporter, and keeps the secret out of the answer', async () => {
+      const original = fake.plugin.connect.bind(fake.plugin)
+      try {
+        fake.plugin.connect = () =>
+          Promise.reject(
+            new TypeError(
+              'request to https://carrier.invalid failed: Authorization: Bearer sk-secret'
+            )
+          )
+        const response = await external()
+        expect(response.status).toBe(500)
+        expect(JSON.stringify(response.body)).not.toContain('sk-secret')
+      } finally {
+        fake.plugin.connect = original
+      }
+    })
+
+    it('frees the prefix of a courier that was let go without printing a guide', async () => {
+      const gone = made(await local({}, { prefix: 'FP' }))
+      const dropped = await asAdmin().post(ApiRoutes.carriers.disconnect(gone.id))
+      expect(dropped.status).toBe(OK)
+      const again = await local({}, { prefix: 'FP' })
+      expect(again.status).toBe(CREATED)
+    })
+
+    it('does not let a courier take a prefix that is printed on the guides of another one', async () => {
+      const first = made(await local({}, { prefix: 'PR' }))
+      await owner.shipment.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: (await createOrder(owner, { storeId: ctx.storeA.id })).id,
+          connectionId: first.id,
+          serviceCode: 'local',
+          shippingPayer: ShippingPayer.SENDER,
+          currency: 'USD',
+          guideNumber: 'PS-000001',
+          idempotencyKey: `${prefix}-printed`,
+          createdBy: 'system'
+        }
+      })
+      const clash = await local({}, { prefix: 'PS' })
+      expect(clash.status).toBe(CONFLICT)
+      const back = await asAdmin()
+        .patch(ApiRoutes.carriers.byId(first.id))
+        .send({ credentials: { name: 'x', phone: '1', prefix: 'PS' } })
+      expect(back.status).toBe(OK)
     })
 
     it('does not ask the carrier for an account when the settings or the default service are wrong', async () => {

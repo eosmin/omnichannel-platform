@@ -1,0 +1,75 @@
+import { z } from 'zod'
+
+import { CLOCK_TIME_PATTERN } from './settings-constants'
+import { ManualShipmentStatuses, ShipmentLimits } from './shipping-constants'
+import { type ShipmentStatus, ShippingPayer } from './status-enums'
+import { singleLineText, uuidSchema } from './validation'
+
+// What a client sends to make a guide and to set a status by hand (TDD_17 §4.2, §4.5, §6). Every shape is strict, and none
+// carries a store, an amount to collect or a cost: the store is the one the guard resolved, the amount comes from the order
+// (TDD_17 §4.4) and the cost is what the carrier says.
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+// A day that exists: '2026-02-31' rolls over to March in a Date, and '2026-13-01' is not a date at all
+function isCalendarDay(value: string): boolean {
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
+}
+
+// A clock that runs a little fast is not a lie about the future
+const CLOCK_ALLOWANCE_MS = 5 * 60 * 1000
+const clock = z.string().regex(CLOCK_TIME_PATTERN)
+
+// The carrier's own ids for the places of the address, for a carrier that asks for them (REQUIRES_LOCATION_IDS)
+const locationIdText = singleLineText(60, 1)
+export const shipmentLocationIdsSchema = z.strictObject({
+  departmentId: locationIdText,
+  municipalityId: locationIdText,
+  settlementId: locationIdText.optional()
+})
+
+// The day and hours a pickup-bound carrier comes for the guides. Without it the next valid day of the connection is used
+export const shipmentPickupSchema = z
+  .strictObject({
+    date: z
+      .string()
+      .regex(ISO_DATE)
+      .refine(isCalendarDay, { message: 'not a day of the calendar' }),
+    from: clock,
+    to: clock
+  })
+  .refine(value => value.from < value.to, { message: 'the window ends before it starts' })
+
+// What the courier reads on the label: one line of free text, never the packing notes
+const notes = z
+  .string()
+  .trim()
+  .max(ShipmentLimits.NOTES_MAX_LENGTH)
+  .refine(value => !value.includes('\u0000'), { message: 'a NUL character' })
+
+export const createShipmentSchema = z.strictObject({
+  connectionId: uuidSchema.optional(),
+  serviceCode: singleLineText(40, 1).optional(),
+  shippingPayer: z.enum(ShippingPayer).optional(),
+  originWarehouseId: uuidSchema.optional(),
+  locationIds: shipmentLocationIdsSchema.optional(),
+  pickup: shipmentPickupSchema.optional(),
+  notes: notes.optional()
+})
+export type CreateShipmentBody = z.output<typeof createShipmentSchema>
+
+// A status set by hand: the table of transitions decides from where. A guide number goes with `label_created` for a guide
+// that was found at the carrier after an unknown outcome (TDD_17 §4.5).
+export const setShipmentStatusSchema = z.strictObject({
+  status: z.enum(ManualShipmentStatuses as readonly [ShipmentStatus, ...ShipmentStatus[]]),
+  guideNumber: singleLineText(ShipmentLimits.GUIDE_NUMBER_MAX_LENGTH, 1).optional(),
+  description: singleLineText(ShipmentLimits.DESCRIPTION_MAX_LENGTH, 1).optional(),
+  occurredAt: z.iso
+    .datetime()
+    .refine(value => new Date(value).getTime() <= Date.now() + CLOCK_ALLOWANCE_MS, {
+      message: 'in the future'
+    })
+    .optional()
+})
+export type SetShipmentStatusBody = z.output<typeof setShipmentStatusSchema>

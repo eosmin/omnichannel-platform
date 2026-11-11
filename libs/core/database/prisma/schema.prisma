@@ -743,7 +743,7 @@ model Order {
   priceApprovedAt            DateTime? @map("price_approved_at")
   priceApprovedDiscountCents Int?      @map("price_approved_discount_cents")
   priceApprovedShippingCents Int?      @map("price_approved_shipping_cents")
-  carrierConnectionId        String?   @map("carrier_connection_id") // Plain column until Step 4.8 adds the foreign key
+  carrierConnectionId        String?   @map("carrier_connection_id") // The planned carrier (TDD_17 §4.13); composite foreign key with the store, Step 4.8 PR C1
   createdBy                  String    @map("created_by")
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt @map("updated_at")
@@ -751,17 +751,19 @@ model Order {
   deliveredAt                DateTime? @map("delivered_at")
   cancelledAt                DateTime? @map("cancelled_at")
 
-  store              Store         @relation(fields: [storeId], references: [id]) // No cascade: tax retention
-  customer           Customer      @relation(fields: [customerId], references: [id])
+  store              Store              @relation(fields: [storeId], references: [id]) // No cascade: tax retention
+  carrierConnection  CarrierConnection? @relation(fields: [storeId, carrierConnectionId], references: [storeId, id], onDelete: Restrict)
+  customer           Customer           @relation(fields: [customerId], references: [id])
   items              OrderItem[]
   media              Media[]
   // The shipping tables of Step 4.8 point at the order with a plain foreign key (an order has no (store_id, id) key)
   shipments          Shipment[]
-  returns            OrderReturn[] @relation("ReturnOrder")
-  replacementReturns OrderReturn[] @relation("ReturnReplacement")
+  returns            OrderReturn[]      @relation("ReturnOrder")
+  replacementReturns OrderReturn[]      @relation("ReturnReplacement")
 
   @@unique([storeId, orderNumber])
   @@index([storeId, status, createdAt(sort: Desc)])
+  @@index([storeId, carrierConnectionId])
   @@index([storeId, customerId])
   @@index([storeId, scheduledDeliveryDate])
   @@index([conversationId])
@@ -1669,6 +1671,7 @@ model CarrierConnection {
   services         CarrierService[]
   guideSequence    GuideSequence?
   shipments        Shipment[]
+  plannedOrders    Order[]
   pickups          PickupRequest[]
   statusMappings   CarrierStatusMapping[]
   unmappedStatuses CarrierUnmappedStatus[]

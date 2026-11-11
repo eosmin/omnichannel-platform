@@ -7,7 +7,9 @@ import {
   normalizeNote,
   OrderConflicts,
   PriceApprovalStatus,
+  CarrierConnectionStatus,
   ShippingFeeBoundKinds,
+  type ShippingFeeBounds,
   type OrderTotals,
   type PriceControlResult
 } from '@platform/core/domain'
@@ -169,6 +171,8 @@ export interface PricingInput {
   // See PriceControlInput: the discount and the fee are the ones the order had, on the same lines
   discountUnchanged?: boolean
   feeUnchanged?: boolean
+  // The range the fee is judged against: the planned carrier's, none, or unmanaged (see planCarrier)
+  feeBounds: ShippingFeeBounds
 }
 
 export interface Pricing {
@@ -187,10 +191,11 @@ export function priceOrder(input: PricingInput): Pricing {
   })
   if (!totals.ok) throw orderRefusal(totals.code)
   const freeShipping = isFreeShippingOrder(input.lines, input.preferences.freeShippingRule)
-  // Until Step 4.8 builds the carrier connections no range exists, so only the free-shipping rule limits the fee
-  const feeWithinRange = isShippingFeeWithinRange(input.shippingCents, freeShipping, {
-    kind: ShippingFeeBoundKinds.UNMANAGED
-  })
+  const feeWithinRange = isShippingFeeWithinRange(
+    input.shippingCents,
+    freeShipping,
+    input.feeBounds
+  )
   // A discount or a fee out of its range has its own reason: the reason of a changed line price is not a substitute
   const sanctioned = input.approvalStatus === PriceApprovalStatus.NOT_REQUIRED
   // A discount always keeps its reason: an edit of something else cannot clear it with the reason of a line in its place
@@ -232,3 +237,64 @@ export const approvalColumnsCleared = {
   priceApprovedDiscountCents: null,
   priceApprovedShippingCents: null
 } as const
+
+// The planned carrier of an order and the range its fee is judged against (TDD_17 §4.13). `requested` is what the request
+// names: a connection, null for none, or undefined for "as the store has it" (its default connection, on a new order).
+// A connection of another store does not exist and one that was disconnected cannot be planned. An order with no carrier
+// must charge no fee, but only once the store has a carrier at all: until its first connection the fee is limited only by
+// the free-shipping rule, so a store that has not set carriers up is not stopped from charging a fee (the carriers are
+// configured in Settings, Step 4.14).
+export interface PlannedCarrier {
+  connectionId: string | null
+  bounds: ShippingFeeBounds
+}
+
+export async function planCarrier(
+  tx: PrismaTransaction,
+  storeId: string,
+  requested: string | null | undefined,
+  useStoreDefault: boolean
+): Promise<PlannedCarrier> {
+  let connectionId: string | null = requested ?? null
+  if (requested === undefined && useStoreDefault) {
+    const settings = await tx.storeSettings.findUnique({
+      where: { storeId },
+      select: { defaultCarrierConnectionId: true }
+    })
+    connectionId = settings?.defaultCarrierConnectionId ?? null
+    // A default that was disconnected is no longer a carrier to plan with
+    if (connectionId !== null) {
+      const live = await tx.carrierConnection.count({
+        where: { id: connectionId, storeId, status: CarrierConnectionStatus.ACTIVE }
+      })
+      if (live === 0) connectionId = null
+    }
+  }
+  if (connectionId !== null) {
+    const row = await tx.carrierConnection.findFirst({
+      where: { id: connectionId, storeId },
+      select: { status: true, minShippingFeeCents: true, maxShippingFeeCents: true }
+    })
+    if (row === null) throw resourceNotFound('carrier')
+    if (row.status !== String(CarrierConnectionStatus.ACTIVE)) {
+      throw orderRefusal(ErrorCodes.SHIPPING_CARRIER_NOT_ACTIVE)
+    }
+    return {
+      connectionId,
+      bounds: {
+        kind: ShippingFeeBoundKinds.CARRIER,
+        minCents: row.minShippingFeeCents,
+        maxCents: row.maxShippingFeeCents
+      }
+    }
+  }
+  const carriers = await tx.carrierConnection.count({
+    where: { storeId, status: CarrierConnectionStatus.ACTIVE }
+  })
+  return {
+    connectionId: null,
+    bounds: {
+      kind: carriers === 0 ? ShippingFeeBoundKinds.UNMANAGED : ShippingFeeBoundKinds.NO_CARRIER
+    }
+  }
+}
