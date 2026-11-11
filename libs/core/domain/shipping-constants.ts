@@ -17,6 +17,31 @@ export const LabelFormat = {
 } as const
 export type LabelFormatType = (typeof LabelFormat)[keyof typeof LabelFormat]
 
+// The page of each label format, in millimetres (TDD_17 §4.6): 100x150 is the usual 4x6 inch thermal roll. A new
+// format is a line here, not code.
+export const LabelPageSizesMm: Record<LabelFormatType, { widthMm: number; heightMm: number }> = {
+  [LabelFormat.PDF_100X150]: { widthMm: 100, heightMm: 150 },
+  [LabelFormat.PDF_A6]: { widthMm: 105, heightMm: 148 },
+  [LabelFormat.PDF_A4]: { widthMm: 210, heightMm: 297 }
+}
+
+// The guide of the `local` carrier is `{prefix}-{sequence}`, for example JM-000123 (TDD_17 §4.2). The prefix is
+// short and printable in Code 128 and in the guide column of a spreadsheet; the sequence is padded so the guides
+// of a connection sort.
+export const LocalGuide = {
+  SEPARATOR: '-',
+  SEQUENCE_DIGITS: 6,
+  PREFIX_PATTERN: /^[A-Z0-9]{1,6}$/
+} as const
+
+export function formatLocalGuideNumber(prefix: string, sequence: number): string {
+  // A guide that is not printable in Code 128 or does not sort is never made: the caller's bug, loudly
+  if (!LocalGuide.PREFIX_PATTERN.test(prefix)) throw new RangeError('Invalid guide prefix')
+  if (!Number.isSafeInteger(sequence) || sequence < 1)
+    throw new RangeError('Invalid guide sequence')
+  return `${prefix}${LocalGuide.SEPARATOR}${String(sequence).padStart(LocalGuide.SEQUENCE_DIGITS, '0')}`
+}
+
 // Each value is an i18n key.
 export const OrderReturnReasons = {
   DEFECTIVE: 'orders.return.reason.DEFECTIVE',
