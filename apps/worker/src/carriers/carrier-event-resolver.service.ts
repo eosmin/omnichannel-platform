@@ -42,7 +42,10 @@ export class CarrierEventResolver {
     const { storeId, connectionId, event } = job
     const connection = await this.liveConnection(storeId, connectionId)
     if (connection === null) {
-      this.logger.info({ connectionId }, 'carrier event dropped: the connection is gone or let go')
+      this.logger.info(
+        { connectionId },
+        'carrier event dropped: the connection is gone or not active'
+      )
       return null
     }
     const resolution = await this.resolveCode(
@@ -76,7 +79,7 @@ export class CarrierEventResolver {
       where: { id: connectionId, storeId },
       select: { carrierId: true, status: true }
     })
-    if (connection === null || connection.status === String(CarrierConnectionStatus.DISABLED)) {
+    if (connection === null || connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
       return null
     }
     return { carrierId: connection.carrierId }

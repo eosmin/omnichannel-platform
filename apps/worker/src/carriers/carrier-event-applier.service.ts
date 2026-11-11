@@ -52,8 +52,12 @@ const CONFIRMED_STATUSES: readonly ShipmentStatus[] = [
 export const CarrierEventHandled = {
   // The same words the engine uses, plus the two ways this layer ends an event with no change at all
   ...CarrierEventOutcomes,
-  // The carrier said something that does not hold: a closing status its own answer does not back
-  UNCONFIRMED: 'unconfirmed'
+  // The carrier said something that does not hold: a closing status its own answer does not back. The processor asks again
+  // later (the carrier's own books may lag behind its webhook)
+  UNCONFIRMED: 'unconfirmed',
+  // Nothing of this connection answers to the names of the event yet: the guide may not be stored yet, so the processor asks
+  // again later; a guide that never comes ends in the dead letter queue where a person can see it
+  NOT_FOUND: 'not_found'
 } as const
 export type CarrierEventHandledType = (typeof CarrierEventHandled)[keyof typeof CarrierEventHandled]
 
@@ -98,10 +102,12 @@ export class CarrierEventApplier {
       }
     )
     if (lookup.kind !== ShipmentLookupKinds.FOUND) {
-      // Nothing of this connection answers to it (or two things do): kept nowhere, because a history line needs its shipment.
-      // The carrier may tell it again once the guide is stored.
+      // Kept nowhere, because a history line needs its shipment. Unknown may be a webhook that outran the guide being stored
+      // (it is asked again); ambiguous would be ambiguous again (it is not)
       this.logger.warn({ connectionId, lookup: lookup.kind }, 'a carrier event names no shipment')
-      return CarrierEventHandled.IGNORED
+      return lookup.kind === ShipmentLookupKinds.UNKNOWN
+        ? CarrierEventHandled.NOT_FOUND
+        : CarrierEventHandled.IGNORED
     }
     return this.applyToShipment(job, lookup.shipmentId, source)
   }
@@ -120,7 +126,7 @@ export class CarrierEventApplier {
     const occurredAt = new Date(event.occurredAt)
 
     if (resolution.kind === StatusResolutionKinds.MAPPED) {
-      if (!(await this.confirmed(job, meaning.carrierId, shipmentId, resolution.status))) {
+      if (!(await this.confirmed(job, meaning.carrierId, shipmentId, resolution.status, source))) {
         return CarrierEventHandled.UNCONFIRMED
       }
       return this.engine.apply(
@@ -145,12 +151,21 @@ export class CarrierEventApplier {
     job: Pick<ProcessCarrierEventJob, 'storeId' | 'connectionId'>,
     carrierId: string,
     shipmentId: string,
-    status: ShipmentStatus
+    status: ShipmentStatus,
+    source: string
   ): Promise<boolean> {
-    const plugin = this.registry.find(carrierId)
-    if (plugin?.webhookTrust !== CarrierWebhookTrust.SHARED_SECRET) return true
     if (!CONFIRMED_STATUSES.includes(status)) return true
+    // What a poll says is what the carrier's own authenticated API answered: nothing to ask again
+    if (source === String(ShipmentEventSource.POLL)) return true
     const { storeId, connectionId } = job
+    const plugin = this.registry.find(carrierId)
+    if (plugin === undefined) {
+      // A closing status is never applied on a trust that cannot be told: a plugin that is not loaded here may be the one that
+      // only shares a secret
+      this.logger.error({ connectionId, carrierId }, 'the plugin of a carrier event is not loaded')
+      return false
+    }
+    if (plugin.webhookTrust !== CarrierWebhookTrust.SHARED_SECRET) return true
     if (
       plugin.fetchStatus === undefined ||
       !this.registry.hasCapability(carrierId, CarrierCapability.FETCH_STATUS)
@@ -229,6 +244,22 @@ export class CarrierEventApplier {
     const reasonCode =
       event.rawReason === undefined ? undefined : providerStatusCodeOf(event.rawReason)
     const text = textOf(event)
+    const twinWhere = {
+      storeId,
+      shipmentId,
+      ...(event.providerEventId === undefined
+        ? { status: null, rawStatus: text, occurredAt }
+        : { providerEventId: event.providerEventId })
+    }
+    // Most of a re-polled history is twins: they are found before the store is locked, and again under the lock
+    if (
+      (await this.prisma.client.shipmentEvent.findFirst({
+        where: twinWhere,
+        select: { id: true }
+      })) !== null
+    ) {
+      return CarrierEventHandled.DUPLICATE
+    }
     const outcome = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       const known = await tx.shipment.findFirst({
@@ -240,13 +271,7 @@ export class CarrierEventApplier {
       const row = await this.liveShipment(tx, storeId, shipmentId)
       if (row === null) return CarrierEventHandled.IGNORED
       // The same event again: by its id, or by its words and moment when the carrier sends no id
-      const twin = await tx.shipmentEvent.findFirst({
-        where:
-          event.providerEventId === undefined
-            ? { storeId, shipmentId, status: null, rawStatus: text, occurredAt }
-            : { storeId, shipmentId, providerEventId: event.providerEventId },
-        select: { id: true }
-      })
+      const twin = await tx.shipmentEvent.findFirst({ where: twinWhere, select: { id: true } })
       if (twin !== null) return CarrierEventHandled.DUPLICATE
       const actor: ActorRef = { type: 'system', id: null }
       await this.writes.recordHistory(

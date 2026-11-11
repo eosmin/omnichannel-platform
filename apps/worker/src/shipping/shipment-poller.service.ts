@@ -36,8 +36,10 @@ export interface PollReport {
   applied: number
   stored: number
   duplicate: number
-  // Events whose status the plugin could not read: the mapping of the connection and the unmapped record are PR C2c's
+  // Events that do not fit the bounds of an event (a status that is not a code, a text too long): not applied
   unreadable: number
+  // Events that moved nothing and were kept nowhere: the connection is not active, or the shipment is not ours
+  ignored: number
   failed: number
 }
 
@@ -67,6 +69,7 @@ export class ShipmentPoller {
       stored: 0,
       duplicate: 0,
       unreadable: 0,
+      ignored: 0,
       failed: 0
     }
     const connection = await this.prisma.client.carrierConnection.findFirst({
@@ -209,6 +212,7 @@ export class ShipmentPoller {
         if (outcome === CarrierEventHandled.APPLIED) report.applied += 1
         else if (outcome === CarrierEventHandled.DUPLICATE) report.duplicate += 1
         else if (outcome === CarrierEventHandled.STORED) report.stored += 1
+        else report.ignored += 1
       } catch (error) {
         report.failed += 1
         this.logger.warn(

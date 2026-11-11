@@ -21,7 +21,7 @@ const good = {
 }
 
 function build() {
-  const resolver = { apply: jest.fn(() => Promise.resolve('ignored')) }
+  const resolver = { apply: jest.fn((): Promise<string> => Promise.resolve('ignored')) }
   const processor = new CarrierEventsProcessor(
     {} as ProcessorSupport,
     resolver as unknown as CarrierEventApplier
@@ -96,4 +96,17 @@ describe('CarrierEventsProcessor', () => {
     )
     expect(resolver.apply).not.toHaveBeenCalled()
   })
+
+  it.each(['unconfirmed', 'not_found'])(
+    'asks again later for an event the applier says is %s, and does not give up on it for good',
+    async outcome => {
+      const { resolver, handle } = build()
+      resolver.apply.mockResolvedValueOnce(outcome)
+
+      const attempt = handle({ name: JobNames.PROCESS_CARRIER_EVENT, data: good })
+
+      await expect(attempt).rejects.toThrow('not settled yet')
+      await expect(attempt).rejects.not.toBeInstanceOf(UnrecoverableError)
+    }
+  )
 })

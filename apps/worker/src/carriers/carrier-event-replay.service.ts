@@ -3,6 +3,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { PrismaService } from '@platform/core/database'
 import { CarrierEventOutcomes, CarrierReplayLimits } from '@platform/core/domain'
+import { errorName } from '@platform/core/errors'
 import type { ReprocessCarrierEventsJob } from '@platform/core/queues'
 import { ShipmentReplayer, StatusResolutionKinds } from '@platform/core/shipping'
 
@@ -16,6 +17,8 @@ export interface ReplayReport {
   // Lines whose code still has no status, or was settled by someone else while this ran
   left: number
   unconfirmed: number
+  // Lines that threw: counted and said, and the rest go on. They stay as they were for the next mapping to try again
+  failed: number
 }
 
 // The replay of TDD_17 §4.17: the owner said what a code means, so the lines the history kept under it (and under its reasons)
@@ -38,7 +41,14 @@ export class CarrierEventReplay {
 
   async reprocess(job: ReprocessCarrierEventsJob): Promise<ReplayReport> {
     const { storeId, connectionId, providerCode } = job
-    const report: ReplayReport = { read: 0, applied: 0, stored: 0, left: 0, unconfirmed: 0 }
+    const report: ReplayReport = {
+      read: 0,
+      applied: 0,
+      stored: 0,
+      left: 0,
+      unconfirmed: 0,
+      failed: 0
+    }
     const connection = await this.resolver.liveConnection(storeId, connectionId)
     if (connection === null) {
       this.logger.info({ connectionId }, 'carrier replay dropped: the connection is gone or let go')
@@ -50,6 +60,7 @@ export class CarrierEventReplay {
         id: string
         shipmentId: string
         occurredAt: Date
+        source: string
         payload: unknown
       }[] = await this.prisma.client.shipmentEvent.findMany({
         where: {
@@ -73,13 +84,22 @@ export class CarrierEventReplay {
                 ]
               })
         },
-        select: { id: true, shipmentId: true, occurredAt: true, payload: true },
+        select: { id: true, shipmentId: true, occurredAt: true, source: true, payload: true },
         orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
         take: CarrierReplayLimits.PAGE_SIZE
       })
       for (const line of page) {
         report.read += 1
-        await this.replayLine(storeId, connectionId, connection.carrierId, line, report)
+        try {
+          await this.replayLine(storeId, connectionId, connection.carrierId, line, report)
+        } catch (error) {
+          // One line that cannot be settled (a lock that timed out, a carrier that is down) must not hold back the others
+          report.failed += 1
+          this.logger.warn(
+            { connectionId, lineId: line.id, errorName: errorName(error) },
+            'a kept carrier event could not be replayed'
+          )
+        }
       }
       const last = page.at(-1)
       if (page.length < CarrierReplayLimits.PAGE_SIZE || last === undefined) break
@@ -93,7 +113,7 @@ export class CarrierEventReplay {
     storeId: string,
     connectionId: string,
     carrierId: string,
-    line: { id: string; shipmentId: string; payload: unknown },
+    line: { id: string; shipmentId: string; source: string; payload: unknown },
     report: ReplayReport
   ): Promise<void> {
     const code = codeOf(line.payload)
@@ -111,7 +131,8 @@ export class CarrierEventReplay {
         { storeId, connectionId },
         carrierId,
         line.shipmentId,
-        resolution.status
+        resolution.status,
+        line.source
       ))
     ) {
       report.unconfirmed += 1

@@ -33,7 +33,7 @@ const OVER: readonly string[] = [
 type Client = Pick<PrismaService['client'], 'shipment'>
 
 // Finds the shipment of one connection that a carrier event names (TDD_17 §4.9), by the most exact name first: the carrier's
-// own id, then the guide number, then the order number. Every read names the store and the connection, so a guide number that
+// own id, then the guide number, then (only when it names nothing else) the order number. Every read names the store and the connection, so a guide number that
 // another store (or another carrier) also prints is never this one. The order number counts only when it points at ONE package
 // that is not over; the carrier that echoes it is the one that never gave the core a guide number back (an unknown outcome).
 export async function findShipmentOfEvent(
@@ -60,6 +60,12 @@ export async function findShipmentOfEvent(
     if (rows.length === 1 && rows[0] !== undefined) return found(rows[0].id)
     if (rows.length > 1) return { kind: ShipmentLookupKinds.AMBIGUOUS }
   }
+  // A guide or an id that names none of ours is not ours: the order number it carries does not make it so (a stale or foreign
+  // guide must not move the one live package of an order). The order number alone is for the event that names nothing else.
+  const named =
+    (names.providerShipmentId !== undefined && names.providerShipmentId !== '') ||
+    (names.guideNumber !== undefined && names.guideNumber !== '')
+  if (named) return { kind: ShipmentLookupKinds.UNKNOWN }
   if (names.reference !== undefined && names.reference !== '') {
     const rows = await client.shipment.findMany({
       where: {

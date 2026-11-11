@@ -85,6 +85,23 @@ export class ShipmentReplayer {
       if (row === null || row.connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
         return CarrierEventOutcomes.IGNORED
       }
+      // The carrier told the same event again after the code was mapped, and it was applied as a new one: this line is its twin, and
+      // settling it would write the event twice (and count a failed attempt twice)
+      const twin = await tx.shipmentEvent.findFirst({
+        where: {
+          storeId,
+          shipmentId: stored.shipmentId,
+          id: { not: stored.id },
+          ...(stored.providerEventId === null
+            ? { occurredAt: stored.occurredAt, status }
+            : { providerEventId: stored.providerEventId, status: { not: null } })
+        },
+        select: { id: true }
+      })
+      if (twin !== null) {
+        await tx.shipmentEvent.deleteMany({ where: { id: stored.id, storeId } })
+        return CarrierEventOutcomes.DUPLICATE
+      }
       const from = row.status as ShipmentStatus
       const movable =
         CarrierMovableStatuses.includes(status) &&

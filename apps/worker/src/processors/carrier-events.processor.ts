@@ -6,7 +6,7 @@ import { ShipmentEventSource } from '@platform/core/domain'
 import { exactly, JobNames, QueueNames } from '@platform/core/queues'
 import { carrierEventSchema, type ProcessCarrierEventJob } from '@platform/plugins/runtime'
 
-import { CarrierEventApplier } from '../carriers/carrier-event-applier.service'
+import { CarrierEventApplier, CarrierEventHandled } from '../carriers/carrier-event-applier.service'
 
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
@@ -45,6 +45,12 @@ export class CarrierEventsProcessor extends BaseProcessor<ProcessCarrierEventJob
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success)
       throw new UnrecoverableError('the carrier event job does not fit its schema')
-    await this.applier.apply(parsed.data, ShipmentEventSource.WEBHOOK)
+    const outcome = await this.applier.apply(parsed.data, ShipmentEventSource.WEBHOOK)
+    // Not an error of the job but a thing that may change in a moment: the carrier's own books lag behind its webhook, and a
+    // webhook can outrun the guide being stored. BullMQ asks again; what never resolves ends in the dead letter queue, where a
+    // person sees it, and not as a success that hides a lost event
+    if (outcome === CarrierEventHandled.UNCONFIRMED || outcome === CarrierEventHandled.NOT_FOUND) {
+      throw new Error(`the carrier event is not settled yet (${outcome})`)
+    }
   }
 }

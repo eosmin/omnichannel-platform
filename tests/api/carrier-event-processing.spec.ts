@@ -26,7 +26,10 @@ import { JobNames, QueueNames } from '@platform/core/queues'
 import { ShipmentReplayer, ShipmentStatusEngine, ShipmentWrites } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
-import { CarrierEventApplier } from '../../apps/worker/src/carriers/carrier-event-applier.service'
+import {
+  CarrierEventApplier,
+  CarrierEventHandled
+} from '../../apps/worker/src/carriers/carrier-event-applier.service'
 import { CarrierEventReplay } from '../../apps/worker/src/carriers/carrier-event-replay.service'
 import { CarrierEventResolver } from '../../apps/worker/src/carriers/carrier-event-resolver.service'
 import { buildFakeCarrier, createOrder, FAKE_CARRIER_API_KEY, type FakeCarrier } from '../builders'
@@ -362,7 +365,7 @@ describe('What the worker makes of what a carrier says', () => {
         })
       )
 
-      expect(outcome).toBe(CarrierEventOutcomes.IGNORED)
+      expect(outcome).toBe(CarrierEventHandled.NOT_FOUND)
       expect(await statusOf(shipment.id)).toBe(ShipmentStatus.LABEL_CREATED)
     })
 
@@ -389,7 +392,11 @@ describe('What the worker makes of what a carrier says', () => {
       const picked = (names: object) =>
         job(connectionId, names, 'picked', { id: randomUUID(), status: ShipmentStatus.PICKED_UP })
 
-      expect(await apply(picked({ guideNumber: 'NOBODY' }))).toBe(CarrierEventOutcomes.IGNORED)
+      expect(await apply(picked({ guideNumber: 'NOBODY' }))).toBe(CarrierEventHandled.NOT_FOUND)
+      // A stale guide is not rescued by the order number it carries
+      expect(await apply(picked({ guideNumber: 'NOBODY', reference: first.orderNumber }))).toBe(
+        CarrierEventHandled.NOT_FOUND
+      )
       expect(await apply(picked({ reference: first.orderNumber }))).toBe(
         CarrierEventOutcomes.IGNORED
       )
@@ -670,6 +677,64 @@ describe('What the worker makes of what a carrier says', () => {
       expect(await statusOf(one.id)).toBe(ShipmentStatus.RETURNING)
     })
 
+    it('settles a line once when the carrier told the same event again after the code was mapped', async () => {
+      const connectionId = await connect()
+      const shipment = await shipmentOf(connectionId, { status: ShipmentStatus.OUT_FOR_DELIVERY })
+      const event = job(connectionId, { guideNumber: shipment.guideNumber }, 'zz-miss', {
+        at: '2026-11-02T10:00:00.000Z'
+      })
+      await apply(event)
+      await put(connectionId, 'zz-miss', ShipmentStatus.FAILED_ATTEMPT)
+      // The carrier sends it again before the replay runs: it is applied as a new event
+      expect(await apply(event)).toBe(CarrierEventOutcomes.APPLIED)
+
+      const report = await replay.reprocess({
+        storeId: ctx.storeA.id,
+        connectionId,
+        providerCode: 'zz-miss'
+      })
+
+      expect(report.applied).toBe(0)
+      const row = await owner.shipment.findUniqueOrThrow({
+        where: { id: shipment.id },
+        select: { failedAttempts: true }
+      })
+      expect(row.failedAttempts).toBe(1)
+      expect(
+        (await lines(shipment.id)).filter(l => l.rawStatus === 'zz-miss' && l.status === null)
+      ).toHaveLength(0)
+      expect((await lines(shipment.id)).filter(l => l.rawStatus === 'zz-miss')).toHaveLength(1)
+    })
+
+    it('goes on with the other lines when one of them cannot be settled', async () => {
+      const connectionId = await connect()
+      const one = await shipmentOf(connectionId)
+      const two = await shipmentOf(connectionId)
+      for (const [shipment, id] of [
+        [one, 'p-1'],
+        [two, 'p-2']
+      ] as const) {
+        await apply(job(connectionId, { guideNumber: shipment.guideNumber }, 'zz-poison', { id }))
+      }
+      await put(connectionId, 'zz-poison', ShipmentStatus.PICKED_UP)
+      const replayer = (replay as unknown as { replayer: ShipmentReplayer }).replayer
+      const original = replayer.replay.bind(replayer)
+      const spy = jest
+        .spyOn(replayer, 'replay')
+        .mockImplementationOnce(() => Promise.reject(new Error('lock timeout')))
+        .mockImplementation(original)
+      try {
+        const report = await replay.reprocess({
+          storeId: ctx.storeA.id,
+          connectionId,
+          providerCode: 'zz-poison'
+        })
+        expect(report).toMatchObject({ read: 2, failed: 1, applied: 1 })
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
     it('leaves alone the lines of another connection and another store that wear the same code', async () => {
       const mine = await connect()
       const theirs = await connect()
@@ -796,6 +861,42 @@ describe('What the worker makes of what a carrier says', () => {
       })
 
       expect(report).toMatchObject({ read: 1, applied: 0, unconfirmed: 1 })
+      expect(await statusOf(shipment.id)).toBe(ShipmentStatus.OUT_FOR_DELIVERY)
+    })
+
+    it('does not ask the carrier about what a poll says: the answer came from its own API', async () => {
+      const connectionId = await connect(CarrierId.C807)
+      const shipment = await shipmentOf(connectionId, { status: ShipmentStatus.OUT_FOR_DELIVERY })
+      const before = fakeC807.callsTo('fetchStatus').length
+
+      const outcome = await applier.apply(
+        job(connectionId, { guideNumber: shipment.guideNumber }, 'delivered', {
+          id: 'poll-1',
+          status: ShipmentStatus.DELIVERED
+        }),
+        ShipmentEventSource.POLL
+      )
+
+      expect(outcome).toBe(CarrierEventOutcomes.APPLIED)
+      expect(fakeC807.callsTo('fetchStatus')).toHaveLength(before)
+    })
+
+    it('applies no closing status when the plugin of the connection is not loaded', async () => {
+      const connectionId = await connect(CarrierId.C807)
+      const shipment = await shipmentOf(connectionId, { status: ShipmentStatus.OUT_FOR_DELIVERY })
+      const registry = app.get(CarrierRegistry, { strict: false })
+      const find = jest.spyOn(registry, 'find').mockReturnValue(undefined)
+      try {
+        const outcome = await apply(
+          job(connectionId, { guideNumber: shipment.guideNumber }, 'delivered', {
+            id: 'gone-1',
+            status: ShipmentStatus.DELIVERED
+          })
+        )
+        expect(outcome).toBe(CarrierEventHandled.UNCONFIRMED)
+      } finally {
+        find.mockRestore()
+      }
       expect(await statusOf(shipment.id)).toBe(ShipmentStatus.OUT_FOR_DELIVERY)
     })
   })

@@ -75,10 +75,25 @@ describe('findShipmentOfEvent', () => {
       kind: ShipmentLookupKinds.FOUND,
       shipmentId: 'by-guide'
     })
-    expect(await findShipmentOfEvent(db, scope, { guideNumber: 'nope', reference: 'O1' })).toEqual({
+    expect(await findShipmentOfEvent(db, scope, { reference: 'O1' })).toEqual({
       kind: ShipmentLookupKinds.FOUND,
       shipmentId: 'by-order'
     })
+  })
+
+  it('does not let an order number rescue a guide or an id that names none of ours', async () => {
+    const { client: db } = client([
+      { id: 'live', orderNumber: 'O1', status: ShipmentStatus.PICKED_UP }
+    ])
+
+    expect(await findShipmentOfEvent(db, scope, { guideNumber: 'STALE', reference: 'O1' })).toEqual(
+      {
+        kind: ShipmentLookupKinds.UNKNOWN
+      }
+    )
+    expect(
+      await findShipmentOfEvent(db, scope, { providerShipmentId: 'STALE', reference: 'O1' })
+    ).toEqual({ kind: ShipmentLookupKinds.UNKNOWN })
   })
 
   it('does not look up a blank name', async () => {
