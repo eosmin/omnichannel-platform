@@ -51,6 +51,7 @@ import {
   linkWarehouse,
   BUILT_SERVICE_CODE,
   createCarrierConnection,
+  createShipment,
   createChannelConnection,
   createInvitation,
   createMember,
@@ -128,6 +129,8 @@ const conversationOf = (messageId: string): string => {
 const countOfLine = new Map<string, string>()
 // The connection a service of the suite belongs to: a service is reached through its connection
 const connectionOfRow = new Map<string, string>()
+// The shipment each history row of the cases belongs to: the history is changed through its shipment
+const shipmentOfEvent = new Map<string, string>()
 // Counts the numbers of the sheets the suite writes: unique inside an organization with no luck involved
 let countSerial = 100_000_000 + (process.pid % 1_000_000) * 100
 async function createCountOf(
@@ -362,6 +365,43 @@ const resources: IsolationResource[] = [
           select: { resolvedAt: true }
         })
       )?.resolvedAt === null
+  },
+  // The guides of a store (Step 4.8, PR C1). The history of a shipment has no route of its own: it is read inside the
+  // shipment, so the checks reach it by the route of the shipment it belongs to.
+  {
+    name: 'shipment',
+    create: async (owner, input) => {
+      const built = await createShipment(owner, { storeId: input.storeId })
+      return { id: built.id }
+    },
+    readPath: ApiRoutes.shipments.byId,
+    listPath: ApiRoutes.shipments.list,
+    modify: {
+      path: ApiRoutes.shipments.status,
+      method: 'post',
+      body: { status: ShipmentStatus.PICKED_UP }
+    },
+    untouched: async (owner, id) =>
+      (await owner.shipment.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      ShipmentStatus.LABEL_CREATED
+  },
+  {
+    name: 'shipmentEvent',
+    create: async (owner, input) => {
+      const built = await createShipment(owner, { storeId: input.storeId })
+      shipmentOfEvent.set(built.eventId, built.id)
+      return { id: built.eventId }
+    },
+    modify: {
+      path: id => ApiRoutes.shipments.status(shipmentOfEvent.get(id) ?? randomUUID()),
+      method: 'post',
+      body: { status: ShipmentStatus.PICKED_UP }
+    },
+    untouched: async (owner, id) => {
+      const event = await owner.shipmentEvent.findUnique({ where: { id } })
+      if (event === null) return false
+      return (await owner.shipmentEvent.count({ where: { shipmentId: event.shipmentId } })) === 1
+    }
   },
   // Uninstalling is the one change a user can make; the installation is reached by its id
   {

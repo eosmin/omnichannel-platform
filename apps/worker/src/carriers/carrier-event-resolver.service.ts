@@ -20,7 +20,7 @@ import type { ProcessCarrierEventJob } from '@platform/plugins/runtime'
 
 export interface ResolvedCarrierEvent {
   resolution: StatusResolution
-  // True the first time the owner has to hear of an unmapped code (the notification of Step 4.8 PR C2b hangs from it)
+  // True the first time the owner has to hear of an unmapped code (the notification of Step 4.8 PR C2c hangs from it)
   firstUnmappedSighting: boolean
 }
 
@@ -28,7 +28,7 @@ const SHIPMENT_STATUSES = Object.values(ShipmentStatus)
 
 // What one event of a carrier means for its connection (TDD_17 §4.17), and the record of a code nobody has mapped. It does
 // NOT touch a shipment: finding the shipment, the dedupe, the transition table and the order effects are the status engine
-// of Step 4.8 PR C2b, which starts from what this returns. The connection is read with the store of the job, which came
+// of Step 4.8 PR C2c, which starts from what this returns. The connection is read with the store of the job, which came
 // from the connection the signature authenticated.
 @Injectable()
 export class CarrierEventResolver {

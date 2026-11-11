@@ -181,7 +181,7 @@ export class CarrierStatusMappingsService {
   }
 
   // Creates the row or changes it (`source` becomes custom) and marks the waiting code as resolved. The replay of the events
-  // already stored under that code is the job REPROCESS_CARRIER_EVENTS of Step 4.8 PR C2b.
+  // already stored under that code is the job REPROCESS_CARRIER_EVENTS of Step 4.8 PR C2c.
   async put(
     storeId: string,
     connectionId: string,

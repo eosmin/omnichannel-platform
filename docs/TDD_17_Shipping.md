@@ -885,6 +885,13 @@ requests of one connection are grouped into batches of at most `maxBatchSize`:
   otherwise `modifyPickup`, otherwise the agent handles it with the carrier as in §4.8); an emptied pickup is cancelled.
 - **A single guide** is a one-package batch: it creates a one-package pickup, or joins the open one when it can.
 
+**As built (Step 4.8 PR C1).** The origin of a guide is the warehouse of the allocations of the order: with one it is that one, with
+several the request must name it (`SHIPPING_ORIGIN_MISSING` otherwise, never a guess), and an order with no allocations takes the
+first active warehouse of the store by priority. The origin must be linked to the store. A guide that is still `CREATING` after five
+minutes (a crash between the write and the call) may be settled by an agent; before that a call may still be in flight. A
+carrier's label must be a PDF of at most 5 MB or the guide is recorded without it (`lastError: label_invalid`). The amount to
+collect follows §4.4 (`codAmountFor`).
+
 The `ORDER_SHIPPED` domain event (`TDD_02 §3`) keeps meaning "the carrier has the package": it is
 emitted when the shipment reaches `PICKED_UP`, or by the manual status of a `local` shipment, not when
 the label is created (§4.9).
@@ -1019,6 +1026,24 @@ HIGH-tier when a shipment exists):
 - **Editing the order after a guide exists** (address, recipient phones, items, payment method) uses the same
   cancel-and-recreate path (§4.3), so the old guide is voided and a new one is made; the order
   does not need to be cancelled for that.
+- **A guide whose connection was disconnected (Step 4.8 PR C1).** Disconnecting keeps the connection, its shipments and its
+  numbering (`TDD_17 §6`), and what happens to a guide that is still alive is decided here: reprinting serves the stored file and
+  never calls the carrier, so it keeps working; setting a status by hand and "mark as voided" keep working, because the agent is
+  the authority over the shipment; cancelling a `local` guide keeps working (it is free and calls nobody); **cancelling an
+  external guide, checking with the carrier and making a new guide refuse with `SHIPPING_CARRIER_NOT_ACTIVE`**, and cancelling
+  leaves the shipment `CANCEL_PENDING` with the refund `NOT_SUPPORTED` for the agent to void it outside the platform and press
+  "mark as voided". The events of a disconnected connection (webhook, poll) are the rule of §4.9.
+- **A package that came back can be shipped again.** `returned` does not hold the order: the partial unique index
+  `shipments_one_active_outbound` excludes `cancelled`, `failed` and `returned`, so the order can get a new outbound guide from the
+  same warehouse (a new attempt number, a new idempotency key). `delivered` still holds it, as do `cancel_pending` and
+  `cancel_failed`. The return flow of Step 4.12 is for goods that arrive back through a return, not for this.
+- **As built (PR C1), cancelling is synchronous.** `POST /shipments/:id/cancel` moves `LABEL_CREATED` to `CANCEL_PENDING`, then a
+  `local` guide goes to `CANCELLED` at once, a carrier with `CANCEL_SHIPMENT` is asked once (`CANCELLED` with the refund it
+  reports, or `CANCEL_FAILED` with its refusal or `unknown_outcome`), and any other carrier stays `CANCEL_PENDING` with
+  `NOT_SUPPORTED`. The job with its retries comes with the worker (PR C2). While the guide is `LABEL_CREATED` the order is not
+  cancelled until the guide is: the order cancel answers `SHIPPING_ACTIVE_SHIPMENT_EXISTS`; `CREATING` or `REQUIRES_REVIEW` answer
+  `SHIPPING_OUTCOME_UNKNOWN`; a package that left answers `SHIPPING_CANNOT_CANCEL_AFTER_PICKUP`; `CANCEL_PENDING` and
+  `CANCEL_FAILED` do not stop it.
 - **Customer message:** `ORDER_CANCELLED` per template (§4.7).
 
 ### 4.9 Status flow from the carrier
@@ -1075,6 +1100,10 @@ HIGH-tier when a shipment exists):
   `SHIPMENT_REQUIRES_REVIEW` instead of moving the order.
 - **Manual events** (`local` carrier, or an agent correcting a status) use the same table and
   produce the same effects.
+- **Events for a disconnected connection (Step 4.8 PR C1, built in PR C2).** A disconnected connection has no webhook secret and no
+  credentials any more: its webhook answers as for a connection that does not exist (`404`, nothing is queued), the poller
+  skips it, and a queued `PROCESS_CARRIER_EVENT` whose connection is no longer active is dropped and logged once. The shipments
+  stay as they were and the agent finishes them by hand (§4.8).
 
 **As built (Step 4.8 PR C2a; the checklist wins where this differs):**
 
@@ -1086,10 +1115,10 @@ HIGH-tier when a shipment exists):
   queued. A connection whose health check fails (`error`) still takes what its carrier pushes.
 - **What is queued.** The plugin's `handleWebhook` normalizes the body; every event is checked again (`carrierEventSchema`:
   status fields only, bounded strings, no recipient data) and becomes one `PROCESS_CARRIER_EVENT` job with the store of the
-  connection, never a value of the request. Every event of a body is queued (its size, at most `CarrierWebhookLimits.MAX_BODY_BYTES`, bounds them); a job has no id of its own, so a retry of the carrier can queue an event whose first job failed (the dedupe is the engine's, PR C2b). The free text of the carrier (`description`) is not kept in the job, and an event whose status is not a code that can be stored (empty, control characters, too long) is left out and counted as `event_dropped`. A request the
+  connection, never a value of the request. Every event of a body is queued (its size, at most `CarrierWebhookLimits.MAX_BODY_BYTES`, bounds them); a job has no id of its own, so a retry of the carrier can queue an event whose first job failed (the dedupe is the engine's, PR C2c). The free text of the carrier (`description`) is not kept in the job, and an event whose status is not a code that can be stored (empty, control characters, too long) is left out and counted as `event_dropped`. A request the
   api kept no raw bytes of is refused like a bad signature. A body the plugin cannot read is acknowledged with `200` and said, because the signature was good.
 - **The worker** validates the job and resolves the event for its connection (§4.17), recording the unmapped codes; the
-  shipment engine that applies it is PR C2b.
+  shipment engine that applies it is PR C2c.
 
 ### 4.10 Pickups (recolecta)
 
@@ -1257,6 +1286,12 @@ makes every price change deliberate, limited and visible.
   fee (`SHIPPING_FEE_OUT_OF_RANGE`) unless the order is free-shipping with fee 0, the fee equals `priceApprovedShippingCents` or the caller holds
   `ORDERS_OVERRIDE_PRICE`, and refuses any order whose approval is `PENDING` or `REJECTED`
   (`ORDER_PRICE_APPROVAL_PENDING`).
+- **As built (Step 4.8 PR C1).** `Order.carrierConnectionId` is a composite foreign key with the store. A fee is judged against the
+  range of the planned carrier, or against "no carrier" (fee 0) **once the store has at least one active connection**; a store with
+  none is `unmanaged` and only the free-shipping rule limits its fee, so a store that has not set its carriers up is not stopped
+  from charging one (Settings → Carriers is Step 4.14). Changing the planned carrier prices the order again and the fee is judged
+  against the new range (the reason field of the edit carries the reason). At guide time the range of the connection that will carry
+  the guide decides, whatever the planned carrier was.
 - **Copying an order** (§4.3) never copies overrides or discounts: the draft carries catalog prices, the
   planned carrier and that carrier's default shipping fee, and the reason is required again.
 - **Visibility:** the orders list shows a "price modified" badge and an approval-state chip and can
@@ -1479,6 +1514,16 @@ All under `ApiRoutes`, with `AuthGuard`, `TenantGuard` and a permission decorato
 
 Cursor pagination on every list (`TDD_08 §2.4`). Bulk endpoints accept at most 100 ids and answer
 `202` with the job id.
+
+**As built (Step 4.8 PR C1):** the `shipments` group is `GET /shipments` (filters `status`, `connectionId`, `orderId`, `from`, `to`, cursor),
+`GET /shipments/:id` (with the history), `POST /orders/:id/shipments` (body: `connectionId`, `serviceCode`, `shippingPayer`,
+`originWarehouseId`, `locationIds`, `pickup`, `notes`; none of them an amount, a store or a status), `GET /shipments/:id/label` (a
+short-lived link to the stored file; a voided, unfinished or unscanned label is `SHIPPING_LABEL_NOT_AVAILABLE`),
+`POST /shipments/:id/status` (a manual event: `label_created` with a `guideNumber` and `failed` settle a guide in review),
+`POST /shipments/:id/cancel`, `POST /shipments/:id/check` and `POST /shipments/:id/mark-voided`. Viewing is `SHIPPING_VIEW`; the rest,
+printing included, is `SHIPPING_MANAGE`. A guide the carrier refused answers `400 SHIPPING_CARRIER_REJECTED` with `shipmentId` and
+the carrier's line in the metadata; one whose outcome is unknown answers `409 SHIPPING_OUTCOME_UNKNOWN` with `shipmentId`. Bulk,
+merge and pickups are Steps 4.10 and 4.11.
 
 **As built (Step 4.8 PR B2; the checklist wins where this differs):** the `carriers` group is `GET /carriers`, `GET /carriers/:id`,
 `GET /carriers/registry` (`SHIPPING_VIEW`) and `POST /carriers` (the body names `carrierId` and its `credentials`), `PATCH /carriers/:id`,

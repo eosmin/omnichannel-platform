@@ -8,6 +8,7 @@ import type {
   InventoryMovementType,
   OrderStatus,
   PaymentStatus,
+  ShipmentStatus,
   TransferStatus
 } from '../index'
 
@@ -112,6 +113,23 @@ export interface OrderEventPayload {
   orderId: string
   orderNumber: string
   actor: ActorRef
+}
+
+// What every event of a shipment says: which shipment, of which order and connection, and who did it. Ids and numbers
+// only: no address, no phone and no guide number travels in an event (TDD_17 §4.12). `actor.id` is null for a change made by
+// the system (a carrier event).
+export interface ShipmentEventPayload {
+  storeId: string
+  shipmentId: string
+  orderId: string
+  orderNumber: string
+  connectionId: string
+  actor: ActorRef
+}
+
+export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
+  from: ShipmentStatus
+  to: ShipmentStatus
 }
 
 export interface OrderStatusChangedPayload extends OrderEventPayload {
@@ -379,6 +397,10 @@ export interface DomainEventPayloads {
   [Events.ORDER_PRICE_APPROVED]: OrderEventPayload
   [Events.ORDER_PRICE_REJECTED]: OrderEventPayload
   [Events.ORDER_PACKING_NOTE_CHANGED]: OrderEventPayload
+  [Events.SHIPMENT_CREATED]: ShipmentEventPayload
+  [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
+  [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
+  [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.COUNT_SUBMITTED]: CountSubmittedPayload

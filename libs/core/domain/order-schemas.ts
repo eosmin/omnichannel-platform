@@ -149,6 +149,8 @@ export const createOrderSchema = z.strictObject({
   shippingCents: cents.default(0),
   discountCents: cents.default(0),
   discountReason: priceReasonSchema.optional(),
+  // The planned carrier (TDD_17 §4.13): left out, the default connection of the store is used; null, none
+  carrierConnectionId: id.nullable().optional(),
   paymentMethod: z.enum(PaymentMethod),
   shippingAddress: orderShippingAddressSchema.optional(),
   // The form pre-fills it from Customer.phone, as its national number
@@ -172,6 +174,8 @@ export const updateOrderSchema = z
     shippingCents: cents.optional(),
     discountCents: cents.optional(),
     discountReason: priceReasonSchema.nullable().optional(),
+    // Changing the planned carrier changes the range the fee is judged against (TDD_17 §4.13); null clears it
+    carrierConnectionId: id.nullable().optional(),
     shippingAddress: orderShippingAddressSchema.nullable().optional(),
     recipientPhones: recipientPhonesSchema.optional(),
     scheduledDeliveryDate: scheduledDeliveryDateSchema.nullable().optional(),
@@ -194,8 +198,9 @@ export const updateOrderSchema = z
       body.discountReason === undefined ||
       body.discountCents !== undefined ||
       body.shippingCents !== undefined ||
+      body.carrierConnectionId !== undefined ||
       body.items !== undefined,
-    { message: 'a reason needs a discount, a shipping fee or items' }
+    { message: 'a reason needs a discount, a shipping fee, a carrier or items' }
   )
 
 export type UpdateOrderInput = z.output<typeof updateOrderSchema>
@@ -204,7 +209,8 @@ export type UpdateOrderInput = z.output<typeof updateOrderSchema>
 export function orderFieldsOfEdit(body: UpdateOrderInput): OrderEditableField[] {
   const fields: OrderEditableField[] = []
   if (body.items !== undefined) fields.push('items')
-  if (body.shippingCents !== undefined) fields.push('shipping')
+  if (body.shippingCents !== undefined || body.carrierConnectionId !== undefined)
+    fields.push('shipping')
   // The reason of a discount is part of it: it cannot be rewritten in a status that locks the discount. (A reason that
   // travels with a fee only is told apart by the service, which knows whether the order has a discount.)
   if (body.discountCents !== undefined) fields.push('discount')

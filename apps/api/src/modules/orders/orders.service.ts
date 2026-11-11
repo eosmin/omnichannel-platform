@@ -15,6 +15,7 @@ import {
 } from '@platform/core/database'
 import {
   calendarDayToDate,
+  CarrierConnectionStatus,
   checkOrderEdit,
   editableOrderFields,
   lockedOrderFields,
@@ -53,11 +54,18 @@ import { ExportsService, type ExportView } from '../exports'
 import type { Actor } from '../tenancy'
 
 import { type LineToAllocate, OrderInventoryService } from './orders-inventory.service'
-import { approvalColumnsCleared, priceOrder, resolveLines, type OrderLine } from './orders-pricing'
+import {
+  approvalColumnsCleared,
+  planCarrier,
+  priceOrder,
+  resolveLines,
+  type OrderLine
+} from './orders-pricing'
 import { type ListOrdersQuery, encodeOrderCursor } from './orders.schemas'
 import {
   actorRef,
   assertHolds,
+  hasActiveGuide,
   lockOrder,
   mayReadOrders,
   orderRefusal,
@@ -318,7 +326,9 @@ export class OrdersService {
         userId: actor.userId,
         canOverridePrice
       })
+      const planned = await planCarrier(tx, storeId, body.carrierConnectionId, true)
       const { totals, freeShipping, control } = priceOrder({
+        feeBounds: planned.bounds,
         lines,
         shippingCents: body.shippingCents,
         discountCents: body.discountCents,
@@ -351,6 +361,7 @@ export class OrdersService {
           shippingCents: totals.shippingCents,
           discountCents: totals.discountCents,
           totalCents: totals.totalCents,
+          carrierConnectionId: planned.connectionId,
           currency: store.currency,
           paymentMethod: body.paymentMethod,
           ...(body.shippingAddress === undefined ? {} : { shippingAddress: body.shippingAddress }),
@@ -475,12 +486,13 @@ export class OrdersService {
       })
       const status = order.status as OrderStatus
 
-      // A shipment can be active only once Step 4.8 builds them; until then the tracking number is the agent's
+      // With a guide the tracking number is the guide's, not the agent's (TDD_17 §4.5 step 4)
+      const hasActiveShipment = await hasActiveGuide(tx, storeId, orderId)
       const requested = orderFieldsOfEdit(body)
-      const verdict = checkOrderEdit(status, requested, { hasActiveShipment: false })
+      const verdict = checkOrderEdit(status, requested, { hasActiveShipment })
       if (!verdict.ok) {
         throw orderRefusal(verdict.code, {
-          fields: lockedOrderFields(status, requested, { hasActiveShipment: false })
+          fields: lockedOrderFields(status, requested, { hasActiveShipment })
         })
       }
 
@@ -498,6 +510,7 @@ export class OrdersService {
         (order.paymentStatus as PaymentStatus) === PaymentStatus.COMPLETED &&
         (body.items !== undefined ||
           body.shippingCents !== undefined ||
+          body.carrierConnectionId !== undefined ||
           body.discountCents !== undefined ||
           body.discountReason !== undefined)
       ) {
@@ -506,7 +519,7 @@ export class OrdersService {
             field === 'items'
               ? body.items !== undefined
               : field === 'shipping'
-                ? body.shippingCents !== undefined
+                ? body.shippingCents !== undefined || body.carrierConnectionId !== undefined
                 : body.discountCents !== undefined || body.discountReason !== undefined
           )
         })
@@ -516,13 +529,17 @@ export class OrdersService {
       if (
         body.discountReason !== undefined &&
         order.discountCents > 0 &&
-        !editableOrderFields(status, { hasActiveShipment: false }).includes('discount')
+        !editableOrderFields(status, { hasActiveShipment }).includes('discount')
       ) {
         throw orderRefusal(ErrorCodes.ORDER_FIELD_NOT_EDITABLE, { fields: ['discount'] })
       }
 
       // The price: when any of its four parts is in the request the whole order is priced again, the others as stored
+      const carrierChanged =
+        body.carrierConnectionId !== undefined &&
+        body.carrierConnectionId !== order.carrierConnectionId
       const repricing =
+        carrierChanged ||
         body.items !== undefined ||
         body.shippingCents !== undefined ||
         body.discountCents !== undefined ||
@@ -591,7 +608,27 @@ export class OrdersService {
         const discountReason =
           body.discountReason === undefined ? order.discountReason : body.discountReason
         const before = order.priceApprovalStatus as PriceApprovalStatus
+        // The carrier the fee is judged against: the new one, or the one the order has while it is still a live connection
+        // (a carrier that was disconnected since is no carrier: the order is judged as one with none)
+        const keptCarrier =
+          order.carrierConnectionId !== null &&
+          (await tx.carrierConnection.count({
+            where: {
+              id: order.carrierConnectionId,
+              storeId,
+              status: CarrierConnectionStatus.ACTIVE
+            }
+          })) > 0
+            ? order.carrierConnectionId
+            : null
+        const planned = await planCarrier(
+          tx,
+          storeId,
+          carrierChanged ? body.carrierConnectionId : keptCarrier,
+          false
+        )
         const pricing = priceOrder({
+          feeBounds: planned.bounds,
           lines: lines ?? current,
           shippingCents,
           discountCents,
@@ -610,7 +647,8 @@ export class OrdersService {
                 },
           // What the order already had, on the same lines, is not put to the test again by an edit of something else
           discountUnchanged: body.items === undefined && discountCents === order.discountCents,
-          feeUnchanged: body.items === undefined && shippingCents === order.shippingCents
+          feeUnchanged:
+            body.items === undefined && !carrierChanged && shippingCents === order.shippingCents
         })
         // Only a price this edit really moved is an override of this edit: the rest of the order may carry an old one
         const priceMoved =
@@ -638,7 +676,8 @@ export class OrdersService {
           totalCents: pricing.totals.totalCents,
           freeShipping: pricing.freeShipping,
           discountReason: normalizeNote(discountReason),
-          priceApprovalStatus: next
+          priceApprovalStatus: next,
+          ...(carrierChanged ? { carrierConnectionId: planned.connectionId } : {})
         })
         if (next === PriceApprovalStatus.NOT_REQUIRED) {
           Object.assign(data, { priceApprovalRequestedBy: null, ...approvalColumnsCleared })

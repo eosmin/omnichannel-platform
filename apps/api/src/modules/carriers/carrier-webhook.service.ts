@@ -152,7 +152,7 @@ export class CarrierWebhookService {
         ...(correlationId === undefined ? {} : { correlationId })
       }
       // No job id on purpose: a retry of the carrier must be able to queue an event whose first job failed. What makes a
-      // duplicate harmless is the dedupe of the status engine (Step 4.8 PR C2b)
+      // duplicate harmless is the dedupe of the status engine (Step 4.8 PR C2c)
     }))
     // Every event of a body is queued, however many: the size of the body is what bounds them
     for (let i = 0; i < jobs.length; i += CarrierWebhookLimits.BULK_CHUNK) {

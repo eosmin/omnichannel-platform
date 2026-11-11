@@ -27,7 +27,12 @@ import {
   PaymentMethod,
   PaymentStatus,
   PriceApprovalStatus,
-  type RecordOrderPaymentInput
+  type RecordOrderPaymentInput,
+  ShipmentInactiveStatuses,
+  ShipmentKind,
+  ShipmentPastPickupStatuses,
+  ShipmentStatus,
+  ShipmentUnknownOutcomeStatuses
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -44,7 +49,14 @@ import type { Actor } from '../tenancy'
 
 import { OrderInventoryService } from './orders-inventory.service'
 import { OrdersService } from './orders.service'
-import { actorRef, assertHolds, lockOrder, orderRefusal, recordOrderAudit } from './orders.support'
+import {
+  actorRef,
+  assertHolds,
+  hasActiveGuide,
+  lockOrder,
+  orderRefusal,
+  recordOrderAudit
+} from './orders.support'
 import type { OrderDetailView } from './orders.views'
 
 // How far in the future a delivery moment may be: a clock that runs a little fast is not a lie about the future
@@ -114,7 +126,39 @@ export class OrdersStatusService {
       } else if (to === OrderStatus.CANCELLED) {
         // The table says which statuses can be cancelled; the code says why a refusal is about the cancellation
         if (!canCancelOrder(from)) throw orderRefusal(ErrorCodes.ORDER_CANNOT_BE_CANCELLED)
+        // A guide that is not over holds the order (TDD_17 §4.8): the guide is cancelled first, from the shipment. One whose
+        // outcome is unknown may exist at the carrier, and one that was picked up cannot be called back.
+        const live = await tx.shipment.findMany({
+          where: {
+            orderId,
+            storeId,
+            kind: ShipmentKind.OUTBOUND,
+            status: { notIn: [...ShipmentInactiveStatuses] }
+          },
+          select: { status: true }
+        })
+        for (const { status } of live) {
+          const shipmentStatus = status as ShipmentStatus
+          if (ShipmentUnknownOutcomeStatuses.includes(shipmentStatus)) {
+            throw orderRefusal(ErrorCodes.SHIPPING_OUTCOME_UNKNOWN)
+          }
+          if (ShipmentPastPickupStatuses.includes(shipmentStatus)) {
+            throw orderRefusal(ErrorCodes.SHIPPING_CANNOT_CANCEL_AFTER_PICKUP)
+          }
+          if (shipmentStatus === ShipmentStatus.LABEL_CREATED) {
+            throw orderRefusal(ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS)
+          }
+        }
       } else {
+        // The guide decides when the goods leave and arrive: a hand-made SHIPPED or DELIVERED would skip the stock issue and the
+        // payment effect that the shipment engine owns (TDD_17 §4.9). The engine itself changes the order through its own path
+        // (Step 4.8 PR C2); until it exists no hand may do it while a guide is alive.
+        if (
+          (to === OrderStatus.SHIPPED || to === OrderStatus.DELIVERED) &&
+          (await hasActiveGuide(tx, storeId, orderId))
+        ) {
+          throw orderRefusal(ErrorCodes.ORDER_STATUS_DRIVEN_BY_SHIPMENT)
+        }
         const verdict = checkOrderTransition(from, to)
         if (!verdict.ok) throw orderRefusal(verdict.code)
         // The goods do not leave the warehouse with a price nobody approved (TDD_17 §4.13 holds the guide back the same way)

@@ -24,7 +24,7 @@ const carrierEventJobSchema = exactly<ProcessCarrierEventJob>()(
 
 // The worker half of TDD_17 §4.9: the api verified the signature of the carrier and queued one job per event; this reads
 // them. Today it resolves what each event means for its connection and records the codes nobody has mapped (§4.17); applying
-// the status to a shipment (dedupe, order of arrival, the transition table, the order effects) is Step 4.8 PR C2b.
+// the status to a shipment (dedupe, order of arrival, the transition table, the order effects) is Step 4.8 PR C2c.
 @Processor(QueueNames.WEBHOOKS, { concurrency: 10 })
 export class CarrierEventsProcessor extends BaseProcessor<ProcessCarrierEventJob> {
   constructor(
