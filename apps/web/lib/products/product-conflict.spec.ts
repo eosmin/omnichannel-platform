@@ -29,27 +29,42 @@ describe('historyCountsOf', () => {
           conflict: ProductConflicts.HAS_HISTORY,
           orderItems: 3,
           inventoryLevels: 2,
+          transferLines: 4,
           media: 1
         })
       )
-    ).toEqual({ orderItems: 3, inventoryMovements: 0, inventoryLevels: 2, media: 1 })
+    ).toEqual({
+      orderItems: 3,
+      inventoryMovements: 0,
+      inventoryLevels: 2,
+      transferLines: 4,
+      media: 1
+    })
   })
 
   it('ignores a value that is not a count', () => {
     expect(
       historyCountsOf(
-        conflict({ orderItems: '3', media: -2, inventoryMovements: 1.5, inventoryLevels: 0 })
+        conflict({
+          orderItems: '3',
+          media: -2,
+          transferLines: 'x',
+          inventoryMovements: 1.5,
+          inventoryLevels: 0
+        })
       )
     ).toEqual({
       orderItems: 0,
       inventoryMovements: 0,
       inventoryLevels: 0,
+      transferLines: 0,
       media: 0
     })
     expect(historyCountsOf(null)).toEqual({
       orderItems: 0,
       inventoryMovements: 0,
       inventoryLevels: 0,
+      transferLines: 0,
       media: 0
     })
   })

@@ -24,6 +24,14 @@ export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     permission: ClientPermissions.INVENTORY_VIEW
   },
   {
+    id: 'transfers',
+    labelKey: 'transfers',
+    href: AppPaths.org.transfers,
+    permission: ClientPermissions.INVENTORY_MANAGE_TRANSFERS,
+    // A receiver holds only the permission to receive: either one opens the page
+    or: ClientPermissions.INVENTORY_RECEIVE_TRANSFERS
+  },
+  {
     id: 'counts',
     labelKey: 'counts',
     href: AppPaths.org.counts,
