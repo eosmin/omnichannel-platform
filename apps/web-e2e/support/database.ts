@@ -1155,6 +1155,9 @@ export async function addOrdersTo(
     paymentStatus?: string
     totalCents?: number
     scheduledDeliveryDate?: string
+    customerNotes?: string
+    internalNotes?: string
+    packingNotes?: string
   }[]
 ): Promise<{ customerId: string; orders: SeededOrder[]; remove: () => Promise<void> }> {
   const tag = randomUUID().slice(0, 6).toUpperCase()
@@ -1177,6 +1180,9 @@ export async function addOrdersTo(
           subtotalCents: totalCents,
           totalCents,
           createdBy: creator.id,
+          ...(order.customerNotes === undefined ? {} : { customerNotes: order.customerNotes }),
+          ...(order.internalNotes === undefined ? {} : { internalNotes: order.internalNotes }),
+          ...(order.packingNotes === undefined ? {} : { packingNotes: order.packingNotes }),
           // One second apart, so the list is in the order the case expects
           createdAt: new Date(Date.now() - (orders.length - index) * 1000),
           ...(order.scheduledDeliveryDate === undefined
