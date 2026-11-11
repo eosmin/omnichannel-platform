@@ -8,7 +8,8 @@ import {
   OrderScheduleFilters,
   OrderScheduledDeliveryShortcuts,
   OrderSorts,
-  RecipientPhones
+  RecipientPhones,
+  OrderStatusMessageKinds
 } from './order-constants'
 import {
   OrderConfirmationChannel,
@@ -163,7 +164,8 @@ export const createOrderSchema = z.strictObject({
   confirmOnCreate: z.boolean().default(false),
   // The order this one was copied from (`GET /orders/:id/copy`); the server checks it belongs to the store
   copiedFromOrderId: id.optional(),
-  sendConfirmationMessage: z.boolean().default(true)
+  // Send the summary message to the customer: left out, the preference `orders.sendSummaryOnCreate` decides (TDD_17 §4.14)
+  sendConfirmationMessage: z.boolean().optional()
 })
 
 export type CreateOrderInput = z.output<typeof createOrderSchema>
@@ -237,7 +239,9 @@ export const changeOrderStatusSchema = z
     cancellationReason: freeText(OrderLimits.CANCELLATION_REASON_MAX_LENGTH).optional(),
     proofOfDeliveryMediaId: id.optional(),
     deliveredAt: z.iso.datetime({ offset: true }).optional(),
-    restock: z.boolean().optional()
+    restock: z.boolean().optional(),
+    // The "Notify customer" box of a delivered, shipped or cancelled status: left out, the `autoSend` of the template decides
+    notifyCustomer: z.boolean().optional()
   })
   .superRefine((body, ctx) => {
     const issue = (path: string, message: string) =>
@@ -263,6 +267,10 @@ export const changeOrderStatusSchema = z
     }
     if (body.status !== OrderStatus.RETURNED && body.restock !== undefined) {
       issue('restock', 'only a return has a restock choice')
+    }
+    // The box exists for the statuses the customer is told about; elsewhere it would promise a message that nothing sends
+    if (body.notifyCustomer !== undefined && !Object.hasOwn(OrderStatusMessageKinds, body.status)) {
+      issue('notifyCustomer', 'only a shipped, delivered or cancelled order tells the customer')
     }
   })
 

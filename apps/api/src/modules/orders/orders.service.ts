@@ -543,7 +543,8 @@ export class OrdersService {
         customerId,
         conversationId: body.conversationId ?? null,
         totalCents: totals.totalCents,
-        currency: store.currency
+        currency: store.currency,
+        sendSummary: body.sendConfirmationMessage ?? null
       })
       if (confirmNow) this.events.publish(tx, Events.ORDER_CONFIRMED, common)
       if (control.overridden) this.events.publish(tx, Events.ORDER_PRICE_OVERRIDDEN, common)

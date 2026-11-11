@@ -5,7 +5,8 @@ import {
   captionsOf,
   requireCaptionFits,
   requireCaptionsPlaced,
-  requireTextFits
+  requireTextFits,
+  unsupportedKind
 } from './caption-rules'
 
 // What the plugins declare: the spec holds the rules, not the numbers of any channel in particular
@@ -111,5 +112,42 @@ describe('requireTextFits', () => {
     expect(() => requireTextFits(WITH_CAPTION_RULE, 'a'.repeat(4096))).not.toThrow()
     expect(() => requireTextFits(WITH_CAPTION_RULE, 'a'.repeat(4097))).toThrow()
     expect(() => requireTextFits(null, 'a'.repeat(9000))).not.toThrow()
+  })
+})
+
+describe('unsupportedKind (a channel that does not take a kind of file)', () => {
+  // One case for each kind a message can carry: the refusal names it, so the interface can say which one was refused
+  it.each([MessageType.IMAGE, MessageType.VIDEO, MessageType.AUDIO, MessageType.DOCUMENT])(
+    'carries %s in the refusal',
+    kind => {
+      const error = unsupportedKind(kind, 'the channel does not send this kind of file')
+      expect(error.code).toBe(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+      expect(error.metadata).toEqual({ kind })
+    }
+  )
+
+  it.each([MessageType.IMAGE, MessageType.VIDEO, MessageType.AUDIO, MessageType.DOCUMENT])(
+    'is what a text under a %s that the channel cannot place refuses with',
+    kind => {
+      const body = { mediaIds: ['a', 'b'], captions: ['One', 'Two'] }
+      let thrown: unknown
+      try {
+        requireCaptionsPlaced(body, false, false, kind)
+      } catch (error) {
+        thrown = error
+      }
+      expect(thrown).toBeInstanceOf(PlatformException)
+      expect((thrown as PlatformException).metadata).toEqual({ kind })
+    }
+  )
+
+  it('says nothing of the kind when the caller does not know it', () => {
+    let thrown: unknown
+    try {
+      requireCaptionsPlaced({ mediaIds: ['a', 'b'], captions: ['One', 'Two'] }, false)
+    } catch (error) {
+      thrown = error
+    }
+    expect((thrown as PlatformException).metadata).toBeUndefined()
   })
 })

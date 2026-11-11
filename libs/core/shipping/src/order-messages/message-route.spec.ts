@@ -2,6 +2,7 @@ import { OrderMessageNotSentReasons, OrderMessageRoutes } from '@platform/core/d
 
 import {
   automaticDispatchKey,
+  creationDispatchKey,
   decideOrderMessageRoute,
   manualDispatchKey,
   pressedDispatchKey,
@@ -142,7 +143,13 @@ describe('dispatch keys', () => {
     )
   })
 
+  it('keys the summary of a creation by the order alone', () => {
+    expect(creationDispatchKey('o1')).toBe('created:o1')
+  })
+
   it('never repeats a key between the families', () => {
+    expect(creationDispatchKey('x')).not.toBe(manualDispatchKey('x', 'order_summary', 'CREATED'))
+    expect(creationDispatchKey('x')).not.toBe(automaticDispatchKey('x', 'CREATED', 'order_summary'))
     expect(automaticDispatchKey('x', 'CANCELLED', 'order_cancelled')).not.toBe(
       manualDispatchKey('x', 'order_cancelled', 'CANCELLED')
     )

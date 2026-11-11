@@ -132,3 +132,53 @@ export function carrierPollInterval(input: { configured: number | null; pushed: 
   )
   return input.pushed ? Math.max(own, CarrierPolling.WEBHOOK_SAFETY_NET_MINUTES) : own
 }
+
+// What a shipment's status tells the customer (TDD_17 §4.9, the last column of its table): the kind of message and the status
+// that names it in the idempotency key. The first status a package shows once it has left (picked up or in transit, whichever
+// comes first) is one message, so both name `PICKED_UP`. A failed attempt is told only as `policy` allows, and carries its
+// number: a carrier tries up to three times on three days and each is its own message.
+export interface ShipmentCustomerMessage {
+  kind: OrderMessageKindType
+  status: ShipmentStatus
+  // The attempt that has just failed; only for a failed attempt
+  attempt?: number
+}
+
+// The statuses a package can tell the customer about (the ones `customerMessageOfShipment` can answer for): the listener looks at nothing
+// else, so the many statuses that say nothing cost no query
+export const ShipmentStatusesTold: readonly ShipmentStatus[] = [
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED
+]
+
+export function customerMessageOfShipment(input: {
+  to: ShipmentStatus
+  failedAttempts: number
+  policy: FailedAttemptMessagePolicyType
+}): ShipmentCustomerMessage | null {
+  switch (input.to) {
+    case ShipmentStatus.PICKED_UP:
+    case ShipmentStatus.IN_TRANSIT:
+      return { kind: OrderMessageKind.ORDER_SHIPPED, status: ShipmentStatus.PICKED_UP }
+    case ShipmentStatus.OUT_FOR_DELIVERY:
+      return {
+        kind: OrderMessageKind.ORDER_OUT_FOR_DELIVERY,
+        status: ShipmentStatus.OUT_FOR_DELIVERY
+      }
+    case ShipmentStatus.FAILED_ATTEMPT:
+      return isFailedAttemptMessageDue(input.policy, input.failedAttempts)
+        ? {
+            kind: OrderMessageKind.ORDER_FAILED_ATTEMPT,
+            status: ShipmentStatus.FAILED_ATTEMPT,
+            attempt: input.failedAttempts
+          }
+        : null
+    case ShipmentStatus.DELIVERED:
+      return { kind: OrderMessageKind.ORDER_DELIVERED, status: ShipmentStatus.DELIVERED }
+    default:
+      return null
+  }
+}
