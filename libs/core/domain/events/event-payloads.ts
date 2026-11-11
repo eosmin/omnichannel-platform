@@ -143,6 +143,15 @@ export interface InventoryLowPayload {
   threshold: number
 }
 
+// A count went to review. The count belongs to the organization, so the event names the store of the person who
+// submitted it: the notification of an approver is kept in the store where they are told.
+export interface CountSubmittedPayload {
+  organizationId: string
+  storeId: string
+  countId: string
+  number: string
+}
+
 // A transfer between warehouses was dispatched, received (in part or whole) or cancelled (TDD_16 §4.5). Ids and plain
 // values only: `storeIds` are the stores whose products travel in it, the ones whose members may see its lines.
 export interface TransferChangedPayload {
@@ -372,6 +381,7 @@ export interface DomainEventPayloads {
   [Events.ORDER_PACKING_NOTE_CHANGED]: OrderEventPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
+  [Events.COUNT_SUBMITTED]: CountSubmittedPayload
   [Events.TRANSFER_DISPATCHED]: TransferChangedPayload
   [Events.TRANSFER_RECEIVED]: TransferChangedPayload
   [Events.TRANSFER_CANCELLED]: TransferChangedPayload

@@ -113,6 +113,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'counts.start': { step: '4.7' },
   'counts.lines': { step: '4.7' },
   'counts.submit': { step: '4.7' },
+  'counts.reopen': { step: '4.7' },
   'counts.apply': { step: '4.7' },
   'counts.cancel': { step: '4.7' },
   'carriers.list': { step: '4.14' },

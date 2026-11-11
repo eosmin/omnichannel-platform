@@ -155,17 +155,21 @@ model StockCount {
   note           String?
   createdBy      String    @map("created_by")
   startedAt      DateTime? @map("started_at")
+  submittedAt    DateTime? @map("submitted_at")        // Set when the count goes to REVIEW, cleared when it goes back to COUNTING
   appliedBy      String?   @map("applied_by")
   appliedAt      DateTime? @map("applied_at")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  warehouse    Warehouse        @relation(fields: [warehouseId], references: [id])
+  // Composite: the warehouse is of the organization of the count (the raw SQL adds the same for the optional store)
+  warehouse    Warehouse        @relation(fields: [organizationId, warehouseId], references: [organizationId, id])
   lines        StockCountLine[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status])
+  @@index([organizationId, warehouseId])
+  @@index([organizationId, storeId])
   @@map("stock_counts")
 }
 
@@ -178,12 +182,21 @@ model StockCountLine {
   expectedQuantity Int     @map("expected_quantity")       // onHand snapshot taken when the count starts
   countedQuantity  Int?    @map("counted_quantity")        // Null until counted
 
-  count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
-  store Store      @relation(fields: [storeId], references: [id])
+  count   StockCount      @relation(fields: [countId], references: [id], onDelete: Cascade)
+  store   Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  product Product         @relation(fields: [storeId, productId], references: [storeId, id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
-  @@index([countId])
+  @@index([countId, storeId])
   @@index([storeId])
+  @@index([storeId, productId, variantId])
+  @@index([variantId])
   @@map("stock_count_lines")
+  // Raw SQL of the migration (Prisma cannot declare it): one line per item in a count (two partial unique indexes), a
+  // trigger that the store of a line belongs to the organization of the count (and to its store filter) and that the
+  // variant belongs to the product, a trigger that freezes `expectedQuantity`, a trigger that the lines are written only
+  // while the count is open, and on the header a trigger that organization, warehouse and store never change and CHECKs
+  // on the status, the number, and the moments the status implies
 }
 ```
 
