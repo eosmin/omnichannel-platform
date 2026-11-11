@@ -5,7 +5,12 @@ import { PrismaService } from '@platform/core/database'
 import { CarrierEventOutcomes, CarrierReplayLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import type { ReprocessCarrierEventsJob } from '@platform/core/queues'
-import { ShipmentReplayer, StatusResolutionKinds } from '@platform/core/shipping'
+import {
+  keptCodeFilter,
+  keptCodeOf,
+  ShipmentReplayer,
+  StatusResolutionKinds
+} from '@platform/core/shipping'
 
 import { CarrierEventApplier } from './carrier-event-applier.service'
 import { CarrierEventResolver } from './carrier-event-resolver.service'
@@ -67,10 +72,7 @@ export class CarrierEventReplay {
           storeId,
           status: null,
           shipment: { connectionId },
-          OR: [
-            { payload: { path: ['providerCode'], equals: providerCode } },
-            { payload: { path: ['providerCode'], string_starts_with: `${providerCode}:` } }
-          ],
+          OR: keptCodeFilter(providerCode),
           ...(after === null
             ? {}
             : {
@@ -116,7 +118,7 @@ export class CarrierEventReplay {
     line: { id: string; shipmentId: string; source: string; payload: unknown },
     report: ReplayReport
   ): Promise<void> {
-    const code = codeOf(line.payload)
+    const code = keptCodeOf(line.payload)
     if (code === null) {
       report.left += 1
       return
@@ -143,15 +145,4 @@ export class CarrierEventReplay {
     else if (outcome === CarrierEventOutcomes.STORED) report.stored += 1
     else report.left += 1
   }
-}
-
-// The normalized parts of the code a line was kept under; a line this layer did not write has none and is left alone
-function codeOf(payload: unknown): { plainCode: string; reasonCode?: string } | null {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null
-  const plain: unknown = Reflect.get(payload, 'plainCode')
-  const reason: unknown = Reflect.get(payload, 'reasonCode')
-  if (typeof plain !== 'string' || plain === '') return null
-  return typeof reason === 'string' && reason !== ''
-    ? { plainCode: plain, reasonCode: reason }
-    : { plainCode: plain }
 }

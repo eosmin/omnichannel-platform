@@ -136,7 +136,12 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reprocess.success) {
         throw new UnrecoverableError('the carrier replay job does not fit its schema')
       }
-      await this.carrierReplay.reprocess(reprocess.data)
+      const report = await this.carrierReplay.reprocess(reprocess.data)
+      // Lines that failed or could not be confirmed stay as they were, and the job is asked again: finishing it as a success would
+      // leave them kept for good (and a re-sent event of theirs would be taken for a twin)
+      if (report.failed + report.unconfirmed > 0) {
+        throw new Error('some kept carrier events could not be replayed yet')
+      }
       return
     }
     const parsed = mediaJobSchema.safeParse(job.data)

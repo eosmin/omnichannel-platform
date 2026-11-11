@@ -365,7 +365,7 @@ describe('What the worker makes of what a carrier says', () => {
         })
       )
 
-      expect(outcome).toBe(CarrierEventHandled.NOT_FOUND)
+      expect(outcome).toBe(CarrierEventHandled.IGNORED)
       expect(await statusOf(shipment.id)).toBe(ShipmentStatus.LABEL_CREATED)
     })
 
@@ -704,6 +704,32 @@ describe('What the worker makes of what a carrier says', () => {
         (await lines(shipment.id)).filter(l => l.rawStatus === 'zz-miss' && l.status === null)
       ).toHaveLength(0)
       expect((await lines(shipment.id)).filter(l => l.rawStatus === 'zz-miss')).toHaveLength(1)
+    })
+
+    it('does not step a package back to an older line, though the table would allow it', async () => {
+      const connectionId = await connect()
+      const shipment = await shipmentOf(connectionId, { status: ShipmentStatus.OUT_FOR_DELIVERY })
+      const names = { guideNumber: shipment.guideNumber }
+      await apply(
+        job(connectionId, names, 'zz-older', { id: 'b-1', at: '2026-11-02T10:00:00.000Z' })
+      )
+      await apply(
+        job(connectionId, names, 'failed', {
+          id: 'b-2',
+          at: '2026-11-02T14:00:00.000Z',
+          status: ShipmentStatus.FAILED_ATTEMPT
+        })
+      )
+      await put(connectionId, 'zz-older', ShipmentStatus.OUT_FOR_DELIVERY)
+
+      const report = await replay.reprocess({
+        storeId: ctx.storeA.id,
+        connectionId,
+        providerCode: 'zz-older'
+      })
+
+      expect(report).toMatchObject({ applied: 0, stored: 1 })
+      expect(await statusOf(shipment.id)).toBe(ShipmentStatus.FAILED_ATTEMPT)
     })
 
     it('goes on with the other lines when one of them cannot be settled', async () => {

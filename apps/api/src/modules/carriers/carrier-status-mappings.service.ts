@@ -22,6 +22,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { JobNames, QueueNames, type ReprocessCarrierEventsJob } from '@platform/core/queues'
+import { keptCodeFilter } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -203,10 +204,7 @@ export class CarrierStatusMappingsService {
         storeId,
         status: null,
         shipment: { connectionId },
-        OR: [
-          { payload: { path: ['providerCode'], equals: providerCode } },
-          { payload: { path: ['providerCode'], string_starts_with: `${providerCode}:` } }
-        ]
+        OR: keptCodeFilter(providerCode)
       }
     })
     return rows.length

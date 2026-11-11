@@ -12,7 +12,8 @@ describe('HeavyProcessingProcessor', () => {
   const fetch = jest.fn().mockResolvedValue(undefined)
   const reconcileStore = jest.fn().mockResolvedValue(undefined)
   const poll = jest.fn().mockResolvedValue(undefined)
-  const reprocess = jest.fn().mockResolvedValue(undefined)
+  const clean = { read: 1, applied: 1, stored: 0, left: 0, unconfirmed: 0, failed: 0 }
+  const reprocess = jest.fn().mockResolvedValue(clean)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -98,6 +99,18 @@ describe('HeavyProcessingProcessor', () => {
       await replay({ ...data, extra: 'dropped', correlationId: 'c' })
 
       expect(reprocess).toHaveBeenCalledWith({ ...data, correlationId: 'c' })
+    })
+
+    it.each([
+      ['failed', { ...clean, failed: 1 }],
+      ['unconfirmed', { ...clean, unconfirmed: 2 }]
+    ])('asks again when lines %s, so they are not kept for good', async (_name, report) => {
+      reprocess.mockResolvedValueOnce(report)
+
+      const attempt = replay(data)
+
+      await expect(attempt).rejects.toThrow('could not be replayed yet')
+      await expect(attempt).rejects.not.toBeInstanceOf(UnrecoverableError)
     })
 
     it.each([

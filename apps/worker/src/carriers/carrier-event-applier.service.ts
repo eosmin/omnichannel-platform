@@ -28,6 +28,7 @@ import {
   buildCarrierContext,
   clampCarrierMessage,
   findShipmentOfEvent,
+  keptEventPayload,
   recordUnmappedStatus,
   ShipmentLookupKinds,
   ShipmentStatusEngine,
@@ -92,6 +93,22 @@ export class CarrierEventApplier {
     source: typeof ShipmentEventSource.WEBHOOK | typeof ShipmentEventSource.POLL
   ): Promise<CarrierEventHandledType> {
     const { storeId, connectionId, event } = job
+    // What cannot be settled by waiting is not asked again: a connection that is not active, an event that names nothing
+    if ((await this.resolver.liveConnection(storeId, connectionId)) === null) {
+      this.logger.info(
+        { connectionId },
+        'carrier event dropped: the connection is gone or not active'
+      )
+      return CarrierEventHandled.IGNORED
+    }
+    if (
+      event.providerShipmentId === undefined &&
+      event.guideNumber === undefined &&
+      event.reference === undefined
+    ) {
+      this.logger.warn({ connectionId }, 'a carrier event names no shipment at all: dropped')
+      return CarrierEventHandled.IGNORED
+    }
     const lookup = await findShipmentOfEvent(
       this.prisma.client,
       { storeId, connectionId },
@@ -293,11 +310,7 @@ export class CarrierEventApplier {
             ? {}
             : { providerEventId: event.providerEventId }),
           // What a replay needs to give the line its meaning later: the normalized parts of the code
-          payload: {
-            providerCode: resolution.code,
-            plainCode,
-            ...(reasonCode === undefined ? {} : { reasonCode })
-          }
+          payload: keptEventPayload(resolution.code, { plainCode, reasonCode })
         }
       )
       if (!unmapped) return CarrierEventHandled.STORED

@@ -103,7 +103,19 @@ export class ShipmentReplayer {
         return CarrierEventOutcomes.DUPLICATE
       }
       const from = row.status as ShipmentStatus
+      // A later event of the carrier already told where the package is: this older line is history, even if the table would let
+      // the shipment step back to it (FAILED_ATTEMPT to OUT_FOR_DELIVERY is a legal step forward for a new event, not for an old one)
+      const later = await tx.shipmentEvent.findFirst({
+        where: {
+          storeId,
+          shipmentId: stored.shipmentId,
+          occurredAt: { gt: stored.occurredAt },
+          status: { in: [...CarrierMovableStatuses] }
+        },
+        select: { id: true }
+      })
       const movable =
+        later === null &&
         CarrierMovableStatuses.includes(status) &&
         stored.occurredAt >= row.createdAt &&
         isShipmentTransitionAllowed(from, status)

@@ -146,6 +146,13 @@ export class ShipmentPoller {
       await this.applyAll(storeId, connectionId, shipments, events, report)
       if (shipments.length < CarrierPolling.BATCH_SIZE) break
     }
+    if (report.unreadable > 0) {
+      // A carrier whose events never fit the bounds (a date with no offset, a code too long) would otherwise be polled in silence
+      this.logger.warn(
+        { connectionId, unreadable: report.unreadable },
+        'polled carrier events did not fit the bounds of an event and were not applied'
+      )
+    }
     return report
   }
 
