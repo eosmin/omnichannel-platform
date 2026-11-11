@@ -144,6 +144,8 @@ export interface ReprocessCarrierEventsJob extends BaseJob {
   storeId: string
   connectionId: string
   providerCode: string
+  // The person who mapped the code: the moves of the replay say whose mapping they follow (the shipment moves are the system's)
+  requestedBy?: string
 }
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string

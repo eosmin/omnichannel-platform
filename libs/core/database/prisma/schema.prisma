@@ -1770,8 +1770,7 @@ model Shipment {
   @@index([storeId, status])
   @@index([storeId, orderId])
   @@index([connectionId, status])
-  @@index([connectionId, guideNumber]) // The worker finds the package a carrier event names
-  @@index([connectionId, providerShipmentId])
+  @@index([connectionId, providerShipmentId]) // The worker finds the package a carrier event names (the guide has its own unique index)
   @@index([pickupId])
   @@index([originWarehouseId])
   @@index([returnId])

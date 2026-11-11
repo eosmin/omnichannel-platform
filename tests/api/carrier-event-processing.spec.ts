@@ -795,6 +795,38 @@ describe('What the worker makes of what a carrier says', () => {
       expect(await statusOf(foreign.id)).toBe(ShipmentStatus.LABEL_CREATED)
     })
 
+    it('says in the history whose mapping a replayed move follows', async () => {
+      const connectionId = await connect()
+      const shipment = await shipmentOf(connectionId)
+      const asked = ctx.adminA.id
+      await apply(job(connectionId, { guideNumber: shipment.guideNumber }, 'zz-who', { id: 'w-1' }))
+      await put(connectionId, 'zz-who', ShipmentStatus.PICKED_UP)
+
+      await replay.reprocess({
+        storeId: ctx.storeA.id,
+        connectionId,
+        providerCode: 'zz-who',
+        requestedBy: asked
+      })
+
+      const line = await owner.shipmentEvent.findFirstOrThrow({
+        where: { shipmentId: shipment.id, providerEventId: 'w-1' }
+      })
+      expect(line.payload).toMatchObject({ replayedBy: asked })
+    })
+
+    it('fails, to be asked again, for a connection in error, and drops one that was let go', async () => {
+      const connectionId = await connect()
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { status: CarrierConnectionStatus.ERROR }
+      })
+
+      await expect(
+        replay.reprocess({ storeId: ctx.storeA.id, connectionId, providerCode: 'zz-err' })
+      ).rejects.toThrow('not active yet')
+    })
+
     it('does nothing for a connection that was let go', async () => {
       const connectionId = await connect()
       const shipment = await shipmentOf(connectionId)

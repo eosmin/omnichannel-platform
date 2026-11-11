@@ -45,7 +45,8 @@ export class ShipmentReplayer {
   async replay(
     storeId: string,
     eventId: string,
-    status: ShipmentStatus
+    status: ShipmentStatus,
+    requestedBy?: string
   ): Promise<CarrierEventOutcome> {
     return this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
@@ -147,7 +148,9 @@ export class ShipmentReplayer {
           occurredAt: stored.occurredAt,
           providerEventId: stored.providerEventId ?? undefined,
           rawStatus: stored.rawStatus ?? undefined,
-          replay: true
+          replay: true,
+          // Whose mapping this move follows: the shipment moves as the system, the history says who asked for it
+          ...(requestedBy === undefined ? {} : { payload: { replayedBy: requestedBy } })
         }
       )
       return CarrierEventOutcomes.APPLIED

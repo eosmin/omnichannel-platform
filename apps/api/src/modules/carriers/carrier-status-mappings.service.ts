@@ -172,9 +172,11 @@ export class CarrierStatusMappingsService {
     const hasMore = rows.length > limit
     const page = hasMore ? rows.slice(0, limit) : rows
     const last = page.at(-1)
-    const waiting = await Promise.all(
-      page.map(row => this.shipmentsWaiting(storeId, connectionId, row.providerCode))
-    )
+    // One after another: each count reads the kept lines by their payload, and a page of them at once would hold the pool
+    const waiting: number[] = []
+    for (const row of page) {
+      waiting.push(await this.shipmentsWaiting(storeId, connectionId, row.providerCode))
+    }
     return {
       data: page.map((row, index) => ({
         providerCode: row.providerCode,
@@ -248,7 +250,7 @@ export class CarrierStatusMappingsService {
     this.record(storeId, connectionId, actor, providerCode, result.before, body.status)
     // A status the platform can apply: the events kept under the code (and under its reasons) go through the engine again. An
     // "ignore" gives them no effect, so there is nothing to replay
-    if (body.status !== null) await this.replay(storeId, connectionId, providerCode)
+    if (body.status !== null) await this.replay(storeId, connectionId, providerCode, actor.userId)
     return viewOf(result.row)
   }
 
@@ -391,18 +393,24 @@ export class CarrierStatusMappingsService {
     })
     this.record(storeId, connectionId, actor, providerCode, outcome.before, outcome.after)
     // The default the plugin gives the code applies to what was kept under it, as a mapping the owner made does
-    if (outcome.after !== null) await this.replay(storeId, connectionId, providerCode)
+    if (outcome.after !== null) await this.replay(storeId, connectionId, providerCode, actor.userId)
   }
 
   // After the commit: the job only reads rows that are committed. No job id: two mappings of one code in a row are two
   // replays, and the second finds nothing left to apply (the engine settles each stored event once). A queue that is down
   // fails the request AFTER the mapping was saved, so the owner repeats it and the replay is queued: the answer is never
   // "saved" with a replay that was lost without a word.
-  private async replay(storeId: string, connectionId: string, providerCode: string): Promise<void> {
+  private async replay(
+    storeId: string,
+    connectionId: string,
+    providerCode: string,
+    requestedBy: string
+  ): Promise<void> {
     await this.heavyQueue.add(JobNames.REPROCESS_CARRIER_EVENTS, {
       storeId,
       connectionId,
-      providerCode
+      providerCode,
+      requestedBy
     })
   }
 

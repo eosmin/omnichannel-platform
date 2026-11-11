@@ -64,6 +64,7 @@ const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
     storeId: z.uuid(),
     connectionId: z.uuid(),
     providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH),
+    requestedBy: z.uuid().optional(),
     correlationId: z.string().optional()
   })
 )
