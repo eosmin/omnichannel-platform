@@ -114,7 +114,9 @@ describe('The life of an order', () => {
       expect(again.status).toBe(CONFLICT)
       expect(errorOf(again).code).toBe(ErrorCodes.ORDER_ALREADY_CONFIRMED)
 
-      await status(order.id, { status: 'CANCELLED', cancellationReason: 'changed mind' })
+      expect(
+        (await status(order.id, { status: 'CANCELLED', cancellationReason: 'changed mind' })).status
+      ).toBe(OK)
       const back = await status(order.id, { status: 'CONFIRMED' })
       expect(back.status).toBe(CONFLICT)
     })
@@ -375,6 +377,11 @@ describe('The life of an order', () => {
 
       expect(response.status).toBe(CONFLICT)
       expect((await get(order.id)).status).toBe('CONFIRMED')
+      // Nothing of the shipping was applied: no issue in the ledger, the stock as it was, no audit entry of the move
+      expect((await movements(product.id)).map(row => row.type)).toEqual(['receipt', 'reserve'])
+      expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
+      const row = await owner.order.findFirstOrThrow({ where: { id: order.id } })
+      expect(row.shippedAt).toBeNull()
     })
   })
 
@@ -662,6 +669,49 @@ describe('The life of an order', () => {
         agent.agent
       )
       expect((raised.body as OrderBody).priceApprovalStatus).toBe(PriceApprovalStatus.PENDING)
+    })
+
+    it('makes the member who changes the lines of a pending order its requester, so they cannot approve their own change', async () => {
+      const { order } = await pendingOrder()
+      const second = await member('liner', [
+        Permissions.ORDERS_VIEW,
+        Permissions.ORDERS_EDIT,
+        Permissions.ORDERS_APPROVE_PRICE
+      ])
+      const product = await kit.stocked(10)
+
+      const moved = await edit(
+        order.id,
+        { items: [{ productId: product.id, quantity: 3 }] },
+        second.agent
+      )
+
+      expect(moved.status).toBe(OK)
+      expect((moved.body as OrderBody).priceApprovalRequestedBy).toBe(second.actor.id)
+      const self = await second.agent.post(ApiRoutes.orders.priceApprovalApprove(order.id)).send({})
+      expect(self.status).toBe(FORBIDDEN)
+    })
+
+    it('does not clear the reason of a discount the order keeps', async () => {
+      const { order } = await placed({ discountCents: 100, discountReason: 'vip' })
+
+      const response = await edit(order.id, { shippingCents: 5, discountReason: null })
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(errorOf(response).code).toBe(ErrorCodes.ORDER_PRICE_REASON_REQUIRED)
+      expect((await get(order.id)).discountReason).toBe('vip')
+    })
+
+    it('does not record a payment as completed while the price waits for its approval', async () => {
+      const { order } = await pendingOrder()
+
+      const response = await kit
+        .asAdmin()
+        .post(ApiRoutes.orders.payment(order.id))
+        .send({ method: 'TRANSFER', status: 'COMPLETED' })
+
+      expect(response.status).toBe(CONFLICT)
+      expect(errorOf(response).code).toBe(ErrorCodes.ORDER_PRICE_APPROVAL_PENDING)
     })
 
     it('binds an approval to its lines: shrinking the items sends it back to pending', async () => {
@@ -1096,9 +1146,14 @@ describe('The life of an order', () => {
         Permissions.ORDERS_VIEW,
         Permissions.ORDERS_CHANGE_STATUS
       ])
-      const shipper = await member('shipper', [Permissions.SHIPPING_MANAGE])
+      const shipper = await member('shipper', [
+        Permissions.SHIPPING_MANAGE,
+        Permissions.ORDERS_VIEW
+      ])
+      // Who may ship but not read orders gets no notice that links to an order
+      const blind = await member('blind', [Permissions.SHIPPING_MANAGE])
       const reader = await member('reader', [Permissions.ORDERS_VIEW])
-      return { mover, shipper, reader }
+      return { mover, shipper, reader, blind }
     }
     // Who should be told: every member of the store holding one of the two permissions, but the one who edits
     const holdersOtherThanAdmin = async () =>
@@ -1107,13 +1162,18 @@ describe('The life of an order', () => {
           where: {
             storeId: ctx.storeA.id,
             userId: { not: ctx.adminA.id },
-            role: {
-              permissions: {
-                some: {
-                  name: { in: [Permissions.ORDERS_CHANGE_STATUS, Permissions.SHIPPING_MANAGE] }
+            AND: [
+              {
+                role: {
+                  permissions: {
+                    some: {
+                      name: { in: [Permissions.ORDERS_CHANGE_STATUS, Permissions.SHIPPING_MANAGE] }
+                    }
+                  }
                 }
-              }
-            }
+              },
+              { role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }
+            ]
           },
           select: { userId: true }
         })
@@ -1140,7 +1200,7 @@ describe('The life of an order', () => {
     }
 
     it('tells the members who may prepare or ship, and not the one who changed it nor those who cannot', async () => {
-      const { mover, shipper, reader } = await warehouse()
+      const { mover, shipper, reader, blind } = await warehouse()
       const { order } = await placed()
       await status(order.id, { status: 'CONFIRMED' })
 
@@ -1152,16 +1212,22 @@ describe('The life of an order', () => {
       expect(told).toEqual(expect.arrayContaining([mover.actor.id, shipper.actor.id]))
       expect(told).not.toContain(ctx.adminA.id)
       expect(told).not.toContain(reader.actor.id)
+      expect(told).not.toContain(blind.actor.id)
       const holders = await owner.membership.findMany({
         where: {
           storeId: ctx.storeA.id,
-          role: {
-            permissions: {
-              some: {
-                name: { in: [Permissions.ORDERS_CHANGE_STATUS, Permissions.SHIPPING_MANAGE] }
+          AND: [
+            {
+              role: {
+                permissions: {
+                  some: {
+                    name: { in: [Permissions.ORDERS_CHANGE_STATUS, Permissions.SHIPPING_MANAGE] }
+                  }
+                }
               }
-            }
-          }
+            },
+            { role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }
+          ]
         },
         select: { userId: true }
       })
@@ -1215,7 +1281,10 @@ describe('The life of an order', () => {
           where: {
             storeId: ctx.storeA.id,
             userId: { not: except },
-            role: { permissions: { some: { name: permission } } }
+            AND: [
+              { role: { permissions: { some: { name: permission } } } },
+              { role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }
+            ]
           },
           select: { userId: true }
         })
@@ -1235,12 +1304,17 @@ describe('The life of an order', () => {
     }
 
     it('tells who may confirm about an order that waits for it, and nobody about one made confirmed', async () => {
+      const confirmer = await member('confirmer', [
+        Permissions.ORDERS_VIEW,
+        Permissions.ORDERS_CONFIRM
+      ])
       const waiting = await madeBy(kit.asAdmin())
       const told = await noticesOf(
         NotificationTypes.ORDER_CREATED,
         waiting.id,
         (await holders(Permissions.ORDERS_CONFIRM, ctx.adminA.id)).length
       )
+      expect(told.map(row => row.userId)).toContain(confirmer.actor.id)
       expect(told.map(row => row.userId).sort()).toEqual(
         (await holders(Permissions.ORDERS_CONFIRM, ctx.adminA.id)).sort()
       )
@@ -1264,6 +1338,10 @@ describe('The life of an order', () => {
     })
 
     it('tells the approvers, but not the one who asked, when a price waits for approval', async () => {
+      const approver = await member('approver', [
+        Permissions.ORDERS_VIEW,
+        Permissions.ORDERS_APPROVE_PRICE
+      ])
       const maker = await clerk()
       const order = await madeBy(maker.agent, { discountCents: 100, discountReason: 'promo' })
 
@@ -1276,10 +1354,15 @@ describe('The life of an order', () => {
       expect(rows.map(row => row.userId).sort()).toEqual(
         (await holders(Permissions.ORDERS_APPROVE_PRICE, maker.actor.id)).sort()
       )
+      expect(rows.map(row => row.userId)).toContain(approver.actor.id)
       expect(rows.map(row => row.userId)).not.toContain(maker.actor.id)
     })
 
     it('tells the approvers about an override while the store keeps the switch on, and nobody when it is off', async () => {
+      const approver = await member('overrider', [
+        Permissions.ORDERS_VIEW,
+        Permissions.ORDERS_APPROVE_PRICE
+      ])
       const on = await madeBy(kit.asAdmin(), { discountCents: 100, discountReason: 'vip' })
       const rows = await noticesOf(
         NotificationTypes.ORDER_PRICE_OVERRIDDEN,
@@ -1287,7 +1370,7 @@ describe('The life of an order', () => {
         (await holders(Permissions.ORDERS_APPROVE_PRICE, ctx.adminA.id)).length
       )
       expect(rows.map(row => row.userId)).not.toContain(ctx.adminA.id)
-      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.map(row => row.userId)).toContain(approver.actor.id)
 
       await owner.storeSettings.update({
         where: { storeId: ctx.storeA.id },
@@ -1492,16 +1575,20 @@ describe('The life of an order', () => {
     })
 
     it('resolves today and tomorrow on the clock of the store, not of the server', async () => {
-      const now = new Date()
       for (const timezone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
         await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone } })
-        const today = calendarDayIn(timezone, now)
+        const today = calendarDayIn(timezone, new Date())
         const tomorrow = nextCalendarDay(today)
         const { customer, ids } = await scheduled([today, tomorrow, '2031-01-01'])
         const mine = `customerId=${customer.id}`
 
-        expect(idsOf(await list(`${mine}&scheduledDeliveryOn=today`))).toEqual([ids[0]])
-        expect(idsOf(await list(`${mine}&scheduledDeliveryOn=tomorrow`))).toEqual([ids[1]])
+        const onToday = idsOf(await list(`${mine}&scheduledDeliveryOn=today`))
+        const onTomorrow = idsOf(await list(`${mine}&scheduledDeliveryOn=tomorrow`))
+
+        // The store's midnight passing while the test runs (a minute of the day) moves both days: nothing is proved then
+        if (calendarDayIn(timezone, new Date()) !== today) continue
+        expect(onToday).toEqual([ids[0]])
+        expect(onTomorrow).toEqual([ids[1]])
       }
     })
 

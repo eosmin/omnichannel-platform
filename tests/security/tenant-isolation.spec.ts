@@ -279,8 +279,13 @@ const resources: IsolationResource[] = [
   {
     name: 'orderItemAllocation',
     create: createAllocationOf,
-    readPath: id => ApiRoutes.orders.byId(orderOfAllocation.get(id) ?? randomUUID()),
-    untouched: () => Promise.resolve(true)
+    readPath: id => {
+      const order = orderOfAllocation.get(id)
+      if (order === undefined)
+        throw new Error(`the allocation ${id} was not made by createAllocationOf`)
+      return ApiRoutes.orders.byId(order)
+    },
+    untouched: async (owner, id) => (await owner.orderItemAllocation.count({ where: { id } })) === 1
   },
   {
     name: 'warehouse',

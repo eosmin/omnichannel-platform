@@ -228,6 +228,11 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
     return {
       ...order,
       customerNotes: null,
+      trackingNumber: null,
+      confirmedBy: null,
+      cancelledBy: null,
+      priceApprovalRequestedBy: null,
+      priceApprovedBy: null,
       shippingAddress: null,
       paymentReference: null,
       paymentProofMediaId: null,
@@ -239,7 +244,11 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
       scheduledDeliveryDate:
         scheduledDeliveryDate === null ? null : dateToCalendarDay(scheduledDeliveryDate),
       customer: { id: customer.id, name: null, email: null, phone: null, nationalPhone: null },
-      items: items.map(item => ({ ...item })),
+      items: items.map(item => ({
+        ...item,
+        priceOverrideReason: null,
+        priceOverriddenBy: null
+      })),
       priceModified: items.some(item => item.originalUnitPriceCents !== null)
     }
   }

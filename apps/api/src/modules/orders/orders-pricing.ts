@@ -181,6 +181,10 @@ export function priceOrder(input: PricingInput): Pricing {
   })
   // A discount or a fee out of its range has its own reason: the reason of a changed line price is not a substitute
   const sanctioned = input.approvalStatus === PriceApprovalStatus.NOT_REQUIRED
+  // A discount always keeps its reason: an edit of something else cannot clear it with the reason of a line in its place
+  if (input.discountCents > 0 && normalizeNote(input.discountReason) === null) {
+    throw orderRefusal(ErrorCodes.ORDER_PRICE_REASON_REQUIRED)
+  }
   const needsOwnReason =
     (input.discountCents > 0 && !(sanctioned && input.discountUnchanged === true)) ||
     (!feeWithinRange && !(sanctioned && input.feeUnchanged === true))

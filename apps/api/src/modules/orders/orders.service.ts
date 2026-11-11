@@ -224,6 +224,8 @@ export class OrdersService {
   ): Promise<CreatedOrder> {
     // Confirming at creation is for who may confirm: the server refuses the flag from anybody else, it does not ignore it
     if (body.confirmOnCreate) assertHolds(held, Permissions.ORDERS_CONFIRM)
+    // The thread of a conversation gets a line of the order: the member must be able to see the inbox
+    if (body.conversationId !== undefined) assertHolds(held, Permissions.CONVERSATIONS_VIEW)
     const canOverridePrice = held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
 
     const created = await this.prisma.transaction(async tx => {
@@ -518,11 +520,15 @@ export class OrdersService {
           feeUnchanged: body.items === undefined && shippingCents === order.shippingCents
         })
         // Only a price this edit really moved is an override of this edit: the rest of the order may carry an old one
-        const priceTouched =
+        const priceMoved =
           priceChanged ||
           discountCents !== order.discountCents ||
           shippingCents !== order.shippingCents
-        overridden = pricing.control.overridden && priceTouched
+        // What an approver would be approving also changes with the lines and with the reason: whoever changes either of
+        // them is who asks for the approval
+        const priceTouched =
+          priceMoved || body.items !== undefined || discountReason !== order.discountReason
+        overridden = pricing.control.overridden && priceMoved
         withdrewRequest = pricing.control.withdrawsRequest
         reRequested =
           pricing.control.approvalStatus === PriceApprovalStatus.PENDING &&

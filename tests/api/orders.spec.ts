@@ -120,7 +120,7 @@ describe('Creating an order', () => {
       expect(entries[0]).toMatchObject({ storeId: ctx.storeA.id, userId: ctx.adminA.id })
     })
 
-    it('numbers the orders of a store one after the other, and each store has its own count', async () => {
+    it('numbers the orders of a store one after the other, all with the same number of digits', async () => {
       const first = (await post(await kit.orderBody())).body as CreatedBody
       const second = (await post(await kit.orderBody())).body as CreatedBody
 
@@ -177,7 +177,7 @@ describe('Creating an order', () => {
 
     it('refuses a product that has variants without the one that is sold, a switched-off product and a foreign variant', async () => {
       const product = await createProduct(owner, { storeId: ctx.storeA.id })
-      const variant = await createProductVariant(owner, { productId: product.id, name: 'XL' })
+      await createProductVariant(owner, { productId: product.id, name: 'XL' })
       const other = await createProduct(owner, { storeId: ctx.storeA.id })
       const otherVariant = await createProductVariant(owner, { productId: other.id, name: 'S' })
       const off = await createProduct(owner, { storeId: ctx.storeA.id, active: false })
@@ -203,7 +203,13 @@ describe('Creating an order', () => {
         items: [{ productId: product.id, variantId: otherVariant.id, quantity: 1 }]
       })
       expect(foreign.status).toBe(NOT_FOUND)
-      expect(variant.id).toBeDefined()
+      // Nothing was written by any of the refusals
+      expect(await owner.order.count({ where: { customerId: customer.id } })).toBe(0)
+      expect(
+        await owner.inventoryMovement.count({
+          where: { productId: { in: [product.id, other.id, off.id] } }
+        })
+      ).toBe(0)
     })
 
     it('answers 404 for a customer, a product or a conversation of another store, and writes nothing', async () => {
@@ -270,6 +276,9 @@ describe('Creating an order', () => {
       const { order } = response.body as CreatedBody
       expect(order).toMatchObject({
         customerNotes: null,
+        trackingNumber: null,
+        confirmedBy: null,
+        priceApprovalRequestedBy: null,
         shippingAddress: null,
         recipientPhones: [],
         customer: { id: body.customerId, name: null, email: null, phone: null, nationalPhone: null }
@@ -285,6 +294,21 @@ describe('Creating an order', () => {
       // The member who may read orders reads it all
       const read = await kit.asAdmin().get(ApiRoutes.orders.byId(order.id))
       expect((read.body as OrderBody).customerNotes).toBe('leave it at the door')
+    })
+
+    it('needs permission over the inbox to link an order to a conversation', async () => {
+      const agent = await agentOf()
+      const thread = await createConversationOf(owner, { storeId: ctx.storeA.id })
+
+      const response = await post(
+        { ...(await kit.orderBody()), customerId: thread.customerId, conversationId: thread.id },
+        agent
+      )
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(
+        await owner.message.count({ where: { conversationId: thread.id, type: 'ORDER_SUMMARY' } })
+      ).toBe(0)
     })
 
     it('links an order only to a conversation of its own customer', async () => {

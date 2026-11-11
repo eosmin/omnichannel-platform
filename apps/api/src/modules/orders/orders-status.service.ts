@@ -333,11 +333,19 @@ export class OrdersStatusService {
           status: true,
           paymentMethod: true,
           paymentStatus: true,
+          priceApprovalStatus: true,
           paymentReference: true,
           paymentProofMediaId: true
         }
       })
       const from = order.paymentStatus as PaymentStatus
+      // Money is not taken as paid for a price nobody has approved: the lines and the fee are fixed once it is
+      if (
+        body.status === PaymentStatus.COMPLETED &&
+        isPriceApprovalBlocking(order.priceApprovalStatus as PriceApprovalStatus)
+      ) {
+        throw orderRefusal(ErrorCodes.ORDER_PRICE_APPROVAL_PENDING)
+      }
       const verdict = checkPaymentChange({
         orderStatus: order.status as OrderStatus,
         orderPaymentMethod: order.paymentMethod as PaymentMethod,

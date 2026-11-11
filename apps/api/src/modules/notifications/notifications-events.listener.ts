@@ -308,7 +308,11 @@ export class NotificationsEventsListener {
         status: MembershipStatus.ACTIVE,
         revokedAt: null,
         ...(exceptUserId === null ? {} : { userId: { not: exceptUserId } }),
-        role: { permissions: { some: { name: { in: [...permissions] } } } }
+        // Who holds one of the permissions AND may read orders: the notice carries a link to the order
+        AND: [
+          { role: { permissions: { some: { name: { in: [...permissions] } } } } },
+          { role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }
+        ]
       },
       select: { userId: true }
     })

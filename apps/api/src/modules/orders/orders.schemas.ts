@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  lowercasedUuidSchema,
   OrderConfirmationChannel,
   OrderLimits,
   OrderStatus,
@@ -11,10 +12,7 @@ import {
   PriceApprovalStatus
 } from '@platform/core/domain'
 
-// A uuid is valid in either case and the rows hold it in lower case
-const uuid = z.uuid().transform(value => value.toLowerCase())
-
-export const idSchema = uuid
+export const idSchema = lowercasedUuidSchema
 
 // Postgres text cannot hold a NUL character: a 400 here and not a 500 there
 const freeText = (maxLength: number) =>
@@ -66,7 +64,7 @@ export const listOrdersQuerySchema = z
     status: z.enum(OrderStatus).optional(),
     paymentStatus: z.enum(PaymentStatus).optional(),
     priceApprovalStatus: z.enum(PriceApprovalStatus).optional(),
-    customerId: uuid.optional(),
+    customerId: lowercasedUuidSchema.optional(),
     ...orderScheduleFilterShape
   })
   .refine(orderScheduleFiltersAreConsistent, {
