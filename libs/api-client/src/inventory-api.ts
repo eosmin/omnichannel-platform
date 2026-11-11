@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type InventoryMovementType, PaginationLimits } from '@platform/core/domain'
+import {
+  type InventoryLevelSort,
+  type InventoryMovementType,
+  PaginationLimits
+} from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 
@@ -29,6 +33,21 @@ const levelSchema = z.object({
   updatedAt: z.string()
 })
 export type StockLevelView = z.output<typeof levelSchema>
+
+const levelPageSchema = z.object({
+  data: z.array(levelSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type StockLevelPageView = z.output<typeof levelPageSchema>
+
+// What the stock screen of the store asks of GET /inventory/levels: every key is a query key of the api
+export interface StockLevelFilter {
+  q?: string
+  lowStock?: boolean
+  warehouseId?: string
+  sort?: InventoryLevelSort
+}
 
 const productInventorySchema = z.object({
   productId: z.string(),
@@ -131,6 +150,28 @@ export function fetchProductInventory(
 ): Promise<ProductInventoryView> {
   return client.request(ApiRoutes.products.inventory(productId), {
     schema: productInventorySchema,
+    storeId,
+    signal
+  })
+}
+
+// Every level of the store, a page at a time (the stock screen). The cursor belongs to the sort that made it.
+export function fetchStockLevels(
+  client: ApiClient,
+  storeId: string,
+  params: StockLevelFilter & { cursor?: string | null; limit?: number },
+  signal?: AbortSignal
+): Promise<StockLevelPageView> {
+  const search = query({
+    q: params.q === undefined || params.q.trim() === '' ? undefined : params.q.trim(),
+    lowStock: params.lowStock === undefined ? undefined : String(params.lowStock),
+    warehouseId: params.warehouseId,
+    sort: params.sort,
+    cursor: params.cursor ?? undefined,
+    limit: params.limit === undefined ? undefined : String(params.limit)
+  })
+  return client.request(`${ApiRoutes.inventory.levels}${search}`, {
+    schema: levelPageSchema,
     storeId,
     signal
   })

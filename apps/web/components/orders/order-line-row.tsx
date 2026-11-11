@@ -10,22 +10,13 @@ import {
   type FormField,
   parseQuantity,
   plannedAllocations,
-  type StockRules
+  shownPriceCents
 } from '../../lib/orders/order-form'
+import type { StockOfLine } from '../../lib/orders/stock-of-line'
 import { centsToInput, formatCents, parseCents } from '../../lib/products/money'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
-
-export interface StockOfLine {
-  // Null while it loads or when the member may not read the inventory
-  rules: StockRules | null
-  isLoading: boolean
-  isFailed: boolean
-  names: ReadonlyMap<string, string>
-  // The member may read the stock and the settings, so the choice can be checked here as the server checks it
-  canChoose: boolean
-}
 
 // One item of the order: its quantity, its price (the catalog's, or another one for who may override it), and where its
 // units come from. The server decides every one of these again.
@@ -34,6 +25,7 @@ export function OrderLineRow({
   canOverridePrice,
   stock,
   problem,
+  locked = false,
   onChange,
   onRemove
 }: {
@@ -41,6 +33,8 @@ export function OrderLineRow({
   canOverridePrice: boolean
   stock: StockOfLine
   problem: FormField | null
+  // The order does not accept a change of its items in this status: the row is drawn, nothing in it can be changed
+  locked?: boolean
   onChange: (next: DraftLine) => void
   onRemove: () => void
 }): ReactElement {
@@ -77,15 +71,17 @@ export function OrderLineRow({
             <span className="text-muted-foreground text-xs">{line.sku}</span>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={tLines('remove', { name })}
-          onClick={onRemove}
-        >
-          <Trash2 aria-hidden />
-        </Button>
+        {locked ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={tLines('remove', { name })}
+            onClick={onRemove}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        )}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
@@ -94,6 +90,7 @@ export function OrderLineRow({
             id={`${id}-quantity`}
             inputMode="numeric"
             autoComplete="off"
+            disabled={locked}
             value={line.quantity}
             // The units changed: a choice of warehouses made for the old quantity no longer adds up
             onChange={event =>
@@ -119,7 +116,7 @@ export function OrderLineRow({
                 id={`${id}-price`}
                 readOnly
                 aria-describedby={`${id}-price-help`}
-                value={formatCents(format, line.catalogPriceCents)}
+                value={formatCents(format, shownPriceCents(line))}
               />
               <p id={`${id}-price-help`} className="text-muted-foreground text-xs">
                 {tLines('priceLocked')}
@@ -146,7 +143,7 @@ export function OrderLineRow({
         </div>
       ) : null}
 
-      {stock.isLoading ? (
+      {locked ? null : stock.isLoading ? (
         <p role="status" className="text-muted-foreground text-xs">
           {tStock('loading')}
         </p>
@@ -249,6 +246,11 @@ export function OrderLineRow({
             </div>
           )}
         </div>
+      ) : null}
+      {problem === 'quantity' || problem === 'price' || problem === 'priceReason' ? (
+        <p role="alert" className="text-destructive text-sm">
+          {t(`errors.${problem}`)}
+        </p>
       ) : null}
       {problem === 'allocations' ? (
         <p role="alert" className="text-destructive text-sm">

@@ -66,6 +66,25 @@ export const InventoryLimits = {
   RECONCILE_STORES_PAGE_SIZE: 200
 } as const
 
+// How the stock screen of a store orders its levels: the ones touched last first (the default, what the cursor of
+// the api has always followed), or by the name of the product
+export const InventoryLevelSorts = {
+  RECENT: 'recent',
+  NAME: 'name'
+} as const
+export type InventoryLevelSort = (typeof InventoryLevelSorts)[keyof typeof InventoryLevelSorts]
+
+// The keys of the query of GET /inventory/levels, which the address of the stock screen repeats as it is
+export const InventoryLevelFilters = {
+  Q: 'q',
+  LOW_STOCK: 'lowStock',
+  WAREHOUSE_ID: 'warehouseId',
+  SORT: 'sort'
+} as const
+
+// The text a stock search may hold (the name or SKU of a product or a variant)
+export const INVENTORY_SEARCH_MAX_LENGTH = 100
+
 // The warehouse the owner bootstrap makes for an organization (and the dev fixtures use): a place for the stock of
 // the first store. They are data: the owner renames them in the warehouses page.
 export const DefaultWarehouse = {

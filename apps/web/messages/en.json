@@ -732,7 +732,8 @@
     "inventory": {
       "low": {
         "title": "Low stock",
-        "body": "A product is running out of stock."
+        "body": "A product is running out of stock.",
+        "bodyWithProduct": "{product} is running low: {available, plural, one {# unit} other {# units}} available, with an alert at {threshold}."
       }
     },
     "invitation": {
@@ -1311,12 +1312,26 @@
         "discount": "Write a discount like 2.50.",
         "discountReason": "A discount needs its reason.",
         "phones": "Write at least one phone, with digits only and not repeated.",
-        "scheduledDate": "Choose a valid day."
+        "scheduledDate": "Choose a valid day.",
+        "nothing": "Nothing changed."
       },
       "created": "Order {number} created.",
       "createdAwaitingApproval": "Order {number} created. Its price waits for an approval.",
       "confirmationSkipped": "It was not confirmed: the price waits for an approval.",
       "open": "Open the order"
+    },
+    "edit": {
+      "title": "Edit order",
+      "description": "Change the items, the shipping fee and the discount. The server calculates the totals again.",
+      "open": "Edit order",
+      "submit": "Save changes",
+      "cancel": "Cancel",
+      "failed": "The order could not be loaded.",
+      "locked": "This order no longer accepts changes to its items, its shipping fee or its discount.",
+      "nothing": "Nothing changed.",
+      "saved": "The order was updated.",
+      "savedAwaitingApproval": "The order was updated. Its price waits for an approval.",
+      "changedMeanwhile": "The order changed while you were editing. Only what you changed is saved."
     }
   },
   "org": {
@@ -1565,7 +1580,8 @@
       "products": "Products",
       "exports": "Exports",
       "settings": "Settings",
-      "orders": "Orders"
+      "orders": "Orders",
+      "inventory": "Inventory"
     },
     "notifications": {
       "open": "Notifications",
@@ -3551,6 +3567,44 @@
       "shortLine": "the difference takes out {requested}, the warehouse holds {onHand}",
       "shortLineUnknown": "the difference takes out {requested}",
       "recount": "Recount these lines"
+    }
+  },
+  "stock": {
+    "title": "Inventory",
+    "noAccess": "You cannot see the stock of this store.",
+    "searchLabel": "Search the stock",
+    "searchPlaceholder": "Search by product name or SKU",
+    "listLabel": "Stock by warehouse",
+    "filter": {
+      "warehouse": "Warehouse",
+      "allWarehouses": "All warehouses",
+      "sort": "Order",
+      "sortName": "By product name",
+      "sortRecent": "Changed most recently",
+      "lowStock": "Only low stock",
+      "clear": "Clear filters"
+    },
+    "empty": "No stock has been recorded in this store yet. Receive stock from the Stock tab of a product.",
+    "emptyLow": "No product is at its alert threshold.",
+    "noMatches": "No stock matches these filters.",
+    "failed": "The stock could not be loaded.",
+    "refreshFailed": "The stock could not be refreshed. What is shown may be out of date.",
+    "loadMore": "Show more",
+    "card": {
+      "threshold": "Alert threshold",
+      "thresholdFor": "Change the alert threshold of {product}",
+      "thresholdAt": "Alert at {count, plural, one {# unit} other {# units}}",
+      "noThreshold": "No alert threshold"
+    },
+    "threshold": {
+      "title": "Alert threshold of {product}",
+      "description": "The store is warned when the units available of this product, in all its warehouses, fall to this number or below.",
+      "label": "Warn at",
+      "help": "A whole number. Leave it empty for no alert.",
+      "invalid": "Write a whole number from 0 up, or leave it empty.",
+      "submit": "Save",
+      "cancel": "Cancel",
+      "saved": "Alert threshold saved"
     }
   }
 }

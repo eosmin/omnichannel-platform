@@ -263,7 +263,7 @@ export class NotificationsEventsListener {
         params: { ...(name === null ? {} : { product: name }), available, threshold },
         resourceType: ProductResourceTypes.PRODUCT,
         resourceId: productId,
-        actionPath: AppPaths.store.products(storeId),
+        actionPath: AppPaths.store.inventoryLow(storeId),
         requiredPermission: Permissions.INVENTORY_VIEW
       })
     } catch (error) {

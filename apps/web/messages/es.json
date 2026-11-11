@@ -732,7 +732,8 @@
     "inventory": {
       "low": {
         "title": "Existencias bajas",
-        "body": "A un producto se le están acabando las existencias."
+        "body": "A un producto se le están acabando las existencias.",
+        "bodyWithProduct": "A {product} se le están acabando las existencias: quedan {available, plural, one {# unidad disponible} other {# unidades disponibles}}, con alerta en {threshold}."
       }
     },
     "invitation": {
@@ -1311,12 +1312,26 @@
         "discount": "Escribe un descuento como 2.50.",
         "discountReason": "Un descuento necesita su motivo.",
         "phones": "Escribe al menos un teléfono, solo con dígitos y sin repetir.",
-        "scheduledDate": "Elige un día válido."
+        "scheduledDate": "Elige un día válido.",
+        "nothing": "No cambió nada."
       },
       "created": "Pedido {number} creado.",
       "createdAwaitingApproval": "Pedido {number} creado. Su precio espera una aprobación.",
       "confirmationSkipped": "No se confirmó: el precio espera una aprobación.",
       "open": "Abrir el pedido"
+    },
+    "edit": {
+      "title": "Editar pedido",
+      "description": "Cambia los artículos, el costo de envío y el descuento. El servidor vuelve a calcular los totales.",
+      "open": "Editar pedido",
+      "submit": "Guardar cambios",
+      "cancel": "Cancelar",
+      "failed": "No se pudo cargar el pedido.",
+      "locked": "Este pedido ya no acepta cambios en sus artículos, su costo de envío ni su descuento.",
+      "nothing": "No cambió nada.",
+      "saved": "El pedido se actualizó.",
+      "savedAwaitingApproval": "El pedido se actualizó. Su precio espera una aprobación.",
+      "changedMeanwhile": "El pedido cambió mientras lo editabas. Solo se guarda lo que tú cambiaste."
     }
   },
   "org": {
@@ -1565,7 +1580,8 @@
       "products": "Productos",
       "exports": "Exportaciones",
       "settings": "Ajustes",
-      "orders": "Pedidos"
+      "orders": "Pedidos",
+      "inventory": "Inventario"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -3551,6 +3567,44 @@
       "shortLine": "la diferencia saca {requested}, la bodega tiene {onHand}",
       "shortLineUnknown": "la diferencia saca {requested}",
       "recount": "Volver a contar estas líneas"
+    }
+  },
+  "stock": {
+    "title": "Inventario",
+    "noAccess": "No puedes ver las existencias de esta tienda.",
+    "searchLabel": "Buscar en las existencias",
+    "searchPlaceholder": "Buscar por nombre o SKU del producto",
+    "listLabel": "Existencias por bodega",
+    "filter": {
+      "warehouse": "Bodega",
+      "allWarehouses": "Todas las bodegas",
+      "sort": "Orden",
+      "sortName": "Por nombre del producto",
+      "sortRecent": "Cambiados más recientemente",
+      "lowStock": "Solo existencias bajas",
+      "clear": "Quitar filtros"
+    },
+    "empty": "Todavía no hay existencias registradas en esta tienda. Recíbelas desde la pestaña Existencias de un producto.",
+    "emptyLow": "Ningún producto está en su umbral de alerta.",
+    "noMatches": "Ninguna existencia coincide con estos filtros.",
+    "failed": "No se pudieron cargar las existencias.",
+    "refreshFailed": "No se pudieron actualizar las existencias. Lo que se ve puede estar desactualizado.",
+    "loadMore": "Mostrar más",
+    "card": {
+      "threshold": "Umbral de alerta",
+      "thresholdFor": "Cambiar el umbral de alerta de {product}",
+      "thresholdAt": "Alerta en {count, plural, one {# unidad} other {# unidades}}",
+      "noThreshold": "Sin umbral de alerta"
+    },
+    "threshold": {
+      "title": "Umbral de alerta de {product}",
+      "description": "La tienda recibe un aviso cuando las unidades disponibles de este producto, en todas sus bodegas, bajan a este número o menos.",
+      "label": "Avisar en",
+      "help": "Un número entero. Déjalo vacío para no recibir alerta.",
+      "invalid": "Escribe un número entero desde 0, o déjalo vacío.",
+      "submit": "Guardar",
+      "cancel": "Cancelar",
+      "saved": "Umbral de alerta guardado"
     }
   }
 }

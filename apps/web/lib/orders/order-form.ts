@@ -25,6 +25,9 @@ export interface DraftLine {
   variantName: string | null
   sku: string | null
   catalogPriceCents: number
+  // The price an existing line was sold at (an override included): what a member who cannot change prices is shown. Null for a
+  // line that is not made yet, which is shown at the catalog price.
+  soldPriceCents?: number | null
   // A text field: "" is not filled in yet
   quantity: string
   // The price the agent typed, or null to sell at the catalog price
@@ -62,6 +65,8 @@ export type FormField =
   | 'discountReason'
   | 'phones'
   | 'scheduledDate'
+  // An edit that changes nothing
+  | 'nothing'
 
 export interface AllowedBy {
   // ORDERS_OVERRIDE_PRICE: the price of a line may be written
@@ -134,6 +139,13 @@ export function shippingAddressOf(address: {
     ...(address.postalCode === null ? {} : { postalCode: address.postalCode }),
     country: address.country
   }
+}
+
+// The price a row shows when the member cannot write it, and the one the estimate multiplies
+export function shownPriceCents(
+  line: Pick<DraftLine, 'catalogPriceCents' | 'soldPriceCents'>
+): number {
+  return line.soldPriceCents ?? line.catalogPriceCents
 }
 
 export function lineKey(productId: string, variantId: string | null): string {
@@ -242,6 +254,24 @@ export function stockRulesOf(input: {
     })),
     allowSplitFulfillment: input.allowSplitFulfillment,
     allowNegativeStock: input.allowNegativeStock
+  }
+}
+
+// The units an order already holds count as available again for its own edit (the edit gives them back before it plans)
+export function withReleased(
+  rules: StockRules,
+  held: readonly { warehouseId: string; quantity: number }[]
+): StockRules {
+  return {
+    ...rules,
+    warehouses: rules.warehouses.map(row => ({
+      ...row,
+      available:
+        row.available +
+        held
+          .filter(unit => unit.warehouseId === row.warehouseId)
+          .reduce((sum, unit) => sum + unit.quantity, 0)
+    }))
   }
 }
 

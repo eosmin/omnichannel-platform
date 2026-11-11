@@ -1,7 +1,9 @@
 import { z } from 'zod'
 
 import {
+  INVENTORY_SEARCH_MAX_LENGTH,
   InventoryAdjustmentReason,
+  InventoryLevelSorts,
   InventoryLimits,
   InventoryMovementType,
   PaginationLimits,
@@ -9,7 +11,7 @@ import {
   singleLineText
 } from '@platform/core/domain'
 
-import { cursorSchema } from '../customers/list-cursor'
+import { cursorSchema, type ListCursor } from '../customers/list-cursor'
 
 // Where the next page of the ledger starts: the `seq` of the last movement it returned (opaque to clients)
 export const seqCursorSchema = z.string().transform((text, ctx): bigint => {
@@ -36,15 +38,72 @@ const limit = z.coerce
   .default(PaginationLimits.DEFAULT)
 const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 
-// Stock is read for a product, for a warehouse, and for the items that are low (TDD_16 §6)
-export const listLevelsQuerySchema = z.strictObject({
-  cursor: cursorSchema.optional(),
-  limit,
-  warehouseId: idSchema.optional(),
-  productId: idSchema.optional(),
-  variantId: idSchema.optional(),
-  lowStock: flag.optional()
+// Where the next page of the levels sorted by product name starts: the name and the id of the last level it returned
+// (opaque to clients). It is only valid for that sort, as the (updatedAt, id) cursor is only valid for the other.
+// A cursor is a name and an id in base64: far under this
+const CURSOR_MAX_LENGTH = 2048
+
+export interface NameCursor {
+  name: string
+  id: string
+}
+
+// An object, not the array of the other cursor: a cursor of one sort is refused by the other, never read as its own
+export const encodeNameCursor = (row: NameCursor): string =>
+  Buffer.from(JSON.stringify({ name: row.name, id: row.id })).toString('base64url')
+
+const nameCursorParts = z.strictObject({
+  name: z.string(),
+  id: z.uuid()
 })
+
+function parseNameCursor(text: string): NameCursor | null {
+  try {
+    const parts = nameCursorParts.safeParse(
+      JSON.parse(Buffer.from(text, 'base64url').toString('utf8'))
+    )
+    if (parts.success) return parts.data
+  } catch {
+    // Not JSON: the caller says so
+  }
+  return null
+}
+
+export type LevelCursor =
+  | { sort: typeof InventoryLevelSorts.RECENT; position: ListCursor }
+  | { sort: typeof InventoryLevelSorts.NAME; position: NameCursor }
+
+// Stock is read for a product, for a warehouse, for the items that are low, or by a text (TDD_16 §6). The levels come
+// newest-touched first, or by product name: the cursor belongs to the sort that made it.
+export const listLevelsQuerySchema = z
+  .strictObject({
+    cursor: z.string().max(CURSOR_MAX_LENGTH).optional(),
+    limit,
+    warehouseId: idSchema.optional(),
+    productId: idSchema.optional(),
+    variantId: idSchema.optional(),
+    lowStock: flag.optional(),
+    // The name or SKU of the product, or of one of its variants
+    q: z.string().trim().min(1).max(INVENTORY_SEARCH_MAX_LENGTH).optional(),
+    sort: z.enum(Object.values(InventoryLevelSorts)).default(InventoryLevelSorts.RECENT)
+  })
+  .transform(({ cursor, ...rest }, ctx) => {
+    let position: LevelCursor | undefined
+    if (cursor !== undefined) {
+      if (rest.sort === InventoryLevelSorts.NAME) {
+        const parsed = parseNameCursor(cursor)
+        if (parsed !== null) position = { sort: InventoryLevelSorts.NAME, position: parsed }
+      } else {
+        const parsed = cursorSchema.safeParse(cursor)
+        if (parsed.success) position = { sort: InventoryLevelSorts.RECENT, position: parsed.data }
+      }
+      if (position === undefined) {
+        ctx.addIssue({ code: 'custom', path: ['cursor'], message: 'not a cursor of this api' })
+        return z.NEVER
+      }
+    }
+    return { ...rest, cursor: position }
+  })
 
 // The stock column of the catalog asks for the products of one page at once
 export const stockSummaryQuerySchema = z.strictObject({

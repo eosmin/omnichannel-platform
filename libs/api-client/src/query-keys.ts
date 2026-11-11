@@ -99,6 +99,9 @@ export const QueryKeys = {
     root: ['inventory'] as const,
     all: (storeId: string) => ['inventory', storeId] as const,
     levels: (storeId: string) => ['inventory', storeId, 'levels'] as const,
+    // The levels of the store screen, by the filter and the sort it holds
+    levelList: (storeId: string, filter: object) =>
+      ['inventory', storeId, 'levels', filter] as const,
     movements: (storeId: string) => ['inventory', storeId, 'movements'] as const,
     // The stock column of the catalog: the products of a page, by their ids
     summary: (storeId: string, productIds: readonly string[]) =>

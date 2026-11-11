@@ -40,6 +40,11 @@ export function StoreNav(): ReactElement {
       isShown: can(ClientPermissions.ORDERS_VIEW)
     },
     {
+      href: AppPaths.store.inventory(storeId),
+      label: t('inventory'),
+      isShown: can(ClientPermissions.INVENTORY_VIEW)
+    },
+    {
       href: AppPaths.store.exports(storeId),
       label: t('exports'),
       isShown: mayOpenExports(can)
