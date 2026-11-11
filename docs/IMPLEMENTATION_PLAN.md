@@ -737,10 +737,10 @@ shortage and every step leaves the right movements; cancelling an in-transit tra
 the stock to the source; a line for a store the caller does not belong to is not visible.
 
 ### Step 4.6 — Physical counts
-- [ ] `StockCount` and `StockCountLine` with create, start (snapshot), count, submit, apply and cancel (`TDD_16 §4.6`)
-- [ ] Apply writes the variance, never "counted minus current"
-- [ ] Isolation cases for `StockCount` and its lines
-- [ ] **Show the notification switches of this step (QA fix PR Q7):** this step raises `count.awaiting_apply` (`NotificationService.notify`, with its `messageKey` texts in `es` and `en`); the preferences page hides the switch of a type nothing raises, so remove `NotificationTypes.COUNT_AWAITING_APPLY` from `NotificationTypesWithoutEmitter` (`libs/core/domain/notifications/notification-constants.ts`) in the same PR, and add the case to the unit spec of that constant
+- [x] `StockCount` and `StockCountLine` with create, start (snapshot), count, submit, apply and cancel (`TDD_16 §4.6`)
+- [x] Apply writes the variance, never "counted minus current"
+- [x] Isolation cases for `StockCount` and its lines
+- [x] **Show the notification switches of this step (QA fix PR Q7):** this step raises `count.awaiting_apply` (`NotificationService.notify`, with its `messageKey` texts in `es` and `en`); the preferences page hides the switch of a type nothing raises, so remove `NotificationTypes.COUNT_AWAITING_APPLY` from `NotificationTypesWithoutEmitter` (`libs/core/domain/notifications/notification-constants.ts`) in the same PR, and add the case to the unit spec of that constant
 
 **TDD:** `TDD_16 §4.6`, `§6`, `§8`
 **Done when:** a count applied after sales happened during counting adjusts only by the
@@ -754,6 +754,7 @@ counted variance and leaves the sales intact.
   - [ ] **PR B, counts:** after Step 4.6 is merged
   - [ ] **Debts of PR A1 (rule 12), each with its owner:** (a) the lighthouse case and ceiling for `/org/warehouses` are not added (not measured on this machine; the page chunk is small and the settings shell weighs the rest): **Step 7.7** measures it with the other pages; (b) the e2e does not cover the "still has stock" refusal, which needs stock in the e2e database: the mapping of `metadata.reason` to words is unit-tested (`warehouse-form.spec.ts`) and the refusal itself by `tests/api`; **PR A2** adds the stock fixture with the transfer e2e and covers it there; (c) a person who holds `inventory:view` in one store and `org:manage_stores` in another sees the organization pages of the store that opens the most (the navigation lists what that store allows): **Step 7.7** decides whether the shell should merge the permissions of every store; (d) who lacks `org:manage_stores` can add to a warehouse only the stores they belong to (the api names every linked store in the list, so none of the existing links is lost when they save): accepted, no api route lists the stores of the organization for them; and the picker offers every store they belong to, so a person who belongs to stores of two organizations can pick one the api refuses (a generic error): the web does not know the organization of a membership, **Step 7.7** adds `organizationId` to the memberships of the session if multi-organization accounts become real (the MVP serves one owner)
 - [ ] Mobile-first receive and count screens
+- [ ] **Counts API limits left by Step 4.6 (PR #406, rule 12), to be solved or shown by these screens:** (a) a count line only comes from an existing `InventoryLevel`: an item found on the shelf that has no level in the warehouse cannot be added to the sheet (4.7 adds the way to receive it first, with an adjustment); (b) the lines are paged and ordered by id, not by product name (4.7 asks for the order the screen needs); (c) when the engine refuses lines for a reason that is not the stock (a product no longer tracked, the warehouse switched off or a store unlinked since the start) the apply answers `INVENTORY_COUNT_LINES_REFUSED` with every line and its code and the sheet can then only be cancelled and made again; (d) applying needs `inventory:apply_counts` in EVERY store that has a variance line, because the lines of other stores are invisible to the caller: an approver of one store cannot close a mixed count (4.7 shows who may); (e) `count.awaiting_apply` reaches each approver once, in one store (the store of the submitter when they belong to it, otherwise the first one they hold the permission in), and also the submitter when they hold the apply permission; (f) a count holds at most 2 000 lines (`CountLimits.MAX_LINES`, measured: 300 variances apply in a few seconds inside the 15 s transaction of the api): a bigger warehouse is counted by store; an apply in batches that are safe to retry would lift the limit (Step 7.7, hardening)
 
 **TDD:** `TDD_16 §7`, `TDD_09 §11`, `§16`
 **Done when:** the owner can run a full cycle from the UI on a phone: adjust stock, dispatch and
@@ -1564,7 +1565,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.3 | Orders | in progress | PR A #401 (schema and pure rules), PR B (service and routes) | |
 | 4.4 | Order UI | todo | | |
 | 4.5 | Transfers between warehouses | done | PR #404 (transfers api: schema, service, routes, notification) | 2026-11-11 |
-| 4.6 | Physical counts | todo | | |
+| 4.6 | Physical counts | in review | PR #406 (API only; the screens are Step 4.7) | |
 | 4.7 | Inventory UI | in progress | PR A1 (warehouses screen and api-client); A2 (transfers) and B (counts) follow | |
 | 4.8 | Carrier SDK, shipment engine and the `local` carrier | todo | | |
 | 4.9 | Order confirmation and customer messages | todo | | |

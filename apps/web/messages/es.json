@@ -490,6 +490,8 @@
     "NETWORK_UNAVAILABLE": "Sin conexión. Lo que escribiste sigue aquí: inténtalo de nuevo cuando vuelva",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Indica por qué ajustas las existencias",
     "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "El conteo no puede pasar a ese estado",
+    "INVENTORY_COUNT_STORES_NOT_ALLOWED": "No puedes aplicar este conteo: cambia existencias de tiendas donde no puedes aplicar conteos",
+    "INVENTORY_COUNT_LINES_REFUSED": "Algunas líneas del conteo no se pueden aplicar: revísalas o cancela el conteo",
     "INVENTORY_TRANSFER_EMPTY": "El traslado no tiene productos. Agrega al menos uno antes de enviarlo.",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "El traslado no puede pasar a ese estado",
     "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Parte de lo que no llegó es de tiendas a las que no perteneces. Pide a alguien que las integre que cierre el traslado.",
@@ -667,7 +669,7 @@
     "count": {
       "awaiting_apply": {
         "title": "Conteo de inventario en espera",
-        "body": "Un conteo de inventario está completo y espera aplicarse."
+        "body": "El conteo de inventario {number} está completo y espera aplicarse."
       }
     },
     "dsr": {
