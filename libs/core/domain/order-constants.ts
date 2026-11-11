@@ -95,6 +95,8 @@ export const OrderLimits = {
   PRICE_REASON_MAX_LENGTH: 500,
   CANCELLATION_REASON_MAX_LENGTH: 500,
   PAYMENT_REFERENCE_MAX_LENGTH: 100,
+  // The text of the search box of the orders list: an order number or a piece of the name, e-mail or phone of the customer
+  SEARCH_MAX_LENGTH: 100,
   TRACKING_NUMBER_MAX_LENGTH: 100
 } as const
 
@@ -120,6 +122,20 @@ export const OrderScheduledDeliveryShortcuts = {
 } as const
 export type OrderScheduledDeliveryShortcut =
   (typeof OrderScheduledDeliveryShortcuts)[keyof typeof OrderScheduledDeliveryShortcuts]
+
+// GET /orders and GET /orders/export, the day the order was made (inclusive days on the clock of the store), and the
+// text search. Together with `OrderScheduleFilters` these are the filters of the list, and the names are the keys of
+// the query and of the URL of the page.
+export const OrderListFilters = {
+  Q: 'q',
+  STATUS: 'status',
+  PAYMENT_STATUS: 'paymentStatus',
+  PRICE_APPROVAL_STATUS: 'priceApprovalStatus',
+  CUSTOMER_ID: 'customerId',
+  CREATED_FROM: 'createdFrom',
+  CREATED_TO: 'createdTo',
+  SORT: 'sort'
+} as const
 
 // The orders of GET /orders come newest first unless the caller asks for the days of delivery, soonest first
 export const OrderSorts = {

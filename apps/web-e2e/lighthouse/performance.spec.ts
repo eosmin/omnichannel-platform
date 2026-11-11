@@ -126,6 +126,27 @@ test.describe('performance budgets', () => {
       ScriptCeilingsKb.PRODUCTS
     )
   })
+  // The orders list: the table, the filters and the selection; the detail and the drawers (Step 4.4 PR A2 and B) are
+  // pages and chunks of their own, so the page that is measured is the list
+  test('the orders page', async () => {
+    const storeId = await storeIdNamed(FIRST_STORE)
+    async function signInAfresh(): Promise<void> {
+      await context.clearCookies()
+      await context.addCookies([englishLocaleCookie])
+      await reachServicesFromOwnAddress(context)
+      try {
+        await signIn(page, 'admin@test.com')
+      } finally {
+        await context.unrouteAll()
+      }
+      await page.goto('about:blank')
+    }
+    expectWithinBudgets(
+      'orders',
+      await measure(`${WEB_URL}${AppPaths.store.orders(storeId)}`, debuggingPort, signInAfresh),
+      ScriptCeilingsKb.ORDERS
+    )
+  })
   // A page of Settings: a route of its own, so its form is not in the bundle of the inbox
   test('the inventory settings page', async () => {
     const storeId = await storeIdNamed(FIRST_STORE)

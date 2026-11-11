@@ -22,6 +22,8 @@ export const ORDER_LIST_SELECT = {
   scheduledDeliveryDate: true,
   createdAt: true,
   updatedAt: true,
+  // Who made the order, for the column of the list: the name only (the contact data is in the detail)
+  customer: { select: { id: true, name: true } },
   // The "price modified" badge of the list: one row is enough to know
   items: { where: { originalUnitPriceCents: { not: null } }, select: { id: true }, take: 1 }
 } as const
@@ -109,6 +111,7 @@ interface ListRow {
   scheduledDeliveryDate: Date | null
   createdAt: Date
   updatedAt: Date
+  customer: { id: string; name: string | null }
   items: { id: string }[]
 }
 

@@ -4,6 +4,7 @@ import { BulkLimits } from '@platform/core/domain'
 import {
   conversationsExportFiltersSchema,
   customersExportFiltersSchema,
+  ordersExportFiltersSchema,
   viewPermissionsOf
 } from './export-filters'
 
@@ -59,5 +60,24 @@ describe('the selection of a conversations export', () => {
     expect(parse(Array.from({ length: BulkLimits.MAX_ITEMS + 1 }, () => crypto.randomUUID()))).toBe(
       false
     )
+  })
+
+  it('keeps an orders row with its resolved days and refuses one that names a store or an unresolved shortcut', () => {
+    expect(
+      ordersExportFiltersSchema.safeParse({
+        q: 'ana',
+        status: 'SHIPPED',
+        createdFrom: '2026-11-10T06:00:00.000Z',
+        createdBefore: '2026-11-11T06:00:00.000Z',
+        scheduledDeliveryFrom: '2026-11-12'
+      }).success
+    ).toBe(true)
+    expect(ordersExportFiltersSchema.safeParse({}).success).toBe(true)
+    expect(ordersExportFiltersSchema.safeParse({ storeId: 'x' }).success).toBe(false)
+    expect(ordersExportFiltersSchema.safeParse({ scheduledDeliveryOn: 'today' }).success).toBe(
+      false
+    )
+    expect(ordersExportFiltersSchema.safeParse({ status: 'NOPE' }).success).toBe(false)
+    expect(ordersExportFiltersSchema.safeParse({ createdFrom: '2026-11-10' }).success).toBe(false)
   })
 })

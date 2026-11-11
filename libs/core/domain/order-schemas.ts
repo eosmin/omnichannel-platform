@@ -4,6 +4,7 @@ import { CustomerLimits, DEFAULT_PHONE_REGION } from './customer-constants'
 import {
   ORDER_MAX_AMOUNT_CENTS,
   OrderLimits,
+  OrderListFilters,
   OrderScheduleFilters,
   OrderScheduledDeliveryShortcuts,
   OrderSorts,
@@ -14,6 +15,7 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  PriceApprovalStatus,
   type OrderEditableField
 } from './status-enums'
 import { singleLineText } from './validation'
@@ -269,3 +271,48 @@ export function orderScheduleFiltersAreConsistent(
   // 'YYYY-MM-DD' strings sort as days do
   return from === undefined || to === undefined || from <= to
 }
+
+// The filters of the orders list that the export takes too (everything but the page and the sort): the text search, the
+// state, the payment, the price approval, the customer, and the day the order was made. Exported as a shape for the same
+// reason as the schedule one. The sort is the list's alone (`orderSortShape`).
+// A day of a filter of the list: a year Postgres can hold and `nextCalendarDay` can add one to (the year 0 or 9999 is a 500,
+// not a 400)
+const FIRST_FILTER_DAY = '1970-01-01'
+const LAST_FILTER_DAY = '2999-12-31'
+const filterDaySchema = z.iso
+  .date()
+  .refine(day => day >= FIRST_FILTER_DAY && day <= LAST_FILTER_DAY, {
+    message: 'the day is out of range'
+  })
+
+export const orderListFilterShape = {
+  [OrderListFilters.Q]: freeText(OrderLimits.SEARCH_MAX_LENGTH).min(1).optional(),
+  [OrderListFilters.STATUS]: z.enum(OrderStatus).optional(),
+  [OrderListFilters.PAYMENT_STATUS]: z.enum(PaymentStatus).optional(),
+  [OrderListFilters.PRICE_APPROVAL_STATUS]: z.enum(PriceApprovalStatus).optional(),
+  [OrderListFilters.CUSTOMER_ID]: id.optional(),
+  [OrderListFilters.CREATED_FROM]: filterDaySchema.optional(),
+  [OrderListFilters.CREATED_TO]: filterDaySchema.optional(),
+  [OrderScheduleFilters.FROM]: filterDaySchema.optional(),
+  [OrderScheduleFilters.TO]: filterDaySchema.optional(),
+  [OrderScheduleFilters.ON]: z.enum(OrderScheduledDeliveryShortcuts).optional()
+}
+
+// Both ranges: the first day not after the last, and a shortcut never next to days of the schedule
+export function orderListFiltersAreConsistent(filters: {
+  scheduledDeliveryFrom?: string
+  scheduledDeliveryTo?: string
+  scheduledDeliveryOn?: string
+  createdFrom?: string
+  createdTo?: string
+}): boolean {
+  const from = filters[OrderListFilters.CREATED_FROM]
+  const to = filters[OrderListFilters.CREATED_TO]
+  return (
+    orderScheduleFiltersAreConsistent(filters) &&
+    (from === undefined || to === undefined || from <= to)
+  )
+}
+
+// The sort of the list alone: the export has no order to keep
+export const orderSortShape = { [OrderListFilters.SORT]: z.enum(OrderSorts).optional() }

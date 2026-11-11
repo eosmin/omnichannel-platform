@@ -1083,3 +1083,97 @@ export function inventorySettingsOf(storeId: string): Promise<{
     })
   )
 }
+
+// A person who may use the inbox and nothing of the orders: the viewer role holds orders:view, so the case makes a
+// role without it. Returns what removes it again.
+export async function addUserWithoutOrders(
+  storeId: string,
+  email: string
+): Promise<() => Promise<void>> {
+  const { roleId, userId } = await withOwner(async owner => {
+    const store = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const role = await createRole(owner, {
+      storeId,
+      name: `E2E no orders ${randomUUID().slice(0, 8)}`,
+      permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW]
+    })
+    const user = await ensureUser(owner, email, 'Person Without Orders')
+    await ensureMembership(owner, {
+      userId: user.id,
+      organizationId: store.organizationId,
+      storeId,
+      roleId: role.id
+    })
+    return { roleId: role.id, userId: user.id }
+  })
+  return () =>
+    withOwner(async owner => {
+      await owner.membership.deleteMany({ where: { userId } })
+      await owner.user.deleteMany({ where: { id: userId } })
+      await owner.role.deleteMany({ where: { id: roleId } })
+    })
+}
+
+export interface SeededOrder {
+  id: string
+  orderNumber: string
+}
+
+// Orders of a customer made straight in the table (the order screens that make them are Step 4.4 PR B): each takes the
+// number, the state, the payment and the day of delivery it is given. Returns the customer, the orders (the newest last)
+// and what removes them again.
+export async function addOrdersTo(
+  storeId: string,
+  customerName: string,
+  orders: readonly {
+    status?: string
+    paymentStatus?: string
+    totalCents?: number
+    scheduledDeliveryDate?: string
+  }[]
+): Promise<{ customerId: string; orders: SeededOrder[]; remove: () => Promise<void> }> {
+  const tag = randomUUID().slice(0, 6).toUpperCase()
+  const made = await withOwner(async owner => {
+    const customer = await createCustomer(owner, { storeId, name: customerName })
+    const creator = await ensureUser(owner, 'multi-store@test.com', 'Multi Store')
+    const rows: SeededOrder[] = []
+    let index = 0
+    for (const order of orders) {
+      index += 1
+      const totalCents = order.totalCents ?? 1000 * index
+      const row = await owner.order.create({
+        data: {
+          storeId,
+          customerId: customer.id,
+          orderNumber: `E2E-${tag}-${String(index).padStart(2, '0')}`,
+          status: order.status ?? 'CONFIRMED',
+          paymentStatus: order.paymentStatus ?? 'PENDING',
+          paymentMethod: 'CASH',
+          subtotalCents: totalCents,
+          totalCents,
+          createdBy: creator.id,
+          // One second apart, so the list is in the order the case expects
+          createdAt: new Date(Date.now() - (orders.length - index) * 1000),
+          ...(order.scheduledDeliveryDate === undefined
+            ? {}
+            : { scheduledDeliveryDate: new Date(`${order.scheduledDeliveryDate}T00:00:00Z`) })
+        },
+        select: { id: true, orderNumber: true }
+      })
+      rows.push(row)
+    }
+    return { customerId: customer.id, rows }
+  })
+  return {
+    customerId: made.customerId,
+    orders: made.rows,
+    remove: () =>
+      withOwner(async owner => {
+        await owner.order.deleteMany({ where: { customerId: made.customerId } })
+        await owner.customer.deleteMany({ where: { id: made.customerId } })
+      })
+  }
+}

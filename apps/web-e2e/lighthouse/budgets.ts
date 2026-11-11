@@ -16,6 +16,7 @@ export const ScriptCeilingsKb = {
   LOGIN: 260,
   INBOX: 340,
   PRODUCTS: 300,
+  ORDERS: 300,
   INVENTORY_SETTINGS: 350
 } as const
 

@@ -663,7 +663,10 @@ describe('Notifications raised by events', () => {
       await events.emitAsync(Events.EXPORT_READY, settled(pending))
       await events.emitAsync(Events.EXPORT_READY, { ...settled(ready), requestedBy: ctx.agentA.id })
       await events.emitAsync(Events.EXPORT_READY, settled(lost))
-      await events.emitAsync(Events.EXPORT_READY, { ...settled(ready), exportType: 'orders' })
+      await events.emitAsync(Events.EXPORT_READY, {
+        ...settled(ready),
+        exportType: ExportTypes.ANALYTICS
+      })
 
       expect(await rowsOf(NotificationTypes.EXPORT_READY)).toHaveLength(0)
     })

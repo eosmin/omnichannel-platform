@@ -12,7 +12,8 @@ import { ExportFileExtensions } from '@platform/core/exports'
 import {
   conversationsExportFiltersSchema,
   customersExportFiltersSchema,
-  mediaZipFiltersSchema
+  mediaZipFiltersSchema,
+  ordersExportFiltersSchema
 } from '@platform/core/messaging'
 import {
   ExportAuditActions,
@@ -29,6 +30,7 @@ import { customersExportSource } from './customers-export.source'
 import { ExportProgress } from './export-progress'
 import { publishExportSettled } from './export-settled'
 import { mediaZipSource, ZipEmptyError, ZipTooLargeError } from './media-zip-export.source'
+import { ordersExportSource } from './orders-export.source'
 import { ZipExportWriter } from './zip-export-writer'
 
 type ExportRow = NonNullable<Awaited<ReturnType<PrismaService['client']['export']['findUnique']>>>
@@ -143,6 +145,16 @@ export class ExportGenerator {
       const parsed = conversationsExportFiltersSchema.safeParse(filters)
       if (!parsed.success) return null
       const source = conversationsExportSource(this.prisma, storeId, parsed.data)
+      return {
+        extension: ExportFileExtensions.CSV,
+        count: source.count,
+        write: (key, onProgress) => this.writer.write(key, source, onProgress)
+      }
+    }
+    if (type === ExportTypes.ORDERS) {
+      const parsed = ordersExportFiltersSchema.safeParse(filters ?? {})
+      if (!parsed.success) return null
+      const source = ordersExportSource(this.prisma, storeId, parsed.data)
       return {
         extension: ExportFileExtensions.CSV,
         count: source.count,

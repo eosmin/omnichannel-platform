@@ -59,10 +59,6 @@ export const QueryKeys = {
     mergePreview: (storeId: string, id: string, absorbedId: string) =>
       ['customer-merge-preview', storeId, id, absorbedId] as const
   },
-  orders: {
-    all: (storeId: string) => ['orders', storeId] as const,
-    byId: (storeId: string, id: string) => ['orders', storeId, id] as const
-  },
   products: {
     all: (storeId: string) => ['products', storeId] as const,
     // The page of the catalog, by the active filter ('all' | 'active' | 'archived')
@@ -73,6 +69,14 @@ export const QueryKeys = {
     // The autocomplete: by text, and by whether archived products may answer (a filter of the page)
     search: (storeId: string, q: string, includeArchived: boolean) =>
       ['products', storeId, 'search', q, includeArchived] as const
+  },
+  orders: {
+    all: (storeId: string) => ['orders', storeId] as const,
+    // A page of the list, by its filters and its sort (the cursor is the page param of the query)
+    list: (storeId: string, filter: object, sort: string) =>
+      ['orders', storeId, 'list', filter, sort] as const,
+    // Under the order: whatever changes an order makes its detail stale
+    byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const
   },
   search: {
     global: (storeId: string, q: string) => ['search', storeId, q] as const

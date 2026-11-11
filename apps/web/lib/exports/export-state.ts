@@ -35,7 +35,8 @@ export function isExportReady(item: Pick<ExportView, 'status'>): boolean {
 export const ExportPermissions: readonly Permission[] = [
   ClientPermissions.CONVERSATIONS_EXPORT,
   ClientPermissions.CUSTOMERS_EXPORT,
-  ClientPermissions.MEDIA_DOWNLOAD_ALL
+  ClientPermissions.MEDIA_DOWNLOAD_ALL,
+  ClientPermissions.ORDERS_EXPORT
 ]
 
 export function mayOpenExports(can: (permission: Permission) => boolean): boolean {
@@ -47,6 +48,7 @@ export function mayOpenExports(can: (permission: Permission) => boolean): boolea
 export const FILTERABLE_TYPES: readonly ExportType[] = [
   ExportTypes.CONVERSATIONS,
   ExportTypes.CUSTOMERS,
+  ExportTypes.ORDERS,
   ExportTypes.MEDIA_ZIP
 ]
 
