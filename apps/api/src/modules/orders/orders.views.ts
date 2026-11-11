@@ -57,6 +57,7 @@ export const ORDER_DETAIL_SELECT = {
   confirmedAt: true,
   confirmedBy: true,
   confirmedVia: true,
+  copiedFromOrderId: true,
   freeShipping: true,
   discountReason: true,
   priceApprovalStatus: true,
@@ -132,6 +133,7 @@ interface DetailRow extends Omit<ListRow, 'items'> {
   confirmedAt: Date | null
   confirmedBy: string | null
   confirmedVia: string | null
+  copiedFromOrderId: string | null
   discountReason: string | null
   priceApprovalRequestedBy: string | null
   priceApprovedBy: string | null
@@ -241,6 +243,7 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
       paymentProofMediaId: null,
       proofOfDeliveryMediaId: null,
       conversationId: null,
+      copiedFromOrderId: null,
       discountReason: null,
       cancellationReason: null,
       recipientPhones: [],

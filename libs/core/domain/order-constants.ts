@@ -89,6 +89,8 @@ export const OrderLimits = {
   MAX_QUANTITY_PER_LINE: 10_000,
   // Warehouses one line can be split across (a store has few; the server checks the real links)
   MAX_ALLOCATIONS_PER_LINE: 20,
+  // Orders one "mark as confirmed" of the list may name (each is a change of its own, so the call stays bounded)
+  BULK_CONFIRM_MAX: 100,
   CUSTOMER_NOTES_MAX_LENGTH: 1000,
   // The same ceiling as the customer's notes (owner, 2026-11-10)
   INTERNAL_NOTES_MAX_LENGTH: 1000,
@@ -167,6 +169,20 @@ export const OrderNotices = {
   // confirmOnCreate was checked but the order waits for a price approval: it is created pending (TDD_17 §4.3)
   CONFIRMATION_SKIPPED_PRICE_APPROVAL: 'confirmation_skipped_price_approval'
 } as const
+
+// What the draft of a copied order warns about, one per line it concerns (`GET /orders/:id/copy`, TDD_17 §4.3): the
+// line stays in the draft so the agent sees it and decides, and the normal create refuses it if it is still wrong then
+export const OrderCopyWarnings = {
+  PRODUCT_INACTIVE: 'product_inactive',
+  // The variant of the line is switched off or no longer exists
+  VARIANT_UNAVAILABLE: 'variant_unavailable',
+  // The product has variants now and the line names none
+  VARIANT_REQUIRED: 'variant_required',
+  OUT_OF_STOCK: 'out_of_stock',
+  PRICE_CHANGED: 'price_changed'
+} as const
+
+export type OrderCopyWarningCode = (typeof OrderCopyWarnings)[keyof typeof OrderCopyWarnings]
 
 // What `metadata.conflict` says when a 409 of an order has several causes
 export const OrderConflicts = {

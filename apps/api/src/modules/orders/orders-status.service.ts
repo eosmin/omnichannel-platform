@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -35,6 +36,7 @@ import {
   ShipmentUnknownOutcomeStatuses
 } from '@platform/core/domain'
 import {
+  errorName,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
@@ -48,6 +50,7 @@ import { MediaPurpose } from '@platform/core/storage'
 import type { Actor } from '../tenancy'
 
 import { OrderInventoryService } from './orders-inventory.service'
+import type { ConfirmOrdersBulkBody } from './orders.schemas'
 import { OrdersService } from './orders.service'
 import {
   actorRef,
@@ -62,6 +65,12 @@ import type { OrderDetailView } from './orders.views'
 // How far in the future a delivery moment may be: a clock that runs a little fast is not a lie about the future
 const DELIVERY_CLOCK_ALLOWANCE_MS = 5 * 60 * 1000
 
+// What a bulk change tells: the orders that changed and, for each one that did not, our code for the reason
+export interface OrdersBulkResult {
+  succeeded: string[]
+  failed: { id: string; code: string }[]
+}
+
 type PriceDecision = typeof PriceApprovalStatus.APPROVED | typeof PriceApprovalStatus.REJECTED
 
 // The life of an order: its status and the stock that goes with each change (TDD_16 §4.1), the decisions on a price
@@ -74,8 +83,11 @@ export class OrdersStatusService {
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly stock: OrderInventoryService,
-    private readonly orders: OrdersService
-  ) {}
+    private readonly orders: OrdersService,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(OrdersStatusService.name)
+  }
 
   async changeStatus(
     storeId: string,
@@ -84,6 +96,58 @@ export class OrdersStatusService {
     actor: Actor,
     held: readonly Permission[]
   ): Promise<OrderDetailView> {
+    await this.applyStatus(storeId, orderId, body, actor, held)
+    return this.orders.get(storeId, orderId, held)
+  }
+
+  // "Mark as confirmed" over many orders of the list. Each is a change of its own (its own lock and transaction, its own
+  // audit entry), so one that cannot be confirmed (already confirmed, cancelled, a price waiting for approval, an order of
+  // another store, which is one that does not exist) is reported with its code and does not stop the others.
+  async confirmBulk(
+    storeId: string,
+    ids: readonly string[],
+    via: ConfirmOrdersBulkBody['via'],
+    actor: Actor,
+    held: readonly Permission[]
+  ): Promise<OrdersBulkResult> {
+    assertHolds(held, Permissions.ORDERS_CONFIRM)
+    const result: OrdersBulkResult = { succeeded: [], failed: [] }
+    // One at a time: each change takes the lock of the store, and two that ran together would only wait for each other
+    for (const id of ids) {
+      try {
+        await this.applyStatus(
+          storeId,
+          id,
+          { status: OrderStatus.CONFIRMED, confirmedVia: via },
+          actor,
+          held
+        )
+        result.succeeded.push(id)
+      } catch (error) {
+        const code = error instanceof PlatformException ? error.code : ErrorCodes.INTERNAL_ERROR
+        // What is ours (a deadlock, a timeout, a 5xx) is said here; the caller gets the code only
+        if (
+          !(error instanceof PlatformException) ||
+          error.statusCode >= HttpStatusCodes.INTERNAL_SERVER_ERROR
+        ) {
+          this.logger.error(
+            { orderId: id, errorName: errorName(error) },
+            'an order of a bulk confirmation was not confirmed'
+          )
+        }
+        result.failed.push({ id, code })
+      }
+    }
+    return result
+  }
+
+  private async applyStatus(
+    storeId: string,
+    orderId: string,
+    body: ChangeOrderStatusInput,
+    actor: Actor,
+    held: readonly Permission[]
+  ): Promise<void> {
     // The route asks for the permission to change the status; confirming and cancelling have their own (TDD_17 §4.3):
     // whichever route reaches this, the one of the target applies
     if (body.status === OrderStatus.CONFIRMED) assertHolds(held, Permissions.ORDERS_CONFIRM)
@@ -277,7 +341,6 @@ export class OrdersStatusService {
         reason: body.cancellationReason ?? null
       })
     }
-    return this.orders.get(storeId, orderId, held)
   }
 
   // Approve or reject the price of an order that waits for it (TDD_17 §4.13). Nobody approves their own request.

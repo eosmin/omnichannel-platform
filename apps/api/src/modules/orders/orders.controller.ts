@@ -8,6 +8,7 @@ import {
   changeOrderStatusSchema,
   type CreateOrderInput,
   createOrderSchema,
+  type OrderCopyDraft,
   OrderStatus,
   PriceApprovalStatus,
   type RecordOrderPaymentInput,
@@ -28,12 +29,14 @@ import {
   type ResolvedTenant
 } from '../tenancy'
 
-import { OrdersStatusService } from './orders-status.service'
+import { type OrdersBulkResult, OrdersStatusService } from './orders-status.service'
 import {
   type CancelOrderBody,
   cancelOrderSchema,
   type ConfirmOrderBody,
   confirmOrderSchema,
+  type ConfirmOrdersBulkBody,
+  confirmOrdersBulkSchema,
   type ExportOrdersQuery,
   exportOrdersQuerySchema,
   idSchema,
@@ -128,6 +131,30 @@ export class OrdersController {
     @Req() req: AuthenticatedRequest
   ): Promise<OrderDetailView> {
     return this.lifecycle.changeStatus(store.id, orderId, body, actorOf(user, store, req), held)
+  }
+
+  // Before the routes of `:id`, like every fixed route of the controller
+  @RequirePermissions(Permissions.ORDERS_CONFIRM)
+  @Post(ApiRoutes.orders.confirmBulk)
+  @HttpCode(HttpStatusCodes.OK)
+  confirmBulk(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
+    @Body(new ZodValidationPipe(confirmOrdersBulkSchema)) body: ConfirmOrdersBulkBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<OrdersBulkResult> {
+    return this.lifecycle.confirmBulk(store.id, body.ids, body.via, actorOf(user, store, req), held)
+  }
+
+  // The draft carries the customer's data and the notes: whoever reads orders and may create one
+  @RequirePermissions(Permissions.ORDERS_VIEW, Permissions.ORDERS_CREATE)
+  @Get(ApiRoutes.orders.copy(':id'))
+  copy(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @Param('id', id()) orderId: string
+  ): Promise<OrderCopyDraft> {
+    return this.orders.copyDraft(store.id, orderId)
   }
 
   @RequirePermissions(Permissions.ORDERS_CONFIRM)

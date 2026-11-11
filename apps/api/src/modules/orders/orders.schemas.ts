@@ -89,6 +89,18 @@ export const confirmOrderSchema = z.strictObject({
 
 export type ConfirmOrderBody = z.output<typeof confirmOrderSchema>
 
+// "Mark as confirmed" over the selection of the list: one way of confirming for all of them, each order a change of its own
+export const confirmOrdersBulkSchema = z.strictObject({
+  ids: z
+    .array(idSchema)
+    .min(1)
+    .max(OrderLimits.BULK_CONFIRM_MAX)
+    .refine(ids => new Set(ids).size === ids.length, { message: 'an order is named twice' }),
+  via: confirmOrderSchema.shape.via
+})
+
+export type ConfirmOrdersBulkBody = z.output<typeof confirmOrdersBulkSchema>
+
 export const cancelOrderSchema = z.strictObject({
   cancellationReason: freeText(OrderLimits.CANCELLATION_REASON_MAX_LENGTH).min(1)
 })

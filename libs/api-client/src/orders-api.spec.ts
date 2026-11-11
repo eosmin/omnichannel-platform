@@ -5,9 +5,11 @@ import {
   cancelOrder,
   changeOrderStatus,
   confirmOrder,
+  confirmOrdersBulk,
   decideOrderPrice,
   fetchOrder,
   fetchOrders,
+  getOrderCopy,
   recordOrderPayment,
   requestOrdersExport
 } from './orders-api'
@@ -167,5 +169,49 @@ describe('orders api', () => {
       ['/orders/o1/price-approval/approve', 'POST', JSON.stringify({})],
       ['/orders/o1/price-approval/reject', 'POST', JSON.stringify({ reason: 'too low' })]
     ])
+  })
+
+  it('confirms a selection in one call and reads what changed and what did not', async () => {
+    const answer = { succeeded: ['o1'], failed: [{ id: 'o2', code: 'ORDER_ALREADY_CONFIRMED' }] }
+    const { client, fetchImpl } = setup(json(200, answer))
+
+    expect(await confirmOrdersBulk(client, 's1', ['o1', 'o2'], 'call')).toEqual(answer)
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, { method: string; body: string }]
+    expect(new URL(url).pathname).toBe('/api/v1/orders/confirm-bulk')
+    expect([init.method, init.body]).toEqual([
+      'POST',
+      JSON.stringify({ ids: ['o1', 'o2'], via: 'call' })
+    ])
+  })
+
+  it('reads the draft of a copy from the order it names', async () => {
+    const copy = {
+      draft: {
+        customerId: 'c1',
+        items: [{ productId: 'p1', quantity: 2 }],
+        shippingCents: 0,
+        paymentMethod: 'CASH',
+        recipientPhones: ['71234567'],
+        copiedFromOrderId: 'o1'
+      },
+      lines: [
+        {
+          productId: 'p1',
+          variantId: null,
+          productName: 'Mug',
+          variantName: null,
+          quantity: 2,
+          unitPriceCents: 1200,
+          previousUnitPriceCents: 1000
+        }
+      ],
+      warnings: [{ code: 'price_changed', itemIndex: 0, productId: 'p1', variantId: null }]
+    }
+    const { client, fetchImpl } = setup(json(200, copy))
+
+    expect(await getOrderCopy(client, 's1', 'o1')).toEqual(copy)
+
+    expect(new URL(fetchImpl.mock.calls[0]?.[0] as string).pathname).toBe('/api/v1/orders/o1/copy')
   })
 })
