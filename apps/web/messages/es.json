@@ -944,7 +944,225 @@
     },
     "detail": {
       "title": "Pedido",
-      "back": "Volver a los pedidos"
+      "back": "Volver a los pedidos",
+      "heading": "Pedido {number}",
+      "noAccess": "No tienes acceso a los pedidos.",
+      "loading": "Cargando el pedido",
+      "notFound": "Este pedido no existe en esta tienda.",
+      "failed": "No se pudo cargar el pedido.",
+      "tryAgain": "Reintentar",
+      "made": "Hecho el {date}",
+      "saved": "Cambios guardados.",
+      "edit": "Editar",
+      "editField": "Editar {field}",
+      "flows": {
+        "groupLabel": "Cambiar el estado del pedido",
+        "waitingForPrice": "Primero hay que aprobar el cambio de precio.",
+        "confirm": {
+          "button": "Confirmar",
+          "title": "Confirmar el pedido {number}",
+          "description": "Indica cómo confirmó el cliente. Se reserva el stock del pedido.",
+          "confirm": "Confirmar pedido",
+          "done": "El pedido está confirmado.",
+          "viaLabel": "¿Cómo confirmó el cliente?",
+          "via": {
+            "message_reply": "Respondió en el chat",
+            "call": "Por teléfono",
+            "in_person": "En persona",
+            "other": "Otro"
+          },
+          "viaChoose": "Elige una opción"
+        },
+        "prepare": {
+          "button": "Empezar a preparar",
+          "title": "Preparar el pedido {number}",
+          "description": "La bodega empieza a empacar este pedido.",
+          "confirm": "Empezar a preparar",
+          "done": "El pedido se está preparando."
+        },
+        "ship": {
+          "button": "Marcar como enviado",
+          "title": "Enviar el pedido {number}",
+          "description": "Las unidades salen de la bodega y se da salida al stock. No se puede deshacer.",
+          "confirm": "Marcar como enviado",
+          "done": "El pedido está enviado."
+        },
+        "deliver": {
+          "button": "Marcar como entregado",
+          "title": "Entregar el pedido {number}",
+          "description": "Agrega la prueba de entrega si la tienes (una foto o un PDF).",
+          "confirm": "Marcar como entregado",
+          "done": "El pedido está entregado.",
+          "proofLabel": "Prueba de entrega (opcional)"
+        },
+        "return": {
+          "button": "Devolver",
+          "title": "Devolver el pedido {number}",
+          "description": "El cliente devolvió el pedido.",
+          "confirm": "Devolver pedido",
+          "done": "El pedido está devuelto.",
+          "restockLabel": "Volver a poner las unidades en stock",
+          "restockHint": "Cada unidad vuelve a la bodega de la que salió.",
+          "noRestockPermission": "No puedes volver a poner unidades en stock; pídeselo a alguien que pueda ajustar el inventario."
+        },
+        "cancel": {
+          "button": "Cancelar pedido",
+          "title": "Cancelar el pedido {number}",
+          "description": "Se libera el stock reservado del pedido. No se puede deshacer.",
+          "confirm": "Cancelar pedido",
+          "done": "El pedido está cancelado.",
+          "reasonLabel": "Motivo",
+          "otherLabel": "Explica el motivo"
+        },
+        "approve_price": {
+          "button": "Aprobar precio",
+          "title": "Aprobar el precio del pedido {number}",
+          "description": "Se acepta el cambio de precio y el pedido puede seguir.",
+          "confirm": "Aprobar",
+          "done": "El precio está aprobado."
+        },
+        "reject_price": {
+          "button": "Rechazar precio",
+          "title": "Rechazar el precio del pedido {number}",
+          "description": "El pedido no se puede confirmar ni enviar con este precio.",
+          "confirm": "Rechazar",
+          "done": "El precio está rechazado."
+        },
+        "price": {
+          "reasonLabel": "Motivo (opcional)"
+        }
+      },
+      "file": {
+        "choose": "Elegir un archivo",
+        "replace": "Elegir otro",
+        "checking": "Revisando el archivo",
+        "remove": "Quitar {name}",
+        "hint": "Una foto (JPG, PNG, WebP) o un PDF, de hasta {size} MB.",
+        "onFile": "Hay un archivo adjunto",
+        "loading": "Cargando el archivo",
+        "unavailable": "El archivo aún no está disponible",
+        "opensInNewTab": "(se abre en una pestaña nueva)"
+      },
+      "payment": {
+        "heading": "Pago",
+        "record": "Registrar pago",
+        "method": "Método",
+        "status": "Estado",
+        "reference": "Referencia",
+        "receipt": "Comprobante",
+        "none": "Ninguno",
+        "dialogTitle": "Registrar el pago del pedido {number}",
+        "dialogDescription": "Anota cómo llegó el dinero. No cambia cómo se vendió el pedido.",
+        "recordMethod": "Método",
+        "recordStatus": "Estado",
+        "recordReference": "Referencia (número de la transferencia o del voucher)",
+        "recordReceipt": "Comprobante (opcional)",
+        "recordConfirm": "Registrar pago",
+        "referenceAsked": "Una transferencia o un pago con tarjeta debería llevar su referencia.",
+        "done": "El pago está registrado."
+      },
+      "notes": {
+        "heading": "Notas",
+        "empty": "Sin nota.",
+        "customerNotes": {
+          "label": "Nota del cliente",
+          "hint": "Lo que pidió el cliente. Puede viajar con el pedido."
+        },
+        "internalNotes": {
+          "label": "Nota de atención al cliente",
+          "hint": "Solo la ve el equipo. Nunca el cliente ni el transportista."
+        },
+        "packingNotes": {
+          "label": "Nota de empaque",
+          "hint": "Para quien empaca el pedido. Nunca va al cliente ni a la etiqueta del transportista."
+        }
+      },
+      "delivery": {
+        "heading": "Entrega",
+        "scheduled": "Entrega programada",
+        "scheduledLabel": "Día de entrega",
+        "scheduledHint": "Déjalo vacío si no hay día. Se acepta un día pasado.",
+        "notScheduled": "Sin programar",
+        "addressHeading": "Dirección",
+        "noAddress": "Sin dirección",
+        "phones": "Teléfonos del destinatario",
+        "noPhones": "Sin teléfonos",
+        "phoneN": "Teléfono {number}",
+        "removePhone": "Quitar el teléfono {number}",
+        "addPhone": "Agregar teléfono",
+        "phonesHint": "Hasta {max} números, solo dígitos y sin el código de país: los transportistas no lo aceptan.",
+        "phoneProblem": {
+          "tooShort": "Un teléfono tiene menos de {min} dígitos.",
+          "tooLong": "Un teléfono tiene más de {max} dígitos.",
+          "repeated": "Un número de teléfono está repetido.",
+          "emptyList": "Agrega al menos un teléfono."
+        },
+        "addressProblem": "Escribe al menos la calle y la ciudad. El país, si lo hay, son dos letras.",
+        "address": {
+          "line1": "Dirección, línea 1",
+          "line2": "Dirección, línea 2",
+          "city": "Ciudad",
+          "state": "Estado o provincia",
+          "postalCode": "Código postal",
+          "country": "País (dos letras)"
+        },
+        "tracking": "Número de rastreo",
+        "trackingLabel": "Número de rastreo",
+        "noTracking": "Sin número de rastreo"
+      },
+      "lines": {
+        "heading": "Productos",
+        "caption": "Productos del pedido {number}",
+        "product": "Producto",
+        "quantity": "Cantidad",
+        "unitPrice": "Precio unitario",
+        "lineTotal": "Total",
+        "from": "Sale de:",
+        "otherWarehouse": "Otra bodega",
+        "freeShipping": "Envío gratis",
+        "priceChanged": "Se cambió el precio",
+        "subtotal": "Subtotal",
+        "shipping": "Envío",
+        "freeShippingOrder": "Envío gratis",
+        "discount": "Descuento",
+        "total": "Total"
+      },
+      "customer": {
+        "heading": "Cliente"
+      },
+      "events": {
+        "heading": "Historial",
+        "created": "Pedido hecho",
+        "confirmed": "Confirmado",
+        "shipped": "Enviado",
+        "delivered": "Entregado",
+        "cancelled": "Cancelado",
+        "via": {
+          "message_reply": "Respondió en el chat",
+          "call": "Por teléfono",
+          "in_person": "En persona",
+          "at_creation": "Al hacer el pedido",
+          "other": "Otro"
+        }
+      },
+      "print": {
+        "groupLabel": "Imprimir documentos",
+        "packing_slip": {
+          "button": "Imprimir lista de empaque",
+          "title": "Lista de empaque, pedido {number}"
+        },
+        "order_summary": {
+          "button": "Imprimir hoja del pedido",
+          "title": "Hoja del pedido {number}"
+        },
+        "packingNote": "Nota de empaque",
+        "customer": "Cliente",
+        "address": "Dirección de entrega",
+        "noAddress": "Sin dirección",
+        "scheduled": "Entrega programada",
+        "customerNote": "Nota del cliente",
+        "packed": "Empacado"
+      }
     }
   },
   "org": {
