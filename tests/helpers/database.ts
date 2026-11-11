@@ -73,6 +73,14 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.inventoryMovement.deleteMany({ where: ofRun })
   await owner.inventoryLevel.deleteMany({ where: ofRun })
   await owner.orderItemAllocation.deleteMany({ where: ofRun })
+  // Shipments and returns restrict the deletion of their order, store and connection, and a return and its return
+  // shipment restrict each other: the link is cut first, then the lines, the shipments (their events go with them), the
+  // returns and the pickups. The connections and what hangs from them go with their store (cascade).
+  await owner.orderReturn.updateMany({ where: ofRun, data: { returnShipmentId: null } })
+  await owner.orderReturnLine.deleteMany({ where: ofRun })
+  await owner.shipment.deleteMany({ where: ofRun })
+  await owner.orderReturn.deleteMany({ where: ofRun })
+  await owner.pickupRequest.deleteMany({ where: ofRun })
   // An order is not deleted with its store (it is kept for the tax window), so the owner removes the
   // ones of the run first
   await owner.order.deleteMany({

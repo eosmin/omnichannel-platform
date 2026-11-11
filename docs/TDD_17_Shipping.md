@@ -334,6 +334,21 @@ model OrderReturnLine {
 }
 ```
 
+**As built (Step 4.8 PR B1, migration `20261127100000_shipping_schema`; the checklist wins where this differs):** every
+table above also carries a `store` relation, and a link between two tables of one store names the store too
+(`fields: [storeId, connectionId], references: [storeId, id]`), so the database refuses a link to another store's row;
+`CarrierConnection`, `Shipment`, `PickupRequest` and `OrderReturn` gain `@@unique([storeId, id])` for that. The links to
+`Order`, `OrderItem` and `Warehouse` are plain foreign keys (an order has no `(store_id, id)` key and the table is left
+alone) checked by triggers, and shipments and returns restrict the deletion of their order, store and connection (the
+records are kept) while the configuration tables cascade from the store. The columns that hold a state have `CHECK`s that
+mirror the enums of §3, and the rules a row must satisfy whoever writes are in the migration (the COD amount and state
+go together, a return shipment names its return, the fee range, the window of a pickup, the counts of a bulk job); the
+partial unique indexes of the raw SQL are there as written. `Shipment.codStatus`, the COD columns and the fee columns of
+`CarrierConnection` are part of the models above. `OrderReturn.returnShipmentId` and `replacementOrderId` are real
+foreign keys. `GuideSequence` also declares `@@unique([storeId, connectionId])`, which Prisma needs for the composite
+relation. `Shipment.idempotencyKey` is unique per store (`@@unique([storeId, idempotencyKey])`) rather than global, and a
+shipment never changes its origin warehouse or its return either.
+
 Reception, remittances and their import profiles (same conventions):
 
 ```prisma
