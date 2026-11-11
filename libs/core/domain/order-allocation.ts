@@ -91,15 +91,18 @@ export interface CheckRequestedAllocationInput {
 
 export type RequestedAllocationCheck =
   | { readonly ok: true; readonly allocations: readonly LineAllocation[] }
+  // A warehouse the store does not sell from (or that is off, or another organization's)
+  | { readonly ok: false; readonly reason: 'not_linked'; readonly warehouseId: string }
+  // The units do not add up to the line, or a warehouse is named twice or with no units
+  | { readonly ok: false; readonly reason: 'quantity_mismatch' }
+  // Several warehouses in a store that ships each line from one
+  | { readonly ok: false; readonly reason: 'split_not_allowed' }
+  // A warehouse has less than the units asked of it (only the first warehouse may go short, and only in a store with
+  // negative stock, like the planner)
   | {
       readonly ok: false
-      // 'not_linked': a warehouse the store does not sell from (or that is off, or another organization's);
-      // 'quantity_mismatch': the units do not add up to the line, or a warehouse is named twice or with no units;
-      // 'split_not_allowed': several warehouses in a store that ships each line from one;
-      // 'insufficient': a warehouse has less than the units asked of it (never in a store with negative stock)
-      readonly reason: 'not_linked' | 'quantity_mismatch' | 'split_not_allowed' | 'insufficient'
-      readonly warehouseId?: string
-      readonly availableByWarehouse?: readonly WarehouseAvailability[]
+      readonly reason: 'insufficient'
+      readonly availableByWarehouse: readonly WarehouseAvailability[]
     }
 
 // The same rules the planner follows, applied to the choice of the agent: the server never takes a choice on trust, it
@@ -128,17 +131,22 @@ export function checkRequestedAllocation({
   }
   if (requested.length > 1 && !allowSplitFulfillment)
     return { ok: false, reason: 'split_not_allowed' }
-  if (!allowNegativeStock) {
-    const short = requested.some(row => (known.get(row.warehouseId) as number) < row.quantity)
-    if (short) {
-      return {
-        ok: false,
-        reason: 'insufficient',
-        availableByWarehouse: warehouses.map(({ warehouseId, available }) => ({
-          warehouseId,
-          available: Math.max(available, 0)
-        }))
-      }
+  // The planner lets only the highest-priority warehouse go below zero, and only when negative stock is on: a choice
+  // follows the same rule, so an agent cannot push any warehouse negative
+  const first = warehouses[0]?.warehouseId
+  const isShort = requested.some(
+    row =>
+      (known.get(row.warehouseId) as number) < row.quantity &&
+      !(allowNegativeStock && row.warehouseId === first)
+  )
+  if (isShort) {
+    return {
+      ok: false,
+      reason: 'insufficient',
+      availableByWarehouse: warehouses.map(({ warehouseId, available }) => ({
+        warehouseId,
+        available: Math.max(available, 0)
+      }))
     }
   }
   return {

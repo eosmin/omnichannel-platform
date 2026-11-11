@@ -18,6 +18,7 @@ import {
   InventoryService,
   type MovementInput,
   productNotTracked,
+  warehouseInactive,
   warehouseNotLinked
 } from '@platform/core/inventory'
 
@@ -34,6 +35,8 @@ export interface LineToAllocate {
   trackInventory: boolean
   // The warehouses the agent chose for the line; omitted, the server plans them
   requested?: readonly LineAllocation[] | undefined
+  // Where the units were before: kept if they can still be served, else planned again (never an error)
+  preferred?: readonly LineAllocation[] | undefined
 }
 
 const Effects = OrderStockEffects
@@ -110,7 +113,7 @@ export class OrderInventoryService {
         allowSplitFulfillment: settings?.allowSplitFulfillment ?? false,
         allowNegativeStock: settings?.allowNegativeStock ?? false
       }
-      const plan = this.planOf(line, availability, settingsOfLine)
+      const plan = await this.planOf(tx, storeId, line, availability, settingsOfLine)
       for (const allocation of plan.allocations) {
         rows.push({
           storeId,
@@ -138,12 +141,16 @@ export class OrderInventoryService {
   }
 
   // The warehouses of a line: what the agent chose, once the server has checked it, or the plan by priority. A choice
-  // that cannot be served is refused with the same answers the planner gives; it is never silently replaced by a plan
-  private planOf(
+  // that cannot be served is refused with the same answers the planner gives; it is never silently replaced by a plan.
+  // The warehouses a line already had (an edit that left it alone) are only a wish: they are kept when they still pass
+  // the same check and dropped for the plan when they do not.
+  private async planOf(
+    tx: PrismaTransaction,
+    storeId: string,
     line: LineToAllocate,
     warehouses: readonly WarehouseAvailability[],
     settings: { allowSplitFulfillment: boolean; allowNegativeStock: boolean }
-  ): { allocations: readonly LineAllocation[] } {
+  ): Promise<{ allocations: readonly LineAllocation[] }> {
     const refusal = (availableByWarehouse: readonly WarehouseAvailability[]): PlatformException =>
       new PlatformException(
         ErrorCodes.INSUFFICIENT_INVENTORY,
@@ -157,14 +164,20 @@ export class OrderInventoryService {
           availableByWarehouse
         }
       )
+    const plan = (): { allocations: readonly LineAllocation[] } => {
+      const planned = planLineAllocation({ quantity: line.quantity, warehouses, ...settings })
+      if (!planned.ok) throw refusal(planned.availableByWarehouse)
+      return planned
+    }
     if (line.requested === undefined) {
-      const plan = planLineAllocation({
+      if (line.preferred === undefined) return plan()
+      const kept = checkRequestedAllocation({
         quantity: line.quantity,
+        requested: line.preferred,
         warehouses,
         ...settings
       })
-      if (!plan.ok) throw refusal(plan.availableByWarehouse)
-      return plan
+      return kept.ok ? kept : plan()
     }
     const checked = checkRequestedAllocation({
       quantity: line.quantity,
@@ -174,10 +187,18 @@ export class OrderInventoryService {
     })
     if (checked.ok) return checked
     switch (checked.reason) {
-      case 'not_linked':
-        throw warehouseNotLinked(checked.warehouseId as string)
+      case 'not_linked': {
+        // Linked but switched off is another answer from "the store does not sell from it"
+        const off = await tx.storeWarehouse.findFirst({
+          where: { storeId, warehouseId: checked.warehouseId, warehouse: { active: false } },
+          select: { warehouseId: true }
+        })
+        throw off === null
+          ? warehouseNotLinked(checked.warehouseId)
+          : warehouseInactive(checked.warehouseId)
+      }
       case 'insufficient':
-        throw refusal(checked.availableByWarehouse ?? [])
+        throw refusal(checked.availableByWarehouse)
       case 'quantity_mismatch':
       case 'split_not_allowed':
         throw new PlatformException(
@@ -186,6 +207,10 @@ export class OrderInventoryService {
           HttpStatusCodes.BAD_REQUEST,
           { productId: line.productId, variantId: line.variantId, reason: checked.reason }
         )
+      default: {
+        const unreachable: never = checked
+        return unreachable
+      }
     }
   }
 

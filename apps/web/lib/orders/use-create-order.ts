@@ -105,7 +105,7 @@ export function useStockSwitches(
 export function useConversationCustomerId(
   storeId: string,
   conversationId: string | undefined
-): { customerId: string | null; isLoading: boolean; isFailed: boolean } {
+): { customerId: string | null; label: string | null; isLoading: boolean; isFailed: boolean } {
   const conversation = useQuery({
     queryKey: QueryKeys.conversations.byId(storeId, conversationId ?? ''),
     queryFn: ({ signal }) => fetchConversation(apiClient, storeId, conversationId ?? '', signal),
@@ -113,6 +113,8 @@ export function useConversationCustomerId(
   })
   return {
     customerId: conversation.data?.customer.id ?? null,
+    // What the thread calls the customer: the name the agent already sees, for a member who may not read customers
+    label: conversation.data?.customer.name ?? conversation.data?.customer.displayIdentity ?? null,
     isLoading: conversationId !== undefined && conversation.isPending,
     isFailed: conversation.isError
   }

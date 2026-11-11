@@ -601,6 +601,127 @@ describe('Creating an order', () => {
         expect(response.status).toBe(BAD_REQUEST)
       })
 
+      it('keeps the choice of a line an edit did not touch, and plans again the one whose units changed', async () => {
+        const product = await kit.stocked(10, 10)
+        const other = await kit.stocked(10, 10)
+        const created = await post(
+          await choose(product.id, [{ warehouseId: ctx.warehouseASecond.id, quantity: 3 }], 3)
+        )
+        const order = (created.body as CreatedBody).order
+        const patchItems = (items: unknown) =>
+          kit.asAdmin().patch(ApiRoutes.orders.byId(order.id)).send({ items })
+
+        // another line is added; this one names nothing and keeps its units: its warehouse stays
+        const kept = await patchItems([
+          { productId: product.id, quantity: 3 },
+          { productId: other.id, quantity: 1 }
+        ])
+        expect(kept.status).toBe(OK)
+        const byProduct = (body: OrderBody, id: string) =>
+          body.items.find(item => item.productId === id)?.allocations
+        expect(byProduct(kept.body as OrderBody, product.id)).toEqual([
+          { warehouseId: ctx.warehouseASecond.id, quantity: 3 }
+        ])
+        expect(await kit.level(product.id, ctx.warehouseASecond.id)).toMatchObject({ reserved: 3 })
+
+        // the units change: nothing says where the new ones come from, the server plans them by priority
+        const replanned = await patchItems([
+          { productId: product.id, quantity: 4 },
+          { productId: other.id, quantity: 1 }
+        ])
+        expect(replanned.status).toBe(OK)
+        expect(byProduct(replanned.body as OrderBody, product.id)).toEqual([
+          { warehouseId: ctx.warehouseA.id, quantity: 4 }
+        ])
+      })
+
+      it('plans a kept line again when its warehouse can no longer serve it, instead of refusing the edit', async () => {
+        const product = await kit.stocked(10, 10)
+        const created = await post(
+          await choose(product.id, [{ warehouseId: ctx.warehouseASecond.id, quantity: 3 }], 3)
+        )
+        const order = (created.body as CreatedBody).order
+        await owner.warehouse.update({
+          where: { id: ctx.warehouseASecond.id },
+          data: { active: false }
+        })
+        try {
+          const response = await kit
+            .asAdmin()
+            .patch(ApiRoutes.orders.byId(order.id))
+            .send({ items: [{ productId: product.id, quantity: 3 }] })
+          expect(response.status).toBe(OK)
+          expect((response.body as OrderBody).items[0]?.allocations).toEqual([
+            { warehouseId: ctx.warehouseA.id, quantity: 3 }
+          ])
+        } finally {
+          await owner.warehouse.update({
+            where: { id: ctx.warehouseASecond.id },
+            data: { active: true }
+          })
+        }
+      })
+
+      it('refuses a choice of a warehouse that is switched off with its own code', async () => {
+        const product = await kit.stocked(10, 10)
+        await owner.warehouse.update({
+          where: { id: ctx.warehouseASecond.id },
+          data: { active: false }
+        })
+        try {
+          const response = await post(
+            await choose(product.id, [{ warehouseId: ctx.warehouseASecond.id, quantity: 1 }], 1)
+          )
+          expect(response.status).toBe(CONFLICT)
+          expect(errorOf(response).code).toBe(ErrorCodes.INVENTORY_WAREHOUSE_INACTIVE)
+        } finally {
+          await owner.warehouse.update({
+            where: { id: ctx.warehouseASecond.id },
+            data: { active: true }
+          })
+        }
+      })
+
+      it('lets only the first warehouse go negative, in a store that allows it', async () => {
+        await owner.storeSettings.update({
+          where: { storeId: ctx.storeA.id },
+          data: { allowNegativeStock: true }
+        })
+        const product = await kit.stocked(3, 3)
+        const second = await post(
+          await choose(product.id, [{ warehouseId: ctx.warehouseASecond.id, quantity: 9 }], 9)
+        )
+        expect(second.status).toBe(CONFLICT)
+        expect(errorOf(second).code).toBe(ErrorCodes.INSUFFICIENT_INVENTORY)
+        const first = await post(
+          await choose(product.id, [{ warehouseId: ctx.warehouseA.id, quantity: 9 }], 9)
+        )
+        expect(first.status).toBe(CREATED)
+        expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ reserved: 9 })
+      })
+
+      it('takes a choice for the variant of a product, against the stock of that variant', async () => {
+        const product = await createProduct(owner, { storeId: ctx.storeA.id })
+        const variant = await createProductVariant(owner, { productId: product.id })
+        await kit.receive(product.id, ctx.warehouseASecond.id, 5, variant.id)
+        const response = await post(
+          await kit.orderBody({
+            items: [
+              {
+                productId: product.id,
+                variantId: variant.id,
+                quantity: 2,
+                allocations: [{ warehouseId: ctx.warehouseASecond.id, quantity: 2 }]
+              }
+            ]
+          })
+        )
+        expect(response.status).toBe(CREATED)
+        expect(await kit.level(product.id, ctx.warehouseASecond.id, variant.id)).toMatchObject({
+          reserved: 2
+        })
+      })
+
       it('applies the choice on an edit of the lines too', async () => {
         const product = await kit.stocked(10, 10)
         const created = await post(

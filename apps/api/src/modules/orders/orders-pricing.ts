@@ -37,6 +37,9 @@ export interface OrderLine {
   trackInventory: boolean
   // The warehouses the agent chose for the units of this line in THIS request (never stored on the line)
   requestedAllocations?: readonly { warehouseId: string; quantity: number }[] | undefined
+  // Where this line's units were before an edit that did not touch it: kept when they still can be served, otherwise
+  // the line is planned again (a soft wish, never an error)
+  preferredAllocations?: readonly { warehouseId: string; quantity: number }[] | undefined
 }
 
 export interface LineRequest {

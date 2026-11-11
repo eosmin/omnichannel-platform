@@ -43,12 +43,15 @@ type Duplicates = CreatedCustomerView['possibleDuplicates']
 export function OrderCustomerField({
   customerId,
   customer,
+  fallbackLabel,
   isLoading,
   onChoose
 }: {
   customerId: string | null
   // Null when it is not loaded or the member may not read customers
   customer: CustomerDetailView | undefined
+  // The name the thread gives the customer, while the profile is not read (or cannot be)
+  fallbackLabel: string | null
   isLoading: boolean
   onChoose: (customerId: string | null) => void
 }): ReactElement {
@@ -77,7 +80,7 @@ export function OrderCustomerField({
         <span className="text-sm font-medium">{t('label')}</span>
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
           <span className="min-w-0 break-words" data-testid="order-customer">
-            {isLoading ? t('loading') : (label ?? t('unnamed'))}
+            {isLoading ? t('loading') : (label ?? fallbackLabel ?? t('unnamed'))}
           </span>
           <Button
             type="button"

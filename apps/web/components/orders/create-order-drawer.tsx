@@ -274,6 +274,9 @@ function Body({
           <OrderCustomerField
             customerId={customerId}
             customer={customer.data}
+            fallbackLabel={
+              fromConversation.customerId === form.customerId ? fromConversation.label : null
+            }
             isLoading={customerId !== null && customer.isPending && mayViewCustomers}
             onChoose={id => {
               if (id === null) customerCleared.current = true

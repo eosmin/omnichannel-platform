@@ -242,6 +242,16 @@ describe('checkRequestedAllocation', () => {
     })
   })
 
+  it('lets only the first warehouse go short, and only with negative stock: never a lower-priority one', () => {
+    const input = { ...base, allowNegativeStock: true, quantity: 12 }
+    expect(
+      checkRequestedAllocation({ ...input, requested: [{ warehouseId: A, quantity: 12 }] })
+    ).toMatchObject({ ok: true })
+    expect(
+      checkRequestedAllocation({ ...input, requested: [{ warehouseId: B, quantity: 12 }] })
+    ).toMatchObject({ ok: false, reason: 'insufficient' })
+  })
+
   it('never reports a negative stock in a refusal', () => {
     expect(
       checkRequestedAllocation({
