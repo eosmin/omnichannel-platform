@@ -457,7 +457,12 @@ export class NotificationsEventsListener {
   @OnEvent(Events.SHIPMENT_STATUS_CHANGED)
   async onShipmentStatusChanged(payload: ShipmentStatusChangedPayload): Promise<void> {
     if (payload.to !== ShipmentStatus.FAILED_ATTEMPT) return
-    await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_FAILED_ATTEMPT)
+    // A failed attempt read again after the owner mapped its code is told in the center only: it may have happened days ago
+    await this.tellShipmentManagers(
+      payload,
+      NotificationTypes.SHIPMENT_FAILED_ATTEMPT,
+      payload.replay === true
+    )
   }
 
   // A shipment, or what the order should do because of it, needs a person (TDD_17 §4.9)
@@ -470,7 +475,8 @@ export class NotificationsEventsListener {
     payload: ShipmentEventPayload,
     type:
       | typeof NotificationTypes.SHIPMENT_FAILED_ATTEMPT
-      | typeof NotificationTypes.SHIPMENT_REQUIRES_REVIEW
+      | typeof NotificationTypes.SHIPMENT_REQUIRES_REVIEW,
+    inAppOnly = false
   ): Promise<void> {
     const { storeId, shipmentId, orderId, orderNumber } = payload
     try {
@@ -481,7 +487,8 @@ export class NotificationsEventsListener {
         params: { orderNumber },
         resourceType: ShipmentResourceTypes.SHIPMENT,
         resourceId: shipmentId,
-        actionPath: AppPaths.store.order(storeId, orderId)
+        actionPath: AppPaths.store.order(storeId, orderId),
+        ...(inAppOnly ? { inAppOnly } : {})
       }
       // Every failed attempt is told (three attempts are three lines); a shipment that needs review is told while the earlier
       // warning is unread, so a package that keeps failing its effects is one line

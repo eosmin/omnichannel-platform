@@ -2005,7 +2005,7 @@
         "checking": "Checking {name}",
         "ready": "{name} is ready to send",
         "failed": "{name} was not attached",
-        "unsupported": "This channel does not accept this kind of file.",
+        "unsupported": "This channel does not accept {kind, select, IMAGE {images} VIDEO {videos} AUDIO {audio files} DOCUMENT {documents} other {this kind of file}}.",
         "full": "Attach a file (the limit of {max} files is reached)",
         "tooMany": "This message takes up to {max} files; the rest were not added",
         "mixed": "A message carries one kind of file: images, videos, audio or documents. Send the others in another message",

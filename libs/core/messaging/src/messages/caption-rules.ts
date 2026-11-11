@@ -3,6 +3,17 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 
 import { invalidInput } from '../conversations/conversations.support'
 
+// A channel that does not take a kind of file (or a text under it): the refusal carries the kind, so that whoever reads it can name
+// what was refused (a document, an audio, a video, an image) instead of saying "this kind of file"
+export function unsupportedKind(kind: MessageType | undefined, message: string): PlatformException {
+  return new PlatformException(
+    ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
+    message,
+    HttpStatusCodes.CONFLICT,
+    kind === undefined ? undefined : { kind }
+  )
+}
+
 // Where a kind of file carries no text of its own on the channel (an audio on some of them), the text goes after
 // the file as a message of its own (only for the text of the message: the first file)
 export function carriesNoCaption(limits: ChannelLimitsView | null, type: MessageType): boolean {
@@ -42,11 +53,7 @@ export function requireCaptionFits(
   const found = captionProblemOf(limits, type, caption, apartAllowed)
   if (found === null) return
   if (found.problem === 'unsupported') {
-    throw new PlatformException(
-      ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
-      'the channel does not carry text under this kind of file',
-      HttpStatusCodes.CONFLICT
-    )
+    throw unsupportedKind(type, 'the channel does not carry text under this kind of file')
   }
   throw invalidInput(`the text under the file is longer than the channel holds (${found.limit})`)
 }
@@ -78,7 +85,8 @@ export function captionsOf(
 export function requireCaptionsPlaced(
   body: { mediaIds: readonly string[]; captions?: readonly (string | null)[] | undefined },
   captionsPerFile: boolean,
-  textApart = false
+  textApart = false,
+  kind?: MessageType
 ): void {
   const captions = body.captions ?? []
   if (captions.length > body.mediaIds.length) {
@@ -86,13 +94,10 @@ export function requireCaptionsPlaced(
   }
   const unplaced = textApart ? captions : captions.slice(1)
   if (!captionsPerFile && unplaced.some(caption => caption !== null)) {
-    throw new PlatformException(
-      ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
-      textApart
-        ? 'this kind of file takes no text under it'
-        : 'this channel takes a text under the first file only',
-      HttpStatusCodes.CONFLICT
-    )
+    const message = textApart
+      ? 'this kind of file takes no text under it'
+      : 'this channel takes a text under the first file only'
+    throw unsupportedKind(kind, message)
   }
 }
 

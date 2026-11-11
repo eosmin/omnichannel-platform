@@ -2005,7 +2005,7 @@
         "checking": "Revisando {name}",
         "ready": "{name} está listo para enviar",
         "failed": "No se adjuntó {name}",
-        "unsupported": "Este canal no admite este tipo de archivo.",
+        "unsupported": "Este canal no admite {kind, select, IMAGE {imágenes} VIDEO {videos} AUDIO {audios} DOCUMENT {documentos} other {este tipo de archivo}}.",
         "full": "Adjuntar un archivo (se alcanzó el límite de {max} archivos)",
         "tooMany": "Este mensaje admite hasta {max} archivos; el resto no se agregó",
         "mixed": "Un mensaje lleva un solo tipo de archivo: imágenes, videos, audios o documentos. Envía los demás en otro mensaje",

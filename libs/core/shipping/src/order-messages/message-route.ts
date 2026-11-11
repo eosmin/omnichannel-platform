@@ -86,3 +86,8 @@ export function pressedDispatchKey(
 ): string {
   return `pressed:${orderId}:${kind}:${clientKey}`
 }
+
+// The summary of an order that is sent when it is created: one per order, so a retried event sends it once
+export function creationDispatchKey(orderId: string): string {
+  return `created:${orderId}`
+}

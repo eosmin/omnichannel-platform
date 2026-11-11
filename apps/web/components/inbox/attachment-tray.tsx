@@ -15,7 +15,7 @@ import {
 import { ChannelCapability, MessageType } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
-import { takesCaptionPerFile } from '../../lib/media/attachment-batch'
+import { takesCaptionPerFile, unsupportedKindOf } from '../../lib/media/attachment-batch'
 import { formatBytes } from '../../lib/media/attachment-rules'
 import { canRecheck } from '../../lib/media/can-recheck'
 import {
@@ -179,7 +179,7 @@ function Chip({
       {item.status === 'failed' && item.code !== null ? (
         <p role="alert" className="text-destructive text-xs">
           {item.code === ClientErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED
-            ? `${name}: ${t('unsupported')}`
+            ? `${name}: ${t('unsupported', { kind: unsupportedKindOf(item.type) })}`
             : `${t('failed', { name })}: ${codeText(item.code)}`}
         </p>
       ) : null}

@@ -57,7 +57,8 @@ import {
   captionsOf,
   requireCaptionFits,
   requireCaptionsPlaced,
-  requireTextFits
+  requireTextFits,
+  unsupportedKind
 } from './caption-rules'
 import { assertMediaServable } from './media-guard'
 import { encodeMessageCursor } from './message-cursor'
@@ -638,10 +639,9 @@ export class MessagesService {
     if (supports === undefined)
       throw invalidInput('a media message needs the channel checked first')
     if (!supports(conversation.channelType, CapabilityOfMediaType[body.type])) {
-      throw new PlatformException(
-        ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
-        'the channel of this conversation does not send this kind of file',
-        HttpStatusCodes.CONFLICT
+      throw unsupportedKind(
+        body.type,
+        'the channel of this conversation does not send this kind of file'
       )
     }
     // How many, before the files are read: a channel that does not say takes one (the limit of the
@@ -650,7 +650,7 @@ export class MessagesService {
     // Where the channel carries a text under each file, the text of the message is no longer under the first
     // one: every file has its own and the text of the message is sent as a message of its own after the last
     const textApart = limits?.textAfterFile === true
-    requireCaptionsPlaced(body, limits?.captionsPerFile === true, textApart)
+    requireCaptionsPlaced(body, limits?.captionsPerFile === true, textApart, body.type)
     const captions = captionsOf(body, textApart)
     for (const caption of captions) {
       // The text of a file is under it or it is refused (an audio has no place for one on some channels): only the

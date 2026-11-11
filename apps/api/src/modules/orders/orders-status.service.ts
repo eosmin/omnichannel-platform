@@ -314,7 +314,12 @@ export class OrdersStatusService {
           actor: actorRef(actor)
         })
       }
-      this.events.publish(tx, Events.ORDER_STATUS_CHANGED, { ...common, from, to })
+      this.events.publish(tx, Events.ORDER_STATUS_CHANGED, {
+        ...common,
+        from,
+        to,
+        notifyCustomer: body.notifyCustomer ?? null
+      })
       if (to === OrderStatus.CONFIRMED) this.events.publish(tx, Events.ORDER_CONFIRMED, common)
       if (to === OrderStatus.SHIPPED) this.events.publish(tx, Events.ORDER_SHIPPED, common)
       if (to === OrderStatus.DELIVERED) this.events.publish(tx, Events.ORDER_DELIVERED, common)

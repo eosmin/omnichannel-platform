@@ -51,6 +51,11 @@ export function pickerMaxFiles(media: readonly ChannelMediaLimit[] | undefined):
   return Math.max(1, ...(media ?? []).map(limit => limit.maxFiles))
 }
 
+// The kind a refusal names ("this channel does not accept {documents}"): the type of the file, or none when the tray does not know it
+export function unsupportedKindOf(type: OutboundMediaType | null): string {
+  return type ?? 'other'
+}
+
 // What the channel itself refuses of one file, before any byte leaves the browser: the kind it does not
 // take, a type outside its list and a file larger than it takes. The api asks the same again.
 function channelCode(

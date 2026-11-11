@@ -57,6 +57,12 @@ export const OrderMessageNotSentReasons = {
 export type OrderMessageNotSentReason =
   (typeof OrderMessageNotSentReasons)[keyof typeof OrderMessageNotSentReasons]
 
+// The reason of a message that could not be sent for a cause that may pass (the provider did not answer) and kept failing after the
+// retries of the listener. It is never recorded: nothing is claimed, so a later event of the same shipment sends the message, and the
+// team is told meanwhile (`order.message_not_sent`)
+export const OrderMessageSendFailed = 'send_failed'
+export type OrderMessageAlertReason = OrderMessageNotSentReason | typeof OrderMessageSendFailed
+
 // Where a message went (TDD_17 §4.7): the two ways through the conversation's channel (what its plugin declares decides
 // which), the email fallback, or nowhere (with its reason)
 export const OrderMessageRoutes = {
@@ -72,7 +78,9 @@ export type OrderMessageRoute = (typeof OrderMessageRoutes)[keyof typeof OrderMe
 export const OrderMessageOutcomeStatus = {
   SENT: 'sent',
   NOT_SENT: 'not_sent',
-  DUPLICATE: 'duplicate'
+  DUPLICATE: 'duplicate',
+  // An automatic message of a kind whose template is not set to go by itself: nothing is sent and nothing is recorded
+  SKIPPED: 'skipped'
 } as const
 
 // Who asked for the message: a rule of the platform (a carrier event, a creation, a status change that asked to notify) or a
@@ -306,3 +314,12 @@ export const OrderEditablePriceStatuses: readonly OrderStatus[] = [
   OrderStatus.CONFIRMED,
   OrderStatus.PREPARING
 ]
+
+// The message a status that a person set by hand calls for (TDD_09 §5.3): its "Notify customer" box starts from the `autoSend`
+// of the template of this kind. A status the order reaches by following its shipment is told by the shipment's own message.
+export const OrderStatusMessageKinds: Readonly<Partial<Record<OrderStatus, OrderMessageKindType>>> =
+  {
+    [OrderStatus.SHIPPED]: OrderMessageKind.ORDER_SHIPPED,
+    [OrderStatus.DELIVERED]: OrderMessageKind.ORDER_DELIVERED,
+    [OrderStatus.CANCELLED]: OrderMessageKind.ORDER_CANCELLED
+  }

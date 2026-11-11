@@ -102,7 +102,9 @@ export const confirmOrdersBulkSchema = z.strictObject({
 export type ConfirmOrdersBulkBody = z.output<typeof confirmOrdersBulkSchema>
 
 export const cancelOrderSchema = z.strictObject({
-  cancellationReason: freeText(OrderLimits.CANCELLATION_REASON_MAX_LENGTH).min(1)
+  cancellationReason: freeText(OrderLimits.CANCELLATION_REASON_MAX_LENGTH).min(1),
+  // The "Notify customer" box: left out, the `autoSend` of the cancellation template decides
+  notifyCustomer: z.boolean().optional()
 })
 
 export type CancelOrderBody = z.output<typeof cancelOrderSchema>

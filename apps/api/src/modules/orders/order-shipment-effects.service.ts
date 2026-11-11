@@ -180,7 +180,10 @@ export class OrderShipmentEffects {
         this.events.publish(tx, Events.ORDER_STATUS_CHANGED, {
           ...common,
           from: previous,
-          to: step
+          to: step,
+          // The package says what the customer is told, not this change of the order (the actor is the person who moved the package,
+          // when one did, so only this marker tells the change apart from one made by hand)
+          notifyCustomer: false
         })
         if (step === OrderStatus.SHIPPED) this.events.publish(tx, Events.ORDER_SHIPPED, common)
         if (step === OrderStatus.DELIVERED) this.events.publish(tx, Events.ORDER_DELIVERED, common)

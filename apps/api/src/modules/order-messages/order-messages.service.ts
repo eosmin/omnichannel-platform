@@ -15,13 +15,17 @@ import {
   ConversationStatus,
   DeliveryStatus,
   isInstallationActive,
+  MediaStatus,
   MessageLimits,
   MessageType,
+  OrderMessageKind,
   type OrderMessageKindType,
+  type OrderMessageAlertReason,
   type OrderMessageNotSentReason,
   OrderMessageOutcomeStatus,
   OrderMessageNotSentReasons,
   type OrderMessageRoute,
+  OrderMessageTriggers,
   OrderMessageRoutes,
   type OrderMessageTrigger,
   OrderResourceTypes,
@@ -45,14 +49,19 @@ import {
   channelTemplateValues,
   decideOrderMessageRoute,
   type OrderMessageChannel,
+  type OrderMessageSource,
   type OrderMessageValues,
   orderMessageSourceOf,
-  renderOrderMessage
+  renderOrderMessage,
+  renderOrderSummaryPdf
 } from '@platform/core/shipping'
+import { MediaPurpose, sanitizeFilename, StorageKeys } from '@platform/core/storage'
+import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
 import { ChannelTemplatesService } from '../channels/channel-templates.service'
+import { channelFileLimits } from '../messages/channel-file-limits'
 
 import { OrderTemplatesService } from './order-templates.service'
 import type { OrderTemplateView } from './order-templates.support'
@@ -70,6 +79,9 @@ export interface SendOrderMessageInput {
   shipmentId?: string | undefined
   // The member who asked; null for the platform
   requestedBy: string | null
+  // An automatic message of a kind whose template says whether it goes by itself (`autoSend`): with this, a template that is not set
+  // to go, or none at all, sends nothing and records nothing (the store never asked for it)
+  onlyIfAutoSend?: boolean | undefined
 }
 
 export type OrderMessageOutcome =
@@ -82,6 +94,7 @@ export type OrderMessageOutcome =
       messageId: string | null
     }
   | { status: typeof OrderMessageOutcomeStatus.NOT_SENT; reason: OrderMessageNotSentReason }
+  | { status: typeof OrderMessageOutcomeStatus.SKIPPED }
   // The key had been used: nothing was sent now, and what was done then is what the answer says, so that a retry after a lost
   // response learns whether it went
   | {
@@ -97,7 +110,7 @@ export type OrderMessagePreviewResult =
 
 // A deliberate stop (the customer was forgotten, or withdrew their consent) is recorded and shown in the timeline but never
 // raises an alert: nothing went wrong, and nobody should retry it
-const SILENT_REASONS: ReadonlySet<OrderMessageNotSentReason> = new Set([
+const SILENT_REASONS: ReadonlySet<OrderMessageAlertReason> = new Set([
   OrderMessageNotSentReasons.CUSTOMER_ERASED,
   OrderMessageNotSentReasons.CONSENT_REVOKED
 ])
@@ -138,6 +151,8 @@ const CONVERSATION_SELECT = {
 // How many of the customer's recent conversations are looked at when the order has none of its own
 const FALLBACK_CONVERSATIONS = 5
 
+const SUMMARY_CONTENT_TYPE = 'application/pdf'
+
 // How long an email job that failed for good is kept (it holds the address and the text of the message)
 const EMAIL_FAILED_JOB_KEEP_SECONDS = 24 * 60 * 60
 
@@ -149,7 +164,13 @@ const localeOf = (value: string | null): Locale =>
 type Decision =
   | { route: typeof OrderMessageRoutes.NOT_SENT; reason: OrderMessageNotSentReason }
   | { route: typeof OrderMessageRoutes.EMAIL; text: string; email: string }
-  | { route: typeof OrderMessageRoutes.CHANNEL_TEXT; text: string; conversationId: string }
+  | {
+      route: typeof OrderMessageRoutes.CHANNEL_TEXT
+      text: string
+      conversationId: string
+      // The order summary drawn as a PDF, when the template asks for it and the channel takes documents (TDD_17 §4.7)
+      summaryPdf?: Uint8Array
+    }
   | {
       route: typeof OrderMessageRoutes.CHANNEL_TEMPLATE
       text: string
@@ -171,6 +192,14 @@ interface ConversationForMessage {
     status: string
     installation: { status: string; plugin: { status: string } }
   }
+}
+
+// A summary put in the bucket and not yet written down
+interface StoredSummary {
+  mediaId: string
+  key: string
+  filename: string
+  byteLength: number
 }
 
 interface FoundChannel {
@@ -196,6 +225,7 @@ export class OrderMessagesService {
     private readonly window: MessagingWindowService,
     private readonly registry: PluginRegistry,
     private readonly outbound: OutboundQueue,
+    private readonly storage: StorageService,
     @InjectQueue(QueueNames.EMAIL) private readonly emailQueue: Queue<SendEmailJob>,
     private readonly logger: PinoLogger
   ) {
@@ -236,10 +266,13 @@ export class OrderMessagesService {
     if (earlier !== null) return earlier
 
     const order = await this.loadOrder(storeId, orderId)
+    const template = await this.templates.resolve(storeId, kind, order.customer.locale)
+    // What was not asked for is not done and not recorded: a store that never set its messages up is not alerted at every status
+    if (input.onlyIfAutoSend === true && (template === null || !template.autoSend)) {
+      return { status: OrderMessageOutcomeStatus.SKIPPED }
+    }
     const stop = await this.customerStop(storeId, order)
     if (stop !== null) return this.recordNotSent(input, order, stop, null)
-
-    const template = await this.templates.resolve(storeId, kind, order.customer.locale)
     if (template === null) {
       return this.recordNotSent(input, order, OrderMessageNotSentReasons.NO_TEMPLATE, null)
     }
@@ -252,6 +285,19 @@ export class OrderMessagesService {
       default:
         return this.sendThroughChannel(input, order, template.locale, decision)
     }
+  }
+
+  // A send that kept failing for a cause that may pass (the provider did not answer, the queue was down) after the retries of the
+  // caller: nothing is claimed, so a later event of the same shipment sends it, and the team is told now, because a customer who
+  // is not told is something somebody should know
+  async alertNotSent(input: SendOrderMessageInput, reason: OrderMessageAlertReason): Promise<void> {
+    const order = await this.loadOrder(input.storeId, input.orderId)
+    // The event leaves with the commit of an empty transaction, as every event of the platform does
+    await this.prisma.transaction(tx => {
+      this.announceNotSent(tx, input, order, reason)
+      return Promise.resolve()
+    })
+    this.logNotSent(input, order, reason)
   }
 
   // ---------------------------------------------------------------------------------------------------------------------
@@ -367,7 +413,41 @@ export class OrderMessagesService {
         ? { route: OrderMessageRoutes.NOT_SENT, reason: OrderMessageNotSentReasons.TOO_LONG }
         : byEmail()
     }
-    return { route: OrderMessageRoutes.CHANNEL_TEXT, text, conversationId: found.conversationId }
+    const summaryPdf =
+      input.kind === OrderMessageKind.ORDER_SUMMARY && template.attachSummary
+        ? await this.summaryDocument(found, rendered.source, template.locale, order.id)
+        : undefined
+    return {
+      route: OrderMessageRoutes.CHANNEL_TEXT,
+      text,
+      conversationId: found.conversationId,
+      ...(summaryPdf === undefined ? {} : { summaryPdf })
+    }
+  }
+
+  // The summary as a PDF for the channel to carry along (TDD_17 §4.7): only when the plugin declares documents and takes a PDF of
+  // this size. The text always goes, so a channel without them, or a document that cannot be drawn, loses only the attachment.
+  private async summaryDocument(
+    found: FoundChannel,
+    source: OrderMessageSource,
+    templateLocale: string,
+    orderId: string
+  ): Promise<Uint8Array | undefined> {
+    if (!this.registry.hasCapability(found.pluginId, ChannelCapability.DOCUMENT)) return undefined
+    const rule = channelFileLimits(this.registry, false)(found.pluginId, MessageType.DOCUMENT)
+    if (rule !== null && rule.types !== null && !rule.types.includes(SUMMARY_CONTENT_TYPE)) {
+      return undefined
+    }
+    try {
+      const pdf = await renderOrderSummaryPdf(source, localeOf(templateLocale))
+      return rule !== null && pdf.byteLength > rule.maxBytes ? undefined : pdf
+    } catch (error) {
+      this.logger.warn(
+        { orderId, errorName: errorName(error) },
+        'the summary of an order could not be drawn; the text goes without it'
+      )
+      return undefined
+    }
   }
 
   private async renderFor(
@@ -378,6 +458,7 @@ export class OrderMessagesService {
   ): Promise<{
     text: ReturnType<typeof renderOrderMessage>
     values: OrderMessageValues
+    source: OrderMessageSource
   }> {
     const shipment = await this.shipmentOf(storeId, order.id, shipmentId)
     const source = orderMessageSourceOf({
@@ -393,7 +474,7 @@ export class OrderMessagesService {
       shipment
     })
     const values = buildOrderMessageValues(source, localeOf(template.locale))
-    return { text: renderOrderMessage(template.body, values), values }
+    return { text: renderOrderMessage(template.body, values), values, source }
   }
 
   // The conversation the message goes through (TDD_17 §4.7): the order's own, otherwise the customer's most recent open one,
@@ -513,6 +594,12 @@ export class OrderMessagesService {
   ): Promise<OrderMessageOutcome> {
     const { storeId } = input
     const { conversationId, route } = decision
+    // The document goes into the bucket before the transaction (the object store is not asked inside one) and is removed if the
+    // message is not written after all
+    const document =
+      decision.route === OrderMessageRoutes.CHANNEL_TEXT && decision.summaryPdf !== undefined
+        ? await this.putSummary(storeId, order, decision.summaryPdf)
+        : null
     let messageId: string | null
     try {
       messageId = await this.prisma.transaction(async tx => {
@@ -562,26 +649,142 @@ export class OrderMessagesService {
           createdAt: now.toISOString(),
           visibility: { hidden: false, assignedTo: current.assignedTo }
         })
-        this.prisma.afterCommit(tx, () => {
-          this.outbound.enqueue({ storeId, messageId: row.id }).catch((error: unknown) => {
-            this.logger.warn(
-              { messageId: row.id, errorName: errorName(error) },
-              'an order message could not be queued; the sweep will'
-            )
+        this.queueAfterCommit(tx, storeId, row.id)
+        if (document !== null) {
+          await this.writeSummaryDocument(tx, {
+            storeId,
+            conversationId,
+            order,
+            kind: input.kind,
+            document,
+            at: new Date(now.getTime() + 1),
+            assignedTo: current.assignedTo
           })
-        })
+        }
         return row.id
       })
     } catch (error) {
+      // Removed only when the transaction is known not to have committed (it stopped on the conversation): after a connection error
+      // the commit may have happened, and then the file is the one the queued message reads. A stray object is found by its prefix.
+      if (
+        document !== null &&
+        error instanceof PlatformException &&
+        error.code === ErrorCodes.RESOURCE_NOT_FOUND
+      ) {
+        await this.discardSummary(document.key)
+      }
       // The conversation vanished between the decision and the write: nobody is left to carry it
       if (error instanceof PlatformException && error.code === ErrorCodes.RESOURCE_NOT_FOUND) {
         return this.recordNotSent(input, order, OrderMessageNotSentReasons.NO_CHANNEL, locale)
       }
       throw error
     }
-    if (messageId === null) return this.duplicateOf(input)
+    if (messageId === null) {
+      if (document !== null) await this.discardSummary(document.key)
+      return this.duplicateOf(input)
+    }
     this.logSent(input, order, route)
     return { status: OrderMessageOutcomeStatus.SENT, route, messageId }
+  }
+
+  private queueAfterCommit(tx: PrismaTransaction, storeId: string, messageId: string): void {
+    this.prisma.afterCommit(tx, () => {
+      this.outbound.enqueue({ storeId, messageId }).catch((error: unknown) => {
+        this.logger.warn(
+          { messageId, errorName: errorName(error) },
+          'an order message could not be queued; the sweep will'
+        )
+      })
+    })
+  }
+
+  // The summary of the order as a file of the store (purpose ORDER): drawn by the platform, so it needs no scan
+  private async putSummary(
+    storeId: string,
+    order: LoadedOrder,
+    pdf: Uint8Array
+  ): Promise<StoredSummary | null> {
+    const mediaId = randomUUID()
+    const filename = sanitizeFilename(`${order.orderNumber}.pdf`)
+    const key = StorageKeys.order(storeId, order.id, mediaId, filename)
+    try {
+      await this.storage.put(key, Buffer.from(pdf), SUMMARY_CONTENT_TYPE)
+    } catch (error) {
+      // The text goes without it
+      this.logger.warn(
+        { orderId: order.id, errorName: errorName(error) },
+        'the summary of an order could not be stored; the text goes without it'
+      )
+      return null
+    }
+    return { mediaId, key, filename, byteLength: pdf.byteLength }
+  }
+
+  private async discardSummary(key: string): Promise<void> {
+    try {
+      await this.storage.delete(key)
+    } catch {
+      // A stray object is found by its prefix by the storage cleanup; it is not worth failing a message that already failed
+    }
+  }
+
+  // The second message of the summary: the file, a document of the thread right after the text, queued like it
+  private async writeSummaryDocument(
+    tx: PrismaTransaction,
+    input: {
+      storeId: string
+      conversationId: string
+      order: LoadedOrder
+      kind: OrderMessageKindType
+      document: StoredSummary
+      at: Date
+      assignedTo: string | null
+    }
+  ): Promise<void> {
+    const { storeId, conversationId, order, document, at } = input
+    const message = await tx.message.create({
+      data: {
+        storeId,
+        conversationId,
+        type: MessageType.DOCUMENT,
+        content: null,
+        authorType: AuthorType.SYSTEM,
+        metadata: { orderMessage: { orderId: order.id, kind: input.kind, attachment: true } },
+        deliveryStatus: DeliveryStatus.QUEUED,
+        createdAt: at
+      },
+      select: { id: true }
+    })
+    await tx.media.create({
+      data: {
+        id: document.mediaId,
+        storeId,
+        purpose: MediaPurpose.ORDER,
+        orderId: order.id,
+        customerId: order.customerId,
+        messageId: message.id,
+        position: 0,
+        deliveryStatus: DeliveryStatus.QUEUED,
+        key: document.key,
+        filename: document.filename,
+        contentType: SUMMARY_CONTENT_TYPE,
+        fileSize: document.byteLength,
+        status: MediaStatus.CLEAN,
+        scannedAt: at,
+        processedAt: at
+      }
+    })
+    await this.conversations.recordMessageAt(tx, storeId, conversationId, at)
+    this.events.publish(tx, Events.MESSAGE_QUEUED, {
+      storeId,
+      conversationId,
+      messageId: message.id,
+      authorId: null,
+      clientMessageId: null,
+      createdAt: at.toISOString(),
+      visibility: { hidden: false, assignedTo: input.assignedTo }
+    })
+    this.queueAfterCommit(tx, storeId, message.id)
   }
 
   // The fallback: the rendered text in one generic email (`ORDER_MESSAGE`). The email is queued first, under an id made from the
@@ -658,7 +861,7 @@ export class OrderMessagesService {
     tx: PrismaTransaction,
     input: SendOrderMessageInput,
     order: LoadedOrder,
-    reason: OrderMessageNotSentReason
+    reason: OrderMessageAlertReason
   ): void {
     if (SILENT_REASONS.has(reason)) return
     this.events.publish(tx, Events.ORDER_MESSAGE_NOT_SENT, {
@@ -667,7 +870,12 @@ export class OrderMessagesService {
       orderNumber: order.orderNumber,
       kind: input.kind,
       reason,
-      actor: input.requestedBy === null ? SYSTEM : { type: 'user', id: input.requestedBy }
+      // The person who pressed "send" has the answer of their request; the one whose action started a message that goes after the
+      // commit (a creation, a status) has none, so the alert is for them too
+      actor:
+        input.trigger === OrderMessageTriggers.MANUAL && input.requestedBy !== null
+          ? { type: 'user', id: input.requestedBy }
+          : SYSTEM
     })
   }
 
@@ -807,7 +1015,7 @@ export class OrderMessagesService {
   private logNotSent(
     input: SendOrderMessageInput,
     order: LoadedOrder,
-    reason: OrderMessageNotSentReason
+    reason: OrderMessageAlertReason
   ): void {
     this.audit.log({
       action: AuditAction.ORDER_MESSAGE_NOT_SENT,
