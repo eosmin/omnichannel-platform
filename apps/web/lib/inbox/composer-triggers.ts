@@ -6,14 +6,18 @@ import {
 } from '@platform/core/domain'
 
 // What the text of the composer is asking for while the agent types: the command menu after a `/`
-// at the start, the list of snippets or members after `/snippet ` or `/assign `, the list of
+// at the start, the list of snippets, members or products after `/snippet `, `/assign ` or `/product `, the list of
 // teammates after an `@`.
 
 export type SlashQuery =
   // Still choosing the command: `/sn`
   | { kind: 'commands'; text: string }
   // `/snippet gra`, `/assign an`
-  | { kind: 'argument'; command: SlashCommand.SNIPPET | SlashCommand.ASSIGN; text: string }
+  | {
+      kind: 'argument'
+      command: SlashCommand.SNIPPET | SlashCommand.ASSIGN | SlashCommand.PRODUCT
+      text: string
+    }
 
 const MENTION_MAX_QUERY_LENGTH = 40
 const MENTION_MAX_WORDS = 3
@@ -49,7 +53,11 @@ export function slashQuery(draft: string): SlashQuery | null {
   const name = body.slice(0, space).toLowerCase()
   const command = commandOf(name)
   const text = body.slice(space).trim()
-  if (command === SlashCommand.SNIPPET || command === SlashCommand.ASSIGN) {
+  if (
+    command === SlashCommand.SNIPPET ||
+    command === SlashCommand.ASSIGN ||
+    command === SlashCommand.PRODUCT
+  ) {
     return { kind: 'argument', command, text }
   }
   // `/resolve now` and the like: the argument of a command that takes none is ignored, and the menu

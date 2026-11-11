@@ -27,8 +27,16 @@ export interface MenuEntry {
 }
 
 export interface ComposerMenu {
-  kind: 'commands' | 'snippets' | 'members' | 'mentions'
+  kind: 'commands' | 'snippets' | 'members' | 'mentions' | 'products'
   entries: MenuEntry[]
+}
+
+// A product the agent may put in the reply: the line it shows, its hint, and the text that goes into the box
+export interface ProductChoice {
+  id: string
+  label: string
+  hint: string
+  text: string
 }
 
 export interface MenuInput {
@@ -38,6 +46,8 @@ export interface MenuInput {
   // The commands this agent may use: each action needs its own permission
   commands: readonly SlashCommand[]
   snippets: readonly { id: string; shortcut: string; title: string; content: string }[]
+  // The answer of the search for `/product <text>`; empty until the search answers
+  products: readonly ProductChoice[]
   members: readonly { id: string; name: string; role: { name: string }; canBeAssigned: boolean }[]
   selfId: string | undefined
   // Whether the note already names as many people as one may
@@ -96,6 +106,24 @@ export function composerMenu(input: MenuInput): ComposerMenu | null {
             caret: Math.min(snippet.content.length, input.maxLength)
           }
         }))
+    }
+  }
+  if (slash?.command === SlashCommand.PRODUCT) {
+    if (!input.commands.includes(SlashCommand.PRODUCT)) return null
+    return {
+      kind: 'products',
+      entries: input.products.slice(0, MENU_MAX_ENTRIES).map(product => ({
+        id: product.id,
+        label: product.label,
+        hint: product.hint,
+        // The text of the product goes into the box as plain text for the agent to send or edit: the card of a product
+        // as a message of its own has no channel-agnostic path yet
+        outcome: {
+          kind: 'draft',
+          draft: product.text.slice(0, input.maxLength),
+          caret: Math.min(product.text.length, input.maxLength)
+        }
+      }))
     }
   }
   if (slash?.command === SlashCommand.ASSIGN) {

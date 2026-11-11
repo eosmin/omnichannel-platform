@@ -1,7 +1,7 @@
 'use client'
 
-import { Clock, CornerUpLeft, Paperclip, Send, X } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { Clock, CornerUpLeft, Package, Paperclip, Send, X } from 'lucide-react'
+import { useFormatter, useTranslations } from 'next-intl'
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -18,6 +18,7 @@ import {
   MessageLimits,
   MessageType,
   Shortcuts,
+  SLASH_PREFIX,
   SlashCommand
 } from '@platform/core/domain'
 
@@ -25,7 +26,7 @@ import { isAssigneeRefusal } from '../../lib/inbox/assignees'
 import { captionMaxOf } from '../../lib/inbox/caption-max'
 import { publishDraft } from '../../lib/inbox/composer-draft-index'
 import { readDraft, writeDraft } from '../../lib/inbox/composer-drafts'
-import { composerMenu, type MenuEntry } from '../../lib/inbox/composer-menu'
+import { composerMenu, type MenuEntry, type ProductChoice } from '../../lib/inbox/composer-menu'
 import {
   type Mention,
   mentionedIds,
@@ -48,6 +49,9 @@ import { useWindowState } from '../../lib/inbox/use-window-state'
 import { hoursAndMinutes } from '../../lib/inbox/window-state'
 import { acceptWith, pickerMaxFiles } from '../../lib/media/attachment-batch'
 import { ATTACHMENT_ACCEPT } from '../../lib/media/attachment-rules'
+import { formatCents } from '../../lib/products/money'
+import { ProductFilters } from '../../lib/products/product-filter'
+import { SEARCH_MIN_CHARS, useProductSearch } from '../../lib/products/use-products'
 import type { PendingMessage } from '../../lib/realtime/offline-queue'
 import { useAgentTyping } from '../../lib/realtime/use-agent-typing'
 import { useRoleLabel } from '../../lib/role-label'
@@ -202,6 +206,17 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const slash = slashQuery(draft)
   const wantsSnippets = slash?.kind === 'argument' && slash.command === SlashCommand.SNIPPET
   const snippets = useSnippets(storeId, wantsSnippets)
+  // `/product <text>` asks the search of the catalog, for who may read it (the api refuses the rest)
+  const mayProducts = can(ClientPermissions.PRODUCTS_VIEW)
+  const productText =
+    slash?.kind === 'argument' && slash.command === SlashCommand.PRODUCT ? slash.text : ''
+  const products = useProductSearch(
+    storeId,
+    productText,
+    ProductFilters.ACTIVE,
+    mayProducts && productText.length >= SEARCH_MIN_CHARS
+  )
+  const format = useFormatter()
   // Only a reply that could reach the customer is announced: not a note, not a command, and not a
   // box that cannot send (a closed window sends nothing, so it shows nothing)
   useAgentTyping(
@@ -295,18 +310,35 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const textMax = textMaxOf(channelEntry?.limits, isNote || isFileReady)
   const commands = [
     SlashCommand.SNIPPET,
+    // A product goes to the customer in a reply, not into a note of the team
+    ...(mayProducts && !isNote ? [SlashCommand.PRODUCT] : []),
     ...(can(ClientPermissions.CONVERSATIONS_ASSIGN) ? [SlashCommand.ASSIGN] : []),
     ...(can(ClientPermissions.CONVERSATIONS_SNOOZE) && canChangeState ? [SlashCommand.SNOOZE] : []),
     ...(can(ClientPermissions.CONVERSATIONS_RESOLVE) && canChangeState && resolveFlow.isReady
       ? [SlashCommand.RESOLVE]
       : [])
   ]
+  // The search keeps its last answer while a shorter text waits (no request goes out under the minimum): that answer
+  // is not the choice of this text
+  const productAnswer = productText.length >= SEARCH_MIN_CHARS ? (products.data ?? []) : []
+  const productChoices: ProductChoice[] = productAnswer.map(item => {
+    const variant = item.matchedVariant
+    const price = variant === null ? item.priceCents : variant.effectivePriceCents
+    const name = variant === null ? item.name : `${item.name} (${variant.name})`
+    return {
+      id: item.id,
+      label: name,
+      hint: formatCents(format, price),
+      text: `${name} - ${formatCents(format, price)}`
+    }
+  })
   const menu = composerMenu({
     draft,
     caret,
     isNote,
     commands,
     snippets: snippets.data ?? [],
+    products: productChoices,
     members: members.data ?? [],
     selfId: profile.data?.id,
     isMentionFull: mentionedIds(draft, picked).length >= MessageLimits.MAX_MENTIONS,
@@ -585,10 +617,20 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
               {errorText(snippets.error)}
             </p>
           ) : null}
+          {isMenuOpen && entries.length === 0 && menu.kind === 'products' && products.isError ? (
+            <p role="alert" className="text-destructive px-2 text-xs">
+              {errorText(products.error)}
+            </p>
+          ) : null}
           {isMenuOpen &&
           entries.length === 0 &&
           menu.kind !== 'commands' &&
           !(menu.kind === 'snippets' && (snippets.isPending || snippets.isError)) &&
+          // Nothing is asked under the minimum of the search, and the answer is not in yet
+          !(
+            menu.kind === 'products' &&
+            (productText.length < SEARCH_MIN_CHARS || products.isPending || products.isError)
+          ) &&
           !((menu.kind === 'members' || menu.kind === 'mentions') && members.isPending) ? (
             <p role="status" className="text-muted-foreground px-2 text-xs">
               {tMenu('noMatches')}
@@ -665,6 +707,26 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
                   <Paperclip aria-hidden />
                 </Button>
               </>
+            ) : null}
+            {mayProducts && !isNote ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t('productButton')}
+                // A command is the whole text of the box: the button would replace a reply that is half written
+                disabled={draft.trim() !== ''}
+                // The same as typing the command: the box asks for the text to search
+                onClick={() => {
+                  const text = `${SLASH_PREFIX}${SlashCommand.PRODUCT} `
+                  setHasTyped(true)
+                  setText(text)
+                  setCaret(text.length)
+                  textarea.current?.focus()
+                }}
+              >
+                <Package aria-hidden />
+              </Button>
             ) : null}
             <Textarea
               ref={textarea}

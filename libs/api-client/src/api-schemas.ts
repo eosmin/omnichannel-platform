@@ -4,6 +4,7 @@ import {
   CaptionState,
   ChannelDescriptorLimits,
   ContactCardLimits,
+  OrderLineLimits,
   DEFAULT_CHANNEL_ICON_KEY,
   isChannelIconKey,
   isChannelManagementSurface,
@@ -463,6 +464,23 @@ export const messageSchema = z.object({
       })
     )
     .max(ContactCardLimits.MAX_CONTACTS)
+    .nullable()
+    .catch(null)
+    .default(null),
+  // The line of an order in the thread: a pointer to the order and the figures the card shows, never a note, an address
+  // or a phone. Bounded here as the server bounds it; a line that does not fit is drawn as a plain order line of the
+  // type, with no card, and a server that does not send it yet (a rolling deploy) sends none.
+  orderSummary: z
+    .object({
+      event: z.string().max(OrderLineLimits.EVENT_MAX_LENGTH),
+      orderId: z.uuid(),
+      orderNumber: z.string().min(1).max(OrderLineLimits.NUMBER_MAX_LENGTH),
+      status: z.string().max(OrderLineLimits.STATUS_MAX_LENGTH),
+      previousStatus: z.string().max(OrderLineLimits.STATUS_MAX_LENGTH).nullable(),
+      totalCents: z.number().int().nonnegative(),
+      currency: z.string().length(3),
+      itemCount: z.number().int().nonnegative()
+    })
     .nullable()
     .catch(null)
     .default(null),

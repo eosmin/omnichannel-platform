@@ -11,6 +11,10 @@ const base: MenuInput = {
     { id: 'n1', shortcut: 'gracias', title: 'Thanks', content: 'Thank you for writing!' },
     { id: 'n2', shortcut: 'hola', title: 'Greeting', content: 'Hello' }
   ],
+  products: [
+    { id: 'p1', label: 'Red shirt', hint: 'SKU-1', text: 'Red shirt (M) - $19.99' },
+    { id: 'p2', label: 'Blue cap', hint: 'SKU-2', text: 'Blue cap - $9.00' }
+  ],
   members: [
     { id: 'u1', name: 'Ana Pérez', role: { name: 'Agent' }, canBeAssigned: true },
     { id: 'u2', name: 'Luis', role: { name: 'Admin' }, canBeAssigned: true }
@@ -23,6 +27,40 @@ const base: MenuInput = {
 }
 
 const menu = (changes: Partial<MenuInput>) => composerMenu({ ...base, ...changes })
+
+describe('composerMenu products', () => {
+  const withProducts = { commands: [SlashCommand.PRODUCT] }
+
+  it('offers /product, and its Spanish name, only to who may read products', () => {
+    expect(
+      menu({ draft: '/prod', commands: [SlashCommand.PRODUCT] })?.entries.map(entry => entry.label)
+    ).toEqual(['/product'])
+    expect(
+      menu({ draft: '/produ', commands: [SlashCommand.PRODUCT] })?.entries.map(entry => entry.id)
+    ).toEqual([SlashCommand.PRODUCT])
+    expect(menu({ draft: '/prod', commands: [SlashCommand.SNIPPET] })?.entries).toEqual([])
+  })
+
+  it('lists the products the search answered and puts the text of one in the box, cut to the limit', () => {
+    const result = menu({ draft: '/product red', maxLength: 12, ...withProducts })
+
+    expect(result?.kind).toBe('products')
+    expect(result?.entries.map(entry => entry.label)).toEqual(['Red shirt', 'Blue cap'])
+    expect(result?.entries[0]?.outcome).toEqual({
+      kind: 'draft',
+      draft: 'Red shirt (M',
+      caret: 12
+    })
+  })
+
+  it('gives no menu for /product to who may not read products', () => {
+    expect(menu({ draft: '/product red', commands: [SlashCommand.SNIPPET] })).toBeNull()
+  })
+
+  it('answers the Spanish name as the English one', () => {
+    expect(menu({ draft: '/producto red', ...withProducts })?.kind).toBe('products')
+  })
+})
 
 describe('composerMenu', () => {
   it('offers only the commands the agent may use', () => {

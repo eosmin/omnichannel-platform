@@ -4,6 +4,7 @@ import type { PrismaTransaction } from '@platform/core/database'
 import {
   AuthorType,
   MessageType,
+  OrderLineLimits,
   OrderStatus,
   OrderSummaryEvents,
   uuidSchema
@@ -17,7 +18,7 @@ import {
 export const orderSummaryLineSchema = z.strictObject({
   event: z.enum(OrderSummaryEvents),
   orderId: uuidSchema,
-  orderNumber: z.string().min(1).max(64),
+  orderNumber: z.string().min(1).max(OrderLineLimits.NUMBER_MAX_LENGTH),
   status: z.enum(OrderStatus),
   previousStatus: z.enum(OrderStatus).nullable(),
   totalCents: z.number().int().nonnegative(),

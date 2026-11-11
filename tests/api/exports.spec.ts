@@ -571,7 +571,7 @@ describe('Exports', () => {
   })
 
   describe('the conversations file', () => {
-    it('needs both permissions and holds a row per message, without the lines of the platform, the notes of the team or the text of a deleted message', async () => {
+    it('needs both permissions and holds a row per message, without the lines of the platform (the order lines too), the notes of the team or the text of a deleted message', async () => {
       const supervisor = await createActor(owner, app, {
         prefix,
         name: 'supervisor',
@@ -595,6 +595,14 @@ describe('Exports', () => {
         conversationId: conversation.id,
         content: 'a system line',
         type: MessageType.SYSTEM,
+        authorType: AuthorType.SYSTEM,
+        createdAt: at(2)
+      })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: conversation.id,
+        content: 'an order line',
+        type: MessageType.ORDER_SUMMARY,
         authorType: AuthorType.SYSTEM,
         createdAt: at(2)
       })
@@ -629,6 +637,7 @@ describe('Exports', () => {
       expect(file.startsWith(BOM + 'conversation_id,message_id,sent_at')).toBe(true)
       expect(file).toContain('first line')
       expect(file).not.toContain('a system line')
+      expect(file).not.toContain('an order line')
       expect(file).not.toContain('a private note')
       expect(file).not.toContain('the customer regrets this')
       expect(file).not.toContain('secret of store B')

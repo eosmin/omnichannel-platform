@@ -67,6 +67,20 @@ describe('queryKeysForEvent', () => {
     ).toEqual([QueryKeys.conversations.all('s1')])
   })
 
+  it('reads the orders, what the profile shows and every thread when an order is made or changed', () => {
+    const expected = [
+      QueryKeys.orders.all('s1'),
+      QueryKeys.customers.all('s1'),
+      QueryKeys.messages.all('s1')
+    ]
+    expect(
+      queryKeysForEvent(RealtimeEvents.ORDER_CREATED, { orderId: 'o1', customerId: 'u1' }, 's1')
+    ).toEqual(expected)
+    expect(queryKeysForEvent(RealtimeEvents.ORDER_UPDATED, { orderId: 'o1' }, 's1')).toEqual(
+      expected
+    )
+  })
+
   it('moves the conversation in the list when a reply or a note is written', () => {
     const expected = [QueryKeys.conversations.all('s1'), QueryKeys.messages.thread('s1', 'c1')]
     expect(
@@ -218,6 +232,7 @@ describe('queryKeysAfterReconnect', () => {
         QueryKeys.conversations.all('s1'),
         QueryKeys.messages.all('s1'),
         QueryKeys.customers.all('s1'),
+        QueryKeys.orders.all('s1'),
         QueryKeys.presence.team('s1'),
         QueryKeys.exports.all('s1'),
         // A picture that was waiting for its variants when the event was lost

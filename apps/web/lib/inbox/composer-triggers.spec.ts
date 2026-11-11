@@ -33,6 +33,19 @@ describe('slashQuery', () => {
     })
   })
 
+  it('reads the argument of product, by either name', () => {
+    expect(slashQuery('/product red sh')).toEqual({
+      kind: 'argument',
+      command: SlashCommand.PRODUCT,
+      text: 'red sh'
+    })
+    expect(slashQuery('/producto gorra')).toEqual({
+      kind: 'argument',
+      command: SlashCommand.PRODUCT,
+      text: 'gorra'
+    })
+  })
+
   it('ignores the argument of a command that takes none', () => {
     expect(slashQuery('/resolve now')).toEqual({ kind: 'commands', text: 'resolve' })
   })

@@ -26,6 +26,7 @@ import {
 
 import { enumValueOf } from '../conversations/conversations.support'
 import { type SystemLineMetadata, systemLineMetadataSchema } from '../conversations/system-lines'
+import { type OrderSummaryLine, orderSummaryLineSchema } from '../orders/order-summary-line'
 
 import { canRetryLostFile, displayCodeOf, lostFilesSchema } from './lost-files'
 import { isDistinctFile } from './provider-message-match'
@@ -201,6 +202,10 @@ export interface LocationView {
   address: string | null
 }
 
+// What the thread draws of an order line: the pointer to the order and the figures the card shows. Never the notes, the
+// address or the phones (the line does not hold them), and not who did it: the order has its audit for that.
+export type OrderSummaryView = Omit<OrderSummaryLine, 'actor'>
+
 // What the thread shows of a message. The metadata of the channel is not part of it, except the link
 // above; a system line carries its own, which is what the thread draws it from.
 export interface MessageView {
@@ -224,6 +229,10 @@ export interface MessageView {
   failureDefinitive: boolean | null
   mentions: string[]
   system: SystemLineMetadata | null
+  // An ORDER_SUMMARY line: what happened to an order that came from this conversation; null for any other message, a
+  // deleted one, or a line whose metadata does not hold. The api leaves the line out of the thread for a viewer without
+  // ORDERS_VIEW, so it is never drawn for them.
+  orderSummary: OrderSummaryView | null
   // The place of a location message, or null (not a location, deleted, or coordinates that do not hold)
   location: LocationView | null
   // The contact cards a customer shared (a CONTACTS message), cleaned and bounded; null for any other message, a
@@ -441,6 +450,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     mentions: row.mentions,
     // The column is Json: a system line is parsed on the way out, like any other boundary
     system: type === MessageTypes.SYSTEM ? systemLineMetadataSchema.parse(row.metadata) : null,
+    orderSummary: orderSummaryOf(row, type),
     location: locationOf(row, type),
     contacts: contactsOf(row, type),
     sticker: stickerOf(row, type),
@@ -519,6 +529,24 @@ const stickerSchema = z.object({ [MessageMetadataKeys.STICKER]: z.literal(true) 
 function stickerOf(row: MessageRow, type: MessageType): boolean {
   if (type !== MessageTypes.IMAGE || row.deletedAt !== null) return false
   return stickerSchema.safeParse(row.metadata).success
+}
+
+// The line of an order is written by the system with a strict metadata; one that does not parse is not drawn
+function orderSummaryOf(row: MessageRow, type: MessageType): OrderSummaryView | null {
+  if (type !== MessageTypes.ORDER_SUMMARY || row.deletedAt !== null) return null
+  const parsed = orderSummaryLineSchema.safeParse(row.metadata)
+  if (!parsed.success) return null
+  const line = parsed.data
+  return {
+    event: line.event,
+    orderId: line.orderId,
+    orderNumber: line.orderNumber,
+    status: line.status,
+    previousStatus: line.previousStatus,
+    totalCents: line.totalCents,
+    currency: line.currency,
+    itemCount: line.itemCount
+  }
 }
 
 // A deleted message keeps no content in the thread, and the place it shared is content

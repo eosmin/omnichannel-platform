@@ -10,6 +10,7 @@ const Scopes = {
   CONVERSATIONS: 'conversations',
   THREAD: 'thread',
   CUSTOMERS: 'customers',
+  ORDERS: 'orders',
   PRESENCE: 'presence',
   NOTIFICATIONS: 'notifications',
   EXPORTS: 'exports',
@@ -17,7 +18,7 @@ const Scopes = {
 } as const
 type Scope = (typeof Scopes)[keyof typeof Scopes]
 
-// Orders and shipments join with the steps that build their pages (4.4 and 4.x)
+// Shipments join with the step that builds their pages (4.14)
 const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> = {
   // The activity and the count of conversations of a customer open in the panel
   [RealtimeEvents.CONVERSATION_CREATED]: [Scopes.CONVERSATIONS, Scopes.CUSTOMERS],
@@ -50,6 +51,11 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   [RealtimeEvents.MESSAGE_NOTE_ADDED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   [RealtimeEvents.USER_ONLINE]: [Scopes.PRESENCE],
   [RealtimeEvents.USER_OFFLINE]: [Scopes.PRESENCE],
+  // An order made or changed: the list and the detail, what the profile of its customer shows (the orders, the
+  // figures, the activity), and the thread, where the order line is written. The events hold no conversation, so
+  // every thread of the store is stale: a refetch too many is better than a line that never shows
+  [RealtimeEvents.ORDER_CREATED]: [Scopes.ORDERS, Scopes.CUSTOMERS, Scopes.THREAD],
+  [RealtimeEvents.ORDER_UPDATED]: [Scopes.ORDERS, Scopes.CUSTOMERS, Scopes.THREAD],
   [RealtimeEvents.NOTIFICATION]: [Scopes.NOTIFICATIONS],
   [RealtimeEvents.EXPORT_UPDATED]: [Scopes.EXPORTS]
 }
@@ -70,6 +76,8 @@ function keysForScope(scope: Scope, storeId: string, conversationId: string | nu
       ]
     case Scopes.CUSTOMERS:
       return [QueryKeys.customers.all(storeId)]
+    case Scopes.ORDERS:
+      return [QueryKeys.orders.all(storeId)]
     case Scopes.PRESENCE:
       return [QueryKeys.presence.team(storeId)]
     case Scopes.NOTIFICATIONS:
@@ -121,6 +129,7 @@ export function queryKeysAfterReconnect(storeId: string): QueryKey[] {
     QueryKeys.conversations.all(storeId),
     QueryKeys.messages.all(storeId),
     QueryKeys.customers.all(storeId),
+    QueryKeys.orders.all(storeId),
     QueryKeys.presence.team(storeId),
     QueryKeys.notifications.list(storeId),
     QueryKeys.notifications.unread(storeId),
