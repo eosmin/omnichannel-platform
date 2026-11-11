@@ -19,3 +19,29 @@ export function selectSteps(
 ): AffectedStep[] {
   return steps.filter(step => options.full || step.tests !== true)
 }
+
+export interface AffectedArgs {
+  full: boolean
+  since: string | undefined
+  unknown: string[]
+}
+
+// `pnpm validate:affected -- --since <sha>` (the pre-push hook) hands the script a lone `--`
+// with pnpm 11: it is a separator, not a flag, so it is ignored.
+export function parseArgs(args: readonly string[]): AffectedArgs {
+  const result: AffectedArgs = { full: false, since: undefined, unknown: [] }
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string
+    if (arg === '--') continue
+    if (arg === '--full') result.full = true
+    else if (arg === '--since') {
+      const value = args[i + 1]
+      if (value === undefined || value.startsWith('--')) result.unknown.push(arg)
+      else {
+        result.since = value
+        i++
+      }
+    } else result.unknown.push(arg)
+  }
+  return result
+}
