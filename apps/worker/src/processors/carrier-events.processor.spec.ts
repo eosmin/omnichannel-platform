@@ -73,6 +73,18 @@ describe('CarrierEventsProcessor', () => {
     expect(resolver.resolve).toHaveBeenCalledWith({ ...good, correlationId: 'corr' })
   })
 
+  it('does not pass on the free text of the carrier: the job keeps status fields only', async () => {
+    const { resolver, handle } = build()
+
+    await handle({
+      name: JobNames.PROCESS_CARRIER_EVENT,
+      data: { ...good, event: { ...good.event, description: 'Entregado a Juan Perez, Calle X 1' } }
+    })
+
+    expect(JSON.stringify(resolver.resolve.mock.calls)).not.toContain('Juan')
+    expect(resolver.resolve).toHaveBeenCalledWith(good)
+  })
+
   it('refuses a job of the queue that it has no name for', async () => {
     const { resolver, handle } = build()
 

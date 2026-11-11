@@ -45,6 +45,26 @@ describe('resolveProviderStatus', () => {
     ).toMatchObject({ status: ShipmentStatus.FAILED_ATTEMPT, code: '16' })
   })
 
+  it('lets the owner ignore one reason alone, and a composite row beats a plain row that says ignore', () => {
+    const mappings = table([
+      ['16', null],
+      ['16:115', ShipmentStatus.RETURNED],
+      ['16:117', null]
+    ])
+    expect(
+      resolveProviderStatus(
+        { rawStatus: '16', rawReason: '117', status: ShipmentStatus.FAILED_ATTEMPT },
+        mappings
+      )
+    ).toEqual({ kind: StatusResolutionKinds.IGNORED, code: '16:117' })
+    expect(
+      resolveProviderStatus({ rawStatus: '16', rawReason: '115', status: null }, mappings)
+    ).toMatchObject({ kind: StatusResolutionKinds.MAPPED, status: ShipmentStatus.RETURNED })
+    expect(
+      resolveProviderStatus({ rawStatus: '16', rawReason: '999', status: null }, mappings)
+    ).toEqual({ kind: StatusResolutionKinds.IGNORED, code: '16' })
+  })
+
   it('ignores an empty reason', () => {
     expect(
       resolveProviderStatus(

@@ -211,7 +211,7 @@ describe('The webhook of a carrier', () => {
       expect(queued()).toHaveLength(250)
     })
 
-    it('keeps the status of an event whose optional fields are blank or too long', async () => {
+    it('keeps the status of an event whose optional reason is blank', async () => {
       const { id, secret } = await connect()
       const raw = JSON.stringify({
         events: [{ ...pushed('e-1', 'delivered', { reason: '' }), guide: 'G-9' }]
@@ -265,13 +265,6 @@ describe('The webhook of a carrier', () => {
         'e-1',
         'e-4'
       ])
-    })
-
-    it('does not keep the free text of the carrier in the job', async () => {
-      const { id, secret } = await connect()
-      await signed(id, secret, { events: [pushed('e-1', 'delivered')] })
-
-      expect(JSON.stringify(queued()[0]?.data)).not.toContain('description')
     })
   })
 
@@ -365,6 +358,20 @@ describe('The webhook of a carrier', () => {
 
       refused(response)
       expect(queued()).toHaveLength(0)
+    })
+
+    it('takes a body just under the limit', async () => {
+      const { id, secret } = await connect()
+      const raw = JSON.stringify({ events: [pushed('e-1', 'delivered')], padding: '' })
+      const room = CarrierWebhookLimits.MAX_BODY_BYTES - Buffer.byteLength(raw) - 16
+      const body = JSON.stringify({
+        events: [pushed('e-1', 'delivered')],
+        padding: 'x'.repeat(room)
+      })
+      expect(Buffer.byteLength(body)).toBeLessThanOrEqual(CarrierWebhookLimits.MAX_BODY_BYTES)
+
+      expect((await post(id, body, sign(secret, body))).status).toBe(OK)
+      expect(queued()).toHaveLength(1)
     })
 
     it('refuses a body over the limit, whoever signed it and whatever the connection', async () => {

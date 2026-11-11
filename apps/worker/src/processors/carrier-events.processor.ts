@@ -35,7 +35,8 @@ export class CarrierEventsProcessor extends BaseProcessor<ProcessCarrierEventJob
   }
 
   protected async handle(job: Job<ProcessCarrierEventJob>): Promise<void> {
-    // The queue is shared with the outbound webhooks of Phase 2, which have their own processor then
+    // The queue is shared with the outbound webhooks of Phase 2 (Step 5.4): BullMQ gives a job to any worker of the queue, not by
+    // name, so that step extends this processor with a dispatch by job name instead of adding a second one
     if (job.name !== JobNames.PROCESS_CARRIER_EVENT) {
       throw new UnrecoverableError('this queue has no processor for that job yet')
     }
