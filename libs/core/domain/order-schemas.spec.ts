@@ -569,3 +569,39 @@ describe('the scheduled delivery filters', () => {
     ).toBe(false)
   })
 })
+
+describe('the warehouses of a line', () => {
+  const line = (allocations: unknown, quantity = 5) => ({
+    ...valid,
+    items: [{ productId: ID, quantity, allocations }]
+  })
+
+  it('are optional, one per warehouse, and add up to the quantity of the line', () => {
+    expect(createOrderSchema.safeParse(valid).success).toBe(true)
+    const split = [
+      { warehouseId: ID, quantity: 3 },
+      { warehouseId: ID2, quantity: 2 }
+    ]
+    expect(createOrderSchema.safeParse(line(split)).success).toBe(true)
+    expect(updateOrderSchema.safeParse({ items: line(split).items }).success).toBe(true)
+  })
+
+  it('refuse a sum that is not the quantity, a repeated warehouse, an empty list and a price', () => {
+    expect(createOrderSchema.safeParse(line([{ warehouseId: ID, quantity: 4 }])).success).toBe(
+      false
+    )
+    expect(
+      createOrderSchema.safeParse(
+        line([
+          { warehouseId: ID, quantity: 2 },
+          { warehouseId: ID, quantity: 3 }
+        ])
+      ).success
+    ).toBe(false)
+    expect(createOrderSchema.safeParse(line([])).success).toBe(false)
+    expect(
+      createOrderSchema.safeParse(line([{ warehouseId: ID, quantity: 5, unitPriceCents: 1 }]))
+        .success
+    ).toBe(false)
+  })
+})

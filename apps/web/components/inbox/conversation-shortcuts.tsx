@@ -15,6 +15,7 @@ import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { ShortcutPriority } from '../../lib/shortcuts/priorities'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useCustomerDrawer } from '../customers/customer-drawer-context'
+import { useOrderDrawer } from '../orders/order-drawer-context'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 
@@ -41,6 +42,7 @@ export function ConversationShortcuts({
   const runner = useBulkRunner()
   const nameOf = useCustomerNamer()
   const { openCustomer } = useCustomerDrawer()
+  const { openCreate: openCreateOrder } = useOrderDrawer()
   const { resolve, openSnooze } = useConversationControls()
   const [pick, setPick] = useState<BulkPick | null>(null)
   const isPickMounted = useMountedOnce(pick !== null)
@@ -153,6 +155,16 @@ export function ConversationShortcuts({
       if (detail !== undefined) openCustomer(detail.customer.id)
     },
     { ...keyboard, enabled: isLoaded && can(ClientPermissions.CUSTOMERS_VIEW) }
+  )
+  // The drawer opens beside the thread, for the customer of this conversation, and links the order to it
+  useShortcut(
+    Shortcuts.conversation.CREATE_ORDER,
+    () => {
+      if (detail !== undefined) {
+        openCreateOrder({ customerId: detail.customer.id, conversationId })
+      }
+    },
+    { ...keyboard, enabled: isLoaded && can(ClientPermissions.ORDERS_CREATE) }
   )
   useShortcut(Shortcuts.conversation.SNOOZE, openSnooze, {
     ...keyboard,

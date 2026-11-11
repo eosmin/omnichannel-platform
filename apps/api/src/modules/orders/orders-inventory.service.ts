@@ -3,7 +3,9 @@ import { Injectable } from '@nestjs/common'
 import { lockStoreScope, type PrismaTransaction } from '@platform/core/database'
 import {
   InventoryMovementType,
+  checkRequestedAllocation,
   InventoryReferenceType,
+  type LineAllocation,
   OrderLockScopes,
   orderMovementKey,
   OrderStockEffects,
@@ -12,7 +14,13 @@ import {
   type WarehouseAvailability
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { InventoryService, type MovementInput } from '@platform/core/inventory'
+import {
+  InventoryService,
+  type MovementInput,
+  productNotTracked,
+  warehouseInactive,
+  warehouseNotLinked
+} from '@platform/core/inventory'
 
 // The stock side of an order (TDD_16 §4.1). OrdersService calls this inside its own transaction and nothing else writes
 // a level: every movement goes through InventoryService, which locks the level, checks the rules and writes the ledger.
@@ -25,6 +33,10 @@ export interface LineToAllocate {
   variantId: string | null
   quantity: number
   trackInventory: boolean
+  // The warehouses the agent chose for the line; omitted, the server plans them
+  requested?: readonly LineAllocation[] | undefined
+  // Where the units were before: kept if they can still be served, else planned again (never an error)
+  preferred?: readonly LineAllocation[] | undefined
 }
 
 const Effects = OrderStockEffects
@@ -54,6 +66,12 @@ export class OrderInventoryService {
     }
   ): Promise<void> {
     const { storeId, orderId, createdBy } = input
+    // A product that does not track stock has no units to take from a warehouse: a choice for it is a mistake to
+    // report, not one to drop
+    const untracked = input.lines.find(line => !line.trackInventory && line.requested !== undefined)
+    if (untracked !== undefined) {
+      throw productNotTracked(untracked.productId)
+    }
     const tracked = input.lines.filter(line => line.trackInventory)
     if (tracked.length === 0) return
 
@@ -91,26 +109,11 @@ export class OrderInventoryService {
         )
         return { warehouseId, available: level === undefined ? 0 : level.onHand - level.reserved }
       })
-      const plan = planLineAllocation({
-        quantity: line.quantity,
-        warehouses: availability,
+      const settingsOfLine = {
         allowSplitFulfillment: settings?.allowSplitFulfillment ?? false,
         allowNegativeStock: settings?.allowNegativeStock ?? false
-      })
-      if (!plan.ok) {
-        throw new PlatformException(
-          ErrorCodes.INSUFFICIENT_INVENTORY,
-          'no warehouse of the store can serve the line',
-          HttpStatusCodes.CONFLICT,
-          {
-            productId: line.productId,
-            variantId: line.variantId,
-            requested: line.quantity,
-            // The stock of each warehouse, so the agent can lower the quantity or ask for a split
-            availableByWarehouse: plan.availableByWarehouse
-          }
-        )
       }
+      const plan = await this.planOf(tx, storeId, line, availability, settingsOfLine)
       for (const allocation of plan.allocations) {
         rows.push({
           storeId,
@@ -135,6 +138,80 @@ export class OrderInventoryService {
     await tx.orderItemAllocation.createMany({ data: rows })
     // One call, in the order every caller shares, so two orders never wait on each other's levels for ever
     await this.inventory.moveMany(movements, tx)
+  }
+
+  // The warehouses of a line: what the agent chose, once the server has checked it, or the plan by priority. A choice
+  // that cannot be served is refused with the same answers the planner gives; it is never silently replaced by a plan.
+  // The warehouses a line already had (an edit that left it alone) are only a wish: they are kept when they still pass
+  // the same check and dropped for the plan when they do not.
+  private async planOf(
+    tx: PrismaTransaction,
+    storeId: string,
+    line: LineToAllocate,
+    warehouses: readonly WarehouseAvailability[],
+    settings: { allowSplitFulfillment: boolean; allowNegativeStock: boolean }
+  ): Promise<{ allocations: readonly LineAllocation[] }> {
+    const refusal = (availableByWarehouse: readonly WarehouseAvailability[]): PlatformException =>
+      new PlatformException(
+        ErrorCodes.INSUFFICIENT_INVENTORY,
+        'no warehouse of the store can serve the line',
+        HttpStatusCodes.CONFLICT,
+        {
+          productId: line.productId,
+          variantId: line.variantId,
+          requested: line.quantity,
+          // The stock of each warehouse, so the agent can lower the quantity or ask for a split
+          availableByWarehouse
+        }
+      )
+    const plan = (): { allocations: readonly LineAllocation[] } => {
+      const planned = planLineAllocation({ quantity: line.quantity, warehouses, ...settings })
+      if (!planned.ok) throw refusal(planned.availableByWarehouse)
+      return planned
+    }
+    if (line.requested === undefined) {
+      if (line.preferred === undefined) return plan()
+      const kept = checkRequestedAllocation({
+        quantity: line.quantity,
+        requested: line.preferred,
+        warehouses,
+        ...settings
+      })
+      return kept.ok ? kept : plan()
+    }
+    const checked = checkRequestedAllocation({
+      quantity: line.quantity,
+      requested: line.requested,
+      warehouses,
+      ...settings
+    })
+    if (checked.ok) return checked
+    switch (checked.reason) {
+      case 'not_linked': {
+        // Linked but switched off is another answer from "the store does not sell from it"
+        const off = await tx.storeWarehouse.findFirst({
+          where: { storeId, warehouseId: checked.warehouseId, warehouse: { active: false } },
+          select: { warehouseId: true }
+        })
+        throw off === null
+          ? warehouseNotLinked(checked.warehouseId)
+          : warehouseInactive(checked.warehouseId)
+      }
+      case 'insufficient':
+        throw refusal(checked.availableByWarehouse)
+      case 'quantity_mismatch':
+      case 'split_not_allowed':
+        throw new PlatformException(
+          ErrorCodes.VALIDATION_INVALID_INPUT,
+          'the allocations of the line cannot be used',
+          HttpStatusCodes.BAD_REQUEST,
+          { productId: line.productId, variantId: line.variantId, reason: checked.reason }
+        )
+      default: {
+        const unreachable: never = checked
+        return unreachable
+      }
+    }
   }
 
   // The reservations of the order go back (items edited, or the order cancelled before it shipped)

@@ -1,6 +1,6 @@
 'use client'
 
-import { Download, Search, X } from 'lucide-react'
+import { Download, Plus, Search, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
@@ -20,6 +20,7 @@ import {
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
 import { MutationError } from '../../components/customers/mutation-error'
+import { useOrderDrawer } from '../../components/orders/order-drawer-context'
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
@@ -185,6 +186,7 @@ export function OrdersPage(): ReactElement {
   const [selection, setSelection] = useState<OrderSelection>(NO_SELECTION)
   const orders = useOrderList(storeId, filter, sort, mayView)
   const exportCsv = useExportOrders(storeId)
+  const { openCreate } = useOrderDrawer()
   const rows = useMemo(() => orders.data?.pages.flatMap(page => page.data) ?? [], [orders.data])
 
   // The search goes to the address once the person stops typing: the box and the address never fight, because a text that
@@ -226,6 +228,12 @@ export function OrdersPage(): ReactElement {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="flex-1 text-xl font-semibold">{t('title')}</h1>
+        {can(ClientPermissions.ORDERS_CREATE) ? (
+          <Button size="sm" onClick={() => openCreate()}>
+            <Plus aria-hidden />
+            {t('newOrder')}
+          </Button>
+        ) : null}
         {can(ClientPermissions.ORDERS_EXPORT) ? (
           <Button
             variant="outline"

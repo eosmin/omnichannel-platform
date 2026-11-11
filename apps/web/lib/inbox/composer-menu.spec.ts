@@ -28,6 +28,16 @@ const base: MenuInput = {
 
 const menu = (changes: Partial<MenuInput>) => composerMenu({ ...base, ...changes })
 
+describe('composerMenu order', () => {
+  it('offers /order, or /pedido, to who may create orders, and opens the drawer with nothing left in the box', () => {
+    const asked = menu({ draft: '/ped', commands: [SlashCommand.ORDER] })
+
+    expect(asked?.entries.map(entry => entry.label)).toEqual(['/pedido'])
+    expect(asked?.entries[0]?.outcome).toEqual({ kind: 'order' })
+    expect(menu({ draft: '/ord', commands: [SlashCommand.SNIPPET] })?.entries).toEqual([])
+  })
+})
+
 describe('composerMenu products', () => {
   const withProducts = { commands: [SlashCommand.PRODUCT] }
 

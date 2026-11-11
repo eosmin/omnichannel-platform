@@ -81,7 +81,9 @@ function toAllocatable(lines: readonly OrderLine[], itemIds: readonly string[]):
     productId: line.productId,
     variantId: line.variantId,
     quantity: line.quantity,
-    trackInventory: line.trackInventory
+    trackInventory: line.trackInventory,
+    requested: line.requestedAllocations,
+    preferred: line.preferredAllocations
   }))
 }
 
@@ -554,7 +556,34 @@ export class OrdersService {
             canOverridePrice,
             existing: current
           })
-          lines = resolved.lines
+          // A line the edit did not touch (same product, variant and units) keeps the warehouses it had, when they can still
+          // serve it: an edit of another line must not move this one's stock
+          const placed = await tx.orderItemAllocation.findMany({
+            where: { storeId, orderItem: { orderId } },
+            select: {
+              warehouseId: true,
+              quantity: true,
+              orderItem: { select: { productId: true, variantId: true, quantity: true } }
+            }
+          })
+          lines = resolved.lines.map(line => {
+            if (line.requestedAllocations !== undefined) return line
+            const same = placed.filter(
+              row =>
+                row.orderItem.productId === line.productId &&
+                row.orderItem.variantId === line.variantId &&
+                row.orderItem.quantity === line.quantity
+            )
+            return same.length === 0
+              ? line
+              : {
+                  ...line,
+                  preferredAllocations: same.map(row => ({
+                    warehouseId: row.warehouseId,
+                    quantity: row.quantity
+                  }))
+                }
+          })
           priceChanged = resolved.priceChanged
         }
         const shippingCents = body.shippingCents ?? order.shippingCents

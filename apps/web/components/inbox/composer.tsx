@@ -1,6 +1,6 @@
 'use client'
 
-import { Clock, CornerUpLeft, Package, Paperclip, Send, X } from 'lucide-react'
+import { Clock, CornerUpLeft, Package, Paperclip, Send, ShoppingBag, X } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import {
   type KeyboardEvent,
@@ -62,6 +62,7 @@ import { useErrorText } from '../../lib/use-error-text'
 import { useMountedOnce } from '../../lib/use-mounted-once'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
+import { useOrderDrawer } from '../orders/order-drawer-context'
 import { useStore } from '../providers/store-context'
 import { useShortcut } from '../shortcuts/shortcuts-provider'
 import { Button } from '../ui/button'
@@ -208,6 +209,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
   const snippets = useSnippets(storeId, wantsSnippets)
   // `/product <text>` asks the search of the catalog, for who may read it (the api refuses the rest)
   const mayProducts = can(ClientPermissions.PRODUCTS_VIEW)
+  const mayCreateOrder = can(ClientPermissions.ORDERS_CREATE)
   const productText =
     slash?.kind === 'argument' && slash.command === SlashCommand.PRODUCT ? slash.text : ''
   const products = useProductSearch(
@@ -217,6 +219,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     mayProducts && productText.length >= SEARCH_MIN_CHARS
   )
   const format = useFormatter()
+  const { openCreate: openCreateOrder } = useOrderDrawer()
   // Only a reply that could reach the customer is announced: not a note, not a command, and not a
   // box that cannot send (a closed window sends nothing, so it shows nothing)
   useAgentTyping(
@@ -312,6 +315,8 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
     SlashCommand.SNIPPET,
     // A product goes to the customer in a reply, not into a note of the team
     ...(mayProducts && !isNote ? [SlashCommand.PRODUCT] : []),
+    // The order is for the customer of this conversation, and is made from a reply, not from a note of the team
+    ...(mayCreateOrder && !isNote ? [SlashCommand.ORDER] : []),
     ...(can(ClientPermissions.CONVERSATIONS_ASSIGN) ? [SlashCommand.ASSIGN] : []),
     ...(can(ClientPermissions.CONVERSATIONS_SNOOZE) && canChangeState ? [SlashCommand.SNOOZE] : []),
     ...(can(ClientPermissions.CONVERSATIONS_RESOLVE) && canChangeState && resolveFlow.isReady
@@ -410,6 +415,14 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       textarea.current?.focus()
   }
 
+  // The drawer opens over the conversation, for its customer, and the order is linked to it. A conversation that has not
+  // loaded is not one whose customer is known: nothing opens
+  function openOrderDrawer(): void {
+    const detail = conversation.data
+    if (detail === undefined) return
+    openCreateOrder({ customerId: detail.customer.id, conversationId })
+  }
+
   const pick = (entry: MenuEntry): void => {
     const { outcome } = entry
     if (outcome.kind === 'draft') {
@@ -427,6 +440,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       setCaret(0)
       if (outcome.kind === 'snooze') openSnooze()
       if (outcome.kind === 'resolve') resolveFlow.start()
+      if (outcome.kind === 'order') openOrderDrawer()
       if (outcome.kind === 'assign') {
         const { member } = outcome
         // A promise, not the callbacks of mutate: those do not run if the agent moves to another
@@ -707,6 +721,17 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
                   <Paperclip aria-hidden />
                 </Button>
               </>
+            ) : null}
+            {mayCreateOrder && !isNote ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t('orderButton')}
+                onClick={openOrderDrawer}
+              >
+                <ShoppingBag aria-hidden />
+              </Button>
             ) : null}
             {mayProducts && !isNote ? (
               <Button

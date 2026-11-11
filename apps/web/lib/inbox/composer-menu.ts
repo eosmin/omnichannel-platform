@@ -17,6 +17,7 @@ export type MenuOutcome =
   | { kind: 'draft'; draft: string; caret: number; mention?: Mention }
   | { kind: 'snooze' }
   | { kind: 'resolve' }
+  | { kind: 'order' }
   | { kind: 'assign'; member: Mention }
 
 export interface MenuEntry {
@@ -77,6 +78,8 @@ function commandEntries(input: MenuInput, text: string): MenuEntry[] {
 function outcomeOfCommand(command: SlashCommand, name: string): MenuOutcome {
   if (command === SlashCommand.SNOOZE) return { kind: 'snooze' }
   if (command === SlashCommand.RESOLVE) return { kind: 'resolve' }
+  // The create-order drawer opens over the conversation; nothing stays in the box
+  if (command === SlashCommand.ORDER) return { kind: 'order' }
   // Snippet and assign ask for more: the box now holds the command and the menu lists its choices
   const draft = `/${name} `
   return { kind: 'draft', draft, caret: draft.length }

@@ -96,4 +96,20 @@ test.describe('orders in the thread and the keyboard', () => {
 
     await expect(box).toHaveValue('/product ')
   })
+  test('the Order button and /order open the create-order drawer for the conversation', async () => {
+    await page.goto(AppPaths.store.conversation(storeId, conversationId))
+    const drawer = page.getByRole('dialog', { name: en.orders.create.title, exact: true })
+
+    await page.getByRole('button', { name: en.inbox.composer.orderButton }).click()
+    await expect(drawer).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
+
+    const box = page.getByRole('textbox', { name: en.inbox.composer.replyLabel })
+    await box.fill('/order')
+    await page.keyboard.press('Enter')
+    await expect(drawer).toBeVisible()
+    // The command leaves nothing in the box: it is not a message
+    await expect(box).toHaveValue('')
+  })
 })
