@@ -21,9 +21,10 @@ export const CONVERSATION_COLUMNS = [
   'deleted'
 ] as const
 
-// A line the platform wrote and a note only the team reads are not part of what the customer and the
-// store said to each other: neither goes into a file that leaves the platform
-const LEFT_OUT_TYPES = [MessageType.SYSTEM, MessageType.INTERNAL_NOTE]
+// A line the platform wrote (a system line, the line of an order: the order has its own export and its own
+// permission) and a note only the team reads are not part of what the customer and the store said to each other:
+// none goes into a file that leaves the platform
+const LEFT_OUT_TYPES = [MessageType.SYSTEM, MessageType.ORDER_SUMMARY, MessageType.INTERNAL_NOTE]
 
 // One row per message of the conversations the member could see when they asked (the ones that match the
 // filter, or the ones they ticked), oldest first inside each conversation. The text of a deleted

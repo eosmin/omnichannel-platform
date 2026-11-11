@@ -1791,6 +1791,12 @@
         "SYSTEM": "Evento en la conversación",
         "unknown": "Un mensaje que esta versión no puede mostrar"
       },
+      "orderLine": {
+        "created": "Pedido #{number} creado: {status}, {total}",
+        "statusChanged": "Pedido #{number}: de {previous} a {status}",
+        "open": "Abrir el pedido #{number}",
+        "statusSet": "Pedido #{number}: {status}"
+      },
       "quote": {
         "label": {
           "customer": "En respuesta a {author} (cliente)",
@@ -2007,13 +2013,16 @@
           "snippet": "Insertar una respuesta guardada",
           "assign": "Asignar la conversación",
           "snooze": "Ocultarla hasta más tarde",
-          "resolve": "Resolver la conversación"
+          "resolve": "Resolver la conversación",
+          "product": "Insertar un producto",
+          "order": "Crear un pedido"
         },
         "label": {
           "commands": "Comandos",
           "snippets": "Respuestas guardadas",
           "members": "Compañeros",
-          "mentions": "Mencionar a un compañero"
+          "mentions": "Mencionar a un compañero",
+          "products": "Productos"
         },
         "noMatches": "No hay coincidencias.",
         "assigned": "Asignada a {name}.",
@@ -2022,7 +2031,9 @@
       },
       "replying": "Respondiendo a {author}",
       "cancelReply": "Cancelar la respuesta citada",
-      "replyingFile": "Respondiendo a {author}, imagen {number} de {total}"
+      "replyingFile": "Respondiendo a {author}, imagen {number} de {total}",
+      "productButton": "Insertar un producto",
+      "orderButton": "Crear un pedido"
     },
     "snooze": {
       "title": "Posponer la conversación",
@@ -2213,6 +2224,7 @@
           "COMMAND_PALETTE": "Buscar clientes",
           "SEND_MESSAGE": "Enviar el mensaje",
           "GO_TO_INBOX": "Ir a la bandeja",
+          "GO_TO_ORDERS": "Ir a pedidos",
           "GO_TO_CUSTOMERS": "Ir a clientes"
         }
       }
@@ -2250,7 +2262,8 @@
       },
       "quick": {
         "findCustomer": "Buscar cliente",
-        "none": "No hay acciones disponibles."
+        "none": "No hay acciones disponibles.",
+        "createOrder": "Crear pedido"
       }
     },
     "anonymousCustomer": "Visitante ····{digits}",

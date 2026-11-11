@@ -71,7 +71,7 @@ export const ListKeyAliases = {
 
 // The bindings the screen handles today. The help sheet lists only these: the search of conversations
 // waits for Step 5.1, and until then `Mod+K` goes to the search of customers (the palette of Step 5.1
-// takes the binding over); the jump to orders waits for the page it opens.
+// takes the binding over).
 export const AvailableShortcuts = {
   list: [
     'NEXT_CONVERSATION',
@@ -98,18 +98,19 @@ export const AvailableShortcuts = {
     'CREATE_ORDER',
     'OPEN_CUSTOMER'
   ],
-  global: ['COMMAND_PALETTE', 'SEND_MESSAGE', 'GO_TO_INBOX', 'GO_TO_CUSTOMERS']
+  global: ['COMMAND_PALETTE', 'SEND_MESSAGE', 'GO_TO_INBOX', 'GO_TO_ORDERS', 'GO_TO_CUSTOMERS']
 } as const satisfies {
   [Group in keyof typeof Shortcuts]: readonly (keyof (typeof Shortcuts)[Group])[]
 }
 
-// The commands of the composer, typed after a `/`. `/product` and `/order` join with
-// Step 4.4, which builds products and orders.
+// The commands of the composer, typed after a `/`.
 export enum SlashCommand {
   SNIPPET = 'snippet',
   ASSIGN = 'assign',
   SNOOZE = 'snooze',
-  RESOLVE = 'resolve'
+  RESOLVE = 'resolve',
+  PRODUCT = 'product',
+  ORDER = 'order'
 }
 
 // The same commands in Spanish, for who writes the replies in it. The English names keep working: a
@@ -118,7 +119,9 @@ export const SlashCommandAliases: Readonly<Record<SlashCommand, readonly string[
   [SlashCommand.SNIPPET]: ['respuesta'],
   [SlashCommand.ASSIGN]: ['asignar'],
   [SlashCommand.SNOOZE]: ['posponer'],
-  [SlashCommand.RESOLVE]: ['resolver']
+  [SlashCommand.RESOLVE]: ['resolver'],
+  [SlashCommand.PRODUCT]: ['producto'],
+  [SlashCommand.ORDER]: ['pedido']
 }
 
 export const SLASH_PREFIX = '/'

@@ -17,6 +17,7 @@ function picture(id: string, secondsAfter: number, extra: Partial<MessageView> =
     media: [{ id: `m-${id}`, contentType: 'image/png', status: MediaStatus.CLEAN }],
     unavailableFiles: [],
     sticker: false,
+    orderSummary: null,
     deletedAt: null,
     replyToMessageId: null,
     replyToMediaId: null,

@@ -1543,4 +1543,162 @@ describe('The messages of a conversation', () => {
       ])
     })
   })
+
+  describe('the line of an order in the thread', () => {
+    const line = (orderNumber: string) => ({
+      event: 'created',
+      orderId: randomUUID(),
+      orderNumber,
+      status: 'PENDING_CONFIRMATION',
+      previousStatus: null,
+      totalCents: 1999,
+      currency: 'USD',
+      itemCount: 1,
+      actor: { type: 'system', id: null }
+    })
+
+    it('shows its pointer and figures to who may read orders, and leaves it out for who may not', async () => {
+      const { id } = await mk()
+      const metadata = line(`T-${randomUUID().slice(0, 6)}`)
+      await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: id,
+          type: MessageType.ORDER_SUMMARY,
+          authorType: AuthorType.SYSTEM,
+          content: null,
+          metadata
+        }
+      })
+      const withoutOrders = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `noOrderLine${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW]
+      })
+
+      const reads = await asAdmin().get(ApiRoutes.conversations.messages(id))
+      const blind = await api(app, withoutOrders, ctx.storeA).get(
+        ApiRoutes.conversations.messages(id)
+      )
+
+      expect(reads.status).toBe(200)
+      const [shown] = (reads.body as ThreadBody).data as unknown as {
+        orderSummary: Record<string, unknown>
+      }[]
+      expect(shown?.orderSummary).toMatchObject({
+        orderNumber: metadata.orderNumber,
+        totalCents: 1999,
+        status: 'PENDING_CONFIRMATION'
+      })
+      // Not who did it
+      expect(shown?.orderSummary).not.toHaveProperty('actor')
+      expect(blind.status).toBe(200)
+      expect((blind.body as ThreadBody).data).toEqual([])
+      expect(JSON.stringify(blind.body)).not.toContain(metadata.orderNumber)
+    })
+
+    it('is hidden from a member who reads notes but not orders, and pages over the lines that are left out', async () => {
+      const { id } = await mk()
+      const at = (minutes: number) => new Date(Date.UTC(2026, 10, 1, 10, minutes))
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        content: 'first',
+        createdAt: at(1)
+      })
+      await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: id,
+          type: MessageType.ORDER_SUMMARY,
+          authorType: AuthorType.SYSTEM,
+          content: null,
+          metadata: line('T-PAGED'),
+          createdAt: at(2)
+        }
+      })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: id,
+        content: 'third',
+        createdAt: at(3)
+      })
+      const notesNoOrders = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `notesNoOrders${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [
+          Permissions.CONVERSATIONS_VIEW,
+          Permissions.MESSAGES_VIEW,
+          Permissions.MESSAGES_INTERNAL_NOTE
+        ]
+      })
+      const member = api(app, notesNoOrders, ctx.storeA)
+
+      const first = await member.get(ApiRoutes.conversations.messages(id)).query({ limit: 1 })
+      const second = await member
+        .get(ApiRoutes.conversations.messages(id))
+        .query({ limit: 1, cursor: (first.body as ThreadBody).nextCursor })
+
+      expect((first.body as ThreadBody).data.map(message => message.content)).toEqual(['third'])
+      expect((first.body as ThreadBody).hasMore).toBe(true)
+      expect((second.body as ThreadBody).data.map(message => message.content)).toEqual(['first'])
+      expect((second.body as ThreadBody).hasMore).toBe(false)
+    })
+
+    it('draws a creation and a change of state one after the other', async () => {
+      const { id } = await mk()
+      const base = line('T-TWO')
+      for (const metadata of [
+        base,
+        {
+          ...base,
+          event: 'status_changed',
+          previousStatus: 'PENDING_CONFIRMATION',
+          status: 'CONFIRMED'
+        }
+      ]) {
+        await owner.message.create({
+          data: {
+            storeId: ctx.storeA.id,
+            conversationId: id,
+            type: MessageType.ORDER_SUMMARY,
+            authorType: AuthorType.SYSTEM,
+            content: null,
+            metadata
+          }
+        })
+      }
+
+      const response = await asAdmin().get(ApiRoutes.conversations.messages(id))
+
+      expect(response.status).toBe(200)
+      expect((response.body as ThreadBody).data).toHaveLength(2)
+    })
+
+    it('cannot be answered: a reply that quotes it finds no such message', async () => {
+      const { id } = await mk()
+      const created = await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: id,
+          type: MessageType.ORDER_SUMMARY,
+          authorType: AuthorType.SYSTEM,
+          content: null,
+          metadata: line('T-QUOTE')
+        },
+        select: { id: true }
+      })
+
+      const response = await asAdmin()
+        .post(ApiRoutes.messages.create)
+        .send(reply(id, { replyToMessageId: created.id }))
+
+      expect(response.status).toBe(404)
+      expect(await messagesOf(id)).toHaveLength(1)
+    })
+  })
 })

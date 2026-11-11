@@ -34,6 +34,7 @@ import { DeliveryTicksIcon } from './delivery-ticks'
 import { LocationCard } from './location-card'
 import { MessageActionsBar } from './message-actions-bar'
 import { MessageMedia, PendingMedia } from './message-media'
+import { OrderLine } from './order-line'
 import { QuotedMessage } from './quoted-message'
 import { ReactionChips } from './reaction-chips'
 import { SharedLink } from './shared-link'
@@ -109,7 +110,14 @@ function MessageBody(props: MessageBubbleProps): ReactElement {
       />
     )
   }
-  if (kind === 'neutral') return <NeutralLine message={message} />
+  if (kind === 'neutral') {
+    // An order line draws its own sentence; one whose metadata did not hold (null) is the plain line below
+    return message.orderSummary === null ? (
+      <NeutralLine message={message} />
+    ) : (
+      <OrderLine line={message.orderSummary} />
+    )
+  }
   return <Bubble {...props} kind={kind} />
 }
 

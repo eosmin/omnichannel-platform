@@ -830,6 +830,11 @@ export class MessagesService {
       throw resourceNotFound('conversation')
     }
     const readsNotes = viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)
+    // The line of an order says its number and its total: only who may read orders sees it
+    const hiddenTypes = [
+      ...(readsNotes ? [] : [MessageType.INTERNAL_NOTE]),
+      ...(viewer.held.includes(Permissions.ORDERS_VIEW) ? [] : [MessageType.ORDER_SUMMARY])
+    ]
     const { cursor } = query
     const rows = await this.prisma.client.message.findMany({
       where: {
@@ -837,7 +842,7 @@ export class MessagesService {
         conversationId,
         // A reply that failed and was thrown away is nowhere in the thread
         discardedAt: null,
-        ...(readsNotes ? {} : { type: { not: MessageType.INTERNAL_NOTE } }),
+        ...(hiddenTypes.length === 0 ? {} : { type: { notIn: hiddenTypes } }),
         ...(cursor === undefined
           ? {}
           : {
@@ -884,7 +889,7 @@ export class MessagesService {
         storeId,
         conversationId,
         discardedAt: null,
-        type: { not: MessageType.SYSTEM },
+        type: { notIn: [MessageType.SYSTEM, MessageType.ORDER_SUMMARY] },
         ...(readsNotes ? {} : { NOT: { type: MessageType.INTERNAL_NOTE } })
       },
       select: { ...QUOTE_SELECT }
@@ -910,9 +915,11 @@ export class MessagesService {
         id: messageId,
         storeId,
         conversationId,
-        // A system line is a divider of the thread: nobody answers it
+        // A system line and the line of an order are dividers of the thread: nobody answers them
         type: {
-          notIn: isNote ? [MessageType.SYSTEM] : [MessageType.SYSTEM, MessageType.INTERNAL_NOTE]
+          notIn: isNote
+            ? [MessageType.SYSTEM, MessageType.ORDER_SUMMARY]
+            : [MessageType.SYSTEM, MessageType.ORDER_SUMMARY, MessageType.INTERNAL_NOTE]
         }
       }
     })

@@ -24,7 +24,11 @@ import { OutboundQueue } from '../outbound/outbound-queue'
 import { MessageReactionsService } from './message-reactions.service'
 
 // What a thread of the team is made of and the customer never sees
-const NOT_SENT_TO_CHANNEL: readonly string[] = [MessageType.SYSTEM, MessageType.INTERNAL_NOTE]
+const NOT_SENT_TO_CHANNEL: readonly string[] = [
+  MessageType.SYSTEM,
+  MessageType.ORDER_SUMMARY,
+  MessageType.INTERNAL_NOTE
+]
 
 // An agent reacting to a message of a conversation. The reaction is stored at once, as `queued`, so the
 // team sees it; the worker sends it to the channel and settles it as `sent` or `failed`, and the thread

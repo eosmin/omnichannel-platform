@@ -1791,6 +1791,12 @@
         "SYSTEM": "Event in the conversation",
         "unknown": "A message this version cannot show"
       },
+      "orderLine": {
+        "created": "Order #{number} created: {status}, {total}",
+        "statusChanged": "Order #{number}: {previous} to {status}",
+        "open": "Open order #{number}",
+        "statusSet": "Order #{number}: {status}"
+      },
       "quote": {
         "label": {
           "customer": "In reply to {author} (customer)",
@@ -2007,13 +2013,16 @@
           "snippet": "Insert a saved reply",
           "assign": "Assign the conversation",
           "snooze": "Hide it until later",
-          "resolve": "Mark it resolved"
+          "resolve": "Mark it resolved",
+          "product": "Insert a product",
+          "order": "Create an order"
         },
         "label": {
           "commands": "Commands",
           "snippets": "Saved replies",
           "members": "Teammates",
-          "mentions": "Mention a teammate"
+          "mentions": "Mention a teammate",
+          "products": "Products"
         },
         "noMatches": "Nothing matches.",
         "assigned": "Assigned to {name}.",
@@ -2022,7 +2031,9 @@
       },
       "replying": "Replying to {author}",
       "cancelReply": "Cancel the quoted reply",
-      "replyingFile": "Replying to {author}, image {number} of {total}"
+      "replyingFile": "Replying to {author}, image {number} of {total}",
+      "productButton": "Insert a product",
+      "orderButton": "Create an order"
     },
     "snooze": {
       "title": "Snooze the conversation",
@@ -2213,6 +2224,7 @@
           "COMMAND_PALETTE": "Search customers",
           "SEND_MESSAGE": "Send the message",
           "GO_TO_INBOX": "Go to the inbox",
+          "GO_TO_ORDERS": "Go to orders",
           "GO_TO_CUSTOMERS": "Go to customers"
         }
       }
@@ -2250,7 +2262,8 @@
       },
       "quick": {
         "findCustomer": "Find customer",
-        "none": "No actions available."
+        "none": "No actions available.",
+        "createOrder": "Create order"
       }
     },
     "anonymousCustomer": "Visitor ····{digits}",

@@ -5,7 +5,6 @@ import type {
   BulkLabelJobStatus,
   ChannelId,
   ConversationStatus,
-  OrderStatus,
   ShipmentStatus
 } from '../index'
 import type { NotificationRealtimePayload } from '../notifications'
@@ -135,12 +134,10 @@ export interface RealtimeEventMap {
   [RealtimeEvents.USER_ONLINE]: { userId: string }
   [RealtimeEvents.USER_OFFLINE]: { userId: string }
 
-  [RealtimeEvents.ORDER_CREATED]: {
-    orderId: string
-    conversationId: string | null
-    customerId: string
-  }
-  [RealtimeEvents.ORDER_UPDATED]: { orderId: string; status: OrderStatus }
+  // Ids only, to sockets that hold ORDERS_VIEW: the page reads the order through the api. The conversation of the
+  // order is left out on purpose (who may see a conversation is the inbox's rule).
+  [RealtimeEvents.ORDER_CREATED]: { orderId: string; customerId: string }
+  [RealtimeEvents.ORDER_UPDATED]: { orderId: string }
 
   [RealtimeEvents.SHIPMENT_UPDATED]: {
     orderId: string

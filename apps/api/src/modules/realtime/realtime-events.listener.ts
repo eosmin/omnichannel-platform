@@ -16,7 +16,9 @@ import {
   type MessageFailedPayload,
   type MessageNoteAddedPayload,
   type MessageQueuedPayload,
-  type MessageStatusPayload
+  type MessageStatusPayload,
+  type OrderCreatedPayload,
+  type OrderEventPayload
 } from '@platform/core/events'
 import { canSeeConversation, isHiddenStatus, viewerOf } from '@platform/core/messaging'
 import { RealtimeEvents } from '@platform/core/realtime'
@@ -27,6 +29,9 @@ import { SocketAccessService } from './socket-access.service'
 
 // Reading what is said in a conversation takes the right to read messages as well
 const mayRead = (socket: SocketData): boolean => socket.held.includes(Permissions.MESSAGES_VIEW)
+
+// An order is read through the orders route, which asks for ORDERS_VIEW: only a socket that holds it hears about one
+const mayHearOrders = (socket: SocketData): boolean => socket.held.includes(Permissions.ORDERS_VIEW)
 
 // Runs both and waits for both: the eviction must not depend on the notification having worked
 async function together(...work: Promise<void>[]): Promise<void> {
@@ -160,6 +165,35 @@ export class RealtimeEventsListener {
     this.realtime.toStoreUser(payload.storeId, payload.requestedBy, RealtimeEvents.EXPORT_UPDATED, {
       exportId: payload.exportId
     })
+  }
+
+  // An order was made: who may read orders hears its id and its customer's, nothing of what it holds (not the
+  // conversation either: who may see the conversation is the inbox's rule, and the page reads the thread anyway)
+  @OnEvent(Events.ORDER_CREATED)
+  onOrderCreated(payload: OrderCreatedPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.ORDER_CREATED,
+      { orderId: payload.orderId, customerId: payload.customerId },
+      mayHearOrders
+    )
+  }
+
+  // Whatever changed in an order (its fields, its state, its payment, its price decision): the id only, and the
+  // page reads the order again through the api
+  @OnEvent(Events.ORDER_UPDATED)
+  @OnEvent(Events.ORDER_STATUS_CHANGED)
+  @OnEvent(Events.ORDER_PAYMENT_RECORDED)
+  @OnEvent(Events.ORDER_PAYMENT_STATUS_CHANGED)
+  @OnEvent(Events.ORDER_PRICE_APPROVED)
+  @OnEvent(Events.ORDER_PRICE_REJECTED)
+  onOrderUpdated(payload: OrderEventPayload): Promise<void> {
+    return this.realtime.toStoreWhere(
+      payload.storeId,
+      RealtimeEvents.ORDER_UPDATED,
+      { orderId: payload.orderId },
+      mayHearOrders
+    )
   }
 
   // The room of a conversation holds only the sockets that were let in, so it is the audience

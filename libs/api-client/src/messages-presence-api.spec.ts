@@ -93,6 +93,7 @@ const message = {
   unsupportedType: null,
   location: null,
   sticker: false,
+  orderSummary: null,
   reactions: [],
   media: [],
   unavailableFiles: [],
@@ -127,6 +128,34 @@ describe('fetchMessagesPage', () => {
     const [url, init] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe('https://api.example.com/api/v1/conversations/c1/messages?cursor=abc')
     expect(init?.headers).toMatchObject({ 'x-store-id': 's1' })
+  })
+
+  it('reads the line of an order, and draws a line that does not fit as a plain one', async () => {
+    const line = {
+      event: 'created',
+      orderId: '8a3f0f6e-2f43-4d8c-9f43-0b9a0f6e2f43',
+      orderNumber: '00012',
+      status: 'PENDING_CONFIRMATION',
+      previousStatus: null,
+      totalCents: 1999,
+      currency: 'USD',
+      itemCount: 2
+    }
+    const { client } = setup(
+      json(200, {
+        data: [
+          { ...message, id: 'm1', orderSummary: line },
+          { ...message, id: 'm2', orderSummary: { ...line, orderNumber: 'x'.repeat(65) } },
+          { ...message, id: 'm3' }
+        ],
+        nextCursor: null,
+        hasMore: false
+      })
+    )
+
+    const page = await fetchMessagesPage(client, 's1', 'c1', null)
+
+    expect(page.data.map(item => item.orderSummary)).toEqual([line, null, null])
   })
 
   it('has no query string for the first page', async () => {

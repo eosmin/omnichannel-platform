@@ -1144,6 +1144,44 @@ export interface SeededOrder {
   orderNumber: string
 }
 
+// The line the thread shows for an order that came from the conversation, written straight in the table as the api
+// writes it (the system, no text, a strict metadata). `previous` makes it a change of state.
+export async function removeOrderLinesOf(conversationId: string): Promise<void> {
+  await withOwner(async owner => {
+    await owner.message.deleteMany({ where: { conversationId, type: MessageType.ORDER_SUMMARY } })
+  })
+}
+
+export async function addOrderLineTo(
+  storeId: string,
+  conversationId: string,
+  order: SeededOrder,
+  line: { status: string; previous?: string; totalCents?: number }
+): Promise<void> {
+  await withOwner(async owner => {
+    await owner.message.create({
+      data: {
+        storeId,
+        conversationId,
+        type: MessageType.ORDER_SUMMARY,
+        authorType: AuthorType.SYSTEM,
+        content: null,
+        metadata: {
+          event: line.previous === undefined ? 'created' : 'status_changed',
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: line.status,
+          previousStatus: line.previous ?? null,
+          totalCents: line.totalCents ?? 1999,
+          currency: 'USD',
+          itemCount: 1,
+          actor: { type: 'system', id: null }
+        }
+      }
+    })
+  })
+}
+
 // Orders of a customer made straight in the table (the order screens that make them are Step 4.4 PR B): each takes the
 // number, the state, the payment and the day of delivery it is given. Returns the customer, the orders (the newest last)
 // and what removes them again.

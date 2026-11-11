@@ -38,6 +38,7 @@ import { REALTIME_TIMING } from '../../apps/api/src/modules/realtime/realtime.ty
 import { SocketAccessService } from '../../apps/api/src/modules/realtime/socket-access.service'
 import { TenantContextService } from '../../apps/api/src/modules/tenancy'
 import { createConversationOf, createRole } from '../builders'
+import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { assertNoOtherBridgeListener } from '../helpers/bridge-listeners'
 import {
@@ -582,6 +583,66 @@ describe('The realtime gateway', () => {
         userId: ctx.agentA.id
       })
       expect(admin.of(RealtimeEvents.CONVERSATION_READ)).toEqual([])
+    })
+
+    it('tells an order that was made or changed only to who may read orders, with its ids and nothing else', async () => {
+      const readsOrders = await asA(ctx.adminA)
+      const withoutOrders = await actorWithPermissions(owner, app, {
+        prefix,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        name: 'noOrdersRealtimeA',
+        permissions: [Permissions.CONVERSATIONS_VIEW]
+      })
+      madeActors.push(withoutOrders)
+      const noOrders = await connect(withoutOrders.token, ctx.storeA.id)
+      const other = await connect(ctx.adminB.token, ctx.storeB.id)
+      const orderId = randomUUID()
+      const customerId = randomUUID()
+      const emitter = app.get(EventEmitter2)
+      const common = {
+        storeId: ctx.storeA.id,
+        orderId,
+        orderNumber: '00001',
+        actor: { type: 'user', id: ctx.adminA.id }
+      }
+
+      emitter.emit(Events.ORDER_CREATED, {
+        ...common,
+        customerId,
+        conversationId: randomUUID(),
+        totalCents: 100,
+        currency: 'USD'
+      })
+      // Every change of an order tells the same thing: which order
+      const changes = [
+        [Events.ORDER_UPDATED, common],
+        [Events.ORDER_STATUS_CHANGED, { ...common, from: 'CONFIRMED', to: 'PREPARING' }],
+        [Events.ORDER_PAYMENT_RECORDED, { ...common, from: 'PENDING', to: 'COMPLETED' }],
+        [Events.ORDER_PAYMENT_STATUS_CHANGED, { ...common, from: 'PENDING', to: 'COMPLETED' }],
+        [Events.ORDER_PRICE_APPROVED, common],
+        [Events.ORDER_PRICE_REJECTED, common]
+      ] as const
+      for (const [event, payload] of changes) emitter.emit(event, payload)
+      await until(
+        () =>
+          readsOrders.of(RealtimeEvents.ORDER_CREATED).length === 1 &&
+          readsOrders.of(RealtimeEvents.ORDER_UPDATED).length === changes.length
+      )
+      await sleep(SETTLE_MS)
+
+      // Ids only: no conversation, no number, no total
+      expect(readsOrders.of(RealtimeEvents.ORDER_CREATED)[0]?.payload).toEqual({
+        orderId,
+        customerId
+      })
+      for (const heard of readsOrders.of(RealtimeEvents.ORDER_UPDATED)) {
+        expect(heard.payload).toEqual({ orderId })
+      }
+      expect(noOrders.of(RealtimeEvents.ORDER_CREATED)).toEqual([])
+      expect(noOrders.of(RealtimeEvents.ORDER_UPDATED)).toEqual([])
+      expect(other.of(RealtimeEvents.ORDER_CREATED)).toEqual([])
+      expect(other.of(RealtimeEvents.ORDER_UPDATED)).toEqual([])
     })
   })
 

@@ -6,6 +6,15 @@ export const OrderSummaryEvents = {
   CREATED: 'created',
   STATUS_CHANGED: 'status_changed'
 } as const
+// The bounds of the strings of an ORDER_SUMMARY line: the thread of the web draws only what fits them, so a line
+// cannot become a huge card. The writer validates `event` and `status` against their enums, and the unit spec of this
+// file proves that every value of those enums fits, so a new state cannot become a line the page silently drops.
+export const OrderLineLimits = {
+  EVENT_MAX_LENGTH: 32,
+  NUMBER_MAX_LENGTH: 64,
+  STATUS_MAX_LENGTH: 32
+} as const
+
 export type OrderSummaryEvent = (typeof OrderSummaryEvents)[keyof typeof OrderSummaryEvents]
 
 // The orders that count in the figures of a customer (orders, total spent, average order, first and

@@ -21,6 +21,7 @@ const message = (over: Partial<MessageView>): MessageView => ({
   location: null,
   contacts: null,
   sticker: false,
+  orderSummary: null,
   reactions: [],
   media: [],
   unavailableFiles: [],

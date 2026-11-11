@@ -766,3 +766,59 @@ describe('messageView targets of the files of an album', () => {
     })
   })
 })
+
+describe('messageView orderSummary', () => {
+  const line = {
+    event: 'created',
+    orderId: '8a3f0f6e-2f43-4d8c-9f43-0b9a0f6e2f43',
+    orderNumber: '00012',
+    status: 'PENDING_CONFIRMATION',
+    previousStatus: null,
+    totalCents: 1999,
+    currency: 'USD',
+    itemCount: 2,
+    actor: { type: 'user', id: '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed' }
+  }
+  const orderRow = (metadata: unknown, extra: object = {}): Parameters<typeof messageView>[0] => ({
+    ...row(metadata),
+    type: MessageType.ORDER_SUMMARY,
+    authorType: AuthorType.SYSTEM,
+    content: null,
+    ...extra
+  })
+
+  it('carries the pointer and the figures of the line, and not who did it', () => {
+    const view = messageView(orderRow(line)).orderSummary
+
+    expect(view).toEqual({
+      event: 'created',
+      orderId: line.orderId,
+      orderNumber: '00012',
+      status: 'PENDING_CONFIRMATION',
+      previousStatus: null,
+      totalCents: 1999,
+      currency: 'USD',
+      itemCount: 2
+    })
+    expect(view).not.toHaveProperty('actor')
+  })
+
+  it('is null on a message that is not an order line, even with the same metadata', () => {
+    expect(messageView(row(line)).orderSummary).toBeNull()
+  })
+
+  it('is null once the line is deleted', () => {
+    expect(
+      messageView(orderRow(line, { deletedAt: new Date('2026-10-30T11:00:00Z') })).orderSummary
+    ).toBeNull()
+  })
+
+  it.each([
+    ['no metadata', null],
+    ['an extra key (a note of the order)', { ...line, internalNotes: 'owes us a favour' }],
+    ['a number past the limit', { ...line, orderNumber: 'x'.repeat(65) }],
+    ['a total that is not whole cents', { ...line, totalCents: 19.99 }]
+  ])('is null for %s', (_name, metadata) => {
+    expect(messageView(orderRow(metadata)).orderSummary).toBeNull()
+  })
+})
