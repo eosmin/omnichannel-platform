@@ -1,7 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
-import { Counter, Registry } from '@prometheus-io/client'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -16,7 +15,6 @@ import {
   ShippingPlugin
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { MetricNames } from '@platform/core/metrics'
 import { JobNames, QueueNames } from '@platform/core/queues'
 import { StatusResolutionKinds } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
@@ -416,19 +414,11 @@ describe('The webhook of a carrier', () => {
 
   describe('what the worker makes of an event', () => {
     let resolver: CarrierEventResolver
-    let unknown: Counter<string>
     const noise = { setContext: () => undefined, info: () => undefined, warn: () => undefined }
 
     beforeAll(() => {
-      unknown = new Counter({
-        name: MetricNames.SHIPMENT_UNKNOWN_STATUS_TOTAL,
-        help: 'test',
-        labelNames: ['carrier'],
-        registers: [new Registry()]
-      })
       resolver = new CarrierEventResolver(
         app.get(PrismaService, { strict: false }),
-        unknown,
         noise as unknown as PinoLogger
       )
     })
@@ -448,7 +438,6 @@ describe('The webhook of a carrier', () => {
         ...(over.rawReason === undefined ? {} : { rawReason: over.rawReason })
       }
     })
-    const unknownCount = async () => (await unknown.get()).values.reduce((n, v) => n + v.value, 0)
     const put = (id: string, code: string, status: ShipmentStatus | null) =>
       asAdmin()
         .put(ApiRoutes.carriers.statusMappingByCode(id, encodeURIComponent(code)))
@@ -471,7 +460,6 @@ describe('The webhook of a carrier', () => {
 
     it('gives the status of the plugin when the connection has no row, and counts nothing as unknown', async () => {
       const { id } = await connect()
-      const before = await unknownCount()
 
       const resolved = await resolver.resolve(
         job(id, 'whatever', { status: ShipmentStatus.PICKED_UP })
@@ -481,45 +469,18 @@ describe('The webhook of a carrier', () => {
         status: ShipmentStatus.PICKED_UP,
         source: 'plugin'
       })
-      expect(await unknownCount()).toBe(before)
     })
 
     it('leaves an ignored code with no effect and no record, though the plugin has a status for it', async () => {
       const { id } = await connect()
       await put(id, 'transit', null)
-      const before = await unknownCount()
 
       const resolved = await resolver.resolve(
         job(id, 'TRANSIT', { status: ShipmentStatus.IN_TRANSIT })
       )
 
       expect(resolved?.resolution.kind).toBe(StatusResolutionKinds.IGNORED)
-      expect(await unknownCount()).toBe(before)
       expect(await owner.carrierUnmappedStatus.count({ where: { connectionId: id } })).toBe(0)
-    })
-
-    it('records a code nobody mapped once, tells the first sighting only, and counts the rest', async () => {
-      const { id } = await connect()
-      const before = await unknownCount()
-
-      const first = await resolver.resolve(job(id, 'En Bodega'))
-      const second = await resolver.resolve(job(id, ' en  bodega'))
-
-      expect(first).toMatchObject({
-        resolution: { kind: StatusResolutionKinds.UNMAPPED, code: 'en bodega' },
-        firstUnmappedSighting: true
-      })
-      expect(second?.firstUnmappedSighting).toBe(false)
-      expect(await unknownCount()).toBe(before + 2)
-      const rows = await owner.carrierUnmappedStatus.findMany({ where: { connectionId: id } })
-      expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({
-        storeId: ctx.storeA.id,
-        providerCode: 'en bodega',
-        sampleRawStatus: 'En Bodega',
-        occurrences: 2,
-        resolvedAt: null
-      })
     })
 
     it('records the composite code of a reason, and maps one reason without the others', async () => {
@@ -541,24 +502,6 @@ describe('The webhook of a carrier', () => {
       })
       expect(plain?.resolution).toMatchObject({ status: ShipmentStatus.FAILED_ATTEMPT })
       expect(await owner.carrierUnmappedStatus.count({ where: { connectionId: id } })).toBe(0)
-    })
-
-    it('opens again a code that was mapped and then taken back, as a first sighting', async () => {
-      const { id } = await connect()
-      await resolver.resolve(job(id, 'zzz'))
-      await put(id, 'zzz', ShipmentStatus.IN_TRANSIT)
-      expect((await resolver.resolve(job(id, 'zzz')))?.resolution.kind).toBe(
-        StatusResolutionKinds.MAPPED
-      )
-      await asAdmin().delete(ApiRoutes.carriers.statusMappingByCode(id, 'zzz'))
-
-      const again = await resolver.resolve(job(id, 'zzz'))
-
-      expect(again?.firstUnmappedSighting).toBe(true)
-      expect(
-        (await owner.carrierUnmappedStatus.findFirstOrThrow({ where: { connectionId: id } }))
-          .resolvedAt
-      ).toBeNull()
     })
 
     it('is for nobody when the connection was let go, or is another store’s', async () => {

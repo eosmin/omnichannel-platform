@@ -1,6 +1,6 @@
 import type { PinoLogger } from 'nestjs-pino'
 
-import { CarrierCapability, CarrierId } from '@platform/core/domain'
+import { CarrierCapability, CarrierId, CarrierWebhookTrust } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type CarrierPlugin, ShipmentCreationModes } from '@platform/plugins/sdk'
 
@@ -85,6 +85,38 @@ describe('CarrierRegistry', () => {
       handleWebhook: () => Promise.resolve([])
     })
     expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+  })
+
+  describe('what the webhook proves', () => {
+    const pushing = {
+      capabilities: [
+        CarrierCapability.CREATE_SHIPMENT,
+        CarrierCapability.WEBHOOK_STATUS,
+        CarrierCapability.FETCH_STATUS
+      ],
+      handleWebhook: () => Promise.resolve([]),
+      validateWebhookSignature: () => true,
+      fetchStatus: () => Promise.resolve([])
+    }
+
+    it('accepts a shared secret from a carrier that can be asked', () => {
+      const plugin = carrier({ ...pushing, webhookTrust: CarrierWebhookTrust.SHARED_SECRET })
+      expect(() => build().register(plugin)).not.toThrow()
+    })
+
+    it('refuses a shared secret from a carrier that cannot be asked, which could not be confirmed', () => {
+      const plugin = carrier({
+        ...pushing,
+        capabilities: [CarrierCapability.CREATE_SHIPMENT, CarrierCapability.WEBHOOK_STATUS],
+        webhookTrust: CarrierWebhookTrust.SHARED_SECRET
+      })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('refuses a trust it does not know', () => {
+      const plugin = carrier({ ...pushing, webhookTrust: 'trust_me' as never })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
   })
 
   it('accepts a capability whose method exists', () => {

@@ -130,6 +130,16 @@ export interface ShipmentEventPayload {
 export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
   from: ShipmentStatus
   to: ShipmentStatus
+  // The move came from reading an event again after the owner mapped its code (TDD_17 §4.17): nobody outside the team is
+  // written to about it, because the package may have arrived days ago
+  replay?: boolean
+}
+
+// The connection and the normalized code, nothing the carrier wrote (a description can carry a name or an address)
+export interface CarrierStatusUnmappedPayload {
+  storeId: string
+  connectionId: string
+  providerCode: string
 }
 
 export interface OrderStatusChangedPayload extends OrderEventPayload {
@@ -401,6 +411,7 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
   [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
+  [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.COUNT_SUBMITTED]: CountSubmittedPayload

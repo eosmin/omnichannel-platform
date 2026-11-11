@@ -1,4 +1,8 @@
-import type { CarrierCapabilityType, CarrierIdType } from '@platform/core/domain'
+import type {
+  CarrierCapabilityType,
+  CarrierIdType,
+  CarrierWebhookTrustType
+} from '@platform/core/domain'
 
 import type { LabelInput, LabelLayout } from './carrier-label'
 import type {
@@ -83,4 +87,8 @@ export interface CarrierPlugin {
     secret: string
   ): boolean
   handleWebhook?(payload: unknown): Promise<CarrierEvent[]>
+  // What `validateWebhookSignature` proves. Absent means `signed`. A carrier that sends a shared secret in a header declares
+  // `shared_secret`: the job then asks `fetchStatus` before it applies DELIVERED or RETURNED (TDD_17 §4.9), so such a plugin
+  // must also declare FETCH_STATUS
+  readonly webhookTrust?: CarrierWebhookTrustType
 }

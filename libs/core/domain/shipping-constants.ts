@@ -458,3 +458,17 @@ export const CarrierEventOutcomes = {
   IGNORED: 'ignored'
 } as const
 export type CarrierEventOutcome = (typeof CarrierEventOutcomes)[keyof typeof CarrierEventOutcomes]
+
+export const CarrierResourceTypes = { CARRIER_CONNECTION: 'carrier_connection' } as const
+
+// What a carrier's webhook proves (TDD_17 §4.9). A signature binds the body to the secret; a carrier that signs nothing (C807)
+// sends the secret itself in a header, which proves less, so an event that closes money or the order is confirmed with the
+// carrier before it is applied
+export const CarrierWebhookTrust = {
+  SIGNED: 'signed',
+  SHARED_SECRET: 'shared_secret'
+} as const
+export type CarrierWebhookTrustType = (typeof CarrierWebhookTrust)[keyof typeof CarrierWebhookTrust]
+
+// The replay of the events kept under a code the owner has mapped (TDD_17 §4.17): the lines are read in pages, oldest first
+export const CarrierReplayLimits = { PAGE_SIZE: 200 } as const

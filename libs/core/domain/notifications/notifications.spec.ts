@@ -125,20 +125,16 @@ describe('NotificationTypesWithoutEmitter', () => {
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
     }
-    // Raised since Step 4.8 PR C2b, so their switches are shown; the cancel that failed and the status nobody mapped (PR C2c) are not
+    // Raised since Step 4.8 PR C2b and C2c, so their switches are shown; the cancel that failed (Step 4.10) is not
     for (const type of [
       NotificationTypes.SHIPMENT_REQUIRES_REVIEW,
-      NotificationTypes.SHIPMENT_FAILED_ATTEMPT
+      NotificationTypes.SHIPMENT_FAILED_ATTEMPT,
+      NotificationTypes.CARRIER_STATUS_UNMAPPED
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
       expect(NotificationGroupTypes[NotificationGroups.SHIPPING]).toContain(type)
     }
-    for (const type of [
-      NotificationTypes.SHIPMENT_CANCEL_FAILED,
-      NotificationTypes.CARRIER_STATUS_UNMAPPED
-    ]) {
-      expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
-    }
+    expect(NotificationTypesWithoutEmitter.has(NotificationTypes.SHIPMENT_CANCEL_FAILED)).toBe(true)
     // Raised since Step 4.6 (a count that goes to review), so its switch is shown
     expect(NotificationTypesWithoutEmitter.has(NotificationTypes.COUNT_AWAITING_APPLY)).toBe(false)
     expect(NotificationGroupTypes[NotificationGroups.INVENTORY]).toContain(

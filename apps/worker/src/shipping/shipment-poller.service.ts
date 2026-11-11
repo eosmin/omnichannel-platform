@@ -6,16 +6,17 @@ import { PrismaService } from '@platform/core/database'
 import {
   CarrierCapability,
   CarrierConnectionStatus,
-  CarrierEventOutcomes,
   CarrierPolling,
   ShipmentEventSource,
   ShipmentKind,
   ShipmentStatus
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
-import { buildCarrierContext, ShipmentStatusEngine, withDeadline } from '@platform/core/shipping'
-import { CarrierRegistry } from '@platform/plugins/runtime'
+import { buildCarrierContext, withDeadline } from '@platform/core/shipping'
+import { CarrierRegistry, carrierEventSchema } from '@platform/plugins/runtime'
 import type { CarrierEvent, ShipmentRef } from '@platform/plugins/sdk'
+
+import { CarrierEventApplier, CarrierEventHandled } from '../carriers/carrier-event-applier.service'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -35,8 +36,10 @@ export interface PollReport {
   applied: number
   stored: number
   duplicate: number
-  // Events whose status the plugin could not read: the mapping of the connection and the unmapped record are PR C2c's
+  // Events that do not fit the bounds of an event (a status that is not a code, a text too long): not applied
   unreadable: number
+  // Events that moved nothing and were kept nowhere: the connection is not active, or the shipment is not ours
+  ignored: number
   failed: number
 }
 
@@ -49,7 +52,7 @@ export class ShipmentPoller {
     private readonly prisma: PrismaService,
     private readonly registry: CarrierRegistry,
     private readonly cipher: CredentialCipher,
-    private readonly engine: ShipmentStatusEngine,
+    private readonly applier: CarrierEventApplier,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(ShipmentPoller.name)
@@ -66,6 +69,7 @@ export class ShipmentPoller {
       stored: 0,
       duplicate: 0,
       unreadable: 0,
+      ignored: 0,
       failed: 0
     }
     const connection = await this.prisma.client.carrierConnection.findFirst({
@@ -139,14 +143,22 @@ export class ShipmentPoller {
         // A carrier that is down is not asked again for each page: the next tick asks
         break
       }
-      await this.applyAll(storeId, shipments, events, report)
+      await this.applyAll(storeId, connectionId, shipments, events, report)
       if (shipments.length < CarrierPolling.BATCH_SIZE) break
+    }
+    if (report.unreadable > 0) {
+      // A carrier whose events never fit the bounds (a date with no offset, a code too long) would otherwise be polled in silence
+      this.logger.warn(
+        { connectionId, unreadable: report.unreadable },
+        'polled carrier events did not fit the bounds of an event and were not applied'
+      )
     }
     return report
   }
 
   private async applyAll(
     storeId: string,
+    connectionId: string,
     shipments: readonly {
       id: string
       guideNumber: string | null
@@ -177,26 +189,37 @@ export class ShipmentPoller {
     for (const event of ordered) {
       const shipmentId = this.shipmentOf(event, byGuide, byProvider, byOrder)
       if (shipmentId === null) continue
-      if (event.status === null) {
+      // The same checks as a webhook event: bounded, status fields only. The free text of the carrier is not kept
+      const valid = carrierEventSchema.safeParse({
+        providerEventId: event.providerEventId,
+        status: event.status,
+        rawStatus: event.rawStatus,
+        rawReason: event.rawReason,
+        occurredAt: event.occurredAt,
+        guideNumber: event.guideNumber,
+        providerShipmentId: event.providerShipmentId,
+        reference: event.reference
+      })
+      if (!valid.success) {
         report.unreadable += 1
         continue
       }
       try {
-        const outcome = await this.engine.apply(
-          storeId,
-          shipmentId,
+        // Through the mapping of the connection, as a webhook is: a code nobody mapped is kept and announced, not dropped
+        const outcome = await this.applier.applyToShipment(
           {
-            status: event.status,
-            rawStatus: event.rawStatus,
-            occurredAt: new Date(event.occurredAt),
-            providerEventId: event.providerEventId,
-            description: event.description
+            storeId,
+            connectionId,
+            event: valid.data,
+            receivedAt: new Date().toISOString()
           },
+          shipmentId,
           ShipmentEventSource.POLL
         )
-        if (outcome === CarrierEventOutcomes.APPLIED) report.applied += 1
-        else if (outcome === CarrierEventOutcomes.DUPLICATE) report.duplicate += 1
-        else if (outcome === CarrierEventOutcomes.STORED) report.stored += 1
+        if (outcome === CarrierEventHandled.APPLIED) report.applied += 1
+        else if (outcome === CarrierEventHandled.DUPLICATE) report.duplicate += 1
+        else if (outcome === CarrierEventHandled.STORED) report.stored += 1
+        else report.ignored += 1
       } catch (error) {
         report.failed += 1
         this.logger.warn(

@@ -20,7 +20,7 @@ import {
 import { officialRedactedKeys, PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
 import { AnalyticsModule } from './analytics/analytics.module'
-import { CarrierEventResolver } from './carriers/carrier-event-resolver.service'
+import { CarriersWorkerModule } from './carriers/carriers.module'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
@@ -67,7 +67,8 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     MediaModule,
     ExportsModule,
     NotificationsModule,
-    AnalyticsModule
+    AnalyticsModule,
+    CarriersWorkerModule
   ],
   providers: [
     ProcessorSupport,
@@ -94,7 +95,6 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     OutboundProcessor,
     MagicLinkIssuer,
     EmailProcessor,
-    CarrierEventResolver,
     CarrierEventsProcessor,
     ChannelHealthScheduler,
     TokenExpiryScheduler,

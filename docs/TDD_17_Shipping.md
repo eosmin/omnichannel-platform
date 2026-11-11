@@ -1127,8 +1127,14 @@ HIGH-tier when a shipment exists):
   status fields only, bounded strings, no recipient data) and becomes one `PROCESS_CARRIER_EVENT` job with the store of the
   connection, never a value of the request. Every event of a body is queued (its size, at most `CarrierWebhookLimits.MAX_BODY_BYTES`, bounds them); a job has no id of its own, so a retry of the carrier can queue an event whose first job failed (the dedupe is the engine's, PR C2c). The free text of the carrier (`description`) is not kept in the job, and an event whose status is not a code that can be stored (empty, control characters, too long) is left out and counted as `event_dropped`. A request the
   api kept no raw bytes of is refused like a bad signature. A body the plugin cannot read is acknowledged with `200` and said, because the signature was good.
-- **The worker** validates the job and resolves the event for its connection (§4.17), recording the unmapped codes; the
-  shipment engine that applies it is PR C2c.
+- **The worker** validates the job and resolves the event for its connection (§4.17), finds its shipment inside that
+  connection (the carrier's id, then the guide number, then the order number when it names one live package) and moves it
+  through the status engine; **as built in PR C2c**, a code nobody mapped (or one the owner ignores) is kept as a history line
+  with no status, and the line, the record in `CarrierUnmappedStatus` and the announcement of the first sighting are one
+  transaction, so a job tried again changes nothing. Mapping the code queues `REPROCESS_CARRIER_EVENTS`, which settles each kept
+  line in its own transaction and announces its move with `replay: true` (no message to the customer). A carrier whose plugin
+  declares `webhookTrust: shared_secret` is asked through `fetchStatus` before a DELIVERED or RETURNED is applied, from a webhook
+  and from a replay.
 
 ### 4.10 Pickups (recolecta)
 

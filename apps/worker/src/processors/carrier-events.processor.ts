@@ -2,10 +2,11 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
+import { ShipmentEventSource } from '@platform/core/domain'
 import { exactly, JobNames, QueueNames } from '@platform/core/queues'
 import { carrierEventSchema, type ProcessCarrierEventJob } from '@platform/plugins/runtime'
 
-import { CarrierEventResolver } from '../carriers/carrier-event-resolver.service'
+import { CarrierEventApplier, CarrierEventHandled } from '../carriers/carrier-event-applier.service'
 
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
@@ -23,13 +24,13 @@ const carrierEventJobSchema = exactly<ProcessCarrierEventJob>()(
 )
 
 // The worker half of TDD_17 §4.9: the api verified the signature of the carrier and queued one job per event; this reads
-// them. Today it resolves what each event means for its connection and records the codes nobody has mapped (§4.17); applying
-// the status to a shipment (dedupe, order of arrival, the transition table, the order effects) is Step 4.8 PR C2c.
+// them. Each one is resolved for its connection, finds its shipment and moves it through the status engine (dedupe, order of
+// arrival, the transition table), or is kept in the history when nobody has said what its code means (§4.17).
 @Processor(QueueNames.WEBHOOKS, { concurrency: 10 })
 export class CarrierEventsProcessor extends BaseProcessor<ProcessCarrierEventJob> {
   constructor(
     support: ProcessorSupport,
-    private readonly resolver: CarrierEventResolver
+    private readonly applier: CarrierEventApplier
   ) {
     super(QueueNames.WEBHOOKS, support)
   }
@@ -44,6 +45,12 @@ export class CarrierEventsProcessor extends BaseProcessor<ProcessCarrierEventJob
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success)
       throw new UnrecoverableError('the carrier event job does not fit its schema')
-    await this.resolver.resolve(parsed.data)
+    const outcome = await this.applier.apply(parsed.data, ShipmentEventSource.WEBHOOK)
+    // Not an error of the job but a thing that may change in a moment: the carrier's own books lag behind its webhook, and a
+    // webhook can outrun the guide being stored. BullMQ asks again; what never resolves ends in the dead letter queue, where a
+    // person sees it, and not as a success that hides a lost event
+    if (outcome === CarrierEventHandled.UNCONFIRMED || outcome === CarrierEventHandled.NOT_FOUND) {
+      throw new Error(`the carrier event is not settled yet (${outcome})`)
+    }
   }
 }

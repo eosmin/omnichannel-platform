@@ -1770,6 +1770,7 @@ model Shipment {
   @@index([storeId, status])
   @@index([storeId, orderId])
   @@index([connectionId, status])
+  @@index([connectionId, providerShipmentId]) // The worker finds the package a carrier event names (the guide has its own unique index)
   @@index([pickupId])
   @@index([originWarehouseId])
   @@index([returnId])
@@ -1802,6 +1803,7 @@ model ShipmentEvent {
 }
 
 // Raw SQL: shipment_events_provider_dedupe, unique on (shipment_id, provider_event_id) where provider_event_id is not null.
+// Raw SQL: shipment_events_unmapped_idx on (store_id, shipment_id) where status is null (what a replay reads).
 
 // The owner's map from a carrier's own status code to a ShipmentStatus (§4.17). Seeded from the plugin's
 // statusCatalog() when the connection is created, editable afterwards.

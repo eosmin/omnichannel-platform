@@ -661,7 +661,7 @@
     "carrier": {
       "status_unmapped": {
         "title": "Estado de transportista desconocido",
-        "body": "Un transportista envió un estado que la plataforma no conoce. Revisa el envío."
+        "body": "{carrier} envió el estado \"{code}\", que la plataforma no conoce. Asígnalo en Ajustes, Transportistas, para que se apliquen sus actualizaciones de envío."
       }
     },
     "channel": {

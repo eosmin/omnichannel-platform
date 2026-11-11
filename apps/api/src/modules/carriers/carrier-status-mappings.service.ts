@@ -1,4 +1,6 @@
+import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
+import type { Queue } from 'bullmq'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -19,6 +21,8 @@ import {
   resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
+import { JobNames, QueueNames, type ReprocessCarrierEventsJob } from '@platform/core/queues'
+import { keptCodeFilter } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -44,6 +48,8 @@ export interface UnmappedStatusView {
   providerCode: string
   sampleRawStatus: string
   occurrences: number
+  // The shipments with an event kept under the code, which move when the owner maps it (TDD_17 §4.17)
+  shipmentsWaiting: number
   firstSeenAt: string
   lastSeenAt: string
 }
@@ -98,7 +104,9 @@ export class CarrierStatusMappingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: CarrierRegistry,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @InjectQueue(QueueNames.HEAVY_PROCESSING)
+    private readonly heavyQueue: Queue<ReprocessCarrierEventsJob>
   ) {}
 
   async list(
@@ -164,11 +172,17 @@ export class CarrierStatusMappingsService {
     const hasMore = rows.length > limit
     const page = hasMore ? rows.slice(0, limit) : rows
     const last = page.at(-1)
+    // One after another: each count reads the kept lines by their payload, and a page of them at once would hold the pool
+    const waiting: number[] = []
+    for (const row of page) {
+      waiting.push(await this.shipmentsWaiting(storeId, connectionId, row.providerCode))
+    }
     return {
-      data: page.map(row => ({
+      data: page.map((row, index) => ({
         providerCode: row.providerCode,
         sampleRawStatus: row.sampleRawStatus,
         occurrences: row.occurrences,
+        shipmentsWaiting: waiting[index] ?? 0,
         firstSeenAt: row.firstSeenAt.toISOString(),
         lastSeenAt: row.lastSeenAt.toISOString()
       })),
@@ -180,8 +194,26 @@ export class CarrierStatusMappingsService {
     }
   }
 
-  // Creates the row or changes it (`source` becomes custom) and marks the waiting code as resolved. The replay of the events
-  // already stored under that code is the job REPROCESS_CARRIER_EVENTS of Step 4.8 PR C2c.
+  // The packages with a line kept under the code: what a mapping would move (the lines of its reasons count too)
+  private async shipmentsWaiting(
+    storeId: string,
+    connectionId: string,
+    providerCode: string
+  ): Promise<number> {
+    const rows = await this.prisma.client.shipmentEvent.groupBy({
+      by: ['shipmentId'],
+      where: {
+        storeId,
+        status: null,
+        shipment: { connectionId },
+        OR: keptCodeFilter(providerCode)
+      }
+    })
+    return rows.length
+  }
+
+  // Creates the row or changes it (`source` becomes custom), marks the waiting code as resolved and queues the replay of the
+  // events already stored under that code (REPROCESS_CARRIER_EVENTS, TDD_17 §4.17).
   async put(
     storeId: string,
     connectionId: string,
@@ -216,6 +248,9 @@ export class CarrierStatusMappingsService {
     }
 
     this.record(storeId, connectionId, actor, providerCode, result.before, body.status)
+    // A status the platform can apply: the events kept under the code (and under its reasons) go through the engine again. An
+    // "ignore" gives them no effect, so there is nothing to replay
+    if (body.status !== null) await this.replay(storeId, connectionId, providerCode, actor.userId)
     return viewOf(result.row)
   }
 
@@ -357,6 +392,26 @@ export class CarrierStatusMappingsService {
       return { before, after: defaultStatus }
     })
     this.record(storeId, connectionId, actor, providerCode, outcome.before, outcome.after)
+    // The default the plugin gives the code applies to what was kept under it, as a mapping the owner made does
+    if (outcome.after !== null) await this.replay(storeId, connectionId, providerCode, actor.userId)
+  }
+
+  // After the commit: the job only reads rows that are committed. No job id: two mappings of one code in a row are two
+  // replays, and the second finds nothing left to apply (the engine settles each stored event once). A queue that is down
+  // fails the request AFTER the mapping was saved, so the owner repeats it and the replay is queued: the answer is never
+  // "saved" with a replay that was lost without a word.
+  private async replay(
+    storeId: string,
+    connectionId: string,
+    providerCode: string,
+    requestedBy: string
+  ): Promise<void> {
+    await this.heavyQueue.add(JobNames.REPROCESS_CARRIER_EVENTS, {
+      storeId,
+      connectionId,
+      providerCode,
+      requestedBy
+    })
   }
 
   private async connectionOf(

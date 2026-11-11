@@ -5,7 +5,8 @@ import {
   CarrierCapability,
   type CarrierCapabilityType,
   CarrierId,
-  type CarrierIdType
+  type CarrierIdType,
+  CarrierWebhookTrust
 } from '@platform/core/domain'
 import {
   type CarrierPlugin,
@@ -132,6 +133,21 @@ export class CarrierRegistry {
       throw contractViolation(`Carrier id ${printable(id)} is not a known CarrierId`)
     }
     assertMethodsForCapabilities(id, capabilities, plugin, METHODS_BY_CAPABILITY)
+    // A shared secret proves less than a signature: the worker confirms DELIVERED and RETURNED with the carrier before it applies
+    // them (TDD_17 §4.9), so a plugin that declares one must be able to be asked
+    if (plugin.webhookTrust !== undefined) {
+      if (!Object.values<string>(CarrierWebhookTrust).includes(plugin.webhookTrust)) {
+        throw contractViolation(`Carrier ${printable(id)} has an unknown webhookTrust`)
+      }
+      if (
+        plugin.webhookTrust === CarrierWebhookTrust.SHARED_SECRET &&
+        !capabilities.includes(CarrierCapability.FETCH_STATUS)
+      ) {
+        throw contractViolation(
+          `Carrier ${printable(id)} trusts a shared secret but does not declare ${CarrierCapability.FETCH_STATUS}`
+        )
+      }
+    }
     if (
       plugin.maxBatchSize !== undefined &&
       !(Number.isInteger(plugin.maxBatchSize) && plugin.maxBatchSize > 0)

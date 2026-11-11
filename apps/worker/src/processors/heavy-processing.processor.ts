@@ -2,7 +2,12 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
-import { channelIdSchema, OriginMediaSlots, type OriginMediaSlot } from '@platform/core/domain'
+import {
+  CarrierStatusLimits,
+  channelIdSchema,
+  OriginMediaSlots,
+  type OriginMediaSlot
+} from '@platform/core/domain'
 import {
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
@@ -12,9 +17,11 @@ import {
   type PollShipmentStatusJob,
   type ProcessImageJob,
   type ReconcileInventoryJob,
+  type ReprocessCarrierEventsJob,
   type ScanFileJob
 } from '@platform/core/queues'
 
+import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
 import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
@@ -31,6 +38,7 @@ type HeavyJob =
   | FetchOriginMediaJob
   | ReconcileInventoryJob
   | PollShipmentStatusJob
+  | ReprocessCarrierEventsJob
 
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
@@ -48,6 +56,15 @@ const pollJobSchema = exactly<PollShipmentStatusJob>()(
     storeId: z.uuid(),
     connectionId: z.uuid(),
     includeOld: z.boolean(),
+    correlationId: z.string().optional()
+  })
+)
+const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
+  z.object({
+    storeId: z.uuid(),
+    connectionId: z.uuid(),
+    providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH),
+    requestedBy: z.uuid().optional(),
     correlationId: z.string().optional()
   })
 )
@@ -82,7 +99,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly fetcher: InboundMediaFetcher,
     private readonly originFetcher: OriginMediaFetcher,
     private readonly reconciler: InventoryReconciler,
-    private readonly poller: ShipmentPoller
+    private readonly poller: ShipmentPoller,
+    private readonly carrierReplay: CarrierEventReplay
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -112,6 +130,19 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       await this.poller.poll(poll.data.storeId, poll.data.connectionId, {
         includeOld: poll.data.includeOld
       })
+      return
+    }
+    if (job.name === JobNames.REPROCESS_CARRIER_EVENTS) {
+      const reprocess = reprocessJobSchema.safeParse(job.data)
+      if (!reprocess.success) {
+        throw new UnrecoverableError('the carrier replay job does not fit its schema')
+      }
+      const report = await this.carrierReplay.reprocess(reprocess.data)
+      // Lines that failed or could not be confirmed stay as they were, and the job is asked again: finishing it as a success would
+      // leave them kept for good (and a re-sent event of theirs would be taken for a twin)
+      if (report.failed + report.unconfirmed > 0) {
+        throw new Error('some kept carrier events could not be replayed yet')
+      }
       return
     }
     const parsed = mediaJobSchema.safeParse(job.data)

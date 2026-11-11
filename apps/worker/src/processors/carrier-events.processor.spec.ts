@@ -1,9 +1,9 @@
 import { UnrecoverableError } from 'bullmq'
 
-import { ShipmentStatus } from '@platform/core/domain'
+import { ShipmentEventSource, ShipmentStatus } from '@platform/core/domain'
 import { JobNames } from '@platform/core/queues'
 
-import type { CarrierEventResolver } from '../carriers/carrier-event-resolver.service'
+import type { CarrierEventApplier } from '../carriers/carrier-event-applier.service'
 
 import { CarrierEventsProcessor } from './carrier-events.processor'
 import type { ProcessorSupport } from './processor-support'
@@ -21,10 +21,10 @@ const good = {
 }
 
 function build() {
-  const resolver = { resolve: jest.fn(() => Promise.resolve(null)) }
+  const resolver = { apply: jest.fn((): Promise<string> => Promise.resolve('ignored')) }
   const processor = new CarrierEventsProcessor(
     {} as ProcessorSupport,
-    resolver as unknown as CarrierEventResolver
+    resolver as unknown as CarrierEventApplier
   )
   const handle = (job: unknown) =>
     (processor as unknown as { handle(job: unknown): Promise<void> }).handle(job)
@@ -32,12 +32,12 @@ function build() {
 }
 
 describe('CarrierEventsProcessor', () => {
-  it('hands a good event to the resolver', async () => {
+  it('hands a good event to the applier, as a webhook', async () => {
     const { resolver, handle } = build()
 
     await handle({ name: JobNames.PROCESS_CARRIER_EVENT, data: good })
 
-    expect(resolver.resolve).toHaveBeenCalledWith(good)
+    expect(resolver.apply).toHaveBeenCalledWith(good, ShipmentEventSource.WEBHOOK)
   })
 
   it('refuses for good a job that does not fit its schema, where a retry would change nothing', async () => {
@@ -59,7 +59,7 @@ describe('CarrierEventsProcessor', () => {
         UnrecoverableError
       )
     }
-    expect(resolver.resolve).not.toHaveBeenCalled()
+    expect(resolver.apply).not.toHaveBeenCalled()
   })
 
   it('keeps what it was sent: a key the schema does not name is not passed on', async () => {
@@ -70,7 +70,10 @@ describe('CarrierEventsProcessor', () => {
       data: { ...good, correlationId: 'corr', extra: 'dropped' }
     })
 
-    expect(resolver.resolve).toHaveBeenCalledWith({ ...good, correlationId: 'corr' })
+    expect(resolver.apply).toHaveBeenCalledWith(
+      { ...good, correlationId: 'corr' },
+      ShipmentEventSource.WEBHOOK
+    )
   })
 
   it('does not pass on the free text of the carrier: the job keeps status fields only', async () => {
@@ -81,8 +84,8 @@ describe('CarrierEventsProcessor', () => {
       data: { ...good, event: { ...good.event, description: 'Entregado a Juan Perez, Calle X 1' } }
     })
 
-    expect(JSON.stringify(resolver.resolve.mock.calls)).not.toContain('Juan')
-    expect(resolver.resolve).toHaveBeenCalledWith(good)
+    expect(JSON.stringify(resolver.apply.mock.calls)).not.toContain('Juan')
+    expect(resolver.apply).toHaveBeenCalledWith(good, ShipmentEventSource.WEBHOOK)
   })
 
   it('refuses a job of the queue that it has no name for', async () => {
@@ -91,6 +94,19 @@ describe('CarrierEventsProcessor', () => {
     await expect(handle({ name: JobNames.TRIGGER_WEBHOOK, data: good })).rejects.toThrow(
       UnrecoverableError
     )
-    expect(resolver.resolve).not.toHaveBeenCalled()
+    expect(resolver.apply).not.toHaveBeenCalled()
   })
+
+  it.each(['unconfirmed', 'not_found'])(
+    'asks again later for an event the applier says is %s, and does not give up on it for good',
+    async outcome => {
+      const { resolver, handle } = build()
+      resolver.apply.mockResolvedValueOnce(outcome)
+
+      const attempt = handle({ name: JobNames.PROCESS_CARRIER_EVENT, data: good })
+
+      await expect(attempt).rejects.toThrow('not settled yet')
+      await expect(attempt).rejects.not.toBeInstanceOf(UnrecoverableError)
+    }
+  )
 })

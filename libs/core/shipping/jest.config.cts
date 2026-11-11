@@ -14,6 +14,8 @@ module.exports = {
     '!src/shipment-prepare.ts',
     '!src/shipment-status-engine.ts',
     '!src/shipment-writes.ts',
+    // Reads and writes the history inside a transaction: tests/api/carrier-event-processing.spec.ts covers it
+    '!src/shipment-replay.ts',
     '!src/shipping.service.ts'
   ],
   coverageThreshold: { global: { lines: 90, branches: 85 } }
