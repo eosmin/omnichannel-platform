@@ -40,6 +40,7 @@ interface AdjustmentBody {
 interface LevelBody {
   id: string
   productId: string
+  productName: string
   variantId: string | null
   warehouseId: string
   warehouseCode: string
@@ -493,6 +494,98 @@ describe('The stock of a store', () => {
         low.id
       ])
       expect((none.body as PageBody<LevelBody>).data).toEqual([])
+    })
+
+    it('sorts the levels by product name in pages that never repeat or skip a row', async () => {
+      const tag = randomUUID().slice(0, 8)
+      const names = [`Zeta ${tag}`, `alfa ${tag}`, `Mango ${tag}`, `Mango ${tag}`]
+      const made = []
+      for (const name of names) {
+        const item = await createProduct(owner, { storeId: ctx.storeA.id, name })
+        await receive(item.id, 1)
+        made.push(item)
+      }
+      await post(
+        adjustment(made[0]?.id ?? '', { warehouseId: ctx.warehouseASecond.id, quantity: 2 })
+      )
+
+      const seen: LevelBody[] = []
+      let cursor: string | null = null
+      do {
+        const response: { body: unknown } = await asAdmin()
+          .get(ApiRoutes.inventory.levels)
+          .query({ q: tag, sort: 'name', limit: 2, ...(cursor === null ? {} : { cursor }) })
+        const page = response.body as PageBody<LevelBody>
+        seen.push(...page.data)
+        cursor = page.nextCursor
+      } while (cursor !== null)
+
+      expect(seen).toHaveLength(5)
+      expect(new Set(seen.map(level => level.id)).size).toBe(5)
+      // The database orders the names and the cursor follows that same order: paging gives what one page gives
+      const whole = await asAdmin()
+        .get(ApiRoutes.inventory.levels)
+        .query({ q: tag, sort: 'name', limit: 100 })
+      expect(seen.map(level => level.id)).toEqual(
+        (whole.body as PageBody<LevelBody>).data.map(level => level.id)
+      )
+      const sortedNames = seen.map(level => level.productName)
+      expect(sortedNames.filter(name => name === `Mango ${tag}`)).toHaveLength(2)
+    })
+
+    it('searches the name or SKU of the product or of a variant, ignoring case', async () => {
+      const tag = randomUUID().slice(0, 8)
+      const byName = await createProduct(owner, { storeId: ctx.storeA.id, name: `Findable ${tag}` })
+      const bySku = await createProduct(owner, {
+        storeId: ctx.storeA.id,
+        sku: `SKU-${tag}`.toUpperCase()
+      })
+      const byVariant = await createProduct(owner, { storeId: ctx.storeA.id })
+      const variant = await createProductVariant(owner, {
+        productId: byVariant.id,
+        name: `Blue ${tag}`
+      })
+      const other = await createProduct(owner, { storeId: ctx.storeA.id })
+      for (const item of [byName, bySku, other]) await receive(item.id, 1)
+      await post(adjustment(byVariant.id, { variantId: variant.id, quantity: 1 }))
+      const ids = async (q: string) =>
+        (
+          (await asAdmin().get(ApiRoutes.inventory.levels).query({ q, limit: 100 }))
+            .body as PageBody<LevelBody>
+        ).data.map(level => level.productId)
+
+      expect(await ids(`FINDABLE ${tag}`)).toEqual([byName.id])
+      expect(await ids(`sku-${tag.toLowerCase()}`)).toEqual([bySku.id])
+      expect(await ids(`blue ${tag}`)).toEqual([byVariant.id])
+      // A wildcard is text, not a pattern
+      expect(await ids('%')).toEqual([])
+    })
+
+    it('refuses a cursor of the other sort, and an empty or unknown search or sort', async () => {
+      const made = await product()
+      await receive(made.id, 1)
+      const recent = (await asAdmin().get(ApiRoutes.inventory.levels).query({ limit: 1 }))
+        .body as PageBody<LevelBody>
+      const named = (
+        await asAdmin().get(ApiRoutes.inventory.levels).query({ limit: 1, sort: 'name' })
+      ).body as PageBody<LevelBody>
+
+      expect(recent.nextCursor).not.toBeNull()
+      expect(named.nextCursor).not.toBeNull()
+      const crossed = await asAdmin()
+        .get(ApiRoutes.inventory.levels)
+        .query({ sort: 'name', cursor: recent.nextCursor ?? 'x' })
+      const crossedBack = await asAdmin()
+        .get(ApiRoutes.inventory.levels)
+        .query({ cursor: named.nextCursor ?? 'x' })
+
+      expect(crossed.status).toBe(BAD_REQUEST)
+      expect(crossedBack.status).toBe(BAD_REQUEST)
+      for (const query of [{ q: '   ' }, { q: 'x'.repeat(101) }, { sort: 'price' }]) {
+        expect((await asAdmin().get(ApiRoutes.inventory.levels).query(query)).status).toBe(
+          BAD_REQUEST
+        )
+      }
     })
 
     it('answers the stock of a product with its totals, and 404 for a product that is not of the store', async () => {

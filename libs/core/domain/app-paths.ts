@@ -42,6 +42,8 @@ export const AppPaths = {
     newOrder: (storeId: string) => `/s/${storeId}/orders/new`,
     products: (storeId: string) => `/s/${storeId}/products`,
     inventory: (storeId: string) => `/s/${storeId}/inventory`,
+    // The stock screen with only the items at their alert threshold (the link of the low-stock notice)
+    inventoryLow: (storeId: string) => `/s/${storeId}/inventory?lowStock=true`,
     shipments: (storeId: string) => `/s/${storeId}/shipments`,
     pickups: (storeId: string) => `/s/${storeId}/pickups`,
     returns: (storeId: string) => `/s/${storeId}/returns`,
