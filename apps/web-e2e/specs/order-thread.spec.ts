@@ -116,6 +116,9 @@ test.describe('orders in the thread and the keyboard', () => {
     await box.fill('/order')
     await page.keyboard.press('Enter')
     await expect(drawer).toBeVisible()
+    // The drawer is modal: the page behind it is out of reach until it closes
+    await page.keyboard.press('Escape')
+    await expect(drawer).toBeHidden()
     // The command leaves nothing in the box: it is not a message
     await expect(box).toHaveValue('')
   })
