@@ -8,6 +8,7 @@ import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   ChannelIds,
+  CountStatus,
   ConversationStatus,
   DeliveryStatus,
   InvitationStatus,
@@ -115,6 +116,39 @@ const conversationOf = (messageId: string): string => {
   if (found === undefined)
     throw new Error(`the message ${messageId} was not made by createMessageOf`)
   return found
+}
+
+// The sheet a count resource of the suite is made of: a warehouse of the organization of the store, one item of the store
+// with a snapshot of 5, and a sheet in the status given
+const countOfLine = new Map<string, string>()
+// Counts the numbers of the sheets the suite writes: unique inside an organization with no luck involved
+let countSerial = 100_000_000 + (process.pid % 1_000_000) * 100
+async function createCountOf(
+  owner: OwnerClient,
+  storeId: string,
+  status: CountStatus
+): Promise<{ countId: string; lineId: string }> {
+  const organizationId = await organizationOfStore(owner, storeId)
+  const warehouse = await createWarehouse(owner, { organizationId })
+  await linkWarehouse(owner, { organizationId, storeId, warehouseId: warehouse.id })
+  const product = await createProduct(owner, { storeId })
+  const count = await owner.stockCount.create({
+    data: {
+      organizationId,
+      warehouseId: warehouse.id,
+      // Digits only, as the CHECK of the table asks, and one for each sheet of the run
+      number: `CT-${(countSerial += 1)}`,
+      status,
+      startedAt: status === CountStatus.COUNTING ? new Date() : null,
+      createdBy: await adminOf(owner, storeId)
+    },
+    select: { id: true }
+  })
+  const line = await owner.stockCountLine.create({
+    data: { countId: count.id, storeId, productId: product.id, expectedQuantity: 5 },
+    select: { id: true }
+  })
+  return { countId: count.id, lineId: line.id }
 }
 
 const PREFERENCE_TYPE = NotificationTypes.CONVERSATION_ASSIGNED
@@ -332,6 +366,38 @@ const resources: IsolationResource[] = [
     modify: { path: ApiRoutes.warehouses.stores, method: 'put', body: { stores: [] } },
     untouched: async (owner, id) =>
       (await owner.storeWarehouse.count({ where: { warehouseId: id } })) === 1
+  },
+  // A count belongs to the organization (TDD_16 §1, §6): every store of it reaches the sheet, another organization none
+  {
+    name: 'stockCount',
+    create: async (owner, { storeId }) => ({
+      id: (await createCountOf(owner, storeId, CountStatus.DRAFT)).countId
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.counts.byId,
+    listPath: ApiRoutes.counts.list,
+    modify: { path: ApiRoutes.counts.cancel, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.stockCount.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      CountStatus.DRAFT
+  },
+  // The lines belong to the store of their product: they are read and entered through the count, and a person reaches
+  // only those of the stores they belong to. The count of the row is open, so that what refuses the request is the
+  // store of the line and not the state of the sheet.
+  {
+    name: 'stockCountLine',
+    create: async (owner, { storeId }) => {
+      const { countId, lineId } = await createCountOf(owner, storeId, CountStatus.COUNTING)
+      countOfLine.set(lineId, countId)
+      return { id: lineId }
+    },
+    modify: {
+      path: id => ApiRoutes.counts.lines(countOfLine.get(id) ?? randomUUID()),
+      body: id => ({ lines: [{ lineId: id, countedQuantity: 7 }] })
+    },
+    untouched: async (owner, id) =>
+      (await owner.stockCountLine.findUnique({ where: { id }, select: { countedQuantity: true } }))
+        ?.countedQuantity === null
   },
   {
     name: 'stockTransfer',

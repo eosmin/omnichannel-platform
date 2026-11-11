@@ -83,6 +83,8 @@ export const Events = {
   TRANSFER_DISPATCHED: 'transfer.dispatched',
   TRANSFER_RECEIVED: 'transfer.received',
   TRANSFER_CANCELLED: 'transfer.cancelled',
+  // A count went to review: the people who may apply it are told (TDD_16 §4.6)
+  COUNT_SUBMITTED: 'count.submitted',
   COUNT_APPLIED: 'count.applied',
 
   // Shipping, returns and remittances

@@ -55,9 +55,14 @@ describe('buildPushPayload', () => {
   it('has a message for every type that can be pushed, in both languages', () => {
     for (const type of Object.values(NotificationTypes)) {
       for (const locale of [Locales.EN, Locales.ES]) {
-        // The parameters a message may ask for (the day a token stops); a type that asks for none ignores them
+        // The parameters a message may ask for (the day a token stops, the number of a count); a type that asks for none
+        // ignores them
         const payload = buildPushPayload(
-          row({ type, messageKey: notificationMessageKey(type), params: { date: '2026-11-14' } }),
+          row({
+            type,
+            messageKey: notificationMessageKey(type),
+            params: { date: '2026-11-14', number: 'CT-0001' }
+          }),
           locale
         )
         expect(payload.title.length).toBeGreaterThan(0)

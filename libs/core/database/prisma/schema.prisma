@@ -27,6 +27,7 @@ model Organization {
   invitations         Invitation[]
   dataSubjectRequests DataSubjectRequest[]
   warehouses          Warehouse[]
+  stockCounts         StockCount[]
   stockTransfers      StockTransfer[]
 
   @@map("organizations")
@@ -64,6 +65,7 @@ model Store {
   inventoryLevels      InventoryLevel[]
   storeWarehouses      StoreWarehouse[]
   orderItemAllocations OrderItemAllocation[]
+  stockCountLines      StockCountLine[]
   stockTransferLines   StockTransferLine[]
   tags                 Tag[]
   snippets             Snippet[]
@@ -795,6 +797,7 @@ model Product {
   variants        ProductVariant[]
   inventory       InventoryMovement[]
   inventoryLevels InventoryLevel[]
+  stockCountLines StockCountLine[]
   transferLines   StockTransferLine[]
   orderItems      OrderItem[]
   media           Media[]
@@ -821,6 +824,7 @@ model ProductVariant {
   product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
   inventory       InventoryMovement[]
   inventoryLevels InventoryLevel[]
+  stockCountLines StockCountLine[]
   transferLines   StockTransferLine[]
   orderItems      OrderItem[]
 
@@ -876,6 +880,7 @@ model InventoryMovement {
 }
 
 // A place where stock is kept. It belongs to the ORGANIZATION and can supply several of its stores (TDD_16 §1).
+// The transfers that refer to it (StockTransfer) arrive with Step 4.5; its counts (StockCount) are below.
 // The transfers that refer to it are StockTransfer (Step 4.5); the counts (StockCount) arrive with Step 4.6.
 model Warehouse {
   id             String   @id @default(uuid())
@@ -892,6 +897,7 @@ model Warehouse {
   levels       InventoryLevel[]
   movements    InventoryMovement[]
   allocations  OrderItemAllocation[]
+  counts       StockCount[]
   transfersOut StockTransfer[]       @relation("TransferFrom")
   transfersIn  StockTransfer[]       @relation("TransferTo")
 
@@ -965,6 +971,60 @@ model OrderItemAllocation {
   @@index([storeId])
   @@index([warehouseId])
   @@map("order_item_allocations")
+}
+
+// A physical count of one warehouse (TDD_16 §4.6). The header belongs to the ORGANIZATION; its lines to the store of the
+// product they count. `storeId` limits the count to the products of one store (null: every store that keeps stock
+// there); its foreign key (organization_id, store_id) is declared in the raw SQL of the migration, because Prisma cannot
+// declare a composite relation with an optional column.
+model StockCount {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  warehouseId    String    @map("warehouse_id")
+  number         String // "CT-0001", unique inside the organization
+  status         String    @default("draft") // CountStatus
+  storeId        String?   @map("store_id")
+  note           String?
+  createdBy      String    @map("created_by")
+  startedAt      DateTime? @map("started_at")
+  submittedAt    DateTime? @map("submitted_at")
+  appliedBy      String?   @map("applied_by")
+  appliedAt      DateTime? @map("applied_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  warehouse    Warehouse        @relation(fields: [organizationId, warehouseId], references: [organizationId, id])
+  lines        StockCountLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, warehouseId])
+  @@index([organizationId, storeId])
+  @@map("stock_counts")
+}
+
+// One item of a count. `expectedQuantity` is the on-hand snapshot taken when the count started; applying the count
+// moves stock by `countedQuantity - expectedQuantity`, never by "counted minus what is there now".
+model StockCountLine {
+  id               String  @id @default(uuid())
+  countId          String  @map("count_id")
+  storeId          String  @map("store_id")
+  productId        String  @map("product_id")
+  variantId        String? @map("variant_id")
+  expectedQuantity Int     @map("expected_quantity")
+  countedQuantity  Int?    @map("counted_quantity")
+
+  count   StockCount      @relation(fields: [countId], references: [id], onDelete: Cascade)
+  store   Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  product Product         @relation(fields: [storeId, productId], references: [storeId, id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([countId, storeId])
+  @@index([storeId])
+  @@index([storeId, productId, variantId])
+  @@index([variantId])
+  @@map("stock_count_lines")
 }
 
 // A shipment of stock from one warehouse to another of the same ORGANIZATION (TDD_16 §4.5). The header belongs to the

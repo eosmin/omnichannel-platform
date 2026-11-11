@@ -103,7 +103,13 @@ export const AuditAction = {
   TRANSFER_RECEIVED: 'transfer.received',
   TRANSFER_CLOSED_WITH_SHORTAGE: 'transfer.closed_with_shortage',
   TRANSFER_CANCELLED: 'transfer.cancelled',
+  COUNT_CREATED: 'count.created',
+  COUNT_STARTED: 'count.started',
+  COUNT_LINES_UPDATED: 'count.lines_updated',
+  COUNT_SUBMITTED: 'count.submitted',
+  COUNT_REOPENED: 'count.reopened',
   COUNT_APPLIED: 'count.applied',
+  COUNT_CANCELLED: 'count.cancelled',
 
   // Shipping, returns and remittances (TDD_17 §3)
   CARRIER_CONNECTED: 'carrier.connected',
