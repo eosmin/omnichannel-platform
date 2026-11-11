@@ -12,8 +12,8 @@ export interface ConversationFilters {
 
 // TanStack Query keys are constants, built the same way as CacheKeys. Realtime invalidation
 // (TDD_06 §3) and mutations import them; nobody writes ['conversations', storeId] inline.
-// Store-scoped keys carry the storeId; organization-scoped ones (warehouses, transfers, counts)
-// carry the organizationId.
+// Store-scoped keys carry the storeId; the organization-scoped ones (warehouses, transfers, counts) are
+// keyed by the store the request goes through, because the api reads the organization from X-Store-Id.
 export const QueryKeys = {
   conversations: {
     all: (storeId: string) => ['conversations', storeId] as const,
@@ -104,11 +104,16 @@ export const QueryKeys = {
       ['inventory', storeId, 'kardex', productId, variantId, warehouseId] as const,
     warehouses: (storeId: string) => ['inventory', storeId, 'warehouses'] as const
   },
+  // Keyed by the store the request goes through: the api reads the organization from X-Store-Id and the web
+  // never holds the organization id
   warehouses: {
-    all: (organizationId: string) => ['warehouses', organizationId] as const
+    // Every store's cache: a warehouse belongs to the organization, so a change makes the list of every store stale
+    root: ['warehouses'] as const,
+    all: (storeId: string) => ['warehouses', storeId] as const,
+    list: (storeId: string) => ['warehouses', storeId, 'list'] as const
   },
   transfers: {
-    all: (organizationId: string) => ['transfers', organizationId] as const
+    all: (storeId: string) => ['transfers', storeId] as const
   },
   // Keyed by the store the request goes through (the api reads the organization from X-Store-Id)
   counts: {

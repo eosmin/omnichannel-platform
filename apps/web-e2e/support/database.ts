@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto'
 
-import { Permissions, RoleNames } from '@platform/core/auth'
+import { type Permission, Permissions, RoleNames } from '@platform/core/auth'
 import { encryptJson, parseEncryptionKey } from '@platform/core/crypto'
 import {
   createOwnerClient,
@@ -892,12 +892,11 @@ export async function addReadOnlySettingsUser(
     })
 }
 
-// A person who runs the catalog (sees, creates, edits and deletes products) without the permission to see
-// costs: no seeded role but Admin holds PRODUCTS_VIEW_COST, and Admin holds everything, so the case makes one
-// role. Returns what removes it again.
-export async function addCatalogUserWithoutCost(
+// A person with a role of exactly these permissions in a store: no seeded role holds the combinations the cases
+// need, so the case makes one. Returns what removes the person and the role again.
+async function addUserWithPermissions(
   storeId: string,
-  email: string
+  input: { email: string; userName: string; roleName: string; permissions: Permission[] }
 ): Promise<() => Promise<void>> {
   const { roleId, userId } = await withOwner(async owner => {
     const store = await owner.store.findUniqueOrThrow({
@@ -906,16 +905,10 @@ export async function addCatalogUserWithoutCost(
     })
     const role = await createRole(owner, {
       storeId,
-      name: `E2E catalog no cost ${randomUUID().slice(0, 8)}`,
-      permissions: [
-        Permissions.PRODUCTS_VIEW,
-        Permissions.PRODUCTS_CREATE,
-        Permissions.PRODUCTS_EDIT,
-        Permissions.PRODUCTS_DELETE,
-        Permissions.MEDIA_VIEW
-      ]
+      name: `${input.roleName} ${randomUUID().slice(0, 8)}`,
+      permissions: input.permissions
     })
-    const user = await ensureUser(owner, email, 'Catalog Without Cost')
+    const user = await ensureUser(owner, input.email, input.userName)
     await ensureMembership(owner, {
       userId: user.id,
       organizationId: store.organizationId,
@@ -930,6 +923,62 @@ export async function addCatalogUserWithoutCost(
       await owner.user.deleteMany({ where: { id: userId } })
       await owner.role.deleteMany({ where: { id: roleId } })
     })
+}
+
+// A person who runs the catalog (sees, creates, edits and deletes products) without the permission to see
+// costs: no seeded role but Admin holds PRODUCTS_VIEW_COST, and Admin holds everything.
+export function addCatalogUserWithoutCost(
+  storeId: string,
+  email: string
+): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Catalog Without Cost',
+    roleName: 'E2E catalog no cost',
+    permissions: [
+      Permissions.PRODUCTS_VIEW,
+      Permissions.PRODUCTS_CREATE,
+      Permissions.PRODUCTS_EDIT,
+      Permissions.PRODUCTS_DELETE,
+      Permissions.MEDIA_VIEW
+    ]
+  })
+}
+
+// A second store in the organization of a store, with its Admin (the api lists the stores a person belongs to), for
+// the cases that link a warehouse to more than one. Returns its id.
+export function addStoreToOrganizationOf(
+  storeId: string,
+  storeName: string,
+  adminEmail: string
+): Promise<string> {
+  return withOwner(async owner => {
+    const { organizationId } = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const roles = await ensureSystemRoles(owner)
+    const store = await ensureStore(owner, organizationId, storeName)
+    const user = await ensureUser(owner, adminEmail, 'Done When Owner')
+    await ensureMembership(owner, {
+      userId: user.id,
+      organizationId,
+      storeId: store.id,
+      roleId: roles[RoleNames.ADMIN].id
+    })
+    return store.id
+  })
+}
+
+// A person who may see the inventory and nothing that changes it (the warehouses screen opens and shows, no
+// button changes anything)
+export function addInventoryViewer(storeId: string, email: string): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Inventory Viewer',
+    roleName: 'E2E inventory viewer',
+    permissions: [Permissions.INVENTORY_VIEW, Permissions.PRODUCTS_VIEW]
+  })
 }
 
 // The one thing a person does before the first screen: a new account with an organization and a

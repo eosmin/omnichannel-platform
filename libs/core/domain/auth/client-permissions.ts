@@ -30,6 +30,7 @@ export const ClientPermissions = {
   MESSAGES_VIEW: 'messages:view',
   MESSAGES_VIEW_DELETED: 'messages:view_deleted',
   ORG_MANAGE_STORES: 'org:manage_stores',
+  ORG_MANAGE_WAREHOUSES: 'org:manage_warehouses',
   PRODUCTS_CREATE: 'products:create',
   PRODUCTS_DELETE: 'products:delete',
   PRODUCTS_EDIT: 'products:edit',

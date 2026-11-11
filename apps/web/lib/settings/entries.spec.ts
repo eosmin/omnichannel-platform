@@ -20,11 +20,26 @@ const holding =
 
 describe('settings entries', () => {
   it('shows an organization admin both organization pages', () => {
-    const can = holding(Permissions.ORG_MANAGE_STORES, Permissions.SETTINGS_VIEW)
+    const can = holding(
+      Permissions.ORG_MANAGE_STORES,
+      Permissions.INVENTORY_VIEW,
+      Permissions.SETTINGS_VIEW
+    )
     expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual([
       'stores',
+      'warehouses',
       'profile'
     ])
+  })
+
+  it('keeps the warehouses page from who only manages stores', () => {
+    const can = holding(Permissions.ORG_MANAGE_STORES)
+    expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual(['stores'])
+  })
+
+  it('shows the warehouses page to who may see the inventory, with no other organization page', () => {
+    const can = holding(Permissions.INVENTORY_VIEW)
+    expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual(['warehouses'])
   })
 
   it('shows the counts page to who counts and to who only approves, and to nobody else', () => {
@@ -32,7 +47,7 @@ describe('settings entries', () => {
       visibleEntries(ORG_SETTINGS_ENTRIES, holding(...held)).map(entry => entry.id)
     expect(ids(Permissions.INVENTORY_MANAGE_COUNTS)).toEqual(['counts'])
     expect(ids(Permissions.INVENTORY_APPLY_COUNTS)).toEqual(['counts'])
-    expect(ids(Permissions.INVENTORY_VIEW, Permissions.INVENTORY_ADJUST)).toEqual([])
+    expect(ids(Permissions.INVENTORY_ADJUST)).toEqual([])
     // /org opens the counts for an approver who holds nothing else of the area
     expect(
       firstVisibleHref(ORG_SETTINGS_ENTRIES, holding(Permissions.INVENTORY_APPLY_COUNTS))

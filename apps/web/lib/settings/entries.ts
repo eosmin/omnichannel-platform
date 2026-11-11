@@ -18,6 +18,12 @@ export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     permission: ClientPermissions.ORG_MANAGE_STORES
   },
   {
+    id: 'warehouses',
+    labelKey: 'warehouses',
+    href: AppPaths.org.warehouses,
+    permission: ClientPermissions.INVENTORY_VIEW
+  },
+  {
     id: 'counts',
     labelKey: 'counts',
     href: AppPaths.org.counts,
