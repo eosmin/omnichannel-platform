@@ -17,6 +17,8 @@ import {
   linksChanged,
   linksOf,
   moveLink,
+  placesIn,
+  placesOf,
   removeLink,
   stockBlockKeyOf
 } from '../../lib/warehouses/warehouse-form'
@@ -29,17 +31,21 @@ export interface LinkableStore {
   name: string
 }
 
-// The stores a warehouse serves and the order each one reserves from it (TDD_16 §6): the first one is reserved
-// first. The list is saved whole, so every store that is already linked stays on the screen until it is removed.
+// The stores a warehouse serves and the place it has in the list of each one (TDD_16 §6): a store reserves from its
+// warehouses by priority, 1 first, so the priority belongs to the store and not to the warehouse. `warehouses` is
+// every warehouse of the organization, which is where the length of each store's list comes from. The links are
+// saved whole, so every store that is already linked stays on the screen until it is removed.
 export function WarehouseStoresEditor({
   storeId,
   warehouse,
+  warehouses,
   stores,
   canEdit,
   onSaved
 }: {
   storeId: string
   warehouse: WarehouseDetailView
+  warehouses: readonly WarehouseDetailView[]
   stores: readonly LinkableStore[]
   canEdit: boolean
   onSaved: (warehouse: WarehouseDetailView) => void
@@ -62,6 +68,7 @@ export function WarehouseStoresEditor({
     setSaved(served)
     if (!changed) setLinks(served)
   }
+  const places = placesOf(warehouses, warehouse)
   const candidates = addableStores(stores, links)
   const pickable = warehouse.active && canEdit
   const disabled = !canEdit || save.isPending
@@ -74,7 +81,7 @@ export function WarehouseStoresEditor({
   const add = (): void => {
     const store = stores.find(item => item.id === pick)
     if (store === undefined) return
-    edit(addLink(links, { storeId: store.id, storeName: store.name }))
+    edit(addLink(links, { storeId: store.id, storeName: store.name }, places))
     setPick('')
   }
 
@@ -109,50 +116,52 @@ export function WarehouseStoresEditor({
         <p className="text-muted-foreground text-sm">{t('empty')}</p>
       ) : (
         <ol className="flex flex-col gap-2">
-          {links.map((link, index) => (
-            <li
-              key={link.storeId}
-              className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-            >
-              <span
-                className="bg-muted text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium"
-                aria-label={t('position', { position: index + 1 })}
+          {links.map(link => {
+            const last = placesIn(places, link.storeId)
+            return (
+              <li
+                key={link.storeId}
+                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
               >
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{link.storeName}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={t('moveUp', { store: link.storeName })}
-                disabled={disabled || index === 0}
-                onClick={() => edit(moveLink(links, index, -1))}
-              >
-                <ArrowUp aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={t('moveDown', { store: link.storeName })}
-                disabled={disabled || index === links.length - 1}
-                onClick={() => edit(moveLink(links, index, 1))}
-              >
-                <ArrowDown aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={t('remove', { store: link.storeName })}
-                disabled={disabled}
-                onClick={() => edit(removeLink(links, link.storeId))}
-              >
-                <X aria-hidden />
-              </Button>
-            </li>
-          ))}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{link.storeName}</span>
+                  <span className="text-muted-foreground block text-xs">
+                    {t('position', { position: link.priority, total: last })}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('moveUp', { store: link.storeName })}
+                  disabled={disabled || link.priority <= 1}
+                  onClick={() => edit(moveLink(links, link.storeId, -1, places))}
+                >
+                  <ArrowUp aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('moveDown', { store: link.storeName })}
+                  disabled={disabled || link.priority >= last}
+                  onClick={() => edit(moveLink(links, link.storeId, 1, places))}
+                >
+                  <ArrowDown aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('remove', { store: link.storeName })}
+                  disabled={disabled}
+                  onClick={() => edit(removeLink(links, link.storeId))}
+                >
+                  <X aria-hidden />
+                </Button>
+              </li>
+            )
+          })}
         </ol>
       )}
 

@@ -126,55 +126,78 @@ export function updateInputOf(
   return changes
 }
 
-// The stores of a warehouse, in the order they are reserved from -------------------------------------------------
+// The stores of a warehouse and its priority in each (TDD_16 §6) --------------------------------------------------
+// The priority belongs to a store: it is where THIS warehouse stands in the list of warehouses that store reserves
+// from (1 is reserved first). The stores of one warehouse have no order among themselves.
 
-// The list the editor works on: the stores the warehouse serves, the first one reserved first
+// The list the editor works on, by store name so that it does not jump when a priority changes
 export const linksOf = (warehouse: WarehouseDetailView): WarehouseStoreLink[] =>
-  warehouse.stores.map((link, index) => ({ ...link, priority: index + 1 }))
+  [...warehouse.stores].sort(
+    (a, b) => a.storeName.localeCompare(b.storeName) || a.storeId.localeCompare(b.storeId)
+  )
 
+// How many warehouses a store reserves from, this one included: the last place a priority can take. A store the
+// warehouse does not serve yet counts the warehouse too, because linking puts it at the end.
+export function placesOf(
+  warehouses: readonly WarehouseDetailView[],
+  warehouse: WarehouseDetailView
+): ReadonlyMap<string, number> {
+  const others = new Map<string, number>()
+  for (const other of warehouses) {
+    if (other.id === warehouse.id) continue
+    for (const link of other.stores) others.set(link.storeId, (others.get(link.storeId) ?? 0) + 1)
+  }
+  return new Map([...others].map(([storeId, count]) => [storeId, count + 1]))
+}
+
+export const placesIn = (places: ReadonlyMap<string, number>, storeId: string): number =>
+  places.get(storeId) ?? 1
+
+// One place earlier (-1) or later (+1) in that store's list, never outside it
 export function moveLink(
   links: readonly WarehouseStoreLink[],
-  index: number,
-  direction: -1 | 1
+  storeId: string,
+  direction: -1 | 1,
+  places: ReadonlyMap<string, number>
 ): WarehouseStoreLink[] {
-  const target = index + direction
-  if (index < 0 || index >= links.length || target < 0 || target >= links.length) return [...links]
-  const next = [...links]
-  const [moved] = next.splice(index, 1)
-  if (moved === undefined) return [...links]
-  next.splice(target, 0, moved)
-  return next.map((link, position) => ({ ...link, priority: position + 1 }))
+  return links.map(link =>
+    link.storeId === storeId
+      ? {
+          ...link,
+          priority: Math.min(Math.max(link.priority + direction, 1), placesIn(places, storeId))
+        }
+      : link
+  )
 }
 
 export const removeLink = (
   links: readonly WarehouseStoreLink[],
   storeId: string
-): WarehouseStoreLink[] =>
-  links
-    .filter(link => link.storeId !== storeId)
-    .map((link, position) => ({ ...link, priority: position + 1 }))
+): WarehouseStoreLink[] => links.filter(link => link.storeId !== storeId)
 
-// A store that is added goes to the end of the list, as the api puts a new link
+// A store that is added goes to the end of its list, as the api puts a new link
 export function addLink(
   links: readonly WarehouseStoreLink[],
-  store: { storeId: string; storeName: string }
+  store: { storeId: string; storeName: string },
+  places: ReadonlyMap<string, number>
 ): WarehouseStoreLink[] {
   if (links.some(link => link.storeId === store.storeId)) return [...links]
-  return [...links, { ...store, priority: links.length + 1 }]
+  return [...links, { ...store, priority: placesIn(places, store.storeId) }].sort(
+    (a, b) => a.storeName.localeCompare(b.storeName) || a.storeId.localeCompare(b.storeId)
+  )
 }
 
-// Every priority is sent: the list on the screen is the one the person arranged
+// Every priority is sent: the screen shows the place the person chose in each store
 export const linkInputsOf = (links: readonly WarehouseStoreLink[]): WarehouseStoreLinkInput[] =>
-  links.map((link, index) => ({ storeId: link.storeId, priority: index + 1 }))
+  links.map(link => ({ storeId: link.storeId, priority: link.priority }))
 
 export function linksChanged(
   saved: readonly WarehouseStoreLink[],
   draft: readonly WarehouseStoreLink[]
 ): boolean {
-  return (
-    saved.length !== draft.length ||
-    saved.some((link, index) => link.storeId !== draft[index]?.storeId)
-  )
+  if (saved.length !== draft.length) return true
+  const before = new Map(saved.map(link => [link.storeId, link.priority]))
+  return draft.some(link => before.get(link.storeId) !== link.priority)
 }
 
 // The stores a person may add: those of the organization that the warehouse does not serve yet

@@ -970,6 +970,23 @@ export function addStoreToOrganizationOf(
   })
 }
 
+// A warehouse of the organization of a store, made straight in the database (the cases that only read it)
+export function addWarehouseTo(
+  storeId: string,
+  input: { name: string; code: string }
+): Promise<string> {
+  return withOwner(async owner => {
+    const { organizationId } = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const warehouse = await owner.warehouse.create({
+      data: { organizationId, name: input.name, code: input.code }
+    })
+    return warehouse.id
+  })
+}
+
 // A person who may see the inventory and nothing that changes it (the warehouses screen opens and shows, no
 // button changes anything)
 export function addInventoryViewer(storeId: string, email: string): Promise<() => Promise<void>> {

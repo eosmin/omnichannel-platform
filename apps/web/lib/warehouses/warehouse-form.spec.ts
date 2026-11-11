@@ -10,6 +10,8 @@ import {
   linksChanged,
   linksOf,
   moveLink,
+  placesIn,
+  placesOf,
   removeLink,
   stockBlockKeyOf,
   updateInputOf,
@@ -109,44 +111,68 @@ describe('updateInputOf', () => {
   })
 })
 
-describe('the order of the stores', () => {
-  const links = linksOf(warehouse)
+describe('the priority of the warehouse in each store', () => {
+  const other: WarehouseDetailView = {
+    ...warehouse,
+    id: 'w2',
+    stores: [
+      { storeId: 's1', storeName: 'Shop', priority: 1 },
+      { storeId: 's4', storeName: 'Depot', priority: 1 }
+    ]
+  }
+  const places = placesOf([warehouse, other], warehouse)
+  const links = linksOf({
+    ...warehouse,
+    stores: [
+      { storeId: 's1', storeName: 'Shop', priority: 2 },
+      { storeId: 's2', storeName: 'Outlet', priority: 1 }
+    ]
+  })
 
-  it('renumbers the priorities from the order on the list', () => {
-    expect(moveLink(links, 2, -1).map(link => [link.storeId, link.priority])).toEqual([
-      ['s1', 1],
-      ['s3', 2],
-      ['s2', 3]
-    ])
-    expect(linkInputsOf(moveLink(links, 0, 1))).toEqual([
+  it('lists the stores by name, whatever their priorities', () => {
+    expect(links.map(link => link.storeName)).toEqual(['Outlet', 'Shop'])
+  })
+
+  it('counts the places of each store: the other warehouses it reserves from, plus this one', () => {
+    expect(places.get('s1')).toBe(2)
+    expect(places.get('s4')).toBe(2)
+    expect(placesIn(places, 's2')).toBe(1)
+  })
+
+  it('moves the priority of one store one place, never outside its list', () => {
+    const up = moveLink(links, 's1', -1, places)
+    expect(up.find(link => link.storeId === 's1')?.priority).toBe(1)
+    expect(up.find(link => link.storeId === 's2')?.priority).toBe(1)
+    expect(moveLink(up, 's1', -1, places).find(link => link.storeId === 's1')?.priority).toBe(1)
+    expect(moveLink(links, 's1', 1, places).find(link => link.storeId === 's1')?.priority).toBe(2)
+    expect(moveLink(links, 's2', 1, places).find(link => link.storeId === 's2')?.priority).toBe(1)
+  })
+
+  it('sends every priority as it stands on the screen', () => {
+    expect(linkInputsOf(moveLink(links, 's1', -1, places))).toEqual([
       { storeId: 's2', priority: 1 },
-      { storeId: 's1', priority: 2 },
-      { storeId: 's3', priority: 3 }
+      { storeId: 's1', priority: 1 }
     ])
   })
 
-  it('does not move the first one up or the last one down', () => {
-    expect(moveLink(links, 0, -1).map(link => link.storeId)).toEqual(['s1', 's2', 's3'])
-    expect(moveLink(links, 2, 1).map(link => link.storeId)).toEqual(['s1', 's2', 's3'])
+  it('removes a store without touching the others', () => {
+    expect(removeLink(links, 's2')).toEqual([links[1]])
   })
 
-  it('removes a store and closes the gap in the priorities', () => {
-    expect(removeLink(links, 's2').map(link => [link.storeId, link.priority])).toEqual([
-      ['s1', 1],
-      ['s3', 2]
+  it('adds a store at the end of its list, once, keeping the list by name', () => {
+    const added = addLink(links, { storeId: 's4', storeName: 'Depot' }, places)
+    expect(added.map(link => [link.storeId, link.priority])).toEqual([
+      ['s4', 2],
+      ['s2', 1],
+      ['s1', 2]
     ])
+    expect(addLink(added, { storeId: 's4', storeName: 'Depot' }, places)).toHaveLength(3)
   })
 
-  it('adds a store at the end, once', () => {
-    const added = addLink(links, { storeId: 's4', storeName: 'Depot' })
-    expect(added.at(-1)).toEqual({ storeId: 's4', storeName: 'Depot', priority: 4 })
-    expect(addLink(added, { storeId: 's4', storeName: 'Depot' })).toHaveLength(4)
-  })
-
-  it('knows when the list differs from the saved one, by store and by position', () => {
-    expect(linksChanged(links, linksOf(warehouse))).toBe(false)
-    expect(linksChanged(links, moveLink(links, 0, 1))).toBe(true)
-    expect(linksChanged(links, removeLink(links, 's3'))).toBe(true)
+  it('knows when the list differs from the saved one, by store and by priority', () => {
+    expect(linksChanged(links, [...links].reverse())).toBe(false)
+    expect(linksChanged(links, moveLink(links, 's1', -1, places))).toBe(true)
+    expect(linksChanged(links, removeLink(links, 's2'))).toBe(true)
   })
 
   it('offers only the stores that are not linked yet', () => {
