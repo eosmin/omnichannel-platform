@@ -1,8 +1,12 @@
-import { randomUUID } from 'node:crypto'
+import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 
-import { type OwnerClient } from '@platform/core/database-testing'
-
-import { createProduct, createProductVariant, createTransfer, createWarehouse } from '../builders'
+import {
+  createProduct,
+  createProductVariant,
+  createTransfer,
+  createWarehouse,
+  uniqueTransferNumber
+} from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -30,7 +34,7 @@ describe('The tables of transfers', () => {
     expect(statement).rejects.toThrow(constraint)
   const header = (overrides: Record<string, unknown> = {}) => ({
     organizationId: ctx.orgA.id,
-    number: `TR-${randomUUID().replace(/\D/g, '').slice(0, 8).padEnd(4, '0')}`,
+    number: uniqueTransferNumber(),
     fromWarehouseId: ctx.warehouseA.id,
     toWarehouseId: ctx.warehouseASecond.id,
     createdBy: 'test',
@@ -207,25 +211,27 @@ describe('The tables of transfers', () => {
     })
 
     it('stops a product, a store or a warehouse with transfer lines from being deleted', async () => {
+      // A store of its own, so that nothing but the lines of the transfer can be what refuses its deletion
+      const store = await ensureStore(owner, ctx.orgA.id, `${prefix}-store-lines`)
       const transfer = await createTransfer(owner, {
         organizationId: ctx.orgA.id,
-        storeId: ctx.storeA.id
+        storeId: store.id
       })
       const row = await owner.stockTransferLine.findFirstOrThrow({
         where: { transferId: transfer.id }
       })
       await refused(
         owner.product.delete({ where: { id: row.productId } }),
-        /Foreign key constraint violated/
+        /stock_transfer_lines_store_id_product_id_fkey/
       )
       await refused(
-        owner.store.delete({ where: { id: ctx.storeA.id } }),
-        /Foreign key constraint violated/
+        owner.store.delete({ where: { id: store.id } }),
+        /stock_transfer_lines_store_id_(product_id_)?fkey/
       )
       const header = await owner.stockTransfer.findUniqueOrThrow({ where: { id: transfer.id } })
       await refused(
         owner.warehouse.delete({ where: { id: header.fromWarehouseId } }),
-        /Foreign key constraint violated/
+        /stock_transfers_organization_id_from_warehouse_id_fkey/
       )
       const spare = await createWarehouse(owner, { organizationId: ctx.orgA.id })
       await owner.warehouse.delete({ where: { id: spare.id } })

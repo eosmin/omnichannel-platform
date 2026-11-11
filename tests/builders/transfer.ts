@@ -6,6 +6,10 @@ import { TransferStatus } from '@platform/core/domain'
 import { createProduct } from './product'
 import { createWarehouse } from './warehouse'
 
+// A number that reads like the ones of the service ("TR-" and digits) and that no other fixture of the run takes
+export const uniqueTransferNumber = (): string =>
+  `TR-${randomUUID().replace(/\D/g, '').slice(0, 8).padEnd(4, '0')}`
+
 // A draft transfer of an organization between two warehouses of its own, written as the owner (the api cannot say
 // another organization's: it is the very thing the isolation suite is about). With `storeId` it carries one line of a
 // new product of that store.
@@ -18,7 +22,7 @@ export async function createTransfer(
   const product =
     input.storeId === undefined ? null : await createProduct(owner, { storeId: input.storeId })
   const status = input.status ?? TransferStatus.DRAFT
-  const number = `TR-${randomUUID().replace(/\D/g, '').slice(0, 8).padEnd(4, '0')}`
+  const number = uniqueTransferNumber()
   const created = await owner.stockTransfer.create({
     data: {
       organizationId: input.organizationId,
@@ -36,7 +40,19 @@ export async function createTransfer(
         : {}),
       ...(input.storeId === undefined || product === null
         ? {}
-        : { lines: { create: [{ storeId: input.storeId, productId: product.id, quantity: 3 }] } })
+        : {
+            lines: {
+              create: [
+                {
+                  storeId: input.storeId,
+                  productId: product.id,
+                  quantity: 3,
+                  // What a transfer that ended in full holds: everything arrived
+                  receivedQuantity: status === TransferStatus.RECEIVED ? 3 : 0
+                }
+              ]
+            }
+          })
     },
     select: { id: true, number: true, lines: { select: { id: true } } }
   })

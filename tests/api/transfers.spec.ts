@@ -915,7 +915,9 @@ describe('Transfers between warehouses', () => {
       expect(errorOf(stuck).code).toBe(ErrorCodes.INVENTORY_TRANSFER_LINES_OUT_OF_REACH)
       expect((await stateOf(made.id)).status).toBe('in_transit')
       // Nor can they cancel it: the units of store A2 would go back to a store they do not belong to
-      expect((await cancel(made.id)).status).toBe(CONFLICT)
+      const noCancel = await cancel(made.id)
+      expect(noCancel.status).toBe(CONFLICT)
+      expect(errorOf(noCancel).code).toBe(ErrorCodes.INVENTORY_TRANSFER_LINES_OUT_OF_REACH)
 
       const own = await close(
         made.id,
@@ -1089,12 +1091,19 @@ describe('Transfers between warehouses', () => {
       ).body as PageBody
       expect(cancelled.data.map(row => row.id)).toContain(made[0]?.id)
       expect(cancelled.data.map(row => row.id)).not.toContain(made[1]?.id)
-      const byWarehouse = (
-        await asAdmin().get(
-          `${ApiRoutes.transfers.list}?warehouseId=${ctx.warehouseASecond.id}&limit=100`
-        )
-      ).body as PageBody
-      expect(byWarehouse.data.map(row => row.id)).not.toContain(made[1]?.id)
+      // A transfer that goes to the second warehouse: the filter finds it, from either end, and only it
+      const toSecond = await draft([], { toWarehouseId: ctx.warehouseASecond.id })
+      const idsFor = async (warehouseId: string): Promise<string[]> =>
+        (
+          (await asAdmin().get(`${ApiRoutes.transfers.list}?warehouseId=${warehouseId}&limit=100`))
+            .body as PageBody
+        ).data.map(row => row.id)
+      const forSecond = await idsFor(ctx.warehouseASecond.id)
+      expect(forSecond).toContain(toSecond.id)
+      expect(forSecond).not.toContain(made[1]?.id)
+      const forSource = await idsFor(ctx.warehouseA.id)
+      expect(forSource).toContain(toSecond.id)
+      expect(forSource).toContain(made[1]?.id)
       expect((await asAdmin().get(`${ApiRoutes.transfers.list}?cursor=nonsense`)).status).toBe(
         BAD_REQUEST
       )
