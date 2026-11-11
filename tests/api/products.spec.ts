@@ -1119,6 +1119,7 @@ describe('The products of a store', () => {
     })
   })
   describe('the pictures of a product', () => {
+    const PICTURE_EPOCH = Date.UTC(2026, 0, 1)
     async function file(
       storeId: string,
       productId: string | null,
@@ -1144,8 +1145,13 @@ describe('The products of a store', () => {
     it('lists the files of the product, oldest first, and no file of another product or kind', async () => {
       const product = await create({})
       const other = await create({})
-      const first = await file(ctx.storeA.id, product.id)
-      const second = await file(ctx.storeA.id, product.id, { status: 'pending' })
+      // The creation times are set apart on purpose: two rows written in the same millisecond tie, and the test must
+      // not lean on the clock to tell them apart.
+      const first = await file(ctx.storeA.id, product.id, { createdAt: new Date(PICTURE_EPOCH) })
+      const second = await file(ctx.storeA.id, product.id, {
+        status: 'pending',
+        createdAt: new Date(PICTURE_EPOCH + 1000)
+      })
       await file(ctx.storeA.id, other.id)
       await file(ctx.storeA.id, product.id, { purpose: 'message' })
       await file(ctx.storeA.id, product.id, { status: MediaStatus.INFECTED })
@@ -1156,6 +1162,26 @@ describe('The products of a store', () => {
       expect(response.status).toBe(OK)
       const ids = (response.body as { id: string; status: string }[]).map(item => item.id)
       expect(ids).toEqual([first, second])
+    })
+
+    it('breaks a tie of creation time by id, so the order is the same on every read', async () => {
+      const product = await create({})
+      const tied = new Date(PICTURE_EPOCH)
+      // Written from the highest id to the lowest, so that insertion order is the opposite of the order asked for:
+      // without the tiebreak the rows would come back as they were written.
+      const ids = [
+        '00000000-0000-4000-8000-000000000004',
+        '00000000-0000-4000-8000-000000000003',
+        '00000000-0000-4000-8000-000000000002',
+        '00000000-0000-4000-8000-000000000001'
+      ]
+      for (const id of ids) await file(ctx.storeA.id, product.id, { id, createdAt: tied })
+
+      const response = await asAdmin().get(ApiRoutes.products.images(product.id))
+
+      expect(response.status).toBe(OK)
+      const listed = (response.body as { id: string }[]).map(item => item.id)
+      expect(listed).toEqual([...ids].reverse())
     })
 
     it('answers 404 for the pictures of a product of another store, as for one that does not exist', async () => {
