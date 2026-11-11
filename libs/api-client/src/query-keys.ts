@@ -51,6 +51,9 @@ export const QueryKeys = {
       ['customers', storeId, id, 'timeline', type] as const,
     conversations: (storeId: string, id: string) =>
       ['customers', storeId, id, 'conversations'] as const,
+    // The orders tab, by its status filter ('all' | a state): a merge moves the orders, so it goes stale with the customer
+    orders: (storeId: string, id: string, status: string) =>
+      ['customers', storeId, id, 'orders', status] as const,
     // The gallery under a tab and a search: a merge moves the files, so it goes stale with the customer
     media: (storeId: string, id: string, type: GalleryType, q: string) =>
       ['customers', storeId, id, 'media', type, q] as const,

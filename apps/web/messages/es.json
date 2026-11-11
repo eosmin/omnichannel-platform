@@ -253,7 +253,11 @@
         "atLeast": "{count}+",
         "unknown": "Desconocido",
         "since": "Cliente desde",
-        "failed": "No disponible"
+        "failed": "No disponible",
+        "orders": "Pedidos",
+        "totalSpent": "Total gastado",
+        "averageOrder": "Promedio por pedido",
+        "none": "Aún no hay"
       },
       "tags": "Etiquetas",
       "noTags": "Sin etiquetas.",
@@ -262,7 +266,12 @@
       "defaultAddress": "Predeterminada",
       "failed": "No se pudo cargar el perfil.",
       "noAccess": "No tienes acceso a los perfiles de clientes.",
-      "anonymous": "Visitante ····{digits}"
+      "anonymous": "Visitante ····{digits}",
+      "sectionLabel": "Sección del perfil",
+      "sections": {
+        "activity": "Actividad",
+        "orders": "Pedidos"
+      }
     },
     "panel": {
       "title": "Cliente",
@@ -274,6 +283,7 @@
       "filters": {
         "all": "Todo",
         "conversation": "Conversaciones",
+        "order": "Pedidos",
         "note": "Notas"
       },
       "conversation": "Conversación por {channel}",
@@ -291,7 +301,9 @@
       "undoUntil": "Se puede deshacer hasta el {date}",
       "undoTitle": "¿Deshacer la fusión?",
       "undoDescription": "El otro cliente vuelve con sus conversaciones, notas, direcciones, etiquetas y canales, como estaban antes de fusionarlos.",
-      "undoConfirm": "Deshacer la fusión"
+      "undoConfirm": "Deshacer la fusión",
+      "order": "Pedido #{number}",
+      "openOrder": "Abrir el pedido"
     },
     "edit": {
       "editProfile": "Editar los datos de contacto",
@@ -381,7 +393,8 @@
         "notes": "Notas",
         "addresses": "Direcciones",
         "tags": "Etiquetas",
-        "identities": "Canales"
+        "identities": "Canales",
+        "orders": "Pedidos"
       },
       "countSum": "{survivor} + {absorbed} = {merged}",
       "countUnion": "{survivor} + {absorbed} = {merged} (sin repetidas)",
@@ -398,6 +411,16 @@
       "confirmLabel": "Escribe {word} para confirmar",
       "confirm": "Fusionar los clientes",
       "searchHint": "Escribe un nombre, correo o teléfono para buscar el duplicado."
+    },
+    "orders": {
+      "filterLabel": "Filtrar los pedidos",
+      "all": "Todos",
+      "failed": "No se pudieron cargar los pedidos.",
+      "empty": "Aún no hay pedidos.",
+      "noMatches": "Ningún pedido en este estado.",
+      "loadMore": "Cargar más",
+      "lines": "{count, plural, one {# línea} other {# líneas}}",
+      "viewAll": "Ver pedidos"
     }
   },
   "email": {
