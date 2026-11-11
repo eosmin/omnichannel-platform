@@ -39,10 +39,12 @@ const mediaUrlsSchema = z.object({
 export type MediaUrlsView = z.infer<typeof mediaUrlsSchema>
 
 // Where a file is attached: a message file has no parent, a product picture names its product (the api
-// checks it is one of the store and that the member may edit products)
+// checks it is one of the store and that the member may edit products), and so does the file of an order (the receipt of a
+// payment, the proof of a delivery)
 export type UploadTarget =
   | { purpose: typeof MediaPurpose.MESSAGE }
   | { purpose: typeof MediaPurpose.PRODUCT; parentId: string }
+  | { purpose: typeof MediaPurpose.ORDER; parentId: string }
 
 const MESSAGE_TARGET: UploadTarget = { purpose: MediaPurpose.MESSAGE }
 

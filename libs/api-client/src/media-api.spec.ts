@@ -36,6 +36,33 @@ describe('requestUploadUrl', () => {
   })
 })
 
+describe('a file of an order', () => {
+  it('names its order in the request and in the confirmation', async () => {
+    const target = { purpose: 'order', parentId: 'o1' } as const
+    const asked = setup(
+      json(200, { uploadUrl: 'https://files.example.com/x?sig=1', key: 'k', mediaId: 'm1' })
+    )
+    await requestUploadUrl(asked.client, 's1', file, target)
+    expect(
+      JSON.parse((asked.fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string)
+    ).toEqual({ ...target, ...file })
+
+    const confirmed = setup(
+      json(200, {
+        id: 'm1',
+        filename: 'a.png',
+        contentType: 'image/png',
+        fileSize: 12,
+        status: 'pending'
+      })
+    )
+    await confirmUpload(confirmed.client, 's1', { ...file, mediaId: 'm1', key: 'k' }, target)
+    expect(
+      JSON.parse((confirmed.fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string)
+    ).toEqual({ ...target, ...file, mediaId: 'm1', key: 'k' })
+  })
+})
+
 describe('confirmUpload', () => {
   it('sends the key and the media id it was given', async () => {
     const { client, fetchImpl } = setup(
