@@ -1,5 +1,6 @@
 import type { CarrierCapabilityType, CarrierIdType } from '@platform/core/domain'
 
+import type { LabelInput, LabelLayout } from './carrier-label'
 import type {
   CancelPickupParams,
   CancelShipmentParams,
@@ -60,6 +61,9 @@ export interface CarrierPlugin {
     ctx: CarrierContext,
     params: CreatePickupBatchParams
   ): Promise<PickupBatchResult>
+  // internal (INTERNAL_GUIDE): the core makes the guide and asks the plugin where each thing goes on the label.
+  // Pure: the same input gives the same layout, and nothing is fetched or stored
+  buildLabelLayout?(input: LabelInput): LabelLayout
   // Recovers the guides of a pickup after an unknown outcome
   fetchPickup?(ctx: CarrierContext, ref: PickupRef): Promise<PickupDetails>
   cancelShipment?(ctx: CarrierContext, params: CancelShipmentParams): Promise<CancelShipmentResult>

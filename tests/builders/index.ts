@@ -1,3 +1,4 @@
+export * from './carrier-plugin'
 export * from './channel-plugin'
 export * from './conversation'
 export * from './customer'

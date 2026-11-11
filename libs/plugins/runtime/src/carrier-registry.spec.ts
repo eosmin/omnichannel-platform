@@ -108,14 +108,25 @@ describe('CarrierRegistry', () => {
       expect(() => build().register(plugin)).not.toThrow()
     })
 
-    it('accepts an internal carrier that implements neither method', () => {
+    it('accepts an internal carrier that implements neither creation method but draws the label', () => {
+      const plugin = carrier({
+        id: CarrierId.LOCAL,
+        shipmentCreation: ShipmentCreationModes.INTERNAL,
+        capabilities: [CarrierCapability.INTERNAL_GUIDE],
+        createShipment: undefined,
+        buildLabelLayout: unused
+      })
+      expect(() => build().register(plugin)).not.toThrow()
+    })
+
+    it('rejects an internal carrier that cannot draw the label the core asks it for', () => {
       const plugin = carrier({
         id: CarrierId.LOCAL,
         shipmentCreation: ShipmentCreationModes.INTERNAL,
         capabilities: [CarrierCapability.INTERNAL_GUIDE],
         createShipment: undefined
       })
-      expect(() => build().register(plugin)).not.toThrow()
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
     })
 
     it('rejects a standalone carrier without createShipment', () => {
@@ -142,7 +153,19 @@ describe('CarrierRegistry', () => {
     it('rejects an internal carrier that implements a creation method', () => {
       const plugin = carrier({
         shipmentCreation: ShipmentCreationModes.INTERNAL,
-        capabilities: [CarrierCapability.INTERNAL_GUIDE]
+        capabilities: [CarrierCapability.INTERNAL_GUIDE],
+        buildLabelLayout: unused
+      })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('rejects an internal carrier that implements the pickup creation method', () => {
+      const plugin = carrier({
+        shipmentCreation: ShipmentCreationModes.INTERNAL,
+        capabilities: [CarrierCapability.INTERNAL_GUIDE],
+        createShipment: undefined,
+        createShipmentsWithPickup: unused,
+        buildLabelLayout: unused
       })
       expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
     })
