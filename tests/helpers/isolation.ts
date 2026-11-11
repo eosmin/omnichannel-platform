@@ -58,6 +58,8 @@ export interface IsolationResource {
     // The endpoint refuses a field it does not know (400) instead of ignoring it: the store in the
     // body is then refused, and the same body without it must land in the store of the header
     strict?: boolean
+    // What a creation answers when it is not 201: a run that is carried out later is accepted (202)
+    status?: number
   }
 }
 
@@ -239,7 +241,7 @@ export const isolationChecks = {
   // header (and a store in the body is never read), or the body is refused as a whole
   async creation({ app, owner, ctx }: IsolationScene, resource: IsolationResource): Promise<void> {
     if (resource.creation === undefined) return
-    const { path, body, storeOf, countIn, strict = false } = resource.creation
+    const { path, body, storeOf, countIn, strict = false, status = 201 } = resource.creation
     const agent = api(app, ctx.adminA, ctx.storeA)
     const before = countIn === undefined ? null : await countIn(owner, ctx.storeB.id)
 
@@ -255,7 +257,7 @@ export const isolationChecks = {
     }
     const created = strict ? await agent.post(path).send(body('created-by-the-suite')) : named
 
-    expect(created.status).toBe(201)
+    expect(created.status).toBe(status)
     expect(await storeOf(owner, (created.body as { id: string }).id)).toBe(
       resource.scope === 'organization' ? ctx.orgA.id : ctx.storeA.id
     )

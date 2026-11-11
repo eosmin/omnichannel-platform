@@ -1,5 +1,12 @@
-import { createShipmentSchema, setShipmentStatusSchema } from './shipment-schemas'
 import {
+  bulkLabelsSchema,
+  createShipmentSchema,
+  mergeLabelsSchema,
+  setShipmentStatusSchema
+} from './shipment-schemas'
+import {
+  BulkLabelLimits,
+  ShipmentPrintableStatuses,
   ManualShipmentStatuses,
   ShipmentInactiveStatuses,
   ShipmentPastPickupStatuses,
@@ -100,5 +107,83 @@ describe('the key a guide is asked for with', () => {
       shipmentIdempotencyKey('o1', null, 1)
     ])
     expect(keys.size).toBe(5)
+  })
+})
+
+const OTHER_ID = '3c8a2d2f-6a1e-4d4f-8e4b-1a7a2e3b4c5d'
+
+describe('the body of a bulk run of labels', () => {
+  it('takes the orders in the order selected, and nothing else it may use', () => {
+    const parsed = bulkLabelsSchema.safeParse({
+      orderIds: [OTHER_ID, ID],
+      connectionId: ID,
+      pickup: { date: '2026-12-01', from: '09:00', to: '12:00' }
+    })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.orderIds).toEqual([OTHER_ID, ID])
+    expect(bulkLabelsSchema.safeParse({ orderIds: [ID] }).success).toBe(true)
+  })
+
+  it.each([
+    ['no order', { orderIds: [] }],
+    ['no list', {}],
+    ['an id that is not one', { orderIds: ['nope'] }],
+    ['an order twice', { orderIds: [ID, ID] }],
+    ['the store', { orderIds: [ID], storeId: OTHER_ID }],
+    ['a field of a guide', { orderIds: [ID], notes: 'x' }],
+    [
+      'a pickup that ends before it starts',
+      { orderIds: [ID], pickup: { date: '2026-12-01', from: '12:00', to: '09:00' } }
+    ],
+    [
+      'a day that does not exist',
+      { orderIds: [ID], pickup: { date: '2026-02-31', from: '09:00', to: '12:00' } }
+    ]
+  ])('refuses %s', (_name, body) => {
+    expect(bulkLabelsSchema.safeParse(body).success).toBe(false)
+  })
+
+  it('takes a hundred orders and not a hundred and one', () => {
+    const ids = (count: number) =>
+      Array.from(
+        { length: count },
+        (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+      )
+    expect(bulkLabelsSchema.safeParse({ orderIds: ids(BulkLabelLimits.MAX_ORDERS) }).success).toBe(
+      true
+    )
+    expect(
+      bulkLabelsSchema.safeParse({ orderIds: ids(BulkLabelLimits.MAX_ORDERS + 1) }).success
+    ).toBe(false)
+  })
+})
+
+describe('the body that prints labels', () => {
+  it('takes shipments, once each, in the order of the pages', () => {
+    expect(mergeLabelsSchema.safeParse({ shipmentIds: [OTHER_ID, ID] }).data?.shipmentIds).toEqual([
+      OTHER_ID,
+      ID
+    ])
+    expect(mergeLabelsSchema.safeParse({ shipmentIds: [] }).success).toBe(false)
+    expect(mergeLabelsSchema.safeParse({ shipmentIds: [ID, ID] }).success).toBe(false)
+    expect(mergeLabelsSchema.safeParse({ shipmentIds: [ID], storeId: OTHER_ID }).success).toBe(
+      false
+    )
+  })
+})
+
+describe('the statuses whose label is printed', () => {
+  it('leave out every status in which no guide is known to exist or it was voided', () => {
+    for (const status of [
+      ShipmentStatus.CREATING,
+      ShipmentStatus.REQUIRES_REVIEW,
+      ShipmentStatus.CANCEL_PENDING,
+      ShipmentStatus.CANCEL_FAILED,
+      ShipmentStatus.CANCELLED,
+      ShipmentStatus.FAILED
+    ]) {
+      expect(ShipmentPrintableStatuses).not.toContain(status)
+    }
+    expect(ShipmentPrintableStatuses).toContain(ShipmentStatus.LABEL_CREATED)
   })
 })

@@ -8,6 +8,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   AppPaths,
   AuthorType,
+  BulkLabelJobStatus,
   CarrierResourceTypes,
   ConversationStatus,
   ConversationStatusReasons,
@@ -24,6 +25,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
+  type BulkLabelsDonePayload,
   type ConversationAssignedPayload,
   type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
@@ -310,6 +312,44 @@ export class NotificationsEventsListener {
         { connectionId, err: String(error) },
         'an unmapped carrier status could not be notified'
       )
+    }
+  }
+
+  // A bulk run of labels made its file (TDD_17 §4.6): the person who asked is told it can be downloaded, and only while they are an
+  // active member who still prints guides (the labels carry customer data). What happened is read from the run, not from the event:
+  // a run that failed, or that made no file, has nothing to download and is not announced here (the screen shows it).
+  @OnEvent(Events.BULK_LABELS_DONE)
+  async onBulkLabelsDone(payload: BulkLabelsDonePayload): Promise<void> {
+    const { storeId, jobId, requestedBy } = payload
+    try {
+      const job = await this.prisma.client.bulkLabelJob.findFirst({
+        where: { id: jobId, storeId, requestedBy },
+        select: { status: true, mergedMediaId: true }
+      })
+      const finished =
+        job?.status === String(BulkLabelJobStatus.COMPLETED) ||
+        job?.status === String(BulkLabelJobStatus.COMPLETED_WITH_ERRORS)
+      if (job === null || !finished || job.mergedMediaId === null) return
+      const member = await this.prisma.client.membership.count({
+        where: {
+          userId: requestedBy,
+          storeId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.SHIPPING_MANAGE } } }
+        }
+      })
+      if (member === 0) return
+      await this.notifications.send({
+        userId: requestedBy,
+        storeId,
+        type: NotificationTypes.BULK_LABELS_READY,
+        resourceType: ShipmentResourceTypes.BULK_LABEL_JOB,
+        resourceId: jobId,
+        actionPath: AppPaths.store.orders(storeId)
+      })
+    } catch (error) {
+      this.logger.error({ jobId, err: String(error) }, 'a bulk run of labels could not be notified')
     }
   }
 

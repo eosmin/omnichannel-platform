@@ -18,10 +18,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   },
   ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
-  BulkLabelJob: {
-    step: '4.10',
-    reason: 'Created by POST /shipments/bulk and read through its progress'
-  },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import {
   AttentionReasons,
   AuthorType,
+  BulkLabelJobStatus,
   ChannelIds,
   ConversationStatus,
   ConversationStatusReasons,
@@ -161,6 +162,21 @@ describe('bridgedPayload', () => {
       storeId: randomUUID(),
       connectionId: randomUUID(),
       providerCode: '16:115'
+    },
+    [Events.BULK_LABELS_PROGRESS]: {
+      storeId: randomUUID(),
+      jobId: randomUUID(),
+      requestedBy: randomUUID(),
+      done: 3,
+      total: 10,
+      failed: 1
+    },
+    [Events.BULK_LABELS_DONE]: {
+      storeId: randomUUID(),
+      jobId: randomUUID(),
+      requestedBy: randomUUID(),
+      status: BulkLabelJobStatus.COMPLETED_WITH_ERRORS,
+      mergedMediaId: randomUUID()
     }
   }
 

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { CLOCK_TIME_PATTERN } from './settings-constants'
-import { ManualShipmentStatuses, ShipmentLimits } from './shipping-constants'
+import { BulkLabelLimits, ManualShipmentStatuses, ShipmentLimits } from './shipping-constants'
 import { type ShipmentStatus, ShippingPayer } from './status-enums'
 import { singleLineText, uuidSchema } from './validation'
 
@@ -73,3 +73,23 @@ export const setShipmentStatusSchema = z.strictObject({
     .optional()
 })
 export type SetShipmentStatusBody = z.output<typeof setShipmentStatusSchema>
+
+// Ids that name each thing once: a repeated order would ask for two guides, a repeated shipment would print its label twice
+const uniqueIds = z
+  .array(uuidSchema)
+  .min(1)
+  .max(BulkLabelLimits.MAX_ORDERS)
+  .refine(ids => new Set(ids).size === ids.length, { message: 'an id appears twice' })
+
+// Bulk generation (TDD_17 §4.6): the orders in the order the agent selected them, which is the order of the pages. The carrier
+// and the pickup are optional and apply to every order of the run; without them each order follows its planned carrier.
+export const bulkLabelsSchema = z.strictObject({
+  orderIds: uniqueIds,
+  connectionId: uuidSchema.optional(),
+  pickup: shipmentPickupSchema.optional()
+})
+export type BulkLabelsBody = z.output<typeof bulkLabelsSchema>
+
+// "Print labels" of guides that already exist: the shipments in the order of the pages
+export const mergeLabelsSchema = z.strictObject({ shipmentIds: uniqueIds })
+export type MergeLabelsBody = z.output<typeof mergeLabelsSchema>

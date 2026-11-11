@@ -60,6 +60,9 @@ export interface CarrierPlugin {
   readonly shipmentCreation: ShipmentCreationMode
   // pickup_bound: the most shipments one call accepts
   readonly maxBatchSize?: number
+  // standalone: the most guides the platform asks for at the same time on one connection when it makes many (a bulk run), so the
+  // carrier's rate limit is respected. Without it the platform asks for three at a time, and never for more than ten whatever is declared.
+  readonly maxConcurrency?: number
   createShipment?(ctx: CarrierContext, params: CreateShipmentParams): Promise<CreateShipmentResult>
   createShipmentsWithPickup?(
     ctx: CarrierContext,

@@ -63,8 +63,10 @@ const READ_PERMISSIONS: Record<MediaPurposeType, Permission | null> = {
   [MediaPurpose.ORDER]: Permissions.ORDERS_VIEW,
   [MediaPurpose.AVATAR]: null,
   [MediaPurpose.EXPORT]: null,
-  [MediaPurpose.SHIPPING_LABEL]: null,
-  [MediaPurpose.BULK_LABELS]: null,
+  // A label carries the name, address and phone of its recipient: the route that serves it asks for the same
+  [MediaPurpose.SHIPPING_LABEL]: Permissions.SHIPPING_MANAGE,
+  // The labels carry the name, address and phone of every customer in the file: only who prints guides reads it
+  [MediaPurpose.BULK_LABELS]: Permissions.SHIPPING_MANAGE,
   [MediaPurpose.REMITTANCE_FILE]: null
 }
 

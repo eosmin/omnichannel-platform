@@ -398,6 +398,80 @@ export const ManualShipmentStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.FAILED
 ]
 
+// The statuses whose stored label is a guide that is good to print (TDD_17 §4.6): made, and not voided, failed or unsure. A
+// guide that was cancelled, that failed, whose outcome is unknown or whose cancellation is under way is never printed.
+export const ShipmentPrintableStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.LABEL_CREATED,
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
+
+// Bulk generation and the merge of stored labels (TDD_17 §4.6)
+export const BulkLabelLimits = {
+  // Orders of one run, and shipments of one merge
+  MAX_ORDERS: ShipmentLimits.MAX_REQUESTS,
+  // Guides asked of one standalone connection at the same time when its plugin does not say; a plugin may ask for fewer or more
+  // but never beyond the ceiling
+  DEFAULT_CONCURRENCY: 3,
+  MAX_CONCURRENCY: 10,
+  // What the merge keeps in memory: the stored labels it reads add up to at most this much, and the rest are left out and
+  // reported (a label is a page: a hundred of them are a few megabytes)
+  MAX_MERGE_INPUT_BYTES: 64 * 1024 * 1024,
+  // A label a carrier made is scanned by the worker before it may be merged: the run waits this long for the scan, asking
+  // every interval, and leaves out (and reports) the label that is still not clean
+  SCAN_WAIT_MS: 60_000,
+  SCAN_POLL_MS: 2_000,
+  // Runs of one store that may be queued or running at the same time
+  MAX_ACTIVE_RUNS: 5,
+  // What a refused request is told to wait: a run takes about this long to end
+  RETRY_AFTER_SECONDS: 60,
+  // How long a merged file is kept when the store has no setting of its own (the column `StoreSettings.bulkLabelRetentionDays`
+  // has the same default), and how many files one run of the cleanup removes
+  DEFAULT_RETENTION_DAYS: 7,
+  CLEAN_FILES_PER_RUN: 200,
+  // A run that has been queued or running for this long is not going to end by itself (the worker died, or the queue lost the
+  // job): the cleanup closes it as failed, so that the screen stops waiting for it
+  STALE_JOB_HOURS: 2,
+  // The attempts of the job in the queue: a second one finds what the first made (an order that has its guide is reused)
+  JOB_ATTEMPTS: 2
+} as const
+
+// What happened to one order of a bulk run
+export const BulkOrderOutcomes = {
+  // A guide was made in this run
+  CREATED: 'created',
+  // The order already had a guide with a label that is good to print: its stored label is used, nobody is called
+  REUSED: 'reused',
+  // Nothing was asked of the carrier: the order did not qualify (`errorCode` says why)
+  SKIPPED: 'skipped',
+  // The carrier was asked and did not give a guide, or the guide is not in the file (`errorCode` / `reason` say why)
+  FAILED: 'failed'
+} as const
+export type BulkOrderOutcome = (typeof BulkOrderOutcomes)[keyof typeof BulkOrderOutcomes]
+
+// Why a label that exists is not in the merged file
+export const BulkLabelLeftOutReasons = {
+  // Cancelled, failed, unsure or being cancelled: a voided label is never printed
+  NOT_PRINTABLE: 'not_printable',
+  // The guide has no stored file (a carrier that gave none, or one the platform did not keep)
+  NO_LABEL: 'no_label',
+  // The file is not clean yet (the scan has not finished) or is gone
+  NOT_READY: 'not_ready',
+  // The file is not a PDF the platform can read
+  UNREADABLE: 'unreadable',
+  // The files already read fill what a merge may keep
+  TOO_LARGE: 'too_large',
+  // The shipment is not one of the store
+  NOT_FOUND: 'not_found'
+} as const
+export type BulkLabelLeftOutReason =
+  (typeof BulkLabelLeftOutReasons)[keyof typeof BulkLabelLeftOutReasons]
+
 // The window of a pickup when nobody chose one (HH:mm, in the store timezone)
 export const PickupDefaults = { WINDOW_FROM: '09:00', WINDOW_TO: '17:00' } as const
 
@@ -419,7 +493,10 @@ export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCar
 export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
 export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
 
-export const ShipmentResourceTypes = { SHIPMENT: 'shipment' } as const
+export const ShipmentResourceTypes = {
+  SHIPMENT: 'shipment',
+  BULK_LABEL_JOB: 'bulk_label_job'
+} as const
 
 // The statuses a carrier moves a package into (TDD_17 §4.9; `CarrierReportableStatuses` is what a plugin may map to). Every other status is the platform's to set: a carrier that
 // says "created" or "cancelled" in a poll is history, never a move

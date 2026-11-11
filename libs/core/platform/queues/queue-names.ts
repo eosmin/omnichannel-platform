@@ -95,4 +95,8 @@ export const reconcileInventoryJobId = (storeId: string, day: string): string =>
 export const pollShipmentStatusJobId = (connectionId: string, bucket: number): string =>
   `${JobNames.POLL_SHIPMENT_STATUS}-${connectionId}-${bucket}`
 
+// One job per bulk run: the request asked twice is one job (dashes, no colon)
+export const bulkLabelsMergeJobId = (jobId: string): string =>
+  `${JobNames.BULK_LABELS_MERGE}-${jobId}`
+
 export type JobName = (typeof JobNames)[keyof typeof JobNames]

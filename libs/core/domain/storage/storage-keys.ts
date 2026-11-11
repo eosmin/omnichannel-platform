@@ -78,6 +78,9 @@ export const StorageKeys = {
     `stores/${storeId}/orders/${orderId}/${mediaId}/${filename}`,
   shippingLabel: (storeId: string, shipmentId: string, mediaId: string, filename: string) =>
     `stores/${storeId}/shipping-labels/${shipmentId}/${mediaId}/${filename}`,
+  // The merged file of labels (a bulk run, or the print of guides that exist): one folder per file, found by its media id
+  bulkLabels: (storeId: string, mediaId: string, filename: string) =>
+    `stores/${storeId}/bulk-labels/${mediaId}/${filename}`,
   export: (storeId: string, exportId: string, filename: string) =>
     `stores/${storeId}/exports/${exportId}/${filename}`,
   exportPrefix: (storeId: string, exportId: string) => `stores/${storeId}/exports/${exportId}/`,
