@@ -1626,7 +1626,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.7 | Inventory UI | done | PR A1 #408 (warehouses screen and api-client); B #410 (count screens); A2 #412 (transfers screens and api-client); #411 (fix); D (the cycle on a phone, e2e); E (the store stock screen, `/s/[storeId]/inventory`, and the link of the low-stock notice) | |
 | 4.8 | Carrier SDK, shipment engine and the `local` carrier | done | PR A #420 (carrier SDK, lint rule, contract suite and fake carrier, label template of `local`) ; PR B1 #421 (shipping schema, migration `20261127100000`); PR B2 (carrier connections, Settings → Carriers API, label drawing, `local` numbering, migration `20261128100000`); PR C1 #423 (shipment engine, shipments routes, planned carrier of an order, migration `20261129100000`); PR C2a #424 (status mapping routes, webhook secret rotation, public carrier webhook, minimal event processor); PR C2b #426 (the order follows its shipment, failed attempts, poll, two notification emitters); PR C2c (carrier events applied to shipments, replay of unmapped codes, `carrier.status_unmapped`, migration `20261201100000`) | 2026-11-11 |
 | 4.9 | Order confirmation and customer messages | todo | | |
-| 4.10 | Labels, bulk generation and cancellation | in progress | PR D1 (bulk labels and "print labels") | |
+| 4.10 | Labels, bulk generation and cancellation | in progress | PR D1 #431 (bulk labels and "print labels") | |
 | 4.11 | Pickups | todo | | |
 | 4.12 | Returns, exchanges and reception | todo | | |
 | 4.13 | COD remittances | todo | | |
