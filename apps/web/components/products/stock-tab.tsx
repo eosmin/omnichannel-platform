@@ -158,7 +158,7 @@ export function StockTab({ product }: { product: ProductDetailView }): ReactElem
                     <span className="text-muted-foreground block">{level.warehouseName}</span>
                     {/* The buttons sit under the warehouse, the first column: on a phone the table scrolls
                         sideways and a last column of actions would be out of sight */}
-                    <div className="mt-1 -ml-3 flex flex-wrap gap-1">
+                    <div className="mt-1 flex flex-col items-start gap-1">
                       <Button
                         type="button"
                         variant="ghost"
