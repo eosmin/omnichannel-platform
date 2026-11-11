@@ -135,3 +135,11 @@
     animation: none;
   }
 }
+
+/* Printing an order (Step 4.4, order-print.tsx): the sheet is a child of the body that carries `data-print-sheet`; the rest of
+   the app is not on paper, so the page has the pages of the sheet and no blank ones of the screen under it */
+@media print {
+  body > :not([data-print-sheet]) {
+    display: none !important;
+  }
+}
