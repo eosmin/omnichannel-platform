@@ -306,7 +306,8 @@ function sideName(side: CustomerMergePreviewView['survivor'], unnamed: string): 
   return side.name ?? side.email ?? side.phone ?? unnamed
 }
 
-const COUNTED = ['conversations', 'notes', 'addresses', 'tags', 'identities'] as const
+// The orders are left out of the answer for a viewer without ORDERS_VIEW
+const COUNTED = ['conversations', 'orders', 'notes', 'addresses', 'tags', 'identities'] as const
 
 function Summary({ preview }: { preview: CustomerMergePreviewView }): ReactElement {
   const t = useTranslations('customers.merge')
@@ -321,6 +322,7 @@ function Summary({ preview }: { preview: CustomerMergePreviewView }): ReactEleme
       <dl className="flex flex-col gap-1 text-sm">
         {COUNTED.map(key => {
           const count = preview.counts[key]
+          if (count === null) return null
           return (
             <div key={key} className="flex justify-between gap-4">
               <dt>{t(`counts.${key}`)}</dt>

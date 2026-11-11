@@ -11,8 +11,10 @@ import { useCustomer } from '../../lib/customers/use-customer-data'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/sheet'
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 
 import { CustomerDetails } from './customer-details'
+import { CustomerOrders } from './customer-orders'
 import { CustomerTimeline } from './customer-timeline'
 import { NoteBox } from './note-box'
 
@@ -21,6 +23,10 @@ import { NoteBox } from './note-box'
 const MediaGallery = dynamic(() => import('./media-gallery').then(module => module.MediaGallery), {
   ssr: false
 })
+
+const ACTIVITY = 'activity'
+const ORDERS = 'orders'
+type Section = typeof ACTIVITY | typeof ORDERS
 
 // The customer profile (TDD_09 §6): a drawer over the page with the identity on the left and the
 // activity on the right. It reads nothing while closed.
@@ -37,7 +43,9 @@ export function CustomerDrawer({
   return (
     <Sheet open={isOpen} onOpenChange={open => (open ? undefined : onClose())}>
       <SheetContent>
-        {customerId === null ? null : <Body customerId={customerId} onClose={onClose} />}
+        {customerId === null ? null : (
+          <Body key={customerId} customerId={customerId} onClose={onClose} />
+        )}
         <SheetDescription className="sr-only">{t('description')}</SheetDescription>
       </SheetContent>
     </Sheet>
@@ -52,6 +60,8 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
   const mayView = can(ClientPermissions.CUSTOMERS_VIEW)
   const mayOpenMedia = mayView && can(ClientPermissions.MEDIA_VIEW)
   const [isGalleryOpen, setGalleryOpen] = useState(false)
+  const mayOpenOrders = mayView && can(ClientPermissions.ORDERS_VIEW)
+  const [section, setSection] = useState<Section>(ACTIVITY)
 
   return (
     <>
@@ -96,7 +106,19 @@ function Body({ customerId, onClose }: { customerId: string; onClose: () => void
                 </Button>
               ) : null}
               {can(ClientPermissions.CUSTOMERS_EDIT) ? <NoteBox customerId={customerId} /> : null}
-              <CustomerTimeline customerId={customerId} onNavigate={onClose} />
+              {mayOpenOrders ? (
+                <Tabs value={section} onValueChange={value => setSection(value as Section)}>
+                  <TabsList aria-label={t('sectionLabel')}>
+                    <TabsTrigger value={ACTIVITY}>{t('sections.activity')}</TabsTrigger>
+                    <TabsTrigger value={ORDERS}>{t('sections.orders')}</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              ) : null}
+              {mayOpenOrders && section === ORDERS ? (
+                <CustomerOrders customerId={customerId} onNavigate={onClose} />
+              ) : (
+                <CustomerTimeline customerId={customerId} onNavigate={onClose} />
+              )}
             </div>
           </>
         )}
