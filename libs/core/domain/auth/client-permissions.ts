@@ -20,6 +20,8 @@ export const ClientPermissions = {
   INVENTORY_ADJUST: 'inventory:adjust',
   INVENTORY_APPLY_COUNTS: 'inventory:apply_counts',
   INVENTORY_MANAGE_COUNTS: 'inventory:manage_counts',
+  INVENTORY_MANAGE_TRANSFERS: 'inventory:manage_transfers',
+  INVENTORY_RECEIVE_TRANSFERS: 'inventory:receive_transfers',
   INVENTORY_VIEW: 'inventory:view',
   MEDIA_DOWNLOAD_ALL: 'media:download_all',
   MEDIA_UPLOAD: 'media:upload',

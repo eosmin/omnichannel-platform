@@ -20,11 +20,13 @@ import {
 // The organization pages are asked of the api through one of the person's stores (it reads the
 // organization from X-Store-Id), so the area needs a store where they may open them. The store that
 // opens the most pages comes first: where they manage stores, then where they may see the
-// inventory (the warehouses page), then where they count or approve counts; one where they may
-// only look at settings still opens the organization profile. Nobody else has anything to do here.
+// inventory (the warehouses page), then where they make or receive transfers or count or approve counts; one where they
+// may only look at settings still opens the organization profile. Nobody else has anything to do here.
 const ORG_AREA_PERMISSIONS = [
   ClientPermissions.ORG_MANAGE_STORES,
   ClientPermissions.INVENTORY_VIEW,
+  ClientPermissions.INVENTORY_MANAGE_TRANSFERS,
+  ClientPermissions.INVENTORY_RECEIVE_TRANSFERS,
   ClientPermissions.INVENTORY_MANAGE_COUNTS,
   ClientPermissions.INVENTORY_APPLY_COUNTS,
   ClientPermissions.SETTINGS_VIEW

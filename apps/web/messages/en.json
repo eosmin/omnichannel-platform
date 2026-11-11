@@ -494,7 +494,7 @@
     "INVENTORY_COUNT_LINES_REFUSED": "Some lines of the count cannot be applied: review them or cancel the count",
     "INVENTORY_TRANSFER_EMPTY": "The transfer has no products. Add at least one before sending it.",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "The transfer cannot change to that status",
-    "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Part of what did not arrive belongs to stores you are not a member of. Ask someone who belongs to them to close the transfer.",
+    "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Part of this transfer belongs to stores you are not a member of. Ask someone who belongs to all of them, such as the owner, to do this.",
     "INVENTORY_TRANSFER_RECEIVE_EXCEEDS_DISPATCHED": "You cannot receive more units than are still pending.",
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "The origin and the destination must differ",
     "INVENTORY_TRANSFER_SHORTAGE_ACTION_INVALID": "Choose what to do with each product that did not arrive in full, and only with those.",
@@ -1160,11 +1160,11 @@
     },
     "stores": {
       "legend": "Stores it serves",
-      "hint": "A store reserves from its warehouses in this order: the first one is reserved first.",
+      "hint": "Each store reserves from its warehouses by priority: the one with priority 1 is reserved first. Here you set the place this warehouse has in each store's list.",
       "empty": "No store is linked yet.",
-      "position": "Priority {position}",
-      "moveUp": "Move {store} up",
-      "moveDown": "Move {store} down",
+      "position": "Priority {position} of {total}",
+      "moveUp": "Raise the priority in {store}",
+      "moveDown": "Lower the priority in {store}",
       "remove": "Unlink {store}",
       "addLabel": "Add a store",
       "pick": "Choose a store",
@@ -1178,6 +1178,131 @@
       "deactivate": "The warehouse still holds units or reservations. Move or use them first, then switch it off.",
       "unlink": "That store has stock reserved in this warehouse. Wait until its orders are served or cancelled, then unlink it.",
       "openTransfer": "A transfer on its way leaves from or arrives at this warehouse. Receive or cancel it first."
+    }
+  },
+  "transfers": {
+    "title": "Transfers",
+    "detailTitle": "Transfer",
+    "description": "Moves of stock between the warehouses of the organization. You see only the lines of your stores.",
+    "back": "All transfers",
+    "more": "Show more",
+    "empty": "There are no transfers yet.",
+    "lineCount": "{count, plural, one {# line} other {# lines}}",
+    "createdAt": "Made {date}",
+    "dispatchedAt": "Sent {date}",
+    "closedAt": "Closed {date}",
+    "dispatched": "Transfer sent. The units left the origin.",
+    "new": {
+      "open": "New transfer",
+      "title": "New transfer",
+      "description": "Choose where the stock leaves from and where it goes. You add the items on the next page.",
+      "formLabel": "New transfer",
+      "from": "Leaves from",
+      "to": "Goes to",
+      "same": "The origin and the destination must differ.",
+      "needTwo": "You need two active warehouses to move stock between them.",
+      "submit": "Make draft"
+    },
+    "filters": {
+      "status": "Status",
+      "allStatuses": "All statuses",
+      "warehouse": "Warehouse",
+      "allWarehouses": "All warehouses"
+    },
+    "status": {
+      "draft": "Draft",
+      "in_transit": "On its way",
+      "received": "Received",
+      "cancelled": "Cancelled"
+    },
+    "picker": {
+      "heading": "Add items",
+      "store": "Store of the item",
+      "search": "Search by name or SKU",
+      "units": "Units",
+      "wrongUnits": "Write a whole number of units, 1 or more.",
+      "chooseVariant": "Which variant of {name}?",
+      "hint": "Write at least {count} characters.",
+      "searching": "Searching…",
+      "none": "No item matches.",
+      "failed": "The search failed. Try again."
+    },
+    "draft": {
+      "formLabel": "Draft of the transfer",
+      "from": "Leaves from",
+      "to": "Goes to",
+      "sameWarehouse": "The origin and the destination must differ.",
+      "note": "Note (optional)",
+      "linesLabel": "Items of the transfer",
+      "lines": "{count, plural, one {# item} other {# items}}",
+      "noLines": "Add at least one item before sending it.",
+      "ownStoresOnly": "You see and change only the items of your stores.",
+      "saved": "Draft saved",
+      "save": "Save draft",
+      "dispatch": "Send transfer",
+      "saveFirst": "Save your changes to send it.",
+      "wrongUnits": "Write a whole number of units, 1 or more.",
+      "unitsOf": "Units of {name}",
+      "remove": "Remove {name}"
+    },
+    "receive": {
+      "formLabel": "Receive units",
+      "code": "Scan or type a SKU",
+      "codeHint": "Enter adds one unit of that item. Typing a name filters the list.",
+      "notInTransfer": "That code is not in this transfer.",
+      "alreadyComplete": "That item has already arrived in full.",
+      "scanned": "One unit of {name} added",
+      "all": "Receive everything pending",
+      "noMatch": "No line matches.",
+      "nothingEntered": "Enter the units that arrived.",
+      "done": "Units received",
+      "nothingPending": "Everything has arrived.",
+      "submit": "Receive",
+      "sent": "Sent",
+      "received": "Received",
+      "pending": "Pending",
+      "complete": "Complete",
+      "lessOf": "One unit less of {name}",
+      "moreOf": "One unit more of {name}",
+      "unitsOf": "Units received of {name}",
+      "wrongUnits": "Write a whole number from 0 to {max}."
+    },
+    "close": {
+      "open": "Close with shortage",
+      "title": "Close with shortage",
+      "description": "What did not arrive will not be waited for. Say what happens to each missing unit.",
+      "nothingShort": "Everything has arrived: there is nothing to close.",
+      "missingOf": "{name}: {count, plural, one {# unit missing} other {# units missing}}",
+      "actions": {
+        "return_to_source": {
+          "label": "Return to the origin",
+          "hint": "The units go back to the stock of {warehouse}."
+        },
+        "write_off": {
+          "label": "Write off as lost",
+          "hint": "The units are taken out of the stock and recorded as a loss."
+        }
+      },
+      "chooseAll": "Choose what to do with every missing line.",
+      "back": "Back",
+      "submit": "Close transfer",
+      "done": "Transfer closed"
+    },
+    "cancel": {
+      "open": "Cancel transfer",
+      "title": "Cancel this transfer?",
+      "draftBody": "The draft is discarded. No stock has moved.",
+      "inTransitBody": "{count, plural, one {The # unit that has not arrived goes back to {warehouse}.} other {The # units that have not arrived go back to {warehouse}.}} What already arrived stays where it is.",
+      "confirm": "Cancel transfer",
+      "done": "Transfer cancelled"
+    },
+    "lines": {
+      "label": "Items of the transfer",
+      "heading": "{count, plural, one {# item} other {# items}}",
+      "progress": "{sent} sent, {received} received",
+      "writtenOff": "{count, plural, one {# unit written off as lost} other {# units written off as lost}}",
+      "returned": "{count, plural, one {# unit returned to the origin} other {# units returned to the origin}}",
+      "ownStoresOnly": "You see only the items of your stores."
     }
   },
   "realtime": {
@@ -2154,6 +2279,7 @@
         "title": "Organization",
         "stores": "Stores",
         "warehouses": "Warehouses",
+        "transfers": "Transfers",
         "profile": "Profile",
         "counts": "Counts"
       },
@@ -2891,6 +3017,7 @@
         "orderItems": "{count, plural, one {# order line} other {# order lines}}",
         "inventoryMovements": "{count, plural, one {# stock movement} other {# stock movements}}",
         "inventoryLevels": "{count, plural, one {# stock level} other {# stock levels}}",
+        "transferLines": "{count, plural, one {# transfer line} other {# transfer lines}}",
         "media": "{count, plural, one {# picture} other {# pictures}}"
       }
     },

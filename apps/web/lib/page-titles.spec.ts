@@ -65,6 +65,8 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'org/profile/page.tsx': 'orgProfile',
   'org/stores/page.tsx': 'orgStores',
   'org/warehouses/page.tsx': 'orgWarehouses',
+  'org/transfers/page.tsx': 'orgTransfers',
+  'org/transfers/[id]/page.tsx': 'orgTransfer',
   'org/counts/page.tsx': 'orgCounts',
   'org/counts/[countId]/page.tsx': 'orgCounts'
 }
