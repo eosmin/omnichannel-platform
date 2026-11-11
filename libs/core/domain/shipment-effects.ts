@@ -84,6 +84,24 @@ export const OrderMessageKindsWithoutAutoSend: readonly OrderMessageKindType[] =
   OrderMessageKind.ORDER_FAILED_ATTEMPT
 ]
 
+// The `autoSend` a template starts with when the owner does not say (TDD_17 §4.7): the shipment-progress messages and the
+// cancellation go by themselves, the rest (returns, exchanges) only when someone sends them, and the two kinds a store
+// preference decides never do. A Record, so that a new kind cannot be added without deciding it.
+export const OrderMessageAutoSendDefaults: Record<OrderMessageKindType, boolean> = {
+  [OrderMessageKind.ORDER_SUMMARY]: false,
+  [OrderMessageKind.ORDER_SHIPPED]: true,
+  [OrderMessageKind.ORDER_OUT_FOR_DELIVERY]: true,
+  [OrderMessageKind.ORDER_DELIVERED]: true,
+  [OrderMessageKind.ORDER_FAILED_ATTEMPT]: false,
+  [OrderMessageKind.ORDER_CANCELLED]: true,
+  [OrderMessageKind.RETURN_APPROVED]: false,
+  [OrderMessageKind.EXCHANGE_SHIPPED]: false
+}
+
+export function defaultAutoSend(kind: OrderMessageKindType): boolean {
+  return OrderMessageAutoSendDefaults[kind]
+}
+
 export const orderMessageAutoSendSchema = z
   .object({ kind: z.enum(OrderMessageKind), autoSend: z.boolean() })
   .refine(

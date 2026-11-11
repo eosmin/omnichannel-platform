@@ -26,10 +26,40 @@ export const OrderMessageVariables = {
   STORE_NAME: 'storeName',
   COD_AMOUNT: 'codAmount',
   ATTEMPT_NUMBER: 'attemptNumber', // The shipment's failedAttempts (TDD_17 §4.7)
-  MAX_ATTEMPTS: 'maxAttempts' // The connection's maxDeliveryAttempts
+  MAX_ATTEMPTS: 'maxAttempts', // The connection's maxDeliveryAttempts
+  SCHEDULED_DELIVERY_DATE: 'scheduledDeliveryDate' // The order's day; an order without one blocks the send (TDD_17 §4.7)
 } as const
 export type OrderMessageVariable =
   (typeof OrderMessageVariables)[keyof typeof OrderMessageVariables]
+
+// Why a message that was due did not go (TDD_17 §4.7). Step 4.9 PR C2 adds the reasons of the window and of the channel
+// next to this one; the template editor and the rendering already need the first.
+export const OrderMessageNotSentReasons = {
+  // The template uses a variable the order has no value for ("your order arrives on ."): the send is refused, it does not
+  // fall back to email because the email would carry the same hole
+  MISSING_VARIABLE: 'missing_variable',
+  // The message, filled in, is longer than a channel takes (a long list of items): sending it would be refused or cut
+  TOO_LONG: 'too_long'
+} as const
+export type OrderMessageNotSentReason =
+  (typeof OrderMessageNotSentReasons)[keyof typeof OrderMessageNotSentReasons]
+
+// What the editor of a template tells the owner about it without refusing it (TDD_17 §4.7)
+export const OrderMessageWarnings = {
+  // An automatic template that uses `scheduledDeliveryDate`: every order without a date would go unsent
+  AUTO_SEND_NEEDS_SCHEDULED_DATE: 'auto_send_needs_scheduled_date'
+} as const
+export type OrderMessageWarning = (typeof OrderMessageWarnings)[keyof typeof OrderMessageWarnings]
+
+export const OrderMessageLimits = {
+  // The text of a message goes through a channel that stores at most MessageLimits.CONTENT_MAX_LENGTH (4096); the body
+  // leaves room for what the variables add (a list of items is the longest)
+  BODY_MAX_LENGTH: 2000,
+  // The numbered placeholders of a channel-approved template (a channel allows far fewer than this)
+  CHANNEL_TEMPLATE_VARIABLES_MAX: 10,
+  // The values the sample order of the preview takes, longest first: itemsList
+  VALUE_MAX_LENGTH: 1000
+} as const
 
 // How often the customer is told that a delivery attempt failed: the preference
 // orders.failedAttemptMessages (TDD_17 §4.14). It replaces autoSend for ORDER_FAILED_ATTEMPT.

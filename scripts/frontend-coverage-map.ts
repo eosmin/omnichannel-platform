@@ -148,6 +148,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'pickups.cancel': { step: '4.14' },
   'pickups.manifest': { step: '4.14' },
   'orderTemplates.list': { step: '4.14' },
+  'orderTemplates.preview': { step: '4.14' },
   'orderTemplates.byKindAndLocale': { step: '4.14' },
   'returns.list': { step: '4.14' },
   'returns.create': { step: '4.14' },

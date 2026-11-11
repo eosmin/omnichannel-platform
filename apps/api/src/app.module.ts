@@ -18,6 +18,7 @@ import { MediaModule } from './modules/media/media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
 import { NotificationsModule } from './modules/notifications'
+import { OrderMessagesModule } from './modules/order-messages'
 import { OrdersModule } from './modules/orders/orders.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
@@ -53,6 +54,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     ChannelRegistryModule,
     ChannelsModule,
     CarriersModule,
+    OrderMessagesModule,
     PluginsApiModule,
     MessagingWindowModule,
     RoutingModule,

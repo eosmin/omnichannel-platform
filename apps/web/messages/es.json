@@ -459,6 +459,31 @@
       "center": "Abrir la aplicación",
       "settings": "Recibes este correo por tu configuración de notificaciones.",
       "settingsLink": "Cámbiala en tus preferencias de notificaciones"
+    },
+    "orderMessage": {
+      "subject": "Pedido {order} de {store}",
+      "heading": "Novedades de tu pedido {order}",
+      "footer": "Recibes este mensaje porque hiciste un pedido en {store}.",
+      "sample": {
+        "customerName": "María López",
+        "storeName": "Mi Tienda",
+        "itemOne": "Zapatos deportivos",
+        "variantOne": "Talla 40",
+        "itemTwo": "Calcetas deportivas",
+        "addressLine": "Colonia Escalón, Calle 5 No 10",
+        "city": "San Salvador",
+        "carrierName": "Mensajería"
+      },
+      "summary": {
+        "title": "Resumen del pedido",
+        "order": "Pedido",
+        "customer": "Cliente",
+        "items": "Artículos",
+        "total": "Total",
+        "address": "Dirección de envío",
+        "deliveryDate": "Fecha de entrega",
+        "codAmount": "Por cobrar en la entrega"
+      }
     }
   },
   "errorPage": {

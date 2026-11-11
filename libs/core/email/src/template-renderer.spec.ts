@@ -37,6 +37,10 @@ describe('TemplateRenderer', () => {
       }
     ],
     [
+      EmailTemplates.ORDER_MESSAGE,
+      { storeName: 'Shop', orderNumber: 'A-1', text: 'Your order shipped\n1 × Shoe' }
+    ],
+    [
       EmailTemplates.NOTIFICATION_DIGEST,
       {
         items: [
@@ -307,6 +311,57 @@ describe('TemplateRenderer: notification digest', () => {
         ...digest,
         settingsUrl: 'javascript:alert(1)'
       })
+    ).rejects.toThrow()
+  })
+})
+
+describe('TemplateRenderer: order message', () => {
+  const message = {
+    storeName: 'Shop',
+    orderNumber: 'A-1',
+    text: 'Your order shipped\n1 × Shoe <b>x</b>'
+  }
+
+  it('wraps the rendered text of the message, with the order and the store in the subject', async () => {
+    const email = await renderer.render(EmailTemplates.ORDER_MESSAGE, Locales.EN, message)
+    expect(email.subject).toBe('Order A-1 from Shop')
+    expect(email.html).toContain('lang="en"')
+    expect(email.html).toContain('Your order shipped')
+    expect(email.text).toContain('1 × Shoe')
+  })
+
+  it('writes what a customer typed as text, never as markup', async () => {
+    const email = await renderer.render(EmailTemplates.ORDER_MESSAGE, Locales.EN, message)
+    expect(email.html).not.toContain('<b>x</b>')
+    expect(email.html).toContain('&lt;b&gt;x&lt;/b&gt;')
+  })
+
+  it('renders it in Spanish', async () => {
+    const email = await renderer.render(EmailTemplates.ORDER_MESSAGE, Locales.ES, message)
+    expect(email.subject).toBe('Pedido A-1 de Shop')
+    expect(email.text).toContain('Recibes este mensaje porque hiciste un pedido en Shop.')
+  })
+
+  it('keeps a line break out of the subject, which comes from the name of a store', async () => {
+    const email = await renderer.render(EmailTemplates.ORDER_MESSAGE, Locales.EN, {
+      ...message,
+      storeName: 'Shop\r\nBcc: x@example.com'
+    })
+    expect(email.subject).not.toMatch(/[\r\n]/u)
+  })
+
+  it('refuses a text longer than an order message can be', async () => {
+    await expect(
+      renderer.render(EmailTemplates.ORDER_MESSAGE, Locales.EN, {
+        ...message,
+        text: 'x'.repeat(8001)
+      })
+    ).rejects.toThrow()
+  })
+
+  it('refuses a message with no text', async () => {
+    await expect(
+      renderer.render(EmailTemplates.ORDER_MESSAGE, Locales.EN, { ...message, text: '' })
     ).rejects.toThrow()
   })
 })

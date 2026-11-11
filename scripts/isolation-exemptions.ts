@@ -26,7 +26,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
-  OrderMessageTemplate: { step: '4.9', reason: 'Managed from Settings → Order messages' },
   OrderReturn: { step: '4.12', reason: 'Created and read through the returns routes' },
   OrderReturnLine: { step: '4.12', reason: 'Read and written through its return' },
   PickupRequest: { step: '4.11', reason: 'Created and read through the pickups routes' },

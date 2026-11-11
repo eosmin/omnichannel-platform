@@ -195,6 +195,7 @@ export const ApiRoutes = {
 
   orderTemplates: {
     list: '/order-templates',
+    preview: '/order-templates/preview', // POST: the body being edited, rendered with a sample order
     byKindAndLocale: (kind: string, locale: string) => `/order-templates/${kind}/locales/${locale}` // GET, PUT (upsert), DELETE
   },
 

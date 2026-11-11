@@ -139,8 +139,7 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   'org:',
   'settings:manage_webhooks',
   'settings:manage_api_keys',
-  'settings:manage_retention',
-  'settings:manage_order_templates'
+  'settings:manage_retention'
 ]
 
 export const RoleNames = {
