@@ -34,6 +34,18 @@ describe('bodyVariantOf', () => {
     expect(bodyVariantOf({ customer: 'Lucia' }, 4, all)).toBe('bodyWithCustomer')
   })
 
+  it('names the product of a low-stock notice, where the text exists', () => {
+    const params = { product: 'Shoe', available: 2, threshold: 5 }
+    expect(bodyVariantOf(params, 1, all)).toBe('bodyWithProduct')
+    expect(bodyVariantOf(params, 1, none)).toBe('body')
+    expect(bodyVariantOf({ product: 'Shoe' }, 1, all)).toBe('body')
+    expect(bodyVariantOf({ product: 'Shoe', available: 2 }, 1, all)).toBe('body')
+    expect(bodyVariantOf({ product: '  ', available: 1, threshold: 2 }, 1, all)).toBe('body')
+    expect(bodyVariantOf({ product: 7 }, 1, all)).toBe('body')
+    // A customer or an author keeps the conversation texts: the product text is not theirs
+    expect(bodyVariantOf({ ...params, customer: 'Lucia' }, 1, all)).toBe('bodyWithCustomer')
+  })
+
   it('does not name a customer that is empty or not a text', () => {
     expect(bodyVariantOf({ customer: '' }, 1, all)).toBe('body')
     expect(bodyVariantOf({ customer: '  ' }, 1, all)).toBe('body')

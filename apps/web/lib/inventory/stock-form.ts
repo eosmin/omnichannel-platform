@@ -1,4 +1,4 @@
-import type { ProductDetailView, StockAdjustmentInput } from '@platform/api-client'
+import type { StockAdjustmentInput } from '@platform/api-client'
 import {
   InventoryAdjustmentReason,
   InventoryLimits,
@@ -79,11 +79,18 @@ export function parseUnits(text: string): number | null {
   return units >= 1 && units <= InventoryLimits.MAX_MOVEMENT_QUANTITY ? units : null
 }
 
+// What an adjustment needs to know of a product: its id and the variants it can be adjusted by. The catalog sheet has
+// them from the product; the stock screen of the store builds them from the levels it reads.
+export interface StockProduct {
+  id: string
+  variants: readonly { id: string; name: string; active: boolean }[]
+}
+
 // What the person typed, as the body of the adjustment (without its key, which is made once per attempt), or the field
 // that is wrong. A product that has variants is adjusted by variant, except to take out what sits on its bare row.
 export function adjustmentFrom(
   values: StockFormValues,
-  product: Pick<ProductDetailView, 'id' | 'variants'>,
+  product: StockProduct,
   canSetCost: boolean
 ): StockResult {
   if (values.warehouseId === '') return { ok: false, field: 'warehouse' }

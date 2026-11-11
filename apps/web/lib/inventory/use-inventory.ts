@@ -15,12 +15,16 @@ import {
   createStockAdjustment,
   fetchKardex,
   fetchProductInventory,
+  fetchStockLevels,
   fetchWarehousesOfStore,
   type KardexParams,
   type ProductInventoryView,
   QueryKeys,
+  updateProduct,
   type StockAdjustmentInput,
   type StockAdjustmentView,
+  type StockLevelFilter,
+  type StockLevelPageView,
   type StockMovementPageView,
   type WarehouseView
 } from '@platform/api-client'
@@ -88,6 +92,48 @@ export function useStockAdjustment(
     // The numbers are made stale and read again in the background: the dialog does not wait for them
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) })
+    }
+  })
+}
+
+export const STOCK_PAGE = 30
+
+// Every level of the store, a page at a time, in the order and with the filters of the screen
+export function useStockLevels(
+  storeId: string,
+  filter: StockLevelFilter,
+  enabled: boolean
+): UseInfiniteQueryResult<InfiniteData<StockLevelPageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: QueryKeys.inventory.levelList(storeId, filter),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchStockLevels(
+        apiClient,
+        storeId,
+        { ...filter, cursor: pageParam, limit: STOCK_PAGE },
+        signal
+      ),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    // A page that is already on the screen stays until the new filter answers
+    placeholderData: previous => previous,
+    enabled
+  })
+}
+
+// The alert threshold of a product (null: no alert). It is a field of the product, so the catalog goes stale too.
+export function useThresholdChange(
+  storeId: string
+): UseMutationResult<unknown, Error, { productId: string; lowStockThreshold: number | null }> {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { productId: string; lowStockThreshold: number | null }) =>
+      updateProduct(apiClient, storeId, input.productId, {
+        lowStockThreshold: input.lowStockThreshold
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) })
+      void queryClient.invalidateQueries({ queryKey: QueryKeys.products.all(storeId) })
     }
   })
 }
