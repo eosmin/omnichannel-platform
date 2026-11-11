@@ -11,16 +11,25 @@ import { singleLineText } from './validation'
 
 const MAX_CREDENTIALS_BYTES = 8 * 1024
 
-// A value that fits once written as JSON and holds no NUL: Postgres refuses it, and that would be a 500
-const boundedRecord = z.record(z.string(), z.unknown()).refine(
-  value => {
-    const json = JSON.stringify(value)
-    return (
-      new TextEncoder().encode(json).length <= MAX_CREDENTIALS_BYTES && !json.includes('\\u0000')
-    )
-  },
-  { message: 'too large, or it holds a NUL character' }
-)
+// A value that fits once written as JSON and holds no NUL character in a key or a text: Postgres refuses it, and that would
+// be a 500 where the answer is a 400
+function hasNul(value: unknown): boolean {
+  if (typeof value === 'string') return value.includes('\u0000')
+  if (Array.isArray(value)) return value.some(hasNul)
+  if (typeof value === 'object' && value !== null) {
+    return Object.entries(value).some(([key, inner]) => key.includes('\u0000') || hasNul(inner))
+  }
+  return false
+}
+
+const boundedRecord = z
+  .record(z.string(), z.unknown())
+  .refine(
+    value =>
+      new TextEncoder().encode(JSON.stringify(value)).length <= MAX_CREDENTIALS_BYTES &&
+      !hasNul(value),
+    { message: 'too large, or it holds a NUL character' }
+  )
 
 const feeCents = z.number().int().min(0).max(CarrierConnectionLimits.MAX_FEE_CENTS)
 const clockTime = z.string().regex(CLOCK_TIME_PATTERN)

@@ -367,6 +367,26 @@ describe('Settings → Carriers: the connections of a store', () => {
       expect(fake.callsTo('disconnect')).toHaveLength(told + 1)
     })
 
+    it('does not ask the carrier for an account when the settings or the default service are wrong', async () => {
+      const asked = fake.callsTo('connect').length
+      const service = await external({ defaultServiceCode: 'nope' })
+      expect(service.status).toBe(BAD_REQUEST)
+      const pickups = await external({ autoPickup: true, autoPickupTime: '08:00' })
+      expect(pickups.status).toBe(BAD_REQUEST)
+      expect(fake.callsTo('connect')).toHaveLength(asked)
+    })
+
+    it('tells the carrier that the account of new credentials was not kept when the edit fails', async () => {
+      const one = made(await external())
+      const two = made(await external())
+      const told = fake.callsTo('disconnect').length
+      const clash = await asAdmin()
+        .patch(ApiRoutes.carriers.byId(two.id))
+        .send({ displayName: one.displayName, credentials: { apiKey: 'new-key' } })
+      expect(clash.status).toBe(CONFLICT)
+      expect(fake.callsTo('disconnect')).toHaveLength(told + 1)
+    })
+
     it('refuses a body with a store, a field it does not know or a rule the carrier would break', async () => {
       const cases: Record<string, unknown>[] = [
         { storeId: ctx.storeB.id },

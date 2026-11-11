@@ -200,8 +200,7 @@ export class CarrierConnectionsService {
     // them again under the lock.
     await this.assertRoom(this.prisma.client, storeId, body.displayName)
     const internal = this.registry.hasCapability(plugin.id, CarrierCapability.INTERNAL_GUIDE)
-    const { answer, local } = await this.askToConnect(plugin, storeId, body.credentials)
-    const connectionId = randomUUID()
+    // Everything that depends only on the body and the plugin is checked before the carrier is asked to make an account
     const seeded = seedServices(plugin, service =>
       carrierServiceLabelOf(plugin.id, service, locale)
     )
@@ -211,20 +210,22 @@ export class CarrierConnectionsService {
     }
     const problem = settingsProblem(NEW_CONNECTION_RULES, body)
     if (problem !== null) throw invalidInput(problem)
-    // Seeded before the transaction: a plugin whose catalog is not valid is the plugin's bug, and answers before anything is written
+    // A plugin whose catalog is not valid is the plugin's bug, and answers before anything is written
     const mappings = seedStatusMappings(plugin)
 
-    // Sealed here and not in the transaction: what cannot be written as JSON, or is too large, is the plugin's bad answer
-    const credentials = internal ? null : this.cipher.seal(answer.credentials)
+    const { answer, local } = await this.askToConnect(plugin, storeId, body.credentials)
+    const connectionId = randomUUID()
     const secret = this.registry.hasCapability(plugin.id, CarrierCapability.WEBHOOK_STATUS)
       ? generateToken(CARRIER_WEBHOOK_SECRET_BYTES)
       : null
-    const webhookSecret = secret === null ? null : this.cipher.seal({ secret })
     const displayName = body.displayName ?? answer.displayName
 
-    let createdId: string
+    let created: { id: string; view: CarrierConnectionView }
     try {
-      createdId = await this.prisma.transaction(async tx => {
+      // Sealed here and not in the transaction: what cannot be written as JSON, or is too large, is the plugin's bad answer
+      const credentials = internal ? null : this.cipher.seal(answer.credentials)
+      const webhookSecret = secret === null ? null : this.cipher.seal({ secret })
+      created = await this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
         await lockStoreScope(tx, storeId, CarrierLockScopes.CONNECTIONS)
         // Read again with the row locked: the uninstall changes the installation, so a connection is never added to one that
@@ -233,7 +234,7 @@ export class CarrierConnectionsService {
         await this.assertInstalled(tx, storeId)
         await this.assertRoom(tx, storeId, displayName)
         if (local !== null) await this.assertPrefixFree(tx, storeId, local.prefix, null)
-        const created = await tx.carrierConnection.create({
+        const row = await tx.carrierConnection.create({
           data: {
             id: connectionId,
             storeId,
@@ -262,26 +263,38 @@ export class CarrierConnectionsService {
         })
         if (seeded.length > 0) {
           await tx.carrierService.createMany({
-            data: seeded.map(row => ({ storeId, connectionId: created.id, ...row }))
+            data: seeded.map(service => ({ storeId, connectionId: row.id, ...service }))
           })
         }
         if (mappings.length > 0) {
           await tx.carrierStatusMapping.createMany({
-            data: mappings.map(row => ({ storeId, connectionId: created.id, ...row }))
+            data: mappings.map(mapping => ({ storeId, connectionId: row.id, ...mapping }))
           })
         }
         if (local !== null) {
           await tx.guideSequence.create({
-            data: { storeId, connectionId: created.id, prefix: local.prefix }
+            data: { storeId, connectionId: row.id, prefix: local.prefix }
           })
         }
         if (body.isDefault === true) {
           await tx.storeSettings.update({
             where: { storeId },
-            data: { defaultCarrierConnectionId: created.id }
+            data: { defaultCarrierConnectionId: row.id }
           })
         }
-        return created.id
+        // The view is read inside the transaction: the secret is shown once, and a read that fails after the commit would lose it
+        const made = await this.rowOf(tx, storeId, row.id)
+        const settings = await tx.storeSettings.findUnique({
+          where: { storeId },
+          select: { defaultCarrierConnectionId: true }
+        })
+        return {
+          id: row.id,
+          view: this.viewOf(made, {
+            defaultId: settings?.defaultCarrierConnectionId ?? null,
+            locale
+          })
+        }
       })
     } catch (error) {
       // The carrier made an account for a connection that was not kept: tell it so, best effort
@@ -296,13 +309,12 @@ export class CarrierConnectionsService {
       throw error
     }
 
-    this.record(AuditAction.CARRIER_CONNECTED, storeId, createdId, actor, {
+    this.record(AuditAction.CARRIER_CONNECTED, storeId, created.id, actor, {
       carrierId: plugin.id,
       displayName
     })
-    const view = await this.get(storeId, createdId)
     // The one time the secret leaves the platform: the owner pastes it into the carrier's panel
-    return { ...view, webhookSecret: secret }
+    return { ...created.view, webhookSecret: secret }
   }
 
   async update(
@@ -312,6 +324,10 @@ export class CarrierConnectionsService {
     actor: Actor
   ): Promise<CarrierConnectionView> {
     const before = await this.rowOf(this.prisma.client, storeId, connectionId)
+    // A connection of a plugin that was uninstalled is not renewed, even if the uninstall left it behind
+    if (before.status !== String(CarrierConnectionStatus.DISABLED)) {
+      await this.assertInstalled(this.prisma.client, storeId)
+    }
     // A connection that was let go keeps its name reserved, so the one thing it still accepts is a new name
     const onlyRename = Object.entries(body).every(
       ([key, value]) => value === undefined || key === 'displayName'
@@ -449,6 +465,10 @@ export class CarrierConnectionsService {
         }
       })
     } catch (error) {
+      // New credentials that were not kept: the account the carrier made for them is not left behind
+      if (answer !== null && plugin !== undefined) {
+        await this.forget(plugin, storeId, connectionId, answer)
+      }
       if (isUniqueViolation(error)) {
         throw new PlatformException(
           ErrorCodes.RESOURCE_ALREADY_EXISTS,

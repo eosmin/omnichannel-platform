@@ -263,8 +263,9 @@ export class PluginInstallationsService {
       return changed.count === 1
     })
 
-    await this.disconnectOpen(storeId, installation.id, pluginId, actor)
+    // Audited right after the revoke, before the disconnects: a failure of those must not leave the revocation unrecorded
     if (revoked) this.record(AuditAction.PLUGIN_REVOKED, storeId, installation.id, pluginId, actor)
+    await this.disconnectOpen(storeId, installation.id, pluginId, actor)
     return this.entryOf(storeId, pluginId)
   }
 
@@ -284,9 +285,17 @@ export class PluginInstallationsService {
       select: { id: true },
       orderBy: { id: 'asc' }
     })
+    // One that fails must not leave the rest with their credentials: every one is tried, and the first failure is raised after
+    let failure: Error | null = null
     for (const connection of open) {
-      await this.connections.disconnect(storeId, connection.id, actor)
+      try {
+        await this.connections.disconnect(storeId, connection.id, actor)
+      } catch (error) {
+        failure ??=
+          error instanceof Error ? error : new Error('a channel could not be disconnected')
+      }
     }
+    if (failure !== null) throw failure
   }
 
   // What the shipping plugin holds in the store: its live connections, and what uninstalling would leave without a carrier
