@@ -2963,8 +2963,7 @@
         "reserved": "Reservadas",
         "available": "Disponibles",
         "value": "Valor (USD)",
-        "averageCost": "Costo promedio (USD)",
-        "actions": "Acciones"
+        "averageCost": "Costo promedio (USD)"
       },
       "productRow": "El producto",
       "oversold": "Sobrevendido",
