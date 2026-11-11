@@ -28,12 +28,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   PriceApprovalStatus,
-  type RecordOrderPaymentInput,
-  ShipmentInactiveStatuses,
-  ShipmentKind,
-  ShipmentPastPickupStatuses,
-  ShipmentStatus,
-  ShipmentUnknownOutcomeStatuses
+  type RecordOrderPaymentInput
 } from '@platform/core/domain'
 import {
   errorName,
@@ -49,6 +44,7 @@ import { MediaPurpose } from '@platform/core/storage'
 
 import type { Actor } from '../tenancy'
 
+import { OrderGuides, type VoidedGuides } from './order-guides.service'
 import { OrderInventoryService } from './orders-inventory.service'
 import type { ConfirmOrdersBulkBody } from './orders.schemas'
 import { OrdersService } from './orders.service'
@@ -84,6 +80,7 @@ export class OrdersStatusService {
     private readonly events: DomainEvents,
     private readonly stock: OrderInventoryService,
     private readonly orders: OrdersService,
+    private readonly guides: OrderGuides,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(OrdersStatusService.name)
@@ -175,6 +172,7 @@ export class OrdersStatusService {
       const from = order.status as OrderStatus
       const approval = order.priceApprovalStatus as PriceApprovalStatus
       const to = body.status
+      let voided: VoidedGuides = { shipmentIds: [], jobs: [] }
 
       // Every effect on stock takes the allocation of the store before the levels, as a creation and an edit do
       if (
@@ -190,29 +188,9 @@ export class OrdersStatusService {
       } else if (to === OrderStatus.CANCELLED) {
         // The table says which statuses can be cancelled; the code says why a refusal is about the cancellation
         if (!canCancelOrder(from)) throw orderRefusal(ErrorCodes.ORDER_CANNOT_BE_CANCELLED)
-        // A guide that is not over holds the order (TDD_17 §4.8): the guide is cancelled first, from the shipment. One whose
-        // outcome is unknown may exist at the carrier, and one that was picked up cannot be called back.
-        const live = await tx.shipment.findMany({
-          where: {
-            orderId,
-            storeId,
-            kind: ShipmentKind.OUTBOUND,
-            status: { notIn: [...ShipmentInactiveStatuses] }
-          },
-          select: { status: true }
-        })
-        for (const { status } of live) {
-          const shipmentStatus = status as ShipmentStatus
-          if (ShipmentUnknownOutcomeStatuses.includes(shipmentStatus)) {
-            throw orderRefusal(ErrorCodes.SHIPPING_OUTCOME_UNKNOWN)
-          }
-          if (ShipmentPastPickupStatuses.includes(shipmentStatus)) {
-            throw orderRefusal(ErrorCodes.SHIPPING_CANNOT_CANCEL_AFTER_PICKUP)
-          }
-          if (shipmentStatus === ShipmentStatus.LABEL_CREATED) {
-            throw orderRefusal(ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS)
-          }
-        }
+        // The guides that are only a label are voided with the order (TDD_17 §4.8); one whose outcome is unknown may exist at the
+        // carrier, and one that was picked up cannot be called back: those refuse
+        voided = await this.guides.voidLive(tx, storeId, orderId, actorRef(actor))
       } else {
         // The guide decides when the goods leave and arrive: a hand-made SHIPPED or DELIVERED would skip the stock issue and the
         // payment effect that the shipment follows (TDD_17 §4.9). The order follows its guide through its own path
@@ -319,8 +297,11 @@ export class OrdersStatusService {
       if (to === OrderStatus.SHIPPED) this.events.publish(tx, Events.ORDER_SHIPPED, common)
       if (to === OrderStatus.DELIVERED) this.events.publish(tx, Events.ORDER_DELIVERED, common)
       if (to === OrderStatus.CANCELLED) this.events.publish(tx, Events.ORDER_CANCELLED, common)
-      return { from, orderNumber: order.orderNumber }
+      return { from, orderNumber: order.orderNumber, voided }
     })
+
+    // The carrier is asked once the order has committed (the shipments are CANCEL_PENDING until the worker does)
+    await this.guides.hand(storeId, result.voided, actor.userId)
 
     const trail = { storeId, orderId, actor }
     recordOrderAudit(this.audit, AuditAction.ORDER_STATUS_CHANGED, trail, {
@@ -338,7 +319,10 @@ export class OrdersStatusService {
     }
     if (body.status === OrderStatus.CANCELLED) {
       recordOrderAudit(this.audit, AuditAction.ORDER_CANCELLED, trail, {
-        reason: body.cancellationReason ?? null
+        reason: body.cancellationReason ?? null,
+        ...(result.voided.shipmentIds.length === 0
+          ? {}
+          : { shipmentsVoided: result.voided.shipmentIds })
       })
     }
   }

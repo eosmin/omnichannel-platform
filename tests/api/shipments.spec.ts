@@ -20,7 +20,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { JobNames, QueueNames } from '@platform/core/queues'
-import { ShippingService } from '@platform/core/shipping'
+import { ShipmentCancellation, ShippingService, VoidSettlements } from '@platform/core/shipping'
 import { StorageService } from '@platform/core/storage-module'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
@@ -80,6 +80,8 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
   let forzaId = ''
   let c807Id = ''
   let service: ShippingService
+  let cancellation: ShipmentCancellation
+  let registry: CarrierRegistry
   let storage: StorageService
   let scans: CapturedQueue
 
@@ -88,7 +90,7 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     // The registry holds three ids: the fakes stand for Forza (standalone) and C807 (pickup-bound), each under its own
-    const registry = app.get(CarrierRegistry, { strict: false })
+    registry = app.get(CarrierRegistry, { strict: false })
     standalone = buildFakeCarrier({ id: CarrierId.FORZA, cancel: true, fetchStatus: true })
     pickupBound = buildFakeCarrier({
       id: CarrierId.C807,
@@ -99,6 +101,7 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
     registry.register(standalone.plugin)
     registry.register(pickupBound.plugin)
     service = app.get(ShippingService, { strict: false })
+    cancellation = app.get(ShipmentCancellation, { strict: false })
     storage = app.get(StorageService, { strict: false })
     scans = app.get<CapturedQueue>(getQueueToken(QueueNames.HEAVY_PROCESSING), { strict: false })
 
@@ -151,6 +154,12 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       .send({ connectionId, ...body })
   const shipmentsOf = (orderId: string) =>
     owner.shipment.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } })
+  // What the worker does with the job that a cancel queued: asks the carrier once
+  const settleVoid = (shipmentId: string, lastAttempt = false) =>
+    cancellation.settle(ctx.storeA.id, shipmentId, carrierId => registry.find(carrierId), {
+      actor: { type: 'user', id: ctx.adminA.id },
+      lastAttempt
+    })
   const read = async (id: string): Promise<ShipmentBody> => {
     const response = await asAdmin().get(ApiRoutes.shipments.byId(id))
     expect(response.status).toBe(OK)
@@ -544,7 +553,11 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       const body = (await ship(order.id, forzaId)).body as ShipmentBody
       const cancelled = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
       expect(cancelled.status).toBe(OK)
-      expect(cancelled.body).toMatchObject({
+      // The request only starts the void: the carrier is asked by the job, never inside the request
+      expect(cancelled.body).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
+      expect(standalone.callsTo('cancelShipment')).toHaveLength(0)
+      expect(await settleVoid(body.id)).toBe(VoidSettlements.CANCELLED)
+      expect(await read(body.id)).toMatchObject({
         status: ShipmentStatus.CANCELLED,
         refundStatus: GuideRefundStatus.PENDING
       })
@@ -556,8 +569,9 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       const order = await confirmed()
       const body = (await ship(order.id, forzaId)).body as ShipmentBody
       standalone.state.cancel = FakeCarrierBehaviors.REJECT
-      const failed = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
-      expect(failed.body).toMatchObject({
+      await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
+      expect(await settleVoid(body.id)).toBe(VoidSettlements.FAILED)
+      expect(await read(body.id)).toMatchObject({
         status: ShipmentStatus.CANCEL_FAILED,
         lastError: 'The fake carrier refused to void the guide'
       })
@@ -596,24 +610,25 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       expect(codeOf(refused.body)).toBe(ErrorCodes.SHIPPING_OUTCOME_UNKNOWN)
     })
 
-    it('holds the order while a guide is alive: the order is cancelled after its guide is', async () => {
+    it('does not hold the order for a guide that is only a label: the order is cancelled and the guide is voided with it', async () => {
       const order = await confirmed()
-      const body = (await ship(order.id, localId)).body as ShipmentBody
-      const cancelOrder = () =>
-        asAdmin().post(ApiRoutes.orders.status(order.id)).send({
-          status: 'CANCELLED',
-          cancellationReason: OrderCancellationReasons.CUSTOMER_REQUEST
-        })
-      const held = await cancelOrder()
-      expect(held.status).toBe(CONFLICT)
-      expect(codeOf(held.body)).toBe(ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS)
-      await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
-      // The guide no longer holds the order: whatever else the cancellation needs (the stock was never reserved by this
-      // builder) is not the guide's refusal
-      const after = await cancelOrder()
-      expect(after.body).not.toMatchObject({
-        error: { code: ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS }
+      // What a confirmed order holds: its unit reserved in the warehouse it leaves from
+      await owner.inventoryLevel.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: order.productId,
+          warehouseId: ctx.warehouseA.id,
+          onHand: 5,
+          reserved: 1
+        }
       })
+      const body = (await ship(order.id, localId)).body as ShipmentBody
+      const cancelled = await asAdmin().post(ApiRoutes.orders.status(order.id)).send({
+        status: 'CANCELLED',
+        cancellationReason: OrderCancellationReasons.CUSTOMER_REQUEST
+      })
+      expect(cancelled.status).toBe(OK)
+      expect(await read(body.id)).toMatchObject({ status: ShipmentStatus.CANCELLED })
     })
   })
 
@@ -639,17 +654,21 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       const order = await confirmed()
       const body = (await ship(order.id, forzaId)).body as ShipmentBody
       standalone.state.cancel = FakeCarrierBehaviors.TIMEOUT_BEFORE
-      const failed = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
-      expect(failed.body).toMatchObject({ status: ShipmentStatus.CANCEL_FAILED })
-      // Pending now (a retry moves it), and a second request while it is pending is refused
-      await owner.shipment.update({
-        where: { id: body.id },
-        data: { status: ShipmentStatus.CANCEL_PENDING }
-      })
+      const started = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
+      expect(started.body).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
+      // The carrier did not answer: the queue is asked to try again, and the guide stays pending while it does
+      expect(await settleVoid(body.id)).toBe(VoidSettlements.RETRY)
+      expect((await read(body.id)).status).toBe(ShipmentStatus.CANCEL_PENDING)
       const calls = standalone.callsTo('cancelShipment').length
       const again = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
       expect(again.status).toBe(CONFLICT)
       expect(standalone.callsTo('cancelShipment')).toHaveLength(calls)
+      // The last attempt gives up: the guide is cancel-failed for an agent to settle
+      expect(await settleVoid(body.id, true)).toBe(VoidSettlements.FAILED)
+      expect(await read(body.id)).toMatchObject({
+        status: ShipmentStatus.CANCEL_FAILED,
+        lastError: 'unknown_outcome'
+      })
     })
 
     it('keeps the guide made when the label cannot be stored: the guide is recorded without it', async () => {
@@ -841,7 +860,8 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       })
       const again = await asAdmin().post(ApiRoutes.shipments.cancel(body.id))
       expect(again.status).toBe(OK)
-      expect(again.body).toMatchObject({ status: ShipmentStatus.CANCELLED })
+      expect(again.body).toMatchObject({ status: ShipmentStatus.CANCEL_PENDING })
+      expect(await settleVoid(body.id)).toBe(VoidSettlements.CANCELLED)
     })
 
     it('refuses a moment of a manual status in the future or before the guide existed', async () => {

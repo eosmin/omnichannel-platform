@@ -165,6 +165,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     replay: z.boolean().optional()
   }),
   [Events.SHIPMENT_REQUIRES_REVIEW]: shipmentEvent,
+  [Events.SHIPMENT_CANCEL_FAILED]: shipmentEvent,
   // The ids of the connection and the carrier's code, normalized and bounded: no description, no customer data
   [Events.CARRIER_STATUS_UNMAPPED]: z.object({
     storeId: id,

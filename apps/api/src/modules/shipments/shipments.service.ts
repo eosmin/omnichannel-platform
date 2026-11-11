@@ -19,13 +19,14 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { type ShipmentChange, ShippingService } from '@platform/core/shipping'
+import { ShipmentCancellation, ShippingService, type VoidChange } from '@platform/core/shipping'
 import { StorageService } from '@platform/core/storage-module'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 
 import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
+import { ShipmentVoidQueue } from './shipment-void-queue.service'
 import type { ListShipmentsQuery } from './shipments.schemas'
 import {
   type CheckResultView,
@@ -48,6 +49,8 @@ export class ShipmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shipping: ShippingService,
+    private readonly cancellation: ShipmentCancellation,
+    private readonly voidQueue: ShipmentVoidQueue,
     private readonly registry: CarrierRegistry,
     private readonly storage: StorageService,
     private readonly audit: AuditService
@@ -195,22 +198,29 @@ export class ShipmentsService {
     return shipmentViewOf(await this.rowOf(storeId, shipmentId))
   }
 
+  // The guide is voided (TDD_17 §4.8): a `local` one at once, one a carrier can void by a job that asks it and is asked again a
+  // few times, one it cannot by the agent. The answer is the shipment as it is when the request ends, which is CANCEL_PENDING
+  // while the worker has not asked the carrier yet.
   async cancel(storeId: string, shipmentId: string, actor: Actor): Promise<ShipmentView> {
-    const change = await this.shipping.cancel(
+    const actorOf = { type: 'user', id: actor.userId } as const
+    const { change, job } = await this.cancellation.cancel(
       storeId,
       shipmentId,
-      { type: 'user', id: actor.userId },
+      actorOf,
       this.plugins
     )
+    if (job !== null) await this.voidQueue.enqueue(storeId, [job], actor.userId)
     this.audited(storeId, change, actor)
     return shipmentViewOf(await this.rowOf(storeId, shipmentId))
   }
 
   async markVoided(storeId: string, shipmentId: string, actor: Actor): Promise<ShipmentView> {
-    const change = await this.shipping.markVoided(storeId, shipmentId, {
-      type: 'user',
-      id: actor.userId
-    })
+    const change = await this.cancellation.markVoided(
+      storeId,
+      shipmentId,
+      { type: 'user', id: actor.userId },
+      this.plugins
+    )
     this.audited(storeId, change, actor)
     return shipmentViewOf(await this.rowOf(storeId, shipmentId))
   }
@@ -237,7 +247,7 @@ export class ShipmentsService {
   }
 
   // A guide that is voided is a cancellation; one that is only on its way to be (pending, or failed to be) is a status set by hand
-  private audited(storeId: string, change: ShipmentChange, actor: Actor): void {
+  private audited(storeId: string, change: VoidChange, actor: Actor): void {
     const action =
       change.to === ShipmentStatus.CANCELLED
         ? AuditAction.SHIPMENT_CANCELLED

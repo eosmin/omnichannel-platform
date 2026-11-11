@@ -1062,6 +1062,17 @@ HIGH-tier when a shipment exists):
   cancelled until the guide is: the order cancel answers `SHIPPING_ACTIVE_SHIPMENT_EXISTS`; `CREATING` or `REQUIRES_REVIEW` answer
   `SHIPPING_OUTCOME_UNKNOWN`; a package that left answers `SHIPPING_CANNOT_CANCEL_AFTER_PICKUP`; `CANCEL_PENDING` and
   `CANCEL_FAILED` do not stop it.
+- **As built (Step 4.10 PR D2), cancelling is a job.** It supersedes the synchronous cancel above. `POST /shipments/:id/cancel`,
+  cancelling the order and editing what a guide was made from (address, phones, payment method, lines, and the total of a
+  cash-on-delivery order) all start the void the same way: the guide moves to `CANCEL_PENDING` in the transaction of the caller and
+  `CANCEL_SHIPMENT` (five attempts, exponential backoff from 30 s) asks the carrier once that transaction committed. A `local` guide
+  is `CANCELLED` at once; a carrier that cannot void leaves `CANCEL_PENDING` with `not_supported`; a carrier that does not answer is
+  asked again with the same key and the last attempt leaves `CANCEL_FAILED`; a refusal ends it at once. `shipment.cancel_failed`
+  tells the managers of shipments in both of the last cases. Cancelling the order no longer waits for a guide that is only a label:
+  the order and its release of stock commit with the guides in `CANCEL_PENDING`, and the stock is released once. An edit voids the
+  guide and does not make the new one; the new guide waits (`SHIPPING_ACTIVE_SHIPMENT_EXISTS`) until the old is `CANCELLED`. A voided
+  guide leaves its pickup: its count drops, and the carrier is told after the commit when it holds the pickup (a failure leaves a
+  note on the pickup, the guide is voided anyway).
 - **Customer message:** `ORDER_CANCELLED` per template (§4.7).
 
 ### 4.9 Status flow from the carrier

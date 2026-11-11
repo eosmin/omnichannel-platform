@@ -18,6 +18,7 @@ import {
   calendarDayToDate,
   CarrierConnectionStatus,
   checkOrderEdit,
+  guideAffectingChanges,
   copyStockKey,
   type CopyStock,
   editableOrderFields,
@@ -58,6 +59,7 @@ import { readOrderPreferences } from '@platform/core/store-preferences'
 import { ExportsService, type ExportView } from '../exports'
 import type { Actor } from '../tenancy'
 
+import { OrderGuides, type VoidedGuides } from './order-guides.service'
 import { type LineToAllocate, OrderInventoryService } from './orders-inventory.service'
 import {
   approvalColumnsCleared,
@@ -126,7 +128,8 @@ export class OrdersService {
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly stock: OrderInventoryService,
-    private readonly exports: ExportsService
+    private readonly exports: ExportsService,
+    private readonly guides: OrderGuides
   ) {}
 
   // The filters of the list as the database reads them. Every day is a day on the clock of the store, not of the server
@@ -663,6 +666,7 @@ export class OrdersService {
         body.discountCents !== undefined ||
         body.discountReason !== undefined
       const data: OrderUncheckedUpdateInput = {}
+      let newTotalCents = order.totalCents
       let lines: OrderLine[] | null = null
       let overridden = false
       let becamePending = false
@@ -784,6 +788,7 @@ export class OrdersService {
           before === PriceApprovalStatus.PENDING &&
           priceTouched
         discountChanged = discountCents !== order.discountCents && discountCents > 0
+        newTotalCents = pricing.totals.totalCents
         const next = pricing.control.approvalStatus
         becamePending =
           next === PriceApprovalStatus.PENDING && before !== PriceApprovalStatus.PENDING
@@ -839,6 +844,32 @@ export class OrdersService {
       if (body.trackingNumber !== undefined) data.trackingNumber = body.trackingNumber
       await tx.order.update({ where: { id: orderId, storeId }, data })
 
+      // What a guide was made from changed (TDD_17 §4.8): the guides that are only a label are voided, and the agent makes the new
+      // one once the old is CANCELLED (the index of one active guide per order and origin keeps the new one waiting)
+      const guideChanges = hasActiveShipment
+        ? guideAffectingChanges(
+            {
+              address: order.shippingAddress,
+              recipientPhones: order.recipientPhones,
+              paymentMethod: order.paymentMethod,
+              items: order.items,
+              totalCents: order.totalCents
+            },
+            {
+              address:
+                body.shippingAddress === undefined ? order.shippingAddress : body.shippingAddress,
+              recipientPhones: body.recipientPhones ?? order.recipientPhones,
+              paymentMethod: body.paymentMethod ?? order.paymentMethod,
+              items: lines === null ? order.items : lines,
+              totalCents: newTotalCents
+            }
+          )
+        : []
+      const voided: VoidedGuides =
+        guideChanges.length === 0
+          ? { shipmentIds: [], jobs: [] }
+          : await this.guides.voidLive(tx, storeId, orderId, actorRef(actor))
+
       const common = {
         storeId,
         orderId,
@@ -854,14 +885,29 @@ export class OrdersService {
         body.packingNotes !== undefined &&
         shouldWarnWarehouseOfPackingNote(status, order.packingNotes, body.packingNotes)
       if (packingChanged) this.events.publish(tx, Events.ORDER_PACKING_NOTE_CHANGED, common)
-      return { order, lines, overridden, becamePending, withdrewRequest, discountChanged, data }
+      return {
+        order,
+        lines,
+        overridden,
+        becamePending,
+        withdrewRequest,
+        discountChanged,
+        data,
+        voided,
+        guideChanges
+      }
     })
 
+    // The carrier is asked once the order has committed; the guides are CANCEL_PENDING until the worker does
+    await this.guides.hand(storeId, outcome.voided, actor.userId)
     const { order } = outcome
     const trail = { storeId, orderId, actor }
     recordOrderAudit(this.audit, AuditAction.ORDER_UPDATED, trail, {
       orderNumber: order.orderNumber,
       fields: orderFieldsOfEdit(body),
+      ...(outcome.voided.shipmentIds.length === 0
+        ? {}
+        : { shipmentsVoided: outcome.voided.shipmentIds, guideChanges: outcome.guideChanges }),
       // The edit made a held request or approval unnecessary (the price is back inside the limit): cleared
       ...(outcome.withdrewRequest ? { priceRequestWithdrawn: true } : {})
     })

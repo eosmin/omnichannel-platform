@@ -158,6 +158,14 @@ describe('bridgedPayload', () => {
       connectionId: randomUUID(),
       actor: { type: 'system', id: null }
     },
+    [Events.SHIPMENT_CANCEL_FAILED]: {
+      storeId: randomUUID(),
+      shipmentId: randomUUID(),
+      orderId: randomUUID(),
+      orderNumber: 'ORD-1',
+      connectionId: randomUUID(),
+      actor: { type: 'system', id: null }
+    },
     [Events.CARRIER_STATUS_UNMAPPED]: {
       storeId: randomUUID(),
       connectionId: randomUUID(),

@@ -211,5 +211,20 @@ export class ShipmentWrites {
       this.events.publish(tx, Events.SHIPMENT_REQUIRES_REVIEW, common)
     }
     if (to === ShipmentStatus.CANCELLED) this.events.publish(tx, Events.SHIPMENT_CANCELLED, common)
+    if (to === ShipmentStatus.CANCEL_FAILED) {
+      this.events.publish(tx, Events.SHIPMENT_CANCEL_FAILED, common)
+    }
+  }
+
+  // A guide the carrier has no way to void stays CANCEL_PENDING (nothing moves) and the agent is told to void it there
+  announceCancelByHand(tx: PrismaTransaction, identity: ShipmentIdentity, actor: ActorRef): void {
+    this.events.publish(tx, Events.SHIPMENT_CANCEL_FAILED, {
+      storeId: identity.storeId,
+      shipmentId: identity.shipmentId,
+      orderId: identity.orderId,
+      orderNumber: identity.orderNumber,
+      connectionId: identity.connectionId,
+      actor
+    })
   }
 }
