@@ -1,54 +1,79 @@
 import { z } from 'zod'
 
-import { FailedAttemptMessagePolicy, OrderFreeShippingRules } from '@platform/core/domain'
+import {
+  FailedAttemptMessagePolicy,
+  OrderCancellationReasons,
+  OrderFreeShippingRules
+} from '@platform/core/domain'
 
 // Imported as '@platform/core/store-preferences', not through the config barrel, which the lint rule
 // keeps to the libraries that read the env.
 //
 // What a store may change without a deploy, kept in StoreSettings.preferences (a Json column).
 // This file is the only place of the factory defaults: a key missing from the column reads as the
-// default here, so adding a key needs no migration. It holds the keys that exist today; Step 4.14
-// grows it into the full schema of TDD_17 §4.14. GET and PUT /settings/preferences (Step 3.6) are built
-// over it and take the new keys as they are added.
+// default here, so adding a key needs no migration. GET and PUT /settings/preferences are built over
+// it and take the new keys as they are added; the `orders` block holds the keys of TDD_17 §4.14 that exist today.
 //
-// Each key falls back to its own default (`catch`): a value that does not fit in one key must not reset
-// the others, least of all a switch the store turned off.
-export const storePreferencesSchema = z.object({
-  // A store may read a conversation without telling the customer (blue ticks); on by default
-  sendReadReceipts: z.boolean().catch(true),
-  // The first reply of an agent who may assign, to a conversation nobody has, gives it to them; on by
-  // default, in the stores that already exist too (a key that is missing reads as this)
-  assignOnReply: z.boolean().catch(true)
-})
+// The `orders` block of the preferences (TDD_17 §4.14). Each key falls back to its own default, so a value that does not
+// fit in one key resets that key only.
+//
+// A reason is either a factory one (`labelKey`, an i18n key) or one the store typed (`label`, store content and not a UI
+// string): exactly one of the two. `Order.cancellationReason` keeps a snapshot of the text, never the id, so renaming or
+// removing a reason later does not change old orders.
+export const CancellationReasonLimits = {
+  MAX_ENTRIES: 30,
+  MAX_ID_LENGTH: 40,
+  MAX_LABEL_LENGTH: 80
+} as const
 
-export type StorePreferences = z.output<typeof storePreferencesSchema>
-
-// The column is written by the api, but a value that does not fit (edited by hand, or left by an older
-// version) reads as the defaults rather than failing the request that asked
-export function readStorePreferences(raw: unknown): StorePreferences {
-  const parsed = storePreferencesSchema.safeParse(raw)
-  return parsed.success ? parsed.data : storePreferencesSchema.parse({})
-}
-
-// What PUT /settings/preferences takes: the keys the caller changes, each held to its real type (the
-// `catch` above is for reading what is stored, never for accepting what a client sends). Keys that are
-// not named keep their value, so a page that draws only some of them cannot reset the others.
-export const updateStorePreferencesSchema = z
-  .strictObject({
-    sendReadReceipts: z.boolean().optional(),
-    assignOnReply: z.boolean().optional()
+const cancellationReasonShape = z
+  .object({
+    id: z.string().trim().min(1).max(CancellationReasonLimits.MAX_ID_LENGTH),
+    labelKey: z.string().min(1).optional(),
+    label: z.string().trim().min(1).max(CancellationReasonLimits.MAX_LABEL_LENGTH).optional()
   })
-  .refine(body => Object.values(body).some(value => value !== undefined), {
-    message: 'nothing to change'
+  .refine(reason => (reason.labelKey === undefined) !== (reason.label === undefined), {
+    message: 'exactly one of labelKey and label'
   })
 
-export type UpdateStorePreferencesBody = z.output<typeof updateStorePreferencesSchema>
+// A factory `labelKey` must be one the product ships (the dialog translates it); a key of the store's own is a `label`
+const cancellationReasonSchema = cancellationReasonShape.refine(
+  reason =>
+    reason.labelKey === undefined ||
+    (Object.values(OrderCancellationReasons) as string[]).includes(reason.labelKey),
+  { message: 'unknown labelKey', path: ['labelKey'] }
+)
 
-// The `orders` block of the preferences (TDD_17 §4.14), the keys the orders and shipments read today: Step 4.14 grows it into the
-// whole block and adds its write path, and then it joins `storePreferencesSchema`. It is read apart from it on purpose:
-// a nested object in StorePreferences would make every PUT of the flat keys look like a change of `orders` (the audit of
-// the update compares the keys it returns by identity). Each key falls back to its own default.
+export const cancellationReasonsSchema = z
+  .array(cancellationReasonSchema)
+  .min(1)
+  .max(CancellationReasonLimits.MAX_ENTRIES)
+  .refine(list => new Set(list.map(reason => reason.id)).size === list.length, {
+    message: 'duplicate id'
+  })
+  // Two entries that read the same would be two identical options of the dialog and two snapshots nobody can tell apart
+  .refine(
+    list => {
+      const texts = list.map(reason => (reason.labelKey ?? reason.label ?? '').toLowerCase())
+      return new Set(texts).size === texts.length
+    },
+    { message: 'duplicate reason' }
+  )
+
+export type CancellationReason = z.output<typeof cancellationReasonSchema>
+
+// The factory list, seeded from OrderCancellationReasons: the id is the name of the constant
+export const defaultCancellationReasons: CancellationReason[] = Object.entries(
+  OrderCancellationReasons
+).map(([id, labelKey]) => ({ id, labelKey }))
+
 export const orderPreferencesSchema = z.object({
+  // The create-order "Mark as confirmed" checkbox starts as this (TDD_17 §4.3): unchecked until the owner wants orders
+  // confirmed as they are created
+  confirmOnCreate: z.boolean().catch(false),
+  // The create-order "Send the order summary" checkbox starts as this, and it decides whether the summary goes out
+  // when an order is created (TDD_17 §4.7): the summary template has no `autoSend` of its own
+  sendSummaryOnCreate: z.boolean().catch(true),
   // The discount allowed without approval to a member lacking ORDERS_OVERRIDE_PRICE, as a percent of the subtotal:
   // none until the owner allows some
   discountLimitPercent: z.number().int().min(0).max(100).catch(0),
@@ -60,18 +85,65 @@ export const orderPreferencesSchema = z.object({
   // the customer should not get three identical messages unless the owner wants them
   failedAttemptMessages: z
     .enum(FailedAttemptMessagePolicy)
-    .catch(FailedAttemptMessagePolicy.EVERY_ATTEMPT)
+    .catch(FailedAttemptMessagePolicy.EVERY_ATTEMPT),
+  // The dropdown of the cancel dialog (TDD_09 §5.3)
+  cancellationReasons: cancellationReasonsSchema.catch(defaultCancellationReasons)
 })
 
 export type OrderPreferences = z.output<typeof orderPreferencesSchema>
 
-export function readOrderPreferences(raw: unknown): OrderPreferences {
-  const block =
-    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)['orders']
-      : undefined
-  const parsed = orderPreferencesSchema.safeParse(
-    typeof block === 'object' && block !== null && !Array.isArray(block) ? block : {}
-  )
-  return parsed.success ? parsed.data : orderPreferencesSchema.parse({})
+// What PUT /settings/preferences takes for the `orders` block: only the keys Settings → Preferences draws today. The
+// others (discount limit, free shipping rule, failed-attempt policy, price-override notice) are read from the column but
+// are written by the page of Step 4.14 that draws them. Each key is held to its real type.
+export const updateOrderPreferencesSchema = z
+  .strictObject({
+    confirmOnCreate: z.boolean().optional(),
+    sendSummaryOnCreate: z.boolean().optional(),
+    cancellationReasons: cancellationReasonsSchema.optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+
+export type UpdateOrderPreferencesBody = z.output<typeof updateOrderPreferencesSchema>
+
+// Each key falls back to its own default (`catch`): a value that does not fit in one key must not reset
+// the others, least of all a switch the store turned off.
+export const storePreferencesSchema = z.object({
+  // A store may read a conversation without telling the customer (blue ticks); on by default
+  sendReadReceipts: z.boolean().catch(true),
+  // The first reply of an agent who may assign, to a conversation nobody has, gives it to them; on by
+  // default, in the stores that already exist too (a key that is missing reads as this)
+  assignOnReply: z.boolean().catch(true),
+  // The orders block (TDD_17 §4.14); a column with none reads as every default of the block
+  orders: orderPreferencesSchema.catch(() => orderPreferencesSchema.parse({}))
+})
+
+export type StorePreferences = z.output<typeof storePreferencesSchema>
+
+// The column is written by the api, but a value that does not fit (edited by hand, or left by an older
+// version) reads as the defaults rather than failing the request that asked
+export function readStorePreferences(raw: unknown): StorePreferences {
+  const parsed = storePreferencesSchema.safeParse(raw)
+  return parsed.success ? parsed.data : storePreferencesSchema.parse({})
 }
+
+export function readOrderPreferences(raw: unknown): OrderPreferences {
+  return readStorePreferences(raw).orders
+}
+
+// What PUT /settings/preferences takes: the keys the caller changes, each held to its real type (the
+// `catch` above is for reading what is stored, never for accepting what a client sends). Keys that are
+// not named keep their value, so a page that draws only some of them cannot reset the others. The `orders`
+// block is merged key by key too.
+export const updateStorePreferencesSchema = z
+  .strictObject({
+    sendReadReceipts: z.boolean().optional(),
+    assignOnReply: z.boolean().optional(),
+    orders: updateOrderPreferencesSchema.optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+
+export type UpdateStorePreferencesBody = z.output<typeof updateStorePreferencesSchema>
