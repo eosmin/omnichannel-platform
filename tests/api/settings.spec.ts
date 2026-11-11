@@ -4,8 +4,9 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { type Permission, Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { SettingsLimits } from '@platform/core/domain'
+import { OrderCancellationReasons, SettingsLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { defaultCancellationReasons } from '@platform/core/store-preferences'
 
 import { createRole, createSnippet, createTag, resetStoreSettings } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -13,6 +14,19 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+
+type PreferencesBody = { orders: Record<string, unknown> }
+
+// What the orders block reads as for a store that chose nothing (TDD_17 §4.14)
+const FACTORY_ORDERS = {
+  confirmOnCreate: false,
+  sendSummaryOnCreate: true,
+  discountLimitPercent: 0,
+  freeShippingRule: 'all_items',
+  notifyOnPriceOverride: true,
+  failedAttemptMessages: 'every_attempt',
+  cancellationReasons: defaultCancellationReasons
+}
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -579,7 +593,11 @@ describe('The settings of the inbox of a store', () => {
       const response = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)
 
       expect(response.status).toBe(OK)
-      expect(response.body).toEqual({ sendReadReceipts: true, assignOnReply: true })
+      expect(response.body).toEqual({
+        sendReadReceipts: true,
+        assignOnReply: true,
+        orders: FACTORY_ORDERS
+      })
     })
 
     it('change the key that is named, audit which one, and write only that key to the column', async () => {
@@ -588,10 +606,14 @@ describe('The settings of the inbox of a store', () => {
         .send({ sendReadReceipts: false })
 
       expect(response.status).toBe(OK)
-      expect(response.body).toEqual({ sendReadReceipts: false, assignOnReply: true })
+      expect(response.body).toEqual({
+        sendReadReceipts: false,
+        assignOnReply: true,
+        orders: FACTORY_ORDERS
+      })
       expect(
         (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)).body
-      ).toEqual({ sendReadReceipts: false, assignOnReply: true })
+      ).toEqual({ sendReadReceipts: false, assignOnReply: true, orders: FACTORY_ORDERS })
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA2.id }
       })
@@ -670,12 +692,136 @@ describe('The settings of the inbox of a store', () => {
 
       expect((await asAdmin().get(ApiRoutes.settings.preferences)).body).toEqual({
         sendReadReceipts: true,
-        assignOnReply: true
+        assignOnReply: true,
+        orders: FACTORY_ORDERS
       })
       const put = await asAdmin()
         .put(ApiRoutes.settings.preferences)
         .send({ sendReadReceipts: false })
-      expect(put.body).toEqual({ sendReadReceipts: false, assignOnReply: true })
+      expect(put.body).toEqual({
+        sendReadReceipts: false,
+        assignOnReply: true,
+        orders: FACTORY_ORDERS
+      })
+    })
+
+    it('read the orders block at its factory defaults and change only the keys that are sent', async () => {
+      const as = api(app, ctx.adminA2, ctx.storeA2)
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA2.id },
+        data: { preferences: {} }
+      })
+      const auditWhere = {
+        action: AuditAction.SETTINGS_CHANGED,
+        resourceId: ctx.storeA2.id,
+        resourceType: 'store_preferences'
+      }
+      // The audit of the earlier cases of this store is already there: wait for two more
+      const auditedBefore = await owner.auditLog.count({ where: auditWhere })
+
+      const first = await as
+        .put(ApiRoutes.settings.preferences)
+        .send({ orders: { confirmOnCreate: true } })
+      expect(first.status).toBe(OK)
+      expect((first.body as PreferencesBody).orders).toEqual({
+        ...FACTORY_ORDERS,
+        confirmOnCreate: true
+      })
+      const reasons = [
+        { id: 'CUSTOMER_REQUEST', labelKey: OrderCancellationReasons.CUSTOMER_REQUEST },
+        { id: 'fraud', label: 'Suspected fraud' }
+      ]
+      const second = await as
+        .put(ApiRoutes.settings.preferences)
+        .send({ orders: { sendSummaryOnCreate: false, cancellationReasons: reasons } })
+
+      // The second write kept the key of the first, and the column holds only what was chosen
+      expect((second.body as PreferencesBody).orders).toEqual({
+        ...FACTORY_ORDERS,
+        confirmOnCreate: true,
+        sendSummaryOnCreate: false,
+        cancellationReasons: reasons
+      })
+      const settings = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA2.id }
+      })
+      expect(settings.preferences).toEqual({
+        orders: { confirmOnCreate: true, sendSummaryOnCreate: false, cancellationReasons: reasons }
+      })
+      const entries = await waitForAuditEntries(owner, auditWhere, auditedBefore + 2)
+      const fields = entries.flatMap(entry => (entry.metadata as { fields: string[] }).fields)
+      // The list of reasons is audited as its ids, not as the text of the store
+      const changed = entries
+        .map(entry => (entry.metadata as { changes: Record<string, { to: unknown }> }).changes)
+        .find(changes => 'orders.cancellationReasons' in changes)
+      expect(changed?.['orders.cancellationReasons']?.to).toEqual(['CUSTOMER_REQUEST', 'fraud'])
+      expect(fields).toEqual(
+        expect.arrayContaining([
+          'orders.confirmOnCreate',
+          'orders.sendSummaryOnCreate',
+          'orders.cancellationReasons'
+        ])
+      )
+    })
+
+    it('keep the other keys of the orders block when a stored block has a value that does not fit', async () => {
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: {
+          preferences: {
+            orders: { discountLimitPercent: 15, cancellationReasons: [], confirmOnCreate: 'yes' }
+          }
+        }
+      })
+
+      const read = await asAdmin().get(ApiRoutes.settings.preferences)
+      expect((read.body as PreferencesBody).orders).toEqual({
+        ...FACTORY_ORDERS,
+        discountLimitPercent: 15
+      })
+
+      await asAdmin()
+        .put(ApiRoutes.settings.preferences)
+        .send({ orders: { sendSummaryOnCreate: false } })
+      const settings = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA.id }
+      })
+      // A key the write path does not own (the discount limit) survives the write of another
+      expect((settings.preferences as { orders: Record<string, unknown> }).orders).toMatchObject({
+        discountLimitPercent: 15,
+        sendSummaryOnCreate: false
+      })
+    })
+
+    it.each([
+      ['an empty block', { orders: {} }],
+      ['a key of the block with no write path yet', { orders: { discountLimitPercent: 10 } }],
+      [
+        'a reason with both a key and a label',
+        {
+          orders: {
+            cancellationReasons: [{ id: 'a', labelKey: OrderCancellationReasons.OTHER, label: 'x' }]
+          }
+        }
+      ],
+      [
+        'a repeated reason id',
+        {
+          orders: {
+            cancellationReasons: [
+              { id: 'a', label: 'x' },
+              { id: 'a', label: 'y' }
+            ]
+          }
+        }
+      ],
+      ['an empty list of reasons', { orders: { cancellationReasons: [] } }],
+      ['a switch that is not a boolean', { orders: { confirmOnCreate: 'yes' } }]
+    ])('refuse %s in the orders block', async (_label, body) => {
+      const response = await asAdmin().put(ApiRoutes.settings.preferences).send(body)
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.VALIDATION_FAILED)
     })
 
     it('never change the store of someone else', async () => {

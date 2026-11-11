@@ -29,6 +29,10 @@ const { shippingStateBans, orderPriceApprovalBans } = createRequire(import.meta.
   './eslint-shipping-bans.cjs'
 )
 
+// A checkbox or switch of apps/web never carries its initial state (TDD_17 §4.14): see eslint-web-controls.cjs, where the
+// rule lives so that a spec can run it (scripts/lib/web-controls-rule.spec.ts)
+const { webControlsPlugin } = createRequire(import.meta.url)('./eslint-web-controls.cjs')
+
 const prismaTransactionBan = {
   selector: "CallExpression[callee.property.name='$transaction']",
   message: 'Use PrismaService.transaction(fn) so the tenant context is set (TDD_01 §3.2)'
@@ -249,9 +253,12 @@ export default defineConfig([
   // The Next.js app also lints its React and Next rules
   {
     files: ['apps/web/**/*.ts', 'apps/web/**/*.tsx'],
-    plugins: { '@next/next': nextPlugin },
+    plugins: { '@next/next': nextPlugin, 'web-controls': webControlsPlugin },
     settings: { next: { rootDir: 'apps/web' } },
-    rules: { ...nextPlugin.configs.recommended.rules }
+    rules: {
+      ...nextPlugin.configs.recommended.rules,
+      'web-controls/no-fixed-initial-checked': 'error'
+    }
   },
 
   // The service worker has its own program (webworker types, no dom), which the project service
