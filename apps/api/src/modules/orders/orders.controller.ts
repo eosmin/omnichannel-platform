@@ -19,6 +19,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
+import type { ExportView } from '../exports'
 import {
   actorOf,
   CurrentPermissions,
@@ -33,6 +34,8 @@ import {
   cancelOrderSchema,
   type ConfirmOrderBody,
   confirmOrderSchema,
+  type ExportOrdersQuery,
+  exportOrdersQuerySchema,
   idSchema,
   type ListOrdersQuery,
   listOrdersQuerySchema,
@@ -62,6 +65,19 @@ export class OrdersController {
     @Query(new ZodValidationPipe(listOrdersQuerySchema)) query: ListOrdersQuery
   ): Promise<OrderPage> {
     return this.orders.list(store.id, query)
+  }
+
+  // Declared before `:id`, or "export" would be read as an id. The file is made in the background: the answer is the
+  // export to follow in the exports center. It needs the same two permissions as the exports center asks for this kind.
+  @RequirePermissions(Permissions.ORDERS_VIEW, Permissions.ORDERS_EXPORT)
+  @Get(ApiRoutes.orders.export)
+  @HttpCode(HttpStatusCodes.ACCEPTED)
+  requestExport(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(exportOrdersQuerySchema)) query: ExportOrdersQuery
+  ): Promise<ExportView> {
+    return this.orders.requestExport(store.id, user.id, query)
   }
 
   @RequirePermissions(Permissions.ORDERS_CREATE)

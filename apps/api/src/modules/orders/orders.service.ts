@@ -19,10 +19,12 @@ import {
   editableOrderFields,
   lockedOrderFields,
   isPriceApprovalBlocking,
+  nextCalendarDay,
   normalizeNote,
   OrderConfirmationChannel,
   OrderLockScopes,
   OrderNotices,
+  OrderListFilters,
   OrderScheduleFilters,
   OrderSummaryEvents,
   OrderSorts,
@@ -32,15 +34,22 @@ import {
   PriceApprovalStatus,
   scheduledDeliveryShortcutRange,
   shouldWarnWarehouseOfPackingNote,
+  startOfCalendarDayIn,
   type CreateOrderInput,
   type UpdateOrderInput
 } from '@platform/core/domain'
 import { ErrorCodes, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { writeOrderSummaryLine } from '@platform/core/messaging'
+import {
+  orderListWhere,
+  type ResolvedOrderFilters,
+  writeOrderSummaryLine
+} from '@platform/core/messaging'
+import { ExportFormats, ExportTypes } from '@platform/core/queues'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
+import { ExportsService, type ExportView } from '../exports'
 import type { Actor } from '../tenancy'
 
 import { type LineToAllocate, OrderInventoryService } from './orders-inventory.service'
@@ -76,6 +85,15 @@ function toAllocatable(lines: readonly OrderLine[], itemIds: readonly string[]):
   }))
 }
 
+// What the list and the export take: the query without its page and its sort
+export type OrderFilters = Omit<ListOrdersQuery, 'cursor' | 'limit' | typeof OrderListFilters.SORT>
+
+export interface ResolvedListFilters {
+  where: ResolvedOrderFilters
+  // Inclusive days of the scheduled delivery, null for no bound
+  scheduled: { from: string | null; to: string | null }
+}
+
 export interface CreatedOrder {
   order: OrderDetailView
   // What the server did not do that the request asked for, by a constant of OrderNotices
@@ -91,33 +109,85 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
-    private readonly stock: OrderInventoryService
+    private readonly stock: OrderInventoryService,
+    private readonly exports: ExportsService
   ) {}
 
-  async list(storeId: string, query: ListOrdersQuery): Promise<OrderPage> {
-    // The shortcuts are the day it is on the clock of the store, not of the server (decision D18): the store is read
-    // only for them
-    const shortcut = query[OrderScheduleFilters.ON]
-    const store =
-      shortcut === undefined
-        ? null
-        : await this.prisma.client.store.findUnique({
-            where: { id: storeId },
-            select: { timezone: true }
-          })
-    if (shortcut !== undefined && store === null) throw resourceNotFound('store')
+  // The filters of the list as the database reads them. Every day is a day on the clock of the store, not of the server
+  // (decision D18): the store is read only when a filter names a day or a shortcut. The export freezes this result in its
+  // row, so the file holds what the list showed.
+  async resolveFilters(storeId: string, filters: OrderFilters): Promise<ResolvedListFilters> {
+    const shortcut = filters[OrderScheduleFilters.ON]
+    const createdFrom = filters[OrderListFilters.CREATED_FROM]
+    const createdTo = filters[OrderListFilters.CREATED_TO]
+    const needsClock =
+      shortcut !== undefined || createdFrom !== undefined || createdTo !== undefined
+    const store = needsClock
+      ? await this.prisma.client.store.findUnique({
+          where: { id: storeId },
+          select: { timezone: true }
+        })
+      : null
+    if (needsClock && store === null) throw resourceNotFound('store')
+    const timezone = store?.timezone ?? ''
     const range =
       shortcut === undefined
         ? {
-            from: query[OrderScheduleFilters.FROM] ?? null,
-            to: query[OrderScheduleFilters.TO] ?? null
+            from: filters[OrderScheduleFilters.FROM] ?? null,
+            to: filters[OrderScheduleFilters.TO] ?? null
           }
-        : scheduledDeliveryShortcutRange(
-            shortcut,
-            (store as { timezone: string }).timezone,
-            new Date()
-          )
-    const bySchedule = query.sort === OrderSorts.SCHEDULED_DELIVERY
+        : scheduledDeliveryShortcutRange(shortcut, timezone, new Date())
+    return {
+      where: {
+        q: filters[OrderListFilters.Q],
+        status: filters[OrderListFilters.STATUS],
+        paymentStatus: filters[OrderListFilters.PAYMENT_STATUS],
+        priceApprovalStatus: filters[OrderListFilters.PRICE_APPROVAL_STATUS],
+        customerId: filters[OrderListFilters.CUSTOMER_ID],
+        createdFrom:
+          createdFrom === undefined ? undefined : startOfCalendarDayIn(timezone, createdFrom),
+        // The day after the last one starts where the last one ends
+        createdBefore:
+          createdTo === undefined
+            ? undefined
+            : startOfCalendarDayIn(timezone, nextCalendarDay(createdTo))
+      },
+      scheduled: range
+    }
+  }
+
+  // The CSV of the orders the list shows with these filters. The days are resolved now, on the clock of the store, so the
+  // file made later holds what the screen showed; the caller has checked orders:view and orders:export.
+  async requestExport(storeId: string, userId: string, filters: OrderFilters): Promise<ExportView> {
+    const { where, scheduled } = await this.resolveFilters(storeId, filters)
+    return this.exports.request({
+      storeId,
+      userId,
+      type: ExportTypes.ORDERS,
+      format: ExportFormats.CSV,
+      filters: {
+        ...(where.q === undefined ? {} : { q: where.q }),
+        ...(where.status === undefined ? {} : { status: where.status }),
+        ...(where.paymentStatus === undefined ? {} : { paymentStatus: where.paymentStatus }),
+        ...(where.priceApprovalStatus === undefined
+          ? {}
+          : { priceApprovalStatus: where.priceApprovalStatus }),
+        ...(where.customerId === undefined ? {} : { customerId: where.customerId }),
+        ...(where.createdFrom === undefined
+          ? {}
+          : { createdFrom: where.createdFrom.toISOString() }),
+        ...(where.createdBefore === undefined
+          ? {}
+          : { createdBefore: where.createdBefore.toISOString() }),
+        ...(scheduled.from === null ? {} : { scheduledDeliveryFrom: scheduled.from }),
+        ...(scheduled.to === null ? {} : { scheduledDeliveryTo: scheduled.to })
+      }
+    })
+  }
+
+  async list(storeId: string, query: ListOrdersQuery): Promise<OrderPage> {
+    const { where: resolved, scheduled: range } = await this.resolveFilters(storeId, query)
+    const bySchedule = query[OrderListFilters.SORT] === OrderSorts.SCHEDULED_DELIVERY
     const { cursor } = query
     const after = (position: { createdAt: Date; id: string }) => [
       { createdAt: { lt: position.createdAt } },
@@ -125,13 +195,7 @@ export class OrdersService {
     ]
     const rows = await this.prisma.client.order.findMany({
       where: {
-        storeId,
-        ...(query.status === undefined ? {} : { status: query.status }),
-        ...(query.paymentStatus === undefined ? {} : { paymentStatus: query.paymentStatus }),
-        ...(query.priceApprovalStatus === undefined
-          ? {}
-          : { priceApprovalStatus: query.priceApprovalStatus }),
-        ...(query.customerId === undefined ? {} : { customerId: query.customerId }),
+        ...orderListWhere(storeId, resolved),
         ...(range.from === null && range.to === null
           ? {}
           : {

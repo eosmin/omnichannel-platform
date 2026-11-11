@@ -864,6 +864,81 @@
         "REFUSED_BY_CUSTOMER": "Refused by the customer",
         "WRONG_ITEM": "Wrong item"
       }
+    },
+    "paymentStatus": {
+      "PENDING": "Pending",
+      "COMPLETED": "Paid",
+      "FAILED": "Failed",
+      "REFUNDED": "Refunded"
+    },
+    "paymentMethod": {
+      "CASH": "Cash",
+      "TRANSFER": "Transfer",
+      "CARD": "Card",
+      "CASH_ON_DELIVERY": "Cash on delivery",
+      "OTHER": "Other"
+    },
+    "list": {
+      "title": "Orders",
+      "noAccess": "You do not have access to orders.",
+      "searchLabel": "Search orders",
+      "searchPlaceholder": "Search by order number or customer",
+      "export": "Export CSV",
+      "exportQueued": "The orders file is being prepared. It will be ready in the exports.",
+      "viewExports": "View exports",
+      "failed": "The orders could not be loaded.",
+      "empty": "There are no orders yet.",
+      "noMatches": "No order matches these filters.",
+      "loadMore": "Load more",
+      "number": "#{number}",
+      "priceModified": "Price changed",
+      "awaitingPriceApproval": "Awaiting price approval",
+      "unnamedCustomer": "Visitor",
+      "unknownStatus": "Unknown",
+      "unknownPayment": "Unknown",
+      "noSchedule": "Not scheduled",
+      "selectOrder": "Select order {number}",
+      "selectAll": "Select all the orders shown",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "clearSelection": "Clear selection",
+      "columns": {
+        "number": "Order",
+        "customer": "Customer",
+        "created": "Made",
+        "status": "Status",
+        "payment": "Payment",
+        "scheduled": "Scheduled delivery",
+        "total": "Total"
+      },
+      "filters": {
+        "status": "Status",
+        "allStatuses": "All statuses",
+        "paymentStatus": "Payment",
+        "allPayments": "All payments",
+        "sort": "Sort by",
+        "sorts": {
+          "newest": "Newest first",
+          "scheduled_delivery": "Scheduled delivery"
+        },
+        "created": "Made between",
+        "createdFrom": "Made from",
+        "createdTo": "Made until",
+        "scheduled": "Scheduled delivery",
+        "scheduledFrom": "Scheduled delivery from",
+        "scheduledTo": "Scheduled delivery until",
+        "shortcuts": {
+          "today": "Today",
+          "tomorrow": "Tomorrow"
+        },
+        "customer": "Customer: {name}",
+        "removeCustomer": "Remove the filter by customer {name}",
+        "aCustomer": "one customer",
+        "clear": "{count, plural, one {Clear # filter} other {Clear # filters}}"
+      }
+    },
+    "detail": {
+      "title": "Order",
+      "back": "Back to orders"
     }
   },
   "org": {
@@ -909,7 +984,8 @@
       "customers": "Customers",
       "products": "Products",
       "exports": "Exports",
-      "settings": "Settings"
+      "settings": "Settings",
+      "orders": "Orders"
     },
     "notifications": {
       "open": "Notifications",

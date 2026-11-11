@@ -864,6 +864,81 @@
         "REFUSED_BY_CUSTOMER": "Rechazado por el cliente",
         "WRONG_ITEM": "Artículo equivocado"
       }
+    },
+    "paymentStatus": {
+      "PENDING": "Pendiente",
+      "COMPLETED": "Pagado",
+      "FAILED": "Fallido",
+      "REFUNDED": "Reembolsado"
+    },
+    "paymentMethod": {
+      "CASH": "Efectivo",
+      "TRANSFER": "Transferencia",
+      "CARD": "Tarjeta",
+      "CASH_ON_DELIVERY": "Contra entrega",
+      "OTHER": "Otro"
+    },
+    "list": {
+      "title": "Pedidos",
+      "noAccess": "No tienes acceso a los pedidos.",
+      "searchLabel": "Buscar pedidos",
+      "searchPlaceholder": "Buscar por número de pedido o cliente",
+      "export": "Exportar CSV",
+      "exportQueued": "El archivo de pedidos se está preparando. Estará listo en las exportaciones.",
+      "viewExports": "Ver exportaciones",
+      "failed": "No se pudieron cargar los pedidos.",
+      "empty": "Aún no hay pedidos.",
+      "noMatches": "Ningún pedido coincide con los filtros.",
+      "loadMore": "Cargar más",
+      "number": "#{number}",
+      "priceModified": "Precio modificado",
+      "awaitingPriceApproval": "Esperando aprobación de precio",
+      "unnamedCustomer": "Visitante",
+      "unknownStatus": "Desconocido",
+      "unknownPayment": "Desconocido",
+      "noSchedule": "Sin programar",
+      "selectOrder": "Seleccionar el pedido {number}",
+      "selectAll": "Seleccionar todos los pedidos que se ven",
+      "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
+      "clearSelection": "Quitar la selección",
+      "columns": {
+        "number": "Pedido",
+        "customer": "Cliente",
+        "created": "Creado",
+        "status": "Estado",
+        "payment": "Pago",
+        "scheduled": "Entrega programada",
+        "total": "Total"
+      },
+      "filters": {
+        "status": "Estado",
+        "allStatuses": "Todos los estados",
+        "paymentStatus": "Pago",
+        "allPayments": "Todos los pagos",
+        "sort": "Ordenar por",
+        "sorts": {
+          "newest": "Más recientes primero",
+          "scheduled_delivery": "Entrega programada"
+        },
+        "created": "Creado entre",
+        "createdFrom": "Creado desde",
+        "createdTo": "Creado hasta",
+        "scheduled": "Entrega programada",
+        "scheduledFrom": "Entrega programada desde",
+        "scheduledTo": "Entrega programada hasta",
+        "shortcuts": {
+          "today": "Hoy",
+          "tomorrow": "Mañana"
+        },
+        "customer": "Cliente: {name}",
+        "removeCustomer": "Quitar el filtro por el cliente {name}",
+        "aCustomer": "un cliente",
+        "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}"
+      }
+    },
+    "detail": {
+      "title": "Pedido",
+      "back": "Volver a los pedidos"
     }
   },
   "org": {
@@ -909,7 +984,8 @@
       "customers": "Clientes",
       "products": "Productos",
       "exports": "Exportaciones",
-      "settings": "Ajustes"
+      "settings": "Ajustes",
+      "orders": "Pedidos"
     },
     "notifications": {
       "open": "Notificaciones",

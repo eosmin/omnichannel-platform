@@ -4,6 +4,7 @@ import { CustomerLimits, DEFAULT_PHONE_REGION } from './customer-constants'
 import {
   ORDER_MAX_AMOUNT_CENTS,
   OrderLimits,
+  OrderListFilters,
   OrderScheduleFilters,
   OrderScheduledDeliveryShortcuts,
   OrderSorts,
@@ -14,6 +15,7 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  PriceApprovalStatus,
   type OrderEditableField
 } from './status-enums'
 import { singleLineText } from './validation'
@@ -269,3 +271,38 @@ export function orderScheduleFiltersAreConsistent(
   // 'YYYY-MM-DD' strings sort as days do
   return from === undefined || to === undefined || from <= to
 }
+
+// The filters of the orders list that the export takes too (everything but the page and the sort): the text search, the
+// state, the payment, the price approval, the customer, and the day the order was made. Exported as a shape for the same
+// reason as the schedule one. The sort is the list's alone (`orderSortShape`).
+export const orderListFilterShape = {
+  [OrderListFilters.Q]: freeText(OrderLimits.SEARCH_MAX_LENGTH).min(1).optional(),
+  [OrderListFilters.STATUS]: z.enum(OrderStatus).optional(),
+  [OrderListFilters.PAYMENT_STATUS]: z.enum(PaymentStatus).optional(),
+  [OrderListFilters.PRICE_APPROVAL_STATUS]: z.enum(PriceApprovalStatus).optional(),
+  [OrderListFilters.CUSTOMER_ID]: id.optional(),
+  [OrderListFilters.CREATED_FROM]: z.iso.date().optional(),
+  [OrderListFilters.CREATED_TO]: z.iso.date().optional(),
+  [OrderScheduleFilters.FROM]: scheduledDeliveryDateSchema.optional(),
+  [OrderScheduleFilters.TO]: scheduledDeliveryDateSchema.optional(),
+  [OrderScheduleFilters.ON]: z.enum(OrderScheduledDeliveryShortcuts).optional()
+}
+
+// Both ranges: the first day not after the last, and a shortcut never next to days of the schedule
+export function orderListFiltersAreConsistent(filters: {
+  scheduledDeliveryFrom?: string
+  scheduledDeliveryTo?: string
+  scheduledDeliveryOn?: string
+  createdFrom?: string
+  createdTo?: string
+}): boolean {
+  const from = filters[OrderListFilters.CREATED_FROM]
+  const to = filters[OrderListFilters.CREATED_TO]
+  return (
+    orderScheduleFiltersAreConsistent(filters) &&
+    (from === undefined || to === undefined || from <= to)
+  )
+}
+
+// The sort of the list alone: the export has no order to keep
+export const orderSortShape = { [OrderListFilters.SORT]: z.enum(OrderSorts).optional() }

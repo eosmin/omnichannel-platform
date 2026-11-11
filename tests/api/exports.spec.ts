@@ -308,6 +308,224 @@ describe('Exports', () => {
     })
   })
 
+  describe('the orders file', () => {
+    async function makeOrder(
+      storeId: string,
+      customerId: string,
+      data: {
+        number?: string
+        status?: OrderStatus
+        totalCents?: number
+        createdAt?: string
+        scheduledDeliveryDate?: string
+        internalNotes?: string
+        packingNotes?: string
+        customerNotes?: string
+        paymentReference?: string
+      } = {}
+    ) {
+      const totalCents = data.totalCents ?? 1000
+      return owner.order.create({
+        data: {
+          storeId,
+          customerId,
+          orderNumber: data.number ?? `${prefix}-${randomUUID().slice(0, 8)}`,
+          status: data.status ?? OrderStatus.CONFIRMED,
+          subtotalCents: totalCents,
+          totalCents,
+          paymentMethod: PaymentMethod.CASH,
+          createdBy: ctx.adminA.id,
+          ...(data.createdAt === undefined ? {} : { createdAt: new Date(data.createdAt) }),
+          ...(data.scheduledDeliveryDate === undefined
+            ? {}
+            : { scheduledDeliveryDate: new Date(`${data.scheduledDeliveryDate}T00:00:00Z`) }),
+          internalNotes: data.internalNotes,
+          packingNotes: data.packingNotes,
+          customerNotes: data.customerNotes,
+          paymentReference: data.paymentReference
+        }
+      })
+    }
+
+    const lines = (file: string) => file.split('\r\n').filter(line => line !== '')
+
+    it('needs orders:view and orders:export together, and queues the job with the filters of the list resolved', async () => {
+      expect((await api(app, ctx.agentA, ctx.storeA).get(ApiRoutes.orders.export)).status).toBe(
+        FORBIDDEN
+      )
+      const exportOnly = await createRole(owner, {
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.ORDERS_EXPORT]
+      })
+      const member = await createActor(owner, app, {
+        prefix,
+        name: 'orders-export-only',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: exportOnly.id
+      })
+      expect((await api(app, member, ctx.storeA).get(ApiRoutes.orders.export)).status).toBe(
+        FORBIDDEN
+      )
+
+      await owner.store.update({
+        where: { id: ctx.storeA.id },
+        data: { timezone: 'America/El_Salvador' }
+      })
+      const view = await request(
+        `${ApiRoutes.orders.export}?status=SHIPPED&q=ana&createdFrom=2026-11-10&createdTo=2026-11-10&scheduledDeliveryFrom=2026-11-12`
+      )
+
+      expect(view).toMatchObject({ type: ExportTypes.ORDERS, status: ExportStatus.PENDING })
+      const row = await owner.export.findUniqueOrThrow({ where: { id: view.id } })
+      expect(row.storeId).toBe(ctx.storeA.id)
+      expect(row.requestedBy).toBe(ctx.adminA.id)
+      // The day it was made, on the clock of the store (UTC-6): from 06:00 UTC to 06:00 UTC of the next day
+      expect(row.filters).toEqual({
+        q: 'ana',
+        status: OrderStatus.SHIPPED,
+        createdFrom: '2026-11-10T06:00:00.000Z',
+        createdBefore: '2026-11-11T06:00:00.000Z',
+        scheduledDeliveryFrom: '2026-11-12'
+      })
+    })
+
+    it('refuses a query the list would refuse, and a filter it does not have', async () => {
+      const bad = [
+        'status=NOPE',
+        'scheduledDeliveryOn=today&scheduledDeliveryFrom=2026-11-01',
+        'createdFrom=2026-11-10&createdTo=2026-11-01',
+        'storeId=x',
+        'limit=5',
+        'cursor=abc'
+      ]
+      for (const query of bad) {
+        const response = await asAdmin().get(`${ApiRoutes.orders.export}?${query}`)
+        expect(response.status).toBeGreaterThanOrEqual(400)
+        expect(response.status).toBeLessThan(500)
+      }
+    })
+
+    it('writes one row per order in cents, defuses a formula, and leaves out the notes, the other stores and the payment reference', async () => {
+      const buyer = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: '=HYPERLINK("x")'
+      })
+      await owner.customer.update({
+        where: { id: buyer.id },
+        data: { email: `${prefix}-buyer@example.com` }
+      })
+      const foreignCustomer = await createCustomer(owner, {
+        storeId: ctx.storeB.id,
+        name: 'Foreign'
+      })
+      const mine = await makeOrder(ctx.storeA.id, buyer.id, {
+        number: `${prefix}-0001`,
+        totalCents: 2501,
+        internalNotes: 'secret internal text',
+        packingNotes: 'secret packing text',
+        customerNotes: 'secret customer text',
+        paymentReference: 'REF-SECRET-1'
+      })
+      const foreign = await makeOrder(ctx.storeB.id, foreignCustomer.id, {
+        number: `${prefix}-FOREIGN`
+      })
+
+      const file = await made((await request(ApiRoutes.orders.export)).id)
+
+      expect(file.startsWith(BOM + 'order_number,created_at,status')).toBe(true)
+      const row = lines(file).find(line => line.startsWith(`${prefix}-0001`)) ?? ''
+      expect(row).toContain(`'=HYPERLINK(""x"")`)
+      expect(row).toContain('CONFIRMED')
+      expect(row).toContain(',2501,')
+      expect(row).toContain(`${prefix}-buyer@example.com`)
+      expect(file).not.toContain('secret internal text')
+      expect(file).not.toContain('secret packing text')
+      expect(file).not.toContain('secret customer text')
+      expect(file).not.toContain('REF-SECRET-1')
+      expect(file).not.toContain(foreign.id)
+      expect(file).not.toContain(`${prefix}-FOREIGN`)
+      expect(mine.id).toBeDefined()
+    })
+
+    it('holds the rows the list shows: status, text of the number or the customer, the day made and the scheduled day', async () => {
+      await owner.store.update({
+        where: { id: ctx.storeA.id },
+        data: { timezone: 'America/El_Salvador' }
+      })
+      const ana = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-Ana Filter`
+      })
+      const luis = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-Luis Filter`
+      })
+      // 03:30 UTC of the 11th is still the evening of the 10th in El Salvador
+      const lateEvening = await makeOrder(ctx.storeA.id, ana.id, {
+        number: `${prefix}-F1`,
+        createdAt: '2026-11-11T03:30:00.000Z',
+        scheduledDeliveryDate: '2026-11-12'
+      })
+      const nextDay = await makeOrder(ctx.storeA.id, luis.id, {
+        number: `${prefix}-F2`,
+        status: OrderStatus.SHIPPED,
+        createdAt: '2026-11-11T07:00:00.000Z'
+      })
+
+      const byCustomer = await made(
+        (await request(`${ApiRoutes.orders.export}?q=${prefix}-Ana`)).id
+      )
+      expect(byCustomer).toContain(`${prefix}-F1`)
+      expect(byCustomer).not.toContain(`${prefix}-F2`)
+
+      const byNumber = await made((await request(`${ApiRoutes.orders.export}?q=${prefix}-F2`)).id)
+      expect(byNumber).toContain(`${prefix}-F2`)
+      expect(byNumber).not.toContain(`${prefix}-F1`)
+
+      const byStatus = await made(
+        (await request(`${ApiRoutes.orders.export}?status=SHIPPED&customerId=${luis.id}`)).id
+      )
+      expect(lines(byStatus)).toHaveLength(2)
+
+      const byDay = await made(
+        (await request(`${ApiRoutes.orders.export}?createdFrom=2026-11-10&createdTo=2026-11-10`)).id
+      )
+      expect(byDay).toContain(lateEvening.orderNumber)
+      expect(byDay).not.toContain(nextDay.orderNumber)
+
+      const bySchedule = await made(
+        (
+          await request(
+            `${ApiRoutes.orders.export}?scheduledDeliveryFrom=2026-11-12&scheduledDeliveryTo=2026-11-12`
+          )
+        ).id
+      )
+      expect(bySchedule).toContain(lateEvening.orderNumber)
+      expect(bySchedule).not.toContain(nextDay.orderNumber)
+    })
+
+    it('audits the file with its row count and lists the kind in the exports center', async () => {
+      const customer = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-audited`
+      })
+      await makeOrder(ctx.storeA.id, customer.id, { number: `${prefix}-AUD` })
+      const view = await request(`${ApiRoutes.orders.export}?q=${prefix}-AUD`)
+      await made(view.id)
+
+      const [entry] = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.ORDER_EXPORTED,
+        resourceId: view.id
+      })
+      expect(entry?.userId).toBe(ctx.adminA.id)
+      expect(entry?.metadata).toMatchObject({ rowCount: 1 })
+      const list = await asAdmin().get(`${ApiRoutes.exports.list}?type=${ExportTypes.ORDERS}`)
+      expect((list.body as PageBody).data.map(item => item.id)).toContain(view.id)
+    })
+  })
+
   describe('telling that an export settled', () => {
     // The events that reach the listeners of the api, the way the bridge would hand them over
     function hear(event: string): jest.Mock {

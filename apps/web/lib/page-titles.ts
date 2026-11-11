@@ -15,6 +15,7 @@ export const PageTitles = {
   inbox: ['shell.nav.inbox'],
   customers: ['shell.nav.customers'],
   products: ['shell.nav.products'],
+  orders: ['shell.nav.orders'],
   exports: ['shell.nav.exports'],
   settings: ['shell.nav.settings'],
   settingsGeneral: ['settings.nav.store.general', 'shell.nav.settings'],
