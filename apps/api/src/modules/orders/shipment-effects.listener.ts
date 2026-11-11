@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, type OnModuleDestroy } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 
 import { ShipmentLeftStatuses } from '@platform/core/domain'
@@ -15,11 +15,27 @@ const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(re
 // with it. A bridged event is heard by one api instance only; and the effects are derived from the state, so a lost event is
 // healed by the next one of the same shipment.
 @Injectable()
-export class ShipmentEffectsListener {
+export class ShipmentEffectsListener implements OnModuleDestroy {
+  // The effects in flight: a stop of the process waits for them (the shipment is committed, and the order must not be left
+  // half-way by a restart that did not let them finish)
+  private readonly pending = new Set<Promise<void>>()
+  private closing = false
+
   constructor(private readonly effects: OrderShipmentEffects) {}
 
+  async onModuleDestroy(): Promise<void> {
+    this.closing = true
+    await Promise.allSettled([...this.pending])
+  }
+
   @OnEvent(Events.SHIPMENT_STATUS_CHANGED)
-  async onShipmentStatusChanged(payload: ShipmentStatusChangedPayload): Promise<void> {
+  onShipmentStatusChanged(payload: ShipmentStatusChangedPayload): Promise<void> {
+    const work = this.follow(payload)
+    this.pending.add(work)
+    return work.finally(() => this.pending.delete(work))
+  }
+
+  private async follow(payload: ShipmentStatusChangedPayload): Promise<void> {
     const { storeId, shipmentId, actor, from, to } = payload
     const justLeft = !ShipmentLeftStatuses.includes(from) && ShipmentLeftStatuses.includes(to)
     for (let attempt = 0; ; attempt += 1) {
@@ -28,7 +44,7 @@ export class ShipmentEffectsListener {
         return
       } catch (error) {
         const pause = RETRY_PAUSES_MS[attempt]
-        if (pause === undefined) {
+        if (pause === undefined || this.closing) {
           await this.effects.reportFailure(storeId, shipmentId, actor, error)
           return
         }
