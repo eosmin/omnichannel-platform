@@ -76,7 +76,7 @@ Nothing heavy runs at commit time, so committing often stays cheap.
 | Editor | ESLint and Prettier on save (optional, not enforced) | instant |
 | `pre-commit` | `lint-staged` (ESLint `--fix` with `--max-warnings=0`, Prettier, `prisma format`) which fixes and re-stages instead of rejecting; `gitleaks` on the staged files; the translations and rollbacks validators only when such files are staged | under 10 s |
 | `commit-msg` | `commitlint`, showing the exact rule that failed | under 1 s |
-| `pre-push` | `pnpm validate:affected`: Nx affected `lint`, `type-check` and `test`, `format:check`, `validate:deprecations`, `validate:isolation`, translations and rollbacks; no Docker needed; skipped when only `docs/` changed | 30 to 90 s |
+| `pre-push` | `pnpm validate:affected`: Nx affected `lint` and `type-check`, `format:check`, `validate:deprecations`, `validate:isolation`, translations and rollbacks; no Docker needed; skipped when only `docs/` changed; the unit tests are left to CI (required check `unit-tests`, which also enforces the coverage thresholds) and run here only with `pnpm validate:affected --full` (owner, 2026-11-11: the local test run took 30 to 50 min with the machine swapping) | seconds to a few minutes |
 | Before opening a PR (manual) | `pnpm validate:ci`: the full local mirror of CI with the compose services up (integration, contracts, security tests) | minutes |
 | CI | every job of `TDD_03 §4`, required by the ruleset as they are born | 5 to 15 min |
 | After the merge | staging deploy from `main`, production from a version tag with manual approval (Step 7.3) | n/a |
@@ -231,12 +231,12 @@ and `integration-tests` is green on GitHub.
 both images build and pass Trivy, and `security-scan` is green on GitHub.
 
 ### Step 0.6 — Tooling
-- [x] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`, failing with a clear message when `gitleaks` is not installed), commit-msg and **pre-push** hooks; the pre-push hook runs `pnpm validate:affected` (Nx affected `lint`, `type-check` and `test`, `format:check`, the validators) and is skipped when only `docs/` changed; `HUSKY=0` in CI; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
+- [x] Husky pre-commit (lint-staged + `gitleaks git --pre-commit`, failing with a clear message when `gitleaks` is not installed), commit-msg and **pre-push** hooks; the pre-push hook runs `pnpm validate:affected` (Nx affected `lint` and `type-check`, `format:check`, the validators; the unit tests moved to CI on 2026-11-11, `--full` runs them) and is skipped when only `docs/` changed; `HUSKY=0` in CI; commitlint `ignores` commits authored by `dependabot[bot]`, whose generated titles and body lines can exceed the length rules
 - [x] `scripts/validate-translations.ts`, `validate-deprecations.ts`, `check-isolation-coverage.ts`, and the `validate:affected` script (affected-only version of `validate:all`). Until their inputs exist they report and pass: translations until `apps/web/messages` exists (Step 3.1), isolation until `tests/security/tenant-isolation.spec.ts` exists (Step 1.3, which also writes the exemptions with their reasons). `validate:rollbacks` is `scripts/check-rollbacks.ts` under the name of `TDD_14 §2`, and `validate:ci` is defined when `test:contracts` and `test:security` exist
 - [x] CI: add gitleaks to `security-scan` (the pinned release, checked by checksum, over the whole history), and commitlint (the commits of the pull request and its title, except the title of a Dependabot pull request), `validate:translations`, `validate:deprecations`, `validate:env` and `validate:isolation` to `lint-and-types`, which also runs the `test` targets until the `unit-tests` job of Step 1.1 (with the coverage thresholds) replaces that. The remaining jobs of `TDD_03 §4` are created by the steps listed in "CI rollout" (unit tests 1.1, security tests 1.3, e2e and Lighthouse 3.1)
 
 **TDD:** `TDD_14 §6`, `§7`, `TDD_03 §4`
-**Done when:** a commit violating conventions is rejected locally and in CI, a push with a failing affected test is stopped by the pre-push hook, a docs-only push is not slowed by it, and every job that
+**Done when:** a commit violating conventions is rejected locally and in CI, a push with a lint, type or format error is stopped by the pre-push hook (tests are left to CI, 2026-11-11), a docs-only push is not slowed by it, and every job that
 exists so far is green on GitHub.
 
 ---
