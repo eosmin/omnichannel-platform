@@ -76,7 +76,7 @@ test.describe('the orders page', () => {
     const shipped = row((seeded[1] as SeededOrder).orderNumber)
     await expect(shipped.getByText(en.orders.status.SHIPPED)).toBeVisible()
     await expect(shipped.getByText(en.orders.paymentStatus.COMPLETED)).toBeVisible()
-    await expect(shipped.getByText('$2.00')).toBeVisible()
+    await expect(shipped.getByText('$20.00')).toBeVisible()
     await expect(shipped.getByRole('button', { name: customerName })).toBeVisible()
   })
 
