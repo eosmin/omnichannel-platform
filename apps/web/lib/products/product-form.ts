@@ -57,7 +57,9 @@ export type FormResult<T> = { ok: true; value: T } | { ok: false; field: Product
 
 const THRESHOLD = /^\d{1,7}$/
 
-function thresholdOf(text: string): number | null | undefined {
+// The alert threshold as typed: empty is no alert (null), a whole number up to the limit is the threshold, and anything
+// else is undefined (wrong)
+export function thresholdOf(text: string): number | null | undefined {
   const trimmed = text.trim()
   if (trimmed === '') return null
   if (!THRESHOLD.test(trimmed)) return undefined

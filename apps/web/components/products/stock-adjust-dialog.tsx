@@ -3,7 +3,6 @@
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react'
 
-import type { ProductDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { InventoryLimits } from '@platform/core/domain'
 
@@ -13,7 +12,8 @@ import {
   ReasonsOf,
   StockActions,
   type StockFormField,
-  type StockFormValues
+  type StockFormValues,
+  type StockProduct
 } from '../../lib/inventory/stock-form'
 import { useStockAdjustment, useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import { useSubmitGuard } from '../../lib/submit-guard'
@@ -35,7 +35,7 @@ export function StockAdjustDialog({
   onOpenChange,
   initial
 }: {
-  product: ProductDetailView
+  product: StockProduct
   open: boolean
   onOpenChange: (open: boolean) => void
   // Where the form starts: the warehouse and variant of the row the person came from
@@ -70,7 +70,7 @@ function AdjustForm({
   adjust,
   onDone
 }: {
-  product: ProductDetailView
+  product: StockProduct
   initial: { warehouseId: string; variantId: string | null } | undefined
   adjust: ReturnType<typeof useStockAdjustment>
   onDone: () => void

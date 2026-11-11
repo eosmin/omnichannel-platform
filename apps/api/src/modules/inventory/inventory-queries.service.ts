@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
+import { InventoryLevelSorts } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
+import { escapeLike } from '@platform/core/messaging'
 
 import { encodeCursor } from '../customers/list-cursor'
 
 import {
+  encodeNameCursor,
   encodeSeqCursor,
   type KardexQuery,
   type ListLevelsQuery,
@@ -37,6 +40,9 @@ export class InventoryQueriesService {
     canSeeCost: boolean
   ): Promise<LevelPage> {
     const { cursor } = query
+    // Read as the characters it is: the wildcards of LIKE are escaped
+    const text = query.q === undefined ? undefined : escapeLike(query.q)
+    const byName = query.sort === InventoryLevelSorts.NAME
     const lowStockProducts =
       query.lowStock === true ? await this.productsAtTheirThreshold(storeId) : null
     const rows = await this.prisma.client.inventoryLevel.findMany({
@@ -45,11 +51,11 @@ export class InventoryQueriesService {
         ...(query.warehouseId === undefined ? {} : { warehouseId: query.warehouseId }),
         ...(query.productId === undefined ? {} : { productId: query.productId }),
         ...(query.variantId === undefined ? {} : { variantId: query.variantId }),
-        // Both filters together are an intersection, not one over the other
-        ...(lowStockProducts === null
-          ? {}
-          : {
-              AND: [
+        AND: [
+          // Both filters together are an intersection, not one over the other
+          ...(lowStockProducts === null
+            ? []
+            : [
                 {
                   productId: {
                     in:
@@ -58,21 +64,64 @@ export class InventoryQueriesService {
                         : lowStockProducts.filter(id => id === query.productId)
                   }
                 }
-              ]
-            }),
-        // After the last row of the previous page in (updatedAt, id) order, wherever that row is now
-        ...(cursor === undefined
-          ? {}
-          : {
-              OR: [
-                { updatedAt: { lt: cursor.createdAt } },
-                { updatedAt: cursor.createdAt, id: { lt: cursor.id } }
-              ]
-            })
+              ]),
+          // The text is the name or SKU of the product, or of the variant of the level, read as the characters it is: the
+          // wildcards of LIKE are escaped (Prisma's `contains` does not do it)
+          ...(text === undefined
+            ? []
+            : [
+                {
+                  OR: [
+                    {
+                      product: {
+                        name: { contains: text, mode: 'insensitive' as const }
+                      }
+                    },
+                    {
+                      product: {
+                        sku: { contains: text, mode: 'insensitive' as const }
+                      }
+                    },
+                    {
+                      variant: {
+                        name: { contains: text, mode: 'insensitive' as const }
+                      }
+                    },
+                    {
+                      variant: {
+                        sku: { contains: text, mode: 'insensitive' as const }
+                      }
+                    }
+                  ]
+                }
+              ]),
+          // After the last row of the previous page, wherever that row is now
+          ...(cursor === undefined
+            ? []
+            : cursor.sort === InventoryLevelSorts.NAME
+              ? [
+                  {
+                    OR: [
+                      { product: { name: { gt: cursor.position.name } } },
+                      { product: { name: cursor.position.name }, id: { gt: cursor.position.id } }
+                    ]
+                  }
+                ]
+              : [
+                  {
+                    OR: [
+                      { updatedAt: { lt: cursor.position.createdAt } },
+                      { updatedAt: cursor.position.createdAt, id: { lt: cursor.position.id } }
+                    ]
+                  }
+                ])
+        ]
       },
       select: LEVEL_SELECT,
       take: query.limit + 1,
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }]
+      orderBy: byName
+        ? [{ product: { name: 'asc' } }, { id: 'asc' }]
+        : [{ updatedAt: 'desc' }, { id: 'desc' }]
     })
     const hasMore = rows.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
@@ -81,7 +130,9 @@ export class InventoryQueriesService {
       data: page.map(row => levelView(row, canSeeCost)),
       nextCursor:
         hasMore && last !== undefined
-          ? encodeCursor({ createdAt: last.updatedAt, id: last.id })
+          ? byName
+            ? encodeNameCursor({ name: last.product.name, id: last.id })
+            : encodeCursor({ createdAt: last.updatedAt, id: last.id })
           : null,
       hasMore
     }

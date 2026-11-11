@@ -5,6 +5,7 @@ import {
   createStockAdjustment,
   fetchKardex,
   fetchProductInventory,
+  fetchStockLevels,
   fetchWarehousesOfStore
 } from './inventory-api'
 
@@ -206,4 +207,42 @@ describe('fetchWarehousesOfStore', () => {
     )
     expect(warehouses.map(warehouse => warehouse.id)).toEqual(['w1'])
   })
+})
+
+describe('fetchStockLevels', () => {
+  it('sends only the keys it was given and reads the page', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, { data: [level], nextCursor: 'abc', hasMore: true })
+    )
+    const page = await fetchStockLevels(client, 's1', {
+      q: 'shoe',
+      lowStock: true,
+      sort: 'name',
+      limit: 50
+    })
+    expect(page).toMatchObject({ nextCursor: 'abc', hasMore: true })
+    expect(page.data[0]?.productName).toBe('Shoe')
+    const url = new URL(fetchImpl.mock.calls[0]?.[0] ?? '')
+    expect(url.pathname).toBe('/api/v1/inventory/levels')
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      q: 'shoe',
+      lowStock: 'true',
+      sort: 'name',
+      limit: '50'
+    })
+  })
+
+  it('asks with no query string when nothing narrows it, and sends the cursor on', async () => {
+    const { client, fetchImpl } = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
+    await fetchStockLevels(client, 's1', {})
+    await fetchStockLevels(client, 's1', { cursor: 'next', warehouseId: 'w1' })
+    expect(fetchImpl.mock.calls[0]?.[0]).toMatch(/\/inventory\/levels$/)
+    expect(new URL(fetchImpl.mock.calls[1]?.[0] ?? '').search).toBe('?warehouseId=w1&cursor=next')
+  })
+})
+
+it('leaves a blank search out of the query', async () => {
+  const { client, fetchImpl } = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
+  await fetchStockLevels(client, 's1', { q: '   ' })
+  expect(fetchImpl.mock.calls[0]?.[0]).toMatch(/\/inventory\/levels$/)
 })

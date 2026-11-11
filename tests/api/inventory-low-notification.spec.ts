@@ -95,7 +95,7 @@ describe('The inventory.low notification', () => {
     expect(row).toMatchObject({
       resourceType: 'product',
       resourceId: product.id,
-      actionPath: AppPaths.store.products(ctx.storeA.id),
+      actionPath: AppPaths.store.inventoryLow(ctx.storeA.id),
       params: { product: 'Ceramic mug', available: 2, threshold: 5 }
     })
     // Nothing leaves for another store, however the people of it are set up

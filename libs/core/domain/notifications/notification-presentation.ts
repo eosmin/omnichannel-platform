@@ -68,11 +68,12 @@ export function reasonNameOf(
   return hasName(name) ? name : null
 }
 
-export type BodyVariant = 'bodyRepeated' | 'bodyWithPeople' | 'bodyWithCustomer' | 'body'
+export type BodyVariant =
+  'bodyRepeated' | 'bodyWithPeople' | 'bodyWithCustomer' | 'bodyWithProduct' | 'body'
 
 // Which text of a notification to show. A notification that carries who and whose (a mention) says
 // both, and one that carries only whose (the unassigned queue) names the customer, where the type has
-// a text written for it; `count` above one asks for the text that says how many. A notification saved
+// a text written for it, and one that carries the product (low stock) names it; `count` above one asks for the text that says how many. A notification saved
 // before the params, or a type without that text, keeps the plain `body`.
 export function bodyVariantOf(
   params: Readonly<Record<string, unknown>>,
@@ -86,6 +87,20 @@ export function bodyVariantOf(
   if (named && hasVariant('bodyWithPeople')) return 'bodyWithPeople'
   if (!('author' in params) && hasCustomer && hasVariant('bodyWithCustomer')) {
     return 'bodyWithCustomer'
+  }
+  // A product that is running out of stock (it carries its name, how many are available and its threshold)
+  const hasProduct = typeof params['product'] === 'string' && params['product'].trim() !== ''
+  // The text reads how many are available and the threshold: a notice saved without them keeps the plain text
+  const hasNumbers =
+    typeof params['available'] === 'number' && typeof params['threshold'] === 'number'
+  if (
+    !('author' in params) &&
+    !hasCustomer &&
+    hasProduct &&
+    hasNumbers &&
+    hasVariant('bodyWithProduct')
+  ) {
+    return 'bodyWithProduct'
   }
   return 'body'
 }
