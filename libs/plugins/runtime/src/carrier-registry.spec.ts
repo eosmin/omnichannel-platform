@@ -225,6 +225,16 @@ describe('CarrierRegistry', () => {
     expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
   })
 
+  it.each([0, -1, 1.5, Number.NaN])('rejects maxConcurrency %s', maxConcurrency => {
+    expect(codeOf(() => build().register(carrier({ maxConcurrency })))).toBe(
+      ErrorCodes.PLUGIN_CONTRACT_VIOLATION
+    )
+  })
+
+  it('accepts a whole number of guides at a time', () => {
+    expect(() => build().register(carrier({ maxConcurrency: 5 }))).not.toThrow()
+  })
+
   it.each([undefined, 'bulk'])('rejects the creation mode %j', mode => {
     const plugin = carrier({ shipmentCreation: mode as unknown as 'standalone' })
     expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)

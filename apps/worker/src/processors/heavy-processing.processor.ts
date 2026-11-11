@@ -6,9 +6,11 @@ import {
   CarrierStatusLimits,
   channelIdSchema,
   OriginMediaSlots,
-  type OriginMediaSlot
+  type OriginMediaSlot,
+  shipmentPickupSchema
 } from '@platform/core/domain'
 import {
+  type BulkLabelsMergeJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
   exactly,
@@ -26,6 +28,7 @@ import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
+import { BulkLabelsRunner } from '../shipping/bulk-labels-runner.service'
 import { ShipmentPoller } from '../shipping/shipment-poller.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
@@ -39,7 +42,18 @@ type HeavyJob =
   | ReconcileInventoryJob
   | PollShipmentStatusJob
   | ReprocessCarrierEventsJob
+  | BulkLabelsMergeJob
 
+const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
+  z.object({
+    storeId: z.uuid(),
+    jobId: z.uuid(),
+    connectionId: z.uuid().optional(),
+    pickup: shipmentPickupSchema.optional(),
+    canOverridePrice: z.boolean(),
+    correlationId: z.string().optional()
+  })
+)
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
     storeId: z.uuid(),
@@ -100,7 +114,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly originFetcher: OriginMediaFetcher,
     private readonly reconciler: InventoryReconciler,
     private readonly poller: ShipmentPoller,
-    private readonly carrierReplay: CarrierEventReplay
+    private readonly carrierReplay: CarrierEventReplay,
+    private readonly bulkLabels: BulkLabelsRunner
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -130,6 +145,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       await this.poller.poll(poll.data.storeId, poll.data.connectionId, {
         includeOld: poll.data.includeOld
       })
+      return
+    }
+    if (job.name === JobNames.BULK_LABELS_MERGE) {
+      const bulk = bulkLabelsJobSchema.safeParse(job.data)
+      if (!bulk.success) throw new UnrecoverableError('the bulk labels job does not fit its schema')
+      // The last attempt that ends on a fault closes the run as failed; an earlier one is repeated and finds what it made
+      await this.bulkLabels.run(bulk.data, isLastAttempt(job))
       return
     }
     if (job.name === JobNames.REPROCESS_CARRIER_EVENTS) {

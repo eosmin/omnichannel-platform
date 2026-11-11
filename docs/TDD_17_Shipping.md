@@ -929,6 +929,24 @@ the label is created (§4.9).
   carrier call (`POST /shipments/labels/merge`, up to 100 shipments).
 - **Cancelled or voided labels are never merged** (the merge skips them and reports it).
 
+**As built (Step 4.10 PR D1).** `POST /shipments/bulk` takes `orderIds` (unique, at most 100, in the order of the pages) and,
+optionally, a `connectionId` and a `pickup` that apply to every order of the run; it answers 202 with the run, and
+`GET /shipments/bulk/:jobId` gives its state, one entry per order in the order selected (`outcome` `created`, `reused`,
+`skipped` or `failed`, with an `errorCode` or, for a label that exists and is not in the file, a `reason`) and a link to the
+file while it exists. An order that already has a guide with a label that can be printed is `reused` (no carrier is called);
+one whose guide cannot be printed yet is skipped with `SHIPPING_ACTIVE_SHIPMENT_EXISTS`. `succeeded` counts the orders whose label
+is a page of the file and `failed` every other one, so a run that ends by itself is `completed` only when none failed. A label
+that a carrier made is scanned by the worker first: the run waits up to a minute for it and reports `not_ready` for one that
+is not clean by then (the guide is kept and prints later). The merge keeps at most 64 MB of labels in memory and at most 20
+pages per label, and a file that is not a PDF is reported as `unreadable`. `POST /shipments/labels/merge` answers with
+`download`, the shipments `merged` in the order asked, `leftOut` (each shipment with `not_printable`, `no_label`, `not_ready`,
+`unreadable`, `too_large` or `not_found`), `pageCount` and `mixedSizes`, which is the warning that page sizes differ. The merged
+files are `Media` of purpose `bulk_labels`, readable with `shipping:manage`, and `CLEAN_BULK_LABELS` (daily) deletes them after
+`StoreSettings.bulkLabelRetentionDays` of their store and closes as failed a run that has been queued or running for two hours.
+A run is read only by the person who asked for it (another member gets a 404: the file holds the customers of their orders), and a
+store may have at most five runs queued or running (429 after that). A standalone or internal carrier is asked for at most `maxConcurrency` guides at a time per connection (an optional field of
+the plugin, three by default, ten at most); a pickup-bound carrier gets one call per batch, split by its `maxBatchSize`.
+
 ### 4.7 Customer messages with templates
 
 - **Kinds and defaults** (`OrderMessageKind`): the shipment-progress messages and `ORDER_CANCELLED`

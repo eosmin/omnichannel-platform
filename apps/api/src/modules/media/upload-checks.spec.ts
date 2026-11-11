@@ -78,12 +78,26 @@ describe('refuseUnlessMayRead', () => {
     MediaPurpose.ORIGIN,
     MediaPurpose.AVATAR,
     MediaPurpose.EXPORT,
-    MediaPurpose.SHIPPING_LABEL,
-    MediaPurpose.BULK_LABELS,
     MediaPurpose.REMITTANCE_FILE
   ])('keeps reading %s with the permission of the route alone', purpose => {
     expect(() => refuseUnlessMayRead(purpose, [])).not.toThrow()
   })
+
+  it.each([MediaPurpose.SHIPPING_LABEL, MediaPurpose.BULK_LABELS])(
+    'asks for SHIPPING_MANAGE to read %s (name, address and phone of customers), and never serves it to a non-member',
+    purpose => {
+      for (const held of [[], [Permissions.MEDIA_VIEW, Permissions.SHIPPING_VIEW], null]) {
+        let refused: unknown
+        try {
+          refuseUnlessMayRead(purpose, held)
+        } catch (error) {
+          refused = error
+        }
+        expect(refused).toMatchObject({ code: ErrorCodes.PERMISSION_DENIED })
+      }
+      expect(() => refuseUnlessMayRead(purpose, [Permissions.SHIPPING_MANAGE])).not.toThrow()
+    }
+  )
 
   it('refuses a purpose the table does not know instead of serving it', () => {
     expect(() => refuseUnlessMayRead('something_new', [Permissions.MEDIA_VIEW])).toThrow()

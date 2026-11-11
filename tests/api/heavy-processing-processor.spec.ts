@@ -14,6 +14,7 @@ describe('HeavyProcessingProcessor', () => {
   const poll = jest.fn().mockResolvedValue(undefined)
   const clean = { read: 1, applied: 1, stored: 0, left: 0, unconfirmed: 0, failed: 0 }
   const reprocess = jest.fn().mockResolvedValue(clean)
+  const runBulk = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -25,7 +26,8 @@ describe('HeavyProcessingProcessor', () => {
     {} as never, // the origin fetcher is not what is tested
     { reconcileStore } as never, // the reconciler of the stock: what it is handed is what is tested
     { poll } as never, // the poller of the carriers: what it is handed is what is tested
-    { reprocess } as never // the replay of carrier events: what it is handed is what is tested
+    { reprocess } as never, // the replay of carrier events: what it is handed is what is tested
+    { run: runBulk } as never // the bulk labels: what it is handed is what is tested
   )
 
   const base = {
@@ -52,6 +54,7 @@ describe('HeavyProcessingProcessor', () => {
     reconcileStore.mockClear()
     poll.mockClear()
     reprocess.mockClear()
+    runBulk.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -177,6 +180,70 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and polls nothing', async (_name, data) => {
       await expect(pollJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(poll).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the bulk run of labels (TDD_17 §4.6)', () => {
+    const STORE_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const JOB_ID = '5b0e7c7a-2f3b-4a53-8f0e-6f5d2c1b9a10'
+    const bulkJob = (data: unknown, attemptsMade = 0): Promise<void> =>
+      processor.process({
+        name: JobNames.BULK_LABELS_MERGE,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade,
+        opts: { attempts: 2 }
+      } as unknown as ProcessorJob)
+
+    it('hands the run to the runner with what the request chose, and keeps nothing else', async () => {
+      const pickup = { date: '2026-12-01', from: '09:00', to: '12:00' }
+      await bulkJob({
+        storeId: STORE_ID,
+        jobId: JOB_ID,
+        connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
+        pickup,
+        canOverridePrice: true,
+        extra: 'dropped'
+      })
+
+      expect(runBulk).toHaveBeenCalledWith(
+        {
+          storeId: STORE_ID,
+          jobId: JOB_ID,
+          connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
+          pickup,
+          canOverridePrice: true
+        },
+        false
+      )
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('tells the runner when this is the last attempt, so that it closes the run as failed', async () => {
+      await bulkJob({ storeId: STORE_ID, jobId: JOB_ID, canOverridePrice: false }, 1)
+
+      expect(runBulk).toHaveBeenCalledWith(
+        { storeId: STORE_ID, jobId: JOB_ID, canOverridePrice: false },
+        true
+      )
+    })
+
+    it.each([
+      ['no run', { storeId: STORE_ID, canOverridePrice: false }],
+      ['a run that is no id', { storeId: STORE_ID, jobId: 'x', canOverridePrice: false }],
+      ['no store', { jobId: JOB_ID, canOverridePrice: false }],
+      ['no word on the price', { storeId: STORE_ID, jobId: JOB_ID }],
+      [
+        'a pickup that ends before it starts',
+        {
+          storeId: STORE_ID,
+          jobId: JOB_ID,
+          canOverridePrice: false,
+          pickup: { date: '2026-12-01', from: '12:00', to: '09:00' }
+        }
+      ]
+    ])('refuses for good a job with %s, and runs nothing', async (_name, data) => {
+      await expect(bulkJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(runBulk).not.toHaveBeenCalled()
     })
   })
 })

@@ -154,6 +154,12 @@ export class CarrierRegistry {
     ) {
       throw contractViolation(`Carrier ${printable(id)} has an invalid maxBatchSize`)
     }
+    if (
+      plugin.maxConcurrency !== undefined &&
+      !(Number.isInteger(plugin.maxConcurrency) && plugin.maxConcurrency > 0)
+    ) {
+      throw contractViolation(`Carrier ${printable(id)} has an invalid maxConcurrency`)
+    }
 
     if (!Object.hasOwn(CREATION, plugin.shipmentCreation)) {
       throw contractViolation(`Carrier ${printable(id)} has an unknown creation mode`)

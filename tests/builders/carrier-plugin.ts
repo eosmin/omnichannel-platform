@@ -66,6 +66,8 @@ export interface FakeCarrierOptions {
   pickupCancel?: boolean
   cod?: boolean
   maxBatchSize?: number
+  // standalone: the most guides the platform may ask for at the same time (the plugin's own declaration)
+  maxConcurrency?: number
 }
 
 export interface FakeGuide {
@@ -93,6 +95,13 @@ export interface FakeCarrierState {
   cancel: FakeCarrierBehavior
   // The references the carrier refuses inside a batch while accepting the rest
   rejectReferences: Set<string>
+  // Creates under way now, and the most there were at once since the last reset
+  inFlight: number
+  peakInFlight: number
+  // A test that wants to see the most the platform asks at once sets `gate`: the next `gate` creates each wait (up to a second) until
+  // that many are in flight together, so the answer does not depend on how long anything takes. `gated` counts the ones that waited.
+  gate: number
+  gated: number
 }
 
 export interface FakeCarrier {
@@ -148,12 +157,41 @@ function settle<T>(run: () => T): Promise<T> {
   })
 }
 
-// A one-page "PDF": enough bytes for the core to store; the fake draws no label
+// A real one-page PDF (4x6 inches) with the guide number in it: the merge of labels reads the file, so a stand-in will not do. A
+// PDF is a header, numbered objects, a table of where each one starts, and a trailer that points at the table.
+export function minimalPdf(text: string, size: [number, number] = [288, 432]): Uint8Array {
+  const content = `BT /F1 12 Tf 20 20 Td (${text.replace(/[^A-Za-z0-9 -]/g, '')}) Tj ET`
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${size[0]} ${size[1]}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+  ]
+  let body = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((object, index) => {
+    offsets.push(body.length)
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const table = body.length
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets) body += `${String(offset).padStart(10, '0')} 00000 n \n`
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${table}\n%%EOF\n`
+  return new TextEncoder().encode(body)
+}
+
+// The height of the page is 400 points plus the number of the guide: a test that merges labels reads the order of the pages
+// from the heights
+export function labelHeightOf(guideNumber: string): number {
+  return 400 + Number(guideNumber.replace(/\D/g, ''))
+}
+
 function labelFor(guideNumber: string, format: CreateShipmentParams['labelFormat']) {
   return {
     format,
     contentType: 'application/pdf',
-    data: new TextEncoder().encode(`%PDF-1.4 fake label ${guideNumber}`)
+    data: minimalPdf(`label ${guideNumber}`, [288, labelHeightOf(guideNumber)])
   }
 }
 
@@ -177,7 +215,11 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
     calls: [],
     create: FakeCarrierBehaviors.OK,
     cancel: FakeCarrierBehaviors.OK,
-    rejectReferences: new Set()
+    rejectReferences: new Set(),
+    inFlight: 0,
+    peakInFlight: 0,
+    gate: 0,
+    gated: 0
   }
   let sequence = 0
   let pickupSequence = 0
@@ -286,17 +328,32 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
 
     shipmentCreation: mode,
     ...(mode === ShipmentCreationModes.PICKUP_BOUND ? { maxBatchSize } : {}),
+    ...(options.maxConcurrency === undefined ? {} : { maxConcurrency: options.maxConcurrency }),
 
     ...(mode === ShipmentCreationModes.STANDALONE
       ? {
-          createShipment: (_ctx: CarrierContext, params: CreateShipmentParams) =>
-            settle(() => {
-              record('createShipment', params)
-              failBefore()
-              const { result } = makeGuide(params, null)
-              failAfter()
-              return result
-            })
+          createShipment: async (_ctx: CarrierContext, params: CreateShipmentParams) => {
+            state.inFlight += 1
+            state.peakInFlight = Math.max(state.peakInFlight, state.inFlight)
+            try {
+              if (state.gated < state.gate) {
+                state.gated += 1
+                const deadline = Date.now() + 1000
+                while (state.inFlight < state.gate && Date.now() < deadline) {
+                  await new Promise<void>(resolve => setTimeout(resolve, 5))
+                }
+              }
+              return await settle(() => {
+                record('createShipment', params)
+                failBefore()
+                const { result } = makeGuide(params, null)
+                failAfter()
+                return result
+              })
+            } finally {
+              state.inFlight -= 1
+            }
+          }
         }
       : {}),
 
