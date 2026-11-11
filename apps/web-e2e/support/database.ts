@@ -33,6 +33,11 @@ import {
   createConversation,
   createConversationOf,
   createCustomer,
+  createInventoryLevel,
+  createInventoryMovement,
+  createProduct,
+  createWarehouse as createWarehouseRow,
+  linkWarehouse,
   createCustomerIdentity,
   createMessage,
   createSnippet,
@@ -1193,4 +1198,91 @@ export async function addOrdersTo(
         await owner.customer.deleteMany({ where: { id: made.customerId } })
       })
   }
+}
+
+// A person who only receives transfers (and may see the inventory): the receipt screen opens for them, the draft
+// does not
+export function addTransferReceiver(storeId: string, email: string): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Transfer Receiver',
+    roleName: 'E2E transfer receiver',
+    permissions: [Permissions.INVENTORY_VIEW, Permissions.INVENTORY_RECEIVE_TRANSFERS]
+  })
+}
+
+export interface TransferScenario {
+  from: { id: string; code: string; name: string }
+  to: { id: string; code: string; name: string }
+  productName: string
+  sku: string
+  // The units the origin holds at the start
+  units: number
+}
+
+// The stock a transfer case starts from, which no screen can put in the database: two warehouses linked to the
+// store, and a product with `units` on hand in the first (a movement explains the level, so the kardex agrees).
+// The names carry the run, so that the cases of one run find their own rows.
+export function addTransferScenario(
+  storeId: string,
+  run: string,
+  units = 10
+): Promise<TransferScenario> {
+  return withOwner(async owner => {
+    const { organizationId } = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const code = run.toUpperCase()
+    const fromName = `Origin ${run}`
+    const toName = `Destination ${run}`
+    const from = await createWarehouseRow(owner, {
+      organizationId,
+      name: fromName,
+      code: `OR-${code}`
+    })
+    const to = await createWarehouseRow(owner, {
+      organizationId,
+      name: toName,
+      code: `DE-${code}`
+    })
+    await linkWarehouse(owner, { organizationId, storeId, warehouseId: from.id })
+    await linkWarehouse(owner, { organizationId, storeId, warehouseId: to.id })
+    const sku = `TR-${code}`
+    const product = await createProduct(owner, {
+      storeId,
+      name: `Transfer shoe ${run}`,
+      sku
+    })
+    await createInventoryLevel(owner, {
+      storeId,
+      productId: product.id,
+      warehouseId: from.id,
+      onHand: units
+    })
+    await createInventoryMovement(owner, {
+      storeId,
+      productId: product.id,
+      warehouseId: from.id,
+      quantity: units
+    })
+    return {
+      from: { id: from.id, code: from.code, name: fromName },
+      to: { id: to.id, code: to.code, name: toName },
+      productName: product.name,
+      sku,
+      units
+    }
+  })
+}
+
+// What a warehouse holds of a product (the level the api keeps), for the cases that check the stock moved
+export function onHandOf(warehouseId: string, productName: string): Promise<number> {
+  return withOwner(async owner => {
+    const level = await owner.inventoryLevel.findFirst({
+      where: { warehouseId, product: { name: productName } },
+      select: { onHand: true }
+    })
+    return level?.onHand ?? 0
+  })
 }
