@@ -3,7 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { Permissions } from '@platform/core/auth'
+import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import {
   AppPaths,
@@ -11,6 +11,9 @@ import {
   ConversationStatus,
   ConversationStatusReasons,
   MembershipStatus,
+  OrderResourceTypes,
+  OrderStatus,
+  PackingNoteNotice,
   ProductResourceTypes,
   TransferResourceTypes
 } from '@platform/core/domain'
@@ -25,11 +28,15 @@ import {
   type MessageChangedPayload,
   type MessageMentionPayload,
   type MessageReceivedPayload,
+  type OrderCreatedPayload,
+  type OrderEventPayload,
+  type OrderStatusChangedPayload,
   type TransferChangedPayload
 } from '@platform/core/events'
 import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/core/exports'
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
 import { type NotificationType, NotificationTypes } from '@platform/core/notifications'
+import { readOrderPreferences } from '@platform/core/store-preferences'
 
 import { customerNameOf, textForParams } from './notification-params'
 import { NotificationsService } from './notifications.service'
@@ -304,6 +311,165 @@ export class NotificationsEventsListener {
           'a dispatched transfer could not be notified to a store'
         )
       }
+    }
+  }
+
+  // The packing note of an order that is already confirmed changed (owner, 2026-11-10): the members who may prepare or ship
+  // orders of the store are told, except who changed it. They are found now, not when the note was written. The event
+  // carries ids only: the note itself is read in the order, by whoever may read orders.
+  @OnEvent(Events.ORDER_PACKING_NOTE_CHANGED)
+  async onPackingNoteChanged(payload: OrderEventPayload): Promise<void> {
+    const { storeId, orderId, orderNumber, actor } = payload
+    try {
+      const members = await this.membersWith(storeId, PackingNoteNotice.PERMISSIONS, actor.id)
+      // Told once per order while the earlier warning is unread: a note edited three times is one line in the center
+      await this.notifications.sendToUsersOnce(members, {
+        storeId,
+        type: NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
+        params: { orderNumber },
+        resourceType: OrderResourceTypes.ORDER,
+        resourceId: orderId,
+        actionPath: AppPaths.store.order(storeId, orderId)
+      })
+    } catch (error) {
+      this.logger.error(
+        { orderId, err: String(error) },
+        'a packing note warning could not be notified'
+      )
+    }
+  }
+
+  // The orders raise four notices more (Step 4.3): who is told is decided here, when the notice is made, never by the
+  // event, which carries ids only. The one who did the change is never told about it.
+  private async membersWith(
+    storeId: string,
+    permissions: readonly Permission[],
+    exceptUserId: string | null
+  ): Promise<string[]> {
+    const members = await this.prisma.client.membership.findMany({
+      where: {
+        storeId,
+        status: MembershipStatus.ACTIVE,
+        revokedAt: null,
+        ...(exceptUserId === null ? {} : { userId: { not: exceptUserId } }),
+        // Who holds one of the permissions AND may read orders: the notice carries a link to the order
+        AND: [
+          { role: { permissions: { some: { name: { in: [...permissions] } } } } },
+          { role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }
+        ]
+      },
+      select: { userId: true }
+    })
+    return members.map(member => member.userId)
+  }
+
+  private async tellAboutOrder(
+    payload: OrderEventPayload,
+    type: NotificationType,
+    recipients: readonly string[]
+  ): Promise<void> {
+    await this.notifications.sendToUsers(recipients, {
+      storeId: payload.storeId,
+      type,
+      params: { orderNumber: payload.orderNumber },
+      resourceType: OrderResourceTypes.ORDER,
+      resourceId: payload.orderId,
+      actionPath: AppPaths.store.order(payload.storeId, payload.orderId)
+    })
+  }
+
+  // A new order that waits for its confirmation goes to who may confirm it; one created already confirmed waits for nobody
+  @OnEvent(Events.ORDER_CREATED)
+  async onOrderCreated(payload: OrderCreatedPayload): Promise<void> {
+    try {
+      const order = await this.prisma.client.order.findFirst({
+        where: { id: payload.orderId, storeId: payload.storeId },
+        select: { status: true }
+      })
+      if (order?.status !== OrderStatus.PENDING_CONFIRMATION) return
+      await this.tellAboutOrder(
+        payload,
+        NotificationTypes.ORDER_CREATED,
+        await this.membersWith(payload.storeId, [Permissions.ORDERS_CONFIRM], payload.actor.id)
+      )
+    } catch (error) {
+      this.logger.error(
+        { orderId: payload.orderId, err: String(error) },
+        'an order notice could not be sent'
+      )
+    }
+  }
+
+  // The status of an order changed: the member who made the order is told, unless they made the change, and only while
+  // they are still a member of the store
+  @OnEvent(Events.ORDER_STATUS_CHANGED)
+  async onOrderStatusChanged(payload: OrderStatusChangedPayload): Promise<void> {
+    try {
+      const order = await this.prisma.client.order.findFirst({
+        where: { id: payload.orderId, storeId: payload.storeId },
+        select: { createdBy: true }
+      })
+      if (order === null || order.createdBy === payload.actor.id) return
+      // Only while they are still a member who may read orders: a role that lost the permission is told nothing
+      const readers = await this.membersWith(
+        payload.storeId,
+        [Permissions.ORDERS_VIEW],
+        payload.actor.id
+      )
+      if (!readers.includes(order.createdBy)) return
+      await this.tellAboutOrder(payload, NotificationTypes.ORDER_STATUS_CHANGED, [order.createdBy])
+    } catch (error) {
+      this.logger.error(
+        { orderId: payload.orderId, err: String(error) },
+        'an order notice could not be sent'
+      )
+    }
+  }
+
+  // An agent asked for the approval of a price: whoever may approve is told, but the one who asked
+  @OnEvent(Events.ORDER_PRICE_APPROVAL_REQUESTED)
+  async onPriceApprovalRequested(payload: OrderEventPayload): Promise<void> {
+    try {
+      await this.tellAboutOrder(
+        payload,
+        NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
+        await this.membersWith(
+          payload.storeId,
+          [Permissions.ORDERS_APPROVE_PRICE],
+          payload.actor.id
+        )
+      )
+    } catch (error) {
+      this.logger.error(
+        { orderId: payload.orderId, err: String(error) },
+        'an order notice could not be sent'
+      )
+    }
+  }
+
+  // A price was set by a member with the override: the approvers are told when the store keeps `notifyOnPriceOverride` on
+  @OnEvent(Events.ORDER_PRICE_OVERRIDDEN)
+  async onPriceOverridden(payload: OrderEventPayload): Promise<void> {
+    try {
+      const settings = await this.prisma.client.storeSettings.findUnique({
+        where: { storeId: payload.storeId },
+        select: { preferences: true }
+      })
+      if (!readOrderPreferences(settings?.preferences).notifyOnPriceOverride) return
+      await this.tellAboutOrder(
+        payload,
+        NotificationTypes.ORDER_PRICE_OVERRIDDEN,
+        await this.membersWith(
+          payload.storeId,
+          [Permissions.ORDERS_APPROVE_PRICE],
+          payload.actor.id
+        )
+      )
+    } catch (error) {
+      this.logger.error(
+        { orderId: payload.orderId, err: String(error) },
+        'an order notice could not be sent'
+      )
     }
   }
 

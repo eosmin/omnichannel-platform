@@ -109,6 +109,8 @@ model StoreSettings {
   defaultLowStockThreshold   Int?     @map("default_low_stock_threshold") // The threshold a new product starts with; null = none
   allowNegativeStock         Boolean  @default(false) @map("allow_negative_stock")
   allowSplitFulfillment      Boolean  @default(false) @map("allow_split_fulfillment")
+  // Orders (TDD_17 §4.3): the number the next order of the store takes; OrdersService raises it as it makes the order
+  nextOrderNumber            Int      @default(1) @map("next_order_number")
   updatedAt                  DateTime @updatedAt @map("updated_at")
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)

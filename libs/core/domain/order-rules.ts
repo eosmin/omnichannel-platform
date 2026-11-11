@@ -244,6 +244,11 @@ export interface PriceControlInput {
   // rejected request may still hold numbers)
   readonly approvalStatus: PriceApprovalStatus
   readonly reason: string | null | undefined
+  // The discount and the fee are the ones the order already had, with the same lines (so the same subtotal), and the order
+  // held no request: whoever sanctioned them (an override, a rule that allowed them) did it already, and an edit of
+  // something else must not put them to a new test that this member would fail. Meaningless once a request is open.
+  readonly discountUnchanged?: boolean
+  readonly feeUnchanged?: boolean
   // The values an approver accepted, or null when the order holds no approval
   readonly approved: {
     readonly discountCents: number | null
@@ -271,17 +276,17 @@ export function evaluatePriceControl(input: PriceControlInput): PriceControlResu
   if (input.linePriceChanged && !input.canOverridePrice) {
     return refuse(ErrorCodes.ORDER_PRICE_OVERRIDE_FORBIDDEN)
   }
-  const discountOverLimit = !isDiscountWithinLimit(
-    input.discountCents,
-    input.subtotalCents,
-    input.discountLimitPercent
-  )
-  const reasonNeeded = input.linePriceChanged || input.discountCents > 0 || !input.feeWithinRange
+  const sanctioned = input.approvalStatus === PriceApprovalStatus.NOT_REQUIRED
+  const discountOverLimit =
+    !(sanctioned && input.discountUnchanged === true) &&
+    !isDiscountWithinLimit(input.discountCents, input.subtotalCents, input.discountLimitPercent)
+  const feeInRange = (sanctioned && input.feeUnchanged === true) || input.feeWithinRange
+  const reasonNeeded = input.linePriceChanged || input.discountCents > 0 || !feeInRange
   if (reasonNeeded && normalizeNote(input.reason) === null) {
     return refuse(ErrorCodes.ORDER_PRICE_REASON_REQUIRED)
   }
   const overridden = input.canOverridePrice && reasonNeeded
-  const needsApproval = !input.canOverridePrice && (discountOverLimit || !input.feeWithinRange)
+  const needsApproval = !input.canOverridePrice && (discountOverLimit || !feeInRange)
   if (!needsApproval) {
     return {
       ok: true,
@@ -297,7 +302,7 @@ export function evaluatePriceControl(input: PriceControlInput): PriceControlResu
     !discountOverLimit ||
     (approved !== null && input.discountCents <= (approved.discountCents ?? 0))
   const feeCovered =
-    input.feeWithinRange || (approved !== null && input.shippingCents === approved.shippingCents)
+    feeInRange || (approved !== null && input.shippingCents === approved.shippingCents)
   const covered = discountCovered && feeCovered
   return {
     ok: true,

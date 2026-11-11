@@ -380,6 +380,48 @@ describe('evaluatePriceControl', () => {
       ...change
     })
 
+  it('does not put a discount the order already had to a new test when something else is edited', () => {
+    const held = { discountCents: 2000, reason: 'vip', discountUnchanged: true }
+    // Sanctioned before (an override set it): changing only the fee leaves the order as it was
+    expect(run(held)).toMatchObject({
+      ok: true,
+      approvalStatus: PriceApprovalStatus.NOT_REQUIRED,
+      needsApproval: false
+    })
+    // The same discount, not known to be unchanged, is over the limit of 0
+    expect(run({ ...held, discountUnchanged: false })).toMatchObject({ needsApproval: true })
+    expect(run({ ...held, discountUnchanged: undefined })).toMatchObject({ needsApproval: true })
+    // A request that is open sanctions nothing: the discount is still over the limit
+    expect(run({ ...held, approvalStatus: PriceApprovalStatus.PENDING })).toMatchObject({
+      needsApproval: true,
+      approvalStatus: PriceApprovalStatus.PENDING
+    })
+  })
+
+  it('does not put a fee the order already had to a new test either, and still asks the reason of a discount', () => {
+    expect(run({ feeWithinRange: false, feeUnchanged: true, reason: 'courier' })).toMatchObject({
+      needsApproval: false,
+      approvalStatus: PriceApprovalStatus.NOT_REQUIRED
+    })
+    expect(run({ feeWithinRange: false, feeUnchanged: false, reason: 'courier' })).toMatchObject({
+      needsApproval: true
+    })
+    expect(
+      run({
+        feeWithinRange: false,
+        feeUnchanged: true,
+        reason: 'courier',
+        approvalStatus: PriceApprovalStatus.REJECTED
+      })
+    ).toMatchObject({
+      needsApproval: true
+    })
+    expect(run({ discountCents: 100, reason: null, discountUnchanged: true })).toEqual({
+      ok: false,
+      code: ErrorCodes.ORDER_PRICE_REASON_REQUIRED
+    })
+  })
+
   it('needs nothing for an order at catalog prices with no discount', () => {
     expect(run({})).toEqual({
       ok: true,

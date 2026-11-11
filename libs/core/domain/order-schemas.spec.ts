@@ -9,7 +9,7 @@ import {
   recordOrderPaymentSchema,
   updateOrderSchema
 } from './order-schemas'
-import { OrderStatus, PaymentMethod, PaymentStatus } from './status-enums'
+import { OrderConfirmationChannel, OrderStatus, PaymentMethod, PaymentStatus } from './status-enums'
 
 const ID = '0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'
 const ID2 = '1c2d3e4f-5061-4b7c-9d8e-0f1a2b3c4d5e'
@@ -20,6 +20,41 @@ const valid = {
   paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
   recipientPhones: ['7123 4567']
 }
+
+describe('the price of a line', () => {
+  it('is the catalog price unless a price and its reason are named', () => {
+    const parsed = createOrderSchema.parse({
+      ...valid,
+      items: [{ productId: ID, quantity: 1, unitPriceCents: 900, priceReason: '  loyal customer ' }]
+    })
+    expect(parsed.items[0]).toEqual({
+      productId: ID,
+      quantity: 1,
+      unitPriceCents: 900,
+      priceReason: 'loyal customer'
+    })
+  })
+
+  it('refuses a fraction of a cent, a negative price and one over the ceiling', () => {
+    for (const unitPriceCents of [0.5, -1, ORDER_MAX_AMOUNT_CENTS + 1]) {
+      expect(
+        createOrderSchema.safeParse({
+          ...valid,
+          items: [{ productId: ID, quantity: 1, unitPriceCents }]
+        }).success
+      ).toBe(false)
+    }
+  })
+
+  it('still refuses any other price field a client invents', () => {
+    expect(
+      createOrderSchema.safeParse({
+        ...valid,
+        items: [{ productId: ID, quantity: 1, totalCents: 1 }]
+      }).success
+    ).toBe(false)
+  })
+})
 
 describe('recipientPhonesSchema', () => {
   it('keeps the digits: spaces, plus signs and dashes are stripped', () => {
@@ -89,10 +124,12 @@ describe('createOrderSchema', () => {
     ]) {
       expect(createOrderSchema.safeParse({ ...valid, ...forged }).success).toBe(false)
     }
+    // A line may carry the override of ORDERS_OVERRIDE_PRICE: the schema cannot know who asks, so the service refuses it
+    // from anybody else (tests/api/orders.spec.ts)
     expect(
       createOrderSchema.safeParse({
         ...valid,
-        items: [{ productId: ID, quantity: 1, unitPriceCents: 1 }]
+        items: [{ productId: ID, quantity: 1, totalCents: 1 }]
       }).success
     ).toBe(false)
   })
@@ -409,6 +446,27 @@ describe('changeOrderStatusSchema', () => {
     ).toBe(true)
     expect(
       changeOrderStatusSchema.safeParse({ status: OrderStatus.DELIVERED, restock: true }).success
+    ).toBe(false)
+  })
+
+  it('takes how the customer confirmed only to confirm, and never the moment of creation', () => {
+    expect(
+      changeOrderStatusSchema.safeParse({
+        status: OrderStatus.CONFIRMED,
+        confirmedVia: OrderConfirmationChannel.CALL
+      }).success
+    ).toBe(true)
+    expect(
+      changeOrderStatusSchema.safeParse({
+        status: OrderStatus.PREPARING,
+        confirmedVia: OrderConfirmationChannel.CALL
+      }).success
+    ).toBe(false)
+    expect(
+      changeOrderStatusSchema.safeParse({
+        status: OrderStatus.CONFIRMED,
+        confirmedVia: OrderConfirmationChannel.AT_CREATION
+      }).success
     ).toBe(false)
   })
 

@@ -6,6 +6,8 @@ import type {
   ConversationStatus,
   ConversationStatusReason,
   InventoryMovementType,
+  OrderStatus,
+  PaymentStatus,
   TransferStatus
 } from '../index'
 
@@ -95,14 +97,31 @@ export interface ConversationSnoozeExpiredPayload {
   assignedTo: string | null
 }
 
-export interface OrderCreatedPayload {
-  storeId: string
-  orderId: string
-  orderNumber: string
+export interface OrderCreatedPayload extends OrderEventPayload {
   customerId: string
   conversationId: string | null
   totalCents: number
   currency: string
+}
+
+// What every event of an order says: which order, and who did it. Ids and numbers only: no note (the customer's, the
+// customer care's or the packing one), no address and no phone ever travels in an event (TDD_17 §8), so the payloads
+// of the plugin API, the webhooks and the bridge cannot leak them. `actor.id` is null for a change made by the system.
+export interface OrderEventPayload {
+  storeId: string
+  orderId: string
+  orderNumber: string
+  actor: ActorRef
+}
+
+export interface OrderStatusChangedPayload extends OrderEventPayload {
+  from: OrderStatus
+  to: OrderStatus
+}
+
+export interface OrderPaymentPayload extends OrderEventPayload {
+  from: PaymentStatus
+  to: PaymentStatus
 }
 
 // A superset of what the cache listener reads (TDD_16 §5).
@@ -337,6 +356,20 @@ export interface DomainEventPayloads {
   [Events.CUSTOMER_MERGED]: CustomerMergedPayload
   [Events.CUSTOMER_UNMERGED]: CustomerUnmergedPayload
   [Events.CUSTOMER_IDENTITY_LINKED]: CustomerIdentityLinkedPayload
+  [Events.ORDER_CREATED]: OrderCreatedPayload
+  [Events.ORDER_UPDATED]: OrderEventPayload
+  [Events.ORDER_CONFIRMED]: OrderEventPayload
+  [Events.ORDER_STATUS_CHANGED]: OrderStatusChangedPayload
+  [Events.ORDER_SHIPPED]: OrderEventPayload
+  [Events.ORDER_DELIVERED]: OrderEventPayload
+  [Events.ORDER_CANCELLED]: OrderEventPayload
+  [Events.ORDER_PAYMENT_RECORDED]: OrderPaymentPayload
+  [Events.ORDER_PAYMENT_STATUS_CHANGED]: OrderPaymentPayload
+  [Events.ORDER_PRICE_OVERRIDDEN]: OrderEventPayload
+  [Events.ORDER_PRICE_APPROVAL_REQUESTED]: OrderEventPayload
+  [Events.ORDER_PRICE_APPROVED]: OrderEventPayload
+  [Events.ORDER_PRICE_REJECTED]: OrderEventPayload
+  [Events.ORDER_PACKING_NOTE_CHANGED]: OrderEventPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.TRANSFER_DISPATCHED]: TransferChangedPayload
