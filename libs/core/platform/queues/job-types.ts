@@ -157,6 +157,13 @@ export interface BulkLabelsMergeJob extends BaseJob {
   pickup?: { date: string; from: string; to: string }
   canOverridePrice: boolean
 }
+// The void of one guide at its carrier (TDD_17 §4.8): the shipment is already CANCEL_PENDING when this is queued. Who asked
+// signs the moves of the history; null is the system.
+export interface CancelShipmentJob extends BaseJob {
+  storeId: string
+  shipmentId: string
+  requestedBy: string | null
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

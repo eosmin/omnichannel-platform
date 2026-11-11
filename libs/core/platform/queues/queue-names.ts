@@ -99,4 +99,9 @@ export const pollShipmentStatusJobId = (connectionId: string, bucket: number): s
 export const bulkLabelsMergeJobId = (jobId: string): string =>
   `${JobNames.BULK_LABELS_MERGE}-${jobId}`
 
+// One void per guide and request: the request asked twice is one job, and a retry of a failed void (a later request) is another
+// (dashes, no colon)
+export const cancelShipmentJobId = (shipmentId: string, requestedAtMs: number): string =>
+  `${JobNames.CANCEL_SHIPMENT}-${shipmentId}-${requestedAtMs}`
+
 export type JobName = (typeof JobNames)[keyof typeof JobNames]

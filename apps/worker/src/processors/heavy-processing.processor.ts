@@ -11,6 +11,7 @@ import {
 } from '@platform/core/domain'
 import {
   type BulkLabelsMergeJob,
+  type CancelShipmentJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
   exactly,
@@ -29,6 +30,7 @@ import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
 import { BulkLabelsRunner } from '../shipping/bulk-labels-runner.service'
+import { ShipmentCanceller } from '../shipping/shipment-canceller.service'
 import { ShipmentPoller } from '../shipping/shipment-poller.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
@@ -43,6 +45,7 @@ type HeavyJob =
   | PollShipmentStatusJob
   | ReprocessCarrierEventsJob
   | BulkLabelsMergeJob
+  | CancelShipmentJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -51,6 +54,14 @@ const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
     connectionId: z.uuid().optional(),
     pickup: shipmentPickupSchema.optional(),
     canOverridePrice: z.boolean(),
+    correlationId: z.string().optional()
+  })
+)
+const cancelShipmentJobSchema = exactly<CancelShipmentJob>()(
+  z.object({
+    storeId: z.uuid(),
+    shipmentId: z.uuid(),
+    requestedBy: z.uuid().nullable(),
     correlationId: z.string().optional()
   })
 )
@@ -115,7 +126,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly reconciler: InventoryReconciler,
     private readonly poller: ShipmentPoller,
     private readonly carrierReplay: CarrierEventReplay,
-    private readonly bulkLabels: BulkLabelsRunner
+    private readonly bulkLabels: BulkLabelsRunner,
+    private readonly canceller: ShipmentCanceller
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -152,6 +164,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!bulk.success) throw new UnrecoverableError('the bulk labels job does not fit its schema')
       // The last attempt that ends on a fault closes the run as failed; an earlier one is repeated and finds what it made
       await this.bulkLabels.run(bulk.data, isLastAttempt(job))
+      return
+    }
+    if (job.name === JobNames.CANCEL_SHIPMENT) {
+      const cancel = cancelShipmentJobSchema.safeParse(job.data)
+      if (!cancel.success) throw new UnrecoverableError('the void job does not fit its schema')
+      // Rejects while the carrier does not answer (the queue asks again); the last attempt closes the void as failed
+      await this.canceller.run(cancel.data, isLastAttempt(job))
       return
     }
     if (job.name === JobNames.REPROCESS_CARRIER_EVENTS) {

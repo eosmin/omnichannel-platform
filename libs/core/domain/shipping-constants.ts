@@ -345,7 +345,8 @@ export const ShipmentFailureReasons = {
   CREDENTIALS_UNREADABLE: 'credentials_unreadable', // the stored credentials do not open
   LABEL_INVALID: 'label_invalid', // the label the carrier gave is not a PDF the platform can keep
   RECORD_FAILED: 'record_failed', // the carrier made the guide and the platform could not write it down
-  MARKED_FAILED: 'marked_failed' // an agent decided it failed
+  MARKED_FAILED: 'marked_failed', // an agent decided it failed
+  NOT_QUEUED: 'not_queued' // the void could not be handed to the queue: an agent asks again
 } as const
 export type ShipmentFailureReason =
   (typeof ShipmentFailureReasons)[keyof typeof ShipmentFailureReasons]
@@ -410,6 +411,25 @@ export const ShipmentPrintableStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.RETURNING,
   ShipmentStatus.RETURNED
 ]
+
+// Voiding a guide at its carrier (TDD_17 §4.8): a carrier that does not answer is asked again this many times in all, with the
+// pauses doubling from the base, and then the guide is left CANCEL_FAILED for an agent to settle
+export const ShipmentCancelLimits = {
+  JOB_ATTEMPTS: 5,
+  BACKOFF_BASE_MS: 30_000
+} as const
+
+// What an edit of an order changes that a guide that already exists was made for (TDD_17 §4.8): the guide is voided and the
+// agent makes another one
+export const GuideAffectingFields = {
+  ADDRESS: 'address',
+  RECIPIENT_PHONES: 'recipient_phones',
+  PAYMENT_METHOD: 'payment_method',
+  ITEMS: 'items',
+  COD_TOTAL: 'cod_total',
+  CARRIER: 'carrier'
+} as const
+export type GuideAffectingField = (typeof GuideAffectingFields)[keyof typeof GuideAffectingFields]
 
 // Bulk generation and the merge of stored labels (TDD_17 §4.6)
 export const BulkLabelLimits = {
@@ -487,6 +507,13 @@ export function shipmentIdempotencyKey(
 }
 
 // What the history of a shipment says when the platform wrote the line itself: an i18n key, translated by the screen
+// What a pickup is left saying when a cancelled shipment left it and the carrier could not be told (`PickupRequest.lastError`,
+// TDD_17 §4.8): the agent settles it with the carrier
+export const PickupLeaveNotes = {
+  NOT_UPDATED: 'shipment_left_carrier_not_updated',
+  EMPTY_NOT_CANCELLED: 'pickup_emptied_carrier_not_cancelled'
+} as const
+
 export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier' } as const
 
 // The keys a carrier is called with besides the one of a guide (TDD_17 §4.5, §4.8): one for a whole pickup batch, one for a void

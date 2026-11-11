@@ -14,8 +14,6 @@ import {
   CarrierCapability,
   CarrierConnectionStatus,
   CarrierHealthReasons,
-  GuideRefundStatus,
-  cancelShipmentKey,
   PickupDefaults,
   pickupBatchKey,
   PickupStatus,
@@ -26,9 +24,7 @@ import {
   ShipmentKind,
   ShipmentLimits,
   ShipmentLockScopes,
-  ShipmentPastPickupStatuses,
   ShipmentStatus,
-  ShipmentUnknownOutcomeStatuses,
   type SetShipmentStatusBody
 } from '@platform/core/domain'
 import {
@@ -42,7 +38,6 @@ import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i
 import {
   CarrierAuthError,
   CarrierRejectedError,
-  type CancelShipmentResult,
   type CarrierContext,
   type CarrierLabel,
   type CarrierPlugin,
@@ -108,10 +103,6 @@ export interface ShipmentChange {
 // A row that is still CREATING after this long was not left by a call in flight (a call gives up after the deadline times
 // the attempts, and a pickup batch records its entries one after another): an agent may settle it
 const CREATING_STALE_MS = 30 * 60 * 1000
-// A cancel that asked nobody (the process died after it was written) may be asked again after this, never before: the call
-// may still be in flight
-const CANCEL_STALE_MS = 5 * 60 * 1000
-
 function safeTrackingUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 500) return null
   try {
@@ -1114,160 +1105,6 @@ export class ShippingService {
         await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber)
       }
       return { shipmentId, orderId: row.orderId, from, to }
-    })
-  }
-
-  // The guide is being voided (TDD_17 §4.8). A `local` guide is cancelled at once and for free; a carrier that can void is
-  // asked once; one that cannot (or whose connection was disconnected) leaves the shipment CANCEL_PENDING, with the refund
-  // not supported, for the agent to void it at the carrier and press "mark as voided".
-  async cancel(
-    storeId: string,
-    shipmentId: string,
-    actor: ActorRef,
-    plugins: PluginLookup
-  ): Promise<ShipmentChange> {
-    const started = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const row = await this.lockedShipment(tx, storeId, shipmentId)
-      const from = row.status as ShipmentStatus
-      if (ShipmentUnknownOutcomeStatuses.includes(from)) {
-        throw new PlatformException(
-          ErrorCodes.SHIPPING_OUTCOME_UNKNOWN,
-          'a guide may exist: resolve it first',
-          HttpStatusCodes.CONFLICT
-        )
-      }
-      if (ShipmentPastPickupStatuses.includes(from)) {
-        throw new PlatformException(
-          ErrorCodes.SHIPPING_CANNOT_CANCEL_AFTER_PICKUP,
-          'the package has left',
-          HttpStatusCodes.CONFLICT
-        )
-      }
-      // The guide is already being voided: a second request must not call the carrier again
-      if (from === ShipmentStatus.CANCEL_PENDING) {
-        // Asked again only when nobody can be asking: the carrier could be reached and said nothing was done, or the process
-        // that asked is long gone (it is not a guide the carrier cannot void, which is `not_supported`)
-        const asked = row.cancelRequestedAt
-        const forgotten =
-          row.refundStatus !== String(GuideRefundStatus.NOT_SUPPORTED) &&
-          asked !== null &&
-          Date.now() - asked.getTime() >= CANCEL_STALE_MS
-        if (!forgotten) throw this.invalidTransition('the guide is already being cancelled')
-        return { row, from }
-      }
-      await this.writes.move(
-        tx,
-        this.identityOf(row),
-        from,
-        ShipmentStatus.CANCEL_PENDING,
-        { cancelRequestedAt: new Date(), lastError: null },
-        { actor, source: ShipmentEventSource.MANUAL }
-      )
-      return { row, from }
-    })
-    const { row } = started
-    const identity = this.identityOf(started.row)
-    const plugin = plugins(row.connection.carrierId)
-    const internal = plugin?.capabilities.includes(CarrierCapability.INTERNAL_GUIDE) === true
-    const active = row.connection.status === String(CarrierConnectionStatus.ACTIVE)
-    const finish = async (
-      to: ShipmentStatus,
-      data: Parameters<ShipmentWrites['move']>[4],
-      from: ShipmentStatus = ShipmentStatus.CANCEL_PENDING
-    ): Promise<ShipmentChange> => {
-      await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await this.writes.move(tx, identity, from, to, data, {
-          actor,
-          source: ShipmentEventSource.MANUAL
-        })
-      })
-      return { shipmentId, orderId: row.orderId, from: started.from, to }
-    }
-    if (internal) {
-      return finish(ShipmentStatus.CANCELLED, {
-        cancelledAt: new Date(),
-        refundStatus: GuideRefundStatus.NOT_APPLICABLE
-      })
-    }
-    const cancelCall = plugin?.cancelShipment?.bind(plugin)
-    const guideNumber = row.guideNumber
-    if (
-      plugin === undefined ||
-      cancelCall === undefined ||
-      guideNumber === null ||
-      !active ||
-      !plugin.capabilities.includes(CarrierCapability.CANCEL_SHIPMENT)
-    ) {
-      await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await tx.shipment.updateMany({
-          where: { id: shipmentId, storeId, status: ShipmentStatus.CANCEL_PENDING },
-          data: { refundStatus: GuideRefundStatus.NOT_SUPPORTED }
-        })
-      })
-      return {
-        shipmentId,
-        orderId: row.orderId,
-        from: started.from,
-        to: ShipmentStatus.CANCEL_PENDING
-      }
-    }
-    let answer: CancelShipmentResult
-    try {
-      const context = buildCarrierContext(
-        {
-          id: row.connection.id,
-          storeId,
-          credentials: row.connection.credentials,
-          contact: row.connection.contact
-        },
-        this.cipher
-      )
-      answer = await withDeadline(() =>
-        cancelCall(context, {
-          reference: row.order.orderNumber,
-          guideNumber,
-          ...(row.providerShipmentId === null
-            ? {}
-            : { providerShipmentId: row.providerShipmentId }),
-          idempotencyKey: cancelShipmentKey(row.idempotencyKey)
-        })
-      )
-    } catch (error) {
-      // The carrier did not void it, or did not say: the shipment keeps holding the order until the agent settles it
-      const reason =
-        error instanceof CarrierRejectedError
-          ? clampCarrierMessage(error.message)
-          : failureReasonOf(classifyCarrierError(error))
-      return finish(ShipmentStatus.CANCEL_FAILED, { lastError: reason })
-    }
-    return finish(ShipmentStatus.CANCELLED, {
-      cancelledAt: new Date(),
-      // Only what the contract allows is kept: a plugin that says anything else is read as a refund still pending
-      refundStatus:
-        answer.refundStatus === GuideRefundStatus.CONFIRMED
-          ? GuideRefundStatus.CONFIRMED
-          : GuideRefundStatus.PENDING
-    })
-  }
-
-  // The agent voided the guide at the carrier himself: HIGH-tier, audited (TDD_17 §4.8)
-  async markVoided(storeId: string, shipmentId: string, actor: ActorRef): Promise<ShipmentChange> {
-    return this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const row = await this.lockedShipment(tx, storeId, shipmentId)
-      const from = row.status as ShipmentStatus
-      await this.writes.move(
-        tx,
-        this.identityOf(row),
-        from,
-        ShipmentStatus.CANCELLED,
-        { cancelledAt: new Date(), lastError: null },
-        { actor, source: ShipmentEventSource.MANUAL }
-      )
-      return { shipmentId, orderId: row.orderId, from, to: ShipmentStatus.CANCELLED }
     })
   }
 

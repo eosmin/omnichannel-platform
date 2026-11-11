@@ -444,6 +444,7 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
   [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
+  [Events.SHIPMENT_CANCEL_FAILED]: ShipmentEventPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload

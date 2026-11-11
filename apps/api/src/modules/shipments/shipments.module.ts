@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { CryptoPlatformModule, QueuesPlatformModule } from '@platform/core/http'
 import {
   MergedLabels,
+  ShipmentCancellation,
   ShipmentLabels,
   ShipmentWrites,
   ShippingService
@@ -12,6 +13,7 @@ import { ChannelRegistryModule } from '../channel-registry'
 import { TenancyModule } from '../tenancy'
 
 import { BulkLabelsService } from './bulk-labels.service'
+import { ShipmentVoidQueue } from './shipment-void-queue.service'
 import { ShipmentsController } from './shipments.controller'
 import { ShipmentsService } from './shipments.service'
 
@@ -24,11 +26,13 @@ import { ShipmentsService } from './shipments.service'
   providers: [
     ShippingService,
     ShipmentWrites,
+    ShipmentCancellation,
+    ShipmentVoidQueue,
     ShipmentLabels,
     MergedLabels,
     ShipmentsService,
     BulkLabelsService
   ],
-  exports: [ShipmentsService, ShippingService]
+  exports: [ShipmentsService, ShippingService, ShipmentCancellation, ShipmentVoidQueue]
 })
 export class ShipmentsModule {}
