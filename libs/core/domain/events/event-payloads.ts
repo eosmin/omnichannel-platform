@@ -5,7 +5,8 @@ import type {
   ChannelId,
   ConversationStatus,
   ConversationStatusReason,
-  InventoryMovementType
+  InventoryMovementType,
+  TransferStatus
 } from '../index'
 
 import type { Events } from './event-names'
@@ -121,6 +122,18 @@ export interface InventoryLowPayload {
   productId: string
   available: number
   threshold: number
+}
+
+// A transfer between warehouses was dispatched, received (in part or whole) or cancelled (TDD_16 §4.5). Ids and plain
+// values only: `storeIds` are the stores whose products travel in it, the ones whose members may see its lines.
+export interface TransferChangedPayload {
+  organizationId: string
+  transferId: string
+  number: string
+  status: TransferStatus
+  fromWarehouseId: string
+  toWarehouseId: string
+  storeIds: string[]
 }
 
 // The mark of attention of a conversation changed: `reason` is the new one, null when it was taken off.
@@ -326,6 +339,9 @@ export interface DomainEventPayloads {
   [Events.CUSTOMER_IDENTITY_LINKED]: CustomerIdentityLinkedPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
+  [Events.TRANSFER_DISPATCHED]: TransferChangedPayload
+  [Events.TRANSFER_RECEIVED]: TransferChangedPayload
+  [Events.TRANSFER_CANCELLED]: TransferChangedPayload
   [Events.PRODUCT_CREATED]: ProductChangedPayload
   [Events.PRODUCT_UPDATED]: ProductChangedPayload
   [Events.PRODUCT_DELETED]: ProductChangedPayload

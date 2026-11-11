@@ -119,7 +119,6 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.ORDER_CREATED,
       // Declared in Step 4.3 PR A, raised by the orders service of PR B, which then takes it off this list
       NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
-      NotificationTypes.TRANSFER_DISPATCHED,
       NotificationTypes.COUNT_AWAITING_APPLY,
       NotificationTypes.REMITTANCE_OVERDUE,
       NotificationTypes.WEBHOOK_AUTO_DISABLED,
@@ -133,7 +132,9 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.MEMBER_JOINED,
       NotificationTypes.CHANNEL_DISCONNECTED,
       NotificationTypes.EXPORT_READY,
-      NotificationTypes.INVENTORY_LOW
+      NotificationTypes.INVENTORY_LOW,
+      // Raised by the transfers service since Step 4.5
+      NotificationTypes.TRANSFER_DISPATCHED
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
     }

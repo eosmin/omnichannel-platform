@@ -146,17 +146,19 @@ export class ProductVariantsService {
         select: { id: true, name: true, sku: true }
       })
       if (variant === null) throw resourceNotFound('variant')
-      const [orderItems, inventoryMovements, inventoryLevels] = await Promise.all([
+      const [orderItems, inventoryMovements, inventoryLevels, transferLines] = await Promise.all([
         tx.orderItem.count({ where: { variantId } }),
         tx.inventoryMovement.count({ where: { storeId, variantId } }),
-        tx.inventoryLevel.count({ where: { storeId, variantId } })
+        tx.inventoryLevel.count({ where: { storeId, variantId } }),
+        tx.stockTransferLine.count({ where: { storeId, variantId } })
       ])
-      if (orderItems > 0 || inventoryMovements > 0 || inventoryLevels > 0) {
-        throw resourceConflict('a variant with orders or stock cannot be deleted', {
+      if (orderItems > 0 || inventoryMovements > 0 || inventoryLevels > 0 || transferLines > 0) {
+        throw resourceConflict('a variant with orders, stock or transfers cannot be deleted', {
           conflict: ProductConflicts.HAS_HISTORY,
           [ProductHistoryTables.ORDER_ITEMS]: orderItems,
           [ProductHistoryTables.INVENTORY_MOVEMENTS]: inventoryMovements,
-          [ProductHistoryTables.INVENTORY_LEVELS]: inventoryLevels
+          [ProductHistoryTables.INVENTORY_LEVELS]: inventoryLevels,
+          [ProductHistoryTables.TRANSFER_LINES]: transferLines
         })
       }
       await tx.productVariant.delete({ where: { id: variantId } })

@@ -64,6 +64,10 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   // Stock is not deleted with its product or warehouse either (the foreign keys restrict it), and the ledger is the
   // append-only table: the owner removes what the run wrote before the organization goes
   const ofRun = { store: { organization: { slug: { startsWith: prefix } } } }
+  // The transfers of the run (their lines go with them): the lines restrict the deletion of stores and products
+  await owner.stockTransfer.deleteMany({
+    where: { organization: { slug: { startsWith: prefix } } }
+  })
   await owner.inventoryMovement.deleteMany({ where: ofRun })
   await owner.inventoryLevel.deleteMany({ where: ofRun })
   await owner.orderItemAllocation.deleteMany({ where: ofRun })

@@ -11,7 +11,8 @@ import {
   ConversationStatus,
   ConversationStatusReasons,
   MembershipStatus,
-  ProductResourceTypes
+  ProductResourceTypes,
+  TransferResourceTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -23,7 +24,8 @@ import {
   type InventoryLowPayload,
   type MessageChangedPayload,
   type MessageMentionPayload,
-  type MessageReceivedPayload
+  type MessageReceivedPayload,
+  type TransferChangedPayload
 } from '@platform/core/events'
 import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/core/exports'
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
@@ -260,6 +262,48 @@ export class NotificationsEventsListener {
         { productId, err: String(error) },
         'a low stock warning could not be notified'
       )
+    }
+  }
+
+  // A transfer left its source (TDD_16 §4.5): the members who may receive it are told, store by store, and each store is
+  // one whose products travel in it (they are the ones who can see its lines). The warehouse is read under the
+  // organization of the event: an id of another organization tells nobody.
+  @OnEvent(Events.TRANSFER_DISPATCHED)
+  async onTransferDispatched(payload: TransferChangedPayload): Promise<void> {
+    const { organizationId, transferId, number, toWarehouseId, storeIds } = payload
+    let name: string | null
+    try {
+      const warehouse = await this.prisma.client.warehouse.findFirst({
+        where: { id: toWarehouseId, organizationId },
+        select: { name: true }
+      })
+      if (warehouse === null) return
+      name = textForParams(warehouse.name)
+    } catch (error) {
+      this.logger.error(
+        { transferId, err: String(error) },
+        'a dispatched transfer could not be notified'
+      )
+      return
+    }
+    // A store whose members cannot be told does not keep the others from being told
+    for (const storeId of storeIds) {
+      try {
+        await this.notifications.sendToStore({
+          storeId,
+          type: NotificationTypes.TRANSFER_DISPATCHED,
+          params: { number, ...(name === null ? {} : { warehouse: name }) },
+          resourceType: TransferResourceTypes.TRANSFER,
+          resourceId: transferId,
+          actionPath: AppPaths.org.transfers,
+          requiredPermission: Permissions.INVENTORY_RECEIVE_TRANSFERS
+        })
+      } catch (error) {
+        this.logger.error(
+          { transferId, storeId, err: String(error) },
+          'a dispatched transfer could not be notified to a store'
+        )
+      }
     }
   }
 

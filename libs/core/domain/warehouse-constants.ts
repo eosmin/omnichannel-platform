@@ -32,7 +32,10 @@ export const WarehouseStockBlocks = {
   // Deactivating: the warehouse holds units (or reservations)
   DEACTIVATE: 'deactivate',
   // Unlinking: the store has reserved stock in that warehouse
-  UNLINK: 'unlink'
+  UNLINK: 'unlink',
+  // A transfer in transit leaves from or arrives at the warehouse: its units are in no level, and the receipt (or the
+  // return of a cancel) needs the warehouse on and the store linked to it (Step 4.5)
+  OPEN_TRANSFER: 'open_transfer'
 } as const
 
 // The store-wide advisory lock that makes two writers of the links of one store take turns, so the priorities of the

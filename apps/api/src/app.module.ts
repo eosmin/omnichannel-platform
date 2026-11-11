@@ -24,6 +24,7 @@ import { RoutingModule } from './modules/routing/routing.module'
 import { SettingsModule } from './modules/settings/settings.module'
 import { TeamModule } from './modules/team/team.module'
 import { TenancyModule } from './modules/tenancy'
+import { TransfersModule } from './modules/transfers/transfers.module'
 import { WarehousesModule } from './modules/warehouses/warehouses.module'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
 import { WidgetModule } from './modules/widget/widget.module'
@@ -53,6 +54,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     RealtimeModule,
     InventoryModule,
     ProductsModule,
+    TransfersModule,
     WarehousesModule,
     SettingsModule,
     InvitationsModule,

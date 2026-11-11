@@ -27,6 +27,7 @@ model Organization {
   invitations         Invitation[]
   dataSubjectRequests DataSubjectRequest[]
   warehouses          Warehouse[]
+  stockTransfers      StockTransfer[]
 
   @@map("organizations")
 }
@@ -63,6 +64,7 @@ model Store {
   inventoryLevels      InventoryLevel[]
   storeWarehouses      StoreWarehouse[]
   orderItemAllocations OrderItemAllocation[]
+  stockTransferLines   StockTransferLine[]
   tags                 Tag[]
   snippets             Snippet[]
   media                Media[]
@@ -791,6 +793,7 @@ model Product {
   variants        ProductVariant[]
   inventory       InventoryMovement[]
   inventoryLevels InventoryLevel[]
+  transferLines   StockTransferLine[]
   orderItems      OrderItem[]
   media           Media[]
 
@@ -816,6 +819,7 @@ model ProductVariant {
   product         Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
   inventory       InventoryMovement[]
   inventoryLevels InventoryLevel[]
+  transferLines   StockTransferLine[]
   orderItems      OrderItem[]
 
   @@unique([productId, name])
@@ -870,7 +874,7 @@ model InventoryMovement {
 }
 
 // A place where stock is kept. It belongs to the ORGANIZATION and can supply several of its stores (TDD_16 §1).
-// The transfers and counts that refer to it (StockTransfer, StockCount) arrive with Steps 4.5 and 4.6.
+// The transfers that refer to it are StockTransfer (Step 4.5); the counts (StockCount) arrive with Step 4.6.
 model Warehouse {
   id             String   @id @default(uuid())
   organizationId String   @map("organization_id")
@@ -886,6 +890,8 @@ model Warehouse {
   levels       InventoryLevel[]
   movements    InventoryMovement[]
   allocations  OrderItemAllocation[]
+  transfersOut StockTransfer[]       @relation("TransferFrom")
+  transfersIn  StockTransfer[]       @relation("TransferTo")
 
   @@unique([organizationId, code])
   // So that a link can name its organization and the database check that they go together (StoreWarehouse)
@@ -957,6 +963,63 @@ model OrderItemAllocation {
   @@index([storeId])
   @@index([warehouseId])
   @@map("order_item_allocations")
+}
+
+// A shipment of stock from one warehouse to another of the same ORGANIZATION (TDD_16 §4.5). The header belongs to the
+// organization; its lines belong to the stores whose products travel. The status only moves through the transfers
+// service, which writes the stock through InventoryService and never touches a level itself.
+model StockTransfer {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  number          String // "TR-0001", per organization
+  fromWarehouseId String    @map("from_warehouse_id")
+  toWarehouseId   String    @map("to_warehouse_id")
+  status          String    @default("draft") // TransferStatus
+  note            String?
+  createdBy       String    @map("created_by")
+  dispatchedBy    String?   @map("dispatched_by")
+  dispatchedAt    DateTime? @map("dispatched_at")
+  closedAt        DateTime? @map("closed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Both warehouses carry the organization, so the database refuses a transfer that reaches another organization's
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse           @relation("TransferFrom", fields: [organizationId, fromWarehouseId], references: [organizationId, id])
+  toWarehouse   Warehouse           @relation("TransferTo", fields: [organizationId, toWarehouseId], references: [organizationId, id])
+  lines         StockTransferLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@map("stock_transfers")
+}
+
+// One item that travels: `quantity` is what was (or will be) dispatched, `receivedQuantity` what has arrived. The
+// STORE is the one of the product: a user sees the lines of the stores they belong to (TDD_16 §1).
+model StockTransferLine {
+  id               String  @id @default(uuid())
+  transferId       String  @map("transfer_id")
+  storeId          String  @map("store_id")
+  productId        String  @map("product_id")
+  variantId        String? @map("variant_id")
+  quantity         Int
+  receivedQuantity Int     @default(0) @map("received_quantity")
+  shortageAction   String? @map("shortage_action") // TransferShortageAction, set on close
+
+  transfer StockTransfer   @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  store    Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  product  Product         @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Restrict)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  // One line per item: the unique indexes of the raw SQL (a null variant is not a value to a unique index)
+  @@index([transferId])
+  @@index([storeId])
+  @@index([productId, variantId])
+  @@index([variantId])
+  @@map("stock_transfer_lines")
 }
 
 // ============================================================

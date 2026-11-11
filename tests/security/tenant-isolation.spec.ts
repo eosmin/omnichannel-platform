@@ -13,7 +13,8 @@ import {
   InvitationStatus,
   MembershipStatus,
   MessageType,
-  RoutingActionTypes
+  RoutingActionTypes,
+  TransferStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -37,6 +38,7 @@ import {
   createProduct,
   createProductVariant,
   itemOfStockRow,
+  createTransfer,
   createWarehouse,
   linkWarehouse,
   createChannelConnection,
@@ -94,6 +96,8 @@ async function organizationOfStore(owner: OwnerClient, storeId: string): Promise
 }
 
 let viewerRoleId = ''
+// Two warehouses of organization A, for the body of the creation check of the transfers
+let transferWarehouses = { from: '', to: '' }
 let agentRoleId = ''
 // A user for the reactions the suite writes as the owner
 let reactorId = ''
@@ -304,6 +308,56 @@ const resources: IsolationResource[] = [
     modify: { path: ApiRoutes.warehouses.stores, method: 'put', body: { stores: [] } },
     untouched: async (owner, id) =>
       (await owner.storeWarehouse.count({ where: { warehouseId: id } })) === 1
+  },
+  {
+    name: 'stockTransfer',
+    create: async (owner, { storeId }) => ({
+      id: (
+        await createTransfer(owner, { organizationId: await organizationOfStore(owner, storeId) })
+      ).id
+    }),
+    // The header belongs to the organization (TDD_16 §1): every store of it sees it, another organization never does
+    scope: 'organization',
+    readPath: ApiRoutes.transfers.byId,
+    listPath: ApiRoutes.transfers.list,
+    modify: { path: ApiRoutes.transfers.byId, body: { note: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.stockTransfer.findUnique({ where: { id }, select: { note: true } }))?.note !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.transfers.create,
+      body: () => ({
+        fromWarehouseId: transferWarehouses.from,
+        toWarehouseId: transferWarehouses.to
+      }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.stockTransfer.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.stockTransfer.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  // A line has no route of its own: it is read with its transfer, and only by the members of ITS store (the cases
+  // of the block of the transfers below prove the rest)
+  {
+    name: 'stockTransferLine',
+    create: async (owner, { storeId }) => ({
+      id: (
+        await createTransfer(owner, {
+          organizationId: await organizationOfStore(owner, storeId),
+          storeId
+        })
+      ).id
+    }),
+    // A store's: a member of a sibling store of the organization gets the same answer as a stranger
+    readPath: ApiRoutes.transfers.byId,
+    modify: { path: ApiRoutes.transfers.byId, body: { note: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.stockTransfer.findUnique({ where: { id }, select: { note: true } }))?.note !==
+      'hacked'
   },
   {
     name: 'snippet',
@@ -802,6 +856,7 @@ describe('Tenant isolation', () => {
     )
     ctx = await seedTestContext(owner, app, prefix)
     viewerRoleId = ctx.roleIds[RoleNames.VIEWER]
+    transferWarehouses = { from: ctx.warehouseA.id, to: ctx.warehouseASecond.id }
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
     reactorId = ctx.adminA.id
     conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
@@ -883,6 +938,83 @@ describe('Tenant isolation', () => {
       const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.warehouses.byId(own.id))
 
       expect(response.status).toBe(403)
+    })
+  })
+
+  // The transfers belong to the organization, their lines to the stores whose products travel (TDD_16 §1, §8): the
+  // checks above prove that another organization reaches none of them; these prove that line visibility is the
+  // caller's stores
+  describe('transfers of an organization', () => {
+    it("show a member only the lines of their stores, though the header is the organization's", async () => {
+      const own = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id
+      })
+      const sibling = await owner.product.create({
+        data: { storeId: ctx.storeA2.id, name: `p-${randomUUID().slice(0, 6)}`, priceCents: 100 },
+        select: { id: true }
+      })
+      await owner.stockTransferLine.create({
+        data: { transferId: own.id, storeId: ctx.storeA2.id, productId: sibling.id, quantity: 2 }
+      })
+
+      const fromA = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.transfers.byId(own.id))
+      const fromA2 = await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.transfers.byId(own.id))
+
+      const storesOf = (response: { body: unknown }): string[] =>
+        (response.body as { lines: { storeId: string }[] }).lines.map(line => line.storeId)
+      expect(fromA.status).toBe(200)
+      expect(storesOf(fromA)).toEqual([ctx.storeA.id])
+      expect(fromA2.status).toBe(200)
+      expect(storesOf(fromA2)).toEqual([ctx.storeA2.id])
+    })
+
+    it('are not reached through the header of a store of another organization', async () => {
+      const own = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id
+      })
+
+      const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.transfers.byId(own.id))
+
+      expect(response.status).toBe(403)
+    })
+
+    it('of another organization cannot be edited, dispatched, received, closed or cancelled', async () => {
+      const foreign = await createTransfer(owner, {
+        organizationId: ctx.orgB.id,
+        storeId: ctx.storeB.id,
+        status: TransferStatus.IN_TRANSIT
+      })
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const attempts = [
+        await agent.patch(ApiRoutes.transfers.byId(foreign.id)).send({ note: 'mine now' }),
+        await agent.post(ApiRoutes.transfers.dispatch(foreign.id)),
+        await agent
+          .post(ApiRoutes.transfers.receive(foreign.id))
+          .send({ receiptKey: randomUUID(), lines: [{ lineId: foreign.lineId, quantity: 1 }] }),
+        await agent.post(ApiRoutes.transfers.close(foreign.id)).send({ lines: [] }),
+        await agent.post(ApiRoutes.transfers.cancel(foreign.id))
+      ]
+
+      expect(attempts.map(attempt => attempt.status)).toEqual([404, 404, 404, 404, 404])
+      const row = await owner.stockTransfer.findUniqueOrThrow({
+        where: { id: foreign.id },
+        include: { lines: true }
+      })
+      expect(row).toMatchObject({ status: TransferStatus.IN_TRANSIT, note: null })
+      expect(row.lines.map(line => line.receivedQuantity)).toEqual([0])
+    })
+
+    it('do not take a warehouse of another organization', async () => {
+      const mine = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+
+      const response = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.transfers.create)
+        .send({ fromWarehouseId: mine.id, toWarehouseId: ctx.warehouseB.id })
+
+      expect(response.status).toBe(404)
     })
   })
 
