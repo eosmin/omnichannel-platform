@@ -14,7 +14,8 @@ const FIRST_STORE = 'Main Store'
 const ADMIN = 'multi-store@test.com'
 const CREATE = en.orders.create
 // The dev fixtures give each of their 30 products 20 units in the default warehouse
-const FIXTURE = 'Fixture product 7'
+// Not the products other specs count (the stock of those is asserted): an order reserves units of the one it sells
+const FIXTURE = 'Fixture product 23'
 
 const uniqueName = (label: string): string => `${label} ${randomUUID().slice(0, 8)}`
 

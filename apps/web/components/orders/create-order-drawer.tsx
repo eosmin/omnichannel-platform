@@ -2,8 +2,8 @@
 
 import { Plus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useFormatter, useTranslations } from 'next-intl'
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
+import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -15,29 +15,19 @@ import {
 } from '@platform/core/domain'
 
 import { useCustomer } from '../../lib/customers/use-customer-data'
-import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import {
-  addLine,
   buildOrder,
   canAddPhone,
   type DraftForm,
-  type DraftLine,
   emptyForm,
   type FormField,
   initialPhones,
-  parseQuantity,
   phoneDigits,
   shippingAddressOf,
-  type StockRules,
-  stockRulesOf
+  type StockRules
 } from '../../lib/orders/order-form'
-import {
-  useConversationCustomerId,
-  useCreateOrder,
-  useLineStocks,
-  useStockSwitches
-} from '../../lib/orders/use-create-order'
-import { formatCents } from '../../lib/products/money'
+import { useConversationCustomerId, useCreateOrder } from '../../lib/orders/use-create-order'
+import { useStockOfLines } from '../../lib/orders/use-line-stock'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { MutationError } from '../customers/mutation-error'
@@ -50,8 +40,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Textarea } from '../ui/textarea'
 
 import { OrderCustomerField } from './order-customer-field'
-import { OrderLineRow, type StockOfLine } from './order-line-row'
-import { OrderProductPicker } from './order-product-picker'
+import { OrderLinesSection } from './order-lines-section'
+import { OrderPriceFields } from './order-price-fields'
 
 // The create-order drawer (TDD_09 §5): a panel at the right with the order, so the conversation it comes from stays
 // beside it. It sends what the agent chose and never a total: the server prices the order from the catalog.
@@ -113,11 +103,9 @@ function Body({
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('orders.create')
-  const tLines = useTranslations('orders.create.lines')
   const tPhones = useTranslations('orders.create.phones')
   const tNotes = useTranslations('orders.create.notes')
   const tAll = useTranslations()
-  const format = useFormatter()
   const router = useRouter()
   const { storeId, can } = useStore()
   const guard = useSubmitGuard()
@@ -145,9 +133,6 @@ function Body({
   const canOverridePrice = can(ClientPermissions.ORDERS_OVERRIDE_PRICE)
   const canConfirm = can(ClientPermissions.ORDERS_CONFIRM)
   const mayViewCustomers = can(ClientPermissions.CUSTOMERS_VIEW)
-  // The stock of each warehouse and the two switches that decide how a line may be served: both are needed to check a
-  // choice of warehouses on the screen the way the server checks it
-  const mayShowStock = can(ClientPermissions.INVENTORY_VIEW) && can(ClientPermissions.SETTINGS_VIEW)
 
   const [form, setForm] = useState<DraftForm>(() => ({
     ...emptyForm(),
@@ -193,56 +178,9 @@ function Body({
     setForm(current => ({ ...current, phones: initialPhones(data.nationalPhone) }))
   }, [customer.data, customer.isFetching, phonesTouched])
 
-  const productIds = useMemo(
-    () => [...new Set(form.lines.map(line => line.productId))],
-    [form.lines]
-  )
-  const warehouses = useWarehousesOfStore(storeId, mayShowStock)
-  const switches = useStockSwitches(storeId, mayShowStock)
-  const stocks = useLineStocks(storeId, productIds, mayShowStock)
-  const names = useMemo(
-    () => new Map((warehouses.data ?? []).map(warehouse => [warehouse.id, warehouse.name])),
-    [warehouses.data]
-  )
-
-  const stockOf = (line: DraftLine): StockOfLine => {
-    const none: StockOfLine = {
-      rules: null,
-      isLoading: false,
-      isFailed: false,
-      names,
-      canChoose: false
-    }
-    if (!mayShowStock) return none
-    const inventory = stocks.byProduct.get(line.productId)
-    if (stocks.failed.has(line.productId) || warehouses.isError || switches.isError) {
-      return { ...none, isFailed: true }
-    }
-    if (inventory === undefined || warehouses.data === undefined || switches.data === undefined) {
-      return { ...none, isLoading: true }
-    }
-    // A product that does not count its stock has no warehouse to choose
-    if (!inventory.trackInventory) return none
-    const rules = stockRulesOf({
-      storeId,
-      variantId: line.variantId,
-      warehouses: warehouses.data,
-      levels: inventory.levels,
-      allowSplitFulfillment: switches.data.allowSplitFulfillment,
-      allowNegativeStock: switches.data.allowNegativeStock
-    })
-    return { ...none, rules, canChoose: true }
-  }
+  const stockOf = useStockOfLines(form.lines)
 
   const addresses = customer.data?.addresses ?? []
-
-  const changeLine = (key: string, next: DraftLine): void =>
-    patch({ lines: form.lines.map(line => (line.key === key ? next : line)) })
-
-  const subtotal = form.lines.reduce(
-    (sum, line) => sum + line.catalogPriceCents * (parseQuantity(line.quantity) ?? 0),
-    0
-  )
 
   const submit = (): void => {
     const stock = new Map<string, StockRules>()
@@ -305,76 +243,19 @@ function Body({
           ) : null}
         </div>
 
-        <section aria-labelledby="order-lines-title" className="flex flex-col gap-3">
-          <h3 id="order-lines-title" className="text-sm font-medium">
-            {tLines('label')}
-          </h3>
-          <OrderProductPicker onAdd={line => patch({ lines: addLine(form.lines, line) })} />
-          {form.lines.length === 0 ? (
-            <p className="text-muted-foreground text-sm">{tLines('empty')}</p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {form.lines.map(line => (
-                <OrderLineRow
-                  key={line.key}
-                  line={line}
-                  canOverridePrice={canOverridePrice}
-                  stock={stockOf(line)}
-                  problem={wrong?.line === line.key ? wrong.field : null}
-                  onChange={next => changeLine(line.key, next)}
-                  onRemove={() => patch({ lines: form.lines.filter(row => row.key !== line.key) })}
-                />
-              ))}
-            </ul>
-          )}
-          {fieldError('lines')}
-          {form.lines.length > 0 ? (
-            <p className="text-muted-foreground text-sm">
-              {tLines('subtotal', { amount: formatCents(format, subtotal) })}{' '}
-              {tLines('estimateNote')}
-            </p>
-          ) : null}
-        </section>
+        <OrderLinesSection
+          lines={form.lines}
+          onLines={lines => patch({ lines })}
+          canOverridePrice={canOverridePrice}
+          stockOf={stockOf}
+          wrong={wrong}
+        />
 
-        <section className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="order-shipping">{t('prices.shipping')}</Label>
-            <Input
-              id="order-shipping"
-              inputMode="decimal"
-              autoComplete="off"
-              value={form.shippingText}
-              onChange={event => patch({ shippingText: event.target.value })}
-              {...invalid('shipping')}
-            />
-            {fieldError('shipping')}
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="order-discount">{t('prices.discount')}</Label>
-            <Input
-              id="order-discount"
-              inputMode="decimal"
-              autoComplete="off"
-              value={form.discountText}
-              onChange={event => patch({ discountText: event.target.value })}
-              {...invalid('discount')}
-            />
-            {fieldError('discount')}
-          </div>
-          <div className="flex flex-col gap-1 sm:col-span-2">
-            <Label htmlFor="order-discount-reason">{t('prices.discountReason')}</Label>
-            <Input
-              id="order-discount-reason"
-              autoComplete="off"
-              maxLength={OrderLimits.PRICE_REASON_MAX_LENGTH}
-              value={form.discountReason}
-              onChange={event => patch({ discountReason: event.target.value })}
-              {...invalid('discountReason')}
-            />
-            <p className="text-muted-foreground text-xs">{t('prices.discountHelp')}</p>
-            {fieldError('discountReason')}
-          </div>
-        </section>
+        <OrderPriceFields
+          values={form}
+          onChange={changes => patch(changes)}
+          wrong={wrong?.field ?? null}
+        />
 
         <div className="flex flex-col gap-1">
           <Label htmlFor="order-scheduled-date">{t('delivery.scheduledDate')}</Label>
