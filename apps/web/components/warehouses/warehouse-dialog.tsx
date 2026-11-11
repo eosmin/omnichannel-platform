@@ -38,12 +38,14 @@ export function WarehouseDialog({
   warehouse,
   open,
   onOpenChange,
-  stores
+  stores,
+  warehouses
 }: {
   warehouse: WarehouseDetailView | null
   open: boolean
   onOpenChange: (open: boolean) => void
   stores: readonly LinkableStore[]
+  warehouses: readonly WarehouseDetailView[]
 }): ReactElement {
   const t = useTranslations('warehouses')
   // A save that is on its way keeps the dialog open: the answer (a toast, a refusal) is shown by the form that sent it
@@ -62,7 +64,12 @@ export function WarehouseDialog({
           warehouse === null ? (
             <WarehouseForm warehouse={null} onSaved={() => onOpenChange(false)} />
           ) : (
-            <Editing key={warehouse.id} warehouse={warehouse} stores={stores} />
+            <Editing
+              key={warehouse.id}
+              warehouse={warehouse}
+              warehouses={warehouses}
+              stores={stores}
+            />
           )
         ) : null}
       </DialogContent>
@@ -72,9 +79,11 @@ export function WarehouseDialog({
 
 function Editing({
   warehouse: loaded,
+  warehouses,
   stores
 }: {
   warehouse: WarehouseDetailView
+  warehouses: readonly WarehouseDetailView[]
   stores: readonly LinkableStore[]
 }): ReactElement {
   const { storeId, can } = useStore()
@@ -88,6 +97,7 @@ function Editing({
       <WarehouseStoresEditor
         storeId={storeId}
         warehouse={saved}
+        warehouses={warehouses}
         stores={stores}
         canEdit={canEdit}
         onSaved={setSaved}

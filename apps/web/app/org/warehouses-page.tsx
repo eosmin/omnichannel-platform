@@ -92,6 +92,7 @@ function Warehouses(): ReactElement {
         open={creating}
         onOpenChange={setCreating}
         stores={stores}
+        warehouses={warehouses.data}
       />
       <WarehouseDialog
         warehouse={editing}
@@ -100,6 +101,7 @@ function Warehouses(): ReactElement {
           if (!open) setEditingId(null)
         }}
         stores={stores}
+        warehouses={warehouses.data}
       />
     </section>
   )
