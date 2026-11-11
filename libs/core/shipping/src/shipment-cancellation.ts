@@ -610,10 +610,6 @@ export class ShipmentCancellation {
       } else if (!empty && plugin.modifyPickup !== undefined) {
         const modifyPickup = plugin.modifyPickup.bind(plugin)
         await withDeadline(() => modifyPickup(context, { pickupRef, packageCount: left.remaining }))
-        await this.prisma.client.pickupRequest.updateMany({
-          where: { id: left.pickupId, storeId },
-          data: { lastError: null }
-        })
       } else {
         await note(empty ? PickupLeaveNotes.EMPTY_NOT_CANCELLED : PickupLeaveNotes.NOT_UPDATED)
       }

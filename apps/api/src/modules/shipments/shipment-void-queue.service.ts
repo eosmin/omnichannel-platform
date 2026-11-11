@@ -50,7 +50,10 @@ export class ShipmentVoidQueue {
           'a void of a guide could not be queued'
         )
         await this.cancellation
-          .markNotQueued(storeId, job.shipmentId, { type: 'user', id: requestedBy })
+          .markNotQueued(storeId, job.shipmentId, {
+            type: requestedBy === null ? 'system' : 'user',
+            id: requestedBy
+          })
           .catch(() => undefined)
       }
     }

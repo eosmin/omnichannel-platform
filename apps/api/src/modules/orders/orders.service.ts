@@ -904,8 +904,6 @@ export class OrdersService {
       }
     })
 
-    // The carrier is asked once the order has committed; the guides are CANCEL_PENDING until the worker does
-    await this.guides.hand(storeId, outcome.voided, actor.userId)
     const { order } = outcome
     const trail = { storeId, orderId, actor }
     recordOrderAudit(this.audit, AuditAction.ORDER_UPDATED, trail, {
@@ -967,6 +965,9 @@ export class OrdersService {
         shippingCents: outcome.data.shippingCents
       })
     }
+    // The carrier is asked once the order has committed and its audit entries are written; the guides are CANCEL_PENDING until
+    // the worker does
+    await this.guides.hand(storeId, outcome.voided, actor.userId)
     return this.get(storeId, orderId, held)
   }
 

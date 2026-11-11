@@ -251,9 +251,7 @@ export class ShipmentsService {
     const action =
       change.to === ShipmentStatus.CANCELLED
         ? AuditAction.SHIPMENT_CANCELLED
-        : change.to === ShipmentStatus.CANCEL_PENDING
-          ? AuditAction.SHIPMENT_CANCEL_REQUESTED
-          : AuditAction.SHIPMENT_STATUS_SET_MANUALLY
+        : AuditAction.SHIPMENT_CANCEL_REQUESTED
     this.record(storeId, action, change.shipmentId, actor, {
       orderId: change.orderId,
       from: change.from,

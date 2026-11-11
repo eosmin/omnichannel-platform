@@ -300,9 +300,6 @@ export class OrdersStatusService {
       return { from, orderNumber: order.orderNumber, voided }
     })
 
-    // The carrier is asked once the order has committed (the shipments are CANCEL_PENDING until the worker does)
-    await this.guides.hand(storeId, result.voided, actor.userId)
-
     const trail = { storeId, orderId, actor }
     recordOrderAudit(this.audit, AuditAction.ORDER_STATUS_CHANGED, trail, {
       orderNumber: result.orderNumber,
@@ -325,6 +322,9 @@ export class OrdersStatusService {
           : { shipmentsVoided: result.voided.shipmentIds })
       })
     }
+    // The carrier is asked once the order has committed and its audit entries are written (the shipments are CANCEL_PENDING
+    // until the worker does): a queue that hangs cannot take the entries with it
+    await this.guides.hand(storeId, result.voided, actor.userId)
   }
 
   // Approve or reject the price of an order that waits for it (TDD_17 §4.13). Nobody approves their own request.
