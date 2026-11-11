@@ -10,3 +10,4 @@ export type { ConversationWhereInput } from '../generated/client/models/Conversa
 export type { MessageWhereInput } from '../generated/client/models/Message'
 export type { MembershipWhereInput } from '../generated/client/models/Membership'
 export type { ExportWhereInput } from '../generated/client/models/Export'
+export type { OrderUncheckedUpdateInput } from '../generated/client/models/Order'

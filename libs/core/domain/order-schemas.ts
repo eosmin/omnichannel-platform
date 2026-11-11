@@ -9,7 +9,13 @@ import {
   OrderSorts,
   RecipientPhones
 } from './order-constants'
-import { OrderStatus, PaymentMethod, PaymentStatus, type OrderEditableField } from './status-enums'
+import {
+  OrderConfirmationChannel,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+  type OrderEditableField
+} from './status-enums'
 import { singleLineText } from './validation'
 
 // The shared schemas of the orders (TDD_02 §13): the server validates the body with them and the web forms use the
@@ -18,6 +24,11 @@ import { singleLineText } from './validation'
 // discount; the unit prices and the totals are read and computed on the server (TDD_17 §4.13).
 
 const cents = z.number().int().min(0).max(ORDER_MAX_AMOUNT_CENTS)
+
+// A uuid is valid in either case and the rows hold it in lower case: the server compares ids as strings, so it reads
+// them in the one form (a product written in capitals is the same product, not a 404)
+export const lowercasedUuidSchema = z.uuid().transform(value => value.toLowerCase())
+const id = lowercasedUuidSchema
 
 // Postgres text cannot hold a NUL character: a 400 here and not a 500 there
 const freeText = (maxLength: number) =>
@@ -59,10 +70,14 @@ export const recipientPhonesSchema = z
 export const scheduledDeliveryDateSchema = z.iso.date()
 
 const itemSchema = z.strictObject({
-  productId: z.uuid(),
-  variantId: z.uuid().optional(),
-  // No client-supplied price: the server reads Product/ProductVariant.priceCents when the line is made
-  quantity: z.number().int().min(1).max(OrderLimits.MAX_QUANTITY_PER_LINE)
+  productId: id,
+  variantId: id.optional(),
+  // The price of a line is the catalog's, read by the server when the line is made. The only way to name another is
+  // `unitPriceCents` with its `priceReason`, which the server takes from a member with ORDERS_OVERRIDE_PRICE alone
+  // (TDD_17 §4.13, level 1) and refuses from anybody else: a price equal to the catalog's is no override.
+  quantity: z.number().int().min(1).max(OrderLimits.MAX_QUANTITY_PER_LINE),
+  unitPriceCents: cents.optional(),
+  priceReason: optionalText(OrderLimits.PRICE_REASON_MAX_LENGTH).optional()
 })
 
 // The same product and variant twice is one line with the quantities added: the form does that, the server refuses it
@@ -105,8 +120,8 @@ const internalNotes = optionalText(OrderLimits.INTERNAL_NOTES_MAX_LENGTH)
 const packingNotes = optionalText(OrderLimits.PACKING_NOTES_MAX_LENGTH)
 
 export const createOrderSchema = z.strictObject({
-  customerId: z.uuid(),
-  conversationId: z.uuid().optional(),
+  customerId: id,
+  conversationId: id.optional(),
   items: itemsSchema,
   shippingCents: cents.default(0),
   discountCents: cents.default(0),
@@ -167,6 +182,8 @@ export function orderFieldsOfEdit(body: UpdateOrderInput): OrderEditableField[] 
   const fields: OrderEditableField[] = []
   if (body.items !== undefined) fields.push('items')
   if (body.shippingCents !== undefined) fields.push('shipping')
+  // The reason of a discount is part of it: it cannot be rewritten in a status that locks the discount. (A reason that
+  // travels with a fee only is told apart by the service, which knows whether the order has a discount.)
   if (body.discountCents !== undefined) fields.push('discount')
   if (body.shippingAddress !== undefined) fields.push('address')
   if (body.recipientPhones !== undefined) fields.push('recipientPhones')
@@ -184,8 +201,10 @@ export function orderFieldsOfEdit(body: UpdateOrderInput): OrderEditableField[] 
 export const changeOrderStatusSchema = z
   .strictObject({
     status: z.enum(OrderStatus),
+    // How the customer confirmed (TDD_17 §4.3); the moment it was made at creation is not a way to confirm later
+    confirmedVia: z.enum(OrderConfirmationChannel).optional(),
     cancellationReason: freeText(OrderLimits.CANCELLATION_REASON_MAX_LENGTH).optional(),
-    proofOfDeliveryMediaId: z.uuid().optional(),
+    proofOfDeliveryMediaId: id.optional(),
     deliveredAt: z.iso.datetime({ offset: true }).optional(),
     restock: z.boolean().optional()
   })
@@ -198,6 +217,12 @@ export const changeOrderStatusSchema = z
       }
     } else if (body.cancellationReason !== undefined) {
       issue('cancellationReason', 'only a cancellation has a reason')
+    }
+    if (body.status !== OrderStatus.CONFIRMED && body.confirmedVia !== undefined) {
+      issue('confirmedVia', 'only a confirmation says how the customer confirmed')
+    }
+    if (body.confirmedVia === OrderConfirmationChannel.AT_CREATION) {
+      issue('confirmedVia', 'confirming at creation is done when the order is created')
     }
     if (body.status !== OrderStatus.DELIVERED) {
       if (body.proofOfDeliveryMediaId !== undefined)
@@ -219,7 +244,7 @@ export const recordOrderPaymentSchema = z.strictObject({
   method: z.enum(PaymentMethod),
   status: z.enum(PaymentStatus),
   reference: freeText(OrderLimits.PAYMENT_REFERENCE_MAX_LENGTH).min(1).optional(),
-  proofMediaId: z.uuid().optional()
+  proofMediaId: id.optional()
 })
 
 export type RecordOrderPaymentInput = z.output<typeof recordOrderPaymentSchema>

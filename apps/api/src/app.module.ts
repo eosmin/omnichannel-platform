@@ -16,6 +16,7 @@ import { MediaModule } from './modules/media/media.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { MessagingWindowModule } from './modules/messaging-window/messaging-window.module'
 import { NotificationsModule } from './modules/notifications'
+import { OrdersModule } from './modules/orders/orders.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { ProductsModule } from './modules/products/products.module'
@@ -52,6 +53,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     RoutingModule,
     RealtimeModule,
     InventoryModule,
+    OrdersModule,
     ProductsModule,
     WarehousesModule,
     SettingsModule,

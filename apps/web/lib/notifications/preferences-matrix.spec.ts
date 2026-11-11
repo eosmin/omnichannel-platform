@@ -31,7 +31,7 @@ describe('groupPreferences', () => {
   it('hides the switches of types nothing raises and the groups left empty', () => {
     const groups = groupPreferences([
       row(NotificationTypes.CONVERSATION_ASSIGNED),
-      row(NotificationTypes.ORDER_CREATED),
+      row(NotificationTypes.ORDER_PAYMENT_FAILED),
       row(NotificationTypes.TRANSFER_DISPATCHED),
       row(NotificationTypes.PICKUP_MANUAL_REQUIRED),
       row(NotificationTypes.PLUGIN_ERROR),
@@ -41,6 +41,26 @@ describe('groupPreferences', () => {
     expect(groups.map(entry => entry.group)).toEqual(['conversations', 'system'])
     expect(groups[1]?.rows.map(entry => entry.type)).toEqual([
       NotificationTypes.CHANNEL_DISCONNECTED
+    ])
+  })
+
+  it('shows the switches of the order notices that the orders raise since Step 4.3, and hides the two nothing raises', () => {
+    const groups = groupPreferences([
+      row(NotificationTypes.ORDER_CREATED),
+      row(NotificationTypes.ORDER_STATUS_CHANGED),
+      row(NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED),
+      row(NotificationTypes.ORDER_PRICE_OVERRIDDEN),
+      row(NotificationTypes.ORDER_PACKING_NOTE_CHANGED),
+      row(NotificationTypes.ORDER_PAYMENT_FAILED),
+      row(NotificationTypes.ORDER_MESSAGE_NOT_SENT)
+    ])
+    expect(groups.map(entry => entry.group)).toEqual(['orders'])
+    expect(groups[0]?.rows.map(entry => entry.type)).toEqual([
+      NotificationTypes.ORDER_CREATED,
+      NotificationTypes.ORDER_STATUS_CHANGED,
+      NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
+      NotificationTypes.ORDER_PRICE_OVERRIDDEN,
+      NotificationTypes.ORDER_PACKING_NOTE_CHANGED
     ])
   })
 

@@ -18,11 +18,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
-  Order: { step: '4.3', reason: 'Has no endpoint yet' },
-  OrderItemAllocation: {
-    step: '4.3',
-    reason: 'Written when an order is created and read with it: the orders have no endpoint yet'
-  },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }

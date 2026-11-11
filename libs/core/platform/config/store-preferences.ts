@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { OrderFreeShippingRules } from '@platform/core/domain'
+
 // Imported as '@platform/core/store-preferences', not through the config barrel, which the lint rule
 // keeps to the libraries that read the env.
 //
@@ -41,3 +43,30 @@ export const updateStorePreferencesSchema = z
   })
 
 export type UpdateStorePreferencesBody = z.output<typeof updateStorePreferencesSchema>
+
+// The `orders` block of the preferences (TDD_17 §4.14), the two keys the orders read today: Step 4.14 grows it into the
+// whole block and adds its write path, and then it joins `storePreferencesSchema`. It is read apart from it on purpose:
+// a nested object in StorePreferences would make every PUT of the flat keys look like a change of `orders` (the audit of
+// the update compares the keys it returns by identity). Each key falls back to its own default.
+export const orderPreferencesSchema = z.object({
+  // The discount allowed without approval to a member lacking ORDERS_OVERRIDE_PRICE, as a percent of the subtotal:
+  // none until the owner allows some
+  discountLimitPercent: z.number().int().min(0).max(100).catch(0),
+  // The approvers are told when a member with the override sets a price (TDD_17 §4.13)
+  notifyOnPriceOverride: z.boolean().catch(true),
+  // When an order counts as free shipping (TDD_17 §4.13)
+  freeShippingRule: z.enum(OrderFreeShippingRules).catch(OrderFreeShippingRules.ALL_ITEMS)
+})
+
+export type OrderPreferences = z.output<typeof orderPreferencesSchema>
+
+export function readOrderPreferences(raw: unknown): OrderPreferences {
+  const block =
+    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)['orders']
+      : undefined
+  const parsed = orderPreferencesSchema.safeParse(
+    typeof block === 'object' && block !== null && !Array.isArray(block) ? block : {}
+  )
+  return parsed.success ? parsed.data : orderPreferencesSchema.parse({})
+}

@@ -1,4 +1,14 @@
-import { formatPhoneList, OrderLimits, PackingNoteNotice, RecipientPhones } from './order-constants'
+import { Permissions } from './auth/permissions'
+import {
+  formatOrderNumber,
+  formatPhoneList,
+  orderMovementKey,
+  OrderStockEffects,
+  OrderLimits,
+  OrderNumber,
+  PackingNoteNotice,
+  RecipientPhones
+} from './order-constants'
 import { OrderStatus } from './status-enums'
 
 describe('formatPhoneList', () => {
@@ -30,5 +40,46 @@ describe('order limits', () => {
 
   it('warns the warehouse only about orders waiting to be packed', () => {
     expect([...PackingNoteNotice.STATUSES]).toEqual([OrderStatus.CONFIRMED, OrderStatus.PREPARING])
+  })
+})
+
+describe('formatOrderNumber', () => {
+  it('pads to the minimum digits so every number of a store has the same length for a prefix search', () => {
+    expect(formatOrderNumber(1)).toBe('00001')
+    expect(formatOrderNumber(42)).toBe('00042')
+    expect(formatOrderNumber(99_999)).toBe('99999')
+  })
+
+  it('never cuts a number that has more digits', () => {
+    expect(formatOrderNumber(100_000)).toBe('100000')
+    expect(formatOrderNumber(OrderNumber.MAX)).toBe(String(OrderNumber.MAX))
+  })
+})
+
+describe('the packing note notice', () => {
+  it('goes to who may prepare or ship an order', () => {
+    expect([...PackingNoteNotice.PERMISSIONS]).toEqual([
+      Permissions.ORDERS_CHANGE_STATUS,
+      Permissions.SHIPPING_MANAGE
+    ])
+  })
+})
+
+describe('orderMovementKey', () => {
+  it('names the order, the line, the warehouse and the effect, so the same effect never applies twice', () => {
+    expect(orderMovementKey('o1', 'i1', 'w1', OrderStockEffects.RESERVE)).toBe(
+      'order:o1:i1:w1:reserve'
+    )
+    expect(orderMovementKey('o1', 'i1', 'w2', OrderStockEffects.RESERVE)).not.toBe(
+      orderMovementKey('o1', 'i1', 'w1', OrderStockEffects.RESERVE)
+    )
+    expect(orderMovementKey('o1', 'i1', 'w1', OrderStockEffects.ISSUE)).not.toBe(
+      orderMovementKey('o1', 'i1', 'w1', OrderStockEffects.RESERVE)
+    )
+  })
+
+  it('stays inside the length the ledger accepts for a key, with real ids', () => {
+    const id = '0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'
+    expect(orderMovementKey(id, id, id, OrderStockEffects.RETURN).length).toBeLessThanOrEqual(200)
   })
 })
