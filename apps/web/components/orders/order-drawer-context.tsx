@@ -19,6 +19,11 @@ const CreateOrderDrawer = dynamic(
   { ssr: false }
 )
 
+const EditOrderDrawer = dynamic(
+  () => import('./edit-order-drawer').then(module => module.EditOrderDrawer),
+  { ssr: false }
+)
+
 export interface OpenCreateOrder {
   // The customer the order is for; left out, the drawer takes the one of the conversation or asks for one
   customerId?: string
@@ -28,6 +33,8 @@ export interface OpenCreateOrder {
 
 interface OrderDrawerValue {
   openCreate: (options?: OpenCreateOrder) => void
+  // The items, the shipping fee and the discount of an order that exists
+  openEdit: (orderId: string) => void
 }
 
 const OrderDrawerContext = createContext<OrderDrawerValue | null>(null)
@@ -37,7 +44,7 @@ interface Request extends OpenCreateOrder {
   openingId: number
 }
 
-// Holds whether the create-order drawer is open, and for whom, for everything under the store: the orders page, the
+// Holds whether the create-order and the edit-order drawers are open, and for whom, for everything under the store: the orders page, the
 // shortcut of the open conversation and the buttons of the composer open the same drawer.
 export function OrderDrawerProvider({ children }: { children: ReactNode }): ReactElement {
   const [request, setRequest] = useState<Request | null>(null)
@@ -50,7 +57,15 @@ export function OrderDrawerProvider({ children }: { children: ReactNode }): Reac
     setRequest(previous => ({ ...options, openingId: (previous?.openingId ?? 0) + 1 }))
     setOpen(true)
   }, [])
-  const value = useMemo(() => ({ openCreate }), [openCreate])
+  const [editing, setEditing] = useState<{
+    orderId: string
+    isOpen: boolean
+    openingId: number
+  } | null>(null)
+  const openEdit = useCallback((orderId: string) => {
+    setEditing(previous => ({ orderId, isOpen: true, openingId: (previous?.openingId ?? 0) + 1 }))
+  }, [])
+  const value = useMemo(() => ({ openCreate, openEdit }), [openCreate, openEdit])
   return (
     <OrderDrawerContext.Provider value={value}>
       {children}
@@ -62,6 +77,16 @@ export function OrderDrawerProvider({ children }: { children: ReactNode }): Reac
           conversationId={request.conversationId}
           isOpen={isOpen}
           onClose={() => setOpen(false)}
+        />
+      )}
+      {editing === null ? null : (
+        <EditOrderDrawer
+          key={editing.openingId}
+          orderId={editing.orderId}
+          isOpen={editing.isOpen}
+          onClose={() =>
+            setEditing(current => (current === null ? null : { ...current, isOpen: false }))
+          }
         />
       )}
     </OrderDrawerContext.Provider>

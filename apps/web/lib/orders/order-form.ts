@@ -62,6 +62,8 @@ export type FormField =
   | 'discountReason'
   | 'phones'
   | 'scheduledDate'
+  // An edit that changes nothing
+  | 'nothing'
 
 export interface AllowedBy {
   // ORDERS_OVERRIDE_PRICE: the price of a line may be written

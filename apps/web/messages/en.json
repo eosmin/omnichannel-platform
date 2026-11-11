@@ -1311,12 +1311,25 @@
         "discount": "Write a discount like 2.50.",
         "discountReason": "A discount needs its reason.",
         "phones": "Write at least one phone, with digits only and not repeated.",
-        "scheduledDate": "Choose a valid day."
+        "scheduledDate": "Choose a valid day.",
+        "nothing": "Nothing changed."
       },
       "created": "Order {number} created.",
       "createdAwaitingApproval": "Order {number} created. Its price waits for an approval.",
       "confirmationSkipped": "It was not confirmed: the price waits for an approval.",
       "open": "Open the order"
+    },
+    "edit": {
+      "title": "Edit order",
+      "description": "Change the items, the shipping fee and the discount. The server calculates the totals again.",
+      "open": "Edit order",
+      "submit": "Save changes",
+      "cancel": "Cancel",
+      "failed": "The order could not be loaded.",
+      "locked": "This order no longer accepts changes to its items, its shipping fee or its discount.",
+      "nothing": "Nothing changed.",
+      "saved": "The order was updated.",
+      "savedAwaitingApproval": "The order was updated. Its price waits for an approval."
     }
   },
   "org": {

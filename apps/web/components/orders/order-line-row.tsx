@@ -34,6 +34,7 @@ export function OrderLineRow({
   canOverridePrice,
   stock,
   problem,
+  locked = false,
   onChange,
   onRemove
 }: {
@@ -41,6 +42,8 @@ export function OrderLineRow({
   canOverridePrice: boolean
   stock: StockOfLine
   problem: FormField | null
+  // The order does not accept a change of its items in this status: the row is drawn, nothing in it can be changed
+  locked?: boolean
   onChange: (next: DraftLine) => void
   onRemove: () => void
 }): ReactElement {
@@ -77,15 +80,17 @@ export function OrderLineRow({
             <span className="text-muted-foreground text-xs">{line.sku}</span>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={tLines('remove', { name })}
-          onClick={onRemove}
-        >
-          <Trash2 aria-hidden />
-        </Button>
+        {locked ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={tLines('remove', { name })}
+            onClick={onRemove}
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        )}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
@@ -94,6 +99,7 @@ export function OrderLineRow({
             id={`${id}-quantity`}
             inputMode="numeric"
             autoComplete="off"
+            disabled={locked}
             value={line.quantity}
             // The units changed: a choice of warehouses made for the old quantity no longer adds up
             onChange={event =>
@@ -146,7 +152,7 @@ export function OrderLineRow({
         </div>
       ) : null}
 
-      {stock.isLoading ? (
+      {locked ? null : stock.isLoading ? (
         <p role="status" className="text-muted-foreground text-xs">
           {tStock('loading')}
         </p>

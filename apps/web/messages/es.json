@@ -1311,12 +1311,25 @@
         "discount": "Escribe un descuento como 2.50.",
         "discountReason": "Un descuento necesita su motivo.",
         "phones": "Escribe al menos un teléfono, solo con dígitos y sin repetir.",
-        "scheduledDate": "Elige un día válido."
+        "scheduledDate": "Elige un día válido.",
+        "nothing": "No cambió nada."
       },
       "created": "Pedido {number} creado.",
       "createdAwaitingApproval": "Pedido {number} creado. Su precio espera una aprobación.",
       "confirmationSkipped": "No se confirmó: el precio espera una aprobación.",
       "open": "Abrir el pedido"
+    },
+    "edit": {
+      "title": "Editar pedido",
+      "description": "Cambia los artículos, el costo de envío y el descuento. El servidor vuelve a calcular los totales.",
+      "open": "Editar pedido",
+      "submit": "Guardar cambios",
+      "cancel": "Cancelar",
+      "failed": "No se pudo cargar el pedido.",
+      "locked": "Este pedido ya no acepta cambios en sus artículos, su costo de envío ni su descuento.",
+      "nothing": "No cambió nada.",
+      "saved": "El pedido se actualizó.",
+      "savedAwaitingApproval": "El pedido se actualizó. Su precio espera una aprobación."
     }
   },
   "org": {

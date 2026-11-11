@@ -17,6 +17,7 @@ import { HttpStatusCodes } from '@platform/core/errors'
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
 import { OrderDelivery } from '../../components/orders/order-delivery'
+import { OrderEditButton } from '../../components/orders/order-edit-button'
 import { OrderFileLink } from '../../components/orders/order-file-link'
 import { OrderFlowButtons } from '../../components/orders/order-flows'
 import { OrderLines } from '../../components/orders/order-lines'
@@ -223,7 +224,10 @@ export function OrderDetailPage(): ReactElement {
             })}
           </span>
         </div>
-        <OrderFlowButtons order={data} writes={writes} />
+        <div className="flex flex-wrap items-center gap-2">
+          <OrderEditButton order={data} />
+          <OrderFlowButtons order={data} writes={writes} />
+        </div>
         <OrderPrintButtons order={data} warehouseNames={warehouseNames} />
       </header>
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
