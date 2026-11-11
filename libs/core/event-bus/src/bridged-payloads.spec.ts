@@ -5,7 +5,8 @@ import {
   AuthorType,
   ChannelIds,
   ConversationStatus,
-  ConversationStatusReasons
+  ConversationStatusReasons,
+  ShipmentStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { BridgedEvents, ChannelDisconnectedReasons, Events } from '@platform/core/events'
@@ -136,6 +137,24 @@ describe('bridgedPayload', () => {
       storeId: randomUUID(),
       channelConnectionId: randomUUID(),
       pluginId: 'whatsapp'
+    },
+    [Events.SHIPMENT_STATUS_CHANGED]: {
+      storeId: randomUUID(),
+      shipmentId: randomUUID(),
+      orderId: randomUUID(),
+      orderNumber: 'ORD-1',
+      connectionId: randomUUID(),
+      actor: { type: 'system', id: null },
+      from: ShipmentStatus.PICKED_UP,
+      to: ShipmentStatus.DELIVERED
+    },
+    [Events.SHIPMENT_REQUIRES_REVIEW]: {
+      storeId: randomUUID(),
+      shipmentId: randomUUID(),
+      orderId: randomUUID(),
+      orderNumber: 'ORD-1',
+      connectionId: randomUUID(),
+      actor: { type: 'system', id: null }
     }
   }
 

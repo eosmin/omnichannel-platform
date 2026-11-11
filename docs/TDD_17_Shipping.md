@@ -1104,6 +1104,16 @@ HIGH-tier when a shipment exists):
   credentials any more: its webhook answers as for a connection that does not exist (`404`, nothing is queued), the poller
   skips it, and a queued `PROCESS_CARRIER_EVENT` whose connection is no longer active is dropped and logged once. The shipments
   stay as they were and the agent finishes them by hand (§4.8).
+- **As built (Step 4.8 PR C2b).** The listener of the table above is `OrderShipmentEffects` in the api, fed by `SHIPMENT_STATUS_CHANGED`
+  (from the worker too, through the bridge). It decides from the status the shipment and the order hold, under the lock of the order
+  (`planOrderFollow`), not from the event: the first package that has left ships the order (stock `ISSUE`, `shippedAt` from the first
+  event of the history), the last one delivered delivers it and completes a cash-on-delivery payment, a package that left for a
+  cancelled or unconfirmed order raises `SHIPMENT_REQUIRES_REVIEW` once, and an effect that fails raises it too while the shipment
+  stays as the carrier said. A manual status takes the same path. `ShipmentStatusEngine.apply` is the one door of a carrier event
+  (webhook, poll, replay): dedupe, out-of-order kept in the history, `FAILED_ATTEMPT` to itself counted. A `DELIVERED` package that
+  collected cash goes `NOT_DELIVERED → PENDING_REMITTANCE` in the same move. Polling: every ten minutes one job per connection whose
+  interval (its own, at least five minutes, an hour for a connection the carrier also pushes to) has come; packages older than
+  fourteen days only in the run of 04:00 UTC.
 
 **As built (Step 4.8 PR C2a; the checklist wins where this differs):**
 

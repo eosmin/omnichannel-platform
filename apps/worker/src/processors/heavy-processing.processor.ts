@@ -9,6 +9,7 @@ import {
   exactly,
   JobNames,
   QueueNames,
+  type PollShipmentStatusJob,
   type ProcessImageJob,
   type ReconcileInventoryJob,
   type ScanFileJob
@@ -18,12 +19,18 @@ import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
+import { ShipmentPoller } from '../shipping/shipment-poller.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 type HeavyJob =
-  ScanFileJob | ProcessImageJob | FetchInboundMediaJob | FetchOriginMediaJob | ReconcileInventoryJob
+  | ScanFileJob
+  | ProcessImageJob
+  | FetchInboundMediaJob
+  | FetchOriginMediaJob
+  | ReconcileInventoryJob
+  | PollShipmentStatusJob
 
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
@@ -35,6 +42,14 @@ const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
 )
 const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+)
+const pollJobSchema = exactly<PollShipmentStatusJob>()(
+  z.object({
+    storeId: z.uuid(),
+    connectionId: z.uuid(),
+    includeOld: z.boolean(),
+    correlationId: z.string().optional()
+  })
 )
 // A scan and the variants of an image take the same job
 const mediaJobSchema = exactly<ScanFileJob & ProcessImageJob>()(
@@ -66,7 +81,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly pipeline: MediaPipeline,
     private readonly fetcher: InboundMediaFetcher,
     private readonly originFetcher: OriginMediaFetcher,
-    private readonly reconciler: InventoryReconciler
+    private readonly reconciler: InventoryReconciler,
+    private readonly poller: ShipmentPoller
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -88,6 +104,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
       await this.reconciler.reconcileStore(reconcile.data.storeId)
+      return
+    }
+    if (job.name === JobNames.POLL_SHIPMENT_STATUS) {
+      const poll = pollJobSchema.safeParse(job.data)
+      if (!poll.success) throw new UnrecoverableError('the poll job does not fit its schema')
+      await this.poller.poll(poll.data.storeId, poll.data.connectionId, {
+        includeOld: poll.data.includeOld
+      })
       return
     }
     const parsed = mediaJobSchema.safeParse(job.data)

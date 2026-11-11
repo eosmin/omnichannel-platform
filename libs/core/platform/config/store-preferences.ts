@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { OrderFreeShippingRules } from '@platform/core/domain'
+import { FailedAttemptMessagePolicy, OrderFreeShippingRules } from '@platform/core/domain'
 
 // Imported as '@platform/core/store-preferences', not through the config barrel, which the lint rule
 // keeps to the libraries that read the env.
@@ -44,7 +44,7 @@ export const updateStorePreferencesSchema = z
 
 export type UpdateStorePreferencesBody = z.output<typeof updateStorePreferencesSchema>
 
-// The `orders` block of the preferences (TDD_17 §4.14), the two keys the orders read today: Step 4.14 grows it into the
+// The `orders` block of the preferences (TDD_17 §4.14), the keys the orders and shipments read today: Step 4.14 grows it into the
 // whole block and adds its write path, and then it joins `storePreferencesSchema`. It is read apart from it on purpose:
 // a nested object in StorePreferences would make every PUT of the flat keys look like a change of `orders` (the audit of
 // the update compares the keys it returns by identity). Each key falls back to its own default.
@@ -55,7 +55,12 @@ export const orderPreferencesSchema = z.object({
   // The approvers are told when a member with the override sets a price (TDD_17 §4.13)
   notifyOnPriceOverride: z.boolean().catch(true),
   // When an order counts as free shipping (TDD_17 §4.13)
-  freeShippingRule: z.enum(OrderFreeShippingRules).catch(OrderFreeShippingRules.ALL_ITEMS)
+  freeShippingRule: z.enum(OrderFreeShippingRules).catch(OrderFreeShippingRules.ALL_ITEMS),
+  // How often the customer is told that a delivery attempt failed (TDD_17 §4.7): a carrier tries up to three times, and
+  // the customer should not get three identical messages unless the owner wants them
+  failedAttemptMessages: z
+    .enum(FailedAttemptMessagePolicy)
+    .catch(FailedAttemptMessagePolicy.EVERY_ATTEMPT)
 })
 
 export type OrderPreferences = z.output<typeof orderPreferencesSchema>

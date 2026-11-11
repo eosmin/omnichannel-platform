@@ -12,6 +12,7 @@ import { PluginsModule } from '@platform/plugins/runtime'
 import { InventoryReconcileModule } from '../inventory/inventory.module'
 import { HeavyProcessingProcessor } from '../processors/heavy-processing.processor'
 import { ProcessorSupport } from '../processors/processor-support'
+import { ShippingWorkerModule } from '../shipping/shipping.module'
 
 import { ClamavClient } from './clamav.client'
 import { InboundMediaFetcher } from './inbound-media-fetcher.service'
@@ -30,7 +31,8 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     ChannelConnectionsLibModule,
     PluginsModule.forRoot(),
     // The processor of the heavy queue also runs the reconciliation job of the stock
-    InventoryReconcileModule
+    InventoryReconcileModule,
+    ShippingWorkerModule
   ],
   providers: [
     ProcessorSupport,

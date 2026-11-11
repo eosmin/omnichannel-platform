@@ -11,6 +11,7 @@ type ProcessorJob = Parameters<HeavyProcessingProcessor['process']>[0]
 describe('HeavyProcessingProcessor', () => {
   const fetch = jest.fn().mockResolvedValue(undefined)
   const reconcileStore = jest.fn().mockResolvedValue(undefined)
+  const poll = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -20,7 +21,8 @@ describe('HeavyProcessingProcessor', () => {
     {} as never, // the pipeline is not what is tested
     { fetch } as never, // the inbound fetcher: what it is handed is what is tested
     {} as never, // the origin fetcher is not what is tested
-    { reconcileStore } as never // the reconciler of the stock: what it is handed is what is tested
+    { reconcileStore } as never, // the reconciler of the stock: what it is handed is what is tested
+    { poll } as never // the poller of the carriers: what it is handed is what is tested
   )
 
   const base = {
@@ -45,6 +47,7 @@ describe('HeavyProcessingProcessor', () => {
   beforeEach(() => {
     fetch.mockClear()
     reconcileStore.mockClear()
+    poll.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -98,6 +101,34 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and reconciles nothing', async (_name, data) => {
       await expect(reconcile(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(reconcileStore).not.toHaveBeenCalled()
+    })
+  })
+  describe('the poll of a carrier (TDD_17 §4.9)', () => {
+    const STORE_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const CONNECTION_ID = '5b0e7c7a-2f3b-4a53-8f0e-6f5d2c1b9a10'
+    const pollJob = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.POLL_SHIPMENT_STATUS,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('asks the connection the job names, and asks for the old packages only when it says so', async () => {
+      await pollJob({ storeId: STORE_ID, connectionId: CONNECTION_ID, includeOld: true })
+
+      expect(poll).toHaveBeenCalledWith(STORE_ID, CONNECTION_ID, { includeOld: true })
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no connection', { storeId: STORE_ID, includeOld: false }],
+      ['a connection that is no id', { storeId: STORE_ID, connectionId: 'x', includeOld: false }],
+      ['no store', { connectionId: CONNECTION_ID, includeOld: false }],
+      ['no word on the old packages', { storeId: STORE_ID, connectionId: CONNECTION_ID }]
+    ])('refuses for good a job with %s, and polls nothing', async (_name, data) => {
+      await expect(pollJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(poll).not.toHaveBeenCalled()
     })
   })
 })

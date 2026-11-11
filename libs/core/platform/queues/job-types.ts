@@ -132,6 +132,12 @@ export interface FetchOriginMediaJob extends BaseJob {
 export interface ReconcileInventoryJob extends BaseJob {
   storeId: string
 }
+// One poll of one connection (TDD_17 §4.9); `includeOld` also asks the packages older than two weeks, once a day
+export interface PollShipmentStatusJob extends BaseJob {
+  storeId: string
+  connectionId: string
+  includeOld: boolean
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

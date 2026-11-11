@@ -91,4 +91,8 @@ export const originMediaJobId = (originId: string, slot: string): string =>
 export const reconcileInventoryJobId = (storeId: string, day: string): string =>
   `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
 
+// One poll per connection and interval bucket: the scheduler run twice in a bucket asks for the same job (dashes, no colon)
+export const pollShipmentStatusJobId = (connectionId: string, bucket: number): string =>
+  `${JobNames.POLL_SHIPMENT_STATUS}-${connectionId}-${bucket}`
+
 export type JobName = (typeof JobNames)[keyof typeof JobNames]

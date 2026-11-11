@@ -201,7 +201,10 @@ export const BridgedEvents = [
   Events.EXPORT_FAILED,
   Events.CHANNEL_DISCONNECTED,
   Events.CHANNEL_TOKEN_EXPIRING,
-  Events.CHANNEL_HEALTH_RESTORED
+  Events.CHANNEL_HEALTH_RESTORED,
+  // The worker moves shipments (a carrier event, a poll): the order follows, and the team is told, in the api
+  Events.SHIPMENT_STATUS_CHANGED,
+  Events.SHIPMENT_REQUIRES_REVIEW
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

@@ -16,6 +16,8 @@ import {
   OrderStatus,
   PackingNoteNotice,
   ProductResourceTypes,
+  ShipmentResourceTypes,
+  ShipmentStatus,
   TransferResourceTypes
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -33,6 +35,8 @@ import {
   type OrderCreatedPayload,
   type OrderEventPayload,
   type OrderStatusChangedPayload,
+  type ShipmentEventPayload,
+  type ShipmentStatusChangedPayload,
   type TransferChangedPayload
 } from '@platform/core/events'
 import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/core/exports'
@@ -369,6 +373,52 @@ export class NotificationsEventsListener {
           'a dispatched transfer could not be notified to a store'
         )
       }
+    }
+  }
+
+  // A delivery attempt failed (TDD_17 §4.9): every failure tells the members who manage shipments, so three attempts on three
+  // days are three notifications. What the customer is told is `orders.failedAttemptMessages` (Step 4.9 sends it).
+  @OnEvent(Events.SHIPMENT_STATUS_CHANGED)
+  async onShipmentStatusChanged(payload: ShipmentStatusChangedPayload): Promise<void> {
+    if (payload.to !== ShipmentStatus.FAILED_ATTEMPT) return
+    await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_FAILED_ATTEMPT)
+  }
+
+  // A shipment, or what the order should do because of it, needs a person (TDD_17 §4.9)
+  @OnEvent(Events.SHIPMENT_REQUIRES_REVIEW)
+  async onShipmentRequiresReview(payload: ShipmentEventPayload): Promise<void> {
+    await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_REQUIRES_REVIEW)
+  }
+
+  private async tellShipmentManagers(
+    payload: ShipmentEventPayload,
+    type:
+      | typeof NotificationTypes.SHIPMENT_FAILED_ATTEMPT
+      | typeof NotificationTypes.SHIPMENT_REQUIRES_REVIEW
+  ): Promise<void> {
+    const { storeId, shipmentId, orderId, orderNumber } = payload
+    try {
+      const members = await this.membersWith(storeId, [Permissions.SHIPPING_MANAGE], null)
+      const notice = {
+        storeId,
+        type,
+        params: { orderNumber },
+        resourceType: ShipmentResourceTypes.SHIPMENT,
+        resourceId: shipmentId,
+        actionPath: AppPaths.store.order(storeId, orderId)
+      }
+      // Every failed attempt is told (three attempts are three lines); a shipment that needs review is told while the earlier
+      // warning is unread, so a package that keeps failing its effects is one line
+      if (type === NotificationTypes.SHIPMENT_REQUIRES_REVIEW) {
+        await this.notifications.sendToUsersOnce(members, notice)
+      } else {
+        await this.notifications.sendToUsers(members, notice)
+      }
+    } catch (error) {
+      this.logger.error(
+        { shipmentId, type, err: String(error) },
+        'a shipment could not be notified'
+      )
     }
   }
 

@@ -374,6 +374,16 @@ export const ShipmentPastPickupStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.RETURNING
 ]
 
+// The package is in the carrier's hands and on its way to the customer: the order has shipped (TDD_17 §4.9). Coming back
+// (`RETURNING`, `RETURNED`) is not a shipment of the order: it has no effect on it
+export const ShipmentLeftStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED
+]
+
 // What an agent may set by hand (TDD_17 §4.2, §4.9): the statuses the packages go through, and the two that settle a
 // guide whose outcome was unknown. The table of transitions still decides from where.
 export const ManualShipmentStatuses: readonly ShipmentStatus[] = [
@@ -410,3 +420,41 @@ export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
 export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
 
 export const ShipmentResourceTypes = { SHIPMENT: 'shipment' } as const
+
+// The statuses a carrier moves a package into (TDD_17 §4.9; `CarrierReportableStatuses` is what a plugin may map to). Every other status is the platform's to set: a carrier that
+// says "created" or "cancelled" in a poll is history, never a move
+export const CarrierMovableStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
+
+// Polling (TDD_17 §4.9): each connection at its own interval, never below the minimum; one with a webhook only as a safety net;
+// a package older than the cutoff is asked once a day
+export const CarrierPolling = {
+  DEFAULT_INTERVAL_MINUTES: 15,
+  MIN_INTERVAL_MINUTES: 5,
+  WEBHOOK_SAFETY_NET_MINUTES: 60,
+  OLD_AFTER_DAYS: 14,
+  // The hour (UTC) of the run that also asks the old packages
+  OLD_RUN_HOUR_UTC: 4,
+  BATCH_SIZE: 50,
+  // The scheduler ticks every ten minutes: a bucket of an interval is queued on its first tick only
+  TICK_MINUTES: 10
+} as const
+
+// What the engine did with an event of a carrier (a webhook or a poll)
+export const CarrierEventOutcomes = {
+  APPLIED: 'applied',
+  // The same event again (its id, or its status and moment): nothing changes
+  DUPLICATE: 'duplicate',
+  // Kept in the history and no move: an older event, a status a carrier does not set, or one the table does not allow from here
+  STORED: 'stored',
+  // Nothing was kept: the connection is not active, the shipment is not ours, or the moment is not a moment
+  IGNORED: 'ignored'
+} as const
+export type CarrierEventOutcome = (typeof CarrierEventOutcomes)[keyof typeof CarrierEventOutcomes]
