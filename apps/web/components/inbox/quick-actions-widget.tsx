@@ -34,6 +34,8 @@ function CreateOrderForConversation({ conversationId }: { conversationId: string
   const { openCreate } = useOrderDrawer()
   const conversation = useConversation(storeId, conversationId)
   const customerId = conversation.data?.customer.id
+  // A conversation that cannot be read is no reason to take the action away: the drawer asks for the customer
+  if (conversation.isError) return <CreateOrderButton />
   return (
     <Button
       type="button"

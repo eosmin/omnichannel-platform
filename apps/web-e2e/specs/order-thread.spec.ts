@@ -39,7 +39,10 @@ test.describe('orders in the thread and the keyboard', () => {
     const made = await addOrdersTo(storeId, 'Thread order customer', [{ status: 'CONFIRMED' }])
     order = made.orders[0] as SeededOrder
     remove = made.remove
-    await addOrderLineTo(storeId, conversationId, order, { status: 'PENDING_CONFIRMATION' })
+    await addOrderLineTo(storeId, conversationId, order, {
+      status: 'PENDING_CONFIRMATION',
+      totalCents: 1999
+    })
     await addOrderLineTo(storeId, conversationId, order, {
       status: 'CONFIRMED',
       previous: 'PENDING_CONFIRMATION'

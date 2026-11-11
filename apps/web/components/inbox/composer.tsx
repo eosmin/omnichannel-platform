@@ -323,9 +323,12 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
       ? [SlashCommand.RESOLVE]
       : [])
   ]
-  // The search keeps its last answer while a shorter text waits (no request goes out under the minimum): that answer
-  // is not the choice of this text
-  const productAnswer = productText.length >= SEARCH_MIN_CHARS ? (products.data ?? []) : []
+  // The search keeps its last answer while a shorter text waits (no request goes out under the minimum) and while a new
+  // text loads: that answer is not the choice of this text
+  const productAnswer =
+    productText.length >= SEARCH_MIN_CHARS && !products.isPlaceholderData
+      ? (products.data ?? [])
+      : []
   const productChoices: ProductChoice[] = productAnswer.map(item => {
     const variant = item.matchedVariant
     const price = variant === null ? item.priceCents : variant.effectivePriceCents
