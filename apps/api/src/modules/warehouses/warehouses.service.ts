@@ -4,6 +4,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { DatabaseNull, lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
+  TransferStatus,
   WarehouseLimits,
   WarehouseResourceTypes,
   WarehouseStockBlocks
@@ -205,6 +206,23 @@ export class WarehousesService {
         'the warehouse still holds stock',
         HttpStatusCodes.CONFLICT,
         { reason: WarehouseStockBlocks.DEACTIVATE }
+      )
+    }
+    // The units of a transfer in transit are in no level, but they arrive at (or return to) this warehouse, which must
+    // be on for that (TDD_16 §4.5)
+    const travelling = await tx.stockTransfer.findFirst({
+      where: {
+        status: TransferStatus.IN_TRANSIT,
+        OR: [{ fromWarehouseId: warehouseId }, { toWarehouseId: warehouseId }]
+      },
+      select: { id: true }
+    })
+    if (travelling !== null) {
+      throw new PlatformException(
+        ErrorCodes.INVENTORY_WAREHOUSE_HAS_STOCK,
+        'a transfer in transit leaves from or arrives at the warehouse',
+        HttpStatusCodes.CONFLICT,
+        { reason: WarehouseStockBlocks.OPEN_TRANSFER }
       )
     }
   }

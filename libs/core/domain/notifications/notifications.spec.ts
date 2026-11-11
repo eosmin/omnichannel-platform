@@ -118,7 +118,6 @@ describe('NotificationTypesWithoutEmitter', () => {
     for (const type of [
       NotificationTypes.ORDER_PAYMENT_FAILED,
       NotificationTypes.ORDER_MESSAGE_NOT_SENT,
-      NotificationTypes.TRANSFER_DISPATCHED,
       NotificationTypes.COUNT_AWAITING_APPLY,
       NotificationTypes.REMITTANCE_OVERDUE,
       NotificationTypes.WEBHOOK_AUTO_DISABLED,
@@ -138,7 +137,9 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.ORDER_STATUS_CHANGED,
       NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
       NotificationTypes.ORDER_PRICE_OVERRIDDEN,
-      NotificationTypes.ORDER_PACKING_NOTE_CHANGED
+      NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
+      // Raised by the transfers service since Step 4.5
+      NotificationTypes.TRANSFER_DISPATCHED
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
     }

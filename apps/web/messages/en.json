@@ -490,8 +490,12 @@
     "NETWORK_UNAVAILABLE": "No connection. What you wrote is still here: try again when it is back",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Say why you are adjusting the stock",
     "INVENTORY_COUNT_INVALID_STATUS_TRANSITION": "The stock count cannot change to that status",
+    "INVENTORY_TRANSFER_EMPTY": "The transfer has no products. Add at least one before sending it.",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "The transfer cannot change to that status",
+    "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Part of what did not arrive belongs to stores you are not a member of. Ask someone who belongs to them to close the transfer.",
+    "INVENTORY_TRANSFER_RECEIVE_EXCEEDS_DISPATCHED": "You cannot receive more units than are still pending.",
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "The origin and the destination must differ",
+    "INVENTORY_TRANSFER_SHORTAGE_ACTION_INVALID": "Choose what to do with each product that did not arrive in full, and only with those.",
     "INVENTORY_WAREHOUSE_HAS_STOCK": "The warehouse still has stock",
     "INVENTORY_WAREHOUSE_NOT_LINKED": "The warehouse is not linked to this store",
     "INVENTORY_VARIANT_REQUIRED": "Choose the variant the stock is for",
@@ -2728,7 +2732,8 @@
       "sku_in_use": "Another product or variant of this store already uses that SKU.",
       "variant_name_in_use": "This product already has a variant with that name.",
       "too_many_variants": "A product can have up to {max} variants.",
-      "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead."
+      "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead.",
+      "in_transit": "This product has units on the road in a transfer in transit, so its stock cannot be switched off yet. Wait for the transfer to arrive or cancel it."
     },
     "noMatchesYet": "No product loaded so far matches. Show more products to keep looking.",
     "stock": {

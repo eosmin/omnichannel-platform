@@ -82,3 +82,41 @@ export const FIRST_WAREHOUSE_PRIORITY = 1
 export const InventoryConflicts = {
   IDEMPOTENCY_KEY_REUSED: 'idempotency_key_reused'
 } as const
+
+// Transfers between warehouses (TDD_16 §4.5)
+export const TransferLimits = {
+  // A transfer is read whole by its screens: one holds at most this many lines
+  MAX_LINES: 200,
+  NOTE_MAX_LENGTH: 500,
+  // A dispatch, a receipt, a close or a cancel writes one movement per line in one transaction, so it gets more
+  // time than the 15 s of an ordinary one
+  TRANSACTION_TIMEOUT_MS: 60_000
+} as const
+
+// "TR-0001": the prefix and the least digits of the number of a transfer, per organization
+export const TransferNumber = {
+  PREFIX: 'TR-',
+  MIN_DIGITS: 4
+} as const
+
+export const TransferResourceTypes = {
+  TRANSFER: 'stock_transfer'
+} as const
+
+// The advisory lock that makes the creators of the transfers of one organization take turns (the number is the next
+// one of the organization)
+export const TransferLockScopes = {
+  NUMBERS: 'transfer_numbers'
+} as const
+
+// The kinds of movement of a transfer in the ledger key `transfer:{id}:{lineId}:{kind}` (TDD_16 §4.2): a retry of the
+// same step never applies twice. A receipt adds the client's receipt key, so that two receipts of one line are two
+// movements and a retry of one is the same.
+export const TransferMovementKeys = {
+  DISPATCH: 'dispatch',
+  RECEIVE: 'receive',
+  // What comes back to the source when the transfer is cancelled in transit
+  CANCEL_RETURN: 'cancel_return',
+  // What comes back to the source when a close sends the shortage back
+  SHORTAGE_RETURN: 'shortage_return'
+} as const
