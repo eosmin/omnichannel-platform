@@ -1,0 +1,53 @@
+import { OrderMessageKind } from '@platform/core/domain'
+
+import { sendOrderMessageQuerySchema, sendOrderMessageSchema } from './order-messages.schemas'
+
+describe('sendOrderMessageSchema', () => {
+  const valid = { kind: OrderMessageKind.ORDER_SUMMARY, idempotencyKey: 'press-one-of-the-day' }
+
+  it('takes a kind and the key of the press', () => {
+    expect(sendOrderMessageSchema.parse(valid)).toEqual(valid)
+  })
+
+  it('leaves the key out for a preview, which claims nothing', () => {
+    expect(sendOrderMessageSchema.parse({ kind: OrderMessageKind.ORDER_SUMMARY })).toEqual({
+      kind: OrderMessageKind.ORDER_SUMMARY
+    })
+  })
+
+  it('refuses the kinds that are about another shipment than the outbound one, until the returns step gives them theirs', () => {
+    for (const kind of [OrderMessageKind.RETURN_APPROVED, OrderMessageKind.EXCHANGE_SHIPPED]) {
+      expect(sendOrderMessageSchema.safeParse({ ...valid, kind }).success).toBe(false)
+    }
+  })
+
+  it('refuses a kind that does not exist', () => {
+    expect(sendOrderMessageSchema.safeParse({ ...valid, kind: 'order_nothing' }).success).toBe(
+      false
+    )
+  })
+
+  it('refuses a key that is short, long or has characters outside the ones a client makes', () => {
+    for (const idempotencyKey of ['short', 'x'.repeat(65), 'has space1', 'semi;colon1', '']) {
+      expect(sendOrderMessageSchema.safeParse({ ...valid, idempotencyKey }).success).toBe(false)
+    }
+  })
+
+  it('refuses a field it does not know, so the store or the customer can never come from the body', () => {
+    expect(sendOrderMessageSchema.safeParse({ ...valid, storeId: 'x' }).success).toBe(false)
+    expect(sendOrderMessageSchema.safeParse({ ...valid, to: 'a@b.c' }).success).toBe(false)
+  })
+})
+
+describe('sendOrderMessageQuerySchema', () => {
+  it('sends unless the preview is asked for', () => {
+    expect(sendOrderMessageQuerySchema.parse({})).toEqual({ preview: false })
+    expect(sendOrderMessageQuerySchema.parse({ preview: 'false' })).toEqual({ preview: false })
+    expect(sendOrderMessageQuerySchema.parse({ preview: 'true' })).toEqual({ preview: true })
+  })
+
+  it('refuses any other value and any other parameter', () => {
+    expect(sendOrderMessageQuerySchema.safeParse({ preview: 'yes' }).success).toBe(false)
+    expect(sendOrderMessageQuerySchema.safeParse({ storeId: 'x' }).success).toBe(false)
+  })
+})

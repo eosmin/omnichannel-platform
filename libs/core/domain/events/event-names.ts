@@ -64,6 +64,8 @@ export const Events = {
   ORDER_PAYMENT_STATUS_CHANGED: 'order.payment_status_changed',
   ORDER_MESSAGE_SENT: 'order.message_sent',
   ORDER_MESSAGE_FAILED: 'order.message_failed',
+  // A message that was due did not go and a person should know (ids and the reason only, never the text)
+  ORDER_MESSAGE_NOT_SENT: 'order.message_not_sent',
   ORDER_PRICE_OVERRIDDEN: 'order.price_overridden',
   ORDER_PRICE_APPROVAL_REQUESTED: 'order.price_approval_requested',
   ORDER_PRICE_APPROVED: 'order.price_approved',

@@ -7,6 +7,8 @@ import type {
   ConversationStatus,
   ConversationStatusReason,
   InventoryMovementType,
+  OrderMessageKindType,
+  OrderMessageNotSentReason,
   OrderStatus,
   PaymentStatus,
   ShipmentStatus,
@@ -114,6 +116,12 @@ export interface OrderEventPayload {
   orderId: string
   orderNumber: string
   actor: ActorRef
+}
+
+// A message about an order that did not go (TDD_17 §4.7): which kind and why. Never the text, the customer or the address.
+export interface OrderMessageNotSentPayload extends OrderEventPayload {
+  kind: OrderMessageKindType
+  reason: OrderMessageNotSentReason
 }
 
 // What every event of a shipment says: which shipment, of which order and connection, and who did it. Ids and numbers
@@ -426,6 +434,7 @@ export interface DomainEventPayloads {
   [Events.ORDER_PRICE_APPROVED]: OrderEventPayload
   [Events.ORDER_PRICE_REJECTED]: OrderEventPayload
   [Events.ORDER_PACKING_NOTE_CHANGED]: OrderEventPayload
+  [Events.ORDER_MESSAGE_NOT_SENT]: OrderMessageNotSentPayload
   [Events.SHIPMENT_CREATED]: ShipmentEventPayload
   [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload

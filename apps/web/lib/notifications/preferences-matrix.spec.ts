@@ -43,7 +43,7 @@ describe('groupPreferences', () => {
     ])
   })
 
-  it('shows the switches of the order notices that the orders raise since Step 4.3, and hides the two nothing raises', () => {
+  it('shows the switches of the order notices that the orders raise since Steps 4.3 and 4.9, and hides the one nothing raises', () => {
     const groups = groupPreferences([
       row(NotificationTypes.ORDER_CREATED),
       row(NotificationTypes.ORDER_STATUS_CHANGED),
@@ -57,6 +57,7 @@ describe('groupPreferences', () => {
     expect(groups[0]?.rows.map(entry => entry.type)).toEqual([
       NotificationTypes.ORDER_CREATED,
       NotificationTypes.ORDER_STATUS_CHANGED,
+      NotificationTypes.ORDER_MESSAGE_NOT_SENT,
       NotificationTypes.ORDER_PRICE_APPROVAL_REQUESTED,
       NotificationTypes.ORDER_PRICE_OVERRIDDEN,
       NotificationTypes.ORDER_PACKING_NOTE_CHANGED

@@ -118,13 +118,19 @@ describe('NotificationTypesWithoutEmitter', () => {
   it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
     for (const type of [
       NotificationTypes.ORDER_PAYMENT_FAILED,
-      NotificationTypes.ORDER_MESSAGE_NOT_SENT,
       NotificationTypes.REMITTANCE_OVERDUE,
       NotificationTypes.WEBHOOK_AUTO_DISABLED,
       NotificationTypes.PLUGIN_ERROR
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
     }
+    // The message about an order that did not go is raised since Step 4.9 PR C2a, so its switch is shown
+    expect(NotificationTypesWithoutEmitter.has(NotificationTypes.ORDER_MESSAGE_NOT_SENT)).toBe(
+      false
+    )
+    expect(NotificationGroupTypes[NotificationGroups.ORDERS]).toContain(
+      NotificationTypes.ORDER_MESSAGE_NOT_SENT
+    )
     // Raised since Step 4.8 PR C2b and C2c and Step 4.10 PR D1 (the labels that are ready), so their switches are shown; the
     // cancel that failed (Step 4.10) is not
     for (const type of [

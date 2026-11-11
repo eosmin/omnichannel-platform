@@ -16,6 +16,9 @@ import {
   MembershipStatus,
   MessageType,
   OrderMessageKind,
+  OrderMessageNotSentReasons,
+  OrderMessageRoutes,
+  OrderMessageTriggers,
   PaymentMethod,
   RoutingActionTypes,
   ShipmentStatus,
@@ -178,6 +181,8 @@ async function createTemplateOfSuite(owner: OwnerClient, storeId: string): Promi
 
 // The shipment each history row of the cases belongs to: the history is changed through its shipment
 const shipmentOfEvent = new Map<string, string>()
+// The order each record of a message about an order belongs to: it is reached through the route that sends one
+const orderOfDispatch = new Map<string, string>()
 // Counts the numbers of the sheets the suite writes: unique inside an organization with no luck involved
 let countSerial = 100_000_000 + (process.pid % 1_000_000) * 100
 async function createCountOf(
@@ -465,6 +470,37 @@ const resources: IsolationResource[] = [
       const event = await owner.shipmentEvent.findUnique({ where: { id } })
       if (event === null) return false
       return (await owner.shipmentEvent.count({ where: { shipmentId: event.shipmentId } })) === 1
+    }
+  },
+  {
+    name: 'orderMessageDispatch',
+    create: async (owner, input) => {
+      const order = await createOrder(owner, { storeId: input.storeId })
+      const row = await owner.orderMessageDispatch.create({
+        data: {
+          storeId: input.storeId,
+          orderId: order.id,
+          kind: OrderMessageKind.ORDER_SUMMARY,
+          trigger: OrderMessageTriggers.MANUAL,
+          route: OrderMessageRoutes.NOT_SENT,
+          reason: OrderMessageNotSentReasons.NO_TEMPLATE,
+          idempotencyKey: `isolation:${randomUUID()}`
+        },
+        select: { id: true }
+      })
+      orderOfDispatch.set(row.id, order.id)
+      return { id: row.id }
+    },
+    // Sending a message of an order of another store is a 404 that writes nothing: no record, no message, no email
+    modify: {
+      path: id => ApiRoutes.orders.messages(orderOfDispatch.get(id) ?? randomUUID()),
+      method: 'post',
+      body: { kind: OrderMessageKind.ORDER_SUMMARY, idempotencyKey: `isolation-${randomUUID()}` }
+    },
+    untouched: async (owner, id) => {
+      const row = await owner.orderMessageDispatch.findUnique({ where: { id } })
+      if (row === null) return false
+      return (await owner.orderMessageDispatch.count({ where: { orderId: row.orderId } })) === 1
     }
   },
   // A bulk run of labels (Step 4.10, PR D1): read by its id, started by the bulk route (which takes the store of the header and
