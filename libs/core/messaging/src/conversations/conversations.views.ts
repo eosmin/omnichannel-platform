@@ -206,7 +206,8 @@ export async function listItemsOf(
       WHERE store_id = ${storeId}
         AND conversation_id = page.id
         AND discarded_at IS NULL
-        AND type <> ${MessageTypes.SYSTEM}
+        -- A line the platform wrote (a system line, the line of an order) is not what was said last
+        AND type NOT IN (${MessageTypes.SYSTEM}, ${MessageTypes.ORDER_SUMMARY})
         AND (${readsNotes} OR type <> ${MessageTypes.INTERNAL_NOTE})
       ORDER BY created_at DESC, id DESC
       LIMIT 1

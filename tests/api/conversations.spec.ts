@@ -2158,4 +2158,43 @@ describe('The conversations of a store', () => {
       expect([status.status, assign.status]).toEqual([FORBIDDEN, FORBIDDEN])
     })
   })
+
+  describe('the line of an order', () => {
+    it('is never the last message of a conversation: the list shows the last thing that was said', async () => {
+      const thread = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: thread.id,
+        content: 'where is my order?',
+        createdAt: minutesAgo(10)
+      })
+      await owner.message.create({
+        data: {
+          storeId: ctx.storeA.id,
+          conversationId: thread.id,
+          type: MessageType.ORDER_SUMMARY,
+          authorType: AuthorType.SYSTEM,
+          content: null,
+          metadata: {
+            event: 'created',
+            orderId: randomUUID(),
+            orderNumber: 'T-LAST',
+            status: 'PENDING_CONFIRMATION',
+            previousStatus: null,
+            totalCents: 1999,
+            currency: 'USD',
+            itemCount: 1,
+            actor: { type: 'system', id: null }
+          },
+          createdAt: minutesAgo(1)
+        }
+      })
+
+      const response = await asAdmin().get(ApiRoutes.customers.conversations(thread.customerId))
+
+      expect(response.status).toBe(OK)
+      const [item] = (response.body as PageBody).data
+      expect(item?.lastMessage?.contentPreview).toBe('where is my order?')
+    })
+  })
 })
