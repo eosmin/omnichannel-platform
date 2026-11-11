@@ -968,7 +968,225 @@
     },
     "detail": {
       "title": "Order",
-      "back": "Back to orders"
+      "back": "Back to orders",
+      "heading": "Order {number}",
+      "noAccess": "You do not have access to orders.",
+      "loading": "Loading the order",
+      "notFound": "This order does not exist in this store.",
+      "failed": "The order could not be loaded.",
+      "tryAgain": "Try again",
+      "made": "Made {date}",
+      "saved": "Changes saved.",
+      "edit": "Edit",
+      "editField": "Edit {field}",
+      "flows": {
+        "groupLabel": "Change the status of the order",
+        "waitingForPrice": "The price change must be approved first.",
+        "confirm": {
+          "button": "Confirm",
+          "title": "Confirm order {number}",
+          "description": "Say how the customer confirmed. The stock is held for the order.",
+          "confirm": "Confirm order",
+          "done": "The order is confirmed.",
+          "viaLabel": "How did the customer confirm?",
+          "via": {
+            "message_reply": "Replied in the chat",
+            "call": "By phone",
+            "in_person": "In person",
+            "other": "Other"
+          },
+          "viaChoose": "Choose one"
+        },
+        "prepare": {
+          "button": "Start preparing",
+          "title": "Prepare order {number}",
+          "description": "The warehouse starts packing this order.",
+          "confirm": "Start preparing",
+          "done": "The order is being prepared."
+        },
+        "ship": {
+          "button": "Mark as shipped",
+          "title": "Ship order {number}",
+          "description": "The units leave the warehouse and the stock is issued. This cannot be undone.",
+          "confirm": "Mark as shipped",
+          "done": "The order is shipped."
+        },
+        "deliver": {
+          "button": "Mark as delivered",
+          "title": "Deliver order {number}",
+          "description": "Add the proof of delivery if you have it (a photo or a PDF).",
+          "confirm": "Mark as delivered",
+          "done": "The order is delivered.",
+          "proofLabel": "Proof of delivery (optional)"
+        },
+        "return": {
+          "button": "Return",
+          "title": "Return order {number}",
+          "description": "The customer sent the order back.",
+          "confirm": "Return order",
+          "done": "The order is returned.",
+          "restockLabel": "Put the units back in stock",
+          "restockHint": "Each unit goes back to the warehouse it left from.",
+          "noRestockPermission": "You cannot put units back in stock; ask someone who can adjust the inventory."
+        },
+        "cancel": {
+          "button": "Cancel order",
+          "title": "Cancel order {number}",
+          "description": "The stock held for the order is released. This cannot be undone.",
+          "confirm": "Cancel order",
+          "done": "The order is cancelled.",
+          "reasonLabel": "Reason",
+          "otherLabel": "Say why"
+        },
+        "approve_price": {
+          "button": "Approve price",
+          "title": "Approve the price of order {number}",
+          "description": "The price change is accepted and the order can go on.",
+          "confirm": "Approve",
+          "done": "The price is approved."
+        },
+        "reject_price": {
+          "button": "Reject price",
+          "title": "Reject the price of order {number}",
+          "description": "The order cannot be confirmed or shipped with this price.",
+          "confirm": "Reject",
+          "done": "The price is rejected."
+        },
+        "price": {
+          "reasonLabel": "Reason (optional)"
+        }
+      },
+      "file": {
+        "choose": "Choose a file",
+        "replace": "Choose another",
+        "checking": "Checking the file",
+        "remove": "Remove {name}",
+        "hint": "A photo (JPG, PNG, WebP) or a PDF, up to {size} MB.",
+        "onFile": "A file is attached",
+        "loading": "Loading the file",
+        "unavailable": "The file is not available yet",
+        "opensInNewTab": "(opens in a new tab)"
+      },
+      "payment": {
+        "heading": "Payment",
+        "record": "Record payment",
+        "method": "Method",
+        "status": "Status",
+        "reference": "Reference",
+        "receipt": "Receipt",
+        "none": "None",
+        "dialogTitle": "Record the payment of order {number}",
+        "dialogDescription": "Write down how the money came. This does not change how the order was sold.",
+        "recordMethod": "Method",
+        "recordStatus": "Status",
+        "recordReference": "Reference (number of the transfer or the voucher)",
+        "recordReceipt": "Receipt (optional)",
+        "recordConfirm": "Record payment",
+        "referenceAsked": "A transfer or a card payment should have its reference.",
+        "done": "The payment is recorded."
+      },
+      "notes": {
+        "heading": "Notes",
+        "empty": "No note.",
+        "customerNotes": {
+          "label": "Customer note",
+          "hint": "What the customer asked for. It can travel with the order."
+        },
+        "internalNotes": {
+          "label": "Customer care note",
+          "hint": "Only the team sees it. Never the customer or the carrier."
+        },
+        "packingNotes": {
+          "label": "Packing note",
+          "hint": "For whoever packs the order. Never the customer or the carrier label."
+        }
+      },
+      "delivery": {
+        "heading": "Delivery",
+        "scheduled": "Scheduled delivery",
+        "scheduledLabel": "Day of delivery",
+        "scheduledHint": "Leave it empty for no day. A day in the past is accepted.",
+        "notScheduled": "Not scheduled",
+        "addressHeading": "Address",
+        "noAddress": "No address",
+        "phones": "Recipient phones",
+        "noPhones": "No phones",
+        "phoneN": "Phone {number}",
+        "removePhone": "Remove phone {number}",
+        "addPhone": "Add phone",
+        "phonesHint": "Up to {max} numbers, digits only and without the country code: the carriers do not take one.",
+        "phoneProblem": {
+          "tooShort": "A phone has fewer than {min} digits.",
+          "tooLong": "A phone has more than {max} digits.",
+          "repeated": "A phone number is repeated.",
+          "emptyList": "Add at least one phone."
+        },
+        "addressProblem": "Write at least the street and the city. The country, if any, is two letters.",
+        "address": {
+          "line1": "Address line 1",
+          "line2": "Address line 2",
+          "city": "City",
+          "state": "State",
+          "postalCode": "Postal code",
+          "country": "Country (two letters)"
+        },
+        "tracking": "Tracking number",
+        "trackingLabel": "Tracking number",
+        "noTracking": "No tracking number"
+      },
+      "lines": {
+        "heading": "Items",
+        "caption": "Items of order {number}",
+        "product": "Product",
+        "quantity": "Quantity",
+        "unitPrice": "Unit price",
+        "lineTotal": "Total",
+        "from": "From:",
+        "otherWarehouse": "Another warehouse",
+        "freeShipping": "Free shipping",
+        "priceChanged": "The price was changed",
+        "subtotal": "Subtotal",
+        "shipping": "Shipping",
+        "freeShippingOrder": "Free shipping",
+        "discount": "Discount",
+        "total": "Total"
+      },
+      "customer": {
+        "heading": "Customer"
+      },
+      "events": {
+        "heading": "History",
+        "created": "Order made",
+        "confirmed": "Confirmed",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "cancelled": "Cancelled",
+        "via": {
+          "message_reply": "Replied in the chat",
+          "call": "By phone",
+          "in_person": "In person",
+          "at_creation": "When the order was made",
+          "other": "Other"
+        }
+      },
+      "print": {
+        "groupLabel": "Print documents",
+        "packing_slip": {
+          "button": "Print packing list",
+          "title": "Packing list, order {number}"
+        },
+        "order_summary": {
+          "button": "Print order sheet",
+          "title": "Order sheet {number}"
+        },
+        "packingNote": "Packing note",
+        "customer": "Customer",
+        "address": "Delivery address",
+        "noAddress": "No address",
+        "scheduled": "Scheduled delivery",
+        "customerNote": "Customer note",
+        "packed": "Packed"
+      }
     },
     "create": {
       "title": "New order",
