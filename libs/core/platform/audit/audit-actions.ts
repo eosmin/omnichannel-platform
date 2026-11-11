@@ -116,6 +116,7 @@ export const AuditAction = {
   CARRIER_UPDATED: 'carrier.updated',
   CARRIER_DISCONNECTED: 'carrier.disconnected',
   CARRIER_STATUS_MAPPING_CHANGED: 'carrier.status_mapping_changed',
+  CARRIER_WEBHOOK_SECRET_ROTATED: 'carrier.webhook_secret_rotated',
   SHIPMENT_CREATED: 'shipment.created',
   SHIPMENT_CANCELLED: 'shipment.cancelled',
   SHIPMENT_STATUS_SET_MANUALLY: 'shipment.status_set_manually',

@@ -20,6 +20,7 @@ import {
 import { officialRedactedKeys, PluginRegistry, PluginsModule } from '@platform/plugins/runtime'
 
 import { AnalyticsModule } from './analytics/analytics.module'
+import { CarrierEventResolver } from './carriers/carrier-event-resolver.service'
 import { ExportsModule } from './exports/exports.module'
 import { WorkerReadinessModule } from './health/worker-readiness.module'
 import { InboundModule } from './inbound/inbound.module'
@@ -33,6 +34,7 @@ import { ReactionSender } from './outbound/reaction-sender.service'
 import { ReactionStatusWriter } from './outbound/reaction-status.writer'
 import { ReadReceiptSender } from './outbound/read-receipt-sender.service'
 import { TypingSender } from './outbound/typing-sender.service'
+import { CarrierEventsProcessor } from './processors/carrier-events.processor'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
@@ -91,6 +93,8 @@ import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
     OutboundProcessor,
     MagicLinkIssuer,
     EmailProcessor,
+    CarrierEventResolver,
+    CarrierEventsProcessor,
     ChannelHealthScheduler,
     TokenExpiryScheduler,
     OutboundRequeueScheduler,

@@ -7,8 +7,6 @@ import { QueueNames } from '@platform/core/queues'
 // `analytics` for hours before anyone saw it). Every queue has a processor in the worker, or is named
 // here with the reason and the step that gives it one.
 const WITHOUT_PROCESSOR: Readonly<Record<string, string>> = {
-  [QueueNames.WEBHOOKS]:
-    'Milestone 4: outbound webhooks and the carrier events. Nothing queues here in the MVP.',
   [QueueNames.DEAD_LETTER]:
     'By design: it keeps exhausted jobs for a person to inspect (Step 7.4 watches it).'
 }

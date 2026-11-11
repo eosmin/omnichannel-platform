@@ -569,6 +569,7 @@
     "SHIPPING_CARRIER_CREDENTIALS_INVALID": "The carrier did not accept the credentials",
     "SHIPPING_CARRIER_CAPABILITY_MISSING": "The carrier does not support that action",
     "SHIPPING_CARRIER_NOT_ACTIVE": "The carrier is not active",
+    "CARRIER_WEBHOOK_SIGNATURE_INVALID": "The carrier notification could not be verified",
     "SHIPPING_CARRIER_REJECTED": "The carrier rejected the request",
     "SHIPPING_CARRIER_UNAVAILABLE": "The carrier is not available. Try again later",
     "SHIPPING_FEE_OUT_OF_RANGE": "The shipping fee is out of range",

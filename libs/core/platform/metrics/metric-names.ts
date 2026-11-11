@@ -20,6 +20,8 @@ export const MetricNames = {
   SHIPMENTS_CREATED_TOTAL: 'platform_shipments_created_total',
   SHIPMENT_CARRIER_ERRORS_TOTAL: 'platform_shipment_carrier_errors_total',
   SHIPMENT_UNKNOWN_STATUS_TOTAL: 'platform_shipment_unknown_status_total',
+  CARRIER_WEBHOOK_RECEIVED: 'platform_carrier_webhook_received_total',
+  CARRIER_WEBHOOK_REJECTED: 'platform_carrier_webhook_rejected_total',
   PICKUPS_REQUESTED_TOTAL: 'platform_pickups_requested_total',
 
   // Security

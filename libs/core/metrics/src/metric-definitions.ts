@@ -156,6 +156,16 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Channel webhooks rejected',
     labels: ['channel_type', 'reason']
   },
+  [MetricNames.CARRIER_WEBHOOK_RECEIVED]: {
+    kind: 'counter',
+    help: 'Carrier webhooks received with a good signature',
+    labels: ['carrier']
+  },
+  [MetricNames.CARRIER_WEBHOOK_REJECTED]: {
+    kind: 'counter',
+    help: 'Carrier webhooks rejected (unreadable address, unknown or disconnected connection, bad signature, body too large)',
+    labels: ['reason']
+  },
   [MetricNames.CHANNEL_API_ERRORS]: {
     kind: 'counter',
     help: 'Errors returned by a channel API',

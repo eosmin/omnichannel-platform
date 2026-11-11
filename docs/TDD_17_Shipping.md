@@ -1105,6 +1105,21 @@ HIGH-tier when a shipment exists):
   skips it, and a queued `PROCESS_CARRIER_EVENT` whose connection is no longer active is dropped and logged once. The shipments
   stay as they were and the agent finishes them by hand (§4.8).
 
+**As built (Step 4.8 PR C2a; the checklist wins where this differs):**
+
+- **One answer.** The webhook answers `401 CARRIER_WEBHOOK_SIGNATURE_INVALID` to a malformed address, a connection that does
+  not exist, a connection that was let go, a carrier that pushes no status, a secret that cannot be read and a bad
+  signature, so the response says nothing about which connection exists. A body over `CarrierWebhookLimits.MAX_BODY_BYTES` is
+  `413` before any connection is read.
+- **A connection that was let go** has no secret and takes nothing: whatever arrives for it is that same `401`, and nothing is
+  queued. A connection whose health check fails (`error`) still takes what its carrier pushes.
+- **What is queued.** The plugin's `handleWebhook` normalizes the body; every event is checked again (`carrierEventSchema`:
+  status fields only, bounded strings, no recipient data) and becomes one `PROCESS_CARRIER_EVENT` job with the store of the
+  connection, never a value of the request. Every event of a body is queued (its size, at most `CarrierWebhookLimits.MAX_BODY_BYTES`, bounds them); a job has no id of its own, so a retry of the carrier can queue an event whose first job failed (the dedupe is the engine's, PR C2c). The free text of the carrier (`description`) is not kept in the job, and an event whose status is not a code that can be stored (empty, control characters, too long) is left out and counted as `event_dropped`. A request the
+  api kept no raw bytes of is refused like a bad signature. A body the plugin cannot read is acknowledged with `200` and said, because the signature was good.
+- **The worker** validates the job and resolves the event for its connection (§4.17), recording the unmapped codes; the
+  shipment engine that applies it is PR C2c.
+
 ### 4.10 Pickups (recolecta)
 
 Per connection: `pickupEnabled`, `pickupDays`, `pickupCutoffTime`, `autoPickup` with
@@ -1520,7 +1535,12 @@ numbering, and what a disabled connection accepts is a new name. The non-secret 
 `CarrierConnection.contact` (a `local` courier's phone and notes, an account setting of another carrier); the prefix of a `local` courier
 is `GuideSequence.prefix`. A failure of a carrier is answered as `SHIPPING_CARRIER_CREDENTIALS_INVALID` (`400`, with `reason` from
 `CarrierHealthReasons`) or `SHIPPING_CARRIER_UNAVAILABLE` (`503`), and `CarrierConnection.lastError` holds the same name, never the
-carrier's words. The status mapping routes, `locations` and the webhook are later PRs and steps (see the plan, Step 4.8).
+carrier's words. **PR C2a** adds `GET /carriers/:id/status-mappings` and `/unmapped-statuses` (`SHIPPING_VIEW`; cursor pages, the mappings by code
+and the waiting codes newest first), `PUT /carriers/:id/status-mappings/:code` (body `{ status }`: a status of
+`CarrierReportableStatuses`, or `null` to ignore the code) and `DELETE` of the same (`204`) (`SETTINGS_MANAGE_CARRIERS`; the code in
+the address is normalized like the webhook's, a disconnected connection takes no change), `POST /carriers/:id/webhook-secret`
+(`SETTINGS_MANAGE_CARRIERS`, the new secret once, `Cache-Control: no-store`, `409` for a connection that was let go or a carrier
+with no webhook) and the public webhook. `locations` is Step 4.15.
 
 ---
 

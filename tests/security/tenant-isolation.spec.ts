@@ -301,6 +301,71 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.guideSequence.findUnique({ where: { connectionId: id } }))?.prefix === 'T'
   },
+  // What a carrier's codes mean for a connection (Step 4.8, PR C2a): a row is reached through the connection it belongs to.
+  // The mappings are read by the list of the connection and changed by the route of their code; the codes waiting for the
+  // owner are read by their own list, and a change that tried to map one would resolve it.
+  {
+    name: 'carrierStatusMapping',
+    create: async (owner, input) => {
+      const built = await createCarrierConnection(owner, { storeId: input.storeId })
+      const row = await owner.carrierStatusMapping.create({
+        data: {
+          storeId: input.storeId,
+          connectionId: built.id,
+          providerCode: 'delivered',
+          label: 'Delivered',
+          status: ShipmentStatus.DELIVERED
+        },
+        select: { id: true }
+      })
+      connectionOfRow.set(row.id, built.id)
+      return row
+    },
+    readPath: id => ApiRoutes.carriers.statusMappings(connectionOfRow.get(id) ?? randomUUID()),
+    modify: {
+      path: id =>
+        ApiRoutes.carriers.statusMappingByCode(
+          connectionOfRow.get(id) ?? randomUUID(),
+          'delivered'
+        ),
+      method: 'put',
+      body: { status: ShipmentStatus.RETURNED }
+    },
+    untouched: async (owner, id) =>
+      (await owner.carrierStatusMapping.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === ShipmentStatus.DELIVERED
+  },
+  {
+    name: 'carrierUnmappedStatus',
+    create: async (owner, input) => {
+      const built = await createCarrierConnection(owner, { storeId: input.storeId })
+      const row = await owner.carrierUnmappedStatus.create({
+        data: {
+          storeId: input.storeId,
+          connectionId: built.id,
+          providerCode: 'zzz',
+          sampleRawStatus: 'Zzz'
+        },
+        select: { id: true }
+      })
+      connectionOfRow.set(row.id, built.id)
+      return row
+    },
+    readPath: id => ApiRoutes.carriers.unmappedStatuses(connectionOfRow.get(id) ?? randomUUID()),
+    modify: {
+      path: id =>
+        ApiRoutes.carriers.statusMappingByCode(connectionOfRow.get(id) ?? randomUUID(), 'zzz'),
+      method: 'put',
+      body: { status: ShipmentStatus.DELIVERED }
+    },
+    untouched: async (owner, id) =>
+      (
+        await owner.carrierUnmappedStatus.findUnique({
+          where: { id },
+          select: { resolvedAt: true }
+        })
+      )?.resolvedAt === null
+  },
   // The guides of a store (Step 4.8, PR C1). The history of a shipment has no route of its own: it is read inside the
   // shipment, so the checks reach it by the route of the shipment it belongs to.
   {
